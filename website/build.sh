@@ -67,6 +67,47 @@ def on_github(target: str, source: Path) -> str | None:
     return f"{repository}/{kind}/main/{resolved.relative_to(root).as_posix()}{hash_sign}{anchor}"
 
 
+item = re.compile(r"^( *)([-*+]|\d+[.)])( +)(.*\n?)$")
+
+
+def lists(text: str) -> str:
+    """Lists as the site's Markdown reads them: the notes are written for
+    GitHub, where a list may follow a line of text and nest by two or three
+    spaces; Python-Markdown wants a blank line before a list and four spaces
+    a level. Code is left alone."""
+    out, in_code, levels = [], False, []
+    previous = ""
+    for line in text.splitlines(keepends=True):
+        if fence.match(line):
+            in_code = not in_code
+        found = None if in_code else item.match(line)
+        if found:
+            indent = len(found.group(1))
+            if not levels:
+                levels = [indent]
+                # A list right under a line of text starts its own block.
+                if previous.strip() and not item.match(previous) and not previous.lstrip().startswith(("|", ">", "#")):
+                    out.append("\n")
+            elif indent > levels[-1]:
+                levels.append(indent)
+            else:
+                while len(levels) > 1 and levels[-1] > indent:
+                    levels.pop()
+            line = " " * (4 * (len(levels) - 1)) + found.group(2) + " " + found.group(4)
+        elif not in_code and line.strip() and not line.startswith(" "):
+            # A line of text at the margin ends the list (or continues the item lazily).
+            if not (levels and previous.strip() and item.match(previous)):
+                levels = []
+        elif not in_code and line.strip() and levels:
+            # A line inside an item: under its item's text.
+            line = " " * (4 * len(levels)) + line.lstrip(" ")
+        elif not line.strip():
+            pass
+        out.append(line)
+        previous = line
+    return "".join(out)
+
+
 def rewrite(text: str, source: Path) -> str:
     out, in_code = [], False
     for line in text.splitlines(keepends=True):
@@ -76,7 +117,7 @@ def rewrite(text: str, source: Path) -> str:
             line = link.sub(lambda m: m.group(1) + (on_github(m.group(2), source) or m.group(2)) + m.group(3), line)
             line = reference.sub(lambda m: m.group(1) + (on_github(m.group(2), source) or m.group(2)), line)
         out.append(line)
-    return "".join(out)
+    return lists("".join(out))
 
 
 for source in sorted(notes.rglob("*")):

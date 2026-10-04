@@ -21,34 +21,36 @@ extra_css = ["assets/stylesheets/extra.css"]
 # Le guide, sans section pour les développeurs : leurs notes sont en anglais,
 # atteintes par le pied de page.
 nav = [
-  { "Accueil" = "index.md" },
-  { "Pour commencer" = [
-    { "Installer" = "guide/install.md" },
-    { "Premiers pas" = "guide/first-steps.md" },
+  { "Guide" = [
+    { "Accueil" = "index.md" },
+    { "Pour commencer" = [
+      { "Installer" = "guide/install.md" },
+      { "Premiers pas" = "guide/first-steps.md" },
+    ] },
+    { "La fenêtre" = [
+      { "Le Porche" = "guide/porch.md" },
+      { "Le courrier" = "guide/mail.md" },
+      { "Les tâches" = "guide/tasks.md" },
+      { "L’agenda" = "guide/agenda.md" },
+      { "Les contacts et la carte" = "guide/contacts.md" },
+      { "Les notes" = "guide/notes.md" },
+      { "Les projets" = "guide/projects.md" },
+      { "Le temps et les factures" = "guide/time.md" },
+      { "Les budgets et les comptes bancaires" = "guide/budgets.md" },
+      { "Les papiers et les lettres" = "guide/papers.md" },
+      { "La santé" = "guide/health.md" },
+      { "Les sites" = "guide/sites.md" },
+      { "Les comptes" = "guide/accounts.md" },
+      { "Les paramètres" = "guide/settings.md" },
+    ] },
+    { "Dans tout Sioul" = [
+      { "Les heures : travail, démarches, temps libre" = "guide/hours.md" },
+      { "Partager entre vos ordinateurs" = "guide/sharing.md" },
+      { "Avec un agent d’IA" = "guide/ai-agent.md" },
+      { "Vie privée et sécurité" = "guide/privacy-security.md" },
+    ] },
+    { "Politique de confidentialité" = "privacy.md" },
   ] },
-  { "La fenêtre" = [
-    { "Le Porche" = "guide/porch.md" },
-    { "Le courrier" = "guide/mail.md" },
-    { "Les tâches" = "guide/tasks.md" },
-    { "L’agenda" = "guide/agenda.md" },
-    { "Les contacts et la carte" = "guide/contacts.md" },
-    { "Les notes" = "guide/notes.md" },
-    { "Les projets" = "guide/projects.md" },
-    { "Le temps et les factures" = "guide/time.md" },
-    { "Les budgets et les comptes bancaires" = "guide/budgets.md" },
-    { "Les papiers et les lettres" = "guide/papers.md" },
-    { "La santé" = "guide/health.md" },
-    { "Les sites" = "guide/sites.md" },
-    { "Les comptes" = "guide/accounts.md" },
-    { "Les paramètres" = "guide/settings.md" },
-  ] },
-  { "Dans tout Sioul" = [
-    { "Les heures : travail, démarches, temps libre" = "guide/hours.md" },
-    { "Partager entre vos ordinateurs" = "guide/sharing.md" },
-    { "Avec un agent d’IA" = "guide/ai-agent.md" },
-    { "Vie privée et sécurité" = "guide/privacy-security.md" },
-  ] },
-  { "Politique de confidentialité" = "privacy.md" },
 ]
 
 [project.theme]
