@@ -1,0 +1,259 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Aurélien Pierre
+
+// The weather in the status line, in one colour: now, then hour by hour for
+// the next four hours, each as an icon and a temperature (now alone when the
+// window is narrow); a tip says what they are. On a click, the same hours,
+// then the parts of the days to come, and where the data comes from. Without
+// a place, a quiet icon that offers to choose one.
+
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
+
+ToolButton {
+    id: applet
+
+    required property var sioul
+    required property var theme
+    readonly property var shown: applet.sioul.forecast ? JSON.parse(applet.sioul.forecast) : null
+    readonly property var now: applet.shown && applet.shown.view.now ? applet.shown.view.now : null
+    // The next hours beside now, when the window has room for them.
+    readonly property var hours: applet.now && applet.Window.width >= 900 ? applet.shown.view.hours : []
+    property bool choosing: false
+    readonly property var places: applet.sioul.placesFound ? JSON.parse(applet.sioul.placesFound) : []
+
+    // For the window's images: the forecast open, then as an image.
+    function openForecast() {
+        applet.choosing = false
+        popup.open()
+    }
+
+    function grab(path) {
+        popup.contentItem.grabToImage(result => result.saveToFile(path))
+    }
+
+    implicitHeight: 28
+    display: AbstractButton.TextBesideIcon
+    icon.name: applet.now ? applet.now.icon : "weather-none-available-symbolic"
+    icon.color: applet.theme.muted
+    text: applet.now ? applet.now.temperature : ""
+    Accessible.name: applet.now ? [applet.now].concat(applet.hours).map(s => s.label + ": " + s.words + ", " + s.temperature).join("; ") : applet.sioul.text("weather-choose")
+    ToolTip.visible: hovered && !popup.opened
+    ToolTip.text: applet.now ? applet.theme.plain(applet.sioul.textWith(applet.hours.length > 0 ? "weather-tip-hours" : "weather-tip", "place", applet.shown.place) + "\n" + applet.now.words) : applet.sioul.text("weather-choose")
+    ToolTip.delay: 600
+    onClicked: {
+        applet.choosing = applet.shown === null
+        popup.open()
+    }
+
+    contentItem: RowLayout {
+        spacing: 4
+
+        Label {
+            visible: applet.hours.length > 0
+            text: applet.now ? applet.now.label : ""
+            textFormat: Text.PlainText
+            font.pixelSize: 11
+            color: applet.theme.muted
+        }
+        Icon {
+            iconName: applet.icon.name
+            color: applet.theme.muted
+            size: 16
+        }
+        Label {
+            visible: applet.text !== ""
+            text: applet.text
+            textFormat: Text.PlainText
+            color: applet.theme.muted
+            font.features: { "tnum": 1 }
+        }
+        // Hour by hour: its time, small, then the same icon and temperature.
+        Repeater {
+            model: applet.hours
+
+            delegate: RowLayout {
+                id: hour
+
+                required property var modelData
+
+                Layout.leftMargin: 8
+                spacing: 3
+
+                Label {
+                    text: hour.modelData.label
+                    textFormat: Text.PlainText
+                    font.pixelSize: 11
+                    font.features: { "tnum": 1 }
+                    color: applet.theme.muted
+                }
+                Icon {
+                    iconName: hour.modelData.icon
+                    color: applet.theme.muted
+                    size: 14
+                }
+                Label {
+                    text: hour.modelData.temperature
+                    textFormat: Text.PlainText
+                    color: applet.theme.muted
+                    font.features: { "tnum": 1 }
+                }
+            }
+        }
+    }
+
+    Popup {
+        id: popup
+
+        y: -height - 6
+        x: Math.min(0, applet.parent ? applet.parent.width - applet.x - width : 0)
+        width: 360
+        padding: 12
+        modal: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onClosed: applet.choosing = false
+
+        background: Rectangle {
+            color: applet.theme.surface
+            radius: applet.theme.radius
+            border.color: applet.theme.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 6
+
+            // The forecast.
+            ColumnLayout {
+                visible: !applet.choosing && applet.shown !== null
+                Layout.fillWidth: true
+                spacing: 4
+
+                Label {
+                    Layout.fillWidth: true
+                    text: applet.shown ? applet.shown.place : ""
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    font.weight: Font.DemiBold
+                    color: applet.theme.text
+                }
+                Repeater {
+                    model: applet.shown ? (applet.now ? [applet.now] : []).concat(applet.shown.view.hours).concat(applet.shown.view.parts) : []
+
+                    delegate: RowLayout {
+                        id: slot
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Label {
+                            Layout.preferredWidth: 150
+                            text: slot.modelData.label
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: applet.theme.muted
+                        }
+                        Icon {
+                            iconName: slot.modelData.icon
+                            color: applet.theme.text
+                            size: 16
+                            tip: slot.modelData.words
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: slot.modelData.temperature
+                            textFormat: Text.PlainText
+                            color: applet.theme.text
+                            font.features: { "tnum": 1 }
+                        }
+                        Label {
+                            text: slot.modelData.rain
+                            textFormat: Text.PlainText
+                            color: applet.theme.muted
+                            font.features: { "tnum": 1 }
+                        }
+                    }
+                }
+                Label {
+                    visible: applet.shown !== null && applet.now === null
+                    text: applet.sioul.text("weather-none")
+                    color: applet.theme.muted
+                }
+                // Credited where shown, as its licence asks.
+                Label {
+                    Layout.topMargin: 4
+                    text: "<a href=\"https://open-meteo.com/\">" + (applet.shown ? applet.shown.credit : "") + "</a>"
+                    textFormat: Text.RichText
+                    font.pixelSize: 11
+                    color: applet.theme.muted
+                    linkColor: applet.theme.muted
+                    onLinkActivated: link => Qt.openUrlExternally(link)
+                }
+                Button {
+                    flat: true
+                    text: applet.sioul.text("weather-change")
+                    onClicked: applet.choosing = true
+                }
+            }
+
+            // Choosing a place: a name, then the place among its namesakes.
+            ColumnLayout {
+                visible: applet.choosing || applet.shown === null
+                Layout.fillWidth: true
+                spacing: 6
+
+                Label {
+                    text: applet.sioul.text("weather-choose")
+                    font.weight: Font.DemiBold
+                    color: applet.theme.text
+                }
+                TextField {
+                    id: placeName
+
+                    Layout.fillWidth: true
+                    placeholderText: applet.sioul.text("weather-search")
+                    onAccepted: {
+                        if (placeName.text.trim() !== "")
+                            applet.sioul.findPlaces(placeName.text.trim())
+                    }
+                }
+                Repeater {
+                    model: Array.isArray(applet.places) ? applet.places : []
+
+                    delegate: ItemDelegate {
+                        id: found
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        text: applet.theme.plain(found.modelData.name).replace(/&/g, "&&")
+                        onClicked: {
+                            applet.sioul.setWeatherPlace(found.modelData.name, found.modelData.latitude, found.modelData.longitude)
+                            applet.choosing = false
+                            popup.close()
+                        }
+                    }
+                }
+                Label {
+                    visible: !Array.isArray(applet.places) && applet.places.error !== undefined
+                    Layout.fillWidth: true
+                    text: Array.isArray(applet.places) ? "" : applet.places.error || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: applet.theme.warm
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: applet.sioul.text("weather-privacy")
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 11
+                    color: applet.theme.muted
+                }
+            }
+        }
+    }
+}

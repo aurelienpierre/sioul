@@ -1,0 +1,521 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Aurélien Pierre
+
+//! Health and well-being, kept on this computer only: prescriptions, when to
+//! fetch their medicines and when to renew them; medicines and when to take
+//! them; a pause to move during long focus; a daily limit on chats. Never
+//! sent anywhere: the tasks it makes go to a list kept here (`local`).
+//!
+//! Nothing here counts what was missed. A dose not marked taken is simply not
+//! marked; the next one comes as planned.
+
+use jiff::civil::{Date, Time};
+use jiff::{Span, Timestamp, Zoned};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+/// Everything the health page keeps: `$XDG_DATA_HOME/sioul/health.toml`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Health {
+    #[serde(rename = "prescription", default)]
+    pub prescriptions: Vec<Prescription>,
+    #[serde(rename = "medicine", default)]
+    pub medicines: Vec<Medicine>,
+    #[serde(default)]
+    pub movement: Movement,
+    #[serde(default)]
+    pub chats: ChatLimit,
+    /// Where the pharmacy and the renewals go as tasks: a list on your server
+    /// ("account/id"), so your phone has them; "" for your usual list.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub errands_list: String,
+    /// A folder your watch's files come to (Gadgetbridge's exports, Garmin's
+    /// export ZIPs); "" for none. A watch the desktop shows is read besides.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub watch_folder: String,
+    /// Offers from the watch (a walk, a pause): on unless you say.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub watch_offers: bool,
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
+/// A prescription: what it is for, who wrote it, until when it is valid,
+/// and how often the pharmacy gives its medicines.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Prescription {
+    pub id: String,
+    /// "Vitamin D 1000 IU".
+    pub title: String,
+    #[serde(default)]
+    pub prescriber: String,
+    /// Its last valid day: renewed before it.
+    #[serde(default, deserialize_with = "crate::budget::dates::optional", skip_serializing_if = "Option::is_none")]
+    pub until: Option<Date>,
+    /// The pharmacy gives this many days at a time (28, 30, 90).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refill_days: Option<u32>,
+    /// The last time it was fetched at the pharmacy.
+    #[serde(default, deserialize_with = "crate::budget::dates::optional", skip_serializing_if = "Option::is_none")]
+    pub last_refill: Option<Date>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
+}
+
+/// A medicine to take, and when.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Medicine {
+    pub id: String,
+    pub name: String,
+    /// "1000 IU", "1 tablet".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub dose: String,
+    pub schedule: Schedule,
+    /// The prescription it comes with, by id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prescription: Option<String>,
+    /// The last day it is taken; none for as long as it goes.
+    #[serde(default, deserialize_with = "crate::budget::dates::optional", skip_serializing_if = "Option::is_none")]
+    pub until: Option<Date>,
+    /// Stopped for now: no reminder.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub paused: bool,
+}
+
+/// When a medicine is taken.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "every", rename_all = "kebab-case")]
+pub enum Schedule {
+    /// At these times each day: "12:00", "18:00".
+    Day { times: Vec<String> },
+    /// Every `days` days at `time`, counted from `from` ("every other day from tomorrow").
+    Days {
+        days: u32,
+        time: String,
+        #[serde(deserialize_with = "crate::budget::dates::required")]
+        from: Date,
+    },
+    /// Every `hours` hours from `from`, Unix seconds ("every 6 hours from now").
+    Hours { hours: u32, from: i64 },
+}
+
+/// "18:00" → 18:00.
+fn time_of(text: &str) -> Option<Time> {
+    let (hour, minute) = text.trim().split_once(':')?;
+    Time::new(hour.trim().parse().ok()?, minute.trim().parse().ok()?, 0, 0).ok()
+}
+
+impl Schedule {
+    /// The doses from `start` (included) to `end` (excluded), in order.
+    pub fn doses(&self, start: &Zoned, end: &Zoned) -> Vec<Zoned> {
+        let zone = start.time_zone().clone();
+        let mut out = Vec::new();
+        match self {
+            Schedule::Day { times } => {
+                let mut times: Vec<Time> = times.iter().filter_map(|t| time_of(t)).collect();
+                times.sort();
+                let mut day = start.date();
+                while day <= end.date() {
+                    for time in &times {
+                        if let Ok(at) = day.to_datetime(*time).to_zoned(zone.clone())
+                            && &at >= start
+                            && &at < end
+                        {
+                            out.push(at);
+                        }
+                    }
+                    let Ok(next) = day.tomorrow() else { break };
+                    day = next;
+                }
+            }
+            Schedule::Days { days, time, from } => {
+                let (Some(time), true) = (time_of(time), *days > 0) else { return out };
+                let mut day = *from;
+                // The first turn on or after the start.
+                if day < start.date()
+                    && let Ok(behind) = start.date().since(day)
+                {
+                    let turns = i64::from(behind.get_days()) / i64::from(*days);
+                    day = day.checked_add(Span::new().days(turns * i64::from(*days))).unwrap_or(day);
+                }
+                while day <= end.date() {
+                    if let Ok(at) = day.to_datetime(time).to_zoned(zone.clone())
+                        && &at >= start
+                        && &at < end
+                    {
+                        out.push(at);
+                    }
+                    let Ok(next) = day.checked_add(Span::new().days(i64::from(*days))) else { break };
+                    day = next;
+                }
+            }
+            Schedule::Hours { hours, from } => {
+                if *hours == 0 {
+                    return out;
+                }
+                let step = i64::from(*hours) * 3600;
+                let first = start.timestamp().as_second();
+                let mut at = *from;
+                if at < first {
+                    at += (first - at + step - 1) / step * step;
+                }
+                while at < end.timestamp().as_second() {
+                    if let Ok(t) = Timestamp::from_second(at) {
+                        out.push(t.to_zoned(zone.clone()));
+                    }
+                    at += step;
+                }
+            }
+        }
+        out
+    }
+}
+
+/// The pause to move: while a focus session runs, after this many minutes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Movement {
+    #[serde(default = "yes")]
+    pub enabled: bool,
+    #[serde(default = "forty_five")]
+    pub minutes: u32,
+}
+
+impl Default for Movement {
+    fn default() -> Movement {
+        Movement { enabled: true, minutes: 45 }
+    }
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn forty_five() -> u32 {
+    45
+}
+
+/// Chats, a limit a day: after `minutes` of use they are covered, silent
+/// and muted, for `locked_minutes`; then they come back.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChatLimit {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub minutes: u32,
+    #[serde(default)]
+    pub locked_minutes: u32,
+}
+
+impl Health {
+    pub fn default_path() -> PathBuf {
+        crate::config::data_dir().join("health.toml")
+    }
+
+    /// The health file; empty when there is none. One that no longer reads
+    /// (edited by hand, written by a newer Sioul on another computer) is
+    /// copied aside first, as `health.toml.unreadable`: saving over it then
+    /// loses no medicine.
+    pub fn load(path: &Path) -> Health {
+        match std::fs::read_to_string(path).map(|t| toml::from_str::<Health>(&t)) {
+            Ok(Ok(health)) => health,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Health::default(),
+            _ => {
+                let _ = std::fs::copy(path, path.with_extension("toml.unreadable"));
+                Health::default()
+            }
+        }
+    }
+
+    /// Written next to its place, then moved: never half a file. Yours alone.
+    pub fn save(&self, path: &Path) -> Result<(), String> {
+        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(fail)?;
+        }
+        let temporary = path.with_extension("toml.new");
+        std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
+        keep_private(&temporary);
+        std::fs::rename(&temporary, path).map_err(fail)
+    }
+
+    /// A new id among the others, from a name.
+    pub fn new_id(&self, name: &str) -> String {
+        let taken: Vec<String> = self.prescriptions.iter().map(|p| p.id.clone()).chain(self.medicines.iter().map(|m| m.id.clone())).collect();
+        crate::cases::new_id(name, &taken)
+    }
+
+    /// Every dose from `start` to `end`, of the medicines taken then.
+    pub fn doses(&self, start: &Zoned, end: &Zoned) -> Vec<Dose> {
+        let mut out: Vec<Dose> = self
+            .medicines
+            .iter()
+            .filter(|m| !m.paused)
+            .flat_map(|m| {
+                m.schedule
+                    .doses(start, end)
+                    .into_iter()
+                    .filter(|at| m.until.is_none_or(|until| at.date() <= until))
+                    .map(|at| Dose { key: format!("{}@{}", m.id, at.timestamp().as_second()), medicine: m.id.clone(), name: m.name.clone(), dose: m.dose.clone(), at })
+            })
+            .collect();
+        out.sort_by(|a, b| a.at.cmp(&b.at).then(a.name.cmp(&b.name)));
+        out
+    }
+
+    /// The pharmacy and the doctor, as errands: when a prescription's
+    /// medicines run out (two days before) and when it ends (two weeks before).
+    pub fn errands(&self) -> Vec<Errand> {
+        let mut out = Vec::new();
+        for p in &self.prescriptions {
+            if let (Some(days), Some(last)) = (p.refill_days, p.last_refill)
+                && let Ok(out_of) = last.checked_add(Span::new().days(i64::from(days)))
+                && p.until.is_none_or(|until| out_of <= until)
+            {
+                let day = out_of.checked_sub(Span::new().days(2)).unwrap_or(out_of);
+                out.push(Errand { key: format!("refill:{}:{}", p.id, out_of), prescription: p.id.clone(), kind: ErrandKind::Refill, day, title: p.title.clone() });
+            }
+            if let Some(until) = p.until {
+                let day = until.checked_sub(Span::new().days(14)).unwrap_or(until);
+                out.push(Errand { key: format!("renew:{}:{until}", p.id), prescription: p.id.clone(), kind: ErrandKind::Renew, day, title: p.title.clone() });
+            }
+        }
+        out.sort_by_key(|e| e.day);
+        out
+    }
+}
+
+/// What the body's files hold is yours alone: on Unix, readable by you only
+/// (0600), whatever the system's default for new files.
+pub(crate) fn keep_private(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+}
+
+/// One dose to take.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Dose {
+    /// "<medicine>@<Unix seconds>": what marks it taken.
+    pub key: String,
+    pub medicine: String,
+    pub name: String,
+    pub dose: String,
+    pub at: Zoned,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ErrandKind {
+    /// Fetch the medicines at the pharmacy.
+    Refill,
+    /// See the doctor for a new prescription.
+    Renew,
+}
+
+/// Something to do for a prescription, from a day on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Errand {
+    /// Unique to its turn: the task made for it is made once.
+    pub key: String,
+    pub prescription: String,
+    pub kind: ErrandKind,
+    /// From when the task can start.
+    pub day: Date,
+    pub title: String,
+}
+
+/// What is marked of the doses and done of the errands, kept apart from the
+/// health file: `$XDG_STATE_HOME/sioul/health-state.toml`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct HealthState {
+    /// Doses marked taken, by key, when (Unix seconds); kept a week.
+    #[serde(default)]
+    pub taken: BTreeMap<String, i64>,
+    /// Doses already reminded, by key; kept a week.
+    #[serde(default)]
+    pub reminded: BTreeMap<String, i64>,
+    /// Doses answered "not taken" when asked afterwards, by key; kept a week.
+    #[serde(default)]
+    pub not_taken: BTreeMap<String, i64>,
+    /// Errands whose task was made, by key.
+    #[serde(default)]
+    pub errands: BTreeMap<String, String>,
+    /// Chats: the day counted, the minutes used that day, and covered until when.
+    #[serde(default, deserialize_with = "crate::budget::dates::optional")]
+    pub chat_day: Option<Date>,
+    #[serde(default)]
+    pub chat_minutes: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chats_locked_until: Option<i64>,
+}
+
+impl HealthState {
+    pub fn default_path() -> PathBuf {
+        crate::config::state_dir().join("health-state.toml")
+    }
+
+    pub fn load(path: &Path) -> HealthState {
+        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    }
+
+    /// Saved, its marks older than a week dropped.
+    pub fn save(&mut self, path: &Path, now: i64) -> Result<(), String> {
+        let week = now - 7 * 86_400;
+        self.taken.retain(|_, at| *at >= week);
+        self.reminded.retain(|_, at| *at >= week);
+        self.not_taken.retain(|_, at| *at >= week);
+        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(fail)?;
+        }
+        // Next to its place, then moved: a dose marked is never lost to half a file.
+        let temporary = path.with_extension("toml.new");
+        std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
+        keep_private(&temporary);
+        std::fs::rename(&temporary, path).map_err(fail)
+    }
+
+    /// The doses to remind now: due in the last `minutes`, not taken, not reminded yet.
+    pub fn to_remind(&self, health: &Health, now: &Zoned, minutes: i64) -> Vec<Dose> {
+        let start = now.checked_sub(Span::new().minutes(minutes)).unwrap_or_else(|_| now.clone());
+        let end = now.checked_add(Span::new().seconds(1)).unwrap_or_else(|_| now.clone());
+        health.doses(&start, &end).into_iter().filter(|d| !self.taken.contains_key(&d.key) && !self.reminded.contains_key(&d.key)).collect()
+    }
+
+    /// The doses of the last `hours`, past their time by `grace` minutes,
+    /// neither marked nor reminded: due while Sioul ran nowhere. Asked about
+    /// afterwards, as a question on the past; never reminded to take now.
+    pub fn unanswered(&self, health: &Health, now: &Zoned, hours: i64, grace: i64) -> Vec<Dose> {
+        let start = now.checked_sub(Span::new().hours(hours)).unwrap_or_else(|_| now.clone());
+        let end = now.checked_sub(Span::new().minutes(grace)).unwrap_or_else(|_| now.clone());
+        health.doses(&start, &end).into_iter().filter(|d| !self.taken.contains_key(&d.key) && !self.reminded.contains_key(&d.key) && !self.not_taken.contains_key(&d.key)).collect()
+    }
+
+    /// One more minute of chats today; covered once the day's limit is reached.
+    /// Returns whether chats are covered now.
+    pub fn chat_minute(&mut self, limit: &ChatLimit, now: &Zoned) -> bool {
+        if self.chat_day != Some(now.date()) {
+            self.chat_day = Some(now.date());
+            self.chat_minutes = 0;
+        }
+        if self.chats_covered(now) {
+            return true;
+        }
+        self.chat_minutes += 1;
+        if limit.enabled && limit.minutes > 0 && self.chat_minutes >= limit.minutes {
+            self.chats_locked_until = Some(now.timestamp().as_second() + i64::from(limit.locked_minutes.max(1)) * 60);
+            self.chat_minutes = 0;
+            return true;
+        }
+        false
+    }
+
+    /// Whether chats are covered now.
+    pub fn chats_covered(&self, now: &Zoned) -> bool {
+        self.chats_locked_until.is_some_and(|until| until > now.timestamp().as_second())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(text: &str) -> Zoned {
+        text.parse().unwrap()
+    }
+
+    #[test]
+    fn doses_by_the_day_the_days_and_the_hours() {
+        let noon_and_six = Schedule::Day { times: vec!["18:00".into(), "12:00".into()] };
+        let doses = noon_and_six.doses(&at("2026-10-03T13:00[Europe/Paris]"), &at("2026-10-05T00:00[Europe/Paris]"));
+        let shown: Vec<String> = doses.iter().map(|z| z.strftime("%d %H:%M").to_string()).collect();
+        assert_eq!(shown, vec!["03 18:00", "04 12:00", "04 18:00"]);
+        // Every other day from tomorrow.
+        let other = Schedule::Days { days: 2, time: "08:00".into(), from: "2026-10-04".parse().unwrap() };
+        let shown: Vec<String> = other.doses(&at("2026-10-03T09:00[Europe/Paris]"), &at("2026-10-09T00:00[Europe/Paris]")).iter().map(|z| z.strftime("%d").to_string()).collect();
+        assert_eq!(shown, vec!["04", "06", "08"]);
+        // Every six hours from 18:30.
+        let six = Schedule::Hours { hours: 6, from: at("2026-10-03T18:30[Europe/Paris]").timestamp().as_second() };
+        let shown: Vec<String> = six.doses(&at("2026-10-04T00:00[Europe/Paris]"), &at("2026-10-04T13:00[Europe/Paris]")).iter().map(|z| z.strftime("%H:%M").to_string()).collect();
+        assert_eq!(shown, vec!["00:30", "06:30", "12:30"]);
+    }
+
+    #[test]
+    fn reminded_once_never_counted() {
+        let health = Health {
+            medicines: vec![Medicine { id: "vitamin-d".into(), name: "Vitamin D".into(), dose: "1000 IU".into(), schedule: Schedule::Day { times: vec!["12:00".into()] }, prescription: None, until: None, paused: false }],
+            ..Health::default()
+        };
+        let mut state = HealthState::default();
+        let now = at("2026-10-03T12:03[Europe/Paris]");
+        let due = state.to_remind(&health, &now, 10);
+        assert_eq!(due.len(), 1);
+        state.reminded.insert(due[0].key.clone(), now.timestamp().as_second());
+        assert!(state.to_remind(&health, &now, 10).is_empty(), "reminded once");
+        assert!(state.to_remind(&health, &at("2026-10-03T13:00[Europe/Paris]"), 10).is_empty(), "past its window, no second reminder");
+    }
+
+    #[test]
+    fn pharmacy_and_doctor_errands() {
+        let health = Health {
+            prescriptions: vec![Prescription {
+                id: "vitamin-d".into(),
+                title: "Vitamin D 1000 IU".into(),
+                until: Some("2026-12-31".parse().unwrap()),
+                refill_days: Some(28),
+                last_refill: Some("2026-10-01".parse().unwrap()),
+                ..Prescription::default()
+            }],
+            ..Health::default()
+        };
+        let errands: Vec<(ErrandKind, String)> = health.errands().into_iter().map(|e| (e.kind, e.day.to_string())).collect();
+        assert_eq!(errands, vec![(ErrandKind::Refill, "2026-10-27".to_string()), (ErrandKind::Renew, "2026-12-17".to_string())]);
+    }
+
+    #[test]
+    fn read_as_written_by_hand_and_by_sioul() {
+        let by_hand = "[[prescription]]\nid = \"d\"\ntitle = \"Vitamin D\"\nuntil = 2026-12-31\n\n[[medicine]]\nid = \"iron\"\nname = \"Iron\"\n[medicine.schedule]\nevery = \"days\"\ndays = 2\ntime = \"12:00\"\nfrom = 2026-10-03\n";
+        let health: Health = toml::from_str(by_hand).unwrap();
+        assert_eq!(health.prescriptions[0].until, Some("2026-12-31".parse().unwrap()));
+        let again: Health = toml::from_str(&toml::to_string(&health).unwrap()).unwrap();
+        assert_eq!(again, health);
+    }
+
+    #[test]
+    fn a_file_that_no_longer_reads_is_kept_aside() {
+        let dir = std::env::temp_dir().join(format!("sioul-health-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("health.toml");
+        assert_eq!(Health::load(&path), Health::default(), "none yet");
+        let broken = "[[medicine]]\nid = \"iron\"\nname = \"Iron\"\n[medicine.schedule]\nevery = \"fortnight\"\n";
+        std::fs::write(&path, broken).unwrap();
+        assert_eq!(Health::load(&path), Health::default());
+        Health::default().save(&path).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("health.toml.unreadable")).unwrap(), broken, "what was there is kept");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chats_covered_after_their_time() {
+        let limit = ChatLimit { enabled: true, minutes: 2, locked_minutes: 30 };
+        let mut state = HealthState::default();
+        let now = at("2026-10-03T20:00[Europe/Paris]");
+        assert!(!state.chat_minute(&limit, &now));
+        assert!(state.chat_minute(&limit, &now), "the second minute reaches the limit");
+        assert!(state.chats_covered(&at("2026-10-03T20:29[Europe/Paris]")));
+        assert!(!state.chats_covered(&at("2026-10-03T20:31[Europe/Paris]")), "back after the time chosen");
+    }
+}

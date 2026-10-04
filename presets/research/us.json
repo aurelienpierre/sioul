@@ -1,0 +1,3064 @@
+[
+ {
+  "name": "IRS Online Account",
+  "url": "https://sa.www4.irs.gov/ola/",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "irs.gov"
+  ],
+  "about": {
+   "en": "Federal income tax",
+   "fr": "Impôt fédéral sur le revenu"
+  },
+  "checked": "403 (blocks robots); sign-in link of irs.gov/your-account"
+ },
+ {
+  "name": "my Social Security",
+  "url": "https://secure.ssa.gov/RIL/SiView.action",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "ssa.gov"
+  ],
+  "about": {
+   "en": "Social Security, retirement benefits",
+   "fr": "Sécurité sociale, pensions de retraite"
+  },
+  "checked": "200 (sign-in page: Login.gov or ID.me)"
+ },
+ {
+  "name": "Medicare.gov",
+  "url": "https://www.medicare.gov/account/login",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "medicare.gov"
+  ],
+  "about": {
+   "en": "Federal health insurance, 65+",
+   "fr": "Assurance maladie fédérale, 65 ans+"
+  },
+  "checked": "200 (JS app; login link of medicare.gov)"
+ },
+ {
+  "name": "HealthCare.gov",
+  "url": "https://www.healthcare.gov/login",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "healthcare.gov"
+  ],
+  "about": {
+   "en": "Health insurance marketplace",
+   "fr": "Marché public d'assurance santé"
+  },
+  "checked": "200 ('system isn't available' maintenance notice at check time, Sunday 03:00 ET); /login is the site's log-in link"
+ },
+ {
+  "name": "Login.gov",
+  "url": "https://secure.login.gov/",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "login.gov"
+  ],
+  "about": {
+   "en": "Government sign-in account",
+   "fr": "Identifiant des services publics"
+  },
+  "checked": "200"
+ },
+ {
+  "name": "VA.gov",
+  "url": "https://www.va.gov/sign-in/",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "va.gov"
+  ],
+  "about": {
+   "en": "Veterans benefits and health care",
+   "fr": "Prestations et soins des anciens combattants"
+  },
+  "checked": "200 (VA login page)"
+ },
+ {
+  "name": "Federal Student Aid",
+  "url": "https://studentaid.gov/fsa-id/sign-in/landing",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "studentaid.gov"
+  ],
+  "about": {
+   "en": "Federal student aid and loans",
+   "fr": "Aides et prêts étudiants fédéraux"
+  },
+  "checked": "200"
+ },
+ {
+  "name": "USCIS Online Account",
+  "url": "https://myaccount.uscis.gov/sign-in",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "uscis.gov",
+   "dhs.gov"
+  ],
+  "about": {
+   "en": "Immigration cases and forms",
+   "fr": "Dossiers et formulaires d'immigration"
+  },
+  "checked": "403 (blocks robots); target of uscis.gov 'Sign In' link"
+ },
+ {
+  "name": "USPS Informed Delivery",
+  "url": "https://informeddelivery.usps.com/portal/dashboard?mode=id-login",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "usps.com"
+  ],
+  "about": {
+   "en": "Preview of incoming mail",
+   "fr": "Aperçu du courrier à venir"
+  },
+  "checked": "200 (JS app; 'Sign In' link of usps.com/manage/informed-delivery.htm)"
+ },
+ {
+  "name": "TreasuryDirect",
+  "url": "https://www.treasurydirect.gov/RS/UN-Display.do",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "treasurydirect.gov"
+  ],
+  "about": {
+   "en": "Treasury savings bonds",
+   "fr": "Bons d'épargne du Trésor"
+  },
+  "checked": "200 ('Access Your TreasuryDirect Account')"
+ },
+ {
+  "name": "MyTravelGov",
+  "url": "https://mytravel.state.gov/",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "state.gov"
+  ],
+  "about": {
+   "en": "Online passport renewal",
+   "fr": "Renouvellement de passeport en ligne"
+  },
+  "checked": "403 (Cloudflare blocks robots); portal home with Sign In button, confirmed via search"
+ },
+ {
+  "name": "Trusted Traveler Programs",
+  "url": "https://ttp.cbp.dhs.gov/",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "dhs.gov"
+  ],
+  "about": {
+   "en": "Global Entry, NEXUS, SENTRI",
+   "fr": "Global Entry, NEXUS, SENTRI"
+  },
+  "checked": "200 (portal with Log In via Login.gov)"
+ },
+ {
+  "name": "USAJOBS",
+  "url": "https://www.usajobs.gov/applicant/profile/dashboard/",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "usajobs.gov"
+  ],
+  "about": {
+   "en": "Federal government jobs",
+   "fr": "Emplois de l'administration fédérale"
+  },
+  "checked": "redirect to login.usajobs.gov/Account/Login with one-time parameters; stable start kept"
+ },
+ {
+  "name": "Thrift Savings Plan (TSP)",
+  "url": "https://www.tsp.gov/login/",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "tsp.gov"
+  ],
+  "about": {
+   "en": "Federal employees' retirement savings",
+   "fr": "Épargne retraite des agents fédéraux"
+  },
+  "checked": "200 ('Log into your TSP account')"
+ },
+ {
+  "name": "myPay (DFAS)",
+  "url": "https://mypay.dfas.mil/",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "dfas.mil"
+  ],
+  "about": {
+   "en": "Military and federal civilian pay",
+   "fr": "Solde militaire et paie fédérale"
+  },
+  "checked": "200 (myPay login page)"
+ },
+ {
+  "name": "milConnect",
+  "url": "https://milconnect.dmdc.osd.mil/milconnect/",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "osd.mil"
+  ],
+  "about": {
+   "en": "Military benefits and records",
+   "fr": "Droits et dossiers militaires"
+  },
+  "checked": "200"
+ },
+ {
+  "name": "OPM Retirement Services Online",
+  "url": "https://www.servicesonline.opm.gov/",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "opm.gov"
+  ],
+  "about": {
+   "en": "Federal civil service pensions",
+   "fr": "Pensions de la fonction publique fédérale"
+  },
+  "checked": "200 (Retirement Services Online)"
+ },
+ {
+  "name": "FEMA Disaster Assistance",
+  "url": "https://www.disasterassistance.gov/DAC/govBenefitReceiver.do?action=LOGIN&langcode=EN",
+  "category": "admin",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "fema.gov",
+   "dhs.gov"
+  ],
+  "about": {
+   "en": "Disaster aid applications",
+   "fr": "Demandes d'aide après catastrophe"
+  },
+  "checked": "403 (blocks robots); log-in link of disasterassistance.gov (Wayback snapshot 2026-10-03)"
+ },
+ {
+  "name": "Chase",
+  "url": "https://secure.chase.com/web/auth/dashboard",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "chase.com"
+  ],
+  "about": {
+   "en": "Bank and credit cards",
+   "fr": "Banque et cartes de crédit"
+  },
+  "checked": "200"
+ },
+ {
+  "name": "Bank of America",
+  "url": "https://secure.bankofamerica.com/auth/signon/",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "bankofamerica.com"
+  ],
+  "about": {
+   "en": "National retail bank",
+   "fr": "Banque de détail nationale"
+  },
+  "checked": "redirect to https://secure.bankofamerica.com/auth/signon/ (from /login/sign-in/signOnV2Screen.go); 'Sign In to Bank of America Online & Mobile Banking'"
+ },
+ {
+  "name": "Wells Fargo",
+  "url": "https://connect.secure.wellsfargo.com/auth/login/present",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "wellsfargo.com"
+  ],
+  "about": {
+   "en": "National retail bank",
+   "fr": "Banque de détail nationale"
+  },
+  "checked": "200"
+ },
+ {
+  "name": "Citi",
+  "url": "https://www.citi.com/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "citi.com",
+   "citibank.com"
+  ],
+  "about": {
+   "en": "Bank and credit cards",
+   "fr": "Banque et cartes de crédit"
+  },
+  "checked": "200 (JS sign-on page; old online.citi.com/US/login.do now redirects to citi.com home)"
+ },
+ {
+  "name": "Capital One",
+  "url": "https://verified.capitalone.com/auth/signin",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "capitalone.com"
+  ],
+  "about": {
+   "en": "Bank and credit cards",
+   "fr": "Banque et cartes de crédit"
+  },
+  "checked": "200 ('Capital One Sign In')"
+ },
+ {
+  "name": "U.S. Bank",
+  "url": "https://onlinebanking.usbank.com/auth/login/",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "usbank.com"
+  ],
+  "about": {
+   "en": "National retail bank",
+   "fr": "Banque de détail nationale"
+  },
+  "checked": "200"
+ },
+ {
+  "name": "PNC",
+  "url": "https://www.pnc.com/en/personal-banking/banking/online-and-mobile-banking/online-banking.html",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "pnc.com"
+  ],
+  "about": {
+   "en": "Retail bank",
+   "fr": "Banque de détail"
+  },
+  "checked": "curl blocked (connection reset); page fetched otherwise carries the personal sign-on form (User ID, Password); no standalone sign-on page found"
+ },
+ {
+  "name": "Truist",
+  "url": "https://dias.bank.truist.com/ui/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "truist.com"
+  ],
+  "about": {
+   "en": "Retail bank, Southeast",
+   "fr": "Banque de détail, Sud-Est"
+  },
+  "checked": "200 ('Truist Login')"
+ },
+ {
+  "name": "TD Bank",
+  "url": "https://onlinebanking.tdbank.com/#/authentication/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "tdbank.com"
+  ],
+  "about": {
+   "en": "Retail bank, East Coast",
+   "fr": "Banque de détail, côte Est"
+  },
+  "checked": "503 ('Planned Maintenance' at check time, Sunday night); sign-in link of td.com/us"
+ },
+ {
+  "name": "Ally",
+  "url": "https://secure.ally.com/",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "ally.com"
+  ],
+  "about": {
+   "en": "Online bank",
+   "fr": "Banque en ligne"
+  },
+  "checked": "200 ('Ally Online Services')"
+ },
+ {
+  "name": "Discover",
+  "url": "https://www.discover.com/login/",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "discover.com"
+  ],
+  "about": {
+   "en": "Credit cards and online bank",
+   "fr": "Cartes de crédit, banque en ligne"
+  },
+  "checked": "200 ('Login | Discover'); old portal.discover.com URL redirects here"
+ },
+ {
+  "name": "Charles Schwab",
+  "url": "https://client.schwab.com/Areas/Access/Login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "schwab.com"
+  ],
+  "about": {
+   "en": "Brokerage and bank",
+   "fr": "Courtage et banque"
+  },
+  "checked": "200 ('Login | Charles Schwab')"
+ },
+ {
+  "name": "American Express",
+  "url": "https://www.americanexpress.com/en-us/account/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "americanexpress.com",
+   "aexp.com"
+  ],
+  "about": {
+   "en": "Credit and charge cards",
+   "fr": "Cartes de crédit et de paiement"
+  },
+  "checked": "200"
+ },
+ {
+  "name": "Navy Federal Credit Union",
+  "url": "https://digitalomni.navyfederal.org/signin/",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "navyfederal.org"
+  ],
+  "about": {
+   "en": "Credit union, military families",
+   "fr": "Coopérative de crédit, familles de militaires"
+  },
+  "checked": "200; sign-in link of navyfederal.org"
+ },
+ {
+  "name": "USAA",
+  "url": "https://www.usaa.com/my/logon",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "usaa.com"
+  ],
+  "about": {
+   "en": "Bank and insurance, military",
+   "fr": "Banque et assurance, militaires"
+  },
+  "checked": "redirect to https://www.usaa.com/my/logon?akredirect=true (bot-check parameter, dropped)"
+ },
+ {
+  "name": "Citizens",
+  "url": "https://www.citizensbankonline.com/olb-root/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "citizensbank.com"
+  ],
+  "about": {
+   "en": "Retail bank, Northeast",
+   "fr": "Banque de détail, Nord-Est"
+  },
+  "checked": "403 (blocks robots); sign-in link of citizensbank.com"
+ },
+ {
+  "name": "Fifth Third Bank",
+  "url": "https://onlinebanking.53.com/content/fifth-third/en/login.html",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "53.com"
+  ],
+  "about": {
+   "en": "Retail bank, Midwest and Southeast",
+   "fr": "Banque de détail, Midwest et Sud-Est"
+  },
+  "checked": "200 with error page to robots; login page confirmed via search"
+ },
+ {
+  "name": "KeyBank",
+  "url": "https://ibx.key.com/ibxolb/login/index.html#/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "key.com"
+  ],
+  "about": {
+   "en": "Regional retail bank",
+   "fr": "Banque de détail régionale"
+  },
+  "checked": "timeout (blocks robots); login page confirmed via search"
+ },
+ {
+  "name": "Huntington",
+  "url": "https://onlinebanking.huntington.com/rol/Auth/login.aspx",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "huntington.com"
+  ],
+  "about": {
+   "en": "Retail bank, Midwest",
+   "fr": "Banque de détail, Midwest"
+  },
+  "checked": "500 'Access Denied' (blocks robots); login page confirmed via search"
+ },
+ {
+  "name": "Regions",
+  "url": "https://login.regions.com/",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "regions.com"
+  ],
+  "about": {
+   "en": "Retail bank, South",
+   "fr": "Banque de détail, Sud"
+  },
+  "checked": "200 ('Log in to Regions Online Banking')"
+ },
+ {
+  "name": "M&T Bank",
+  "url": "https://login.mtb.com/a/digitalbanking/login/?language=en-US",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "mtb.com"
+  ],
+  "about": {
+   "en": "Retail bank, Northeast",
+   "fr": "Banque de détail, Nord-Est"
+  },
+  "checked": "redirect from onlinebanking.mtb.com (linked from mtb.com/login) to this URL"
+ },
+ {
+  "name": "Santander Bank",
+  "url": "https://rolb.santanderbank.com/OnlineBanking/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "santanderbank.com"
+  ],
+  "about": {
+   "en": "Retail bank, Northeast",
+   "fr": "Banque de détail, Nord-Est"
+  },
+  "checked": "200; personal sign-in link of santanderbank.com"
+ },
+ {
+  "name": "BMO",
+  "url": "https://usdigital.bmo.com/www/#/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "bmo.com"
+  ],
+  "about": {
+   "en": "Retail bank, Midwest and West",
+   "fr": "Banque de détail, Midwest et Ouest"
+  },
+  "checked": "connection reset (blocks robots); 'Sign in to BMO Digital Banking' (US) confirmed via search"
+ },
+ {
+  "name": "First Citizens Bank",
+  "url": "https://digitalbanking.firstcitizens.com/FCBTCOnline/uux.aspx#/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "firstcitizens.com"
+  ],
+  "about": {
+   "en": "Regional retail bank",
+   "fr": "Banque de détail régionale"
+  },
+  "checked": "200; sign-in form target of firstcitizens.com"
+ },
+ {
+  "name": "First Horizon",
+  "url": "https://www.firsthorizon.com/personal/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "firsthorizon.com"
+  ],
+  "about": {
+   "en": "Retail bank, Southeast",
+   "fr": "Banque de détail, Sud-Est"
+  },
+  "checked": "200 ('Log In | Personal | First Horizon')"
+ },
+ {
+  "name": "Marcus by Goldman Sachs",
+  "url": "https://www.marcus.com/us/en/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "marcus.com"
+  ],
+  "about": {
+   "en": "Online savings bank",
+   "fr": "Banque d'épargne en ligne"
+  },
+  "checked": "403 (blocks robots); login page confirmed via search"
+ },
+ {
+  "name": "SoFi",
+  "url": "https://www.sofi.com/login/",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "sofi.com"
+  ],
+  "about": {
+   "en": "Online bank and loans",
+   "fr": "Banque en ligne et prêts"
+  },
+  "checked": "403 (blocks robots); login page confirmed via search"
+ },
+ {
+  "name": "Chime",
+  "url": "https://app.chime.com/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "chime.com"
+  ],
+  "about": {
+   "en": "Mobile banking (fintech)",
+   "fr": "Banque mobile (fintech)"
+  },
+  "checked": "403 (Cloudflare blocks robots); 'Member Login' confirmed via search"
+ },
+ {
+  "name": "Varo",
+  "url": "https://bank.varomoney.com/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "varomoney.com"
+  ],
+  "about": {
+   "en": "Online bank",
+   "fr": "Banque en ligne"
+  },
+  "checked": "200; log-in link of varomoney.com"
+ },
+ {
+  "name": "Axos Bank",
+  "url": "https://onlinebanking.axosbank.com/auth/Login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "axosbank.com"
+  ],
+  "about": {
+   "en": "Online bank",
+   "fr": "Banque en ligne"
+  },
+  "checked": "redirect to maintenance.axosbank.com at check time (Sunday night); log-in link of axosbank.com"
+ },
+ {
+  "name": "Synchrony Bank",
+  "url": "https://securelogin.synchronybank.com/",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "synchronybank.com",
+   "synchrony.com"
+  ],
+  "about": {
+   "en": "Online savings bank",
+   "fr": "Banque d'épargne en ligne"
+  },
+  "checked": "200; bank log-in link of synchrony.com"
+ },
+ {
+  "name": "Barclays US",
+  "url": "https://www.barclaycardus.com/servicing/home?secureLogin=",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "barclaycardus.com",
+   "barclaysus.com"
+  ],
+  "about": {
+   "en": "Credit cards",
+   "fr": "Cartes de crédit"
+  },
+  "checked": "200 ('Welcome to Card Servicing')"
+ },
+ {
+  "name": "Apple Card",
+  "url": "https://card.apple.com/",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "apple.com"
+  ],
+  "about": {
+   "en": "Credit card",
+   "fr": "Carte de crédit"
+  },
+  "checked": "200 (sign in with Apple Account)"
+ },
+ {
+  "name": "Fidelity",
+  "url": "https://digital.fidelity.com/prgw/digital/login/full-page",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "fidelity.com"
+  ],
+  "about": {
+   "en": "Brokerage and retirement accounts",
+   "fr": "Courtage et comptes retraite"
+  },
+  "checked": "Akamai block page to robots ('Temporarily Unavailable'); log-in link of fidelity.com (Wayback snapshot 2026-10-04)"
+ },
+ {
+  "name": "Vanguard",
+  "url": "https://logon.vanguard.com/logon",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "vanguard.com"
+  ],
+  "about": {
+   "en": "Investment and retirement funds",
+   "fr": "Fonds de placement et retraite"
+  },
+  "checked": "200 ('Log on to vanguard.com')"
+ },
+ {
+  "name": "E*TRADE",
+  "url": "https://us.etrade.com/etx/pxy/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "etrade.com"
+  ],
+  "about": {
+   "en": "Online brokerage",
+   "fr": "Courtage en ligne"
+  },
+  "checked": "200; /e/t/user/login redirects here"
+ },
+ {
+  "name": "Merrill",
+  "url": "https://olui2.fs.ml.com/login/signin.aspx",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "ml.com",
+   "merrilledge.com"
+  ],
+  "about": {
+   "en": "Brokerage and investing",
+   "fr": "Courtage et placements"
+  },
+  "checked": "200 ('Log In to Merrill Lynch Online')"
+ },
+ {
+  "name": "Robinhood",
+  "url": "https://robinhood.com/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "robinhood.com"
+  ],
+  "about": {
+   "en": "Online brokerage",
+   "fr": "Courtage en ligne"
+  },
+  "checked": "200"
+ },
+ {
+  "name": "Edward Jones",
+  "url": "https://onlineaccess.edwardjones.com/app/oa-login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "edwardjones.com"
+  ],
+  "about": {
+   "en": "Financial advisors, brokerage",
+   "fr": "Conseil financier, courtage"
+  },
+  "checked": "redirect from accountaccess.edwardjones.com to this URL"
+ },
+ {
+  "name": "PenFed Credit Union",
+  "url": "https://www.penfed.org/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "penfed.org"
+  ],
+  "about": {
+   "en": "Credit union",
+   "fr": "Coopérative de crédit"
+  },
+  "checked": "403 (blocks robots); login page confirmed via search"
+ },
+ {
+  "name": "State Employees' Credit Union",
+  "url": "https://memberaccess.ncsecu.org/pre-auth/login",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "ncsecu.org"
+  ],
+  "about": {
+   "en": "Credit union, North Carolina",
+   "fr": "Coopérative de crédit, Caroline du Nord"
+  },
+  "checked": "200 ('Digital Banking'); login link of ncsecu.org"
+ },
+ {
+  "name": "BECU",
+  "url": "https://onlinebanking.becu.org/BECUBankingWeb/Login.aspx",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "becu.org"
+  ],
+  "about": {
+   "en": "Credit union, Washington State",
+   "fr": "Coopérative de crédit, État de Washington"
+  },
+  "checked": "redirect to auth.secure.becu.org sign-in with one-time parameters; stable start kept"
+ },
+ {
+  "name": "SchoolsFirst FCU",
+  "url": "https://online.schoolsfirstfcu.org/member-login/login/",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "schoolsfirstfcu.org"
+  ],
+  "about": {
+   "en": "Credit union, California school staff",
+   "fr": "Coopérative de crédit, personnel scolaire californien"
+  },
+  "checked": "200 ('SchoolsFirst FCU - Login')"
+ },
+ {
+  "name": "Alliant Credit Union",
+  "url": "https://www.alliantcreditunion.com/OnlineBanking/Login.aspx",
+  "category": "bank",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "alliantcreditunion.com",
+   "alliantcreditunion.org"
+  ],
+  "about": {
+   "en": "Online credit union",
+   "fr": "Coopérative de crédit en ligne"
+  },
+  "checked": "403 (blocks robots); login link of alliantcreditunion.org"
+ },
+ {
+  "name": "Duke Energy",
+  "url": "https://www.duke-energy.com/my-account/sign-in",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "duke-energy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "403 (blocks robots); sign-in link of duke-energy.com/home (Wayback snapshot 2026-10-03)"
+ },
+ {
+  "name": "Xcel Energy",
+  "url": "https://my.xcelenergy.com/MyAccount/s/login/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "xcelenergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200 (Salesforce login page)"
+ },
+ {
+  "name": "Dominion Energy",
+  "url": "https://login.dominionenergy.com/CommonLogin?SelectedAppName=electric",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "dominionenergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "redirect from dominionenergy.com/sign-in to this URL ('Dominion Energy - Login')"
+ },
+ {
+  "name": "Entergy",
+  "url": "https://www.myentergy.com/s/login/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "entergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200; myEntergy log-in link of entergy.com"
+ },
+ {
+  "name": "National Grid",
+  "url": "https://myaccount.nationalgrid.com/login",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "nationalgrid.com",
+   "nationalgridus.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "redirect to login.nationalgrid.com with one-time parameters; stable start kept (link of nationalgridus.com)"
+ },
+ {
+  "name": "FirstEnergy",
+  "url": "https://www.firstenergycorp.com/log_in.html",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "firstenergycorp.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Log In'); covers Ohio Edison, Toledo Edison, Illuminating Co., Penn Power, Met-Ed, Penelec, West Penn, JCP&L, Mon Power, Potomac Edison"
+ },
+ {
+  "name": "Eversource",
+  "url": "https://www.eversource.com/security/account/login",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "eversource.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200 ('Eversource | Log In')"
+ },
+ {
+  "name": "Ameren",
+  "url": "https://www.ameren.com/account/login",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "ameren.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "403 (blocks robots); header 'Log In' link of ameren.com (Wayback snapshot 2026-10-02)"
+ },
+ {
+  "name": "CenterPoint Energy",
+  "url": "https://myaccount.centerpointenergy.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "centerpointenergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200 (account app; link of centerpointenergy.com)"
+ },
+ {
+  "name": "Evergy",
+  "url": "https://www.evergy.com/log-in",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "evergy.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "403 'Page Blocked' (blocks robots); 'Log In' page confirmed (Wayback snapshot 2026-07-30)"
+ },
+ {
+  "name": "Alliant Energy",
+  "url": "https://myaccount.alliantenergy.com/portal/#/login",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "alliantenergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "403 on alliantenergy.com (blocks robots); login link of the home page (Wayback snapshot 2026-09-25)"
+ },
+ {
+  "name": "Atmos Energy",
+  "url": "https://www.atmosenergy.com/accountcenter/logon/login.html",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "atmosenergy.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "200 ('Atmos Energy Account Center')"
+ },
+ {
+  "name": "Rocky Mountain Power",
+  "url": "https://csapps.rockymountainpower.net/idm/login",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "rockymountainpower.net"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "redirect from csapps.rockymountainpower.net/secure/my-account/manage to this URL"
+ },
+ {
+  "name": "Pacific Power",
+  "url": "https://csapps.pacificpower.net/idm/login",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "pacificpower.net"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "redirect from csapps.pacificpower.net/secure/my-account/manage to this URL"
+ },
+ {
+  "name": "Black Hills Energy",
+  "url": "https://www.blackhillsenergy.com/my-account/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "blackhillsenergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "timeout (blocks robots); My Account link of the home page (Wayback snapshot 2026-07-29)"
+ },
+ {
+  "name": "Southwest Gas",
+  "url": "https://myaccount.swgas.com/Portal/#/login",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "swgas.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "403 'Maintenance' page at check time; login link of swgas.com (Wayback snapshot 2026-10-03)"
+ },
+ {
+  "name": "Spire",
+  "url": "https://myaccount.spireenergy.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "spireenergy.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "redirect to spireenergy.com/my-account-unavailable at check time (maintenance); My Account link of spireenergy.com"
+ },
+ {
+  "name": "Constellation",
+  "url": "https://account.constellation.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "constellation.com"
+  ],
+  "about": {
+   "en": "Retail electricity provider",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Online Account Access | Constellation')"
+ },
+ {
+  "name": "Direct Energy",
+  "url": "https://account.directenergy.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "directenergy.com"
+  ],
+  "about": {
+   "en": "Retail electricity provider",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 (account app; link of directenergy.com)"
+ },
+ {
+  "name": "Avista",
+  "url": "https://www.myavista.com/sign-in",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "myavista.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "timeout (blocks robots); 'Avista bill pay & customer sign in' (Wayback snapshot 2026-10-01)"
+ },
+ {
+  "name": "Idaho Power",
+  "url": "https://tools.idahopower.com/MyAccount",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "idahopower.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "redirect to auth.idahopower.com login with one-time parameters; stable start kept"
+ },
+ {
+  "name": "NW Natural",
+  "url": "https://www.nwnatural.com/identity/login/NWNatural/NWNIdentityServer",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "nwnatural.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "200; log-in link of nwnatural.com"
+ },
+ {
+  "name": "Washington Gas",
+  "url": "https://my.washingtongas.com/portal/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "washingtongas.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "200 ('WGL: Login')"
+ },
+ {
+  "name": "Pepco",
+  "url": "https://secure.pepco.com/Pages/Login.aspx",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "pepco.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "redirect to Exelon sign-in with one-time parameters; stable start kept"
+ },
+ {
+  "name": "Delmarva Power",
+  "url": "https://secure.delmarva.com/Pages/Login.aspx",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "delmarva.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "redirect to Exelon sign-in with one-time parameters; stable start kept"
+ },
+ {
+  "name": "Orange & Rockland",
+  "url": "https://www.oru.com/en/login",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "oru.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200 ('Account Login | Orange & Rockland')"
+ },
+ {
+  "name": "MidAmerican Energy",
+  "url": "https://www.midamericanenergy.com/ecss/Profile/LogIn",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "midamericanenergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "redirect to login.midamericanenergy.com with one-time parameters; stable start kept"
+ },
+ {
+  "name": "OG&E",
+  "url": "https://www.oge.com/web/portal/login",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "oge.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('OG&E - Login')"
+ },
+ {
+  "name": "El Paso Electric",
+  "url": "https://myaccount.epelectric.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "epelectric.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('My Account Portal')"
+ },
+ {
+  "name": "NorthWestern Energy",
+  "url": "https://myaccount.northwesternenergy.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "northwesternenergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "redirect to login.northwesternenergy.com with one-time parameters; stable start kept"
+ },
+ {
+  "name": "Unitil",
+  "url": "https://myaccount.unitil.com/app/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "unitil.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200 ('MyUnitil Login'); myaccount.unitil.com redirects here"
+ },
+ {
+  "name": "Enbridge Gas",
+  "url": "https://portal.enbridgegas.com/WSS/servlet/CMMainControllerServlet?action=CMSignInAction",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "enbridgegas.com"
+  ],
+  "about": {
+   "en": "Gas utility, NC, UT, WY, ID",
+   "fr": "Gaz naturel, NC, UT, WY, ID"
+  },
+  "checked": "200 ('Enbridge Gas - Sign in'); sign-in link of enbridgegas.com/north-carolina and /utwyid (former Dominion gas companies)"
+ },
+ {
+  "name": "Appalachian Power",
+  "url": "https://www.appalachianpower.com/account/login/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "appalachianpower.com",
+   "aep.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Login'); AEP company (VA, WV, TN)"
+ },
+ {
+  "name": "Indiana Michigan Power",
+  "url": "https://www.indianamichiganpower.com/account/login/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "indianamichiganpower.com",
+   "aep.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Login'); AEP company (IN, MI)"
+ },
+ {
+  "name": "SWEPCO",
+  "url": "https://www.swepco.com/account/login/",
+  "category": "energy",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "swepco.com",
+   "aep.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Login'); AEP company (AR, LA, TX)"
+ },
+ {
+  "name": "PG&E",
+  "url": "https://myaccount.pge.com/myaccount/s/login/?language=en_US",
+  "category": "energy",
+  "country": "US",
+  "region": "CA",
+  "announced_by": [
+   "pge.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "redirect from myaccount.pge.com/myaccount/s/login to this URL"
+ },
+ {
+  "name": "Southern California Edison",
+  "url": "https://www.sce.com/my-account",
+  "category": "energy",
+  "country": "US",
+  "region": "CA",
+  "announced_by": [
+   "sce.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "redirect from sce.com/mysce/login to this URL ('Log In | My SCE')"
+ },
+ {
+  "name": "SDG&E",
+  "url": "https://myenergycenter.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "CA",
+  "announced_by": [
+   "sdge.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "403 (blocks robots); SDG&E's My Energy Center portal, linked from sdge.com (Wayback snapshot 2026-09-30)"
+ },
+ {
+  "name": "SoCalGas",
+  "url": "https://myaccount.socalgas.com/ui/login",
+  "category": "energy",
+  "country": "US",
+  "region": "CA",
+  "announced_by": [
+   "socalgas.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "redirect from myaccount.socalgas.com to this URL"
+ },
+ {
+  "name": "LADWP",
+  "url": "https://myaccount.ladwp.com/ladwp/faces/AccountSummary",
+  "category": "energy",
+  "country": "US",
+  "region": "CA",
+  "announced_by": [
+   "ladwp.com"
+  ],
+  "about": {
+   "en": "Water and power utility, Los Angeles",
+   "fr": "Eau et électricité, Los Angeles"
+  },
+  "checked": "redirect to 'LADWP.com Login' with one-time parameters; stable start kept"
+ },
+ {
+  "name": "SMUD",
+  "url": "https://myaccount.smud.org/",
+  "category": "energy",
+  "country": "US",
+  "region": "CA",
+  "announced_by": [
+   "smud.org"
+  ],
+  "about": {
+   "en": "Electric utility, Sacramento",
+   "fr": "Électricité, Sacramento"
+  },
+  "checked": "200 ('My Account | smud.org')"
+ },
+ {
+  "name": "Con Edison",
+  "url": "https://www.coned.com/en/login",
+  "category": "energy",
+  "country": "US",
+  "region": "NY",
+  "announced_by": [
+   "coned.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200 ('Log In to Your Con Edison Account')"
+ },
+ {
+  "name": "NYSEG",
+  "url": "https://www.nyseg.com/c/portal/login?redirect=https://portal.nyseg.com/auth",
+  "category": "energy",
+  "country": "US",
+  "region": "NY",
+  "announced_by": [
+   "nyseg.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "timeout (blocks robots); 'Sign in / Register' link of nyseg.com (Wayback snapshot 2026-08-04)"
+ },
+ {
+  "name": "RG&E",
+  "url": "https://www.rge.com/c/portal/login?redirect=https://portal.rge.com/auth",
+  "category": "energy",
+  "country": "US",
+  "region": "NY",
+  "announced_by": [
+   "rge.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "timeout (blocks robots); 'Sign in / Register' link of rge.com (Wayback snapshot 2026-08-04)"
+ },
+ {
+  "name": "Central Hudson",
+  "url": "https://www.cenhud.com/en/login/",
+  "category": "energy",
+  "country": "US",
+  "region": "NY",
+  "announced_by": [
+   "cenhud.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200 (JS page); log-in link of cenhud.com (Wayback snapshot 2026-09-22)"
+ },
+ {
+  "name": "PSEG Long Island",
+  "url": "https://myaccount.psegliny.com/user/login",
+  "category": "energy",
+  "country": "US",
+  "region": "NY",
+  "announced_by": [
+   "psegliny.com",
+   "pseg.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "403 (blocks robots); log-in link of psegliny.com (Wayback snapshot 2026-09-25)"
+ },
+ {
+  "name": "Florida Power & Light",
+  "url": "https://www.fpl.com/my-account/login.html",
+  "category": "energy",
+  "country": "US",
+  "region": "FL",
+  "announced_by": [
+   "fpl.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Log In')"
+ },
+ {
+  "name": "Tampa Electric",
+  "url": "https://account.tecoenergy.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "FL",
+  "announced_by": [
+   "tampaelectric.com",
+   "tecoenergy.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Account Overview - tecoaccount.com'); account link of tampaelectric.com"
+ },
+ {
+  "name": "Georgia Power",
+  "url": "https://customerservice2.southerncompany.com/Login?mnuOpco=GPC",
+  "category": "energy",
+  "country": "US",
+  "region": "GA",
+  "announced_by": [
+   "georgiapower.com",
+   "southerncompany.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 (Southern Company log-in for Georgia Power; link of georgiapower.com)"
+ },
+ {
+  "name": "Gas South",
+  "url": "https://manage.gassouth.com/login/",
+  "category": "energy",
+  "country": "US",
+  "region": "GA",
+  "announced_by": [
+   "gassouth.com"
+  ],
+  "about": {
+   "en": "Natural gas supplier",
+   "fr": "Fournisseur de gaz naturel"
+  },
+  "checked": "200 ('Login | Gas South Online Account Services')"
+ },
+ {
+  "name": "Alabama Power",
+  "url": "https://customerservice2.southerncompany.com/Login?mnuOpco=APC",
+  "category": "energy",
+  "country": "US",
+  "region": "AL",
+  "announced_by": [
+   "alabamapower.com",
+   "southerncompany.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 (Southern Company log-in for Alabama Power; link of alabamapower.com)"
+ },
+ {
+  "name": "Mississippi Power",
+  "url": "https://customerservice2.southerncompany.com/Login?mnuOpco=MPC",
+  "category": "energy",
+  "country": "US",
+  "region": "MS",
+  "announced_by": [
+   "mississippipower.com",
+   "southerncompany.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 (Southern Company log-in, Mississippi Power code)"
+ },
+ {
+  "name": "Cleco",
+  "url": "https://myaccount.cleco.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "LA",
+  "announced_by": [
+   "cleco.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "403 (blocks robots); MyAccount portal confirmed via search"
+ },
+ {
+  "name": "LG&E and KU",
+  "url": "https://my.lge-ku.com/cs/logon.sap",
+  "category": "energy",
+  "country": "US",
+  "region": "KY",
+  "announced_by": [
+   "lge-ku.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200 ('LG&E-KU My Account Logon')"
+ },
+ {
+  "name": "Kentucky Power",
+  "url": "https://www.kentuckypower.com/account/login/",
+  "category": "energy",
+  "country": "US",
+  "region": "KY",
+  "announced_by": [
+   "kentuckypower.com",
+   "aep.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Login'); AEP company"
+ },
+ {
+  "name": "Nashville Electric Service",
+  "url": "https://myaccount.nespower.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "TN",
+  "announced_by": [
+   "nespower.com"
+  ],
+  "about": {
+   "en": "Electric utility, Nashville",
+   "fr": "Électricité, Nashville"
+  },
+  "checked": "no response to robots; target of nespower.com/user/signin"
+ },
+ {
+  "name": "MLGW",
+  "url": "https://mymlgw.mlgw.org/",
+  "category": "energy",
+  "country": "US",
+  "region": "TN",
+  "announced_by": [
+   "mlgw.com",
+   "mlgw.org"
+  ],
+  "about": {
+   "en": "Utilities, Memphis",
+   "fr": "Électricité, gaz et eau, Memphis"
+  },
+  "checked": "no response to robots; target of mlgw.com/MyAccount"
+ },
+ {
+  "name": "ComEd",
+  "url": "https://secure.comed.com/Pages/Login.aspx",
+  "category": "energy",
+  "country": "US",
+  "region": "IL",
+  "announced_by": [
+   "comed.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "redirect to ComEd sign-in with one-time parameters; stable start kept"
+ },
+ {
+  "name": "Nicor Gas",
+  "url": "https://customerportal.southerncompany.com/User/LoginGateway?LDC=7",
+  "category": "energy",
+  "country": "US",
+  "region": "IL",
+  "announced_by": [
+   "nicorgas.com",
+   "southerncompany.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "200; log-in link of nicorgas.com"
+ },
+ {
+  "name": "Peoples Gas",
+  "url": "https://www.peoplesgasdelivery.com/secure/auth/l/acct/summary_accounts",
+  "category": "energy",
+  "country": "US",
+  "region": "IL",
+  "announced_by": [
+   "peoplesgasdelivery.com"
+  ],
+  "about": {
+   "en": "Natural gas utility, Chicago",
+   "fr": "Gaz naturel, Chicago"
+  },
+  "checked": "'My Account Sign In' link of peoplesgasdelivery.com; robots get the access-gateway page"
+ },
+ {
+  "name": "DTE Energy",
+  "url": "https://newlook.dteenergy.com/wps/wcm/connect/dte-web/login",
+  "category": "energy",
+  "country": "US",
+  "region": "MI",
+  "announced_by": [
+   "dteenergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "redirect from dteenergy.com/login to this URL; target times out to robots"
+ },
+ {
+  "name": "Consumers Energy",
+  "url": "https://www.consumersenergy.com/login",
+  "category": "energy",
+  "country": "US",
+  "region": "MI",
+  "announced_by": [
+   "consumersenergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200 ('Login | Consumers Energy')"
+ },
+ {
+  "name": "AEP Ohio",
+  "url": "https://www.aepohio.com/account/login/",
+  "category": "energy",
+  "country": "US",
+  "region": "OH",
+  "announced_by": [
+   "aepohio.com",
+   "aep.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Login'); AEP company"
+ },
+ {
+  "name": "AES Ohio",
+  "url": "https://myprofile.aes-ohio.com/Portal/Login.aspx",
+  "category": "energy",
+  "country": "US",
+  "region": "OH",
+  "announced_by": [
+   "aes-ohio.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200; log-in link of aes-ohio.com (Wayback snapshot 2026-10-03)"
+ },
+ {
+  "name": "Columbia Gas of Ohio",
+  "url": "https://myaccount.columbiagasohio.com/login",
+  "category": "energy",
+  "country": "US",
+  "region": "OH",
+  "announced_by": [
+   "columbiagasohio.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "redirect from myaccount.columbiagasohio.com ('Login - Columbia Gas of Ohio')"
+ },
+ {
+  "name": "Enbridge Gas Ohio",
+  "url": "https://ocidm.enbridgegas.com/Home/SignIn",
+  "category": "energy",
+  "country": "US",
+  "region": "OH",
+  "announced_by": [
+   "enbridgegas.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "redirect from mya.enbridgegas.com ('Sign In to Manage Your Enbridge Gas Ohio Account')"
+ },
+ {
+  "name": "NIPSCO",
+  "url": "https://myaccount.nipsco.com/login",
+  "category": "energy",
+  "country": "US",
+  "region": "IN",
+  "announced_by": [
+   "nipsco.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "redirect from myaccount.nipsco.com to this login page (portal in maintenance at check time, Sunday night)"
+ },
+ {
+  "name": "AES Indiana",
+  "url": "https://myaccount.aesindiana.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "IN",
+  "announced_by": [
+   "aesindiana.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('AES Indiana'); log-in link of aesindiana.com"
+ },
+ {
+  "name": "We Energies",
+  "url": "https://www.we-energies.com/secure/auth/l/acct/summary_accounts",
+  "category": "energy",
+  "country": "US",
+  "region": "WI",
+  "announced_by": [
+   "we-energies.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "'My Account Sign In' link of we-energies.com; robots get the access-gateway page"
+ },
+ {
+  "name": "Wisconsin Public Service",
+  "url": "https://www.wisconsinpublicservice.com/secure/auth/l/acct/summary_accounts",
+  "category": "energy",
+  "country": "US",
+  "region": "WI",
+  "announced_by": [
+   "wisconsinpublicservice.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "'My Account Sign In' link of wisconsinpublicservice.com; robots get the access-gateway page"
+ },
+ {
+  "name": "Madison Gas and Electric",
+  "url": "https://www.mge.com/my-account/log-in",
+  "category": "energy",
+  "country": "US",
+  "region": "WI",
+  "announced_by": [
+   "mge.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200 ('Log in to My Account')"
+ },
+ {
+  "name": "Minnesota Power",
+  "url": "https://myaccount.mnpower.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "MN",
+  "announced_by": [
+   "mnpower.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200; My Account link of mnpower.com"
+ },
+ {
+  "name": "PSE&G",
+  "url": "https://nj.myaccount.pseg.com/user/login",
+  "category": "energy",
+  "country": "US",
+  "region": "NJ",
+  "announced_by": [
+   "pseg.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "403 (blocks robots); 'LOGIN' link of nj.pseg.com (Wayback snapshot 2026-09-27)"
+ },
+ {
+  "name": "Atlantic City Electric",
+  "url": "https://secure.atlanticcityelectric.com/Pages/Login.aspx",
+  "category": "energy",
+  "country": "US",
+  "region": "NJ",
+  "announced_by": [
+   "atlanticcityelectric.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "redirect to Exelon sign-in with one-time parameters; stable start kept"
+ },
+ {
+  "name": "New Jersey Natural Gas",
+  "url": "https://myaccount.njng.com/Portal/default.aspx",
+  "category": "energy",
+  "country": "US",
+  "region": "NJ",
+  "announced_by": [
+   "njng.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "403 (blocks robots); redirect target of njng.com/my-account"
+ },
+ {
+  "name": "South Jersey Gas",
+  "url": "https://myaccount.southjerseygas.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "NJ",
+  "announced_by": [
+   "southjerseygas.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "200 ('My Account Portal')"
+ },
+ {
+  "name": "PECO",
+  "url": "https://secure.peco.com/Pages/Login.aspx",
+  "category": "energy",
+  "country": "US",
+  "region": "PA",
+  "announced_by": [
+   "peco.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "redirect to PECO sign-in with one-time parameters; stable start kept"
+ },
+ {
+  "name": "PPL Electric Utilities",
+  "url": "https://selfserve.pplelectric.com/sign-in",
+  "category": "energy",
+  "country": "US",
+  "region": "PA",
+  "announced_by": [
+   "pplelectric.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 (JS app 'PPL Selfserve'); sign-in page confirmed via search"
+ },
+ {
+  "name": "Duquesne Light",
+  "url": "https://www.duquesnelight.com/login",
+  "category": "energy",
+  "country": "US",
+  "region": "PA",
+  "announced_by": [
+   "duquesnelight.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 with bot-block page; log-in link of the home page (Wayback snapshot 2026-09-11)"
+ },
+ {
+  "name": "PGW (Philadelphia Gas Works)",
+  "url": "https://myaccount.pgworks.com/portal/",
+  "category": "energy",
+  "country": "US",
+  "region": "PA",
+  "announced_by": [
+   "pgworks.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "200 ('PGW:: Login')"
+ },
+ {
+  "name": "Peoples",
+  "url": "https://peopleseaccount.com/Portal/default.aspx",
+  "category": "energy",
+  "country": "US",
+  "region": "PA",
+  "announced_by": [
+   "peoples-gas.com"
+  ],
+  "about": {
+   "en": "Natural gas utility, western Pennsylvania",
+   "fr": "Gaz naturel, ouest de la Pennsylvanie"
+  },
+  "checked": "403 (blocks robots); account link of peoples-gas.com (Wayback snapshot 2026-10-02)"
+ },
+ {
+  "name": "Columbia Gas of Pennsylvania",
+  "url": "https://myaccount.columbiagaspa.com/login",
+  "category": "energy",
+  "country": "US",
+  "region": "PA",
+  "announced_by": [
+   "columbiagaspa.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "redirect from myaccount.columbiagaspa.com to this login page"
+ },
+ {
+  "name": "BGE",
+  "url": "https://secure.bge.com/Pages/Login.aspx",
+  "category": "energy",
+  "country": "US",
+  "region": "MD",
+  "announced_by": [
+   "bge.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "redirect to BGE sign-in with one-time parameters; stable start kept"
+ },
+ {
+  "name": "Columbia Gas of Virginia",
+  "url": "https://myaccount.columbiagasva.com/login",
+  "category": "energy",
+  "country": "US",
+  "region": "VA",
+  "announced_by": [
+   "columbiagasva.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "redirect from myaccount.columbiagasva.com to this login page"
+ },
+ {
+  "name": "United Illuminating",
+  "url": "https://www.uinet.com/c/portal/login?redirect=https://portal.uinet.com/auth",
+  "category": "energy",
+  "country": "US",
+  "region": "CT",
+  "announced_by": [
+   "uinet.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "timeout (blocks robots); sign-in link of uinet.com (Wayback snapshot 2026-08-04)"
+ },
+ {
+  "name": "Central Maine Power",
+  "url": "https://www.cmpco.com/c/portal/login?redirect=https://portal.cmpco.com/auth",
+  "category": "energy",
+  "country": "US",
+  "region": "ME",
+  "announced_by": [
+   "cmpco.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "timeout (blocks robots); sign-in link of cmpco.com (Wayback snapshot 2026-10-03)"
+ },
+ {
+  "name": "Versant Power",
+  "url": "https://myaccount.versantpower.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "ME",
+  "announced_by": [
+   "versantpower.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Login')"
+ },
+ {
+  "name": "Green Mountain Power",
+  "url": "https://greenmountainpower.com/account/",
+  "category": "energy",
+  "country": "US",
+  "region": "VT",
+  "announced_by": [
+   "greenmountainpower.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('My Account'); target of the site's 'Log In' link"
+ },
+ {
+  "name": "Rhode Island Energy",
+  "url": "https://selfserve.rienergy.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "RI",
+  "announced_by": [
+   "rienergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "200 (JS self-service app, same platform as PPL)"
+ },
+ {
+  "name": "TXU Energy",
+  "url": "https://www.txu.com/login",
+  "category": "energy",
+  "country": "US",
+  "region": "TX",
+  "announced_by": [
+   "txu.com"
+  ],
+  "about": {
+   "en": "Retail electricity provider",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "403 (blocks robots); log-in link of txu.com (Wayback snapshot 2026-08-07)"
+ },
+ {
+  "name": "Reliant",
+  "url": "https://myaccount.reliant.com/protected/login.htm",
+  "category": "energy",
+  "country": "US",
+  "region": "TX",
+  "announced_by": [
+   "reliant.com"
+  ],
+  "about": {
+   "en": "Retail electricity provider",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "redirect to auth.reliant.com with one-time parameters; stable start kept ('Log in' link of reliant.com)"
+ },
+ {
+  "name": "Green Mountain Energy",
+  "url": "https://www.greenmountainenergy.com/en/customer-service-center/my-account",
+  "category": "energy",
+  "country": "US",
+  "region": "TX",
+  "announced_by": [
+   "greenmountainenergy.com"
+  ],
+  "about": {
+   "en": "Retail electricity provider",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('My Account Log In | Green Mountain Energy')"
+ },
+ {
+  "name": "Gexa Energy",
+  "url": "https://myaccount.gexaenergy.com/",
+  "category": "energy",
+  "country": "US",
+  "region": "TX",
+  "announced_by": [
+   "gexaenergy.com"
+  ],
+  "about": {
+   "en": "Retail electricity provider",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "403 (blocks robots); account link of gexaenergy.com (Wayback snapshot 2026-08-05)"
+ },
+ {
+  "name": "CPS Energy",
+  "url": "https://www.cpsenergy.com/content/corporate/en/customer-support/manage-my-account.html",
+  "category": "energy",
+  "country": "US",
+  "region": "TX",
+  "announced_by": [
+   "cpsenergy.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility, San Antonio",
+   "fr": "Électricité et gaz, San Antonio"
+  },
+  "checked": "200 ('Manage My Account', page with the log-in form)"
+ },
+ {
+  "name": "Austin Energy",
+  "url": "https://coautilities.com/wps/myportal/occ/login",
+  "category": "energy",
+  "country": "US",
+  "region": "TX",
+  "announced_by": [
+   "austinenergy.com",
+   "austintexas.gov"
+  ],
+  "about": {
+   "en": "Electric utility, Austin",
+   "fr": "Électricité, Austin"
+  },
+  "checked": "200 ('COA Login', City of Austin Utilities account)"
+ },
+ {
+  "name": "Texas Gas Service",
+  "url": "https://www.texasgasservice.com/login",
+  "category": "energy",
+  "country": "US",
+  "region": "TX",
+  "announced_by": [
+   "texasgasservice.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "timeout (blocks robots); 'Texas Gas Service - Login' (Wayback snapshot 2026-07-27)"
+ },
+ {
+  "name": "Oklahoma Natural Gas",
+  "url": "https://www.oklahomanaturalgas.com/login",
+  "category": "energy",
+  "country": "US",
+  "region": "OK",
+  "announced_by": [
+   "oklahomanaturalgas.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "timeout (blocks robots); 'Oklahoma Natural Gas - Login' (Wayback snapshot 2026-05-09)"
+ },
+ {
+  "name": "PSO",
+  "url": "https://www.psoklahoma.com/account/login/",
+  "category": "energy",
+  "country": "US",
+  "region": "OK",
+  "announced_by": [
+   "psoklahoma.com",
+   "aep.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Login'); AEP company"
+ },
+ {
+  "name": "Kansas Gas Service",
+  "url": "https://www.kansasgasservice.com/login",
+  "category": "energy",
+  "country": "US",
+  "region": "KS",
+  "announced_by": [
+   "kansasgasservice.com"
+  ],
+  "about": {
+   "en": "Natural gas utility",
+   "fr": "Distributeur de gaz naturel"
+  },
+  "checked": "timeout (blocks robots); 'Kansas Gas Service - Login', linked from the home page (Wayback snapshot 2026-06-06)"
+ },
+ {
+  "name": "APS",
+  "url": "https://www.aps.com/en/Authorization/Login",
+  "category": "energy",
+  "country": "US",
+  "region": "AZ",
+  "announced_by": [
+   "aps.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Login')"
+ },
+ {
+  "name": "SRP",
+  "url": "https://myaccount.srpnet.com/power/login",
+  "category": "energy",
+  "country": "US",
+  "region": "AZ",
+  "announced_by": [
+   "srpnet.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('SRP Power')"
+ },
+ {
+  "name": "Tucson Electric Power",
+  "url": "https://account.tep.com/MyAccount/Login",
+  "category": "energy",
+  "country": "US",
+  "region": "AZ",
+  "announced_by": [
+   "tep.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "timeout (blocks robots); log-in link of tep.com"
+ },
+ {
+  "name": "NV Energy",
+  "url": "https://www.nvenergy.com/my-account",
+  "category": "energy",
+  "country": "US",
+  "region": "NV",
+  "announced_by": [
+   "nvenergy.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 (JS page); My Account sign-in confirmed via search"
+ },
+ {
+  "name": "PNM",
+  "url": "https://www.pnm.com/c/portal/login",
+  "category": "energy",
+  "country": "US",
+  "region": "NM",
+  "announced_by": [
+   "pnm.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "timeout (blocks robots); log-in link of pnm.com (Wayback snapshot 2026-09-09)"
+ },
+ {
+  "name": "Puget Sound Energy",
+  "url": "https://www.pse.com/en/login",
+  "category": "energy",
+  "country": "US",
+  "region": "WA",
+  "announced_by": [
+   "pse.com"
+  ],
+  "about": {
+   "en": "Electric and gas utility",
+   "fr": "Électricité et gaz"
+  },
+  "checked": "redirect from pse.com/en/my-account ('Log In to Your PSE Account')"
+ },
+ {
+  "name": "Seattle City Light",
+  "url": "https://myutilities.seattle.gov/eportal/",
+  "category": "energy",
+  "country": "US",
+  "region": "WA",
+  "announced_by": [
+   "seattle.gov"
+  ],
+  "about": {
+   "en": "Electric utility, Seattle",
+   "fr": "Électricité, Seattle"
+  },
+  "checked": "200 ('City of Seattle Utility Services'); link of seattle.gov/city-light"
+ },
+ {
+  "name": "Portland General Electric",
+  "url": "https://portlandgeneral.com/auth/sign-in",
+  "category": "energy",
+  "country": "US",
+  "region": "OR",
+  "announced_by": [
+   "portlandgeneral.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Customer Sign In')"
+ },
+ {
+  "name": "Hawaiian Electric",
+  "url": "https://eservice.hawaiianelectric.com/bdisu/logon.sap",
+  "category": "energy",
+  "country": "US",
+  "region": "HI",
+  "announced_by": [
+   "hawaiianelectric.com"
+  ],
+  "about": {
+   "en": "Electric utility",
+   "fr": "Fournisseur d'électricité"
+  },
+  "checked": "200 ('Login - Online Customer Service Center')"
+ },
+ {
+  "name": "AT&T",
+  "url": "https://www.att.com/acctmgmt/signin",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "att.com",
+   "att-mail.com"
+  ],
+  "about": {
+   "en": "Mobile, internet and TV",
+   "fr": "Mobile, internet et télévision"
+  },
+  "checked": "redirect to signin.att.com with one-time parameters (robots get a timeout page); stable start kept"
+ },
+ {
+  "name": "Verizon",
+  "url": "https://secure.verizon.com/signin",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "verizon.com",
+   "verizonwireless.com"
+  ],
+  "about": {
+   "en": "Mobile and Fios internet",
+   "fr": "Mobile et internet Fios"
+  },
+  "checked": "200 ('My Verizon login'); sign-in link of verizon.com"
+ },
+ {
+  "name": "T-Mobile",
+  "url": "https://www.t-mobile.com/account/dashboard",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "t-mobile.com"
+  ],
+  "about": {
+   "en": "Mobile and home internet",
+   "fr": "Mobile et internet fixe"
+  },
+  "checked": "403 (blocks robots); 'Log In' link of t-mobile.com minus tracking parameter (Wayback snapshot 2026-10-04); sends to account.t-mobile.com sign-in"
+ },
+ {
+  "name": "Xfinity",
+  "url": "https://login.xfinity.com/login",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "xfinity.com",
+   "comcast.net"
+  ],
+  "about": {
+   "en": "Cable internet, TV and mobile",
+   "fr": "Internet câble, télévision et mobile"
+  },
+  "checked": "403 (blocks robots); sign-in link of xfinity.com (Wayback snapshot 2026-10-03)"
+ },
+ {
+  "name": "Spectrum",
+  "url": "https://www.spectrum.net/login",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "spectrum.com",
+   "spectrum.net",
+   "charter.com"
+  ],
+  "about": {
+   "en": "Cable internet, TV and mobile",
+   "fr": "Internet câble, télévision et mobile"
+  },
+  "checked": "200 ('Spectrum.net')"
+ },
+ {
+  "name": "Cox",
+  "url": "https://www.cox.com/content/dam/cox/okta/signin.html",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "cox.com"
+  ],
+  "about": {
+   "en": "Cable internet, TV and phone",
+   "fr": "Internet câble, télévision et téléphone"
+  },
+  "checked": "200 with bot-block page; sign-in link of cox.com (Wayback snapshot 2026-10-03)"
+ },
+ {
+  "name": "Optimum",
+  "url": "https://www.optimum.net/login/",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "optimum.net",
+   "optimum.com"
+  ],
+  "about": {
+   "en": "Cable internet, TV and mobile",
+   "fr": "Internet câble, télévision et mobile"
+  },
+  "checked": "redirect through the login flow with one-time parameters; stable start kept (link of optimum.com)"
+ },
+ {
+  "name": "Frontier",
+  "url": "https://frontier.com/login",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "frontier.com"
+  ],
+  "about": {
+   "en": "Fiber internet and phone",
+   "fr": "Internet fibre et téléphone"
+  },
+  "checked": "403 (blocks robots); login page confirmed via search"
+ },
+ {
+  "name": "Google Fi",
+  "url": "https://fi.google.com/account",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "google.com"
+  ],
+  "about": {
+   "en": "Mobile service (Google)",
+   "fr": "Forfait mobile (Google)"
+  },
+  "checked": "redirect to Google sign-in with one-time parameters; stable start kept"
+ },
+ {
+  "name": "Mint Mobile",
+  "url": "https://my.mintmobile.com/login",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "mintmobile.com"
+  ],
+  "about": {
+   "en": "Prepaid mobile (T-Mobile network)",
+   "fr": "Mobile prépayé (réseau T-Mobile)"
+  },
+  "checked": "403 (Cloudflare blocks robots); log-in link of mintmobile.com (Wayback snapshot 2026-09-28)"
+ },
+ {
+  "name": "Visible",
+  "url": "https://www.visible.com/nsa/ui/auth/signin",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "visible.com"
+  ],
+  "about": {
+   "en": "Prepaid mobile (Verizon network)",
+   "fr": "Mobile prépayé (réseau Verizon)"
+  },
+  "checked": "200 ('Visible - Signin'); sign-in link of visible.com"
+ },
+ {
+  "name": "Cricket Wireless",
+  "url": "https://www.cricketwireless.com/cwlogin.html",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "cricketwireless.com"
+  ],
+  "about": {
+   "en": "Prepaid mobile (AT&T)",
+   "fr": "Mobile prépayé (AT&T)"
+  },
+  "checked": "redirect to signin.cricketwireless.com (robots get an error page); stable start kept, sign-in link of cricketwireless.com"
+ },
+ {
+  "name": "Metro by T-Mobile",
+  "url": "https://www.metrobyt-mobile.com/login/start",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "metrobyt-mobile.com"
+  ],
+  "about": {
+   "en": "Prepaid mobile (T-Mobile)",
+   "fr": "Mobile prépayé (T-Mobile)"
+  },
+  "checked": "403 (blocks robots); 'Log In' link of metrobyt-mobile.com minus tracking parameter (Wayback snapshot 2026-10-03)"
+ },
+ {
+  "name": "Boost Mobile",
+  "url": "https://www.boostmobile.com/my-account",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "boostmobile.com"
+  ],
+  "about": {
+   "en": "Mobile service",
+   "fr": "Forfait mobile"
+  },
+  "checked": "200 ('Boost Mobile Login | Pay Your Bill & Manage Your Account')"
+ },
+ {
+  "name": "US Mobile",
+  "url": "https://app.usmobile.com/dashboard/auth",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "usmobile.com"
+  ],
+  "about": {
+   "en": "Prepaid mobile",
+   "fr": "Mobile prépayé"
+  },
+  "checked": "403 (Cloudflare blocks robots); 'Our web app' link of usmobile.com"
+ },
+ {
+  "name": "Consumer Cellular",
+  "url": "https://www.consumercellular.com/login",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "consumercellular.com"
+  ],
+  "about": {
+   "en": "Mobile service for older adults",
+   "fr": "Forfait mobile pour seniors"
+  },
+  "checked": "403 (Cloudflare blocks robots); 'Manage My Account' page (Wayback snapshot 2026-08-01)"
+ },
+ {
+  "name": "Straight Talk",
+  "url": "https://www.straighttalk.com/login",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "straighttalk.com"
+  ],
+  "about": {
+   "en": "Prepaid mobile (Walmart)",
+   "fr": "Mobile prépayé (Walmart)"
+  },
+  "checked": "403 (blocks robots); log-in link of straighttalk.com (Wayback snapshot 2026-10-04)"
+ },
+ {
+  "name": "Tracfone",
+  "url": "https://www.tracfone.com/nsa/ui/auth/userlogin",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "tracfone.com"
+  ],
+  "about": {
+   "en": "Prepaid mobile",
+   "fr": "Mobile prépayé"
+  },
+  "checked": "200 ('TracFone'); the home page's /login link returns 404 to robots"
+ },
+ {
+  "name": "Total Wireless",
+  "url": "https://www.totalwireless.com/nsa/ui/auth/userlogin",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "totalwireless.com"
+  ],
+  "about": {
+   "en": "Prepaid mobile (Verizon)",
+   "fr": "Mobile prépayé (Verizon)"
+  },
+  "checked": "200 ('Login or Create Your Account - Total Wireless'); /login redirects here"
+ },
+ {
+  "name": "Google Fiber",
+  "url": "https://fiber.google.com/myfiber/",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "gfiber.com",
+   "google.com"
+  ],
+  "about": {
+   "en": "Fiber internet",
+   "fr": "Internet fibre"
+  },
+  "checked": "redirect to signin.gfiber.com with one-time parameters; stable start kept"
+ },
+ {
+  "name": "Kinetic",
+  "url": "https://my.gokinetic.com/consumer/",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "gokinetic.com",
+   "windstream.com"
+  ],
+  "about": {
+   "en": "Internet service",
+   "fr": "Fournisseur d'accès internet"
+  },
+  "checked": "redirect to login.windstream.com 'Sign In'; stable start kept (link of gokinetic.com)"
+ },
+ {
+  "name": "Brightspeed",
+  "url": "https://www.brightspeed.com/signin",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "brightspeed.com"
+  ],
+  "about": {
+   "en": "Internet service",
+   "fr": "Fournisseur d'accès internet"
+  },
+  "checked": "403 (blocks robots); sign-in page confirmed via search"
+ },
+ {
+  "name": "CenturyLink",
+  "url": "https://dh.centurylink.com/",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "centurylink.com"
+  ],
+  "about": {
+   "en": "Internet and phone service",
+   "fr": "Internet et téléphone"
+  },
+  "checked": "redirect from mm-signin.centurylink.com (sign-in link of centurylink.com, Wayback snapshot 2026-10-03)"
+ },
+ {
+  "name": "Mediacom",
+  "url": "https://mediacomcable.com/login/",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "mediacomcable.com",
+   "mediacomcc.com"
+  ],
+  "about": {
+   "en": "Cable internet and TV",
+   "fr": "Internet câble et télévision"
+  },
+  "checked": "503 'Application Blocked' (blocks robots); log-in link of mediacomcable.com (Wayback snapshot 2026-09-21)"
+ },
+ {
+  "name": "Astound",
+  "url": "https://my.astound.com/login",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "astound.com"
+  ],
+  "about": {
+   "en": "Cable and fiber internet",
+   "fr": "Internet câble et fibre"
+  },
+  "checked": "timeout (blocks robots); MyAstound login confirmed via Astound support pages"
+ },
+ {
+  "name": "WOW!",
+  "url": "https://login.wowway.com/",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "wowway.com"
+  ],
+  "about": {
+   "en": "Cable internet and TV",
+   "fr": "Internet câble et télévision"
+  },
+  "checked": "200; log-in link of wowway.com"
+ },
+ {
+  "name": "Sparklight",
+  "url": "https://customer.sparklight.com/",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "sparklight.com"
+  ],
+  "about": {
+   "en": "Cable internet",
+   "fr": "Internet câble"
+  },
+  "checked": "no response to robots; login URL given by support.sparklight.com"
+ },
+ {
+  "name": "Ziply Fiber",
+  "url": "https://ziplyfiber.com/myaccount/login",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "ziplyfiber.com"
+  ],
+  "about": {
+   "en": "Fiber internet, Northwest",
+   "fr": "Internet fibre, Nord-Ouest"
+  },
+  "checked": "403 (Cloudflare blocks robots); log-in link of ziplyfiber.com (Wayback snapshot 2026-09-23)"
+ },
+ {
+  "name": "altafiber",
+  "url": "https://my.altafiber.com/",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "altafiber.com"
+  ],
+  "about": {
+   "en": "Fiber internet, Cincinnati area",
+   "fr": "Internet fibre, région de Cincinnati"
+  },
+  "checked": "200 (account app; redirects to login.altafiber.com)"
+ },
+ {
+  "name": "Starlink",
+  "url": "https://starlink.com/account/home",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "starlink.com"
+  ],
+  "about": {
+   "en": "Satellite internet",
+   "fr": "Internet par satellite"
+  },
+  "checked": "redirect from www.starlink.com/account to this URL"
+ },
+ {
+  "name": "HughesNet",
+  "url": "https://my.hughesnet.com/en/overview",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "hughesnet.com"
+  ],
+  "about": {
+   "en": "Satellite internet",
+   "fr": "Internet par satellite"
+  },
+  "checked": "redirect from my.hughesnet.com ('myHughesnet')"
+ },
+ {
+  "name": "Viasat",
+  "url": "https://my.viasat.com/",
+  "category": "telecom",
+  "country": "US",
+  "region": "",
+  "announced_by": [
+   "viasat.com"
+  ],
+  "about": {
+   "en": "Satellite internet",
+   "fr": "Internet par satellite"
+  },
+  "checked": "200 ('My Viasat | Manage Your Account')"
+ }
+]

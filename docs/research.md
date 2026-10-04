@@ -1,0 +1,86 @@
+# What the research says, and the rule each finding gives
+
+The detailed notes behind these rules (what each study found, how strong its evidence is, where Sioul applies it, and what was built, left for later or refused, with why) are in [research/README.md](research/README.md).
+
+1. **Fewer, predictable looks at mail.**
+   - Checking mail three times a day for a week, against freely, lowered daily stress in a randomised trial of 124 adults; lower stress predicted better well-being (Kushlev & Dunn 2015).
+   - Batching notifications three times a day improved attention, mood, productivity and stress in 237 participants, while those given no notifications at all felt *more* anxious than controls (Fitz et al. 2019).
+   - Without email for five days, 13 office workers switched windows half as often, and their heart-rate variability showed less stress (Mark, Voida & Cardello 2012).
+   - **Rule**: admin windows you choose, and the app always says when the next one opens. Predictability, not silence.
+2. **Interruptions cost even when ignored.** Interrupted people work faster, with more stress, frustration and effort (Mark, Gudith & Klocke 2008). A notification left unanswered still disrupts attention (Stothart, Mitchum & Yehnert 2015). **Rule**: no pop-ups, sounds or badges; the layout never moves under your eyes.
+3. **Administrative burden** is made of learning, compliance and psychological costs (Moynihan, Herd & Harvey 2015). It looms larger for people with fewer cognitive resources, executive function, scarcity and health problems among them (Christensen et al. 2020). **Rule**: Sioul carries the three costs. Learning: what a letter is and wants. Compliance: drafts, attachments and addresses gathered. Psychological: tone, pacing, no shame.
+4. **Avoidance is mood repair, not laziness.** Procrastination gives priority to short-term mood (Sirois & Pychyl 2013), and people avoid information they expect to hurt (Sweeny et al. 2010; Golman, Hagmann & Loewenstein 2017). **Rule**: make looking cheaper. The card comes first, saying who, what it asks, by when, and what happens if nothing is done.
+5. **Uncertainty fuels anxiety** (Carleton 2012), in autism too (Boulter et al. 2014). **Rule**: every item states what happens next and who waits on whom; no ambiguous states.
+6. **Starting is the hard part.**
+   - Autistic inertia is a difficulty acting on intentions, eased by scaffolding: "no way out except from external intervention" (Buckle et al. 2021).
+   - For ADHD, the support belongs at the point of performance: time, memory and motivation externalised (Barkley 2012). Tools still leave prioritisation, time estimation and task switching to ADHD knowledge workers (Campbell, Çerçi & Cecchinato 2024).
+   - "When X, I do Y" plans raise follow-through (Gollwitzer & Sheeran 2006); near subgoals build competence (Bandura & Schunk 1981).
+   - **Rule**: one next step, small, with a when, pre-filled where possible; priorities computed by Sioul.
+7. **Company helps.** Body doubling is a practice neurodivergent people found by themselves (Eagle & Ringland 2024). **Rule**: an admin session can have a companion, an AI or a person.
+8. **Progress, never streaks.** Small wins carry motivation (Amabile & Kramer 2011). Broken streaks lower later engagement, more so when people blame themselves (Silverman & Barasch 2023). **Rule**: show what got done; no streaks, no pile of "overdue".
+9. **Trauma-informed computing** (Chen et al. 2022): safety, trust, peer support, collaboration, enablement, intersectionality. **Rule**: no surprises, reasons shown, undo everywhere, nothing deleted or sent without you.
+10. **Cognitive accessibility** (W3C, 2021): help users focus; make processes not rely on memory; use clear language; help users avoid mistakes; support personalisation. For autistic users (UK Home Office, 2016): simple colours, plain English, short sentences and bullets, descriptive buttons, simple and consistent layouts. **Rule**: key hints on screen, literal labels, confirmations before anything irreversible, everything adjustable.
+11. **Tracking is work too.** Self-tracking imposes "substantial interpretive and emotional demands" on neurodivergent people (Rudberg Selin, Unéus & Knudsen 2026). **Rule**: nothing to log by obligation.
+12. **AI as a communication aid, with care.** Autistic workers preferred an LLM to a human for workplace communication advice, while a job coach found some of that advice questionable (Jang et al. 2024). **Rule**: the AI drafts and explains, you review, and it never sends.
+13. **Visual supports** are an evidence-based practice in autism, mostly studied in children and young people (Steinbrenner et al. 2020). **Rule**: timelines and the Gantt chart on demand, never compulsory.
+14. **Too many options weigh when choosing is hard.** Across 50 experiments the mean effect of more options was nil (Scheibehenne, Greifeneder & Todd 2010); overload appears when options are hard to compare, preferences unclear and effort to be saved (Chernev, Böckenholt & Goodman 2015): a to-do list on a tired day. **Rule**: one next step, picked, with its reason; equal steps are picked, not shown as a choice ([tasks.md](tasks.md)).
+15. **A plan date is not a deadline, and lateness is not a debt.** Forgiving oneself for procrastinating lowered later procrastination (Wohl, Pychyl & Bennett 2010); adults with ADHD meet more criticism, and lower self-compassion goes with poorer mental health (Beaton, Sirois & Milne 2022). **Rule**: nothing overdue; a day to start that passed says nothing; the date asked is time left; no counts of what was put off.
+16. **Once started, a task is rarely as bad as feared**, and an interrupted task pulls to be resumed (Pychyl's experience sampling; Ghibellini & Meier 2025). **Rule**: a two-minute start where stopping counts.
+17. **A plan for where you stopped frees the mind for the next thing.** Writing a one-minute ready-to-resume plan reduced attention residue (Leroy & Glomb 2018); a warning before an interruption shortens getting back in (Trafton et al. 2003). **Rule**: stopping offers one line, shown when the task comes back; a heads-up two minutes before the end.
+18. **Time made visible**: visual timers and day schedules improved time management in children with ADHD in a randomised trial (Wennberg et al. 2018); a ticking countdown can raise anxiety instead. **Rule**: a draining disc in a neutral colour, without ticking or sound, open-ended when you prefer.
+19. **Capacity is lower on some days, and only you know which.** Autistic burnout brings chronic exhaustion and loss of executive skills, eased by reduced expectations (Raymaker et al. 2020); adults with ADHD liked a "brain weather" view and disliked tools that watch them (Chen, Meng & Nie 2026). **Rule**: the day's weather is chosen, never inferred; fog shows small steps, and one is a full day.
+20. **Splitting a task makes it startable and its estimate truer** (Kruger & Evans 2004). **Rule**: steps in one line each, their minutes added up.
+21. **Work cues in the evening undo recovery.** Detachment from work goes with less exhaustion (r = −.38 across 91 samples: Wendsche & Lohmann-Haislah 2017), and the most exhausted detach least (Sonnentag et al. 2014). Work messages in the evening cost the evening through their tone (Butts, Becker & Boswell 2015), and the mere expectation of checking harms, read or not (Becker et al. 2021). **Rule**: quiet time outside working hours, during time off and once the day is closed: only family, friends, codes and what you enjoy, with one sentence saying when work comes back ([porch.md](porch.md)).
+22. **An unfinished task stops pulling once it has a place.** Unfinished tasks feed affective rumination and poor sleep (Syrek et al. 2017; Wendsche, Weigelt & Syrek 2026); writing where, when and how they will be done quieted intrusions in the lab (Masicampo & Baumeister 2011, not replicated) and raised evening detachment in the field, mostly for people low in self-control (Smit 2016). **Rule**: closing the day gives everything a place and names the first step, concretely.
+23. **Shame, not guilt, feeds avoidance, and repair makes it constructive.** Shame tracks depression more than guilt does, as does guilt over what one could not control (Kim, Thibodeau & Jorgensen 2011); shame turns to repair when repair looks possible (Leach & Cidam 2015); feedback about the self rather than the task lowers performance (Kluger & DeNisi 1996). Warm affirmations can threaten the most self-critical (Kirby, Day & Sagar 2019). **Rule**: no count of what was not done, no history of early stops, no question; kindness in what the software does, in plain words about tasks.
+
+## Sources
+- Kushlev & Dunn (2015), Checking email less frequently reduces stress, *Computers in Human Behavior* 43.
+- Fitz, Kushlev, Jagannathan, Lewis, Paliwal & Ariely (2019), Batching smartphone notifications can improve well-being, *Computers in Human Behavior* 101.
+- Mark, Voida & Cardello (2012), "A pace not dictated by electrons": an empirical study of work without email, CHI 2012.
+- Mark, Gudith & Klocke (2008), The cost of interrupted work: more speed and stress, CHI 2008.
+- Stothart, Mitchum & Yehnert (2015), The attentional cost of receiving a cell phone notification, *J. Exp. Psychol.: Human Perception and Performance* 41(4).
+- Moynihan, Herd & Harvey (2015), Administrative burden: learning, psychological, and compliance costs in citizen-state interactions, *JPART* 25(1).
+- Christensen, Aarøe, Baekgaard, Herd & Moynihan (2020), Human capital and administrative burden: the role of cognitive resources in citizen-state interactions, *Public Administration Review* 80(1).
+- Sirois & Pychyl (2013), Procrastination and the priority of short-term mood regulation, *Social and Personality Psychology Compass* 7(2).
+- Sweeny, Melnyk, Miller & Shepperd (2010), Information avoidance: who, what, when, and why, *Review of General Psychology* 14(4).
+- Golman, Hagmann & Loewenstein (2017), Information avoidance, *Journal of Economic Literature* 55(1).
+- Carleton (2012), The intolerance of uncertainty construct in the context of anxiety disorders, *Expert Review of Neurotherapeutics* 12(8).
+- Boulter, Freeston, South & Rodgers (2014), Intolerance of uncertainty as a framework for understanding anxiety in children and adolescents with autism spectrum disorders, *JADD* 44.
+- Buckle, Leadbitter, Poliakoff & Gowen (2021), "No way out except from external intervention": first-hand accounts of autistic inertia, *Frontiers in Psychology* 12.
+- Barkley (2012), *Executive Functions: What They Are, How They Work, and Why They Evolved*, Guilford.
+- Campbell, Çerçi & Cecchinato (2024), ADHD and knowledge work: exploring strategies, challenges and opportunities for AI, INTERACT 2023.
+- Gollwitzer & Sheeran (2006), Implementation intentions and goal achievement: a meta-analysis, *Advances in Experimental Social Psychology* 38.
+- Bandura & Schunk (1981), Cultivating competence, self-efficacy, and intrinsic interest through proximal self-motivation, *JPSP* 41(3).
+- Eagle & Ringland (2024), An investigation of body doubling with neurodivergent participants, *ACM Transactions on Accessible Computing*.
+- Amabile & Kramer (2011), *The Progress Principle*, Harvard Business Review Press.
+- Silverman & Barasch (2023), On or off track: how (broken) streaks affect consumer decisions, *Journal of Consumer Research* 49(6).
+- Chen, McDonald, Zou, Tseng, Roundy, Tamersoy, Schaub, Ristenpart & Dell (2022), Trauma-informed computing: towards safer technology experiences for all, CHI 2022.
+- W3C (2021), Making content usable for people with cognitive and learning disabilities, https://www.w3.org/TR/coga-usable/
+- Pun (2016), Dos and don'ts on designing for accessibility, GOV.UK accessibility blog.
+- Rudberg Selin, Unéus & Knudsen (2026), "Chasing shadows": understanding personal data externalization and self-tracking for neurodivergent individuals, CHI 2026.
+- Jang, Moharana, Carrington & Begel (2024), "It's the only thing I can trust": envisioning large language model use by autistic workers for communication assistance, CHI 2024.
+- Steinbrenner et al. (2020), *Evidence-Based Practices for Children, Youth, and Young Adults with Autism*, NCAEP, University of North Carolina.
+- Scheibehenne, Greifeneder & Todd (2010), Can there ever be too many options? A meta-analytic review of choice overload, *Journal of Consumer Research* 37(3).
+- Chernev, Böckenholt & Goodman (2015), Choice overload: a conceptual review and meta-analysis, *Journal of Consumer Psychology* 25(2).
+- Wohl, Pychyl & Bennett (2010), I forgive myself, now I can study: how self-forgiveness for procrastinating can reduce future procrastination, *Personality and Individual Differences* 48(7).
+- Beaton, Sirois & Milne (2022), Experiences of criticism in adults with ADHD: a qualitative study, *PLoS ONE* 17(2).
+- Ghibellini & Meier (2025), Interruption, recall and resumption: a meta-analysis of the Zeigarnik and Ovsiankina effects, *Humanities and Social Sciences Communications* 12.
+- Leroy & Glomb (2018), Tasks interrupted: how anticipating time pressure on resumption of an interrupted task causes attention residue and low performance on interrupting tasks and how a "ready-to-resume" plan mitigates the effects, *Organization Science* 29(3).
+- Trafton, Altmann, Brock & Mintz (2003), Preparing to resume an interrupted task: effects of prospective goal encoding and retrospective rehearsal, *International Journal of Human-Computer Studies* 58(5).
+- Wennberg, Janeslätt, Kjellberg, Gustafsson & Hirvikoski (2018), Effectiveness of time-related interventions in children with ADHD aged 9–15 years: a randomized controlled study, *European Child & Adolescent Psychiatry* 27.
+- Raymaker et al. (2020), "Having all of your internal resources exhausted beyond measure and being left with no clean-up crew": defining autistic burnout, *Autism in Adulthood* 2(2).
+- Chen, Meng & Nie (2026), "Not just me and my to-do list": understanding challenges of task management for adults with ADHD and the need for AI-augmented social scaffolds, CSCW 2026.
+- Kruger & Evans (2004), If you don't want to be late, enumerate: unpacking reduces the planning fallacy, *Journal of Experimental Social Psychology* 40(5).
+- Wendsche & Lohmann-Haislah (2017), A meta-analysis on antecedents and outcomes of detachment from work, *Frontiers in Psychology* 7:2072.
+- Sonnentag, Arbeus, Mahn & Fritz (2014), Exhaustion and lack of psychological detachment from work during off-job time: moderator effects of time pressure and leisure experiences, *J. Occup. Health Psychol.* 19(2).
+- Butts, Becker & Boswell (2015), Hot buttons and time sinks: the effects of electronic communication during nonwork time on emotions and work-nonwork conflict, *Academy of Management Journal* 58(3).
+- Becker, Belkin, Conroy & Tuskey (2021), Killing me softly: organizational e-mail monitoring expectations' impact on employee and significant other well-being, *Journal of Management* 47(4).
+- Syrek, Weigelt, Peifer & Antoni (2017), Zeigarnik's sleepless nights: how unfinished tasks at the end of the week impair employee sleep on the weekend through rumination, *J. Occup. Health Psychol.* 22(2).
+- Wendsche, Weigelt & Syrek (2026), Unfinished work tasks and work-related thoughts during off-job time: meta-analysis of the Zeigarnik effect in a work-recovery context, *Anxiety, Stress & Coping* 39(4).
+- Masicampo & Baumeister (2011), Consider it done! Plan making can eliminate the cognitive effects of unfulfilled goals, *J. Pers. Soc. Psychol.* 101(4).
+- Smit (2016), Successfully leaving work at work: the self-regulatory underpinnings of psychological detachment, *J. Occup. Organ. Psychol.* 89(3).
+- Kim, Thibodeau & Jorgensen (2011), Shame, guilt, and depressive symptoms: a meta-analytic review, *Psychological Bulletin* 137(1).
+- Leach & Cidam (2015), When is shame linked to constructive approach orientation? A meta-analysis, *J. Pers. Soc. Psychol.* 109(6).
+- Kluger & DeNisi (1996), The effects of feedback interventions on performance, *Psychological Bulletin* 119(2).
+- Kirby, Day & Sagar (2019), The "flow" of compassion: a meta-analysis of the fears of compassion scales and psychological functioning, *Clinical Psychology Review* 70.

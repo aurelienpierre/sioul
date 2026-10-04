@@ -1,0 +1,17 @@
+[
+ {"name": "Facebook", "url": "https://www.facebook.com/", "category": "social", "country": "", "region": "", "announced_by": ["facebookmail.com"], "about": {"en": "Friends and groups", "fr": "Amis et groupes"}},
+ {"name": "Instagram", "url": "https://www.instagram.com/", "category": "social", "country": "", "region": "", "announced_by": ["mail.instagram.com"], "about": {"en": "Photos and stories", "fr": "Photos et stories"}},
+ {"name": "Reddit", "url": "https://www.reddit.com/", "category": "social", "country": "", "region": "", "announced_by": ["redditmail.com"], "about": {"en": "Forums by topic", "fr": "Forums par sujet"}},
+ {"name": "LinkedIn", "url": "https://www.linkedin.com/feed/", "category": "social", "country": "", "region": "", "area": "work", "announced_by": ["linkedin.com"], "about": {"en": "Professional network", "fr": "Réseau professionnel"}},
+ {"name": "X", "url": "https://x.com/home", "category": "social", "country": "", "region": "", "announced_by": ["x.com"], "about": {"en": "Short posts", "fr": "Messages courts"}},
+ {"name": "Bluesky", "url": "https://bsky.app/", "category": "social", "country": "", "region": "", "announced_by": [], "about": {"en": "Short posts, an open network", "fr": "Messages courts, réseau ouvert"}},
+ {"name": "Mastodon (mastodon.social)", "url": "https://mastodon.social/", "category": "social", "country": "", "region": "", "announced_by": [], "about": {"en": "One server of the fediverse", "fr": "Un serveur du fédivers"}},
+ {"name": "Threads", "url": "https://www.threads.com/", "category": "social", "country": "", "region": "", "announced_by": [], "about": {"en": "Short posts by Meta", "fr": "Messages courts de Meta"}},
+ {"name": "Pinterest", "url": "https://www.pinterest.com/", "category": "social", "country": "", "region": "", "announced_by": ["pinterest.com"], "about": {"en": "Ideas and images", "fr": "Idées et images"}},
+ {"name": "TikTok", "url": "https://www.tiktok.com/", "category": "social", "country": "", "region": "", "announced_by": [], "about": {"en": "Short videos", "fr": "Vidéos courtes"}},
+ {"name": "YouTube", "url": "https://www.youtube.com/", "category": "social", "country": "", "region": "", "announced_by": ["youtube.com"], "about": {"en": "Videos", "fr": "Vidéos"}},
+ {"name": "Tumblr", "url": "https://www.tumblr.com/dashboard", "category": "social", "country": "", "region": "", "announced_by": ["tumblr.com"], "about": {"en": "Blogs and fandoms", "fr": "Blogs et fandoms"}},
+ {"name": "Flickr", "url": "https://www.flickr.com/", "category": "social", "country": "", "region": "", "announced_by": ["flickr.com"], "about": {"en": "Photography", "fr": "Photographie"}},
+ {"name": "Strava", "url": "https://www.strava.com/dashboard", "category": "social", "country": "", "region": "", "announced_by": ["strava.com"], "about": {"en": "Sport and outings", "fr": "Sport et sorties"}},
+ {"name": "Nextdoor", "url": "https://nextdoor.com/", "category": "social", "country": "", "region": "", "area": "admin+leisure", "announced_by": ["nextdoor.com"], "about": {"en": "Your neighbourhood", "fr": "Votre quartier"}}
+]

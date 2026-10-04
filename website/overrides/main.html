@@ -1,0 +1,17 @@
+{#-
+  Sioul's pages: as Zensical's, without the row of tabs under the header.
+  "navigation.tabs" stays on in zensical.toml so that each top-level section
+  (the user guide, the developers' notes) keeps a sidebar of its own; the tabs
+  themselves would put the developers' section in the top navigation, which it
+  is kept out of: it is reached from the footer and the home page.
+-#}
+{% extends "base.html" %}
+
+{% block tabs %}{% endblock %}
+
+{#- A PNG favicon for browsers without SVG ones, and the icon Apple's systems put on a home screen. -#}
+{% block extrahead %}
+  {{ super() }}
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ 'assets/images/favicon-32.png' | url }}">
+  <link rel="apple-touch-icon" href="{{ 'assets/images/apple-touch-icon.png' | url }}">
+{% endblock %}

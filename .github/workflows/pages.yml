@@ -1,0 +1,61 @@
+# Publishes Sioul's website on GitHub Pages: the user guide (website/) and the
+# design notes (docs/), built with Zensical by website/build.sh, as on your
+# own computer.
+#
+# Runs on each push to main that changes the website, the notes or this
+# workflow, and by hand (Actions, "Publish the website", "Run workflow").
+# Once, in the repository's settings: Pages, Build and deployment, Source:
+# GitHub Actions.
+
+name: Publish the website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One publication at a time; one that started is let finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - name: Zensical
+        run: pip install zensical==0.0.67
+      # The same script as on your computer: it copies the design notes of
+      # docs/ into website/docs/dev/, then builds; --strict stops at a broken
+      # link, so that a broken page is never published.
+      - name: The design notes, then the site
+        run: bash website/build.sh --strict
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/site
+
+  deploy:
+    name: Publish it
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

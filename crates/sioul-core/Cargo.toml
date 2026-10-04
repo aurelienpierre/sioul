@@ -1,0 +1,36 @@
+[package]
+name = "sioul-core"
+description = "Sioul's core: reading mail, judging trust, routing to cases, admin windows."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mail-parser.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+toml_edit.workspace = true
+roxmltree.workspace = true
+ammonia.workspace = true
+pulldown-cmark.workspace = true
+mail-builder.workspace = true
+calcard.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+sequoia-openpgp.workspace = true
+directories.workspace = true
+jiff.workspace = true
+fluent-bundle.workspace = true
+unic-langid.workspace = true
+# A watch's own files (Garmin's FIT), read here: an independent parser (MIT),
+# not Garmin's SDK, whose licence forbids copyleft; and the ZIPs exports come in.
+fitparser = "0.11"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+fluent-syntax.workspace = true

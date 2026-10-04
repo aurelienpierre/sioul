@@ -1,0 +1,7 @@
+[[case]]
+id = "taxes"
+title = "Taxes"
+files = ["notes/taxes.md"]
+status = "open"
+[[case.route]]
+from_domains = ["finances.example"]

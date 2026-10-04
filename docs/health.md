@@ -1,0 +1,42 @@
+# Health and well-being
+
+Kept on this computer: `$XDG_DATA_HOME/sioul/health.toml` (what you enter) and `$XDG_STATE_HOME/sioul/health-state.toml` (doses marked taken, reminders sent, errands made, chat minutes). These two files go nowhere, unless you share between your computers: then they travel sealed, through a folder your sync carries ([database.md](database.md)). The errands it makes are tasks in a list your phone has (below), and their titles name the medicine.
+
+## Medicines
+- **When**: at set times each day ("12:00, 18:00"), every few days from a day ("every other day at 08:00, from Sunday 4 October"), or every few hours from a time ("every 6 hours, from 18:30"); until a day, or for as long as it goes; paused for now.
+- **Today**: each dose of the day, with "Taken". A dose taken says when; one click takes it back. A dose not marked is simply not marked: nothing counts what was missed, nothing turns red.
+- **Reminders**: one desktop notification per dose, within half an hour of its time, without sound, with "Taken". Not repeated. Reminders come in quiet time too: they are yours.
+- **While Sioul was closed**: a dose of the last twelve hours, past its half hour, neither marked nor reminded anywhere, is asked about once a session ("Did you take Vitamin D 08:00?", Open), and shown above today's with Taken and Not taken. A question on the past, never a reminder to take one now. Answered, it is not asked again.
+- **One computer reminds**: the one you are at (`sioul_sync::lease`: the computer used most recently keeps the medicines' reminders, and acts once it has kept them a minute and a half, time for your other computers to know). A dose marked taken goes to your other computers at once (a sharing exchange right away), and the question on doses while Sioul was closed waits until the others were heard from, so a dose marked elsewhere comes first.
+- **Sharing is not optional for this**: with medicines and Sioul on more than one computer, share between them (Settings ▸ Sharing). Without it, the page says the doses are known to this computer only; with it but your other computers not heard from for five minutes, it says since when, because a dose marked there may not show here yet. The doses' marks are always among what sharing carries (`state/health-state.toml`).
+
+## Prescriptions
+- What it is for, who wrote it, until when it is valid, how many days the pharmacy gives at a time, when it was last fetched.
+- **Errands**: two days before the medicines run out, a task "Pharmacy: …"; two weeks before the prescription ends, a task "Doctor: renew the prescription for …". Each is made once, tagged `health` (shown in quiet time), in the list chosen on the page ("Errands go to"): else your usual task list, else the first list on a server, so your phone has them; a list on this computer only when there is no other. Errands made on this computer before move to that list once. "Fetched today" counts the next pickup from today.
+
+## Moving
+While a focus session runs, every 45 minutes (Health page), it pauses for a few minutes of moving and stretching; "Back to it" goes on. The pause is counted again for each new session. Outside a focus session, while you are at this computer, a quiet notification says the same after as many minutes (ten at least).
+
+## Chats
+A limit a day, off by default: after the minutes chosen (counted while a chat is in front of you), chats are covered, blurred, muted and silent (their notifications wait), for the minutes chosen; then they come back by themselves.
+
+## The page, the most needed first
+Doses due while Sioul was closed (a question on the past), then today's doses; the medicines and the prescriptions; what the watch says, only once one is set up (its folder and whether it may offer a pause are behind the page's ⚙, and nothing of the watch shows before); then the pauses: one to move during long focus, a daily limit on chats.
+
+## Your watch
+What a Garmin watch measured, read from its own files (FIT), never through a Garmin account: nothing Garmin changes on its servers can break it, and nothing goes to a server, except sealed to your other computers when you share with them (`crates/sioul-core/src/wearable.rs`).
+- **Where the files come from**:
+  - a folder you choose behind the Health page's ⚙ ("Its files come to"): Gadgetbridge's exports (the open Android companion that can replace Garmin Connect, synced with Syncthing), Garmin's own export ZIPs (the full account export, or a day's wellness export), or the watch's folders copied by hand. ZIPs inside ZIPs are opened;
+  - the watch itself, when the desktop shows its `GARMIN` folder: a watch in mass-storage mode (older models), GNOME's MTP mount (gvfs), or KDE's with kio-fuse. Recent watches speak MTP only; on KDE without kio-fuse, copy the watch's `GARMIN/Monitor`, `Sleep` and `HRVStatus` folders into the folder above (Dolphin shows them).
+  - Looked at every quarter of an hour, and at once when a watch appears. Each file is read once (its serial and the time it was made), whichever way it came. Workouts (`Activity`) are left aside: their tracks are not needed here.
+- **What is kept**, one small file a day (`~/.local/share/sioul/watch/<day>.json`): heart rate; stress as Garmin scores it (heart-rate variability while still, not a feeling); Body Battery (an undocumented field, kept only between 0 and 100); steps (the watch counts them up, Sioul keeps what each interval adds); resting heart rate; sleep levels and score; the night's HRV.
+- **What the page shows**: when the watch last gave data; in words, the day's steps, the resting heart rate with its usual (the median of the last 14 mornings), last night's sleep as a length and its hours (no stages: watches judge them poorly), Body Battery, the week's averages; then today's curves, plain, without colours as grades. No goal, no streak, no score.
+- **Gentle offers** (on unless you untick them), at a breakpoint only (a task done, a focus session ended), never in quiet time or once the day is done, 45 minutes apart at least, six a day at most, a declined rule resting longer each time (a nudge refused and repeated becomes noise):
+  - five minutes on your feet after sitting 45 minutes (by the watch's steps);
+  - a short pause when the watch scored stress high for most of the last half hour while you sat (the offer never names stress: the score tracks excitement as much as strain);
+  - after 15:00, a low Body Battery: "Move the rest to tomorrow and call it a day?", with "Done for today";
+  - midday to 16:00, room for a twenty-minute walk when Body Battery is high and steps are few.
+  Watch data older than an hour counts as none. A notification says no number.
+- **In the morning**, on the Tasks page, one line, never a notification: after a short night (under six hours, or two of the last three under six and a half), "Shorter sessions today, and the hardest task early, or tomorrow?"; when the resting heart rate stands well above its usual (7 beats, or 5 two mornings running), "Your body may be fighting something. A lighter day?". Each with "A lighter day", which sets the day's weather to haze (or fog).
+- **Not built**: Garmin's account. Garmin's official programme admits businesses only and is paused; the unofficial route imitates Garmin's phone app, which Garmin's terms forbid, and Garmin locks logins for days when it notices. It can be added, opt-in, if you want it despite that. Reading the watch over MTP directly (`mtp-rs`), without the desktop's mount, is the next step.
+- **Tested** on FIT files written by hand (a day of heart rate, stress, Body Battery, steps, a night's sleep), read through the folder and shown on the page; not yet on a real watch.

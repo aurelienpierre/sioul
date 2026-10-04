@@ -1,0 +1,24 @@
+# The manifest of a case store, an example (docs/case-store.md).
+# Put it at the root of your folder of notes, as sioul-cases.toml.
+# The record of each case stays in your own Markdown files; Sioul links to them.
+
+[[case]]
+id = "taxes-2025"
+title = "Income tax 2025"
+files = ["admin/taxes-2025.md"]
+status = "open"
+# Mail from the tax office: the domain and all its subdomains.
+[[case.route]]
+from_domains = ["impots.example"]
+
+[[case]]
+id = "health-cover"
+title = "Health cover request"
+files = ["admin/health-cover.md", "admin/outbox.md"]
+status = "waiting"
+[[case.route]]
+from_domains = ["health-insurer.example"]
+# A route can also need several things at once: here, this sender AND these words.
+[[case.route]]
+from_domains = ["hospital.example"]
+subject_contains = ["certificate", "attestation"]

@@ -1,0 +1,801 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Aurélien Pierre
+
+// One setting: its name, the control that changes it, and a sentence on what
+// it does. Used in a page's settings panel and inside a Porch lane's "?".
+
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Dialogs
+import QtQuick.Layouts
+
+ColumnLayout {
+    id: field
+
+    required property var setting
+    required property var sioul
+    required property var theme
+    readonly property var weekdays: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+    signal save(string key, var value)
+
+    function same(a, b) {
+        return JSON.stringify(a) === JSON.stringify(b)
+    }
+
+    spacing: 3
+
+    Label {
+        visible: field.setting.kind !== "note"
+        Layout.fillWidth: true
+        text: field.setting.label
+        font.weight: Font.DemiBold
+        wrapMode: Text.Wrap
+        color: field.theme.text
+    }
+
+    // Nothing to change: what a lane holds, then how mail lands there.
+    Label {
+        visible: field.setting.kind === "note"
+        Layout.fillWidth: true
+        text: field.setting.label
+        wrapMode: Text.Wrap
+        lineHeight: 1.25
+        color: field.theme.text
+    }
+
+    // On or off. Saved, the rows are read again; refused, the switch says the
+    // setting as it stayed (a click leaves its own tick otherwise).
+    Switch {
+        id: onOff
+
+        visible: field.setting.kind === "bool"
+        checked: field.setting.value === true
+        Accessible.name: field.setting.label
+        onToggled: {
+            field.save(field.setting.key, checked)
+            onOff.checked = Qt.binding(() => field.setting.value === true)
+        }
+    }
+
+    // A number.
+    RowLayout {
+        visible: field.setting.kind === "int"
+        spacing: 6
+
+        SpinBox {
+            from: field.setting.min
+            to: field.setting.max
+            stepSize: field.setting.step
+            editable: true
+            value: field.setting.kind === "int" ? field.setting.value : 0
+            Accessible.name: field.setting.label
+            onValueModified: field.save(field.setting.key, value)
+        }
+        Label {
+            text: field.setting.unit
+            color: field.theme.muted
+        }
+    }
+
+    // A number with decimals.
+    RowLayout {
+        visible: field.setting.kind === "float"
+        Layout.fillWidth: true
+        spacing: 8
+
+        Slider {
+            id: slider
+
+            Layout.fillWidth: true
+            from: field.setting.min
+            to: field.setting.max
+            stepSize: field.setting.step
+            snapMode: Slider.SnapAlways
+            value: field.setting.kind === "float" ? field.setting.value : 0
+            Accessible.name: field.setting.label
+            onPressedChanged: {
+                if (!pressed)
+                    field.save(field.setting.key, Math.round(value * 100) / 100)
+            }
+            Keys.onReleased: field.save(field.setting.key, Math.round(value * 100) / 100)
+        }
+        Label {
+            text: slider.value.toLocaleString(Qt.locale(field.sioul.text("qt-locale")), "f", field.setting.step < 1 ? 1 : 0) + " " + field.setting.unit
+            color: field.theme.text
+        }
+    }
+
+    // What a source is for: work, your admin, leisure; any of them together.
+    RowLayout {
+        id: areaRow
+
+        readonly property var on: field.setting.kind === "areas" ? String(field.setting.value).split("+") : []
+
+        visible: field.setting.kind === "areas"
+        Layout.fillWidth: true
+        spacing: 12
+
+        Repeater {
+            model: field.setting.kind === "areas" ? ["work", "admin", "leisure"] : []
+
+            delegate: CheckBox {
+                id: area
+
+                required property string modelData
+
+                text: field.sioul.text("area-" + modelData)
+                checked: areaRow.on.indexOf(modelData) >= 0
+                onToggled: {
+                    const was = areaRow.on
+                    const now = ["work", "admin", "leisure"].filter(a => a === modelData ? checked : was.indexOf(a) >= 0)
+                    field.save(field.setting.key, now.join("+"))
+                    area.checked = Qt.binding(() => areaRow.on.indexOf(area.modelData) >= 0)
+                }
+            }
+        }
+    }
+
+    // Some of a list, each ticked or not: the projects the Porch shows.
+    Flow {
+        id: picks
+
+        readonly property var on: field.setting.kind === "picks" ? field.setting.value : []
+
+        visible: field.setting.kind === "picks"
+        Layout.fillWidth: true
+        spacing: 12
+
+        Repeater {
+            model: field.setting.kind === "picks" ? field.setting.choices : []
+
+            delegate: CheckBox {
+                id: pick
+
+                required property var modelData
+
+                text: pick.modelData.label
+                checked: picks.on.indexOf(pick.modelData.value) >= 0
+                onToggled: {
+                    field.save(field.setting.key, field.setting.choices.map(c => c.value).filter(v => v === pick.modelData.value ? pick.checked : picks.on.indexOf(v) >= 0))
+                    pick.checked = Qt.binding(() => picks.on.indexOf(pick.modelData.value) >= 0)
+                }
+            }
+        }
+    }
+
+    // One of a few.
+    ComboBox {
+        visible: field.setting.kind === "choice"
+        Layout.fillWidth: true
+        model: field.setting.kind === "choice" ? field.setting.choices.map(c => c.label) : []
+        currentIndex: field.setting.kind === "choice" ? Math.max(0, field.setting.choices.findIndex(c => field.same(c.value, field.setting.value))) : -1
+        Accessible.name: field.setting.label
+        onActivated: index => field.save(field.setting.key, field.setting.choices[index].value)
+    }
+
+    // Text, a line or several.
+    TextField {
+        visible: field.setting.kind === "text"
+        Layout.fillWidth: true
+        text: field.setting.kind === "text" ? field.setting.value : ""
+        Accessible.name: field.setting.label
+        onEditingFinished: {
+            if (text !== field.setting.value)
+                field.save(field.setting.key, text)
+        }
+    }
+    ScrollView {
+        visible: field.setting.kind === "long"
+        Layout.fillWidth: true
+        Layout.preferredHeight: 90
+
+        TextArea {
+            id: longText
+
+            text: field.setting.kind === "long" ? field.setting.value : ""
+            wrapMode: TextArea.Wrap
+            Accessible.name: field.setting.label
+
+            // A field shows where it is: a border, darker when it has the focus.
+            background: Rectangle {
+                color: field.theme.surface
+                radius: field.theme.radius
+                border.color: longText.activeFocus ? field.theme.focus : field.theme.line
+            }
+            onEditingFinished: {
+                if (text !== field.setting.value)
+                    field.save(field.setting.key, text)
+            }
+        }
+    }
+
+    // A folder.
+    RowLayout {
+        visible: field.setting.kind === "folder"
+        Layout.fillWidth: true
+        spacing: 6
+
+        TextField {
+            id: folderField
+
+            Layout.fillWidth: true
+            text: field.setting.kind === "folder" ? field.setting.value : ""
+            Accessible.name: field.setting.label
+            onEditingFinished: {
+                if (text !== field.setting.value)
+                    field.save(field.setting.key, text)
+            }
+        }
+        Button {
+            implicitWidth: implicitContentWidth + leftPadding + rightPadding
+            text: field.sioul.text("ui-choose")
+            onClicked: folderDialog.open()
+
+            FolderDialog {
+                id: folderDialog
+
+                // On Windows the address is file:///C:/…: its path is C:/…, not /C:/….
+                onAccepted: field.save(field.setting.key, field.theme.localPath(selectedFolder))
+            }
+        }
+    }
+
+    // A font family: the desktop's first.
+    ComboBox {
+        readonly property var families: [""].concat(Qt.fontFamilies())
+
+        visible: field.setting.kind === "font"
+        Layout.fillWidth: true
+        model: field.setting.kind === "font" ? families.map(f => f === "" ? field.sioul.text("set-font-desktop") : f) : []
+        currentIndex: field.setting.kind === "font" ? Math.max(0, families.indexOf(field.setting.value)) : -1
+        Accessible.name: field.setting.label
+        onActivated: index => field.save(field.setting.key, families[index])
+    }
+
+    // Minutes per weekday.
+    GridLayout {
+        visible: field.setting.kind === "week"
+        Layout.fillWidth: true
+        columns: 2
+        columnSpacing: 10
+        rowSpacing: 2
+
+        Repeater {
+            model: field.setting.kind === "week" ? 7 : 0
+
+            delegate: RowLayout {
+                id: day
+
+                required property int index
+
+                spacing: 6
+
+                Label {
+                    Layout.preferredWidth: 46
+                    text: field.sioul.text("weekday-" + (day.index + 1))
+                    elide: Text.ElideRight
+                    color: field.theme.muted
+                }
+                SpinBox {
+                    from: 0
+                    to: 600
+                    stepSize: 15
+                    editable: true
+                    value: field.setting.value[day.index]
+                    Accessible.name: field.sioul.text("weekday-" + (day.index + 1))
+                    onValueModified: {
+                        const week = field.setting.value.slice()
+                        week[day.index] = value
+                        field.save(field.setting.key, week)
+                    }
+                }
+            }
+        }
+    }
+
+    // A week of hours: each day on or off, with one range of hours or
+    // several (09:00–12:00 and 14:00–17:00, a lunch between), each changed or
+    // taken away on its own; the other days and ranges are always kept.
+    GridLayout {
+        id: week
+
+        // The day's ranges as saved, in order, each with its place in the list.
+        function rangesOf(day) {
+            if (field.setting.kind !== "windows")
+                return []
+            return field.setting.value.map((w, at) => ({ at: at, day: w.day.toLowerCase(), start: w.start, end: w.end || "" })).filter(w => w.day === day).sort((a, b) => a.start.localeCompare(b.start))
+        }
+
+        function sorted(all) {
+            return all.sort((a, b) => field.weekdays.indexOf(a.day.toLowerCase()) - field.weekdays.indexOf(b.day.toLowerCase()) || a.start.localeCompare(b.start))
+        }
+
+        // A day switched on (09:00–17:00) or off (every range of it goes).
+        function setDay(day, on) {
+            const rest = field.setting.value.filter(w => w.day.toLowerCase() !== day)
+            field.save(field.setting.key, week.sorted(on ? rest.concat([{ day: day, start: "09:00", end: "17:00", minutes: 0 }]) : rest))
+        }
+
+        // One range changed, the day's others kept.
+        function setRange(at, start, end) {
+            const all = field.setting.value.slice()
+            all[at] = { day: all[at].day, start: start, end: end, minutes: 0 }
+            field.save(field.setting.key, week.sorted(all))
+        }
+
+        // Another range, an hour after the day's last one ends.
+        function addRange(day) {
+            const ranges = week.rangesOf(day)
+            const last = ranges.length > 0 && ranges[ranges.length - 1].end.length === 5 ? ranges[ranges.length - 1].end : "12:00"
+            const hour = Math.min(Number(last.slice(0, 2)) + 1, 21)
+            const pad = n => (n < 10 ? "0" : "") + n
+            field.save(field.setting.key, week.sorted(field.setting.value.concat([{ day: day, start: pad(hour) + last.slice(2), end: pad(hour + 2) + last.slice(2), minutes: 0 }])))
+        }
+
+        function removeRange(at) {
+            field.save(field.setting.key, field.setting.value.filter((w, i) => i !== at))
+        }
+
+        visible: field.setting.kind === "windows"
+        Layout.fillWidth: true
+        columns: 4
+        columnSpacing: 8
+        rowSpacing: 2
+
+        Repeater {
+            model: field.setting.kind === "windows" ? field.weekdays : []
+
+            delegate: RowLayout {
+                id: weekday
+
+                required property string modelData
+                required property int index
+                readonly property var ranges: week.rangesOf(weekday.modelData)
+
+                Layout.columnSpan: 4
+                spacing: 8
+
+                CheckBox {
+                    Layout.preferredWidth: 130
+                    Layout.alignment: Qt.AlignTop
+                    text: field.sioul.text("weekday-" + (weekday.index + 1))
+                    checked: weekday.ranges.length > 0
+                    onToggled: week.setDay(weekday.modelData, checked)
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 12
+
+                    Repeater {
+                        model: weekday.ranges
+
+                        delegate: Row {
+                            id: range
+
+                            required property var modelData
+
+                            spacing: 4
+
+                            TextField {
+                                id: from
+
+                                width: 70
+                                text: range.modelData.start
+                                inputMask: "99:99"
+                                Accessible.name: field.sioul.text("weekday-" + (weekday.index + 1))
+                                onEditingFinished: if (from.text !== range.modelData.start) week.setRange(range.modelData.at, from.text, to.text)
+                            }
+                            Label {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "–"
+                                color: field.theme.muted
+                            }
+                            TextField {
+                                id: to
+
+                                width: 70
+                                text: range.modelData.end
+                                inputMask: "99:99"
+                                Accessible.name: field.sioul.text("weekday-" + (weekday.index + 1))
+                                onEditingFinished: if (to.text !== range.modelData.end) week.setRange(range.modelData.at, from.text, to.text)
+                            }
+                            ToolButton {
+                                visible: weekday.ranges.length > 1
+                                text: "×"
+                                Accessible.name: field.sioul.text("hours-range-remove")
+                                ToolTip.visible: hovered
+                                ToolTip.text: field.sioul.text("hours-range-remove")
+                                onClicked: week.removeRange(range.modelData.at)
+                            }
+                        }
+                    }
+                    ToolButton {
+                        visible: weekday.ranges.length > 0
+                        text: "+"
+                        Accessible.name: field.sioul.text("hours-range-add")
+                        ToolTip.visible: hovered
+                        ToolTip.text: field.sioul.text("hours-range-add")
+                        onClicked: week.addRange(weekday.modelData)
+                    }
+                }
+            }
+        }
+    }
+
+    // Names, each renamed in place or taken away: kinds of task (new ones
+    // added below), categories (taken off every task, after a second word).
+    ColumnLayout {
+        visible: field.setting.kind === "kinds" || field.setting.kind === "categories" || field.setting.kind === "collections"
+        Layout.fillWidth: true
+        spacing: 2
+
+        Repeater {
+            model: field.setting.kind === "kinds" || field.setting.kind === "categories" || field.setting.kind === "collections" ? field.setting.value : []
+
+            delegate: RowLayout {
+                id: named
+
+                required property var modelData
+                property bool asking: false
+
+                Layout.fillWidth: true
+                spacing: 6
+
+                TextField {
+                    Layout.fillWidth: true
+                    text: named.modelData.label
+                    // Google's calendars change on its own pages only: greyed, with why.
+                    enabled: !named.modelData.locked
+                    ToolTip.visible: !enabled && hovered
+                    ToolTip.text: named.modelData.locked || ""
+                    Accessible.name: field.setting.label
+                    onEditingFinished: {
+                        const name = text.trim()
+                        if (name !== "" && name !== named.modelData.label)
+                            field.save(field.setting.key, { from: named.modelData.id, to: name })
+                    }
+                }
+                Label {
+                    visible: (named.modelData.detail || "") !== ""
+                    text: named.modelData.detail || ""
+                    font.pixelSize: 12
+                    color: field.theme.muted
+                }
+                ToolButton {
+                    visible: !named.asking
+                    enabled: !named.modelData.locked
+                    text: "×"
+                    Accessible.name: field.sioul.text("ui-delete")
+                    onClicked: {
+                        if (field.setting.kind === "kinds")
+                            field.save(field.setting.key, { from: named.modelData.id, to: "" })
+                        else
+                            named.asking = true
+                    }
+                }
+                Button {
+                    visible: named.asking
+                    text: field.sioul.text(field.setting.kind === "collections" ? "set-collections-remove" : "set-task-categories-remove")
+                    onClicked: field.save(field.setting.key, { from: named.modelData.id, to: "" })
+                }
+                Button {
+                    visible: named.asking
+                    flat: true
+                    text: field.sioul.text("ui-cancel")
+                    onClicked: named.asking = false
+                }
+            }
+        }
+        RowLayout {
+            visible: field.setting.kind === "kinds"
+            Layout.fillWidth: true
+            spacing: 6
+
+            TextField {
+                id: newName
+
+                Layout.fillWidth: true
+                placeholderText: field.sioul.text("set-task-kinds-new")
+                onAccepted: addName.clicked()
+            }
+            Button {
+                id: addName
+
+                enabled: newName.text.trim() !== ""
+                text: field.sioul.text("ui-add")
+                onClicked: {
+                    field.save(field.setting.key, { from: "", to: newName.text.trim() })
+                    newName.clear()
+                }
+            }
+        }
+    }
+
+    // Days off: from a day to another, and a word on them.
+    ColumnLayout {
+        visible: field.setting.kind === "timeoff"
+        Layout.fillWidth: true
+        spacing: 4
+
+        Repeater {
+            model: field.setting.kind === "timeoff" ? field.setting.value : []
+
+            delegate: RowLayout {
+                id: off
+
+                required property var modelData
+                required property int index
+
+                spacing: 6
+
+                Label {
+                    Layout.fillWidth: true
+                    text: off.modelData.from + " → " + off.modelData.until + (off.modelData.label ? "  ·  " + off.modelData.label : "")
+                    elide: Text.ElideRight
+                    color: field.theme.text
+                }
+                ToolButton {
+                    text: "×"
+                    Accessible.name: field.sioul.text("ui-delete")
+                    onClicked: field.save(field.setting.key, field.setting.value.filter((w, i) => i !== off.index))
+                }
+            }
+        }
+        RowLayout {
+            spacing: 6
+
+            TextField {
+                id: offFrom
+
+                Layout.preferredWidth: 110
+                placeholderText: "2026-12-24"
+                inputMask: "9999-99-99;_"
+            }
+            Label {
+                text: "→"
+                color: field.theme.muted
+            }
+            TextField {
+                id: offUntil
+
+                Layout.preferredWidth: 110
+                placeholderText: "2027-01-02"
+                inputMask: "9999-99-99;_"
+            }
+            TextField {
+                id: offLabel
+
+                Layout.fillWidth: true
+                placeholderText: field.sioul.text("set-time-off-label")
+            }
+            Button {
+                text: field.sioul.text("set-time-off-add")
+                enabled: /^\d{4}-\d\d-\d\d$/.test(offFrom.text) && /^\d{4}-\d\d-\d\d$/.test(offUntil.text)
+                onClicked: {
+                    field.save(field.setting.key, field.setting.value.concat([{ from: offFrom.text, until: offUntil.text, label: offLabel.text }]))
+                    offFrom.text = ""
+                    offUntil.text = ""
+                    offLabel.text = ""
+                }
+            }
+        }
+    }
+
+    // Addresses and @domains, or words: side by side, each with its ×.
+    ColumnLayout {
+        visible: field.setting.kind === "senders" || field.setting.kind === "words"
+        Layout.fillWidth: true
+        spacing: 6
+
+        Flow {
+            Layout.fillWidth: true
+            spacing: 6
+
+            Repeater {
+                model: field.setting.kind === "senders" || field.setting.kind === "words" ? field.setting.value : []
+
+                delegate: Rectangle {
+                    id: entry
+
+                    required property string modelData
+
+                    implicitWidth: Math.min(entryRow.implicitWidth + 10, field.width)
+                    implicitHeight: entryRow.implicitHeight
+                    radius: field.theme.radius
+                    color: field.theme.button
+
+                    RowLayout {
+                        id: entryRow
+
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        spacing: 0
+
+                        // An address or a domain, as a message gave it: plain text.
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.maximumWidth: field.width - 50
+                            text: entry.modelData
+                            textFormat: Text.PlainText
+                            elide: Text.ElideMiddle
+                            color: field.theme.text
+                        }
+                        ToolButton {
+                            implicitHeight: 28
+                            implicitWidth: 28
+                            text: "×"
+                            Accessible.name: field.sioul.text("ui-delete") + " " + entry.modelData
+                            onClicked: field.save(field.setting.key, field.setting.value.filter(e => e !== entry.modelData))
+                        }
+                    }
+                }
+            }
+        }
+        TextField {
+            Layout.fillWidth: true
+            placeholderText: field.sioul.text(field.setting.kind === "words" ? "set-words-add" : "set-senders-add")
+            onAccepted: {
+                if (text.trim() === "")
+                    return
+                field.save(field.setting.key, field.setting.value.concat([text.trim()]))
+                clear()
+            }
+        }
+    }
+
+    // A secret for the keyring: typed, never shown again.
+    ColumnLayout {
+        id: secretBox
+
+        // Its words: the AI's key, GitHub's token.
+        readonly property string words: field.setting.key === "github_token" ? "set-github-token" : "set-ai-key"
+
+        visible: field.setting.kind === "secret"
+        Layout.fillWidth: true
+        spacing: 4
+
+        Label {
+            Layout.fillWidth: true
+            text: field.setting.value === true ? field.sioul.text(secretBox.words + "-kept") : field.sioul.text(secretBox.words + "-none")
+            wrapMode: Text.Wrap
+            color: field.setting.value === true ? field.theme.accent : field.theme.muted
+        }
+        RowLayout {
+            Layout.fillWidth: true
+
+            PasswordField {
+                id: secretField
+
+                Layout.fillWidth: true
+                sioul: field.sioul
+                placeholderText: field.setting.label
+                Accessible.name: field.setting.label
+                onAccepted: if (keepSecret.enabled) keepSecret.clicked()
+            }
+            Button {
+                id: keepSecret
+
+                text: field.sioul.text("set-ai-key-keep")
+                enabled: secretField.text.trim() !== ""
+                onClicked: {
+                    field.save(field.setting.key, secretField.text)
+                    secretField.clear()
+                }
+            }
+        }
+        Button {
+            visible: field.setting.value === true
+            implicitWidth: implicitContentWidth + leftPadding + rightPadding
+            flat: true
+            text: field.sioul.text(secretBox.words + "-forget")
+            onClicked: field.save(field.setting.key, "")
+        }
+        // GitHub's page for a token, its rights filled in: read issues and pull requests.
+        Button {
+            visible: field.setting.key === "github_token" && field.setting.value !== true
+            implicitWidth: implicitContentWidth + leftPadding + rightPadding
+            flat: true
+            text: field.sioul.text("set-github-token-make")
+            onClicked: Qt.openUrlExternally("https://github.com/settings/personal-access-tokens/new?name=Sioul&description=Read+issues+and+pull+requests&expires_in=366&issues=read&pull_requests=read&metadata=read")
+        }
+    }
+
+    // A case's routes: each a few lines, comma-separated words.
+    ColumnLayout {
+        visible: field.setting.kind === "routes"
+        Layout.fillWidth: true
+        spacing: 8
+
+        Repeater {
+            model: field.setting.kind === "routes" ? field.setting.value : []
+
+            delegate: Rectangle {
+                id: route
+
+                required property var modelData
+                required property int index
+
+                function changed(part, text) {
+                    const all = JSON.parse(JSON.stringify(field.setting.value))
+                    all[route.index][part] = text.split(",").map(t => t.trim()).filter(t => t !== "")
+                    field.save(field.setting.key, all)
+                }
+
+                Layout.fillWidth: true
+                implicitHeight: routeColumn.implicitHeight + 16
+                radius: field.theme.radius
+                color: "transparent"
+                border.color: field.theme.line
+
+                ColumnLayout {
+                    id: routeColumn
+
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 4
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: field.sioul.text("set-route") + " " + (route.index + 1)
+                            color: field.theme.muted
+                        }
+                        ToolButton {
+                            text: "×"
+                            Accessible.name: field.sioul.text("ui-delete")
+                            onClicked: field.save(field.setting.key, field.setting.value.filter((r, i) => i !== route.index))
+                        }
+                    }
+                    Repeater {
+                        model: [["from_domains", "set-route-domains"], ["from_addresses", "set-route-addresses"], ["subject_contains", "set-route-subject"], ["text_contains", "set-route-text"], ["attachment_contains", "set-route-attachments"]]
+
+                        delegate: ColumnLayout {
+                            id: part
+
+                            required property var modelData
+
+                            Layout.fillWidth: true
+                            spacing: 1
+
+                            Label {
+                                text: field.sioul.text(part.modelData[1])
+                                font.pixelSize: 12
+                                color: field.theme.muted
+                            }
+                            TextField {
+                                Layout.fillWidth: true
+                                text: (route.modelData[part.modelData[0]] || []).join(", ")
+                                placeholderText: field.sioul.text("set-route-comma")
+                                onEditingFinished: {
+                                    if (text !== (route.modelData[part.modelData[0]] || []).join(", "))
+                                        route.changed(part.modelData[0], text)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Button {
+            implicitWidth: implicitContentWidth + leftPadding + rightPadding
+            flat: true
+            text: "+  " + field.sioul.text("set-route-add")
+            onClicked: field.save(field.setting.key, field.setting.value.concat([{ from_domains: [], from_addresses: [], subject_contains: [], text_contains: [], attachment_contains: [] }]))
+        }
+    }
+
+    Label {
+        visible: text !== ""
+        Layout.fillWidth: true
+        text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        lineHeight: 1.25
+        color: field.theme.muted
+    }
+}

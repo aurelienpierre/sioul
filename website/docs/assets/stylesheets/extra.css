@@ -1,0 +1,257 @@
+/*
+ * Sioul's website, in Sioul's own colours (crates/sioul-app/qml/Theme.qml):
+ * muted, even steps of lightness, no pure white or black, no red. Light and
+ * dark follow the reader's system unless they choose; nothing moves by itself.
+ */
+
+/* Light: warm paper, dark ink, a quiet green. */
+[data-md-color-scheme="default"] {
+  --md-hue: 40deg;
+  --color-foreground: 45 42 38;
+  --color-background: 245 242 236;
+  --color-background-subtle: 235 229 217;
+  --color-backdrop: 245 242 236;
+
+  --md-default-bg-color: #f5f2ec;
+  --md-default-bg-color--light: #f5f2ecb3;
+  --md-default-bg-color--lighter: #f5f2ec4d;
+  --md-default-bg-color--lightest: #f5f2ec1f;
+  --md-default-fg-color: #2d2a26;
+  --md-default-fg-color--light: #6b655c;
+  --md-default-fg-color--lighter: #6b655c80;
+  --md-default-fg-color--lightest: #2d2a2612;
+
+  --md-primary-fg-color: #4c6b5c;
+  --md-primary-fg-color--light: #5f8572;
+  --md-primary-fg-color--dark: #2f4a3d;
+  --md-primary-bg-color: #fbfaf7;
+  --md-primary-bg-color--light: #fbfaf7b3;
+  --md-accent-fg-color: #2f4a3d;
+  --md-accent-fg-color--transparent: #4c6b5c1a;
+  --md-accent-bg-color: #fbfaf7;
+
+  --md-typeset-color: #2d2a26;
+  --md-typeset-a-color: #3f5c4e;
+  --md-code-bg-color: #ebe5d9;
+  --md-code-fg-color: #2d2a26;
+  --md-typeset-kbd-color: #fbfaf7;
+  --md-typeset-kbd-accent-color: #e2dccf;
+  --md-typeset-kbd-border-color: #c9bfac;
+  --md-typeset-table-color: #2d2a261f;
+  --md-typeset-table-color--light: #2d2a260a;
+  --md-admonition-bg-color: #fbfaf7;
+  --md-admonition-fg-color: #2d2a26;
+  --md-footer-bg-color: #ebe5d9;
+  --md-footer-bg-color--dark: #e2dccf;
+  --md-footer-fg-color: #2d2a26;
+  --md-footer-fg-color--light: #6b655c;
+  --md-footer-fg-color--lighter: #6b655c;
+  --sioul-line: #e2dccf;
+  --sioul-surface: #fbfaf7;
+  --sioul-warm: #8f6330;
+}
+
+/* Dark: the same, at night. */
+[data-md-color-scheme="slate"] {
+  --md-hue: 80deg;
+  --color-foreground: 230 226 218;
+  --color-background: 30 31 28;
+  --color-background-subtle: 39 40 36;
+  --color-backdrop: 30 31 28;
+
+  --md-default-bg-color: #1e1f1c;
+  --md-default-bg-color--light: #1e1f1cb3;
+  --md-default-bg-color--lighter: #1e1f1c4d;
+  --md-default-bg-color--lightest: #1e1f1c1f;
+  --md-default-fg-color: #e6e2da;
+  --md-default-fg-color--light: #a8a297;
+  --md-default-fg-color--lighter: #a8a29780;
+  --md-default-fg-color--lightest: #e6e2da14;
+
+  --md-primary-fg-color: #93b5a2;
+  --md-primary-fg-color--light: #a9c6b6;
+  --md-primary-fg-color--dark: #5d8471;
+  --md-primary-bg-color: #1e1f1c;
+  --md-primary-bg-color--light: #1e1f1cb3;
+  --md-accent-fg-color: #c9d9cf;
+  --md-accent-fg-color--transparent: #93b5a21a;
+  --md-accent-bg-color: #1e1f1c;
+
+  --md-typeset-color: #e6e2da;
+  --md-typeset-a-color: #a9c6b6;
+  --md-code-bg-color: #272824;
+  --md-code-fg-color: #e6e2da;
+  --md-typeset-kbd-color: #34352f;
+  --md-typeset-kbd-accent-color: #3a3b35;
+  --md-typeset-kbd-border-color: #1e1f1c;
+  --md-typeset-table-color: #e6e2da1f;
+  --md-typeset-table-color--light: #e6e2da0a;
+  --md-admonition-bg-color: #272824;
+  --md-admonition-fg-color: #e6e2da;
+  --md-footer-bg-color: #272824;
+  --md-footer-bg-color--dark: #1e1f1c;
+  --md-footer-fg-color: #e6e2da;
+  --md-footer-fg-color--light: #a8a297;
+  --md-footer-fg-color--lighter: #a8a297;
+  --sioul-line: #3b3b36;
+  --sioul-surface: #272824;
+  --sioul-warm: #d4a56c;
+}
+
+/* Headings in ink, not in pure black or white. */
+[data-md-color-scheme] .md-typeset h1,
+[data-md-color-scheme] .md-typeset h2,
+[data-md-color-scheme] .md-typeset h3,
+[data-md-color-scheme] .md-typeset h4,
+[data-md-color-scheme] .md-header__title {
+  color: var(--md-default-fg-color);
+}
+
+/* Room to breathe: longer lines are harder to follow on a tired day. */
+.md-typeset {
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+.md-typeset p,
+.md-typeset ul,
+.md-typeset ol {
+  max-width: 42rem;
+}
+.md-typeset h2 {
+  margin-top: 2.4em;
+}
+.md-typeset li + li {
+  margin-top: 0.35em;
+}
+
+/* Links are underlined: colour alone does not say "this is a link". */
+.md-typeset a {
+  text-decoration: underline;
+  text-decoration-thickness: 0.06em;
+  text-underline-offset: 0.18em;
+}
+.md-typeset a.headerlink,
+.md-typeset .grid.cards a,
+.md-typeset a.md-button {
+  text-decoration: none;
+}
+
+/* Screenshots: framed lightly, never wider than the text column allows. */
+.md-typeset figure {
+  margin: 1.6em 0;
+}
+.md-typeset figure img,
+.md-typeset img.screen {
+  border: 1px solid var(--sioul-line);
+  border-radius: 6px;
+  max-width: 100%;
+  height: auto;
+}
+.md-typeset figcaption {
+  max-width: 42rem;
+  margin-top: 0.6em;
+  color: var(--md-default-fg-color--light);
+  font-style: normal;
+}
+/* A picture is a link to itself at full size: no underline under it. */
+.md-typeset a:has(> img) {
+  text-decoration: none;
+}
+.md-typeset .grid > figure {
+  margin: 0;
+}
+/* The line break Markdown leaves between a picture and its caption. */
+.md-typeset figure > br {
+  display: none;
+}
+/* At night, the light pictures of the window glare less. */
+[data-md-color-scheme="slate"] .md-typeset figure img {
+  filter: brightness(0.88);
+}
+
+/* The developers' section stays out of the way: in the menu of a narrow
+   screen, it shows only once you are in it (the footer and the home page
+   lead there). On a wide screen each section has its own sidebar anyway. */
+.md-nav--primary > .md-nav__list > .md-nav__item:last-child:not(.md-nav__item--active) {
+  display: none;
+}
+
+/* Cards: flat, a thin line, no shadow that jumps on hover. */
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid > .card {
+  border: 1px solid var(--sioul-line);
+  border-radius: 6px;
+  background: var(--sioul-surface);
+  box-shadow: none;
+  transition: none;
+}
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid > .card:hover {
+  border-color: var(--md-primary-fg-color--light);
+  box-shadow: none;
+}
+
+/* Admonitions: calm boxes; a warning is warm, never red. */
+.md-typeset .admonition,
+.md-typeset details {
+  border-width: 1px;
+  box-shadow: none;
+  font-size: 0.8rem;
+}
+.md-typeset .admonition.warning,
+.md-typeset details.warning {
+  border-color: var(--sioul-warm);
+}
+.md-typeset .warning > .admonition-title,
+.md-typeset .warning > summary {
+  background-color: color-mix(in srgb, var(--sioul-warm) 10%, transparent);
+}
+.md-typeset .warning > .admonition-title::before,
+.md-typeset .warning > summary::before {
+  background-color: var(--sioul-warm);
+}
+
+/* Paths in the first column of a table stay on one line. */
+.md-typeset td:first-child code {
+  white-space: nowrap;
+}
+
+/* Keys, as the window shows them. */
+.md-typeset kbd {
+  font-size: 0.8em;
+}
+
+/* The footer: the copyright, then the privacy policy and the developers. */
+.sioul-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  margin: 0.4rem 0;
+}
+.sioul-footer-links a,
+.sioul-footer-made a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+.sioul-footer-made {
+  color: var(--md-footer-fg-color--light);
+}
+
+/* The quiet link at the bottom of the home page. */
+.md-typeset .sioul-quiet {
+  margin-top: 3rem;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.75rem;
+}
+
+/* Nothing slides or fades for those who asked their system for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

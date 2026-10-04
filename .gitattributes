@@ -1,0 +1,16 @@
+# Text as committed, LF everywhere: the locales, presets and scripts built
+# into the programs are the same on every system.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.ttf binary
+*.otf binary
+*.woff2 binary
+*.ogg binary
+*.opus binary
+*.mp3 binary
+*.wav binary
+*.zip binary

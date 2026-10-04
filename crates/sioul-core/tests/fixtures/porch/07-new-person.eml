@@ -1,0 +1,8 @@
+Authentication-Results: mx.example.net; dkim=pass header.d=example.org
+From: Jane Doe <jane@example.org>
+To: you@example.org
+Subject: Hello
+Date: Wed, 30 Sep 2026 18:00:00 +0200
+Content-Type: text/plain
+
+Hi, we met at the dance.

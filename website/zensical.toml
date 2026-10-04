@@ -1,0 +1,173 @@
+# Sioul's website: the user guide, the privacy policy, and the developers'
+# design notes (copied from ../docs by build.sh, never by hand).
+#
+# Build it with ./build.sh (see the top of that file); Zensical 0.0.67.
+
+[project]
+site_name = "Sioul"
+site_url = "https://aurelienpierre.github.io/sioul/"
+site_description = "Sioul, a calm place for mail, tasks and admin, designed for people for whom admin hurts."
+site_author = "Aurélien Pierre"
+copyright = "Copyright &copy; 2026 Aurélien Pierre · Sioul is free software, under the GPL-3.0-or-later licence."
+
+# Page addresses end in .html: the design notes hold both research.md and
+# research/README.md, which would otherwise both become research/index.html.
+use_directory_urls = false
+
+extra_css = ["assets/stylesheets/extra.css"]
+
+# Two sections. The user guide is the main navigation; the developers' section
+# has its own sidebar and is reached from the footer and the bottom of the home
+# page only (the tabs that would show it are taken out in overrides/main.html).
+nav = [
+  { "User guide" = [
+    { "Home" = "index.md" },
+    { "Getting started" = [
+      { "Install" = "guide/install.md" },
+      { "First steps" = "guide/first-steps.md" },
+    ] },
+    { "The window" = [
+      { "The Porch" = "guide/porch.md" },
+      { "Mail" = "guide/mail.md" },
+      { "Tasks" = "guide/tasks.md" },
+      { "Agenda" = "guide/agenda.md" },
+      { "Contacts and the map" = "guide/contacts.md" },
+      { "Notes" = "guide/notes.md" },
+      { "Projects" = "guide/projects.md" },
+      { "Time and invoices" = "guide/time.md" },
+      { "Budgets and bank accounts" = "guide/budgets.md" },
+      { "Papers and letters" = "guide/papers.md" },
+      { "Health" = "guide/health.md" },
+      { "Sites" = "guide/sites.md" },
+      { "Accounts" = "guide/accounts.md" },
+      { "Settings" = "guide/settings.md" },
+    ] },
+    { "Across Sioul" = [
+      { "Hours: work, your admin, free time" = "guide/hours.md" },
+      { "Sharing between your computers" = "guide/sharing.md" },
+      { "Using an AI agent" = "guide/ai-agent.md" },
+      { "Privacy and security" = "guide/privacy-security.md" },
+    ] },
+    { "Privacy policy" = "privacy.md" },
+  ] },
+  { "For developers" = [
+    { "Overview" = "dev/index.md" },
+    { "Design" = [
+      { "Design" = "dev/design.md" },
+      { "What the research says" = "dev/research.md" },
+      { "Roadmap" = "dev/roadmap.md" },
+    ] },
+    { "Research" = [
+      { "The research notes" = "dev/research/README.md" },
+      { "Starting and keeping up with tasks" = "dev/research/tasks.md" },
+      { "Done for today" = "dev/research/done-for-the-day.md" },
+      { "Life admin, beyond tasks" = "dev/research/life-admin.md" },
+      { "One's own watch" = "dev/research/wearables.md" },
+      { "Google, security keys, GitHub" = "dev/research/platform.md" },
+      { "Bitwarden, antivirus, sounds, weather" = "dev/research/bundling.md" },
+    ] },
+    { "Building" = [
+      { "Building and running" = "dev/building.md" },
+      { "Architecture" = "dev/architecture.md" },
+      { "Languages" = "dev/i18n.md" },
+    ] },
+    { "Mail" = [
+      { "The Porch" = "dev/porch.md" },
+      { "Mail, contacts, calendars" = "dev/client.md" },
+      { "The case store" = "dev/case-store.md" },
+      { "Virtual Secretary" = "dev/virtual-secretary.md" },
+    ] },
+    { "Tasks and time" = [
+      { "Tasks, notes, links, focus" = "dev/tasks.md" },
+      { "Areas and hours" = "dev/areas.md" },
+      { "Reminders" = "dev/reminders.md" },
+      { "Projects, time, invoices" = "dev/projects.md" },
+      { "Sounds" = "dev/sounds.md" },
+    ] },
+    { "Money and papers" = [
+      { "Accounting" = "dev/accounting.md" },
+      { "Papers" = "dev/papers.md" },
+    ] },
+    { "Elsewhere" = [
+      { "Google" = "dev/google.md" },
+      { "GitHub" = "dev/github.md" },
+      { "Sites" = "dev/sites.md" },
+      { "Health" = "dev/health.md" },
+      { "Several computers" = "dev/database.md" },
+      { "AI" = "dev/ai.md" },
+      { "AI agents (MCP)" = "dev/mcp.md" },
+    ] },
+  ] },
+]
+
+[project.theme]
+language = "en"
+custom_dir = "overrides"
+favicon = "assets/images/favicon.svg"
+# Sioul's icon (tools/make-icons.py): on the green header in light colours its
+# square melts into the header and the quill shows; in dark colours it stands out.
+logo = "assets/images/logo.svg"
+# The system's own fonts: nothing is loaded from Google Fonts or anyone else.
+font = false
+features = [
+  "content.code.copy",
+  "content.tooltips",
+  "navigation.footer",
+  "navigation.instant",
+  "navigation.sections",
+  # Each section keeps its own sidebar; the tabs themselves are not shown.
+  "navigation.tabs",
+  "search.highlight",
+]
+
+# Light, dark, or as the system has it; the colours are Sioul's own
+# (assets/stylesheets/extra.css, from crates/sioul-app/qml/Theme.qml).
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light colours"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark colours"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Colours as the system has them"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/aurelienpierre/sioul"
+name = "Sioul's sources and issues, on GitHub"
+
+[project.markdown_extensions]
+abbr = {}
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.betterem = {}
+pymdownx.details = {}
+pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"
+pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.line_spans = "__span"
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true
+pymdownx.tabbed.combine_header_slug = true

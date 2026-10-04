@@ -1,0 +1,611 @@
+[
+  {
+    "name": "WhatsApp",
+    "url": "https://web.whatsapp.com/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Messages and calls",
+      "fr": "Messages et appels"
+    },
+    "calls": true,
+    "checked": "200 with browser navigation headers (plain curl gets 400); headless Chromium shows the QR sign-in; calls in the browser since 2026 (one-to-one from February, groups from 28 July 2026)"
+  },
+  {
+    "name": "Telegram",
+    "url": "https://web.telegram.org/k/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Messages, groups and channels",
+      "fr": "Messages, groupes et chaînes"
+    },
+    "calls": true,
+    "checked": "200; headless Chromium shows 'Log in by QR code'; telegram.org lists WebK and WebA equally and web.telegram.org assigns K or A at random (alternative: https://web.telegram.org/a/, also 200); WebK has one-to-one and group calls"
+  },
+  {
+    "name": "Discord",
+    "url": "https://discord.com/app",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "discord.com"
+    ],
+    "about": {
+      "en": "Community chats and voice rooms",
+      "fr": "Discussions et salons vocaux"
+    },
+    "calls": true,
+    "checked": "200; the page sends signed-out visitors to https://discord.com/login"
+  },
+  {
+    "name": "Element",
+    "url": "https://app.element.io/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "matrix.org"
+    ],
+    "about": {
+      "en": "Encrypted Matrix messaging",
+      "fr": "Messagerie Matrix chiffrée"
+    },
+    "calls": true,
+    "checked": "200; the page shows https://app.element.io/#/welcome (sign in or create an account)"
+  },
+  {
+    "name": "Messenger",
+    "url": "https://www.facebook.com/messages/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "facebookmail.com"
+    ],
+    "about": {
+      "en": "Facebook Messenger chats",
+      "fr": "Discussions Messenger de Facebook"
+    },
+    "calls": true,
+    "checked": "redirect to https://www.facebook.com/login.php?next=... (sign-in page; plain curl gets 400). Meta ended messaging on messenger.com in April 2026 and sends users to facebook.com/messages, so a Facebook account is needed (messenger.com still serves a sign-in page)"
+  },
+  {
+    "name": "Instagram",
+    "url": "https://www.instagram.com/direct/inbox/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "instagram.com"
+    ],
+    "about": {
+      "en": "Instagram direct messages",
+      "fr": "Messages privés Instagram"
+    },
+    "calls": true,
+    "checked": "redirect to https://www.instagram.com/accounts/login/?next=... (sign-in page)"
+  },
+  {
+    "name": "Google Messages",
+    "url": "https://messages.google.com/web/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Android phone texts (SMS, RCS)",
+      "fr": "SMS et RCS du téléphone Android"
+    },
+    "calls": false,
+    "checked": "200; the page shows https://messages.google.com/web/welcome (sign in with Google); no phone calls from the web, its video button hands off to Google Meet"
+  },
+  {
+    "name": "Snapchat",
+    "url": "https://www.snapchat.com/web/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "snapchat.com"
+    ],
+    "about": {
+      "en": "Snapchat chats and calls",
+      "fr": "Discussions et appels Snapchat"
+    },
+    "calls": true,
+    "checked": "200 (web.snapchat.com redirects here); signed-out visitors are sent to the Snapchat home page, which holds the sign-in form"
+  },
+  {
+    "name": "Wire",
+    "url": "https://app.wire.com/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Encrypted messages and calls",
+      "fr": "Messages et appels chiffrés"
+    },
+    "calls": true,
+    "checked": "200"
+  },
+  {
+    "name": "Threema",
+    "url": "https://web.threema.com/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Encrypted chats through your phone",
+      "fr": "Discussions chiffrées via le téléphone"
+    },
+    "calls": false,
+    "checked": "200 (web.threema.ch redirects here); shows the QR code to scan with the phone app, which must stay online; Threema Web still maintained in 2026 (v2.6.5, July 2026) but in maintenance mode, no calls"
+  },
+  {
+    "name": "Bluesky",
+    "url": "https://bsky.app/messages",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Bluesky direct messages",
+      "fr": "Messages privés Bluesky"
+    },
+    "calls": false,
+    "checked": "200; signed-out visitors see Sign up / Sign in"
+  },
+  {
+    "name": "Google Chat",
+    "url": "https://chat.google.com/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "google.com"
+    ],
+    "about": {
+      "en": "Chats between Google accounts",
+      "fr": "Discussions entre comptes Google"
+    },
+    "calls": true,
+    "checked": "200 after redirect: plain curl lands on the Google sign-in page, headless Chromium (signed out) on the Workspace page for Chat with a Sign in button; signed-in users get the app"
+  },
+  {
+    "name": "XChat",
+    "url": "https://x.com/i/chat",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "x.com"
+    ],
+    "about": {
+      "en": "X (Twitter) direct messages",
+      "fr": "Messages privés de X (Twitter)"
+    },
+    "checked": "redirect to https://x.com/i/jf/onboarding/web?redirect_after_login=%2Fi%2Fchat&mode=login (sign-in page); x.com/messages also lands here"
+  },
+  {
+    "name": "Slack",
+    "url": "https://app.slack.com/client",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "slack.com"
+    ],
+    "about": {
+      "en": "Team chat, for work",
+      "fr": "Discussions d'équipe, pour le travail"
+    },
+    "calls": true,
+    "checked": "200; with a current Chrome user agent the page sends signed-out visitors to https://app.slack.com/workspace-signin; with a Chrome 134 user agent Slack shows 'browser no longer supported' (slack.com/signin answers 403 to robots)"
+  },
+  {
+    "name": "Microsoft Teams",
+    "url": "https://teams.cloud.microsoft/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "microsoft.com"
+    ],
+    "about": {
+      "en": "Meetings and chat, for work",
+      "fr": "Réunions et discussions, pour le travail"
+    },
+    "calls": true,
+    "checked": "200; Microsoft's new domain for Teams on the web (MC1465764: teams.microsoft.com redirects work accounts here, rollout done end of September 2026)"
+  },
+  {
+    "name": "Microsoft Teams (free)",
+    "url": "https://teams.live.com/v2/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "microsoft.com"
+    ],
+    "about": {
+      "en": "Personal chats and calls",
+      "fr": "Discussions et appels personnels"
+    },
+    "calls": true,
+    "checked": "200 (teams.live.com redirects here; web.skype.com and skype.com also redirect to Teams free since Skype's retirement on 5 May 2025)"
+  },
+  {
+    "name": "LinkedIn",
+    "url": "https://www.linkedin.com/messaging/",
+    "category": "chat",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "linkedin.com"
+    ],
+    "about": {
+      "en": "Professional messages, for work",
+      "fr": "Messages professionnels, pour le travail"
+    },
+    "calls": false,
+    "checked": "redirect to https://www.linkedin.com/uas/login?session_redirect=... (sign-in page); no built-in calls, its video meeting button hands off to Teams or Zoom"
+  },
+  {
+    "name": "Tchap",
+    "url": "https://www.tchap.gouv.fr/",
+    "category": "chat",
+    "country": "FR",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Chat for French public agents",
+      "fr": "Messagerie des agents publics"
+    },
+    "checked": "200 (tchap.gouv.fr redirects here); the page shows https://www.tchap.gouv.fr/#/welcome (Se connecter, Créer un compte). La Suite FAQ: every public agent can sign up if their e-mail domain is allowed; outsiders can be invited with limited rights"
+  },
+  {
+    "name": "Jitsi Meet",
+    "url": "https://meet.jit.si/",
+    "category": "video",
+    "country": "",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Free open-source video meetings",
+      "fr": "Visioconférence libre et gratuite"
+    },
+    "checked": "200"
+  },
+  {
+    "name": "Google Meet",
+    "url": "https://meet.google.com/landing",
+    "category": "video",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "google.com"
+    ],
+    "about": {
+      "en": "Video calls with a Google account",
+      "fr": "Appels vidéo avec un compte Google"
+    },
+    "checked": "redirect to https://accounts.google.com/v3/signin/identifier?continue=https://meet.google.com/landing... (sign-in page); the bare meet.google.com sends signed-out visitors to the marketing page"
+  },
+  {
+    "name": "Zoom",
+    "url": "https://app.zoom.us/wc",
+    "category": "video",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "zoom.us"
+    ],
+    "about": {
+      "en": "Video meetings",
+      "fr": "Réunions en vidéo"
+    },
+    "checked": "200; the Zoom Web App (address from Zoom support; app.zoom.us redirects here), offers Sign in, Sign up, Join a meeting"
+  },
+  {
+    "name": "Whereby",
+    "url": "https://whereby.com/user",
+    "category": "video",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "whereby.com"
+    ],
+    "about": {
+      "en": "Simple video meeting rooms",
+      "fr": "Salles de visioconférence simples"
+    },
+    "checked": "200; the page sends signed-out visitors to https://whereby.com/user/login; free plan limited to 4 people and 30 minutes since January 2025"
+  },
+  {
+    "name": "Webex",
+    "url": "https://web.webex.com/",
+    "category": "video",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "webex.com"
+    ],
+    "about": {
+      "en": "Video meetings, for work",
+      "fr": "Visioconférences, pour le travail"
+    },
+    "checked": "200; the page sends signed-out visitors to https://web.webex.com/sign-in (sign in or join a meeting)"
+  },
+  {
+    "name": "GoTo Meeting",
+    "url": "https://app.goto.com/meeting/",
+    "category": "video",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "goto.com"
+    ],
+    "about": {
+      "en": "Online meetings, for work",
+      "fr": "Réunions en ligne, pour le travail"
+    },
+    "checked": "200 (app.gotomeeting.com, the address GoTo support gives, redirects here); sign in or join a meeting by ID"
+  },
+  {
+    "name": "Proton Meet",
+    "url": "https://meet.proton.me/",
+    "category": "video",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "proton.me"
+    ],
+    "about": {
+      "en": "Encrypted video meetings",
+      "fr": "Visioconférence chiffrée"
+    },
+    "checked": "200; signed-out visitors land on https://meet.proton.me/guest/dashboard (create a meeting as a guest, or sign in)"
+  },
+  {
+    "name": "Element Call",
+    "url": "https://call.element.io/",
+    "category": "video",
+    "country": "",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Encrypted Matrix video calls",
+      "fr": "Appels vidéo Matrix chiffrés"
+    },
+    "checked": "200; standalone page (start a call with a display name, guest account on Element's server); the Element Call README calls it the live demo and the page says beta"
+  },
+  {
+    "name": "Visio",
+    "url": "https://visio.numerique.gouv.fr/",
+    "category": "video",
+    "country": "FR",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Video meetings for French State agents",
+      "fr": "Visioconférence des agents de l'État"
+    },
+    "checked": "200; signed-out visitors are sent to https://lasuite.numerique.gouv.fr/produits/visio (Se connecter via ProConnect). Official FAQ: all State civil servants can create meetings with their work account; anyone with the link can join a meeting open to outsiders"
+  },
+  {
+    "name": "Slowly",
+    "url": "https://web.slowly.app/",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Slow letters with pen pals",
+      "fr": "Lettres lentes entre correspondants"
+    },
+    "checked": "200; headless Chromium shows 'Sign in to Slowly' (QR code from the phone app, or Google, Apple, Facebook); address given by Slowly's help center"
+  },
+  {
+    "name": "InterPals",
+    "url": "https://www.interpals.net/",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "interpals.net"
+    ],
+    "about": {
+      "en": "Pen pals and language exchange",
+      "fr": "Correspondants et échange linguistique"
+    },
+    "checked": "200; the home page holds the sign-in form, inner pages send signed-out visitors back to it"
+  },
+  {
+    "name": "PenPal World",
+    "url": "https://www.penpalworld.com/",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "penpalworld.com"
+    ],
+    "about": {
+      "en": "Pen pals worldwide",
+      "fr": "Correspondants du monde entier"
+    },
+    "checked": "200; the home page holds the sign-in form"
+  },
+  {
+    "name": "Meetup",
+    "url": "https://www.meetup.com/home/",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "meetup.com"
+    ],
+    "about": {
+      "en": "Local groups and events",
+      "fr": "Groupes et sorties locales"
+    },
+    "checked": "redirect to https://www.meetup.com/login/?returnUri=... (sign-in page)"
+  },
+  {
+    "name": "InterNations",
+    "url": "https://www.internations.org/login",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "internations.org"
+    ],
+    "about": {
+      "en": "Expat community and events",
+      "fr": "Communauté et sorties d'expatriés"
+    },
+    "checked": "200 (sign-in page)"
+  },
+  {
+    "name": "OkCupid",
+    "url": "https://www.okcupid.com/home",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "okcupid.com"
+    ],
+    "about": {
+      "en": "Dating matched on questions",
+      "fr": "Rencontres selon vos réponses"
+    },
+    "checked": "200 (app page, served behind Cloudflare: okcupid.com/login answers 403 to robots)"
+  },
+  {
+    "name": "Tinder",
+    "url": "https://tinder.com/app/recs",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "gotinder.com"
+    ],
+    "about": {
+      "en": "Swipe-based dating",
+      "fr": "Rencontres par swipe"
+    },
+    "checked": "200; the page sends signed-out visitors to https://tinder.com/ and its Log in button"
+  },
+  {
+    "name": "Badoo",
+    "url": "https://badoo.com/encounters",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "badoo.com"
+    ],
+    "about": {
+      "en": "Dating and chat",
+      "fr": "Rencontres et discussions"
+    },
+    "checked": "200; the page sends signed-out visitors to https://badoo.com/landing (sign-in and sign-up)"
+  },
+  {
+    "name": "Plenty of Fish",
+    "url": "https://www.pof.com/login",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "pof.com"
+    ],
+    "about": {
+      "en": "Free dating site",
+      "fr": "Site de rencontre gratuit"
+    },
+    "checked": "200 (sign-in page)"
+  },
+  {
+    "name": "Match",
+    "url": "https://www.match.com/login",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "match.com"
+    ],
+    "about": {
+      "en": "Dating for relationships",
+      "fr": "Rencontres pour une relation"
+    },
+    "checked": "403 (blocks robots); match.com sends visitors outside the US to their local Match site (from France: https://uk.match.com/?geo-redirection=www.match.com, sign-in at https://uk.match.com/login, 200)"
+  },
+  {
+    "name": "Meetic",
+    "url": "https://www.meetic.fr/login",
+    "category": "dating",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "meetic.fr"
+    ],
+    "about": {
+      "en": "Dating in France",
+      "fr": "Rencontres en France"
+    },
+    "checked": "200 (sign-in page)"
+  },
+  {
+    "name": "Grindr",
+    "url": "https://web.grindr.com/",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "grindr.com"
+    ],
+    "about": {
+      "en": "Gay and queer dating nearby",
+      "fr": "Rencontres gay et queer à proximité"
+    },
+    "checked": "200; the page sends signed-out visitors to https://web.grindr.com/login"
+  },
+  {
+    "name": "ROMEO",
+    "url": "https://www.romeo.com/",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "romeo.com"
+    ],
+    "about": {
+      "en": "Gay, bi and trans dating",
+      "fr": "Rencontres gay, bi et trans"
+    },
+    "checked": "200 (planetromeo.com redirects here); the page sends signed-out visitors to https://www.romeo.com/auth/signup, which has the Log in button"
+  },
+  {
+    "name": "LOVOO",
+    "url": "https://app.lovoo.com/",
+    "category": "dating",
+    "country": "",
+    "region": "",
+    "announced_by": [
+      "lovoo.com"
+    ],
+    "about": {
+      "en": "Meet people nearby",
+      "fr": "Rencontres à proximité"
+    },
+    "checked": "redirect to https://app.lovoo.com/get-started (sign-in options) when signed out; lovoo.com is the marketing site"
+  }
+]

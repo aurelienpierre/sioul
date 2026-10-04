@@ -1,0 +1,6296 @@
+{
+ "version": 1,
+ "checked": "2026-10-04",
+ "about": "Sites Sioul offers when you add one: per country, per state or province where it matters, and for everyone. Edit freely: it needs no building. Check the addresses with tools/check-presets.py. A copy in ~/.local/share/sioul/presets/sites.json is used when its 'checked' date is newer than the one built in.",
+ "international": [
+  {
+   "name": "Bluesky, messages",
+   "url": "https://bsky.app/messages",
+   "type": "chat",
+   "announced_by": [],
+   "about": {
+    "en": "Bluesky direct messages",
+    "fr": "Messages privés Bluesky"
+   },
+   "calls": false
+  },
+  {
+   "name": "Discord",
+   "url": "https://discord.com/app",
+   "type": "chat",
+   "announced_by": [
+    "discord.com"
+   ],
+   "about": {
+    "en": "Community chats and voice rooms",
+    "fr": "Discussions et salons vocaux"
+   },
+   "calls": true
+  },
+  {
+   "name": "Element",
+   "url": "https://app.element.io/",
+   "type": "chat",
+   "announced_by": [
+    "matrix.org"
+   ],
+   "about": {
+    "en": "Encrypted Matrix messaging",
+    "fr": "Messagerie Matrix chiffrée"
+   },
+   "calls": true
+  },
+  {
+   "name": "Google Chat",
+   "url": "https://chat.google.com/",
+   "type": "chat",
+   "announced_by": [
+    "google.com"
+   ],
+   "about": {
+    "en": "Chats between Google accounts",
+    "fr": "Discussions entre comptes Google"
+   },
+   "calls": true
+  },
+  {
+   "name": "Google Messages",
+   "url": "https://messages.google.com/web/",
+   "type": "chat",
+   "announced_by": [],
+   "about": {
+    "en": "Android phone texts (SMS, RCS)",
+    "fr": "SMS et RCS du téléphone Android"
+   },
+   "calls": false
+  },
+  {
+   "name": "Instagram, messages",
+   "url": "https://www.instagram.com/direct/inbox/",
+   "type": "chat",
+   "announced_by": [
+    "instagram.com"
+   ],
+   "about": {
+    "en": "Instagram direct messages",
+    "fr": "Messages privés Instagram"
+   },
+   "calls": true
+  },
+  {
+   "name": "LinkedIn, messages",
+   "url": "https://www.linkedin.com/messaging/",
+   "type": "chat",
+   "area": "work",
+   "announced_by": [
+    "linkedin.com"
+   ],
+   "about": {
+    "en": "Professional messages, for work",
+    "fr": "Messages professionnels, pour le travail"
+   },
+   "calls": false
+  },
+  {
+   "name": "Messenger",
+   "url": "https://www.facebook.com/messages/",
+   "type": "chat",
+   "announced_by": [
+    "facebookmail.com"
+   ],
+   "about": {
+    "en": "Facebook Messenger chats",
+    "fr": "Discussions Messenger de Facebook"
+   },
+   "calls": true
+  },
+  {
+   "name": "Microsoft Teams",
+   "url": "https://teams.cloud.microsoft/",
+   "type": "chat",
+   "area": "work",
+   "announced_by": [
+    "microsoft.com"
+   ],
+   "about": {
+    "en": "Meetings and chat, for work",
+    "fr": "Réunions et discussions, pour le travail"
+   },
+   "calls": true
+  },
+  {
+   "name": "Microsoft Teams (free)",
+   "url": "https://teams.live.com/v2/",
+   "type": "chat",
+   "announced_by": [
+    "microsoft.com"
+   ],
+   "about": {
+    "en": "Personal chats and calls",
+    "fr": "Discussions et appels personnels"
+   },
+   "calls": true
+  },
+  {
+   "name": "Slack",
+   "url": "https://app.slack.com/client",
+   "type": "chat",
+   "area": "work",
+   "announced_by": [
+    "slack.com"
+   ],
+   "about": {
+    "en": "Team chat, for work",
+    "fr": "Discussions d'équipe, pour le travail"
+   },
+   "calls": true
+  },
+  {
+   "name": "Snapchat",
+   "url": "https://www.snapchat.com/web/",
+   "type": "chat",
+   "announced_by": [
+    "snapchat.com"
+   ],
+   "about": {
+    "en": "Snapchat chats and calls",
+    "fr": "Discussions et appels Snapchat"
+   },
+   "calls": true
+  },
+  {
+   "name": "Telegram",
+   "url": "https://web.telegram.org/k/",
+   "type": "chat",
+   "announced_by": [],
+   "about": {
+    "en": "Messages, groups and channels",
+    "fr": "Messages, groupes et chaînes"
+   },
+   "calls": true
+  },
+  {
+   "name": "Threema",
+   "url": "https://web.threema.com/",
+   "type": "chat",
+   "announced_by": [],
+   "about": {
+    "en": "Encrypted chats through your phone",
+    "fr": "Discussions chiffrées via le téléphone"
+   },
+   "calls": false
+  },
+  {
+   "name": "WhatsApp",
+   "url": "https://web.whatsapp.com/",
+   "type": "chat",
+   "announced_by": [],
+   "about": {
+    "en": "Messages and calls",
+    "fr": "Messages et appels"
+   },
+   "calls": true
+  },
+  {
+   "name": "Wire",
+   "url": "https://app.wire.com/",
+   "type": "chat",
+   "announced_by": [],
+   "about": {
+    "en": "Encrypted messages and calls",
+    "fr": "Messages et appels chiffrés"
+   },
+   "calls": true
+  },
+  {
+   "name": "XChat",
+   "url": "https://x.com/i/chat",
+   "type": "chat",
+   "announced_by": [
+    "x.com"
+   ],
+   "about": {
+    "en": "X (Twitter) direct messages",
+    "fr": "Messages privés de X (Twitter)"
+   }
+  },
+  {
+   "name": "Element Call",
+   "url": "https://call.element.io/",
+   "type": "video",
+   "announced_by": [],
+   "about": {
+    "en": "Encrypted Matrix video calls",
+    "fr": "Appels vidéo Matrix chiffrés"
+   }
+  },
+  {
+   "name": "Google Meet",
+   "url": "https://meet.google.com/landing",
+   "type": "video",
+   "announced_by": [
+    "google.com"
+   ],
+   "about": {
+    "en": "Video calls with a Google account",
+    "fr": "Appels vidéo avec un compte Google"
+   }
+  },
+  {
+   "name": "GoTo Meeting",
+   "url": "https://app.goto.com/meeting/",
+   "type": "video",
+   "announced_by": [
+    "goto.com"
+   ],
+   "about": {
+    "en": "Online meetings, for work",
+    "fr": "Réunions en ligne, pour le travail"
+   }
+  },
+  {
+   "name": "Jitsi Meet",
+   "url": "https://meet.jit.si/",
+   "type": "video",
+   "announced_by": [],
+   "about": {
+    "en": "Free open-source video meetings",
+    "fr": "Visioconférence libre et gratuite"
+   }
+  },
+  {
+   "name": "Proton Meet",
+   "url": "https://meet.proton.me/",
+   "type": "video",
+   "announced_by": [
+    "proton.me"
+   ],
+   "about": {
+    "en": "Encrypted video meetings",
+    "fr": "Visioconférence chiffrée"
+   }
+  },
+  {
+   "name": "Webex",
+   "url": "https://web.webex.com/",
+   "type": "video",
+   "announced_by": [
+    "webex.com"
+   ],
+   "about": {
+    "en": "Video meetings, for work",
+    "fr": "Visioconférences, pour le travail"
+   }
+  },
+  {
+   "name": "Whereby",
+   "url": "https://whereby.com/user",
+   "type": "video",
+   "announced_by": [
+    "whereby.com"
+   ],
+   "about": {
+    "en": "Simple video meeting rooms",
+    "fr": "Salles de visioconférence simples"
+   }
+  },
+  {
+   "name": "Zoom",
+   "url": "https://app.zoom.us/wc",
+   "type": "video",
+   "announced_by": [
+    "zoom.us"
+   ],
+   "about": {
+    "en": "Video meetings",
+    "fr": "Réunions en vidéo"
+   }
+  },
+  {
+   "name": "Bluesky",
+   "url": "https://bsky.app/",
+   "type": "social",
+   "announced_by": [],
+   "about": {
+    "en": "Short posts, an open network",
+    "fr": "Messages courts, réseau ouvert"
+   }
+  },
+  {
+   "name": "Facebook",
+   "url": "https://www.facebook.com/",
+   "type": "social",
+   "announced_by": [
+    "facebookmail.com"
+   ],
+   "about": {
+    "en": "Friends and groups",
+    "fr": "Amis et groupes"
+   }
+  },
+  {
+   "name": "Flickr",
+   "url": "https://www.flickr.com/",
+   "type": "social",
+   "announced_by": [
+    "flickr.com"
+   ],
+   "about": {
+    "en": "Photography",
+    "fr": "Photographie"
+   }
+  },
+  {
+   "name": "Instagram",
+   "url": "https://www.instagram.com/",
+   "type": "social",
+   "announced_by": [
+    "mail.instagram.com"
+   ],
+   "about": {
+    "en": "Photos and stories",
+    "fr": "Photos et stories"
+   }
+  },
+  {
+   "name": "LinkedIn",
+   "url": "https://www.linkedin.com/feed/",
+   "type": "social",
+   "area": "work",
+   "announced_by": [
+    "linkedin.com"
+   ],
+   "about": {
+    "en": "Professional network",
+    "fr": "Réseau professionnel"
+   }
+  },
+  {
+   "name": "Mastodon (mastodon.social)",
+   "url": "https://mastodon.social/",
+   "type": "social",
+   "announced_by": [],
+   "about": {
+    "en": "One server of the fediverse",
+    "fr": "Un serveur du fédivers"
+   }
+  },
+  {
+   "name": "Nextdoor",
+   "url": "https://nextdoor.com/",
+   "type": "social",
+   "area": "admin+leisure",
+   "announced_by": [
+    "nextdoor.com"
+   ],
+   "about": {
+    "en": "Your neighbourhood",
+    "fr": "Votre quartier"
+   }
+  },
+  {
+   "name": "Pinterest",
+   "url": "https://www.pinterest.com/",
+   "type": "social",
+   "announced_by": [
+    "pinterest.com"
+   ],
+   "about": {
+    "en": "Ideas and images",
+    "fr": "Idées et images"
+   }
+  },
+  {
+   "name": "Reddit",
+   "url": "https://www.reddit.com/",
+   "type": "social",
+   "announced_by": [
+    "redditmail.com"
+   ],
+   "about": {
+    "en": "Forums by topic",
+    "fr": "Forums par sujet"
+   }
+  },
+  {
+   "name": "Strava",
+   "url": "https://www.strava.com/dashboard",
+   "type": "social",
+   "announced_by": [
+    "strava.com"
+   ],
+   "about": {
+    "en": "Sport and outings",
+    "fr": "Sport et sorties"
+   }
+  },
+  {
+   "name": "Threads",
+   "url": "https://www.threads.com/",
+   "type": "social",
+   "announced_by": [],
+   "about": {
+    "en": "Short posts by Meta",
+    "fr": "Messages courts de Meta"
+   }
+  },
+  {
+   "name": "TikTok",
+   "url": "https://www.tiktok.com/",
+   "type": "social",
+   "announced_by": [],
+   "about": {
+    "en": "Short videos",
+    "fr": "Vidéos courtes"
+   }
+  },
+  {
+   "name": "Tumblr",
+   "url": "https://www.tumblr.com/dashboard",
+   "type": "social",
+   "announced_by": [
+    "tumblr.com"
+   ],
+   "about": {
+    "en": "Blogs and fandoms",
+    "fr": "Blogs et fandoms"
+   }
+  },
+  {
+   "name": "X",
+   "url": "https://x.com/home",
+   "type": "social",
+   "announced_by": [
+    "x.com"
+   ],
+   "about": {
+    "en": "Short posts",
+    "fr": "Messages courts"
+   }
+  },
+  {
+   "name": "YouTube",
+   "url": "https://www.youtube.com/",
+   "type": "social",
+   "announced_by": [
+    "youtube.com"
+   ],
+   "about": {
+    "en": "Videos",
+    "fr": "Vidéos"
+   }
+  },
+  {
+   "name": "Badoo",
+   "url": "https://badoo.com/encounters",
+   "type": "dating",
+   "announced_by": [
+    "badoo.com"
+   ],
+   "about": {
+    "en": "Dating and chat",
+    "fr": "Rencontres et discussions"
+   }
+  },
+  {
+   "name": "Grindr",
+   "url": "https://web.grindr.com/",
+   "type": "dating",
+   "announced_by": [
+    "grindr.com"
+   ],
+   "about": {
+    "en": "Gay and queer dating nearby",
+    "fr": "Rencontres gay et queer à proximité"
+   }
+  },
+  {
+   "name": "InterNations",
+   "url": "https://www.internations.org/login",
+   "type": "dating",
+   "announced_by": [
+    "internations.org"
+   ],
+   "about": {
+    "en": "Expat community and events",
+    "fr": "Communauté et sorties d'expatriés"
+   }
+  },
+  {
+   "name": "InterPals",
+   "url": "https://www.interpals.net/",
+   "type": "dating",
+   "announced_by": [
+    "interpals.net"
+   ],
+   "about": {
+    "en": "Pen pals and language exchange",
+    "fr": "Correspondants et échange linguistique"
+   }
+  },
+  {
+   "name": "LOVOO",
+   "url": "https://app.lovoo.com/",
+   "type": "dating",
+   "announced_by": [
+    "lovoo.com"
+   ],
+   "about": {
+    "en": "Meet people nearby",
+    "fr": "Rencontres à proximité"
+   }
+  },
+  {
+   "name": "Match",
+   "url": "https://www.match.com/login",
+   "type": "dating",
+   "announced_by": [
+    "match.com"
+   ],
+   "about": {
+    "en": "Dating for relationships",
+    "fr": "Rencontres pour une relation"
+   }
+  },
+  {
+   "name": "Meetup",
+   "url": "https://www.meetup.com/home/",
+   "type": "dating",
+   "announced_by": [
+    "meetup.com"
+   ],
+   "about": {
+    "en": "Local groups and events",
+    "fr": "Groupes et sorties locales"
+   }
+  },
+  {
+   "name": "OkCupid",
+   "url": "https://www.okcupid.com/home",
+   "type": "dating",
+   "announced_by": [
+    "okcupid.com"
+   ],
+   "about": {
+    "en": "Dating matched on questions",
+    "fr": "Rencontres selon vos réponses"
+   }
+  },
+  {
+   "name": "PenPal World",
+   "url": "https://www.penpalworld.com/",
+   "type": "dating",
+   "announced_by": [
+    "penpalworld.com"
+   ],
+   "about": {
+    "en": "Pen pals worldwide",
+    "fr": "Correspondants du monde entier"
+   }
+  },
+  {
+   "name": "Plenty of Fish",
+   "url": "https://www.pof.com/login",
+   "type": "dating",
+   "announced_by": [
+    "pof.com"
+   ],
+   "about": {
+    "en": "Free dating site",
+    "fr": "Site de rencontre gratuit"
+   }
+  },
+  {
+   "name": "ROMEO",
+   "url": "https://www.romeo.com/",
+   "type": "dating",
+   "announced_by": [
+    "romeo.com"
+   ],
+   "about": {
+    "en": "Gay, bi and trans dating",
+    "fr": "Rencontres gay, bi et trans"
+   }
+  },
+  {
+   "name": "Slowly",
+   "url": "https://web.slowly.app/",
+   "type": "dating",
+   "announced_by": [],
+   "about": {
+    "en": "Slow letters with pen pals",
+    "fr": "Lettres lentes entre correspondants"
+   }
+  },
+  {
+   "name": "Tinder",
+   "url": "https://tinder.com/app/recs",
+   "type": "dating",
+   "announced_by": [
+    "gotinder.com"
+   ],
+   "about": {
+    "en": "Swipe-based dating",
+    "fr": "Rencontres par swipe"
+   }
+  }
+ ],
+ "countries": {
+  "CA": {
+   "name": {
+    "en": "Canada",
+    "fr": "Canada"
+   },
+   "regions_name": {
+    "en": "By province",
+    "fr": "Par province"
+   },
+   "sites": [
+    {
+     "name": "CRA My Account",
+     "url": "https://www.canada.ca/en/revenue-agency/services/e-services/cra-login-services.html",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "tax"
+     ],
+     "announced_by": [
+      "cra-arc.gc.ca"
+     ],
+     "about": {
+      "en": "Federal taxes and benefits",
+      "fr": "Impôts et prestations fédéraux"
+     }
+    },
+    {
+     "name": "EI Internet Reporting Service",
+     "url": "https://srv265.hrdc-drhc.gc.ca/interdec/ouverturedesession-login/ouverturedesession-login.aspx?lang=eng",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "jobs"
+     ],
+     "announced_by": [],
+     "about": {
+      "en": "Employment Insurance biweekly reports",
+      "fr": "Déclarations d'assurance-emploi"
+     }
+    },
+    {
+     "name": "Government of Canada sign-in",
+     "url": "https://www.canada.ca/en/government/sign-in-online-account.html",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "announced_by": [],
+     "about": {
+      "en": "Index of federal online accounts",
+      "fr": "Index des comptes fédéraux en ligne"
+     }
+    },
+    {
+     "name": "IRCC Portal",
+     "url": "https://portal-portail.apps.cic.gc.ca/signin?lang=en",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "identity"
+     ],
+     "announced_by": [
+      "cic.gc.ca"
+     ],
+     "about": {
+      "en": "Immigration applications, email sign-in",
+      "fr": "Demandes d'immigration, connexion par courriel"
+     }
+    },
+    {
+     "name": "IRCC secure account",
+     "url": "https://www.canada.ca/en/immigration-refugees-citizenship/services/application/account.html",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "identity"
+     ],
+     "announced_by": [
+      "cic.gc.ca"
+     ],
+     "about": {
+      "en": "Immigration and citizenship applications",
+      "fr": "Demandes d'immigration et de citoyenneté"
+     }
+    },
+    {
+     "name": "Job Bank",
+     "url": "https://www.jobbank.gc.ca/login",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "jobs"
+     ],
+     "announced_by": [],
+     "about": {
+      "en": "Federal job search service",
+      "fr": "Service fédéral de recherche d'emploi"
+     }
+    },
+    {
+     "name": "My Service Canada Account",
+     "url": "https://www.canada.ca/en/employment-social-development/services/my-account.html",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "jobs",
+      "retirement"
+     ],
+     "announced_by": [
+      "canada.gc.ca"
+     ],
+     "about": {
+      "en": "EI, pensions and OAS",
+      "fr": "Assurance-emploi, RPC et SV"
+     }
+    },
+    {
+     "name": "My VAC Account",
+     "url": "https://mva-mda.vac-acc.gc.ca/pub/mva_7_24_1?request_locale=en_CA",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "health",
+      "identity"
+     ],
+     "announced_by": [
+      "veterans.gc.ca",
+      "vac-acc.gc.ca"
+     ],
+     "about": {
+      "en": "Veterans Affairs benefits",
+      "fr": "Prestations aux anciens combattants"
+     }
+    },
+    {
+     "name": "NSLSC",
+     "url": "https://protege-secure.csnpe-nslsc.canada.ca/en/public/sign-in-method",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "studies"
+     ],
+     "announced_by": [],
+     "about": {
+      "en": "Canada student loans",
+      "fr": "Prêts d'études canadiens"
+     }
+    },
+    {
+     "name": "BMO",
+     "url": "https://www1.bmo.com/banking/digital/login?lang=en",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "bmo.com"
+     ],
+     "about": {
+      "en": "Bank of Montreal",
+      "fr": "Banque de Montréal"
+     }
+    },
+    {
+     "name": "Canadian Tire Bank",
+     "url": "https://www.ctfs.com/content/dashpublic/en/login.html",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "ctfs.com",
+      "triangle.com"
+     ],
+     "about": {
+      "en": "Triangle credit cards",
+      "fr": "Cartes de crédit Triangle"
+     }
+    },
+    {
+     "name": "CIBC",
+     "url": "https://www.cibconline.cibc.com/ebm-resources/public/auth-gateway/main/client/index.html?locale=en&auth_context=login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "cibc.com"
+     ],
+     "about": {
+      "en": "Canadian bank",
+      "fr": "Banque canadienne"
+     }
+    },
+    {
+     "name": "Desjardins",
+     "url": "https://accweb.mouv.desjardins.com/identifiantunique/securite-garantie/authentification?domaineVirtuel=desjardins&langueCible=fr",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "desjardins.com"
+     ],
+     "about": {
+      "en": "Credit union group (AccèsD)",
+      "fr": "Coopérative financière (AccèsD)"
+     }
+    },
+    {
+     "name": "EQ Bank",
+     "url": "https://secure.eqbank.ca/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "eqbank.ca"
+     ],
+     "about": {
+      "en": "Online bank",
+      "fr": "Banque en ligne"
+     }
+    },
+    {
+     "name": "KOHO",
+     "url": "https://web.koho.ca/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "koho.ca"
+     ],
+     "about": {
+      "en": "Prepaid card and money app",
+      "fr": "Carte prépayée et appli financière"
+     }
+    },
+    {
+     "name": "Laurentian Bank",
+     "url": "https://blcweb.banquelaurentienne.ca/BLCDirect/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "banquelaurentienne.ca",
+      "laurentianbank.ca"
+     ],
+     "about": {
+      "en": "Laurentian Bank of Canada",
+      "fr": "Banque Laurentienne du Canada"
+     }
+    },
+    {
+     "name": "Manulife Bank",
+     "url": "https://online.manulifebank.ca/ciamLanding?language=en",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "manulifebank.ca"
+     ],
+     "about": {
+      "en": "Manulife personal banking",
+      "fr": "Services bancaires de Manuvie"
+     }
+    },
+    {
+     "name": "National Bank",
+     "url": "https://app.bnc.ca/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "bnc.ca",
+      "nbc.ca"
+     ],
+     "about": {
+      "en": "National Bank of Canada",
+      "fr": "Banque Nationale du Canada"
+     }
+    },
+    {
+     "name": "Neo Financial",
+     "url": "https://member.neofinancial.com/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "neofinancial.com"
+     ],
+     "about": {
+      "en": "Credit cards and savings",
+      "fr": "Cartes de crédit et épargne"
+     }
+    },
+    {
+     "name": "PC Financial",
+     "url": "https://secure.pcfinancial.ca/en/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "pcfinancial.ca"
+     ],
+     "about": {
+      "en": "Bank account and Mastercard",
+      "fr": "Compte bancaire et Mastercard"
+     }
+    },
+    {
+     "name": "RBC Royal Bank",
+     "url": "https://secure.royalbank.com/statics/login-service-ui/index#/full/signin?LANGUAGE=ENGLISH",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "rbc.com"
+     ],
+     "about": {
+      "en": "Canadian bank",
+      "fr": "Banque canadienne"
+     }
+    },
+    {
+     "name": "Scotiabank",
+     "url": "https://secure.scotiabank.com/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "scotiabank.com"
+     ],
+     "about": {
+      "en": "Canadian bank",
+      "fr": "Banque canadienne"
+     }
+    },
+    {
+     "name": "Simplii Financial",
+     "url": "https://online.simplii.com/ebm-resources/public/simplii/online-banking/client/index.html#/auth/signon",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "simplii.com"
+     ],
+     "about": {
+      "en": "Online bank (CIBC)",
+      "fr": "Banque en ligne (CIBC)"
+     }
+    },
+    {
+     "name": "Tangerine",
+     "url": "https://www.tangerine.ca/app/#/login/login-id?locale=en_CA",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "tangerine.ca"
+     ],
+     "about": {
+      "en": "Online bank (Scotiabank)",
+      "fr": "Banque en ligne (Scotiabank)"
+     }
+    },
+    {
+     "name": "TD Canada Trust",
+     "url": "https://authentication.td.com/uap-ui/?consumer=easyweb&locale=en_CA",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "td.com"
+     ],
+     "about": {
+      "en": "Canadian bank (EasyWeb)",
+      "fr": "Banque canadienne (EasyWeb)"
+     }
+    },
+    {
+     "name": "Wealthsimple",
+     "url": "https://my.wealthsimple.com/app/login?locale=en-ca",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "wealthsimple.com"
+     ],
+     "about": {
+      "en": "Investing and cash accounts",
+      "fr": "Placements et compte d'épargne"
+     }
+    },
+    {
+     "name": "Bell",
+     "url": "https://mybell.bell.ca/Login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "bell.ca"
+     ],
+     "about": {
+      "en": "Mobile, internet and TV",
+      "fr": "Mobile, Internet et télé"
+     }
+    },
+    {
+     "name": "Chatr",
+     "url": "https://www.chatrwireless.com/account",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "chatrwireless.com"
+     ],
+     "about": {
+      "en": "Prepaid mobile (Rogers)",
+      "fr": "Mobile prépayé (Rogers)"
+     }
+    },
+    {
+     "name": "Cogeco",
+     "url": "https://myaccount.cogeco.ca/acpub/login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "cogeco.ca"
+     ],
+     "about": {
+      "en": "Internet, TV and phone",
+      "fr": "Internet, télé et téléphonie"
+     }
+    },
+    {
+     "name": "Eastlink Mobile",
+     "url": "https://mobilemyaccount.eastlink.ca/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "eastlink.ca"
+     ],
+     "about": {
+      "en": "Eastlink mobile account",
+      "fr": "Compte mobile Eastlink"
+     }
+    },
+    {
+     "name": "EBOX",
+     "url": "https://client.ebox.ca/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "ebox.ca"
+     ],
+     "about": {
+      "en": "Internet provider (Québec, Ontario)",
+      "fr": "Fournisseur Internet (Québec, Ontario)"
+     }
+    },
+    {
+     "name": "Fido",
+     "url": "https://www.fido.ca/profile/signin",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "fido.ca"
+     ],
+     "about": {
+      "en": "Mobile and internet (Rogers)",
+      "fr": "Mobile et Internet (Rogers)"
+     }
+    },
+    {
+     "name": "Fizz",
+     "url": "https://fizz.ca/en/login/end-user",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "fizz.ca"
+     ],
+     "about": {
+      "en": "Mobile and internet (Vidéotron)",
+      "fr": "Mobile et Internet (Vidéotron)"
+     }
+    },
+    {
+     "name": "Freedom Mobile",
+     "url": "https://login.freedommobile.ca/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "freedommobile.ca"
+     ],
+     "about": {
+      "en": "Mobile and home internet",
+      "fr": "Mobile et Internet résidentiel"
+     }
+    },
+    {
+     "name": "Koodo",
+     "url": "https://www.koodomobile.com/my-account",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "koodomobile.com"
+     ],
+     "about": {
+      "en": "Mobile plans (TELUS)",
+      "fr": "Forfaits mobiles (TELUS)"
+     }
+    },
+    {
+     "name": "Lucky Mobile",
+     "url": "https://myaccount.luckymobile.ca/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "luckymobile.ca"
+     ],
+     "about": {
+      "en": "Prepaid mobile (Bell)",
+      "fr": "Mobile prépayé (Bell)"
+     }
+    },
+    {
+     "name": "oxio",
+     "url": "https://account.oxio.ca/en/login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "oxio.ca"
+     ],
+     "about": {
+      "en": "Home internet provider",
+      "fr": "Fournisseur Internet résidentiel"
+     }
+    },
+    {
+     "name": "Public Mobile",
+     "url": "https://myaccount.publicmobile.ca/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "publicmobile.ca"
+     ],
+     "about": {
+      "en": "Prepaid mobile (TELUS)",
+      "fr": "Mobile prépayé (TELUS)"
+     }
+    },
+    {
+     "name": "Rogers",
+     "url": "https://www.rogers.com/consumer/profile/signin/en",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "rogers.com"
+     ],
+     "about": {
+      "en": "Mobile, internet and TV",
+      "fr": "Mobile, Internet et télé"
+     }
+    },
+    {
+     "name": "TekSavvy",
+     "url": "https://mysavvy.teksavvy.com/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "teksavvy.com"
+     ],
+     "about": {
+      "en": "Independent internet provider",
+      "fr": "Fournisseur Internet indépendant"
+     }
+    },
+    {
+     "name": "TELUS",
+     "url": "https://www.telus.com/my-telus",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "telus.com"
+     ],
+     "about": {
+      "en": "Mobile, internet and TV",
+      "fr": "Mobile, Internet et télé"
+     }
+    },
+    {
+     "name": "Vidéotron",
+     "url": "https://www.videotron.com/connexion",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "videotron.com"
+     ],
+     "about": {
+      "en": "Mobile, internet and TV",
+      "fr": "Mobile, Internet et télé"
+     }
+    },
+    {
+     "name": "Virgin Plus",
+     "url": "https://www.virginplus.ca/en/login/index.html",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "virginplus.ca"
+     ],
+     "about": {
+      "en": "Mobile and internet (Bell)",
+      "fr": "Mobile et Internet (Bell)"
+     }
+    },
+    {
+     "name": "Xplore",
+     "url": "https://www.myxplore.ca/customers/loginCommunity",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "xplore.ca"
+     ],
+     "about": {
+      "en": "Rural internet provider",
+      "fr": "Fournisseur Internet rural"
+     }
+    }
+   ],
+   "regions": {
+    "QC": {
+     "name": {
+      "en": "Québec",
+      "fr": "Québec"
+     },
+     "sites": [
+      {
+       "name": "Aide financière aux études",
+       "url": "https://prod.education.gouv.qc.ca/c11050101j/#/login?lang=fr",
+       "type": "mailbox",
+       "tags": [
+        "admin",
+        "studies"
+       ],
+       "announced_by": [],
+       "about": {
+        "en": "Québec student loans and bursaries",
+        "fr": "Prêts et bourses du Québec"
+       }
+      },
+      {
+       "name": "Arrima",
+       "url": "https://arrima.immigration-quebec.gouv.qc.ca/aiguillage/",
+       "type": "mailbox",
+       "tags": [
+        "admin",
+        "identity"
+       ],
+       "announced_by": [],
+       "about": {
+        "en": "Québec immigration applications",
+        "fr": "Demandes d'immigration au Québec"
+       }
+      },
+      {
+       "name": "Carnet santé Québec (RAMQ)",
+       "url": "https://carnetsante.gouv.qc.ca/portail",
+       "type": "mailbox",
+       "tags": [
+        "admin",
+        "health"
+       ],
+       "announced_by": [
+        "carnetsante.gouv.qc.ca"
+       ],
+       "about": {
+        "en": "RAMQ personal health record",
+        "fr": "Dossier santé personnel (RAMQ)"
+       }
+      },
+      {
+       "name": "Mon dossier – Aide à l'emploi – Assistance sociale",
+       "url": "https://mondossier.mtess.gouv.qc.ca/fr/Portail/Index",
+       "type": "mailbox",
+       "tags": [
+        "admin",
+        "jobs"
+       ],
+       "announced_by": [
+        "mtess.gouv.qc.ca"
+       ],
+       "about": {
+        "en": "Social assistance and employment aid",
+        "fr": "Aide sociale et aide à l'emploi"
+       }
+      },
+      {
+       "name": "MonEspace CNESST",
+       "url": "https://pes.cnesst.gouv.qc.ca/travailleur/mon_espace/",
+       "type": "mailbox",
+       "tags": [
+        "admin",
+        "jobs"
+       ],
+       "announced_by": [
+        "cnesst.gouv.qc.ca"
+       ],
+       "about": {
+        "en": "Work accident claims",
+        "fr": "Accidents et lésions du travail"
+       }
+      },
+      {
+       "name": "Portail d'inscription aux services de garde",
+       "url": "https://www.portail-servicesgarde.gouv.qc.ca/parent/s/login/?language=fr",
+       "type": "mailbox",
+       "tags": [
+        "admin",
+        "family"
+       ],
+       "announced_by": [],
+       "about": {
+        "en": "Daycare waiting list",
+        "fr": "Inscription en service de garde"
+       }
+      },
+      {
+       "name": "Québec emploi",
+       "url": "https://www.quebecemploi.gouv.qc.ca/plateforme-emploi/connexion",
+       "type": "mailbox",
+       "tags": [
+        "admin",
+        "jobs"
+       ],
+       "announced_by": [
+        "quebecemploi.gouv.qc.ca"
+       ],
+       "about": {
+        "en": "Québec job search",
+        "fr": "Recherche d'emploi au Québec"
+       }
+      },
+      {
+       "name": "Retraite Québec",
+       "url": "https://mondossier.svc.retraitequebec.gouv.qc.ca/",
+       "type": "mailbox",
+       "tags": [
+        "admin",
+        "family",
+        "retirement"
+       ],
+       "announced_by": [
+        "retraitequebec.gouv.qc.ca"
+       ],
+       "about": {
+        "en": "Québec pension and family allowance",
+        "fr": "Rente du Québec et Allocation famille"
+       }
+      },
+      {
+       "name": "Revenu Québec",
+       "url": "https://citoyens.revenuquebec.ca/CitPres/SX/SX00/SX00.SXCLT00A.AccueilClient/SXCLT00AA?SVAR=01&CLNG=F&connexion=Citoyens",
+       "type": "mailbox",
+       "tags": [
+        "admin",
+        "tax"
+       ],
+       "announced_by": [
+        "revenuquebec.ca"
+       ],
+       "about": {
+        "en": "Québec taxes and benefits",
+        "fr": "Impôts et prestations du Québec"
+       }
+      },
+      {
+       "name": "RQAP",
+       "url": "https://www.rqapenligne.gouv.qc.ca/Applications/DossierClient",
+       "type": "mailbox",
+       "tags": [
+        "admin",
+        "jobs"
+       ],
+       "announced_by": [],
+       "about": {
+        "en": "Québec parental insurance",
+        "fr": "Assurance parentale du Québec"
+       }
+      },
+      {
+       "name": "SAAQclic",
+       "url": "https://saaqclic.saaq.gouv.qc.ca/saaqstorefront/fr/login",
+       "type": "mailbox",
+       "tags": [
+        "admin",
+        "identity"
+       ],
+       "announced_by": [
+        "saaq.gouv.qc.ca"
+       ],
+       "about": {
+        "en": "Driver's licence and vehicles",
+        "fr": "Permis de conduire et véhicules"
+       }
+      },
+      {
+       "name": "Service d'authentification gouvernementale",
+       "url": "https://authentification.quebec.ca/acces/verification/",
+       "type": "mailbox",
+       "tags": [
+        "admin"
+       ],
+       "announced_by": [
+        "authentification.quebec.ca"
+       ],
+       "about": {
+        "en": "Québec government sign-in account",
+        "fr": "Compte de connexion gouvernemental"
+       }
+      },
+      {
+       "name": "Enbridge Gaz Québec",
+       "url": "https://espaceclient.enbridgegaz.com/fr-ca/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "enbridgegaz.com"
+       ],
+       "about": {
+        "en": "Natural gas, Outaouais (ex-Gazifère)",
+        "fr": "Gaz naturel, Outaouais (ex-Gazifère)"
+       }
+      },
+      {
+       "name": "Hydro-Québec",
+       "url": "https://session.hydroquebec.com/portail/fr/group/clientele/gerer-mon-compte",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "hydroquebec.com"
+       ],
+       "about": {
+        "en": "Québec electricity (Espace client)",
+        "fr": "Électricité au Québec (Espace client)"
+       }
+      },
+      {
+       "name": "Énergir",
+       "url": "https://espaceclient.energir.com/fr",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "energir.com"
+       ],
+       "about": {
+        "en": "Natural gas supplier",
+        "fr": "Fournisseur de gaz naturel"
+       }
+      }
+     ]
+    }
+   }
+  },
+  "FR": {
+   "name": {
+    "en": "France",
+    "fr": "France"
+   },
+   "sites": [
+    {
+     "name": "Agirc-Arrco",
+     "url": "https://espace-personnel.agirc-arrco.fr/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "retirement"
+     ],
+     "announced_by": [
+      "agirc-arrco.fr"
+     ],
+     "about": {
+      "en": "Supplementary pension",
+      "fr": "Retraite complémentaire"
+     }
+    },
+    {
+     "name": "ANEF – étrangers en France",
+     "url": "https://administration-etrangers-en-france.interieur.gouv.fr/particuliers/#/espace-personnel/connexion-inscription",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "identity"
+     ],
+     "announced_by": [
+      "interieur.gouv.fr"
+     ],
+     "about": {
+      "en": "Residence permits for foreigners",
+      "fr": "Titres de séjour des étrangers"
+     }
+    },
+    {
+     "name": "Autoentrepreneur.urssaf.fr",
+     "url": "https://www.autoentrepreneur.urssaf.fr/services/",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "area": "work+admin",
+     "announced_by": [
+      "urssaf.fr"
+     ],
+     "about": {
+      "en": "Micro-entrepreneur declarations",
+      "fr": "Déclarations des micro-entrepreneurs"
+     }
+    },
+    {
+     "name": "Caf – Mon Compte",
+     "url": "https://wwwd.caf.fr/wps/portal/caffr/login",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "family"
+     ],
+     "announced_by": [
+      "caf.fr"
+     ],
+     "about": {
+      "en": "Family and housing benefits",
+      "fr": "Allocations familiales et logement"
+     }
+    },
+    {
+     "name": "Cesu (Urssaf)",
+     "url": "https://www.cesu.urssaf.fr/decla/index.html?page=page_se_connecter&LANG=FR",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "family"
+     ],
+     "announced_by": [
+      "urssaf.fr"
+     ],
+     "about": {
+      "en": "Declaring a home employee",
+      "fr": "Déclarer un salarié à domicile"
+     }
+    },
+    {
+     "name": "Compte ameli",
+     "url": "https://assure.ameli.fr/PortailAS/appmanager/PortailAS/assure?_somtc=true",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "health"
+     ],
+     "announced_by": [
+      "ameli.fr",
+      "assurance-maladie.fr"
+     ],
+     "about": {
+      "en": "Health insurance account",
+      "fr": "Compte Assurance Maladie"
+     }
+    },
+    {
+     "name": "Démarche Numérique",
+     "url": "https://demarche.numerique.gouv.fr/users/sign_in",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "announced_by": [
+      "numerique.gouv.fr",
+      "demarches-simplifiees.fr"
+     ],
+     "about": {
+      "en": "Online forms (ex-Démarches simplifiées)",
+      "fr": "Démarches en ligne (ex-Démarches simplifiées)"
+     }
+    },
+    {
+     "name": "ENSAP",
+     "url": "https://ensap.gouv.fr/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "retirement",
+      "identity"
+     ],
+     "announced_by": [],
+     "about": {
+      "en": "Public servants' pay and pension",
+      "fr": "Paie et retraite des agents publics"
+     }
+    },
+    {
+     "name": "France Titres (ANTS)",
+     "url": "https://moncompte.ants.gouv.fr/connexion",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "identity"
+     ],
+     "announced_by": [
+      "ants.gouv.fr"
+     ],
+     "about": {
+      "en": "ID, passport, licence, car papers",
+      "fr": "Identité, passeport, permis, carte grise"
+     }
+    },
+    {
+     "name": "France Travail",
+     "url": "https://candidat.francetravail.fr/espacepersonnel/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "jobs"
+     ],
+     "announced_by": [
+      "francetravail.fr",
+      "pole-emploi.fr"
+     ],
+     "about": {
+      "en": "Job seeker personal space",
+      "fr": "Espace personnel du candidat"
+     }
+    },
+    {
+     "name": "FranceConnect",
+     "url": "https://tableaudebord.franceconnect.gouv.fr/",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "announced_by": [
+      "franceconnect.gouv.fr"
+     ],
+     "about": {
+      "en": "Sign-in history and access",
+      "fr": "Historique et accès FranceConnect"
+     }
+    },
+    {
+     "name": "impots.gouv.fr",
+     "url": "https://cfspart.impots.gouv.fr/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "tax"
+     ],
+     "announced_by": [
+      "finances.gouv.fr"
+     ],
+     "about": {
+      "en": "Income tax personal space",
+      "fr": "Espace particulier des impôts"
+     }
+    },
+    {
+     "name": "impots.gouv.fr – espace professionnel",
+     "url": "https://cfspro.impots.gouv.fr/mire/accueil.do",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "tax"
+     ],
+     "area": "work+admin",
+     "announced_by": [
+      "finances.gouv.fr"
+     ],
+     "about": {
+      "en": "Business tax space",
+      "fr": "Espace fiscal professionnel"
+     }
+    },
+    {
+     "name": "l'Assurance retraite",
+     "url": "https://www.lassuranceretraite.fr/portail-services-ng/authentication",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "retirement"
+     ],
+     "announced_by": [
+      "lassuranceretraite.fr"
+     ],
+     "about": {
+      "en": "Basic state pension (Cnav)",
+      "fr": "Retraite de base (Cnav)"
+     }
+    },
+    {
+     "name": "Mes Droits Sociaux",
+     "url": "https://www.mesdroitssociaux.gouv.fr/accueil/",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "announced_by": [
+      "mesdroitssociaux.gouv.fr"
+     ],
+     "about": {
+      "en": "All your social benefits",
+      "fr": "Tous vos droits sociaux"
+     }
+    },
+    {
+     "name": "MesServices.etudiant.gouv.fr",
+     "url": "https://messervices.etudiant.gouv.fr/oauth2/login",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "studies",
+      "identity"
+     ],
+     "announced_by": [
+      "etudiant.gouv.fr"
+     ],
+     "about": {
+      "en": "Student grants and housing",
+      "fr": "Bourses et logement étudiant"
+     }
+    },
+    {
+     "name": "Mon Compte Formation",
+     "url": "https://www.moncompteformation.gouv.fr/espace-prive/html/#/compte-utilisateur/connexion",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "studies"
+     ],
+     "announced_by": [
+      "moncompteformation.gouv.fr"
+     ],
+     "about": {
+      "en": "Training account (CPF)",
+      "fr": "Compte personnel de formation"
+     }
+    },
+    {
+     "name": "Mon compte retraite (info-retraite.fr)",
+     "url": "https://www.info-retraite.fr/portail-services/login",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "retirement"
+     ],
+     "announced_by": [
+      "info-retraite.fr"
+     ],
+     "about": {
+      "en": "All pension schemes together",
+      "fr": "Tous vos régimes de retraite"
+     }
+    },
+    {
+     "name": "Mon espace santé",
+     "url": "https://www.monespacesante.fr/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "health"
+     ],
+     "announced_by": [
+      "monespacesante.fr"
+     ],
+     "about": {
+      "en": "Personal health record",
+      "fr": "Carnet de santé numérique"
+     }
+    },
+    {
+     "name": "MSA",
+     "url": "https://www.msa.fr/lfp/espace-prive",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "health",
+      "retirement"
+     ],
+     "announced_by": [
+      "msa.fr"
+     ],
+     "about": {
+      "en": "Farm sector social security",
+      "fr": "Protection sociale agricole"
+     }
+    },
+    {
+     "name": "Pajemploi (Urssaf)",
+     "url": "https://pajemploi.urssaf.fr/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "family",
+      "jobs"
+     ],
+     "announced_by": [
+      "urssaf.fr"
+     ],
+     "about": {
+      "en": "Childcare employer declarations",
+      "fr": "Déclarations de garde d'enfant"
+     }
+    },
+    {
+     "name": "Parcoursup",
+     "url": "https://dossierappel.parcoursup.fr/Candidat/authentification",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "studies"
+     ],
+     "announced_by": [
+      "parcoursup.fr"
+     ],
+     "about": {
+      "en": "Higher-education applications",
+      "fr": "Candidatures dans le supérieur"
+     }
+    },
+    {
+     "name": "Service Public",
+     "url": "https://www.service-public.gouv.fr/compte/se-connecter",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "announced_by": [
+      "service-public.gouv.fr",
+      "service-public.fr"
+     ],
+     "about": {
+      "en": "Public services personal space",
+      "fr": "Espace personnel Service Public"
+     }
+    },
+    {
+     "name": "Urssaf",
+     "url": "https://www.urssaf.fr/accueil/se-connecter.html",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "announced_by": [
+      "urssaf.fr"
+     ],
+     "about": {
+      "en": "Social contributions online space",
+      "fr": "Espace en ligne des cotisations"
+     }
+    },
+    {
+     "name": "ÉduConnect",
+     "url": "https://educonnect.education.gouv.fr/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "studies"
+     ],
+     "announced_by": [
+      "education.gouv.fr"
+     ],
+     "about": {
+      "en": "School services for families",
+      "fr": "Services scolaires des familles"
+     }
+    },
+    {
+     "name": "Banque Populaire",
+     "url": "https://www.icgauth.banquepopulaire.fr/se-connecter/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "banquepopulaire.fr"
+     ],
+     "about": {
+      "en": "Regional cooperative bank (BPCE)",
+      "fr": "Banque coopérative régionale (BPCE)"
+     }
+    },
+    {
+     "name": "BforBank",
+     "url": "https://customers.bforbank.com/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "bforbank.com"
+     ],
+     "about": {
+      "en": "Online bank (Crédit Agricole)",
+      "fr": "Banque en ligne (Crédit Agricole)"
+     }
+    },
+    {
+     "name": "BNP Paribas",
+     "url": "https://mabanque.bnpparibas/fr/connexion",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "bnpparibas.com",
+      "bnpparibas.fr"
+     ],
+     "about": {
+      "en": "Retail bank",
+      "fr": "Banque de détail"
+     }
+    },
+    {
+     "name": "BoursoBank",
+     "url": "https://clients.boursobank.com/connexion/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "boursobank.com",
+      "boursorama.fr"
+     ],
+     "about": {
+      "en": "Online bank (ex-Boursorama)",
+      "fr": "Banque en ligne (ex-Boursorama)"
+     }
+    },
+    {
+     "name": "BRED",
+     "url": "https://www.bred.fr/authentification",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "bred.fr"
+     ],
+     "about": {
+      "en": "Cooperative bank (BPCE group)",
+      "fr": "Banque coopérative (groupe BPCE)"
+     }
+    },
+    {
+     "name": "Caisse d'Épargne",
+     "url": "https://www.icgauth.caisse-epargne.fr/se-connecter/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "caisse-epargne.fr"
+     ],
+     "about": {
+      "en": "Regional cooperative bank (BPCE)",
+      "fr": "Banque coopérative régionale (BPCE)"
+     }
+    },
+    {
+     "name": "CCF",
+     "url": "https://mabanque.ccf.fr/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "ccf.fr"
+     ],
+     "about": {
+      "en": "Retail bank (ex-HSBC France)",
+      "fr": "Banque de détail (ex-HSBC France)"
+     }
+    },
+    {
+     "name": "CIC",
+     "url": "https://www.cic.fr/fr/authentification.html",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "cic.fr"
+     ],
+     "about": {
+      "en": "Retail bank (Crédit Mutuel group)",
+      "fr": "Banque du groupe Crédit Mutuel"
+     }
+    },
+    {
+     "name": "Crédit Agricole",
+     "url": "https://www.credit-agricole.fr/particulier/acces-cr.html",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "credit-agricole.fr"
+     ],
+     "about": {
+      "en": "Regional cooperative bank",
+      "fr": "Banque coopérative régionale"
+     }
+    },
+    {
+     "name": "Crédit Coopératif",
+     "url": "https://www.icgauth.credit-cooperatif.coop/se-connecter/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "credit-cooperatif.coop"
+     ],
+     "about": {
+      "en": "Cooperative bank (BPCE)",
+      "fr": "Banque coopérative (BPCE)"
+     }
+    },
+    {
+     "name": "Crédit Mutuel",
+     "url": "https://www.creditmutuel.fr/fr/authentification.html",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "creditmutuel.fr"
+     ],
+     "about": {
+      "en": "Cooperative bank",
+      "fr": "Banque coopérative"
+     }
+    },
+    {
+     "name": "Crédit Mutuel de Bretagne",
+     "url": "https://mon.cmb.fr/auth/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "cmb.fr"
+     ],
+     "about": {
+      "en": "Cooperative bank, Brittany (Arkéa)",
+      "fr": "Banque coopérative bretonne (Arkéa)"
+     }
+    },
+    {
+     "name": "Crédit Mutuel du Sud-Ouest",
+     "url": "https://mon.cmso.com/auth/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "cmso.com"
+     ],
+     "about": {
+      "en": "Cooperative bank, south-west (Arkéa)",
+      "fr": "Banque coopérative du Sud-Ouest (Arkéa)"
+     }
+    },
+    {
+     "name": "Fortuneo",
+     "url": "https://mabanque.fortuneo.fr/mon-espace",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "fortuneo.fr"
+     ],
+     "about": {
+      "en": "Online bank",
+      "fr": "Banque en ligne"
+     }
+    },
+    {
+     "name": "Hello bank!",
+     "url": "https://www.hellobank.fr/fr/client?requiredDAC=3",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "hellobank.fr"
+     ],
+     "about": {
+      "en": "Online bank (BNP Paribas)",
+      "fr": "Banque en ligne (BNP Paribas)"
+     }
+    },
+    {
+     "name": "La Banque Postale",
+     "url": "https://www.labanquepostale.fr/particulier/connexion-espace-client.html",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "labanquepostale.fr"
+     ],
+     "about": {
+      "en": "Retail bank of La Poste",
+      "fr": "Banque du groupe La Poste"
+     }
+    },
+    {
+     "name": "LCL",
+     "url": "https://monespace.lcl.fr/connexion",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "lcl.fr"
+     ],
+     "about": {
+      "en": "Retail bank",
+      "fr": "Banque de détail"
+     }
+    },
+    {
+     "name": "Monabanq",
+     "url": "https://www.monabanq.com/fr/identification/authentification.html",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "monabanq.com"
+     ],
+     "about": {
+      "en": "Online bank",
+      "fr": "Banque en ligne"
+     }
+    },
+    {
+     "name": "N26",
+     "url": "https://app.n26.com/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "n26.com"
+     ],
+     "about": {
+      "en": "Mobile bank",
+      "fr": "Banque mobile"
+     }
+    },
+    {
+     "name": "Nickel",
+     "url": "https://app.nickel.eu/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "nickel.eu",
+      "compte-nickel.fr"
+     ],
+     "about": {
+      "en": "Account opened at tobacconists",
+      "fr": "Compte ouvert chez le buraliste"
+     }
+    },
+    {
+     "name": "Qonto",
+     "url": "https://app.qonto.com/signin",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "area": "work",
+     "announced_by": [
+      "qonto.com"
+     ],
+     "about": {
+      "en": "Online bank for professionals",
+      "fr": "Banque en ligne pour professionnels"
+     }
+    },
+    {
+     "name": "Revolut",
+     "url": "https://app.revolut.com/start",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "revolut.com"
+     ],
+     "about": {
+      "en": "Mobile bank",
+      "fr": "Banque mobile"
+     }
+    },
+    {
+     "name": "SG (Société Générale)",
+     "url": "https://particuliers.sg.fr/icd/cbo/index-react-authsec.html",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "sg.fr",
+      "societegenerale.fr"
+     ],
+     "about": {
+      "en": "Retail bank",
+      "fr": "Banque de détail"
+     }
+    },
+    {
+     "name": "Shine",
+     "url": "https://app.shine.fr/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "area": "work",
+     "announced_by": [
+      "shine.fr"
+     ],
+     "about": {
+      "en": "Online bank for professionals",
+      "fr": "Banque en ligne pour professionnels"
+     }
+    },
+    {
+     "name": "Trade Republic",
+     "url": "https://app.traderepublic.com/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "traderepublic.com"
+     ],
+     "about": {
+      "en": "Broker with current account",
+      "fr": "Courtier avec compte courant"
+     }
+    },
+    {
+     "name": "Wise",
+     "url": "https://wise.com/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "wise.com"
+     ],
+     "about": {
+      "en": "Multi-currency account",
+      "fr": "Compte multidevise"
+     }
+    },
+    {
+     "name": "Alpiq",
+     "url": "https://particuliers.alpiq.fr/clients",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "alpiq.fr"
+     ],
+     "about": {
+      "en": "Electricity supplier",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Alterna énergie (ex-Vattenfall)",
+     "url": "https://mon-espace.alterna-energie.fr/home/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "alterna-energie.fr",
+      "vattenfall.fr"
+     ],
+     "about": {
+      "en": "Electricity and gas (ex-Vattenfall)",
+      "fr": "Électricité et gaz (ex-Vattenfall)"
+     }
+    },
+    {
+     "name": "EDF",
+     "url": "https://particulier.edf.fr/fr/accueil/espace-client/tableau-de-bord.html",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "edf.fr"
+     ],
+     "about": {
+      "en": "Electricity and gas supplier",
+      "fr": "Fournisseur d'électricité et de gaz"
+     }
+    },
+    {
+     "name": "ekWateur",
+     "url": "https://mon-espace.ekwateur.fr/se_connecter",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "ekwateur.fr"
+     ],
+     "about": {
+      "en": "Green energy supplier",
+      "fr": "Fournisseur d'énergie verte"
+     }
+    },
+    {
+     "name": "Enedis",
+     "url": "https://mon-compte-client.enedis.fr/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "enedis.fr"
+     ],
+     "about": {
+      "en": "Electricity grid, Linky meter data",
+      "fr": "Réseau électrique, données Linky"
+     }
+    },
+    {
+     "name": "Enercoop",
+     "url": "https://mon-espace.enercoop.fr/clients/sign_in",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "enercoop.fr"
+     ],
+     "about": {
+      "en": "Cooperative green electricity",
+      "fr": "Électricité verte coopérative"
+     }
+    },
+    {
+     "name": "ENGIE",
+     "url": "https://particuliers.engie.fr/login-page/authentification.html",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "myengie.fr"
+     ],
+     "about": {
+      "en": "Gas and electricity supplier",
+      "fr": "Fournisseur de gaz et d'électricité"
+     }
+    },
+    {
+     "name": "GRDF",
+     "url": "https://monespace.grdf.fr/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "grdf.fr"
+     ],
+     "about": {
+      "en": "Gas grid, meter readings",
+      "fr": "Réseau de gaz, relevés de compteur"
+     }
+    },
+    {
+     "name": "happ-e by ENGIE",
+     "url": "https://espace-client.happ-e.fr/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "happ-e.fr"
+     ],
+     "about": {
+      "en": "Online energy offer by ENGIE",
+      "fr": "Offre d'énergie en ligne d'ENGIE"
+     }
+    },
+    {
+     "name": "ilek",
+     "url": "https://www.ilek.fr/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "ilek.fr"
+     ],
+     "about": {
+      "en": "Local green energy supplier",
+      "fr": "Fournisseur d'énergie verte locale"
+     }
+    },
+    {
+     "name": "Mint Énergie",
+     "url": "https://client.mint-energie.com/Pages/Connexion/connexion.aspx",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "mint-energie.com"
+     ],
+     "about": {
+      "en": "Green electricity supplier",
+      "fr": "Fournisseur d'électricité verte"
+     }
+    },
+    {
+     "name": "Octopus Energy",
+     "url": "https://www.octopusenergy.fr/connexion",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "octopusenergy.fr"
+     ],
+     "about": {
+      "en": "Electricity and gas (ex-Plüm)",
+      "fr": "Électricité et gaz (ex-Plüm)"
+     }
+    },
+    {
+     "name": "OHM Énergie",
+     "url": "https://espace-client.ohm-energie.com/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "ohm-energie.com"
+     ],
+     "about": {
+      "en": "Electricity and gas supplier",
+      "fr": "Fournisseur d'électricité et de gaz"
+     }
+    },
+    {
+     "name": "Plenitude (ex-Eni)",
+     "url": "https://espace-client.eniplenitude.fr/auth/connexion",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "eniplenitude.fr"
+     ],
+     "about": {
+      "en": "Gas and electricity (ex-Eni)",
+      "fr": "Gaz et électricité (ex-Eni)"
+     }
+    },
+    {
+     "name": "Primeo Énergie",
+     "url": "https://espace-client.primeo-energie.fr/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "primeo-energie.fr"
+     ],
+     "about": {
+      "en": "Electricity and gas supplier",
+      "fr": "Fournisseur d'électricité et de gaz"
+     }
+    },
+    {
+     "name": "TotalEnergies",
+     "url": "https://www.totalenergies.fr/clients/connexion",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "totalenergies.fr"
+     ],
+     "about": {
+      "en": "Electricity and gas supplier",
+      "fr": "Fournisseur d'électricité et de gaz"
+     }
+    },
+    {
+     "name": "Auchan Télécom",
+     "url": "https://espace-client.auchantelecom.fr/connexion",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "auchantelecom.fr"
+     ],
+     "about": {
+      "en": "Mobile operator (MVNO)",
+      "fr": "Opérateur mobile virtuel"
+     }
+    },
+    {
+     "name": "Bouygues Telecom",
+     "url": "https://www.bouyguestelecom.fr/mon-compte",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "bouyguestelecom.fr"
+     ],
+     "about": {
+      "en": "Phone and internet provider",
+      "fr": "Opérateur téléphone et internet"
+     }
+    },
+    {
+     "name": "Coriolis Télécom",
+     "url": "https://espaceclient.coriolis.com/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "coriolis.com"
+     ],
+     "about": {
+      "en": "Mobile and internet provider",
+      "fr": "Opérateur mobile et internet"
+     }
+    },
+    {
+     "name": "Free (Freebox)",
+     "url": "https://subscribe.free.fr/login/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "free.fr"
+     ],
+     "about": {
+      "en": "Internet box provider",
+      "fr": "Fournisseur d'accès internet"
+     }
+    },
+    {
+     "name": "Free Mobile",
+     "url": "https://mobile.free.fr/account/v2/login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "free-mobile.fr"
+     ],
+     "about": {
+      "en": "Mobile operator",
+      "fr": "Opérateur mobile"
+     }
+    },
+    {
+     "name": "La Poste Mobile",
+     "url": "https://espaceclient.lapostemobile.fr/mobile/identification/authentification",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "lapostemobile.fr"
+     ],
+     "about": {
+      "en": "Mobile and internet provider",
+      "fr": "Opérateur mobile et internet"
+     }
+    },
+    {
+     "name": "Lebara",
+     "url": "https://www.lebara.fr/fr/mylebara/login.html",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "lebara.fr",
+      "lebara.com"
+     ],
+     "about": {
+      "en": "Mobile operator, international calls",
+      "fr": "Opérateur mobile, appels internationaux"
+     }
+    },
+    {
+     "name": "Lycamobile",
+     "url": "https://mylyca.lycamobile.fr/fr/login/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "lycamobile.fr"
+     ],
+     "about": {
+      "en": "Mobile operator, international calls",
+      "fr": "Opérateur mobile, appels internationaux"
+     }
+    },
+    {
+     "name": "NRJ Mobile",
+     "url": "https://espace-client.nrjmobile.fr/connexion",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "nrjmobile.fr"
+     ],
+     "about": {
+      "en": "Mobile operator (MVNO)",
+      "fr": "Opérateur mobile virtuel"
+     }
+    },
+    {
+     "name": "Orange",
+     "url": "https://espace-client.orange.fr/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "orange.fr"
+     ],
+     "about": {
+      "en": "Phone and internet provider",
+      "fr": "Opérateur téléphone et internet"
+     }
+    },
+    {
+     "name": "Prixtel",
+     "url": "https://espaceclient.prixtel.com/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "prixtel.com"
+     ],
+     "about": {
+      "en": "Mobile operator (MVNO)",
+      "fr": "Opérateur mobile virtuel"
+     }
+    },
+    {
+     "name": "RED by SFR",
+     "url": "https://www.red-by-sfr.fr/mon-espace-client/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "red-by-sfr.fr",
+      "sfr.fr"
+     ],
+     "about": {
+      "en": "SFR's online-only brand",
+      "fr": "Marque en ligne de SFR"
+     }
+    },
+    {
+     "name": "Réglo Mobile",
+     "url": "https://www.reglomobile.fr/connexion",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "reglomobile.fr"
+     ],
+     "about": {
+      "en": "Mobile operator (E.Leclerc)",
+      "fr": "Opérateur mobile (E.Leclerc)"
+     }
+    },
+    {
+     "name": "SFR",
+     "url": "https://www.sfr.fr/mon-espace-client/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "sfr.fr"
+     ],
+     "about": {
+      "en": "Phone and internet provider",
+      "fr": "Opérateur téléphone et internet"
+     }
+    },
+    {
+     "name": "Syma Mobile",
+     "url": "https://mysyma.symamobile.com/my-syma.html#loginpage",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "symamobile.com"
+     ],
+     "about": {
+      "en": "Mobile operator (MVNO)",
+      "fr": "Opérateur mobile virtuel"
+     }
+    },
+    {
+     "name": "YouPrice",
+     "url": "https://espace-client.youprice.fr/connexion-espace-client",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "youprice.fr"
+     ],
+     "about": {
+      "en": "Mobile operator (MVNO)",
+      "fr": "Opérateur mobile virtuel"
+     }
+    },
+    {
+     "name": "Tchap",
+     "url": "https://www.tchap.gouv.fr/",
+     "type": "chat",
+     "area": "work",
+     "announced_by": [],
+     "about": {
+      "en": "Chat for French public agents",
+      "fr": "Messagerie des agents publics"
+     }
+    },
+    {
+     "name": "Visio",
+     "url": "https://visio.numerique.gouv.fr/",
+     "type": "video",
+     "area": "work",
+     "announced_by": [],
+     "about": {
+      "en": "Video meetings for French State agents",
+      "fr": "Visioconférence des agents de l'État"
+     }
+    },
+    {
+     "name": "Meetic",
+     "url": "https://www.meetic.fr/login",
+     "type": "dating",
+     "announced_by": [
+      "meetic.fr"
+     ],
+     "about": {
+      "en": "Dating in France",
+      "fr": "Rencontres en France"
+     }
+    }
+   ],
+   "regions": {}
+  },
+  "US": {
+   "name": {
+    "en": "United States",
+    "fr": "États-Unis"
+   },
+   "regions_name": {
+    "en": "By state",
+    "fr": "Par État"
+   },
+   "sites": [
+    {
+     "name": "Federal Student Aid",
+     "url": "https://studentaid.gov/fsa-id/sign-in/landing",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "studies",
+      "identity"
+     ],
+     "announced_by": [
+      "studentaid.gov"
+     ],
+     "about": {
+      "en": "Federal student aid and loans",
+      "fr": "Aides et prêts étudiants fédéraux"
+     }
+    },
+    {
+     "name": "FEMA Disaster Assistance",
+     "url": "https://www.disasterassistance.gov/DAC/govBenefitReceiver.do?action=LOGIN&langcode=EN",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "announced_by": [
+      "fema.gov",
+      "dhs.gov"
+     ],
+     "about": {
+      "en": "Disaster aid applications",
+      "fr": "Demandes d'aide après catastrophe"
+     }
+    },
+    {
+     "name": "HealthCare.gov",
+     "url": "https://www.healthcare.gov/login",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "health"
+     ],
+     "announced_by": [
+      "healthcare.gov"
+     ],
+     "about": {
+      "en": "Health insurance marketplace",
+      "fr": "Marché public d'assurance santé"
+     }
+    },
+    {
+     "name": "IRS Online Account",
+     "url": "https://sa.www4.irs.gov/ola/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "tax"
+     ],
+     "announced_by": [
+      "irs.gov"
+     ],
+     "about": {
+      "en": "Federal income tax",
+      "fr": "Impôt fédéral sur le revenu"
+     }
+    },
+    {
+     "name": "Login.gov",
+     "url": "https://secure.login.gov/",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "announced_by": [
+      "login.gov"
+     ],
+     "about": {
+      "en": "Government sign-in account",
+      "fr": "Identifiant des services publics"
+     }
+    },
+    {
+     "name": "Medicare.gov",
+     "url": "https://www.medicare.gov/account/login",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "health"
+     ],
+     "announced_by": [
+      "medicare.gov"
+     ],
+     "about": {
+      "en": "Federal health insurance, 65+",
+      "fr": "Assurance maladie fédérale, 65 ans+"
+     }
+    },
+    {
+     "name": "milConnect",
+     "url": "https://milconnect.dmdc.osd.mil/milconnect/",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "announced_by": [
+      "osd.mil"
+     ],
+     "about": {
+      "en": "Military benefits and records",
+      "fr": "Droits et dossiers militaires"
+     }
+    },
+    {
+     "name": "my Social Security",
+     "url": "https://secure.ssa.gov/RIL/SiView.action",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "retirement"
+     ],
+     "announced_by": [
+      "ssa.gov"
+     ],
+     "about": {
+      "en": "Social Security, retirement benefits",
+      "fr": "Sécurité sociale, pensions de retraite"
+     }
+    },
+    {
+     "name": "myPay (DFAS)",
+     "url": "https://mypay.dfas.mil/",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "announced_by": [
+      "dfas.mil"
+     ],
+     "about": {
+      "en": "Military and federal civilian pay",
+      "fr": "Solde militaire et paie fédérale"
+     }
+    },
+    {
+     "name": "MyTravelGov",
+     "url": "https://mytravel.state.gov/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "identity"
+     ],
+     "announced_by": [
+      "state.gov"
+     ],
+     "about": {
+      "en": "Online passport renewal",
+      "fr": "Renouvellement de passeport en ligne"
+     }
+    },
+    {
+     "name": "OPM Retirement Services Online",
+     "url": "https://www.servicesonline.opm.gov/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "retirement"
+     ],
+     "announced_by": [
+      "opm.gov"
+     ],
+     "about": {
+      "en": "Federal civil service pensions",
+      "fr": "Pensions de la fonction publique fédérale"
+     }
+    },
+    {
+     "name": "Thrift Savings Plan (TSP)",
+     "url": "https://www.tsp.gov/login/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "retirement"
+     ],
+     "announced_by": [
+      "tsp.gov"
+     ],
+     "about": {
+      "en": "Federal employees' retirement savings",
+      "fr": "Épargne retraite des agents fédéraux"
+     }
+    },
+    {
+     "name": "TreasuryDirect",
+     "url": "https://www.treasurydirect.gov/RS/UN-Display.do",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "tax"
+     ],
+     "announced_by": [
+      "treasurydirect.gov"
+     ],
+     "about": {
+      "en": "Treasury savings bonds",
+      "fr": "Bons d'épargne du Trésor"
+     }
+    },
+    {
+     "name": "Trusted Traveler Programs",
+     "url": "https://ttp.cbp.dhs.gov/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "identity"
+     ],
+     "announced_by": [
+      "dhs.gov"
+     ],
+     "about": {
+      "en": "Global Entry, NEXUS, SENTRI",
+      "fr": "Global Entry, NEXUS, SENTRI"
+     }
+    },
+    {
+     "name": "USAJOBS",
+     "url": "https://www.usajobs.gov/applicant/profile/dashboard/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "jobs"
+     ],
+     "announced_by": [
+      "usajobs.gov"
+     ],
+     "about": {
+      "en": "Federal government jobs",
+      "fr": "Emplois de l'administration fédérale"
+     }
+    },
+    {
+     "name": "USCIS Online Account",
+     "url": "https://myaccount.uscis.gov/sign-in",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "identity"
+     ],
+     "announced_by": [
+      "uscis.gov",
+      "dhs.gov"
+     ],
+     "about": {
+      "en": "Immigration cases and forms",
+      "fr": "Dossiers et formulaires d'immigration"
+     }
+    },
+    {
+     "name": "USPS Informed Delivery",
+     "url": "https://informeddelivery.usps.com/portal/dashboard?mode=id-login",
+     "type": "mailbox",
+     "tags": [
+      "admin"
+     ],
+     "announced_by": [
+      "usps.com"
+     ],
+     "about": {
+      "en": "Preview of incoming mail",
+      "fr": "Aperçu du courrier à venir"
+     }
+    },
+    {
+     "name": "VA.gov",
+     "url": "https://www.va.gov/sign-in/",
+     "type": "mailbox",
+     "tags": [
+      "admin",
+      "health",
+      "identity"
+     ],
+     "announced_by": [
+      "va.gov"
+     ],
+     "about": {
+      "en": "Veterans benefits and health care",
+      "fr": "Prestations et soins des anciens combattants"
+     }
+    },
+    {
+     "name": "Alliant Credit Union",
+     "url": "https://www.alliantcreditunion.com/OnlineBanking/Login.aspx",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "alliantcreditunion.com",
+      "alliantcreditunion.org"
+     ],
+     "about": {
+      "en": "Online credit union",
+      "fr": "Coopérative de crédit en ligne"
+     }
+    },
+    {
+     "name": "Ally",
+     "url": "https://secure.ally.com/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "ally.com"
+     ],
+     "about": {
+      "en": "Online bank",
+      "fr": "Banque en ligne"
+     }
+    },
+    {
+     "name": "American Express",
+     "url": "https://www.americanexpress.com/en-us/account/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "americanexpress.com",
+      "aexp.com"
+     ],
+     "about": {
+      "en": "Credit and charge cards",
+      "fr": "Cartes de crédit et de paiement"
+     }
+    },
+    {
+     "name": "Apple Card",
+     "url": "https://card.apple.com/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "apple.com"
+     ],
+     "about": {
+      "en": "Credit card",
+      "fr": "Carte de crédit"
+     }
+    },
+    {
+     "name": "Axos Bank",
+     "url": "https://onlinebanking.axosbank.com/auth/Login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "axosbank.com"
+     ],
+     "about": {
+      "en": "Online bank",
+      "fr": "Banque en ligne"
+     }
+    },
+    {
+     "name": "Bank of America",
+     "url": "https://secure.bankofamerica.com/auth/signon/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "bankofamerica.com"
+     ],
+     "about": {
+      "en": "National retail bank",
+      "fr": "Banque de détail nationale"
+     }
+    },
+    {
+     "name": "Barclays US",
+     "url": "https://www.barclaycardus.com/servicing/home?secureLogin=",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "barclaycardus.com",
+      "barclaysus.com"
+     ],
+     "about": {
+      "en": "Credit cards",
+      "fr": "Cartes de crédit"
+     }
+    },
+    {
+     "name": "BECU",
+     "url": "https://onlinebanking.becu.org/BECUBankingWeb/Login.aspx",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "becu.org"
+     ],
+     "about": {
+      "en": "Credit union, Washington State",
+      "fr": "Coopérative de crédit, État de Washington"
+     }
+    },
+    {
+     "name": "BMO",
+     "url": "https://usdigital.bmo.com/www/#/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "bmo.com"
+     ],
+     "about": {
+      "en": "Retail bank, Midwest and West",
+      "fr": "Banque de détail, Midwest et Ouest"
+     }
+    },
+    {
+     "name": "Capital One",
+     "url": "https://verified.capitalone.com/auth/signin",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "capitalone.com"
+     ],
+     "about": {
+      "en": "Bank and credit cards",
+      "fr": "Banque et cartes de crédit"
+     }
+    },
+    {
+     "name": "Charles Schwab",
+     "url": "https://client.schwab.com/Areas/Access/Login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "schwab.com"
+     ],
+     "about": {
+      "en": "Brokerage and bank",
+      "fr": "Courtage et banque"
+     }
+    },
+    {
+     "name": "Chase",
+     "url": "https://secure.chase.com/web/auth/dashboard",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "chase.com"
+     ],
+     "about": {
+      "en": "Bank and credit cards",
+      "fr": "Banque et cartes de crédit"
+     }
+    },
+    {
+     "name": "Chime",
+     "url": "https://app.chime.com/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "chime.com"
+     ],
+     "about": {
+      "en": "Mobile banking (fintech)",
+      "fr": "Banque mobile (fintech)"
+     }
+    },
+    {
+     "name": "Citi",
+     "url": "https://www.citi.com/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "citi.com",
+      "citibank.com"
+     ],
+     "about": {
+      "en": "Bank and credit cards",
+      "fr": "Banque et cartes de crédit"
+     }
+    },
+    {
+     "name": "Citizens",
+     "url": "https://www.citizensbankonline.com/olb-root/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "citizensbank.com"
+     ],
+     "about": {
+      "en": "Retail bank, Northeast",
+      "fr": "Banque de détail, Nord-Est"
+     }
+    },
+    {
+     "name": "Discover",
+     "url": "https://www.discover.com/login/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "discover.com"
+     ],
+     "about": {
+      "en": "Credit cards and online bank",
+      "fr": "Cartes de crédit, banque en ligne"
+     }
+    },
+    {
+     "name": "E*TRADE",
+     "url": "https://us.etrade.com/etx/pxy/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "etrade.com"
+     ],
+     "about": {
+      "en": "Online brokerage",
+      "fr": "Courtage en ligne"
+     }
+    },
+    {
+     "name": "Edward Jones",
+     "url": "https://onlineaccess.edwardjones.com/app/oa-login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "edwardjones.com"
+     ],
+     "about": {
+      "en": "Financial advisors, brokerage",
+      "fr": "Conseil financier, courtage"
+     }
+    },
+    {
+     "name": "Fidelity",
+     "url": "https://digital.fidelity.com/prgw/digital/login/full-page",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "fidelity.com"
+     ],
+     "about": {
+      "en": "Brokerage and retirement accounts",
+      "fr": "Courtage et comptes retraite"
+     }
+    },
+    {
+     "name": "Fifth Third Bank",
+     "url": "https://onlinebanking.53.com/content/fifth-third/en/login.html",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "53.com"
+     ],
+     "about": {
+      "en": "Retail bank, Midwest and Southeast",
+      "fr": "Banque de détail, Midwest et Sud-Est"
+     }
+    },
+    {
+     "name": "First Citizens Bank",
+     "url": "https://digitalbanking.firstcitizens.com/FCBTCOnline/uux.aspx#/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "firstcitizens.com"
+     ],
+     "about": {
+      "en": "Regional retail bank",
+      "fr": "Banque de détail régionale"
+     }
+    },
+    {
+     "name": "First Horizon",
+     "url": "https://www.firsthorizon.com/personal/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "firsthorizon.com"
+     ],
+     "about": {
+      "en": "Retail bank, Southeast",
+      "fr": "Banque de détail, Sud-Est"
+     }
+    },
+    {
+     "name": "Huntington",
+     "url": "https://onlinebanking.huntington.com/rol/Auth/login.aspx",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "huntington.com"
+     ],
+     "about": {
+      "en": "Retail bank, Midwest",
+      "fr": "Banque de détail, Midwest"
+     }
+    },
+    {
+     "name": "KeyBank",
+     "url": "https://ibx.key.com/ibxolb/login/index.html#/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "key.com"
+     ],
+     "about": {
+      "en": "Regional retail bank",
+      "fr": "Banque de détail régionale"
+     }
+    },
+    {
+     "name": "M&T Bank",
+     "url": "https://login.mtb.com/a/digitalbanking/login/?language=en-US",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "mtb.com"
+     ],
+     "about": {
+      "en": "Retail bank, Northeast",
+      "fr": "Banque de détail, Nord-Est"
+     }
+    },
+    {
+     "name": "Marcus by Goldman Sachs",
+     "url": "https://www.marcus.com/us/en/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "marcus.com"
+     ],
+     "about": {
+      "en": "Online savings bank",
+      "fr": "Banque d'épargne en ligne"
+     }
+    },
+    {
+     "name": "Merrill",
+     "url": "https://olui2.fs.ml.com/login/signin.aspx",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "ml.com",
+      "merrilledge.com"
+     ],
+     "about": {
+      "en": "Brokerage and investing",
+      "fr": "Courtage et placements"
+     }
+    },
+    {
+     "name": "Navy Federal Credit Union",
+     "url": "https://digitalomni.navyfederal.org/signin/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "navyfederal.org"
+     ],
+     "about": {
+      "en": "Credit union, military families",
+      "fr": "Coopérative de crédit, familles de militaires"
+     }
+    },
+    {
+     "name": "PenFed Credit Union",
+     "url": "https://www.penfed.org/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "penfed.org"
+     ],
+     "about": {
+      "en": "Credit union",
+      "fr": "Coopérative de crédit"
+     }
+    },
+    {
+     "name": "PNC",
+     "url": "https://www.pnc.com/en/personal-banking/banking/online-and-mobile-banking/online-banking.html",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "pnc.com"
+     ],
+     "about": {
+      "en": "Retail bank",
+      "fr": "Banque de détail"
+     }
+    },
+    {
+     "name": "Regions",
+     "url": "https://login.regions.com/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "regions.com"
+     ],
+     "about": {
+      "en": "Retail bank, South",
+      "fr": "Banque de détail, Sud"
+     }
+    },
+    {
+     "name": "Robinhood",
+     "url": "https://robinhood.com/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "robinhood.com"
+     ],
+     "about": {
+      "en": "Online brokerage",
+      "fr": "Courtage en ligne"
+     }
+    },
+    {
+     "name": "Santander Bank",
+     "url": "https://rolb.santanderbank.com/OnlineBanking/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "santanderbank.com"
+     ],
+     "about": {
+      "en": "Retail bank, Northeast",
+      "fr": "Banque de détail, Nord-Est"
+     }
+    },
+    {
+     "name": "SchoolsFirst FCU",
+     "url": "https://online.schoolsfirstfcu.org/member-login/login/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "schoolsfirstfcu.org"
+     ],
+     "about": {
+      "en": "Credit union, California school staff",
+      "fr": "Coopérative de crédit, personnel scolaire californien"
+     }
+    },
+    {
+     "name": "SoFi",
+     "url": "https://www.sofi.com/login/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "sofi.com"
+     ],
+     "about": {
+      "en": "Online bank and loans",
+      "fr": "Banque en ligne et prêts"
+     }
+    },
+    {
+     "name": "State Employees' Credit Union",
+     "url": "https://memberaccess.ncsecu.org/pre-auth/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "ncsecu.org"
+     ],
+     "about": {
+      "en": "Credit union, North Carolina",
+      "fr": "Coopérative de crédit, Caroline du Nord"
+     }
+    },
+    {
+     "name": "Synchrony Bank",
+     "url": "https://securelogin.synchronybank.com/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "synchronybank.com",
+      "synchrony.com"
+     ],
+     "about": {
+      "en": "Online savings bank",
+      "fr": "Banque d'épargne en ligne"
+     }
+    },
+    {
+     "name": "TD Bank",
+     "url": "https://onlinebanking.tdbank.com/#/authentication/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "tdbank.com"
+     ],
+     "about": {
+      "en": "Retail bank, East Coast",
+      "fr": "Banque de détail, côte Est"
+     }
+    },
+    {
+     "name": "Truist",
+     "url": "https://dias.bank.truist.com/ui/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "truist.com"
+     ],
+     "about": {
+      "en": "Retail bank, Southeast",
+      "fr": "Banque de détail, Sud-Est"
+     }
+    },
+    {
+     "name": "U.S. Bank",
+     "url": "https://onlinebanking.usbank.com/auth/login/",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "usbank.com"
+     ],
+     "about": {
+      "en": "National retail bank",
+      "fr": "Banque de détail nationale"
+     }
+    },
+    {
+     "name": "USAA",
+     "url": "https://www.usaa.com/my/logon",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "usaa.com"
+     ],
+     "about": {
+      "en": "Bank and insurance, military",
+      "fr": "Banque et assurance, militaires"
+     }
+    },
+    {
+     "name": "Vanguard",
+     "url": "https://logon.vanguard.com/logon",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "vanguard.com"
+     ],
+     "about": {
+      "en": "Investment and retirement funds",
+      "fr": "Fonds de placement et retraite"
+     }
+    },
+    {
+     "name": "Varo",
+     "url": "https://bank.varomoney.com/login",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "varomoney.com"
+     ],
+     "about": {
+      "en": "Online bank",
+      "fr": "Banque en ligne"
+     }
+    },
+    {
+     "name": "Wells Fargo",
+     "url": "https://connect.secure.wellsfargo.com/auth/login/present",
+     "type": "mailbox",
+     "tags": [
+      "bank"
+     ],
+     "announced_by": [
+      "wellsfargo.com"
+     ],
+     "about": {
+      "en": "National retail bank",
+      "fr": "Banque de détail nationale"
+     }
+    },
+    {
+     "name": "Alliant Energy",
+     "url": "https://myaccount.alliantenergy.com/portal/#/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "alliantenergy.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "Ameren",
+     "url": "https://www.ameren.com/account/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "ameren.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "Appalachian Power",
+     "url": "https://www.appalachianpower.com/account/login/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "appalachianpower.com",
+      "aep.com"
+     ],
+     "about": {
+      "en": "Electric utility",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Atmos Energy",
+     "url": "https://www.atmosenergy.com/accountcenter/logon/login.html",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "atmosenergy.com"
+     ],
+     "about": {
+      "en": "Natural gas utility",
+      "fr": "Distributeur de gaz naturel"
+     }
+    },
+    {
+     "name": "Avista",
+     "url": "https://www.myavista.com/sign-in",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "myavista.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "Black Hills Energy",
+     "url": "https://www.blackhillsenergy.com/my-account/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "blackhillsenergy.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "CenterPoint Energy",
+     "url": "https://myaccount.centerpointenergy.com/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "centerpointenergy.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "Constellation",
+     "url": "https://account.constellation.com/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "constellation.com"
+     ],
+     "about": {
+      "en": "Retail electricity provider",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Delmarva Power",
+     "url": "https://secure.delmarva.com/Pages/Login.aspx",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "delmarva.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "Direct Energy",
+     "url": "https://account.directenergy.com/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "directenergy.com"
+     ],
+     "about": {
+      "en": "Retail electricity provider",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Dominion Energy",
+     "url": "https://login.dominionenergy.com/CommonLogin?SelectedAppName=electric",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "dominionenergy.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "Duke Energy",
+     "url": "https://www.duke-energy.com/my-account/sign-in",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "duke-energy.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "El Paso Electric",
+     "url": "https://myaccount.epelectric.com/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "epelectric.com"
+     ],
+     "about": {
+      "en": "Electric utility",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Enbridge Gas",
+     "url": "https://portal.enbridgegas.com/WSS/servlet/CMMainControllerServlet?action=CMSignInAction",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "enbridgegas.com"
+     ],
+     "about": {
+      "en": "Gas utility, NC, UT, WY, ID",
+      "fr": "Gaz naturel, NC, UT, WY, ID"
+     }
+    },
+    {
+     "name": "Entergy",
+     "url": "https://www.myentergy.com/s/login/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "entergy.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "Evergy",
+     "url": "https://www.evergy.com/log-in",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "evergy.com"
+     ],
+     "about": {
+      "en": "Electric utility",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Eversource",
+     "url": "https://www.eversource.com/security/account/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "eversource.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "FirstEnergy",
+     "url": "https://www.firstenergycorp.com/log_in.html",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "firstenergycorp.com"
+     ],
+     "about": {
+      "en": "Electric utility",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Idaho Power",
+     "url": "https://tools.idahopower.com/MyAccount",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "idahopower.com"
+     ],
+     "about": {
+      "en": "Electric utility",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Indiana Michigan Power",
+     "url": "https://www.indianamichiganpower.com/account/login/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "indianamichiganpower.com",
+      "aep.com"
+     ],
+     "about": {
+      "en": "Electric utility",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "MidAmerican Energy",
+     "url": "https://www.midamericanenergy.com/ecss/Profile/LogIn",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "midamericanenergy.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "National Grid",
+     "url": "https://myaccount.nationalgrid.com/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "nationalgrid.com",
+      "nationalgridus.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "NorthWestern Energy",
+     "url": "https://myaccount.northwesternenergy.com/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "northwesternenergy.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "NW Natural",
+     "url": "https://www.nwnatural.com/identity/login/NWNatural/NWNIdentityServer",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "nwnatural.com"
+     ],
+     "about": {
+      "en": "Natural gas utility",
+      "fr": "Distributeur de gaz naturel"
+     }
+    },
+    {
+     "name": "OG&E",
+     "url": "https://www.oge.com/web/portal/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "oge.com"
+     ],
+     "about": {
+      "en": "Electric utility",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Orange & Rockland",
+     "url": "https://www.oru.com/en/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "oru.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "Pacific Power",
+     "url": "https://csapps.pacificpower.net/idm/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "pacificpower.net"
+     ],
+     "about": {
+      "en": "Electric utility",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Pepco",
+     "url": "https://secure.pepco.com/Pages/Login.aspx",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "pepco.com"
+     ],
+     "about": {
+      "en": "Electric utility",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Rocky Mountain Power",
+     "url": "https://csapps.rockymountainpower.net/idm/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "rockymountainpower.net"
+     ],
+     "about": {
+      "en": "Electric utility",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Southwest Gas",
+     "url": "https://myaccount.swgas.com/Portal/#/login",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "swgas.com"
+     ],
+     "about": {
+      "en": "Natural gas utility",
+      "fr": "Distributeur de gaz naturel"
+     }
+    },
+    {
+     "name": "Spire",
+     "url": "https://myaccount.spireenergy.com/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "spireenergy.com"
+     ],
+     "about": {
+      "en": "Natural gas utility",
+      "fr": "Distributeur de gaz naturel"
+     }
+    },
+    {
+     "name": "SWEPCO",
+     "url": "https://www.swepco.com/account/login/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "swepco.com",
+      "aep.com"
+     ],
+     "about": {
+      "en": "Electric utility",
+      "fr": "Fournisseur d'électricité"
+     }
+    },
+    {
+     "name": "Unitil",
+     "url": "https://myaccount.unitil.com/app/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "unitil.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "Washington Gas",
+     "url": "https://my.washingtongas.com/portal/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "washingtongas.com"
+     ],
+     "about": {
+      "en": "Natural gas utility",
+      "fr": "Distributeur de gaz naturel"
+     }
+    },
+    {
+     "name": "Xcel Energy",
+     "url": "https://my.xcelenergy.com/MyAccount/s/login/",
+     "type": "mailbox",
+     "tags": [
+      "energy"
+     ],
+     "announced_by": [
+      "xcelenergy.com"
+     ],
+     "about": {
+      "en": "Electric and gas utility",
+      "fr": "Électricité et gaz"
+     }
+    },
+    {
+     "name": "altafiber",
+     "url": "https://my.altafiber.com/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "altafiber.com"
+     ],
+     "about": {
+      "en": "Fiber internet, Cincinnati area",
+      "fr": "Internet fibre, région de Cincinnati"
+     }
+    },
+    {
+     "name": "Astound",
+     "url": "https://my.astound.com/login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "astound.com"
+     ],
+     "about": {
+      "en": "Cable and fiber internet",
+      "fr": "Internet câble et fibre"
+     }
+    },
+    {
+     "name": "AT&T",
+     "url": "https://www.att.com/acctmgmt/signin",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "att.com",
+      "att-mail.com"
+     ],
+     "about": {
+      "en": "Mobile, internet and TV",
+      "fr": "Mobile, internet et télévision"
+     }
+    },
+    {
+     "name": "Boost Mobile",
+     "url": "https://www.boostmobile.com/my-account",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "boostmobile.com"
+     ],
+     "about": {
+      "en": "Mobile service",
+      "fr": "Forfait mobile"
+     }
+    },
+    {
+     "name": "Brightspeed",
+     "url": "https://www.brightspeed.com/signin",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "brightspeed.com"
+     ],
+     "about": {
+      "en": "Internet service",
+      "fr": "Fournisseur d'accès internet"
+     }
+    },
+    {
+     "name": "CenturyLink",
+     "url": "https://dh.centurylink.com/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "centurylink.com"
+     ],
+     "about": {
+      "en": "Internet and phone service",
+      "fr": "Internet et téléphone"
+     }
+    },
+    {
+     "name": "Consumer Cellular",
+     "url": "https://www.consumercellular.com/login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "consumercellular.com"
+     ],
+     "about": {
+      "en": "Mobile service for older adults",
+      "fr": "Forfait mobile pour seniors"
+     }
+    },
+    {
+     "name": "Cox",
+     "url": "https://www.cox.com/content/dam/cox/okta/signin.html",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "cox.com"
+     ],
+     "about": {
+      "en": "Cable internet, TV and phone",
+      "fr": "Internet câble, télévision et téléphone"
+     }
+    },
+    {
+     "name": "Cricket Wireless",
+     "url": "https://www.cricketwireless.com/cwlogin.html",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "cricketwireless.com"
+     ],
+     "about": {
+      "en": "Prepaid mobile (AT&T)",
+      "fr": "Mobile prépayé (AT&T)"
+     }
+    },
+    {
+     "name": "Frontier",
+     "url": "https://frontier.com/login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "frontier.com"
+     ],
+     "about": {
+      "en": "Fiber internet and phone",
+      "fr": "Internet fibre et téléphone"
+     }
+    },
+    {
+     "name": "Google Fi",
+     "url": "https://fi.google.com/account",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "google.com"
+     ],
+     "about": {
+      "en": "Mobile service (Google)",
+      "fr": "Forfait mobile (Google)"
+     }
+    },
+    {
+     "name": "Google Fiber",
+     "url": "https://fiber.google.com/myfiber/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "gfiber.com",
+      "google.com"
+     ],
+     "about": {
+      "en": "Fiber internet",
+      "fr": "Internet fibre"
+     }
+    },
+    {
+     "name": "HughesNet",
+     "url": "https://my.hughesnet.com/en/overview",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "hughesnet.com"
+     ],
+     "about": {
+      "en": "Satellite internet",
+      "fr": "Internet par satellite"
+     }
+    },
+    {
+     "name": "Kinetic",
+     "url": "https://my.gokinetic.com/consumer/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "gokinetic.com",
+      "windstream.com"
+     ],
+     "about": {
+      "en": "Internet service",
+      "fr": "Fournisseur d'accès internet"
+     }
+    },
+    {
+     "name": "Mediacom",
+     "url": "https://mediacomcable.com/login/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "mediacomcable.com",
+      "mediacomcc.com"
+     ],
+     "about": {
+      "en": "Cable internet and TV",
+      "fr": "Internet câble et télévision"
+     }
+    },
+    {
+     "name": "Metro by T-Mobile",
+     "url": "https://www.metrobyt-mobile.com/login/start",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "metrobyt-mobile.com"
+     ],
+     "about": {
+      "en": "Prepaid mobile (T-Mobile)",
+      "fr": "Mobile prépayé (T-Mobile)"
+     }
+    },
+    {
+     "name": "Mint Mobile",
+     "url": "https://my.mintmobile.com/login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "mintmobile.com"
+     ],
+     "about": {
+      "en": "Prepaid mobile (T-Mobile network)",
+      "fr": "Mobile prépayé (réseau T-Mobile)"
+     }
+    },
+    {
+     "name": "Optimum",
+     "url": "https://www.optimum.net/login/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "optimum.net",
+      "optimum.com"
+     ],
+     "about": {
+      "en": "Cable internet, TV and mobile",
+      "fr": "Internet câble, télévision et mobile"
+     }
+    },
+    {
+     "name": "Sparklight",
+     "url": "https://customer.sparklight.com/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "sparklight.com"
+     ],
+     "about": {
+      "en": "Cable internet",
+      "fr": "Internet câble"
+     }
+    },
+    {
+     "name": "Spectrum",
+     "url": "https://www.spectrum.net/login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "spectrum.com",
+      "spectrum.net",
+      "charter.com"
+     ],
+     "about": {
+      "en": "Cable internet, TV and mobile",
+      "fr": "Internet câble, télévision et mobile"
+     }
+    },
+    {
+     "name": "Starlink",
+     "url": "https://starlink.com/account/home",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "starlink.com"
+     ],
+     "about": {
+      "en": "Satellite internet",
+      "fr": "Internet par satellite"
+     }
+    },
+    {
+     "name": "Straight Talk",
+     "url": "https://www.straighttalk.com/login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "straighttalk.com"
+     ],
+     "about": {
+      "en": "Prepaid mobile (Walmart)",
+      "fr": "Mobile prépayé (Walmart)"
+     }
+    },
+    {
+     "name": "T-Mobile",
+     "url": "https://www.t-mobile.com/account/dashboard",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "t-mobile.com"
+     ],
+     "about": {
+      "en": "Mobile and home internet",
+      "fr": "Mobile et internet fixe"
+     }
+    },
+    {
+     "name": "Total Wireless",
+     "url": "https://www.totalwireless.com/nsa/ui/auth/userlogin",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "totalwireless.com"
+     ],
+     "about": {
+      "en": "Prepaid mobile (Verizon)",
+      "fr": "Mobile prépayé (Verizon)"
+     }
+    },
+    {
+     "name": "Tracfone",
+     "url": "https://www.tracfone.com/nsa/ui/auth/userlogin",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "tracfone.com"
+     ],
+     "about": {
+      "en": "Prepaid mobile",
+      "fr": "Mobile prépayé"
+     }
+    },
+    {
+     "name": "US Mobile",
+     "url": "https://app.usmobile.com/dashboard/auth",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "usmobile.com"
+     ],
+     "about": {
+      "en": "Prepaid mobile",
+      "fr": "Mobile prépayé"
+     }
+    },
+    {
+     "name": "Verizon",
+     "url": "https://secure.verizon.com/signin",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "verizon.com",
+      "verizonwireless.com"
+     ],
+     "about": {
+      "en": "Mobile and Fios internet",
+      "fr": "Mobile et internet Fios"
+     }
+    },
+    {
+     "name": "Viasat",
+     "url": "https://my.viasat.com/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "viasat.com"
+     ],
+     "about": {
+      "en": "Satellite internet",
+      "fr": "Internet par satellite"
+     }
+    },
+    {
+     "name": "Visible",
+     "url": "https://www.visible.com/nsa/ui/auth/signin",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "visible.com"
+     ],
+     "about": {
+      "en": "Prepaid mobile (Verizon network)",
+      "fr": "Mobile prépayé (réseau Verizon)"
+     }
+    },
+    {
+     "name": "WOW!",
+     "url": "https://login.wowway.com/",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "wowway.com"
+     ],
+     "about": {
+      "en": "Cable internet and TV",
+      "fr": "Internet câble et télévision"
+     }
+    },
+    {
+     "name": "Xfinity",
+     "url": "https://login.xfinity.com/login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "xfinity.com",
+      "comcast.net"
+     ],
+     "about": {
+      "en": "Cable internet, TV and mobile",
+      "fr": "Internet câble, télévision et mobile"
+     }
+    },
+    {
+     "name": "Ziply Fiber",
+     "url": "https://ziplyfiber.com/myaccount/login",
+     "type": "mailbox",
+     "tags": [
+      "telecom"
+     ],
+     "announced_by": [
+      "ziplyfiber.com"
+     ],
+     "about": {
+      "en": "Fiber internet, Northwest",
+      "fr": "Internet fibre, Nord-Ouest"
+     }
+    }
+   ],
+   "regions": {
+    "AL": {
+     "name": {
+      "en": "Alabama",
+      "fr": "Alabama"
+     },
+     "sites": [
+      {
+       "name": "Alabama Power",
+       "url": "https://customerservice2.southerncompany.com/Login?mnuOpco=APC",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "alabamapower.com",
+        "southerncompany.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "AZ": {
+     "name": {
+      "en": "Arizona",
+      "fr": "Arizona"
+     },
+     "sites": [
+      {
+       "name": "APS",
+       "url": "https://www.aps.com/en/Authorization/Login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "aps.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "SRP",
+       "url": "https://myaccount.srpnet.com/power/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "srpnet.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "Tucson Electric Power",
+       "url": "https://account.tep.com/MyAccount/Login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "tep.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "CA": {
+     "name": {
+      "en": "California",
+      "fr": "Californie"
+     },
+     "sites": [
+      {
+       "name": "LADWP",
+       "url": "https://myaccount.ladwp.com/ladwp/faces/AccountSummary",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "ladwp.com"
+       ],
+       "about": {
+        "en": "Water and power utility, Los Angeles",
+        "fr": "Eau et électricité, Los Angeles"
+       }
+      },
+      {
+       "name": "PG&E",
+       "url": "https://myaccount.pge.com/myaccount/s/login/?language=en_US",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "pge.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      },
+      {
+       "name": "SDG&E",
+       "url": "https://myenergycenter.com/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "sdge.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      },
+      {
+       "name": "SMUD",
+       "url": "https://myaccount.smud.org/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "smud.org"
+       ],
+       "about": {
+        "en": "Electric utility, Sacramento",
+        "fr": "Électricité, Sacramento"
+       }
+      },
+      {
+       "name": "SoCalGas",
+       "url": "https://myaccount.socalgas.com/ui/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "socalgas.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      },
+      {
+       "name": "Southern California Edison",
+       "url": "https://www.sce.com/my-account",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "sce.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "CT": {
+     "name": {
+      "en": "Connecticut",
+      "fr": "Connecticut"
+     },
+     "sites": [
+      {
+       "name": "United Illuminating",
+       "url": "https://www.uinet.com/c/portal/login?redirect=https://portal.uinet.com/auth",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "uinet.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "FL": {
+     "name": {
+      "en": "Florida",
+      "fr": "Floride"
+     },
+     "sites": [
+      {
+       "name": "Florida Power & Light",
+       "url": "https://www.fpl.com/my-account/login.html",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "fpl.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "Tampa Electric",
+       "url": "https://account.tecoenergy.com/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "tampaelectric.com",
+        "tecoenergy.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "GA": {
+     "name": {
+      "en": "Georgia",
+      "fr": "Géorgie"
+     },
+     "sites": [
+      {
+       "name": "Gas South",
+       "url": "https://manage.gassouth.com/login/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "gassouth.com"
+       ],
+       "about": {
+        "en": "Natural gas supplier",
+        "fr": "Fournisseur de gaz naturel"
+       }
+      },
+      {
+       "name": "Georgia Power",
+       "url": "https://customerservice2.southerncompany.com/Login?mnuOpco=GPC",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "georgiapower.com",
+        "southerncompany.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "HI": {
+     "name": {
+      "en": "Hawaii",
+      "fr": "Hawaï"
+     },
+     "sites": [
+      {
+       "name": "Hawaiian Electric",
+       "url": "https://eservice.hawaiianelectric.com/bdisu/logon.sap",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "hawaiianelectric.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "IL": {
+     "name": {
+      "en": "Illinois",
+      "fr": "Illinois"
+     },
+     "sites": [
+      {
+       "name": "ComEd",
+       "url": "https://secure.comed.com/Pages/Login.aspx",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "comed.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "Nicor Gas",
+       "url": "https://customerportal.southerncompany.com/User/LoginGateway?LDC=7",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "nicorgas.com",
+        "southerncompany.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      },
+      {
+       "name": "Peoples Gas",
+       "url": "https://www.peoplesgasdelivery.com/secure/auth/l/acct/summary_accounts",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "peoplesgasdelivery.com"
+       ],
+       "about": {
+        "en": "Natural gas utility, Chicago",
+        "fr": "Gaz naturel, Chicago"
+       }
+      }
+     ]
+    },
+    "IN": {
+     "name": {
+      "en": "Indiana",
+      "fr": "Indiana"
+     },
+     "sites": [
+      {
+       "name": "AES Indiana",
+       "url": "https://myaccount.aesindiana.com/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "aesindiana.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "NIPSCO",
+       "url": "https://myaccount.nipsco.com/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "nipsco.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      }
+     ]
+    },
+    "KS": {
+     "name": {
+      "en": "Kansas",
+      "fr": "Kansas"
+     },
+     "sites": [
+      {
+       "name": "Kansas Gas Service",
+       "url": "https://www.kansasgasservice.com/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "kansasgasservice.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      }
+     ]
+    },
+    "KY": {
+     "name": {
+      "en": "Kentucky",
+      "fr": "Kentucky"
+     },
+     "sites": [
+      {
+       "name": "Kentucky Power",
+       "url": "https://www.kentuckypower.com/account/login/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "kentuckypower.com",
+        "aep.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "LG&E and KU",
+       "url": "https://my.lge-ku.com/cs/logon.sap",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "lge-ku.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      }
+     ]
+    },
+    "LA": {
+     "name": {
+      "en": "Louisiana",
+      "fr": "Louisiane"
+     },
+     "sites": [
+      {
+       "name": "Cleco",
+       "url": "https://myaccount.cleco.com/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "cleco.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "MD": {
+     "name": {
+      "en": "Maryland",
+      "fr": "Maryland"
+     },
+     "sites": [
+      {
+       "name": "BGE",
+       "url": "https://secure.bge.com/Pages/Login.aspx",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "bge.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      }
+     ]
+    },
+    "ME": {
+     "name": {
+      "en": "Maine",
+      "fr": "Maine"
+     },
+     "sites": [
+      {
+       "name": "Central Maine Power",
+       "url": "https://www.cmpco.com/c/portal/login?redirect=https://portal.cmpco.com/auth",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "cmpco.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "Versant Power",
+       "url": "https://myaccount.versantpower.com/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "versantpower.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "MI": {
+     "name": {
+      "en": "Michigan",
+      "fr": "Michigan"
+     },
+     "sites": [
+      {
+       "name": "Consumers Energy",
+       "url": "https://www.consumersenergy.com/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "consumersenergy.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      },
+      {
+       "name": "DTE Energy",
+       "url": "https://newlook.dteenergy.com/wps/wcm/connect/dte-web/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "dteenergy.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      }
+     ]
+    },
+    "MN": {
+     "name": {
+      "en": "Minnesota",
+      "fr": "Minnesota"
+     },
+     "sites": [
+      {
+       "name": "Minnesota Power",
+       "url": "https://myaccount.mnpower.com/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "mnpower.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "MS": {
+     "name": {
+      "en": "Mississippi",
+      "fr": "Mississippi"
+     },
+     "sites": [
+      {
+       "name": "Mississippi Power",
+       "url": "https://customerservice2.southerncompany.com/Login?mnuOpco=MPC",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "mississippipower.com",
+        "southerncompany.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "NJ": {
+     "name": {
+      "en": "New Jersey",
+      "fr": "New Jersey"
+     },
+     "sites": [
+      {
+       "name": "Atlantic City Electric",
+       "url": "https://secure.atlanticcityelectric.com/Pages/Login.aspx",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "atlanticcityelectric.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "New Jersey Natural Gas",
+       "url": "https://myaccount.njng.com/Portal/default.aspx",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "njng.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      },
+      {
+       "name": "PSE&G",
+       "url": "https://nj.myaccount.pseg.com/user/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "pseg.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      },
+      {
+       "name": "South Jersey Gas",
+       "url": "https://myaccount.southjerseygas.com/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "southjerseygas.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      }
+     ]
+    },
+    "NM": {
+     "name": {
+      "en": "New Mexico",
+      "fr": "Nouveau-Mexique"
+     },
+     "sites": [
+      {
+       "name": "PNM",
+       "url": "https://www.pnm.com/c/portal/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "pnm.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "NV": {
+     "name": {
+      "en": "Nevada",
+      "fr": "Nevada"
+     },
+     "sites": [
+      {
+       "name": "NV Energy",
+       "url": "https://www.nvenergy.com/my-account",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "nvenergy.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "NY": {
+     "name": {
+      "en": "New York",
+      "fr": "New York"
+     },
+     "sites": [
+      {
+       "name": "Central Hudson",
+       "url": "https://www.cenhud.com/en/login/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "cenhud.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      },
+      {
+       "name": "Con Edison",
+       "url": "https://www.coned.com/en/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "coned.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      },
+      {
+       "name": "NYSEG",
+       "url": "https://www.nyseg.com/c/portal/login?redirect=https://portal.nyseg.com/auth",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "nyseg.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      },
+      {
+       "name": "PSEG Long Island",
+       "url": "https://myaccount.psegliny.com/user/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "psegliny.com",
+        "pseg.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "RG&E",
+       "url": "https://www.rge.com/c/portal/login?redirect=https://portal.rge.com/auth",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "rge.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      }
+     ]
+    },
+    "OH": {
+     "name": {
+      "en": "Ohio",
+      "fr": "Ohio"
+     },
+     "sites": [
+      {
+       "name": "AEP Ohio",
+       "url": "https://www.aepohio.com/account/login/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "aepohio.com",
+        "aep.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "AES Ohio",
+       "url": "https://myprofile.aes-ohio.com/Portal/Login.aspx",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "aes-ohio.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "Columbia Gas of Ohio",
+       "url": "https://myaccount.columbiagasohio.com/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "columbiagasohio.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      },
+      {
+       "name": "Enbridge Gas Ohio",
+       "url": "https://ocidm.enbridgegas.com/Home/SignIn",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "enbridgegas.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      }
+     ]
+    },
+    "OK": {
+     "name": {
+      "en": "Oklahoma",
+      "fr": "Oklahoma"
+     },
+     "sites": [
+      {
+       "name": "Oklahoma Natural Gas",
+       "url": "https://www.oklahomanaturalgas.com/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "oklahomanaturalgas.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      },
+      {
+       "name": "PSO",
+       "url": "https://www.psoklahoma.com/account/login/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "psoklahoma.com",
+        "aep.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "OR": {
+     "name": {
+      "en": "Oregon",
+      "fr": "Oregon"
+     },
+     "sites": [
+      {
+       "name": "Portland General Electric",
+       "url": "https://portlandgeneral.com/auth/sign-in",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "portlandgeneral.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "PA": {
+     "name": {
+      "en": "Pennsylvania",
+      "fr": "Pennsylvanie"
+     },
+     "sites": [
+      {
+       "name": "Columbia Gas of Pennsylvania",
+       "url": "https://myaccount.columbiagaspa.com/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "columbiagaspa.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      },
+      {
+       "name": "Duquesne Light",
+       "url": "https://www.duquesnelight.com/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "duquesnelight.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "PECO",
+       "url": "https://secure.peco.com/Pages/Login.aspx",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "peco.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      },
+      {
+       "name": "Peoples",
+       "url": "https://peopleseaccount.com/Portal/default.aspx",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "peoples-gas.com"
+       ],
+       "about": {
+        "en": "Natural gas utility, western Pennsylvania",
+        "fr": "Gaz naturel, ouest de la Pennsylvanie"
+       }
+      },
+      {
+       "name": "PGW (Philadelphia Gas Works)",
+       "url": "https://myaccount.pgworks.com/portal/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "pgworks.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      },
+      {
+       "name": "PPL Electric Utilities",
+       "url": "https://selfserve.pplelectric.com/sign-in",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "pplelectric.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "RI": {
+     "name": {
+      "en": "Rhode Island",
+      "fr": "Rhode Island"
+     },
+     "sites": [
+      {
+       "name": "Rhode Island Energy",
+       "url": "https://selfserve.rienergy.com/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "rienergy.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      }
+     ]
+    },
+    "TN": {
+     "name": {
+      "en": "Tennessee",
+      "fr": "Tennessee"
+     },
+     "sites": [
+      {
+       "name": "MLGW",
+       "url": "https://mymlgw.mlgw.org/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "mlgw.com",
+        "mlgw.org"
+       ],
+       "about": {
+        "en": "Utilities, Memphis",
+        "fr": "Électricité, gaz et eau, Memphis"
+       }
+      },
+      {
+       "name": "Nashville Electric Service",
+       "url": "https://myaccount.nespower.com/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "nespower.com"
+       ],
+       "about": {
+        "en": "Electric utility, Nashville",
+        "fr": "Électricité, Nashville"
+       }
+      }
+     ]
+    },
+    "TX": {
+     "name": {
+      "en": "Texas",
+      "fr": "Texas"
+     },
+     "sites": [
+      {
+       "name": "Austin Energy",
+       "url": "https://coautilities.com/wps/myportal/occ/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "austinenergy.com",
+        "austintexas.gov"
+       ],
+       "about": {
+        "en": "Electric utility, Austin",
+        "fr": "Électricité, Austin"
+       }
+      },
+      {
+       "name": "CPS Energy",
+       "url": "https://www.cpsenergy.com/content/corporate/en/customer-support/manage-my-account.html",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "cpsenergy.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility, San Antonio",
+        "fr": "Électricité et gaz, San Antonio"
+       }
+      },
+      {
+       "name": "Gexa Energy",
+       "url": "https://myaccount.gexaenergy.com/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "gexaenergy.com"
+       ],
+       "about": {
+        "en": "Retail electricity provider",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "Green Mountain Energy",
+       "url": "https://www.greenmountainenergy.com/en/customer-service-center/my-account",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "greenmountainenergy.com"
+       ],
+       "about": {
+        "en": "Retail electricity provider",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "Reliant",
+       "url": "https://myaccount.reliant.com/protected/login.htm",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "reliant.com"
+       ],
+       "about": {
+        "en": "Retail electricity provider",
+        "fr": "Fournisseur d'électricité"
+       }
+      },
+      {
+       "name": "Texas Gas Service",
+       "url": "https://www.texasgasservice.com/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "texasgasservice.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      },
+      {
+       "name": "TXU Energy",
+       "url": "https://www.txu.com/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "txu.com"
+       ],
+       "about": {
+        "en": "Retail electricity provider",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "VA": {
+     "name": {
+      "en": "Virginia",
+      "fr": "Virginie"
+     },
+     "sites": [
+      {
+       "name": "Columbia Gas of Virginia",
+       "url": "https://myaccount.columbiagasva.com/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "columbiagasva.com"
+       ],
+       "about": {
+        "en": "Natural gas utility",
+        "fr": "Distributeur de gaz naturel"
+       }
+      }
+     ]
+    },
+    "VT": {
+     "name": {
+      "en": "Vermont",
+      "fr": "Vermont"
+     },
+     "sites": [
+      {
+       "name": "Green Mountain Power",
+       "url": "https://greenmountainpower.com/account/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "greenmountainpower.com"
+       ],
+       "about": {
+        "en": "Electric utility",
+        "fr": "Fournisseur d'électricité"
+       }
+      }
+     ]
+    },
+    "WA": {
+     "name": {
+      "en": "Washington",
+      "fr": "Washington"
+     },
+     "sites": [
+      {
+       "name": "Puget Sound Energy",
+       "url": "https://www.pse.com/en/login",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "pse.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      },
+      {
+       "name": "Seattle City Light",
+       "url": "https://myutilities.seattle.gov/eportal/",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "seattle.gov"
+       ],
+       "about": {
+        "en": "Electric utility, Seattle",
+        "fr": "Électricité, Seattle"
+       }
+      }
+     ]
+    },
+    "WI": {
+     "name": {
+      "en": "Wisconsin",
+      "fr": "Wisconsin"
+     },
+     "sites": [
+      {
+       "name": "Madison Gas and Electric",
+       "url": "https://www.mge.com/my-account/log-in",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "mge.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      },
+      {
+       "name": "We Energies",
+       "url": "https://www.we-energies.com/secure/auth/l/acct/summary_accounts",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "we-energies.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      },
+      {
+       "name": "Wisconsin Public Service",
+       "url": "https://www.wisconsinpublicservice.com/secure/auth/l/acct/summary_accounts",
+       "type": "mailbox",
+       "tags": [
+        "energy"
+       ],
+       "announced_by": [
+        "wisconsinpublicservice.com"
+       ],
+       "about": {
+        "en": "Electric and gas utility",
+        "fr": "Électricité et gaz"
+       }
+      }
+     ]
+    }
+   }
+  }
+ },
+ "tags": {
+  "admin": {
+   "name": {
+    "en": "Administration",
+    "fr": "Démarches"
+   }
+  },
+  "tax": {
+   "name": {
+    "en": "Taxes",
+    "fr": "Impôts"
+   }
+  },
+  "health": {
+   "name": {
+    "en": "Health",
+    "fr": "Santé"
+   }
+  },
+  "family": {
+   "name": {
+    "en": "Family",
+    "fr": "Famille"
+   }
+  },
+  "jobs": {
+   "name": {
+    "en": "Work and benefits",
+    "fr": "Emploi"
+   }
+  },
+  "retirement": {
+   "name": {
+    "en": "Retirement",
+    "fr": "Retraite"
+   }
+  },
+  "studies": {
+   "name": {
+    "en": "Studies",
+    "fr": "Études"
+   }
+  },
+  "identity": {
+   "name": {
+    "en": "Papers and residence",
+    "fr": "Papiers et séjour"
+   }
+  },
+  "bank": {
+   "name": {
+    "en": "Bank",
+    "fr": "Banque"
+   }
+  },
+  "energy": {
+   "name": {
+    "en": "Energy",
+    "fr": "Énergie"
+   }
+  },
+  "telecom": {
+   "name": {
+    "en": "Phone and internet",
+    "fr": "Téléphone et internet"
+   }
+  }
+ }
+}

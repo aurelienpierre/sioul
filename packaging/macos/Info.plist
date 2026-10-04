@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- What macOS asks of an application that records and calls: without the
+     usage sentences, it ends the program at the first use of the microphone
+     or the camera. CFBundleShortVersionString follows Cargo.toml. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Sioul</string>
+  <key>CFBundleDisplayName</key><string>Sioul</string>
+  <key>CFBundleIdentifier</key><string>com.aurelienpierre.Sioul</string>
+  <key>CFBundleExecutable</key><string>sioul-app</string>
+  <key>CFBundleIconFile</key><string>sioul</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.0.1</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleLocalizations</key><array><string>en</string><string>fr</string></array>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
+  <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Sioul records your voice memos, and lets the sites you allow use the microphone in calls.</string>
+  <key>NSCameraUsageDescription</key><string>Sioul lets the sites you allow use the camera in calls.</string>
+</dict>
+</plist>

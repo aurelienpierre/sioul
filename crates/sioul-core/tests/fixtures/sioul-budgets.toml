@@ -1,0 +1,79 @@
+# Budgets, an example (docs/accounting.md). Put yours at the root of your case
+# store as sioul-budgets.toml. Amounts in euros: positive in, negative out.
+
+# A budget is an envelope with a goal: the balance to reach by the end of each period.
+[[budget]]
+id = "home"
+title = "Home"
+period = "month"      # or "year"
+target = 0            # 0 is breaking even
+
+[[budget]]
+id = "projects"
+title = "Projects"
+period = "month"
+target = 0
+
+# Automatic payments that send no mail: a preset each.
+[[preset]]
+budget = "home"
+label = "Rent"
+amount = -600
+every = "month"
+day = 1               # 31 means the last day of every month
+
+[[preset]]
+budget = "home"
+label = "Home insurance"
+amount = -150
+every = "year"
+month = 3
+day = 15
+
+[[preset]]
+budget = "home"
+label = "Daily spending (estimate)"
+amount = -500
+every = "month"
+day = 15
+estimate = true
+
+# A line by hand: planned until it happens. "reserve" makes it a transfer from that reserve.
+[[line]]
+budget = "home"
+date = 2026-10-20
+amount = 1000
+label = "Withdrawal from the savings account"
+reserve = "savings"
+planned = true
+
+# Mail that becomes a line: the same conditions as a case's routes.
+[[mail_rule]]
+budget = "projects"
+direction = "credit"
+from_domains = ["paypal.example"]
+subject_contains = ["vous avez reçu", "you received"]
+
+[[mail_rule]]
+budget = "projects"
+direction = "debit"
+from_domains = ["ai-lab.example"]
+subject_contains = ["receipt", "invoice"]
+
+# Savings that cover the budgets: its balance on a date, and a floor never planned below.
+[[reserve]]
+id = "savings"
+title = "Savings account"
+balance = 20000
+as_of = 2026-10-01
+floor = 2000
+
+# Which reserve covers which budget's shortfall at the end of each period.
+[[cover]]
+reserve = "savings"
+budget = "home"
+
+[[cover]]
+reserve = "savings"
+budget = "projects"
+sweep = true          # surpluses go back into the savings too

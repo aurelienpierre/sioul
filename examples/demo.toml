@@ -1,0 +1,11 @@
+# A demonstration on invented mail: run from the repository's root with
+#   cargo run -q -- --config examples/demo.toml porch
+# No admin windows are set, so the Porch is open.
+case_store = "crates/sioul-core/tests/fixtures"
+known_senders = "crates/sioul-core/tests/fixtures/known-senders.txt"
+
+[[account]]
+id = "demo"
+kind = "imap"
+maildir = "crates/sioul-core/tests/fixtures/porch"
+trusted_authserv_ids = ["mx.example.net"]

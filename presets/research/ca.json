@@ -1,0 +1,592 @@
+[
+  {
+    "name": "CRA My Account",
+    "url": "https://www.canada.ca/en/revenue-agency/services/e-services/cra-login-services.html",
+    "category": "admin",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["cra-arc.gc.ca"],
+    "about": {"en": "Federal taxes and benefits", "fr": "Impôts et prestations fédéraux"},
+    "checked": "200 (sign-in chooser: Sign-In Partner or CRA user ID; canada.ca drops plain curl, passes with browser TLS ciphers)"
+  },
+  {
+    "name": "My Service Canada Account",
+    "url": "https://www.canada.ca/en/employment-social-development/services/my-account.html",
+    "category": "admin",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["canada.gc.ca"],
+    "about": {"en": "EI, pensions and OAS", "fr": "Assurance-emploi, RPC et SV"},
+    "checked": "200 (sign-in chooser: GCKey, Interac Sign-In Partner, provincial ID)"
+  },
+  {
+    "name": "Government of Canada sign-in",
+    "url": "https://www.canada.ca/en/government/sign-in-online-account.html",
+    "category": "admin",
+    "country": "CA",
+    "region": "",
+    "announced_by": [],
+    "about": {"en": "Index of federal online accounts", "fr": "Index des comptes fédéraux en ligne"},
+    "checked": "200 (directory of every federal sign-in; GCKey and GC Sign In have no standalone sign-in page)"
+  },
+  {
+    "name": "IRCC secure account",
+    "url": "https://www.canada.ca/en/immigration-refugees-citizenship/services/application/account.html",
+    "category": "admin",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["cic.gc.ca"],
+    "about": {"en": "Immigration and citizenship applications", "fr": "Demandes d'immigration et de citoyenneté"},
+    "checked": "200 (sign-in chooser: GCKey or Sign-In Partner)"
+  },
+  {
+    "name": "IRCC Portal",
+    "url": "https://portal-portail.apps.cic.gc.ca/signin?lang=en",
+    "category": "admin",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["cic.gc.ca"],
+    "about": {"en": "Immigration applications, email sign-in", "fr": "Demandes d'immigration, connexion par courriel"},
+    "checked": "200"
+  },
+  {
+    "name": "EI Internet Reporting Service",
+    "url": "https://srv265.hrdc-drhc.gc.ca/interdec/ouverturedesession-login/ouverturedesession-login.aspx?lang=eng",
+    "category": "admin",
+    "country": "CA",
+    "region": "",
+    "announced_by": [],
+    "about": {"en": "Employment Insurance biweekly reports", "fr": "Déclarations d'assurance-emploi"},
+    "checked": "200"
+  },
+  {
+    "name": "NSLSC",
+    "url": "https://protege-secure.csnpe-nslsc.canada.ca/en/public/sign-in-method",
+    "category": "admin",
+    "country": "CA",
+    "region": "",
+    "announced_by": [],
+    "about": {"en": "Canada student loans", "fr": "Prêts d'études canadiens"},
+    "checked": "200"
+  },
+  {
+    "name": "My VAC Account",
+    "url": "https://mva-mda.vac-acc.gc.ca/pub/mva_7_24_1?request_locale=en_CA",
+    "category": "admin",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["veterans.gc.ca", "vac-acc.gc.ca"],
+    "about": {"en": "Veterans Affairs benefits", "fr": "Prestations aux anciens combattants"},
+    "checked": "200"
+  },
+  {
+    "name": "Job Bank",
+    "url": "https://www.jobbank.gc.ca/login",
+    "category": "admin",
+    "country": "CA",
+    "region": "",
+    "announced_by": [],
+    "about": {"en": "Federal job search service", "fr": "Service fédéral de recherche d'emploi"},
+    "checked": "200"
+  },
+  {
+    "name": "Carnet santé Québec",
+    "url": "https://carnetsante.gouv.qc.ca/portail",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": ["carnetsante.gouv.qc.ca"],
+    "about": {"en": "RAMQ personal health record", "fr": "Dossier santé personnel (RAMQ)"},
+    "checked": "403 (Cloudflare blocks robots); the URL RAMQ's 'Services et outils' page links to (archived 2026-05-19); RAMQ has no citizen 'Mon dossier', its old cs.ramq.gouv.qc.ca 301s to a not-found page"
+  },
+  {
+    "name": "Revenu Québec",
+    "url": "https://citoyens.revenuquebec.ca/CitPres/SX/SX00/SX00.SXCLT00A.AccueilClient/SXCLT00AA?SVAR=01&CLNG=F&connexion=Citoyens",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": ["revenuquebec.ca"],
+    "about": {"en": "Québec taxes and benefits", "fr": "Impôts et prestations du Québec"},
+    "checked": "403 (Cloudflare blocks robots); target of the 'Accéder à Mon dossier' button on revenuquebec.ca/fr/citoyens/mon-dossier-pour-les-citoyens/, resolved through Revenu Québec's service directory API on 2026-10-04"
+  },
+  {
+    "name": "Retraite Québec",
+    "url": "https://mondossier.svc.retraitequebec.gouv.qc.ca/",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": ["retraitequebec.gouv.qc.ca"],
+    "about": {"en": "Québec pension and family allowance", "fr": "Rente du Québec et Allocation famille"},
+    "checked": "redirect to authentification.quebec.ca sign-in (one-time OIDC parameters, kept the start URL)"
+  },
+  {
+    "name": "Service d'authentification gouvernementale",
+    "url": "https://authentification.quebec.ca/acces/verification/",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": ["authentification.quebec.ca"],
+    "about": {"en": "Québec government sign-in account", "fr": "Compte de connexion gouvernemental"},
+    "checked": "200 (JavaScript app to create or manage the account; it replaced clicSÉQUR – Citoyens, now retired, per quebec.ca 2026-07-02)"
+  },
+  {
+    "name": "SAAQclic",
+    "url": "https://saaqclic.saaq.gouv.qc.ca/saaqstorefront/fr/login",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": ["saaq.gouv.qc.ca"],
+    "about": {"en": "Driver's licence and vehicles", "fr": "Permis de conduire et véhicules"},
+    "checked": "redirect to saaq.gouv.qc.ca/maintenance/saaqclic (scheduled maintenance Sat 20:00 to Sun 19:00); URL is the 'Particuliers' link on saaq.gouv.qc.ca"
+  },
+  {
+    "name": "MonEspace CNESST",
+    "url": "https://pes.cnesst.gouv.qc.ca/travailleur/mon_espace/",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": ["cnesst.gouv.qc.ca"],
+    "about": {"en": "Work accident claims", "fr": "Accidents et lésions du travail"},
+    "checked": "redirect to preauth.cnesst.gouv.qc.ca 'Connexion - Mon Espace CNESST' (session parameters, kept the start URL)"
+  },
+  {
+    "name": "Aide financière aux études",
+    "url": "https://prod.education.gouv.qc.ca/c11050101j/#/login?lang=fr",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": [],
+    "about": {"en": "Québec student loans and bursaries", "fr": "Prêts et bourses du Québec"},
+    "checked": "200; final URL of www.afe.gouv.qc.ca/services-en-ligne/ (quebec.ca's link; that host needs legacy TLS renegotiation, which OpenSSL 3 refuses)"
+  },
+  {
+    "name": "Mon dossier – Aide à l'emploi – Assistance sociale",
+    "url": "https://mondossier.mtess.gouv.qc.ca/fr/Portail/Index",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": ["mtess.gouv.qc.ca"],
+    "about": {"en": "Social assistance and employment aid", "fr": "Aide sociale et aide à l'emploi"},
+    "checked": "200"
+  },
+  {
+    "name": "RQAP",
+    "url": "https://www.rqapenligne.gouv.qc.ca/Applications/DossierClient",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": [],
+    "about": {"en": "Québec parental insurance", "fr": "Assurance parentale du Québec"},
+    "checked": "redirect to authentification.quebec.ca sign-in (one-time OIDC parameters, kept the start URL)"
+  },
+  {
+    "name": "Portail d'inscription aux services de garde",
+    "url": "https://www.portail-servicesgarde.gouv.qc.ca/parent/s/login/?language=fr",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": [],
+    "about": {"en": "Daycare waiting list", "fr": "Inscription en service de garde"},
+    "checked": "200 (successor of La Place 0-5)"
+  },
+  {
+    "name": "Québec emploi",
+    "url": "https://www.quebecemploi.gouv.qc.ca/plateforme-emploi/connexion",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": ["quebecemploi.gouv.qc.ca"],
+    "about": {"en": "Québec job search", "fr": "Recherche d'emploi au Québec"},
+    "checked": "200"
+  },
+  {
+    "name": "Arrima",
+    "url": "https://arrima.immigration-quebec.gouv.qc.ca/aiguillage/",
+    "category": "admin",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": [],
+    "about": {"en": "Québec immigration applications", "fr": "Demandes d'immigration au Québec"},
+    "checked": "200 (redirect from arrima.immigration-quebec.gouv.qc.ca/)"
+  },
+  {
+    "name": "RBC Royal Bank",
+    "url": "https://secure.royalbank.com/statics/login-service-ui/index#/full/signin?LANGUAGE=ENGLISH",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["rbc.com"],
+    "about": {"en": "Canadian bank", "fr": "Banque canadienne"},
+    "checked": "200 (rbcroyalbank.com 'Sign In' goes to secure.royalbank.com/signin.html, which JS-redirects here)"
+  },
+  {
+    "name": "TD Canada Trust",
+    "url": "https://authentication.td.com/uap-ui/?consumer=easyweb&locale=en_CA",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["td.com"],
+    "about": {"en": "Canadian bank (EasyWeb)", "fr": "Banque canadienne (EasyWeb)"},
+    "checked": "200 (redirect from easyweb.td.com, the td.com 'Secure Login' link)"
+  },
+  {
+    "name": "Scotiabank",
+    "url": "https://secure.scotiabank.com/",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["scotiabank.com"],
+    "about": {"en": "Canadian bank", "fr": "Banque canadienne"},
+    "checked": "redirect to auth.scotiaonline.scotiabank.com with a one-time oauth_key (kept the start URL, the 'Sign In' link on scotiabank.com)"
+  },
+  {
+    "name": "BMO",
+    "url": "https://www1.bmo.com/banking/digital/login?lang=en",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["bmo.com"],
+    "about": {"en": "Bank of Montreal", "fr": "Banque de Montréal"},
+    "checked": "403 'Banking unavailable' page (scheduled maintenance until 5:00 AM ET at check time); URL is the 'Sign in to Online Banking' link on bmo.com"
+  },
+  {
+    "name": "CIBC",
+    "url": "https://www.cibconline.cibc.com/ebm-resources/public/auth-gateway/main/client/index.html?locale=en&auth_context=login",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["cibc.com"],
+    "about": {"en": "Canadian bank", "fr": "Banque canadienne"},
+    "checked": "200 ('Signon | CIBC Online Banking', the sign-on link on cibc.com)"
+  },
+  {
+    "name": "National Bank",
+    "url": "https://app.bnc.ca/",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["bnc.ca", "nbc.ca"],
+    "about": {"en": "National Bank of Canada", "fr": "Banque Nationale du Canada"},
+    "checked": "200 ('Connexion à votre banque en ligne / Sign in to your online bank')"
+  },
+  {
+    "name": "Desjardins",
+    "url": "https://accweb.mouv.desjardins.com/identifiantunique/securite-garantie/authentification?domaineVirtuel=desjardins&langueCible=fr",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["desjardins.com"],
+    "about": {"en": "Credit union group (AccèsD)", "fr": "Coopérative financière (AccèsD)"},
+    "checked": "redirect to static.desjardins.com maintenance page (AccèsD maintenance on Sunday morning); URL is the AccèsD 'Entrer' link on desjardins.com"
+  },
+  {
+    "name": "Tangerine",
+    "url": "https://www.tangerine.ca/app/#/login/login-id?locale=en_CA",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["tangerine.ca"],
+    "about": {"en": "Online bank (Scotiabank)", "fr": "Banque en ligne (Scotiabank)"},
+    "checked": "200"
+  },
+  {
+    "name": "Simplii Financial",
+    "url": "https://online.simplii.com/ebm-resources/public/simplii/online-banking/client/index.html#/auth/signon",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["simplii.com"],
+    "about": {"en": "Online bank (CIBC)", "fr": "Banque en ligne (CIBC)"},
+    "checked": "200"
+  },
+  {
+    "name": "EQ Bank",
+    "url": "https://secure.eqbank.ca/login",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["eqbank.ca"],
+    "about": {"en": "Online bank", "fr": "Banque en ligne"},
+    "checked": "200"
+  },
+  {
+    "name": "Laurentian Bank",
+    "url": "https://blcweb.banquelaurentienne.ca/BLCDirect/",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["banquelaurentienne.ca", "laurentianbank.ca"],
+    "about": {"en": "Laurentian Bank of Canada", "fr": "Banque Laurentienne du Canada"},
+    "checked": "redirect to auth.banquelaurentienne.ca login with one-time flow state (kept the start URL); retail accounts move to National Bank after the sale closes, planned 2026-11-01"
+  },
+  {
+    "name": "KOHO",
+    "url": "https://web.koho.ca/login",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["koho.ca"],
+    "about": {"en": "Prepaid card and money app", "fr": "Carte prépayée et appli financière"},
+    "checked": "200 (login route of the web app, found in its JavaScript; web.koho.ca/ itself opens sign-up)"
+  },
+  {
+    "name": "Wealthsimple",
+    "url": "https://my.wealthsimple.com/app/login?locale=en-ca",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["wealthsimple.com"],
+    "about": {"en": "Investing and cash accounts", "fr": "Placements et compte d'épargne"},
+    "checked": "200"
+  },
+  {
+    "name": "PC Financial",
+    "url": "https://secure.pcfinancial.ca/en/login",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["pcfinancial.ca"],
+    "about": {"en": "Bank account and Mastercard", "fr": "Compte bancaire et Mastercard"},
+    "checked": "200"
+  },
+  {
+    "name": "Canadian Tire Bank",
+    "url": "https://www.ctfs.com/content/dashpublic/en/login.html",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["ctfs.com", "triangle.com"],
+    "about": {"en": "Triangle credit cards", "fr": "Cartes de crédit Triangle"},
+    "checked": "200 (redirect from www.ctfs.com/content/dash/en/public/login.html)"
+  },
+  {
+    "name": "Neo Financial",
+    "url": "https://member.neofinancial.com/login",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["neofinancial.com"],
+    "about": {"en": "Credit cards and savings", "fr": "Cartes de crédit et épargne"},
+    "checked": "200"
+  },
+  {
+    "name": "Manulife Bank",
+    "url": "https://online.manulifebank.ca/ciamLanding?language=en",
+    "category": "bank",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["manulifebank.ca"],
+    "about": {"en": "Manulife personal banking", "fr": "Services bancaires de Manuvie"},
+    "checked": "redirect to personal.id.manulife.ca sign-in with one-time state (kept the start URL, the 'Sign In' link on manulifebank.ca; the sign-in host returns 403 to robots)"
+  },
+  {
+    "name": "Hydro-Québec",
+    "url": "https://session.hydroquebec.com/portail/fr/group/clientele/gerer-mon-compte",
+    "category": "energy",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": ["hydroquebec.com"],
+    "about": {"en": "Québec electricity (Espace client)", "fr": "Électricité au Québec (Espace client)"},
+    "checked": "200 (JavaScript page; the 'Me connecter' link on hydroquebec.com/residentiel/)"
+  },
+  {
+    "name": "Énergir",
+    "url": "https://espaceclient.energir.com/fr",
+    "category": "energy",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": ["energir.com"],
+    "about": {"en": "Natural gas supplier", "fr": "Fournisseur de gaz naturel"},
+    "checked": "200 ('Énergir - Espace client')"
+  },
+  {
+    "name": "Enbridge Gaz Québec",
+    "url": "https://espaceclient.enbridgegaz.com/fr-ca/",
+    "category": "energy",
+    "country": "CA",
+    "region": "QC",
+    "announced_by": ["enbridgegaz.com"],
+    "about": {"en": "Natural gas, Outaouais (ex-Gazifère)", "fr": "Gaz naturel, Outaouais (ex-Gazifère)"},
+    "checked": "200 (gazifere.com now redirects to enbridgegaz.com, whose 'Espace client' link is this URL)"
+  },
+  {
+    "name": "Bell",
+    "url": "https://mybell.bell.ca/Login",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["bell.ca"],
+    "about": {"en": "Mobile, internet and TV", "fr": "Mobile, Internet et télé"},
+    "checked": "redirect to identification.bell.ca 'Log in to MyBell' with one-time state (kept the start URL)"
+  },
+  {
+    "name": "Rogers",
+    "url": "https://www.rogers.com/consumer/profile/signin/en",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["rogers.com"],
+    "about": {"en": "Mobile, internet and TV", "fr": "Mobile, Internet et télé"},
+    "checked": "200 (redirect from www.rogers.com/signin; shaw.ca now redirects to rogers.com)"
+  },
+  {
+    "name": "TELUS",
+    "url": "https://www.telus.com/my-telus",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["telus.com"],
+    "about": {"en": "Mobile, internet and TV", "fr": "Mobile, Internet et télé"},
+    "checked": "403 (Cloudflare blocks robots); the 'My TELUS' link on telus.com (archived 2026-09-25)"
+  },
+  {
+    "name": "Vidéotron",
+    "url": "https://www.videotron.com/connexion",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["videotron.com"],
+    "about": {"en": "Mobile, internet and TV", "fr": "Mobile, Internet et télé"},
+    "checked": "redirect to auth.videotron.com 'Videotron - Sign In' with one-time state (kept the start URL, the 'Connexion' link on videotron.com)"
+  },
+  {
+    "name": "Fido",
+    "url": "https://www.fido.ca/profile/signin",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["fido.ca"],
+    "about": {"en": "Mobile and internet (Rogers)", "fr": "Mobile et Internet (Rogers)"},
+    "checked": "200 (the 'Sign in' link on fido.ca, tracking parameter removed)"
+  },
+  {
+    "name": "Koodo",
+    "url": "https://www.koodomobile.com/my-account",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["koodomobile.com"],
+    "about": {"en": "Mobile plans (TELUS)", "fr": "Forfaits mobiles (TELUS)"},
+    "checked": "redirect to koodomobile.com/koodo-login-v2 carrying an OAuth request (kept the start URL)"
+  },
+  {
+    "name": "Virgin Plus",
+    "url": "https://www.virginplus.ca/en/login/index.html",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["virginplus.ca"],
+    "about": {"en": "Mobile and internet (Bell)", "fr": "Mobile et Internet (Bell)"},
+    "checked": "200 ('Log in to My Account - Virgin Plus')"
+  },
+  {
+    "name": "Freedom Mobile",
+    "url": "https://login.freedommobile.ca/",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["freedommobile.ca"],
+    "about": {"en": "Mobile and home internet", "fr": "Mobile et Internet résidentiel"},
+    "checked": "200 ('Freedom Mobile Login', the header 'Log in' link on freedommobile.ca)"
+  },
+  {
+    "name": "Fizz",
+    "url": "https://fizz.ca/en/login/end-user",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["fizz.ca"],
+    "about": {"en": "Mobile and internet (Vidéotron)", "fr": "Mobile et Internet (Vidéotron)"},
+    "checked": "redirect to sso.fizz.ca sign-in with one-time state (kept the start URL, the loginUrl in fizz.ca's own sign-in configuration)"
+  },
+  {
+    "name": "Public Mobile",
+    "url": "https://myaccount.publicmobile.ca/",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["publicmobile.ca"],
+    "about": {"en": "Prepaid mobile (TELUS)", "fr": "Mobile prépayé (TELUS)"},
+    "checked": "redirect to TELUS sign-in (eversafe.id.telus.com, one-time parameters, Cloudflare 403 to robots); kept the start URL, the 'My Account' link on publicmobile.ca"
+  },
+  {
+    "name": "Chatr",
+    "url": "https://www.chatrwireless.com/account",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["chatrwireless.com"],
+    "about": {"en": "Prepaid mobile (Rogers)", "fr": "Mobile prépayé (Rogers)"},
+    "checked": "200 (the 'Sign in' link on chatrwireless.com)"
+  },
+  {
+    "name": "Lucky Mobile",
+    "url": "https://myaccount.luckymobile.ca/",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["luckymobile.ca"],
+    "about": {"en": "Prepaid mobile (Bell)", "fr": "Mobile prépayé (Bell)"},
+    "checked": "redirect to a SiteMinder login page with one-time parameters (kept the start URL, the 'My Account' link on luckymobile.ca)"
+  },
+  {
+    "name": "Cogeco",
+    "url": "https://myaccount.cogeco.ca/acpub/login",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["cogeco.ca"],
+    "about": {"en": "Internet, TV and phone", "fr": "Internet, télé et téléphonie"},
+    "checked": "403 (Cloudflare blocks robots); the 'Log in to My Account' link on cogeco.ca (archived 2026-09-24)"
+  },
+  {
+    "name": "Eastlink Mobile",
+    "url": "https://mobilemyaccount.eastlink.ca/",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["eastlink.ca"],
+    "about": {"en": "Eastlink mobile account", "fr": "Compte mobile Eastlink"},
+    "checked": "200; Eastlink's Internet, TV and Phone My Account has been offline since a security incident on 2026-08-27 (eastlink.ca links it to a maintenance page)"
+  },
+  {
+    "name": "TekSavvy",
+    "url": "https://mysavvy.teksavvy.com/",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["teksavvy.com"],
+    "about": {"en": "Independent internet provider", "fr": "Fournisseur Internet indépendant"},
+    "checked": "200 ('MySavvy - TekSavvy', redirect from myaccount.teksavvy.com)"
+  },
+  {
+    "name": "EBOX",
+    "url": "https://client.ebox.ca/",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["ebox.ca"],
+    "about": {"en": "Internet provider (Québec, Ontario)", "fr": "Fournisseur Internet (Québec, Ontario)"},
+    "checked": "403 (blocks robots); the customer-area link on ebox.ca (archived 2026-10-03)"
+  },
+  {
+    "name": "oxio",
+    "url": "https://account.oxio.ca/en/login",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["oxio.ca"],
+    "about": {"en": "Home internet provider", "fr": "Fournisseur Internet résidentiel"},
+    "checked": "200 ('Login | oxio', redirect from oxio.ca/en/login/)"
+  },
+  {
+    "name": "Xplore",
+    "url": "https://www.myxplore.ca/customers/loginCommunity",
+    "category": "telecom",
+    "country": "CA",
+    "region": "",
+    "announced_by": ["xplore.ca"],
+    "about": {"en": "Rural internet provider", "fr": "Fournisseur Internet rural"},
+    "checked": "200 ('Xplore - Login'; xplore.ca/my-account sends customers to MyXplore)"
+  }
+]

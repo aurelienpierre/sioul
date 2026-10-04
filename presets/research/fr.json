@@ -1,0 +1,1287 @@
+[
+  {
+    "name": "Compte ameli",
+    "url": "https://assure.ameli.fr/PortailAS/appmanager/PortailAS/assure?_somtc=true",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "ameli.fr",
+      "assurance-maladie.fr"
+    ],
+    "about": {
+      "en": "Health insurance account",
+      "fr": "Compte Assurance Maladie"
+    },
+    "checked": "200, title 'Connexion à mon compte | Compte ameli' (https://assure.ameli.fr/ redirects here)"
+  },
+  {
+    "name": "impots.gouv.fr",
+    "url": "https://cfspart.impots.gouv.fr/",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "finances.gouv.fr"
+    ],
+    "about": {
+      "en": "Income tax personal space",
+      "fr": "Espace particulier des impôts"
+    },
+    "checked": "redirect to cfspart-idp.impots.gouv.fr/oauth2/authorize with one-time state, 200; start URL kept (it is the link on impots.gouv.fr)"
+  },
+  {
+    "name": "impots.gouv.fr – espace professionnel",
+    "url": "https://cfspro.impots.gouv.fr/mire/accueil.do",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "finances.gouv.fr"
+    ],
+    "about": {
+      "en": "Business tax space",
+      "fr": "Espace fiscal professionnel"
+    },
+    "checked": "redirect to cfspro-idp.impots.gouv.fr/oauth2/authorize with one-time state, 200; start URL kept (it is the link on impots.gouv.fr)"
+  },
+  {
+    "name": "Caf – Mon Compte",
+    "url": "https://wwwd.caf.fr/wps/portal/caffr/login",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "caf.fr"
+    ],
+    "about": {
+      "en": "Family and housing benefits",
+      "fr": "Allocations familiales et logement"
+    },
+    "checked": "blocks robots (Radware bot-manager page on all caf.fr hosts); login page confirmed via search"
+  },
+  {
+    "name": "Urssaf",
+    "url": "https://www.urssaf.fr/accueil/se-connecter.html",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "urssaf.fr"
+    ],
+    "about": {
+      "en": "Social contributions online space",
+      "fr": "Espace en ligne des cotisations"
+    },
+    "checked": "200, sign-in form with a profile picker (employer, self-employed, private individual, artist-author…)"
+  },
+  {
+    "name": "Autoentrepreneur.urssaf.fr",
+    "url": "https://www.autoentrepreneur.urssaf.fr/services/",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "urssaf.fr"
+    ],
+    "about": {
+      "en": "Micro-entrepreneur declarations",
+      "fr": "Déclarations des micro-entrepreneurs"
+    },
+    "checked": "200, title 'Mon compte - Autoentrepreneur.urssaf.fr' (JS app); target of the site's 'Se connecter' button"
+  },
+  {
+    "name": "Cesu (Urssaf)",
+    "url": "https://www.cesu.urssaf.fr/decla/index.html?page=page_se_connecter&LANG=FR",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "urssaf.fr"
+    ],
+    "about": {
+      "en": "Declaring a home employee",
+      "fr": "Déclarer un salarié à domicile"
+    },
+    "checked": "200; 'Se connecter' link of cesu.urssaf.fr"
+  },
+  {
+    "name": "Pajemploi (Urssaf)",
+    "url": "https://pajemploi.urssaf.fr/",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "urssaf.fr"
+    ],
+    "about": {
+      "en": "Childcare employer declarations",
+      "fr": "Déclarations de garde d'enfant"
+    },
+    "checked": "200 (JS app, signs in through login.urssaf.fr); urssaf.fr's sign-in page sends Pajemploi users here"
+  },
+  {
+    "name": "FranceConnect",
+    "url": "https://tableaudebord.franceconnect.gouv.fr/",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "franceconnect.gouv.fr"
+    ],
+    "about": {
+      "en": "Sign-in history and access",
+      "fr": "Historique et accès FranceConnect"
+    },
+    "checked": "200, title 'Mon tableau de bord' (JS app); linked from franceconnect.gouv.fr, mon.franceconnect.gouv.fr redirects here"
+  },
+  {
+    "name": "France Travail",
+    "url": "https://candidat.francetravail.fr/espacepersonnel/",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "francetravail.fr",
+      "pole-emploi.fr"
+    ],
+    "about": {
+      "en": "Job seeker personal space",
+      "fr": "Espace personnel du candidat"
+    },
+    "checked": "200, title 'Accueil - Espace numérique | France Travail' (JS app); the sign-in host authentification-candidat.francetravail.fr answers 403 to robots"
+  },
+  {
+    "name": "France Titres (ANTS)",
+    "url": "https://moncompte.ants.gouv.fr/connexion",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "ants.gouv.fr"
+    ],
+    "about": {
+      "en": "ID, passport, licence, car papers",
+      "fr": "Identité, passeport, permis, carte grise"
+    },
+    "checked": "200, title 'Mon compte – France Titres (ANTS)' (JS app); /connexion route confirmed via search; ants.gouv.fr itself serves a JS bot check"
+  },
+  {
+    "name": "Mon compte retraite (info-retraite.fr)",
+    "url": "https://www.info-retraite.fr/portail-services/login",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "info-retraite.fr"
+    ],
+    "about": {
+      "en": "All pension schemes together",
+      "fr": "Tous vos régimes de retraite"
+    },
+    "checked": "200, title 'Info Retraite - compte retraite avec FranceConnect'"
+  },
+  {
+    "name": "l'Assurance retraite",
+    "url": "https://www.lassuranceretraite.fr/portail-services-ng/authentication",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "lassuranceretraite.fr"
+    ],
+    "about": {
+      "en": "Basic state pension (Cnav)",
+      "fr": "Retraite de base (Cnav)"
+    },
+    "checked": "200, title 'Portail de services'; target of 'Mon espace personnel' on lassuranceretraite.fr"
+  },
+  {
+    "name": "MSA",
+    "url": "https://www.msa.fr/lfp/espace-prive",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "msa.fr"
+    ],
+    "about": {
+      "en": "Farm sector social security",
+      "fr": "Protection sociale agricole"
+    },
+    "checked": "200, title 'MSA - Mon espace privé : se connecter, s'inscrire'"
+  },
+  {
+    "name": "Mon espace santé",
+    "url": "https://www.monespacesante.fr/",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "monespacesante.fr"
+    ],
+    "about": {
+      "en": "Personal health record",
+      "fr": "Carnet de santé numérique"
+    },
+    "checked": "200 (JS app; sign-in button on this page, no separate stable login URL found)"
+  },
+  {
+    "name": "Service Public",
+    "url": "https://www.service-public.gouv.fr/compte/se-connecter",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "service-public.gouv.fr",
+      "service-public.fr"
+    ],
+    "about": {
+      "en": "Public services personal space",
+      "fr": "Espace personnel Service Public"
+    },
+    "checked": "redirect to auth.service-public.gouv.fr with one-time state, 200; start URL kept (old www.service-public.fr/compte/se-connecter redirects here)"
+  },
+  {
+    "name": "Agirc-Arrco",
+    "url": "https://espace-personnel.agirc-arrco.fr/",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "agirc-arrco.fr"
+    ],
+    "about": {
+      "en": "Supplementary pension",
+      "fr": "Retraite complémentaire"
+    },
+    "checked": "200, title 'Mon espace personnel - Agirc-Arrco'"
+  },
+  {
+    "name": "Mon Compte Formation",
+    "url": "https://www.moncompteformation.gouv.fr/espace-prive/html/#/compte-utilisateur/connexion",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "moncompteformation.gouv.fr"
+    ],
+    "about": {
+      "en": "Training account (CPF)",
+      "fr": "Compte personnel de formation"
+    },
+    "checked": "200 (JS app; hash route of the login confirmed via search)"
+  },
+  {
+    "name": "Mes Droits Sociaux",
+    "url": "https://www.mesdroitssociaux.gouv.fr/accueil/",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "mesdroitssociaux.gouv.fr"
+    ],
+    "about": {
+      "en": "All your social benefits",
+      "fr": "Tous vos droits sociaux"
+    },
+    "checked": "200 (JS app; sign-in is the FranceConnect button on this page, no separate login URL)"
+  },
+  {
+    "name": "ENSAP",
+    "url": "https://ensap.gouv.fr/",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [],
+    "about": {
+      "en": "Public servants' pay and pension",
+      "fr": "Paie et retraite des agents publics"
+    },
+    "checked": "200, sign-in portal (title 'Ensap')"
+  },
+  {
+    "name": "Parcoursup",
+    "url": "https://dossierappel.parcoursup.fr/Candidat/authentification",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "parcoursup.fr"
+    ],
+    "about": {
+      "en": "Higher-education applications",
+      "fr": "Candidatures dans le supérieur"
+    },
+    "checked": "200, 'Bienvenue sur Parcoursup' with 'Créer ou accéder à mon dossier'; the form behind it is session-bound"
+  },
+  {
+    "name": "ÉduConnect",
+    "url": "https://educonnect.education.gouv.fr/",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "education.gouv.fr"
+    ],
+    "about": {
+      "en": "School services for families",
+      "fr": "Services scolaires des familles"
+    },
+    "checked": "redirect to teleservices.education.gouv.fr identity-provider choice with session parameters, 200; start URL kept"
+  },
+  {
+    "name": "MesServices.etudiant.gouv.fr",
+    "url": "https://messervices.etudiant.gouv.fr/oauth2/login",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "etudiant.gouv.fr"
+    ],
+    "about": {
+      "en": "Student grants and housing",
+      "fr": "Bourses et logement étudiant"
+    },
+    "checked": "redirect to /auth/dispatcher/login with one-time login_challenge, 200 'Se connecter'; start URL kept"
+  },
+  {
+    "name": "Démarche Numérique",
+    "url": "https://demarche.numerique.gouv.fr/users/sign_in",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "numerique.gouv.fr",
+      "demarches-simplifiees.fr"
+    ],
+    "about": {
+      "en": "Online forms (ex-Démarches simplifiées)",
+      "fr": "Démarches en ligne (ex-Démarches simplifiées)"
+    },
+    "checked": "200, title 'Se connecter · demarche.numerique.gouv.fr'; www.demarches-simplifiees.fr/users/sign_in serves the same page"
+  },
+  {
+    "name": "ANEF – étrangers en France",
+    "url": "https://administration-etrangers-en-france.interieur.gouv.fr/particuliers/#/espace-personnel/connexion-inscription",
+    "category": "admin",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "interieur.gouv.fr"
+    ],
+    "about": {
+      "en": "Residence permits for foreigners",
+      "fr": "Titres de séjour des étrangers"
+    },
+    "checked": "200 (JS app, title 'Administration numérique pour les étrangers en France'); hash route read from the app code"
+  },
+  {
+    "name": "La Banque Postale",
+    "url": "https://www.labanquepostale.fr/particulier/connexion-espace-client.html",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "labanquepostale.fr"
+    ],
+    "about": {
+      "en": "Retail bank of La Poste",
+      "fr": "Banque du groupe La Poste"
+    },
+    "checked": "200, title 'Connexion à mon espace client - La Banque Postale'; embeds the login form voscomptesenligne.labanquepostale.fr/voscomptes/canalXHTML/identif.ea?origin=particuliers"
+  },
+  {
+    "name": "Crédit Agricole",
+    "url": "https://www.credit-agricole.fr/particulier/acces-cr.html",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "credit-agricole.fr"
+    ],
+    "about": {
+      "en": "Regional cooperative bank",
+      "fr": "Banque coopérative régionale"
+    },
+    "checked": "200, title 'Accès à votre caisse régionale - Crédit Agricole' (choose your regional bank, then sign in); www.credit-agricole.fr/particulier/acceder-a-mes-comptes.html redirects here"
+  },
+  {
+    "name": "BNP Paribas",
+    "url": "https://mabanque.bnpparibas/fr/connexion",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "bnpparibas.com",
+      "bnpparibas.fr"
+    ],
+    "about": {
+      "en": "Retail bank",
+      "fr": "Banque de détail"
+    },
+    "checked": "redirect to connexion.mabanque.bnpparibas OAuth with one-time state, which answers 403 to robots; start URL kept (it is the home page's sign-in link)"
+  },
+  {
+    "name": "SG (Société Générale)",
+    "url": "https://particuliers.sg.fr/icd/cbo/index-react-authsec.html",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "sg.fr",
+      "societegenerale.fr"
+    ],
+    "about": {
+      "en": "Retail bank",
+      "fr": "Banque de détail"
+    },
+    "checked": "200, title 'Connexion à votre Espace Client Particuliers'; target of the home page's sign-in button"
+  },
+  {
+    "name": "LCL",
+    "url": "https://monespace.lcl.fr/connexion",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "lcl.fr"
+    ],
+    "about": {
+      "en": "Retail bank",
+      "fr": "Banque de détail"
+    },
+    "checked": "200 (sign-in page of monespace.lcl.fr)"
+  },
+  {
+    "name": "Caisse d'Épargne",
+    "url": "https://www.icgauth.caisse-epargne.fr/se-connecter/",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "caisse-epargne.fr"
+    ],
+    "about": {
+      "en": "Regional cooperative bank (BPCE)",
+      "fr": "Banque coopérative régionale (BPCE)"
+    },
+    "checked": "redirect from www.caisse-epargne.fr/se-connecter/; 200, title 'Connexion à votre espace'"
+  },
+  {
+    "name": "Banque Populaire",
+    "url": "https://www.icgauth.banquepopulaire.fr/se-connecter/",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "banquepopulaire.fr"
+    ],
+    "about": {
+      "en": "Regional cooperative bank (BPCE)",
+      "fr": "Banque coopérative régionale (BPCE)"
+    },
+    "checked": "redirect from www.banquepopulaire.fr/se-connecter/; 200, title 'Connexion à votre espace'"
+  },
+  {
+    "name": "BRED",
+    "url": "https://www.bred.fr/authentification",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "bred.fr"
+    ],
+    "about": {
+      "en": "Cooperative bank (BPCE group)",
+      "fr": "Banque coopérative (groupe BPCE)"
+    },
+    "checked": "200, title 'Authentification | BRED'"
+  },
+  {
+    "name": "Crédit Mutuel",
+    "url": "https://www.creditmutuel.fr/fr/authentification.html",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "creditmutuel.fr"
+    ],
+    "about": {
+      "en": "Cooperative bank",
+      "fr": "Banque coopérative"
+    },
+    "checked": "200, title 'Connexion à votre Espace Client - Crédit Mutuel'"
+  },
+  {
+    "name": "CIC",
+    "url": "https://www.cic.fr/fr/authentification.html",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "cic.fr"
+    ],
+    "about": {
+      "en": "Retail bank (Crédit Mutuel group)",
+      "fr": "Banque du groupe Crédit Mutuel"
+    },
+    "checked": "200, title 'CIC' (sign-in page)"
+  },
+  {
+    "name": "Crédit Mutuel de Bretagne",
+    "url": "https://mon.cmb.fr/auth/login",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "cmb.fr"
+    ],
+    "about": {
+      "en": "Cooperative bank, Brittany (Arkéa)",
+      "fr": "Banque coopérative bretonne (Arkéa)"
+    },
+    "checked": "200, title 'Espace client'; linked from www.cmb.fr"
+  },
+  {
+    "name": "Crédit Mutuel du Sud-Ouest",
+    "url": "https://mon.cmso.com/auth/login",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "cmso.com"
+    ],
+    "about": {
+      "en": "Cooperative bank, south-west (Arkéa)",
+      "fr": "Banque coopérative du Sud-Ouest (Arkéa)"
+    },
+    "checked": "200, title 'Espace client'"
+  },
+  {
+    "name": "CCF",
+    "url": "https://mabanque.ccf.fr/",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "ccf.fr"
+    ],
+    "about": {
+      "en": "Retail bank (ex-HSBC France)",
+      "fr": "Banque de détail (ex-HSBC France)"
+    },
+    "checked": "200, title 'Espace client' (JS app); linked from ccf.fr"
+  },
+  {
+    "name": "BoursoBank",
+    "url": "https://clients.boursobank.com/connexion/",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "boursobank.com",
+      "boursorama.fr"
+    ],
+    "about": {
+      "en": "Online bank (ex-Boursorama)",
+      "fr": "Banque en ligne (ex-Boursorama)"
+    },
+    "checked": "200, title 'Espace Client et connexion Compte BoursoBank (ex-Boursorama Banque)'"
+  },
+  {
+    "name": "Fortuneo",
+    "url": "https://mabanque.fortuneo.fr/mon-espace",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "fortuneo.fr"
+    ],
+    "about": {
+      "en": "Online bank",
+      "fr": "Banque en ligne"
+    },
+    "checked": "redirect from mabanque.fortuneo.fr/fr/identification.jsp; 200, title 'Fortuneo'"
+  },
+  {
+    "name": "Hello bank!",
+    "url": "https://www.hellobank.fr/fr/client?requiredDAC=3",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "hellobank.fr"
+    ],
+    "about": {
+      "en": "Online bank (BNP Paribas)",
+      "fr": "Banque en ligne (BNP Paribas)"
+    },
+    "checked": "redirect to connexion.hellobank.fr OAuth with one-time state, which answers 503 to robots; start URL kept (it is the home page's 'Se connecter' link)"
+  },
+  {
+    "name": "Monabanq",
+    "url": "https://www.monabanq.com/fr/identification/authentification.html",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "monabanq.com"
+    ],
+    "about": {
+      "en": "Online bank",
+      "fr": "Banque en ligne"
+    },
+    "checked": "200, title 'Connectez-vous à votre espace client Monabanq'"
+  },
+  {
+    "name": "BforBank",
+    "url": "https://customers.bforbank.com/login",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "bforbank.com"
+    ],
+    "about": {
+      "en": "Online bank (Crédit Agricole)",
+      "fr": "Banque en ligne (Crédit Agricole)"
+    },
+    "checked": "200, title 'Espace client : accédez à vos comptes - BforBank'; 'Se connecter' link of bforbank.com"
+  },
+  {
+    "name": "Nickel",
+    "url": "https://app.nickel.eu/",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "nickel.eu",
+      "compte-nickel.fr"
+    ],
+    "about": {
+      "en": "Account opened at tobacconists",
+      "fr": "Compte ouvert chez le buraliste"
+    },
+    "checked": "200, title 'Espace client : Gérer son compte | Nickel'; mon.compte-nickel.fr redirects here"
+  },
+  {
+    "name": "Revolut",
+    "url": "https://app.revolut.com/start",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "revolut.com"
+    ],
+    "about": {
+      "en": "Mobile bank",
+      "fr": "Banque mobile"
+    },
+    "checked": "403 (blocks robots); web-app login page confirmed via search"
+  },
+  {
+    "name": "N26",
+    "url": "https://app.n26.com/login",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "n26.com"
+    ],
+    "about": {
+      "en": "Mobile bank",
+      "fr": "Banque mobile"
+    },
+    "checked": "200, title 'Se connecter'"
+  },
+  {
+    "name": "Crédit Coopératif",
+    "url": "https://www.icgauth.credit-cooperatif.coop/se-connecter/",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "credit-cooperatif.coop"
+    ],
+    "about": {
+      "en": "Cooperative bank (BPCE)",
+      "fr": "Banque coopérative (BPCE)"
+    },
+    "checked": "redirect from www.credit-cooperatif.coop/se-connecter/; 200, title 'Connexion à votre espace'"
+  },
+  {
+    "name": "Wise",
+    "url": "https://wise.com/login",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "wise.com"
+    ],
+    "about": {
+      "en": "Multi-currency account",
+      "fr": "Compte multidevise"
+    },
+    "checked": "200, title 'Wise - Connexion'"
+  },
+  {
+    "name": "Trade Republic",
+    "url": "https://app.traderepublic.com/login",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "traderepublic.com"
+    ],
+    "about": {
+      "en": "Broker with current account",
+      "fr": "Courtier avec compte courant"
+    },
+    "checked": "200, title 'Trade Republic' (JS app)"
+  },
+  {
+    "name": "Shine",
+    "url": "https://app.shine.fr/",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "shine.fr"
+    ],
+    "about": {
+      "en": "Online bank for professionals",
+      "fr": "Banque en ligne pour professionnels"
+    },
+    "checked": "200, title 'Shine' (JS app); shine.fr's 'Me connecter' opens this app"
+  },
+  {
+    "name": "Qonto",
+    "url": "https://app.qonto.com/signin",
+    "category": "bank",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "qonto.com"
+    ],
+    "about": {
+      "en": "Online bank for professionals",
+      "fr": "Banque en ligne pour professionnels"
+    },
+    "checked": "200, title 'Qonto' (JS app)"
+  },
+  {
+    "name": "EDF",
+    "url": "https://particulier.edf.fr/fr/accueil/espace-client/tableau-de-bord.html",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "edf.fr"
+    ],
+    "about": {
+      "en": "Electricity and gas supplier",
+      "fr": "Fournisseur d'électricité et de gaz"
+    },
+    "checked": "redirect to espace-client.edf.fr sign-in with one-time state, 200; start URL kept"
+  },
+  {
+    "name": "ENGIE",
+    "url": "https://particuliers.engie.fr/login-page/authentification.html",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "myengie.fr"
+    ],
+    "about": {
+      "en": "Gas and electricity supplier",
+      "fr": "Fournisseur de gaz et d'électricité"
+    },
+    "checked": "200, title 'ENGIE - Connectez-vous à votre Espace Client'; linked from particuliers.engie.fr"
+  },
+  {
+    "name": "TotalEnergies",
+    "url": "https://www.totalenergies.fr/clients/connexion",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "totalenergies.fr"
+    ],
+    "about": {
+      "en": "Electricity and gas supplier",
+      "fr": "Fournisseur d'électricité et de gaz"
+    },
+    "checked": "403 (blocks robots); login page confirmed via search"
+  },
+  {
+    "name": "ekWateur",
+    "url": "https://mon-espace.ekwateur.fr/se_connecter",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "ekwateur.fr"
+    ],
+    "about": {
+      "en": "Green energy supplier",
+      "fr": "Fournisseur d'énergie verte"
+    },
+    "checked": "200, title 'Espace énergie'; also where former Iberdrola and Butagaz electricity/gas customers sign in"
+  },
+  {
+    "name": "Enercoop",
+    "url": "https://mon-espace.enercoop.fr/clients/sign_in",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "enercoop.fr"
+    ],
+    "about": {
+      "en": "Cooperative green electricity",
+      "fr": "Électricité verte coopérative"
+    },
+    "checked": "200, title 'Connexion - Enercoop'; linked from enercoop.fr"
+  },
+  {
+    "name": "Octopus Energy",
+    "url": "https://www.octopusenergy.fr/connexion",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "octopusenergy.fr"
+    ],
+    "about": {
+      "en": "Electricity and gas (ex-Plüm)",
+      "fr": "Électricité et gaz (ex-Plüm)"
+    },
+    "checked": "429 (rate-limits robots); login page confirmed via search; plum.fr redirects to octopusenergy.fr"
+  },
+  {
+    "name": "Mint Énergie",
+    "url": "https://client.mint-energie.com/Pages/Connexion/connexion.aspx",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "mint-energie.com"
+    ],
+    "about": {
+      "en": "Green electricity supplier",
+      "fr": "Fournisseur d'électricité verte"
+    },
+    "checked": "200, title 'Mint Énergie - Espace client'; linked from mint-energie.com"
+  },
+  {
+    "name": "OHM Énergie",
+    "url": "https://espace-client.ohm-energie.com/login",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "ohm-energie.com"
+    ],
+    "about": {
+      "en": "Electricity and gas supplier",
+      "fr": "Fournisseur d'électricité et de gaz"
+    },
+    "checked": "200, title 'Espace Client'; linked from ohm-energie.com"
+  },
+  {
+    "name": "Alterna énergie (ex-Vattenfall)",
+    "url": "https://mon-espace.alterna-energie.fr/home/login",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "alterna-energie.fr",
+      "vattenfall.fr"
+    ],
+    "about": {
+      "en": "Electricity and gas (ex-Vattenfall)",
+      "fr": "Électricité et gaz (ex-Vattenfall)"
+    },
+    "checked": "200, title 'Alterna énergie - Espace client - Connexion'; www.vattenfall.fr redirects to alterna-energie.fr"
+  },
+  {
+    "name": "ilek",
+    "url": "https://www.ilek.fr/login",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "ilek.fr"
+    ],
+    "about": {
+      "en": "Local green energy supplier",
+      "fr": "Fournisseur d'énergie verte locale"
+    },
+    "checked": "200 (JS app; /login route read from the app code)"
+  },
+  {
+    "name": "Plenitude (ex-Eni)",
+    "url": "https://espace-client.eniplenitude.fr/auth/connexion",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "eniplenitude.fr"
+    ],
+    "about": {
+      "en": "Gas and electricity (ex-Eni)",
+      "fr": "Gaz et électricité (ex-Eni)"
+    },
+    "checked": "redirect from espace-client.eniplenitude.fr; 200, title 'Espace Client Plenitude'"
+  },
+  {
+    "name": "Alpiq",
+    "url": "https://particuliers.alpiq.fr/clients",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "alpiq.fr"
+    ],
+    "about": {
+      "en": "Electricity supplier",
+      "fr": "Fournisseur d'électricité"
+    },
+    "checked": "redirect to Keycloak page 'Se connecter à alpiq', 200; start URL kept"
+  },
+  {
+    "name": "Primeo Énergie",
+    "url": "https://espace-client.primeo-energie.fr/",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "primeo-energie.fr"
+    ],
+    "about": {
+      "en": "Electricity and gas supplier",
+      "fr": "Fournisseur d'électricité et de gaz"
+    },
+    "checked": "200, title 'Espace client Primeo Energie'; linked from primeo-energie.fr"
+  },
+  {
+    "name": "happ-e by ENGIE",
+    "url": "https://espace-client.happ-e.fr/",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "happ-e.fr"
+    ],
+    "about": {
+      "en": "Online energy offer by ENGIE",
+      "fr": "Offre d'énergie en ligne d'ENGIE"
+    },
+    "checked": "redirect to /s/login?ec=302&startURL=… (sign-in page), 200; start URL kept (linked from happ-e.fr)"
+  },
+  {
+    "name": "Enedis",
+    "url": "https://mon-compte-client.enedis.fr/",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "enedis.fr"
+    ],
+    "about": {
+      "en": "Electricity grid, Linky meter data",
+      "fr": "Réseau électrique, données Linky"
+    },
+    "checked": "200, JS redirect to the Enedis sign-in; 'Mon compte' link on enedis.fr"
+  },
+  {
+    "name": "GRDF",
+    "url": "https://monespace.grdf.fr/",
+    "category": "energy",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "grdf.fr"
+    ],
+    "about": {
+      "en": "Gas grid, meter readings",
+      "fr": "Réseau de gaz, relevés de compteur"
+    },
+    "checked": "redirect to connexion.grdf.fr OAuth with one-time nonce, 200 'GRDF - Connexion'; start URL kept (linked from grdf.fr)"
+  },
+  {
+    "name": "Orange",
+    "url": "https://espace-client.orange.fr/",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "orange.fr"
+    ],
+    "about": {
+      "en": "Phone and internet provider",
+      "fr": "Opérateur téléphone et internet"
+    },
+    "checked": "200, title 'Espace Client Orange' (JS app); the sign-in itself is login.orange.fr, 200 'Identification Orange'"
+  },
+  {
+    "name": "Sosh",
+    "url": "https://espace-client.orange.fr/",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "sosh.fr",
+      "orange.fr"
+    ],
+    "about": {
+      "en": "Orange's online-only brand",
+      "fr": "Marque en ligne d'Orange"
+    },
+    "checked": "200, title 'Espace Client Orange'; a Sosh account is an Orange account, no separate Sosh customer area (confirmed via search)"
+  },
+  {
+    "name": "SFR",
+    "url": "https://www.sfr.fr/mon-espace-client/",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "sfr.fr"
+    ],
+    "about": {
+      "en": "Phone and internet provider",
+      "fr": "Opérateur téléphone et internet"
+    },
+    "checked": "redirect to www.sfr.fr/cas/login?service=…, 200, title 'Gestion de mon Compte SFR - Espace Client SFR'; start URL kept"
+  },
+  {
+    "name": "RED by SFR",
+    "url": "https://www.red-by-sfr.fr/mon-espace-client/",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "red-by-sfr.fr",
+      "sfr.fr"
+    ],
+    "about": {
+      "en": "SFR's online-only brand",
+      "fr": "Marque en ligne de SFR"
+    },
+    "checked": "redirect to www.sfr.fr/cas/login?service=…red-by-sfr…, 200; start URL kept"
+  },
+  {
+    "name": "Bouygues Telecom",
+    "url": "https://www.bouyguestelecom.fr/mon-compte",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "bouyguestelecom.fr"
+    ],
+    "about": {
+      "en": "Phone and internet provider",
+      "fr": "Opérateur téléphone et internet"
+    },
+    "checked": "200, title 'Bouygues Telecom - Espace client'; www.mon-compte.bouyguestelecom.fr/cas/login redirects here"
+  },
+  {
+    "name": "B&You",
+    "url": "https://www.bouyguestelecom.fr/mon-compte",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "bouyguestelecom.fr"
+    ],
+    "about": {
+      "en": "Bouygues Telecom's no-frills brand",
+      "fr": "Marque sans engagement de Bouygues"
+    },
+    "checked": "200, Bouygues Telecom customer area, where B&You lines sign in (confirmed via search); b-and-you.fr no longer resolves"
+  },
+  {
+    "name": "Free (Freebox)",
+    "url": "https://subscribe.free.fr/login/",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "free.fr"
+    ],
+    "about": {
+      "en": "Internet box provider",
+      "fr": "Fournisseur d'accès internet"
+    },
+    "checked": "200, title 'Espace abonné Freebox'"
+  },
+  {
+    "name": "Free Mobile",
+    "url": "https://mobile.free.fr/account/v2/login",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "free-mobile.fr"
+    ],
+    "about": {
+      "en": "Mobile operator",
+      "fr": "Opérateur mobile"
+    },
+    "checked": "redirect from mobile.free.fr/account/; 200, title 'Espace Abonné Free Mobile - Bienvenue'"
+  },
+  {
+    "name": "La Poste Mobile",
+    "url": "https://espaceclient.lapostemobile.fr/mobile/identification/authentification",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "lapostemobile.fr"
+    ],
+    "about": {
+      "en": "Mobile and internet provider",
+      "fr": "Opérateur mobile et internet"
+    },
+    "checked": "200, title 'Espace client'; linked from lapostemobile.fr"
+  },
+  {
+    "name": "Prixtel",
+    "url": "https://espaceclient.prixtel.com/",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "prixtel.com"
+    ],
+    "about": {
+      "en": "Mobile operator (MVNO)",
+      "fr": "Opérateur mobile virtuel"
+    },
+    "checked": "202 (AWS WAF bot challenge); 'Espace client' link on prixtel.com"
+  },
+  {
+    "name": "NRJ Mobile",
+    "url": "https://espace-client.nrjmobile.fr/connexion",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "nrjmobile.fr"
+    ],
+    "about": {
+      "en": "Mobile operator (MVNO)",
+      "fr": "Opérateur mobile virtuel"
+    },
+    "checked": "200, title 'NRJ Mobile'; linked from nrjmobile.fr"
+  },
+  {
+    "name": "Coriolis Télécom",
+    "url": "https://espaceclient.coriolis.com/",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "coriolis.com"
+    ],
+    "about": {
+      "en": "Mobile and internet provider",
+      "fr": "Opérateur mobile et internet"
+    },
+    "checked": "202 (AWS WAF bot challenge); 'Espace client' link on coriolis.com"
+  },
+  {
+    "name": "Syma Mobile",
+    "url": "https://mysyma.symamobile.com/my-syma.html#loginpage",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "symamobile.com"
+    ],
+    "about": {
+      "en": "Mobile operator (MVNO)",
+      "fr": "Opérateur mobile virtuel"
+    },
+    "checked": "200, title 'My Syma'; linked from symamobile.com"
+  },
+  {
+    "name": "Lebara",
+    "url": "https://www.lebara.fr/fr/mylebara/login.html",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "lebara.fr",
+      "lebara.com"
+    ],
+    "about": {
+      "en": "Mobile operator, international calls",
+      "fr": "Opérateur mobile, appels internationaux"
+    },
+    "checked": "200, title 'Connexion' (MyLebara); beware mylebara.fr, a parked domain for sale"
+  },
+  {
+    "name": "Auchan Télécom",
+    "url": "https://espace-client.auchantelecom.fr/connexion",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "auchantelecom.fr"
+    ],
+    "about": {
+      "en": "Mobile operator (MVNO)",
+      "fr": "Opérateur mobile virtuel"
+    },
+    "checked": "200, title 'Auchan Télécom'; linked from auchantelecom.fr (brand still active)"
+  },
+  {
+    "name": "Lycamobile",
+    "url": "https://mylyca.lycamobile.fr/fr/login/",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "lycamobile.fr"
+    ],
+    "about": {
+      "en": "Mobile operator, international calls",
+      "fr": "Opérateur mobile, appels internationaux"
+    },
+    "checked": "200, title 'LycaMobile France: Connexion client'; linked from lycamobile.fr"
+  },
+  {
+    "name": "YouPrice",
+    "url": "https://espace-client.youprice.fr/connexion-espace-client",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "youprice.fr"
+    ],
+    "about": {
+      "en": "Mobile operator (MVNO)",
+      "fr": "Opérateur mobile virtuel"
+    },
+    "checked": "200, title 'YouPrice.'; linked from youprice.fr"
+  },
+  {
+    "name": "Réglo Mobile",
+    "url": "https://www.reglomobile.fr/connexion",
+    "category": "telecom",
+    "country": "FR",
+    "region": "",
+    "announced_by": [
+      "reglomobile.fr"
+    ],
+    "about": {
+      "en": "Mobile operator (E.Leclerc)",
+      "fr": "Opérateur mobile (E.Leclerc)"
+    },
+    "checked": "403 (blocks robots: DataDome); /connexion route read from the site's app code"
+  }
+]

@@ -1,0 +1,119 @@
+# Sioul configuration, an example. Copy it to ~/.config/sioul/config.toml.
+# Passwords never go here: Sioul asks for them once and keeps them in the
+# system keyring (docs/architecture.md).
+#
+# `sioul account add you@example.org` (or the window's Accounts page) finds the
+# server, tests the password and writes the [[account]] block for you.
+
+# The folder of Markdown files holding the record of each case (docs/case-store.md).
+case_store = "~/Notes"
+
+# Senders you know: one address or @domain per line. Everyone else waits in the screener.
+# This is the default; "let in" in the window adds to it.
+known_senders = "~/.config/sioul/known-senders.txt"
+
+# Working hours: the Porch opens then, and work can reach you. Outside them,
+# on days without them and during time off, work rests: only family, friends,
+# codes from verified senders and what you enjoy (docs/porch.md). A day left
+# out is a day without work.
+[[window]]
+day = "monday"
+start = "09:00"
+end = "17:00"
+
+[[window]]
+day = "tuesday"
+start = "09:00"
+end = "17:00"
+
+[[window]]
+day = "thursday"
+start = "09:00"
+end = "12:30"
+
+# Time off: quiet from the first day to the last.
+[[time_off]]
+from = "2026-12-24"
+until = "2027-01-03"
+label = "Holidays"
+
+# What stays in view in quiet time: tasks of these categories, and the mail of
+# contacts in them. This is the default.
+# [quiet]
+# personal = ["joy", "personal", "family", "friends", "leisure"]
+
+# When offices are open, for tasks that need one. Unset: Monday to Friday, 9:00 to 17:00.
+# [[office_hours]]
+# day = "monday"
+# start = "08:30"
+# end = "12:00"
+
+# Kinds of task, as you name them (Tasks ⚙ edits them). Unset: Sioul's seven.
+# [[tasks.kind]]
+# id = "call"
+# label = "Phone"
+#
+# [[tasks.kind]]
+# id = "rendez-vous"
+# label = "Rendez-vous"
+
+# GitHub's issues and pull requests as tasks, for those who work there
+# (docs/github.md). Off unless asked; the token is in the keyring.
+# [github]
+# enabled = true
+# assigned = true
+# reviews = true
+# created = false
+# mentioned = false
+
+# Google calendars, contacts and tasks: added from Accounts, signed in on
+# Google's page (docs/google.md); the account then reads:
+# [[account]]
+# id = "google"
+# kind = "dav"
+# address = "someone@gmail.com"
+# host = "apidata.googleusercontent.com"
+# auth = "google"
+
+# A provider built on Nextcloud.
+[[account]]
+id = "personal"
+kind = "imap"
+address = "you@example.org"
+area = "personal"         # yours outside work: it stays in view in quiet time
+host = "mail.example.org"
+port = 993
+security = "tls"          # or "starttls"; there is no plain option
+# The name your provider writes at the start of Authentication-Results. Left
+# empty, Sioul learns it from your mail at the first sync.
+trusted_authserv_ids = ["mx.example.org"]
+# Days of mail the first sync brings (14 by default); then only what arrives.
+sync_days = 14
+# Where the mail is kept; this is the default.
+maildir = "~/.local/share/sioul/mail/personal"
+
+# A domain's mail at a cPanel host.
+[[account]]
+id = "domain"
+kind = "imap"
+address = "contact@example.com"
+host = "mail.example.com"
+port = 993
+security = "tls"
+trusted_authserv_ids = ["server.example.net"]
+
+# Gmail, with an app password for now (docs/architecture.md, "Gmail").
+[[account]]
+id = "gmail"
+kind = "imap"
+address = "someone@gmail.com"
+host = "imap.gmail.com"
+port = 993
+security = "tls"
+trusted_authserv_ids = ["mx.google.com"]
+
+# Sites kept open in Sioul (docs/sites.md): not accounts, they hold no
+# sign-in of Sioul's. Proton on the free plan has no IMAP: it opens as a site.
+[[site]]
+id = "proton"
+url = "https://mail.proton.me"

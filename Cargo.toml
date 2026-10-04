@@ -1,0 +1,88 @@
+[workspace]
+resolver = "3"
+members = ["crates/sioul-core", "crates/sioul-cli", "crates/sioul-sync", "crates/sioul-app"]
+# The window needs Qt's development files (docs/building.md); everything else builds without them.
+default-members = ["crates/sioul-core", "crates/sioul-cli", "crates/sioul-sync"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.89"
+authors = ["Aurélien Pierre"]
+repository = "https://github.com/aurelienpierre/sioul"
+license = "GPL-3.0-or-later"
+publish = false
+
+# Builds that fit a full disk: line tables are enough for backtraces, and
+# dependencies need no debug information at all (from 13 GB down to a few).
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+# Cryptography is slow unoptimised: a key's passphrase (Argon2) takes seconds.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.curve25519-dalek]
+opt-level = 3
+[profile.dev.package.ed25519-dalek]
+opt-level = 3
+[profile.dev.package.x25519-dalek]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.aes]
+opt-level = 3
+[profile.dev.package.rsa]
+opt-level = 3
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+
+[workspace.dependencies]
+mail-parser = "0.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+toml_edit = "0.25"
+jiff = { version = "0.2", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+fluent-bundle = "0.16"
+unic-langid = "0.9"
+fluent-syntax = "0.12"
+# Mail in HTML, made safe to show: only text, structure and links survive.
+ammonia = "4"
+# Writing: Markdown to HTML, and the message built (no host name leaked: Sioul sets the Message-ID).
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+mail-builder = { version = "1", default-features = false }
+calcard = { version = "0.3.14", default-features = false }
+chrono = { version = "0.4", default-features = false }
+chrono-tz = "0.10"
+roxmltree = "0.21"
+directories = "6"
+# OpenPGP with its pure-Rust cryptography, the same on Linux, Windows and macOS.
+sequoia-openpgp = { version = "2.4", default-features = false, features = ["crypto-rust", "allow-experimental-crypto", "allow-variable-time-crypto", "compression-deflate"] }
+# Sync: IMAP over TLS with ring as the only crypto provider, the system's certificates.
+async-imap = { version = "0.12", default-features = false, features = ["runtime-tokio"] }
+tokio = { version = "1", features = ["rt", "net", "time", "io-util", "macros"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-native-certs = "0.8"
+webpki-roots = "1"
+futures-util = "0.3"
+ureq = "3"
+# Sioul's own sender checks: SPF, DKIM, DMARC, ARC and reverse DNS, with ring and the system's DNS.
+mail-auth = { version = "0.13", default-features = false, features = ["ring", "arc"] }
+# Sending: SMTP submission, TLS with ring, no DKIM signing (the provider signs).
+mail-send = { version = "0.6", default-features = false, features = ["ring", "tls12"] }
+# Passwords: the Secret Service (KWallet, GNOME Keyring), with Rust's own crypto.
+keyring = { version = "3.6", default-features = false }
+# Notifications through the same D-Bus library as the keyring.
+notify-rust = { version = "4.18", default-features = false, features = ["d"] }
+rpassword = "7"
+cxx = "1.0"
+cxx-qt = "0.10"
+cxx-qt-lib = { version = "0.10", features = ["qt_gui", "qt_qml"] }
+cxx-qt-build = "0.10"

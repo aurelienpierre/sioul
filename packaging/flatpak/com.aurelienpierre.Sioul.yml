@@ -1,0 +1,55 @@
+# Flatpak for Linux. The antivirus is the system's ClamAV, which a Flatpak
+# does not reach: attachments are opened after Sioul asks, saying they will
+# not be checked (docs/client.md, "Antivirus").
+#
+# A starting point, never built yet. Open points before it builds:
+# - Cargo needs its crates offline: generate cargo-sources.json with
+#   flatpak-builder-tools' flatpak-cargo-generator.py from Cargo.lock.
+# - Qt 6.9 at least (docs/building.md): Qt WebEngine comes from its BaseApp;
+#   check that the KDE runtime carries Qt Location, Qt PDF and Qt Multimedia.
+# Then: flatpak-builder --user --install build packaging/flatpak/com.aurelienpierre.Sioul.yml
+
+app-id: com.aurelienpierre.Sioul
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: sioul-app
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Security keys (YubiKey…) in sites are /dev/hidraw*: only "all" reaches them
+  # (--device=usb and input do not); it also covers the GPU (dri).
+  - --device=all
+  # The system keyring (Secret Service) and notifications.
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  # Your case files and budgets, where you keep them.
+  - --filesystem=home
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+modules:
+  - name: sioul
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/sioul/cargo
+    build-commands:
+      - cargo --offline build --release -p sioul-app -p sioul-cli
+      - install -Dm755 target/release/sioul-app /app/bin/sioul-app
+      - install -Dm755 target/release/sioul /app/bin/sioul
+      - install -Dm644 data/sioul.desktop /app/share/applications/com.aurelienpierre.Sioul.desktop
+      # The icon under the application's id, as Flatpak asks; the desktop file names it so.
+      - sed -i 's/^Icon=sioul$/Icon=com.aurelienpierre.Sioul/' /app/share/applications/com.aurelienpierre.Sioul.desktop
+      - install -Dm644 data/icons/hicolor/scalable/apps/sioul.svg /app/share/icons/hicolor/scalable/apps/com.aurelienpierre.Sioul.svg
+      - install -Dm644 data/icons/hicolor/symbolic/apps/sioul-symbolic.svg /app/share/icons/hicolor/symbolic/apps/com.aurelienpierre.Sioul-symbolic.svg
+      - for size in 16 22 24 32 48 64 128 256 512; do install -Dm644 data/icons/hicolor/${size}x${size}/apps/sioul.png /app/share/icons/hicolor/${size}x${size}/apps/com.aurelienpierre.Sioul.png; done
+    sources:
+      - type: dir
+        path: ../..
+      - cargo-sources.json

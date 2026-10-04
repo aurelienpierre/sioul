@@ -1,0 +1,229 @@
+# Builds and tests Sioul on Linux, Windows and macOS.
+#
+# Runs on each push to main that touches code (docs and website are skipped),
+# and by hand: Actions → "Build on three systems" → "Run workflow", where the
+# Windows folder and the macOS .dmg (Qt gathered beside the program) can be
+# asked for. On a private repository every minute counts: Windows ×2, macOS ×10.
+#
+# Versions checked on 5 October 2026: actions/checkout v7.0.1,
+# jurplel/install-qt-action v4.4.1, Swatinem/rust-cache v2.9.2,
+# actions/upload-artifact v7.0.1.
+
+name: Build on three systems
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'website/**'
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      bundle:
+        description: 'Gather Qt beside the program: a Windows folder, a macOS .dmg (big artifacts)'
+        type: boolean
+        default: true
+      universal_mac:
+        description: 'macOS: also build for Intel and join both into universal programs'
+        type: boolean
+        default: false
+      qt_version:
+        description: 'Qt version (6.12 needs an aqtinstall that knows its new extension layout)'
+        type: string
+        default: '6.11.*'
+
+permissions:
+  contents: read
+
+# A newer push to the same branch replaces the run still going.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Qt 6.9 at least: the Sites page uses WebEngineProfilePrototype (6.9), permissions
+  # and client hints (6.8). 6.11 is what the development machine has (Fedora, 6.11.2).
+  QT_VERSION: ${{ inputs.qt_version || '6.11.*' }}
+  # Qt 6.11's macOS binaries run on macOS 13 and later; Rust and the C++ follow this.
+  MACOSX_DEPLOYMENT_TARGET: '13.0'
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+          # Qt's Windows binaries are built with MSVC 2022: the 2022 image has that
+          # compiler (windows-latest is Windows 2025 with Visual Studio 2026, which
+          # should link them too, MSVC keeping binary compatibility since 2015).
+          - name: Windows
+            os: windows-2022
+          # Apple silicon; Qt's macOS binaries are universal (Intel via `universal_mac`).
+          - name: macOS
+            os: macos-15
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      # Git on the Windows runners turns LF into CRLF at checkout: the files built
+      # into the programs (locales, presets, scripts) would differ from Linux's.
+      - name: Keep line endings as committed
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ (runner.os == 'macOS' && inputs.universal_mac) && 'x86_64-apple-darwin' || '' }}
+
+      # D-Bus for the keyring (Secret Service) and notifications (libdbus-sys,
+      # through pkg-config); Vulkan and xkbcommon headers, which Qt's own Linux
+      # binaries include; lld, which CXX-Qt picks over GNU ld (it cannot link Qt).
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libvulkan-dev libxkbcommon-dev lld
+
+      # Modules: the window links WebEngineQuick (build.rs); the pages import
+      # QtWebEngine (with its QtWebChannel and QtPositioning), QtMultimedia,
+      # QtLocation, QtQuick.Pdf; WebP and TIFF pictures need qtimageformats.
+      # aqtinstall 3.3.0 (the action's default) cannot install Qt 6.11+ on Windows:
+      # Qt's repository changed there (aqtinstall #959, fixed by #1000, not released
+      # yet). Hence aqtinstall from its main branch, pinned (2026-09-11).
+      - name: Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: qtwebengine qtwebchannel qtpositioning qtmultimedia qtlocation qtpdf qtimageformats
+          cache: true
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
+
+      # CXX-Qt looks for qmake6, then qmake, on PATH; this names the one just installed.
+      - name: Tell CXX-Qt which Qt
+        shell: bash
+        run: |
+          echo "QMAKE=${QT_ROOT_DIR}/bin/qmake${{ runner.os == 'Windows' && '.exe' || '' }}" >> "$GITHUB_ENV"
+          qmake -query QT_VERSION || true
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: qt6
+          cache-on-failure: true
+
+      # Every message the code asks for exists in each language (tools/check-messages.py).
+      - name: Messages in every language
+        if: runner.os == 'Linux'
+        run: python3 tools/check-messages.py
+
+      - name: Build the window and the command line
+        run: cargo build --release --locked -p sioul-app -p sioul-cli
+
+      - name: Build for Intel Macs too, and join both
+        if: runner.os == 'macOS' && github.event_name == 'workflow_dispatch' && inputs.universal_mac
+        run: |
+          cargo build --release --locked --target x86_64-apple-darwin -p sioul-app -p sioul-cli
+          mkdir -p universal
+          for program in sioul-app sioul; do
+            lipo -create "target/release/$program" "target/x86_64-apple-darwin/release/$program" -output "universal/$program"
+          done
+
+      # The programs alone: they need Qt 6.11 on the computer (Linux: the system's).
+      # A tarball keeps their executable bit, which artifacts (zip) lose.
+      - name: Pack the programs
+        shell: bash
+        run: |
+          mkdir -p dist
+          case "${{ runner.os }}" in
+            Linux)   tar -czf dist/sioul-linux-x86_64.tar.gz -C target/release sioul-app sioul ;;
+            Windows) cp target/release/sioul-app.exe target/release/sioul.exe dist/ ;;
+            macOS)   from=target/release; [ -d universal ] && from=universal
+                     tar -czf dist/sioul-macos.tar.gz -C "$from" sioul-app sioul ;;
+          esac
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sioul-${{ matrix.name }}
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+
+      # Qt beside the program, QtWebEngineProcess and its resources included; the
+      # MSVC runtime too (app-local), for computers without it.
+      - name: Windows folder with Qt
+        if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch' && inputs.bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force bundle\Sioul | Out-Null
+          Copy-Item target\release\sioul-app.exe, target\release\sioul.exe bundle\Sioul\
+          windeployqt --release --qmldir crates\sioul-app\qml bundle\Sioul\sioul-app.exe
+          Copy-Item "$env:SystemRoot\System32\vcruntime140.dll", "$env:SystemRoot\System32\vcruntime140_1.dll", "$env:SystemRoot\System32\msvcp140.dll" bundle\Sioul\
+
+      # A bundle with what macOS asks of an application that records and calls:
+      # without the usage descriptions, macOS ends the program at the first use of
+      # the microphone or camera. Signed ad hoc (Apple silicon runs nothing
+      # unsigned); not notarised: the first opening is right click → Open.
+      - name: macOS application
+        if: runner.os == 'macOS' && github.event_name == 'workflow_dispatch' && inputs.bundle
+        shell: bash
+        run: |
+          app=bundle/Sioul.app
+          from=target/release; [ -d universal ] && from=universal
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          cp "$from/sioul-app" "$from/sioul" "$app/Contents/MacOS/"
+          cp packaging/macos/sioul.icns "$app/Contents/Resources/"
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          cat > "$app/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>Sioul</string>
+            <key>CFBundleDisplayName</key><string>Sioul</string>
+            <key>CFBundleIdentifier</key><string>com.aurelienpierre.Sioul</string>
+            <key>CFBundleExecutable</key><string>sioul-app</string>
+            <key>CFBundleIconFile</key><string>sioul</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>${version}</string>
+            <key>CFBundleVersion</key><string>${GITHUB_RUN_NUMBER}</string>
+            <key>CFBundleDevelopmentRegion</key><string>en</string>
+            <key>CFBundleLocalizations</key><array><string>en</string><string>fr</string></array>
+            <key>LSMinimumSystemVersion</key><string>13.0</string>
+            <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
+            <key>NSPrincipalClass</key><string>NSApplication</string>
+            <key>NSHighResolutionCapable</key><true/>
+            <key>NSMicrophoneUsageDescription</key><string>Sioul records your voice memos, and lets the sites you allow use the microphone in calls.</string>
+            <key>NSCameraUsageDescription</key><string>Sioul lets the sites you allow use the camera in calls.</string>
+          </dict>
+          </plist>
+          EOF
+          macdeployqt "$app" -qmldir=crates/sioul-app/qml
+          codesign --force --deep --sign - "$app"
+          # hdiutil is sometimes busy on the runners: a few tries.
+          for try in 1 2 3; do
+            hdiutil create -volname Sioul -srcfolder "$app" -ov -format UDZO bundle/Sioul.dmg && break
+            sleep 10
+          done
+          test -f bundle/Sioul.dmg
+
+      - name: Upload the bundle
+        if: runner.os != 'Linux' && github.event_name == 'workflow_dispatch' && inputs.bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: sioul-${{ matrix.name }}-bundle
+          # The .dmg only on macOS: a zipped .app loses its frameworks' symbolic links.
+          path: ${{ runner.os == 'macOS' && 'bundle/Sioul.dmg' || 'bundle/' }}
+          retention-days: 7
+          if-no-files-found: error
+
+      # Last, so a failing test still leaves the programs above. In release, to
+      # reuse what the build compiled (a debug build would compile everything again).
+      - name: Tests (core, sync, command line)
+        run: cargo test --release --locked -p sioul-core -p sioul-sync -p sioul-cli

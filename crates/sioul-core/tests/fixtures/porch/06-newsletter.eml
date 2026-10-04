@@ -1,0 +1,9 @@
+Authentication-Results: mx.example.net; dmarc=pass header.from=news.example
+List-Unsubscribe: <mailto:unsubscribe@news.example>
+From: News <news@news.example>
+To: you@example.org
+Subject: This week
+Date: Tue, 29 Sep 2026 06:00:00 +0200
+Content-Type: text/plain
+
+News.

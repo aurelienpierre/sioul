@@ -1,0 +1,146 @@
+# Bitwarden, an antivirus, soothing sounds, the weather: licences and facts
+
+**The question**: what technical and licensing facts decide how Sioul offers four things without asking people to install anything else: logins from a Bitwarden vault, an antivirus check before an attachment opens, sounds to focus or rest by, and a weather applet? Sioul is GPL-3.0-or-later, with a Rust core and a Qt 6.11 QML window, Linux first, then Windows and macOS.
+
+Researched on 3 October 2026, from primary sources linked at each fact. "(unverified)" marks what could not be confirmed at a primary source. "Built", "not built" and "next" say where Sioul stood on 4 October 2026. The features: [sites.md](../sites.md) ("Bitwarden"), [client.md](../client.md) ("Antivirus"), [sounds.md](../sounds.md), and the status line in [design.md](../design.md).
+
+## 1. Bitwarden without anything to install
+
+### 1.1 Licences of Bitwarden's own code
+- **bitwarden/clients** (web, browser, desktop, the `bw` command line): GPL-3.0 by default; files under `bitwarden_license/` are under the proprietary Bitwarden License. https://github.com/bitwarden/clients/blob/main/LICENSE.txt
+- **bitwarden/sdk-internal**, the Rust SDK the clients embed: "The default license throughout the repository is your choice of GPL v3.0 OR BITWARDEN SOFTWARE DEVELOPMENT KIT LICENSE unless the header specifies another license." https://github.com/bitwarden/sdk-internal/blob/main/LICENSE
+  - Before 24 October 2024 the SDK was under the SDK licence only; after the issue "Desktop version 2024.10.0 is no longer free software" (https://github.com/bitwarden/clients/issues/11611), the code moved to the new repository, and "The sdk-internal reference only uses GPL licenses at this time" (Bitwarden's CTO, 24 October 2024).
+  - The SDK licence itself is not free: use only for a "Compatible Application", never "offered, licensed, or sold to a third party"; no copying, modifying or redistributing. https://github.com/bitwarden/sdk-internal/blob/main/LICENSE_SDK.txt . So only the GPL branch of the dual licence is usable.
+  - Its crates on crates.io declare `GPL-3.0-only OR LicenseRef-Bitwarden-SDK` from version 4.0.0 (end of September 2026); the vault and sync crates are not published at 4.x; and every crate warns: "This is an internal crate for the Bitwarden SDK. Do not depend on this directly … does not follow semantic versioning and the public interface may change at any time." The repository: "The password manager interface is unstable and will change without warning." https://crates.io/api/v1/crates/bitwarden-crypto · https://github.com/bitwarden/sdk-internal
+- **The `bitwarden` crate** on crates.io is the Secrets Manager SDK, under the SDK licence only: not usable in a GPL program. https://github.com/bitwarden/sdk-sm/blob/main/LICENSE
+- **GPL-3.0-only code inside a GPL-3.0-or-later program** is allowed; the combined program is then distributable under GPLv3 only. https://www.gnu.org/licenses/gpl-faq.html#AllCompatibility
+- **Trademark**: "You may not use or register, in whole or in part, the Marks as part of your own … product name"; stating true facts is allowed. https://github.com/bitwarden/server/blob/main/TRADEMARK_GUIDELINES.md
+- **Terms of service**: no clause forbids third-party clients; they forbid placing "undue burden on Bitwarden's servers through automated means". https://bitwarden.com/terms/
+
+### 1.2 rbw, an unofficial Rust client
+- **MIT** (© 2021 Jesse Luehrs), so its code may go into a GPL program. A library crate exists, but it is the inside of a command line and an agent, without a stable interface. https://github.com/doy/rbw
+- **Maintenance**: v1.15.0, 31 December 2025; the README: "I consider rbw to be essentially feature-complete for me … unlikely to spend time implementing new features on my own"; about 20 pull requests unmerged in 2026. Alive for reading, stagnant for features.
+- **Supports**: master password; the personal API key; SSO; second steps by authenticator app, e-mail and YubiKey OTP ("WebAuthn / Passkey and Duo security are unsupported"); Argon2id; organisation items; item keys; TOTP codes; self-hosted servers (Vaultwarden 1.37). https://github.com/doy/rbw/blob/main/CHANGELOG.md
+- **Gap**: no support for the newest encryption format (type 7, COSE), so it fails on accounts moved to "V2" encryption.
+- **Decision**: a reference to read (and credit), not a dependency.
+
+### 1.3 The protocol for a read-only client
+References, in order: rbw's source; the SDK's `bitwarden-crypto` (GPL branch); Bitwarden's security white paper (https://bitwarden.com/help/bitwarden-security-white-paper/), its contributing documentation (https://contributing.bitwarden.com/architecture/deep-dives/authentication/) and its page on key derivation (https://bitwarden.com/help/kdf-algorithms/); the server's source for field names.
+1. **Prelogin**: `POST {identity}/accounts/prelogin/password` (or the older `/accounts/prelogin`), which returns the key-derivation settings and the salt.
+2. **Master key**, 32 bytes, salted with the e-mail trimmed and lower-cased: PBKDF2-HMAC-SHA256 (600,000 iterations by default; "Minimum: 600,000 (as of release 2026.2.1)" for new settings), or Argon2id salted with SHA-256 of the e-mail (6 iterations, 32 MiB, 4 lanes by default).
+3. **Master password hash** for logging in: PBKDF2-HMAC-SHA256 of the master key, salted with the password, one iteration. The server hashes it again.
+4. **Token request**: `POST {identity}/connect/token` with `grant_type=password`, the e-mail, the hash, `scope=api offline_access`, a client id (`desktop`, `cli`…), a device type, and a device identifier generated once and kept. The server gates content on the client version it is told (some item types only from 2026.2.0).
+   - **Second steps**: the server answers "Two factor required" with the methods the account has (authenticator, e-mail, Duo, YubiKey OTP, WebAuthn, recovery code, "remember this device"); the same request is sent again with the code. Bitwarden's own apps do WebAuthn in its web vault's `webauthn-connector.html` page, and Duo through a redirect to a link scheme Bitwarden owns. https://contributing.bitwarden.com/architecture/deep-dives/authentication/two-factor-auth · https://github.com/bitwarden/clients/blob/main/apps/web/src/connectors/README.md
+   - **New-device verification** (bitwarden.com since 4 March 2025, for accounts without a second step): the server mails a code, sent back as `newDeviceOtp`; hence a stable device identifier. https://bitwarden.com/help/new-device-verification/
+   - **The personal API key** is Bitwarden's own answer "if your account uses a 2FA method not supported by the CLI (FIDO2 or Duo)"; the master password is still needed to decrypt. https://bitwarden.com/help/personal-api-key/
+5. **Sync**: `GET {api}/sync` returns the profile, folders, collections and items; every string except ids is encrypted.
+6. **Encrypted strings**: type 2 is AES-256-CBC with HMAC-SHA256, the MAC checked in constant time **before** decrypting; types 4 and 6 are RSA-OAEP; type 7 is COSE (XChaCha20-Poly1305 or XAES-256-GCM), "The preferred variant for encrypting data".
+7. **Unlock**: the master key stretched with HKDF-Expand-SHA256 ("enc" and "mac") opens the user key; a wrong password shows as a MAC failure. The user key opens the private RSA key, which opens each organisation's key; an item's own key, when it has one, opens its fields. Accounts moved to V2 encryption have a longer user key and type 7 data (how many accounts are moved by now: unverified).
+8. **Hygiene**: keys in memory that is wiped; only tokens in the system keyring; never the user key or a decrypted vault on disk; lock after a delay.
+
+### 1.4 Vaultwarden
+- An unofficial server in Rust, **AGPL-3.0**, very active (1.37.3, 13 September 2026), implementing the same client API. https://github.com/dani-garcia/vaultwarden
+- A client written against these endpoints works with bitwarden.com, bitwarden.eu, Bitwarden's own self-hosted server and Vaultwarden when every address derives from one configurable base.
+
+### What Sioul does
+- **Its own small read-only client** (`sioul_sync::bitwarden`), rbw and Bitwarden's SDK read as references; no Bitwarden crate is a dependency: **built** ([sites.md](../sites.md), "Bitwarden"). Nothing to install, on every system; nothing is ever written to the vault.
+- **Key derivation and unlock** as Bitwarden's clients do: PBKDF2-SHA256 or Argon2id, the hash to log in, HKDF stretching, AES-256-CBC checked by HMAC before anything is decrypted, organisation keys through the RSA key, item keys, and COSE messages (XChaCha20-Poly1305 and AES-256-GCM; XAES-256-GCM not yet): **built**. The master password and the keys are dropped; the logins stay in memory, wiped when the vault closes; the keyring keeps only the "remember this device" token.
+- **Second steps**: authenticator app, e-mail, YubiKey OTP, recovery code, "remember this device", the new-device code: **built**. A security key, too: Bitwarden's own light `webauthn-connector.html` page is held unseen in Sioul's dialog, since a key signs only for the vault's address; and "log in with passkey" through the key's PRF secret: **built**, beyond the research's advice (which was the personal API key for such accounts; that login was not built). Duo: not possible.
+- **The client version**: Bitwarden refused a declared 2024.12.0 in October 2026 ("Please update your app to continue using Bitwarden"), so Sioul declares itself Bitwarden's desktop app at the server's own version, read from its `/config` once a session.
+- **Servers**: bitwarden.com, bitwarden.eu, one's own, Vaultwarden.
+- **Tested** against Bitwarden's own key-derivation test vectors (from `bitwarden-crypto`), RFC 6238's codes, a changed byte refused before decryption, a COSE message, and the live cloud with a made-up account; never a real vault. Not yet with a real key and vault ([sites.md](../sites.md)).
+
+## 2. An antivirus beside a GPL-3.0 application
+
+### 2.1 ClamAV's licence
+- **GPL-2.0-only**: every source header says "version 2", without "or any later version". https://github.com/Cisco-Talos/clamav · Fedora's spec states `GPL-2.0-only` (https://src.fedoraproject.org/rpms/clamav/blob/rawhide/f/clamav.spec).
+- **UnRAR inside it is not free** ("cannot be used to re-create the RAR compression algorithm"): Fedora strips it, Debian ships it in non-free; it is on by default upstream, so a build of one's own sets `-DENABLE_UNRAR=OFF` (RAR attachments then go unscanned). https://github.com/Cisco-Talos/clamav/tree/main/COPYING · https://docs.clamav.net/manual/Installing/Packages.html
+- The signature databases carry their own COPYING file; its text: unverified.
+
+### 2.2 GPL-2.0-only next to GPL-3.0: the FSF's position
+- **Linking is not allowed**: "Is GPLv3 compatible with GPLv2? No. … if you tried to combine code released under GPLv2 with code under GPLv3, you would violate section 6 of GPLv2." The compatibility matrix says **NO** for a GPLv2-only library in a GPLv3-or-later program. https://www.gnu.org/licenses/gpl-faq.html#v2v3Compatibility · https://www.gnu.org/licenses/gpl-faq.html#AllCompatibility . So no libclamav binding in Sioul, ever.
+- **Separate programs side by side are allowed** ("mere aggregation", GPLv2 §2; GPLv3 §5): "pipes, sockets and command-line arguments are communication mechanisms normally used between two separate programs"; "A main program that uses simple fork and exec to invoke plug-ins and does not establish intimate communication between them results in the plug-ins being a separate program"; the analysis "is unchanged by the involvement of containers". https://www.gnu.org/licenses/old-licenses/gpl-2.0.html · https://www.gnu.org/licenses/gpl-3.0.html · https://www.gnu.org/licenses/gpl-faq.html#MereAggregation · https://www.gnu.org/licenses/gpl-faq.html#GPLPlugins
+- Running `clamscan` or `clamdscan`, or speaking to the `clamd` socket (a file in, a verdict line out), is the textbook case of a separate program. Shipping ClamAV's binaries would bring GPLv2's source duty (§3): the exact source beside every release that contains them.
+
+### 2.3 In practice
+- **Memory**: "ClamAV uses upwards of 1.2 GiB of RAM simply to load the signature definitions", up to 2.4 GiB for a short time each day while reloading. https://docs.clamav.net/manual/Installing/Docker.html#memory-ram-requirements . A resident daemon is heavy beside a calm mail app; started on demand, or the one-off scanner.
+- **Signatures**: main.cvd 89.1 MB, daily.cvd 23.4 MB, bytecode.cvd 0.28 MB on 3 October 2026; "usually updated once or twice per day". https://docs.clamav.net/faq/faq-cvd.html
+- **Talos's rules**: only freshclam or cvdupdate may download ("Use of Wget, Curl, or other command line tools that are scripted are explicitly denied"); downloads are rate-limited by address. https://docs.clamav.net/faq/faq-freshclam.html · https://docs.clamav.net/appendix/CvdPrivateMirror.html
+- **The version gate**: "Users must keep up-to-date with the latest patch version to maintain access to the official signature database content. We reserve the right to block older/problematic patch versions 4 months after the release of a newer patch version." https://docs.clamav.net/faq/faq-eol.html . A bundled ClamAV must therefore be re-released with every ClamAV patch. The cautionary case: Flathub's ClamTk stayed on ClamAV 1.1.1, whose database access ended on 7 June 2024, and was marked end-of-life in March 2026 (https://github.com/flathub/com.gitlab.davem.ClamTk).
+- **Flatpak**: no maintained Flathub module bundles ClamAV; the active front-end ClamUI calls the host's ClamAV through `flatpak-spawn --host`, a full sandbox escape.
+- **macOS**: bundling means universal builds, signing and notarising every binary; Apple gives apps no public API to request an XProtect scan; an app can mark the files it writes as quarantined (`LSFileQuarantineEnabled`) so Gatekeeper checks executables on first open. https://support.apple.com/guide/security/protecting-against-malware-sec469d47bd8/web · https://developer.apple.com/documentation/bundleresources/information-property-list/lsfilequarantineenabled
+- **Windows**: the installed antivirus, through **AMSI**, "a versatile interface standard that allows your applications and services to integrate with any antimalware product that's present on a machine" (results of 32768 and above are "considered malware"; what it returns with no provider registered: unverified). https://learn.microsoft.com/en-us/windows/win32/amsi/antimalware-scan-interface-portal . And **IAttachmentExecute**, made for mail clients: its `Save()` "may run virus scanners or other trust services to validate the file before saving it" and sets the Mark of the Web. https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-iattachmentexecute
+
+### What Sioul does
+- **Each system's own antivirus; nothing of ClamAV ships with Sioul.** The research allowed bundling ClamAV beside Sioul as a separate program; the decision went further: the packages stay simpler, and every system keeps its antivirus current itself ([client.md](../client.md), "Antivirus"). **Built**.
+- **Linux and macOS**: ClamAV when the system has it (its daemon, else its scanner); with the system's signatures, else Sioul's own copy, refreshed once a day with the system's freshclam. **Windows**: AMSI. Without an antivirus, nothing is refused: Sioul says the file will not be checked, asks before opening it, and gives the command that installs one. A Flatpak does not reach the system's ClamAV: there, Sioul asks. **Built** (AMSI written to Microsoft's documented sequence, not yet run on Windows).
+- **Not built**: IAttachmentExecute and the Mark of the Web on Windows; quarantine attributes on files Sioul writes on macOS.
+
+## 3. Sounds to focus or rest by
+
+### 3.1 Freely licensed long recordings
+| Source | Licence | Usable inside a GPL app? |
+|---|---|---|
+| **Freesound** | per sound, chosen by the uploader: CC0, CC BY, CC BY-NC, the old Sampling+; "the sounds … are distributed under the Creative Commons license indicated for each item". https://freesound.org/help/tos_web/ · https://freesound.org/help/faq/ | CC0 yes; CC BY yes, with a credits file; BY-NC and Sampling+ no |
+| **BigSoundBank** (one recordist) | "Free and Royalty Free" files: "Use, including for commercial purposes. Without any restrictions. Without asking permission. This is: Creative Commons CC0 1.0 Universal". https://bigsoundbank.com/licenses.html | yes |
+| **BBC Sound Effects** | RemArc licence: personal, educational or research use; commercial use only with a bought licence (full text not fetched). https://sound-effects.bbcrewind.co.uk | no |
+| **Sonniss #GameAudioGDC bundles** | one may not "distribute, publish, sub-license or otherwise supply the sound effects as sound effects to any other person". https://sonniss.com/gdc-bundle-license/ | no |
+| **Pixabay** | "You cannot sell or distribute Content … on a Standalone basis". https://pixabay.com/service/license-summary/ | no |
+
+- Long CC0 recordings on Freesound (rain, sea, wind, crickets, a distant storm, forest) were found and listed, to listen to before choosing, since some hold traffic, planes or voices; the list is in [sounds.md](../sounds.md). A 10-minute stereo file in Ogg Vorbis is about 9.6 MB, so recordings do not belong in the installer.
+
+### 3.2 Sound made by the program
+- **White** noise is independent random samples; **pink** (−3 dB per octave) by Paul Kellett's filter (https://www.musicdsp.org/en/latest/Filters/76-pink-noise-filter.html; https://www.firstpr.com.au/dsp/pink-noise/); **brown** (−6 dB per octave) by leaky integration (https://noisehack.com/generate-noise-web-audio-api/). Waves, rain and wind are noise shaped by slow envelopes and filters, after Andy Farnell, *Designing Sound*, MIT Press 2010.
+- **For focus in ADHD**: white or pink noise gave "a small benefit on laboratory attention tasks for individuals with ADHD or high ADHD symptoms" (g = 0.249) "but not for non-ADHD individuals" (g = −0.212); "No studies of brown noise were identified." Nigg et al. 2024, *JAACAP*, 13 studies: https://doi.org/10.1016/j.jaac.2023.12.014
+- **For calm, nature does better**: recovery of skin conductance after a stressor tended to be faster with nature sounds than with traffic or ambient noise (Alvarsson et al. 2010: https://doi.org/10.3390/ijerph7031036); across studies, natural sounds lowered stress and pain and improved mood, water most for positive affect, birds for stress and annoyance (Buxton et al. 2021, *PNAS*: https://doi.org/10.1073/pnas.2013097118).
+- Made by the program: no licence, no download, no seam, and no sudden events (thunder claps, bird calls) to startle people sensitive to sound.
+
+### 3.3 Ambience and ASMR channels without advertising: what is lawful
+- **YouTube's terms** forbid reproducing or downloading content except as authorised, circumventing its features, and access "using any automated means" (https://www.youtube.com/static?template=terms); "When you block YouTube ads, you violate YouTube's Terms of Service" (https://support.google.com/youtube/answer/14129599). Its developer policies forbid blocking advertisements, separating the audio, a "background player", and offline copies (https://developers.google.com/youtube/terms/developer-policies). An audio-only, ad-free player inside an app is forbidden by every route.
+- **Invidious and Piped** stream YouTube without ads, outside those terms; YouTube's lawyers wrote to Invidious in June 2023 (https://github.com/iv-org/invidious/issues/3872); and they take creators' income away. Not a basis for Sioul.
+- **Lawful ways**: YouTube Premium on one's own account; what creators sell or give (Bandcamp purchases may be played "on any and all devices owned or controlled by the user for non-commercial purposes", https://bandcamp.com/terms_of_use; a Patreon member's private feed, https://support.patreon.com/hc/en-us/articles/360041347732; podcasts); internet radio through Radio Browser ("You may use it in free and non free software", https://api.radio-browser.info); one's own files.
+
+### 3.4 Seamless loops in Qt
+- `SoundEffect` decodes the whole file into memory as 32-bit floats (10 minutes of stereo at 48 kHz is about 230 MB): fine for a short loop, wrong for long recordings. https://doc.qt.io/qt-6/qsoundeffect.html
+- `MediaPlayer` with `loops: MediaPlayer.Infinite` loops without a gap with the FFmpeg backend since Qt 6.5.1 (QTBUG-112305). https://doc.qt.io/qt-6/qml-qtmultimedia-mediaplayer.html
+- MP3 adds encoder delay and padding, a gap at the loop; Ogg Vorbis, Opus and FLAC are sample-exact. A crossfade of the end into the start is baked into each loop.
+- A Rust alternative (`cpal`, `symphonia`, `rodio` or `kira`, `fundsp`) was weighed.
+
+### What Sioul does
+- **A sound button in the status line, never on by itself**: noise **to focus** (white, pink, brown) and nature **to rest by** (waves, rain, wind in the trees, crickets at night, a distant storm), both made by Sioul, and **one's own recordings** from a `sounds` folder of the notes. One at a time, looping without a seam, fading in and out over five seconds: **built** ([sounds.md](../sounds.md)).
+- Made by Sioul's own code (`sioul_core::sounds`), written once as WAV, played with Qt's `MediaPlayer`; the Rust audio stack was not needed.
+- **Recordings**: none shipped. A separate repository of a few chosen CC0 loops with a CREDITS file: next, if wanted. Several layers at once: later.
+- **YouTube** inside Sioul: refused. Premium in a site pinned in Sioul's Sites page, or YouTube's own app, is the lawful way; purchases and feeds go in the `sounds` folder. Internet radio through Radio Browser: not built.
+
+## 4. A weather applet
+Four hours one by one, then mornings, afternoons, evenings and nights.
+
+### 4.1 Open-Meteo (no key)
+- **Forecast**: `GET https://api.open-meteo.com/v1/forecast?latitude=…&longitude=…&hourly=…&forecast_hours=…&timezone=auto` answers in local time from the current hour. https://open-meteo.com/en/docs
+- **Meaning to respect**: `precipitation_probability` is the "Probability of precipitation with more than 0.1 mm of the **preceding hour**"; `weather_code` is a WMO code, mapped on the client ("The API only returns numeric weather codes").
+- **Place search**: the geocoding API returns name, region, country, coordinates and time zone; a name can match several places, so region and country are shown to choose. https://open-meteo.com/en/docs/geocoding-api
+- **Terms**: the free API is for non-commercial use, "Less than 10'000 API calls per day, 5'000 per hour and 600 per minute"; non-commercial examples include "private or non-profit websites or apps that do not have subscriptions or advertising"; integrating it into commercial products needs a plan. https://open-meteo.com/en/terms . Sioul, free and without advertising, qualifies; someone selling Sioul would need their own plan.
+- **Attribution**: data under CC BY 4.0; "You must include a link next to any location Open-Meteo data are displayed", for example "Weather data by Open-Meteo.com". https://open-meteo.com/en/licence
+
+### 4.2 MET Norway Locationforecast 2.0 (no key)
+- `GET https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=…&lon=…`, hourly then 6-hourly, with `symbol_code`s. https://docs.api.met.no/doc/locationforecast/HowTO · https://docs.api.met.no/doc/locationforecast/datamodel
+- **Terms**: "You must identify yourself" in the User-Agent, with an application name and a contact; honour `Expires` and `If-Modified-Since`; do not fire "every hour on the dot"; "truncate all coordinates to max 4 decimals"; apps "must not retrieve new data as long as the application is not in use". https://docs.api.met.no/doc/TermsOfService
+- **Licence**: NLOD 2.0 and CC BY 4.0, commercial use allowed; credit "Data from MET Norway". https://docs.api.met.no/doc/License
+
+### 4.3 Others
+- api.weather.gov (USA only, User-Agent with a contact); Bright Sky (Germany, over DWD's open data). https://www.weather.gov/documentation/services-web-api · https://brightsky.dev
+- Services with keys (OpenWeatherMap, Pirate Weather, Tomorrow.io, Météo-France's portal): each person would need a key, or Sioul would ship one: not for a default.
+
+### 4.4 Monochrome icons
+| Set | Licence | Notes |
+|---|---|---|
+| **Breeze** (KDE), `weather-*-symbolic` | LGPL-3.0-or-later (https://invent.kde.org/frameworks/breeze-icons) | 57 symbolic weather icons, recoloured with the text; already bundled with Sioul |
+| Meteocons | MIT (https://github.com/basmilius/weather-icons) | a monochrome style; the default SVGs are animated |
+| Material Symbols | Apache-2.0 (https://github.com/google/material-design-icons) | compatible with GPLv3 |
+| Lucide | ISC (https://github.com/lucide-icons/lucide) | thin strokes |
+| Weather Icons | icons SIL OFL 1.1 | unmaintained since 2023 |
+
+### What Sioul does
+- **Open-Meteo**, without a key, credited beside the applet; the place found by its name, with region and country shown; the place's coordinates, rounded to two decimals (about a kilometre), the only thing sent; fetched again once the forecast is half an hour old: **built** ([design.md](../design.md), "The status line").
+- **What it shows**: now, the next four hours one by one, then the parts of the days to come (this evening, tonight, tomorrow morning…), in one colour, with Breeze's monochrome icons mapped from the WMO code and day or night; a chance of rain said from 20 %: **built**.
+- **Not built**: MET Norway as a fallback, and the provider as a setting (useful to someone redistributing Sioul commercially); fetching at a random minute.

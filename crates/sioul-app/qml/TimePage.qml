@@ -1,0 +1,436 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Aurélien Pierre
+
+// Time spent: a week, a month or a year, as bars stacked by project, the
+// hours of each project and what is left to bill, then each stretch of time,
+// newest first. Time is noted by hand here too; a right click takes out what
+// was noted by mistake.
+
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
+
+Item {
+    id: page
+
+    required property var sioul
+    required property var theme
+    required property var window
+
+    // "week", "month", "year".
+    property string period: "week"
+    property date anchor: new Date()
+    property string project: ""
+    property var shown: null
+    property var projects: []
+    property string problem: ""
+    readonly property var periods: ["week", "month", "year"]
+    // Quiet time: time noted for work waits behind a word, unless you ask.
+    property bool anyway: false
+    readonly property bool resting: page.window.moment.quiet && !page.anyway
+
+    function iso(d) {
+        const pad = n => n < 10 ? "0" + n : String(n)
+        return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+    }
+
+    // Time spent, noted by hand.
+    function startNew() {
+        timeDialog.begin(page.project)
+    }
+
+    function reload() {
+        page.projects = JSON.parse(page.sioul.projectRows() || "[]")
+        page.shown = JSON.parse(page.sioul.timePage(page.period, page.iso(page.anchor), page.project) || "null")
+    }
+
+    function move(steps) {
+        let d = new Date(page.anchor)
+        if (page.period === "week") {
+            d.setDate(d.getDate() + 7 * steps)
+        } else {
+            // A month or a year away, on the same day or that month's last:
+            // from 31 October, back is 30 September, never 1 October again.
+            const months = page.period === "year" ? 12 * steps : steps
+            const last = new Date(d.getFullYear(), d.getMonth() + months + 1, 0).getDate()
+            d = new Date(d.getFullYear(), d.getMonth() + months, Math.min(d.getDate(), last))
+        }
+        page.anchor = d
+        page.reload()
+    }
+
+    function colour(index) {
+        return page.theme.chartColors[index % page.theme.chartColors.length]
+    }
+
+    // A bar's day (or month, over a year) in your language, and its length as
+    // the core writes lengths: "45 min", "2 h", "2 h 05" (timereport::duration).
+    function barTip(bar) {
+        const day = new Date(bar.date + "T12:00:00").toLocaleDateString(page.window.sioulLocale, page.period === "year" ? "MMMM yyyy" : "dddd d MMMM")
+        const hours = Math.floor(bar.minutes / 60)
+        const minutes = bar.minutes % 60
+        const length = hours === 0 ? minutes + " min" : minutes === 0 ? hours + " h" : hours + " h " + String(minutes).padStart(2, "0")
+        return day + "  ·  " + length
+    }
+
+    // Shown anyway once: the next visit in quiet time asks again.
+    onVisibleChanged: {
+        if (page.visible)
+            page.reload()
+        else
+            page.anyway = false
+    }
+    onPeriodChanged: page.reload()
+    Component.onCompleted: page.reload()
+
+    Connections {
+        target: page.sioul
+
+        function onLinksChanged() {
+            page.reload()
+        }
+    }
+
+    ScrollView {
+        id: scroll
+
+        anchors.fill: parent
+        anchors.margins: page.theme.gap
+        contentWidth: availableWidth
+        clip: true
+
+        ColumnLayout {
+            width: scroll.availableWidth
+            spacing: 12
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Button {
+                    text: page.sioul.text("agenda-today")
+                    onClicked: {
+                        page.anchor = new Date()
+                        page.reload()
+                    }
+                }
+                Button {
+                    implicitWidth: 40
+                    text: "◂"
+                    Accessible.name: page.sioul.text("agenda-earlier")
+                    onClicked: page.move(-1)
+                }
+                Button {
+                    implicitWidth: 40
+                    text: "▸"
+                    Accessible.name: page.sioul.text("agenda-later")
+                    onClicked: page.move(1)
+                }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: implicitWidth
+                    text: page.shown ? page.shown.title : ""
+                    textFormat: Text.PlainText
+                    font.pixelSize: 19
+                    color: page.theme.text
+                }
+                ComboBox {
+                    Layout.preferredWidth: 120
+                    model: page.periods.map(p => page.sioul.text("time-period-" + p))
+                    currentIndex: page.periods.indexOf(page.period)
+                    onActivated: index => page.period = page.periods[index]
+                }
+                ComboBox {
+                    readonly property var choices: [{ id: "", title: page.sioul.text("time-all-projects") }].concat(page.projects)
+
+                    Layout.preferredWidth: 180
+                    model: choices.map(c => page.theme.plain(c.title))
+                    currentIndex: Math.max(0, choices.findIndex(c => c.id === page.project))
+                    onActivated: index => {
+                        page.project = choices[index].id
+                        page.reload()
+                    }
+                }
+                Button {
+                    text: page.sioul.text("time-note")
+                    icon.name: "chronometer-start"
+                    icon.color: page.theme.text
+                    onClicked: timeDialog.begin(page.project)
+                }
+                // A project's billable time, as a spreadsheet.
+                ToolButton {
+                    icon.name: "document-export"
+                    icon.color: page.theme.text
+                    Accessible.name: page.sioul.text("time-export")
+                    ToolTip.visible: hovered
+                    ToolTip.text: page.sioul.text("time-export")
+                    ToolTip.delay: 400
+                    onClicked: timeExport.begin(page.project)
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: page.shown ? (page.shown.sentence !== "" ? page.shown.sentence : page.sioul.textWith("time-total", "time", page.shown.total)) : ""
+                textFormat: Text.PlainText
+                font.pixelSize: 16
+                color: page.shown && page.shown.sentence !== "" ? page.theme.muted : page.theme.text
+            }
+            Label {
+                visible: page.problem !== ""
+                Layout.fillWidth: true
+                text: page.problem
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: page.theme.warm
+            }
+
+            // A bar a day, or a month: stacked by project, the tallest the most worked.
+            Item {
+                visible: page.shown !== null && page.shown.most > 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: 180
+
+                Row {
+                    id: bars
+
+                    anchors.fill: parent
+                    spacing: 4
+
+                    Repeater {
+                        model: page.shown ? page.shown.bars : []
+
+                        delegate: Item {
+                            id: bar
+
+                            required property var modelData
+
+                            width: Math.max(4, (bars.width - bars.spacing * ((page.shown ? page.shown.bars.length : 1) - 1)) / Math.max(1, page.shown ? page.shown.bars.length : 1))
+                            height: bars.height
+                            ToolTip.visible: hover.hovered && bar.modelData.minutes > 0
+                            ToolTip.text: page.barTip(bar.modelData)
+                            ToolTip.delay: 200
+
+                            HoverHandler {
+                                id: hover
+                            }
+
+                            Column {
+                                anchors.bottom: dayLabel.top
+                                anchors.bottomMargin: 4
+                                width: parent.width
+
+                                Repeater {
+                                    // The largest part at the bottom: drawn last.
+                                    model: bar.modelData.parts.map((m, i) => ({ minutes: m, index: i })).filter(p => p.minutes > 0).reverse()
+
+                                    delegate: Rectangle {
+                                        required property var modelData
+
+                                        width: bar.width
+                                        height: (bars.height - 24) * modelData.minutes / page.shown.most
+                                        color: page.colour(modelData.index)
+                                    }
+                                }
+                            }
+                            Label {
+                                id: dayLabel
+
+                                anchors.bottom: parent.bottom
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: bar.modelData.label
+                                textFormat: Text.PlainText
+                                font.pixelSize: 11
+                                font.weight: bar.modelData.today ? Font.Bold : Font.Normal
+                                color: bar.modelData.today ? page.theme.accent : page.theme.muted
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Each project: its time, and what is left to bill.
+            Repeater {
+                model: page.shown ? page.shown.projects : []
+
+                delegate: RowLayout {
+                    id: line
+
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    spacing: 10
+
+                    Rectangle {
+                        Layout.preferredWidth: 12
+                        Layout.preferredHeight: 12
+                        radius: 3
+                        color: page.colour(line.modelData.index)
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: line.modelData.title
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: page.theme.text
+                    }
+                    Label {
+                        text: line.modelData.minutes > 0 ? line.modelData.time : ""
+                        textFormat: Text.PlainText
+                        color: page.theme.text
+                    }
+                    Label {
+                        visible: line.modelData.unbilled !== ""
+                        text: page.sioul.textWith("project-to-bill", "time", line.modelData.unbilled) + (line.modelData.unbilled_amount !== "" ? " (" + line.modelData.unbilled_amount + ")" : "")
+                        textFormat: Text.PlainText
+                        color: page.theme.warm
+                    }
+                    Button {
+                        visible: line.modelData.billable && line.modelData.unbilled !== ""
+                        flat: true
+                        text: page.sioul.text("invoice-make")
+                        onClicked: {
+                            page.window.openProject(line.modelData.id)
+                        }
+                    }
+                }
+            }
+
+            // Each stretch of time, newest first.
+            Repeater {
+                model: page.shown ? page.shown.entries : []
+
+                delegate: ItemDelegate {
+                    id: entry
+
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    padding: 4
+
+                    background: Rectangle {
+                        color: entry.hovered ? page.theme.surface : "transparent"
+                        radius: page.theme.radius
+                    }
+
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        enabled: entry.modelData.by_hand && entry.modelData.invoice === ""
+                        onTapped: {
+                            entryMenu.key = entry.modelData.key
+                            entryMenu.entry = entry.modelData
+                            entryMenu.popup()
+                        }
+                    }
+
+                    contentItem: RowLayout {
+                        spacing: 10
+
+                        Label {
+                            Layout.preferredWidth: 150
+                            text: entry.modelData.date
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            font.pixelSize: 13
+                            color: page.theme.muted
+                        }
+                        Label {
+                            Layout.preferredWidth: 60
+                            text: entry.modelData.time
+                            textFormat: Text.PlainText
+                            color: page.theme.text
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 0
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: entry.modelData.title
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                color: page.theme.text
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: [entry.modelData.project_title, entry.modelData.note, entry.modelData.invoice !== "" ? page.sioul.textWith("time-on-invoice", "number", entry.modelData.invoice) : ""].filter(t => t !== "").join("  ·  ")
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                font.pixelSize: 12
+                                color: page.theme.muted
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    SioulMenu {
+        id: entryMenu
+
+        property string key: ""
+        property var entry: null
+
+        MenuItem {
+            text: page.sioul.text("time-change")
+            onTriggered: timeDialog.change(entryMenu.entry)
+        }
+        MenuItem {
+            text: page.sioul.text("time-remove")
+            onTriggered: page.problem = page.sioul.removeTime(entryMenu.key)
+        }
+    }
+
+    TimeDialog {
+        id: timeDialog
+
+        sioul: page.sioul
+        theme: page.theme
+        onSaved: page.reload()
+    }
+
+    // Work rests: one line, and the page behind it if you ask.
+    Rectangle {
+        visible: page.resting
+        anchors.fill: parent
+        color: page.theme.background
+
+        // Nothing under it takes a click.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+        }
+        ColumnLayout {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 2 * page.theme.gap, 480)
+            spacing: 10
+
+            Label {
+                Layout.fillWidth: true
+                text: page.window.moment.line
+                textFormat: Text.PlainText
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                color: page.theme.muted
+            }
+            Button {
+                Layout.alignment: Qt.AlignHCenter
+                flat: true
+                text: page.sioul.text("ui-show-anyway")
+                onClicked: page.anyway = true
+            }
+        }
+    }
+
+    TimeExport {
+        id: timeExport
+
+        sioul: page.sioul
+        theme: page.theme
+        window: page.window
+        projects: page.projects
+    }
+}

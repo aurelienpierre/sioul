@@ -1,0 +1,8 @@
+Authentication-Results: mx.example.net; dkim=pass header.d=finances.example; dmarc=pass header.from=finances.example
+From: DGFiP <ne-pas-repondre@dgfip.finances.example>
+To: you@example.org
+Subject: =?UTF-8?Q?Votre_avis_d=27imp=C3=B4t_est_disponible?=
+Date: Wed, 30 Sep 2026 07:00:00 +0200
+Content-Type: text/plain; charset=UTF-8
+
+Votre avis est disponible dans votre espace.

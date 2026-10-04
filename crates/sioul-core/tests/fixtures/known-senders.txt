@@ -1,0 +1,3 @@
+friend@example.com
+# The tax office of the invented world: its domain cannot be the real one.
+@dgfip.finances.example

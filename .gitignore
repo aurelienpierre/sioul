@@ -1,0 +1,35 @@
+/target
+*.swp
+# Personal configuration, case stores and mail never belong in this repository.
+/local/
+# Written by the build for the QML language server, with this computer's paths.
+.qmlls.ini
+# Python, editors, systems.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.vscode/
+.idea/
+*.swo
+*~
+.DS_Store
+*.log
+# Secrets never belong here.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+client_secret*.json
+# What packaging writes inside the tree.
+/build/
+/.flatpak-builder/
+/packaging/windows/Output/
+*.dmg
+Sioul.app/
+# Leftovers of edits and backups.
+*.bak
+*.orig
+*.rej
+*-before-*

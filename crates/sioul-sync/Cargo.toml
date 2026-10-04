@@ -1,0 +1,66 @@
+[package]
+name = "sioul-sync"
+description = "Sioul's background service: finding mail servers, keeping passwords, fetching mail read-only."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sioul-core = { path = "../sioul-core" }
+serde.workspace = true
+toml.workspace = true
+toml_edit.workspace = true
+jiff.workspace = true
+async-imap.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+rustls.workspace = true
+rustls-native-certs.workspace = true
+webpki-roots.workspace = true
+futures-util.workspace = true
+ureq.workspace = true
+serde_json.workspace = true
+notify-rust.workspace = true
+mail-auth.workspace = true
+mail-send.workspace = true
+roxmltree.workspace = true
+# Bitwarden, read here (no external program): its key derivation, its
+# encryption, its organisations' RSA keys, and one-time codes (RFC 6238).
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+hmac = "0.12"
+sha1 = "0.10"
+sha2 = "0.10"
+hkdf = "0.12"
+argon2 = "0.5"
+rsa = "0.9"
+zeroize = "1"
+subtle = "2"
+chacha20poly1305 = "0.10"
+aes-gcm = "0.10"
+ciborium = "0.2"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+
+# The room left on the disk, before fetching older mail.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
+# Each system's own keyring: the Secret Service (KWallet, GNOME Keyring), the
+# Windows Credential Manager, the macOS Keychain.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+keyring = { workspace = true, features = ["sync-secret-service", "crypto-rust"] }
+[target.'cfg(windows)'.dependencies]
+keyring = { workspace = true, features = ["windows-native"] }
+windows = { version = "0.62", features = ["Win32_System_Antimalware", "Win32_Foundation", "Win32_Storage_FileSystem"] }
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { workspace = true, features = ["apple-native"] }
+
+[features]
+# Accepts any server certificate when SIOUL_TEST_INSECURE_TLS is set: for tests
+# against a local server only. Never enabled in Sioul's builds.
+insecure-test-tls = []

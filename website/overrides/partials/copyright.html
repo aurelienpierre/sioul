@@ -1,0 +1,23 @@
+{#-
+  The footer of every page: the copyright, then two quiet links, the privacy
+  policy and the developers' section. Links go through `url`, so they work from
+  any page and in a local preview.
+-#}
+<div class="md-copyright">
+  {% if config.copyright %}
+    <div class="md-copyright__highlight">
+      {{ config.copyright }}
+    </div>
+  {% endif %}
+  <nav class="sioul-footer-links" aria-label="More about Sioul">
+    <a href="{{ 'privacy.html' | url }}">Privacy policy</a>
+    <a href="{{ 'dev/index.html' | url }}">For developers</a>
+    <a href="https://github.com/aurelienpierre/sioul/issues" rel="noopener">Questions and reports, on GitHub</a>
+  </nav>
+  {% if not config.extra.generator == false %}
+    <div class="sioul-footer-made">
+      Made with
+      <a href="https://zensical.org/" target="_blank" rel="noopener">Zensical</a>
+    </div>
+  {% endif %}
+</div>
