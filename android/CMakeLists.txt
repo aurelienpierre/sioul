@@ -26,7 +26,7 @@ project(sioul VERSION ${SIOUL_VERSION} LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick Multimedia Positioning Location)
 
 # The phone's processor, as Rust names it: 64-bit ARM for phones, x86-64 for
 # the emulator.
@@ -98,6 +98,10 @@ set_source_files_properties(${SIOUL_INITIALIZERS} PROPERTIES EXTERNAL_OBJECT TRU
 qt_add_executable(sioul main.cpp ${SIOUL_INITIALIZERS})
 add_dependencies(sioul sioul_app_initializers)
 target_link_libraries(sioul PRIVATE sioul_app Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick log)
+# The modules only the pages import, linked so that androiddeployqt takes
+# their plugins along: Multimedia's backend (sounds, memos, recordings),
+# Positioning's Android source, Location's map tiles.
+target_link_libraries(sioul PRIVATE Qt6::Multimedia Qt6::Positioning Qt6::Location)
 # Phones with 16 KB memory pages (Android 15 and later) load only libraries aligned for them.
 target_link_options(sioul PRIVATE "-Wl,-z,max-page-size=16384")
 

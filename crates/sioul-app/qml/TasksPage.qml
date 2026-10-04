@@ -27,6 +27,11 @@ Item {
     // "now", "day", "list", "board", "timeline".
     property string mode: "now"
     property string opened: ""
+    // On a phone, the task open takes the page; Back closes it (main.qml).
+    readonly property bool canGoBack: page.opened !== ""
+    function back() {
+        page.opened = ""
+    }
     property bool othersShown: false
     property bool startedShown: false
     property bool doneShown: false
@@ -147,6 +152,7 @@ Item {
         spacing: page.theme.gap
 
         ColumnLayout {
+            visible: !(page.window.compact && page.opened !== "")
             Layout.fillHeight: true
             Layout.fillWidth: true
             Layout.minimumWidth: 0

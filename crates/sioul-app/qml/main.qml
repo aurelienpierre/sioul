@@ -49,6 +49,10 @@ SioulWindow {
     // Each page's name, by its place in the pages' stack.
     readonly property var pageNames: ["ui-porch", "ui-tasks", "ui-mail", "ui-sites", "ui-agenda", "ui-contacts", "ui-notes", "ui-projects", "ui-time", "ui-budgets", "ui-health", "ui-accounts", "ui-parameters", "ui-papers"]
     onPageChanged: window.placesOpen = false
+    // The page in view; on a phone, a page showing one thing it opened
+    // (a message, a task) says so (canGoBack) and closes it (back()).
+    readonly property var shownPage: pages.children[window.page] || null
+    readonly property bool canGoBack: window.compact && window.shownPage !== null && window.shownPage.canGoBack === true
     // Work time or quiet time: {quiet, reason, until, line, hours}.
     readonly property var moment: sioul.mode ? JSON.parse(sioul.mode) : ({ quiet: false, reason: "", until: "", line: "", hours: false })
 
@@ -1537,14 +1541,16 @@ SioulWindow {
         }
     }
 
-    // Android's Back: the places put away, else back to the Porch; on the
-    // Porch, Android's own (Sioul goes to the background).
+    // Android's Back: the places put away, else what the page opened closed,
+    // else back to the Porch; on the Porch, Android's own (Sioul goes to the background).
     Shortcut {
         sequence: "Back"
-        enabled: window.placesOpen || window.page !== 0
+        enabled: window.placesOpen || window.canGoBack || window.page !== 0
         onActivated: {
             if (window.placesOpen)
                 window.placesOpen = false
+            else if (window.canGoBack)
+                window.shownPage.back()
             else
                 window.page = 0
         }
@@ -1785,6 +1791,7 @@ SioulWindow {
                         spacing: 4
 
                         ToolButton {
+                            visible: !window.canGoBack
                             Layout.preferredWidth: 48
                             Layout.fillHeight: true
                             icon.name: "application-menu"
@@ -1792,6 +1799,17 @@ SioulWindow {
                             display: AbstractButton.IconOnly
                             Accessible.name: sioul.text("ui-menu")
                             onClicked: window.placesOpen = true
+                        }
+                        // Back to the page's list, from what it opened.
+                        ToolButton {
+                            visible: window.canGoBack
+                            Layout.preferredWidth: 48
+                            Layout.fillHeight: true
+                            icon.name: "go-previous"
+                            icon.color: theme.text
+                            display: AbstractButton.IconOnly
+                            Accessible.name: sioul.text("ui-back")
+                            onClicked: window.shownPage.back()
                         }
                         Label {
                             Layout.fillWidth: true
@@ -1805,6 +1823,8 @@ SioulWindow {
                 }
 
                 StackLayout {
+                    id: pages
+
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     currentIndex: window.page

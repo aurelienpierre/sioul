@@ -1278,6 +1278,7 @@ budget-add-bad-amount = Un montant, positif pour une entrée, négatif pour une 
 budget-back = Budgets
 ui-sites = Sites
 ui-menu = Menu
+ui-back = Retour
 site-none = Pas encore de site. Une messagerie sécurisée (celle d’une banque, d’un hôpital, des impôts), une discussion, tout site à garder sous la main : connecté une fois, gardé ici.
 site-choose = Un site, à gauche.
 site-android = Ici, les sites s’ouvrent dans votre navigateur : Qt WebEngine, qui les garde dans Sioul sur un ordinateur, n’existe pas pour Android.

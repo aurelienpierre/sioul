@@ -34,6 +34,11 @@ Item {
     // The message being read, by its file; it stays open across refreshes.
     property string openKey: ""
     readonly property var opened: findItem(openKey)
+    // On a phone, the message open takes the page; Back closes it (main.qml).
+    readonly property bool canGoBack: page.openKey !== ""
+    function back() {
+        page.openKey = ""
+    }
     // Lanes folded or unfolded by hand, by key; the others keep their default.
     property var unfolded: ({})
 
@@ -115,6 +120,7 @@ Item {
         ScrollView {
             id: list
 
+            visible: !(page.window.compact && page.opened !== null)
             Layout.fillHeight: true
             Layout.fillWidth: page.opened === null
             Layout.minimumWidth: 0
