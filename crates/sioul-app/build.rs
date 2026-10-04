@@ -90,6 +90,7 @@ fn main() {
         "qml/LoginChooser.qml",
         "qml/VaultUnlock.qml",
         "qml/AccountPassword.qml",
+        "qml/FolderBrowser.qml",
         "qml/BankSection.qml",
         "qml/LettersSection.qml",
     ];

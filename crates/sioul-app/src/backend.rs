@@ -795,6 +795,10 @@ pub mod qobject {
         #[qinvokable]
         fn files_access(self: &Sioul) -> bool;
 
+        /// A folder's own folders, for Sioul's folder browser, as JSON: {"path", "parent", "folders", "readable"}.
+        #[qinvokable]
+        fn folders_in(self: &Sioul, path: &QString) -> QString;
+
         /// Android: its own switch for "All files access" (or the older question before Android 11).
         #[qinvokable]
         fn ask_files_access(self: Pin<&mut Sioul>);
@@ -3288,6 +3292,10 @@ impl qobject::Sioul {
 
     fn share_candidates(&self) -> QString {
         QString::from(&json(&crate::share::candidates()))
+    }
+
+    fn folders_in(&self, path: &QString) -> QString {
+        QString::from(&crate::share::folders_in(&path.to_string()))
     }
 
     fn files_access(&self) -> bool {

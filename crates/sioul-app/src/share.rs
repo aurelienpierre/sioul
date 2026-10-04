@@ -72,6 +72,45 @@ pub(crate) fn candidates() -> Vec<String> {
     found.into_iter().map(|path| shorten(&path)).collect()
 }
 
+/// A folder's own folders, for Sioul's folder browser (Android's picker
+/// refuses the phone's storage, Murena's among others): {"path", "parent",
+/// "folders": [{"name", "path", "sealed"}], "readable"}. Hidden folders left out;
+/// "" starts in the phone's storage (Android), else your home.
+pub(crate) fn folders_in(path: &str) -> String {
+    #[derive(Serialize)]
+    struct Folder {
+        name: String,
+        path: String,
+        /// Already shared through, by your other devices (it holds a seal).
+        sealed: bool,
+    }
+    #[derive(Serialize)]
+    struct Listing {
+        path: String,
+        parent: String,
+        folders: Vec<Folder>,
+        readable: bool,
+    }
+    let start = if cfg!(target_os = "android") { PathBuf::from("/storage/emulated/0") } else { expand_home("~") };
+    let dir = if path.trim().is_empty() { start } else { expand_home(path.trim()) };
+    let entries = std::fs::read_dir(&dir);
+    let readable = entries.is_ok();
+    let mut folders: Vec<Folder> = entries
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| (e.file_name().to_string_lossy().to_string(), e.path()))
+        .filter(|(name, _)| !name.starts_with('.'))
+        .map(|(name, path)| Folder { sealed: path.join("seal.toml").is_file(), path: path.display().to_string(), name })
+        .collect();
+    folders.sort_by_key(|f| f.name.to_lowercase());
+    // Up to the storage's top on Android: above it, nothing an app may read.
+    let top = cfg!(target_os = "android") && dir == Path::new("/storage/emulated/0");
+    let parent = dir.parent().filter(|_| !top).map(|p| p.display().to_string()).unwrap_or_default();
+    json(&Listing { path: dir.display().to_string(), parent, folders, readable })
+}
+
 fn look_for_seals(dir: &Path, depth: usize, found: &mut Vec<PathBuf>) {
     // Deep enough for the Nextcloud app's own folder (Android/media/com.nextcloud.client/nextcloud/<account>/…).
     if depth > 6 || found.len() >= 10 {
@@ -329,6 +368,26 @@ mod tests {
         let other = base.join("Sync");
         std::fs::create_dir_all(&other).unwrap();
         assert!(!beside_documents(&other.join("Sioul"), &[other.clone()]));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn folders_listed() {
+        let base = std::env::temp_dir().join(format!("sioul-folders-in-{}", std::process::id()));
+        for dir in ["Documents/Sioul", "Documents/.hidden", "Documents/archive", "Documents/Bills"] {
+            std::fs::create_dir_all(base.join(dir)).unwrap();
+        }
+        std::fs::write(base.join("Documents/Sioul/seal.toml"), "").unwrap();
+        std::fs::write(base.join("Documents/notes.txt"), "").unwrap();
+        let listed: serde_json::Value = serde_json::from_str(&folders_in(&base.join("Documents").display().to_string())).unwrap();
+        let names: Vec<&str> = listed["folders"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["archive", "Bills", "Sioul"]);
+        assert_eq!(listed["folders"][2]["sealed"], true);
+        assert_eq!(listed["folders"][0]["sealed"], false);
+        assert_eq!(listed["parent"], base.display().to_string());
+        assert_eq!(listed["readable"], true);
+        let missing: serde_json::Value = serde_json::from_str(&folders_in(&base.join("nowhere").display().to_string())).unwrap();
+        assert_eq!(missing["readable"], false);
         let _ = std::fs::remove_dir_all(&base);
     }
 }

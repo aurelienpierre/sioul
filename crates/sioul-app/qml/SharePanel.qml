@@ -149,7 +149,7 @@ ColumnLayout {
         }
         Button {
             text: panel.sioul.text("share-choose")
-            onClicked: folderPicker.open()
+            onClicked: panel.android ? panel.browse() : folderPicker.open()
         }
         Label {
             text: panel.sioul.text("share-passphrase")
@@ -232,6 +232,26 @@ ColumnLayout {
         wrapMode: Text.Wrap
         font.pixelSize: 13
         color: panel.theme.muted
+    }
+
+    // On Android, Sioul's own browser (FolderBrowser.qml): the system's picker
+    // refuses the phone's storage. It opens in Documents, where Murena's eDrive
+    // keeps what it syncs.
+    function browse() {
+        if (browser.item === null)
+            browser.setSource("FolderBrowser.qml", { sioul: panel.sioul, theme: panel.theme })
+        browser.item.begin(folderField.text !== "" ? folderField.text : "/storage/emulated/0/Documents")
+    }
+
+    Loader {
+        id: browser
+    }
+    Connections {
+        target: browser.item
+
+        function onChosen(path) {
+            panel.choose(path)
+        }
     }
 
     FolderDialog {
