@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<!-- Sioul Symbols, for the symbols the system's fonts may lack (cpp/warmup.cpp): made by tools/make-symbols-font.py. -->
+<qresource prefix="/sioul/fonts">
+    <file>SioulSymbols.ttf</file>
+</qresource>
+</RCC>

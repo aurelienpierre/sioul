@@ -105,6 +105,13 @@ target_link_libraries(sioul PRIVATE sioul_app Qt6::Core Qt6::CorePrivate Qt6::Gu
 target_link_libraries(sioul PRIVATE Qt6::Multimedia Qt6::Positioning Qt6::Location)
 # Phones with 16 KB memory pages (Android 15 and later) load only libraries aligned for them.
 target_link_options(sioul PRIVATE "-Wl,-z,max-page-size=16384")
+# Each start, Android's loader fixes up the library's addresses before main().
+# Rust's and the C++ glue's symbols stay inside it (--exclude-libs: from the
+# static libraries, none of which is called from outside; Qt's Java side
+# looks for main() only, main.cpp's): 28,000 symbols exported, 22,000 looked
+# up by name at each start, before. The addresses relative to the library
+# itself are written packed (RELR, read by Android 9 and later).
+target_link_options(sioul PRIVATE "-Wl,--exclude-libs,ALL" "-Wl,--pack-dyn-relocs=android+relr" "-Wl,--use-android-relr-tags")
 
 math(EXPR SIOUL_VERSION_CODE "${PROJECT_VERSION_MAJOR} * 10000 + ${PROJECT_VERSION_MINOR} * 100 + ${PROJECT_VERSION_PATCH}")
 set_target_properties(sioul PROPERTIES

@@ -11,7 +11,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
-import QtMultimedia
 
 ToolButton {
     id: applet
@@ -30,15 +29,16 @@ ToolButton {
         stopping.stop()
         applet.playing = url
         applet.playingTitle = title
-        output.volume = 0
-        media.source = url
-        media.play()
-        output.volume = applet.loudness
+        player.active = true
+        player.item.volume = 0
+        player.item.play(url)
+        player.item.volume = applet.loudness
     }
 
     // Faded out, then stopped.
     function stop() {
-        output.volume = 0
+        if (player.item)
+            player.item.volume = 0
         stopping.start()
     }
 
@@ -48,12 +48,13 @@ ToolButton {
     display: applet.playing !== "" ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
     text: applet.playingTitle
     Accessible.name: applet.sioul.text("sounds-title")
-    ToolTip.visible: hovered && !popup.opened
+    ToolTip.visible: hovered && !(popupLoader.item !== null && popupLoader.item.opened)
     ToolTip.text: applet.sioul.text("sounds-title")
     ToolTip.delay: 600
     onClicked: {
         applet.calm = JSON.parse(applet.sioul.calmSounds() || "[]")
-        popup.open()
+        popupLoader.active = true
+        popupLoader.item.open()
     }
 
     contentItem: RowLayout {
@@ -74,21 +75,13 @@ ToolButton {
         }
     }
 
-    MediaPlayer {
-        id: media
+    // The player, made the first time a sound plays (NoisePlayer.qml): Qt
+    // Multimedia waits until then.
+    Loader {
+        id: player
 
-        loops: MediaPlayer.Infinite
-        audioOutput: AudioOutput {
-            id: output
-
-            volume: 0
-
-            Behavior on volume {
-                NumberAnimation {
-                    duration: 5000
-                }
-            }
-        }
+        active: false
+        source: "NoisePlayer.qml"
     }
 
     Timer {
@@ -96,129 +89,137 @@ ToolButton {
 
         interval: 5200
         onTriggered: {
-            media.stop()
+            if (player.item)
+                player.item.stop()
             applet.playing = ""
             applet.playingTitle = ""
         }
     }
 
-    Popup {
-        id: popup
+    // Made the first time it opens, its rows with it.
+    Loader {
+        id: popupLoader
 
-        y: -height - 6
-        x: Math.min(0, applet.parent ? applet.parent.width - applet.x - width : 0)
-        width: 300
-        padding: 12
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        active: false
+        sourceComponent: Popup {
+            id: popup
 
-        background: Rectangle {
-            color: applet.theme.surface
-            radius: applet.theme.radius
-            border.color: applet.theme.line
-        }
+            y: -height - 6
+            x: Math.min(0, applet.parent ? applet.parent.width - applet.x - width : 0)
+            width: 300
+            padding: 12
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-        contentItem: ColumnLayout {
-            spacing: 4
-
-            Label {
-                text: applet.sioul.text("sounds-focus")
-                font.weight: Font.DemiBold
-                color: applet.theme.text
+            background: Rectangle {
+                color: applet.theme.surface
+                radius: applet.theme.radius
+                border.color: applet.theme.line
             }
-            Repeater {
-                model: ["white", "pink", "brown"]
 
-                delegate: ItemDelegate {
-                    id: noise
+            contentItem: ColumnLayout {
+                spacing: 4
 
-                    required property string modelData
-                    readonly property string title: applet.sioul.text("sounds-" + noise.modelData)
-
-                    Layout.fillWidth: true
-                    text: noise.title
-                    highlighted: applet.playingTitle === noise.title
-                    onClicked: applet.play(applet.sioul.noiseUrl(noise.modelData), noise.title)
+                Label {
+                    text: applet.sioul.text("sounds-focus")
+                    font.weight: Font.DemiBold
+                    color: applet.theme.text
                 }
-            }
-            Label {
-                Layout.topMargin: 6
-                text: applet.sioul.text("sounds-nature")
-                font.weight: Font.DemiBold
-                color: applet.theme.text
-            }
-            Repeater {
-                model: ["waves", "rain", "wind", "crickets", "storm"]
+                Repeater {
+                    model: ["white", "pink", "brown"]
 
-                delegate: ItemDelegate {
-                    id: nature
+                    delegate: ItemDelegate {
+                        id: noise
 
-                    required property string modelData
-                    readonly property string title: applet.sioul.text("sounds-" + nature.modelData)
+                        required property string modelData
+                        readonly property string title: applet.sioul.text("sounds-" + noise.modelData)
 
-                    Layout.fillWidth: true
-                    text: nature.title
-                    highlighted: applet.playingTitle === nature.title
-                    onClicked: applet.play(applet.sioul.noiseUrl(nature.modelData), nature.title)
-                }
-            }
-            Label {
-                Layout.topMargin: 6
-                text: applet.sioul.text("sounds-calm")
-                font.weight: Font.DemiBold
-                color: applet.theme.text
-            }
-            Repeater {
-                model: applet.calm
-
-                delegate: ItemDelegate {
-                    id: recording
-
-                    required property var modelData
-
-                    Layout.fillWidth: true
-                    text: applet.theme.plain(recording.modelData.title).replace(/&/g, "&&")
-                    highlighted: applet.playing === recording.modelData.url
-                    onClicked: applet.play(recording.modelData.url, recording.modelData.title)
-                }
-            }
-            Label {
-                visible: applet.calm.length === 0
-                Layout.fillWidth: true
-                text: applet.sioul.text("sounds-calm-none")
-                wrapMode: Text.Wrap
-                font.pixelSize: 12
-                color: applet.theme.muted
-            }
-            RowLayout {
-                Layout.topMargin: 6
-                Layout.fillWidth: true
-                spacing: 6
-
-                Icon {
-                    iconName: "audio-volume-low"
-                    color: applet.theme.muted
-                    size: 16
-                }
-                Slider {
-                    Layout.fillWidth: true
-                    from: 0
-                    to: 1
-                    value: applet.loudness
-                    Accessible.name: applet.sioul.text("sounds-volume")
-                    onMoved: {
-                        applet.loudness = value
-                        if (applet.playing !== "")
-                            output.volume = value
+                        Layout.fillWidth: true
+                        text: noise.title
+                        highlighted: applet.playingTitle === noise.title
+                        onClicked: applet.play(applet.sioul.noiseUrl(noise.modelData), noise.title)
                     }
                 }
-            }
-            Button {
-                visible: applet.playing !== ""
-                Layout.fillWidth: true
-                text: applet.sioul.text("sounds-stop")
-                icon.name: "media-playback-stop"
-                icon.color: applet.theme.text
-                onClicked: applet.stop()
+                Label {
+                    Layout.topMargin: 6
+                    text: applet.sioul.text("sounds-nature")
+                    font.weight: Font.DemiBold
+                    color: applet.theme.text
+                }
+                Repeater {
+                    model: ["waves", "rain", "wind", "crickets", "storm"]
+
+                    delegate: ItemDelegate {
+                        id: nature
+
+                        required property string modelData
+                        readonly property string title: applet.sioul.text("sounds-" + nature.modelData)
+
+                        Layout.fillWidth: true
+                        text: nature.title
+                        highlighted: applet.playingTitle === nature.title
+                        onClicked: applet.play(applet.sioul.noiseUrl(nature.modelData), nature.title)
+                    }
+                }
+                Label {
+                    Layout.topMargin: 6
+                    text: applet.sioul.text("sounds-calm")
+                    font.weight: Font.DemiBold
+                    color: applet.theme.text
+                }
+                Repeater {
+                    model: applet.calm
+
+                    delegate: ItemDelegate {
+                        id: recording
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        text: applet.theme.plain(recording.modelData.title).replace(/&/g, "&&")
+                        highlighted: applet.playing === recording.modelData.url
+                        onClicked: applet.play(recording.modelData.url, recording.modelData.title)
+                    }
+                }
+                Label {
+                    visible: applet.calm.length === 0
+                    Layout.fillWidth: true
+                    text: applet.sioul.text("sounds-calm-none")
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 12
+                    color: applet.theme.muted
+                }
+                RowLayout {
+                    Layout.topMargin: 6
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Icon {
+                        iconName: "audio-volume-low"
+                        color: applet.theme.muted
+                        size: 16
+                    }
+                    Slider {
+                        Layout.fillWidth: true
+                        from: 0
+                        to: 1
+                        value: applet.loudness
+                        Accessible.name: applet.sioul.text("sounds-volume")
+                        onMoved: {
+                            applet.loudness = value
+                            if (applet.playing !== "")
+                                if (player.item)
+                                    player.item.volume = value
+                        }
+                    }
+                }
+                Button {
+                    visible: applet.playing !== ""
+                    Layout.fillWidth: true
+                    text: applet.sioul.text("sounds-stop")
+                    icon.name: "media-playback-stop"
+                    icon.color: applet.theme.text
+                    onClicked: applet.stop()
+                }
             }
         }
     }

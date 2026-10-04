@@ -34,6 +34,11 @@ Item {
     // The message being read, by its file; it stays open across refreshes.
     property string openKey: ""
     readonly property var opened: findItem(openKey)
+    // The reader is made the first time a message is opened, then kept.
+    onOpenedChanged: {
+        if (page.opened !== null && reader.item === null)
+            reader.setSource("Reader.qml", { sioul: page.sioul, theme: page.theme, window: page.window })
+    }
     // On a phone, the message open takes the page; Back closes it (main.qml).
     readonly property bool canGoBack: page.openKey !== ""
     function back() {
@@ -527,58 +532,68 @@ Item {
                             font.pixelSize: 13
                             color: page.theme.muted
                         }
-                        // How mail lands here, and what changes it.
-                        Panel {
+                        // How mail lands here, and what changes it: made while shown, its
+                        // settings read again each time. Each setting (SettingRow.qml) is
+                        // read by its file, which the Porch then does not load at its start.
+                        Loader {
                             id: help
 
                             readonly property bool shown: page.helpShown[lane.modelData.key] === true
-                            property var rows: []
 
                             visible: help.shown
+                            active: help.shown
                             Layout.fillWidth: true
                             Layout.leftMargin: 8
                             Layout.topMargin: 4
                             Layout.bottomMargin: 4
-                            theme: page.theme
-                            onShownChanged: {
-                                if (help.shown)
-                                    help.rows = JSON.parse(page.sioul.settings(lane.modelData.settings))
-                            }
 
-                            ColumnLayout {
-                                anchors.fill: parent
-                                spacing: 8
+                            sourceComponent: Panel {
+                                id: rules
 
-                                Repeater {
-                                    model: help.shown ? lane.modelData.rules : []
+                                property var rows: JSON.parse(page.sioul.settings(lane.modelData.settings))
 
-                                    delegate: Label {
-                                        required property string modelData
+                                theme: page.theme
 
-                                        Layout.fillWidth: true
-                                        text: modelData
-                                        wrapMode: Text.Wrap
-                                        lineHeight: 1.25
-                                        color: page.theme.text
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    spacing: 8
+
+                                    Repeater {
+                                        model: lane.modelData.rules
+
+                                        delegate: Label {
+                                            required property string modelData
+
+                                            Layout.fillWidth: true
+                                            text: modelData
+                                            wrapMode: Text.Wrap
+                                            lineHeight: 1.25
+                                            color: page.theme.text
+                                        }
                                     }
-                                }
-                                Repeater {
-                                    model: help.rows
+                                    Repeater {
+                                        model: rules.rows
 
-                                    delegate: SettingRow {
-                                        required property var modelData
+                                        delegate: Loader {
+                                            id: row
 
-                                        Layout.fillWidth: true
-                                        Layout.topMargin: 6
-                                        setting: modelData
-                                        sioul: page.sioul
-                                        theme: page.theme
-                                        onSave: (key, value) => {
-                                            const problem = page.sioul.setSetting(key, JSON.stringify(value))
-                                            if (problem === "")
-                                                help.rows = JSON.parse(page.sioul.settings(lane.modelData.settings))
-                                            else
-                                                page.sioul.status = problem
+                                            required property var modelData
+
+                                            Layout.fillWidth: true
+                                            Layout.topMargin: 6
+                                            Component.onCompleted: row.setSource("SettingRow.qml", { setting: row.modelData, sioul: page.sioul, theme: page.theme })
+
+                                            Connections {
+                                                target: row.item
+
+                                                function onSave(key, value) {
+                                                    const problem = page.sioul.setSetting(key, JSON.stringify(value))
+                                                    if (problem === "")
+                                                        rules.rows = JSON.parse(page.sioul.settings(lane.modelData.settings))
+                                                    else
+                                                        page.sioul.status = problem
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -722,44 +737,70 @@ Item {
             }
         }
 
-        // The message.
-        Reader {
+        // The message, in the Reader (Reader.qml): made the first time one is
+        // opened (onOpenedChanged), since it takes long to make.
+        Loader {
             id: reader
 
-            visible: page.opened !== null && reader.reading !== null
+            visible: page.opened !== null && reader.item !== null && reader.item.reading !== null
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
             Layout.preferredWidth: Math.round((columns.width - columns.spacing) * 0.62)
-            sioul: page.sioul
-            theme: page.theme
-            window: page.window
-            key: page.opened !== null ? page.openKey : ""
-            item: page.opened
-            onCloseRequested: page.openKey = ""
+
+            Binding {
+                target: reader.item
+                when: reader.item !== null
+                property: "key"
+                value: page.opened !== null ? page.openKey : ""
+            }
+            Binding {
+                target: reader.item
+                when: reader.item !== null
+                property: "item"
+                value: page.opened
+            }
+            Connections {
+                target: reader.item
+
+                function onCloseRequested() {
+                    page.openKey = ""
+                }
+            }
         }
     }
 
-    // Right click on a message: something new tied to it, or a tie to something that exists.
-    SioulMenu {
+    // Right click on a message: something new tied to it, or a tie to something
+    // that exists. Made the first time it is asked for.
+    Loader {
         id: itemMenu
 
-        property var source: null
-
         function show(item) {
-            itemMenu.source = { uri: page.sioul.uriOf("mail", item.key), kind: "mail", key: item.key, title: item.subject, name: item.sender, address: item.hidden ? "" : item.address, known: !item.screener }
-            itemMenu.popup()
+            itemMenu.active = true
+            itemMenu.item.show(item)
         }
 
-        AddMenu {
-            sioul: page.sioul
-            window: page.window
-            source: itemMenu.source
-        }
-        MenuItem {
-            enabled: itemMenu.source !== null && itemMenu.source.uri !== ""
-            text: page.sioul.text("ui-link-existing")
-            onTriggered: page.window.linkFrom(itemMenu.source)
+        active: false
+        sourceComponent: SioulMenu {
+            id: menu
+
+            property var source: null
+
+            function show(item) {
+                menu.source = { uri: page.sioul.uriOf("mail", item.key), kind: "mail", key: item.key, title: item.subject, name: item.sender, address: item.hidden ? "" : item.address, known: !item.screener }
+                menu.popup()
+            }
+
+            AddMenu {
+                sioul: page.sioul
+                window: page.window
+                source: menu.source
+            }
+            MenuItem {
+                enabled: menu.source !== null && menu.source.uri !== ""
+                text: page.sioul.text("ui-link-existing")
+                onTriggered: page.window.linkFrom(menu.source)
+            }
         }
     }
 }

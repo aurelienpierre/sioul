@@ -51,13 +51,14 @@ pub fn icons() {
     // Colours chosen in Sioul (or by SIOUL_THEME) take the bundled icons drawn for them.
     let chosen = std::env::var("SIOUL_THEME").ok().filter(|t| !t.is_empty()).or_else(|| crate::backend::load_config().theme).filter(|t| t == "dark" || t == "light");
     let bundled = QString::from(if chosen.as_ref().map_or_else(dark, |t| t == "dark") { "sioul-dark" } else { "sioul" });
+    // Each folder once: Qt looks for every icon in each, and has ":/icons" already.
     let mut paths: QList<QString> = QList::default();
-    for path in ffi::QIcon::theme_search_paths().iter() {
-        paths.append(path.clone());
-    }
-    paths.append(QString::from(":/icons"));
-    for folder in xdg_icon_folders() {
-        paths.append(QString::from(&folder.display().to_string()));
+    let qt = ffi::QIcon::theme_search_paths();
+    let ours = std::iter::once(":/icons".to_owned()).chain(xdg_icon_folders().into_iter().map(|folder| folder.display().to_string()));
+    for path in qt.iter().cloned().chain(ours.map(|path| QString::from(&path))) {
+        if !paths.contains(&path) {
+            paths.append(path);
+        }
     }
     ffi::QIcon::set_theme_search_paths(&QStringList::from(&paths));
     ffi::QIcon::set_fallback_theme_name(&bundled);

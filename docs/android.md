@@ -28,16 +28,28 @@ The APK comes out unsigned, under `build-android/…/outputs/apk/release/`; `apk
 - **The manifest** (`android/package/`) is Qt 6.11's own with Sioul's name, its icon (the quill on its green, in Android's vector drawings, from `tools/make-icons.py`), the network permissions, and no cloud backup: mail, notes, health readings and passwords stay on the phone. Moving to a new phone (cable or Wi-Fi between the two) takes everything but the passwords.
 - **16 KB memory pages**: Android 15 runs on phones whose memory pages are 16 KB, where a library aligned for 4 KB does not load. The library is linked for them, and the workflow checks each library of the APK (its summary lists them).
 
+## Starting
+On a 2019 phone (Gigaset GS290, Helio P23, Android 12), Sioul's window draws its first frame about 1.8 s after a tap: 0.55 s before Sioul's own code runs (Android starts the app, Qt's Java side loads Qt's libraries and Sioul's), then 1.25 s. It was 3.5 s. `adb logcat -s sioul` says where the time goes ("Sioul: the window loaded after … ms"); on a computer, `SIOUL_TIMING=1`.
+- **Made when needed**: the pages but the one shown, the Reader on the Porch, the menus, dialogs, settings panels and pop-ups, and the windows (writing, focus, routines). Those made by their file (`Loader.setSource`, `Qt.createComponent`) are not even read at the start.
+- **Read once, beside**: while the QML engine reads the window's files, a thread reads the system's fonts (200 on a phone) and the image formats (`cpp/warmup.cpp`).
+- **Looked up less**: Qt's file selectors off (`QT_NO_BUILTIN_SELECTORS`), the icon theme in four folders instead of eighteen, Sioul Symbols for the symbols Roboto lacks (no search through the phone's fonts), the Basic style for Qt's own tips (Material not loaded).
+- **Linked lighter**: Sioul's library exports 19 symbols, not 28,000, and its relocations are packed (`--exclude-libs`, RELR: `android/CMakeLists.txt`).
+- **What remains is Qt's**: relocating Qt's own libraries (0.3 s), registering the types of Qt Quick and its controls (0.3 s), and the media and position plugins Qt's Java side loads at the start, FFmpeg with them, since their `JNI_OnLoad` must run from Java.
+- **Measured with** `simpleperf` (the manifest makes the app profileable from a computer plugged in) and Qt's QML profiler (`qmlprofiler`, with `QQmlDebuggingEnabler::startTcpDebugServer` in a build of one's own, never shipped).
+
 ## What differs on Android
 - **Sites**: Qt WebEngine has no Android version. The Sites page lists your sites and opens each in the browser (`qml/android/SitesPage.qml`): no logins kept in Sioul, no notifications gathered.
 - **PDFs**: Qt PDF has no Android version either; a PDF of the notes opens with "Open with…" (`qml/android/PdfView.qml`). Both pages keep the names of the computer's, so the module's `qmldir` finds them (`build.rs` lists one or the other).
 - **Passwords** go to Android's KeyStore, through [android-keyring](https://github.com/Andrepuel/android-keyring): a key the KeyStore keeps, and never lets out, encrypts each password (AES-GCM) into the app's private storage. Its author calls it experimental.
 - **Sender checks** ask the network's DNS servers, which Android gives through Java (hickory reads them with the Context lent at start).
 - **Certificates**: Android's own (its Conscrypt module, else the system image's), for IMAP and SMTP alike. On computers SMTP checks them with the system's verifier (`rustls-platform-verifier`), which on Android needs Java code Sioul does not ship.
+- **The window on a phone**: below 720 pixels wide, the places are pulled over the pages from the left (☰) and each page shows one pane at a time, its list or what it opened; Android's Back goes back from what is open, then to the Porch.
+- **Accounts**: "From this phone's accounts…" opens Android's chooser of the phone's accounts (Murena's, Nextcloud's, Google's…); the address chosen fills the form, Sioul finds the servers, and asks the password once, as on a computer. Mail, calendars and contacts then sync through Sioul's own code, not the phone's.
+- **Sharing with your other devices**: the sharing folder is the one your sync app carries (Murena's eDrive, Nextcloud's, Syncthing, FolderSync…), read by its path, with Android's "All files access" (asked from the sharing panel). Sioul talks to no sync service itself; folders already shared by your other devices are offered. Not tried on a phone yet.
 
 ## Not done yet
 - **Notifications**: none on Android (codes, reminders, doses); they need Android's own, through Java.
-- **A window for a phone**: the pages are laid out for a computer's screen, a mouse and a keyboard.
+- **Touch**: the pages are laid out for a phone, but drawn for a mouse: small targets, menus on a right click.
 - **In the background**: Android suspends an app it does not show; mail is fetched while Sioul is open.
 - **Files from Android's pickers** come as `content://` addresses, which the core does not read yet; downloads stay in the app's own folder.
 - **Other programs** Sioul calls on a computer (Tesseract for paper letters, ClamAV for attachments) do not exist on a phone.

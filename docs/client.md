@@ -164,7 +164,9 @@ Recurrences are expanded for display (RFC 5545 §3.3.10); times are kept with th
 - **Maildir**: `!` before the flags on Windows; `:` and `!` are both read everywhere, so a Maildir copied across reads the same.
 - **Keyring**: the Secret Service on Linux, the Credential Manager on Windows, the Keychain on macOS (the keyring crate's backend per system).
 - **Notifications**: the "copy" button only where the desktop offers buttons (Linux); elsewhere the code is in the text.
-- **Icons**: the Breeze icons Sioul uses ship inside the window, light and dark (`tools/bundle-icons.py`, 1.4 MB, Breeze's LGPL-3.0 licence alongside); the desktop's own theme still comes first on Linux.
+- **Icons**: the Breeze icons Sioul uses ship inside the window, light and dark (`tools/bundle-icons.py`, 1.4 MB, Breeze's LGPL-3.0 licence alongside), one folder per size; the desktop's own theme still comes first on Linux.
+- **Symbols**: the few Sioul writes (→ ▸ ▾ ✓ ⚙) ship as Sioul Symbols, cut from DejaVu Sans (`tools/make-symbols-font.py`, 15 KB, DejaVu's licence alongside), first in line after the text's own font, so that Qt does not look for them through all the system's fonts.
+- **Style**: Qt Quick's Basic style everywhere, the tips Qt makes itself included (`QT_QUICK_CONTROLS_STYLE`, unless set): the system's style (KDE's Breeze, Android's Material) is not loaded for them.
 - **OpenPGP**: Sequoia with its pure-Rust cryptography, the same on the three systems.
 - **Building**: `.github/workflows/build.yml` tests the core, sync and command line, and builds the window, on Linux, Windows and macOS. It runs only when started by hand (Actions, "Build on three systems"), since on a private repository minutes are counted, macOS ones ten times.
 - **Packages**: first files in `packaging/`: a Flatpak manifest (its open points written at the top), an Inno Setup script for Windows (after `windeployqt`), and the steps for a macOS bundle. None has been built yet.

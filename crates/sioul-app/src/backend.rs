@@ -509,6 +509,10 @@ pub mod qobject {
         #[qinvokable]
         fn first_frame(self: &Sioul);
 
+        /// A step of the start, said with how long the start took so far, when timed (`crate::timing`).
+        #[qinvokable]
+        fn mark(self: &Sioul, what: &QString);
+
         /// Whether this system keeps accounts Sioul may be shown (Android's: Murena, Google…).
         #[qinvokable]
         fn phone_accounts(self: &Sioul) -> bool;
@@ -2950,6 +2954,10 @@ impl qobject::Sioul {
 
     fn first_frame(&self) {
         crate::timing("the first frame drawn");
+    }
+
+    fn mark(&self, what: &QString) {
+        crate::timing(&what.to_string());
     }
 
     fn phone_accounts(&self) -> bool {
