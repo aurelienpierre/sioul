@@ -270,7 +270,7 @@ impl Translator {
         let name = |id: &str| if short { self.attribute(id, "short").unwrap_or_else(|| self.text(id, None)) } else { self.text(id, None) };
         let mut args = FluentArgs::new();
         args.set("weekday", name(&weekday));
-        args.set("day", at.day().to_string());
+        args.set("day", at.day());
         args.set("month", name(&month));
         args.set("time", at.strftime("%H:%M").to_string());
         self.text(if short { "date-short" } else { "date-long" }, Some(&args))
@@ -315,7 +315,7 @@ impl Translator {
     pub fn day(&self, d: Date) -> String {
         let mut args = FluentArgs::new();
         args.set("weekday", self.text(&format!("weekday-{}", d.weekday().to_monday_one_offset()), None));
-        args.set("day", d.day().to_string());
+        args.set("day", d.day());
         args.set("month", self.text(&format!("month-{}", d.month()), None));
         self.text("date-day", Some(&args))
     }
@@ -340,7 +340,7 @@ impl Translator {
     /// "31 October", "31 octobre".
     pub fn day_month(&self, d: Date) -> String {
         let mut args = FluentArgs::new();
-        args.set("day", d.day().to_string());
+        args.set("day", d.day());
         args.set("month", self.text(&format!("month-{}", d.month()), None));
         self.text("date-day-month", Some(&args))
     }
@@ -571,5 +571,9 @@ mod tests {
         assert_eq!(Translator::new("en").when(&at), "on Tuesday 6 October at 10:00");
         assert_eq!(Translator::new("fr").when(&at), "le mardi 6 octobre à 10:00");
         assert_eq!(Translator::new("fr").date(&at, true), "mar. 6 oct. 10:00");
+        // French says the first day of a month "1er".
+        let first = jiff::civil::Date::constant(2026, 11, 1);
+        assert_eq!(Translator::new("fr").day_month(first), "1er novembre");
+        assert_eq!(Translator::new("en").day_month(first), "1 November");
     }
 }

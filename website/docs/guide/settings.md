@@ -19,7 +19,7 @@ The Settings page has five tabs.
 ## Hours
 
 <figure markdown="span">
-  [![The Hours tab of Settings: "Working hours", each day of the week ticked or not, from a start to an end, with a sentence on what they do; then "Hours for your admin", set the same way.](../assets/screens/settings-hours.png){ loading=lazy }](../assets/screens/settings-hours.png "Open the picture at full size")
+  [![The Hours tab of Settings: "Working hours", each day of the week ticked or not, with its ranges of hours (two on weekdays: 09:00–12:00 and 14:00–17:00) and + to add one, with a sentence on what they do; then "Hours for your admin", set the same way.](../assets/screens/settings-hours.png){ loading=lazy }](../assets/screens/settings-hours.png "Open the picture at full size")
   <figcaption>Three weeks: work, your admin, free time. Then time off.</figcaption>
 </figure>
 
@@ -28,7 +28,7 @@ The Settings page has five tabs.
 - **Free time**: rest and leisure only: friends, family, chats, what you enjoy.
 - **Time off**: holidays, sick leave, quiet from the first day to the last, as on a day off, with a word on them.
 
-Each day of each week is on or off, from a start to an end. What each kind of hours brings, and what waits: [Hours](hours.md).
+Each day of each week is on or off, with one range of hours or several: **+** adds a range, **×** takes one away. What each kind of hours brings, and what waits: [Hours](hours.md).
 
 ## Reminders and notifications
 

@@ -36,7 +36,7 @@ Above the message, always in the same place:
 - **Add ▾** (a task, an event, a note, a reply, the sender to your contacts) and **Link to…** (anything else: a task, a note, a project);
 - **Archive**, **Delete**, **Junk**.
 
-Archiving, deleting and junking happen at once, with **Undo** in the status line for ten seconds; the server is told only after that. There is no "are you sure?". In the trash, **Delete** deletes for good, with the same ten seconds.
+Archiving, deleting and junking happen at once, with **Undo** in the status line for ten seconds; the server is told only after that. There is no "are you sure?". In the trash, **Delete for good** deletes it for good, with the same ten seconds.
 
 A right click on a message (or its ⋮, or the Menu key) gives the rest: mark as read or unread, flag, **Move to…**, **Show the source**, block the sender, **Their mail** (safe, neutral, blocked), **Keep as a contract…**.
 

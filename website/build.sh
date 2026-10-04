@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright © 2026 Aurélien Pierre
 #
-# Builds Sioul's website into website/site/, here and in the Pages workflow
-# (.github/workflows/pages.yml).
+# Builds Sioul's website into website/site/ (the French guide into
+# website/site/fr/), here and in the Pages workflow (.github/workflows/pages.yml).
 #
 # The developers' section is the design notes of ../docs, as they are: they are
 # copied into docs/dev/ at each build (git-ignored there, but for the
@@ -115,8 +115,20 @@ for entry in sorted(copied - in_nav):
     print(f"build.sh: {entry} is on the site but not in its navigation: add it to website/zensical.toml.", file=sys.stderr)
 PY
 
+# The French guide (fr/) shares the pictures and styles: copied in at each
+# build (git-ignored there). A French page missing beside an English one is
+# said, so that none is forgotten.
+rm -rf "$here/fr/docs/assets"
+cp -r "$here/docs/assets" "$here/fr/docs/assets"
+for page in "$here"/docs/index.md "$here"/docs/privacy.md "$here"/docs/guide/*.md; do
+    french="$here/fr/docs/${page#"$here"/docs/}"
+    [ -f "$french" ] || echo "build.sh: no French page yet for docs/${page#"$here"/docs/}." >&2
+done
+
 cd "$here"
 if [ "${1:-}" = "serve" ]; then
     exec zensical serve
 fi
-exec zensical build --clean "$@"
+# English first: its build empties site/, French goes into site/fr/ after.
+zensical build --clean "$@"
+exec zensical build --clean -f zensical-fr.toml "$@"

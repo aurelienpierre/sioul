@@ -28,7 +28,7 @@ Mail addresses are the one place nothing is guessed for you: saying what each ad
 
 ## The hours
 
-In [Settings ▸ Hours](settings.md#hours), three weeks: **Working hours**, **Hours for your admin**, and **Free time**. Each day of each is on or off, from a start to an end. **Time off**, below them, takes holidays and sick leave.
+In [Settings ▸ Hours](settings.md#hours), three weeks: **Working hours**, **Hours for your admin**, and **Free time**. Each day of each is on or off, with one range of hours or several (09:00–12:00 and 14:00–17:00, a lunch between). **Time off**, below them, takes holidays and sick leave.
 
 Hours set for none of them are **personal time**: not work, and nothing assumed about admin or leisure. Time off, and a day closed with "Done for today", are free time.
 

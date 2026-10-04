@@ -378,7 +378,7 @@ pub(crate) fn waiting() -> String {
         .into_iter()
         .filter(|site| sioul_core::areas::in_view(site.area, mode.time, mode.week))
         .filter_map(|site| {
-            let items: Vec<String> = notices.of(&site.id).into_iter().map(|n| if n.text.is_empty() { n.title.clone() } else { format!("{}: {}", n.title, n.text) }).collect();
+            let items: Vec<String> = notices.of(&site.id).into_iter().map(|n| if n.text.is_empty() { n.title.clone() } else { say("site-news-line", &[("title", n.title.clone()), ("text", n.text.clone())]) }).collect();
             (!items.is_empty()).then(|| Waiting { id: site.id, name: site.name, items })
         })
         .collect();

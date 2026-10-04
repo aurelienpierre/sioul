@@ -1,12 +1,25 @@
 ---
-description: How to build and install Sioul from its sources, on Linux first; Windows and macOS notes.
+description: Download Sioul for Windows, macOS or Linux, or build it from its sources.
 ---
 
 # Install
 
-For now, Sioul is built from its sources. There are no packages yet: a Flatpak manifest, a Windows installer script and the steps for a macOS bundle are ready in the sources, but none has been built.
+## Download
 
-Sioul runs on Linux. Windows and macOS versions are built by a workflow on GitHub, but nobody has run them yet. If you try one, a word in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) helps.
+The packages of each version are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest), built by GitHub from that version's sources:
+
+| System | Package | How |
+|---|---|---|
+| Windows 10 and 11 (64-bit) | `sioul-<version>-setup.exe` | Run it. Windows may say it does not know the publisher, as the package is not signed yet: **More info**, then **Run anyway**. |
+| macOS 13 and later, Apple silicon and Intel | `Sioul-<version>-macos-universal.dmg` | Open it, and drag Sioul into Applications. It is not notarised yet: the first time, open it from Applications, then **System Settings ▸ Privacy & Security ▸ Open Anyway**. |
+| Linux, any distribution (64-bit) | `Sioul-<version>-x86_64.AppImage` | Make it executable (`chmod +x Sioul-*.AppImage`), then run it. On Ubuntu 24.04 and later, its sites run without Chromium's sandbox: prefer the Flatpak there. |
+| Linux, with Flatpak | `Sioul-<version>.flatpak` | `flatpak install --user Sioul-<version>.flatpak`: the KDE runtime and Qt WebEngine come from Flathub. |
+
+Each comes with the command line, `sioul`. These first packages were built and tested by GitHub, but few people have run them yet: a word in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) helps.
+
+## Or build it from its sources
+
+The rest of this page builds Sioul from its sources: for Linux distributions without packages yet, and to follow the newest changes.
 
 ## What it needs
 
@@ -64,7 +77,7 @@ cargo build --release
 cargo build --release -p sioul-app
 ```
 
-The first line builds `sioul`, the command line; the second builds `sioul-app`, the window. The first build downloads and compiles a few hundred libraries: it takes a while, and a few gigabytes of disk.
+The first `cargo build` makes `sioul`, the command line; the second makes `sioul-app`, the window. The first build downloads and compiles a few hundred libraries: it takes a while, and a few gigabytes of disk.
 
 ### Into your application menu
 

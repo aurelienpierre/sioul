@@ -91,4 +91,4 @@ The rules read French first, and English too. They know the French bodies that w
 
 ### Not there yet
 
-An AI reading a letter line by line, checks that a letter is genuine (the office's domain, its bank details), and an address where a helper could send scans by mail are planned.
+Planned: an AI that reads a letter line by line; a check that a letter is genuine (the office's domain, its bank details); an address where a helper could send scans by mail.

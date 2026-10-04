@@ -29,7 +29,7 @@ Each choice follows research on attention, stress, avoidance and recovery, much 
 
 ## Where it stands
 
-Version 0.0.1: Sioul is young and changes often; it is used every day. It runs on Linux. Windows and macOS versions are built by a workflow on GitHub but have not been tried yet. There are no packages yet.
+Version 0.0.1: Sioul is young and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel) and Linux (AppImage and Flatpak) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest): built and tested by GitHub, used daily on Linux, little tried elsewhere yet.
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 

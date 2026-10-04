@@ -4,3 +4,5 @@
 # The design notes, copied from ../docs by build.sh at each build: edit them there.
 /docs/dev/*
 !/docs/dev/index.md
+# The French guide's pictures and styles, copied from docs/assets by build.sh.
+/fr/docs/assets/

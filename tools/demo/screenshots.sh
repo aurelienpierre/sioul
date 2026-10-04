@@ -4,7 +4,11 @@
 #
 # The documentation's screenshots, on the demo profile (make-demo.py):
 #
-#     tools/demo/screenshots.sh [SCRATCH]
+#     tools/demo/screenshots.sh [--language en|fr] [SCRATCH]
+#
+# In English, into website/docs/assets/screens/; with --language fr, the same
+# life in French (make-demo.py --language fr) and Sioul in French, into
+# website/docs/assets/screens/fr/, under the same names.
 #
 # Makes the profile in SCRATCH (a new temporary folder by default), runs Sioul
 # on it off the network (SIOUL_DEMO=1) taking its pictures (SIOUL_GRAB_STEPS=demo,
@@ -25,9 +29,20 @@
 
 set -euo pipefail
 
+language=en
+if [[ "${1:-}" == "--language" ]]; then
+    language=${2:-}
+    shift 2
+fi
+case "$language" in
+    en) locale=en_US.UTF-8 suffix="" ;;
+    fr) locale=fr_FR.UTF-8 suffix="-fr" ;;
+    *) echo "--language: en or fr" >&2; exit 2 ;;
+esac
+
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 app="$repo/target/debug/sioul-app"
-screens="$repo/website/docs/assets/screens"
+screens="$repo/website/docs/assets/screens${suffix:+/$language}"
 scratch=${1:-$(mktemp -d -t sioul-demo.XXXXXX)}
 mkdir -p "$scratch"
 scratch=$(cd "$scratch" && pwd)
@@ -64,7 +79,7 @@ if [[ "$now" == none ]]; then
     echo "No weekday is within a day of now (Saturday 16:00 to Sunday 10:00, UTC): try again later." >&2
     exit 1
 fi
-echo "Pictures of $now (TZ=$zone), in $scratch"
+echo "Pictures of $now (TZ=$zone), in $language, in $scratch"
 
 if command -v bwrap > /dev/null; then
     home=/home/demo
@@ -72,13 +87,40 @@ else
     home=""
 fi
 
+# The fonts Plasma users see, Noto Sans and Hack, whatever this system's
+# default: Bitstream Vera Sans, for one, draws the no-break space of "620 €"
+# twice as wide as a space. The system's configuration, then these first.
+fonts="$scratch/fonts.conf"
+cat > "$fonts" <<'EOF'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+  <match target="pattern">
+    <test name="family" qual="any"><string>sans-serif</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Noto Sans</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" qual="any"><string>Sans Serif</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Noto Sans</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="family" qual="any"><string>monospace</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Hack</string></edit>
+  </match>
+</fontconfig>
+EOF
+if command -v fc-match > /dev/null && ! FONTCONFIG_FILE="$fonts" fc-match "Sans Serif" | grep -q "Noto Sans"; then
+    echo "Noto Sans is not installed: the pictures take this system's sans-serif font." >&2
+fi
+
 # Runs Sioul on profile $1, its pictures into $2.
 run() {
     local profile=$1 out=$2
     rm -rf "$out"
     mkdir -p "$out"
-    local env=(SIOUL_DEMO=1 SIOUL_GRAB="$out" SIOUL_GRAB_STEPS=demo SIOUL_TEST_PASSWORD=x SIOUL_THEME=light
-               QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 TZ="$zone")
+    local env=(SIOUL_DEMO=1 SIOUL_GRAB="$out" SIOUL_GRAB_STEPS=demo SIOUL_TEST_PASSWORD=x SIOUL_THEME=light FONTCONFIG_FILE="$fonts"
+               QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software LANG="$locale" LC_ALL="$locale" TZ="$zone")
     # Nothing reaches the desktop: no display, and a bus of its own (dbus-run-session).
     if [[ -n "$home" ]]; then
         env -u DISPLAY -u WAYLAND_DISPLAY bwrap --dev-bind / / --tmpfs /home --ro-bind "$repo" "$repo" \
@@ -99,10 +141,10 @@ run() {
 notes_at=()
 [[ -n "$home" ]] && notes_at=(--notes-at "$home/Notes")
 
-python3 "$repo/tools/demo/make-demo.py" --into "$scratch/profile" --now "$now" "${notes_at[@]}"
-run "$scratch/profile" "$scratch/shots"
-python3 "$repo/tools/demo/make-demo.py" --into "$scratch/profile-no-hours" --now "$now" --no-hours "${notes_at[@]}"
-run "$scratch/profile-no-hours" "$scratch/shots-no-hours"
+python3 "$repo/tools/demo/make-demo.py" --into "$scratch/profile$suffix" --now "$now" --language "$language" "${notes_at[@]}"
+run "$scratch/profile$suffix" "$scratch/shots$suffix"
+python3 "$repo/tools/demo/make-demo.py" --into "$scratch/profile-no-hours$suffix" --now "$now" --language "$language" --no-hours "${notes_at[@]}"
+run "$scratch/profile-no-hours$suffix" "$scratch/shots-no-hours$suffix"
 
 # With hours, a weekday afternoon; without them, what asks for them, and the
 # budgets of every area at once (with hours, only those of the hours now).
@@ -120,10 +162,10 @@ copy() {
     fi
 }
 for name in "${names[@]}"; do
-    copy "$scratch/shots" "$name"
+    copy "$scratch/shots$suffix" "$name"
 done
 for name in "${no_hours[@]}"; do
-    copy "$scratch/shots-no-hours" "$name"
+    copy "$scratch/shots-no-hours$suffix" "$name"
 done
 echo "Copied into $screens"
 exit $missing

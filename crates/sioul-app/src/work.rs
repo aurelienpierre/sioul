@@ -140,6 +140,8 @@ struct Desk {
     spent: BTreeMap<String, u32>,
     stopped: BTreeMap<String, String>,
     settings: Settings,
+    /// Work rests now (quiet time); the filter alone says only that hours are set.
+    quiet: bool,
 }
 
 impl Desk {
@@ -153,7 +155,8 @@ impl Desk {
         let settings = settings(today.weather, &situation, &loaded.cases);
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
-        Desk { loaded, filter, offices: situation.offices, plan, today, sessions, spent, stopped, settings }
+        let quiet = situation.mode.quiet;
+        Desk { loaded, filter, offices: situation.offices, plan, today, sessions, spent, stopped, settings, quiet }
     }
 
     /// "Until Thursday 8 October: about 2 h of steps, 6 h of room.", for a date asked.
@@ -416,7 +419,7 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
             no_list: lists.is_empty(),
             lists,
             cases: desk.loaded.cases.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| CaseChoice { id: c.id.clone(), title: c.title.clone() }).collect(),
-            quiet: desk.filter.quiet.is_some(),
+            quiet: desk.quiet,
             first_step: first.0,
             first_step_task: first.1,
             morning: crate::health::morning_word(),

@@ -87,8 +87,8 @@ Five answers: *I do not know how to start*, *It is too big*, *I dread it*, *It i
 It is a layout to look at, never a schedule: nothing is written into the tasks. What does not fit before the day ends keeps its place in the plan, said in one line.
 
 <figure markdown="span">
-  [![The day: a column of hours with a thin band marking work, admin and leisure hours, a line at the current hour, the day's steps one after the other with their times, and a video call at 14:30.](../assets/screens/tasks-day.png){ loading=lazy }](../assets/screens/tasks-day.png "Open the picture at full size")
-  <figcaption>The day: events, and the steps that fit around them.</figcaption>
+  [![The day: a column of hours with a thin band marking work, admin and leisure hours, a line at the current hour, the day's steps one after the other with their times, a pause between them, and a line under the day saying one more step does not fit before it ends.](../assets/screens/tasks-day.png){ loading=lazy }](../assets/screens/tasks-day.png "Open the picture at full size")
+  <figcaption>The day: your hours by kind, and the steps placed in them.</figcaption>
 </figure>
 
 ## List, Board, Timeline
@@ -131,7 +131,7 @@ A task tagged `joy` is offered under **If you want**, never proposed as the next
 - **The next step**, among the tasks free to start: the one you started; then the one whose date comes soonest, counting the work behind it; then your own order; then the one that frees the most others; then the smaller one.
 - **The days**: each task goes into the first days with room. The room is your hours, each kind for its own tasks: working hours for work, hours for your admin for your admin, free time for leisure ([Hours](hours.md)). Events are taken out of it, with five minutes before and after each, and each step leaves five minutes after it. A step of up to an hour is never cut; a longer one is cut into parts of a quarter of an hour at least. Without any hours set, the room is Monday to Friday, 9:00 to 17:00. Today's room starts now, and haze or fog make it smaller. Days off, and today once closed, have none.
 - **Your dates stay yours.** The days the plan gives are worked out again each time, and never written into your tasks. Only what you set is kept: a day to start, a date asked, an order.
-- **When a date will not hold**, the task says so once: "At this pace, the plan ends after Friday 30 October. Doing it sooner, making it smaller or handing it over would keep the date." Near a date asked, Now says how much fits: "Until Wednesday 7 October: about 30 min of steps, 3 h of room."
+- **When a date will not hold**, the task says so once: "At this pace, the plan ends after 30 October. Doing it sooner, making it smaller or handing it over would keep the date." Near a date asked, Now says how much fits: "Until Wednesday 7 October: about 30 min of steps, 3 h of room."
 
 A reminder comes, once, two working days before a date asked, and when a wait is over ([Settings](settings.md#reminders-and-notifications)).
 

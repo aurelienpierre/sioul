@@ -136,7 +136,7 @@ All the findings, with their sources and the rule each one gives: [what the rese
 
 ## Where it stands
 
-Sioul is young (version 0.0.1) and changes often; it is used every day. It runs on Linux. Windows and macOS versions are built by a workflow on GitHub, but have not been tried yet. There are no packages yet.
+Sioul is young (version 0.0.1) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel) and Linux (AppImage and Flatpak) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux, little tried elsewhere yet.
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 

@@ -208,11 +208,13 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
           QML_SOURCES_PATHS: ${{ github.workspace }}/crates/sioul-app/qml
-          EXTRA_PLATFORM_PLUGINS: libqwayland-generic.so;libqwayland-egl.so
-          EXTRA_QT_MODULES: waylandcompositor
         run: |
           version=${{ needs.version.outputs.version }}
           export LDAI_OUTPUT="Sioul-${version}-x86_64.AppImage"
+          # Wayland as well as X11: whatever Wayland platform plugins this Qt has
+          # (one "libqwayland.so" in recent Qt, "-generic" and "-egl" before).
+          export EXTRA_PLATFORM_PLUGINS=$(ls "$QT_ROOT_DIR/plugins/platforms" | grep -E '^libqwayland.*\.so$' | paste -sd ';')
+          echo "Wayland plugins: $EXTRA_PLATFORM_PLUGINS"
           install -Dm755 target/release/sioul-app AppDir/usr/bin/sioul-app
           install -Dm755 target/release/sioul AppDir/usr/bin/sioul
           install -Dm644 data/sioul.desktop AppDir/usr/share/applications/sioul.desktop

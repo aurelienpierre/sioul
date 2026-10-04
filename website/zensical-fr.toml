@@ -1,0 +1,134 @@
+# Le site de Sioul en français : le guide et la politique de confidentialité.
+# Les notes de conception, pour les développeurs, restent en anglais (zensical.toml).
+#
+# Construit par build.sh, après le site anglais, dans site/fr/ ; ses images et
+# ses styles sont copiés de docs/assets/ dans fr/docs/assets/ à chaque construction.
+[project]
+site_name = "Sioul"
+site_url = "https://aurelienpierre.github.io/sioul/fr/"
+docs_dir = "fr/docs"
+site_dir = "site/fr"
+site_description = "Sioul, un lieu calme pour le courrier, les tâches et les démarches, pensé pour celles et ceux que l’administratif fait souffrir."
+site_author = "Aurélien Pierre"
+copyright = "Copyright &copy; 2026 Aurélien Pierre · Sioul est un logiciel libre, sous licence GPL-3.0-or-later."
+
+# Page addresses end in .html: the design notes hold both research.md and
+# research/README.md, which would otherwise both become research/index.html.
+use_directory_urls = false
+
+extra_css = ["assets/stylesheets/extra.css"]
+
+# Le guide, sans section pour les développeurs : leurs notes sont en anglais,
+# atteintes par le pied de page.
+nav = [
+  { "Accueil" = "index.md" },
+  { "Pour commencer" = [
+    { "Installer" = "guide/install.md" },
+    { "Premiers pas" = "guide/first-steps.md" },
+  ] },
+  { "La fenêtre" = [
+    { "Le Porche" = "guide/porch.md" },
+    { "Le courrier" = "guide/mail.md" },
+    { "Les tâches" = "guide/tasks.md" },
+    { "L’agenda" = "guide/agenda.md" },
+    { "Les contacts et la carte" = "guide/contacts.md" },
+    { "Les notes" = "guide/notes.md" },
+    { "Les projets" = "guide/projects.md" },
+    { "Le temps et les factures" = "guide/time.md" },
+    { "Les budgets et les comptes bancaires" = "guide/budgets.md" },
+    { "Les papiers et les lettres" = "guide/papers.md" },
+    { "La santé" = "guide/health.md" },
+    { "Les sites" = "guide/sites.md" },
+    { "Les comptes" = "guide/accounts.md" },
+    { "Les paramètres" = "guide/settings.md" },
+  ] },
+  { "Dans tout Sioul" = [
+    { "Les heures : travail, démarches, temps libre" = "guide/hours.md" },
+    { "Partager entre vos ordinateurs" = "guide/sharing.md" },
+    { "Avec un agent d’IA" = "guide/ai-agent.md" },
+    { "Vie privée et sécurité" = "guide/privacy-security.md" },
+  ] },
+  { "Politique de confidentialité" = "privacy.md" },
+]
+
+[project.theme]
+language = "fr"
+custom_dir = "overrides"
+favicon = "assets/images/favicon.svg"
+# L’icône de Sioul (tools/make-icons.py).
+logo = "assets/images/logo.svg"
+# The system's own fonts: nothing is loaded from Google Fonts or anyone else.
+font = false
+features = [
+  "content.code.copy",
+  "content.tooltips",
+  "navigation.footer",
+  "navigation.instant",
+  "navigation.sections",
+  # Each section keeps its own sidebar; the tabs themselves are not shown.
+  "navigation.tabs",
+  "search.highlight",
+]
+
+# Light, dark, or as the system has it; the colours are Sioul's own
+# (assets/stylesheets/extra.css, from crates/sioul-app/qml/Theme.qml).
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Passer aux couleurs claires"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Passer aux couleurs sombres"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Couleurs comme le système les a"
+
+# The guide in each language; the developers' notes are in English only.
+[[project.extra.alternate]]
+name = "English"
+link = "/sioul/"
+lang = "en"
+
+[[project.extra.alternate]]
+name = "Français"
+link = "/sioul/fr/"
+lang = "fr"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/aurelienpierre/sioul"
+name = "Les sources de Sioul et ses questions, sur GitHub"
+
+[project.markdown_extensions]
+abbr = {}
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.betterem = {}
+pymdownx.details = {}
+pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"
+pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.line_spans = "__span"
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true
+pymdownx.tabbed.combine_header_slug = true

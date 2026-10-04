@@ -366,6 +366,8 @@ SioulWindow {
         // each place as it is used, a weekday afternoon. Run again on the profile
         // without hours (make-demo.py --no-hours), where everything comes at once:
         // the Porch asking for them, and the budgets of every area together.
+        // In French (make-demo.py --language fr), the same places, under its names.
+        readonly property bool demoFrench: sioul.text("qt-locale") === "fr_FR"
         readonly property var demo: [
             () => window.page = 0,
             () => {},
@@ -397,7 +399,7 @@ SioulWindow {
             () => {},
             () => grabber.save("mail"),
             // A message open: the client's, this morning's.
-            () => mailPage.openSubject("Homepage"),
+            () => mailPage.openSubject(grabber.demoFrench ? "deux petites modifications" : "two small changes"),
             () => {},
             () => grabber.save("mail-reader"),
             () => {
@@ -423,7 +425,7 @@ SioulWindow {
                 agendaPage.mode = "agenda"
                 window.page = 5
             },
-            () => contactsPage.open((contactsPage.shown.contacts.find(c => c.name === "Iris Calloway") || contactsPage.shown.contacts[0]).key),
+            () => contactsPage.open((contactsPage.shown.contacts.find(c => c.name.startsWith("Iris")) || contactsPage.shown.contacts[0]).key),
             () => {},
             () => grabber.save("contacts"),
             // Notes as folders, the project's open.
@@ -431,8 +433,8 @@ SioulWindow {
                 window.page = 6
                 sioul.setNotesTree(true)
             },
-            () => notesPage.unfold("Projects"),
-            () => notesPage.open("Projects/Fernhill Library.md"),
+            () => notesPage.unfold(grabber.demoFrench ? "Projets" : "Projects"),
+            () => notesPage.open(grabber.demoFrench ? "Projets/Médiathèque des Fougères.md" : "Projects/Fernhill Library.md"),
             () => {},
             () => grabber.save("notes"),
             () => {

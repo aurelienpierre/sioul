@@ -1663,7 +1663,7 @@ ui-reading = How text reads
 
 # Google: calendars and contacts over its CalDAV and CardDAV, tasks over Google Tasks.
 ui-add-google = Google calendars, contacts and tasks
-ui-add-google-note = Google takes no password from other programs: you sign in on Google's page, in your browser. Sioul ships no Google key: you make yours once, in your own Google project. Google keeps less than an open server; what it does not keep shows greyed.
+ui-add-google-note = Google takes no password from other programs: you sign in on Google's page, in your browser. With no Google key built into this copy of Sioul, or to use your own, you make one once, in your own Google project. Google keeps less than an open server; what it does not keep shows greyed.
 ui-add-google-built-in = Google takes no password from another program: you sign in on Google's own page, in your browser, and Sioul keeps the access in the system keyring. Google keeps less than an open server; what it does not keep shows greyed.
 ui-google-own-key = Use a Google key of my own
 ui-google-steps = How to make your Google key (once, about fifteen minutes)
@@ -2400,3 +2400,4 @@ task-session-time = { $date }: { $minutes ->
     }
 hours-range-add = Another range of hours this day
 hours-range-remove = Take this range of hours away
+site-news-line = { $title }: { $text }

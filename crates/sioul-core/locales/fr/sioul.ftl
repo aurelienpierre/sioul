@@ -140,8 +140,8 @@ porch-open-hint = (`sioul porch --open` l’affiche maintenant.)
 no-date = sans date
 
 ## Les fenêtres administratives.
-window-open-until = Une fenêtre administrative est ouverte jusqu’à { $time }.
-window-next = La prochaine fenêtre administrative ouvre { $when }.
+window-open-until = Un créneau pour vos démarches est ouvert jusqu’à { $time }.
+window-next = Le prochain créneau pour vos démarches ouvre { $when }.
 window-none = Aucune fenêtre dans la semaine qui vient.
 
 ## Les erreurs.
@@ -151,8 +151,14 @@ error-no-windows = Pas de fenêtres administratives dans la configuration (examp
 
 ## Les dates.
 when-on = le { $date }
-date-long = { $weekday } { $day } { $month } à { $time }
-date-short = { $weekday } { $day } { $month } { $time }
+date-long = { $weekday } { $day ->
+        [1] 1er
+       *[other] { $day }
+    } { $month } à { $time }
+date-short = { $weekday } { $day ->
+        [1] 1er
+       *[other] { $day }
+    } { $month } { $time }
 weekday-1 = lundi
     .short = lun.
 weekday-2 = mardi
@@ -199,8 +205,14 @@ money-negative = −{ $value }{"\u00A0"}€
 
 ## Les budgets et les réserves, d’un coup d’œil.
 month-year = { $month } { $year }
-date-day = { $weekday } { $day } { $month }
-date-day-month = { $day } { $month }
+date-day = { $weekday } { $day ->
+        [1] 1er
+       *[other] { $day }
+    } { $month }
+date-day-month = { $day ->
+        [1] 1er
+       *[other] { $day }
+    } { $month }
 budgets-title = Budgets, { $month }
 reserves-title = Réserves
 period-month = mensuel
@@ -805,7 +817,7 @@ task-unblocks = Libère { $n ->
         [one] une autre étape
        *[other] { $countf } autres étapes
     }
-task-stopped = Où vous vous êtes arrêté·e : { $text }
+task-stopped = Là où vous en étiez : { $text }
 task-spent = { $minutes } minutes jusqu’ici
 task-session = { $date } : { $minutes } minutes
 task-no-case = Sans projet
@@ -891,7 +903,7 @@ ui-tasks = Tâches
 ui-notes = Notes
 ui-make-task = En faire une tâche
 ui-make-note = En faire une note
-ui-make-event = En faire un évènement
+ui-make-event = En faire un événement
 related-title = Lié à cela
 task-mode-now = Maintenant
 task-mode-list = Liste
@@ -1010,7 +1022,7 @@ set-account-name-help = Tel que les destinataires le voient dans la ligne De.
 set-account-signature = Signature
 set-account-signature-help = Ajoutée sous ce que vous écrivez, en Markdown.
 set-account-priority = Importance
-set-account-priority-help = Moins importante : son courrier passe le filtre d’accueil et attend replié en bas du Porche. Plus importante : il passe en premier.
+set-account-priority-help = Moins importante : son courrier ne passe pas par le filtre d’accueil et attend replié en bas du Porche. Plus importante : il passe en premier.
 set-account-history = Jusqu’où remonter
 set-account-history-help = Combien de semaines du courrier de cette adresse les dossiers montrent.
 set-account-fetch = Relever toutes les
@@ -1029,7 +1041,7 @@ set-task-list-first = La première liste faite pour les tâches
 set-case-store = Le dossier des notes
 set-case-store-help = Votre dossier de fichiers Markdown, lu comme un coffre : vos notes, et à côté vos projets (sioul-cases.toml) et vos budgets (sioul-budgets.toml). Sioul s’y lie et ne le possède jamais.
 set-notes-folder = Les nouvelles notes vont dans
-set-notes-folder-help = Un dossier à l’intérieur du dossier des notes, pour les notes faites à partir du courrier et des évènements.
+set-notes-folder-help = Un dossier à l’intérieur du dossier des notes, pour les notes faites à partir du courrier et des événements.
 set-reading-family = Police
 set-reading-family-help = Pour le texte long : notes, courrier, notes d’une tâche. Vide : celle du bureau.
 set-reading-size = Taille
@@ -1056,9 +1068,9 @@ set-invoice-name-help = Imprimé en haut de vos factures.
 set-invoice-address = Votre adresse
 set-invoice-address-help = Sur plusieurs lignes, comme sur une enveloppe.
 set-invoice-siret = SIRET
-set-invoice-siret-help = Ou le numéro d’entreprise là où vous êtes ; vide tant que vous n’êtes pas immatriculé·e.
+set-invoice-siret-help = Ou le numéro d’entreprise là où vous êtes ; vide tant que l’immatriculation n’est pas faite.
 set-invoice-vat = Mention de TVA
-set-invoice-vat-help = Pour un·e micro-entrepreneur·e : « TVA non applicable, art. 293 B du CGI ».
+set-invoice-vat-help = Pour une micro-entreprise : « TVA non applicable, art. 293 B du CGI ».
 set-invoice-prefix = Les numéros de facture commencent par
 set-invoice-prefix-help = Les numéros se suivent : 2026-001, 2026-002…
 set-invoice-currency = Devise
@@ -1370,7 +1382,7 @@ site-remove-ask = Il quitte Sioul : sa page, ses notifications. Rien ne change
 set-task-lists = Listes de tâches
 set-task-lists-help = Renommées ici, et sur le serveur à la prochaine synchronisation. Une liste vide peut être supprimée ; une liste qui contient des tâches reste.
 set-calendars = Agendas
-set-calendars-help = Renommés ici, et sur le serveur à la prochaine synchronisation. Un agenda vide peut être supprimé ; un agenda qui contient des évènements reste.
+set-calendars-help = Renommés ici, et sur le serveur à la prochaine synchronisation. Un agenda vide peut être supprimé ; un agenda qui contient des événements reste.
 set-address-books = Carnets d’adresses
 set-address-books-help = Renommés ici, et sur le serveur à la prochaine synchronisation. Un carnet vide peut être supprimé ; un carnet qui contient des contacts reste.
 set-collections-remove = Le supprimer, ici et sur le serveur
@@ -1638,7 +1650,7 @@ rule-hostile = Les insultes qui vous visent, le harcèlement et les menaces arri
 rule-where-shield = Le bouclier d’une adresse se règle sur sa fiche dans Comptes.
 rule-where-rank = Le rang d’une adresse se règle sur sa fiche dans Comptes.
 rule-where-blocked = Les expéditeurs bloqués sont dans Comptes, sous « Expéditeurs ».
-rule-where-routes = Ses routes se règlent sur sa page dans Projets.
+rule-where-routes = Ses règles se choisissent sur sa page dans Projets.
 hostile-someone = Quelqu’un
 hostile-someone-at = Quelqu’un chez { $domain }
 hostile-subject = Un message écarté comme hostile
@@ -1666,7 +1678,7 @@ ui-reading = Lecture du texte
 
 # Google : agendas et contacts par son CalDAV et son CardDAV, tâches par Google Tasks.
 ui-add-google = Agendas, contacts et tâches Google
-ui-add-google-note = Google ne prend aucun mot de passe d’un autre programme : vous vous connectez sur la page de Google, dans votre navigateur. Sioul n’embarque aucune clé Google : vous faites la vôtre une fois, dans votre propre projet Google. Google garde moins qu’un serveur ouvert ; ce qu’il ne garde pas apparaît grisé.
+ui-add-google-note = Google ne prend aucun mot de passe d’un autre programme : vous vous connectez sur la page de Google, dans votre navigateur. Sans clé Google dans cette copie de Sioul, ou pour prendre la vôtre, vous la faites une fois, dans votre propre projet Google. Google garde moins qu’un serveur ouvert ; ce qu’il ne garde pas apparaît grisé.
 ui-add-google-built-in = Google ne prend aucun mot de passe d’un autre programme : vous vous connectez sur la page de Google, dans votre navigateur, et Sioul garde l’accès dans le trousseau du système. Google garde moins qu’un serveur ouvert ; ce qu’il ne garde pas apparaît grisé.
 ui-google-own-key = Utiliser une clé Google à moi
 ui-google-steps = Faire votre clé Google (une fois, un quart d’heure environ)
@@ -1776,7 +1788,7 @@ site-https-only = Seulement une adresse https:// : la connexion à un site ne 
 budget-line-change = Modifier cette ligne…
 set-projects-group = Projets
 set-porch-projects = Projets montrés ici
-set-porch-projects-help = Chaque projet coché a sa voie sur le Porche. Le courrier des autres reste sur leur page dans Projets, où l’on crée les projets, les renomme et règle leurs routes.
+set-porch-projects-help = Chaque projet coché a sa file sur le Porche. Le courrier des autres reste sur leur page dans Projets, où l’on crée les projets, les renomme et règle leurs routes.
 loss-billable = si son temps se facture
 time-export = Le temps facturable, en tableur (CSV)…
 time-export-project = Projet
@@ -1886,8 +1898,8 @@ reminder-open = Ouvrir
 reminders-closed-unavailable = Pas encore sous Windows : les rappels viennent quand la fenêtre de Sioul est ouverte.
 reminders-closed-no-command = La commande « sioul » n’est pas installée à côté de Sioul : les rappels viennent quand la fenêtre est ouverte.
 set-reminders-group = Rappels
-set-reminders-events = Évènements, le jour travaillé d’avant
-set-reminders-events-help = Une demi-heure avant la fin du travail, le jour travaillé qui précède un évènement : quoi, quand, où. Les alarmes que porte un évènement sont dites à leur heure aussi.
+set-reminders-events = Événements, le jour travaillé d’avant
+set-reminders-events-help = Une demi-heure avant la fin du travail, le jour travaillé qui précède un événement : quoi, quand, où. Les alarmes que porte un événement sont dites à leur heure aussi.
 set-reminders-asked = Dates demandées : jours travaillés avant
 set-reminders-asked-help = Au début du travail, tant de jours travaillés avant une date demandée ; 0 pour aucun. Un rappel par date, jamais répété.
 set-reminders-waits = Une attente finie
@@ -1905,7 +1917,7 @@ paper-renew-warranty = Sa garantie finit : quelque chose à signaler avant ?
 paper-renew-other = Il finit bientôt.
 ui-papers = Papiers
 new-paper = Un papier
-papers-help = Les papiers demandés encore et encore, chacun avec son fichier et sa durée. Gardés dans le dossier de vos projets (papers/) : ils voyagent avec lui. Un rappel vient quand l’un est à renouveler.
+papers-help = Les papiers demandés encore et encore, chacun avec son fichier et sa durée. Gardés dans le dossier des notes (papers/) : ils voyagent avec lui. Un rappel vient quand l’un est à renouveler.
 papers-add = Ajouter un papier
 papers-none = Aucun papier pour l’instant. Ajoutez-en un depuis un fichier (un scan, une photo), ou gardez une pièce jointe d’un courrier avec « Garder dans les papiers ».
 papers-new = Un nouveau papier
@@ -1931,7 +1943,7 @@ papers-keep-help = Vérifiée par l’antivirus, puis gardée dans le portefeuil
 papers-kept = { $name } est dans vos papiers : dites ce que c’est.
 papers-attach = Un papier
 papers-none-to-attach = Aucun papier avec un fichier pour l’instant
-papers-no-store = Les papiers vivent dans le dossier de vos projets : choisissez-le d’abord (Paramètres ▸ Votre dossier et le partage).
+papers-no-store = Les papiers vivent dans le dossier des notes : choisissez-le d’abord (Paramètres ▸ Votre dossier et le partage).
 papers-no-title = Un nom, s’il vous plaît : « Passeport », « Quittance septembre ».
 papers-bad-date = « { $date } » ne se lit pas comme une date.
 papers-no-file = { $path } est introuvable.
@@ -1983,9 +1995,9 @@ day-more = { $count ->
     [one] Une étape de plus d’aujourd’hui ne tient pas avant la fin de la journée : elle garde sa place dans le plan.
    *[other] { $count } étapes de plus d’aujourd’hui ne tiennent pas avant la fin de la journée : elles gardent leur place dans le plan.
 }
-day-empty = Rien à poser aujourd’hui : aucun évènement, aucune étape que le plan donne aujourd’hui.
+day-empty = Rien à poser aujourd’hui : aucun événement, aucune étape que le plan donne aujourd’hui.
 day-now = maintenant
-routine-admin = La fenêtre d’administration
+routine-admin = Le créneau des démarches
 routine-admin-porch = Le Porche : ce qui est venu
 routine-admin-next = L’étape suivante : { $title }
 routine-admin-stop = Où vous vous arrêtez, en une ligne
@@ -2403,3 +2415,4 @@ task-session-time = { $date } : { $minutes ->
     }
 hours-range-add = Une autre plage horaire ce jour-là
 hours-range-remove = Retirer cette plage horaire
+site-news-line = { $title } : { $text }

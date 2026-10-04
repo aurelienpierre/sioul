@@ -1,22 +1,32 @@
 {#-
-  The footer of every page: the copyright, then two quiet links, the privacy
-  policy and the developers' section. Links go through `url`, so they work from
-  any page and in a local preview.
+  The footer of every page: the copyright, then quiet links, the privacy
+  policy and the developers' section (in English only: from the French
+  guide, the English one's). Links go through `url`, so they work from any
+  page and in a local preview.
 -#}
+{%- set french = config.theme.language == "fr" -%}
 <div class="md-copyright">
   {% if config.copyright %}
     <div class="md-copyright__highlight">
       {{ config.copyright }}
     </div>
   {% endif %}
-  <nav class="sioul-footer-links" aria-label="More about Sioul">
-    <a href="{{ 'privacy.html' | url }}">Privacy policy</a>
-    <a href="{{ 'dev/index.html' | url }}">For developers</a>
-    <a href="https://github.com/aurelienpierre/sioul/issues" rel="noopener">Questions and reports, on GitHub</a>
-  </nav>
+  {% if french %}
+    <nav class="sioul-footer-links" aria-label="Plus sur Sioul">
+      <a href="{{ 'privacy.html' | url }}">Politique de confidentialité</a>
+      <a href="{{ '../dev/index.html' | url }}" hreflang="en">Pour les développeurs (en anglais)</a>
+      <a href="https://github.com/aurelienpierre/sioul/issues" rel="noopener">Questions et signalements, sur GitHub</a>
+    </nav>
+  {% else %}
+    <nav class="sioul-footer-links" aria-label="More about Sioul">
+      <a href="{{ 'privacy.html' | url }}">Privacy policy</a>
+      <a href="{{ 'dev/index.html' | url }}">For developers</a>
+      <a href="https://github.com/aurelienpierre/sioul/issues" rel="noopener">Questions and reports, on GitHub</a>
+    </nav>
+  {% endif %}
   {% if not config.extra.generator == false %}
     <div class="sioul-footer-made">
-      Made with
+      {% if french %}Fait avec{% else %}Made with{% endif %}
       <a href="https://zensical.org/" target="_blank" rel="noopener">Zensical</a>
     </div>
   {% endif %}

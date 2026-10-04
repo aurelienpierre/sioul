@@ -145,6 +145,17 @@ accent = "custom"
 toggle.icon = "lucide/moon"
 toggle.name = "Colours as the system has them"
 
+# The guide in each language; the developers' notes are in English only.
+[[project.extra.alternate]]
+name = "English"
+link = "/sioul/"
+lang = "en"
+
+[[project.extra.alternate]]
+name = "Français"
+link = "/sioul/fr/"
+lang = "fr"
+
 [[project.extra.social]]
 icon = "fontawesome/brands/github"
 link = "https://github.com/aurelienpierre/sioul"

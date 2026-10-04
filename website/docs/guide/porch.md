@@ -7,13 +7,13 @@ description: The Porch, where new mail waits in Sioul - checked, sorted into lan
 The Porch is where new mail waits until you look: from every address, checked (genuine or forged) and sorted into lanes. It takes the place of the inbox that shouts.
 
 <figure markdown="span">
-  [![The Porch in working hours. At the top, "Open until 12:00." and the Real time box; this week's payments in one line; two cards for a confirmation link and a code from verified senders, the code with a Copy button and how long it stays valid; a chat's news; then two lanes, a project's and "From people you know", each with its messages.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
+  [![The Porch in working hours. At the top, "Open until 17:00." and the Real time box; this week's payments in one line; two cards for a confirmation link and a code from verified senders, the code with a Copy button and how long it stays valid; a chat's news; then two lanes, a project's and "From people you know", each with its messages.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
   <figcaption>Codes and links on top, the sites' news, then the lanes.</figcaption>
 </figure>
 
 ## When it opens
 
-- **In your hours**, the Porch says until when it is open ("Open until 12:00."), then shows what came, sorted into lanes.
+- **In your hours**, the Porch says until when it is open ("Open until 17:00."), then shows what came, sorted into lanes.
 - **Outside your hours**, the Porch says when it opens next, and nothing else: no counts, no names. **Open it anyway** stays possible, quietly. Meanwhile, what comes is checked and sorted.
 - **Without any hours set**, the Porch is always open.
 
@@ -96,7 +96,7 @@ In quiet time, **Work now** appears beside it, to show work whatever the hours. 
 When there is something, a few lines come before the lanes:
 
 - **When your hours are not set**, a card asks for them, with **Set my hours** (which opens Settings at them) and **Leave as is** (which stops asking).
-- **"<site> has news"**: what the websites you keep in Sioul notified, waiting for you. Opening the site clears its news. See [Sites](sites.md).
+- **"*The site* has news"**: what the websites you keep in Sioul notified, waiting for you. Opening the site clears its news. See [Sites](sites.md).
 - **Paper letters** you scanned, each as a card: who, what, how much, by when. See [Papers and letters](papers.md#paper-letters).
 - **This week's payments**, in one line: "This week: Electricity €62 (Mon). The account holds them." When something about money needs a look, it says so, without a count. See [Budgets](budgets.md#the-bank-watch).
 

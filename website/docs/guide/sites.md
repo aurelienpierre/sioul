@@ -55,9 +55,9 @@ Every site's notifications are accepted, then kept by Sioul; the site itself nev
 - From the site in front of you: nothing more.
 - From a site in **Real time** (its box, always in view): a desktop notification at once.
 - **A call** ("incoming call") comes at once, unless the site is silenced. A missed call waits like the rest.
-- Everything else waits, as "<site> has news" on [the Porch](porch.md#above-the-lanes). Opening the site clears its news.
+- Everything else waits, as "*the site* has news" on [the Porch](porch.md#above-the-lanes). Opening the site clears its news.
 
-At set times (9:00, 13:00 and 18:00, unless you choose others in [Settings ▸ Reminders and notifications](settings.md#reminders-and-notifications)), one notification gathers which sites have news, with **Open the Porch**. Three a day helped most in a field trial (Fitz et al. 2019).
+At set times (09:00, 13:00 and 18:00, unless you choose others in [Settings ▸ Reminders and notifications](settings.md#reminders-and-notifications)), one notification gathers which sites have news, with **Open the Porch**. Three a day helped most in a field trial (Fitz et al. 2019).
 
 A site whose hours have not come keeps its notifications, real time and calls included, until they do.
 
@@ -65,7 +65,7 @@ A message from a site's domain ("you have a new message in your secure space") g
 
 ## Calls
 
-Chats, video calls and dating sites have the microphone and the camera. When a call starts, Sioul asks for the devices chosen in **Devices for calls…**, and plays the call's sound through the speaker chosen. **Share in the call** lets you choose a whole screen, one window, or nothing. A site that asks for the microphone while it is off is told so in the status line, with where to turn it on. The place where you are is never given to any site.
+Chats, video calls and dating sites have the microphone and the camera. When a call starts, Sioul asks for the devices chosen in **Devices for calls…**, and plays the call's sound through the speaker chosen. **Share in the call** lets you choose a whole screen, one window, or nothing. When a site asks for the microphone while it is off, the status line says so, with where to turn it on. The place where you are is never given to any site.
 
 ## Security keys
 
