@@ -21,6 +21,13 @@ ColumnLayout {
 
     signal save(string key, var value)
 
+    // A folder chosen in Sioul's own browser (FolderBrowser.qml), on Android.
+    function browse() {
+        if (browser.item === null)
+            browser.setSource("FolderBrowser.qml", { sioul: field.sioul, theme: field.theme })
+        browser.item.begin(folderField.text)
+    }
+
     function same(a, b) {
         return JSON.stringify(a) === JSON.stringify(b)
     }
@@ -232,7 +239,19 @@ ColumnLayout {
         Button {
             implicitWidth: implicitContentWidth + leftPadding + rightPadding
             text: field.sioul.text("ui-choose")
-            onClicked: folderDialog.open()
+            onClicked: Qt.platform.os === "android" ? field.browse() : folderDialog.open()
+
+            // On Android, Sioul's own browser (FolderBrowser.qml): the system's picker refuses the phone's storage.
+            Loader {
+                id: browser
+            }
+            Connections {
+                target: browser.item
+
+                function onChosen(path) {
+                    field.save(field.setting.key, path)
+                }
+            }
 
             FolderDialog {
                 id: folderDialog
