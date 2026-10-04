@@ -93,6 +93,17 @@ Item {
         davPassword.forceActiveFocus()
     }
 
+    // An account's password, given on this device (AccountPassword.qml): made the first time.
+    function askPassword(account) {
+        if (passwordDialog.item === null)
+            passwordDialog.setSource("AccountPassword.qml", { sioul: page.sioul, theme: page.theme })
+        passwordDialog.item.ask(account)
+    }
+
+    Loader {
+        id: passwordDialog
+    }
+
     // A key's file: imported once its passphrase, if it has one, is typed.
     FileDialog {
         id: keyPicker
@@ -1123,6 +1134,13 @@ Item {
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: service.modelData.status_error ? page.theme.warm : page.theme.text
+            }
+            // No password on this device (an account come from another one), or refused.
+            Button {
+                visible: service.modelData.password_wanted
+                enabled: !page.sioul.formBusy
+                text: page.sioul.text("account-password")
+                onClicked: page.askPassword(service.modelData)
             }
             // Google ended the access: its page again, with the key kept.
             Button {

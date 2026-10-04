@@ -195,6 +195,12 @@ pub mod qobject {
         #[qinvokable]
         fn remove_account(self: Pin<&mut Sioul>, id: &QString);
 
+        /// An account's password given on this device (one come from another
+        /// device arrives without it): tested with its server, then kept;
+        /// `account_password_done` says how it went.
+        #[qinvokable]
+        fn set_account_password(self: Pin<&mut Sioul>, id: &QString, password: &QString);
+
         /// Ranks an account's mail: "above", "average" or "below".
         #[qinvokable]
         fn set_priority(self: Pin<&mut Sioul>, id: &QString, priority: &QString);
@@ -1036,6 +1042,10 @@ pub mod qobject {
         #[qsignal]
         fn account_added(self: Pin<&mut Sioul>);
 
+        /// An account's password given here: kept (`problem` empty), else why not.
+        #[qsignal]
+        fn account_password_done(self: Pin<&mut Sioul>, id: QString, problem: QString);
+
         /// Paper letters were read: the Porch shows them again.
         #[qsignal]
         fn letters_changed(self: Pin<&mut Sioul>);
@@ -1156,6 +1166,8 @@ pub(crate) struct Shared {
     opened_anyway: AtomicBool,
     /// Per account, the last thing its watcher said, and whether it is a problem.
     pub(crate) statuses: Mutex<BTreeMap<String, (String, bool)>>,
+    /// Accounts whose password is wanted: none here yet, or refused (`SyncError::wants_password`).
+    pub(crate) password_wanted: Mutex<BTreeSet<String>>,
     /// Per account, the newest message the window shows: what "Done for now" closes.
     shown: Mutex<BTreeMap<String, ImapOrigin>>,
     /// The running watchers.
@@ -1615,10 +1627,11 @@ fn compute(shared: &Shared) -> Views {
         json(&view::budgets(&ledger, &mail, tr(), now.date()))
     });
     let statuses = shared.statuses.lock().map(|s| s.clone()).unwrap_or_default();
+    let wanted = shared.password_wanted.lock().map(|w| w.clone()).unwrap_or_default();
     Views {
         porch: json(&porch),
         budgets,
-        accounts: json(&view::accounts(&world.config, tr(), &statuses)),
+        accounts: json(&view::accounts(&world.config, tr(), &statuses, &wanted)),
         blocked: json(&world.senders.blocked.entries()),
         shown,
     }
@@ -1670,6 +1683,71 @@ fn start_watchers(qt: &QtThread, shared: &Arc<Shared>) -> usize {
         start_watcher(qt, shared, account);
     }
     count
+}
+
+/// Syncs for the accounts not started yet this session: those another device's
+/// settings just brought. One that stopped (a password refused) is not tried
+/// again here: retries can lock an account.
+pub(crate) fn start_new_watchers(qt: &QtThread, shared: &Arc<Shared>) {
+    if offline() {
+        return;
+    }
+    let seen = |id: &str| shared.statuses.lock().is_ok_and(|s| s.contains_key(id)) || shared.watchers.lock().is_ok_and(|w| w.contains_key(id)) || shared.dav_watchers.lock().is_ok_and(|w| w.contains_key(id));
+    for account in load_config().accounts.into_iter().filter(|a| !seen(&a.id)) {
+        if account.is_dav() {
+            crate::pim::start_dav_watcher(qt, shared, account);
+        } else if account.syncs() {
+            start_watcher(qt, shared, account);
+        }
+    }
+}
+
+/// An account's password given on this device: tested with its server (its
+/// mail, or its calendars and contacts), kept in the keyring, its sync started
+/// again; `account_password_done` says how it went.
+fn give_password(qt: &QtThread, shared: &Arc<Shared>, id: String, password: String) {
+    let (qt, shared) = (qt.clone(), Arc::clone(shared));
+    std::thread::spawn(move || {
+        let config = load_config();
+        let outcome = match config.every_account().find(|a| a.id == id).cloned() {
+            None => Err(say("account-unknown", &[("id", id.clone())])),
+            Some(account) => {
+                let host = account.host.clone().unwrap_or_default();
+                let password = sioul_sync::tidy_password(&host, &password);
+                let tested = if account.is_dav() {
+                    let address = account.address.clone().unwrap_or_default();
+                    let login = account.login().unwrap_or(address.as_str()).to_string();
+                    sioul_sync::dav::test(&address, &login, &password, account.url.as_deref(), None).map(|_| ())
+                } else {
+                    sioul_sync::test(&account, &password).map(|_| ())
+                };
+                tested.and_then(|()| secret::save(&account, &password)).map_err(|e| e.sentence(tr(), &account.id)).map(|()| account)
+            }
+        };
+        let problem = match outcome {
+            Ok(account) => {
+                want_password(&shared, &account.id, None);
+                if let Ok(mut statuses) = shared.statuses.lock() {
+                    statuses.remove(&account.id);
+                }
+                if account.is_dav() {
+                    crate::pim::start_dav_watcher(&qt, &shared, account);
+                } else {
+                    start_watcher(&qt, &shared, account);
+                }
+                String::new()
+            }
+            Err(e) => e,
+        };
+        let _ = qt.queue(move |mut sioul| {
+            sioul.as_mut().set_form_busy(false);
+            if problem.is_empty() {
+                sioul.as_mut().set_status(QString::from(&say("account-password-kept", &[("account", id.clone())])));
+            }
+            sioul.as_mut().account_password_done(QString::from(&id), QString::from(&problem));
+        });
+        show(&qt, &shared);
+    });
 }
 
 /// A mail account added: tested with its password (given, or, `None`, the one
@@ -1772,6 +1850,18 @@ fn start_watcher(qt: &QtThread, shared: &Arc<Shared>, account: Account) {
     });
 }
 
+/// Notes whether an account's password is wanted after what its sync said:
+/// none here, or refused. Its card then offers to give one.
+pub(crate) fn want_password(shared: &Shared, id: &str, error: Option<&SyncError>) {
+    if let Ok(mut wanted) = shared.password_wanted.lock() {
+        if error.is_some_and(SyncError::wants_password) {
+            wanted.insert(id.to_string());
+        } else {
+            wanted.remove(id);
+        }
+    }
+}
+
 /// What a watcher said: the account's status, the provider's id to learn,
 /// notifications for new codes, and the views again.
 fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Result<Report, SyncError>) {
@@ -1788,6 +1878,7 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
     if let Ok(mut statuses) = shared.statuses.lock() {
         statuses.insert(account.id.clone(), (line.clone(), problem));
     }
+    want_password(shared, &account.id, result.as_ref().err());
     if let Ok(report) = &result {
         if !report.new.is_empty() {
             learn(qt, shared, &account.id);
@@ -2498,6 +2589,11 @@ impl qobject::Sioul {
             Err(e) => self.as_mut().set_form_error(QString::from(&e)),
         }
         show(&self.qt_thread(), &self.shared());
+    }
+
+    fn set_account_password(mut self: Pin<&mut Self>, id: &QString, password: &QString) {
+        self.as_mut().set_form_busy(true);
+        give_password(&self.qt_thread(), &self.shared(), id.to_string(), password.to_string());
     }
 
     fn remove_account(mut self: Pin<&mut Self>, id: &QString) {

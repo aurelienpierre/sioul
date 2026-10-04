@@ -88,6 +88,8 @@ fn main() {
         "qml/SioulMenu.qml",
         "qml/SitePopup.qml", "qml/PresetPlaceMenu.qml", "qml/PresetGroupMenu.qml", "qml/BankAccountDialog.qml", "qml/BankRulesDialog.qml", "qml/ReserveDialog.qml",
         "qml/LoginChooser.qml",
+        "qml/VaultUnlock.qml",
+        "qml/AccountPassword.qml",
         "qml/BankSection.qml",
         "qml/LettersSection.qml",
     ];

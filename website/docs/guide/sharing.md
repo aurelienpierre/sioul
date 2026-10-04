@@ -33,6 +33,15 @@ From then on, changes are exchanged each minute, and when you choose **Refresh e
 
 Your notes folder travels by its own sync, not by Sioul. If it does not seem to be inside a synced folder, the panel says so: your other computer would not see your notes and projects. Moved into one (and chosen again in Settings), they travel too.
 
+## On a phone
+
+Sioul for Android shares the same way, through the folder your phone's sync app keeps on the phone: Murena's eDrive, Syncthing, FolderSync, Nextcloud's own app. Sioul talks to none of them: it reads the folder.
+
+- **Where**: some sync apps carry only a few folders. Murena's eDrive carries your cloud's **Documents** (with Pictures, Music…), not the rest of it: share through a folder inside Documents, such as `Documents/Sioul`. Sioul suggests one there when your synced folder has a Documents folder, and says so when the one chosen is outside it.
+- **On the phone**: Settings ▸ Your folder and sharing, **Allow access to files** (Android's switch), then **Choose…** the folder, your passphrase, **Share**.
+- **Accounts** come without their passwords: each asks for its own once, typed or [from Bitwarden](accounts.md#an-account-from-your-other-device).
+- **eDrive's pace**: it brings the cloud's changes about every half hour, sooner when you sync your Murena account by hand; the phone's own changes go up at once. It never deletes on one side what was deleted on the other: the old rounds Sioul clears stay on the phone, and are not read again.
+
 ## Sealed
 
 Each change is encrypted on your computer before it is written in the folder (XChaCha20-Poly1305), with a key made from your passphrase (Argon2id). The folder, and the server that carries it, see which computer wrote, when, and how much; never what: not the names of the things, not their values.
@@ -60,4 +69,4 @@ A settings file that is half written, or broken by hand, is never read as emptie
 
 ## Not there yet
 
-A database server instead of a folder, for those who would rather have one; drafts in your mail server's Drafts folder, for other mail programs to see; phones. The format is plain and documented, so that they can come.
+A database server instead of a folder, for those who would rather have one; drafts in your mail server's Drafts folder, for other mail programs to see; phones other than Android's. The format is plain and documented, so that they can come.

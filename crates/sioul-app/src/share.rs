@@ -95,16 +95,34 @@ fn carried(path: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| path.starts_with(root))
 }
 
-/// Where to share by default: in the case store when a sync carries it, else in a synced folder.
+/// Where to share by default: inside a Documents folder a sync carries when
+/// there is one, since a phone's sync app may carry only some folders (Murena's
+/// eDrive: Documents, Pictures, Music…, not the cloud's root); else in the
+/// case store when a sync carries it, else in a synced folder.
 fn suggested(roots: &[PathBuf]) -> String {
     let store = load_config().case_store_path();
-    let folder = match (&store, roots.first()) {
-        (Some(store), _) if carried(store, roots) => store.join("sioul-shared"),
-        (_, Some(root)) => root.join("Sioul"),
-        (Some(store), None) => store.join("sioul-shared"),
-        (None, None) => return String::new(),
+    let documents = roots.iter().map(|root| root.join("Documents")).find(|d| d.is_dir());
+    let folder = match (&store, &documents, roots.first()) {
+        (Some(store), _, _) if carried(store, roots) && in_documents(store) => store.join("sioul-shared"),
+        (_, Some(documents), _) => documents.join("Sioul"),
+        (Some(store), _, _) if carried(store, roots) => store.join("sioul-shared"),
+        (_, _, Some(root)) => root.join("Sioul"),
+        (Some(store), _, None) => store.join("sioul-shared"),
+        (None, _, None) => return String::new(),
     };
     shorten(&folder)
+}
+
+/// Whether a folder is inside one named Documents, which phones' sync apps
+/// carry: Murena's eDrive carries it, and not the rest of the cloud.
+fn in_documents(path: &Path) -> bool {
+    path.components().any(|part| part.as_os_str().eq_ignore_ascii_case("Documents"))
+}
+
+/// A folder a sync carries, outside the Documents folder that sync has: a phone
+/// may not see it.
+fn beside_documents(path: &Path, roots: &[PathBuf]) -> bool {
+    roots.iter().any(|root| path.starts_with(root) && root.join("Documents").is_dir()) && !in_documents(path)
 }
 
 /// A path with your home written `~`.
@@ -166,6 +184,10 @@ pub(crate) fn status(folder: &str) -> String {
         problems.push(tr().text("share-key-missing", None));
     } else {
         lines.push(tr().text("share-off", None));
+    }
+    // A phone's sync app may carry only its cloud's Documents folder (Murena's eDrive).
+    if !cfg!(target_os = "android") && beside_documents(&path, &roots) {
+        lines.push(tr().text("share-phones", None));
     }
     // Projects and notes travel by their own folder: say so when no sync seems to carry it.
     if let Some(store) = load_config().case_store_path()
@@ -266,14 +288,19 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
         let now = jiff::Timestamp::now();
         let memory = memory_path();
         let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory };
-        let (written, problems) = match share::exchange(&sharing, &stores, now.as_millisecond()) {
-            Ok(outcome) => (!outcome.written.is_empty(), outcome.problems),
-            Err(e) => (false, vec![e]),
+        let (written, accounts, problems) = match share::exchange(&sharing, &stores, now.as_millisecond()) {
+            Ok(outcome) => (!outcome.written.is_empty(), outcome.written.contains("config/config.toml"), outcome.problems),
+            Err(e) => (false, false, vec![e]),
         };
         let mut said = problems;
         said.dedup();
         if let Ok(mut last) = LAST.lock() {
             *last = Some((now.as_second(), said));
+        }
+        // Accounts come with another device's settings: their syncs start (asking
+        // their passwords, which never travel).
+        if accounts {
+            crate::backend::start_new_watchers(&qt, &shared);
         }
         if written {
             crate::backend::show(&qt, &shared);
@@ -281,4 +308,27 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
             crate::work::show_work(&qt, &shared);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn documents_folders() {
+        let base = std::env::temp_dir().join(format!("sioul-share-documents-{}", std::process::id()));
+        let root = base.join("Nextcloud");
+        std::fs::create_dir_all(root.join("Documents")).unwrap();
+        let roots = vec![root.clone()];
+        assert!(in_documents(&root.join("Documents").join("Sioul")));
+        assert!(in_documents(&root.join("documents").join("Sioul")));
+        assert!(!in_documents(&root.join("Sioul")));
+        assert!(beside_documents(&root.join("Sioul"), &roots));
+        assert!(!beside_documents(&root.join("Documents").join("Sioul"), &roots));
+        // A sync without a Documents folder (Syncthing, Dropbox): nothing to say.
+        let other = base.join("Sync");
+        std::fs::create_dir_all(&other).unwrap();
+        assert!(!beside_documents(&other.join("Sioul"), &[other.clone()]));
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

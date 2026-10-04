@@ -31,7 +31,7 @@ Item {
     property bool narrow: page.sioul.viewFlag("sites-narrow")
     // For the window's images: Bitwarden's dialog, the page it asks a key from, the chooser.
     property alias bitwardenUnlock: unlock
-    property alias bitwardenKeyView: keyView
+    property alias bitwardenKeyView: unlock.keyView
     property alias loginChooser: chooser
     property alias addSiteDialog: adding
     property alias addSiteFind: find.text
@@ -1355,331 +1355,36 @@ Item {
         }
     }
 
-    // Bitwarden, opened once for the session, here: by your security key
-    // alone, or by the master password (dropped once used), with a second step
-    // or a new device's code when asked. A security key is asked from
-    // Bitwarden's own page, held unseen in this dialog: its PIN comes in
-    // Sioul's own dialog, above this one.
-    Dialog {
+    // Bitwarden, opened once for the session (VaultUnlock.qml), the security
+    // key asked from Bitwarden's own page, held unseen in the dialog: the page
+    // must be the vault's, since Bitwarden takes keys' signatures for its
+    // address only.
+    VaultUnlock {
         id: unlock
 
-        // -1: the password only; else the step asked (0 app, 1 e-mail, 3 YubiKey OTP,
-        // 7 security key, 8 recovery, 100 new device).
-        property int provider: -1
-        property var offered: []
-        // The security key's step, when the account has one: {page, script}.
-        property var key: null
-        // The key being asked: {mode: "factor" or "passkey", page, script}; else null.
-        property var keyAsk: null
-        // The e-mail code was sent for this try.
-        property bool sent: false
-        // The security key alone opened the vault last time: proposed first.
-        property bool passkeyFirst: false
-        property string problem: ""
-        property string note: ""
-        // The steps Sioul can take, in the order Bitwarden's apps propose them:
-        // a security key, a YubiKey's code, an app, e-mail; a recovery code only when chosen.
-        readonly property var order: [7, 3, 0, 1, 8]
-
-        function begin() {
-            unlock.provider = -1
-            unlock.offered = []
-            unlock.key = null
-            unlock.keyAsk = null
-            unlock.sent = false
-            unlock.problem = ""
-            unlock.note = ""
-            secret.text = ""
-            code.text = ""
-            unlock.passkeyFirst = page.sioul.viewFlag("bitwarden-passkey")
-            unlock.open()
-            if (unlock.passkeyFirst)
-                passkeyButton.forceActiveFocus()
+        sioul: page.sioul
+        theme: page.theme
+        keyReady: page.profile !== null
+        keyComponent: Component {
+            WebEngineView {
+                profile: page.profile
+                url: unlock.keyAsk !== null ? unlock.keyAsk.page : ""
+                // Injection point 1: once the page's document is ready.
+                Component.onCompleted: userScripts.collection = page.webFixes.concat([{
+                    name: "sioul-key",
+                    sourceCode: unlock.keyAsk.script,
+                    injectionPoint: 1,
+                    worldId: 0,
+                    runsOnSubFrames: false
+                }])
+                onWebAuthUxRequested: request => webAuth.show(request)
+            }
+        }
+        onUnlocked: {
+            if (page.afterUnlock === "choose")
+                page.chooseLogin()
             else
-                secret.forceActiveFocus()
-        }
-
-        // The security key alone: no master password.
-        function usePasskey() {
-            unlock.problem = ""
-            unlock.note = ""
-            const begun = JSON.parse(page.sioul.bitwardenPasskeyBegin())
-            if (begun.error)
-                unlock.problem = begun.error
-            else
-                unlock.askKey("passkey", begun)
-        }
-
-        // The key asked: Bitwarden's page loaded unseen below, the key asked there
-        // at once. A new page each time: each ask is a fresh one.
-        function askKey(mode, ask) {
-            unlock.problem = ""
-            unlock.note = ""
-            unlock.keyAsk = null
-            Qt.callLater(() => unlock.keyAsk = { mode: mode, page: ask.page, script: ask.script })
-        }
-
-        // What the key answered: the vault opened with it, or why not.
-        function keyAnswered(mode, result) {
-            unlock.keyAsk = null
-            const said = JSON.parse(result)
-            if (said.error !== undefined)
-                unlock.problem = said.error === "not-allowed" ? page.sioul.text("bitwarden-key-not-allowed") : page.sioul.textWith("bitwarden-key-failed", "error", said.error)
-            else if (mode === "passkey")
-                unlock.answer(JSON.parse(page.sioul.bitwardenPasskey(result)))
-            else
-                unlock.answer(JSON.parse(page.sioul.bitwardenUnlock(secret.text, 7, said.token)))
-        }
-
-        // A step chosen: e-mail sends its code now, once; the security key is asked at once.
-        function choose(provider) {
-            unlock.provider = provider
-            unlock.problem = ""
-            unlock.note = ""
-            unlock.keyAsk = null
-            if (provider === 1 && !unlock.sent)
-                unlock.sendCode()
-            if (provider === 7)
-                unlock.askKey("factor", unlock.key)
-            else
-                code.forceActiveFocus()
-        }
-
-        function sendCode() {
-            const problem = page.sioul.bitwardenSendCode(secret.text)
-            unlock.sent = problem === ""
-            unlock.note = problem === "" ? page.sioul.text("bitwarden-code-sent") : ""
-            unlock.problem = problem
-        }
-
-        function tryIt() {
-            unlock.keyAsk = null
-            unlock.answer(JSON.parse(page.sioul.bitwardenUnlock(secret.text, unlock.provider, code.text)))
-        }
-
-        // What Bitwarden answered: open, a second step to take, a new device's code, or why not.
-        function answer(answer) {
-            code.text = ""
-            if (answer.ok) {
-                secret.text = ""
-                unlock.close()
-                if (page.afterUnlock === "choose")
-                    page.chooseLogin()
-                else
-                    page.fillLogin()
-            } else if (answer.factor) {
-                unlock.key = answer.key || null
-                const can = p => p === 7 ? unlock.key !== null : [0, 1, 3, 8].indexOf(p) >= 0
-                unlock.offered = unlock.order.filter(p => answer.factor.indexOf(p) >= 0 && can(p))
-                if (unlock.offered.length === 0) {
-                    unlock.provider = -1
-                    unlock.problem = page.sioul.text("bitwarden-factor-unsupported")
-                } else if (unlock.offered.indexOf(unlock.provider) < 0) {
-                    unlock.choose(unlock.offered[0])
-                } else {
-                    unlock.problem = page.sioul.text("bitwarden-code-refused")
-                }
-            } else if (answer.new_device) {
-                unlock.provider = 100
-                unlock.problem = ""
-                code.forceActiveFocus()
-            } else {
-                unlock.problem = answer.error || ""
-            }
-        }
-
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(460, page.width - 2 * page.theme.gap)
-        title: page.sioul.text("bitwarden-unlock")
-        onClosed: {
-            secret.text = ""
-            unlock.keyAsk = null
-        }
-
-        contentItem: ColumnLayout {
-            spacing: 8
-
-            Label {
-                Layout.fillWidth: true
-                text: page.sioul.text("bitwarden-unlock-help")
-                wrapMode: Text.Wrap
-                color: page.theme.text
-            }
-            // The security key alone, when Bitwarden knows it as a passkey: no master password.
-            Button {
-                id: passkeyButton
-
-                visible: unlock.provider === -1 && unlock.keyAsk === null
-                highlighted: unlock.passkeyFirst
-                text: page.sioul.text("bitwarden-passkey")
-                icon.name: "security-high"
-                onClicked: unlock.usePasskey()
-            }
-            Label {
-                visible: unlock.provider === -1 && unlock.keyAsk === null
-                Layout.fillWidth: true
-                text: page.sioul.text("bitwarden-passkey-help")
-                wrapMode: Text.Wrap
-                font.pixelSize: 13
-                color: page.theme.muted
-            }
-            // The key asked: what to do with it, and a way to stop.
-            RowLayout {
-                visible: unlock.keyAsk !== null
-                Layout.fillWidth: true
-                spacing: 8
-
-                Icon {
-                    iconName: "security-high"
-                }
-                Label {
-                    Layout.fillWidth: true
-                    text: page.sioul.text(unlock.keyAsk !== null && unlock.keyAsk.mode === "passkey" ? "bitwarden-key-waiting-passkey" : "bitwarden-key-waiting")
-                    wrapMode: Text.Wrap
-                    color: page.theme.text
-                }
-                Button {
-                    flat: true
-                    text: page.sioul.text("bitwarden-key-stop")
-                    onClicked: unlock.keyAsk = null
-                }
-            }
-            // Bitwarden's page that asks the key, held unseen (one point): the key
-            // answers there, its PIN in Sioul's own dialog, above this one. The page
-            // must be the vault's: Bitwarden takes keys' signatures for its address only.
-            Loader {
-                id: keyView
-
-                active: unlock.keyAsk !== null && page.profile !== null
-                visible: active
-                Layout.preferredWidth: 1
-                Layout.preferredHeight: 1
-                // A page asks a key only while it has the focus.
-                onLoaded: (keyView.item as WebEngineView).forceActiveFocus()
-
-                sourceComponent: WebEngineView {
-                    profile: page.profile
-                    url: unlock.keyAsk !== null ? unlock.keyAsk.page : ""
-                    // Injection point 1: once the page's document is ready.
-                    Component.onCompleted: userScripts.collection = page.webFixes.concat([{
-                        name: "sioul-key",
-                        sourceCode: unlock.keyAsk.script,
-                        injectionPoint: 1,
-                        worldId: 0,
-                        runsOnSubFrames: false
-                    }])
-                    onWebAuthUxRequested: request => webAuth.show(request)
-                }
-            }
-            // The key's answer, taken from the page once given; the first call asks the key.
-            Timer {
-                interval: 300
-                repeat: true
-                running: unlock.keyAsk !== null && keyView.item !== null
-                onTriggered: {
-                    const mode = unlock.keyAsk.mode
-                    const view = keyView.item as WebEngineView
-                    view.runJavaScript("window.sioulKey ? window.sioulKey() : ''", result => {
-                        if (result && unlock.keyAsk !== null && unlock.keyAsk.mode === mode)
-                            unlock.keyAnswered(mode, result)
-                    })
-                }
-            }
-            Label {
-                visible: unlock.provider === -1
-                Layout.fillWidth: true
-                Layout.topMargin: 6
-                text: page.sioul.text("bitwarden-password-or")
-                wrapMode: Text.Wrap
-                color: page.theme.text
-            }
-            PasswordField {
-                id: secret
-
-                sioul: page.sioul
-                Layout.fillWidth: true
-                placeholderText: page.sioul.text("bitwarden-password")
-                onAccepted: unlock.tryIt()
-            }
-            // The second step, or a new device's code.
-            ComboBox {
-                visible: unlock.offered.length > 1
-                Layout.fillWidth: true
-                model: unlock.offered.map(p => page.sioul.text("bitwarden-factor-" + p))
-                currentIndex: Math.max(0, unlock.offered.indexOf(unlock.provider))
-                onActivated: index => unlock.choose(unlock.offered[index])
-            }
-            Label {
-                visible: unlock.provider >= 0
-                Layout.fillWidth: true
-                text: page.sioul.text(unlock.provider === 100 ? "bitwarden-new-device" : "bitwarden-code-" + unlock.provider)
-                wrapMode: Text.Wrap
-                color: page.theme.muted
-            }
-            // No key among the steps the account offers: why a YubiKey may be missing.
-            Label {
-                visible: unlock.offered.length > 0 && unlock.offered.indexOf(7) < 0 && unlock.offered.indexOf(3) < 0 && unlock.provider !== 100
-                Layout.fillWidth: true
-                text: page.sioul.text("bitwarden-no-key")
-                wrapMode: Text.Wrap
-                font.pixelSize: 13
-                color: page.theme.muted
-            }
-            // The security key, asked again (it is asked at once when its step comes).
-            Button {
-                visible: unlock.provider === 7 && unlock.keyAsk === null
-                highlighted: true
-                text: page.sioul.text("bitwarden-key-use")
-                icon.name: "security-high"
-                onClicked: unlock.askKey("factor", unlock.key)
-            }
-            TextField {
-                id: code
-
-                visible: unlock.provider >= 0 && unlock.provider !== 7
-                Layout.fillWidth: true
-                placeholderText: page.sioul.text("bitwarden-code")
-                inputMethodHints: Qt.ImhNoPredictiveText
-                onAccepted: unlock.tryIt()
-            }
-            Button {
-                visible: unlock.provider === 1
-                flat: true
-                text: page.sioul.text("bitwarden-code-again")
-                onClicked: unlock.sendCode()
-            }
-            Label {
-                visible: unlock.note !== ""
-                Layout.fillWidth: true
-                text: unlock.note
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                color: page.theme.muted
-            }
-            Label {
-                visible: unlock.problem !== ""
-                Layout.fillWidth: true
-                text: unlock.problem
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                color: page.theme.warm
-            }
-        }
-
-        footer: DialogButtonBox {
-            Button {
-                visible: unlock.provider !== 7
-                text: page.sioul.text("bitwarden-open")
-                highlighted: !unlock.passkeyFirst || unlock.provider >= 0
-                onClicked: unlock.tryIt()
-            }
-            Button {
-                text: page.sioul.text("ui-cancel")
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
-            onRejected: unlock.close()
+                page.fillLogin()
         }
     }
 

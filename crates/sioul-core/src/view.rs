@@ -26,7 +26,7 @@ use jiff::Zoned;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Characters of the text shown under a subject.
 const PREVIEW: usize = 160;
@@ -776,6 +776,11 @@ pub struct AccountView {
     pub priority: &'static str,
     /// Signed in with Google (its tokens in the keyring): it can be signed in again.
     pub google: bool,
+    /// Its server, for its password's login in a vault (Bitwarden).
+    pub host: Option<String>,
+    /// No password kept on this device, or its server refused it: one can be
+    /// given (an account come from another device arrives without one).
+    pub password_wanted: bool,
     /// Your name as recipients see it, and the signature, in Markdown.
     pub name: String,
     pub signature: String,
@@ -790,8 +795,9 @@ pub struct AccountView {
 
 /// The accounts of the configuration, those switched off too (sites are not
 /// accounts: docs/sites.md), with what sync last said about each (`status`:
-/// the sentence, and whether it is a problem).
-pub fn accounts(config: &Config, tr: &Translator, status: &BTreeMap<String, (String, bool)>) -> Vec<AccountView> {
+/// the sentence, and whether it is a problem) and those whose password is
+/// wanted (`wanted`, by id).
+pub fn accounts(config: &Config, tr: &Translator, status: &BTreeMap<String, (String, bool)>, wanted: &BTreeSet<String>) -> Vec<AccountView> {
     config
         .every_account()
         .filter(|a| a.kind != AccountKind::Portal)
@@ -840,6 +846,8 @@ pub fn accounts(config: &Config, tr: &Translator, status: &BTreeMap<String, (Str
                 status_error,
                 priority: a.priority.as_str(),
                 google: a.auth.as_deref() == Some("google"),
+                host: a.host.clone(),
+                password_wanted: wanted.contains(&a.id) && a.auth.as_deref() != Some("google"),
                 name: a.name.clone().unwrap_or_default(),
                 signature: a.signature.clone().unwrap_or_default(),
                 enabled: a.enabled,
