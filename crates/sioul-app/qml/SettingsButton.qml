@@ -25,25 +25,34 @@ ToolButton {
     ToolTip.text: button.reading ? button.sioul.text("ui-reading") : button.sioul.text("ui-settings")
     ToolTip.delay: 300
     Accessible.name: ToolTip.text
-    onClicked: panel.open()
+    onClicked: button.show(true)
 
     function show(open) {
-        if (open)
-            panel.open()
-        else
-            panel.close()
+        if (open) {
+            if (panel.item === null)
+                panel.setSource("SettingsPanel.qml", { sioul: button.sioul, theme: button.theme, view: button.reading ? "reading" : button.view })
+            panel.item.open()
+        } else if (panel.item !== null) {
+            panel.item.close()
+        }
     }
 
     // For the window's images: the panel floats over the page, out of its picture.
     function grab(path) {
-        panel.contentItem.grabToImage(result => result.saveToFile(path))
+        if (panel.item !== null)
+            panel.item.contentItem.grabToImage(result => result.saveToFile(path))
     }
 
-    SettingsPanel {
+    // The panel (SettingsPanel.qml), made the first time it opens: each page
+    // has this button, and the panel is long to make.
+    Loader {
         id: panel
 
-        sioul: button.sioul
-        theme: button.theme
-        view: button.reading ? "reading" : button.view
+        Binding {
+            target: panel.item
+            when: panel.item !== null
+            property: "view"
+            value: button.reading ? "reading" : button.view
+        }
     }
 }

@@ -58,6 +58,10 @@
                 android:value="-- %%INSERT_APP_ARGUMENTS%% --" />
         </activity>
 
+        <!-- Measurable with Android's profiler (simpleperf) from a computer
+             plugged in, as for Sioul's start; nothing else is opened by it. -->
+        <profileable android:shell="true" />
+
         <!-- Files handed to other apps ("Open with…"), through Qt's provider. -->
         <provider
             android:name="androidx.core.content.FileProvider"

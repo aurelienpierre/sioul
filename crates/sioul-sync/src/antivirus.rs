@@ -81,6 +81,13 @@ pub fn install_hint() -> String {
     }
 }
 
+/// Whether one of ClamAV's programs is installed: on the path, or where Homebrew puts it.
+#[cfg(not(windows))]
+fn installed(name: &str) -> bool {
+    let found = program(name);
+    (found.is_absolute() && found.is_file()) || std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(name).is_file()))
+}
+
 /// Where Sioul keeps its own ClamAV signatures (not on Windows, which has its own antivirus).
 #[cfg(not(windows))]
 fn own_signatures() -> PathBuf {
@@ -126,7 +133,8 @@ fn clamav(file: &Path) -> Verdict {
 /// has ClamAV's programs but no signatures of its own. Returns whether it ran.
 #[cfg(not(windows))]
 pub fn refresh_signatures() -> Result<bool, String> {
-    if system_signatures() {
+    // Without ClamAV (Android has none), nothing to keep current.
+    if system_signatures() || !installed("freshclam") {
         return Ok(false);
     }
     let own = own_signatures();
