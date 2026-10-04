@@ -38,7 +38,8 @@ env:
   CARGO_INCREMENTAL: 0
   # Qt 6.9 at least (WebEngineProfilePrototype); 6.11 as on the development machine.
   QT_VERSION: '6.11.*'
-  QT_MODULES: qtwebengine qtwebchannel qtpositioning qtmultimedia qtlocation qtpdf qtimageformats
+  # qtserialport: Qt Positioning's NMEA plugin needs it, and the AppImage takes every plugin.
+  QT_MODULES: qtwebengine qtwebchannel qtpositioning qtmultimedia qtlocation qtpdf qtimageformats qtserialport
   # aqtinstall 3.3.0 cannot install Qt 6.11+ on Windows (aqtinstall #959): its main branch, pinned.
   AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
   MACOSX_DEPLOYMENT_TARGET: '13.0'
