@@ -25,7 +25,10 @@ finish-args:
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
-  # Sounds to rest by, voice memos, and calls' sound (PipeWire through its PulseAudio side).
+  # Sounds to rest by, voice memos, and calls' sound. PipeWire carries them:
+  # Qt Multimedia speaks to it directly through its socket, else through
+  # its PulseAudio side, which is Flatpak's own permission for sound.
+  - --filesystem=xdg-run/pipewire-0
   - --socket=pulseaudio
   # Security keys (YubiKey…) in sites are /dev/hidraw*: only "all" reaches them
   # (--device=usb and input do not); it also covers the GPU (dri).
