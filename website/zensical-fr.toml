@@ -26,6 +26,7 @@ nav = [
     { "Pour commencer" = [
       { "Installer" = "guide/install.md" },
       { "Premiers pas" = "guide/first-steps.md" },
+      { "Travailler pour des clients" = "guide/clients.md" },
     ] },
     { "La fenêtre" = [
       { "Le Porche" = "guide/porch.md" },

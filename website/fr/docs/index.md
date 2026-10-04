@@ -89,6 +89,23 @@ La plupart des logiciels sont faits pour vous faire répondre plus vite : comp
 
 Vos agendas, contacts et tâches Google peuvent venir aussi. Si vous vous connectez avec votre compte Google, Sioul les lit et les écrit, seulement pour les montrer à côté du reste de vos démarches et pour enregistrer les changements que vous faites dans Sioul, et en garde une copie sur votre ordinateur. Rien ne part chez le développeur. Ce qu’il lit, où il le garde, et comment lui retirer l’accès : [politique de confidentialité](privacy.md#google-calendars-contacts-and-tasks).
 
+## Travailler à son compte {#working-for-yourself}
+
+Indépendants, consultants, micro-entrepreneurs : le travail que vous vendez et les démarches qu’il entraîne vivent dans la même fenêtre, du premier courrier du client à la facture payée.
+
+- **Un projet par client**, dont le courrier lui arrive tout seul : par le domaine ou les adresses du client, par des mots d’un objet ou du nom d’une pièce jointe.
+- **Le temps compté pendant le travail.** Le minuteur de concentration compte pour la tâche et son projet ; une réunion ou un appel se note en quelques touches : `1h30`.
+- **Ce qui reste à facturer**, pour chaque projet, en heures et en argent, toujours en vue.
+- **La facture en un clic** : une ligne par tâche au taux du projet, des numéros qui ne sautent ni ne se répètent, les mentions que la loi française demande, un PDF ; puis l’argent attendu dans votre budget jusqu’au paiement.
+- **Un tableur pour votre comptable**, et le même temps et les mêmes factures sur votre ordinateur de bureau et votre portable, scellés de bout en bout.
+
+Pas d’outil de suivi du temps, de feuille d’heures ni de service de facturation à côté, et pas d’abonnement : vos clients et vos factures restent dans vos propres fichiers. [Travailler pour des clients](guide/clients.md)
+
+<figure markdown="span">
+  [![La page Projets : trois projets listés à gauche, avec Nouveau projet ; l’un ouvert à droite : « Pour un client », son taux, Tableau, Liste, Calendrier, Noter du temps et Faire la facture ; ses tâches ouvertes et faites, le temps noté et à facturer ; « Le courrier qui arrive ici tout seul », replié ; ses factures, l’une marquée Payée ; puis « Sur une ligne de temps », ce qui vient et ce qui s’est passé avant.](assets/screens/fr/projects.png){ loading=lazy }](assets/screens/fr/projects.png "Ouvrir l’image en grand")
+  <figcaption>Le projet d’un client : ses tâches, son temps, son courrier et ses factures, sur une ligne de temps.</figcaption>
+</figure>
+
 ## Fondé sur la recherche {#built-on-research}
 
 Chaque choix de Sioul suit ce que des études ont trouvé sur l’attention, le stress, l’évitement et la récupération, plusieurs d’entre elles auprès de personnes autistes ou avec un TDAH. En voici quelques-uns :
@@ -136,7 +153,7 @@ Tous les résultats, avec leurs sources et la règle que chacun donne : [ce qu
 
 ## Où il en est {#where-it-stands}
 
-Sioul est jeune (version 0.0.1) et change souvent ; il sert tous les jours. Des paquets pour Windows, macOS (puces Apple et Intel) et Linux (AppImage et Flatpak) sont sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest) ([Installer](guide/install.md)) : construits et testés par GitHub, utilisés chaque jour sur Linux, encore peu essayés ailleurs.
+Sioul est jeune (version 0.0.1) et change souvent ; il sert tous les jours. Des paquets pour Windows, macOS (puces Apple et Intel) et Linux (AppImage et Flatpak) sont sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest) ([Installer](guide/install.md)) : construits et testés par GitHub, utilisés chaque jour sur Linux, encore peu essayés ailleurs. Une version Android est à l’essai ; elle n’est pas prête.
 
 Il est fait par une seule personne, au grand jour : aucune assistance n’est promise. Les questions et les signalements sont les bienvenus dans les [tickets GitHub](https://github.com/aurelienpierre/sioul/issues).
 

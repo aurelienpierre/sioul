@@ -25,6 +25,7 @@ nav = [
     { "Getting started" = [
       { "Install" = "guide/install.md" },
       { "First steps" = "guide/first-steps.md" },
+      { "Working for clients" = "guide/clients.md" },
     ] },
     { "The window" = [
       { "The Porch" = "guide/porch.md" },
@@ -68,6 +69,7 @@ nav = [
     ] },
     { "Building" = [
       { "Building and running" = "dev/building.md" },
+      { "Android" = "dev/android.md" },
       { "Architecture" = "dev/architecture.md" },
       { "Languages" = "dev/i18n.md" },
     ] },

@@ -21,6 +21,7 @@ Most software is built to make you answer faster. Sioul is designed the other wa
 - **Mail waits on a porch.** It is checked (genuine or forged), sorted into lanes, and shown in the hours you chose. The codes and links you just asked a site for come at once, quietly.
 - **Hours set in advance**: working hours, hours for your own admin, free time. Each address, site, budget and task belongs to one or several of them; the rest waits, out of sight. Outside working hours, work rests.
 - **One next step.** Tasks that wait for each other are ordered into the one step to take now, with its reason, placed in the hours meant for it. Nothing is ever overdue. Starting is helped; stopping counts.
+- **Working for yourself, from the client's first mail to the paid invoice.** A project per client, whose mail comes to it by itself; time counted while you work (the focus timer, or `1h30` noted after a call); what is left to bill always in view; the invoice in one click, numbered without gaps, with the mentions French law asks for; the money expected in your budget until it is paid; a spreadsheet for your accountant. No time tracker, invoicing service or subscription beside it: [working for clients](https://aurelienpierre.github.io/sioul/guide/clients.html).
 - **Everything in one window**: mail, agenda, contacts, notes, projects, time and invoices, budgets and bank accounts, papers and scanned letters, medicines, and the websites you have to check (banks, offices, chats), logged in once.
 - **Nothing shouts**: no unread counters, no badges, no red, no sounds, no streaks. "Undo" waits ten seconds after anything is moved, deleted or sent.
 - **Yours**: it runs on your computer; your data stays in plain files and in your own accounts. There is no server of ours.
@@ -29,7 +30,7 @@ Each choice follows research on attention, stress, avoidance and recovery, much 
 
 ## Where it stands
 
-Version 0.0.1: Sioul is young and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel) and Linux (AppImage and Flatpak) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest): built and tested by GitHub, used daily on Linux, little tried elsewhere yet.
+Version 0.0.1: Sioul is young and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel) and Linux (AppImage and Flatpak) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest): built and tested by GitHub, used daily on Linux, little tried elsewhere yet. An Android version is being tried ([docs/android.md](docs/android.md)); it is not ready.
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 

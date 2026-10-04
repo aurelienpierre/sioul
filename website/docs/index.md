@@ -89,6 +89,23 @@ Most software is built to make you answer faster: counts, red badges, sounds, st
 
 Your Google calendars, contacts and tasks can come too. If you sign in with your Google account, Sioul reads and writes them, only to show them beside the rest of your admin and to save the changes you make there, and keeps a copy on your computer. Nothing goes to the developer. What it reads, where it keeps it, and how to take the access back: [privacy policy](privacy.md#google-calendars-contacts-and-tasks).
 
+## Working for yourself
+
+Freelancers, consultants, the self-employed: the work you sell and the admin it brings live in the same window, from the client's first mail to the paid invoice.
+
+- **A project per client**, whose mail comes to it by itself: by the client's domain or addresses, by words in a subject or in an attachment's name.
+- **Time counted while you work.** The focus timer counts for the task and its project; a meeting or a call is noted in a few keys: `1h30`.
+- **What is left to bill**, for each project, in hours and in money, always in view.
+- **The invoice in one click**: a line per task at the project's rate, numbers that never skip or repeat, the mentions French law asks for, a PDF; then the money expected in your budget until it is paid.
+- **A spreadsheet for your accountant**, and the same time and invoices on your desktop and your laptop, sealed end to end.
+
+No time tracker, timesheet or invoicing service beside it, and no subscription: your clients and your invoices stay in your own files. [Working for clients](guide/clients.md)
+
+<figure markdown="span">
+  [![The Projects page: three projects listed on the left, with New project; one open on the right: "For a client", its rate, Board, List, Calendar, Note time and Make the invoice; its tasks open and done, the time noted and left to bill; "Mail that comes here by itself", folded; its invoices, one marked Paid; then "On one line of time", what is coming and what happened before.](assets/screens/projects.png){ loading=lazy }](assets/screens/projects.png "Open the picture at full size")
+  <figcaption>A client's project: its tasks, its time, its mail and its invoices, on one line of time.</figcaption>
+</figure>
+
 ## Built on research
 
 Each choice in Sioul follows what studies found about attention, stress, avoidance and recovery, several of them with autistic or ADHD people. A few of them:
@@ -136,7 +153,7 @@ All the findings, with their sources and the rule each one gives: [what the rese
 
 ## Where it stands
 
-Sioul is young (version 0.0.1) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel) and Linux (AppImage and Flatpak) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux, little tried elsewhere yet.
+Sioul is young (version 0.0.1) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel) and Linux (AppImage and Flatpak) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux, little tried elsewhere yet. An Android version is being tried; it is not ready.
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 
