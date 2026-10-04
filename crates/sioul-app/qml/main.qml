@@ -56,6 +56,15 @@ SioulWindow {
     // Work time or quiet time: {quiet, reason, until, line, hours}.
     readonly property var moment: sioul.mode ? JSON.parse(sioul.mode) : ({ quiet: false, reason: "", until: "", line: "", hours: false })
 
+    // The start timed (on Android, and with SIOUL_TIMING): the first frame drawn.
+    property bool drawn: false
+    onFrameSwapped: {
+        if (!window.drawn) {
+            window.drawn = true
+            sioul.firstFrame()
+        }
+    }
+
     // Work comes and goes with the hours: looked at each minute.
     Timer {
         interval: 60000

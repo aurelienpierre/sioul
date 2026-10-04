@@ -13,6 +13,7 @@
 #include <QJniObject>
 #include <QString>
 #include <QtCore/qcoreapplication_platform.h>
+#include <QtCore/private/qandroidextras_p.h>
 
 #include <android/log.h>
 #include <pthread.h>
@@ -21,6 +22,7 @@
 
 extern "C" int sioul_app_run();
 extern "C" bool sioul_android_init(void *vm, void *context);
+extern "C" void sioul_android_account_chosen(const char *name, const char *kind);
 
 namespace {
 
@@ -111,6 +113,35 @@ void setCertificates()
 }
 
 } // namespace
+
+// Android's own chooser of the phone's accounts (Murena, Google, another
+// address): the one you pick, by its name (an address, usually) and its kind,
+// goes back to Rust (crates/sioul-app/src/backend.rs). Android lends no
+// password: Sioul finds the servers and asks it once, as on a computer.
+extern "C" void sioul_android_choose_account()
+{
+    const QJniObject intent = QJniObject::callStaticObjectMethod(
+        "android/accounts/AccountManager", "newChooseAccountIntent",
+        "(Landroid/accounts/Account;Ljava/util/List;[Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Landroid/os/Bundle;)Landroid/content/Intent;",
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+    if (!intent.isValid()) {
+        sioul_android_account_chosen("", "");
+        return;
+    }
+    QtAndroidPrivate::startActivity(intent, 4242, [](int, int result, const QJniObject &data) {
+        // Activity.RESULT_OK is -1; AccountManager.KEY_ACCOUNT_NAME, KEY_ACCOUNT_TYPE.
+        if (result != -1 || !data.isValid()) {
+            sioul_android_account_chosen("", "");
+            return;
+        }
+        const auto extra = [&data](const char *key) {
+            return data.callObjectMethod("getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;", QJniObject::fromString(QString::fromLatin1(key)).object<jstring>()).toString().toUtf8();
+        };
+        const QByteArray name = extra("authAccount");
+        const QByteArray kind = extra("accountType");
+        sioul_android_account_chosen(name.constData(), kind.constData());
+    });
+}
 
 int main(int, char *[])
 {

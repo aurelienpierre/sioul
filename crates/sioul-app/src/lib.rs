@@ -38,8 +38,21 @@ unsafe extern "C" {
     fn cxx_qt_init_crate_sioul_app() -> bool;
 }
 
+/// When Sioul started, for `timing`.
+static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+/// How long the start has taken so far, written to stderr (logcat on Android)
+/// on Android and when SIOUL_TIMING is set: what to make faster, measured.
+pub(crate) fn timing(what: &str) {
+    if cfg!(target_os = "android") || std::env::var_os("SIOUL_TIMING").is_some() {
+        let ms = STARTED.get().map_or(0, |start| start.elapsed().as_millis());
+        eprintln!("Sioul: {what} after {ms} ms");
+    }
+}
+
 /// The window, until it is closed; returns what the program returns.
 pub fn run() -> i32 {
+    STARTED.get_or_init(std::time::Instant::now);
     // Done as the program starts already; asked for by name too, so that a
     // linker reading each library once (GNU gold and ld) keeps it with the
     // window, which is a library.
@@ -57,6 +70,7 @@ pub fn run() -> i32 {
         app.as_mut().set_application_name(&QString::from("Sioul"));
         app.as_mut().set_application_version(&QString::from(env!("CARGO_PKG_VERSION")));
     }
+    timing("the application made");
     // Lets the desktop match the window with its desktop file, com.aurelienpierre.Sioul.desktop
     // (the Flatpak's id too): its name and icon in the taskbar, under Wayland above all.
     QGuiApplication::set_desktop_file_name(&QString::from("com.aurelienpierre.Sioul"));
@@ -67,6 +81,7 @@ pub fn run() -> i32 {
     if let Some(engine) = engine.as_mut() {
         engine.load(&QUrl::from("qrc:/qt/qml/com/aurelienpierre/sioul/qml/main.qml"));
     }
+    timing("the window loaded");
     match app.as_mut() {
         Some(app) => app.exec(),
         None => 1,

@@ -505,6 +505,18 @@ pub mod qobject {
         #[qinvokable]
         fn is_program(self: &Sioul, name: &QString) -> bool;
 
+        /// The window's first frame drawn: said with how long the start took, when timed (`crate::timing`).
+        #[qinvokable]
+        fn first_frame(self: &Sioul);
+
+        /// Whether this system keeps accounts Sioul may be shown (Android's: Murena, Google…).
+        #[qinvokable]
+        fn phone_accounts(self: &Sioul) -> bool;
+
+        /// Android's own chooser of the phone's accounts; the one chosen comes back by `phone_account_chosen`.
+        #[qinvokable]
+        fn choose_phone_account(self: Pin<&mut Sioul>);
+
         /// A budget opened: its ledger for the period around `anchor` ("2026-10-05"),
         /// its balance by `step` ("day", "week", "month", "year"), as JSON.
         #[qinvokable]
@@ -1047,6 +1059,11 @@ pub mod qobject {
         /// A site notified something, or was seen.
         #[qsignal]
         fn sites_changed(self: Pin<&mut Sioul>);
+
+        /// An account chosen among the phone's: its name (an address, usually) and its kind
+        /// ("com.google", "e.foundation.webdav.eelo"…); both empty when none was.
+        #[qsignal]
+        fn phone_account_chosen(self: Pin<&mut Sioul>, name: QString, kind: QString);
     }
 
     impl cxx_qt::Threading for Sioul {}
@@ -1054,6 +1071,33 @@ pub mod qobject {
 
 use qobject::Sioul;
 pub(crate) type QtThread = cxx_qt::CxxQtThread<Sioul>;
+
+/// Android: the window waiting for the phone's account chooser to answer.
+#[cfg(target_os = "android")]
+static PHONE_CHOOSER: std::sync::Mutex<Option<QtThread>> = std::sync::Mutex::new(None);
+
+#[cfg(target_os = "android")]
+unsafe extern "C" {
+    /// Opens Android's chooser of the phone's accounts (android/main.cpp).
+    fn sioul_android_choose_account();
+}
+
+/// Android: the account chosen in the phone's chooser, or two empty texts
+/// when none was; called by android/main.cpp, on Android's thread.
+///
+/// # Safety
+/// `name` and `kind` are null, or zero-terminated UTF-8 texts valid for the call.
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sioul_android_account_chosen(name: *const std::ffi::c_char, kind: *const std::ffi::c_char) {
+    // SAFETY: as the caller promises.
+    let read = |text: *const std::ffi::c_char| if text.is_null() { String::new() } else { unsafe { std::ffi::CStr::from_ptr(text) }.to_string_lossy().into_owned() };
+    let (name, kind) = (read(name), read(kind));
+    let waiting = PHONE_CHOOSER.lock().ok().and_then(|mut w| w.take());
+    if let Some(qt) = waiting {
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().phone_account_chosen(QString::from(&name), QString::from(&kind)));
+    }
+}
 
 #[derive(Default)]
 pub struct SioulRust {
@@ -2886,6 +2930,28 @@ impl qobject::Sioul {
 
     fn is_program(&self, name: &QString) -> bool {
         sioul_core::links::is_program(&name.to_string())
+    }
+
+    fn first_frame(&self) {
+        crate::timing("the first frame drawn");
+    }
+
+    fn phone_accounts(&self) -> bool {
+        cfg!(target_os = "android")
+    }
+
+    fn choose_phone_account(self: Pin<&mut Self>) {
+        #[cfg(target_os = "android")]
+        {
+            if let Ok(mut waiting) = PHONE_CHOOSER.lock() {
+                *waiting = Some(self.qt_thread());
+            }
+            // SAFETY: android/main.cpp's, called on Qt's thread; it answers through
+            // `sioul_android_account_chosen`, on whatever thread Android gives.
+            unsafe { sioul_android_choose_account() };
+        }
+        #[cfg(not(target_os = "android"))]
+        let _ = self;
     }
 
     fn budget_detail(&self, id: &QString, anchor: &QString, step: &QString) -> QString {

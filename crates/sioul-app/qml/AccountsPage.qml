@@ -61,6 +61,24 @@ Item {
         Qt.callLater(() => addScroll.contentItem.contentY = Math.max(0, googlePanel.y - page.theme.gap))
     }
 
+    // Android: an account the phone has, chosen in its own list. Its address
+    // fills the forms; Google's goes to Google's sign-in.
+    Connections {
+        target: page.sioul
+
+        function onPhoneAccountChosen(name, kind) {
+            if (name.indexOf("@") < 0)
+                return
+            if (kind === "com.google") {
+                googleAddress.text = name
+                page.showGoogle()
+            } else {
+                davAddress.text = name
+                page.addMailFor(name)
+            }
+        }
+    }
+
     // Adding the mail of an address whose calendars are here, with another password: the form, filled.
     function addMailFor(address) {
         tabs.currentIndex = 1
@@ -426,6 +444,27 @@ Item {
                 ColumnLayout {
                     width: addScroll.availableWidth
                     spacing: page.theme.gap
+
+                    // Android: the phone's own accounts, its addresses without their passwords.
+                    ColumnLayout {
+                        visible: page.sioul.phoneAccounts()
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Button {
+                            text: page.sioul.text("ui-phone-account")
+                            icon.name: "user-identity"
+                            icon.color: page.theme.text
+                            onClicked: page.sioul.choosePhoneAccount()
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: page.sioul.text("ui-phone-account-note")
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 13
+                            color: page.theme.muted
+                        }
+                    }
 
                     // Adding a mail account.
                     Panel {
