@@ -17,6 +17,22 @@ The packages of each version are on [the releases page](https://github.com/aurel
 
 Each comes with the command line, `sioul`. These first packages were built and tested by GitHub, but few people have run them yet: a word in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) helps.
 
+## Resources needed
+
+Measured on 4 October 2026 on a Linux computer with 8 cores, over five minutes, with Sioul and every process it starts counted together (memory as PSS: each shared page counted once):
+
+| | Memory | Processor |
+|---|---|---|
+| **Sioul alone**: an invented profile, no site open | about 280 MB | close to nothing at rest |
+| **Sioul in daily use**: a real mailbox, notes and tasks, and three sites open in real time (Proton Mail, Discord, OkCupid) | about 1.9 GB in all: Sioul's own process 0.7 GB, the pages of the three sites 1.1 GB | 5 % of one core most of the time (under 1 % of the whole computer), a few seconds at up to three quarters of one core every minute or two |
+
+- **The sites are the heavy part.** Each one kept open costs what a tab of a web browser costs, 100 to 350 MB, and the processor its page uses: a chat that keeps itself up to date is the busiest.
+- **Disk**: about 4 MB read and written in five minutes.
+- **With the window closed**, the reminder watcher (Settings ▸ Reminders and notifications) takes 10 MB and almost no processor.
+- **What to plan for**: 4 GB of memory for Sioul and a few sites beside your other programs, 8 GB to keep many sites open; any processor of the last ten years.
+
+The measure can be made again on any computer: `tools/measure-load.py` in the sources ([building.md](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
+
 ## Or build it from its sources
 
 The rest of this page builds Sioul from its sources: for Linux distributions without packages yet, and to follow the newest changes.

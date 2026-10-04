@@ -36,6 +36,13 @@ install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml ~/.local/share/metainf
 mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 ```
 
+## Measuring the load
+`tools/measure-load.py <sioul-app pid> [<watcher pid>|0] [seconds] [out]` samples Sioul every five seconds: its own process and every process under it (Qt WebEngine's zygotes, each site's renderers, its utility processes), CPU from `/proc/<pid>/stat`, memory as PSS (shared pages counted once), USS and RSS, threads, context switches and disk I/O; it writes a CSV and a JSON summary. On 4 October 2026 (8 cores, Linux, Qt 6.11), over five minutes:
+- **an invented profile, no site open** (the demo profile, offscreen): 4 processes, about 280 MB, no CPU at rest;
+- **daily use** (a real mailbox, notes and tasks; Proton Mail, Discord and OkCupid open in real time): 10 processes, about 1.9 GB in all (`sioul-app` 0.7 GB, five renderers 1.1 GB, zygotes and the audio service 0.05 GB); CPU median 5.5 % of one core, mean 9.4 %, four peaks above 20 % (up to 76 %) in five minutes; the busiest renderer (a chat) about 4.5 % at rest; no growth over the five minutes; about 4 MB read and written.
+- The reminder watcher (`sioul remind --watch`): 10 MB, 0.15 % of one core.
+Not counted: GPU memory. Still to look at: why `sioul-app` holds 0.7 GB with real data and three sites against 0.25 GB on the demo profile (the sites' browser profiles live in the window's process, and so does every page's QML).
+
 ## The icon
 The drawings are in `data/icons/`: `sioul.svg`, `sioul-small.svg` (drawn for 32 pixels and under), `sioul-symbolic.svg` (one colour, the desktop's), and the quill alone for pages (`sioul-mark.svg`, `sioul-mark-on-dark.svg`). `tools/make-icons.py` (needs `rsvg-convert`) makes from them the icon theme folders a Linux desktop reads (`data/icons/hicolor/`, under the application's id, `com.aurelienpierre.Sioul`, as its desktop file, `data/com.aurelienpierre.Sioul.desktop`, and its AppStream file, `data/com.aurelienpierre.Sioul.metainfo.xml`, which software centres read), the Windows `.ico` and the macOS `.icns` in `packaging/`, and the website's favicon and logo; the window carries the PNGs (`crates/sioul-app/app.qrc`, `cpp/appicon.cpp`). Run it again after changing a drawing.
 

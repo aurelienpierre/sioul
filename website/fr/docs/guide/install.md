@@ -17,6 +17,22 @@ Les paquets de chaque version sont sur [la page des versions](https://github.com
 
 Chacun contient aussi la ligne de commande, `sioul`. Ces premiers paquets ont été construits et testés par GitHub, mais peu de personnes les ont encore lancés : un mot dans les [tickets GitHub](https://github.com/aurelienpierre/sioul/issues) aide.
 
+## Ressources nécessaires {#resources-needed}
+
+Mesuré le 4 octobre 2026 sur un ordinateur Linux à 8 cœurs, pendant cinq minutes, Sioul et tous les processus qu’il lance comptés ensemble (la mémoire en PSS : chaque page partagée comptée une fois) :
+
+| | Mémoire | Processeur |
+|---|---|---|
+| **Sioul seul** : un profil inventé, aucun site ouvert | environ 280 Mo | presque rien au repos |
+| **Sioul au quotidien** : une vraie boîte aux lettres, des notes et des tâches, et trois sites ouverts en temps réel (Proton Mail, Discord, OkCupid) | environ 1,9 Go en tout : le processus de Sioul 0,7 Go, les pages des trois sites 1,1 Go | 5 % d’un cœur la plupart du temps (moins de 1 % de tout l’ordinateur), quelques secondes jusqu’aux trois quarts d’un cœur toutes les une ou deux minutes |
+
+- **Les sites sont la part lourde.** Chacun gardé ouvert coûte ce que coûte un onglet de navigateur, 100 à 350 Mo, et le processeur qu’utilise sa page : une messagerie qui se tient à jour toute seule est la plus active.
+- **Disque** : environ 4 Mo lus et écrits en cinq minutes.
+- **Fenêtre fermée**, le veilleur des rappels (Paramètres ▸ Rappels et notifications) prend 10 Mo et presque pas de processeur.
+- **Ce qu’il faut prévoir** : 4 Go de mémoire pour Sioul et quelques sites à côté de vos autres programmes, 8 Go pour garder beaucoup de sites ouverts ; n’importe quel processeur des dix dernières années.
+
+La mesure peut être refaite sur n’importe quel ordinateur : `tools/measure-load.py` dans les sources ([building.md, en anglais](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
+
 ## Ou le construire à partir de ses sources {#or-build-it-from-its-sources}
 
 La suite de cette page construit Sioul à partir de ses sources : pour les distributions Linux qui n’ont pas encore de paquet, et pour suivre les derniers changements.
