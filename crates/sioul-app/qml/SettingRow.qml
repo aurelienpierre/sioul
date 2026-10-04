@@ -229,9 +229,7 @@ ColumnLayout {
                     field.save(field.setting.key, text)
             }
         }
-        // Android's folder dialog hands out content:// addresses, not paths: the path is typed there.
         Button {
-            visible: Qt.platform.os !== "android"
             implicitWidth: implicitContentWidth + leftPadding + rightPadding
             text: field.sioul.text("ui-choose")
             onClicked: folderDialog.open()
@@ -239,8 +237,15 @@ ColumnLayout {
             FolderDialog {
                 id: folderDialog
 
-                // On Windows the address is file:///C:/…: its path is C:/…, not /C:/….
-                onAccepted: field.save(field.setting.key, field.theme.localPath(selectedFolder))
+                // On Windows the address is file:///C:/…: its path is C:/…, not /C:/…;
+                // on Android, a folder of the phone's storage (Theme.localPath).
+                onAccepted: {
+                    const path = field.theme.localPath(selectedFolder)
+                    if (path === "")
+                        field.sioul.status = field.sioul.text("folder-not-on-device")
+                    else
+                        field.save(field.setting.key, path)
+                }
             }
         }
     }

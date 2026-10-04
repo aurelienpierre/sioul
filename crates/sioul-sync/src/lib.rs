@@ -206,6 +206,12 @@ impl SyncError {
         )
     }
 
+    /// Whether a password, given again, can help: none kept here yet, or the
+    /// server refused the one kept (or wants an app password).
+    pub fn wants_password(&self) -> bool {
+        matches!(self, SyncError::NoPassword | SyncError::Login(_) | SyncError::AppPassword(_))
+    }
+
     /// The sentence, in your language: "home: the server cannot be reached (timed out)."
     pub fn sentence(&self, tr: &Translator, account: &str) -> String {
         let mut args = i18n::args();

@@ -103,9 +103,29 @@ QtObject {
 
     // A folder chosen in a dialog (a file:// address) as a path: on Windows
     // "file:///C:/Users" is "C:/Users", not "/C:/Users", and
-    // "file://server/share" a network folder, "//server/share".
+    // "file://server/share" a network folder, "//server/share". On Android,
+    // the phone's own storage as its documents provider names it
+    // ("content://com.android.externalstorage.documents/tree/primary%3ADocuments%2FSioul":
+    // "primary" the phone, "home" its Documents, else a card's volume; "raw:"
+    // a path as is). "" for a folder that is no folder of this device: a
+    // cloud's own provider, which Sioul does not read.
     function localPath(url) {
         const text = String(url)
+        const tree = /^content:\/\/[^\/]+\/tree\/([^\/?#]+)(?:\/document\/([^\/?#]+))?/.exec(text)
+        if (tree !== null) {
+            const id = decodeURIComponent(tree[2] || tree[1])
+            if (id.startsWith("raw:"))
+                return id.slice(4)
+            const colon = id.indexOf(":")
+            if (colon < 0 || !text.startsWith("content://com.android.externalstorage.documents/"))
+                return ""
+            const volume = id.slice(0, colon)
+            const rest = id.slice(colon + 1)
+            const root = volume === "primary" ? "/storage/emulated/0" : volume === "home" ? "/storage/emulated/0/Documents" : "/storage/" + volume
+            return rest === "" ? root : root + "/" + rest
+        }
+        if (text.startsWith("content:"))
+            return ""
         const path = /^file:\/\/[^\/]/.test(text) ? "//" + text.slice(7) : text.replace(/^file:\/\//, "")
         return decodeURIComponent(path).replace(/^\/([A-Za-z]:)/, "$1")
     }

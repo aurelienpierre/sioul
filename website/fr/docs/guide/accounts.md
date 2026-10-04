@@ -43,6 +43,12 @@ Sous les fiches, **Le bouclier IA** garde la clé du service d’Anthropic, util
 
 **Retirer** demande d’abord. Le mot de passe d’un compte de courrier quitte le trousseau ; son courrier reste sur votre disque et sur le serveur. Pour Google, l’accès est rendu à Google.
 
+### Un compte venu de votre autre appareil {#an-account-from-your-other-device}
+
+[Le partage entre vos appareils](sharing.md) apporte vos comptes, jamais leurs mots de passe. Un tel compte dit qu’il n’a pas encore de mot de passe ici, avec **Mot de passe…** sur sa fiche : tapez-le, ou choisissez **Depuis Bitwarden…**. Votre coffre s’ouvre (son mot de passe principal, puis sa deuxième étape : le code d’une application, d’un courriel, d’une YubiKey), et les identifiants qu’il garde pour cette adresse sont listés ; choisissez-en un. Le mot de passe est essayé auprès du serveur, puis gardé dans le trousseau de cet appareil. **Mot de passe…** revient si le serveur refuse un jour celui qui est gardé.
+
+Sur un téléphone, une clé de sécurité ne peut pas encore ouvrir le coffre : prenez une autre deuxième étape de votre compte Bitwarden.
+
 ## Ajouter un compte {#add-an-account}
 
 Trois formulaires, l’un après l’autre :

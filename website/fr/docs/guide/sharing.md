@@ -33,6 +33,15 @@ Ensuite, les changements s’échangent chaque minute, et quand vous choisissez 
 
 Votre dossier de notes voyage par sa propre synchronisation, pas par Sioul. S’il ne semble pas être dans un dossier synchronisé, le panneau le dit : votre autre ordinateur ne verrait pas vos notes et vos projets. Déplacés dans un dossier synchronisé (et choisis à nouveau dans Paramètres), ils voyagent aussi.
 
+## Sur un téléphone {#on-a-phone}
+
+Sioul pour Android partage de la même façon, par le dossier que l’application de synchronisation de votre téléphone garde sur le téléphone : l’eDrive de Murena, Syncthing, FolderSync, l’application de Nextcloud. Sioul ne parle à aucune d’elles : il lit le dossier.
+
+- **Où** : certaines applications de synchronisation ne transportent que quelques dossiers. L’eDrive de Murena transporte le dossier **Documents** de votre cloud (avec Pictures, Music…), pas le reste : partagez par un dossier dans Documents, comme `Documents/Sioul`. Sioul en propose un là quand votre dossier synchronisé a un dossier Documents, et le dit quand celui choisi est en dehors.
+- **Sur le téléphone** : Paramètres ▸ Votre dossier et le partage, **Autoriser l’accès aux fichiers** (l’interrupteur d’Android), puis **Choisir…** le dossier, votre phrase de passe, **Partager**.
+- **Les comptes** arrivent sans leurs mots de passe : chacun demande le sien une fois, tapé ou [depuis Bitwarden](accounts.md#an-account-from-your-other-device).
+- **Le rythme d’eDrive** : il apporte les changements du cloud environ toutes les demi-heures, plus tôt quand vous synchronisez votre compte Murena à la main ; ceux du téléphone montent tout de suite. Il n’efface jamais d’un côté ce qui a été effacé de l’autre : les anciens tours que Sioul retire restent sur le téléphone, et ne sont pas relus.
+
 ## Scellé {#sealed}
 
 Chaque changement est chiffré sur votre ordinateur avant d’être écrit dans le dossier (XChaCha20-Poly1305), avec une clé tirée de votre phrase de passe (Argon2id). Le dossier, et le serveur qui le transporte, voient quel ordinateur a écrit, quand, et combien ; jamais quoi : ni le nom des choses, ni leurs valeurs.
@@ -60,4 +69,4 @@ Un fichier de réglages à moitié écrit, ou abîmé à la main, n’est jamais
 
 ## Pas encore là {#not-there-yet}
 
-Un serveur de base de données au lieu d’un dossier, pour qui en préfère un ; les brouillons dans le dossier Brouillons de votre serveur de courrier, pour que d’autres programmes de courrier les voient ; les téléphones. Le format est simple et documenté, pour qu’ils puissent venir.
+Un serveur de base de données au lieu d’un dossier, pour qui en préfère un ; les brouillons dans le dossier Brouillons de votre serveur de courrier, pour que d’autres programmes de courrier les voient ; les téléphones autres qu’Android. Le format est simple et documenté, pour qu’ils puissent venir.

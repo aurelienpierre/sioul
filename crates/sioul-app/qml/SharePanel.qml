@@ -143,14 +143,11 @@ ColumnLayout {
         TextField {
             id: folderField
 
-            // Without the Choose… button (Android), the field takes its place.
-            Layout.columnSpan: panel.android ? 2 : 1
             Layout.fillWidth: true
             placeholderText: panel.android ? "/storage/emulated/0/Documents/Sioul" : "~/Nextcloud/Sioul"
             onEditingFinished: panel.reload()
         }
         Button {
-            visible: !panel.android
             text: panel.sioul.text("share-choose")
             onClicked: folderPicker.open()
         }
@@ -240,7 +237,14 @@ ColumnLayout {
     FolderDialog {
         id: folderPicker
 
-        // On Windows the address is file:///C:/…: its path is C:/…, not /C:/….
-        onAccepted: panel.choose(panel.theme.localPath(folderPicker.selectedFolder))
+        // On Windows the address is file:///C:/…: its path is C:/…, not /C:/…;
+        // on Android, a folder of the phone's storage (Theme.localPath).
+        onAccepted: {
+            const path = panel.theme.localPath(folderPicker.selectedFolder)
+            if (path === "")
+                panel.problem = panel.sioul.text("folder-not-on-device")
+            else
+                panel.choose(path)
+        }
     }
 }

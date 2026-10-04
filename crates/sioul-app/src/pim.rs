@@ -160,6 +160,7 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
     if let Ok(mut statuses) = shared.statuses.lock() {
         statuses.insert(account.id.clone(), (line.clone(), problem));
     }
+    crate::backend::want_password(shared, &account.id, result.as_ref().err());
     match result {
         Ok(report) => {
             for conflict in report.conflicts {

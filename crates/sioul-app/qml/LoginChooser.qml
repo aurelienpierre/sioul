@@ -23,12 +23,15 @@ Dialog {
     property alias query: search.text
     readonly property bool searching: search.text.trim() !== ""
     readonly property var choices: chooser.searching ? chooser.shown.found : chooser.shown.matches
+    // What taking a login does: "Fill" in a site, "Use" for an account's password.
+    property string takeText: chooser.sioul.text("bitwarden-choose-fill")
 
     signal chosen(string item)
 
-    function begin(url) {
+    // `query`, when given, is searched at once: an account's address.
+    function begin(url, query) {
         chooser.url = url
-        search.text = ""
+        search.text = query || ""
         chooser.reload()
         chooser.open()
         search.forceActiveFocus()
@@ -124,7 +127,7 @@ Dialog {
 
     footer: DialogButtonBox {
         Button {
-            text: chooser.sioul.text("bitwarden-choose-fill")
+            text: chooser.takeText
             highlighted: true
             enabled: chooser.choices.length > 0
             onClicked: chooser.take(list.currentIndex)

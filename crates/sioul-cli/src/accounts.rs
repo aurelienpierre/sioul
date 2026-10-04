@@ -194,7 +194,7 @@ fn list(s: &Session) -> Result<(), String> {
         println!("{}", s.tr.text("sync-nothing", None));
         return Ok(());
     }
-    for (account, shown) in s.config.accounts.iter().zip(view::accounts(&s.config, &s.tr, &Default::default())) {
+    for (account, shown) in s.config.accounts.iter().zip(view::accounts(&s.config, &s.tr, &Default::default(), &Default::default())) {
         let mut parts = vec![account.id.clone()];
         parts.extend(account.address.clone());
         if account.kind != AccountKind::Portal {

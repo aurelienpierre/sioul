@@ -43,6 +43,12 @@ Below the cards, **The AI shield** holds the key for Anthropic's service, used o
 
 **Remove** asks first. A mail account's password leaves the keyring; its mail stays on your disk and on the server. For Google, the access is given back to Google.
 
+### An account from your other device
+
+[Sharing between your devices](sharing.md) brings your accounts, never their passwords. Such an account says it has no password here yet, with **Password…** on its card: type it, or choose **From Bitwarden…**. Your vault opens (its master password, then its second step: an app's code, an e-mail's, a YubiKey's), and the logins it keeps for this address are listed; choose one. The password is tried with the server, then kept in this device's keyring. **Password…** comes back if the server ever refuses the one kept.
+
+On a phone, a security key cannot open the vault yet: use another second step of your Bitwarden account.
+
 ## Add an account
 
 Three forms, one after the other:
