@@ -28,6 +28,12 @@ Item {
     readonly property var source: page.note && page.path !== "" ? { uri: page.sioul.uriOf("note", page.path), kind: "note", key: page.path, title: page.note.title } : null
     property bool editing: false
     property bool dirty: false
+    // On a phone, the note open takes the page; Back keeps it (saved) and
+    // closes it (main.qml).
+    readonly property bool canGoBack: page.note !== null
+    function back() {
+        page.open("")
+    }
     // A picture, a PDF, a sound: read or played, never edited here.
     readonly property string kind: page.note ? page.note.kind : "text"
     property var openFolders: ({})
@@ -271,10 +277,11 @@ Item {
 
         // Search, then folders.
         ColumnLayout {
+            visible: !(page.window.compact && page.note !== null)
             Layout.fillHeight: true
             Layout.fillWidth: true
             Layout.preferredWidth: Math.round((columns.width - columns.spacing) * 0.3)
-            Layout.minimumWidth: 200
+            Layout.minimumWidth: page.window.compact ? 0 : 200
             spacing: 8
 
             // The search on a line of its own: beside an open note the column is
@@ -463,8 +470,9 @@ Item {
             }
         }
 
-        // The note.
+        // The note; on a phone, only once one is open.
         Panel {
+            visible: !page.window.compact || page.note !== null
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0

@@ -29,6 +29,11 @@ Item {
     readonly property bool resting: page.window.moment.quiet && !page.anyway
     readonly property var listed: page.resting ? page.rows.filter(r => r.personal) : page.rows
     property string openId: ""
+    // On a phone, the project open takes the page; Back closes it (main.qml).
+    readonly property bool canGoBack: page.openId !== ""
+    function back() {
+        page.openId = ""
+    }
     property var shown: null
     property string problem: ""
     // Invoices are numbered on another computer: offered here, on purpose.
@@ -123,9 +128,11 @@ Item {
         anchors.margins: page.theme.gap
         spacing: page.theme.gap
 
-        // Every project and case.
+        // Every project and case; on a phone, the whole page until one is open.
         ColumnLayout {
+            visible: !(page.window.compact && page.openId !== "")
             Layout.fillHeight: true
+            Layout.fillWidth: page.window.compact
             Layout.preferredWidth: 300
             spacing: 8
 
@@ -231,6 +238,7 @@ Item {
         ScrollView {
             id: detail
 
+            visible: !page.window.compact || page.openId !== ""
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: availableWidth

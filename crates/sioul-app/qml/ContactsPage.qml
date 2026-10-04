@@ -26,6 +26,18 @@ Item {
     // The contact open, as what new things are tied to.
     readonly property var source: page.person && page.person.uid ? { uri: "sioul:contact/" + encodeURIComponent(page.person.uid), kind: "contact", key: page.person.key || "", title: page.person.name, name: page.person.name, address: page.person.emails.length > 0 ? page.person.emails[0].value : "" } : null
     property bool editing: false
+    // On a phone, the contact open (or its form) takes the page; Back leaves
+    // the form as Cancel does, then closes the contact (main.qml).
+    readonly property bool canGoBack: page.person !== null || page.editing
+    function back() {
+        if (page.editing) {
+            page.editing = false
+            if (!page.openKey)
+                page.person = null
+        } else {
+            page.open("")
+        }
+    }
     property bool moreShown: false
     property string problem: ""
     // Their mail: "safe" (any hour), "neutral" (working hours) or "blocked".
@@ -156,6 +168,7 @@ Item {
         spacing: page.theme.gap
 
         ColumnLayout {
+            visible: !(page.window.compact && (page.person !== null || page.editing))
             Layout.fillHeight: true
             Layout.fillWidth: page.person === null
             Layout.minimumWidth: 0

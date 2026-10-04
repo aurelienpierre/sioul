@@ -27,6 +27,11 @@ Item {
     property string mode: "agenda"
     readonly property var modes: ["agenda", "day", "week", "month"]
     property var opened: null
+    // On a phone, the event open takes the page; Back closes it (main.qml).
+    readonly property bool canGoBack: page.opened !== null
+    function back() {
+        page.opened = null
+    }
     property bool moreShown: false
     // The open event, as what new things are tied to.
     readonly property var source: page.opened && page.opened.uid ? { uri: "sioul:event/" + encodeURIComponent(page.opened.uid), kind: "event", key: page.opened.key, title: page.opened.summary, start: page.opened.start } : null
@@ -153,6 +158,7 @@ Item {
         spacing: page.theme.gap
 
         ColumnLayout {
+            visible: !(page.window.compact && page.opened !== null)
             Layout.fillHeight: true
             Layout.fillWidth: true
             Layout.minimumWidth: 0

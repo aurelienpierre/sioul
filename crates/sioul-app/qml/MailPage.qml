@@ -31,6 +31,18 @@ Item {
     property string query: ""
     // The message being read, by its file, and its row.
     property string openKey: ""
+    // On a phone, one at a time: the folders (asked for), the list, the
+    // message; Back goes the other way (main.qml).
+    property bool foldersShown: false
+    // Every account resting (quiet time) and none chosen: no list, the line saying so.
+    readonly property bool allResting: page.account === "" && !page.draftsShown && page.accounts.length > 0 && page.accounts.every(a => a.resting)
+    readonly property bool canGoBack: page.openKey !== "" || page.foldersShown
+    function back() {
+        if (page.openKey !== "")
+            page.openKey = ""
+        else
+            page.foldersShown = false
+    }
     readonly property var opened: findItem(page.openKey)
     // Accounts unfolded by hand; the first one is unfolded at first.
     property var unfolded: ({})
@@ -154,6 +166,7 @@ Item {
         page.all = false
         page.query = ""
         page.openKey = ""
+        page.foldersShown = false
         page.sioul.openFolder(account, folder, false, "")
     }
 
@@ -230,8 +243,9 @@ Item {
         ScrollView {
             id: folderColumn
 
-            visible: page.openKey === "" || page.dragging
+            visible: page.window.compact ? (page.foldersShown || page.allResting) && page.openKey === "" : page.openKey === "" || page.dragging
             Layout.fillHeight: true
+            Layout.fillWidth: page.window.compact
             Layout.preferredWidth: 230
             contentWidth: availableWidth
 
@@ -250,6 +264,7 @@ Item {
                     onClicked: {
                         page.draftsShown = true
                         page.openKey = ""
+                        page.foldersShown = false
                     }
 
                     contentItem: RowLayout {
@@ -429,7 +444,8 @@ Item {
 
         // Quiet time, and only work addresses: nothing opens by itself.
         Label {
-            visible: page.account === "" && !page.draftsShown && page.accounts.length > 0 && page.accounts.every(a => a.resting)
+            // On a phone, the folders take its place: an account can still be opened.
+            visible: page.allResting && !page.window.compact
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
             Layout.topMargin: page.theme.gap
@@ -442,7 +458,7 @@ Item {
         ColumnLayout {
             id: listColumn
 
-            visible: !(page.account === "" && !page.draftsShown && page.accounts.length > 0 && page.accounts.every(a => a.resting))
+            visible: !page.allResting && !(page.window.compact && (page.openKey !== "" || page.foldersShown))
             Layout.fillHeight: true
             Layout.fillWidth: page.openKey === ""
             Layout.minimumWidth: 0
@@ -460,6 +476,15 @@ Item {
                     iconName: "go-previous"
                     label: page.sioul.text("ui-folders")
                     onClicked: page.openKey = ""
+                }
+                // A phone shows the folders on their own, when asked.
+                ActionButton {
+                    visible: page.window.compact && page.openKey === ""
+                    theme: page.theme
+                    compact: true
+                    iconName: "folder-mail"
+                    label: page.sioul.text("ui-folders")
+                    onClicked: page.foldersShown = true
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
