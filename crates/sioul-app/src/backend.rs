@@ -777,6 +777,18 @@ pub mod qobject {
         #[qinvokable]
         fn share_now(self: Pin<&mut Sioul>);
 
+        /// Folders already shared through by your other devices (they hold a seal), as JSON: ["path", …].
+        #[qinvokable]
+        fn share_candidates(self: &Sioul) -> QString;
+
+        /// Whether Sioul may read and write your files by their path (Android: "All files access").
+        #[qinvokable]
+        fn files_access(self: &Sioul) -> bool;
+
+        /// Android: its own switch for "All files access" (or the older question before Android 11).
+        #[qinvokable]
+        fn ask_files_access(self: Pin<&mut Sioul>);
+
         /// A line of the budgets' file changed: label, amount, date; returns what went wrong, else "".
         #[qinvokable]
         fn change_line(self: Pin<&mut Sioul>, uri: &QString, label: &QString, amount: f64, date: &QString) -> QString;
@@ -1080,6 +1092,10 @@ static PHONE_CHOOSER: std::sync::Mutex<Option<QtThread>> = std::sync::Mutex::new
 unsafe extern "C" {
     /// Opens Android's chooser of the phone's accounts (android/main.cpp).
     fn sioul_android_choose_account();
+    /// Whether Sioul may reach your files by their path ("All files access").
+    fn sioul_android_files_access() -> bool;
+    /// Android's own switch for it.
+    fn sioul_android_ask_files_access();
 }
 
 /// Android: the account chosen in the phone's chooser, or two empty texts
@@ -3164,6 +3180,29 @@ impl qobject::Sioul {
 
     fn stop_sharing(self: Pin<&mut Self>) -> QString {
         QString::from(&crate::share::stop())
+    }
+
+    fn share_candidates(&self) -> QString {
+        QString::from(&json(&crate::share::candidates()))
+    }
+
+    fn files_access(&self) -> bool {
+        #[cfg(target_os = "android")]
+        {
+            // SAFETY: android/main.cpp's, asking Android through Java.
+            unsafe { sioul_android_files_access() }
+        }
+        #[cfg(not(target_os = "android"))]
+        true
+    }
+
+    fn ask_files_access(self: Pin<&mut Self>) {
+        // SAFETY: android/main.cpp's, on Qt's thread.
+        #[cfg(target_os = "android")]
+        unsafe {
+            sioul_android_ask_files_access()
+        };
+        let _ = self;
     }
 
     fn share_now(self: Pin<&mut Self>) {

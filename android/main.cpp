@@ -143,6 +143,33 @@ extern "C" void sioul_android_choose_account()
     });
 }
 
+// Whether Sioul may reach your files by their path, as the sharing folder
+// your sync app carries is: "All files access" (Android 11 and later), else
+// the storage permission of older versions.
+extern "C" bool sioul_android_files_access()
+{
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 30)
+        return QJniObject::callStaticMethod<jboolean>("android/os/Environment", "isExternalStorageManager");
+    return QtAndroidPrivate::checkPermission(QStringLiteral("android.permission.WRITE_EXTERNAL_STORAGE")).result() == QtAndroidPrivate::Authorized;
+}
+
+// Android's own switch for it: its settings page for Sioul, or the question.
+extern "C" void sioul_android_ask_files_access()
+{
+    if (QNativeInterface::QAndroidApplication::sdkVersion() < 30) {
+        QtAndroidPrivate::requestPermission(QStringLiteral("android.permission.WRITE_EXTERNAL_STORAGE"));
+        return;
+    }
+    const QJniObject context = applicationContext();
+    const QString package = context.callObjectMethod("getPackageName", "()Ljava/lang/String;").toString();
+    const QJniObject uri = QJniObject::callStaticObjectMethod("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;",
+                                                              QJniObject::fromString(QStringLiteral("package:") + package).object<jstring>());
+    const QJniObject intent("android/content/Intent", "(Ljava/lang/String;Landroid/net/Uri;)V",
+                            QJniObject::fromString(QStringLiteral("android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION")).object<jstring>(),
+                            uri.object());
+    QtAndroidPrivate::startActivity(intent, 4243, static_cast<QAndroidActivityResultReceiver *>(nullptr));
+}
+
 int main(int, char *[])
 {
     sendOutputToLogcat();

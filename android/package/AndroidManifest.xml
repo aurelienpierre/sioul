@@ -13,6 +13,11 @@
          for the checks on senders: the network's state. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- The sharing folder (and the notes) your sync app carries, read by their
+         path: "All files access" from Android 11, the storage permission before. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- %%INSERT_PERMISSIONS -->
     <!-- %%INSERT_FEATURES -->
     <supports-screens
@@ -28,6 +33,7 @@
         android:label="Sioul"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
+        android:requestLegacyExternalStorage="true"
         android:dataExtractionRules="@xml/sioul_data_extraction_rules"
         android:enableOnBackInvokedCallback="false">
         <activity

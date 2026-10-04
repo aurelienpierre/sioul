@@ -58,6 +58,39 @@ fn synced_roots() -> Vec<PathBuf> {
     roots
 }
 
+/// Folders already shared through, by this device's other devices: those holding a seal
+/// (`seal.toml`) in the folders a sync carries here, or on Android in your files
+/// (where the sync app, eDrive, Syncthing, puts them). A few levels down, the big ones skipped.
+pub(crate) fn candidates() -> Vec<String> {
+    let roots: Vec<PathBuf> = if cfg!(target_os = "android") { vec![PathBuf::from("/storage/emulated/0")] } else { synced_roots() };
+    let mut found = Vec::new();
+    for root in &roots {
+        look_for_seals(root, 0, &mut found);
+    }
+    found.sort();
+    found.dedup();
+    found.into_iter().map(|path| shorten(&path)).collect()
+}
+
+fn look_for_seals(dir: &Path, depth: usize, found: &mut Vec<PathBuf>) {
+    // Deep enough for the Nextcloud app's own folder (Android/media/com.nextcloud.client/nextcloud/<account>/…).
+    if depth > 6 || found.len() >= 10 {
+        return;
+    }
+    if dir.join("seal.toml").is_file() {
+        found.push(dir.to_path_buf());
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.filter_map(Result::ok) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let skip = name.starts_with('.') || matches!(name.as_str(), "DCIM" | "Pictures" | "Movies" | "Music" | "Podcasts" | "Ringtones" | "Alarms" | "Notifications" | "data" | "obb" | "node_modules" | "target");
+        if !skip && entry.file_type().is_ok_and(|t| t.is_dir()) {
+            look_for_seals(&entry.path(), depth + 1, found);
+        }
+    }
+}
+
 fn carried(path: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| path.starts_with(root))
 }

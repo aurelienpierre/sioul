@@ -20,11 +20,18 @@ ColumnLayout {
 
     property var status: ({ on: false, folder: "", sealed: false, lines: [], problems: [] })
     property string problem: ""
+    // Android: no folder dialog (it hands out content:// addresses, not paths);
+    // the path typed, or one of the folders your other devices share through.
+    readonly property bool android: Qt.platform.os === "android"
+    property bool filesAccess: true
+    property var candidates: []
 
     function reload() {
+        panel.filesAccess = panel.sioul.filesAccess()
         panel.status = JSON.parse(panel.sioul.shareStatus(folderField.text))
         if (!folderField.activeFocus)
             folderField.text = panel.status.folder
+        panel.candidates = panel.status.on || !panel.filesAccess ? [] : JSON.parse(panel.sioul.shareCandidates() || "[]").filter(c => c !== folderField.text)
     }
 
     // A folder typed or picked: what it holds is said at once.
@@ -88,6 +95,39 @@ ColumnLayout {
             color: panel.theme.warm
         }
     }
+    // Android: the folder your sync app carries is read by its path, once Android allows it.
+    Label {
+        visible: panel.android && !panel.filesAccess
+        Layout.fillWidth: true
+        text: panel.sioul.text("share-files-access")
+        wrapMode: Text.Wrap
+        color: panel.theme.text
+    }
+    Button {
+        visible: panel.android && !panel.filesAccess
+        text: panel.sioul.text("share-files-allow")
+        onClicked: panel.sioul.askFilesAccess()
+    }
+    // The folders your other devices already share through: one tap.
+    Label {
+        visible: panel.candidates.length > 0
+        Layout.fillWidth: true
+        text: panel.sioul.text("share-found")
+        wrapMode: Text.Wrap
+        color: panel.theme.muted
+    }
+    Repeater {
+        model: panel.candidates
+
+        delegate: Button {
+            required property string modelData
+
+            Layout.fillWidth: true
+            flat: true
+            text: modelData
+            onClicked: panel.choose(modelData)
+        }
+    }
     // Not shared yet: the folder and the passphrase.
     GridLayout {
         visible: !panel.status.on
@@ -103,11 +143,14 @@ ColumnLayout {
         TextField {
             id: folderField
 
+            // Without the Choose… button (Android), the field takes its place.
+            Layout.columnSpan: panel.android ? 2 : 1
             Layout.fillWidth: true
-            placeholderText: "~/Nextcloud/Sioul"
+            placeholderText: panel.android ? "/storage/emulated/0/Documents/Sioul" : "~/Nextcloud/Sioul"
             onEditingFinished: panel.reload()
         }
         Button {
+            visible: !panel.android
             text: panel.sioul.text("share-choose")
             onClicked: folderPicker.open()
         }

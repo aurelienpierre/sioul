@@ -1889,6 +1889,9 @@ share-other-seal = Un ordinateur de ce dossier scelle avec une autre phrase de p
 share-unreadable = { $file } n’a pas pu être lu : ce qui est venu pour lui attend qu’il puisse l’être.
 share-key-missing = Tapez à nouveau la phrase de passe sur cet ordinateur : le trousseau ne la garde plus.
 share-not-shared = Pas partagé : la disposition des pages sur cet écran, les dossiers où chaque ordinateur garde ses fichiers, les notifications du navigateur de cet ordinateur, vos propres clés PGP (copiez-les à la main), les caches.
+share-found = Déjà partagé par vos autres appareils (choisissez-en un) :
+share-files-access = Pour lire le dossier que votre application de synchronisation transporte (eDrive, Syncthing, FolderSync…), Sioul a besoin de l’accès d’Android à vos fichiers.
+share-files-allow = Autoriser l’accès aux fichiers
 
 ## Rappels avant les dates
 reminder-event = { $when } · { $what }

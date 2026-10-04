@@ -229,7 +229,9 @@ ColumnLayout {
                     field.save(field.setting.key, text)
             }
         }
+        // Android's folder dialog hands out content:// addresses, not paths: the path is typed there.
         Button {
+            visible: Qt.platform.os !== "android"
             implicitWidth: implicitContentWidth + leftPadding + rightPadding
             text: field.sioul.text("ui-choose")
             onClicked: folderDialog.open()

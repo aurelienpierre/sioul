@@ -1874,6 +1874,9 @@ share-other-seal = A computer in this folder seals with another passphrase: its 
 share-unreadable = { $file } could not be read: what came for it waits until it can be.
 share-key-missing = Type the passphrase again on this computer: the keyring no longer holds it.
 share-not-shared = Not shared: how pages are laid out on this screen, the folders each computer keeps its files in, this computer's browser notices, your own PGP keys (copy them by hand), caches.
+share-found = Already shared by your other devices (pick one):
+share-files-access = To read the folder your sync app carries (eDrive, Syncthing, FolderSync…), Sioul needs Android's access to your files.
+share-files-allow = Allow access to files
 
 ## Reminders before dates
 reminder-event = { $when } · { $what }
