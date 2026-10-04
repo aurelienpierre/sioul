@@ -24,7 +24,6 @@ webpki-roots.workspace = true
 futures-util.workspace = true
 ureq.workspace = true
 serde_json.workspace = true
-notify-rust.workspace = true
 mail-auth.workspace = true
 mail-send.workspace = true
 roxmltree.workspace = true
@@ -50,15 +49,25 @@ uuid = { version = "1", features = ["v4"] }
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["fs"] }
 
+# Notifications through the system's own (D-Bus, Windows, macOS); none on Android yet.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+notify-rust.workspace = true
+
 # Each system's own keyring: the Secret Service (KWallet, GNOME Keyring), the
-# Windows Credential Manager, the macOS Keychain.
-[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+# Windows Credential Manager, the macOS Keychain, Android's KeyStore.
+[target.'cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))'.dependencies]
 keyring = { workspace = true, features = ["sync-secret-service", "crypto-rust"] }
 [target.'cfg(windows)'.dependencies]
 keyring = { workspace = true, features = ["windows-native"] }
 windows = { version = "0.62", features = ["Win32_System_Antimalware", "Win32_Foundation", "Win32_Storage_FileSystem"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { workspace = true, features = ["apple-native"] }
+# Android: the KeyStore keeps a key, the app's private storage what it encrypts
+# (android-keyring, through Java); Java reached with what the app lends at start.
+[target.'cfg(target_os = "android")'.dependencies]
+keyring.workspace = true
+android-keyring = { version = "0.2", default-features = false, features = ["ndk-context"] }
+ndk-context = "0.1"
 
 [features]
 # Accepts any server certificate when SIOUL_TEST_INSECURE_TLS is set: for tests

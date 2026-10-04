@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Android 12 and later. Sioul keeps mail, notes, health readings and
+     passwords: none of it goes to a cloud backup. Moving to a new phone,
+     cable or Wi-Fi between the two, takes everything but the passwords,
+     which only the old phone's KeyStore can read: you type them again. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Sioul's icon on Android: the quill on Sioul's green, cut to the shape the
+     phone gives icons; one colour for themed icons (Android 13 and later).
+     The drawables come from data/icons/ (tools/make-icons.py). -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/sioul_green" />
+    <foreground android:drawable="@drawable/sioul_icon_foreground" />
+    <monochrome android:drawable="@drawable/sioul_icon_monochrome" />
+</adaptive-icon>

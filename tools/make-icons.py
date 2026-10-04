@@ -17,13 +17,17 @@ Writes, from them:
   application's id, com.aurelienpierre.Sioul;
 - packaging/windows/sioul.ico and packaging/macos/sioul.icns;
 - website/docs/assets/images/: the favicon (SVG, and PNG for older
-  browsers), the logo, and the icon Apple's systems put on a home screen.
+  browsers), the logo, and the icon Apple's systems put on a home screen;
+- android/package/res/drawable/: the layers of Android's icon, as Android's
+  own vector drawings: the quill in its colours, and in one colour for
+  themed icons (the green behind it is android/package/res/values/).
 
 The window takes its icon from data/icons/hicolor through
 crates/sioul-app/app.qrc. Needs rsvg-convert (librsvg). Run again after
 changing a drawing; the results are committed.
 """
 
+import re
 import shutil
 import struct
 import subprocess
@@ -34,6 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ICONS = ROOT / "data" / "icons"
 HICOLOR = ICONS / "hicolor"
 SITE = ROOT / "website" / "docs" / "assets" / "images"
+ANDROID = ROOT / "android" / "package" / "res" / "drawable"
 # The application's id: its desktop file, its icon, what it tells the desktop
 # (QGuiApplication::setDesktopFileName), its AppStream file, its Flatpak.
 APP_ID = "com.aurelienpierre.Sioul"
@@ -82,6 +87,37 @@ def icns() -> bytes:
     return b"icns" + struct.pack(">I", 8 + len(body)) + body
 
 
+# Android shows at least the middle 66 dp of an adaptive icon's 108, a circle
+# on some phones: the quill, drawn corner to corner, takes half the side.
+ANDROID_SCALE = 0.5
+
+
+def vector_drawable(svg: Path, colour: str | None = None) -> bytes:
+    """The drawing's paths as an Android vector drawing, 108 dp, the drawing
+    in the middle; `colour` replaces the drawing's own (the one-colour layer)."""
+    text = svg.read_text()
+    side = re.search(r'viewBox="0 0 ([0-9.]+) ([0-9.]+)"', text)
+    width, height = side.group(1), side.group(2)
+    paths = []
+    for path in re.findall(r"<path\b[^>]*>", text):
+        fill = colour or re.search(r'fill="(#[0-9a-fA-F]{6})"', path).group(1)
+        data = " ".join(re.search(r'\bd="([^"]*)"', path).group(1).split())
+        paths.append(f'        <path android:fillColor="{fill}" android:pathData="{data}" />')
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        f"<!-- Made by tools/make-icons.py from data/icons/{svg.name}: change the drawing, not this. -->\n"
+        '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
+        '    android:width="108dp"\n'
+        '    android:height="108dp"\n'
+        f'    android:viewportWidth="{width}"\n'
+        f'    android:viewportHeight="{height}">\n'
+        f'    <group android:scaleX="{ANDROID_SCALE}" android:scaleY="{ANDROID_SCALE}" '
+        f'android:pivotX="{float(width) / 2:g}" android:pivotY="{float(height) / 2:g}">\n'
+        + "\n".join(paths)
+        + "\n    </group>\n</vector>\n"
+    ).encode()
+
+
 def write(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
@@ -108,6 +144,10 @@ def main() -> int:
     write(SITE / "favicon-32.png", render(ICONS / "sioul-small.svg", 32))
     write(SITE / "logo.svg", (ICONS / "sioul.svg").read_bytes())
     write(SITE / "apple-touch-icon.png", render(ICONS / "sioul.svg", 180, background="#4c6b5c"))
+    # Android: the quill as drawn for dark grounds, over the green; one colour,
+    # the symbolic drawing, for the icons the phone colours itself.
+    write(ANDROID / "sioul_icon_foreground.xml", vector_drawable(ICONS / "sioul-mark-on-dark.svg"))
+    write(ANDROID / "sioul_icon_monochrome.xml", vector_drawable(ICONS / "sioul-symbolic.svg", colour="#ffffff"))
     return 0
 
 

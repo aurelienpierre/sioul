@@ -1279,6 +1279,7 @@ budget-back = Budgets
 ui-sites = Sites
 site-none = Pas encore de site. Une messagerie sécurisée (celle d’une banque, d’un hôpital, des impôts), une discussion, tout site à garder sous la main : connecté une fois, gardé ici.
 site-choose = Un site, à gauche.
+site-android = Ici, les sites s’ouvrent dans votre navigateur : Qt WebEngine, qui les garde dans Sioul sur un ordinateur, n’existe pas pour Android.
 site-add = Épingler un site
 site-field-name = Nom
 site-field-url = Adresse

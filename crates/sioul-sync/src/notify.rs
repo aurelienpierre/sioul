@@ -4,18 +4,20 @@
 //! The one exception to the admin windows: a quiet desktop notification for a
 //! verified code, with the code in it (docs/porch.md, "Right now").
 
+#[cfg(not(target_os = "android"))]
 use notify_rust::{Notification, Timeout};
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 use notify_rust::{Hint, Urgency};
 
 /// How long the notification stays: about the life of a code.
+#[cfg(not(target_os = "android"))]
 const SHOWN: u32 = 10 * 60 * 1000;
 
 /// Shows a code: `title` says what and from whom, `body` the code and how long
 /// it lasts. No sound. With `copy`, the notification offers a button labelled
 /// with its text, and its action runs when the button is pressed; the
 /// notification then lives on its own thread, which waits for the button.
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub fn code(title: &str, body: &str, copy: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
     let Some((label, on_copy)) = copy else {
         return build(title, body, None).show().map(drop).map_err(|e| e.to_string());
@@ -38,7 +40,7 @@ pub fn code(title: &str, body: &str, copy: Option<(String, Box<dyn FnOnce() + Se
 
 /// A gentle reminder (a dose to take): one notification, no sound, with one
 /// button whose action runs when pressed.
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub fn remind(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
     let Some((label, on_press)) = action else {
         return build(title, body, None).icon("appointment-soon").show().map(drop).map_err(|e| e.to_string());
@@ -59,18 +61,31 @@ pub fn remind(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() 
 }
 
 /// Windows and macOS: the reminder is in the text; no button here.
-#[cfg(not(all(unix, not(target_os = "macos"))))]
+#[cfg(any(windows, target_os = "macos"))]
 pub fn remind(title: &str, body: &str, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
     Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
 }
 
 /// Windows and macOS: the code is in the text; their notifications carry no button here.
-#[cfg(not(all(unix, not(target_os = "macos"))))]
+#[cfg(any(windows, target_os = "macos"))]
 pub fn code(title: &str, body: &str, _copy: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
     Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
+/// Android: no notifications yet (Android's own are reached through Java);
+/// the code shows in the window only.
+#[cfg(target_os = "android")]
+pub fn code(_title: &str, _body: &str, _copy: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    Err("notifications are not made on Android yet".to_string())
+}
+
+/// Android: no notifications yet; a reminder is not shown (docs/android.md).
+#[cfg(target_os = "android")]
+pub fn remind(_title: &str, _body: &str, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    Err("notifications are not made on Android yet".to_string())
+}
+
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn build(title: &str, body: &str, copy_label: Option<&str>) -> Notification {
     let mut notification = Notification::new();
     notification
@@ -94,7 +109,7 @@ fn build(title: &str, body: &str, copy_label: Option<&str>) -> Notification {
 /// that the words show as they came and nothing in them is a link or a
 /// picture to fetch. A server that reads no markup shows the text as it is.
 /// The summary is plain text for every server (the specification), and goes as it is.
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 fn body_text(body: &str, capabilities: &[String]) -> String {
     // A server that could not be asked is taken to read markup: entities at worst.
     if capabilities.is_empty() || capabilities.iter().any(|c| c == "body-markup") {
@@ -104,7 +119,7 @@ fn body_text(body: &str, capabilities: &[String]) -> String {
     }
 }
 
-#[cfg(all(test, unix, not(target_os = "macos")))]
+#[cfg(all(test, unix, not(any(target_os = "macos", target_os = "android"))))]
 mod tests {
     use super::*;
 

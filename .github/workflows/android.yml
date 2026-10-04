@@ -1,0 +1,169 @@
+# Sioul for Android, an experiment (docs/android.md): an APK for 64-bit ARM
+# phones, Android 9 and later, signed for sideloading.
+#
+# Runs on each push to main that touches the code or android/, and by hand:
+# Actions → "Android" → "Run workflow". The APK is the run's artifact.
+#
+# Versions checked on 4 October 2026: actions/setup-java v6.0.1,
+# jurplel/install-qt-action v4.4.1, Qt 6.11.3 for Android (built with NDK
+# r27c, 27.2.12479018), Corrosion v0.6.1 (android/CMakeLists.txt).
+
+name: Android
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch replaces the run still going.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  QT_VERSION: '6.11.*'
+  NDK_VERSION: '27.2.12479018'
+  ANDROID_PLATFORM: 'android-36'
+  BUILD_TOOLS: '36.0.0'
+  # aqtinstall from its main branch, pinned, as in build.yml: the release
+  # cannot install Qt 6.11 everywhere yet (aqtinstall #959).
+  AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
+
+jobs:
+  apk:
+    name: APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      # Gradle 9 and the Android Gradle plugin 9 run on Java 17 and later.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # The runner's Android SDK, with the NDK Qt 6.11 is built with.
+      - name: Android NDK and platform
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" "platforms;$ANDROID_PLATFORM" "build-tools;$BUILD_TOOLS" > /dev/null
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      # Qt for Android, and the desktop Qt whose tools build for it (autodesktop).
+      # Modules: the pages import QtMultimedia, QtPositioning and QtLocation;
+      # WebP and TIFF pictures need qtimageformats; Qt Positioning's NMEA
+      # plugin wants Qt SerialPort. Android has no Qt WebEngine and no Qt PDF.
+      - name: Qt for Android
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: all_os
+          target: android
+          arch: android_arm64_v8a
+          modules: qtmultimedia qtpositioning qtlocation qtimageformats qtserialport
+          extra: --autodesktop
+          cache: true
+          aqtsource: ${{ env.AQT_SOURCE }}
+
+      - name: Where Qt is
+        run: |
+          if [ -z "${QT_HOST_PATH:-}" ]; then
+            QT_HOST_PATH=$(ls -d "$QT_ROOT_DIR"/../gcc_64 "$QT_ROOT_DIR"/../linux_gcc_64 2>/dev/null | head -1)
+            echo "QT_HOST_PATH=$QT_HOST_PATH" >> "$GITHUB_ENV"
+          fi
+          echo "Qt for Android: $QT_ROOT_DIR"
+          echo "Desktop Qt, for the tools: $QT_HOST_PATH"
+          for variable in QT_VERSION QT_INSTALL_LIBS QT_INSTALL_HEADERS QT_HOST_LIBEXECS; do
+            echo "$variable: $("$QT_ROOT_DIR/bin/qmake" -query "$variable")"
+          done
+
+      # The crates downloaded; the build itself lives in build-android/.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android
+          cache-targets: false
+
+      - name: Configure
+        run: |
+          "$QT_ROOT_DIR/bin/qt-cmake" -S android -B build-android -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
+            -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
+            -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON
+
+      - name: Build the APK
+        run: cmake --build build-android --target apk
+
+      # Signed for sideloading: with Sioul's key when the repository holds it
+      # (secrets ANDROID_KEYSTORE, the keystore in base64, and
+      # ANDROID_KEYSTORE_PASSWORD); else with a key made for this run alone,
+      # which a phone takes for another app: uninstall the last one first.
+      - name: Sign
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          unsigned=$(find build-android -path '*/outputs/apk/release/*.apk' | head -1)
+          [ -n "$unsigned" ] || { find build-android -name '*.apk'; echo "No release APK"; exit 1; }
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/sioul.keystore"
+            export SIGN_PASSWORD="$KEYSTORE_PASSWORD"
+            alias=$(keytool -list -keystore "$RUNNER_TEMP/sioul.keystore" -storepass:env SIGN_PASSWORD | awk -F, '/PrivateKeyEntry/ && !found { print $1; found = 1 }')
+          else
+            export SIGN_PASSWORD=$(openssl rand -hex 24)
+            alias=sioul
+            keytool -genkeypair -keystore "$RUNNER_TEMP/sioul.keystore" -storepass:env SIGN_PASSWORD -keypass:env SIGN_PASSWORD \
+              -alias "$alias" -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Sioul, a test build of $GITHUB_SHA"
+          fi
+          mkdir -p dist
+          apk="dist/Sioul-$version-android-arm64.apk"
+          "$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner" sign --ks "$RUNNER_TEMP/sioul.keystore" \
+            --ks-pass env:SIGN_PASSWORD --key-pass env:SIGN_PASSWORD --ks-key-alias "$alias" --out "$apk" "$unsigned"
+          rm -f "$RUNNER_TEMP/sioul.keystore"
+          "$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner" verify --print-certs "$apk"
+          ls -l dist
+
+      # Android 15 runs on phones with 16 KB memory pages, where a library
+      # aligned for 4 KB alone does not load: each library's segments, and
+      # the APK's alignment, checked. Sioul's own library must pass.
+      - name: 16 KB pages
+        run: |
+          apk=$(ls dist/*.apk)
+          rm -rf apk-libs && mkdir apk-libs && unzip -q "$apk" 'lib/*' -d apk-libs
+          readelf="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          ours=ok
+          {
+            echo "| Library | Smallest segment alignment |"
+            echo "|---|---|"
+            for library in apk-libs/lib/*/*.so; do
+              smallest=$("$readelf" -lW "$library" | awk '$1 == "LOAD" { print $NF }' | while read -r a; do echo $((a)); done | sort -n | head -1)
+              mark=$([ "${smallest:-0}" -ge 16384 ] && echo "${smallest}" || echo "**${smallest:-?}**")
+              echo "| $(basename "$library") | $mark |"
+              case "$(basename "$library")" in libsioul_*) [ "${smallest:-0}" -ge 16384 ] || ours=no ;; esac
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          "$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/zipalign" -c -P 16 4 "$apk" && echo "APK aligned for 16 KB pages" | tee -a "$GITHUB_STEP_SUMMARY" || echo "APK not aligned for 16 KB pages" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$ours" = ok ]
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sioul-android-arm64
+          path: dist/*.apk
+          if-no-files-found: error

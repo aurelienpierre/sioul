@@ -90,6 +90,15 @@ pub fn send(account: &Account, password: &str, outgoing: &Outgoing) -> Result<()
             .helo_host("[127.0.0.1]")
             .credentials((login.as_str(), password))
             .timeout(SMTP);
+        // Android: mail-send checks certificates with rustls-platform-verifier,
+        // which there needs Java code Sioul does not ship; the same check as
+        // for IMAP instead (Android's certificates, else Mozilla's).
+        #[cfg(target_os = "android")]
+        let builder = {
+            let mut builder = builder;
+            builder.tls_connector = tokio_rustls::TlsConnector::from(crate::imap::tls_config());
+            builder
+        };
         #[cfg(feature = "insecure-test-tls")]
         let builder = if std::env::var_os("SIOUL_TEST_INSECURE_TLS").is_some() { builder.allow_invalid_certs() } else { builder };
         let mut client = builder.connect().await.map_err(smtp_error)?;

@@ -8,6 +8,10 @@ use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
     windows_details();
+    // Android has no Qt WebEngine and no Qt PDF: the pages made of them have
+    // Android versions of the same names in qml/android/ (the module's qmldir
+    // finds them there), the engine is not started, its module not linked.
+    let android = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android");
     let pages = [
         "qml/main.qml",
         "qml/PorchPage.qml",
@@ -85,13 +89,26 @@ fn main() {
         "qml/BankSection.qml",
         "qml/LettersSection.qml",
     ];
-    // The Breeze icons Sioul uses, for systems without them (tools/bundle-icons.py).
-    CxxQtBuilder::new_qml_module(QmlModule::new("com.aurelienpierre.sioul").depend("QtQuick").qml_files(pages))
+    let desktop_only = ["qml/SitesPage.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml"];
+    let pages: Vec<&str> = if android {
+        pages.into_iter().filter(|page| !desktop_only.contains(page)).chain(["qml/android/SitesPage.qml", "qml/android/PdfView.qml"]).collect()
+    } else {
+        pages.to_vec()
+    };
+    // Line spacing for editable text, which Qt Quick does not offer; PDFs written; the window's icon.
+    let mut cpp = vec!["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/appicon.cpp"];
+    if !android {
+        cpp.push("cpp/webengine.cpp");
+    }
+    let mut builder = CxxQtBuilder::new_qml_module(QmlModule::new("com.aurelienpierre.sioul").depend("QtQuick").qml_files(pages))
         .files(["src/backend.rs", "src/desktop.rs"])
-        // Line spacing for editable text, which Qt Quick does not offer.
-        .cpp_files(["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/webengine.cpp", "cpp/appicon.cpp"])
-        .qt_module("Quick")
-        .qt_module("WebEngineQuick")
+        .cpp_files(cpp)
+        .qt_module("Quick");
+    if !android {
+        builder = builder.qt_module("WebEngineQuick");
+    }
+    builder
+        // The Breeze icons Sioul uses, for systems without them (tools/bundle-icons.py).
         .qrc("icons/icons.qrc")
         // Sioul's own icon, for its windows (tools/make-icons.py).
         .qrc("app.qrc")

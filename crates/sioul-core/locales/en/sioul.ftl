@@ -1264,6 +1264,7 @@ budget-back = Budgets
 ui-sites = Sites
 site-none = No site yet. A secure mailbox (a bank's, a hospital's, the tax office's), a chat, any site you want at hand: logged in once, kept here.
 site-choose = A site, on the left.
+site-android = Here, sites open in your browser: Qt WebEngine, which keeps them inside Sioul on a computer, has no Android version.
 site-add = Pin a site
 site-field-name = Name
 site-field-url = Address

@@ -9,6 +9,12 @@ repository.workspace = true
 license.workspace = true
 publish.workspace = true
 
+# The window is a library: the desktop program below runs it, and so does
+# Android's, which Qt for Android builds around it with CMake (android/).
+[lib]
+name = "sioul_app"
+path = "src/lib.rs"
+
 [[bin]]
 name = "sioul-app"
 path = "src/main.rs"

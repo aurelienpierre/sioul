@@ -102,7 +102,7 @@ async fn read_line(tcp: &mut TcpStream) -> Result<String, SyncError> {
     }
 }
 
-fn tls_config() -> Arc<rustls::ClientConfig> {
+pub(crate) fn tls_config() -> Arc<rustls::ClientConfig> {
     #[cfg(feature = "insecure-test-tls")]
     if std::env::var_os("SIOUL_TEST_INSECURE_TLS").is_some() {
         return insecure::config();

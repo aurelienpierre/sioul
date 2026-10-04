@@ -18,6 +18,9 @@ on:
       - 'website/**'
       - 'docs/**'
       - '**/*.md'
+      # Android's own files: android.yml builds them.
+      - 'android/**'
+      - '.github/workflows/android.yml'
   workflow_dispatch:
     inputs:
       bundle:

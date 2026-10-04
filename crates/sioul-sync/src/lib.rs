@@ -16,6 +16,8 @@
 #[cfg(all(feature = "insecure-test-tls", not(debug_assertions)))]
 compile_error!("insecure-test-tls accepts any certificate: for test builds only, never with --release");
 
+#[cfg(target_os = "android")]
+pub mod android;
 pub mod antivirus;
 pub mod bitwarden;
 pub mod dav;
