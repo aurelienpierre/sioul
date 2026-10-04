@@ -68,11 +68,17 @@ corrosion_set_linker(sioul_app "${SIOUL_NDK_BIN}/${Rust_CARGO_TARGET}${SIOUL_API
 set(CXX_QT_EXPORT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cxxqt")
 set(SIOUL_QMAKE "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_BINS}/qmake" CACHE FILEPATH
     "Qt for Android's qmake: its headers and libraries, the desktop Qt's tools")
+# Qt for Android reads no zstd-packed resources, which the desktop Qt's rcc
+# makes unless told otherwise; Qt's own CMake tells it the same.
+if(NOT QT_FEATURE_zstd)
+    set(SIOUL_RCC_OPTIONS "--no-zstd")
+endif()
 corrosion_set_env_vars(sioul_app
     "CXX_QT_EXPORT_DIR=${CXX_QT_EXPORT_DIR}"
     "CXX_QT_EXPORT_CRATE_sioul-app=1"
     # The Qt modules CXX-Qt's crates ask for: cxx-qt-lib Gui and Qml, Sioul Quick.
     "CXX_QT_QT_MODULES=Qt6::Core,Qt6::Gui,Qt6::Qml,Qt6::Quick"
+    $<$<BOOL:${SIOUL_RCC_OPTIONS}>:CXX_QT_AUTORCC_OPTIONS=${SIOUL_RCC_OPTIONS}>
     "QMAKE=${SIOUL_QMAKE}")
 target_link_libraries(sioul_app-static INTERFACE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
 
