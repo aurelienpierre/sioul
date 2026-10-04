@@ -9,7 +9,10 @@
 // followed. Everything works from the keyboard: Tab, Enter, Escape, Ctrl+1 to
 // Ctrl+9 and Ctrl+0 (the places by the list), Ctrl+N (new), Ctrl+Z, F5
 // (refresh). Whatever links lead to (a task, a message, a note, an event, a
-// contact) opens where it lives.
+// contact) opens where it lives. On a phone, or in a window as narrow, the
+// places are pulled over the pages from the left (☰), the pages take the
+// whole width, and Android's Back puts the places away, then goes back to
+// the Porch.
 
 pragma ComponentBehavior: Bound
 
@@ -29,8 +32,9 @@ SioulWindow {
     width: window.demoGrab ? 1280 : 1100
     // Taller when saving images of the pages, so long pages show whole.
     height: window.demoGrab ? 860 : sioul.grabFolder() ? 1500 : 760
-    minimumWidth: 680
-    minimumHeight: 480
+    // A phone's screen is the window, whatever its size.
+    minimumWidth: Qt.platform.os === "android" ? 0 : 680
+    minimumHeight: Qt.platform.os === "android" ? 0 : 480
     visible: true
     title: "Sioul"
     theme: theme
@@ -39,6 +43,12 @@ SioulWindow {
     property var drafts: []
     // Month and day names in Sioul's language, not the system's.
     readonly property var sioulLocale: Qt.locale(sioul.text("qt-locale"))
+    // A phone, or a window as narrow: the places pulled over the pages from the left.
+    readonly property bool compact: window.width < 720
+    property bool placesOpen: false
+    // Each page's name, by its place in the pages' stack.
+    readonly property var pageNames: ["ui-porch", "ui-tasks", "ui-mail", "ui-sites", "ui-agenda", "ui-contacts", "ui-notes", "ui-projects", "ui-time", "ui-budgets", "ui-health", "ui-accounts", "ui-parameters", "ui-papers"]
+    onPageChanged: window.placesOpen = false
     // Work time or quiet time: {quiet, reason, until, line, hours}.
     readonly property var moment: sioul.mode ? JSON.parse(sioul.mode) : ({ quiet: false, reason: "", until: "", line: "", hours: false })
 
@@ -1527,6 +1537,18 @@ SioulWindow {
         }
     }
 
+    // Android's Back: the places put away, else back to the Porch; on the
+    // Porch, Android's own (Sioul goes to the background).
+    Shortcut {
+        sequence: "Back"
+        enabled: window.placesOpen || window.page !== 0
+        onActivated: {
+            if (window.placesOpen)
+                window.placesOpen = false
+            else
+                window.page = 0
+        }
+    }
     Shortcut {
         sequence: "Ctrl+1"
         onActivated: window.page = 0
@@ -1587,15 +1609,26 @@ SioulWindow {
         anchors.fill: parent
         color: theme.background
 
-        RowLayout {
+        Item {
             anchors.fill: parent
-            spacing: 0
 
-            // The places.
+            // The places: beside the pages, or on a phone pulled over them from the left.
             Rectangle {
-                Layout.fillHeight: true
-                Layout.preferredWidth: 200
+                id: places
+
+                z: 2
+                width: 200
+                height: parent.height
+                x: !window.compact || window.placesOpen ? 0 : -width - 1
                 color: theme.surface
+
+                Behavior on x {
+                    enabled: window.compact
+                    NumberAnimation {
+                        duration: 160
+                        easing.type: Easing.OutCubic
+                    }
+                }
 
                 Rectangle {
                     anchors.right: parent.right
@@ -1643,7 +1676,10 @@ SioulWindow {
                             checked: window.page === modelData[0]
                             flat: true
                             font.pixelSize: 16
-                            onClicked: window.page = modelData[0]
+                            onClicked: {
+                                window.page = modelData[0]
+                                window.placesOpen = false
+                            }
                         }
                     }
 
@@ -1677,7 +1713,10 @@ SioulWindow {
                                 ToolTip.visible: hovered
                                 ToolTip.text: sioul.text(modelData[1])
                                 ToolTip.delay: 600
-                                onClicked: window.page = modelData[0]
+                                onClicked: {
+                                    window.page = modelData[0]
+                                    window.placesOpen = false
+                                }
                             }
                         }
                         // Mail, agenda, tasks, contacts and the rest, fetched again at once.
@@ -1707,10 +1746,63 @@ SioulWindow {
                 }
             }
 
+            // A tap beside the places pulled over the pages puts them away.
+            Rectangle {
+                z: 1
+                anchors.fill: parent
+                visible: window.compact && window.placesOpen
+                color: Qt.rgba(0, 0, 0, 0.35)
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: window.placesOpen = false
+                }
+            }
+
             ColumnLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
+                anchors.fill: parent
+                anchors.leftMargin: window.compact ? 0 : places.width
                 spacing: 0
+
+                // On a phone: ☰ for the places, and the page you are on.
+                Rectangle {
+                    visible: window.compact
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 48
+                    color: theme.surface
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 1
+                        color: theme.line
+                    }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 4
+                        anchors.rightMargin: theme.gap
+                        spacing: 4
+
+                        ToolButton {
+                            Layout.preferredWidth: 48
+                            Layout.fillHeight: true
+                            icon.name: "application-menu"
+                            icon.color: theme.text
+                            display: AbstractButton.IconOnly
+                            Accessible.name: sioul.text("ui-menu")
+                            onClicked: window.placesOpen = true
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: sioul.text(window.pageNames[window.page] || "ui-porch")
+                            textFormat: Text.PlainText
+                            font.pixelSize: 18
+                            color: theme.text
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
 
                 StackLayout {
                     Layout.fillWidth: true
@@ -1914,7 +2006,7 @@ SioulWindow {
                             onClicked: sioul.undo()
                         }
                         Label {
-                            visible: window.moment.line === ""
+                            visible: window.moment.line === "" && !window.compact
                             text: sioul.text("ui-keys")
                             color: theme.muted
                             font.pixelSize: 12

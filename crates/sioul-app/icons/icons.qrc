@@ -1,5 +1,6 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource prefix="/icons">
+    <file>sioul/actions/16/application-menu.svg</file>
     <file>sioul/actions/16/appointment-new.svg</file>
     <file>sioul/actions/16/archive-insert.svg</file>
     <file>sioul/actions/16/bookmarks-organize.svg</file>
@@ -53,6 +54,7 @@
     <file>sioul/actions/16/password-copy.svg</file>
     <file>sioul/actions/16/run-build.svg</file>
     <file>sioul/actions/16/settings-configure.svg</file>
+    <file>sioul/actions/16/system-search.svg</file>
     <file>sioul/actions/16/system-users.svg</file>
     <file>sioul/actions/16/task-new.svg</file>
     <file>sioul/actions/16/user-identity.svg</file>
@@ -77,6 +79,7 @@
     <file>sioul/actions/16/view-task.svg</file>
     <file>sioul/actions/16/view-visible.svg</file>
     <file>sioul/actions/16/window-next.svg</file>
+    <file>sioul/actions/22/application-menu.svg</file>
     <file>sioul/actions/22/appointment-new.svg</file>
     <file>sioul/actions/22/archive-insert.svg</file>
     <file>sioul/actions/22/bookmarks-organize.svg</file>
@@ -129,6 +132,7 @@
     <file>sioul/actions/22/password-copy.svg</file>
     <file>sioul/actions/22/run-build.svg</file>
     <file>sioul/actions/22/settings-configure.svg</file>
+    <file>sioul/actions/22/system-search.svg</file>
     <file>sioul/actions/22/system-users.svg</file>
     <file>sioul/actions/22/task-new.svg</file>
     <file>sioul/actions/22/user-identity.svg</file>
@@ -151,6 +155,7 @@
     <file>sioul/actions/22/view-sort.svg</file>
     <file>sioul/actions/22/view-task.svg</file>
     <file>sioul/actions/22/view-visible.svg</file>
+    <file>sioul/actions/32/application-menu.svg</file>
     <file>sioul/actions/32/appointment-new.svg</file>
     <file>sioul/actions/32/archive-insert.svg</file>
     <file>sioul/actions/32/call-start.svg</file>
@@ -189,6 +194,7 @@
     <file>sioul/actions/32/media-record.svg</file>
     <file>sioul/actions/32/overflow-menu.svg</file>
     <file>sioul/actions/32/settings-configure.svg</file>
+    <file>sioul/actions/32/system-search.svg</file>
     <file>sioul/actions/32/system-users.svg</file>
     <file>sioul/actions/32/view-filter.svg</file>
     <file>sioul/actions/32/view-list-details.svg</file>
@@ -226,9 +232,7 @@
     <file>sioul/devices/16/camera-video.svg</file>
     <file>sioul/devices/22/camera-video.svg</file>
     <file>sioul/emblems/16/emblem-favorite.svg</file>
-    <file>sioul/emblems/16/emblem-important.svg</file>
     <file>sioul/emblems/22/emblem-favorite.svg</file>
-    <file>sioul/emblems/22/emblem-important.svg</file>
     <file>sioul/index.theme</file>
     <file>sioul/mimetypes/16/application-pdf.svg</file>
     <file>sioul/mimetypes/16/audio-x-generic.svg</file>
@@ -292,6 +296,7 @@
     <file>sioul/status/22/security-low.svg</file>
     <file>sioul/status/22/security-medium.svg</file>
     <file>sioul/status/22/task-complete.svg</file>
+    <file>sioul-dark/actions/16/application-menu.svg</file>
     <file>sioul-dark/actions/16/appointment-new.svg</file>
     <file>sioul-dark/actions/16/archive-insert.svg</file>
     <file>sioul-dark/actions/16/bookmarks-organize.svg</file>
@@ -345,6 +350,7 @@
     <file>sioul-dark/actions/16/password-copy.svg</file>
     <file>sioul-dark/actions/16/run-build.svg</file>
     <file>sioul-dark/actions/16/settings-configure.svg</file>
+    <file>sioul-dark/actions/16/system-search.svg</file>
     <file>sioul-dark/actions/16/system-users.svg</file>
     <file>sioul-dark/actions/16/task-new.svg</file>
     <file>sioul-dark/actions/16/user-identity.svg</file>
@@ -369,6 +375,7 @@
     <file>sioul-dark/actions/16/view-task.svg</file>
     <file>sioul-dark/actions/16/view-visible.svg</file>
     <file>sioul-dark/actions/16/window-next.svg</file>
+    <file>sioul-dark/actions/22/application-menu.svg</file>
     <file>sioul-dark/actions/22/appointment-new.svg</file>
     <file>sioul-dark/actions/22/archive-insert.svg</file>
     <file>sioul-dark/actions/22/bookmarks-organize.svg</file>
@@ -421,6 +428,7 @@
     <file>sioul-dark/actions/22/password-copy.svg</file>
     <file>sioul-dark/actions/22/run-build.svg</file>
     <file>sioul-dark/actions/22/settings-configure.svg</file>
+    <file>sioul-dark/actions/22/system-search.svg</file>
     <file>sioul-dark/actions/22/system-users.svg</file>
     <file>sioul-dark/actions/22/task-new.svg</file>
     <file>sioul-dark/actions/22/user-identity.svg</file>
@@ -443,6 +451,7 @@
     <file>sioul-dark/actions/22/view-sort.svg</file>
     <file>sioul-dark/actions/22/view-task.svg</file>
     <file>sioul-dark/actions/22/view-visible.svg</file>
+    <file>sioul-dark/actions/32/application-menu.svg</file>
     <file>sioul-dark/actions/32/appointment-new.svg</file>
     <file>sioul-dark/actions/32/archive-insert.svg</file>
     <file>sioul-dark/actions/32/call-start.svg</file>
@@ -481,6 +490,7 @@
     <file>sioul-dark/actions/32/media-record.svg</file>
     <file>sioul-dark/actions/32/overflow-menu.svg</file>
     <file>sioul-dark/actions/32/settings-configure.svg</file>
+    <file>sioul-dark/actions/32/system-search.svg</file>
     <file>sioul-dark/actions/32/system-users.svg</file>
     <file>sioul-dark/actions/32/view-filter.svg</file>
     <file>sioul-dark/actions/32/view-list-details.svg</file>
@@ -518,9 +528,7 @@
     <file>sioul-dark/devices/16/camera-video.svg</file>
     <file>sioul-dark/devices/22/camera-video.svg</file>
     <file>sioul-dark/emblems/16/emblem-favorite.svg</file>
-    <file>sioul-dark/emblems/16/emblem-important.svg</file>
     <file>sioul-dark/emblems/22/emblem-favorite.svg</file>
-    <file>sioul-dark/emblems/22/emblem-important.svg</file>
     <file>sioul-dark/index.theme</file>
     <file>sioul-dark/mimetypes/16/application-pdf.svg</file>
     <file>sioul-dark/mimetypes/16/audio-x-generic.svg</file>

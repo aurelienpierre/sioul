@@ -130,7 +130,7 @@ jobs:
             export SIGN_PASSWORD=$(openssl rand -hex 24)
             alias=sioul
             keytool -genkeypair -keystore "$RUNNER_TEMP/sioul.keystore" -storepass:env SIGN_PASSWORD -keypass:env SIGN_PASSWORD \
-              -alias "$alias" -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Sioul, a test build of $GITHUB_SHA"
+              -alias "$alias" -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Sioul test build $GITHUB_SHA"
           fi
           mkdir -p dist
           apk="dist/Sioul-$version-android-arm64.apk"

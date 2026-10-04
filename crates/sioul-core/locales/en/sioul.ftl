@@ -1262,6 +1262,7 @@ budget-added = Added to { $budget }.
 budget-add-bad-amount = An amount, positive for money in, negative for money out.
 budget-back = Budgets
 ui-sites = Sites
+ui-menu = Menu
 site-none = No site yet. A secure mailbox (a bank's, a hospital's, the tax office's), a chat, any site you want at hand: logged in once, kept here.
 site-choose = A site, on the left.
 site-android = Here, sites open in your browser: Qt WebEngine, which keeps them inside Sioul on a computer, has no Android version.
