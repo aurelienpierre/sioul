@@ -1,0 +1,280 @@
+# Builds Sioul's packages and publishes them as a GitHub release.
+#
+# A tag "v0.0.1" pushed: the four packages are built from it, then a release
+# of that name is made with them (a pre-release while the version starts
+# with 0). Started by hand (Actions, "Packages", "Run workflow"): the packages
+# are built and kept on the run's page, nothing is published, unless a tag
+# is given.
+#
+# - Windows: an installer (Inno Setup, packaging/windows/sioul.iss), Qt and
+#   the MSVC runtime beside the program;
+# - macOS: one .dmg for Apple silicon and Intel (both builds joined by lipo),
+#   signed ad hoc, not notarised;
+# - Linux: an AppImage (linuxdeploy and its Qt plugin), and a Flatpak bundle
+#   (packaging/flatpak/, on the KDE runtime and Qt WebEngine's BaseApp).
+# Not signed: Windows and macOS say so the first time (packaging/release-notes.md).
+
+name: Packages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'A version tag to publish (v0.0.1), already pushed; empty: build only'
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Qt 6.9 at least (WebEngineProfilePrototype); 6.11 as on the development machine.
+  QT_VERSION: '6.11.*'
+  QT_MODULES: qtwebengine qtwebchannel qtpositioning qtmultimedia qtlocation qtpdf qtimageformats
+  # aqtinstall 3.3.0 cannot install Qt 6.11+ on Windows (aqtinstall #959): its main branch, pinned.
+  AQT_SOURCE: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
+  MACOSX_DEPLOYMENT_TARGET: '13.0'
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      # The tag's version without its "v"; else Cargo.toml's.
+      - id: version
+        shell: bash
+        run: |
+          tag="${{ inputs.tag }}"
+          if [ -z "$tag" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then tag="${GITHUB_REF_NAME}"; fi
+          version="${tag#v}"
+          [ -n "$version" ] || version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Version $version, tag '${tag}'"
+
+  windows:
+    name: Windows installer
+    needs: version
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Keep line endings as committed
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: ${{ env.QT_MODULES }}
+          cache: true
+          aqtsource: ${{ env.AQT_SOURCE }}
+      - name: Tell CXX-Qt which Qt
+        shell: bash
+        run: echo "QMAKE=${QT_ROOT_DIR}/bin/qmake.exe" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-qt6
+      - name: Build
+        run: cargo build --release --locked -p sioul-app -p sioul-cli
+      # Qt beside the program (QtWebEngineProcess and its resources included),
+      # and the MSVC runtime, for computers without it.
+      - name: Gather Qt
+        shell: pwsh
+        run: |
+          windeployqt --release --qmldir crates\sioul-app\qml target\release\sioul-app.exe
+          Copy-Item "$env:SystemRoot\System32\vcruntime140.dll", "$env:SystemRoot\System32\vcruntime140_1.dll", "$env:SystemRoot\System32\msvcp140.dll" target\release\
+      - name: Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DVersion=${{ needs.version.outputs.version }} packaging\windows\sioul.iss
+          Get-ChildItem packaging\windows\Output
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-windows
+          path: packaging/windows/Output/*.exe
+          if-no-files-found: error
+
+  macos:
+    name: macOS universal
+    needs: version
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      # Qt's macOS frameworks hold both Apple silicon and Intel.
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: ${{ env.QT_MODULES }}
+          cache: true
+          aqtsource: ${{ env.AQT_SOURCE }}
+      - name: Tell CXX-Qt which Qt
+        run: echo "QMAKE=${QT_ROOT_DIR}/bin/qmake" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-qt6-universal
+      - name: Build for Apple silicon and for Intel
+        run: |
+          cargo build --release --locked --target aarch64-apple-darwin -p sioul-app -p sioul-cli
+          cargo build --release --locked --target x86_64-apple-darwin -p sioul-app -p sioul-cli
+      # One program for both: lipo joins them.
+      - name: Join both
+        run: |
+          mkdir -p universal
+          for program in sioul-app sioul; do
+            lipo -create "target/aarch64-apple-darwin/release/$program" "target/x86_64-apple-darwin/release/$program" -output "universal/$program"
+            lipo -info "universal/$program"
+          done
+      # The bundle: the programs, Info.plist (the microphone and camera
+      # sentences without which macOS ends the program at their first use),
+      # the icon, then Qt's frameworks; signed ad hoc (Apple silicon runs
+      # nothing unsigned), not notarised.
+      - name: Application and disk image
+        run: |
+          version=${{ needs.version.outputs.version }}
+          app=bundle/Sioul.app
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          cp universal/sioul-app universal/sioul "$app/Contents/MacOS/"
+          sed -e "s|<key>CFBundleShortVersionString</key><string>[^<]*</string>|<key>CFBundleShortVersionString</key><string>${version}</string>|" \
+              -e "s|<key>CFBundleVersion</key><string>[^<]*</string>|<key>CFBundleVersion</key><string>${GITHUB_RUN_NUMBER}</string>|" \
+              packaging/macos/Info.plist > "$app/Contents/Info.plist"
+          cp packaging/macos/sioul.icns "$app/Contents/Resources/"
+          macdeployqt "$app" -qmldir=crates/sioul-app/qml
+          codesign --force --deep --sign - "$app"
+          for try in 1 2 3; do
+            hdiutil create -volname Sioul -srcfolder "$app" -ov -format UDZO "bundle/Sioul-${version}-macos-universal.dmg" && break
+            sleep 10
+          done
+          test -f "bundle/Sioul-${version}-macos-universal.dmg"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-macos
+          path: bundle/*.dmg
+          if-no-files-found: error
+
+  appimage:
+    name: Linux AppImage
+    needs: version
+    # The oldest supported image: the AppImage runs where its glibc is at least as new.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag || github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libvulkan-dev libxkbcommon-dev lld file desktop-file-utils libxcb-cursor0 libfuse2
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: ${{ env.QT_MODULES }}
+          cache: true
+          aqtsource: ${{ env.AQT_SOURCE }}
+      - name: Tell CXX-Qt which Qt
+        run: echo "QMAKE=${QT_ROOT_DIR}/bin/qmake" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-qt6-appimage
+      - name: Build
+        run: cargo build --release --locked -p sioul-app -p sioul-cli
+      # The programs, the desktop file and the icon in an AppDir; linuxdeploy
+      # and its Qt plugin add Qt (Qt WebEngine's process and resources, the
+      # QML modules the pages import, Wayland and X11), then make the AppImage.
+      - name: AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          QML_SOURCES_PATHS: ${{ github.workspace }}/crates/sioul-app/qml
+          EXTRA_PLATFORM_PLUGINS: libqwayland-generic.so;libqwayland-egl.so
+          EXTRA_QT_MODULES: waylandcompositor
+        run: |
+          version=${{ needs.version.outputs.version }}
+          export LDAI_OUTPUT="Sioul-${version}-x86_64.AppImage"
+          install -Dm755 target/release/sioul-app AppDir/usr/bin/sioul-app
+          install -Dm755 target/release/sioul AppDir/usr/bin/sioul
+          install -Dm644 data/sioul.desktop AppDir/usr/share/applications/sioul.desktop
+          mkdir -p AppDir/usr/share/icons && cp -r data/icons/hicolor AppDir/usr/share/icons/
+          install -Dm644 packaging/appimage/sioul-sandbox.sh AppDir/apprun-hooks/sioul-sandbox.sh
+          curl -fsSLO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -fsSLO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy-*.AppImage
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --executable AppDir/usr/bin/sioul-app --desktop-file AppDir/usr/share/applications/sioul.desktop --icon-file data/icons/hicolor/256x256/apps/sioul.png --plugin qt --output appimage
+          ls -la "$LDAI_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-appimage
+          path: Sioul-*.AppImage
+          if-no-files-found: error
+
+  flatpak:
+    name: Linux Flatpak
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag || github.ref }}
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/com.aurelienpierre.Sioul.yml
+          bundle: Sioul-${{ needs.version.outputs.version }}.flatpak
+          cache-key: flatpak-builder-${{ hashFiles('Cargo.lock', 'packaging/flatpak/*') }}
+          upload-artifact: false
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-flatpak
+          path: Sioul-*.flatpak
+          if-no-files-found: error
+
+  release:
+    name: Release
+    needs: [version, windows, macos, appimage, flatpak]
+    if: needs.version.outputs.tag != ''
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=${{ needs.version.outputs.tag }}
+          version=${{ needs.version.outputs.version }}
+          ls -la dist
+          sed "s/<version>/${version}/g" packaging/release-notes.md > notes.md
+          prerelease=""
+          case "$version" in 0.*) prerelease="--prerelease" ;; esac
+          gh release create "$tag" dist/* --title "Sioul ${version}" --notes-file notes.md $prerelease --verify-tag

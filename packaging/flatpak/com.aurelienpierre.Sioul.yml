@@ -1,13 +1,15 @@
-# Flatpak for Linux. The antivirus is the system's ClamAV, which a Flatpak
-# does not reach: attachments are opened after Sioul asks, saying they will
-# not be checked (docs/client.md, "Antivirus").
+# Flatpak for Linux, built by .github/workflows/release.yml into the bundle
+# published with each release. The antivirus is the system's ClamAV, which a
+# Flatpak does not reach: attachments are opened after Sioul asks, saying
+# they will not be checked (docs/client.md, "Antivirus").
 #
-# A starting point, never built yet. Open points before it builds:
-# - Cargo needs its crates offline: generate cargo-sources.json with
-#   flatpak-builder-tools' flatpak-cargo-generator.py from Cargo.lock.
-# - Qt 6.9 at least (docs/building.md): Qt WebEngine comes from its BaseApp;
-#   check that the KDE runtime carries Qt Location, Qt PDF and Qt Multimedia.
-# Then: flatpak-builder --user --install build packaging/flatpak/com.aurelienpierre.Sioul.yml
+# Qt 6.9 at least (docs/building.md): the KDE runtime carries Qt Location,
+# Positioning, Multimedia and WebChannel; Qt WebEngine (and Qt PDF) come from
+# its BaseApp, in /app, which qt-both.sh shows CXX-Qt beside the runtime's Qt.
+# The crates are fetched during the build (network allowed to this module):
+# for Flathub, they would be listed beforehand instead (flatpak-cargo-generator).
+#
+# By hand: flatpak-builder --user --install --install-deps-from=flathub build packaging/flatpak/com.aurelienpierre.Sioul.yml
 
 app-id: com.aurelienpierre.Sioul
 runtime: org.kde.Platform
@@ -31,16 +33,27 @@ finish-args:
   - --talk-name=org.freedesktop.Notifications
   # Your case files and budgets, where you keep them.
   - --filesystem=home
+  # Qt WebEngine's helper and QML modules, from its BaseApp.
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  - --env=QML_IMPORT_PATH=/app/lib/qml:/app/qml
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
 modules:
   - name: sioul
     buildsystem: simple
     build-options:
+      # The crates come from crates.io during the build.
+      build-args:
+        - --share=network
       env:
         CARGO_HOME: /run/build/sioul/cargo
+        CARGO_INCREMENTAL: '0'
+        QMAKE: /run/build/sioul/qmake-both
     build-commands:
-      - cargo --offline build --release -p sioul-app -p sioul-cli
+      - sh packaging/flatpak/qt-both.sh
+      - cargo build --release --locked -p sioul-app -p sioul-cli
       - install -Dm755 target/release/sioul-app /app/bin/sioul-app
       - install -Dm755 target/release/sioul /app/bin/sioul
       - install -Dm644 data/sioul.desktop /app/share/applications/com.aurelienpierre.Sioul.desktop
@@ -52,4 +65,8 @@ modules:
     sources:
       - type: dir
         path: ../..
-      - cargo-sources.json
+        skip:
+          - target
+          - website/site
+          - website/.cache
+          - .flatpak-builder
