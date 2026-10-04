@@ -25,6 +25,8 @@ finish-args:
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
+  # Sounds to rest by, voice memos, and calls' sound (PipeWire through its PulseAudio side).
+  - --socket=pulseaudio
   # Security keys (YubiKey…) in sites are /dev/hidraw*: only "all" reaches them
   # (--device=usb and input do not); it also covers the GPU (dri).
   - --device=all
@@ -56,12 +58,10 @@ modules:
       - cargo build --release --locked -p sioul-app -p sioul-cli
       - install -Dm755 target/release/sioul-app /app/bin/sioul-app
       - install -Dm755 target/release/sioul /app/bin/sioul
-      - install -Dm644 data/sioul.desktop /app/share/applications/com.aurelienpierre.Sioul.desktop
-      # The icon under the application's id, as Flatpak asks; the desktop file names it so.
-      - sed -i 's/^Icon=sioul$/Icon=com.aurelienpierre.Sioul/' /app/share/applications/com.aurelienpierre.Sioul.desktop
-      - install -Dm644 data/icons/hicolor/scalable/apps/sioul.svg /app/share/icons/hicolor/scalable/apps/com.aurelienpierre.Sioul.svg
-      - install -Dm644 data/icons/hicolor/symbolic/apps/sioul-symbolic.svg /app/share/icons/hicolor/symbolic/apps/com.aurelienpierre.Sioul-symbolic.svg
-      - for size in 16 22 24 32 48 64 128 256 512; do install -Dm644 data/icons/hicolor/${size}x${size}/apps/sioul.png /app/share/icons/hicolor/${size}x${size}/apps/com.aurelienpierre.Sioul.png; done
+      # The desktop file, the icon and the AppStream file, all under the application's id.
+      - install -Dm644 data/com.aurelienpierre.Sioul.desktop /app/share/applications/com.aurelienpierre.Sioul.desktop
+      - install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml /app/share/metainfo/com.aurelienpierre.Sioul.metainfo.xml
+      - mkdir -p /app/share/icons && cp -r data/icons/hicolor /app/share/icons/
     sources:
       - type: dir
         path: ../..

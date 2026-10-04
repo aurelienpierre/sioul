@@ -1,4 +1,4 @@
-; Inno Setup script for Sioul on Windows.
+﻿; Inno Setup script for Sioul on Windows.
 ;
 ; Before: cargo build --release -p sioul-app -p sioul-cli (MSVC, Qt 6 from Qt's
 ; installer), then gather Qt beside the program:
@@ -15,7 +15,17 @@ AppId={{6A3F2C1E-5D4B-4E8A-9C7F-2B1D0E9F8A31}
 AppName=Sioul
 AppVersion={#Version}
 AppPublisher=Aurélien Pierre
-AppPublisherURL=https://github.com/aurelienpierre/sioul
+AppPublisherURL=https://aurelienpierre.github.io/sioul/
+AppSupportURL=https://github.com/aurelienpierre/sioul/issues
+AppUpdatesURL=https://github.com/aurelienpierre/sioul/releases
+AppCopyright=Copyright © 2026 Aurélien Pierre. GPL-3.0-or-later.
+AppComments=A calm place for mail, tasks and admin
+VersionInfoVersion={#Version}
+VersionInfoProductName=Sioul
+VersionInfoProductVersion={#Version}
+VersionInfoCompany=Aurélien Pierre
+VersionInfoDescription=Sioul installer
+VersionInfoCopyright=Copyright © 2026 Aurélien Pierre
 DefaultDirName={autopf}\Sioul
 DefaultGroupName=Sioul
 LicenseFile=..\..\LICENSE

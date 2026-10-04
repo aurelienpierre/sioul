@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright © 2026 Aurélien Pierre -->
+<!-- What software centres show of Sioul (AppStream): its name, what it does,
+     its licence, its pictures, its versions. Checked by
+     appstreamcli validate data/com.aurelienpierre.Sioul.metainfo.xml -->
+<component type="desktop-application">
+  <id>com.aurelienpierre.Sioul</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Sioul</name>
+  <summary>A calm place for mail, tasks and admin</summary>
+  <summary xml:lang="fr">Un lieu calme pour le courrier, les tâches et les démarches</summary>
+
+  <developer id="com.aurelienpierre">
+    <name>Aurélien Pierre</name>
+  </developer>
+
+  <description>
+    <p>Sioul gathers your mail, your tasks and your admin in one quiet window, on your own computer. It is designed for people for whom admin hurts: autistic people, people with ADHD, people who are anxious, burnt out, depressed, or simply exhausted, and for freelancers, whose work brings more admin.</p>
+    <p xml:lang="fr">Sioul rassemble votre courrier, vos tâches et vos démarches dans une seule fenêtre calme, sur votre propre ordinateur. Il est pensé pour les personnes que l’administratif fait souffrir : autistes, avec un TDAH, anxieuses, en épuisement, déprimées ou simplement épuisées, et pour les indépendants, dont le travail amène plus de démarches.</p>
+    <ul>
+      <li>Mail waits on a porch, checked and sorted, in the hours you chose; the codes and links you ask sites for come at once.</li>
+      <li xml:lang="fr">Le courrier attend sur un porche, vérifié et trié, aux heures que vous avez choisies ; les codes et les liens que vous demandez aux sites arrivent tout de suite.</li>
+      <li>Your hours for work, for your admin and for free time; tasks are planned in them, one next step at a time, nothing ever overdue.</li>
+      <li xml:lang="fr">Vos heures de travail, de démarches et de temps libre ; les tâches s’y placent, une prochaine étape à la fois, sans jamais de retard.</li>
+      <li>Mail, agenda, contacts, notes, projects, time and invoices, budgets and bank accounts, papers, medicines, and the websites you have to check, in one window.</li>
+      <li xml:lang="fr">Courrier, agenda, contacts, notes, projets, temps et factures, budgets et comptes, papiers, médicaments, et les sites que vous devez consulter, dans une seule fenêtre.</li>
+      <li>No counters, no red, no sounds; Undo after anything moved, deleted or sent.</li>
+      <li xml:lang="fr">Ni compteurs, ni rouge, ni sons ; Annuler après tout déplacement, suppression ou envoi.</li>
+      <li>Your data stays on your computer and in your own accounts: no server of ours.</li>
+      <li xml:lang="fr">Vos données restent sur votre ordinateur et dans vos propres comptes : aucun serveur à nous.</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">com.aurelienpierre.Sioul.desktop</launchable>
+
+  <url type="homepage">https://aurelienpierre.github.io/sioul/</url>
+  <url type="help">https://aurelienpierre.github.io/sioul/guide/first-steps.html</url>
+  <url type="bugtracker">https://github.com/aurelienpierre/sioul/issues</url>
+  <url type="vcs-browser">https://github.com/aurelienpierre/sioul</url>
+  <url type="contribute">https://aurelienpierre.github.io/sioul/dev/index.html</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>The Porch: codes and links first, then the new mail sorted into lanes</caption>
+      <caption xml:lang="fr">Le Porche : les codes et les liens d’abord, puis le nouveau courrier trié en files</caption>
+      <image>https://aurelienpierre.github.io/sioul/assets/screens/porch.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The day: your hours by kind, and the steps placed in them</caption>
+      <caption xml:lang="fr">La journée : vos heures par type, et les étapes placées dedans</caption>
+      <image>https://aurelienpierre.github.io/sioul/assets/screens/tasks-day.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A message, with who sent it and how far that is verified</caption>
+      <caption xml:lang="fr">Un message, avec qui l’a envoyé et à quel point c’est vérifié</caption>
+      <image>https://aurelienpierre.github.io/sioul/assets/screens/mail-reader.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Budgets, filled by your bank accounts</caption>
+      <caption xml:lang="fr">Les budgets, remplis par vos comptes bancaires</caption>
+      <image>https://aurelienpierre.github.io/sioul/assets/screens/budgets.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.0.1" date="2026-10-04" type="development">
+      <description>
+        <p>The first packages: Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak).</p>
+        <p xml:lang="fr">Les premiers paquets : Windows, macOS (puces Apple et Intel), Linux (AppImage et Flatpak).</p>
+      </description>
+    </release>
+  </releases>
+
+  <content_rating type="oars-1.1"/>
+
+  <provides>
+    <binary>sioul-app</binary>
+    <binary>sioul</binary>
+  </provides>
+
+  <categories>
+    <category>Office</category>
+    <category>Email</category>
+  </categories>
+
+  <keywords>
+    <keyword>mail</keyword>
+    <keyword>email</keyword>
+    <keyword>admin</keyword>
+    <keyword>tasks</keyword>
+    <keyword>budget</keyword>
+    <keyword>calendar</keyword>
+    <keyword xml:lang="fr">courrier</keyword>
+    <keyword xml:lang="fr">démarches</keyword>
+    <keyword xml:lang="fr">tâches</keyword>
+  </keywords>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#f5f2ec</color>
+    <color type="primary" scheme_preference="dark">#1e1f1c</color>
+  </branding>
+
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+</component>

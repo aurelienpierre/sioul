@@ -44,8 +44,9 @@ fn main() {
         app.as_mut().set_application_name(&QString::from("Sioul"));
         app.as_mut().set_application_version(&QString::from(env!("CARGO_PKG_VERSION")));
     }
-    // Lets the desktop match the window with sioul.desktop: its name and icon.
-    QGuiApplication::set_desktop_file_name(&QString::from("sioul"));
+    // Lets the desktop match the window with its desktop file, com.aurelienpierre.Sioul.desktop
+    // (the Flatpak's id too): its name and icon in the taskbar, under Wayland above all.
+    QGuiApplication::set_desktop_file_name(&QString::from("com.aurelienpierre.Sioul"));
     // SAFETY: the application exists; called once, on the main thread.
     unsafe { sioul_set_window_icon() };
     desktop::icons();

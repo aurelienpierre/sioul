@@ -84,7 +84,8 @@ La première ligne `cargo build` construit `sioul`, la ligne de commande ; la 
 ```
 install -Dm755 target/release/sioul-app ~/.local/bin/sioul-app
 install -Dm755 target/release/sioul ~/.local/bin/sioul
-install -Dm644 data/sioul.desktop ~/.local/share/applications/sioul.desktop
+install -Dm644 data/com.aurelienpierre.Sioul.desktop ~/.local/share/applications/com.aurelienpierre.Sioul.desktop
+install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml ~/.local/share/metainfo/com.aurelienpierre.Sioul.metainfo.xml
 mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 ```
 

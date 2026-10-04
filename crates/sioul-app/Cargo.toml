@@ -26,6 +26,8 @@ cxx-qt-lib.workspace = true
 
 [build-dependencies]
 cxx-qt-build.workspace = true
+# The Windows program's icon and details (Explorer's properties); used only when building for Windows.
+winresource = { version = "0.1.31", default-features = false }
 
 [features]
 # For tests against a local mail server only (see sioul-sync's feature of the same name).

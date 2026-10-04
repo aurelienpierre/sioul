@@ -1,13 +1,13 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <!-- Sioul's own icon, on its windows (cpp/appicon.cpp): made from data/icons by tools/make-icons.py. -->
 <qresource prefix="/sioul/icon">
-    <file alias="16.png">../../data/icons/hicolor/16x16/apps/sioul.png</file>
-    <file alias="22.png">../../data/icons/hicolor/22x22/apps/sioul.png</file>
-    <file alias="24.png">../../data/icons/hicolor/24x24/apps/sioul.png</file>
-    <file alias="32.png">../../data/icons/hicolor/32x32/apps/sioul.png</file>
-    <file alias="48.png">../../data/icons/hicolor/48x48/apps/sioul.png</file>
-    <file alias="64.png">../../data/icons/hicolor/64x64/apps/sioul.png</file>
-    <file alias="128.png">../../data/icons/hicolor/128x128/apps/sioul.png</file>
-    <file alias="256.png">../../data/icons/hicolor/256x256/apps/sioul.png</file>
+    <file alias="16.png">../../data/icons/hicolor/16x16/apps/com.aurelienpierre.Sioul.png</file>
+    <file alias="22.png">../../data/icons/hicolor/22x22/apps/com.aurelienpierre.Sioul.png</file>
+    <file alias="24.png">../../data/icons/hicolor/24x24/apps/com.aurelienpierre.Sioul.png</file>
+    <file alias="32.png">../../data/icons/hicolor/32x32/apps/com.aurelienpierre.Sioul.png</file>
+    <file alias="48.png">../../data/icons/hicolor/48x48/apps/com.aurelienpierre.Sioul.png</file>
+    <file alias="64.png">../../data/icons/hicolor/64x64/apps/com.aurelienpierre.Sioul.png</file>
+    <file alias="128.png">../../data/icons/hicolor/128x128/apps/com.aurelienpierre.Sioul.png</file>
+    <file alias="256.png">../../data/icons/hicolor/256x256/apps/com.aurelienpierre.Sioul.png</file>
 </qresource>
 </RCC>

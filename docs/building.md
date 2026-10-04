@@ -31,12 +31,13 @@ To find it in the application menu:
 ```
 install -Dm755 target/release/sioul-app ~/.local/bin/sioul-app
 install -Dm755 target/release/sioul ~/.local/bin/sioul
-install -Dm644 data/sioul.desktop ~/.local/share/applications/sioul.desktop
+install -Dm644 data/com.aurelienpierre.Sioul.desktop ~/.local/share/applications/com.aurelienpierre.Sioul.desktop
+install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml ~/.local/share/metainfo/com.aurelienpierre.Sioul.metainfo.xml
 mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 ```
 
 ## The icon
-The drawings are in `data/icons/`: `sioul.svg`, `sioul-small.svg` (drawn for 32 pixels and under), `sioul-symbolic.svg` (one colour, the desktop's), and the quill alone for pages (`sioul-mark.svg`, `sioul-mark-on-dark.svg`). `tools/make-icons.py` (needs `rsvg-convert`) makes from them the icon theme folders a Linux desktop reads (`data/icons/hicolor/`), the Windows `.ico` and the macOS `.icns` in `packaging/`, and the website's favicon and logo; the window carries the PNGs (`crates/sioul-app/app.qrc`, `cpp/appicon.cpp`). Run it again after changing a drawing.
+The drawings are in `data/icons/`: `sioul.svg`, `sioul-small.svg` (drawn for 32 pixels and under), `sioul-symbolic.svg` (one colour, the desktop's), and the quill alone for pages (`sioul-mark.svg`, `sioul-mark-on-dark.svg`). `tools/make-icons.py` (needs `rsvg-convert`) makes from them the icon theme folders a Linux desktop reads (`data/icons/hicolor/`, under the application's id, `com.aurelienpierre.Sioul`, as its desktop file, `data/com.aurelienpierre.Sioul.desktop`, and its AppStream file, `data/com.aurelienpierre.Sioul.metainfo.xml`, which software centres read), the Windows `.ico` and the macOS `.icns` in `packaging/`, and the website's favicon and logo; the window carries the PNGs (`crates/sioul-app/app.qrc`, `cpp/appicon.cpp`). Run it again after changing a drawing.
 
 ## First steps
 1. **Add your mail accounts**, in the window (Accounts, the person at the bottom of the side bar) or from the terminal:

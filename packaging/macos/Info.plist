@@ -10,6 +10,7 @@
   <key>CFBundleIdentifier</key><string>com.aurelienpierre.Sioul</string>
   <key>CFBundleExecutable</key><string>sioul-app</string>
   <key>CFBundleIconFile</key><string>sioul</string>
+  <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Aurélien Pierre. GPL-3.0-or-later.</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.0.1</string>
   <key>CFBundleVersion</key><string>1</string>

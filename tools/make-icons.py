@@ -13,7 +13,8 @@ drawings in data/icons/:
 Writes, from them:
 
 - data/icons/hicolor/: the icon theme folders a Linux desktop reads
-  (scalable, symbolic, and PNGs from 16 to 512 pixels);
+  (scalable, symbolic, and PNGs from 16 to 512 pixels), under the
+  application's id, com.aurelienpierre.Sioul;
 - packaging/windows/sioul.ico and packaging/macos/sioul.icns;
 - website/docs/assets/images/: the favicon (SVG, and PNG for older
   browsers), the logo, and the icon Apple's systems put on a home screen.
@@ -33,6 +34,9 @@ ROOT = Path(__file__).resolve().parent.parent
 ICONS = ROOT / "data" / "icons"
 HICOLOR = ICONS / "hicolor"
 SITE = ROOT / "website" / "docs" / "assets" / "images"
+# The application's id: its desktop file, its icon, what it tells the desktop
+# (QGuiApplication::setDesktopFileName), its AppStream file, its Flatpak.
+APP_ID = "com.aurelienpierre.Sioul"
 
 # Under 48 pixels the drawing made for small sizes reads better.
 SMALL = [16, 22, 24, 32]
@@ -90,10 +94,10 @@ def main() -> int:
     # The icon theme: the drawing itself, its one-colour form, and PNGs.
     if HICOLOR.exists():
         shutil.rmtree(HICOLOR)
-    write(HICOLOR / "scalable" / "apps" / "sioul.svg", (ICONS / "sioul.svg").read_bytes())
-    write(HICOLOR / "symbolic" / "apps" / "sioul-symbolic.svg", (ICONS / "sioul-symbolic.svg").read_bytes())
+    write(HICOLOR / "scalable" / "apps" / f"{APP_ID}.svg", (ICONS / "sioul.svg").read_bytes())
+    write(HICOLOR / "symbolic" / "apps" / f"{APP_ID}-symbolic.svg", (ICONS / "sioul-symbolic.svg").read_bytes())
     for size in SMALL + LARGE:
-        write(HICOLOR / f"{size}x{size}" / "apps" / "sioul.png", render(drawing_for(size), size))
+        write(HICOLOR / f"{size}x{size}" / "apps" / f"{APP_ID}.png", render(drawing_for(size), size))
     # Windows and macOS.
     write(ROOT / "packaging" / "windows" / "sioul.ico", ico([16, 20, 24, 32, 40, 48, 64, 256]))
     write(ROOT / "packaging" / "macos" / "sioul.icns", icns())

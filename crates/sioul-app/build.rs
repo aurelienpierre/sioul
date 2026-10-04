@@ -7,6 +7,7 @@
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
+    windows_details();
     let pages = [
         "qml/main.qml",
         "qml/PorchPage.qml",
@@ -95,4 +96,21 @@ fn main() {
         // Sioul's own icon, for its windows (tools/make-icons.py).
         .qrc("app.qrc")
         .build();
+}
+
+/// On Windows, the program's own icon and its details, as Explorer shows them
+/// in its properties (tools/make-icons.py makes the icon). Nothing elsewhere.
+fn windows_details() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+    let mut resource = winresource::WindowsResource::new();
+    resource
+        .set_icon("../../packaging/windows/sioul.ico")
+        .set("ProductName", "Sioul")
+        .set("FileDescription", "Sioul, a calm place for mail, tasks and admin")
+        .set("CompanyName", "Aurélien Pierre")
+        .set("LegalCopyright", "Copyright © 2026 Aurélien Pierre. GPL-3.0-or-later.");
+    resource.compile().expect("the program's Windows resources (icon, details)");
+    println!("cargo::rerun-if-changed=../../packaging/windows/sioul.ico");
 }
