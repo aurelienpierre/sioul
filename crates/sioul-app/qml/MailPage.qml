@@ -507,22 +507,14 @@ Item {
                         color: page.theme.muted
                     }
                 }
-                TextField {
-                    id: search
-
-                    visible: !page.draftsShown
+                SearchField {
+                    visible: !page.draftsShown && !page.window.compact
                     // Narrower when the reader takes the room: a width of its own
                     // would push the row past the column, under the reader.
                     Layout.fillWidth: true
                     Layout.preferredWidth: 200
                     Layout.maximumWidth: 200
                     Layout.minimumWidth: 90
-                    placeholderText: page.sioul.text("ui-search")
-                    text: page.query
-                    onTextEdited: {
-                        page.query = search.text
-                        searching.restart()
-                    }
                 }
                 CheckBox {
                     id: realtime
@@ -544,6 +536,11 @@ Item {
                 }
             }
 
+            // On a phone, the search on a line of its own: the folder's name keeps the first.
+            SearchField {
+                visible: !page.draftsShown && page.window.compact
+                Layout.fillWidth: true
+            }
             Label {
                 visible: !page.draftsShown && page.shown !== null && page.shown.sentence !== ""
                 Layout.fillWidth: true
@@ -1097,6 +1094,18 @@ Item {
             enabled: rowMenu.source !== null && rowMenu.source.uri !== ""
             text: page.sioul.text("ui-link-existing")
             onTriggered: page.window.linkFrom(rowMenu.source)
+        }
+    }
+
+    // The folder's search: in the title's row, or under it on a phone.
+    component SearchField: TextField {
+        id: searchField
+
+        placeholderText: page.sioul.text("ui-search")
+        text: page.query
+        onTextEdited: {
+            page.query = searchField.text
+            searching.restart()
         }
     }
 }

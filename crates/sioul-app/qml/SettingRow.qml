@@ -115,8 +115,9 @@ ColumnLayout {
         }
     }
 
-    // What a source is for: work, your admin, leisure; any of them together.
-    RowLayout {
+    // What a source is for: work, your admin, leisure; any of them together,
+    // on more lines when the screen is narrow.
+    Flow {
         id: areaRow
 
         readonly property var on: field.setting.kind === "areas" ? String(field.setting.value).split("+") : []

@@ -101,6 +101,30 @@ static MONEY_RULES: Rules = Rules { keyed: &[Keyed { list: "ignored", by: &[], l
 static TODAY_RULES: Rules = Rules { keyed: &[Keyed { list: "aside", by: &[], local: &[] }], whole: &[], local: &[] };
 static TIME_RULES: Rules = Rules { keyed: &[Keyed { list: "session", by: &["start", "task", "project"], local: &[] }], whole: &[], local: &[] };
 static PLAIN_RULES: Rules = Rules { keyed: &[], whole: &[], local: &[] };
+// Projects and budgets, at the notes folder's root, when they travel here (`share_projects`).
+static CASES_RULES: Rules = Rules { keyed: &[Keyed { list: "case", by: &["id"], local: &[] }], whole: &[], local: &[] };
+// The bank's movements: each account by its id, each movement by its account and the bank's own id.
+static BANK_RULES: Rules = Rules {
+    keyed: &[Keyed { list: "account", by: &["id"], local: &[] }, Keyed { list: "movement", by: &["account", "id"], local: &[] }],
+    whole: &[],
+    local: &[],
+};
+static LEDGER_RULES: Rules = Rules {
+    keyed: &[
+        Keyed { list: "budget", by: &["id"], local: &[] },
+        Keyed { list: "preset", by: &["id"], local: &[] },
+        Keyed { list: "reserve", by: &["id"], local: &[] },
+        Keyed { list: "bank_account", by: &["id"], local: &[] },
+        Keyed { list: "assign", by: &["account", "movement"], local: &[] },
+        // No name of their own: each one is itself, so two devices adding some keep both.
+        Keyed { list: "line", by: &[], local: &[] },
+        Keyed { list: "cover", by: &[], local: &[] },
+        Keyed { list: "mail_rule", by: &[], local: &[] },
+        Keyed { list: "split", by: &[], local: &[] },
+    ],
+    whole: &[],
+    local: &[],
+};
 
 /// A file, or a folder of files, that is shared.
 #[derive(Debug)]
@@ -137,7 +161,7 @@ pub fn stores(config: &Config, roots: &Roots) -> Vec<Store> {
     let folder = |name: &str, path: PathBuf, shape: Shape, skip: &'static [&'static str]| Store { name: name.into(), path, folder: true, shape, skip };
     let senders = |chosen: &Option<String>, name: &str| chosen.as_deref().map_or_else(|| c.join(name), sioul_core::config::expand_home);
     let local = sioul_core::vdir::LOCAL;
-    vec![
+    let mut stores = vec![
         file("config/config.toml", c.join("config.toml"), Shape::Toml(&CONFIG_RULES)),
         file("config/known-senders.txt", senders(&config.known_senders, "known-senders.txt"), Shape::Lines),
         file("config/blocked-senders.txt", senders(&config.blocked_senders, "blocked-senders.txt"), Shape::Lines),
@@ -161,7 +185,17 @@ pub fn stores(config: &Config, roots: &Roots) -> Vec<Store> {
         file("state/watch-offers.json", s.join("watch-offers.json"), Shape::Whole),
         folder("state/shield/", s.join("shield"), Shape::Whole, &[]),
         folder("state/dav/local/", s.join("dav").join(local), Shape::Whole, &[]),
-    ]
+    ];
+    // Projects, budgets and the bank's movements, from the notes folder each device
+    // keeps where it likes, when no sync carries that folder.
+    if config.share_projects
+        && let Some(notes) = config.case_store_path()
+    {
+        stores.push(file("notes/sioul-cases.toml", notes.join(sioul_core::cases::MANIFEST), Shape::Toml(&CASES_RULES)));
+        stores.push(file("notes/sioul-budgets.toml", notes.join(sioul_core::budget::LEDGER), Shape::Toml(&LEDGER_RULES)));
+        stores.push(file("notes/sioul-bank.toml", notes.join(sioul_core::bank::MANIFEST), Shape::Toml(&BANK_RULES)));
+    }
+    stores
 }
 
 // ---------------------------------------------------------------- entries
@@ -1149,6 +1183,13 @@ mod tests {
             exchange(&Sharing { folder, computer: &self.id, key, memory: &self.memory }, &stores, now).unwrap()
         }
 
+        /// An exchange carrying the projects and budgets of `notes`, this computer's notes folder.
+        fn exchange_notes(&self, folder: &Path, key: &[u8; 32], now: i64, notes: &Path) -> Outcome {
+            let config = Config { share_projects: true, case_store: Some(notes.display().to_string()), ..Config::default() };
+            let stores = stores(&config, &self.roots);
+            exchange(&Sharing { folder, computer: &self.id, key, memory: &self.memory }, &stores, now).unwrap()
+        }
+
         fn write(&self, relative: &str, text: &str) {
             let path = self.path(relative);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1237,6 +1278,54 @@ mod tests {
         // Nothing changed: nothing goes out.
         assert_eq!(desk.exchange(&folder, &key, NOW + 6 * MINUTE).sent, 0);
         assert_eq!(laptop.exchange(&folder, &key, NOW + 7 * MINUTE).sent, 0);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn projects_and_budgets_travel_when_asked() {
+        let base = scratch("projects");
+        let folder = base.join("Nextcloud").join("Documents").join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+        let cases = |notes: &Path| std::fs::read_to_string(notes.join("sioul-cases.toml")).unwrap_or_default();
+        let ledger = |notes: &Path| std::fs::read_to_string(notes.join("sioul-budgets.toml")).unwrap_or_default();
+        let bank = |notes: &Path| std::fs::read_to_string(notes.join("sioul-bank.toml")).unwrap_or_default();
+        let movement = |id: &str, label: &str| format!("\n[[movement]]\naccount = \"main\"\ndate = 2026-10-01\namount = -20.0\nlabel = \"{label}\"\nid = \"{id}\"\n");
+        std::fs::create_dir_all(&desk_notes).unwrap();
+        std::fs::write(desk_notes.join("sioul-cases.toml"), "[[case]]\nid = \"acme\"\ntitle = \"Acme site\"\nstatus = \"open\"\n\n[[case.route]]\nfrom_domains = [\"acme.example\"]\n").unwrap();
+        std::fs::write(desk_notes.join("sioul-budgets.toml"), "[[budget]]\nid = \"home\"\ntitle = \"Home\"\n\n[[line]]\nbudget = \"home\"\ndate = \"2026-10-01\"\namount = -620.0\nlabel = \"Rent\"\n").unwrap();
+        std::fs::write(desk_notes.join("sioul-bank.toml"), format!("[[account]]\nid = \"main\"\ntitle = \"Main\"\nbalance = 1200.0\nas_of = 2026-10-01\n{}", movement("fitid-1", "Rent"))).unwrap();
+        desk.exchange_notes(&folder, &key, NOW, &desk_notes);
+
+        // The phone, with a notes folder of its own: the project, the budget and the bank come.
+        phone.exchange_notes(&folder, &key, NOW + MINUTE, &phone_notes);
+        assert!(cases(&phone_notes).contains("id = \"acme\"") && cases(&phone_notes).contains("acme.example"), "{}", cases(&phone_notes));
+        assert!(ledger(&phone_notes).contains("Rent"), "{}", ledger(&phone_notes));
+        assert!(bank(&phone_notes).contains("fitid-1") && bank(&phone_notes).contains("1200"), "{}", bank(&phone_notes));
+
+        // A line each, apart: both kept on both.
+        std::fs::write(desk_notes.join("sioul-budgets.toml"), format!("{}\n[[line]]\nbudget = \"home\"\ndate = \"2026-10-02\"\namount = -12.5\nlabel = \"Bread\"\n", ledger(&desk_notes))).unwrap();
+        std::fs::write(phone_notes.join("sioul-budgets.toml"), format!("{}\n[[line]]\nbudget = \"home\"\ndate = \"2026-10-02\"\namount = -3.2\nlabel = \"Coffee\"\n", ledger(&phone_notes))).unwrap();
+        // An export taken in on each: both movements on both.
+        std::fs::write(desk_notes.join("sioul-bank.toml"), format!("{}{}", bank(&desk_notes), movement("fitid-2", "Bread"))).unwrap();
+        std::fs::write(phone_notes.join("sioul-bank.toml"), format!("{}{}", bank(&phone_notes), movement("fitid-3", "Coffee"))).unwrap();
+        desk.exchange_notes(&folder, &key, NOW + 2 * MINUTE, &desk_notes);
+        phone.exchange_notes(&folder, &key, NOW + 3 * MINUTE, &phone_notes);
+        desk.exchange_notes(&folder, &key, NOW + 4 * MINUTE, &desk_notes);
+        for notes in [&desk_notes, &phone_notes] {
+            let text = ledger(notes);
+            assert!(text.contains("Rent") && text.contains("Bread") && text.contains("Coffee"), "{text}");
+            let mut ids: Vec<String> = sioul_core::bank::Bank::load(notes).unwrap().movements.into_iter().map(|m| m.id).collect();
+            ids.sort();
+            assert_eq!(ids, ["fitid-1", "fitid-2", "fitid-3"], "{}", bank(notes));
+        }
+
+        // Without the choice, a notes folder stays home.
+        let laptop = Computer::new(&base, "laptop");
+        laptop.write("config/config.toml", &format!("case_store = \"{}\"\n", base.join("laptop-notes").display()));
+        let config: Config = toml::from_str(&laptop.read("config/config.toml")).unwrap();
+        assert!(stores(&config, &laptop.roots).iter().all(|s| !s.name.starts_with("notes/")));
         let _ = std::fs::remove_dir_all(&base);
     }
 

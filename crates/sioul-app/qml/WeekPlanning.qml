@@ -119,7 +119,8 @@ ColumnLayout {
 
                 Layout.preferredWidth: planning.dayWidth
                 horizontalAlignment: Text.AlignHCenter
-                text: new Date(dayTitle.modelData.date + "T12:00:00").toLocaleDateString(planning.locale, "ddd d")
+                // Narrow days (a phone's week): the weekday above its number.
+                text: planning.dayWidth < 64 ? new Date(dayTitle.modelData.date + "T12:00:00").toLocaleDateString(planning.locale, "ddd") + "\n" + Number(dayTitle.modelData.date.slice(8, 10)) : new Date(dayTitle.modelData.date + "T12:00:00").toLocaleDateString(planning.locale, "ddd d")
                 textFormat: Text.PlainText
                 font.weight: dayTitle.modelData.today ? Font.Bold : Font.DemiBold
                 color: dayTitle.modelData.today ? planning.theme.accent : planning.theme.text

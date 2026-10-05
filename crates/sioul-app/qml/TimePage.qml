@@ -30,6 +30,9 @@ Item {
     // Quiet time: time noted for work waits behind a word, unless you ask.
     property bool anyway: false
     readonly property bool resting: page.window.moment.quiet && !page.anyway
+    // A narrow screen (a phone): the title and the choices under the arrows,
+    // each stretch of time on two lines.
+    readonly property bool narrow: page.width < 600
 
     function iso(d) {
         const pad = n => n < 10 ? "0" + n : String(n)
@@ -129,34 +132,33 @@ Item {
                     onClicked: page.move(1)
                 }
                 Label {
+                    visible: !page.narrow
                     Layout.fillWidth: true
-                    Layout.minimumWidth: implicitWidth
                     text: page.shown ? page.shown.title : ""
                     textFormat: Text.PlainText
                     font.pixelSize: 19
+                    elide: Text.ElideRight
                     color: page.theme.text
                 }
-                ComboBox {
-                    Layout.preferredWidth: 120
-                    model: page.periods.map(p => page.sioul.text("time-period-" + p))
-                    currentIndex: page.periods.indexOf(page.period)
-                    onActivated: index => page.period = page.periods[index]
+                Item {
+                    visible: page.narrow
+                    Layout.fillWidth: true
                 }
-                ComboBox {
-                    readonly property var choices: [{ id: "", title: page.sioul.text("time-all-projects") }].concat(page.projects)
-
+                PeriodChoice {
+                    visible: !page.narrow
+                    Layout.preferredWidth: 120
+                }
+                ProjectChoice {
+                    visible: !page.narrow
                     Layout.preferredWidth: 180
-                    model: choices.map(c => page.theme.plain(c.title))
-                    currentIndex: Math.max(0, choices.findIndex(c => c.id === page.project))
-                    onActivated: index => {
-                        page.project = choices[index].id
-                        page.reload()
-                    }
                 }
                 Button {
+                    Layout.preferredWidth: page.narrow ? 40 : -1
                     text: page.sioul.text("time-note")
                     icon.name: "chronometer-start"
                     icon.color: page.theme.text
+                    display: page.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+                    Accessible.name: page.sioul.text("time-note")
                     onClicked: timeDialog.begin(page.project)
                 }
                 // A project's billable time, as a spreadsheet.
@@ -170,12 +172,34 @@ Item {
                     onClicked: timeExport.begin(page.project)
                 }
             }
+            Label {
+                visible: page.narrow
+                Layout.fillWidth: true
+                text: page.shown ? page.shown.title : ""
+                textFormat: Text.PlainText
+                font.pixelSize: 19
+                wrapMode: Text.Wrap
+                color: page.theme.text
+            }
+            RowLayout {
+                visible: page.narrow
+                Layout.fillWidth: true
+                spacing: 6
+
+                PeriodChoice {
+                    Layout.preferredWidth: 120
+                }
+                ProjectChoice {
+                    Layout.fillWidth: true
+                }
+            }
 
             Label {
                 Layout.fillWidth: true
                 text: page.shown ? (page.shown.sentence !== "" ? page.shown.sentence : page.sioul.textWith("time-total", "time", page.shown.total)) : ""
                 textFormat: Text.PlainText
                 font.pixelSize: 16
+                wrapMode: Text.Wrap
                 color: page.shown && page.shown.sentence !== "" ? page.theme.muted : page.theme.text
             }
             Label {
@@ -251,25 +275,31 @@ Item {
                 }
             }
 
-            // Each project: its time, and what is left to bill.
+            // Each project: its time, and what is left to bill (under the
+            // title on a phone).
             Repeater {
                 model: page.shown ? page.shown.projects : []
 
-                delegate: RowLayout {
+                delegate: GridLayout {
                     id: line
 
                     required property var modelData
 
                     Layout.fillWidth: true
-                    spacing: 10
+                    columnSpacing: 10
+                    rowSpacing: 2
 
                     Rectangle {
+                        Layout.row: 0
+                        Layout.column: 0
                         Layout.preferredWidth: 12
                         Layout.preferredHeight: 12
                         radius: 3
                         color: page.colour(line.modelData.index)
                     }
                     Label {
+                        Layout.row: 0
+                        Layout.column: 1
                         Layout.fillWidth: true
                         text: line.modelData.title
                         textFormat: Text.PlainText
@@ -277,22 +307,34 @@ Item {
                         color: page.theme.text
                     }
                     Label {
+                        Layout.row: 0
+                        Layout.column: 2
                         text: line.modelData.minutes > 0 ? line.modelData.time : ""
                         textFormat: Text.PlainText
                         color: page.theme.text
                     }
-                    Label {
+                    RowLayout {
                         visible: line.modelData.unbilled !== ""
-                        text: page.sioul.textWith("project-to-bill", "time", line.modelData.unbilled) + (line.modelData.unbilled_amount !== "" ? " (" + line.modelData.unbilled_amount + ")" : "")
-                        textFormat: Text.PlainText
-                        color: page.theme.warm
-                    }
-                    Button {
-                        visible: line.modelData.billable && line.modelData.unbilled !== ""
-                        flat: true
-                        text: page.sioul.text("invoice-make")
-                        onClicked: {
-                            page.window.openProject(line.modelData.id)
+                        Layout.row: page.narrow ? 1 : 0
+                        Layout.column: page.narrow ? 1 : 3
+                        Layout.columnSpan: page.narrow ? 2 : 1
+                        Layout.fillWidth: page.narrow
+                        spacing: 10
+
+                        Label {
+                            Layout.fillWidth: page.narrow
+                            text: page.sioul.textWith("project-to-bill", "time", line.modelData.unbilled) + (line.modelData.unbilled_amount !== "" ? " (" + line.modelData.unbilled_amount + ")" : "")
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: page.theme.warm
+                        }
+                        Button {
+                            visible: line.modelData.billable
+                            flat: true
+                            text: page.sioul.text("invoice-make")
+                            onClicked: {
+                                page.window.openProject(line.modelData.id)
+                            }
                         }
                     }
                 }
@@ -325,11 +367,15 @@ Item {
                         }
                     }
 
-                    contentItem: RowLayout {
-                        spacing: 10
+                    contentItem: GridLayout {
+                        columnSpacing: 10
+                        rowSpacing: 2
 
                         Label {
-                            Layout.preferredWidth: 150
+                            Layout.row: 0
+                            Layout.column: 0
+                            Layout.preferredWidth: page.narrow ? -1 : 150
+                            Layout.fillWidth: page.narrow
                             text: entry.modelData.date
                             textFormat: Text.PlainText
                             elide: Text.ElideRight
@@ -337,12 +383,17 @@ Item {
                             color: page.theme.muted
                         }
                         Label {
+                            Layout.row: 0
+                            Layout.column: 1
                             Layout.preferredWidth: 60
                             text: entry.modelData.time
                             textFormat: Text.PlainText
                             color: page.theme.text
                         }
                         ColumnLayout {
+                            Layout.row: page.narrow ? 1 : 0
+                            Layout.column: page.narrow ? 0 : 2
+                            Layout.columnSpan: page.narrow ? 2 : 1
                             Layout.fillWidth: true
                             spacing: 0
 
@@ -365,6 +416,23 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // The period and the project shown: beside the title, or under it on a phone.
+    component PeriodChoice: ComboBox {
+        model: page.periods.map(p => page.sioul.text("time-period-" + p))
+        currentIndex: page.periods.indexOf(page.period)
+        onActivated: index => page.period = page.periods[index]
+    }
+    component ProjectChoice: ComboBox {
+        readonly property var choices: [{ id: "", title: page.sioul.text("time-all-projects") }].concat(page.projects)
+
+        model: choices.map(c => page.theme.plain(c.title))
+        currentIndex: Math.max(0, choices.findIndex(c => c.id === page.project))
+        onActivated: index => {
+            page.project = choices[index].id
+            page.reload()
         }
     }
 

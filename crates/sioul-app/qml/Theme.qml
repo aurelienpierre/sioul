@@ -36,7 +36,9 @@ QtObject {
     readonly property color warm: dark ? "#d4a56c" : "#8f6330"
     readonly property color forged: dark ? "#d38e70" : "#97573a"
     readonly property color focus: dark ? "#c9d9cf" : "#2f4a3d"
-    readonly property int gap: 16
+    // A phone held upright: narrower margins and spacing (main.qml says when).
+    property bool compact: false
+    readonly property int gap: compact ? 10 : 16
     readonly property int radius: 6
 
     // Long text (notes, mail, a task's notes): the family, size and spacing chosen in "Aa".

@@ -26,15 +26,17 @@ SioulWindow {
 
     property int page: 0
 
-    // The documentation's pictures (SIOUL_GRAB_STEPS=demo) are a landscape screen.
-    readonly property bool demoGrab: sioul.grabFolder() !== "" && sioul.grabSteps() === "demo"
+    // The documentation's pictures (SIOUL_GRAB_STEPS=demo) are a landscape screen;
+    // with SIOUL_GRAB_PHONE (or SIOUL_GRAB_STEPS=phone), a phone's: 412 by 891, its layout.
+    readonly property bool phoneGrab: sioul.grabFolder() !== "" && (sioul.grabSteps() === "phone" || sioul.grabPhone())
+    readonly property bool demoGrab: sioul.grabFolder() !== "" && sioul.grabSteps() === "demo" && !window.phoneGrab
 
-    width: window.demoGrab ? 1280 : 1100
+    width: window.phoneGrab ? 412 : window.demoGrab ? 1280 : 1100
     // Taller when saving images of the pages, so long pages show whole.
-    height: window.demoGrab ? 860 : sioul.grabFolder() ? 1500 : 760
+    height: window.phoneGrab ? 891 : window.demoGrab ? 860 : sioul.grabFolder() ? 1500 : 760
     // A phone's screen is the window, whatever its size.
-    minimumWidth: Qt.platform.os === "android" ? 0 : 680
-    minimumHeight: Qt.platform.os === "android" ? 0 : 480
+    minimumWidth: Qt.platform.os === "android" || window.phoneGrab ? 0 : 680
+    minimumHeight: Qt.platform.os === "android" || window.phoneGrab ? 0 : 480
     visible: true
     title: "Sioul"
     theme: theme
@@ -370,6 +372,7 @@ SioulWindow {
     Theme {
         id: theme
 
+        compact: window.compact
         // SIOUL_THEME=dark or light forces one, for the window's images.
         // SIOUL_THEME for the window's images, else the setting, else the system's colours.
         readonly property string chosen: sioul.forcedTheme() || (sioul.reading ? JSON.parse(sioul.reading).theme : "")
@@ -471,13 +474,39 @@ SioulWindow {
             property int step: 0
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
             // the Porch asking for them, and the budgets of every area together.
             // In French (make-demo.py --language fr), the same places, under its names.
             readonly property bool demoFrench: sioul.text("qt-locale") === "fr_FR"
+            // Each page in a phone's layout (SIOUL_GRAB_STEPS=phone), Settings scrolled too.
+            readonly property var phone: [
+                () => window.page = 0,
+                () => grabber.save("phone-porch"),
+                () => window.page = 1,
+                () => grabber.save("phone-tasks"),
+                () => window.page = 2,
+                () => grabber.save("phone-mail"),
+                () => window.page = 4,
+                () => grabber.save("phone-agenda"),
+                () => window.page = 5,
+                () => grabber.save("phone-contacts"),
+                () => window.page = 7,
+                () => grabber.save("phone-projects"),
+                () => window.page = 9,
+                () => grabber.save("phone-budgets"),
+                () => window.page = 11,
+                () => grabber.save("phone-accounts"),
+                () => window.page = 12,
+                () => grabber.save("phone-settings"),
+                () => window.parametersPage.scrollBy(0.5),
+                () => grabber.save("phone-settings-down"),
+                () => window.placesOpen = true,
+                () => grabber.save("phone-places"),
+                () => window.close()
+            ]
             readonly property var demo: [
                 () => window.page = 0,
                 () => {},
@@ -553,9 +582,11 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("projects"),
-                // Time: last week, a whole one, whatever the day.
+                // Time: last week, a whole one, whatever the day (and the hour:
+                // shown anyway in quiet time).
                 () => {
                     window.page = 8
+                    timePage.anyway = true
                     timePage.move(-1)
                 },
                 () => {},
@@ -1289,7 +1320,10 @@ SioulWindow {
             // A project's billable time written as a spreadsheet, then the Time page.
             readonly property var exportCsv: [
                 () => sioul.status = sioul.exportTimeCsv("studio", "2026-10-01", "2026-10-31", "file://" + grabber.folder + "/studio%20octobre.csv"),
-                () => window.page = 8,
+                () => {
+                    window.page = 8
+                    timePage.anyway = true
+                },
                 () => grabber.save("time"),
                 () => window.close()
             ]
@@ -1538,7 +1572,10 @@ SioulWindow {
                 () => window.page = 7,
                 () => projectsPage.openFirst(),
                 () => grabber.save("projects"),
-                () => window.page = 8,
+                () => {
+                    window.page = 8
+                    timePage.anyway = true
+                },
                 () => grabber.save("time"),
                 () => window.page = 9,
                 () => grabber.save("budgets"),
@@ -1562,6 +1599,57 @@ SioulWindow {
 
             function save(name) {
                 frame.grabToImage(result => result.saveToFile(grabber.folder + "/" + name + ".png"))
+                if (window.phoneGrab)
+                    grabber.overflow(name)
+            }
+
+            // A phone's pictures: what passes the window's right edge, said in the log,
+            // the deepest items only (their containers pass it with them).
+            function overflow(name) {
+                const limit = window.width + 1
+                const passes = item => item.visible && item.width > 0 && item.mapToItem(null, item.width, 0).x > limit
+                // A chart scrolled sideways (the tasks' timeline) is wider on purpose.
+                const sideways = item => item.contentWidth !== undefined && item.contentX !== undefined && item.clip && item.contentWidth > item.width + 1
+                const walk = (item, depth) => {
+                    if (depth > 60)
+                        return
+                    let deeper = false
+                    for (let i = 0; !sideways(item) && i < item.children.length; ++i) {
+                        const child = item.children[i]
+                        if (child.visible && walk(child, depth + 1))
+                            deeper = true
+                    }
+                    if (!passes(item))
+                        return deeper
+                    if (!deeper) {
+                        const words = item.text !== undefined ? " \"" + String(item.text).slice(0, 48) + "\"" : ""
+                        console.warn("OVERFLOW " + name + ": " + String(item).split("(")[0] + words + " right " + Math.round(item.mapToItem(null, item.width, 0).x))
+                    }
+                    return true
+                }
+                walk(window.contentItem, 0)
+                // The rows that widen their column: a row or grid wider, at its own
+                // width, than the screen (a column takes its widest row's width).
+                const words = item => {
+                    if (item.text !== undefined && String(item.text) !== "")
+                        return String(item.text).slice(0, 40)
+                    for (let i = 0; i < item.children.length; ++i) {
+                        const found = words(item.children[i])
+                        if (found !== "")
+                            return found
+                    }
+                    return ""
+                }
+                const wide = (item, depth) => {
+                    if (depth > 60 || !item.visible)
+                        return
+                    const kind = String(item).split("(")[0]
+                    if ((kind.indexOf("RowLayout") >= 0 || kind.indexOf("GridLayout") >= 0) && item.implicitWidth > window.width - 16)
+                        console.warn("WIDE " + name + ": " + kind + " " + Math.round(item.implicitWidth) + " \"" + words(item) + "\"")
+                    for (let i = 0; i < item.children.length; ++i)
+                        wide(item.children[i], depth + 1)
+                }
+                wide(window.contentItem, 0)
             }
 
             // An open menu or pop-up, which the frame leaves out.

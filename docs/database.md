@@ -4,7 +4,8 @@ Built: sharing through a folder your sync carries (Nextcloud, Dropbox, Syncthing
 
 ## What travels how
 - **By their servers**: mail (IMAP), contacts, events and tasks (CardDAV, CalDAV, Google), with what Sioul writes in each task (kinds, projects, links, steps, waits: RFC 9253).
-- **By their own folder**: the case store: projects and their routes (`sioul-cases.toml`), budgets (`sioul-budgets.toml`), notes, their pictures, PDFs and memos. Sioul does not carry them: a file carried twice, by the sync and by the log, would undo changes. The Settings page says when the case store seems outside every synced folder (Nextcloud's own list of folders, `~/Nextcloud`, `~/Dropbox`, `~/Sync`…).
+- **By their own folder**: the case store: projects and their routes (`sioul-cases.toml`), budgets and bank accounts (`sioul-budgets.toml`), the bank's movements (`sioul-bank.toml`), notes, their pictures, PDFs and memos. Sioul does not carry them: a file carried twice, by the sync and by the log, would undo changes. The Settings page says when the case store seems outside every synced folder (Nextcloud's own list of folders, `~/Nextcloud`, `~/Dropbox`, `~/Sync`…).
+- **By the log, when asked**: a notes folder no sync carries (a phone's: eDrive syncs only its own folders) sends its projects, budgets and bank movements through the log instead: Settings ▸ Your folder and sharing ▸ "Projects, budgets and the bank travel here too, sealed" (`share_projects`), ticked on one device: the setting travels to the others. The notes themselves stay.
 - **By the log**: what only this computer keeps:
 
 | File | Shared as |
@@ -18,6 +19,7 @@ Built: sharing through a folder your sync carries (Nextcloud, Dropbox, Syncthing
 | `health-state.toml`, `quiet.toml`, `today.toml`, `money.toml`, `porch.toml` | one entry per setting, mark, dose, word; each account's Porch mark whole |
 | `watch/` (a day each), `watch-offers.json` | one entry per file |
 | lists kept on this computer only (`calendars/local/`, `contacts/local/`, their state in `dav/local/`) | one entry per file |
+| with `share_projects`: `sioul-cases.toml`, `sioul-budgets.toml`, `sioul-bank.toml` from the notes folder | projects, budgets, presets, reserves and bank accounts one each (by id); a choice for one movement by its account and movement; lines, covers, mail rules and splits one each, as themselves; the bank's accounts by id, its movements by account and the bank's own id |
 
 - **Never**: where things are on each computer (the case store, a sender list's own path, each account's mail folder, the watch's folder, how far back mail goes), how text reads on this screen (`reading`), how pages are laid out (`tasks-view.toml`), this computer's browser notices, your own PGP keys (secret keys never leave the computer they were made on: copy them by hand), sync's state, caches, the keyring. Passwords and tokens stay in each computer's keyring: an account arriving from another computer asks for its password once.
 
@@ -49,7 +51,7 @@ A computer acts only once it has kept a part for a minute and a half, time for t
 - A note renamed in Sioul updates its links (tasks' LINK lines, `links.toml`); the other computer gets the new file from the folder, the new links from CalDAV and the log.
 
 ## Tested
-`cargo test -p sioul-sync share`: two computers joining (settings, accounts without their local paths, sender lists summed, a draft, a session), working apart (a session each in the same month, a setting each, a draft sent on one), the later word winning across two lists, a broken file left alone, the seal (wrong passphrase refused, nothing readable in the folder), rounds started again and old ones removed, a third computer joining from the latest round. In the window, two test setups sharing one folder: the first alone, the second finding the folder sealed and joining, the first hearing from the second.
+`cargo test -p sioul-sync share`: two computers joining (settings, accounts without their local paths, sender lists summed, a draft, a session), working apart (a session each in the same month, a setting each, a draft sent on one), the later word winning across two lists, a broken file left alone, the seal (wrong passphrase refused, nothing readable in the folder), rounds started again and old ones removed, a third computer joining from the latest round, a phone's notes folder getting projects, budgets and bank movements (`share_projects`) and both keeping what each added. In the window, two test setups sharing one folder: the first alone, the second finding the folder sealed and joining, the first hearing from the second.
 
 ## Not built
 - **A database server** carrying the same records, for those who want a server rather than a folder:

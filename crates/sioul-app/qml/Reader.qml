@@ -56,13 +56,18 @@ Panel {
     readonly property string role: reading && reading.role ? reading.role : ""
     // Narrow: the actions show their icons only, their names on hover, as
     // soon as their names would not fit in the row (French ones are longer).
-    readonly property bool compact: reader.namedActionsWidth > reader.availableWidth
-    readonly property real namedActionsWidth: {
-        const named = [replyButton, replyAllButton, forwardButton, addButton, linkButton, archiveButton, trashButton, junkButton].filter(b => b.visible)
-        return named.reduce((sum, b) => sum + b.wideWidth, 0) + readingButton.implicitWidth + moreButton.implicitWidth + (named.length + 2) * actionRow.spacing
-    }
+    // Narrower still (a phone): "junk" goes in the menu under ⋮.
+    readonly property bool compact: reader.actionsWidth(b => b.wideWidth) > reader.availableWidth
+    readonly property bool tight: reader.actionsWidth(b => b.narrowWidth) > reader.availableWidth
 
     signal closeRequested
+
+    // The row's width, each action as wide as `width` says. "Junk" counts
+    // whether it shows or not: it hides when the row is too narrow.
+    function actionsWidth(width) {
+        const named = [replyButton, replyAllButton, forwardButton, addButton, linkButton, archiveButton, trashButton].filter(b => b.visible).concat([junkButton])
+        return named.reduce((sum, b) => sum + width(b), 0) + readingButton.implicitWidth + moreButton.implicitWidth + (named.length + 2) * actionRow.spacing
+    }
 
     function trustColor(level) {
         return level === "verified" ? reader.theme.accent : level === "forged" ? reader.theme.forged : reader.theme.muted
@@ -254,6 +259,7 @@ Panel {
 
                 theme: reader.theme
                 compact: reader.compact
+                visible: !reader.tight
                 iconName: reader.role === "junk" ? "mail-mark-notjunk" : "mail-mark-junk"
                 label: reader.role === "junk" ? reader.sioul.text("ui-not-junk") : reader.sioul.text("ui-junk")
                 onClicked: reader.act(reader.role === "junk" ? "not-junk" : "junk")
@@ -304,6 +310,13 @@ Panel {
         SioulMenu {
             id: more
 
+            // On a phone, where the row has no room for it.
+            MenuItem {
+                visible: reader.tight
+                height: visible ? implicitHeight : 0
+                text: junkButton.label
+                onTriggered: reader.act(reader.role === "junk" ? "not-junk" : "junk")
+            }
             MenuItem {
                 text: reader.unread ? reader.sioul.text("ui-mark-read") : reader.sioul.text("ui-mark-unread")
                 onTriggered: reader.act(reader.unread ? "read" : "unread")

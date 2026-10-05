@@ -31,7 +31,7 @@ The first time, a copy of what this computer had is kept aside, in case. Then th
 
 From then on, changes are exchanged each minute, and when you choose **Refresh everything** or **Exchange now**. The panel says through which folder you share, with how many other computers, and when they were last heard from. **Stop sharing** ends it; each computer keeps its own files.
 
-Your notes folder travels by its own sync, not by Sioul. If it does not seem to be inside a synced folder, the panel says so: your other computer would not see your notes and projects. Moved into one (and chosen again in Settings), they travel too.
+Your notes folder travels by its own sync, not by Sioul. If it does not seem to be inside a synced folder, the panel says so: your other computer would not see your notes and projects. Moved into one (and chosen again in Settings), they travel too. Or let Sioul carry the projects, budgets and bank: see below.
 
 ## On a phone
 
@@ -40,6 +40,7 @@ Sioul for Android shares the same way, through the folder your phone's sync app 
 - **Where**: some sync apps carry only a few folders. Murena's eDrive carries your cloud's **Documents** (with Pictures, Music…), not the rest of it: share through a folder inside Documents, such as `Documents/Sioul`. Sioul suggests one there when your synced folder has a Documents folder, and says so when the one chosen is outside it.
 - **On the phone**: Settings ▸ Your folder and sharing, **Allow access to files** (Android's switch), then **Choose…** the folder, your passphrase, **Share**.
 - **Accounts** come without their passwords: each asks for its own once, typed or [from Bitwarden](accounts.md#an-account-from-your-other-device).
+- **Projects, budgets and the bank**: the phone keeps a notes folder of its own, which no sync carries. Tick **Projects, budgets and the bank travel here too, sealed** in the same panel, on any of your devices (the choice reaches the others): your projects, budgets, bank accounts and the bank's movements then travel sealed with the rest. Your notes, papers and their files stay where they are.
 - **eDrive's pace**: it brings the cloud's changes about every half hour, sooner when you sync your Murena account by hand; the phone's own changes go up at once. It never deletes on one side what was deleted on the other: the old rounds Sioul clears stay on the phone, and are not read again.
 
 ## Sealed

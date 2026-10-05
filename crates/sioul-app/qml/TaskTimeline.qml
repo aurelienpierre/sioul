@@ -23,7 +23,8 @@ ColumnLayout {
     // Narrower days when that shows the whole plan, never under 20 pixels.
     readonly property int dayWidth: Math.max(20, Math.min(30, Math.floor((timeline.width - timeline.titleWidth - 12) / Math.max(1, timeline.days.length))))
     readonly property int rowHeight: 30
-    readonly property int titleWidth: 240
+    // The titles' column: narrower on a phone, for the days.
+    readonly property int titleWidth: Math.max(120, Math.min(240, Math.round(timeline.width * 0.4)))
     readonly property var days: timeline.timeline ? timeline.timeline.days : []
     readonly property var rows: timeline.timeline ? timeline.timeline.rows : []
 
@@ -35,6 +36,7 @@ ColumnLayout {
         Layout.fillWidth: true
         text: timeline.timeline ? timeline.timeline.note : ""
         textFormat: Text.PlainText
+        wrapMode: Text.Wrap
         color: timeline.theme.muted
     }
 

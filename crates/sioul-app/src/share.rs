@@ -183,6 +183,8 @@ struct Status {
     folder: String,
     /// The folder already holds a seal: the passphrase is typed once, not twice.
     sealed: bool,
+    /// Projects and budgets travel here too (`share_projects`).
+    projects: bool,
     lines: Vec<String>,
     problems: Vec<String>,
 }
@@ -235,7 +237,7 @@ pub(crate) fn status(folder: &str) -> String {
     {
         problems.push(say("share-outside", &[("store", shorten(&store))]));
     }
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), lines, problems })
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: load_config().share_projects, lines, problems })
 }
 
 fn problem_text(code: &str) -> String {
@@ -275,6 +277,12 @@ pub(crate) fn start(folder: &str, passphrase: &str, again: &str) -> String {
     let mut here = share::Here::load(&state);
     here.folder = Some(folder.to_string());
     here.save(&state).err().unwrap_or_default()
+}
+
+/// Projects and budgets carried through the sharing too, or not (a setting
+/// every device then follows); "" when kept, else why not.
+pub(crate) fn set_projects(on: bool) -> String {
+    sioul_core::config::set_value(&crate::backend::config_path(), "share_projects", &sioul_core::config::SettingValue::Bool(on)).err().unwrap_or_default()
 }
 
 /// Stops sharing here: the key forgotten, the folder left as it is for the others.

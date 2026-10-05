@@ -23,6 +23,9 @@ ColumnLayout {
     property date anchor: new Date()
     property var shown: null
     readonly property var steps: ["day", "week", "month", "year"]
+    // A narrow screen (a phone): the title under the arrows, each date under its line.
+    readonly property bool narrow: detail.width < 560
+    readonly property string inOut: detail.shown ? detail.sioul.text("budget-in") + " " + detail.shown.money_in + "   " + detail.sioul.text("budget-out") + " " + detail.shown.money_out : ""
 
     signal back
 
@@ -67,6 +70,7 @@ ColumnLayout {
             onClicked: detail.back()
         }
         Label {
+            visible: !detail.narrow
             Layout.fillWidth: true
             text: detail.shown ? detail.shown.card.title + "  ·  " + detail.shown.period_title : ""
             textFormat: Text.PlainText
@@ -74,11 +78,19 @@ ColumnLayout {
             elide: Text.ElideRight
             color: detail.theme.text
         }
+        Item {
+            visible: detail.narrow
+            Layout.fillWidth: true
+        }
         Button {
             flat: true
+            // The style's buttons are 100 pixels at least, their icon alone too.
+            Layout.preferredWidth: detail.narrow ? 40 : -1
             text: detail.sioul.text("ui-edit")
             icon.name: "document-edit"
             icon.color: detail.theme.text
+            display: detail.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+            Accessible.name: detail.sioul.text("ui-edit")
             onClicked: budgetDialog.edit(detail.budget, detail.shown)
         }
         Button {
@@ -100,6 +112,16 @@ ColumnLayout {
             Accessible.name: detail.sioul.text("agenda-later")
             onClicked: detail.move(1)
         }
+    }
+
+    Label {
+        visible: detail.narrow
+        Layout.fillWidth: true
+        text: detail.shown ? detail.shown.card.title + "  ·  " + detail.shown.period_title : ""
+        textFormat: Text.PlainText
+        font.pixelSize: 20
+        wrapMode: Text.Wrap
+        color: detail.theme.text
     }
 
     // How the period goes, at its pace.
@@ -155,7 +177,8 @@ ColumnLayout {
     }
 
     // The balance.
-    RowLayout {
+    Flow {
+        Layout.fillWidth: true
         spacing: 4
 
         Repeater {
@@ -200,7 +223,8 @@ ColumnLayout {
             color: detail.theme.text
         }
         Label {
-            text: detail.shown ? detail.sioul.text("budget-in") + " " + detail.shown.money_in + "   " + detail.sioul.text("budget-out") + " " + detail.shown.money_out : ""
+            visible: !detail.narrow
+            text: detail.inOut
             textFormat: Text.PlainText
             color: detail.theme.muted
             font.features: { "tnum": 1 }
@@ -211,6 +235,15 @@ ColumnLayout {
             icon.color: detail.theme.text
             onClicked: movementDialog.begin(detail.budget)
         }
+    }
+    Label {
+        visible: detail.narrow
+        Layout.fillWidth: true
+        text: detail.inOut
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: detail.theme.muted
+        font.features: { "tnum": 1 }
     }
     Repeater {
         model: detail.shown ? detail.shown.movements : []
@@ -236,6 +269,7 @@ ColumnLayout {
             }
 
             Label {
+                visible: !detail.narrow
                 Layout.preferredWidth: 170
                 text: move.modelData.date
                 textFormat: Text.PlainText
@@ -243,12 +277,26 @@ ColumnLayout {
                 font.pixelSize: 13
                 color: detail.theme.muted
             }
-            Label {
+            ColumnLayout {
                 Layout.fillWidth: true
-                text: move.modelData.label + (move.modelData.recurring ? "  ·  " + detail.sioul.text("budget-recurring") : "") + (move.modelData.planned ? "  ·  " + detail.sioul.text("budget-planned") : "")
-                textFormat: Text.PlainText
-                elide: Text.ElideRight
-                color: detail.theme.text
+                spacing: 0
+
+                Label {
+                    Layout.fillWidth: true
+                    text: move.modelData.label + (move.modelData.recurring ? "  ·  " + detail.sioul.text("budget-recurring") : "") + (move.modelData.planned ? "  ·  " + detail.sioul.text("budget-planned") : "")
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    color: detail.theme.text
+                }
+                Label {
+                    visible: detail.narrow
+                    Layout.fillWidth: true
+                    text: move.modelData.date
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    font.pixelSize: 12
+                    color: detail.theme.muted
+                }
             }
             Label {
                 text: move.modelData.amount

@@ -24,6 +24,12 @@ pub struct Config {
     pub theme: Option<String>,
     /// The folder of Markdown files that holds the record of each case.
     pub case_store: Option<String>,
+    /// Projects, budgets and the bank's movements (`sioul-cases.toml`,
+    /// `sioul-budgets.toml`, `sioul-bank.toml`) travel sealed with the sharing
+    /// between your devices, for a notes folder no sync carries; else they
+    /// travel with that folder (docs/database.md).
+    #[serde(default)]
+    pub share_projects: bool,
     /// A text file of senders you know: one address or `@domain` per line.
     pub known_senders: Option<String>,
     /// A text file of senders you blocked, in the same form.
@@ -764,9 +770,10 @@ impl Config {
         history_days(self.history_weeks)
     }
 
-    /// The case store's folder, with `~` expanded.
+    /// The case store's folder, with `~` expanded. On Android, unset: a folder
+    /// of the app's own storage, which no other app, nor any sync, reads.
     pub fn case_store_path(&self) -> Option<PathBuf> {
-        self.case_store.as_deref().map(expand_home)
+        self.case_store.as_deref().map(expand_home).or_else(|| cfg!(target_os = "android").then(|| expand_home("~/Notes")))
     }
 
     /// The known senders' file: `known_senders`, else `known-senders.txt` next to the configuration.

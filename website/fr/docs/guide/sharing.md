@@ -31,7 +31,7 @@ La première fois, une copie de ce qu’avait cet ordinateur est gardée de côt
 
 Ensuite, les changements s’échangent chaque minute, et quand vous choisissez **Tout actualiser** ou **Échanger maintenant**. Le panneau dit par quel dossier vous partagez, avec combien d’autres ordinateurs, et quand ils ont donné des nouvelles pour la dernière fois. **Arrêter le partage** y met fin ; chaque ordinateur garde ses propres fichiers.
 
-Votre dossier de notes voyage par sa propre synchronisation, pas par Sioul. S’il ne semble pas être dans un dossier synchronisé, le panneau le dit : votre autre ordinateur ne verrait pas vos notes et vos projets. Déplacés dans un dossier synchronisé (et choisis à nouveau dans Paramètres), ils voyagent aussi.
+Votre dossier de notes voyage par sa propre synchronisation, pas par Sioul. S’il ne semble pas être dans un dossier synchronisé, le panneau le dit : votre autre ordinateur ne verrait pas vos notes et vos projets. Déplacés dans un dossier synchronisé (et choisis à nouveau dans Paramètres), ils voyagent aussi. Ou laissez Sioul transporter les projets, les budgets et la banque : voir plus bas.
 
 ## Sur un téléphone {#on-a-phone}
 
@@ -40,6 +40,7 @@ Sioul pour Android partage de la même façon, par le dossier que l’applicatio
 - **Où** : certaines applications de synchronisation ne transportent que quelques dossiers. L’eDrive de Murena transporte le dossier **Documents** de votre cloud (avec Pictures, Music…), pas le reste : partagez par un dossier dans Documents, comme `Documents/Sioul`. Sioul en propose un là quand votre dossier synchronisé a un dossier Documents, et le dit quand celui choisi est en dehors.
 - **Sur le téléphone** : Paramètres ▸ Votre dossier et le partage, **Autoriser l’accès aux fichiers** (l’interrupteur d’Android), puis **Choisir…** le dossier, votre phrase de passe, **Partager**.
 - **Les comptes** arrivent sans leurs mots de passe : chacun demande le sien une fois, tapé ou [depuis Bitwarden](accounts.md#an-account-from-your-other-device).
+- **Les projets, les budgets et la banque** : le téléphone garde son propre dossier de notes, qu’aucune synchronisation ne transporte. Cochez **Les projets, les budgets et la banque voyagent aussi par ici, scellés** dans le même panneau, sur n’importe lequel de vos appareils (le choix rejoint les autres) : vos projets, vos budgets, vos comptes bancaires et les mouvements de la banque voyagent alors scellés avec le reste. Vos notes, vos papiers et leurs fichiers restent où ils sont.
 - **Le rythme d’eDrive** : il apporte les changements du cloud environ toutes les demi-heures, plus tôt quand vous synchronisez votre compte Murena à la main ; ceux du téléphone montent tout de suite. Il n’efface jamais d’un côté ce qui a été effacé de l’autre : les anciens tours que Sioul retire restent sur le téléphone, et ne sont pas relus.
 
 ## Scellé {#sealed}

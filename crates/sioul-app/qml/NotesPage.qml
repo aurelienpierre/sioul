@@ -21,6 +21,8 @@ Item {
     required property var theme
     required property var window
 
+    // A narrow screen (a phone): what is tied to a note goes under it.
+    readonly property bool narrow: page.width < 640
     readonly property var shown: page.sioul.notes ? JSON.parse(page.sioul.notes) : ({ missing: false, notes: [], recent: [], tree: false })
     property string path: ""
     property var note: null
@@ -486,10 +488,12 @@ Item {
                 color: page.theme.muted
             }
 
-            RowLayout {
+            GridLayout {
                 visible: page.note !== null
                 anchors.fill: parent
-                spacing: page.theme.gap
+                columns: page.narrow ? 1 : 2
+                columnSpacing: page.theme.gap
+                rowSpacing: page.theme.gap
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -661,10 +665,13 @@ Item {
                     }
                 }
 
-                // What is tied to it, and its unticked lines.
+                // What is tied to it, and its unticked lines: beside the note, or under
+                // it on a narrow screen, a third of the height at most.
                 ScrollView {
-                    Layout.fillHeight: true
-                    Layout.preferredWidth: 260
+                    Layout.fillHeight: !page.narrow
+                    Layout.fillWidth: page.narrow
+                    Layout.maximumHeight: page.narrow ? Math.round(page.height / 3) : Number.POSITIVE_INFINITY
+                    Layout.preferredWidth: page.narrow ? -1 : 260
                     contentWidth: availableWidth
                     clip: true
 

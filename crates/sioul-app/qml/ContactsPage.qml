@@ -195,21 +195,26 @@ Item {
                 }
                 Button {
                     visible: page.shown.can_add
+                    // As wide as what it shows: the style's buttons are 100 pixels at least.
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     text: page.sioul.text("ui-new-contact")
                     icon.name: "contact-new"
                     icon.color: page.theme.text
-                    // Narrow beside an open card: the icon alone, its name on hover.
-                    display: page.person === null ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    // Narrow beside an open card, or on a phone: the icon alone, its name on hover.
+                    display: page.person === null && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
                     ToolTip.text: text
+                    Accessible.name: text
                     onClicked: page.startNew()
                 }
                 // The list, or the map.
                 Button {
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     text: page.mapShown ? page.sioul.text("map-list") : page.sioul.text("map-show")
                     icon.name: page.mapShown ? "view-list-text" : "mark-location"
                     icon.color: page.theme.text
-                    display: page.person === null ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    display: page.person === null && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    Accessible.name: text
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
                     ToolTip.text: text
                     onClicked: page.mapShown = !page.mapShown
