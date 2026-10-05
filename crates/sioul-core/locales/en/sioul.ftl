@@ -1327,6 +1327,7 @@ bitwarden-none = Bitwarden keeps no login for this site.
 until-tomorrow = tomorrow at { $time }
 day-tomorrow = tomorrow
 mail-resting = Work mail rests until work comes back. It is all here if you look for it.
+mail-rest = At this hour mail rests: what the people you marked safe write comes to the Porch. The rest is all here if you look for it.
 set-account-area = What this address is for
 set-account-area-help = Its mail comes in the hours for what it is for: work, your admin, leisure, any of them together. Nothing ticked: work, so that it never reaches your evenings. Senders you marked safe, and codes, always come.
 area-work = Work
@@ -1549,6 +1550,7 @@ loss-labels = the labels of its addresses and numbers
 loss-birthday-no-year = a birthday without its year
 loss-vcard4 = what only vCard 4.0 holds (gender, anniversary, relations)
 mode-quiet = Work comes back { $until }.
+mode-rest = Rest until { $until }: only the people you marked safe reach you.
 mode-time-off = Time off{ $label ->
     [none] {""}
    *[other] {""}: { $label }
@@ -2333,7 +2335,7 @@ mode-admin-leisure = Admin and free time until { $until }: offices and bills, an
 set-windows-admin = Hours for your admin
 set-windows-admin-help = Your own admin comes forward then: offices, bills, letters, health errands. Once these are set, admin no longer comes in working hours, except calls to an office, which keep office hours.
 set-windows-leisure = Free time
-set-windows-leisure-help = Rest and leisure only: friends, family, chats, what you enjoy; neither work nor admin. Hours set for nothing are personal time: admin or leisure as you like, never work.
+set-windows-leisure-help = Rest and leisure only: friends, family, chats, what you enjoy; neither work nor admin. Hours set for nothing are rest: only the people you marked safe reach you, and the sites for leisure; no tasks, no projects, no time.
 set-reminders-gather = Sites' notifications gathered
 set-reminders-gather-help = What your sites notify waits, then comes in one notification at the times below, for the sites of those hours. A site in real time, and a call, come at once.
 set-reminders-gathered = Gathered at

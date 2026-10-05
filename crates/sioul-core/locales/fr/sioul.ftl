@@ -1342,6 +1342,7 @@ bitwarden-none = Bitwarden ne garde aucun identifiant pour ce site.
 until-tomorrow = demain à { $time }
 day-tomorrow = demain
 mail-resting = Le courrier du travail se repose jusqu’au retour du travail. Il est là si vous le cherchez.
+mail-rest = À cette heure, le courrier se repose : ce qu’écrivent les personnes marquées sûres vient au Porche. Le reste est là si vous le cherchez.
 set-account-area = À quoi sert cette adresse
 set-account-area-help = Son courrier vient aux heures de ce à quoi elle sert : travail, vos démarches, loisirs, plusieurs à la fois. Rien de coché : le travail, pour qu’il n’atteigne jamais vos soirées. Les expéditeurs marqués sûrs, et les codes, viennent toujours.
 area-work = Travail
@@ -1564,6 +1565,7 @@ loss-labels = les libellés de ses adresses et numéros
 loss-birthday-no-year = un anniversaire sans son année
 loss-vcard4 = ce que seul vCard 4.0 contient (genre, date anniversaire, relations)
 mode-quiet = Le travail revient { $until }.
+mode-rest = Repos jusqu’à { $until } : seules les personnes marquées sûres vous joignent.
 mode-time-off = Congés{ $label ->
     [none] {""}
    *[other] {""} : { $label }
@@ -2348,7 +2350,7 @@ mode-admin-leisure = Démarches et temps libre jusqu’à { $until } : organis
 set-windows-admin = Heures pour vos démarches
 set-windows-admin-help = Vos démarches viennent alors : organismes, factures, courriers, courses de santé. Une fois ces heures réglées, les démarches ne viennent plus pendant les heures de travail, sauf les appels à un bureau, qui gardent les heures de bureau.
 set-windows-leisure = Temps libre
-set-windows-leisure-help = Repos et loisirs seulement : amis, famille, discussions, ce qui vous plaît ; ni travail ni démarches. Les heures réglées pour rien sont du temps personnel : démarches ou loisirs à votre guise, jamais de travail.
+set-windows-leisure-help = Repos et loisirs seulement : amis, famille, discussions, ce qui vous plaît ; ni travail ni démarches. Les heures réglées pour rien sont du repos : seules les personnes marquées sûres vous joignent, avec les sites de loisirs ; ni tâches, ni projets, ni temps.
 set-reminders-gather = Notifications des sites regroupées
 set-reminders-gather-help = Ce que vos sites notifient attend, puis vient en une seule notification aux heures ci-dessous, pour les sites de ces heures-là. Un site en temps réel, et un appel, viennent tout de suite.
 set-reminders-gathered = Regroupées à

@@ -461,36 +461,12 @@ Item {
     }
 
     // Work rests: one line, and the page behind it if you ask.
-    Rectangle {
+    RestCover {
         visible: page.resting
-        anchors.fill: parent
-        color: page.theme.background
-
-        // Nothing under it takes a click.
-        MouseArea {
-            anchors.fill: parent
-            acceptedButtons: Qt.AllButtons
-        }
-        ColumnLayout {
-            anchors.centerIn: parent
-            width: Math.min(parent.width - 2 * page.theme.gap, 480)
-            spacing: 10
-
-            Label {
-                Layout.fillWidth: true
-                text: page.window.moment.line
-                textFormat: Text.PlainText
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.Wrap
-                color: page.theme.muted
-            }
-            Button {
-                Layout.alignment: Qt.AlignHCenter
-                flat: true
-                text: page.sioul.text("ui-show-anyway")
-                onClicked: page.anyway = true
-            }
-        }
+        sioul: page.sioul
+        theme: page.theme
+        line: page.window.moment.line
+        onShown: page.anyway = true
     }
 
     TimeExport {

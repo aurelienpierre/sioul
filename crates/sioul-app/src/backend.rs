@@ -402,6 +402,10 @@ pub mod qobject {
         #[qinvokable]
         fn filter_tasks(self: Pin<&mut Sioul>, kind: &QString, category: &QString);
 
+        /// At rest, the tasks all the same ("Show anyway"), until the page is left.
+        #[qinvokable]
+        fn show_tasks_anyway(self: Pin<&mut Sioul>, on: bool);
+
         /// Reads tasks and notes again and shows them.
         #[qinvokable]
         fn refresh_work(self: Pin<&mut Sioul>);
@@ -1594,14 +1598,16 @@ pub(crate) fn mode_json() -> String {
         sioul_core::quiet::Reason::AdminTime if matches!(mode.time, sioul_core::areas::Time::Several(open) if open.leisure) => tr().text("mode-admin-leisure", Some(&args)),
         sioul_core::quiet::Reason::AdminTime => tr().text("mode-admin", Some(&args)),
         sioul_core::quiet::Reason::LeisureTime => tr().text("mode-leisure", Some(&args)),
-        // Evening, a day without work, a day closed early: said the same way.
+        // Evening, night, a day without hours: rest, until the next hours of any kind.
+        _ if mode.rests() => tr().text("mode-rest", Some(&args)),
+        // A day closed early.
         _ => tr().text("mode-quiet", Some(&args)),
     };
     // The day closed today can be taken back, that day only.
     let today = overrides.closed_today(&now);
     // Which hours are set: the Porch asks for them while none are.
     let set = |kind: &str| config.windows.iter().any(|w| w.kind() == kind);
-    serde_json::json!({ "quiet": mode.quiet, "time": mode.time.id(), "reason": reason, "until": until, "line": line, "hours": !config.week_hours().is_empty(), "work_hours": set("work"), "admin_hours": set("admin"), "leisure_hours": set("leisure"), "work_now": mode.reason == sioul_core::quiet::Reason::WorkNow, "today": today }).to_string()
+    serde_json::json!({ "quiet": mode.quiet, "rest": mode.rests(), "time": mode.time.id(), "reason": reason, "until": until, "line": line, "hours": !config.week_hours().is_empty(), "work_hours": set("work"), "admin_hours": set("admin"), "leisure_hours": set("leisure"), "work_now": mode.reason == sioul_core::quiet::Reason::WorkNow, "today": today }).to_string()
 }
 
 fn compute(shared: &Shared) -> Views {
@@ -1617,6 +1623,14 @@ fn compute(shared: &Shared) -> Views {
     if mode.time != sioul_core::areas::Time::Any {
         let area_of = |t: &sioul_core::porch::Triaged| t.card.account.as_deref().and_then(|id| world.config.account(id)).and_then(|a| a.area.as_deref()).and_then(sioul_core::areas::Area::parse).unwrap_or(sioul_core::areas::Area::WORK);
         items.retain(|t| sioul_core::quiet::mail_in_view(t, &world.senders, area_of(t), mode.time, mode.week));
+    }
+    // At rest no project shows: what your safe senders wrote about one comes among the people you know.
+    if mode.rests() {
+        for t in &mut items {
+            if matches!(t.lane, sioul_core::porch::Lane::Case(_)) {
+                t.lane = sioul_core::porch::Lane::People;
+            }
+        }
     }
     let mut porch = view::porch(&items, &world.config, world.store.as_ref(), tr(), &now, shared.opened_anyway.load(Ordering::Relaxed) || mode.quiet);
     if mode.quiet {
@@ -2950,6 +2964,10 @@ impl qobject::Sioul {
 
     fn refresh_work(self: Pin<&mut Self>) {
         work::show_work(&self.qt_thread(), &self.shared());
+    }
+
+    fn show_tasks_anyway(self: Pin<&mut Self>, on: bool) {
+        work::show_anyway(&self.qt_thread(), &self.shared(), on);
     }
 
     fn task(&self, uid: &QString) -> QString {

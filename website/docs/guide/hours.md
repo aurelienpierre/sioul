@@ -30,14 +30,14 @@ Mail addresses are the one place nothing is guessed for you: saying what each ad
 
 In [Settings ▸ Hours](settings.md#hours), three weeks: **Working hours**, **Hours for your admin**, and **Free time**. Each day of each is on or off, with one range of hours or several (09:00–12:00 and 14:00–17:00, a lunch between). **Time off**, below them, takes holidays and sick leave.
 
-Hours set for none of them are **personal time**: not work, and nothing assumed about admin or leisure. Time off, and a day closed with "Done for today", are free time.
+Hours set for none of them are **rest**: only the people you marked safe reach you, with the sites for leisure; no tasks, no projects, no time. Time off, and a day closed with "Done for today", are free time.
 
 | In these hours | What comes forward | What waits |
 |---|---|---|
 | Working hours | work; your admin too, until admin has hours of its own; a call to an office, always | leisure |
 | Hours for your admin | your admin; work too, while work has no hours | leisure |
 | Free time | leisure, and nothing else | work and admin |
-| Personal time (evenings, days off) | your admin and leisure; work too, while work has no hours | calls to offices, which are closed |
+| Rest (outside all of them: nights, days without any) | mail from your safe senders, codes you asked for; sites for leisure | everything else: tasks, projects, time, your admin, work |
 | No hours set at all | everything, as before any were set | nothing |
 
 Hours may overlap: admin hours inside free time on a Saturday afternoon, say. Then what each of them brings comes, all together.
@@ -63,6 +63,17 @@ Quiet time is the evening, the days without working hours, time off, and the res
 
 One sentence in the status line says when work comes back: "Work comes back tomorrow at 09:00."
 
+## Rest
+
+Outside every hours you set (work, admin, free time), it is rest: the night, mostly. Only the people you marked safe reach you:
+
+- the Porch shows codes you asked for and mail from your safe senders, nothing about money or paper letters; a message from a safe sender about a project comes among the people you know;
+- every address folds on the Mail page;
+- only the sites for leisure are listed;
+- Tasks, Projects and Time wait behind one sentence and **Show anyway**; on Tasks, a thought can still be noted for later.
+
+The status line says until when: "Rest until 09:00: only the people you marked safe reach you."
+
 **The way back is never suggested.** It is there if you need it: the sentence in the status line opens a menu, with **Work half an hour more**, an hour, two hours, four hours; **Back to the usual hours**; or, the day you closed it, **Back to today's plan**.
 
 ## Work now
@@ -84,7 +95,7 @@ The Porch asks, in a card, for the hours not set yet, with **Set my hours**, whi
 
 - **A bank account used for both work and admin** comes in working hours and in admin hours, not in free time. Sioul does not split its movements between business and personal: that is for you, or your accountant. Keeping the business account apart keeps its alerts out of your evenings.
 - **Admin hours in the evening** leave calls to offices for working hours, when offices answer. If you would rather keep working hours for work, give admin a slot during the day, such as Tuesday from 14:00 to 16:00.
-- **Setting only admin hours** sets nothing aside for work: work still comes outside them, except in free time.
+- **Setting only admin hours** keeps work in them: work comes in admin hours while it has none of its own. Outside them, rest.
 
 ## Why it works this way
 

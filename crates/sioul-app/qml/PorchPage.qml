@@ -253,7 +253,8 @@ Item {
 
                     property var bank: null
 
-                    visible: page.view.open && money.bank !== null && (money.bank.week !== "" || money.bank.attention > 0)
+                    // At rest (outside every hours set), none: only your safe senders.
+                    visible: page.view.open && page.window.moment.rest !== true && money.bank !== null && (money.bank.week !== "" || money.bank.attention > 0)
                     Layout.fillWidth: true
                     spacing: 8
 
@@ -285,7 +286,7 @@ Item {
                 LettersSection {
                     id: letters
 
-                    visible: page.view.open && (letters.shown.letters.length > 0 || letters.shown.missing !== "")
+                    visible: page.view.open && page.window.moment.rest !== true && (letters.shown.letters.length > 0 || letters.shown.missing !== "")
                     Layout.fillWidth: true
                     sioul: page.sioul
                     theme: page.theme
@@ -575,16 +576,16 @@ Item {
                                         model: rules.rows
 
                                         delegate: Loader {
-                                            id: row
+                                            id: ruleRow
 
                                             required property var modelData
 
                                             Layout.fillWidth: true
                                             Layout.topMargin: 6
-                                            Component.onCompleted: row.setSource("SettingRow.qml", { setting: row.modelData, sioul: page.sioul, theme: page.theme })
+                                            Component.onCompleted: ruleRow.setSource("SettingRow.qml", { setting: ruleRow.modelData, sioul: page.sioul, theme: page.theme })
 
                                             Connections {
-                                                target: row.item
+                                                target: ruleRow.item
 
                                                 function onSave(key, value) {
                                                     const problem = page.sioul.setSetting(key, JSON.stringify(value))

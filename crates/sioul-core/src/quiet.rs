@@ -3,7 +3,9 @@
 
 //! Quiet time. Outside working hours, on days without any and during time
 //! off, work rests: nothing administrative or professional comes forward,
-//! only family, friends and what you enjoy. Two overrides, each until a time,
+//! only family, friends and what you enjoy. Outside every hours set (work,
+//! admin, free time: the night, mostly), rest: only the people you marked
+//! safe reach you, and the sites for leisure. Two overrides, each until a time,
 //! kept in `$XDG_STATE_HOME/sioul/quiet.toml`: working late keeps work in
 //! view; done for the day brings quiet early, until work comes back.
 //!
@@ -59,6 +61,13 @@ pub struct Mode {
     pub until: Option<Zoned>,
     /// The time off's word, when it is time off.
     pub label: String,
+}
+
+impl Mode {
+    /// Rest: hours are set, and none of them is open now (docs/areas.md).
+    pub fn rests(&self) -> bool {
+        self.time == Time::Personal
+    }
 }
 
 /// The overrides, each until a time (Unix seconds).
@@ -244,9 +253,10 @@ pub struct Situation {
 
 /// What the task pages keep now (docs/areas.md): what the hours are for, by
 /// each task's area (its own, else its categories and projects). A call to an
-/// office fits work and admin hours, never evenings, days off or free time:
-/// offices keep business hours. On holidays and once the day is closed, free
-/// time: only what is yours to enjoy, and what is yours either way (health).
+/// office fits work and admin hours, never free time: offices keep business
+/// hours. On holidays and once the day is closed, free time: only what is
+/// yours to enjoy, and what is yours either way (health). Outside every hours
+/// set (evenings, nights, days off), rest: no task at all.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct QuietTasks {
     pub time: Time,
@@ -257,6 +267,9 @@ pub struct QuietTasks {
 impl QuietTasks {
     /// Whether a task stays in view now.
     pub fn keeps(&self, task: &crate::tasks::Task) -> bool {
+        if self.time == Time::Personal {
+            return false;
+        }
         let area = self.areas.of(task);
         if task.office_hours && area.admin && !area.work {
             return self.time.offices();
@@ -314,10 +327,14 @@ pub fn personal_mail(triaged: &crate::porch::Triaged, senders: &crate::porch::Se
 /// Whether mail comes forward now (docs/areas.md): verified codes and the
 /// senders you marked safe always (who may reach you is the other axis);
 /// else as its address is for. An address for leisure and something else
-/// shows in free time only what your safe senders write: the rest may be admin or work.
+/// shows in free time only what your safe senders write: the rest may be admin
+/// or work. Outside every hours set, rest: your safe senders and codes alone.
 pub fn mail_in_view(triaged: &crate::porch::Triaged, senders: &crate::porch::Senders, account: Area, time: Time, week: Week) -> bool {
     if personal_mail(triaged, senders) {
         return true;
+    }
+    if time == Time::Personal {
+        return false;
     }
     // In free time alone, an address also for admin or work keeps to its safe senders.
     if time == Time::Leisure && (account.admin || account.work) {
@@ -441,17 +458,14 @@ mod tests {
         assert!(!personal_task(&task(&["you"], &["taxes"]), &personal, &["garden".into()]));
         let areas = TaskAreas { work_categories: vec!["travail".into()], work_cases: vec!["client-x".into()], ..TaskAreas::usual() };
         let week = Week { work_hours: true, admin_hours: false, leisure_hours: false };
-        // In the evening (personal time), your own admin too, without an office and without work.
-        let evening = QuietTasks { time: Time::Personal, week, areas: areas.clone() };
-        assert!(evening.keeps(&task(&[], &["taxes"])), "the online form for the taxes");
-        assert!(!evening.keeps(&crate::tasks::Task { office_hours: true, ..task(&[], &["taxes"]) }), "the call to the office");
-        assert!(!evening.keeps(&task(&["Travail"], &[])) && !evening.keeps(&task(&[], &["client-x"])));
-        assert!(!evening.keeps(&crate::tasks::Task { list_id: "local/github".into(), ..task(&[], &[]) }));
+        // Outside every hours set (the night), rest: no task at all, yours neither.
+        let night = QuietTasks { time: Time::Personal, week, areas: areas.clone() };
+        assert!(!night.keeps(&task(&[], &["taxes"])) && !night.keeps(&task(&["joy"], &[])) && !night.keeps(&task(&["Travail"], &[])));
         // On holidays and once the day is closed: free time, only what is yours.
-        let holidays = QuietTasks { time: Time::Leisure, ..evening.clone() };
+        let holidays = QuietTasks { time: Time::Leisure, ..night.clone() };
         assert!(!holidays.keeps(&task(&[], &["taxes"])) && holidays.keeps(&task(&["joy"], &[])) && holidays.keeps(&task(&["santé"], &[])));
         // Working hours without admin hours of its own: admin comes then, as it always did.
-        let working = QuietTasks { time: Time::Work, ..evening.clone() };
+        let working = QuietTasks { time: Time::Work, ..night.clone() };
         assert!(working.keeps(&task(&[], &["taxes"])) && working.keeps(&task(&["Travail"], &[])) && !working.keeps(&task(&["joy"], &[])));
         // Admin with hours of its own: it waits for them; a call to an office still fits the working day.
         let set = QuietTasks { time: Time::Work, week: Week { admin_hours: true, ..week }, areas };

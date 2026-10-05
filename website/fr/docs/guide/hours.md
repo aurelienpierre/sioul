@@ -30,14 +30,14 @@ Les adresses électroniques sont le seul endroit où rien n’est deviné à vot
 
 Dans [Paramètres ▸ Heures](settings.md#hours), trois semaines types : **Heures de travail**, **Heures pour vos démarches** et **Temps libre**. Chaque jour de chacune est activé ou non, d’une heure de début à une heure de fin. **Congés**, en dessous, reçoit les vacances et les arrêts maladie.
 
-Les heures qui ne sont réglées pour aucune d’elles sont du **temps personnel** : pas du travail, et rien de supposé entre démarches et loisirs. Les congés, et une journée close avec « Fini pour aujourd’hui », sont du temps libre.
+Les heures qui ne sont réglées pour aucune d’elles sont du **repos** : seules les personnes marquées sûres vous joignent, avec les sites de loisirs ; ni tâches, ni projets, ni temps. Les congés, et une journée close avec « Fini pour aujourd’hui », sont du temps libre.
 
 | Pendant ces heures | Ce qui vient | Ce qui attend |
 |---|---|---|
 | Heures de travail | le travail ; vos démarches aussi, tant qu’elles n’ont pas d’heures à elles ; un appel à un bureau, toujours | les loisirs |
 | Heures pour vos démarches | vos démarches ; le travail aussi, tant qu’il n’a pas d’heures | les loisirs |
 | Temps libre | les loisirs, et rien d’autre | le travail et les démarches |
-| Temps personnel (soirs, jours sans travail) | vos démarches et les loisirs ; le travail aussi, tant qu’il n’a pas d’heures | les appels aux bureaux, qui sont fermés |
+| Repos (hors de toutes ces heures : les nuits, les jours sans aucune) | le courrier de vos expéditeurs sûrs, les codes que vous avez demandés ; les sites de loisirs | tout le reste : tâches, projets, temps, vos démarches, le travail |
 | Aucune heure réglée | tout, comme avant tout réglage | rien |
 
 Les heures peuvent se chevaucher : des heures de démarches au milieu du temps libre un samedi après-midi, par exemple. Ce que chacune amène vient alors, tout ensemble.
@@ -63,6 +63,17 @@ Le calme, c’est le soir, les jours sans heures de travail, les congés, et le 
 
 Une phrase dans la ligne d’état dit quand le travail revient : « Le travail revient demain à 09:00. »
 
+## Le repos {#rest}
+
+Hors de toutes les heures que vous avez réglées (travail, démarches, temps libre), c’est le repos : la nuit, surtout. Seules les personnes marquées sûres vous joignent :
+
+- le Porche montre les codes que vous avez demandés et le courrier de vos expéditeurs sûrs, rien sur l’argent ni sur les lettres papier ; un message d’un expéditeur sûr sur un projet vient parmi les personnes que vous connaissez ;
+- toutes les adresses se replient sur la page Courrier ;
+- seuls les sites de loisirs sont listés ;
+- Tâches, Projets et Temps attendent derrière une phrase et **Montrer quand même** ; dans Tâches, une pensée peut encore être notée pour plus tard.
+
+La ligne d’état dit jusqu’à quand : « Repos jusqu’à 09:00 : seules les personnes marquées sûres vous joignent. »
+
 **Le retour au travail n’est jamais suggéré.** Il est là si vous en avez besoin : la phrase de la ligne d’état ouvre un menu, avec **Travailler encore une demi-heure**, une heure, deux heures, quatre heures ; **Revenir aux heures habituelles** ; ou, le jour même d’un « Fini pour aujourd’hui », **Reprendre le plan du jour**.
 
 ## Travailler maintenant {#work-now}
@@ -84,7 +95,7 @@ Le Porche demande, dans une carte, les heures pas encore réglées, avec **Régl
 
 - **Un compte bancaire utilisé à la fois pour le travail et les démarches** vient aux heures de travail et aux heures de démarches, pas en temps libre. Sioul ne répartit pas ses mouvements entre professionnel et personnel : c’est à vous de le faire, ou à votre comptable. Garder le compte professionnel à part tient ses alertes hors de vos soirées.
 - **Des heures de démarches le soir** laissent les appels aux bureaux pour les heures de travail, quand les bureaux répondent. Si vous préférez garder les heures de travail pour le travail, donnez aux démarches un créneau en journée, par exemple le mardi de 14:00 à 16:00.
-- **Ne régler que des heures de démarches** ne met rien de côté pour le travail : le travail vient toujours en dehors d’elles, sauf en temps libre.
+- **Ne régler que des heures de démarches** y garde le travail : il vient aux heures de démarches tant qu’il n’en a pas à lui. En dehors, repos.
 
 ## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
 

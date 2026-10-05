@@ -123,6 +123,15 @@ fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, cases: &
     settings
 }
 
+/// At rest, the tasks all the same: the page asked ("Show anyway"), until it is left.
+static SHOWN_ANYWAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) fn show_anyway(qt: &QtThread, shared: &Arc<Shared>, on: bool) {
+    if SHOWN_ANYWAY.swap(on, Ordering::Relaxed) != on {
+        show_work(qt, shared);
+    }
+}
+
 /// The moment, for the task pages: quiet or not, offices open or not.
 pub(crate) fn situation(cases: &[sioul_core::cases::Case]) -> sioul_core::quiet::Situation {
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
@@ -154,7 +163,9 @@ impl Desk {
         let situation = situation(&loaded.cases);
         let settings = settings(today.weather, &situation, &loaded.cases);
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
-        let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
+        // At rest no task shows, unless the page asked to see them all.
+        let anyway = situation.mode.rests() && SHOWN_ANYWAY.load(Ordering::Relaxed);
+        let filter = Filter { quiet: if anyway { None } else { situation.quiet_tasks() }, ..Filter::default() };
         let quiet = situation.mode.quiet;
         Desk { loaded, filter, offices: situation.offices, plan, today, sessions, spent, stopped, settings, quiet }
     }
