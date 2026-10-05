@@ -1005,7 +1005,7 @@ Item {
                 function begin(note) {
                     renameNoteForm.path = note.path
                     const name = note.path.split("/").pop()
-                    newName.text = note.kind === "text" || name.endsWith(".md") ? name.replace(/\.md$/, "") : name.replace(/\.[^.]*$/, "")
+                    newName.text = note.kind === "text" || /\.(md|txt)$/i.test(name) ? name.replace(/\.(md|txt)$/i, "") : name.replace(/\.[^.]*$/, "")
                     renameNoteForm.open()
                     newName.selectAll()
                     newName.forceActiveFocus()
