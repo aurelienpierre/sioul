@@ -251,7 +251,7 @@ fn invoices_held_elsewhere(shared: &Shared) -> Option<String> {
 }
 
 /// The lease's name for invoices' numbers.
-const INVOICES: &str = "invoices";
+pub(crate) const INVOICES: &str = "invoices";
 
 /// Invoices made on this computer from now on, on purpose; returns what to say.
 pub(crate) fn take_invoices(shared: &Shared) -> String {

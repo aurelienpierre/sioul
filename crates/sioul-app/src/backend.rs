@@ -625,6 +625,15 @@ pub mod qobject {
         #[qinvokable]
         fn touch(self: Pin<&mut Sioul>);
 
+        /// Put away on a phone: what was marked goes out, and the other devices
+        /// learn this one marks nothing until it is back (docs/health.md, "Knowing").
+        #[qinvokable]
+        fn going_away(self: Pin<&mut Sioul>);
+
+        /// Back on a phone: the claims say so at once, before the next minute.
+        #[qinvokable]
+        fn back_here(self: Pin<&mut Sioul>);
+
         /// The pause to move, the chats' limit: "movement.minutes", "chats.enabled"…
         #[qinvokable]
         fn set_health(self: Pin<&mut Sioul>, key: &QString, value: &QString) -> QString;
@@ -3458,13 +3467,19 @@ impl qobject::Sioul {
     }
 
     fn set_dose_taken(self: Pin<&mut Self>, key: &QString, taken: bool) {
-        crate::health::set_taken(&key.to_string(), taken);
+        let problem = crate::health::set_taken(&key.to_string(), taken);
+        if !problem.is_empty() {
+            tell(&self.qt_thread(), &self.shared(), problem);
+        }
         // Your other computers know at once.
         crate::share::exchange(&self.qt_thread(), &self.shared());
     }
 
     fn dose_not_taken(self: Pin<&mut Self>, key: &QString) {
-        crate::health::not_taken(&key.to_string());
+        let problem = crate::health::not_taken(&key.to_string());
+        if !problem.is_empty() {
+            tell(&self.qt_thread(), &self.shared(), problem);
+        }
         crate::share::exchange(&self.qt_thread(), &self.shared());
     }
 
@@ -3482,6 +3497,16 @@ impl qobject::Sioul {
 
     fn missed_doses(&self) -> QString {
         QString::from(&crate::health::missed())
+    }
+
+    fn going_away(self: Pin<&mut Self>) {
+        crate::share::closing();
+    }
+
+    fn back_here(self: Pin<&mut Self>) {
+        let now = jiff::Timestamp::now().as_second();
+        self.shared().active.store(now, std::sync::atomic::Ordering::Relaxed);
+        let _ = crate::share::keeper("health", sioul_sync::lease::Rule::FollowsYou, now, false);
     }
 
     fn touch(self: Pin<&mut Self>) {

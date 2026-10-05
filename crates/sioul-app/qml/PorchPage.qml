@@ -330,6 +330,17 @@ Item {
                                         }
                                     }
                                 }
+                                // Whether it was taken on another device is not known here: said, never guessed.
+                                Label {
+                                    visible: missedDose.modelData.doubt !== ""
+                                    Layout.columnSpan: missedDose.columns
+                                    Layout.fillWidth: true
+                                    text: missedDose.modelData.doubt
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 13
+                                    color: page.theme.warm
+                                }
                             }
                         }
                     }

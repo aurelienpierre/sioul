@@ -317,10 +317,55 @@ pub(crate) fn keeper(part: &str, rule: sioul_sync::lease::Rule, active: i64, tak
     let here = share::Here::load(&state_dir());
     let alone = sioul_sync::lease::Keeper::alone(&here.id);
     let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return (alone, false) };
-    match sioul_sync::lease::renew(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), active, take, rule) {
+    // The claim says how far this computer wrote its records: read that far, the others know all it marked.
+    let wrote = share::written(&memory_path(), &here.id);
+    match sioul_sync::lease::renew(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), active, take, rule, wrote) {
         Ok(keeper) => (keeper, false),
         Err(_) => (alone, true),
     }
+}
+
+/// The parts this computer claims (`keeper`): closed together.
+const PARTS: [&str; 3] = ["health", "notices", crate::projects::INVOICES];
+
+/// Sioul closes, or is put away on a phone: what was marked goes out at once
+/// (an exchange, waiting for one running), then its claims say it closed and
+/// how far it wrote, so the others know it marks nothing until it is back
+/// (docs/health.md, "Knowing").
+pub(crate) fn closing() {
+    let here = share::Here::load(&state_dir());
+    let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return };
+    let memory = memory_path();
+    {
+        let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let stores = share::stores(&load_config(), &share::Roots::here());
+        let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory };
+        let _ = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond());
+    }
+    let wrote = share::written(&memory, &here.id);
+    for part in PARTS {
+        let _ = sioul_sync::lease::close(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), wrote);
+    }
+}
+
+/// The others' claims on the doses, and what was read of their records: what
+/// this computer knows of the doses they marked (`health::know`). None when
+/// sharing is off.
+pub(crate) fn others_on_health() -> Option<(String, Vec<sioul_sync::lease::Claim>, share::Heard)> {
+    let here = share::Here::load(&state_dir());
+    let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
+    let claims = sioul_sync::lease::claims(&folder, &key, "health").into_iter().filter(|c| c.computer != here.id).collect();
+    Some((here.id.clone(), claims, share::heard(&memory_path(), &here.id)))
+}
+
+/// The doses' record read again from every computer's records at the next
+/// exchange, this computer forgetting it held it: one lost or broken here,
+/// started again empty, takes nothing out elsewhere. Waits for an exchange
+/// running. Returns what went wrong, else "".
+pub(crate) fn rebuild_health_record() -> String {
+    let here = share::Here::load(&state_dir());
+    let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    share::rebuild(&memory_path(), &here.id, &["state/health-state.toml"]).err().unwrap_or_default()
 }
 
 /// An exchange, when sharing is on: off the window's thread; the pages read
