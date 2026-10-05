@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! The room left on a disk, so fetching older mail never fills it.
+//! The room left on a disk, so fetching older mail, or your other devices'
+//! notes, never fills it.
 
 use std::path::Path;
 
@@ -38,6 +39,31 @@ fn platform(_path: &Path) -> Option<(u64, u64)> {
 /// What stays free whatever comes: 5 GB, or a twentieth of the disk if more.
 pub fn reserve(total: u64) -> u64 {
     (5u64 << 30).max(total / 20)
+}
+
+/// What the sharing leaves free when it writes your other devices' notes and
+/// papers, or keeps earlier versions: a quarter of a GB, or a hundredth of
+/// the disk if more. Less than the mail's reserve: these are yours, asked
+/// for; enough that the doses' record and Sioul's memory are always written.
+pub fn kept_free(total: u64) -> u64 {
+    (256u64 << 20).max(total / 100)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The room a test says there is, in its thread (enough, unless it says
+    /// otherwise: a test never depends on how full the disk running it is); none: the disk's own.
+    pub(crate) static ROOM: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(Some(u64::MAX)) };
+}
+
+/// Whether `bytes` more fit on the disk holding `path`, `kept_free` left free;
+/// yes when the system does not say.
+pub fn fits(path: &Path, bytes: u64) -> bool {
+    #[cfg(test)]
+    if let Some(room) = ROOM.with(std::cell::Cell::get) {
+        return room >= bytes;
+    }
+    space(path).is_none_or(|(free, total)| free.saturating_sub(kept_free(total)) >= bytes)
 }
 
 /// Bytes older mail may take now on the disk holding `path`: what is free

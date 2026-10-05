@@ -249,12 +249,13 @@ fn act_in(dir: &Path, stopped: &Path, action: &str, now: i64) -> Result<bool, St
 }
 
 /// A button of Android's notification, "pause", "resume" or "stop", pressed,
-/// Sioul's window running or not (TimeReceiver.java): what your other devices
-/// did is read first, so that a button a moment behind changes nothing of
-/// it; done as the window would; sent at once; the notification then put up
-/// as it follows, from here, in the order the buttons were pressed. Answers
-/// that note as JSON, "" when no session is left. Blocks while the sharing
-/// exchanges: never on Android's main thread.
+/// Sioul's window running or not (TimeReceiver.java): done here first, as the
+/// window would, so that nothing slow can lose it (Android lets the button go
+/// after a few seconds, and may stop Sioul then); then sent at once, with what
+/// your other devices did, in an exchange without notes and papers; the
+/// notification then put up as it follows, in the order the buttons were
+/// pressed. Answers that note as JSON, "" when no session is left. Blocks
+/// while the sharing exchanges: never on Android's main thread.
 ///
 /// # Safety
 /// `action` is null, or a zero-terminated text valid for the call.
@@ -263,12 +264,10 @@ pub unsafe extern "C" fn sioul_time_action(action: *const c_char) -> *mut c_char
     // SAFETY: as the caller promises.
     let action = unsafe { crate::alarms::key_of(action) };
     let answer = std::panic::catch_unwind(|| {
-        let _ = crate::share::exchange_here(false);
         let window = WINDOW.lock().ok().and_then(|w| w.clone());
         let window = window.as_ref().map(|(qt, shared)| (qt, shared));
-        if act(&action, window) {
-            let _ = crate::share::exchange_here(false);
-        }
+        act(&action, window);
+        let _ = crate::share::exchange_here(false);
         post(window).map(|note| crate::backend::json(&note)).unwrap_or_default()
     })
     .unwrap_or_else(|_| {

@@ -183,11 +183,18 @@ Item {
     function save() {
         if (!page.note || !page.dirty)
             return
-        const problem = page.sioul.saveNote(page.path, editor.text)
-        if (problem === "")
-            page.dirty = false
-        else
-            page.sioul.status = problem
+        const saved = JSON.parse(page.sioul.saveNote(page.path, editor.text, page.note.stamp || ""))
+        if (saved.problem !== "") {
+            page.sioul.status = saved.problem
+            return
+        }
+        page.dirty = false
+        page.note.stamp = saved.stamp
+        // Changed elsewhere meanwhile: this version went beside it, and is the one open.
+        if (saved.path !== page.path) {
+            page.path = saved.path
+            page.sioul.status = saved.kept
+        }
     }
 
     // "../plan.md#october" from "admin/letters.md" → "plan.md".
@@ -432,13 +439,6 @@ Item {
                             page.open(row.modelData.note.path)
                     }
 
-                    TapHandler {
-                        enabled: !row.heading && row.modelData.type !== "recent"
-                        acceptedButtons: Qt.RightButton
-                        onTapped: {
-                            if (row.folder)
-                                folderMenu.now().show(row.modelData.path)
-                            else
                     // On a touch screen, the menu comes at a long press; letting go then opens nothing.
                     onPressAndHold: {
                         row.Window.window.menuAt = row.mapToItem(null, row.pressX, row.pressY)
@@ -449,11 +449,18 @@ Item {
                         else
                             noteMenu.now().show(row.modelData.note)
                     }
+                    TapHandler {
+                        enabled: !row.heading && row.modelData.type !== "recent"
+                        acceptedButtons: Qt.RightButton
+                        // A touch has no buttons: on a touch screen, the row's long press.
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onTapped: {
+                            if (row.folder)
+                                folderMenu.now().show(row.modelData.path)
+                            else
                                 noteMenu.now().show(row.modelData.note)
                         }
                     }
-                        // A touch has no buttons: on a touch screen, the row's long press.
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
 
                     background: Rectangle {
                         color: !row.heading && (row.highlighted || row.hovered) ? page.theme.surface : "transparent"
@@ -787,6 +794,7 @@ Item {
             Dialog {
                 id: newNoteForm
 
+                parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
                 width: Math.min(440, page.width - 2 * page.theme.gap)
@@ -794,7 +802,6 @@ Item {
                 onAboutToShow: noteTitle.clear()
                 // Sioul's own buttons: Qt's standard ones ("OK", "Cancel") are not translated here.
                 footer: DialogButtonBox {
-                parent: Overlay.overlay
                     Button {
                         text: page.sioul.text("note-make")
                         highlighted: true
@@ -953,6 +960,7 @@ Item {
                     folderField.forceActiveFocus()
                 }
 
+                parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
                 width: Math.min(440, page.width - 2 * page.theme.gap)
@@ -960,7 +968,6 @@ Item {
                 footer: DialogButtonBox {
                     Button {
                         text: folderNameForm.verb
-                parent: Overlay.overlay
                         highlighted: true
                         DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                     }
@@ -1004,6 +1011,7 @@ Item {
                     newName.forceActiveFocus()
                 }
 
+                parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
                 width: Math.min(440, page.width - 2 * page.theme.gap)
@@ -1011,7 +1019,6 @@ Item {
                 footer: DialogButtonBox {
                     Button {
                         text: page.sioul.text("ui-rename")
-                parent: Overlay.overlay
                         highlighted: true
                         DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                     }

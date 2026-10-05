@@ -1885,7 +1885,7 @@ watch-morning-lighter = A lighter day
 
 ## Sharing with your other computers (Parameters)
 share-title = Between your computers
-share-help = Mail, contacts, the agenda and tasks on a server already reach your other computers, and projects and notes travel with their folder. What Sioul keeps on this computer alone (settings, who may write to you, ties, time, drafts, invoices, health, the watch, lists kept here) can travel too, through a folder your sync carries (Nextcloud, Dropbox, Syncthing), sealed with a passphrase: that folder's server never reads it.
+share-help = Mail, contacts, the agenda and tasks on a server already reach your other computers. The rest can travel through a folder your sync carries (Nextcloud, Dropbox, Syncthing), sealed with a passphrase, so that its server never reads it: what Sioul keeps on this computer (settings, who may write to you, time, drafts, invoices, health, the watch, lists kept here) and, when no sync carries them, your notes, projects and papers.
 share-off = Not shared: all of it stays on this computer.
 share-on = Shared through { $folder }.
 share-others = { $count ->
@@ -1894,10 +1894,8 @@ share-others = { $count ->
 }
 share-alone = No other computer yet: on the other one, choose the same folder and type the same passphrase.
 share-last = Last exchange here: { $when }.
-share-outside = Your projects and notes ({ $store }) do not seem to be in a folder your sync carries: the other computer would not see them. Moved into one (and chosen again in Settings ▸ Your folder and sharing), they travel too.
+share-outside = Your notes and projects ({ $store }) do not seem to be in a folder your sync carries: the other computer would not see them. Switch Notes, and Projects and money, on below to carry them through this folder, sealed; or move them into a synced folder (and choose it again in Settings ▸ Your folder and sharing).
 share-phones = A phone sees this folder only if its sync app carries it, and some carry only a few folders: Murena's eDrive carries Documents (with Pictures, Music…), not the rest of your cloud. To reach such a phone, share through a folder inside Documents: stop sharing, then choose one there.
-share-projects = Projects, budgets and the bank travel here too, sealed
-share-projects-help = For a notes folder no sync carries: its projects (sioul-cases.toml), budgets and bank accounts (sioul-budgets.toml) and the bank's movements (sioul-bank.toml) travel through this folder, sealed like the rest, each device keeping them in its own notes folder. Your notes themselves stay. Leave it off when your notes folder is synced: it carries them itself.
 folder-not-on-device = This folder is not on this device: choose one your sync app keeps its files in (Documents, with Murena's eDrive).
 folder-browser-title = Choose a folder
 folder-browser-up = Up
@@ -1925,6 +1923,87 @@ share-not-shared = Not shared: how pages are laid out on this screen, the folder
 share-found = Already shared by your other devices (pick one):
 share-files-access = To read the folder your sync app carries (eDrive, Syncthing, FolderSync…), Sioul needs Android's access to your files.
 share-files-allow = Allow access to files
+share-parts = What travels from this device
+share-parts-help = Each device chooses for itself. A part switched off here stays as it is on your other devices: nothing of it is taken out there. Switched on again, it joins as a new device would.
+share-part-settings = Settings and accounts
+share-part-settings-carries = Your settings and accounts (never their passwords), the ties between things, where the Porch was closed, mail you said is no payment.
+share-part-senders = Senders
+share-part-senders-carries = Who may write to you (known, blocked, safe, neutral), what the shield read, others' public keys.
+share-part-health = Health
+share-part-health-carries = Medicines, prescriptions and the doses taken.
+share-part-time = Time
+share-part-time-carries = Time noted, the session running, the day's choices, where you stopped, working late or done for the day.
+share-part-drafts = Drafts and invoices
+share-part-drafts-carries = Mail being written, invoices made.
+share-part-projects = Projects and money
+share-part-projects-carries = From your notes folder: projects and their mail routes, budgets, bank accounts and movements, contracts.
+share-part-watch = Watch
+share-part-watch-carries = Your watch's days.
+share-part-lists = Lists kept here
+share-part-lists-carries = Calendars and contacts kept on this device only.
+share-part-notes = Notes
+share-part-notes-carries = Your notes folder: notes, their pictures, PDFs and memos, scanned letters. Each file sealed apart, only what changed sent; files over 64 MB stay.
+share-part-papers = Papers
+share-part-papers-carries = The papers wallet and its files.
+share-part-carried = Your notes folder ({ $store }) is carried by a sync app already: carried here too, the two would undo each other's changes. To share it here, move it to a folder no sync carries, or leave it to that sync.
+share-part-sent = Last sent: { $when }.
+share-part-received = Last received: { $when }.
+share-part-quiet = Nothing exchanged yet.
+share-conflict = Two devices changed the same file: both versions are kept, the other one as “{ $copy }”.
+share-conflict-gone = A file changed here was taken out on another device: what changed is kept as “{ $copy }”.
+share-damaged = { $file } came damaged from another device: your copy here stays as it is until a whole one comes.
+share-too-big = { $file } is over 64 MB: it stays on this device.
+share-history-help = Before another device's change is written into a file here, the file as it was is kept on this device: the last 20 versions of each file, and all those of the last 30 days. They are never shared.
+share-history-show = Show earlier versions
+share-history-hide = Hide earlier versions
+share-history-empty = Nothing kept yet.
+share-versions = { $count ->
+    [one] One version
+   *[other] { $count } versions
+}
+share-put-back = Put back
+share-put-back-done = { $file } is back as it was ({ $when }). The file as it was just before is kept in the list too.
+share-history-more = { $count ->
+    [one] One more file, changed earlier: type part of its name to find it.
+   *[other] { $count } more files, changed earlier: type part of a name to find them.
+}
+share-history-filter = Find a file by its name
+share-put-back-whole = { $file } goes back as it was ({ $when }); the file as it is now is kept in the list.
+share-put-back-nothing = { $file } holds that version's entries already: nothing to put back.
+share-put-back-entries = { $file } as it was ({ $when }): { $changed ->
+    [one] one entry goes back to what it was
+   *[other] { $changed } entries go back to what they were
+}, { $returning ->
+    [one] one taken out since comes back
+   *[other] { $returning } taken out since come back
+}; { $kept ->
+    [one] one added since stays
+   *[other] { $kept } added since stay
+}, here and on your other devices.
+share-putting-back = Putting back…
+share-estimate = { $count ->
+    [one] One file
+   *[other] { $count } files
+}, { $size } in all, would travel from this device, each sealed apart; { $big ->
+    [0] none is too big.
+    [one] one over 64 MB stays.
+   *[other] { $big } over 64 MB stay.
+} Switch on?
+share-estimating = Counting what would travel…
+share-switch-on = Switch on
+share-vanished = { $count ->
+    [one] One file
+   *[other] { $count } files
+} went from { $folder } here at once: nothing of them is taken out on your other devices until you say so (a disk not mounted, a folder moved, an access withdrawn would look the same).
+share-vanished-confirm = Take them out everywhere
+share-older-copy = An older copy was put back here by hand (its date before the version last seen): that version is back, the older copy kept beside it as “{ $copy }”. To send an older version, use Put back below.
+share-missing = { $file } changed on another device a day ago, but its content has not come: is the sync app still carrying the sharing folder?
+share-no-room = { $file } waits: this device lacks room for it (and for the copy kept before it is written).
+share-name-clash = { $file } waits: another file here differs from it by case or accents only, which this device's storage takes for one.
+share-refused = { $file } is not written: its place goes through a link, or into the sharing folder or Sioul's own.
+share-not-text = { $file } stays here: its name is not text Sioul can carry.
+share-emptied = { $file } is empty here: nothing of it is taken out on your other devices for ten minutes.
+share-files-unreadable = Notes and papers wait: without Android's access to all your files, Sioul cannot see those other apps made, and would take them for gone.
 
 ## Reminders before dates
 reminder-event = { $when } · { $what }
@@ -2516,6 +2595,7 @@ audio-cannot-play = This sound cannot be played here ({ $why }).
 note-memo-failed = The memo could not be recorded ({ $why }).
 note-memo-no-microphone = The system keeps the microphone closed to Sioul: it is opened in the system's privacy settings.
 note-link-not-found = “{ $path }” is not in your notes folder.
+note-changed-elsewhere = This note changed elsewhere while you were writing: yours is kept beside it, as “{ $path }”.
 note-link-kept = Links like this one are not opened from a note: { $url }
 right-now-unverified = Its sender is not verified: use it only if you just asked this site for it.
 link-program = A program, a script or an installer: its folder opens instead, to start it from there if you trust it.

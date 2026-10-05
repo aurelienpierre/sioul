@@ -622,7 +622,8 @@ const SHOWN_EVERY: i64 = 15 * 60;
 
 /// At a dose's time, Android's alarm asks what to say (`alarms`), maybe with
 /// nothing on the screen. What your other devices marked is read first (the
-/// sync app asked to bring it); then, as the window would: taken, not taken
+/// sync app asked to bring it; an exchange without notes and papers, which
+/// never holds a dose back); then, as the window would: taken, not taken
 /// said, or reminded already: nothing; kept by another device you use: its
 /// turn, asked again after the wait for news; not known: after that wait,
 /// reminded with the doubt said first; else the dose. Recorded `reminded`

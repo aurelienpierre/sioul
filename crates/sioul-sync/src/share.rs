@@ -25,6 +25,14 @@
 //! from a passphrase (Argon2id) and kept in each computer's keyring. The
 //! folder and its server see which computer wrote, when and how much, never
 //! what.
+//!
+//! What is shared comes in parts (`PARTS`: settings, senders, health, time,
+//! drafts, projects, the watch, lists, notes, papers), each switched on or off
+//! on each device. Notes and papers travel one file at a time, each sealed
+//! apart in the folder (`blobs`), their records saying which content each file
+//! holds; two devices changing one file keep both versions. Before another
+//! device's change is written into a file here, the file as it was is kept on
+//! this device (`history`), to be put back.
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
@@ -56,6 +64,20 @@ const SILENT_DAYS: i64 = 180;
 /// out: one being written, a full disk or a crash never takes everything out
 /// everywhere at once.
 const EMPTIED_WAIT: i64 = 10 * 60_000;
+/// A line of a computer's records longer than this is none (the longest, a
+/// file whole of 16 MiB sealed in a line, is about 30 MiB): skipped as broken.
+const LONGEST_LINE: usize = 32 << 20;
+/// Records are read this much at a time, never a whole file.
+const READ_CHUNK: usize = 8 << 20;
+/// More files sealed apart than this gone from a folder at once (or three and
+/// more, past a fifth of it) are held, said, until you say to take them out.
+const MASS: usize = 10;
+const MINUTE: i64 = 60_000;
+const HOUR: i64 = 60 * MINUTE;
+const DAY: i64 = 24 * HOUR;
+
+/// The beginning of the names of folders whose files are sealed apart (`Shape::Files`).
+const FILES: &str = "files/";
 
 /// How a file divides into entries.
 #[derive(Debug, Clone, Copy)]
@@ -66,6 +88,9 @@ pub enum Shape {
     Lines,
     /// One entry per setting of a TOML file.
     Toml(&'static Rules),
+    /// The file whole, sealed apart in the folder (`blobs`), its record saying
+    /// which content it holds: notes, papers, their pictures and PDFs.
+    Files,
 }
 
 /// How a TOML file divides, beyond one entry per setting.
@@ -129,6 +154,34 @@ static LEDGER_RULES: Rules = Rules {
     whole: &[],
     local: &[],
 };
+static CONTRACTS_RULES: Rules = Rules { keyed: &[Keyed { list: "contract", by: &["id"], local: &[] }], whole: &[], local: &[] };
+static PAPERS_RULES: Rules = Rules { keyed: &[Keyed { list: "paper", by: &["id"], local: &[] }], whole: &[], local: &[] };
+/// In the notes folder, what the other parts carry: projects, budgets, the
+/// bank, contracts (projects), the papers' wallet and its folder (papers).
+const NOT_NOTES: &[&str] = &[
+    sioul_core::cases::MANIFEST,
+    sioul_core::budget::LEDGER,
+    sioul_core::bank::MANIFEST,
+    sioul_core::contracts::MANIFEST,
+    sioul_core::papers::MANIFEST,
+    sioul_core::papers::FOLDER,
+];
+
+/// The parts of what is shared, each switched on or off on each device
+/// (docs/database.md, "Parts"): settings and accounts, senders, health, time,
+/// drafts and invoices, projects and money, the watch, lists kept here, notes, papers.
+pub const PARTS: [&str; 10] = ["settings", "senders", "health", "time", "drafts", "projects", "watch", "lists", "notes", "papers"];
+
+/// Whether a device that never chose shares a part: what was shared before
+/// parts had switches, everything but notes and papers, and projects as the
+/// setting all devices followed then said (`share_projects`).
+pub fn shared_by_default(part: &str, config: &Config) -> bool {
+    match part {
+        "projects" => config.share_projects,
+        "notes" | "papers" => false,
+        _ => true,
+    }
+}
 
 /// A file, or a folder of files, that is shared.
 #[derive(Debug)]
@@ -139,8 +192,10 @@ pub struct Store {
     /// A folder: each file in it, and below, on its own.
     pub folder: bool,
     pub shape: Shape,
-    /// In a folder: names left out.
+    /// In a folder: names left out (of files sealed apart, at its top only).
     pub skip: &'static [&'static str],
+    /// The part it belongs to (`PARTS`).
+    pub part: &'static str,
 }
 
 /// The folders Sioul keeps its files in.
@@ -156,51 +211,91 @@ impl Roots {
     }
 }
 
-/// What is shared. Not shared: caches, how far each sync got, how pages are
-/// shown on this screen, the site notices of this computer's browser, your own
-/// PGP keys (secret keys never leave the computer they were made on).
+/// What is shared, each part as a device that never chose shares it (`shared_by_default`).
 pub fn stores(config: &Config, roots: &Roots) -> Vec<Store> {
+    stores_of(config, roots, &|part| shared_by_default(part, config))
+}
+
+/// What is shared of the parts `shares` keeps. Not shared: caches, how far
+/// each sync got, how pages are shown on this screen, the site notices of this
+/// computer's browser, your own PGP keys (secret keys never leave the computer
+/// they were made on).
+pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) -> Vec<Store> {
     let (c, d, s) = (&roots.config, &roots.data, &roots.state);
-    let file = |name: &str, path: PathBuf, shape: Shape| Store { name: name.into(), path, folder: false, shape, skip: &[] };
-    let folder = |name: &str, path: PathBuf, shape: Shape, skip: &'static [&'static str]| Store { name: name.into(), path, folder: true, shape, skip };
+    let file = |part: &'static str, name: &str, path: PathBuf, shape: Shape| Store { name: name.into(), path, folder: false, shape, skip: &[], part };
+    let folder = |part: &'static str, name: &str, path: PathBuf, shape: Shape, skip: &'static [&'static str]| Store { name: name.into(), path, folder: true, shape, skip, part };
     let senders = |chosen: &Option<String>, name: &str| chosen.as_deref().map_or_else(|| c.join(name), sioul_core::config::expand_home);
     let local = sioul_core::vdir::LOCAL;
     let mut stores = vec![
-        file("config/config.toml", c.join("config.toml"), Shape::Toml(&CONFIG_RULES)),
-        file("config/known-senders.txt", senders(&config.known_senders, "known-senders.txt"), Shape::Lines),
-        file("config/blocked-senders.txt", senders(&config.blocked_senders, "blocked-senders.txt"), Shape::Lines),
-        file("config/safe-senders.txt", c.join("safe-senders.txt"), Shape::Lines),
-        file("config/neutral-senders.txt", c.join("neutral-senders.txt"), Shape::Lines),
-        file("data/links.toml", d.join("links.toml"), Shape::Toml(&LINKS_RULES)),
-        file("data/health.toml", d.join("health.toml"), Shape::Toml(&HEALTH_RULES)),
-        file("data/time/running.toml", d.join("time").join("running.toml"), Shape::Whole),
-        folder("data/time/", d.join("time"), Shape::Toml(&TIME_RULES), &["running.toml"]),
-        folder("data/drafts/", d.join("drafts"), Shape::Whole, &[]),
-        folder("data/invoices/", d.join("invoices"), Shape::Whole, &[]),
-        folder("data/pgp/others/", d.join("pgp").join("others"), Shape::Whole, &[]),
-        folder("data/watch/", d.join("watch"), Shape::Whole, &["imported.json"]),
-        folder("data/calendars/local/", d.join("calendars").join(local), Shape::Whole, &[]),
-        folder("data/contacts/local/", d.join("contacts").join(local), Shape::Whole, &[]),
-        file("state/porch.toml", s.join("porch.toml"), Shape::Toml(&PORCH_RULES)),
-        file("state/money.toml", s.join("money.toml"), Shape::Toml(&MONEY_RULES)),
-        file("state/today.toml", s.join("today.toml"), Shape::Toml(&TODAY_RULES)),
-        file("state/quiet.toml", s.join("quiet.toml"), Shape::Toml(&PLAIN_RULES)),
-        file("state/stopped.toml", s.join("stopped.toml"), Shape::Toml(&PLAIN_RULES)),
-        file("state/health-state.toml", s.join("health-state.toml"), Shape::Toml(&PLAIN_RULES)),
-        file("state/watch-offers.json", s.join("watch-offers.json"), Shape::Whole),
-        folder("state/shield/", s.join("shield"), Shape::Whole, &[]),
-        folder("state/dav/local/", s.join("dav").join(local), Shape::Whole, &[]),
+        file("settings", "config/config.toml", c.join("config.toml"), Shape::Toml(&CONFIG_RULES)),
+        file("senders", "config/known-senders.txt", senders(&config.known_senders, "known-senders.txt"), Shape::Lines),
+        file("senders", "config/blocked-senders.txt", senders(&config.blocked_senders, "blocked-senders.txt"), Shape::Lines),
+        file("senders", "config/safe-senders.txt", c.join("safe-senders.txt"), Shape::Lines),
+        file("senders", "config/neutral-senders.txt", c.join("neutral-senders.txt"), Shape::Lines),
+        file("settings", "data/links.toml", d.join("links.toml"), Shape::Toml(&LINKS_RULES)),
+        file("health", "data/health.toml", d.join("health.toml"), Shape::Toml(&HEALTH_RULES)),
+        file("time", "data/time/running.toml", d.join("time").join("running.toml"), Shape::Whole),
+        folder("time", "data/time/", d.join("time"), Shape::Toml(&TIME_RULES), &["running.toml"]),
+        folder("drafts", "data/drafts/", d.join("drafts"), Shape::Whole, &[]),
+        folder("drafts", "data/invoices/", d.join("invoices"), Shape::Whole, &[]),
+        folder("senders", "data/pgp/others/", d.join("pgp").join("others"), Shape::Whole, &[]),
+        folder("watch", "data/watch/", d.join("watch"), Shape::Whole, &["imported.json"]),
+        folder("lists", "data/calendars/local/", d.join("calendars").join(local), Shape::Whole, &[]),
+        folder("lists", "data/contacts/local/", d.join("contacts").join(local), Shape::Whole, &[]),
+        file("settings", "state/porch.toml", s.join("porch.toml"), Shape::Toml(&PORCH_RULES)),
+        file("settings", "state/money.toml", s.join("money.toml"), Shape::Toml(&MONEY_RULES)),
+        file("time", "state/today.toml", s.join("today.toml"), Shape::Toml(&TODAY_RULES)),
+        file("time", "state/quiet.toml", s.join("quiet.toml"), Shape::Toml(&PLAIN_RULES)),
+        file("time", "state/stopped.toml", s.join("stopped.toml"), Shape::Toml(&PLAIN_RULES)),
+        file("health", "state/health-state.toml", s.join("health-state.toml"), Shape::Toml(&PLAIN_RULES)),
+        file("watch", "state/watch-offers.json", s.join("watch-offers.json"), Shape::Whole),
+        folder("senders", "state/shield/", s.join("shield"), Shape::Whole, &[]),
+        folder("lists", "state/dav/local/", s.join("dav").join(local), Shape::Whole, &[]),
     ];
-    // Projects, budgets and the bank's movements, from the notes folder each device
-    // keeps where it likes, when no sync carries that folder.
-    if config.share_projects
-        && let Some(notes) = config.case_store_path()
-    {
-        stores.push(file("notes/sioul-cases.toml", notes.join(sioul_core::cases::MANIFEST), Shape::Toml(&CASES_RULES)));
-        stores.push(file("notes/sioul-budgets.toml", notes.join(sioul_core::budget::LEDGER), Shape::Toml(&LEDGER_RULES)));
-        stores.push(file("notes/sioul-bank.toml", notes.join(sioul_core::bank::MANIFEST), Shape::Toml(&BANK_RULES)));
+    // From the notes folder each device keeps where it likes: projects,
+    // budgets, the bank's movements and contracts; the papers' wallet and its
+    // files; the notes themselves, each file sealed apart.
+    if let Some(notes) = config.case_store_path() {
+        stores.push(file("projects", "notes/sioul-cases.toml", notes.join(sioul_core::cases::MANIFEST), Shape::Toml(&CASES_RULES)));
+        stores.push(file("projects", "notes/sioul-budgets.toml", notes.join(sioul_core::budget::LEDGER), Shape::Toml(&LEDGER_RULES)));
+        stores.push(file("projects", "notes/sioul-bank.toml", notes.join(sioul_core::bank::MANIFEST), Shape::Toml(&BANK_RULES)));
+        stores.push(file("projects", "notes/sioul-contracts.toml", notes.join(sioul_core::contracts::MANIFEST), Shape::Toml(&CONTRACTS_RULES)));
+        stores.push(file("papers", "notes/sioul-papers.toml", notes.join(sioul_core::papers::MANIFEST), Shape::Toml(&PAPERS_RULES)));
+        stores.push(folder("papers", "files/papers/", notes.join(sioul_core::papers::FOLDER), Shape::Files, &[]));
+        stores.push(folder("notes", "files/notes/", notes, Shape::Files, NOT_NOTES));
     }
+    stores.retain(|store| shares(store.part));
     stores
+}
+
+/// What notes or papers would send from here, before their part is switched
+/// on: how many files, how many bytes, and how many stay (too big). Listed as
+/// an exchange lists them, nothing read through.
+pub fn estimate(stores: &[Store]) -> (usize, u64, usize) {
+    let (mut found, mut files, known) = (Found::default(), Vec::new(), BTreeMap::new());
+    for store in stores.iter().filter(|s| matches!(s.shape, Shape::Files) && s.path.is_dir()) {
+        Listing { store: &store.name, root: &store.path, skip: store.skip, known: &known, confirmed: false, files: &mut files, found: &mut found }.list(&store.path);
+    }
+    files.iter().filter_map(|(_, path)| std::fs::metadata(path).ok()).fold((0, 0, 0), |(count, bytes, big), meta| if meta.len() > crate::blobs::LARGEST { (count, bytes, big + 1) } else { (count + 1, bytes + meta.len(), big) })
+}
+
+/// The part a file of the records belongs to, whether this device shares it
+/// or not; none for a store this version does not know (its changes wait for
+/// a version that knows it).
+fn known_part(file: &str) -> Option<&'static str> {
+    static KNOWN: std::sync::OnceLock<Vec<(String, bool, &'static str)>> = std::sync::OnceLock::new();
+    let known = KNOWN.get_or_init(|| {
+        let roots = Roots { config: PathBuf::from("config"), data: PathBuf::from("data"), state: PathBuf::from("state") };
+        let config = Config { case_store: Some("notes".into()), ..Config::default() };
+        stores_of(&config, &roots, &|_| true).into_iter().map(|store| (store.name, store.folder, store.part)).collect()
+    });
+    known.iter().find(|(name, folder, _)| !folder && name == file).or_else(|| known.iter().filter(|(name, folder, _)| *folder && file.starts_with(name.as_str())).max_by_key(|(name, _, _)| name.len())).map(|(_, _, part)| *part)
+}
+
+/// A file's name in the records, as shown: without the folder Sioul keeps it in
+/// ("config/config.toml" → "config.toml", "files/notes/admin/lease.md" → "admin/lease.md").
+pub fn shown(file: &str) -> &str {
+    ["files/notes/", "files/", "config/", "data/", "state/", "notes/"].iter().find_map(|root| file.strip_prefix(root)).unwrap_or(file)
 }
 
 // ---------------------------------------------------------------- entries
@@ -219,14 +314,30 @@ struct Found {
     unknown: BTreeSet<String>,
     /// Each file's size, time and entries: a file unchanged is not read again.
     files: BTreeMap<String, Stat>,
+    /// Files sealed apart left here, too big to travel (`blobs::LARGEST`): said.
+    too_big: Vec<String>,
+    /// Folders of files sealed apart that list empty while they held files at
+    /// the last look, with how many they held: unknown, said.
+    emptied: Vec<(String, usize)>,
+    /// What else the look has to say (names that are not text).
+    said: Vec<String>,
 }
 
-/// A file as last read: its size, when it changed (nanoseconds), its entries' hashes.
+/// A file as last read: its size, when it changed (nanoseconds), its entries'
+/// hashes, and when it was read (milliseconds, this computer's clock).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Stat {
     size: u64,
     modified: u64,
     entries: Vec<(String, String)>,
+    /// A file read within `settling_ms` of its change may have changed again
+    /// since at the same size and time (a coarse clock: a FAT card's 2 s): read again.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    seen: i64,
+}
+
+fn is_zero(n: &i64) -> bool {
+    *n == 0
 }
 
 impl Found {
@@ -236,37 +347,107 @@ impl Found {
     }
 }
 
+/// Folders whose files travel whole (`Shape::Whole`, `Shape::Files`): their
+/// keys are the file's name and an empty entry, `#`, and a name may hold `#`
+/// itself ("Facture #123.pdf").
+const WHOLE_FOLDERS: &[&str] = &["data/drafts/", "data/invoices/", "data/pgp/others/", "data/watch/", "data/calendars/local/", "data/contacts/local/", "state/shield/", "state/dav/local/", FILES];
+
 /// `<store><file>`: the part of a key before its entry.
 fn file_of(key: &str) -> &str {
+    if WHOLE_FOLDERS.iter().any(|folder| key.starts_with(folder))
+        && let Some(file) = key.strip_suffix('#')
+    {
+        return file;
+    }
     key.split_once('#').map_or(key, |(file, _)| file)
+}
+
+/// The entry a key names in its file.
+fn entry_of(key: &str) -> &str {
+    key.get(file_of(key).len() + 1..).unwrap_or("")
 }
 
 fn modified_ns(meta: &std::fs::Metadata) -> u64 {
     meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos() as u64)
 }
 
+/// How a look goes: which stores it reads, whether it must hurry, which
+/// folders' emptying you confirmed, this computer's clock (milliseconds).
+struct Look<'a> {
+    /// Stores read this time; the others are left as last read.
+    reads: &'a dyn Fn(&Store) -> bool,
+    /// Files sealed apart are not read through while a hurried exchange waits.
+    hurry: &'a dyn Fn() -> bool,
+    confirmed: &'a BTreeSet<String>,
+    clock: i64,
+}
+
+/// This computer's clock, in milliseconds.
+fn clock_ms() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How long a file sealed apart settles before it is read, in this test's thread: not at all, unless a test says.
+    static SETTLE: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+}
+
+/// A file sealed apart changed this recently may still be being written (an
+/// editor writing it in place): read at the next look.
+fn settling_ms() -> i64 {
+    #[cfg(test)]
+    return SETTLE.with(std::cell::Cell::get);
+    #[cfg(not(test))]
+    2_000
+}
+
 /// What the stores hold; a file whose size and time did not change since
-/// `known` is taken from there, not read.
-fn gather(stores: &[Store], known: &BTreeMap<String, Stat>) -> Found {
+/// `known` is taken from there, not read. What could not be read is unknown,
+/// its last look kept: nothing of it is taken out elsewhere.
+fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Found {
     let mut found = Found::default();
     for store in stores {
+        if !(look.reads)(store) {
+            // Not read this time (notes and papers in a hurried exchange).
+            found.unknown.insert(store.name.clone());
+            continue;
+        }
         if store.folder {
             if !store.path.is_dir() {
+                // Notes or papers that held files and are gone (a disk not
+                // mounted, a folder moved): unknown, said. A folder that never
+                // held any is a new one, filled.
+                let held = known.range(store.name.clone()..).take_while(|(file, _)| file.starts_with(&store.name)).count();
+                if matches!(store.shape, Shape::Files) && held == 0 {
+                    continue;
+                }
+                if matches!(store.shape, Shape::Files) && !look.confirmed.contains(&store.name) {
+                    found.emptied.push((store.name.clone(), held));
+                }
                 found.unknown.insert(store.name.clone());
                 continue;
             }
             let mut files = Vec::new();
-            list_files(&store.path, &store.path, store.skip, &mut files);
+            if matches!(store.shape, Shape::Files) {
+                let mut listing = Listing { store: &store.name, root: &store.path, skip: store.skip, known, confirmed: look.confirmed.contains(&store.name), files: &mut files, found: &mut found };
+                listing.list(&store.path);
+            } else {
+                list_files(&store.path, &store.path, store.skip, &mut files);
+            }
             for (relative, path) in files {
-                read_file(store, &format!("{}{relative}", store.name), &path, known, &mut found);
+                read_file(store, &format!("{}{relative}", store.name), &path, known, look, &mut found);
             }
         } else if store.path.is_file() {
-            read_file(store, &store.name, &store.path, known, &mut found);
+            read_file(store, &store.name, &store.path, known, look, &mut found);
         } else if !matches!(store.shape, Shape::Whole) {
             // A settings file not there is not a file emptied.
             found.unknown.insert(store.name.clone());
         }
     }
+    // What is unknown keeps its last look: next time, a folder that held files is still known to have held them.
+    let carried: Vec<(String, Stat)> = known.iter().filter(|(file, _)| !found.files.contains_key(*file) && found.is_unknown(file)).map(|(file, stat)| (file.clone(), stat.clone())).collect();
+    found.files.extend(carried);
     found
 }
 
@@ -287,29 +468,180 @@ fn list_files(root: &Path, dir: &Path, skip: &[&str], out: &mut Vec<(String, Pat
     }
 }
 
-fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, Stat>, found: &mut Found) {
+/// A listing of a folder of files sealed apart (notes, papers).
+struct Listing<'a> {
+    store: &'a str,
+    root: &'a Path,
+    skip: &'a [&'a str],
+    known: &'a BTreeMap<String, Stat>,
+    /// You said to take out what went from it: a folder listing empty is emptied.
+    confirmed: bool,
+    files: &'a mut Vec<(String, PathBuf)>,
+    found: &'a mut Found,
+}
+
+impl Listing<'_> {
+    /// Every file below `dir`, by its path from the root with `/`; how many.
+    /// Left out: what sync apps, editors and systems make (`made_by_tools`),
+    /// `skip` at the top (whatever its case), tools' own folders, a folder
+    /// shared through (it holds a seal), links, names that are not text (said).
+    /// A folder that cannot be read whole (one name that errs is enough), or
+    /// that lists empty while it held files at the last look (a disk not
+    /// mounted, access withdrawn), is unknown: nothing in it is taken out
+    /// elsewhere, nothing is written into it.
+    fn list(&mut self, dir: &Path) -> usize {
+        let relative = dir.strip_prefix(self.root).map(|r| r.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/")).unwrap_or_default();
+        let within = if relative.is_empty() { String::new() } else { format!("{relative}/") };
+        let prefix = format!("{}{within}", self.store);
+        let mut whole = true;
+        let mut count = 0;
+        match std::fs::read_dir(dir) {
+            Err(_) => whole = false,
+            Ok(entries) => {
+                for entry in entries {
+                    let Ok(entry) = entry else {
+                        whole = false;
+                        continue;
+                    };
+                    let Ok(kind) = entry.file_type() else {
+                        whole = false;
+                        continue;
+                    };
+                    let name = entry.file_name();
+                    let Some(name) = name.to_str() else {
+                        self.found.said.push(format!("share-not-text:{prefix}{}", name.to_string_lossy()));
+                        continue;
+                    };
+                    let path = entry.path();
+                    if is_leftover(name) {
+                        remove_if_old(&path);
+                        continue;
+                    }
+                    if made_by_tools(name) || kind.is_symlink() || (dir == self.root && self.skip.iter().any(|skip| skip.eq_ignore_ascii_case(name))) {
+                        continue;
+                    }
+                    if kind.is_dir() {
+                        if !matches!(name, "node_modules" | "target") && !path.join("seal.toml").is_file() {
+                            count += self.list(&path);
+                        }
+                    } else if kind.is_file() {
+                        self.files.push((format!("{within}{name}"), path));
+                        count += 1;
+                    }
+                }
+            }
+        }
+        let held = self.known.range(prefix.clone()..).take_while(|(file, _)| file.starts_with(&prefix)).count();
+        if !whole || (count == 0 && held > 0 && !self.confirmed) {
+            if whole {
+                self.found.emptied.push((prefix.clone(), held));
+            }
+            self.found.unknown.insert(prefix);
+        }
+        count
+    }
+}
+
+/// What a crash left half written by Sioul: its hidden names ending so.
+fn is_leftover(name: &str) -> bool {
+    name.starts_with('.') && [TEMPORARY, ".shared.tmp", ".conflict.tmp"].iter().any(|end| name.ends_with(end))
+}
+
+/// A file left half written, removed once an hour old: never one still being written.
+fn remove_if_old(path: &Path) {
+    if std::fs::metadata(path).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 3600) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+/// What a crash left half written in a folder (the sealed files, the history), removed after an hour.
+pub(crate) fn clean_leftovers(dir: &Path) {
+    for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+        if entry.file_name().to_str().is_some_and(is_leftover) {
+            remove_if_old(&entry.path());
+        }
+    }
+}
+
+/// Names that sync apps, editors and systems make beside your files: hidden
+/// ones, temporary and backup copies, conflicted copies, locks. Sioul's own
+/// copies of a file two devices changed ("lease (conflict …).md") are none of them.
+fn made_by_tools(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    name.starts_with('.')
+        || name.starts_with('~')
+        || name.ends_with('~')
+        || (name.starts_with('#') && name.ends_with('#'))
+        || [".tmp", ".temp", ".part", ".partial", ".crdownload", ".download", ".swp", ".swx", ".new"].iter().any(|end| lower.ends_with(end))
+        || ["conflicted copy", ".sync-conflict-", "_conflict-", "sfconflict"].iter().any(|word| lower.contains(word))
+        || matches!(lower.as_str(), "thumbs.db" | "desktop.ini" | "4913")
+}
+
+/// A file sealed apart, as its record says it: its content's hash, its size, when it changed (milliseconds).
+#[derive(Debug, Serialize, Deserialize)]
+struct Reference {
+    h: String,
+    s: u64,
+    t: i64,
+}
+
+fn reference(h: &str, size: u64, modified_ns: u64) -> String {
+    serde_json::to_string(&Reference { h: h.to_string(), s: size, t: (modified_ns / 1_000_000) as i64 }).unwrap_or_default()
+}
+
+/// What an entry's value is known by: a file sealed apart by its content's hash, anything else by its value's.
+fn value_hash(key: &str, value: &str) -> String {
+    if key.starts_with(FILES) { serde_json::from_str::<Reference>(value).map(|r| r.h).unwrap_or_default() } else { hash(value) }
+}
+
+fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, Stat>, look: &Look, found: &mut Found) {
     let Ok(meta) = std::fs::metadata(path) else {
         found.unknown.insert(file.to_string());
         return;
     };
-    if meta.len() > LARGEST {
+    let sealed_apart = matches!(store.shape, Shape::Files);
+    if meta.len() > if sealed_apart { crate::blobs::LARGEST } else { LARGEST } {
         found.unknown.insert(file.to_string());
+        if sealed_apart {
+            found.too_big.push(file.to_string());
+        }
         return;
     }
     let modified = modified_ns(&meta);
     found.changed.insert(file.to_string(), (modified / 1_000_000) as i64);
-    if let Some(stat) = known.get(file).filter(|s| s.size == meta.len() && s.modified == modified) {
+    // As last read: the same size and time, read well after it changed.
+    if let Some(stat) = known.get(file).filter(|s| s.size == meta.len() && s.modified == modified && (s.seen == 0 || (s.modified / 1_000_000) as i64 + settling_ms() < s.seen)) {
         for (entry, h) in &stat.entries {
             found.hashes.insert(format!("{file}#{entry}"), h.clone());
+            // A file sealed apart: its record made from what was kept, the file not read again.
+            if sealed_apart {
+                found.values.insert(format!("{file}#{entry}"), reference(h, stat.size, stat.modified));
+            }
         }
         found.files.insert(file.to_string(), stat.clone());
+        return;
+    }
+    if sealed_apart {
+        // Changed a moment ago (maybe still being written), or a hurried
+        // exchange waits: read at the next look. Read through for its hash,
+        // never held whole; one that changed while read is read next time.
+        let fresh = look.clock - ((modified / 1_000_000) as i64) < settling_ms();
+        let read = (!fresh && !(look.hurry)()).then(|| crate::blobs::hash_file(path).ok()).flatten().filter(|(_, size)| *size == meta.len());
+        let Some((h, _)) = read else {
+            found.unknown.insert(file.to_string());
+            return;
+        };
+        let key = format!("{file}#");
+        found.hashes.insert(key.clone(), h.clone());
+        found.values.insert(key, reference(&h, meta.len(), modified));
+        found.files.insert(file.to_string(), Stat { size: meta.len(), modified, entries: vec![(String::new(), h)], seen: look.clock });
         return;
     }
     let Some(entries) = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)) else {
         found.unknown.insert(file.to_string());
         return;
     };
-    let mut stat = Stat { size: meta.len(), modified, entries: Vec::with_capacity(entries.len()) };
+    let mut stat = Stat { size: meta.len(), modified, entries: Vec::with_capacity(entries.len()), seen: look.clock };
     for (entry, value) in entries {
         let key = format!("{file}#{entry}");
         let h = hash(&value);
@@ -320,19 +652,26 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
     found.files.insert(file.to_string(), stat);
 }
 
-/// A file's entries and their values; none when it cannot be read as its shape says.
+/// A file's entries and their values; none when it cannot be read as its
+/// shape says. Files sealed apart are read through, never whole (`read_file`).
 fn entries_of(store: &Store, bytes: &[u8]) -> Option<Vec<(String, String)>> {
     match store.shape {
         Shape::Whole => Some(vec![(String::new(), B64.encode(bytes))]),
         Shape::Lines => Some(String::from_utf8_lossy(bytes).lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).map(|l| (l.to_string(), String::new())).collect()),
         Shape::Toml(rules) => toml_entries(&String::from_utf8_lossy(bytes), rules).ok(),
+        Shape::Files => None,
     }
 }
 
 /// An entry's value, read from its file now.
 fn value_of(stores: &[Store], key: &str) -> Option<String> {
-    let (file, entry) = key.split_once('#')?;
+    let (file, entry) = (file_of(key), entry_of(key));
     let (store, path) = locate(stores, file)?;
+    if matches!(store.shape, Shape::Files) {
+        let meta = std::fs::metadata(&path).ok()?;
+        let (h, size) = crate::blobs::hash_file(&path).ok()?;
+        return entry.is_empty().then(|| reference(&h, size, modified_ns(&meta)));
+    }
     let bytes = std::fs::read(path).ok()?;
     entries_of(store, &bytes)?.into_iter().find(|(e, _)| e == entry).map(|(_, value)| value)
 }
@@ -418,23 +757,39 @@ fn flatten(path: Vec<String>, value: &toml::Value, rules: &Rules, out: &mut Vec<
 
 /// Writes entries into one file: each `(entry, value)`, `None` taking it out;
 /// under the file's lock, as the window writes some of these files too
-/// (the doses' record: `sioul_core::filelock`).
-fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)]) -> Result<(), String> {
-    sioul_core::filelock::with_lock(path, || write_entries_locked(store, path, changes))
+/// (the doses' record: `sioul_core::filelock`). Before the file changes, or
+/// goes, `keep` keeps it as it was (`history`).
+fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], keep: impl FnOnce() -> Result<(), String>) -> Result<BTreeMap<String, String>, String> {
+    sioul_core::filelock::with_lock(path, || {
+        let new = rewritten(store, path, changes)?;
+        // What the file holds once written, entry by entry, by hash: what the next look compares with.
+        let written = new.as_deref().and_then(|bytes| entries_of(store, bytes)).unwrap_or_default().into_iter().map(|(entry, value)| (entry, hash(&value))).collect();
+        let old = std::fs::read(path).ok();
+        if old == new {
+            return Ok(written);
+        }
+        if old.is_some() {
+            keep()?;
+        }
+        match new {
+            Some(bytes) => write_atomically(path, &bytes)?,
+            None => match std::fs::remove_file(path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(format!("{}: {e}", path.display())),
+                _ => {}
+            },
+        }
+        Ok(written)
+    })
 }
 
-fn write_entries_locked(store: &Store, path: &Path, changes: &[(&str, Option<&str>)]) -> Result<(), String> {
+/// What a file holds once entries are written into it; none when it goes.
+fn rewritten(store: &Store, path: &Path, changes: &[(&str, Option<&str>)]) -> Result<Option<Vec<u8>>, String> {
     match store.shape {
         Shape::Whole => {
             let (_, value) = changes.last().ok_or("nothing")?;
-            match value {
-                Some(value) => write_atomically(path, &B64.decode(value).map_err(|e| e.to_string())?),
-                None => match std::fs::remove_file(path) {
-                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("{}: {e}", path.display())),
-                    _ => Ok(()),
-                },
-            }
+            value.map(|value| B64.decode(value).map_err(|e| e.to_string())).transpose()
         }
+        Shape::Files => Err(format!("{}: sealed apart", path.display())),
         Shape::Lines => {
             let text = std::fs::read_to_string(path).unwrap_or_default();
             let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
@@ -452,28 +807,71 @@ fn write_entries_locked(store: &Store, path: &Path, changes: &[(&str, Option<&st
             if !text.is_empty() {
                 text.push('\n');
             }
-            write_atomically(path, text.as_bytes())
+            Ok(Some(text.into_bytes()))
         }
         Shape::Toml(rules) => {
             let text = std::fs::read_to_string(path).unwrap_or_default();
-            let text = toml_write(&text, rules, changes)?;
-            write_atomically(path, text.as_bytes())
+            Ok(Some(toml_write(&text, rules, changes)?.into_bytes()))
         }
     }
 }
 
 pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    write_then_rename(path, bytes, false)
+}
+
+/// The same, the bytes on the disk before the name changes: a file whose loss
+/// costs more than a minute's work (this computer's name and sharing, its memory).
+pub(crate) fn write_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    write_then_rename(path, bytes, true)
+}
+
+fn write_then_rename(path: &Path, bytes: &[u8], synced: bool) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(fail)?;
     }
     // A name starting with a dot: sync apps leave it alone (eDrive skips them,
     // Nextcloud's client by default), so a half-written file never travels.
-    let name = path.file_name().map_or_else(|| "file".into(), |n| n.to_string_lossy().to_string());
-    let temporary = path.with_file_name(format!(".{name}.shared.tmp"));
-    std::fs::write(&temporary, bytes).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)
+    let temporary = temporary(path);
+    let written = (|| {
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
+        file.write_all(bytes)?;
+        if synced {
+            file.sync_all()?;
+        }
+        std::fs::rename(&temporary, path)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    written.map_err(fail)
 }
+
+/// A small file of the folder (a computer's notes, the seal, a claim), never
+/// read past `SMALL_FILE`: one larger is no such file (whoever wrote it).
+pub(crate) fn read_small(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut text = String::new();
+    std::fs::File::open(path).ok()?.take(SMALL_FILE + 1).read_to_string(&mut text).ok()?;
+    (text.len() as u64 <= SMALL_FILE).then_some(text)
+}
+
+/// Small files of the folder are never read past this.
+pub(crate) const SMALL_FILE: u64 = 64 << 10;
+
+/// A hidden name beside `path` for a file being written, never another's:
+/// two exchanges, two Sioul running, never write into one (".lease.md.4211-7.sioul.tmp").
+pub(crate) fn temporary(path: &Path) -> PathBuf {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let name = path.file_name().map_or_else(|| "file".into(), |n| n.to_string_lossy().to_string());
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    path.with_file_name(format!(".{name}.{}-{n}{TEMPORARY}", std::process::id()))
+}
+
+/// How the names of files being written end: what is left of them after a
+/// crash is cleaned after an hour (`clean_leftovers`).
+pub(crate) const TEMPORARY: &str = ".sioul.tmp";
 
 /// How far a rewritten file's size climbs before it starts again from the smallest.
 const PAD_LIMIT: u64 = 4096;
@@ -677,7 +1075,9 @@ pub fn key_for(folder: &Path, passphrase: &str) -> Result<[u8; 32], Refused> {
 
 fn key_with(folder: &Path, passphrase: &str, memory_kib: u32, passes: u32) -> Result<[u8; 32], Refused> {
     let path = folder.join("seal.toml");
-    if let Ok(text) = std::fs::read_to_string(&path) {
+    if path.exists() {
+        // Written by Sioul in a few lines: one larger is no seal of its.
+        let text = read_small(&path).ok_or_else(|| Refused::Other(format!("{}: not a seal", path.display())))?;
         let seal: SealFile = toml::from_str(&text).map_err(|e| Refused::Other(format!("{}: {e}", path.display())))?;
         // The folder passes through others' servers: a seal asking far more than
         // Sioul writes (64 MiB, 3 passes) would only exhaust this computer.
@@ -729,9 +1129,18 @@ pub struct Here {
     pub machine: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
+    /// The parts this device shares or not, as chosen here (`PARTS`): never
+    /// shared, each device chooses its own.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parts: BTreeMap<String, bool>,
 }
 
 impl Here {
+    /// Whether this device shares a part: as chosen here, else as before parts had switches.
+    pub fn shares(&self, part: &str, config: &Config) -> bool {
+        self.parts.get(part).copied().unwrap_or_else(|| shared_by_default(part, config))
+    }
+
     pub fn path(state: &Path) -> PathBuf {
         state.join("share").join("here.toml")
     }
@@ -749,8 +1158,9 @@ impl Here {
         here
     }
 
+    /// Its bytes on the disk before its name changes: lost, this computer would take another name.
     pub fn save(&self, state: &Path) -> Result<(), String> {
-        write_atomically(&Here::path(state), toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
+        write_synced(&Here::path(state), toml::to_string(self).map_err(|e| e.to_string())?.as_bytes())
     }
 
     /// The folder shared through, `~` expanded.
@@ -776,7 +1186,10 @@ fn hash(value: &str) -> String {
 
 // ---------------------------------------------------------------- memory
 
-/// What this computer remembers between two exchanges.
+/// What this computer remembers between two exchanges (`memory.json`);
+/// what it remembers of files sealed apart aside (`files.json`, `Sealed`): a
+/// big notes folder makes that long, and what the doses and claims ask
+/// (`heard`, `written`, `traffic`) reads the rest alone.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Memory {
     #[serde(default)]
@@ -834,6 +1247,66 @@ struct Memory {
     /// The files as last read.
     #[serde(default)]
     files: BTreeMap<String, Stat>,
+    /// When each part last sent a change, and last received one here (Unix seconds).
+    #[serde(default)]
+    traffic: BTreeMap<String, (i64, i64)>,
+    /// What it remembers of files sealed apart, in `files.json` beside.
+    #[serde(skip)]
+    sealed: Sealed,
+}
+
+/// What this computer remembers of files sealed apart (notes, papers), beside
+/// its memory (`files.json`). Their entries, their files as last read and the
+/// changes waiting for them are kept here too, out of `memory.json`.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct Sealed {
+    #[serde(default)]
+    computer: String,
+    #[serde(default)]
+    entries: BTreeMap<String, Known>,
+    #[serde(default)]
+    files: BTreeMap<String, Stat>,
+    #[serde(default)]
+    pending: BTreeMap<String, (Option<String>, u64, String)>,
+    /// For each change waiting, the content it replaces where it was made: its base.
+    #[serde(default)]
+    bases: BTreeMap<String, String>,
+    /// For each change waiting, every content the others' records named for
+    /// its file so far, versions and bases (`receive`).
+    #[serde(default)]
+    named: BTreeMap<String, BTreeSet<String>>,
+    /// The sealed files this computer put in the folder (`blobs`): when a
+    /// record last pointed to each (milliseconds), and the size it sealed.
+    #[serde(default)]
+    mine: BTreeMap<String, (i64, u64)>,
+    /// Sealed files the others' records named lately, by name: when
+    /// (milliseconds). None is taken out within 90 days of that.
+    #[serde(default)]
+    named_at: BTreeMap<String, i64>,
+    /// Sealed files found damaged, as they were then (`blobs::fingerprint`):
+    /// not opened again until another copy comes.
+    #[serde(default)]
+    damaged: BTreeMap<String, (u64, u64, u64)>,
+    /// Changes waiting for their sealed file, since when (milliseconds): said after a day.
+    #[serde(default)]
+    missing: BTreeMap<String, i64>,
+    /// Changes that could not be written here (a full disk, a name a folder
+    /// takes here): their sealed file, when to try again, how many times so far.
+    #[serde(default)]
+    failing: BTreeMap<String, (String, i64, u32)>,
+    /// Files gone here, since when (milliseconds): taken out elsewhere once
+    /// gone a while (`EMPTIED_WAIT`).
+    #[serde(default)]
+    gone: BTreeMap<String, i64>,
+    /// Folders whose files gone at once you said to take out everywhere (`confirm_gone`).
+    #[serde(default)]
+    confirmed: BTreeSet<String>,
+    /// When this computer's sealed files were last looked for, and the
+    /// history and leftovers last tidied (milliseconds).
+    #[serde(default)]
+    checked: i64,
+    #[serde(default)]
+    tidied: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -841,16 +1314,54 @@ struct Known {
     c: u64,
     w: String,
     h: String,
+    /// For a file sealed apart changed here: the content it replaced, said again in a new round.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    b: String,
 }
 
 impl Memory {
+    /// `memory.json` alone: what the doses and claims ask.
     fn load(path: &Path, computer: &str) -> Memory {
         let memory: Memory = std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         if memory.computer == computer { memory } else { Memory { computer: computer.to_string(), round: 1, ..Memory::default() } }
     }
 
-    fn save(&self, path: &Path) -> Result<(), String> {
-        write_atomically(path, serde_json::to_string(self).map_err(|e| e.to_string())?.as_bytes())
+    /// The whole memory, files sealed apart too (`files.json`), their entries
+    /// and changes among the others while an exchange runs.
+    fn load_all(path: &Path, computer: &str) -> Memory {
+        let mut memory = Memory::load(path, computer);
+        match std::fs::read_to_string(sealed_path(path)).ok().and_then(|t| serde_json::from_str::<Sealed>(&t).ok()).filter(|s| s.computer == computer) {
+            Some(sealed) => memory.sealed = sealed,
+            // Lost, or not readable: notes and papers join again as a new
+            // device's would (their files read again from the records first),
+            // rather than each going out as new.
+            None => memory.places.retain(|store, _| !store.starts_with(FILES)),
+        }
+        memory.entries.append(&mut memory.sealed.entries);
+        memory.files.append(&mut memory.sealed.files);
+        memory.pending.append(&mut memory.sealed.pending);
+        memory
+    }
+
+    /// Both files written, each when it changed only (a phone's storage
+    /// wears), its bytes on the disk before its name changes.
+    fn save(&mut self, path: &Path) -> Result<(), String> {
+        let apart = |key: &String| key.starts_with(FILES);
+        let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.entries).into_iter().partition(|(key, _)| apart(key));
+        (self.sealed.entries, self.entries) = (sealed, kept);
+        let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.files).into_iter().partition(|(file, _)| apart(file));
+        (self.sealed.files, self.files) = (sealed, kept);
+        let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.pending).into_iter().partition(|(key, _)| apart(key));
+        (self.sealed.pending, self.pending) = (sealed, kept);
+        self.sealed.computer = self.computer.clone();
+        let write = |path: &Path, text: String| {
+            if std::fs::read(path).is_ok_and(|old| old == text.as_bytes()) {
+                return Ok(());
+            }
+            write_synced(path, text.as_bytes())
+        };
+        write(&sealed_path(path), serde_json::to_string(&self.sealed).map_err(|e| e.to_string())?)?;
+        write(path, serde_json::to_string(self).map_err(|e| e.to_string())?)
     }
 
     /// A new clock: after every clock given or read, and not before `physical` (milliseconds).
@@ -858,6 +1369,11 @@ impl Memory {
         self.clock = (self.clock + 1).max((physical.max(0) as u64) << 16);
         self.clock
     }
+}
+
+/// Where what this computer remembers of files sealed apart is kept: `files.json`, beside its memory.
+fn sealed_path(memory: &Path) -> PathBuf {
+    memory.with_file_name("files.json")
 }
 
 /// One line of a computer's file: its number in the round, its clock, the sealed change.
@@ -873,6 +1389,11 @@ struct Line {
 struct Change {
     k: String,
     v: Option<String>,
+    /// For a file sealed apart: the content it replaces where it was made, by
+    /// its hash ("" for a file new there). Another device holding something
+    /// else changed it too: both are kept.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    b: String,
 }
 
 /// A computer's own notes in the folder: when it last exchanged, its round, how far it read the others.
@@ -940,6 +1461,13 @@ pub struct Sharing<'a> {
     pub key: &'a [u8; 32],
     /// Where this computer keeps what it remembers: `<state>/share/memory.json`.
     pub memory: &'a Path,
+    /// Notes and papers too (`Shape::Files`): not for an exchange that must be
+    /// quick (a dose's alarm, a notification's button, Sioul closing), nor
+    /// without the system's leave to read them all.
+    pub files: bool,
+    /// Set while a hurried exchange waits for this one: its work on notes and
+    /// papers stops where it is, and goes on at the next.
+    pub hurry: Option<&'a std::sync::atomic::AtomicBool>,
 }
 
 /// What an exchange did.
@@ -957,11 +1485,13 @@ pub struct Outcome {
     pub pending: usize,
 }
 
-/// Before the first exchange, a copy of every shared file, in case.
+/// Before the first exchange, a copy of every shared file, in case. Not of
+/// notes and papers, which may be large: each file is kept before anything
+/// is written over it (`history`).
 fn keep_copies(stores: &[Store], memory: &Path, today: &str) {
     let Some(base) = memory.parent() else { return };
     let aside = base.join(format!("before-sharing-{today}"));
-    for store in stores {
+    for store in stores.iter().filter(|s| !matches!(s.shape, Shape::Files)) {
         let target = aside.join(store.name.trim_end_matches('/'));
         if store.folder {
             let mut files = Vec::new();
@@ -978,11 +1508,19 @@ fn keep_copies(stores: &[Store], memory: &Path, today: &str) {
     }
 }
 
-/// One exchange: the changes found here go out, the others' come in.
+/// One exchange: the changes found here go out, the others' come in. One at a
+/// time on this computer, whatever runs it (`exchange_lock`): another running,
+/// a quick one waits for it; a whole one does nothing, and says so (`share-busy`).
 pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outcome, String> {
     std::fs::create_dir_all(sharing.folder).map_err(|e| format!("{}: {e}", sharing.folder.display()))?;
-    let mut memory = Memory::load(sharing.memory, sharing.computer);
+    let Some(_running) = exchange_lock(sharing.memory, !sharing.files)? else { return Ok(Outcome { problems: vec!["share-busy".into()], ..Outcome::default() }) };
+    let mut memory = Memory::load_all(sharing.memory, sharing.computer);
     let mut outcome = Outcome::default();
+    // Notes and papers only when asked (not for a dose's alarm, a button
+    // pressed, Sioul closing), and while no hurried exchange waits for this
+    // one: their work stops where it is, and goes on at the next.
+    let hurried = || sharing.hurry.is_some_and(|hurry| hurry.load(std::sync::atomic::Ordering::Relaxed));
+    let reads = |store: &Store| sharing.files || !matches!(store.shape, Shape::Files);
     // This computer's own records in the folder go further than its memory: the
     // memory was restored from a backup, lost, or started again ("Stop sharing",
     // then again). Its numbering goes on after the folder's last line (the
@@ -1004,21 +1542,26 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         let today = jiff::Timestamp::from_millisecond(now_ms).map(|t| t.strftime("%Y-%m-%d").to_string()).unwrap_or_default();
         keep_copies(stores, sharing.memory, &today);
     }
-    let found = gather(stores, &memory.files);
-    let mut out: Vec<(String, Option<String>, u64)> = Vec::new();
-    let value = |key: &str| found.values.get(key).cloned().or_else(|| value_of(stores, key));
+    let clock = clock_ms();
+    let confirmed = memory.sealed.confirmed.clone();
+    let mut found = gather(stores, &memory.files, &Look { reads: &reads, hurry: &hurried, confirmed: &confirmed, clock });
+    outcome.problems.extend(found.too_big.iter().map(|file| format!("share-too-big:{file}")));
+    outcome.problems.append(&mut found.said);
+    outcome.problems.extend(found.emptied.iter().map(|(folder, held)| format!("share-vanished:{folder}:{held}")));
+    let mut out: Vec<(String, Option<String>, u64, String)> = Vec::new();
 
     // Stores new here (projects shared from now on, a store a new version
     // adds) or moved (another notes folder): joined as a new computer joins.
     // Their files are rebuilt from all the records first, then only what they
     // alone hold goes out: an old copy here never beats the others' newer
     // values, an empty new folder is filled, and nothing is taken out
-    // elsewhere. A memory from before places were kept takes every store where it is.
+    // elsewhere. A memory from before places were kept takes every store where
+    // it is. A store not read this time joins when it is.
     let place = |store: &Store| store.path.display().to_string();
     if memory.joined && memory.places.is_empty() {
         memory.places = stores.iter().map(|s| (s.name.clone(), place(s))).collect();
     }
-    let joining: BTreeSet<String> = if memory.joined { stores.iter().filter(|s| memory.places.get(&s.name) != Some(&place(s))).map(|s| s.name.clone()).collect() } else { BTreeSet::new() };
+    let joining: BTreeSet<String> = if memory.joined { stores.iter().filter(|s| reads(s) && memory.places.get(&s.name) != Some(&place(s))).map(|s| s.name.clone()).collect() } else { BTreeSet::new() };
     let joins = |key: &str| locate(stores, file_of(key)).is_some_and(|(store, _)| joining.contains(&store.name));
     if !joining.is_empty() {
         memory.entries.retain(|key, _| !joins(key));
@@ -1026,25 +1569,105 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.rebuild.extend(joining.iter().cloned());
     }
 
+    // A file sealed apart found empty that was not at the last look (an
+    // editor writing it in place, a crash): held as it was, a while.
+    let mut held_empty: BTreeSet<String> = BTreeSet::new();
+    let emptied_now: Vec<String> = found.files.iter().filter(|(file, stat)| file.starts_with(FILES) && stat.size == 0 && memory.files.get(*file).is_some_and(|before| before.size > 0)).map(|(file, _)| file.clone()).collect();
+    for file in emptied_now {
+        let since = *memory.emptied.entry(file.clone()).or_insert(now_ms);
+        if now_ms - since < EMPTIED_WAIT {
+            found.hashes.remove(&format!("{file}#"));
+            found.unknown.insert(file.clone());
+            if let Some(before) = memory.files.get(&file) {
+                found.files.insert(file.clone(), before.clone());
+            }
+            held_empty.insert(file);
+        }
+    }
+    // Not read this time (a quick exchange): held as they were.
+    let unread = |file: &str| locate(stores, file).is_some_and(|(store, _)| !reads(store));
+    memory.emptied.retain(|file, _| !file.starts_with(FILES) || held_empty.contains(file) || unread(file));
+
+    // Files sealed apart gone here: taken out elsewhere once gone a while
+    // (`EMPTIED_WAIT`: a file being replaced, a disk away a moment), and never
+    // many at once (a folder moved away, access withdrawn, a disk not
+    // mounted) until you say so (`confirm_gone`). Meanwhile another device's
+    // change to one of them still comes, unless many went at once.
+    let mut held_gone: BTreeSet<String> = BTreeSet::new();
+    let mut gone_since: BTreeMap<String, i64> = memory.sealed.gone.iter().filter(|(file, _)| unread(file)).map(|(file, since)| (file.clone(), *since)).collect();
+    if memory.joined {
+        let mut by_store: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
+        for key in memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty()).map(|(key, _)| key) {
+            let Some((store, _)) = locate(stores, file_of(key)) else { continue };
+            if !reads(store) || joining.contains(&store.name) {
+                continue;
+            }
+            let counted = by_store.entry(store.name.clone()).or_default();
+            counted.0 += 1;
+            if !found.hashes.contains_key(key) && !found.is_unknown(key) {
+                counted.1.push(file_of(key).to_string());
+            }
+        }
+        for (store, (held, gone)) in by_store.into_iter().filter(|(_, (_, gone))| !gone.is_empty()) {
+            let confirmed = memory.sealed.confirmed.contains(&store);
+            let mass = gone.len() > MASS || (gone.len() >= 3 && gone.len() * 5 > held);
+            if mass && !confirmed {
+                outcome.problems.push(format!("share-vanished:{store}:{}", gone.len()));
+            }
+            for file in gone {
+                let since = memory.sealed.gone.get(&file).copied().unwrap_or(now_ms);
+                if mass && !confirmed {
+                    gone_since.insert(file.clone(), since);
+                    found.unknown.insert(file);
+                } else if !confirmed && now_ms - since < EMPTIED_WAIT {
+                    gone_since.insert(file.clone(), since);
+                    held_gone.insert(file);
+                }
+            }
+        }
+    }
+    memory.sealed.gone = gone_since;
+    let value = |key: &str| found.values.get(key).cloned().or_else(|| value_of(stores, key));
+
     // Changes made here since the last look, dated by their file. When joining,
     // the others' records come first, and only what they do not hold goes out.
+    let mut older: Vec<String> = Vec::new();
     if memory.joined {
         for (key, h) in &found.hashes {
             if memory.entries.get(key).is_some_and(|k| k.h == *h) || joins(key) {
                 continue;
             }
+            if key.starts_with(FILES) {
+                // An older copy put back by hand (a backup's, its time before
+                // the version last seen here): not sent; that version comes
+                // back, the copy kept beside (`older`).
+                let file = file_of(key);
+                if memory.entries.get(key).is_some_and(|k| !k.h.is_empty()) && found.files.get(file).zip(memory.files.get(file)).is_some_and(|(now, before)| now.modified < before.modified) {
+                    older.push(key.clone());
+                    continue;
+                }
+                if hurried() {
+                    continue;
+                }
+            }
             let Some(value) = value(key) else { continue };
+            // A file sealed apart goes into the folder before its record.
+            if !seal_apart(sharing, stores, key, &value, &mut memory.sealed.mine, &mut outcome.problems, now_ms) {
+                continue;
+            }
+            let base = base_of(&memory, key);
             let clock = memory.tick(found.changed.get(file_of(key)).copied().unwrap_or(now_ms).min(now_ms));
-            memory.entries.insert(key.clone(), Known { c: clock, w: sharing.computer.to_string(), h: h.clone() });
-            out.push((key.clone(), Some(value), clock));
+            memory.entries.insert(key.clone(), Known { c: clock, w: sharing.computer.to_string(), h: h.clone(), b: base.clone() });
+            out.push((key.clone(), Some(value), clock, base));
         }
         // A settings file (the settings, the doses' record…) that held entries
         // and is now gone or of no bytes at all: a crash, a full disk, a file
         // being written in place, rather than a choice. Held for a while
         // (`EMPTIED_WAIT`): never everything taken out, everywhere, at once. A
         // list emptied on purpose, or a file gone from a folder of files (a
-        // draft sent), is taken out at once. A store no longer shared here
-        // (projects no longer shared, a notes folder unset) takes nothing out elsewhere.
+        // draft sent), is taken out at once; a note or a paper after a while
+        // (above). A store no longer shared here (a part switched off, a notes
+        // folder unset) takes nothing out elsewhere.
         let settings = |file: &str| stores.iter().find(|s| !s.folder && s.name == file && matches!(s.shape, Shape::Toml(_)));
         let held: BTreeSet<String> = memory.entries.iter().filter(|(_, k)| !k.h.is_empty()).map(|(key, _)| file_of(key).to_string()).filter(|file| settings(file).is_some()).collect();
         let mut waiting: BTreeSet<String> = BTreeSet::new();
@@ -1060,23 +1683,36 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         let gone: Vec<String> = memory
             .entries
             .iter()
-            .filter(|(key, known)| !known.h.is_empty() && !found.hashes.contains_key(*key) && !found.is_unknown(key))
-            .filter(|(key, _)| locate(stores, file_of(key)).is_some() && !waiting.contains(file_of(key)))
+            .filter(|(key, known)| !known.h.is_empty() && !found.hashes.contains_key(*key) && !found.is_unknown(key) && !held_gone.contains(file_of(key)))
+            .filter(|(key, _)| locate(stores, file_of(key)).is_some_and(|(store, _)| reads(store)) && !waiting.contains(file_of(key)))
             .map(|(key, _)| key.clone())
             .collect();
         for key in gone {
+            let base = base_of(&memory, &key);
             let clock = memory.tick(now_ms);
-            memory.entries.insert(key.clone(), Known { c: clock, w: sharing.computer.to_string(), h: String::new() });
-            out.push((key, None, clock));
+            memory.entries.insert(key.clone(), Known { c: clock, w: sharing.computer.to_string(), h: String::new(), b: base.clone() });
+            out.push((key, None, clock, base));
         }
     }
 
-    // The others' records, from where each was left; those not written last time first.
+    // The others' records, from where each was left; those not written last
+    // time first. A change for a part this device does not share is not kept
+    // waiting: switched on, the part joins and reads it again.
     let newer = |c: u64, w: &str, than: Option<(u64, &str)>| than.is_none_or(|(tc, tw)| (c, w) > (tc, tw));
+    let off = |key: &str| locate(stores, file_of(key)).is_none() && known_part(file_of(key)).is_some();
     let mut winners: BTreeMap<String, (Option<String>, u64, String)> = std::mem::take(&mut memory.pending)
         .into_iter()
-        .filter(|(key, (_, c, w))| newer(*c, w, memory.entries.get(key).map(|k| (k.c, k.w.as_str()))))
+        .filter(|(key, (_, c, w))| !off(key) && newer(*c, w, memory.entries.get(key).map(|k| (k.c, k.w.as_str()))))
         .collect();
+    // For files sealed apart: the content each change replaces where it was
+    // made (its base), and every content the others' records name for each
+    // file, their versions and what those replaced: a file here among them is
+    // an older version, not a change of its own (`receive`).
+    let mut bases: BTreeMap<String, String> = std::mem::take(&mut memory.sealed.bases).into_iter().filter(|(key, _)| winners.contains_key(key)).collect();
+    let mut named: BTreeMap<String, BTreeSet<String>> = std::mem::take(&mut memory.sealed.named).into_iter().filter(|(key, _)| winners.contains_key(key)).collect();
+    for (key, (value, _, _)) in winners.iter().filter(|(key, _)| key.starts_with(FILES)) {
+        named.entry(key.clone()).or_default().extend(value.as_deref().map(|v| value_hash(key, v)).into_iter().chain(bases.get(key).cloned()).filter(|h| !h.is_empty()));
+    }
     let all = rounds(sharing.folder);
     // Rebuilding a file: this computer's own records are read again too, for its entries only.
     let rebuilding = std::mem::take(&mut memory.rebuild);
@@ -1090,45 +1726,52 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         }
         'rounds: for &round in their_rounds.iter().filter(|r| **r >= start) {
             let mut offset = if round == start { skip } else { 0 };
-            let mut bytes = Vec::new();
-            if let Ok(mut file) = std::fs::File::open(round_file(sharing.folder, computer, round)) {
-                use std::io::{Read, Seek};
-                // Shorter than what was read of it: an older copy put back by a sync
-                // app. What it held past that point is lost here, said; it is read
-                // again from its start (lines already known change nothing).
-                if !own && file.metadata().is_ok_and(|m| m.len() < offset) {
-                    outcome.problems.push(format!("share-other-cut:{computer}"));
-                    memory.broken.insert(computer.clone(), now_ms / 1000);
-                    offset = 0;
+            let Ok(mut file) = std::fs::File::open(round_file(sharing.folder, computer, round)) else {
+                if !own {
+                    memory.read.insert(computer.clone(), (round, offset));
                 }
-                let _ = file.seek(std::io::SeekFrom::Start(offset)).and_then(|_| file.read_to_end(&mut bytes));
+                continue;
+            };
+            // Shorter than what was read of it: an older copy put back by a sync
+            // app. What it held past that point is lost here, said; it is read
+            // again from its start (lines already known change nothing).
+            if !own && file.metadata().is_ok_and(|m| m.len() < offset) {
+                outcome.problems.push(format!("share-other-cut:{computer}"));
+                memory.broken.insert(computer.clone(), now_ms / 1000);
+                offset = 0;
+            }
+            {
+                use std::io::Seek;
+                let _ = file.seek(std::io::SeekFrom::Start(offset));
             }
             // Only whole lines: one still arriving is read next time. Each line on
-            // its own: one that is not text (a disk's damage) is one broken line,
-            // not the end of everything after it.
-            let lines: Vec<&[u8]> = bytes.split_inclusive(|b| *b == b'\n').filter(|l| l.ends_with(b"\n")).collect();
+            // its own: one that is not text (a disk's damage), or longer than any
+            // record, is one broken line, not the end of everything after it.
             let opens = |line: &[u8]| {
                 let record = std::str::from_utf8(line).ok().and_then(|text| serde_json::from_str::<Line>(text).ok())?;
                 let change = open(sharing.key, &bound(computer, round, record.n, record.c), &record.s).and_then(|p| serde_json::from_slice::<Change>(&p).ok())?;
                 Some((record, change))
             };
-            for (i, line) in lines.iter().enumerate() {
-                let Some(record) = std::str::from_utf8(line).ok().and_then(|text| serde_json::from_str::<Line>(text).ok()) else {
+            let mut lines = LineReader::new(file);
+            let mut next = lines.next();
+            while let Some((line, length)) = next.take() {
+                next = lines.next();
+                let Some(record) = std::str::from_utf8(&line).ok().and_then(|text| serde_json::from_str::<Line>(text).ok()) else {
                     // Never passed over in silence: it may have been a dose marked taken.
-                    offset += line.len() as u64;
+                    offset += length;
                     if !own {
                         outcome.problems.push(format!("share-other-line:{computer}"));
                         memory.broken.insert(computer.clone(), now_ms / 1000);
                     }
                     continue;
                 };
-                let Some((_, change)) = opens(line) else {
+                let Some((_, change)) = opens(&line) else {
                     outcome.problems.push(format!("share-other-seal:{computer}"));
                     // One line that does not open while the next does: a damaged line,
                     // lost and said. None opening: another key, or a seal not here
                     // yet (the sync app is slow): read again from there next time.
-                    if !own && lines.get(i + 1).is_some_and(|next| opens(next).is_some()) {
-                        offset += line.len() as u64;
+                    if !own && next.as_ref().is_some_and(|(next, _)| opens(next).is_some()) {
+                        offset += length;
                         memory.broken.insert(computer.clone(), now_ms / 1000);
                         continue;
                     }
@@ -1137,10 +1780,17 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     }
                     break 'rounds;
                 };
-                offset += line.len() as u64;
+                offset += length;
+                // Sealed files named lately are never taken out from under the record naming them (`blobs::sweep`).
+                if change.k.starts_with(FILES)
+                    && let Some(value) = change.v.as_deref()
+                {
+                    memory.sealed.named_at.insert(crate::blobs::name(sharing.key, &value_hash(&change.k, value)), now_ms);
+                }
                 if own {
                     // Only the entries of the files rebuilt; the rest is this computer's as it is.
-                    if rebuilt(file_of(&change.k)) && newer(record.c, computer, winners.get(&change.k).map(|(_, c, w)| (*c, w.as_str()))) && memory.entries.get(&change.k).is_none_or(|k| (record.c, computer.as_str()) > (k.c, k.w.as_str())) {
+                    if rebuilt(file_of(&change.k)) && !off(&change.k) && newer(record.c, computer, winners.get(&change.k).map(|(_, c, w)| (*c, w.as_str()))) && memory.entries.get(&change.k).is_none_or(|k| (record.c, computer.as_str()) > (k.c, k.w.as_str())) {
+                        bases.insert(change.k.clone(), change.b);
                         winners.insert(change.k, (change.v, record.c, computer.clone()));
                     }
                     continue;
@@ -1164,9 +1814,16 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     }
                 }
                 memory.clock = memory.clock.max(record.c);
+                if off(&change.k) {
+                    continue;
+                }
+                if change.k.starts_with(FILES) {
+                    named.entry(change.k.clone()).or_default().extend(change.v.as_deref().map(|v| value_hash(&change.k, v)).into_iter().chain([change.b.clone()]).filter(|h| !h.is_empty()));
+                }
                 let known = memory.entries.get(&change.k).map(|k| (k.c, k.w.as_str()));
                 let pending = winners.get(&change.k).map(|(_, c, w)| (*c, w.as_str()));
                 if newer(record.c, computer, known) && newer(record.c, computer, pending) {
+                    bases.insert(change.k.clone(), change.b);
                     winners.insert(change.k, (change.v, record.c, computer.clone()));
                 }
             }
@@ -1176,61 +1833,186 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         }
     }
 
-    // The others' changes, written into the files.
+    // The others' changes, written into the files: notes and papers taken out
+    // first, so that a file renamed by its case comes in the same exchange.
     let mut by_file: BTreeMap<String, Vec<(String, Option<String>)>> = BTreeMap::new();
     for (key, (value, _, _)) in &winners {
         by_file.entry(file_of(key).to_string()).or_default().push((key.clone(), value.clone()));
     }
+    let mut order: Vec<&String> = by_file.keys().collect();
+    order.sort_by_key(|file| !(file.starts_with(FILES) && by_file[*file].first().is_some_and(|(_, value)| value.is_none())));
     let mut written_keys: BTreeSet<String> = BTreeSet::new();
-    for (file, changes) in &by_file {
+    // What was written, by key: what the next look compares with, whatever happens to the file after.
+    let mut written_hashes: BTreeMap<String, String> = BTreeMap::new();
+    // Files written: as they are now (a note, a paper: read next time only if it changes), or to read again.
+    let mut written_files: BTreeMap<String, Option<Stat>> = BTreeMap::new();
+    // Files sealed apart already as the others' change says: known, nothing written.
+    let mut settled: BTreeSet<String> = BTreeSet::new();
+    let history = crate::history::root(sharing.memory);
+    let mut kept = false;
+    let mut names: Option<Names> = None;
+    let receiving = Receiving { sharing, history: &history, now_ms, clock };
+    for file in order {
+        let changes = &by_file[file];
         let Some((store, path)) = locate(stores, file) else { continue };
+        if matches!(store.shape, Shape::Files) {
+            // Not read this time, too big here, in a folder that cannot be read
+            // or emptied of a sudden, or a hurried exchange waits: left waiting.
+            let Some((key, value)) = changes.first() else { continue };
+            if !reads(store) || hurried() || found.is_unknown(file) {
+                continue;
+            }
+            let blob = value.as_deref().and_then(|v| serde_json::from_str::<Reference>(v).ok()).map(|r| crate::blobs::name(sharing.key, &r.h)).unwrap_or_default();
+            // Could not be written lately (a full disk, a name a folder takes here): tried again after a while, not at every exchange.
+            if memory.sealed.failing.get(key).is_some_and(|(failed, again, _)| *failed == blob && now_ms < *again) {
+                continue;
+            }
+            if !writable(store, &path, sharing) {
+                outcome.problems.push(format!("share-refused:{file}"));
+                continue;
+            }
+            let names = names.get_or_insert_with(|| Names::new(&memory.entries, &found));
+            if value.is_some() && names.clash(file) {
+                outcome.problems.push(format!("share-name-clash:{file}"));
+                continue;
+            }
+            let base = bases.get(key).map_or("", String::as_str);
+            let seen = |h: &str| h == base || named.get(key).is_some_and(|n| n.contains(h));
+            let back_off = |failing: &mut BTreeMap<String, (String, i64, u32)>| {
+                let tried = failing.get(key).map_or(0, |(_, _, n)| *n);
+                let wait = [MINUTE, 10 * MINUTE, HOUR, 6 * HOUR][(tried as usize).min(3)];
+                failing.insert(key.clone(), (blob.clone(), now_ms + wait, tried + 1));
+            };
+            match receive(&receiving, store, file, &path, value.as_deref(), found.hashes.get(key).map(String::as_str), &seen, memory.entries.get(key), found.files.get(file), &mut memory.sealed.damaged) {
+                Ok(Received::AlreadySo) => {
+                    settled.insert(key.clone());
+                    memory.sealed.missing.remove(key);
+                    memory.sealed.failing.remove(key);
+                }
+                Ok(Received::Later) => {}
+                Ok(Received::Written { stat, copy, kept: into_history }) => {
+                    kept |= into_history;
+                    outcome.written.insert(store.name.clone());
+                    outcome.received += 1;
+                    written_keys.insert(key.clone());
+                    written_hashes.insert(key.clone(), stat.as_ref().and_then(|s| s.entries.first()).map(|(_, h)| h.clone()).unwrap_or_default());
+                    names.written(file, stat.is_some());
+                    written_files.insert(file.clone(), stat);
+                    memory.sealed.missing.remove(key);
+                    memory.sealed.failing.remove(key);
+                    if let Some(copy) = copy {
+                        outcome.problems.push(format!("{}:{copy}", if value.is_some() { "share-conflict" } else { "share-conflict-gone" }));
+                    }
+                }
+                // Not here yet: it comes with the sync app, and is written then; said after a day.
+                Err(crate::blobs::Fault::Missing) => {
+                    if now_ms - *memory.sealed.missing.entry(key.clone()).or_insert(now_ms) > DAY {
+                        outcome.problems.push(format!("share-missing:{file}"));
+                    }
+                }
+                Err(crate::blobs::Fault::Broken) => outcome.problems.push(format!("share-damaged:{file}")),
+                Err(crate::blobs::Fault::Room) => {
+                    outcome.problems.push(format!("share-no-room:{file}"));
+                    back_off(&mut memory.sealed.failing);
+                }
+                Err(crate::blobs::Fault::Local(e)) => {
+                    outcome.problems.push(e);
+                    back_off(&mut memory.sealed.failing);
+                }
+            }
+            continue;
+        }
         if found.unknown.contains(file) && !matches!(store.shape, Shape::Whole) && path.exists() {
             // Half written, or written by hand and broken: left as it is.
             outcome.problems.push(format!("share-unreadable:{}", path.display()));
             continue;
         }
-        let entries: Vec<(&str, Option<&str>)> = changes.iter().map(|(key, value)| (key.split_once('#').map_or("", |(_, e)| e), value.as_deref())).collect();
-        match write_entries(store, &path, &entries) {
-            Ok(()) => {
+        if store.folder && !writable(store, &path, sharing) {
+            outcome.problems.push(format!("share-refused:{file}"));
+            continue;
+        }
+        let entries: Vec<(&str, Option<&str>)> = changes.iter().map(|(key, value)| (entry_of(key), value.as_deref())).collect();
+        let keep = || {
+            kept = true;
+            crate::history::keep(&history, store.part, file, &path, now_ms)
+        };
+        match write_entries(store, &path, &entries, keep) {
+            Ok(hashes) => {
                 outcome.written.insert(store.name.clone());
                 outcome.received += changes.len();
-                written_keys.extend(changes.iter().map(|(k, _)| k.clone()));
+                for (key, _) in changes {
+                    written_keys.insert(key.clone());
+                    written_hashes.insert(key.clone(), hashes.get(entry_of(key)).cloned().unwrap_or_default());
+                }
+                written_files.insert(file.clone(), None);
             }
             Err(e) => outcome.problems.push(e),
         }
     }
     for (key, (value, clock, computer)) in winners {
-        if written_keys.contains(&key) {
-            memory.entries.insert(key, Known { c: clock, w: computer, h: value.as_deref().map(hash).unwrap_or_default() });
+        if written_keys.contains(&key) || settled.contains(&key) {
+            let h = written_hashes.get(&key).cloned().unwrap_or_else(|| value.as_deref().map(|v| value_hash(&key, v)).unwrap_or_default());
+            memory.entries.insert(key, Known { c: clock, w: computer, h, b: String::new() });
         } else {
+            if let Some(base) = bases.remove(&key).filter(|b| !b.is_empty()) {
+                memory.sealed.bases.insert(key.clone(), base);
+            }
+            if let Some(contents) = named.remove(&key) {
+                memory.sealed.named.insert(key.clone(), contents);
+            }
             memory.pending.insert(key, (value, clock, computer));
         }
     }
-    // Written files read again: what they hold now is what the next look compares with.
-    let files = if outcome.written.is_empty() {
-        found.files.clone()
-    } else {
-        let again = gather(stores, &found.files);
-        for (key, known) in memory.entries.iter_mut() {
-            if written_keys.contains(key) {
-                known.h = again.hashes.get(key).cloned().unwrap_or_default();
-            }
-        }
-        again.files
-    };
+    // What the next look compares with: the files as found, those written
+    // here as they are now (notes and papers), or to read again (the rest:
+    // small). What was written is known by what was written (`written_hashes`):
+    // a change made here after it is a change made here, sent.
+    let mut files = found.files.clone();
+    for (file, stat) in written_files {
+        match stat {
+            Some(stat) => files.insert(file, stat),
+            None => files.remove(&file),
+        };
+    }
 
     // Joining, the whole sharing or a store: what only this computer holds goes out.
     if !memory.joined || !joining.is_empty() {
         for (key, h) in &found.hashes {
-            if memory.entries.contains_key(key) || (memory.joined && !joins(key)) {
+            if memory.entries.contains_key(key) || memory.pending.contains_key(key) || (memory.joined && !joins(key)) || (key.starts_with(FILES) && hurried()) {
                 continue;
             }
             let Some(value) = value(key) else { continue };
+            if !seal_apart(sharing, stores, key, &value, &mut memory.sealed.mine, &mut outcome.problems, now_ms) {
+                continue;
+            }
             let clock = memory.tick(found.changed.get(file_of(key)).copied().unwrap_or(now_ms).min(now_ms));
-            memory.entries.insert(key.clone(), Known { c: clock, w: sharing.computer.to_string(), h: h.clone() });
-            out.push((key.clone(), Some(value), clock));
+            memory.entries.insert(key.clone(), Known { c: clock, w: sharing.computer.to_string(), h: h.clone(), b: String::new() });
+            out.push((key.clone(), Some(value), clock, String::new()));
         }
         memory.joined = true;
+    }
+
+    // Older copies put back by hand: the version last seen here comes back,
+    // the copy kept beside, said; one that cannot come back now (not here
+    // yet) is held, its copy not sent.
+    for key in older.into_iter().filter(|key| !written_keys.contains(key)) {
+        let file = file_of(&key).to_string();
+        let (Some((store, path)), Some(known), Some(before)) = (locate(stores, &file), memory.entries.get(&key), memory.files.get(&file).cloned()) else { continue };
+        let back = serde_json::to_string(&Reference { h: known.h.clone(), s: before.size, t: (before.modified / 1_000_000) as i64 }).unwrap_or_default();
+        let came = if hurried() || !writable(store, &path, sharing) { Ok(Received::Later) } else { receive(&receiving, store, &file, &path, Some(&back), found.hashes.get(&key).map(String::as_str), &|_| false, Some(known), found.files.get(&file), &mut memory.sealed.damaged) };
+        match came {
+            Ok(Received::Written { stat, copy, kept: into_history }) => {
+                kept |= into_history;
+                outcome.problems.push(format!("share-older-copy:{}", copy.unwrap_or_else(|| shown(&file).to_string())));
+                if let Some(stat) = stat {
+                    files.insert(file, stat);
+                }
+            }
+            _ => {
+                outcome.problems.push(format!("share-older-copy:{}", shown(&file)));
+                files.insert(file, before);
+            }
+        }
     }
 
     outcome.sent = out.len();
@@ -1245,21 +2027,402 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let own = |memory: &Memory| std::fs::metadata(round_file(sharing.folder, sharing.computer, memory.round)).map_or(0, |m| m.len());
     if memory.own_size > own(&memory) {
         outcome.problems.push("share-own-cut".into());
-        new_round(sharing, &mut memory, stores, &found, now_ms)?;
+        new_round(sharing, &mut memory, stores, &found, &hurried, now_ms)?;
         memory.round_base = own(&memory);
     }
     append(sharing, &mut memory, &out)?;
+    // When each part last sent and received a change, for the window.
+    let part_of = |key: &str| locate(stores, file_of(key)).map(|(store, _)| store.part);
+    for part in out.iter().filter_map(|(key, ..)| part_of(key)) {
+        memory.traffic.entry(part.to_string()).or_default().0 = now_ms / 1000;
+    }
+    for part in written_keys.iter().filter_map(|key| part_of(key)) {
+        memory.traffic.entry(part.to_string()).or_default().1 = now_ms / 1000;
+    }
+    // Now and then, the sealed files this computer's records point to looked for (`look_after_sealed`).
+    if sharing.files && !hurried() && now_ms - memory.sealed.checked >= 10 * MINUTE {
+        look_after_sealed(sharing, stores, &mut memory, &found, &hurried, &mut outcome.problems, now_ms);
+        memory.sealed.checked = now_ms;
+    }
+    // Damaged sealed files no change waits for any more are forgotten.
+    if !memory.sealed.damaged.is_empty() {
+        let waited: BTreeSet<String> = memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| crate::blobs::name(sharing.key, &value_hash(key, v)))).collect();
+        memory.sealed.damaged.retain(|name, _| waited.contains(name));
+    }
+    // The files this computer sealed in the folder that no record points to
+    // any more go, in time; never one a record named lately.
+    memory.sealed.named_at.retain(|_, at| now_ms - *at < crate::blobs::UNUSED_DAYS * DAY);
+    if !memory.sealed.mine.is_empty() {
+        let used: BTreeSet<String> = memory
+            .entries
+            .iter()
+            .filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty())
+            .map(|(_, known)| known.h.clone())
+            .chain(memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| value_hash(key, v))))
+            .map(|h| crate::blobs::name(sharing.key, &h))
+            .chain(memory.sealed.named_at.keys().cloned())
+            .collect();
+        let mut last: BTreeMap<String, i64> = memory.sealed.mine.iter().map(|(name, (at, _))| (name.clone(), *at)).collect();
+        crate::blobs::sweep(sharing.folder, &mut last, &used, now_ms);
+        memory.sealed.mine.retain(|name, (at, _)| last.get(name).map(|kept| *at = *kept).is_some());
+    }
+    // The history held within bounds, and what a crash left half written cleaned: after a writing, or hourly.
+    if kept || now_ms - memory.sealed.tidied >= HOUR {
+        crate::history::prune(&history, now_ms, crate::history::cap(&history), &|_, file| locate(stores, file).is_some_and(|(_, path)| path.exists()));
+        clean_leftovers(&sharing.folder.join("blobs"));
+        memory.sealed.tidied = now_ms;
+    }
     if own(&memory) > memory.round_base + ROUND_SIZE {
-        new_round(sharing, &mut memory, stores, &found, now_ms)?;
+        new_round(sharing, &mut memory, stores, &found, &hurried, now_ms)?;
         memory.round_base = own(&memory);
     }
     memory.own_size = own(&memory);
     memory.files = files;
-    memory.places = stores.iter().map(|s| (s.name.clone(), place(s))).collect();
+    // Where each store was read; one not read this time where it was.
+    let places: BTreeMap<String, String> = stores.iter().filter_map(|s| if reads(s) { Some((s.name.clone(), place(s))) } else { memory.places.get(&s.name).map(|p| (s.name.clone(), p.clone())) }).collect();
+    memory.places = places;
+    // What you said to take out went with this exchange; what waited and no longer does is forgotten.
+    memory.sealed.confirmed.retain(|store| !stores.iter().any(|s| s.name == *store && reads(s)));
+    memory.sealed.missing.retain(|key, _| memory.pending.contains_key(key));
+    memory.sealed.failing.retain(|key, _| memory.pending.contains_key(key));
     write_seen(sharing, &memory, &all, now_ms);
     remove_old_rounds(sharing, &memory, now_ms);
     memory.save(sharing.memory)?;
     Ok(outcome)
+}
+
+/// The whole lines of a computer's records from where they were left, read a
+/// piece at a time (`READ_CHUNK`), one line held whole at most: a line longer
+/// than any record (`LONGEST_LINE`: whoever wrote it) is given empty, a
+/// broken line, and skipped to its end. A last line not ended yet is left for
+/// the next exchange.
+struct LineReader {
+    file: std::fs::File,
+    held: Vec<u8>,
+    start: usize,
+    /// Inside a line too long: its bytes so far, skipped.
+    skipping: Option<u64>,
+    end: bool,
+}
+
+impl LineReader {
+    fn new(file: std::fs::File) -> LineReader {
+        LineReader { file, held: Vec::new(), start: 0, skipping: None, end: false }
+    }
+
+    /// The next whole line and its length in the file.
+    fn next(&mut self) -> Option<(Vec<u8>, u64)> {
+        use std::io::Read;
+        loop {
+            if let Some(at) = self.held[self.start..].iter().position(|b| *b == b'\n') {
+                let line = &self.held[self.start..=self.start + at];
+                self.start += at + 1;
+                return Some(match self.skipping.take() {
+                    Some(skipped) => (Vec::new(), skipped + line.len() as u64),
+                    None => (line.to_vec(), line.len() as u64),
+                });
+            }
+            self.held.drain(..self.start);
+            self.start = 0;
+            if self.skipping.is_some() || self.held.len() > LONGEST_LINE {
+                *self.skipping.get_or_insert(0) += self.held.len() as u64;
+                self.held.clear();
+            }
+            if self.end {
+                return None;
+            }
+            let mut piece = vec![0u8; READ_CHUNK];
+            match self.file.read(&mut piece) {
+                Ok(0) | Err(_) => self.end = true,
+                Ok(n) => self.held.extend_from_slice(&piece[..n]),
+            }
+        }
+    }
+}
+
+/// The sealed files this computer's records point to, looked for now and
+/// then: one gone from the folder (taken out by hand, by another device that
+/// sealed it long ago and swept it, by the server) or not of the size it was
+/// sealed at (cut, damaged on the way) is sealed again from the file here,
+/// while the file still holds that content.
+fn look_after_sealed(sharing: &Sharing, stores: &[Store], memory: &mut Memory, found: &Found, hurried: &dyn Fn() -> bool, problems: &mut Vec<String>, now_ms: i64) {
+    let ours: Vec<(String, String)> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && known.w == sharing.computer && !known.h.is_empty() && found.hashes.get(*key) == Some(&known.h)).map(|(key, known)| (key.clone(), known.h.clone())).collect();
+    for (key, h) in ours {
+        if hurried() {
+            return;
+        }
+        let name = crate::blobs::name(sharing.key, &h);
+        let there = std::fs::metadata(sharing.folder.join("blobs").join(&name)).map_or(0, |m| m.len());
+        if there > 0 && memory.sealed.mine.get(&name).is_none_or(|(_, size)| *size == there) {
+            continue;
+        }
+        let Some((_, path)) = locate(stores, file_of(&key)) else { continue };
+        match crate::blobs::put_again(sharing.folder, sharing.key, &path, &h) {
+            Ok(size) => {
+                memory.sealed.mine.insert(name, (now_ms, size));
+            }
+            Err(e) => problems.push(e),
+        }
+    }
+}
+
+/// The names of the notes and papers here or known, as a storage that does not
+/// tell case, nor how an accent is written, sees them (a phone's, a memory
+/// card's, Windows', a Mac's): two it would take for one are never both written.
+struct Names {
+    by_folded: BTreeMap<String, String>,
+}
+
+impl Names {
+    fn new(entries: &BTreeMap<String, Known>, found: &Found) -> Names {
+        let known = entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty()).map(|(key, _)| key);
+        let here = found.hashes.keys().filter(|key| key.starts_with(FILES));
+        Names { by_folded: known.chain(here).map(|key| (folded(file_of(key)), file_of(key).to_string())).collect() }
+    }
+
+    /// Whether another file of that name, as such a storage sees it, is here or known.
+    fn clash(&self, file: &str) -> bool {
+        self.by_folded.get(&folded(file)).is_some_and(|other| other != file)
+    }
+
+    fn written(&mut self, file: &str, there: bool) {
+        let name = folded(file);
+        if there {
+            self.by_folded.insert(name, file.to_string());
+        } else if self.by_folded.get(&name).is_some_and(|other| other == file) {
+            self.by_folded.remove(&name);
+        }
+    }
+}
+
+/// A name composed one way (NFC), its case folded.
+fn folded(name: &str) -> String {
+    icu_normalizer::ComposingNormalizerBorrowed::new_nfc().normalize(name).to_lowercase()
+}
+
+/// What came of another device's change to a file sealed apart.
+enum Received {
+    /// The file here holds it already.
+    AlreadySo,
+    /// Written: the file as it is now, for the next look to compare with
+    /// (none once taken out); the copy kept beside of a version changed here
+    /// too, if one was made; whether a version went into the history.
+    Written { stat: Option<Stat>, copy: Option<String>, kept: bool },
+    /// The file changed here since it was looked at: left for the next
+    /// exchange, which sends that change, both kept.
+    Later,
+}
+
+/// What writing the others' changes needs.
+struct Receiving<'a> {
+    sharing: &'a Sharing<'a>,
+    history: &'a Path,
+    now_ms: i64,
+    /// This computer's clock (milliseconds): a file is never dated after it.
+    clock: i64,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Run just before a received file takes its place, in this test's thread: an edit made then.
+    static BEFORE_WRITING: std::cell::RefCell<Option<Box<dyn Fn(&Path)>>> = std::cell::RefCell::new(None);
+}
+
+/// Another device's change to a file sealed apart, written here: its content
+/// opened from the folder beside the file and checked, then put in its place,
+/// the file as it was kept first (`history`: by reference when a record named
+/// that content, else copied). A file here that is neither what that change
+/// replaced nor a content the others' records name (`seen`) changed here too:
+/// it is kept beside, under a name that says so (its path in the folder
+/// returned), never lost. A file changed here since it was looked at
+/// (`gathered`) is not written over. Nothing is written without room for it,
+/// for the copy kept, and some left (`disk::kept_free`).
+#[allow(clippy::too_many_arguments)]
+fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Option<&str>, current: Option<&str>, seen: &dyn Fn(&str) -> bool, known: Option<&Known>, gathered: Option<&Stat>, damaged: &mut BTreeMap<String, (u64, u64, u64)>) -> Result<Received, crate::blobs::Fault> {
+    use crate::blobs::Fault;
+    let sharing = how.sharing;
+    let wanted = value.map(serde_json::from_str::<Reference>).transpose().map_err(|_| Fault::Broken)?;
+    // What is here: as gathered, else (written since, or not read) read now.
+    let current = match current {
+        Some(here) => Some(here.to_string()),
+        None if path.is_file() => crate::blobs::hash_file(path).ok().map(|(h, _)| h),
+        None => None,
+    };
+    match (&wanted, &current) {
+        (Some(wanted), Some(here)) if wanted.h == *here => return Ok(Received::AlreadySo),
+        (None, None) => return Ok(Received::AlreadySo),
+        _ => {}
+    }
+    let local = |e: std::io::Error| Fault::Local(format!("{}: {e}", path.display()));
+    let size_here = std::fs::metadata(path).map_or(0, |m| m.len());
+    let diverged = current.as_deref().is_some_and(|here| !seen(here));
+    // The version here kept by reference when a record named it: its content is in the folder.
+    let by_reference = current.as_deref().is_some_and(|here| known.is_some_and(|k| k.h == here) || seen(here));
+    let room = wanted.as_ref().map_or(0, |w| w.s) + if by_reference { 0 } else { size_here } + if diverged { size_here } else { 0 };
+    if wanted.as_ref().is_some_and(|w| w.s > crate::blobs::LARGEST) {
+        return Err(Fault::Broken);
+    }
+    if !crate::disk::fits(path, room) {
+        return Err(Fault::Room);
+    }
+    let temporary = temporary(path);
+    if let Some(wanted) = &wanted {
+        // Found damaged before, and the same copy still: not opened again.
+        let blob = crate::blobs::name(sharing.key, &wanted.h);
+        let copy = std::fs::metadata(crate::blobs::path(sharing.folder, sharing.key, &wanted.h)).ok().map(|m| crate::blobs::fingerprint(&m));
+        if copy.is_some() && damaged.get(&blob) == copy.as_ref() {
+            return Err(Fault::Broken);
+        }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(local)?;
+        }
+        match crate::blobs::get(sharing.folder, sharing.key, &wanted.h, &temporary) {
+            Err(Fault::Broken) => {
+                damaged.extend(copy.map(|copy| (blob, copy)));
+                return Err(Fault::Broken);
+            }
+            Err(fault) => return Err(fault),
+            Ok(()) => {
+                damaged.remove(&blob);
+            }
+        }
+    }
+    let placed = (|| {
+        #[cfg(test)]
+        BEFORE_WRITING.with(|hook| {
+            if let Some(hook) = hook.borrow().as_ref() {
+                hook(path);
+            }
+        });
+        // Changed here since it was looked at (an editor, another program): not
+        // written over; the next exchange sends that change first.
+        let same = match (std::fs::symlink_metadata(path).ok(), gathered) {
+            (None, None) => true,
+            (Some(now), Some(then)) => now.len() == then.size && modified_ns(&now) == then.modified,
+            _ => false,
+        };
+        if !same {
+            return Ok(None);
+        }
+        let copy = match &current {
+            Some(here) if diverged => Some(conflict_copy(path, here, known, how.now_ms).map_err(Fault::Local)?),
+            _ => None,
+        };
+        let mut kept = false;
+        if let Some(here) = current.as_deref()
+            && path.exists()
+        {
+            let kept_now = if by_reference { crate::history::keep_sealed(how.history, store.part, file, here, size_here, how.now_ms) } else { crate::history::keep(how.history, store.part, file, path, how.now_ms) };
+            kept_now.map_err(|e| if e.starts_with("share-no-room") { Fault::Room } else { Fault::Local(e) })?;
+            kept = true;
+        }
+        let stat = match &wanted {
+            Some(wanted) => {
+                std::fs::rename(&temporary, path).map_err(local)?;
+                // Its time as where it was made, never after this computer's clock (another's may be ahead).
+                if let Ok(written) = std::fs::File::options().write(true).open(path) {
+                    let _ = written.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(wanted.t.min(how.clock).max(0) as u64));
+                }
+                let now = std::fs::metadata(path).map_err(local)?;
+                Some(Stat { size: now.len(), modified: modified_ns(&now), entries: vec![(String::new(), wanted.h.clone())], seen: how.clock })
+            }
+            None => {
+                match std::fs::remove_file(path) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(local(e)),
+                    _ => {}
+                }
+                // Its folders, left empty, go too.
+                let mut dir = path.parent();
+                while let Some(folder) = dir.filter(|d| *d != store.path && d.starts_with(&store.path)) {
+                    if std::fs::remove_dir(folder).is_err() {
+                        break;
+                    }
+                    dir = folder.parent();
+                }
+                None
+            }
+        };
+        Ok(Some((stat, copy, kept)))
+    })();
+    if !matches!(placed, Ok(Some(_))) {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    let in_store = |copy: PathBuf| copy.strip_prefix(&store.path).map_or_else(|_| copy.display().to_string(), |r| r.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"));
+    Ok(match placed? {
+        Some((stat, copy, kept)) => Received::Written { stat, copy: copy.map(in_store), kept },
+        None => Received::Later,
+    })
+}
+
+/// The name of the copy kept beside a file two devices changed, the same on
+/// every device whatever its language: "lease (conflict 2026-10-05 16.05)",
+/// dated (in this computer's time zone) by when the version it holds was made.
+pub fn conflict_name(stem: &str, at_ms: i64) -> String {
+    let when = jiff::Timestamp::from_millisecond(at_ms).map(|t| t.to_zoned(jiff::tz::TimeZone::system()).strftime("%Y-%m-%d %H.%M").to_string()).unwrap_or_default();
+    format!("{stem} (conflict {when})")
+}
+
+/// A file two devices changed, copied beside it before the other's version
+/// takes its place, under `conflict_name`: dated by when the version it holds
+/// was made, so that every device holding that version names it alike and one
+/// copy travels, not one each. Returns where it is.
+fn conflict_copy(path: &Path, here: &str, known: Option<&Known>, now_ms: i64) -> Result<PathBuf, String> {
+    let at = known.filter(|k| k.h == here).map(|k| (k.c >> 16) as i64).or_else(|| std::fs::metadata(path).ok().map(|m| (modified_ns(&m) / 1_000_000) as i64)).unwrap_or(now_ms);
+    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let (stem, extension) = match name.rsplit_once('.') {
+        Some((stem, extension)) if !stem.is_empty() => (stem.to_string(), format!(".{extension}")),
+        _ => (name.clone(), String::new()),
+    };
+    let named = conflict_name(&stem, at);
+    let mut n = 1;
+    loop {
+        let copy = path.with_file_name(if n == 1 { format!("{named}{extension}") } else { format!("{named} {n}{extension}") });
+        if !copy.exists() {
+            let temporary = temporary(&copy);
+            return std::fs::copy(path, &temporary).and_then(|_| std::fs::rename(&temporary, &copy)).map(|()| copy.clone()).map_err(|e| {
+                let _ = std::fs::remove_file(&temporary);
+                format!("{}: {e}", copy.display())
+            });
+        }
+        // Kept already: another device's copy of the same version came first.
+        if crate::blobs::hash_file(&copy).is_ok_and(|(h, _)| h == here) {
+            return Ok(copy);
+        }
+        n += 1;
+    }
+}
+
+/// Whether a file may be written where a record says: never through a link
+/// below its store's folder (a link to elsewhere would carry the write out of
+/// it), nor over a link, nor inside the sharing folder (it would travel in
+/// plain) or Sioul's own state.
+fn writable(store: &Store, path: &Path, sharing: &Sharing) -> bool {
+    writable_in(store, path, Some(sharing.folder), sharing.memory)
+}
+
+fn writable_in(store: &Store, path: &Path, folder: Option<&Path>, memory: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(&store.path) else { return false };
+    let mut at = store.path.clone();
+    for part in relative.components() {
+        at.push(part);
+        match std::fs::symlink_metadata(&at) {
+            Ok(meta) if meta.file_type().is_symlink() => return false,
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+    // Where it would land: the deepest of its folders that is there.
+    let Some(there) = path.ancestors().skip(1).find(|p| p.exists()).and_then(|p| p.canonicalize().ok()) else { return true };
+    let inside = |root: &Path| root.canonicalize().is_ok_and(|root| there.starts_with(root));
+    !folder.is_some_and(inside) && !memory.parent().and_then(Path::parent).is_some_and(inside)
+}
+
+/// Names Windows keeps for its devices ("aux.md", "COM1.txt"), and names
+/// ending in a dot or a space, which it cuts.
+fn kept_by_windows(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
+    let numbered = (stem.starts_with("COM") || stem.starts_with("LPT")) && stem.len() == 4 && matches!(stem.as_bytes()[3], b'1'..=b'9');
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL") || numbered || name.ends_with('.') || name.ends_with(' ')
 }
 
 /// The store and the file a key's file part names.
@@ -1274,18 +2437,144 @@ fn locate<'a>(stores: &'a [Store], file: &str) -> Option<(&'a Store, PathBuf)> {
     if relative.is_empty() || relative.split('/').any(|part| part.is_empty() || part == ".." || part == "." || part.contains(['\\', ':'])) {
         return None;
     }
+    // Files sealed apart: never what tools make, nor what another part carries
+    // (whatever its case), nor a name Windows keeps for itself, there.
+    if matches!(store.shape, Shape::Files)
+        && (relative.split('/').any(|part| made_by_tools(part) || matches!(part, "node_modules" | "target") || (cfg!(windows) && kept_by_windows(part))) || relative.split('/').next().is_some_and(|top| store.skip.iter().any(|skip| skip.eq_ignore_ascii_case(top))))
+    {
+        return None;
+    }
     Some((store, relative.split('/').fold(store.path.clone(), |path, part| path.join(part))))
 }
 
-fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<String>, u64)]) -> Result<(), String> {
+/// What putting a version back would change, said before it is done (`put_back_preview`).
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Back {
+    /// A file whole (a note, a paper, a draft): it goes back as it was.
+    pub whole: bool,
+    /// Entries (settings, lines, marks, sessions) that go back to what they were.
+    pub changed: usize,
+    /// Entries taken out since, which come back.
+    pub returning: usize,
+    /// Entries added since, which stay.
+    pub kept: usize,
+}
+
+/// What putting back `stamp` would change in `file` (`put_back`).
+pub fn put_back_preview(memory: &Path, stores: &[Store], part: &str, file: &str, stamp: &str) -> Result<Back, String> {
+    let (store, path) = locate(stores, file).filter(|(store, _)| store.part == part).ok_or_else(|| format!("{file}: not shared"))?;
+    let kept = crate::history::version(&crate::history::root(memory), part, file, stamp).ok_or_else(|| format!("{file}: {stamp}: not kept"))?;
+    let (crate::history::Kept::Copy(version), Shape::Toml(_) | Shape::Lines) = (kept, store.shape) else { return Ok(Back { whole: true, ..Back::default() }) };
+    let (old, now) = entries_then_and_now(store, &version, &path)?;
+    Ok(Back {
+        whole: false,
+        changed: old.iter().filter(|(entry, value)| now.get(*entry).is_some_and(|v| v != *value)).count(),
+        returning: old.keys().filter(|entry| !now.contains_key(*entry)).count(),
+        kept: now.keys().filter(|entry| !old.contains_key(*entry)).count(),
+    })
+}
+
+/// A file's entries in a version kept, and in the file now.
+fn entries_then_and_now(store: &Store, version: &Path, path: &Path) -> Result<(BTreeMap<String, String>, BTreeMap<String, String>), String> {
+    let old = std::fs::read(version).ok().and_then(|bytes| entries_of(store, &bytes)).ok_or_else(|| format!("{}: not readable", version.display()))?;
+    let now = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default();
+    Ok((old.into_iter().collect(), now.into_iter().collect()))
+}
+
+/// A version put back (`history`). A file whole goes back as it was, the file
+/// as it is now kept first. A file of entries (settings, lists, the doses'
+/// record, sessions) is put back entry by entry: each entry the version held
+/// goes back to what it was, those taken out since come back, and those added
+/// since stay. Putting back never takes out, on any device, what was added
+/// after that version. The next exchange sends what changed as changes made
+/// here, dated now. `stores` holds every part, those switched off too (a part
+/// off here is put back here only); `vault` the sharing folder and its key,
+/// for a version kept by reference. Waits for an exchange running.
+pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Store], part: &str, file: &str, stamp: &str, now_ms: i64) -> Result<(), String> {
+    let (store, path) = locate(stores, file).filter(|(store, _)| store.part == part).ok_or_else(|| format!("{file}: not shared"))?;
+    let root = crate::history::root(memory);
+    let kept = crate::history::version(&root, part, file, stamp).ok_or_else(|| format!("{file}: {stamp}: not kept"))?;
+    let _running = exchange_lock(memory, true)?;
+    if store.folder && !writable_in(store, &path, vault.map(|(folder, _)| folder), memory) {
+        return Err(format!("{}: not written there", path.display()));
+    }
+    if let (crate::history::Kept::Copy(version), Shape::Toml(_) | Shape::Lines) = (&kept, store.shape) {
+        let (old, now) = entries_then_and_now(store, version, &path)?;
+        let back: Vec<(&str, Option<&str>)> = old.iter().filter(|(entry, value)| now.get(*entry) != Some(*value)).map(|(entry, value)| (entry.as_str(), Some(value.as_str()))).collect();
+        if back.is_empty() {
+            return Ok(());
+        }
+        return write_entries(store, &path, &back, || crate::history::keep(&root, part, file, &path, now_ms)).map(|_| ());
+    }
+    let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(fail)?;
+    }
+    let temporary = temporary(&path);
+    let brought = match kept {
+        crate::history::Kept::Copy(version) => std::fs::copy(&version, &temporary).map(|_| ()).map_err(fail),
+        crate::history::Kept::Sealed { hash, .. } => {
+            let (folder, key) = vault.ok_or_else(|| format!("{file}: kept in the sharing folder, which is not set here"))?;
+            crate::blobs::get(folder, key, &hash, &temporary).map_err(|fault| match fault {
+                crate::blobs::Fault::Missing => format!("share-missing:{file}"),
+                crate::blobs::Fault::Broken => format!("share-damaged:{file}"),
+                crate::blobs::Fault::Room => format!("share-no-room:{file}"),
+                crate::blobs::Fault::Local(e) => e,
+            })
+        }
+    };
+    let put = || {
+        brought?;
+        if path.exists() {
+            crate::history::keep(&root, part, file, &path, now_ms)?;
+        }
+        // Dated now, wherever the copy took its time from: a change made here, which the others take.
+        let _ = std::fs::File::options().write(true).open(&temporary).and_then(|f| f.set_modified(std::time::SystemTime::now()));
+        std::fs::rename(&temporary, &path).map_err(fail)
+    };
+    let done = if matches!(store.shape, Shape::Files) { put() } else { sioul_core::filelock::with_lock(&path, put) };
+    if done.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    done
+}
+
+/// For a file sealed apart, the content a change made here replaces: its hash as last known ("" new).
+fn base_of(memory: &Memory, key: &str) -> String {
+    if key.starts_with(FILES) { memory.entries.get(key).map(|k| k.h.clone()).unwrap_or_default() } else { String::new() }
+}
+
+/// A file sealed apart put in the folder before its record goes out (`blobs`);
+/// false when it could not be (it changed while read, a full disk): its record
+/// waits for the next look. Anything else needs nothing.
+fn seal_apart(sharing: &Sharing, stores: &[Store], key: &str, value: &str, mine: &mut BTreeMap<String, (i64, u64)>, problems: &mut Vec<String>, now_ms: i64) -> bool {
+    if !key.starts_with(FILES) {
+        return true;
+    }
+    let (Some((_, path)), Ok(reference)) = (locate(stores, file_of(key)), serde_json::from_str::<Reference>(value)) else { return false };
+    match crate::blobs::put(sharing.folder, sharing.key, &path, &reference.h) {
+        Ok(written) => {
+            if let Some(size) = written {
+                mine.insert(crate::blobs::name(sharing.key, &reference.h), (now_ms, size));
+            }
+            true
+        }
+        Err(e) => {
+            problems.push(e);
+            false
+        }
+    }
+}
+
+fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<String>, u64, String)]) -> Result<(), String> {
     if changes.is_empty() {
         return Ok(());
     }
     let path = round_file(sharing.folder, sharing.computer, memory.round);
     let mut text = String::new();
-    for (key, value, clock) in changes {
+    for (key, value, clock, base) in changes {
         memory.seq += 1;
-        let plain = serde_json::to_vec(&Change { k: key.clone(), v: value.clone() }).map_err(|e| e.to_string())?;
+        let plain = serde_json::to_vec(&Change { k: key.clone(), v: value.clone(), b: base.clone() }).map_err(|e| e.to_string())?;
         let line = Line { n: memory.seq, c: *clock, s: seal(sharing.key, &bound(sharing.computer, memory.round, memory.seq, *clock), &plain) };
         text.push_str(&serde_json::to_string(&line).map_err(|e| e.to_string())?);
         text.push('\n');
@@ -1293,17 +2582,40 @@ fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<Str
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     // A line left half written (Sioul stopped, a full disk): cut back to the
     // last whole line, so that the next record is not glued to it and lost.
-    if let Ok(bytes) = std::fs::read(&path)
-        && !bytes.is_empty()
-        && !bytes.ends_with(b"\n")
-    {
-        let whole = bytes.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+    if let Some(whole) = unfinished(&path) {
         let file = std::fs::OpenOptions::new().write(true).open(&path).map_err(fail)?;
-        file.set_len(whole as u64).map_err(fail)?;
+        file.set_len(whole).map_err(fail)?;
     }
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&path).map_err(fail)?;
     file.write_all(text.as_bytes()).map_err(fail)?;
     file.sync_all().map_err(fail)
+}
+
+/// Where a file's last whole line ends, when it does not end one: its end
+/// read back a piece at a time, never the file whole. None when it ends a
+/// line, or is empty or not there.
+fn unfinished(path: &Path) -> Option<u64> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    let size = file.metadata().ok()?.len();
+    let mut last = [0u8];
+    file.seek(SeekFrom::Start(size.checked_sub(1)?)).ok()?;
+    file.read_exact(&mut last).ok()?;
+    if last[0] == b'\n' {
+        return None;
+    }
+    let mut end = size;
+    while end > 0 {
+        let from = end.saturating_sub(64 << 10);
+        let mut piece = vec![0u8; (end - from) as usize];
+        file.seek(SeekFrom::Start(from)).ok()?;
+        file.read_exact(&mut piece).ok()?;
+        if let Some(at) = piece.iter().rposition(|b| *b == b'\n') {
+            return Some(from + at as u64 + 1);
+        }
+        end = from;
+    }
+    Some(0)
 }
 
 /// This computer's last record in the folder: its round, number, and that file's size.
@@ -1322,22 +2634,34 @@ fn last_own(folder: &Path, computer: &str) -> Option<(u32, u64, u64)> {
 }
 
 /// A new file for this computer, opening on every entry it holds the last
-/// word on, with their clocks; entries taken out long ago are forgotten.
-fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &Found, now_ms: i64) -> Result<(), String> {
+/// word on, with their clocks; entries taken out long ago are forgotten. A
+/// file sealed apart missing from the folder (taken out there by hand) is put back first.
+fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &Found, hurried: &dyn Fn() -> bool, now_ms: i64) -> Result<(), String> {
     let oldest = ((now_ms - TOMBSTONE_DAYS * 86_400_000).max(0) as u64) << 16;
     memory.entries.retain(|_, known| !known.h.is_empty() || known.c >= oldest);
-    let ours: Vec<(String, Option<String>, u64)> = memory
+    let ours: Vec<(String, Option<String>, u64, String)> = memory
         .entries
         .iter()
         .filter(|(_, known)| known.w == sharing.computer)
         .filter_map(|(key, known)| {
             if known.h.is_empty() {
-                return (!found.hashes.contains_key(key)).then(|| (key.clone(), None, known.c));
+                return (!found.hashes.contains_key(key)).then(|| (key.clone(), None, known.c, known.b.clone()));
             }
-            let value = found.values.get(key).cloned().or_else(|| value_of(stores, key))?;
-            (hash(&value) == known.h).then(|| (key.clone(), Some(value), known.c))
+            // A file sealed apart from its last look, never read through for this.
+            let value = match found.values.get(key) {
+                Some(value) => value.clone(),
+                None if key.starts_with(FILES) => found.files.get(file_of(key)).and_then(|stat| stat.entries.first().map(|(_, h)| reference(h, stat.size, stat.modified)))?,
+                None => value_of(stores, key)?,
+            };
+            (value_hash(key, &value) == known.h).then(|| (key.clone(), Some(value), known.c, known.b.clone()))
         })
         .collect();
+    let mut problems = Vec::new();
+    for (key, value, _, _) in ours.iter().filter(|_| sharing.files && !hurried()) {
+        if let Some(value) = value {
+            seal_apart(sharing, stores, key, value, &mut memory.sealed.mine, &mut problems, now_ms);
+        }
+    }
     memory.round += 1;
     memory.seq = 0;
     append(sharing, memory, &ours)
@@ -1368,6 +2692,11 @@ impl Heard {
     }
 }
 
+/// When each part last sent a change from here, and last received one (Unix seconds; 0 never).
+pub fn traffic(memory: &Path, computer: &str) -> BTreeMap<String, (i64, i64)> {
+    Memory::load(memory, computer).traffic
+}
+
 pub fn heard(memory: &Path, computer: &str) -> Heard {
     let memory = Memory::load(memory, computer);
     Heard { read: memory.read_n, broken: memory.broken }
@@ -1378,7 +2707,8 @@ pub fn heard(memory: &Path, computer: &str) -> Heard {
 /// that a record lost or broken here, started again empty, takes nothing out
 /// elsewhere and gets back what was written (docs/database.md, "Prudence").
 pub fn rebuild(memory: &Path, computer: &str, files: &[&str]) -> Result<(), String> {
-    let mut state = Memory::load(memory, computer);
+    let _running = exchange_lock(memory, true)?;
+    let mut state = Memory::load_all(memory, computer);
     state.entries.retain(|key, _| !files.contains(&file_of(key)));
     state.pending.retain(|key, _| !files.contains(&file_of(key)));
     for file in files {
@@ -1388,6 +2718,38 @@ pub fn rebuild(memory: &Path, computer: &str, files: &[&str]) -> Result<(), Stri
     // The others' records read again from their oldest kept round.
     state.read.clear();
     state.save(memory)
+}
+
+/// The files gone at once from a folder of notes or papers (`share-vanished`)
+/// taken out everywhere at the next exchange, as you said: the folder by its
+/// name in the records ("files/notes/").
+pub fn confirm_gone(memory: &Path, computer: &str, store: &str) -> Result<(), String> {
+    let _running = exchange_lock(memory, true)?;
+    let mut state = Memory::load_all(memory, computer);
+    state.sealed.confirmed.insert(store.to_string());
+    state.save(memory)
+}
+
+/// One exchange at a time on this computer, whatever runs it (two Sioul
+/// started, the command line): a lock on `<state>/share/exchange.lock`, held
+/// while it runs, let go when the file returned is. `wait`: until the
+/// running one ends; else none while another holds it.
+pub fn exchange_lock(memory: &Path, wait: bool) -> Result<Option<std::fs::File>, String> {
+    let path = memory.with_file_name("exchange.lock");
+    let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(fail)?;
+    }
+    let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path).map_err(fail)?;
+    if wait {
+        file.lock().map_err(fail)?;
+        return Ok(Some(file));
+    }
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(e)) => Err(fail(e)),
+    }
 }
 
 fn seen_path(folder: &Path, computer: &str) -> PathBuf {
@@ -1415,7 +2777,7 @@ fn write_seen(sharing: &Sharing, memory: &Memory, all: &BTreeMap<String, Vec<u32
 }
 
 fn read_seen(folder: &Path, computer: &str) -> Option<Seen> {
-    std::fs::read_to_string(seen_path(folder, computer)).ok().and_then(|t| toml::from_str(&t).ok())
+    read_small(&seen_path(folder, computer)).and_then(|t| toml::from_str(&t).ok())
 }
 
 /// This computer's old files, once every other computer heard lately has read past them.
@@ -1469,14 +2831,25 @@ mod tests {
 
         fn exchange(&self, folder: &Path, key: &[u8; 32], now: i64) -> Outcome {
             let stores = stores(&Config::default(), &self.roots);
-            exchange(&Sharing { folder, computer: &self.id, key, memory: &self.memory }, &stores, now).unwrap()
+            exchange(&Sharing { folder, computer: &self.id, key, memory: &self.memory, files: true, hurry: None }, &stores, now).unwrap()
         }
 
         /// An exchange carrying the projects and budgets of `notes`, this computer's notes folder.
         fn exchange_notes(&self, folder: &Path, key: &[u8; 32], now: i64, notes: &Path) -> Outcome {
             let config = Config { share_projects: true, case_store: Some(notes.display().to_string()), ..Config::default() };
             let stores = stores(&config, &self.roots);
-            exchange(&Sharing { folder, computer: &self.id, key, memory: &self.memory }, &stores, now).unwrap()
+            exchange(&Sharing { folder, computer: &self.id, key, memory: &self.memory, files: true, hurry: None }, &stores, now).unwrap()
+        }
+
+        /// An exchange with `notes` as this computer's notes folder, the parts `on` shared besides those shared by default.
+        fn exchange_with(&self, folder: &Path, key: &[u8; 32], now: i64, notes: &Path, on: &[&str]) -> Outcome {
+            let stores = self.stores_with(notes, &|part| on.contains(&part));
+            exchange(&Sharing { folder, computer: &self.id, key, memory: &self.memory, files: true, hurry: None }, &stores, now).unwrap()
+        }
+
+        fn stores_with(&self, notes: &Path, on: &dyn Fn(&str) -> bool) -> Vec<Store> {
+            let config = Config { case_store: Some(notes.display().to_string()), ..Config::default() };
+            stores_of(&config, &self.roots, &|part| on(part) || shared_by_default(part, &config))
         }
 
         fn write(&self, relative: &str, text: &str) {
@@ -1508,6 +2881,52 @@ mod tests {
 
     fn quick_key(folder: &Path, passphrase: &str) -> Result<[u8; 32], Refused> {
         key_with(folder, passphrase, 64, 1)
+    }
+
+    fn put(dir: &Path, relative: &str, bytes: &[u8]) {
+        let path = dir.join(relative);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    /// Bytes that do not compress, the same for the same seed: a scan, a picture.
+    fn noise(length: usize, seed: u32) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(2_654_435_761).wrapping_add(1);
+        (0..length)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                x as u8
+            })
+            .collect()
+    }
+
+    /// The files of a notes folder, hidden ones left out, by their path from it.
+    fn files_in(dir: &Path) -> BTreeMap<String, Vec<u8>> {
+        let mut found = Vec::new();
+        list_files(dir, dir, &[], &mut found);
+        found.into_iter().map(|(name, path)| (name, std::fs::read(path).unwrap())).collect()
+    }
+
+    /// A version kept, copied or by reference (its content opened from the folder).
+    fn version_text(history: &Path, part: &str, file: &str, stamp: &str, folder: &Path, key: &[u8; 32]) -> String {
+        match crate::history::version(history, part, file, stamp) {
+            Some(crate::history::Kept::Copy(path)) => std::fs::read_to_string(path).unwrap(),
+            Some(crate::history::Kept::Sealed { hash, .. }) => {
+                let target = temporary(&history.join("opened"));
+                crate::blobs::get(folder, key, &hash, &target).unwrap();
+                let text = std::fs::read_to_string(&target).unwrap();
+                std::fs::remove_file(target).unwrap();
+                text
+            }
+            None => panic!("{file}: {stamp}: not kept"),
+        }
+    }
+
+    /// The copies a device kept of a file two devices changed: "lease (… …).md", not a sync app's.
+    fn copies_of(dir: &Path, stem: &str) -> Vec<Vec<u8>> {
+        files_in(dir).into_iter().filter(|(name, _)| name.starts_with(&format!("{stem} (")) && name.ends_with(").md") && !made_by_tools(name)).map(|(_, bytes)| bytes).collect()
     }
 
     const MINUTE: i64 = 60_000;
@@ -1843,7 +3262,7 @@ mod tests {
         // Lines missing (a stale copy of the file put back, then written after): a gap, said, and not known.
         let line = |n: u64, value: &str| {
             let clock = (NOW as u64) << 16 | n;
-            let plain = serde_json::to_vec(&Change { k: "config/safe-senders.txt#".to_string() + value, v: Some(String::new()) }).unwrap();
+            let plain = serde_json::to_vec(&Change { k: "config/safe-senders.txt#".to_string() + value, v: Some(String::new()), b: String::new() }).unwrap();
             serde_json::to_string(&Line { n, c: clock, s: seal(&key, &bound(&desk.id, 1, n, clock), &plain) }).unwrap() + "\n"
         };
         let last = written(&desk.memory, &desk.id).unwrap().1;
@@ -2210,6 +3629,990 @@ mod tests {
     }
 
     #[test]
+    fn notes_travel_file_by_file_whatever_carries_them() {
+        for how in [Carrying::Exact, Carrying::SizeOnly, Carrying::Late, Carrying::StaleCopies, Carrying::Placeholders] {
+            let base = scratch(&format!("notes-{how:?}").to_lowercase());
+            let (server, phone_folder) = (base.join("server").join("Sioul"), base.join("phone").join("Sioul"));
+            let key = quick_key(&server, "four words make a passphrase").unwrap();
+            let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+            let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+            put(&desk_notes, "lease.md", b"# Lease\nSigned on 2 October.\n");
+            put(&desk_notes, "admin/taxes.md", b"# Taxes\nNotice received.\n");
+            put(&desk_notes, "admin/scan.pdf", &noise(1_500_000, 1));
+            // Made by tools, or carried by another part: they stay.
+            for name in ["lease.md~", ".lease.md.swp", "lease (conflicted copy 2026-10-05 140533).md", "taxes.sync-conflict-20261005-140533-ABCDEFG.md", "~$letter.docx", "sioul-cases.toml", "papers/passport.pdf"] {
+                put(&desk_notes, name, b"stays home");
+            }
+            let mut carrier = Carrier::new(how);
+            let run = |carrier: &mut Carrier, minutes: std::ops::Range<i64>| {
+                for minute in minutes {
+                    let now = NOW + minute * MINUTE;
+                    desk.exchange_with(&server, &key, now, &desk_notes, &["notes"]);
+                    carrier.carry(&server, &phone_folder);
+                    phone.exchange_with(&phone_folder, &key, now + 30_000, &phone_notes, &["notes"]);
+                }
+            };
+            run(&mut carrier, 0..20);
+            let there = files_in(&phone_notes);
+            assert_eq!(there.keys().map(String::as_str).collect::<Vec<_>>(), ["admin/scan.pdf", "admin/taxes.md", "lease.md"], "{how:?}");
+            assert!(there["admin/scan.pdf"] == noise(1_500_000, 1), "{how:?}: the scan came whole");
+            // The phone changes a note and writes another; the desk takes one out.
+            put(&phone_notes, "lease.md", b"# Lease\nSigned on 2 October.\nKeys: two.\n");
+            put(&phone_notes, "new.md", b"# New\n");
+            std::fs::remove_file(desk_notes.join("admin/taxes.md")).unwrap();
+            run(&mut carrier, 20..40);
+            for notes in [&desk_notes, &phone_notes] {
+                let files = files_in(notes);
+                assert!(!files.contains_key("admin/taxes.md"), "{how:?}: {}", notes.display());
+                assert_eq!(files.get("lease.md").map(Vec::as_slice), Some(&b"# Lease\nSigned on 2 October.\nKeys: two.\n"[..]), "{how:?}: {}", notes.display());
+                assert_eq!(files.get("new.md").map(Vec::as_slice), Some(&b"# New\n"[..]), "{how:?}: {}", notes.display());
+                assert!(copies_of(notes, "lease").is_empty(), "{how:?}: no conflict where there was none");
+            }
+            // Each content sealed once, apart; nothing of the notes readable in the folder.
+            let sealed = std::fs::read_dir(server.join("blobs")).unwrap().filter_map(Result::ok).filter(|e| !e.file_name().to_string_lossy().starts_with('.')).count();
+            assert_eq!(sealed, 5, "{how:?}: the lease twice, the taxes, the scan, the new note");
+            let mut everything = Vec::new();
+            list_files(&server, &server, &[], &mut everything);
+            for (_, path) in everything {
+                let bytes = std::fs::read(&path).unwrap();
+                for secret in [&b"Signed on"[..], b"Taxes", b"Keys: two", b"stays home", b"lease.md"] {
+                    assert!(!bytes.windows(secret.len()).any(|w| w == secret), "{how:?}: {} shows {}", path.display(), String::from_utf8_lossy(secret));
+                }
+            }
+            let _ = std::fs::remove_dir_all(&base);
+        }
+    }
+
+    #[test]
+    fn a_note_changed_on_both_keeps_both_whatever_carries_them() {
+        for how in [Carrying::Exact, Carrying::SizeOnly, Carrying::Late, Carrying::StaleCopies, Carrying::Placeholders] {
+            let base = scratch(&format!("notes-both-{how:?}").to_lowercase());
+            let (server, phone_folder) = (base.join("server").join("Sioul"), base.join("phone").join("Sioul"));
+            let key = quick_key(&server, "four words make a passphrase").unwrap();
+            let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+            let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+            put(&desk_notes, "lease.md", b"Rent: 620\n");
+            put(&desk_notes, "taxes.md", b"Notice received.\n");
+            let mut carrier = Carrier::new(how);
+            let run = |carrier: &mut Carrier, minutes: std::ops::Range<i64>| {
+                for minute in minutes {
+                    let now = NOW + minute * MINUTE;
+                    desk.exchange_with(&server, &key, now, &desk_notes, &["notes"]);
+                    carrier.carry(&server, &phone_folder);
+                    phone.exchange_with(&phone_folder, &key, now + 30_000, &phone_notes, &["notes"]);
+                }
+            };
+            run(&mut carrier, 0..10);
+            assert_eq!(files_in(&phone_notes).len(), 2, "{how:?}");
+            // In the same minute: the lease changed on both; the taxes taken out on the desk, changed on the phone.
+            put(&desk_notes, "lease.md", b"Rent: 640\n");
+            put(&phone_notes, "lease.md", b"Rent: 620\nKeys: two\n");
+            std::fs::remove_file(desk_notes.join("taxes.md")).unwrap();
+            put(&phone_notes, "taxes.md", b"Notice received.\nPaid on 3 October.\n");
+            run(&mut carrier, 10..40);
+            for notes in [&desk_notes, &phone_notes] {
+                let files = files_in(notes);
+                assert_eq!(files.get("lease.md").map(Vec::as_slice), Some(&b"Rent: 620\nKeys: two\n"[..]), "{how:?}: {}", notes.display());
+                assert_eq!(copies_of(notes, "lease"), [b"Rent: 640\n".to_vec()], "{how:?}: {}: {:?}", notes.display(), files.keys().collect::<Vec<_>>());
+                assert_eq!(files.get("taxes.md").map(Vec::as_slice), Some(&b"Notice received.\nPaid on 3 October.\n"[..]), "{how:?}: {}", notes.display());
+                assert_eq!(files.len(), 3, "{how:?}: {}: {:?}", notes.display(), files.keys().collect::<Vec<_>>());
+            }
+            let _ = std::fs::remove_dir_all(&base);
+        }
+    }
+
+    #[test]
+    fn a_big_folder_sends_only_what_changed() {
+        let base = scratch("big-folder");
+        let notes = base.join("notes");
+        // Shared through a folder inside the notes folder, as Sioul may suggest: not carried as notes.
+        let folder = notes.join("sioul-shared");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let desk = Computer::new(&base, "desk");
+        for n in 0..300 {
+            put(&notes, &format!("days/{n:03}.md"), format!("# Day {n}\n").as_bytes());
+        }
+        for n in 0..3 {
+            put(&notes, &format!("scans/{n}.pdf"), &noise(1_500_000, n));
+        }
+        let blobs = || std::fs::read_dir(folder.join("blobs")).unwrap().count();
+        assert_eq!(desk.exchange_with(&folder, &key, NOW, &notes, &["notes"]).sent, 303);
+        assert_eq!(blobs(), 303);
+        // Nothing changed: no file read again, nothing sent.
+        crate::blobs::HASHED.with(|n| n.set(0));
+        assert_eq!(desk.exchange_with(&folder, &key, NOW + MINUTE, &notes, &["notes"]).sent, 0);
+        assert_eq!(crate::blobs::HASHED.with(std::cell::Cell::get), 0, "a file of the same size and time is not read");
+        // One file touched (its time, not its content), one changed: both read, one sent, sealed alone.
+        std::fs::File::options().write(true).open(notes.join("days/007.md")).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(60)).unwrap();
+        put(&notes, "scans/1.pdf", &noise(1_500_000, 9));
+        let outcome = desk.exchange_with(&folder, &key, NOW + 2 * MINUTE, &notes, &["notes"]);
+        assert_eq!(outcome.sent, 1, "{outcome:?}");
+        assert_eq!(crate::blobs::HASHED.with(std::cell::Cell::get), 2);
+        assert_eq!(blobs(), 304);
+        // Too big to travel: it stays, said; nothing else moves.
+        std::fs::File::create(notes.join("scans/film.mp4")).unwrap().set_len(crate::blobs::LARGEST + 1).unwrap();
+        let outcome = desk.exchange_with(&folder, &key, NOW + 3 * MINUTE, &notes, &["notes"]);
+        assert!(outcome.problems.iter().any(|p| p == "share-too-big:files/notes/scans/film.mp4"), "{outcome:?}");
+        assert_eq!(outcome.sent, 0);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_note_changed_on_both_keeps_both() {
+        for desk_later in [false, true] {
+            let base = scratch(&format!("both-{desk_later}"));
+            let folder = base.join("Sioul");
+            let key = quick_key(&folder, "four words make a passphrase").unwrap();
+            let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+            let (desk_notes, laptop_notes) = (base.join("desk-notes"), base.join("laptop-notes"));
+            put(&desk_notes, "lease.md", b"Rent: 620\n");
+            desk.exchange_with(&folder, &key, NOW, &desk_notes, &["notes"]);
+            laptop.exchange_with(&folder, &key, NOW + MINUTE, &laptop_notes, &["notes"]);
+            assert_eq!(std::fs::read(laptop_notes.join("lease.md")).unwrap(), b"Rent: 620\n");
+            // Changed on both, apart; the one that exchanges later is the later word.
+            put(&desk_notes, "lease.md", b"Rent: 640\n");
+            put(&laptop_notes, "lease.md", b"Rent: 620\nKeys: two\n");
+            let (first, second): (&Computer, &Computer) = if desk_later { (&laptop, &desk) } else { (&desk, &laptop) };
+            let notes = |c: &Computer| if std::ptr::eq(c, &desk) { desk_notes.clone() } else { laptop_notes.clone() };
+            let mut said = Vec::new();
+            for minute in 2..10 {
+                let (who, at) = if minute % 2 == 0 { (first, minute) } else { (second, minute) };
+                said.extend(who.exchange_with(&folder, &key, NOW + at * MINUTE, &notes(who), &["notes"]).problems);
+            }
+            let (later, earlier): (&[u8], &[u8]) = if desk_later { (b"Rent: 640\n", b"Rent: 620\nKeys: two\n") } else { (b"Rent: 620\nKeys: two\n", b"Rent: 640\n") };
+            for notes in [&desk_notes, &laptop_notes] {
+                assert_eq!(std::fs::read(notes.join("lease.md")).unwrap(), later, "desk later: {desk_later}");
+                assert_eq!(copies_of(notes, "lease"), [earlier.to_vec()], "desk later: {desk_later}: {:?}", files_in(notes).keys().collect::<Vec<_>>());
+            }
+            assert!(said.iter().any(|p| p.starts_with("share-conflict:lease (")), "{said:?}");
+            // Settled: nothing more goes either way.
+            assert_eq!(desk.exchange_with(&folder, &key, NOW + 10 * MINUTE, &desk_notes, &["notes"]).sent, 0);
+            assert_eq!(laptop.exchange_with(&folder, &key, NOW + 11 * MINUTE, &laptop_notes, &["notes"]).sent, 0);
+            let _ = std::fs::remove_dir_all(&base);
+        }
+    }
+
+    #[test]
+    fn a_part_switched_off_takes_nothing_out_and_sends_nothing() {
+        let base = scratch("part-off");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+        for name in ["a", "b", "c", "d", "e", "f"] {
+            put(&desk_notes, &format!("{name}.md"), format!("# {name}\n").as_bytes());
+        }
+        desk.exchange_with(&folder, &key, NOW, &desk_notes, &["notes"]);
+        phone.exchange_with(&folder, &key, NOW + MINUTE, &phone_notes, &["notes"]);
+        assert_eq!(files_in(&phone_notes).len(), 6);
+        // Notes switched off on the phone, then changed there; the desk changes one meanwhile.
+        phone.exchange_with(&folder, &key, NOW + 2 * MINUTE, &phone_notes, &[]);
+        std::fs::remove_file(phone_notes.join("a.md")).unwrap();
+        put(&phone_notes, "b.md", b"# b, changed on the phone while off\n");
+        put(&phone_notes, "new.md", b"# new\n");
+        put(&desk_notes, "c.md", b"# c, changed on the desk\n");
+        desk.exchange_with(&folder, &key, NOW + 3 * MINUTE, &desk_notes, &["notes"]);
+        assert_eq!(phone.exchange_with(&folder, &key, NOW + 4 * MINUTE, &phone_notes, &[]).sent, 0, "a part switched off sends nothing");
+        desk.exchange_with(&folder, &key, NOW + 5 * MINUTE, &desk_notes, &["notes"]);
+        let desk_files = files_in(&desk_notes);
+        assert!(desk_files.contains_key("a.md") && desk_files["b.md"] == b"# b\n" && !desk_files.contains_key("new.md"), "nothing taken out, nothing came: {desk_files:?}");
+        assert_eq!(std::fs::read(phone_notes.join("c.md")).unwrap(), b"# c\n", "nothing comes into a part switched off");
+        // Switched on again: it joins as a new device. What the others hold comes
+        // first, a note changed here meanwhile is kept beside, what only it holds goes.
+        phone.exchange_with(&folder, &key, NOW + 6 * MINUTE, &phone_notes, &["notes"]);
+        desk.exchange_with(&folder, &key, NOW + 7 * MINUTE, &desk_notes, &["notes"]);
+        phone.exchange_with(&folder, &key, NOW + 8 * MINUTE, &phone_notes, &["notes"]);
+        desk.exchange_with(&folder, &key, NOW + 9 * MINUTE, &desk_notes, &["notes"]);
+        for notes in [&desk_notes, &phone_notes] {
+            let files = files_in(notes);
+            assert_eq!(files.get("a.md").map(Vec::as_slice), Some(&b"# a\n"[..]), "{}", notes.display());
+            assert_eq!(files.get("b.md").map(Vec::as_slice), Some(&b"# b\n"[..]), "{}", notes.display());
+            assert_eq!(files.get("c.md").map(Vec::as_slice), Some(&b"# c, changed on the desk\n"[..]), "{}", notes.display());
+            assert_eq!(files.get("new.md").map(Vec::as_slice), Some(&b"# new\n"[..]), "{}", notes.display());
+            assert_eq!(copies_of(notes, "b"), [b"# b, changed on the phone while off\n".to_vec()], "{}", notes.display());
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn earlier_versions_are_kept_and_put_back() {
+        let base = scratch("history");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        let (desk_notes, laptop_notes) = (base.join("desk-notes"), base.join("laptop-notes"));
+        let history = crate::history::root(&laptop.memory);
+        let mut now = NOW;
+        let both = |now: &mut i64| {
+            *now += MINUTE;
+            desk.exchange_with(&folder, &key, *now, &desk_notes, &["notes"]);
+            *now += MINUTE;
+            laptop.exchange_with(&folder, &key, *now, &laptop_notes, &["notes"])
+        };
+        // Three versions written on the desk, of one size and in one millisecond:
+        // the laptop keeps the two it had before each came.
+        desk.write("config/config.toml", "language = \"fr\"\n");
+        for n in 1..=3 {
+            put(&desk_notes, "lease.md", format!("version {n}\n").as_bytes());
+            let at = std::time::UNIX_EPOCH + std::time::Duration::from_nanos(NOW as u64 * 1_000_000 + n * 100);
+            std::fs::File::options().write(true).open(desk_notes.join("lease.md")).unwrap().set_modified(at).unwrap();
+            both(&mut now);
+        }
+        desk.write("config/config.toml", "language = \"en\"\n");
+        both(&mut now);
+        assert_eq!(std::fs::read(laptop_notes.join("lease.md")).unwrap(), b"version 3\n");
+        let kept = crate::history::versions(&history, "notes", "files/notes/lease.md");
+        let texts: Vec<String> = kept.iter().map(|v| version_text(&history, "notes", "files/notes/lease.md", &v.stamp, &folder, &key)).collect();
+        assert_eq!(texts, ["version 2\n", "version 1\n"], "the newest first");
+        assert_eq!(crate::history::files(&history, "settings").iter().map(|(f, _)| f.as_str()).collect::<Vec<_>>(), ["config/config.toml"]);
+        // Version 1 put back on the laptop: the one there now is kept too, and the next exchange sends it.
+        let every = laptop.stores_with(&laptop_notes, &|_| true);
+        put_back(&laptop.memory, Some((&folder, &key)), &every, "notes", "files/notes/lease.md", &kept[1].stamp, now).unwrap();
+        assert_eq!(std::fs::read(laptop_notes.join("lease.md")).unwrap(), b"version 1\n");
+        assert_eq!(crate::history::versions(&history, "notes", "files/notes/lease.md").len(), 3);
+        // The setting as it was before the desk's last change, put back the same way.
+        let setting = crate::history::versions(&history, "settings", "config/config.toml");
+        put_back(&laptop.memory, Some((&folder, &key)), &every, "settings", "config/config.toml", &setting[0].stamp, now).unwrap();
+        assert!(laptop.read("config/config.toml").contains("\"fr\""));
+        // A file of one part is not put back as another's; nor a version never kept.
+        assert!(put_back(&laptop.memory, Some((&folder, &key)), &every, "settings", "files/notes/lease.md", &kept[1].stamp, now).is_err());
+        assert!(put_back(&laptop.memory, Some((&folder, &key)), &every, "notes", "files/notes/lease.md", "2020-01-01T00-00-00.000Z", now).is_err());
+        now += MINUTE;
+        assert!(laptop.exchange_with(&folder, &key, now, &laptop_notes, &["notes"]).sent >= 2);
+        now += MINUTE;
+        desk.exchange_with(&folder, &key, now, &desk_notes, &["notes"]);
+        assert_eq!(std::fs::read(desk_notes.join("lease.md")).unwrap(), b"version 1\n", "put back on one, put back on all");
+        assert!(copies_of(&desk_notes, "lease").is_empty(), "{:?}", files_in(&desk_notes).into_iter().map(|(n, b)| (n, String::from_utf8_lossy(&b).to_string())).collect::<Vec<_>>());
+        assert!(desk.read("config/config.toml").contains("\"fr\""));
+        // A note taken out on the desk (not its last: a folder emptied waits
+        // for a word) goes on the laptop once gone a while, kept there, and can be put back.
+        put(&desk_notes, "other.md", b"other\n");
+        both(&mut now);
+        std::fs::remove_file(desk_notes.join("lease.md")).unwrap();
+        both(&mut now);
+        assert!(laptop_notes.join("lease.md").exists(), "not before ten minutes");
+        for _ in 0..6 {
+            both(&mut now);
+        }
+        assert!(!laptop_notes.join("lease.md").exists());
+        let kept = crate::history::versions(&history, "notes", "files/notes/lease.md");
+        put_back(&laptop.memory, Some((&folder, &key)), &every, "notes", "files/notes/lease.md", &kept[0].stamp, now).unwrap();
+        both(&mut now);
+        both(&mut now);
+        assert_eq!(std::fs::read(desk_notes.join("lease.md")).unwrap(), b"version 1\n");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_damaged_blob_or_record_never_erases_the_file_here() {
+        let base = scratch("damaged");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        let (desk_notes, laptop_notes) = (base.join("desk-notes"), base.join("laptop-notes"));
+        put(&desk_notes, "lease.md", b"version 1\n");
+        desk.exchange_with(&folder, &key, NOW, &desk_notes, &["notes"]);
+        laptop.exchange_with(&folder, &key, NOW + MINUTE, &laptop_notes, &["notes"]);
+        // The next version's sealed file damaged on the way: said, the file here stays as it is.
+        put(&desk_notes, "lease.md", b"version 2, longer\n");
+        desk.exchange_with(&folder, &key, NOW + 2 * MINUTE, &desk_notes, &["notes"]);
+        let sealed = crate::blobs::path(&folder, &key, &crate::blobs::hash_file(&desk_notes.join("lease.md")).unwrap().0);
+        let mut bytes = std::fs::read(&sealed).unwrap();
+        let middle = bytes.len() / 2;
+        bytes[middle] ^= 0x20;
+        std::fs::write(&sealed, &bytes).unwrap();
+        for minute in [3, 4] {
+            let outcome = laptop.exchange_with(&folder, &key, NOW + minute * MINUTE, &laptop_notes, &["notes"]);
+            assert!(outcome.problems.iter().any(|p| p == "share-damaged:files/notes/lease.md") && outcome.pending == 1, "{outcome:?}");
+            assert_eq!(std::fs::read(laptop_notes.join("lease.md")).unwrap(), b"version 1\n");
+        }
+        // Only a placeholder of the next (a file kept on demand): not there yet, nothing said, nothing lost.
+        put(&desk_notes, "lease.md", b"version 3\n");
+        desk.exchange_with(&folder, &key, NOW + 5 * MINUTE, &desk_notes, &["notes"]);
+        let next = crate::blobs::path(&folder, &key, &crate::blobs::hash_file(&desk_notes.join("lease.md")).unwrap().0);
+        let whole = std::fs::read(&next).unwrap();
+        std::fs::write(&next, b"").unwrap();
+        let outcome = laptop.exchange_with(&folder, &key, NOW + 6 * MINUTE, &laptop_notes, &["notes"]);
+        assert!(outcome.problems.is_empty() && outcome.pending == 1, "{outcome:?}");
+        assert_eq!(std::fs::read(laptop_notes.join("lease.md")).unwrap(), b"version 1\n");
+        // A record that is not one, and a line that does not open: said, the file here stays.
+        let last = written(&desk.memory, &desk.id).unwrap();
+        let clock = ((NOW + 7 * MINUTE) as u64) << 16;
+        let plain = serde_json::to_vec(&Change { k: "files/notes/lease.md#".into(), v: Some("not a reference".into()), b: String::new() }).unwrap();
+        let mut text = std::fs::read_to_string(round_file(&folder, &desk.id, last.0)).unwrap();
+        text.push_str("{\"n\": 99, \"c\": 1, \"s\": \"broken\"}\n");
+        text.push_str(&(serde_json::to_string(&Line { n: last.1 + 1, c: clock, s: seal(&key, &bound(&desk.id, last.0, last.1 + 1, clock), &plain) }).unwrap() + "\n"));
+        std::fs::write(round_file(&folder, &desk.id, last.0), text).unwrap();
+        let outcome = laptop.exchange_with(&folder, &key, NOW + 8 * MINUTE, &laptop_notes, &["notes"]);
+        assert!(outcome.problems.iter().any(|p| p.starts_with("share-other-seal")) && outcome.problems.iter().any(|p| p == "share-damaged:files/notes/lease.md"), "{outcome:?}");
+        assert_eq!(std::fs::read(laptop_notes.join("lease.md")).unwrap(), b"version 1\n");
+        // The whole one comes at last, then a later change: written.
+        std::fs::write(&next, &whole).unwrap();
+        put(&desk_notes, "lease.md", b"version 4\n");
+        desk.exchange_with(&folder, &key, NOW + 9 * MINUTE, &desk_notes, &["notes"]);
+        laptop.exchange_with(&folder, &key, NOW + 10 * MINUTE, &laptop_notes, &["notes"]);
+        assert_eq!(std::fs::read(laptop_notes.join("lease.md")).unwrap(), b"version 4\n");
+        assert!(copies_of(&laptop_notes, "lease").is_empty());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_notes_folder_found_empty_takes_nothing_out() {
+        let base = scratch("notes-emptied");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        let (desk_notes, laptop_notes) = (base.join("desk-notes"), base.join("laptop-notes"));
+        for n in 0..6 {
+            put(&desk_notes, &format!("note-{n}.md"), format!("# {n}\n").as_bytes());
+        }
+        desk.exchange_with(&folder, &key, NOW, &desk_notes, &["notes"]);
+        laptop.exchange_with(&folder, &key, NOW + MINUTE, &laptop_notes, &["notes"]);
+        // Every note gone at once here (a card not mounted, another program): said, nothing taken out there.
+        for n in 0..6 {
+            std::fs::remove_file(desk_notes.join(format!("note-{n}.md"))).unwrap();
+        }
+        let outcome = desk.exchange_with(&folder, &key, NOW + 2 * MINUTE, &desk_notes, &["notes"]);
+        assert!(outcome.problems.iter().any(|p| p == "share-vanished:files/notes/:6") && outcome.sent == 0, "{outcome:?}");
+        // Gone as a folder, the same.
+        std::fs::remove_dir_all(&desk_notes).unwrap();
+        assert_eq!(desk.exchange_with(&folder, &key, NOW + 3 * MINUTE, &desk_notes, &["notes"]).sent, 0);
+        laptop.exchange_with(&folder, &key, NOW + 4 * MINUTE, &laptop_notes, &["notes"]);
+        assert_eq!(files_in(&laptop_notes).len(), 6);
+        // One taken out on purpose there goes, as ever, once gone a while; nothing is written here meanwhile.
+        std::fs::remove_file(laptop_notes.join("note-0.md")).unwrap();
+        put(&laptop_notes, "note-1.md", b"# 1, changed\n");
+        laptop.exchange_with(&folder, &key, NOW + 5 * MINUTE, &laptop_notes, &["notes"]);
+        laptop.exchange_with(&folder, &key, NOW + 16 * MINUTE, &laptop_notes, &["notes"]);
+        assert!(desk.exchange_with(&folder, &key, NOW + 17 * MINUTE, &desk_notes, &["notes"]).pending > 0);
+        assert!(!desk_notes.exists());
+        // Notes switched off and on here: filled again from the others, as a new device's.
+        desk.exchange_with(&folder, &key, NOW + 18 * MINUTE, &desk_notes, &[]);
+        desk.exchange_with(&folder, &key, NOW + 19 * MINUTE, &desk_notes, &["notes"]);
+        let files = files_in(&desk_notes);
+        assert_eq!(files.keys().map(String::as_str).collect::<Vec<_>>(), ["note-1.md", "note-2.md", "note-3.md", "note-4.md", "note-5.md"]);
+        assert_eq!(files["note-1.md"], b"# 1, changed\n");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A record of another device's, sealed: its file, as a sync app would bring it.
+    fn record_of(key: &[u8; 32], computer: &str, n: u64, clock: u64, change: &Change) -> String {
+        let plain = serde_json::to_vec(change).unwrap();
+        serde_json::to_string(&Line { n, c: clock, s: seal(key, &bound(computer, 1, n, clock), &plain) }).unwrap() + "\n"
+    }
+
+    fn append_to(path: &Path, text: &str) {
+        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+        file.write_all(text.as_bytes()).unwrap();
+    }
+
+    fn copy_dir(from: &Path, to: &Path) {
+        for entry in std::fs::read_dir(from).unwrap().filter_map(Result::ok) {
+            let target = to.join(entry.file_name());
+            if entry.path().is_dir() {
+                std::fs::create_dir_all(&target).unwrap();
+                copy_dir(&entry.path(), &target);
+            } else {
+                std::fs::create_dir_all(to).unwrap();
+                std::fs::copy(entry.path(), target).unwrap();
+            }
+        }
+    }
+
+    fn dated(path: &Path, at: std::time::SystemTime) {
+        std::fs::File::options().write(true).open(path).unwrap().set_modified(at).unwrap();
+    }
+
+    // F1
+    #[test]
+    fn a_put_back_takes_out_nothing_added_since() {
+        let base = scratch("put-back-entries");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let mut now = NOW;
+        let both = |now: &mut i64| {
+            *now += MINUTE;
+            desk.exchange(&folder, &key, *now);
+            *now += MINUTE;
+            phone.exchange(&folder, &key, *now);
+        };
+        desk.write("state/health-state.toml", "[taken]\nd1 = 1\n");
+        desk.write("config/config.toml", "language = \"fr\"\n");
+        both(&mut now);
+        // On the phone: a dose, then another, the language changed, an account added.
+        phone.write("state/health-state.toml", "[taken]\nd1 = 1\nd2 = 2\n");
+        both(&mut now);
+        phone.write("state/health-state.toml", "[taken]\nd1 = 1\nd2 = 2\nd3 = 3\n");
+        phone.write("config/config.toml", "language = \"en\"\n\n[[account]]\nid = \"new\"\nkind = \"imap\"\n");
+        both(&mut now);
+        both(&mut now);
+        let history = crate::history::root(&desk.memory);
+        let doses = crate::history::versions(&history, "health", "state/health-state.toml");
+        assert_eq!(doses.len(), 2, "{doses:?}");
+        let every = stores_of(&Config::default(), &desk.roots, &|_| true);
+        // The doses' record as it was before the last dose came: said first, nothing taken out.
+        let back = put_back_preview(&desk.memory, &every, "health", "state/health-state.toml", &doses[0].stamp).unwrap();
+        assert_eq!(back, Back { whole: false, changed: 0, returning: 0, kept: 1 });
+        put_back(&desk.memory, Some((&folder, &key)), &every, "health", "state/health-state.toml", &doses[0].stamp, now).unwrap();
+        // The settings as they were: the language back, the account added since kept.
+        let settings = crate::history::versions(&history, "settings", "config/config.toml");
+        let back = put_back_preview(&desk.memory, &every, "settings", "config/config.toml", &settings[0].stamp).unwrap();
+        assert_eq!(back, Back { whole: false, changed: 1, returning: 0, kept: 1 });
+        put_back(&desk.memory, Some((&folder, &key)), &every, "settings", "config/config.toml", &settings[0].stamp, now).unwrap();
+        both(&mut now);
+        both(&mut now);
+        for computer in [&desk, &phone] {
+            let doses = computer.read("state/health-state.toml");
+            assert!(["d1", "d2", "d3"].iter().all(|d| doses.contains(d)), "a dose marked after that version was taken out: {doses}");
+            let config = computer.read("config/config.toml");
+            assert!(config.contains("language = \"fr\"") && config.contains("id = \"new\""), "{config}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F2
+    #[test]
+    fn a_quick_exchange_leaves_notes_for_later() {
+        let base = scratch("quick");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let (dn, pn) = (base.join("desk-notes"), base.join("phone-notes"));
+        put(&dn, "a.md", b"# a\n");
+        desk.exchange_with(&folder, &key, NOW, &dn, &["notes"]);
+        phone.exchange_with(&folder, &key, NOW + MINUTE, &pn, &["notes"]);
+        // A dose and a note on the desk: the phone's alarm takes the dose, leaves the note.
+        desk.write("state/health-state.toml", "[taken]\nd1 = 1\n");
+        put(&dn, "a.md", b"# a, changed\n");
+        desk.exchange_with(&folder, &key, NOW + 2 * MINUTE, &dn, &["notes"]);
+        let stores = phone.stores_with(&pn, &|part| part == "notes");
+        let quick = exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: false, hurry: None }, &stores, NOW + 3 * MINUTE).unwrap();
+        assert!(phone.read("state/health-state.toml").contains("d1"));
+        assert_eq!(std::fs::read(pn.join("a.md")).unwrap(), b"# a\n");
+        assert_eq!(quick.pending, 1, "{quick:?}");
+        // The next whole exchange brings it; nothing joins again (nothing goes out).
+        let whole = phone.exchange_with(&folder, &key, NOW + 4 * MINUTE, &pn, &["notes"]);
+        assert_eq!(std::fs::read(pn.join("a.md")).unwrap(), b"# a, changed\n");
+        assert_eq!(whole.sent, 0, "{whole:?}");
+        // Hurried while it runs: its notes wait where they are, the rest is done.
+        put(&dn, "a.md", b"# a, again\n");
+        desk.write("state/health-state.toml", "[taken]\nd1 = 1\nd2 = 2\n");
+        desk.exchange_with(&folder, &key, NOW + 5 * MINUTE, &dn, &["notes"]);
+        let hurry = std::sync::atomic::AtomicBool::new(true);
+        exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: true, hurry: Some(&hurry) }, &stores, NOW + 6 * MINUTE).unwrap();
+        assert!(phone.read("state/health-state.toml").contains("d2"));
+        assert_eq!(std::fs::read(pn.join("a.md")).unwrap(), b"# a, changed\n");
+        hurry.store(false, std::sync::atomic::Ordering::Relaxed);
+        exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: true, hurry: Some(&hurry) }, &stores, NOW + 7 * MINUTE).unwrap();
+        assert_eq!(std::fs::read(pn.join("a.md")).unwrap(), b"# a, again\n");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F4
+    #[test]
+    fn notes_gone_at_once_wait_for_a_word() {
+        let base = scratch("vanished");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+        put(&dn, "today.md", b"# Today\n");
+        for n in 0..20 {
+            put(&dn, &format!("archive/{n}.md"), format!("# {n}\n").as_bytes());
+        }
+        desk.exchange_with(&folder, &key, NOW, &dn, &["notes"]);
+        laptop.exchange_with(&folder, &key, NOW + MINUTE, &ln, &["notes"]);
+        // A folder listing empty (a disk not mounted on its place): unknown, said, nothing taken out.
+        std::fs::remove_dir_all(dn.join("archive")).unwrap();
+        std::fs::create_dir(dn.join("archive")).unwrap();
+        let outcome = desk.exchange_with(&folder, &key, NOW + 2 * MINUTE, &dn, &["notes"]);
+        assert!(outcome.problems.iter().any(|p| p == "share-vanished:files/notes/archive/:20") && outcome.sent == 0, "{outcome:?}");
+        laptop.exchange_with(&folder, &key, NOW + 3 * MINUTE, &ln, &["notes"]);
+        assert_eq!(files_in(&ln).len(), 21);
+        // Gone with its folder, many at once: held the same, ten minutes and more.
+        std::fs::remove_dir(dn.join("archive")).unwrap();
+        for minute in [4, 20] {
+            let outcome = desk.exchange_with(&folder, &key, NOW + minute * MINUTE, &dn, &["notes"]);
+            assert!(outcome.problems.iter().any(|p| p == "share-vanished:files/notes/:20") && outcome.sent == 0, "{outcome:?}");
+        }
+        laptop.exchange_with(&folder, &key, NOW + 21 * MINUTE, &ln, &["notes"]);
+        assert_eq!(files_in(&ln).len(), 21);
+        // A folder that cannot be read: unknown, nothing of it taken out.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            put(&dn, "locked/x.md", b"# x\n");
+            desk.exchange_with(&folder, &key, NOW + 22 * MINUTE, &dn, &["notes"]);
+            std::fs::set_permissions(dn.join("locked"), std::fs::Permissions::from_mode(0o000)).unwrap();
+            if std::fs::read_dir(dn.join("locked")).is_err() {
+                for minute in [23, 40] {
+                    desk.exchange_with(&folder, &key, NOW + minute * MINUTE, &dn, &["notes"]);
+                }
+                laptop.exchange_with(&folder, &key, NOW + 41 * MINUTE, &ln, &["notes"]);
+                assert!(ln.join("locked/x.md").exists());
+            }
+            std::fs::set_permissions(dn.join("locked"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        // You say so: they go, everywhere.
+        confirm_gone(&desk.memory, &desk.id, "files/notes/").unwrap();
+        let outcome = desk.exchange_with(&folder, &key, NOW + 42 * MINUTE, &dn, &["notes"]);
+        assert!(outcome.sent >= 20, "{outcome:?}");
+        laptop.exchange_with(&folder, &key, NOW + 43 * MINUTE, &ln, &["notes"]);
+        let left: Vec<String> = files_in(&ln).into_keys().collect();
+        assert!(left.iter().all(|f| !f.starts_with("archive/")) && left.contains(&"today.md".to_string()), "{left:?}");
+        assert!(!ln.join("archive").exists(), "its folder, left empty, goes too");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F5 and F21
+    #[test]
+    fn no_room_holds_a_file_back_and_tries_again_later() {
+        let base = scratch("no-room");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+        put(&dn, "scan.pdf", &noise(100_000, 1));
+        put(&dn, "other.md", b"other\n");
+        desk.exchange_with(&folder, &key, NOW, &dn, &["notes"]);
+        laptop.exchange_with(&folder, &key, NOW + MINUTE, &ln, &["notes"]);
+        put(&dn, "scan.pdf", &noise(100_000, 2));
+        desk.exchange_with(&folder, &key, NOW + 2 * MINUTE, &dn, &["notes"]);
+        // No room on the laptop: said, the file there as it was, tried again after a while only.
+        crate::disk::ROOM.with(|room| room.set(Some(1000)));
+        let outcome = laptop.exchange_with(&folder, &key, NOW + 3 * MINUTE, &ln, &["notes"]);
+        assert!(outcome.problems.iter().any(|p| p == "share-no-room:files/notes/scan.pdf") && outcome.pending == 1, "{outcome:?}");
+        let outcome = laptop.exchange_with(&folder, &key, NOW + 3 * MINUTE + 30_000, &ln, &["notes"]);
+        assert!(outcome.problems.is_empty(), "not opened again within the minute: {outcome:?}");
+        assert_eq!(std::fs::read(ln.join("scan.pdf")).unwrap(), noise(100_000, 1));
+        crate::disk::ROOM.with(|room| room.set(Some(u64::MAX)));
+        laptop.exchange_with(&folder, &key, NOW + 5 * MINUTE, &ln, &["notes"]);
+        assert_eq!(std::fs::read(ln.join("scan.pdf")).unwrap(), noise(100_000, 2));
+        // What it held kept by reference (its content was sealed in the folder already), not copied.
+        let kept = crate::history::versions(&crate::history::root(&laptop.memory), "notes", "files/notes/scan.pdf");
+        assert!(kept.len() == 1 && kept[0].sealed.is_some(), "{kept:?}");
+        assert_eq!(version_text_bytes(&crate::history::root(&laptop.memory), "notes", "files/notes/scan.pdf", &kept[0].stamp, &folder, &key), noise(100_000, 1));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    fn version_text_bytes(history: &Path, part: &str, file: &str, stamp: &str, folder: &Path, key: &[u8; 32]) -> Vec<u8> {
+        let Some(crate::history::Kept::Sealed { hash, .. }) = crate::history::version(history, part, file, stamp) else { panic!("{file}: not by reference") };
+        let target = temporary(&history.join("opened"));
+        crate::blobs::get(folder, key, &hash, &target).unwrap();
+        let bytes = std::fs::read(&target).unwrap();
+        std::fs::remove_file(target).unwrap();
+        bytes
+    }
+
+    // F6
+    #[test]
+    fn huge_or_endless_files_in_the_folder_are_never_read_whole() {
+        let base = scratch("huge");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        desk.write("config/safe-senders.txt", "a@example.org\n");
+        desk.exchange(&folder, &key, NOW);
+        // From anyone who can write the folder: a line of 40 MB, then a record of a key holder's; notes to each other of 100 kB.
+        let stranger = uuid::Uuid::new_v4().to_string();
+        {
+            let mut file = std::fs::File::create(round_file(&folder, &stranger, 1)).unwrap();
+            let piece = vec![b'x'; 1 << 20];
+            for _ in 0..40 {
+                file.write_all(&piece).unwrap();
+            }
+            file.write_all(b"\n").unwrap();
+        }
+        let clock = ((NOW + MINUTE) as u64) << 16;
+        append_to(&round_file(&folder, &stranger, 1), &record_of(&key, &stranger, 1, clock, &Change { k: "config/safe-senders.txt#b@example.org".into(), v: Some(String::new()), b: String::new() }));
+        std::fs::write(seen_path(&folder, &stranger), "x".repeat(100_000)).unwrap();
+        let outcome = laptop.exchange(&folder, &key, NOW + 2 * MINUTE);
+        assert!(outcome.problems.iter().any(|p| *p == format!("share-other-line:{stranger}")), "{outcome:?}");
+        let safe = laptop.read("config/safe-senders.txt");
+        assert!(safe.contains("a@example.org") && safe.contains("b@example.org"), "{safe}");
+        assert!(others(&folder, &laptop.id).iter().any(|o| o.id == stranger && o.heard == 0), "its notes, too long, not read");
+        // An own file that does not end a line is mended from its end, never read whole.
+        let own = round_file(&folder, &desk.id, 1);
+        let whole = std::fs::metadata(&own).unwrap().len();
+        append_to(&own, "{\"n\": 99, \"c\": 1, \"s\": \"half");
+        assert_eq!(unfinished(&own), Some(whole));
+        desk.write("config/safe-senders.txt", "a@example.org\nc@example.org\n");
+        desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+        assert!(std::fs::read_to_string(&own).unwrap().lines().all(|l| l.ends_with('}')));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F7 and F8
+    #[test]
+    fn an_edit_made_while_receiving_is_never_lost() {
+        let base = scratch("while-receiving");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+        for name in ["a.md", "b.md", "lease.md"] {
+            put(&dn, name, format!("{name}: one\n").as_bytes());
+        }
+        desk.exchange_with(&folder, &key, NOW, &dn, &["notes"]);
+        laptop.exchange_with(&folder, &key, NOW + MINUTE, &ln, &["notes"]);
+        for name in ["a.md", "b.md", "lease.md"] {
+            put(&dn, name, format!("{name}: two, from the desk\n").as_bytes());
+        }
+        desk.exchange_with(&folder, &key, NOW + 2 * MINUTE, &dn, &["notes"]);
+        // While the laptop writes them: the lease edited there just before its turn (an editor
+        // saving), and a.md, written already, edited while b.md is written.
+        let (lease, first) = (ln.join("lease.md"), ln.join("a.md"));
+        BEFORE_WRITING.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move |path: &Path| {
+                if path.ends_with("lease.md") {
+                    std::fs::write(&lease, "lease.md: edited on the laptop\n").unwrap();
+                }
+                if path.ends_with("b.md") {
+                    std::fs::write(&first, "a.md: edited on the laptop\n").unwrap();
+                }
+            }))
+        });
+        laptop.exchange_with(&folder, &key, NOW + 3 * MINUTE, &ln, &["notes"]);
+        BEFORE_WRITING.with(|hook| *hook.borrow_mut() = None);
+        assert_eq!(std::fs::read_to_string(ln.join("lease.md")).unwrap(), "lease.md: edited on the laptop\n", "not written over");
+        for minute in 4..10 {
+            if minute % 2 == 0 {
+                laptop.exchange_with(&folder, &key, NOW + minute * MINUTE, &ln, &["notes"]);
+            } else {
+                desk.exchange_with(&folder, &key, NOW + minute * MINUTE, &dn, &["notes"]);
+            }
+        }
+        // Both edits went out. The lease, edited before the desk's came, is
+        // kept both ways; a.md, edited on top of the desk's, follows it.
+        for notes in [&dn, &ln] {
+            let all: Vec<String> = files_in(notes).into_values().map(|b| String::from_utf8(b).unwrap()).collect();
+            for text in ["lease.md: edited on the laptop\n", "lease.md: two, from the desk\n", "a.md: edited on the laptop\n"] {
+                assert!(all.iter().any(|t| t == text), "{}: {text:?} lost: {all:?}", notes.display());
+            }
+            assert_eq!(std::fs::read_to_string(notes.join("a.md")).unwrap(), "a.md: edited on the laptop\n");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F9
+    #[test]
+    fn a_part_switched_off_keeps_nothing_waiting() {
+        let base = scratch("off-pending");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let off = stores_of(&Config::default(), &phone.roots, &|part| part != "drafts");
+        for n in 0..20 {
+            desk.write(&format!("data/drafts/{n}.eml"), &"x".repeat(200_000));
+            desk.exchange(&folder, &key, NOW + 2 * n * MINUTE);
+            exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: true, hurry: None }, &off, NOW + (2 * n + 1) * MINUTE).unwrap();
+        }
+        assert!(std::fs::metadata(&phone.memory).unwrap().len() < 200_000, "memory.json holds the drafts of a part switched off");
+        // Switched on: it joins, and the drafts come.
+        phone.exchange(&folder, &key, NOW + 41 * MINUTE);
+        assert_eq!(phone.read("data/drafts/19.eml").len(), 200_000);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F10
+    #[cfg(unix)]
+    #[test]
+    fn nothing_is_written_through_a_link_nor_into_the_sharing_folder() {
+        let base = scratch("through-link");
+        let notes = base.join("desk-notes");
+        // Shared through a folder inside the notes, as Sioul may suggest.
+        let folder = notes.join("sioul-shared");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let desk = Computer::new(&base, "desk");
+        let outside = base.join("outside");
+        put(&notes, "lease.md", b"x\n");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, notes.join("link")).unwrap();
+        desk.exchange_with(&folder, &key, NOW, &notes, &["notes"]);
+        // A key holder's records: one through the link, one into the sharing folder.
+        let source = base.join("evil");
+        std::fs::write(&source, b"[Desktop Entry]\nExec=sh -c id\n").unwrap();
+        let (h, s) = crate::blobs::hash_file(&source).unwrap();
+        crate::blobs::put(&folder, &key, &source, &h).unwrap();
+        let other = uuid::Uuid::new_v4().to_string();
+        let value = reference(&h, s, 0);
+        let mut text = String::new();
+        for (n, file) in [(1, "files/notes/link/evil.desktop#"), (2, "files/notes/sioul-shared/plain.md#")] {
+            text += &record_of(&key, &other, n, ((NOW + MINUTE) as u64) << 16 | n, &Change { k: file.into(), v: Some(value.clone()), b: String::new() });
+        }
+        std::fs::write(round_file(&folder, &other, 1), text).unwrap();
+        let outcome = desk.exchange_with(&folder, &key, NOW + 2 * MINUTE, &notes, &["notes"]);
+        assert!(!outside.join("evil.desktop").exists(), "written through the link");
+        assert!(!folder.join("plain.md").exists(), "written in plain into the sharing folder");
+        assert!(outcome.problems.iter().filter(|p| p.starts_with("share-refused:")).count() == 2, "{outcome:?}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F11
+    #[test]
+    fn a_content_used_again_is_never_lost_to_a_sweep() {
+        let base = scratch("sweep-race");
+        let (server, phone_folder) = (base.join("server").join("Sioul"), base.join("phone").join("Sioul"));
+        let key = quick_key(&server, "four words make a passphrase").unwrap();
+        let (desk, phone, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"), Computer::new(&base, "laptop"));
+        let (dn, pn, ln) = (base.join("desk-notes"), base.join("phone-notes"), base.join("laptop-notes"));
+        let day = 86_400_000;
+        put(&dn, "a.md", b"template\n");
+        put(&dn, "keep.md", b"keep\n");
+        desk.exchange_with(&server, &key, NOW, &dn, &["notes"]);
+        put(&dn, "a.md", b"changed\n");
+        desk.exchange_with(&server, &key, NOW + MINUTE, &dn, &["notes"]);
+        // The template's sealed file is old (written long ago).
+        std::fs::write(base.join("template"), b"template\n").unwrap();
+        let sealed = crate::blobs::path(&server, &key, &crate::blobs::hash_file(&base.join("template")).unwrap().0);
+        dated(&sealed, std::time::SystemTime::now() - std::time::Duration::from_secs(100 * 86_400));
+        copy_dir(&server, &phone_folder);
+        // The phone holds the same content again: it finds it sealed, seals nothing, and its record goes.
+        put(&pn, "b.md", b"template\n");
+        phone.exchange_with(&phone_folder, &key, NOW + 91 * day, &pn, &["notes"]);
+        // The desk, not hearing of it yet, sweeps it.
+        desk.exchange_with(&server, &key, NOW + 91 * day + MINUTE, &dn, &["notes"]);
+        assert!(!sealed.exists(), "swept, as unused for 90 days by what the desk knew");
+        // The phone's sync app carries both ways: its records up, the sweep down.
+        for entry in std::fs::read_dir(&phone_folder).unwrap().filter_map(Result::ok) {
+            if entry.file_name().to_string_lossy().ends_with(".jsonl") {
+                std::fs::copy(entry.path(), server.join(entry.file_name())).unwrap();
+            }
+        }
+        let _ = std::fs::remove_file(phone_folder.join("blobs").join(sealed.file_name().unwrap()));
+        laptop.exchange_with(&server, &key, NOW + 91 * day + 2 * MINUTE, &ln, &["notes"]);
+        assert!(!ln.join("b.md").exists());
+        // A day later, still missing: said.
+        let outcome = laptop.exchange_with(&server, &key, NOW + 92 * day + 3 * MINUTE, &ln, &["notes"]);
+        assert!(outcome.problems.iter().any(|p| p == "share-missing:files/notes/b.md"), "{outcome:?}");
+        // The phone looks after its sealed files: gone, sealed again; it comes.
+        phone.exchange_with(&phone_folder, &key, NOW + 92 * day + 4 * MINUTE, &pn, &["notes"]);
+        assert!(phone_folder.join("blobs").join(sealed.file_name().unwrap()).exists());
+        copy_dir(&phone_folder.join("blobs"), &server.join("blobs"));
+        laptop.exchange_with(&server, &key, NOW + 92 * day + 5 * MINUTE, &ln, &["notes"]);
+        assert_eq!(std::fs::read(ln.join("b.md")).ok().as_deref(), Some(&b"template\n"[..]));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F12
+    #[test]
+    fn one_exchange_at_a_time() {
+        let base = scratch("one-at-a-time");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let desk = Computer::new(&base, "desk");
+        desk.write("config/safe-senders.txt", "a@example.org\n");
+        // Another Sioul (or the command line) exchanging: a whole exchange does nothing, and says so.
+        let running = exchange_lock(&desk.memory, true).unwrap();
+        let outcome = desk.exchange(&folder, &key, NOW);
+        assert_eq!((outcome.problems.as_slice(), outcome.sent), (&["share-busy".to_string()][..], 0));
+        drop(running);
+        assert_eq!(desk.exchange(&folder, &key, NOW + MINUTE).sent, 1);
+        // Files being written never share a name.
+        let path = folder.join("x.toml");
+        let (one, two) = (temporary(&path), temporary(&path));
+        assert!(one != two && one.file_name().unwrap().to_string_lossy().starts_with('.'));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F14
+    #[test]
+    fn names_one_storage_takes_for_one_are_never_both_written() {
+        let base = scratch("case");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+        // Two names a phone's storage takes for one: by case, and by how an accent is written.
+        put(&dn, "Lease.md", b"upper\n");
+        put(&dn, "lease.md", b"lower\n");
+        put(&dn, "\u{e9}t\u{e9}.md", b"composed\n");
+        put(&dn, "e\u{301}te\u{301}.md", b"decomposed\n");
+        desk.exchange_with(&folder, &key, NOW, &dn, &["notes"]);
+        let outcome = laptop.exchange_with(&folder, &key, NOW + MINUTE, &ln, &["notes"]);
+        assert_eq!(outcome.problems.iter().filter(|p| p.starts_with("share-name-clash:")).count(), 2, "{outcome:?}");
+        assert_eq!(files_in(&ln).len(), 2);
+        // What another part carries is never a note, whatever its case.
+        let config = Config { case_store: Some("/notes".into()), ..Config::default() };
+        let every = stores_of(&config, &laptop.roots, &|_| true);
+        assert!(locate(&every, "files/notes/Sioul-Cases.toml").is_none() && locate(&every, "files/notes/Papers/id.pdf").is_none());
+        assert_eq!(kept_by_windows("aux.md"), true);
+        assert_eq!(kept_by_windows("auxiliary.md"), false);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F15
+    #[test]
+    fn a_name_with_a_hash_travels() {
+        let base = scratch("hash-name");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let (dn, pn) = (base.join("desk-notes"), base.join("phone-notes"));
+        put(&dn, "Issue #12.md", b"# Issue 12\n");
+        put(&dn, "#ideas.md", b"# Ideas\n");
+        put(&dn, "papers/Facture #123.pdf", &noise(10_000, 3));
+        desk.write("data/drafts/a#1.toml", "subject = \"Hash\"\n");
+        for m in 0..3 {
+            desk.exchange_with(&folder, &key, NOW + 2 * m * MINUTE, &dn, &["notes", "papers"]);
+            phone.exchange_with(&folder, &key, NOW + (2 * m + 1) * MINUTE, &pn, &["notes", "papers"]);
+        }
+        let files = files_in(&pn);
+        assert_eq!(files.get("Issue #12.md").map(Vec::as_slice), Some(&b"# Issue 12\n"[..]), "{:?}", files.keys().collect::<Vec<_>>());
+        assert!(files.contains_key("#ideas.md") && files.get("papers/Facture #123.pdf") == Some(&noise(10_000, 3)));
+        assert_eq!(phone.read("data/drafts/a#1.toml"), "subject = \"Hash\"\n");
+        assert_eq!(file_of("files/papers/Facture #123.pdf#"), "files/papers/Facture #123.pdf");
+        assert_eq!((file_of("config/safe-senders.txt#a#b@example.org"), entry_of("config/safe-senders.txt#a#b@example.org")), ("config/safe-senders.txt", "a#b@example.org"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F16
+    #[test]
+    fn an_old_copy_does_not_roll_the_others_back() {
+        let base = scratch("old-copy");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+        let old = std::time::UNIX_EPOCH + std::time::Duration::from_millis(NOW as u64);
+        put(&dn, "lease.md", b"Rent: 620\n");
+        put(&dn, "other.md", b"other\n");
+        dated(&dn.join("lease.md"), old);
+        desk.exchange_with(&folder, &key, NOW, &dn, &["notes"]);
+        laptop.exchange_with(&folder, &key, NOW + MINUTE, &ln, &["notes"]);
+        put(&ln, "lease.md", b"Rent: 640\n");
+        laptop.exchange_with(&folder, &key, NOW + 86_400_000, &ln, &["notes"]);
+        desk.exchange_with(&folder, &key, NOW + 86_400_000 + MINUTE, &dn, &["notes"]);
+        // Restored from a backup: the old content, with its old time.
+        put(&dn, "lease.md", b"Rent: 620\n");
+        dated(&dn.join("lease.md"), old);
+        let outcome = desk.exchange_with(&folder, &key, NOW + 86_400_000 + 2 * MINUTE, &dn, &["notes"]);
+        assert!(outcome.problems.iter().any(|p| p.starts_with("share-older-copy:lease (conflict ")), "{outcome:?}");
+        assert_eq!(std::fs::read(dn.join("lease.md")).unwrap(), b"Rent: 640\n", "the version last seen came back");
+        desk.exchange_with(&folder, &key, NOW + 86_400_000 + 3 * MINUTE, &dn, &["notes"]);
+        laptop.exchange_with(&folder, &key, NOW + 86_400_000 + 4 * MINUTE, &ln, &["notes"]);
+        assert_eq!(std::fs::read(ln.join("lease.md")).unwrap(), b"Rent: 640\n");
+        assert_eq!(copies_of(&ln, "lease"), [b"Rent: 620\n".to_vec()], "the older copy kept beside, everywhere");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F22
+    #[test]
+    fn a_file_being_written_waits() {
+        let base = scratch("settling");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+        put(&dn, "keep.md", b"keep\n");
+        dated(&dn.join("keep.md"), std::time::SystemTime::now() - std::time::Duration::from_secs(120));
+        // Changed this very moment: read once it has settled.
+        SETTLE.with(|settle| settle.set(60_000));
+        put(&dn, "a.md", b"# a\n");
+        assert_eq!(desk.exchange_with(&folder, &key, NOW, &dn, &["notes"]).sent, 1);
+        dated(&dn.join("a.md"), std::time::SystemTime::now() - std::time::Duration::from_secs(120));
+        assert_eq!(desk.exchange_with(&folder, &key, NOW + MINUTE, &dn, &["notes"]).sent, 1);
+        SETTLE.with(|settle| settle.set(0));
+        laptop.exchange_with(&folder, &key, NOW + 2 * MINUTE, &ln, &["notes"]);
+        // Emptied in place (an editor writing it, a crash): held as it was for ten minutes.
+        std::fs::write(dn.join("a.md"), b"").unwrap();
+        assert_eq!(desk.exchange_with(&folder, &key, NOW + 3 * MINUTE, &dn, &["notes"]).sent, 0);
+        laptop.exchange_with(&folder, &key, NOW + 4 * MINUTE, &ln, &["notes"]);
+        assert_eq!(std::fs::read(ln.join("a.md")).unwrap(), b"# a\n");
+        put(&dn, "a.md", b"# a, written\n");
+        assert_eq!(desk.exchange_with(&folder, &key, NOW + 5 * MINUTE, &dn, &["notes"]).sent, 1);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F23
+    #[test]
+    fn the_doses_never_read_the_notes_memory() {
+        let base = scratch("memory-apart");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let desk = Computer::new(&base, "desk");
+        let dn = base.join("desk-notes");
+        for n in 0..50 {
+            put(&dn, &format!("note-{n}.md"), format!("# {n}\n").as_bytes());
+        }
+        desk.write("state/health-state.toml", "[taken]\nd1 = 1\n");
+        desk.exchange_with(&folder, &key, NOW, &dn, &["notes"]);
+        let memory = std::fs::read_to_string(&desk.memory).unwrap();
+        assert!(!memory.contains("files/notes/note-") && memory.contains("health-state"), "{memory}");
+        assert!(std::fs::read_to_string(sealed_path(&desk.memory)).unwrap().contains("files/notes/note-7.md"));
+        assert!(written(&desk.memory, &desk.id).is_some_and(|(_, n)| n > 50));
+        // Its own file lost: notes and papers join again, nothing goes out as new, nothing copied beside.
+        std::fs::remove_file(sealed_path(&desk.memory)).unwrap();
+        let outcome = desk.exchange_with(&folder, &key, NOW + MINUTE, &dn, &["notes"]);
+        assert_eq!(outcome.sent, 0, "{outcome:?}");
+        assert_eq!(files_in(&dn).len(), 50);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // F24
+    #[test]
+    fn what_is_said_and_left_behind() {
+        // Named alike in every language: one copy, not one per device.
+        let at = NOW;
+        assert_eq!(conflict_name("lease", at), conflict_name("lease", at));
+        assert!(conflict_name("lease", at).starts_with("lease (conflict 20"));
+        let base = scratch("left-behind");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let desk = Computer::new(&base, "desk");
+        let dn = base.join("desk-notes");
+        put(&dn, "lease.md", b"lease\n");
+        // What a crash left half written, an hour old: cleaned; one being written: left.
+        put(&dn, ".lease.md.1-1.sioul.tmp", b"half");
+        dated(&dn.join(".lease.md.1-1.sioul.tmp"), std::time::SystemTime::now() - std::time::Duration::from_secs(7200));
+        put(&dn, ".lease.md.1-2.sioul.tmp", b"being written");
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            std::fs::write(dn.join(std::ffi::OsStr::from_bytes(b"caf\xe9.md")), b"latin-1").unwrap();
+        }
+        let outcome = desk.exchange_with(&folder, &key, NOW, &dn, &["notes"]);
+        assert!(!dn.join(".lease.md.1-1.sioul.tmp").exists() && dn.join(".lease.md.1-2.sioul.tmp").exists());
+        #[cfg(unix)]
+        assert!(outcome.problems.iter().any(|p| p.starts_with("share-not-text:files/notes/caf")) && outcome.sent == 1, "{outcome:?}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn each_device_chooses_its_parts() {
+        let roots = Roots { config: PathBuf::from("config"), data: PathBuf::from("data"), state: PathBuf::from("state") };
+        let config = Config { case_store: Some("/notes".into()), ..Config::default() };
+        let parts = |stores: &[Store]| stores.iter().map(|s| s.part).collect::<BTreeSet<_>>();
+        // A device that never chose: what was shared before parts had switches.
+        assert_eq!(parts(&stores(&config, &roots)), ["drafts", "health", "lists", "senders", "settings", "time", "watch"].into());
+        let old = Config { share_projects: true, ..config.clone() };
+        assert!(parts(&stores(&old, &roots)).contains("projects"), "projects as the old setting said");
+        // Its own choices, kept in its own file, never in a shared one.
+        let mut here = Here::default();
+        here.parts.insert("notes".into(), true);
+        here.parts.insert("health".into(), false);
+        here.parts.insert("projects".into(), false);
+        let chosen = stores_of(&old, &roots, &|part| here.shares(part, &old));
+        assert!(chosen.iter().any(|s| s.name == "files/notes/") && !chosen.iter().any(|s| s.part == "health" || s.part == "projects"));
+        let notes = chosen.iter().find(|s| s.name == "files/notes/").unwrap();
+        assert!(["sioul-cases.toml", "sioul-papers.toml", "papers"].iter().all(|n| notes.skip.contains(n)), "what other parts carry stays out of the notes");
+        let back: Here = toml::from_str(&toml::to_string(&here).unwrap()).unwrap();
+        assert_eq!(back.parts, here.parts);
+        assert!(stores_of(&config, &roots, &|_| true).iter().all(|s| s.name != "state/share/here.toml"));
+        // Written into the notes folder, never what tools make nor what another part carries.
+        let every = stores_of(&config, &roots, &|_| true);
+        assert!(locate(&every, "files/notes/admin/lease.md").is_some());
+        for file in ["files/notes/.obsidian/app.json", "files/notes/lease.md~", "files/notes/sioul-cases.toml", "files/notes/papers/id.pdf", "files/notes/a (conflicted copy).md"] {
+            assert!(locate(&every, file).is_none(), "{file}");
+        }
+        assert_eq!(locate(&every, "files/papers/id.pdf").map(|(s, _)| s.part), Some("papers"));
+        assert_eq!(shown("files/notes/admin/lease.md"), "admin/lease.md");
+        assert_eq!(shown("files/papers/id.pdf"), "papers/id.pdf");
+        assert_eq!(shown("config/config.toml"), "config.toml");
+    }
+
+    #[test]
     fn toml_entries_and_back() {
         let rules = &CONFIG_RULES;
         let text = "# mine\nlanguage = \"fr\" # kept\ncase_store = \"~/Notes\"\n\n[quiet]\npersonal = [\"joy\", \"family\"]\n\n[[account]]\nid = \"a\"\nmaildir = \"/x\"\n";
@@ -2240,7 +4643,8 @@ mod probe {
         let roots = super::Roots { config: base.join("config"), data: base.join("data"), state: base.join("state") };
         let config: sioul_core::config::Config = std::fs::read_to_string(roots.config.join("config.toml")).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         let stores = super::stores(&config, &roots);
-        let found = super::gather(&stores, &Default::default());
+        let look = super::Look { reads: &|_| true, hurry: &|| false, confirmed: &Default::default(), clock: super::clock_ms() };
+        let found = super::gather(&stores, &Default::default(), &look);
         for store in &stores {
             let count = found.hashes.keys().filter(|k| super::file_of(k).starts_with(store.name.as_str()) && (store.folder || super::file_of(k) == store.name)).count();
             println!("{:32} {count}", store.name);

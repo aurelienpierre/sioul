@@ -3,7 +3,8 @@
 
 // Sharing with your other computers, on the Parameters page: what travels and
 // how, the folder a sync carries, a passphrase typed once on each computer
-// (twice on the first), then where things stand.
+// (twice on the first), then where things stand; what travels from this
+// device, part by part; the versions kept before other devices' changes, to put back.
 
 pragma ComponentBehavior: Bound
 
@@ -18,8 +19,41 @@ ColumnLayout {
     required property var sioul
     required property var theme
 
-    property var status: ({ on: false, folder: "", sealed: false, lines: [], problems: [] })
+    property var status: ({ on: false, folder: "", sealed: false, lines: [], problems: [], parts: [], vanished: [] })
     property string problem: ""
+    // Notes or papers about to be switched on: what would travel, said first.
+    property string asking: ""
+    property string estimate: ""
+    // The versions kept, shown on demand: part → file → versions; one being put back, said first.
+    property bool showHistory: false
+    property var history: []
+    property string openFile: ""
+    property var confirming: null
+    property bool puttingBack: false
+
+    function listHistory() {
+        panel.sioul.shareHistory(historyFilter.text)
+    }
+
+    Connections {
+        target: panel.sioul
+
+        function onShareListed(versions) {
+            panel.history = JSON.parse(versions || "[]")
+        }
+        function onSharePutBackDone(problem) {
+            panel.puttingBack = false
+            panel.confirming = null
+            panel.problem = problem
+            panel.listHistory()
+            panel.reload()
+        }
+        function onShareEstimated(estimate) {
+            const counted = JSON.parse(estimate || "{}")
+            if (counted.part === panel.asking)
+                panel.estimate = counted.text || ""
+        }
+    }
     // Android: no folder dialog (it hands out content:// addresses, not paths);
     // the path typed, or one of the folders your other devices share through.
     readonly property bool android: Qt.platform.os === "android"
@@ -226,23 +260,145 @@ ColumnLayout {
             }
         }
     }
-    // Projects and budgets, for a notes folder no sync carries (all devices follow).
-    CheckBox {
+    // What travels from this device: each part's switch, what it carries, when it last exchanged.
+    Label {
+        Layout.topMargin: 12
         Layout.fillWidth: true
-        checked: panel.status.projects === true
-        text: panel.sioul.text("share-projects")
-        onToggled: {
-            panel.problem = panel.sioul.setShareProjects(checked)
-            panel.reload()
-        }
+        text: panel.sioul.text("share-parts")
+        font.weight: Font.DemiBold
+        wrapMode: Text.Wrap
+        color: panel.theme.text
     }
     Label {
         Layout.fillWidth: true
-        Layout.leftMargin: 28
-        text: panel.sioul.text("share-projects-help")
+        text: panel.sioul.text("share-parts-help")
         wrapMode: Text.Wrap
         font.pixelSize: 13
         color: panel.theme.muted
+    }
+    Repeater {
+        model: panel.status.parts || []
+
+        delegate: RowLayout {
+            id: part
+
+            required property var modelData
+
+            Layout.fillWidth: true
+            spacing: 8
+
+            Switch {
+                Layout.alignment: Qt.AlignTop
+                checked: part.modelData.on
+                // Refused here (a sync app carries the notes folder): it can only be switched off.
+                enabled: part.modelData.refused === "" || part.modelData.on
+                Accessible.name: part.modelData.name
+                onToggled: {
+                    // Notes and papers: what would travel is said before they are switched on.
+                    if (checked && (part.modelData.id === "notes" || part.modelData.id === "papers")) {
+                        panel.asking = part.modelData.id
+                        panel.estimate = ""
+                        panel.sioul.shareEstimate(part.modelData.id)
+                    } else {
+                        panel.problem = panel.sioul.setSharePart(part.modelData.id, checked)
+                    }
+                    panel.reload()
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 1
+
+                Label {
+                    Layout.fillWidth: true
+                    text: part.modelData.name
+                    wrapMode: Text.Wrap
+                    color: panel.theme.text
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: part.modelData.carries
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: panel.theme.muted
+                }
+                Label {
+                    visible: text !== ""
+                    Layout.fillWidth: true
+                    text: part.modelData.last
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 12
+                    color: panel.theme.muted
+                }
+                Label {
+                    visible: text !== ""
+                    Layout.fillWidth: true
+                    text: part.modelData.refused
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: panel.theme.warm
+                }
+                // Switching notes or papers on: how much would travel, then a word.
+                Label {
+                    visible: panel.asking === part.modelData.id
+                    Layout.fillWidth: true
+                    text: panel.estimate !== "" ? panel.estimate : panel.sioul.text("share-estimating")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: panel.theme.text
+                }
+                Flow {
+                    visible: panel.asking === part.modelData.id && panel.estimate !== ""
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Button {
+                        highlighted: true
+                        text: panel.sioul.text("share-switch-on")
+                        onClicked: {
+                            panel.problem = panel.sioul.setSharePart(part.modelData.id, true)
+                            panel.asking = ""
+                            panel.reload()
+                        }
+                    }
+                    Button {
+                        flat: true
+                        text: panel.sioul.text("ui-cancel")
+                        onClicked: panel.asking = ""
+                    }
+                }
+            }
+        }
+    }
+    // Notes or papers gone at once here: held, said, taken out everywhere on a word.
+    Repeater {
+        model: panel.status.vanished || []
+
+        delegate: ColumnLayout {
+            id: vanished
+
+            required property var modelData
+
+            Layout.fillWidth: true
+            spacing: 4
+
+            Label {
+                Layout.fillWidth: true
+                text: vanished.modelData.text
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: panel.theme.warm
+            }
+            Button {
+                text: panel.sioul.text("share-vanished-confirm")
+                onClicked: {
+                    panel.problem = panel.sioul.shareConfirmGone(vanished.modelData.store)
+                    panel.reload()
+                }
+            }
+        }
     }
     Label {
         Layout.fillWidth: true
@@ -250,6 +406,174 @@ ColumnLayout {
         wrapMode: Text.Wrap
         font.pixelSize: 13
         color: panel.theme.muted
+    }
+
+    // Earlier versions: what a file held before another device's change was
+    // written into it, kept on this device; part, then file, then its versions.
+    Button {
+        Layout.topMargin: 6
+        flat: true
+        text: panel.sioul.text(panel.showHistory ? "share-history-hide" : "share-history-show")
+        onClicked: {
+            panel.showHistory = !panel.showHistory
+            if (panel.showHistory)
+                panel.listHistory()
+        }
+    }
+    ColumnLayout {
+        visible: panel.showHistory
+        Layout.fillWidth: true
+        spacing: 4
+
+        Label {
+            Layout.fillWidth: true
+            text: panel.sioul.text("share-history-help")
+            wrapMode: Text.Wrap
+            font.pixelSize: 13
+            color: panel.theme.muted
+        }
+        // A part of a file's name: those that hold it.
+        TextField {
+            id: historyFilter
+
+            Layout.fillWidth: true
+            placeholderText: panel.sioul.text("share-history-filter")
+            onTextEdited: filterTimer.restart()
+        }
+        Timer {
+            id: filterTimer
+
+            interval: 300
+            onTriggered: panel.listHistory()
+        }
+        Label {
+            visible: panel.history.length === 0
+            Layout.fillWidth: true
+            text: panel.sioul.text("share-history-empty")
+            wrapMode: Text.Wrap
+            color: panel.theme.muted
+        }
+        Repeater {
+            model: panel.history
+
+            delegate: ColumnLayout {
+                id: keptPart
+
+                required property var modelData
+
+                Layout.fillWidth: true
+                spacing: 2
+
+                Label {
+                    Layout.topMargin: 6
+                    Layout.fillWidth: true
+                    text: keptPart.modelData.name
+                    font.weight: Font.DemiBold
+                    wrapMode: Text.Wrap
+                    color: panel.theme.text
+                }
+                Label {
+                    visible: text !== ""
+                    Layout.fillWidth: true
+                    text: keptPart.modelData.more
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: panel.theme.muted
+                }
+                Repeater {
+                    model: keptPart.modelData.files
+
+                    delegate: ColumnLayout {
+                        id: keptFile
+
+                        required property var modelData
+                        readonly property string key: keptPart.modelData.part + "\u001f" + modelData.file
+
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        // The file: its versions open beneath it.
+                        ItemDelegate {
+                            id: fileRow
+
+                            Layout.fillWidth: true
+                            text: keptFile.modelData.shown + "  ·  " + keptFile.modelData.count
+                            Accessible.name: text
+                            onClicked: panel.openFile = panel.openFile === keptFile.key ? "" : keptFile.key
+
+                            contentItem: Label {
+                                text: fileRow.text
+                                textFormat: Text.PlainText
+                                wrapMode: Text.WrapAnywhere
+                                color: panel.theme.text
+                            }
+                        }
+                        Repeater {
+                            model: panel.openFile === keptFile.key ? keptFile.modelData.versions : []
+
+                            delegate: ColumnLayout {
+                                id: version
+
+                                required property var modelData
+                                readonly property bool asked: panel.confirming !== null && panel.confirming.stamp === modelData.stamp && panel.confirming.file === keptFile.modelData.file
+
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 16
+                                spacing: 4
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: version.modelData.when + "  ·  " + version.modelData.size
+                                        wrapMode: Text.Wrap
+                                        color: panel.theme.text
+                                    }
+                                    Button {
+                                        visible: !version.asked
+                                        enabled: !panel.puttingBack
+                                        text: panel.sioul.text("share-put-back")
+                                        onClicked: panel.confirming = { part: keptPart.modelData.part, file: keptFile.modelData.file, stamp: version.modelData.stamp, text: panel.sioul.sharePutBackPreview(keptPart.modelData.part, keptFile.modelData.file, version.modelData.stamp) }
+                                    }
+                                }
+                                // What putting it back changes, then a word.
+                                Label {
+                                    visible: version.asked
+                                    Layout.fillWidth: true
+                                    text: version.asked ? panel.confirming.text : ""
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    color: panel.theme.text
+                                }
+                                Flow {
+                                    visible: version.asked
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    Button {
+                                        highlighted: true
+                                        enabled: !panel.puttingBack
+                                        text: panel.sioul.text(panel.puttingBack ? "share-putting-back" : "share-put-back")
+                                        onClicked: {
+                                            panel.puttingBack = true
+                                            panel.sioul.sharePutBack(panel.confirming.part, panel.confirming.file, panel.confirming.stamp)
+                                        }
+                                    }
+                                    Button {
+                                        flat: true
+                                        enabled: !panel.puttingBack
+                                        text: panel.sioul.text("ui-cancel")
+                                        onClicked: panel.confirming = null
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // On Android, Sioul's own browser (FolderBrowser.qml): the system's picker

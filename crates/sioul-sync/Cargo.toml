@@ -44,6 +44,12 @@ aes-gcm = "0.10"
 ciborium = "0.2"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
+# Notes and papers compressed before they are sealed into the sharing folder
+# (gzip, pure Rust: already built for zip and OpenPGP).
+flate2 = "1"
+# Names of notes compared as a phone's storage sees them (one composition,
+# NFC): already built for mail-auth's domain names.
+icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
 
 # The room left on the disk, before fetching older mail.
 [target.'cfg(unix)'.dependencies]
@@ -57,12 +63,12 @@ notify-rust.workspace = true
 # Windows Credential Manager, the macOS Keychain, Android's KeyStore.
 [target.'cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))'.dependencies]
 keyring = { workspace = true, features = ["sync-secret-service", "crypto-rust"] }
-[target.'cfg(windows)'.dependencies]
-keyring = { workspace = true, features = ["windows-native"] }
-windows = { version = "0.62", features = ["Win32_System_Antimalware", "Win32_Foundation", "Win32_Storage_FileSystem"] }
 # The notification of the time running (notify.rs): changed in place, its buttons
 # pressed any number of times, heard on the connection that showed it.
 dbus = "0.9"
+[target.'cfg(windows)'.dependencies]
+keyring = { workspace = true, features = ["windows-native"] }
+windows = { version = "0.62", features = ["Win32_System_Antimalware", "Win32_Foundation", "Win32_Storage_FileSystem"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { workspace = true, features = ["apple-native"] }
 # Android: the KeyStore keeps a key, the app's private storage what it encrypts

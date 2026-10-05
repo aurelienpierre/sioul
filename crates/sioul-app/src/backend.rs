@@ -493,9 +493,11 @@ pub mod qobject {
         #[qinvokable]
         fn note(self: &Sioul, path: &QString) -> QString;
 
-        /// Saves a note; returns what went wrong, else "".
+        /// Saves a note read as `stamp` (its "stamp" in `note`); returns JSON
+        /// {problem, stamp, path, kept}: when the file changed meanwhile, this
+        /// version went beside it, at `path`, and `kept` says so.
         #[qinvokable]
-        fn save_note(self: Pin<&mut Sioul>, path: &QString, text: &QString) -> QString;
+        fn save_note(self: Pin<&mut Sioul>, path: &QString, text: &QString, stamp: &QString) -> QString;
 
         /// A new note in the notes folder, linking `links` (a JSON list); returns its path.
         #[qinvokable]
@@ -869,6 +871,35 @@ pub mod qobject {
         #[qinvokable]
         fn set_share_projects(self: Pin<&mut Sioul>, on: bool) -> QString;
 
+        /// A part of what is shared ("settings", "notes"…) switched on or off on this device; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_share_part(self: Pin<&mut Sioul>, part: &QString, on: bool) -> QString;
+
+        /// The versions kept here before other devices' changes whose file's
+        /// name holds `filter`, listed off the window's thread: `share_listed`
+        /// brings them, as JSON [{"part", "name", "more", "files": [{"file", "shown", "count", "versions": [{"stamp", "when", "size"}]}]}].
+        #[qinvokable]
+        fn share_history(self: Pin<&mut Sioul>, filter: &QString);
+
+        /// What putting a version back would change, in a sentence, said before it is done.
+        #[qinvokable]
+        fn share_put_back_preview(self: &Sioul, part: &QString, file: &QString, stamp: &QString) -> QString;
+
+        /// A file put back as it was (`stamp`), the one there now kept too, then
+        /// sent, off the window's thread: `share_put_back_done` says how it went.
+        #[qinvokable]
+        fn share_put_back(self: Pin<&mut Sioul>, part: &QString, file: &QString, stamp: &QString);
+
+        /// The files gone at once from a folder of notes or papers ("files/notes/")
+        /// taken out everywhere, as you said; returns what went wrong, else "".
+        #[qinvokable]
+        fn share_confirm_gone(self: Pin<&mut Sioul>, store: &QString) -> QString;
+
+        /// What switching Notes or Papers on would send, counted off the
+        /// window's thread: `share_estimated` brings it.
+        #[qinvokable]
+        fn share_estimate(self: Pin<&mut Sioul>, part: &QString);
+
         /// A folder's own folders, for Sioul's folder browser, as JSON: {"path", "parent", "folders", "readable"}.
         #[qinvokable]
         fn folders_in(self: &Sioul, path: &QString) -> QString;
@@ -1154,6 +1185,18 @@ pub mod qobject {
         /// the pages that show them to read again.
         #[qsignal]
         fn shared_in(self: Pin<&mut Sioul>, stores: QString);
+
+        /// The versions kept, listed (`share_history`), as JSON.
+        #[qsignal]
+        fn share_listed(self: Pin<&mut Sioul>, versions: QString);
+
+        /// A version put back (`share_put_back`): what went wrong, else "".
+        #[qsignal]
+        fn share_put_back_done(self: Pin<&mut Sioul>, problem: QString);
+
+        /// What switching Notes or Papers on would send (`share_estimate`), as JSON {"part", "text"}.
+        #[qsignal]
+        fn share_estimated(self: Pin<&mut Sioul>, estimate: QString);
 
         /// A reminder's "Open" was pressed: what it is about ("task", "event", "budget"), shown.
         #[qsignal]
@@ -3175,8 +3218,8 @@ impl qobject::Sioul {
         QString::from(&work::note(&self.shared(), &path.to_string()))
     }
 
-    fn save_note(self: Pin<&mut Self>, path: &QString, text: &QString) -> QString {
-        QString::from(&work::save_note(&self.qt_thread(), &self.shared(), &path.to_string(), &text.to_string()))
+    fn save_note(self: Pin<&mut Self>, path: &QString, text: &QString, stamp: &QString) -> QString {
+        QString::from(&work::save_note(&self.qt_thread(), &self.shared(), &path.to_string(), &text.to_string(), &stamp.to_string()))
     }
 
     fn create_note(self: Pin<&mut Self>, title: &QString, links: &QString) -> QString {
@@ -3958,6 +4001,10 @@ impl qobject::Sioul {
         // Doses to remind, errands to make: off the window's thread.
         let (qt, shared_tick) = (self.qt_thread(), self.shared());
         std::thread::spawn(move || crate::health::tick(&qt, &shared_tick));
+        // The time running's notification: what changed elsewhere (another
+        // device, the command line), or while a phone had Sioul put away.
+        let (qt_time, shared_time) = (self.qt_thread(), self.shared());
+        std::thread::spawn(move || crate::timenote::follow(&qt_time, &shared_time));
         // Put away on a phone: the reminders only, and an exchange every five
         // minutes; the rest waits until it is back (Android stops an app that
         // works in the background, and nobody looks at its pages then).
@@ -3972,10 +4019,6 @@ impl qobject::Sioul {
         let (stamp, day) = (now.timestamp().as_second(), i64::from(now.date().year()) * 1000 + i64::from(now.date().day_of_year()));
         let shared = self.shared();
         let last = shared.planned_at.load(Ordering::Relaxed);
-        // The time running's notification: what changed elsewhere (another
-        // device, the command line), or while a phone had Sioul put away.
-        let (qt_time, shared_time) = (self.qt_thread(), self.shared());
-        std::thread::spawn(move || crate::timenote::follow(&qt_time, &shared_time));
         if last == 0 {
             shared.planned_at.store(stamp, Ordering::Relaxed);
             shared.planned_day.store(day, Ordering::Relaxed);
@@ -4311,6 +4354,69 @@ impl qobject::Sioul {
             return QString::from(&steps);
         }
         QString::from("pages")
+    }
+}
+
+// Sharing, part by part, and the versions kept before other devices' changes (`share`).
+impl qobject::Sioul {
+    fn set_share_part(self: Pin<&mut Self>, part: &QString, on: bool) -> QString {
+        let problem = crate::share::set_part(&part.to_string(), on);
+        if problem.is_empty() {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&problem)
+    }
+
+    fn share_history(self: Pin<&mut Self>, filter: &QString) {
+        let (qt, filter) = (self.qt_thread(), filter.to_string());
+        std::thread::spawn(move || {
+            let listed = crate::share::history(&filter);
+            let _ = qt.queue(move |mut sioul| sioul.as_mut().share_listed(QString::from(&listed)));
+        });
+    }
+
+    fn share_put_back_preview(&self, part: &QString, file: &QString, stamp: &QString) -> QString {
+        QString::from(&crate::share::put_back_preview(&part.to_string(), &file.to_string(), &stamp.to_string()))
+    }
+
+    fn share_put_back(self: Pin<&mut Self>, part: &QString, file: &QString, stamp: &QString) {
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        let (part, file, stamp) = (part.to_string(), file.to_string(), stamp.to_string());
+        // Off the window's thread: it waits for an exchange running, and copies a file whole.
+        std::thread::spawn(move || {
+            let problem = crate::share::put_back(&part, &file, &stamp);
+            let said = if problem.is_empty() { crate::share::put_back_said(&file, &stamp) } else { String::new() };
+            let store = crate::share::store_of(&file);
+            let done = problem.clone();
+            let _ = qt.queue(move |mut sioul| {
+                if !said.is_empty() {
+                    sioul.as_mut().set_status(QString::from(&said));
+                    // The pages showing it read it again.
+                    sioul.as_mut().shared_in(QString::from(&store));
+                }
+                sioul.as_mut().share_put_back_done(QString::from(&done));
+            });
+            if problem.is_empty() {
+                crate::work::show_work(&qt, &shared);
+                crate::share::exchange(&qt, &shared);
+            }
+        });
+    }
+
+    fn share_confirm_gone(self: Pin<&mut Self>, store: &QString) -> QString {
+        let problem = crate::share::confirm_gone(&store.to_string());
+        if problem.is_empty() {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&problem)
+    }
+
+    fn share_estimate(self: Pin<&mut Self>, part: &QString) {
+        let (qt, part) = (self.qt_thread(), part.to_string());
+        std::thread::spawn(move || {
+            let counted = crate::share::estimate(&part);
+            let _ = qt.queue(move |mut sioul| sioul.as_mut().share_estimated(QString::from(&counted)));
+        });
     }
 }
 

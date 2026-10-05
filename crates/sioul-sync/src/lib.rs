@@ -20,6 +20,7 @@ compile_error!("insecure-test-tls accepts any certificate: for test builds only,
 pub mod android;
 pub mod antivirus;
 pub mod bitwarden;
+pub mod blobs;
 pub mod dav;
 pub mod discover;
 pub mod favicon;
@@ -29,6 +30,7 @@ pub mod geocode;
 pub mod github;
 pub mod google;
 pub mod google_tasks;
+pub mod history;
 mod imap;
 pub mod keys;
 pub mod lease;

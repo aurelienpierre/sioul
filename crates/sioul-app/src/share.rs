@@ -3,12 +3,14 @@
 
 //! Sharing with your other computers, for the window (docs/database.md): set
 //! up on the Parameters page, one exchange a minute off the window's thread,
-//! the pages read again when another computer's changes came in.
+//! the pages read again when another computer's changes came in. Each part
+//! switched on or off on this device; the versions kept before other devices'
+//! changes listed, and put back.
 
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use cxx_qt_lib::QString;
 use serde::Serialize;
-use sioul_core::config::{expand_home, state_dir};
+use sioul_core::config::{Config, expand_home, state_dir};
 use sioul_sync::share;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -17,8 +19,17 @@ use std::sync::{Arc, Mutex};
 static KEY: Mutex<Option<[u8; 32]>> = Mutex::new(None);
 /// One exchange at a time.
 static BUSY: Mutex<()> = Mutex::new(());
+/// Set while a hurried exchange (a dose's alarm, a button pressed, a switch
+/// changed) waits for the one running: its work on notes and papers stops
+/// where it is, and goes on at the next.
+static HURRY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// This device's sharing file written one change at a time.
+static HERE: Mutex<()> = Mutex::new(());
 /// The last exchange: when it ended (Unix seconds), what went wrong.
 static LAST: Mutex<Option<(i64, Vec<String>)>> = Mutex::new(None);
+/// What an exchange did that you should know for longer than a minute, said
+/// for a day: files two devices changed, both versions kept (Unix seconds, the problem).
+static SAID: Mutex<Vec<(i64, String)>> = Mutex::new(Vec::new());
 
 fn hex(key: &[u8; 32]) -> String {
     key.iter().map(|b| format!("{b:02x}")).collect()
@@ -41,22 +52,164 @@ fn memory_path() -> PathBuf {
     state_dir().join("share").join("memory.json")
 }
 
+/// This device's sharing (`share::Here`). The projects' switch was a setting
+/// every device followed (`share_projects`): the first time sharing is on
+/// here, what it said becomes this device's own choice.
+fn here() -> share::Here {
+    let state = state_dir();
+    let mut here = share::Here::load(&state);
+    if here.folder_path().is_some() && !here.parts.contains_key("projects") {
+        let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        here = share::Here::load(&state);
+        if !here.parts.contains_key("projects") {
+            here.parts.insert("projects".into(), load_config().share_projects);
+            let _ = here.save(&state);
+        }
+    }
+    here
+}
+
+/// Whether notes and papers can be read whole here: on Android, only with
+/// "All files access" (without it, a folder lists only what Sioul made, and
+/// the rest would seem taken out).
+fn files_readable() -> bool {
+    #[cfg(target_os = "android")]
+    {
+        unsafe extern "C" {
+            /// android/main.cpp's: whether Sioul may reach your files by their path.
+            fn sioul_android_files_access() -> bool;
+        }
+        // SAFETY: android/main.cpp's, asking Android through Java.
+        unsafe { sioul_android_files_access() }
+    }
+    #[cfg(not(target_os = "android"))]
+    true
+}
+
+/// `work` run while no exchange of this Sioul runs: the one running told to
+/// hurry (its notes and papers wait for the next), then waited for.
+fn quietly<T>(work: impl FnOnce() -> T) -> T {
+    use std::sync::atomic::Ordering;
+    HURRY.store(true, Ordering::Relaxed);
+    let busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    HURRY.store(false, Ordering::Relaxed);
+    let done = work();
+    drop(busy);
+    done
+}
+
+/// The same, while no exchange runs on this computer at all (another Sioul,
+/// the command line): `share::exchange_lock` held too. Never around what takes that lock itself.
+fn between_exchanges<T>(work: impl FnOnce() -> T) -> T {
+    quietly(|| {
+        let running = share::exchange_lock(&memory_path(), true);
+        let done = work();
+        drop(running);
+        done
+    })
+}
+
+/// The notes folder, when a sync app carries it already: notes and papers then
+/// never travel through the sharing too, the two carriers would undo each
+/// other's changes. On a phone, a notes folder in the same top folder of its
+/// storage as the sharing folder (Documents…), which the sync app carries whole.
+fn notes_carried(config: &Config, folder: Option<&Path>) -> Option<PathBuf> {
+    let store = config.case_store_path()?;
+    let carried = if cfg!(target_os = "android") { folder.is_some_and(|folder| same_top(&on_storage(&store), &on_storage(folder), Path::new(STORAGE))) } else { carried(&store, &synced_roots()) };
+    carried.then_some(store)
+}
+
+/// A phone's shared storage.
+const STORAGE: &str = "/storage/emulated/0";
+
+/// A path of a phone's shared storage under its one name: "/sdcard/…",
+/// "/storage/self/primary/…", "/mnt/sdcard/…" are "/storage/emulated/0/…".
+fn on_storage(path: &Path) -> PathBuf {
+    ["/sdcard", "/storage/self/primary", "/mnt/sdcard", "/mnt/user/0/primary"].iter().find_map(|alias| path.strip_prefix(alias).ok()).map_or_else(|| path.to_path_buf(), |rest| Path::new(STORAGE).join(rest))
+}
+
+/// Two folders inside one folder at the top of `storage`.
+fn same_top(a: &Path, b: &Path, storage: &Path) -> bool {
+    let top = |path: &Path| path.strip_prefix(storage).ok().and_then(|rest| rest.components().next()).map(|c| c.as_os_str().to_owned());
+    top(a).is_some() && top(a) == top(b)
+}
+
+/// Why a part cannot be shared from here, when it cannot: notes and papers while a sync app carries the notes folder.
+fn refused(part: &str, config: &Config, here: &share::Here) -> Option<String> {
+    if !matches!(part, "notes" | "papers") {
+        return None;
+    }
+    notes_carried(config, here.folder_path().as_deref()).map(|store| say("share-part-carried", &[("store", shorten(&store))]))
+}
+
+/// What this device shares: each part as switched here, else as before parts had switches.
+fn stores_here(here: &share::Here) -> Vec<share::Store> {
+    let config = load_config();
+    let carried = notes_carried(&config, here.folder_path().as_deref()).is_some();
+    share::stores_of(&config, &share::Roots::here(), &|part| here.shares(part, &config) && !(carried && matches!(part, "notes" | "papers")))
+}
+
+/// A part's name and what it carries, in a line.
+fn part_words(part: &str) -> (String, String) {
+    let text = |id: &str| tr().text(id, None);
+    match part {
+        "settings" => (text("share-part-settings"), text("share-part-settings-carries")),
+        "senders" => (text("share-part-senders"), text("share-part-senders-carries")),
+        "health" => (text("share-part-health"), text("share-part-health-carries")),
+        "time" => (text("share-part-time"), text("share-part-time-carries")),
+        "drafts" => (text("share-part-drafts"), text("share-part-drafts-carries")),
+        "projects" => (text("share-part-projects"), text("share-part-projects-carries")),
+        "watch" => (text("share-part-watch"), text("share-part-watch-carries")),
+        "lists" => (text("share-part-lists"), text("share-part-lists-carries")),
+        "notes" => (text("share-part-notes"), text("share-part-notes-carries")),
+        "papers" => (text("share-part-papers"), text("share-part-papers-carries")),
+        _ => (part.to_string(), String::new()),
+    }
+}
+
 /// Folders a sync carries: those named so in your home, and Nextcloud's own list.
 fn synced_roots() -> Vec<PathBuf> {
     let home = expand_home("~");
     let mut roots: Vec<PathBuf> = ["Nextcloud", "Dropbox", "ownCloud", "Sync", "Syncthing", "OneDrive", "pCloudDrive", "Seafile"].iter().map(|n| home.join(n)).filter(|p| p.is_dir()).collect();
-    let configs = [home.join(".config/Nextcloud/nextcloud.cfg"), home.join("Library/Preferences/Nextcloud/nextcloud.cfg"), std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("Nextcloud").join("nextcloud.cfg")).unwrap_or_default()];
-    for text in configs.iter().filter_map(|c| std::fs::read_to_string(c).ok()) {
-        for line in text.lines() {
-            if let Some((_, path)) = line.split_once("localPath=") {
-                let path = PathBuf::from(path.trim().trim_end_matches('/'));
-                if path.is_dir() && !roots.contains(&path) {
-                    roots.push(path);
-                }
-            }
+    let data = |name: &str, file: &str| std::env::var_os(name).map(|a| PathBuf::from(a).join(file)).unwrap_or_default();
+    let read = |paths: &[PathBuf]| paths.iter().filter_map(|c| std::fs::read_to_string(c).ok()).collect::<Vec<_>>();
+    let mut found: Vec<PathBuf> = Vec::new();
+    for text in read(&[home.join(".config/Nextcloud/nextcloud.cfg"), home.join("Library/Preferences/Nextcloud/nextcloud.cfg"), data("APPDATA", "Nextcloud/nextcloud.cfg")]) {
+        found.extend(text.lines().filter_map(|line| line.split_once("localPath=")).map(|(_, path)| PathBuf::from(path.trim().trim_end_matches('/'))));
+    }
+    // Syncthing's folders, wherever they are (its config.xml).
+    for text in read(&[home.join(".config/syncthing/config.xml"), home.join(".local/state/syncthing/config.xml"), home.join("Library/Application Support/Syncthing/config.xml"), data("LOCALAPPDATA", "Syncthing/config.xml")]) {
+        found.extend(syncthing_folders(&text).iter().map(|path| expand_home(path)));
+    }
+    // Dropbox, wherever it was put (its info.json: the personal and business folders).
+    for text in read(&[home.join(".dropbox/info.json"), data("APPDATA", "Dropbox/info.json"), data("LOCALAPPDATA", "Dropbox/info.json")]) {
+        found.extend(dropbox_folders(&text).into_iter().map(PathBuf::from));
+    }
+    for path in found {
+        if path.is_dir() && !roots.contains(&path) {
+            roots.push(path);
         }
     }
     roots
+}
+
+/// The folders a Syncthing configuration carries: each `<folder … path="…">`.
+fn syncthing_folders(xml: &str) -> Vec<String> {
+    xml.split("<folder ")
+        .skip(1)
+        .filter_map(|element| {
+            let tag = element.split('>').next()?;
+            let (_, rest) = tag.split_once(" path=\"").or_else(|| tag.strip_prefix("path=\"").map(|rest| ("", rest)))?;
+            let path = rest.split('"').next()?;
+            Some(path.replace("&amp;", "&").replace("&apos;", "'").replace("&quot;", "\"").replace("&lt;", "<").replace("&gt;", ">"))
+        })
+        .collect()
+}
+
+/// The folders Dropbox's info.json names: `{"personal": {"path": …}, "business": {"path": …}}`.
+fn dropbox_folders(json: &str) -> Vec<String> {
+    let Ok(serde_json::Value::Object(accounts)) = serde_json::from_str::<serde_json::Value>(json) else { return Vec::new() };
+    accounts.values().filter_map(|account| account.get("path").and_then(serde_json::Value::as_str).map(str::to_string)).collect()
 }
 
 /// Folders already shared through, by this device's other devices: those holding a seal
@@ -184,15 +337,41 @@ struct Status {
     folder: String,
     /// The folder already holds a seal: the passphrase is typed once, not twice.
     sealed: bool,
-    /// Projects and budgets travel here too (`share_projects`).
+    /// Projects and budgets travel here too.
     projects: bool,
     lines: Vec<String>,
     problems: Vec<String>,
+    /// What travels from this device, part by part.
+    parts: Vec<Part>,
+    /// Folders of notes or papers whose files went at once: held, said, to take out everywhere on a word.
+    vanished: Vec<Vanished>,
+}
+
+/// Files gone at once from a folder of notes or papers, held until you say.
+#[derive(Serialize)]
+struct Vanished {
+    /// The folder's part in the records: "files/notes/", "files/papers/".
+    store: String,
+    text: String,
+}
+
+/// A part of what is shared, as this device has it.
+#[derive(Serialize)]
+struct Part {
+    id: &'static str,
+    name: String,
+    /// What it carries, in a line.
+    carries: String,
+    on: bool,
+    /// Why it cannot be switched on here; "" when it can.
+    refused: String,
+    /// When it last sent and received a change here, said shortly; "" when not shared.
+    last: String,
 }
 
 /// What the Parameters page shows, as JSON; `folder` is the one being chosen, if any.
 pub(crate) fn status(folder: &str) -> String {
-    let here = share::Here::load(&state_dir());
+    let here = here();
     let roots = synced_roots();
     let on = here.folder_path().is_some() && key().is_some();
     // Shared: the folder in use. Not yet: the one being chosen, else where it was, else a suggestion.
@@ -206,6 +385,7 @@ pub(crate) fn status(folder: &str) -> String {
     let path = expand_home(&chosen);
     let mut lines = Vec::new();
     let mut problems = Vec::new();
+    let mut vanished = Vec::new();
     if on {
         lines.push(say("share-on", &[("folder", chosen.clone())]));
         let others = share::others(&path, &here.id);
@@ -220,7 +400,14 @@ pub(crate) fn status(folder: &str) -> String {
         }
         if let Some((at, said)) = LAST.lock().ok().and_then(|l| l.clone()) {
             lines.push(say("share-last", &[("when", when(at))]));
-            problems.extend(said.iter().map(|p| problem_text(p)));
+            problems.extend(said.iter().filter(|p| !kept_a_day(p) && !p.starts_with("share-vanished:") && !p.starts_with("share-busy")).map(|p| problem_text(p)));
+            vanished.extend(said.iter().filter_map(|p| vanished_of(p)));
+        }
+        // Files two devices changed, both kept: said for a day.
+        let day_ago = jiff::Timestamp::now().as_second() - 86_400;
+        if let Ok(mut said) = SAID.lock() {
+            said.retain(|(at, _)| *at > day_ago);
+            problems.extend(said.iter().map(|(_, p)| problem_text(p)));
         }
     } else if here.folder_path().is_some() {
         problems.push(tr().text("share-key-missing", None));
@@ -231,22 +418,69 @@ pub(crate) fn status(folder: &str) -> String {
     if !cfg!(target_os = "android") && beside_documents(&path, &roots) {
         lines.push(tr().text("share-phones", None));
     }
-    // Projects and notes travel by their own folder: say so when no sync seems to carry it.
-    if let Some(store) = load_config().case_store_path()
+    // Notes travel by their own folder, unless this device shares them here:
+    // say so when no sync seems to carry it.
+    let config = load_config();
+    if let Some(store) = config.case_store_path()
+        && !here.shares("notes", &config)
         && carried(&path, &roots)
         && !carried(&store, &roots)
     {
         problems.push(say("share-outside", &[("store", shorten(&store))]));
     }
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: load_config().share_projects, lines, problems })
+    let traffic = share::traffic(&memory_path(), &here.id);
+    let parts = share::PARTS
+        .iter()
+        .map(|&id| {
+            let (name, carries) = part_words(id);
+            let refused = refused(id, &config, &here).unwrap_or_default();
+            let shared = here.shares(id, &config) && refused.is_empty();
+            let last = match traffic.get(id).copied().unwrap_or_default() {
+                _ if !on || !shared => String::new(),
+                (0, 0) => tr().text("share-part-quiet", None),
+                (sent, received) => [(sent, "share-part-sent"), (received, "share-part-received")].iter().filter(|(at, _)| *at > 0).map(|(at, id)| say(id, &[("when", when(*at))])).collect::<Vec<_>>().join(" "),
+            };
+            Part { id, name, carries, on: shared, refused, last }
+        })
+        .collect();
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished })
 }
 
 fn problem_text(code: &str) -> String {
+    let file = |file: &str| share::shown(file).to_string();
     match code.split_once(':') {
         Some(("share-other-seal", _)) => tr().text("share-other-seal", None),
-        Some(("share-unreadable", file)) => say("share-unreadable", &[("file", file.to_string())]),
+        Some(("share-unreadable", path)) => say("share-unreadable", &[("file", path.to_string())]),
+        Some(("share-conflict", copy)) => say("share-conflict", &[("copy", copy.to_string())]),
+        Some(("share-conflict-gone", copy)) => say("share-conflict-gone", &[("copy", copy.to_string())]),
+        Some(("share-older-copy", copy)) => say("share-older-copy", &[("copy", copy.to_string())]),
+        Some(("share-damaged", name)) => say("share-damaged", &[("file", file(name))]),
+        Some(("share-too-big", name)) => say("share-too-big", &[("file", file(name))]),
+        Some(("share-missing", name)) => say("share-missing", &[("file", file(name))]),
+        Some(("share-no-room", name)) => say("share-no-room", &[("file", file(name))]),
+        Some(("share-name-clash", name)) => say("share-name-clash", &[("file", file(name))]),
+        Some(("share-refused", name)) => say("share-refused", &[("file", file(name))]),
+        Some(("share-not-text", name)) => say("share-not-text", &[("file", file(name))]),
+        Some(("share-emptied", name)) => say("share-emptied", &[("file", file(name))]),
+        None if code == "share-files-unreadable" => tr().text("share-files-unreadable", None),
         _ => code.to_string(),
     }
+}
+
+/// What is said for a day, not only until the next exchange: files two devices changed, an older copy put back by hand.
+fn kept_a_day(code: &str) -> bool {
+    code.starts_with("share-conflict") || code.starts_with("share-older-copy")
+}
+
+/// "share-vanished:<folder>:<count>", said with a button: the folder of notes or papers it is in, and the sentence.
+fn vanished_of(code: &str) -> Option<Vanished> {
+    let (folder, count) = code.strip_prefix("share-vanished:")?.rsplit_once(':')?;
+    let store = if folder.starts_with("files/papers/") { "files/papers/" } else { "files/notes/" };
+    let shown = match share::shown(folder) {
+        "" => load_config().case_store_path().map(|notes| shorten(&notes)).unwrap_or_default(),
+        inside => inside.trim_end_matches('/').to_string(),
+    };
+    Some(Vanished { store: store.to_string(), text: say("share-vanished", &[("folder", shown), ("count", count.to_string())]) })
 }
 
 /// Starts sharing through a folder; "" when it did, else why not.
@@ -280,24 +514,152 @@ pub(crate) fn start(folder: &str, passphrase: &str, again: &str) -> String {
     here.save(&state).err().unwrap_or_default()
 }
 
-/// Projects and budgets carried through the sharing too, or not (a setting
-/// every device then follows); "" when kept, else why not.
+/// Projects and money shared from this device, or not; "" when kept, else why not.
 pub(crate) fn set_projects(on: bool) -> String {
-    sioul_core::config::set_value(&crate::backend::config_path(), "share_projects", &sioul_core::config::SettingValue::Bool(on)).err().unwrap_or_default()
+    set_part("projects", on)
+}
+
+/// A part shared from this device, or not (`share::PARTS`): this device's own
+/// choice, never shared. Notes and papers are refused while a sync app
+/// carries the notes folder. "" when kept, else why not.
+pub(crate) fn set_part(part: &str, on: bool) -> String {
+    let Some(part) = share::PARTS.iter().find(|p| **p == part) else { return format!("{part}?") };
+    if on && let Some(why) = refused(part, &load_config(), &here()) {
+        return why;
+    }
+    // Between two exchanges: one never reads half the parts as they were.
+    between_exchanges(|| {
+        let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut here = here();
+        here.parts.insert((*part).to_string(), on);
+        here.save(&state_dir()).err().unwrap_or_default()
+    })
+}
+
+/// A version kept, as the window lists it.
+#[derive(Serialize)]
+struct Kept {
+    part: &'static str,
+    name: String,
+    files: Vec<KeptFile>,
+    /// The files not shown (a hundred at most are), said; "" when all are.
+    more: String,
+}
+
+#[derive(Serialize)]
+struct KeptFile {
+    file: String,
+    shown: String,
+    count: String,
+    versions: Vec<KeptVersion>,
+}
+
+#[derive(Serialize)]
+struct KeptVersion {
+    stamp: String,
+    when: String,
+    size: String,
+}
+
+/// The versions kept here before other devices' changes (`sioul_sync::history`),
+/// as JSON: each part's files whose name holds `filter` (any case), the one
+/// changed last first, a hundred at most (the others said), their versions.
+pub(crate) fn history(filter: &str) -> String {
+    let root = sioul_sync::history::root(&memory_path());
+    let needle = filter.trim().to_lowercase();
+    let kept: Vec<Kept> = share::PARTS
+        .iter()
+        .filter_map(|&part| {
+            let all: Vec<_> = sioul_sync::history::files(&root, part).into_iter().filter(|(file, _)| share::shown(file).to_lowercase().contains(&needle)).collect();
+            let more = if all.len() > 100 { say("share-history-more", &[("count", (all.len() - 100).to_string())]) } else { String::new() };
+            let files: Vec<KeptFile> = all
+                .into_iter()
+                .take(100)
+                .map(|(file, versions)| KeptFile {
+                    shown: share::shown(&file).to_string(),
+                    count: say("share-versions", &[("count", versions.len().to_string())]),
+                    versions: versions.into_iter().map(|v| KeptVersion { when: when(v.at / 1000), size: sioul_core::view::size(tr(), usize::try_from(v.size).unwrap_or(usize::MAX)), stamp: v.stamp }).collect(),
+                    file,
+                })
+                .collect();
+            (!files.is_empty()).then(|| Kept { part, name: part_words(part).0, files, more })
+        })
+        .collect();
+    json(&kept)
+}
+
+/// A file put back as it was (`stamp`), the one there now kept in the list
+/// too; the next exchange sends it. Waits for an exchange running. Returns
+/// what went wrong, else "".
+pub(crate) fn put_back(part: &str, file: &str, stamp: &str) -> String {
+    let here = here();
+    let (folder, key) = (here.folder_path(), key());
+    let vault = folder.as_deref().zip(key.as_ref());
+    // Every part, those switched off too: put back here only.
+    let stores = share::stores_of(&load_config(), &share::Roots::here(), &|_| true);
+    quietly(|| share::put_back(&memory_path(), vault, &stores, part, file, stamp, jiff::Timestamp::now().as_millisecond()).err().map(|e| problem_text(&e)).unwrap_or_default())
+}
+
+/// The store a file of the records is in, by name ("files/notes/", "config/config.toml"): for the pages to read again.
+pub(crate) fn store_of(file: &str) -> String {
+    share::stores_of(&load_config(), &share::Roots::here(), &|_| true).into_iter().filter(|s| if s.folder { file.starts_with(s.name.as_str()) } else { s.name == file }).map(|s| s.name).max_by_key(String::len).unwrap_or_default()
+}
+
+/// What putting back would do, said before it is done (`share::put_back_preview`).
+pub(crate) fn put_back_preview(part: &str, file: &str, stamp: &str) -> String {
+    let stores = share::stores_of(&load_config(), &share::Roots::here(), &|_| true);
+    let kept = sioul_sync::history::kept_at(stamp).map(|at| when(at / 1000)).unwrap_or_default();
+    let shown = share::shown(file).to_string();
+    match share::put_back_preview(&memory_path(), &stores, part, file, stamp) {
+        Ok(back) if back.whole => say("share-put-back-whole", &[("file", shown), ("when", kept)]),
+        Ok(back) if back.changed + back.returning == 0 => say("share-put-back-nothing", &[("file", shown)]),
+        Ok(back) => say("share-put-back-entries", &[("file", shown), ("when", kept), ("changed", back.changed.to_string()), ("returning", back.returning.to_string()), ("kept", back.kept.to_string())]),
+        Err(e) => e,
+    }
+}
+
+/// Files gone at once from a folder of notes or papers ("files/notes/") taken out everywhere at the next exchange, as you said; "" when kept, else why not.
+pub(crate) fn confirm_gone(store: &str) -> String {
+    if !matches!(store, "files/notes/" | "files/papers/") {
+        return format!("{store}?");
+    }
+    let here = here();
+    quietly(|| share::confirm_gone(&memory_path(), &here.id, store).err().unwrap_or_default())
+}
+
+/// What switching Notes or Papers on would send from here, as JSON {"part", "text"}: how many files, how big, how many stay (too big).
+pub(crate) fn estimate(part: &str) -> String {
+    let stores = share::stores_of(&load_config(), &share::Roots::here(), &|p| p == part);
+    let (count, bytes, big) = share::estimate(&stores);
+    let size = sioul_core::view::size(tr(), usize::try_from(bytes).unwrap_or(usize::MAX));
+    let text = say("share-estimate", &[("count", count.to_string()), ("size", size), ("big", big.to_string())]);
+    json(&serde_json::json!({ "part": part, "text": text }))
+}
+
+/// What putting back did, for the status line: the file, and when the version was kept.
+pub(crate) fn put_back_said(file: &str, stamp: &str) -> String {
+    let kept = sioul_sync::history::kept_at(stamp).map(|at| when(at / 1000)).unwrap_or_default();
+    say("share-put-back-done", &[("file", share::shown(file).to_string()), ("when", kept)])
 }
 
 /// Stops sharing here: the key forgotten, the folder left as it is for the others.
 pub(crate) fn stop() -> String {
-    if let Ok(mut held) = KEY.lock() {
-        *held = None;
-    }
-    let _ = sioul_sync::secret::forget_named(share::KEY_NAME);
-    let state = state_dir();
-    let mut here = share::Here::load(&state);
-    here.folder = None;
-    // Starting again later reads the others first, as the first time.
-    let _ = std::fs::remove_file(memory_path());
-    here.save(&state).err().unwrap_or_default()
+    // Between two exchanges: one running never writes its memory back after.
+    between_exchanges(|| {
+        if let Ok(mut held) = KEY.lock() {
+            *held = None;
+        }
+        let _ = sioul_sync::secret::forget_named(share::KEY_NAME);
+        let state = state_dir();
+        let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut here = share::Here::load(&state);
+        here.folder = None;
+        // Starting again later reads the others first, as the first time.
+        let memory = memory_path();
+        let _ = std::fs::remove_file(memory.with_file_name("files.json"));
+        let _ = std::fs::remove_file(&memory);
+        here.save(&state).err().unwrap_or_default()
+    })
 }
 
 /// Whether sharing is on here: a folder and its key.
@@ -346,13 +708,16 @@ const PARTS: [&str; 3] = ["health", "notices", crate::projects::INVOICES];
 /// how far it wrote, so the others know it marks nothing until it is back
 /// (docs/health.md, "Knowing").
 pub(crate) fn closing() {
-    let here = share::Here::load(&state_dir());
+    let here = here();
     let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return };
     let memory = memory_path();
     {
+        // What was marked goes out; notes and papers wait for the next start.
+        HURRY.store(true, std::sync::atomic::Ordering::Relaxed);
         let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let stores = share::stores(&load_config(), &share::Roots::here());
-        let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory };
+        HURRY.store(false, std::sync::atomic::Ordering::Relaxed);
+        let stores = stores_here(&here);
+        let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: false, hurry: None };
         let _ = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond());
     }
     let _claiming = CLAIMING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -456,7 +821,7 @@ pub(crate) fn nudge_tick(qt: &QtThread, shared: &Arc<Shared>) {
 /// the sync app is asked to bring what the other devices wrote, and given
 /// twenty seconds. None when sharing is off. Waits for an exchange running.
 pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, String>> {
-    let here = share::Here::load(&state_dir());
+    let here = here();
     let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
     // The sync app asked to bring the others' news, and given twenty seconds;
     // asked a moment ago already (two doses due at once), only what is left of them.
@@ -473,29 +838,46 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
         };
         std::thread::sleep(std::time::Duration::from_secs((20 - waited).max(0) as u64));
     }
+    // The one running told to hurry, then waited for: notes and papers wait,
+    // what is marked never does (a dose, a button pressed).
+    HURRY.store(true, std::sync::atomic::Ordering::Relaxed);
     let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let stores = share::stores(&load_config(), &share::Roots::here());
+    HURRY.store(false, std::sync::atomic::Ordering::Relaxed);
+    let stores = stores_here(&here);
     let memory = memory_path();
-    let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory };
+    let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: false, hurry: None };
     let outcome = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond());
-    if let Ok(outcome) = &outcome
-        && outcome.sent > 0
-    {
-        ask_carriers();
+    if let Ok(outcome) = &outcome {
+        remember(&outcome.problems, jiff::Timestamp::now().as_second());
+        if outcome.sent > 0 {
+            ask_carriers();
+        }
     }
     Some(outcome)
+}
+
+/// Files two devices changed, both kept: said for a day, not only until the next exchange.
+fn remember(problems: &[String], now: i64) {
+    if let Ok(mut kept) = SAID.lock() {
+        for problem in problems.iter().filter(|p| kept_a_day(p)) {
+            kept.retain(|(_, p)| p != problem);
+            kept.push((now, problem.clone()));
+        }
+    }
 }
 
 pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
-        let here = share::Here::load(&state_dir());
+        let here = here();
         let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return };
-        let stores = share::stores(&load_config(), &share::Roots::here());
+        let stores = stores_here(&here);
         let now = jiff::Timestamp::now();
         let memory = memory_path();
-        let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory };
+        // Notes and papers only when they can be read whole (Android: "All files access").
+        let readable = files_readable();
+        let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: readable, hurry: Some(&HURRY) };
         let (mut received, mut pending) = (0, 0);
         let (written, accounts, problems, sent) = match share::exchange(&sharing, &stores, now.as_millisecond()) {
             Ok(outcome) => {
@@ -515,10 +897,17 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
         // On a phone nobody reads the status line: what each exchange did goes to its
         // log (adb logcat), counts and problems only, never what was exchanged.
         if cfg!(target_os = "android") {
-            eprintln!("sioul: sharing: {sent} sent, {received} received, {pending} waiting{}{}", if problems.is_empty() { "" } else { "; " }, problems.join("; "));
+            // Codes alone: a note's name is what was exchanged.
+            let codes: Vec<&str> = problems.iter().map(|p| p.split(':').next().unwrap_or_default()).collect();
+            eprintln!("sioul: sharing: {sent} sent, {received} received, {pending} waiting{}{}", if codes.is_empty() { "" } else { "; " }, codes.join("; "));
         }
         let mut said = problems;
+        // Notes and papers wait while Android does not let Sioul read them all.
+        if !readable && stores.iter().any(|s| matches!(s.shape, share::Shape::Files)) {
+            said.push("share-files-unreadable".into());
+        }
         said.dedup();
+        remember(&said, now.as_second());
         if let Ok(mut last) = LAST.lock() {
             *last = Some((now.as_second(), said));
         }
@@ -555,6 +944,28 @@ mod tests {
         std::fs::create_dir_all(&other).unwrap();
         assert!(!beside_documents(&other.join("Sioul"), &[other.clone()]));
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn notes_carried_twice_are_refused() {
+        let home = std::env::temp_dir().join(format!("sioul-share-carried-{}", std::process::id()));
+        let roots = vec![home.join("Nextcloud")];
+        assert!(carried(&home.join("Nextcloud").join("Notes"), &roots));
+        assert!(!carried(&home.join("Notes"), &roots));
+        // On a phone: notes in the top folder of its storage the sharing folder is in, whatever name the storage goes by.
+        let storage = Path::new(STORAGE);
+        assert!(same_top(&storage.join("Documents/Notes"), &storage.join("Documents/Sioul"), storage));
+        assert!(!same_top(&storage.join("Notes"), &storage.join("Documents/Sioul"), storage));
+        assert!(!same_top(Path::new("/data/user/0/sioul/files/Notes"), &storage.join("Documents/Sioul"), storage));
+        assert!(same_top(&on_storage(Path::new("/sdcard/Documents/Notes")), &on_storage(&storage.join("Documents/Sioul")), storage));
+        assert!(same_top(&on_storage(Path::new("/storage/self/primary/Documents/Notes")), &on_storage(Path::new("/sdcard/Documents/Sioul")), storage));
+        // Syncthing's folders and Dropbox's, wherever they are.
+        let xml = "<configuration>\n<folder id=\"a\" label=\"Notes\" path=\"~/Writing &amp; Notes\" type=\"sendreceive\">\n<device id=\"X\"></device>\n</folder>\n<folder path=\"/data/Sync\" id=\"b\"></folder>\n<folderish/>\n</configuration>";
+        assert_eq!(syncthing_folders(xml), ["~/Writing & Notes", "/data/Sync"]);
+        let mut boxes = dropbox_folders(r#"{"personal": {"path": "/home/me/Boxes/Dropbox", "host": 1}, "business": {"path": "/home/me/Work"}}"#);
+        boxes.sort();
+        assert_eq!(boxes, ["/home/me/Boxes/Dropbox", "/home/me/Work"]);
+        assert!(dropbox_folders("not json").is_empty());
     }
 
     #[test]

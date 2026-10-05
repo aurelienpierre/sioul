@@ -1291,6 +1291,7 @@ pub(crate) fn note(shared: &Shared, path: &str) -> String {
         "checkboxes": note.checkboxes,
         "related": related,
         "file": file.display().to_string(),
+        "stamp": text_stamp(&text),
         "kind": notes::NoteKind::Text,
         // Pictures written the usual Markdown way, relative to the note, are found from its folder.
         "base": file.parent().map(|p| format!("{}/", crate::backend::file_url(p))).unwrap_or_default(),
@@ -1299,15 +1300,56 @@ pub(crate) fn note(shared: &Shared, path: &str) -> String {
 }
 
 /// Saves a note's text; returns what went wrong, else "".
-pub(crate) fn save_note(qt: &QtThread, shared: &Arc<Shared>, path: &str, text: &str) -> String {
-    let Some(root) = load_config().case_store_path() else { return tr().text("error-no-store", None) };
+pub(crate) fn save_note(qt: &QtThread, shared: &Arc<Shared>, path: &str, text: &str, stamp: &str) -> String {
+    let answer = |problem: String, path: &str, kept: String| serde_json::json!({ "problem": problem, "stamp": text_stamp(text), "path": path, "kept": kept }).to_string();
+    let Some(root) = load_config().case_store_path() else { return answer(tr().text("error-no-store", None), path, String::new()) };
+    // Changed since it was opened (another device through the sharing, a sync
+    // app, another editor): that version keeps the name, this one goes beside it.
+    let changed = notes::normalize(path)
+        .and_then(|relative| std::fs::read_to_string(root.join(relative)).ok())
+        .is_some_and(|current| !stamp.is_empty() && text_stamp(&current) != stamp && current != text);
+    if changed {
+        let beside = conflict_path(&root, path);
+        return match notes::write(&root, &beside, text) {
+            Ok(_) => {
+                show_work(qt, shared);
+                answer(String::new(), &beside, say("note-changed-elsewhere", &[("path", beside.clone())]))
+            }
+            Err(e) => answer(e, path, String::new()),
+        };
+    }
     match notes::write(&root, path, text) {
         Ok(_) => {
             show_work(qt, shared);
-            String::new()
+            answer(String::new(), path, String::new())
         }
-        Err(e) => e,
+        Err(e) => answer(e, path, String::new()),
     }
+}
+
+/// A fingerprint of a note's text as it was read, given back when it is saved.
+pub(crate) fn text_stamp(text: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+/// A free name beside a note for a version of it that lost the race:
+/// "Plan (conflict 2026-10-05 21.50).md", named as the sharing names its
+/// copies, the same whatever the language (`share::conflict_name`).
+fn conflict_path(root: &Path, path: &str) -> String {
+    let (folder, name) = path.rsplit_once('/').map_or(("", path), |(folder, name)| (folder, name));
+    let stem = name.strip_suffix(".md").unwrap_or(name);
+    let named = sioul_sync::share::conflict_name(stem, Zoned::now().timestamp().as_millisecond());
+    let join = |file: String| if folder.is_empty() { file } else { format!("{folder}/{file}") };
+    let mut candidate = join(format!("{named}.md"));
+    let mut n = 2;
+    while root.join(&candidate).exists() {
+        candidate = join(format!("{named} {n}.md"));
+        n += 1;
+    }
+    candidate
 }
 
 /// The folder new notes go into, in the notes folder: yours, else "notes".
@@ -1776,4 +1818,27 @@ pub(crate) fn mail_note(qt: &QtThread, shared: &Arc<Shared>, path: &str) -> Stri
     }
     show_work(qt, shared);
     draft.id
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_note_saved_over_a_newer_one_goes_beside_it() {
+        let root = std::env::temp_dir().join(format!("sioul-note-beside-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("admin")).unwrap();
+        std::fs::write(root.join("admin/Plan.md"), "theirs").unwrap();
+        // The stamp tells a text from another, and the same text from itself.
+        assert_eq!(text_stamp("theirs"), text_stamp("theirs"));
+        assert_ne!(text_stamp("theirs"), text_stamp("ours"));
+        // Beside it, in its folder, never over another copy.
+        let first = conflict_path(&root, "admin/Plan.md");
+        assert!(first.starts_with("admin/Plan (") && first.ends_with(".md"), "{first}");
+        std::fs::write(root.join(&first), "ours").unwrap();
+        let second = conflict_path(&root, "admin/Plan.md");
+        assert!(second != first && second.ends_with(" 2.md"), "{second}");
+        assert!(!conflict_path(&root, "Top.md").contains('/'));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
