@@ -815,8 +815,15 @@ Item {
                                 Keys.onReturnPressed: page.openKey = modelData.key
                                 Keys.onEnterPressed: page.openKey = modelData.key
 
+                                // On a touch screen, the menu comes at a long press; letting go then opens nothing.
+                                onPressAndHold: {
+                                    row.Window.window.menuAt = row.mapToItem(null, row.pressX, row.pressY)
+                                    itemMenu.show(row.modelData)
+                                }
                                 TapHandler {
                                     acceptedButtons: Qt.RightButton
+                                    // A touch has no buttons: on a touch screen, the row's long press.
+                                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                                     onTapped: itemMenu.show(row.modelData)
                                 }
 

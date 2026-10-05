@@ -181,7 +181,19 @@ ColumnLayout {
                         }
                         TapHandler {
                             acceptedButtons: Qt.RightButton
+                            // A touch has no buttons: on a touch screen, the long press below.
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                             onTapped: planning.menu(chip.modelData)
+                        }
+                        // On a touch screen, the menu at a long press.
+                        TapHandler {
+                            id: chipHold
+
+                            acceptedDevices: PointerDevice.TouchScreen
+                            onLongPressed: {
+                                chip.Window.window.menuAt = chipHold.point.scenePosition
+                                planning.menu(chip.modelData)
+                            }
                         }
                     }
                 }
@@ -325,7 +337,19 @@ ColumnLayout {
                             }
                             TapHandler {
                                 acceptedButtons: Qt.RightButton
+                                // A touch has no buttons: on a touch screen, the long press below.
+                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                                 onTapped: planning.menu(block.modelData)
+                            }
+                            // On a touch screen, the menu at a long press.
+                            TapHandler {
+                                id: blockHold
+
+                                acceptedDevices: PointerDevice.TouchScreen
+                                onLongPressed: {
+                                    block.Window.window.menuAt = blockHold.point.scenePosition
+                                    planning.menu(block.modelData)
+                                }
                             }
                         }
                     }

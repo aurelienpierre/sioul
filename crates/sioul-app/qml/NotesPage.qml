@@ -439,9 +439,21 @@ Item {
                             if (row.folder)
                                 folderMenu.now().show(row.modelData.path)
                             else
+                    // On a touch screen, the menu comes at a long press; letting go then opens nothing.
+                    onPressAndHold: {
+                        row.Window.window.menuAt = row.mapToItem(null, row.pressX, row.pressY)
+                        if (row.heading || row.modelData.type === "recent")
+                            return
+                        if (row.folder)
+                            folderMenu.now().show(row.modelData.path)
+                        else
+                            noteMenu.now().show(row.modelData.note)
+                    }
                                 noteMenu.now().show(row.modelData.note)
                         }
                     }
+                        // A touch has no buttons: on a touch screen, the row's long press.
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
 
                     background: Rectangle {
                         color: !row.heading && (row.highlighted || row.hovered) ? page.theme.surface : "transparent"
@@ -782,6 +794,7 @@ Item {
                 onAboutToShow: noteTitle.clear()
                 // Sioul's own buttons: Qt's standard ones ("OK", "Cancel") are not translated here.
                 footer: DialogButtonBox {
+                parent: Overlay.overlay
                     Button {
                         text: page.sioul.text("note-make")
                         highlighted: true
@@ -947,6 +960,7 @@ Item {
                 footer: DialogButtonBox {
                     Button {
                         text: folderNameForm.verb
+                parent: Overlay.overlay
                         highlighted: true
                         DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                     }
@@ -997,6 +1011,7 @@ Item {
                 footer: DialogButtonBox {
                     Button {
                         text: page.sioul.text("ui-rename")
+                parent: Overlay.overlay
                         highlighted: true
                         DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
                     }

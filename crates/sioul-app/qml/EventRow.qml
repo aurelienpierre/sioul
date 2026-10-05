@@ -30,8 +30,15 @@ ItemDelegate {
         border.color: row.visualFocus ? row.theme.focus : row.highlighted ? row.theme.line : "transparent"
     }
 
+    // On a touch screen, the menu comes at a long press; letting go then opens nothing.
+    onPressAndHold: {
+        row.Window.window.menuAt = row.mapToItem(null, row.pressX, row.pressY)
+        row.menu()
+    }
     TapHandler {
         acceptedButtons: Qt.RightButton
+        // A touch has no buttons: on a touch screen, the row's long press.
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         onTapped: row.menu()
     }
 

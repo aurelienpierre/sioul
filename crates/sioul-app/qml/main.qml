@@ -48,6 +48,21 @@ SioulWindow {
     // A phone, or a window as narrow: the places pulled over the pages from the left.
     readonly property bool compact: window.width < 720
     property bool placesOpen: false
+    // Where a long press opened a menu, for the menu to come there (SioulMenu.qml):
+    // a touch screen has no cursor to place it at. Forgotten after a moment.
+    property var menuAt: null
+    onMenuAtChanged: {
+        if (window.menuAt !== null)
+            menuAtForgotten.restart()
+    }
+
+    Timer {
+        id: menuAtForgotten
+
+        interval: 1000
+        onTriggered: window.menuAt = null
+    }
+
     // Each page's name, by its place in the pages' stack.
     readonly property var pageNames: ["ui-porch", "ui-tasks", "ui-mail", "ui-sites", "ui-agenda", "ui-contacts", "ui-notes", "ui-projects", "ui-time", "ui-budgets", "ui-health", "ui-accounts", "ui-parameters", "ui-papers"]
     // Each page is made when it is first shown, then kept: the window opens
@@ -248,6 +263,8 @@ SioulWindow {
                 // clipboard, refused.
                 window.contentItem.forceActiveFocus()
                 sioul.goingAway()
+                // What it draws with, given back while away (android/main.cpp).
+                window.releaseResources()
             }
             else if (Qt.application.state === Qt.ApplicationActive) {
                 sioul.backHere()

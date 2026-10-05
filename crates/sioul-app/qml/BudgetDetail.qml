@@ -260,8 +260,24 @@ ColumnLayout {
             // Right click on a line of the file: tie it to something new or something that exists.
             TapHandler {
                 acceptedButtons: Qt.RightButton
+                // A touch has no buttons: on a touch screen, the long press below.
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                 enabled: move.modelData.uri !== ""
                 onTapped: {
+                    lineMenu.source = { uri: move.modelData.uri, kind: "budget", key: move.modelData.uri, title: move.modelData.label }
+                    lineMenu.line = move.modelData
+                    lineMenu.popup()
+                }
+            }
+            // On a touch screen, the menu at a long press.
+            TapHandler {
+                id: moveHold
+
+                acceptedDevices: PointerDevice.TouchScreen
+                onLongPressed: {
+                    move.Window.window.menuAt = moveHold.point.scenePosition
+                    if (move.modelData.uri === "")
+                        return
                     lineMenu.source = { uri: move.modelData.uri, kind: "budget", key: move.modelData.uri, title: move.modelData.label }
                     lineMenu.line = move.modelData
                     lineMenu.popup()

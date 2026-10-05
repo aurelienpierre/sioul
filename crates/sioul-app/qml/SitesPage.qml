@@ -597,8 +597,16 @@ Item {
                                 onClicked: page.open(row.modelData.id)
 
                                 // Its menu, where it is: what it is, what it is for, its name, its place, out of Sioul.
+                                // On a touch screen, the menu comes at a long press; letting go then opens nothing.
+                                onPressAndHold: {
+                                    row.Window.window.menuAt = row.mapToItem(null, row.pressX, row.pressY)
+                                    page.menuId = row.modelData.id
+                                    siteMenu.popup()
+                                }
                                 TapHandler {
                                     acceptedButtons: Qt.RightButton
+                                    // A touch has no buttons: on a touch screen, the row's long press.
+                                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                                     onTapped: {
                                         page.menuId = row.modelData.id
                                         siteMenu.popup()

@@ -20,7 +20,13 @@ Item {
 
     property var rows: []
     property string problem: ""
-    property alias share: sharePanel
+    // The sharing panel, made the first time its tab is shown, then kept.
+    readonly property var share: shareLoader.item
+    property bool shareMade: page.section === "files"
+    onSectionChanged: {
+        if (page.section === "files")
+            page.shareMade = true
+    }
     // One tab at a time: how it looks, the hours, reminders and notifications,
     // your folder and sharing, invoices.
     readonly property var sections: ["look", "hours", "reminders", "files", "invoices"]
@@ -162,14 +168,20 @@ Item {
                 }
             }
 
-            SharePanel {
-                id: sharePanel
+            Loader {
+                id: shareLoader
 
+                active: page.shareMade
                 visible: page.section === "files"
                 Layout.fillWidth: true
                 Layout.bottomMargin: 24
-                sioul: page.sioul
-                theme: page.theme
+
+                sourceComponent: Component {
+                    SharePanel {
+                        sioul: page.sioul
+                        theme: page.theme
+                    }
+                }
             }
         }
     }

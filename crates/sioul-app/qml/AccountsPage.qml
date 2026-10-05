@@ -1376,6 +1376,7 @@ Item {
                     writingForm.open()
                 }
 
+                parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
                 width: Math.min(560, page.width - 2 * page.theme.gap)
@@ -1436,6 +1437,7 @@ Item {
             Dialog {
                 id: confirmForm
 
+                parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
                 width: Math.min(480, page.width - 2 * page.theme.gap)
