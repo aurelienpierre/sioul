@@ -74,7 +74,7 @@ The focus window stays on top while you work elsewhere. A disc drains, in a neut
 - At the end: **Keep going**, or **Stop here, it counts**.
 - Stopping offers one line, **Next time, start by…**, shown when the task comes back.
 
-The time is noted for the task, and for its project ([Time](time.md)). Every 45 minutes, unless you change it in [Health](health.md#moving), a pause to move is offered: **Pause now**, with a line on where you stopped, or **Not now**; missed, the session keeps counting.
+The time is noted for the task, and for its project: to bill it, and to learn how long things really take ([Time](time.md)). Every 45 minutes, unless you change it in [Health](health.md#moving), a pause to move is offered: **Pause now**, with a line on where you stopped, or **Not now**; missed, the session keeps counting.
 
 **Where you stopped.** Whenever something interrupts you (a pause, a meal, the night, the end of the day, a timer stopped), you can leave one line on where you were. It shows again at the top of the Porch and of the Tasks page, and in the focus window, until you press **Done**.
 

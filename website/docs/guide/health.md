@@ -1,10 +1,10 @@
 ---
-description: Health in Sioul - medicines reminded once and quietly, prescriptions and their errands, what a watch measured without any score, pauses to move, and a daily limit on chats.
+description: Health in Sioul - medicines reminded once and quietly, prescriptions and their errands, meals, rest and sleep kept free, what a watch measured without any score, pauses to move, and a daily limit on chats.
 ---
 
 # Health
 
-Medicines to take, prescriptions to renew, a pause to move, a limit on chats. Kept on this computer; nothing counts what was missed, nothing turns red.
+Medicines to take, prescriptions to renew, meals, rest and sleep kept free in your plan, a pause to move, a limit on chats. Kept on this computer; nothing counts what was missed, nothing turns red.
 
 <figure markdown="span">
   [![The Health page: a sentence saying medicines, prescriptions and doses stay on this computer; today's doses, one marked "Taken at 07:41", the others each with Taken; the medicines, each with when it is taken; a prescription, with when to go to the pharmacy and when to renew it, "Fetched today", and the list errands go to; then the pause to move while focusing, every 45 minutes.](../assets/screens/health.png){ loading=lazy }](../assets/screens/health.png "Open the picture at full size")
