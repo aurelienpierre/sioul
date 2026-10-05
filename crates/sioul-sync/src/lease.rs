@@ -92,10 +92,17 @@ impl Keeper {
     }
 }
 
-/// This computer's name, as people call it: its host name.
+/// This computer's name, as people call it: its host name, asked once. On a
+/// Mac no file holds it and a program tells it: started at each claim (three
+/// a minute), it also held for a moment a copy of every file Sioul had open,
+/// the sharing's lock among them (`share::exchange_lock`).
 pub fn host_name() -> String {
-    let named = std::env::var("COMPUTERNAME").ok().or_else(|| std::fs::read_to_string("/etc/hostname").ok()).or_else(|| crate::command("hostname").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string()));
-    named.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| "?".into())
+    static NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| {
+        let named = std::env::var("COMPUTERNAME").ok().or_else(|| std::fs::read_to_string("/etc/hostname").ok()).or_else(|| crate::command("hostname").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string()));
+        named.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| "?".into())
+    })
+    .clone()
 }
 
 fn folder_of(folder: &Path, part: &str) -> PathBuf {
