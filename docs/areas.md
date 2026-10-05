@@ -48,7 +48,7 @@ Settings ▸ Hours has three weeks: **working hours**, **hours for your admin**,
 Codes and safe senders always come (`quiet::mail_in_view`). Otherwise mail comes when its address's area fits the hours. In free time, an address that is also for admin or work shows only what your safe senders write, because the rest of it may be a bill or a client. Budgets follow the same rule, by what each is for (your admin when unsaid).
 
 ### Sites
-The sites for these hours are listed; the others fold under one line, "For other hours: 3", opened with a click. A site's notifications wait until a gathered notification falls in its hours (see [sites.md](sites.md)). A site in real time, and a call, come at once, but only while its area fits the hours.
+The sites for these hours are listed; the others fold under one line, "Other hours: 3", opened with a click. A site's notifications wait until a gathered notification falls in its hours (see [sites.md](sites.md)). A site in real time, and a call, come at once, but only while its area fits the hours.
 
 ### Rest
 Outside every hours set, rest (`Mode::rests`): the Porch shows codes and your safe senders' mail, a message about a project among the people you know, no money and no paper letters; every address rests on the Mail page; only leisure sites are listed; Tasks, Projects and Time wait behind the status line's sentence ("Rest until 09:00: only the people you marked safe reach you.") and **Show anyway**, Tasks keeping a field to note a thought for later. Task reminders wait too.

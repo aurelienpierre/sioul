@@ -1,5 +1,5 @@
 ---
-description: The Agenda in Sioul - what comes from today, the day, the week and the month, events and invitations, one quiet reminder.
+description: The Agenda in Sioul - what comes from today, the day, the week and the month, events and invitations, two events at once said, one quiet reminder.
 ---
 
 # Agenda
@@ -15,32 +15,32 @@ The agenda shows what comes, from today, as a calm list of days. Nothing is late
 
 A choice at the top of the page:
 
-- **What comes**: today, then the next two weeks, as a list. This is where the page opens.
+- **What comes**: what is still to come today, then the next two weeks, as a list. An event already over is left out. This is where the page opens.
 - **Day**, **Week**, **Month**.
 
 The arrows ◂ and ▸ go earlier and later; **Today** comes back to today.
 
+The page follows the clock: the line at the current hour moves with it, today becomes tomorrow at midnight, and your calendars are read again every five minutes and whenever you come back to Sioul.
+
 ## Events
 
-**New event**, at the top of the page (or **New ▾ ▸ An event**): a title, when it starts and ends, where. **All day** is one tick. **Repeats**: every day, week, month or year. **Calendar**: which one it goes in, when you have several.
-
-An event opens on the right with its time and place. Its notes, how it repeats, its guests and its calendar are folded under **More**.
-
-Also under **More**, if you want them:
+**New event**, at the top of the page (or **New ▾ ▸ An event**): a title, when it starts and ends, where. **All day** is one tick. Folded under **More**: its notes; **Repeats**, every day, week, month or year; **Calendar**, which one it goes in, when you have several; and, if you want them:
 
 - **Before** and **After**: the time to get ready and get there, and to come back. Your plan keeps it free, and the day shows it around the event ("Around: …"). It is never counted as a pause.
-- How much the event asks of you, from 0 to 10 each: **thinking**, **feelings**, **anxiety**; and **what it gives back**. Nothing is said until you say it.
+- How much the event asks of you, from 0 to 10 each: **Thinking it asks**, **Feelings it stirs**, **Anxiety it raises**; and **What it gives back**. Nothing is said until you say it. What you say is written into the event and shown again in its form; the plan does not use it yet.
 
-- **To change it**: **Change the event**.
+An event opens on the right with its day, its time, its place, its calendar, and whether it repeats. Its notes, who organised it and its guests are folded under **More**.
+
+- **To change it**: **Edit**.
 - **To delete it**: **Delete**. It waits ten seconds, with **Undo**. A repeating event asks first: **Only this time**, or **Every time**.
 
 An event can also be made from a message, from a task, or from a paper letter's appointment, and stays tied to it. From an event, you can make a note (dated, with its guests listed, and **Send to the guests** once written) or a task to prepare it.
 
 ## Two events at once
 
-When two events overlap, the time to get there and back counted, Sioul says so: today's on the [Porch](porch.md), with a button to open each one; the next two weeks' above the agenda. **Don't mention it again** sets it aside for good. Move one of them and it is a new question.
+When two events overlap, the time to get there and back counted, Sioul says so: today's on the [Porch](porch.md), with a button to open each one; today's and the next two weeks' above the agenda, whatever the view. **Don't mention it again** sets it aside for good, on this device. Move one of them and it is a new question. Once both are over, nothing more is said.
 
-A meal that falls in an event moves after it, for that day only (see [Health](health.md)).
+A meal that falls in an event moves after it, for that day only (see [Health](health.md#meals-rest-and-sleep)).
 
 ## Invitations
 

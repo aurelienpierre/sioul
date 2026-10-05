@@ -30,7 +30,7 @@ Code: `crates/sioul-core/src/reminders.rs` (what to remind, when), `crates/sioul
 - `sioul remind --watch`: the watcher.
 
 ## The notification
-One quiet desktop notification, no sound. From the window it carries "Open": the task, the event or the budget, shown.
+One quiet desktop notification, no sound. From the window it carries "Open" where the desktop's notifications take buttons (Linux): the task, the event or the budget, shown; on Windows and macOS, and from the watcher, it is its text alone. Not on a phone yet: there Android shows Sioul's notifications for the doses and the time running only ([android.md](android.md)), so these reminders do not come.
 
 ## Tested
 `cargo test -p sioul-core reminders`: an event the working day before (a short Friday) and at its alarm, a date asked two working days before, a wait over on a weekend told on Monday morning, a bill, each told once; work waiting while work rests; too late, nothing; a task made after its reminder's time, and one done, not reminded; days off moving the working days (in French). In the window: the settings, and the watcher started and stopped from them.

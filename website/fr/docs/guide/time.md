@@ -1,10 +1,13 @@
 ---
-description: Le temps passé et les factures dans Sioul – le temps du minuteur de concentration et celui noté à la main, ce qui reste à facturer, un export en tableur, et des factures numérotées sans trou.
+description: Le temps passé et les factures dans Sioul – le temps du minuteur de concentration et celui noté à la main, gardé pour facturer les clients et pour apprendre combien de temps les choses prennent vraiment ; ce qui reste à facturer, un export en tableur, et des factures numérotées sans trou.
 ---
 
 # Le temps et les factures {#time-and-invoices}
 
-Le temps passé se note pendant que vous travaillez, et devient des factures pour les projets que vous menez pour des clients.
+Le temps passé se note pendant que vous travaillez. Il est gardé pour deux usages :
+
+- **facturer** : les heures que vous travaillez pour des clients deviennent des factures ;
+- **prévoir** : mis à côté de vos estimations, il dit combien de temps les choses prennent vraiment. Le plan s’en servira ensuite : voir [Combien de temps prennent les choses](#how-long-things-take).
 
 <figure markdown="span">
   [![La page Temps sur « Semaine » : une barre par jour, empilée par projet en quelques couleurs calmes ; dessous, les heures de chaque projet et ce qui reste à facturer, puis chaque plage de temps, de la plus récente à la plus ancienne.](../assets/screens/fr/time.png){ loading=lazy }](../assets/screens/fr/time.png "Ouvrir l’image en grand")
@@ -24,11 +27,29 @@ Le temps passé se note pendant que vous travaillez, et devient des factures pou
 - **Le minuteur de concentration** : les minutes d’une [séance de concentration](tasks.md#starting-and-stopping) comptent pour sa tâche, et pour le projet de la tâche.
 - **Noter du temps**, sur cette page, sur la page d’un projet, ou avec **Nouveau ▾ ▸ Du temps passé** : une réunion, un appel, un travail fait loin du minuteur. **Pour** (un projet, ou une tâche), **Combien de temps** (`1h30`, `45m`, `90`), **Quand**, **Ce que c’était**, et **Ne pas facturer** quand il ne doit pas l’être.
 
+Pendant une séance de concentration, sous Linux et sur un téléphone, une notification la montre : sa tâche, depuis quand, et **Pause** (**Reprendre** une fois en pause) et **Arrêter**, qui font ce que font les boutons de la fenêtre de concentration. Sur un bureau Linux, elle reste parmi les notifications du bureau tant que Sioul est ouvert (dans KDE Plasma, sous la cloche une fois sa bulle partie), et s’en va quand Sioul se ferme. Sur un téléphone, un chronomètre y tourne, et ses boutons marchent avec Sioul en arrière-plan ou fermé. Mise en pause ou arrêtée ailleurs, dans la fenêtre de concentration ou sur un autre appareil, elle suit. Sous Windows et macOS, seule la fenêtre de concentration montre le temps qui court, pour l’instant.
+
 Cliquez sur n’importe quel moment, chronométré ou noté à la main, pour le changer : sa tâche, son projet, son jour, de quand à quand, et ce que c’était ; le temps que le minuteur a gardé après une pause manquée se corrige ainsi. Un clic droit propose aussi **Enlever ce temps**. Le temps déjà sur une facture reste tel qu’il a été facturé.
 
 ### Facturé ou non {#billed-or-not}
 
 Le travail pour un client se facture. Une tâche peut dire autre chose, sous **Facturé** dans son panneau : *Comme son projet*, *Son temps se facture*, ou *Non facturé*.
+
+## Combien de temps prennent les choses {#how-long-things-take}
+
+Le **Prend environ** d’une tâche est une estimation. Le temps noté pour elle est ce qu’elle a pris. Les deux ensemble disent comment vos estimations se comparent au temps que les choses prennent vraiment.
+
+**Aujourd’hui**, le relevé est là : la fenêtre de concentration, le temps de cette page, chaque ligne modifiable. Le plan ne s’en sert pas encore : il prévoit chaque tâche selon son **Prend environ**, tel que vous l’avez écrit.
+
+**Ensuite**, le plan s’en servira pour corriger vos estimations, dans le plan seulement :
+
+- il compare le temps passé au temps estimé, sur les deux dernières semaines environ, pour chaque type de tâche ;
+- il dimensionne le plan avec ce rapport : si les lettres ont pris le double de votre estimation, la prochaine lettre reçoit le double de la sienne dans le plan ;
+- la marge pour l’imprévu reste sur la journée entière, pas sur chaque tâche.
+
+Il ne vous note jamais, ne montre jamais rien en retard, ne remplit jamais **Prend environ** à votre place, et ne vous compare jamais à personne.
+
+Chronométrer les loisirs, c’est à vous de voir. Les trous ne posent pas de problème : le temps non noté est laissé de côté, il ne compte contre rien.
 
 ## Un tableur du temps facturable {#a-spreadsheet-of-billable-time}
 

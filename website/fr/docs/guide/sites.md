@@ -18,6 +18,8 @@ Certains courriers ne quittent jamais leur site : la messagerie sécurisée d�
 
 Vous vous connectez une fois, sur le site lui-même. Sioul garde la connexion ; il ne garde jamais lui-même le mot de passe du site.
 
+Sur un téléphone, la page Sites liste vos sites et ouvre chacun dans votre navigateur : Sioul n’y garde aucune connexion et n’y regroupe aucune notification. Les sites épinglés sur un ordinateur viennent avec les réglages quand vous [partagez entre vos appareils](sharing.md).
+
 ## La liste {#the-list}
 
 - **Les sites de ces heures-ci** viennent d’abord. Les autres se replient sous une ligne, « Autres heures : 3 », qui s’ouvre d’un clic. Voir [Les heures](hours.md).

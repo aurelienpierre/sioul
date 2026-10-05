@@ -40,9 +40,9 @@ Pour un micro-entrepreneur, la facture porte ce que la loi demande : le SIRET,
 
 ## Sur votre ordinateur de bureau et votre portable {#on-your-desktop-and-your-laptop}
 
-Le temps noté sur un ordinateur est sur les autres une minute plus tard, et les factures aussi : scellés de bout en bout, par un dossier que votre synchronisation transporte déjà (Nextcloud, Dropbox, Syncthing). Aucun serveur à nous entre les deux. Les projets voyagent avec votre dossier de notes ; les tâches et les événements, par le serveur de votre agenda. Un seul ordinateur numérote les factures, pour qu’un numéro ne soit jamais donné deux fois. [Partager entre vos ordinateurs](sharing.md)
+Le temps noté sur un ordinateur est sur les autres une minute plus tard, et les factures aussi : scellés de bout en bout, par un dossier que votre synchronisation transporte déjà (Nextcloud, Dropbox, Syncthing). Aucun serveur à nous entre les deux. Les projets voyagent avec votre dossier de notes, ou par ce même partage là où aucune synchronisation ne transporte ce dossier ; les tâches et les événements, par le serveur de votre agenda. Un seul ordinateur numérote les factures, pour qu’un numéro ne soit jamais donné deux fois. [Partager entre vos appareils](sharing.md)
 
-Les téléphones : une version Android est à l’essai. Elle n’est pas prête, et ne partage pas encore avec vos ordinateurs.
+Les téléphones : une version Android est à l’essai, pas encore prête. Elle partage avec vos ordinateurs par le même dossier, quand l’application de synchronisation du téléphone le transporte ([Sur un téléphone](first-steps.md#on-a-phone)).
 
 ## Et puis le travail se repose {#and-then-it-rests}
 

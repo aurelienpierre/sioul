@@ -2,6 +2,8 @@
 
 The detailed notes behind these rules (what each study found, how strong its evidence is, where Sioul applies it, and what was built, left for later or refused, with why) are in [research/README.md](research/README.md).
 
+The evidence is not all of one strength: randomised trials and meta-analyses, observational studies, qualitative studies with the people concerned, guidelines, and, where no study tested the point, Sioul's own inference, marked as such in the notes. What none of it shows yet is that Sioul, as built, lightens admin for the people who use it. The research supports the design, not yet its outcome: whether letters are avoided less, starting comes easier, mail intrudes less, fewer things are forgotten and evenings recover better needs testing with the people who use it.
+
 1. **Fewer, predictable looks at mail.**
    - Checking mail three times a day for a week, against freely, lowered daily stress in a randomised trial of 124 adults; lower stress predicted better well-being (Kushlev & Dunn 2015).
    - Batching notifications three times a day improved attention, mood, productivity and stress in 237 participants, while those given no notifications at all felt *more* anxious than controls (Fitz et al. 2019).

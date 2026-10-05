@@ -28,7 +28,7 @@ La page Paramètres a cinq onglets.
 - **Temps libre** : repos et loisirs seulement (amis, famille, discussions, ce qui vous plaît).
 - **Congés** : vacances, arrêt maladie, calme du premier jour au dernier, comme un jour sans travail, avec un mot dessus.
 
-Chaque jour de chaque semaine est actif ou non, avec ses plages horaires, d’un début à une fin. Ce que chaque type d’heures apporte, et ce qui attend : [Les heures](hours.md).
+Chaque jour de chaque semaine est actif ou non, avec une plage horaire ou plusieurs : **+** en ajoute une, **×** en retire une. Ce que chaque type d’heures apporte, et ce qui attend : [Les heures](hours.md).
 
 ## Rappels et notifications {#reminders-and-notifications}
 
@@ -41,12 +41,12 @@ Chaque rappel vient une fois, en notification discrète, sans son, jamais répé
 - **Fenêtre de Sioul fermée** : votre session lance un petit veilleur qui dit les rappels quand la fenêtre est fermée ; rien d’autre ne tourne, aucun courrier n’est relevé. Il faut pour cela la commande `sioul` installée à côté de Sioul ([Installer](install.md#into-your-application-menu)). Pas encore sous Windows.
 - **Notifications des sites regroupées**, et **Regroupées à** : ce que vos sites notifient attend, puis vient en une seule notification à ces moments-là (09:00, 13:00 et 18:00, sauf si vous en réglez d’autres), pour les sites dont les heures sont en cours. Un site en temps réel, et un appel, viennent tout de suite.
 
-Les prises de médicaments sont rappelées depuis la page [Santé](health.md), et les papiers à renouveler depuis [Papiers](papers.md).
+Les prises de médicaments sont rappelées depuis la page [Santé](health.md), et les papiers à renouveler depuis [Papiers](papers.md). Sur un téléphone, seules les prises sont rappelées pour l’instant ([Sur un téléphone](first-steps.md#on-a-phone)).
 
 ## Votre dossier et le partage {#your-folder-and-sharing}
 
 - **Le dossier des notes** : votre dossier de fichiers Markdown, lu comme un coffre : vos notes, et à côté vos projets, budgets, papiers et lettres. Sioul s’y lie ; il ne le possède jamais.
-- **Entre vos ordinateurs** : partager ce que Sioul garde sur cet ordinateur seul avec vos autres ordinateurs, scellé par une phrase de passe. Voir [Partager entre vos ordinateurs](sharing.md).
+- **Entre vos ordinateurs** : partager avec vos autres appareils ce que Sioul garde sur celui-ci, partie par partie, scellé par une phrase de passe ; vos notes et vos papiers aussi, si vous les activez. Voir [Partager entre vos appareils](sharing.md).
 
 ## Factures {#invoices}
 

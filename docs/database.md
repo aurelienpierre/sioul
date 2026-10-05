@@ -107,4 +107,4 @@ CREATE TABLE sioul_changes (
 - **One series of invoice numbers per computer** ("2026-A-014"): built instead is one computer numbering them at a time, the others waiting their turn ([accounting.md](accounting.md), "Invoices on one computer"). French rules accept several series only when the way the activity runs justifies them (BOI-TVA-DECLA-30-20-20-10), your accountant's call.
 - **Drafts in the server's Drafts folder** (IMAP), for other mail clients to see: drafts travel by the log for now.
 - **The Porch's marks in IMAP METADATA** (RFC 5464) where the server has it: by the log for now.
-- **Phones**: the format is plain (JSON lines, XChaCha20-Poly1305, Argon2id); no phone app reads it yet.
+- **Phones other than Android's**: the format is plain (JSON lines, XChaCha20-Poly1305, Argon2id, HKDF for the sealed files); Sioul for Android reads and writes it ([android.md](android.md)), no iPhone app does yet.

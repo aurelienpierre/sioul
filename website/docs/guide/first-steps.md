@@ -16,13 +16,13 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 
 **On the left**, from top to bottom:
 
-- **New ▾** makes something of any kind: a message, a task, an event, a contact, a note, a project, time spent, a budget movement, a paper.
+- **New ▾** makes something of any kind: a message, a task, an event, a contact, a note, a project, time spent, a budget movement, a paper; and **Where I stopped…** leaves one line on where you were ([Tasks](tasks.md#starting-and-stopping)).
 - **The places**: Porch, Tasks, Mail, Sites, Agenda, Contacts, Notes, Projects, Time, Budgets, Papers, Health.
 - **Three icons**, apart at the bottom: Accounts (a person), Settings (sliders), and Refresh everything, which fetches mail, the agenda, tasks and contacts again at once.
 
 **At the bottom**, the status line says one sentence about what happened last. After anything is moved, deleted or sent, "Undo" waits there for ten seconds. In quiet time, it says when work comes back. At its right end are the keys, the sound button ([sounds to focus or rest by](tasks.md#sounds)) and the weather at a place you choose.
 
-**On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. Where long text is read (a message, a note), "Aa" sets the font, its size and the space between lines. A right click, or the Menu key, on anything gives what is not in view.
+**On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. Where long text is read (a message, a note), "Aa" sets the font, its size and the space between lines. A right click, the Menu key, or a long press on a touch screen, on anything gives what is not in view.
 
 ### Keys
 
@@ -36,6 +36,23 @@ Everything works from the keyboard: Tab to move, Enter to choose, Escape to go b
 | ++f5++ | Refresh everything |
 | ++ctrl+enter++ | Send, in the writing window |
 
+### On a phone
+
+An Android version is being tried ([Install](install.md#on-android)). On a phone, or in a window under 720 pixels wide:
+
+- **The places** slide in from the left, behind ☰; a bar on top names the page.
+- **One pane at a time**: a page shows its list, then what you open across the whole screen; **Back**, on the bar or Android's, comes back.
+- **Menus** open at a long press on a touch screen, where a mouse would right click.
+
+What differs on a phone:
+
+- **Notifications** come only for doses ([Health](health.md#reminders)) and for the time running ([Time](time.md#where-time-comes-from)). A code you asked for shows on the Porch; other reminders do not come there yet.
+- **Mail** is fetched while Sioul is open: Android stops it in the background.
+- **Folders**: a setting's **Choose…** opens Sioul's own list of the phone's folders, with **Allow access to files** when Android has not given Sioul that access yet.
+- **Sites** open in your browser ([Sites](sites.md)); PDFs open in another app, with **Open with…**.
+- **Paper letters** are not read, and attachments are not checked by an antivirus: the programs Sioul uses for that on a computer do not exist on a phone.
+- **Your other devices** share with it through a folder your phone's sync app carries ([Sharing](sharing.md)). Passwords never travel: each account asks for its own, once ([Accounts](accounts.md#an-account-from-your-other-device)).
+
 ## Add your mail
 
 1. Open **Accounts** (the person icon), then the **Add an account** tab.
@@ -48,7 +65,7 @@ Gmail, and other providers when two-step verification is on, want an **app passw
 
 Fetching changes nothing on your mail server. Sioul writes there only when you act: opening a message marks it read, as any mail program does; archiving, deleting and moving happen ten seconds after you asked, so that "Undo" can stop them.
 
-Then, on the address's card in **Your accounts**, tick **what this address is for**: work, your admin, leisure, or several. Until you say, an address counts as work, so that it never reaches your evenings. See [Hours](hours.md).
+Then, on the address's card in **Your accounts**, unfold **Settings for this address** and tick **What this address is for**: work, your admin, leisure, or several. Until you say, an address counts as work, so that it never reaches your evenings. See [Hours](hours.md).
 
 ## Add your calendars, tasks and contacts
 

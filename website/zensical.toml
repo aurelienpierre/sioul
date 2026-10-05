@@ -6,7 +6,7 @@
 [project]
 site_name = "Sioul"
 site_url = "https://aurelienpierre.github.io/sioul/"
-site_description = "Sioul, a calm place for mail, tasks and admin, designed for people for whom admin hurts."
+site_description = "Sioul adapts the demands of work, institutions and money to the person: mail, tasks and everyday admin planned around attention, energy, health and rest, on your own computer."
 site_author = "Aurélien Pierre"
 copyright = "Copyright &copy; 2026 Aurélien Pierre · Sioul is free software, under the GPL-3.0-or-later licence."
 
@@ -45,7 +45,7 @@ nav = [
     ] },
     { "Across Sioul" = [
       { "Hours: work, your admin, free time" = "guide/hours.md" },
-      { "Sharing between your computers" = "guide/sharing.md" },
+      { "Sharing between your devices" = "guide/sharing.md" },
       { "Using an AI agent" = "guide/ai-agent.md" },
       { "Privacy and security" = "guide/privacy-security.md" },
     ] },

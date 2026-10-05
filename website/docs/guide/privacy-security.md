@@ -79,9 +79,9 @@ The sites you pin live in one browser profile of Sioul's own, apart from your us
 
 A security key's PIN is asked in Sioul's own dialog. Logins come from your Bitwarden vault, opened by Sioul itself, read only: your master password and keys are never kept, and the logins stay in memory until Sioul closes. A login made for another domain says so, so that a look-alike site shows. See [Sites](sites.md).
 
-## Between your computers
+## Between your devices
 
-What Sioul keeps on this computer alone can travel to your other computers through a folder your sync carries (Nextcloud, Dropbox, Syncthing), encrypted on your computer (XChaCha20-Poly1305) with a key made from your passphrase (Argon2id). The folder's server sees which computer wrote, when and how much; never what. See [Sharing between your computers](sharing.md).
+Each device keeps its own data. What must travel between your computers and your phone goes through a folder your own sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…), sealed on your device before it is written there (XChaCha20-Poly1305, with a key made from your passphrase by Argon2id). The folder's server sees which device wrote, when and how much, and the size of each sealed note or paper; never what. Nothing that happens in that folder, a file damaged or deleted, can take data away from your devices. How it works, what it protects and what it cannot hide: [Sharing between your devices](sharing.md).
 
 ## Encrypted mail
 

@@ -26,7 +26,7 @@ A contact opens on the right:
 - a small map with a pin at their address, once it is placed (below);
 - what is **tied to it**: the mail exchanged, tasks, events, notes, projects.
 
-**To change it**, **Edit**, then **Save**: it is changed in place. **To add one**, the **+** above the list, or **New ▾ ▸ A contact**. From a message, **Add to contacts** makes the sender a contact in one click.
+**To change it**, **Edit**, then **Save**: it is changed in place. On a phone, **Back** leaves the form without saving. **To add one**, the **+** above the list, or **New ▾ ▸ A contact**. From a message, **Add to contacts** makes the sender a contact in one click.
 
 **To delete one**, **Delete**: it waits ten seconds, with **Undo**.
 

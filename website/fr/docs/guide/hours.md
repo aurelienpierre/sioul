@@ -28,7 +28,7 @@ Les adresses électroniques sont le seul endroit où rien n’est deviné à vot
 
 ## Les heures {#the-hours}
 
-Dans [Paramètres ▸ Heures](settings.md#hours), trois semaines types : **Heures de travail**, **Heures pour vos démarches** et **Temps libre**. Chaque jour de chacune est activé ou non, d’une heure de début à une heure de fin. **Congés**, en dessous, reçoit les vacances et les arrêts maladie.
+Dans [Paramètres ▸ Heures](settings.md#hours), trois semaines types : **Heures de travail**, **Heures pour vos démarches** et **Temps libre**. Chaque jour de chacune est activé ou non, avec une plage horaire ou plusieurs (09:00–12:00 et 14:00–17:00, avec le déjeuner entre les deux). **Congés**, en dessous, reçoit les vacances et les arrêts maladie.
 
 Les heures qui ne sont réglées pour aucune d’elles sont du **repos** : seules les personnes marquées sûres vous joignent, avec les sites de loisirs ; ni tâches, ni projets, ni temps. Les congés, et une journée close avec « Fini pour aujourd’hui », sont du temps libre.
 

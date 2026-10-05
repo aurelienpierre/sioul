@@ -11,7 +11,7 @@ Medicines to take, prescriptions to renew, meals, rest and sleep kept free in yo
   <figcaption>Today's doses first, then the medicines and prescriptions.</figcaption>
 </figure>
 
-The page puts the most needed first: doses due while Sioul was closed, then today's doses, then the medicines and the prescriptions, then what your watch says (once one is set up), then the pauses.
+The page puts the most needed first: doses due while Sioul was closed, then today's doses, then the medicines and the prescriptions, then what your watch says (once one is set up), then meals, rest and sleep, then the pauses.
 
 ## Medicines
 
@@ -33,9 +33,9 @@ Each dose of the day, with **Taken**. A dose taken says when; one click takes it
 
 ### Reminders
 
-One desktop notification per dose, within half an hour of its time, without sound, with **Taken**. Never repeated. Reminders come in quiet time too: they are yours.
+One desktop notification per dose, within half an hour of its time, without sound, with **Taken** (on Windows and macOS the notification has no button: mark the dose on this page). Never repeated. Reminders come in quiet time too: they are yours.
 
-**On a phone**, Android stops apps it does not show, so Sioul gives each coming dose to Android's alarm clock. At the dose's time the phone wakes Sioul for a moment, even when it was stopped: Sioul first brings what your other devices marked, then reminds you, or not if the dose was taken elsewhere, or says **Check first** when it cannot tell. **Taken** marks it from the notification; tapping the notification opens the dose in Sioul. If Android does not let Sioul set exact alarms (Settings ▸ Apps ▸ Sioul ▸ Alarms & reminders), reminders can come a few minutes late, and this page says so.
+**On a phone**, Android stops apps it does not show, so Sioul gives each dose of the next two days, ahead, to Android's alarm clock. At the dose's time the phone wakes Sioul for a moment, even when it was stopped: Sioul first reads what your other devices marked, asking your sync app to look now when it can; then it reminds you, or says nothing if the dose was marked elsewhere, or says **Check first** when it cannot tell. **Taken** marks it from the notification; more than half an hour late, a tap opens Sioul to ask when you took it. Tapping the notification opens the dose in Sioul, and a dose marked anywhere takes its notification away. These reminders come through Android's "Doses" channel, with the phone's usual notification sound unless you change it in Android's settings. If Android does not let Sioul set exact alarms (Settings ▸ Apps ▸ Sioul ▸ Alarms & reminders), reminders can come late, up to an hour, and this page says so.
 
 If Sioul was closed at the time, a dose of the last twelve hours that was neither marked nor reminded is asked about on the Porch at the next start, and on this page: with **Taken…** (when you took it) and **Not taken**. It is a question about the past, never a reminder to take one now.
 
@@ -43,7 +43,7 @@ If Sioul was closed at the time, a dose of the last twelve hours that was neithe
 
 Only the computer you are at reminds you. A dose marked taken on one goes to the others at once. For that, share between your computers ([Sharing](sharing.md)); without it, the page says the doses are known to this computer only.
 
-**When Sioul can't tell.** A dose taken twice can harm, so Sioul never says a dose was not taken unless it knows. Your devices exchange through a folder another program syncs, sometimes late: a phone's sync can bring files only every half hour. When Sioul has not heard from one of your devices since the dose was due, or part of what it wrote could not be read, or this device's own record of doses could not be read, it says so under the dose, on the Porch and on this page: "Sioul can't tell whether it was taken: your laptop was last heard on Monday 5 October at 07:52. Check before taking it." A reminder in that case first waits a few minutes for news, then comes titled **Check first**. Look at the other device, or at your pill box, before taking the dose.
+**When Sioul can't tell.** A dose taken twice can harm, so Sioul never says a dose was not taken unless it knows. Your devices exchange through a folder another program syncs, sometimes late: a phone's sync can bring files only every half hour. When Sioul has not heard from one of your devices since the dose was due, or part of what it wrote could not be read, or this device's own record of doses could not be read, it says so under the dose, on the Porch and on this page: "Sioul can't tell whether it was taken: your laptop was last heard on Monday 5 October at 07:52. Check before taking it." A reminder in that case first waits up to ten minutes for news, then comes titled **Check first**. Look at the other device, or at your pill box, before taking the dose.
 
 ## Meals, rest and sleep
 
@@ -55,9 +55,9 @@ Times kept free, set before any work: Sioul plans no task in them, and plans the
 
 Name each as you like, choose its weekdays, and turn its notices off if you would rather not have them: it stays kept free.
 
-**Today**: today's meals, naps and night come first on the page, each with **15 min later** (as often as you like), **Move to…** a time, and **Not today**, for today only, without a word asked. A meal that would fall in an event moves after it by itself, today only, with the time to come back from it (the event's **After**); never earlier than you moved it.
+**Today**: today's meals, naps and night come first in this part of the page, each with **15 min later** (as often as you like; the minutes are yours to choose), **Move to…** a time, and **Not today** (**Today after all** takes it back), for today only, without a word asked. A meal that would fall in an event moves after it by itself, today only, with the time to come back from it (the event's **After**); never earlier than you moved it.
 
-**Notices**: two at most for each, each once. First, a quarter of an hour before (you choose), "No new big task" with its name and time, so you do not start something you would have to leave. Then one at the time. Each has **Options…**: later, at another time, not today, and one line on where you stopped, shown again when you are back. Moving a meal never brings more notices. Nothing during a meeting, nothing for one not today, nothing when one passes. A notice shows only a name and a time.
+**Notices**: two at most for each, each once. First, a quarter of an hour before (you choose), "No new big task" with its name and time, so you do not start something you would have to leave. Then one at the time. On Linux, each has **Options…**: later, at another time, not today, and one line on where you stopped, shown again when you are back; elsewhere, the same moves are under **Today**, above. Moving a meal never brings more notices. Nothing during a meeting, nothing for one not today, nothing when one passes. A notice shows only a name and a time.
 
 Nothing about what you eat or how you sleep is asked or recorded: no counts, no history. The way it works follows research on how people who struggle with eating want to be invited to eat ([the research notes](../dev/research/meal-prompts.md)).
 
@@ -89,7 +89,7 @@ In the morning, the Tasks page may say one line, never a notification: after a s
 
 ## Moving
 
-**A pause to move**, every 45 minutes unless you change it: a quiet notification says it is time to move and stretch, even with the window hidden. During a focus session, the pause is offered, never imposed: **Pause now** pauses the session and lets you note in one line where you stopped; **Not now** goes on, and asks again later. If you miss it, the session keeps counting. **Back to it** starts it again.
+**A pause to move**, every 45 minutes unless you change it: a quiet notification says it is time to move and stretch, even with the window hidden; on Linux, its **Where I stopped…** leaves a line for when you are back. During a focus session, the pause is offered, never imposed: **Pause now** pauses the session and lets you note in one line where you stopped; **Not now** goes on, and asks again later. If you miss it, the session keeps counting. **Back to it** starts it again.
 
 ## Chats
 

@@ -19,17 +19,19 @@ Each comes with the command line, `sioul`. These first packages were built and t
 
 ## Resources needed
 
-Measured on 4 October 2026 on a Linux computer with 8 cores, over five minutes, with Sioul and every process it starts counted together (memory as PSS: each shared page counted once):
+Measured on 6 October 2026 on a Linux computer with 8 cores, with Sioul and every process it starts counted together (memory as PSS: each shared page counted once):
 
 | | Memory | Processor |
 |---|---|---|
-| **Sioul alone**: an invented profile, no site open | about 280 MB | close to nothing at rest |
-| **Sioul in daily use**: a real mailbox, notes and tasks, and three sites open in real time (Proton Mail, Discord, OkCupid) | about 1.9 GB in all: Sioul's own process 0.7 GB, the pages of the three sites 1.1 GB | 5 % of one core most of the time (under 1 % of the whole computer), a few seconds at up to three quarters of one core every minute or two |
+| **Sioul alone**: an invented profile, no site open, over five minutes | about 70 MB, in a single process | close to nothing at rest (0.2 % of one core) |
+| **Sioul in daily use**: a real mailbox, notes and tasks, and three sites open in real time, over three minutes | about 1.15 GB in all: Sioul's own process 0.4 GB, the pages of the three sites 0.7 GB | under 1 % of one core most of the time (half of the time under 0.4 %), a few seconds at up to 40 % of one core now and then |
 
-- **The sites are the heavy part.** Each one kept open costs what a tab of a web browser costs, 100 to 350 MB, and the processor its page uses: a chat that keeps itself up to date is the busiest.
-- **Disk**: about 4 MB read and written in five minutes.
+- **What is not open costs nothing.** Each page of the window, each form and menu is made the first time you open it, and the engine that shows websites starts with the first site you open. On 4 October, before this, Sioul alone took 280 MB, and 1.9 GB in daily use (its own process 0.7 GB).
+- **The sites are the heavy part.** Each one kept open costs what a tab of a web browser costs, 150 to 350 MB, and the processor its page uses: a chat that keeps itself up to date is the busiest.
+- **Disk**: a few megabytes read and written in a few minutes.
 - **With the window closed**, the reminder watcher (Settings ▸ Reminders and notifications) takes 10 MB and almost no processor.
-- **What to plan for**: 4 GB of memory for Sioul and a few sites beside your other programs, 8 GB to keep many sites open; any processor of the last ten years.
+- **On a phone** (Android, being tried; a 2019 phone): about 200 MB while Sioul is on the screen and 140 MB once it is put away, with almost no processor then; each page opens in 0.1 to 0.5 s the first time, and at once after.
+- **What to plan for**: 4 GB of memory for Sioul and a few sites beside your other programs, 8 GB to keep many sites open; without sites, Sioul needs very little. Any processor of the last ten years.
 
 The measure can be made again on any computer: `tools/measure-load.py` in the sources ([building.md](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
 
@@ -133,6 +135,10 @@ On Windows, attachments are checked by Microsoft Defender, through the Antimalwa
 ## On macOS
 
 Not tried yet. The steps are in [packaging/macos/README.md](https://github.com/aurelienpierre/sioul/blob/main/packaging/macos/README.md): Qt 6.9 or newer from Qt's online installer, Rust from rustup, then `cargo build --release -p sioul-app -p sioul-cli` and a bundle made with `macdeployqt`; the build workflow on GitHub can make the same `.dmg` when started by hand. ClamAV from Homebrew (`brew install clamav`) checks attachments when it is there. The bundle is not signed yet: macOS asks you to confirm the first opening (right click, Open).
+
+## On Android
+
+An Android version is being tried, for 64-bit phones with Android 9 or later. It is not ready, and it is not on the releases page: GitHub builds it at each change, and the [notes on Android](../dev/android.md) say how to build it and what differs there. What changes in use: [On a phone](first-steps.md#on-a-phone).
 
 ## Next
 

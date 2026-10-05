@@ -68,7 +68,7 @@ A task can also say **what it takes**, in its panel: *light*, *the usual*, *heav
 
 Starting is the hard part, so it is helped. **Start** offers **Just two minutes** first, then 15, 25 or 45 minutes, or **Without an end**.
 
-The focus window stays on top while you work elsewhere. A disc drains, in a neutral colour, without ticking and without sound.
+The focus window stays on top while you work elsewhere. A disc drains, in a neutral colour, without ticking and without sound. On Linux and on a phone, a notification also shows the time running, with **Pause** and **Stop** ([Time](time.md#where-time-comes-from)).
 
 - Two minutes before the end: "Two minutes left: time to find a stopping point."
 - At the end: **Keep going**, or **Stop here, it counts**.
@@ -76,7 +76,7 @@ The focus window stays on top while you work elsewhere. A disc drains, in a neut
 
 The time is noted for the task, and for its project: to bill it, and to learn how long things really take ([Time](time.md)). Every 45 minutes, unless you change it in [Health](health.md#moving), a pause to move is offered: **Pause now**, with a line on where you stopped, or **Not now**; missed, the session keeps counting.
 
-**Where you stopped.** Whenever something interrupts you (a pause, a meal, the night, the end of the day, a timer stopped), you can leave one line on where you were. It shows again at the top of the Porch and of the Tasks page, and in the focus window, until you press **Done**.
+**Where you stopped.** Whenever something interrupts you (a pause, a meal, the night, the end of the day, a timer stopped), you can leave one line on where you were; **New ▾ ▸ Where I stopped…** leaves one at any time. It shows again at the top of the Porch and of the Tasks page, and in the focus window, until you press **Done**. When you [share between your devices](sharing.md), your other devices show it too.
 
 ### What makes it hard?
 
@@ -84,7 +84,9 @@ Five answers: *I do not know how to start*, *It is too big*, *I dread it*, *It i
 
 ## The day
 
-**The day** lays out today: your hours by what they are for (work, your admin, leisure), the events at their times, and the steps the plan gives today in the hours meant for them, from now on, with a pause between them. A line shows where now is; the step under way is marked, the next one outlined.
+**The day** lays out today: your hours by what they are for (work, your admin, leisure), the events at their times, your meals and naps ([Health](health.md#meals-rest-and-sleep)), and the steps the plan gives today in the hours meant for them, from now on, with a pause between them. The time kept before and after a task or an event shows apart, "Around: …". A line shows where now is; the step under way is marked, the next one outlined. What you finished today stays where it ended, ticked ✓ and dimmed.
+
+The day follows the clock: the line moves with the minutes, and the day is laid out again from now every five minutes and whenever you come back to Sioul, with what your other devices marked or noted meanwhile.
 
 It is a layout to look at, never a schedule: nothing is written into the tasks. What does not fit before the day ends keeps its place in the plan, said in one line.
 
@@ -98,7 +100,7 @@ It is a layout to look at, never a schedule: nothing is written into the tasks. 
 One switch away from Now:
 
 - **List**: every open task in the plan's order, a bigger task followed by its steps, grouped **By project** or **By list**, with a search, and **Done too** on request. The optional ones come last.
-- **Board**: *Free to start*, *Started*, *Waiting*, *Done* (the last two weeks). Cards move by dragging. "Waiting" is decided by what each task waits for, and each card says what. Past three started tasks, one line asks: "Finish or park one?"
+- **Board**: *Free to start*, *Started*, *Waiting*, *Done* (the last two weeks). Cards move by dragging, with a mouse or a touchpad; on a touch screen, a drag scrolls the board. "Waiting" is decided by what each task waits for, and each card says what. Past three started tasks, one line asks: "Finish or park one?"
 - **Timeline**: each open task on its days, the date asked as a small diamond, days without room shaded. One project, or all.
 
 <figure markdown="span">
@@ -114,7 +116,7 @@ A task opens on the right, with **Start**, **Done** and **Not now**, then:
 
 - **its steps**, and one more in a line ("A step, in one line"); the steps' minutes are added up;
 - **what it waits for** ("Waits for…": another task, found by its title), and what it frees;
-- folded: **Can start from**, **Date asked**, **Takes about**, **Project**, **Tags**, **Comes back** (repeating), **What it takes**, **Before** and **After** (the time to get ready, get there and come back: kept free around it in your plan, never counted as a pause; such a task is never cut in parts), how much it asks from 0 to 10 (**thinking**, **feelings**, **anxiety**) and **what it gives back**, unsaid until you say them, **For** (work, your admin, leisure: see [Hours](hours.md)), **Billed** ([Time](time.md)), **Needs an open office**, **List**, and **Notes, in Markdown**. Another **List** moves the task there; when that list would not keep everything (Google Tasks keeps less), Sioul says what, and asks first;
+- folded: **Can start from**, **Date asked**, **Takes about**, **Project**, **Tags**, **Comes back** (repeating), **What it takes**, **Before** and **After** (the time to get ready, get there and come back: kept free around it in your plan, never counted as a pause; the day never cuts such a task in parts), how much it asks from 0 to 10 (**Thinking it asks**, **Feelings it stirs**, **Anxiety it raises**) and **What it gives back**, unsaid until you say them: what you say is written into the task and shown here, and the plan does not use it yet; **For** (work, your admin, leisure: see [Hours](hours.md)), **Billed** ([Time](time.md)), **Needs an open office**, **List**, and **Notes, in Markdown**. Another **List** moves the task there; when that list would not keep everything (Google Tasks keeps less), Sioul says what, and asks first;
 - **Tied to it**: the mail it came from, its notes, the people, the drafts, the project. **Write an email** starts a message to the people it involves; **Make a note** starts a note tied to it; **Link to…** ties anything else.
 
 Anything can become a task: a message, a line of a note, an event to prepare.
@@ -131,7 +133,7 @@ A task tagged `joy` is offered under **If you want**, never proposed as the next
 
 - **The order**: a task never comes before what it waits for. Tasks that wait for each other in a loop are said, calmly: "These wait for each other: … One of them has to go first."
 - **The next step**, among the tasks free to start: the one you started; then the one whose date comes soonest, counting the work behind it; then your own order; then the one that frees the most others; then the smaller one.
-- **The days**: each task goes into the first days with room. The room is your hours, each kind for its own tasks: working hours for work, hours for your admin for your admin, free time for leisure ([Hours](hours.md)). Events are taken out of it, with five minutes before and after each, and each step leaves five minutes after it. A step of up to an hour is never cut; a longer one is cut into parts of a quarter of an hour at least. Without any hours set, the room is Monday to Friday, 9:00 to 17:00. Today's room starts now, and haze or fog make it smaller. Days off, and today once closed, have none.
+- **The days**: each task goes into the first days with room. The room is your hours, each kind for its own tasks: working hours for work, hours for your admin for your admin, free time for leisure ([Hours](hours.md)). Events are taken out of it, with their **Before** and **After**, and five minutes before and after each; each step leaves five minutes after it. A task's own **Before** and **After** take room with it. Your meals, naps and night are kept free too ([Health](health.md#meals-rest-and-sleep)). A step of up to an hour is never cut; a longer one is cut into parts of a quarter of an hour at least. Without any hours set, the room is Monday to Friday, 9:00 to 17:00. Today's room starts now, and haze or fog make it smaller. Days off, and today once closed, have none.
 - **Your dates stay yours.** The days the plan gives are worked out again each time, and never written into your tasks. Only what you set is kept: a day to start, a date asked, an order.
 - **When a date will not hold**, the task says so once: "At this pace, the plan ends after 30 October. Doing it sooner, making it smaller or handing it over would keep the date." Near a date asked, Now says how much fits: "Until Wednesday 7 October: about 30 min of steps, 3 h of room."
 
@@ -184,6 +186,12 @@ The ⚙ at the top of the page:
 - **New tasks go into**: the list a task typed in one line goes into.
 - **What is work** and **What is yours**: the categories that say what a task is for ([Hours](hours.md)).
 - **Code**, last: **GitHub issues and pull requests as tasks**, off unless you turn it on. Yours come into a "GitHub" list on this computer, every thirty minutes; nothing is written to GitHub.
+
+## In quiet time, and at rest
+
+In quiet time ([Hours](hours.md#quiet-time)), the task pages keep only what is yours: work waits for work to come back.
+
+At rest, outside every hours you set (the night, mostly), the page waits behind one sentence, "Rest until 09:00: only the people you marked safe reach you.", and **Show anyway**. A field there notes a thought for later, in one line, out of sight until work comes back. Task reminders wait too.
 
 ## Where tasks live
 

@@ -89,7 +89,7 @@ Each address's own settings (what it is for, how far back, how often, its protec
 
 ## In quiet time
 
-Outside working hours, work addresses fold, without their dots: "Work mail rests until work comes back. It is all here if you look for it." See [Hours](hours.md).
+Outside working hours, work addresses fold, without their dots: "Work mail rests until work comes back. It is all here if you look for it." At rest, outside every hours you set, every address folds: "At this hour mail rests: what the people you marked safe write comes to the Porch. The rest is all here if you look for it." See [Hours](hours.md).
 
 ## Not there yet
 

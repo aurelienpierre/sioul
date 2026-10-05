@@ -19,17 +19,19 @@ Chacun contient aussi la ligne de commande, `sioul`. Ces premiers paquets ont é
 
 ## Ressources nécessaires {#resources-needed}
 
-Mesuré le 4 octobre 2026 sur un ordinateur Linux à 8 cœurs, pendant cinq minutes, Sioul et tous les processus qu’il lance comptés ensemble (la mémoire en PSS : chaque page partagée comptée une fois) :
+Mesuré le 6 octobre 2026 sur un ordinateur Linux à 8 cœurs, Sioul et tous les processus qu’il lance comptés ensemble (la mémoire en PSS : chaque page partagée comptée une fois) :
 
 | | Mémoire | Processeur |
 |---|---|---|
-| **Sioul seul** : un profil inventé, aucun site ouvert | environ 280 Mo | presque rien au repos |
-| **Sioul au quotidien** : une vraie boîte aux lettres, des notes et des tâches, et trois sites ouverts en temps réel (Proton Mail, Discord, OkCupid) | environ 1,9 Go en tout : le processus de Sioul 0,7 Go, les pages des trois sites 1,1 Go | 5 % d’un cœur la plupart du temps (moins de 1 % de tout l’ordinateur), quelques secondes jusqu’aux trois quarts d’un cœur toutes les une ou deux minutes |
+| **Sioul seul** : un profil inventé, aucun site ouvert, pendant cinq minutes | environ 70 Mo, en un seul processus | presque rien au repos (0,2 % d’un cœur) |
+| **Sioul au quotidien** : une vraie boîte aux lettres, des notes et des tâches, et trois sites ouverts en temps réel, pendant trois minutes | environ 1,15 Go en tout : le processus de Sioul 0,4 Go, les pages des trois sites 0,7 Go | moins de 1 % d’un cœur la plupart du temps (la moitié du temps moins de 0,4 %), quelques secondes jusqu’à 40 % d’un cœur de temps en temps |
 
-- **Les sites sont la part lourde.** Chacun gardé ouvert coûte ce que coûte un onglet de navigateur, 100 à 350 Mo, et le processeur qu’utilise sa page : une messagerie qui se tient à jour toute seule est la plus active.
-- **Disque** : environ 4 Mo lus et écrits en cinq minutes.
+- **Ce qui n’est pas ouvert ne coûte rien.** Chaque page de la fenêtre, chaque formulaire et chaque menu est fait la première fois que vous l’ouvrez, et le moteur qui affiche les sites démarre avec le premier site ouvert. Le 4 octobre, avant cela, Sioul seul prenait 280 Mo, et 1,9 Go au quotidien (son propre processus 0,7 Go).
+- **Les sites sont la part lourde.** Chacun gardé ouvert coûte ce que coûte un onglet de navigateur, 150 à 350 Mo, et le processeur qu’utilise sa page : une messagerie qui se tient à jour toute seule est la plus active.
+- **Disque** : quelques mégaoctets lus et écrits en quelques minutes.
 - **Fenêtre fermée**, le veilleur des rappels (Paramètres ▸ Rappels et notifications) prend 10 Mo et presque pas de processeur.
-- **Ce qu’il faut prévoir** : 4 Go de mémoire pour Sioul et quelques sites à côté de vos autres programmes, 8 Go pour garder beaucoup de sites ouverts ; n’importe quel processeur des dix dernières années.
+- **Sur un téléphone** (Android, à l’essai ; un téléphone de 2019) : environ 200 Mo quand Sioul est à l’écran et 140 Mo une fois mis de côté, avec presque pas de processeur alors ; chaque page s’ouvre en 0,1 à 0,5 s la première fois, puis tout de suite.
+- **Ce qu’il faut prévoir** : 4 Go de mémoire pour Sioul et quelques sites à côté de vos autres programmes, 8 Go pour garder beaucoup de sites ouverts ; sans sites, Sioul demande très peu. N’importe quel processeur des dix dernières années.
 
 La mesure peut être refaite sur n’importe quel ordinateur : `tools/measure-load.py` dans les sources ([building.md, en anglais](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
 
@@ -133,6 +135,10 @@ Sur Windows, les pièces jointes sont vérifiées par Microsoft Defender, par so
 ## Sur macOS {#on-macos}
 
 Pas encore essayé. Les étapes sont dans [packaging/macos/README.md (en anglais)](https://github.com/aurelienpierre/sioul/blob/main/packaging/macos/README.md) : Qt 6.9 ou plus récent depuis l’installateur en ligne de Qt, Rust depuis rustup, puis `cargo build --release -p sioul-app -p sioul-cli` et un paquet fait avec `macdeployqt` ; la construction automatique sur GitHub peut faire le même `.dmg` quand on la lance à la main. ClamAV depuis Homebrew (`brew install clamav`) vérifie les pièces jointes quand il est là. Le paquet n’est pas encore signé : macOS vous demande de confirmer la première ouverture (clic droit, Ouvrir).
+
+## Sur Android {#on-android}
+
+Une version Android est à l’essai, pour les téléphones 64 bits sous Android 9 ou plus récent. Elle n’est pas prête, et elle n’est pas sur la page des versions : GitHub la construit à chaque changement, et les [notes sur Android (en anglais)](https://aurelienpierre.github.io/sioul/dev/android.html) disent comment la construire et ce qui y change. Ce qui change à l’usage : [Sur un téléphone](first-steps.md#on-a-phone).
 
 ## Ensuite {#next}
 

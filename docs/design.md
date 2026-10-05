@@ -1,6 +1,13 @@
 # Design
 
-Sioul is designed first for people for whom admin hurts. Its rule: **nothing enters without your consent; letters wait outside; deadlines live in the plan, not in your face; a written channel is always open.** Every choice below comes from that rule, and from the research in [research.md](research.md). The detailed notes behind it, each study with its evidence and the rule it gives, are in [research/README.md](research/README.md).
+Sioul adapts the demands of the world to the person, rather than the person to a model of productivity. Usual software goes from obligations to a schedule, and leaves the person whatever time remains; Sioul goes the other way: from the person's needs and what today can hold (meals, rest, sleep, hours, the margins around events, a day said clear, hazy or foggy), to the time kept for them, then to the obligations that fit. It shows what belongs in the person's attention now rather than what has arrived, and it keeps the ties between things (the case is the unit, not the program) so that the person is no longer the glue between them.
+
+It is designed first for people for whom admin hurts, and for anyone whose capacity is limited or changes. Its rule: **nothing enters without your consent; letters wait outside; deadlines live in the plan, not in your face; a written channel is always open.** Every choice below comes from that rule, and from the research in [research.md](research.md). The detailed notes behind it, each study with its evidence and the rule it gives, are in [research/README.md](research/README.md).
+
+Three tests for anything added:
+- **It takes admin work off the person**, rather than moving it elsewhere. An assistant that lists seventeen things to deal with has moved the work; one that settles sixteen and asks one question has removed it.
+- **Its complexity stays on Sioul's side.** More state, more syncing, more ways to fail are Sioul's to absorb; none of it reaches the screen as a setting to understand or a state to watch.
+- **It is something software may do to a person.** The refusals of [research/life-admin.md](research/life-admin.md) (streaks, overdue counts, nags, mood or capacity guessed from behaviour, actions taken alone) hold for every new feature.
 
 ## Six places
 - **The Porch**: everything new, from every account and portal, waits here until an admin window. It is checked (genuine or forged), sorted into cases and summarised. New senders wait in the screener until you let them in.
