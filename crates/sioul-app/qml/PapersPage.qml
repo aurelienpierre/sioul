@@ -62,6 +62,16 @@ Item {
     onVisibleChanged: if (visible) page.reload()
     Component.onCompleted: page.reload()
 
+    // Papers come from your other devices: shown at once when this page is.
+    Connections {
+        target: page.sioul
+
+        function onSharedIn(stores) {
+            if (page.visible && (stores.indexOf("files/papers/") >= 0 || stores.indexOf("notes/sioul-papers.toml") >= 0))
+                page.reload()
+        }
+    }
+
     ScrollView {
         id: scroll
 

@@ -119,7 +119,8 @@ fn read(folder: &Path, key: &[u8; 32], part: &str) -> Vec<Claim> {
         .filter(|p| p.extension().is_some_and(|x| x == "lease"))
         .filter_map(|path| {
             let computer = path.file_stem()?.to_string_lossy().to_string();
-            let text = std::fs::read_to_string(&path).ok()?;
+            // A claim is a few hundred bytes: a larger file is no claim, never read whole.
+            let text = crate::share::read_small(&path)?;
             let plain = crate::share::open(key, &bound(part, &computer), text.trim())?;
             let claim: Claim = serde_json::from_slice(&plain).ok()?;
             // A claim names the computer whose file it is, or it is no claim.

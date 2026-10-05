@@ -1900,7 +1900,7 @@ watch-morning-lighter = Une journée plus légère
 
 ## Partage entre vos ordinateurs (Paramètres)
 share-title = Entre vos ordinateurs
-share-help = Le courrier, les contacts, l’agenda et les tâches sur un serveur rejoignent déjà vos autres ordinateurs, et les projets et les notes voyagent avec leur dossier. Ce que Sioul garde sur cet ordinateur seul (réglages, qui peut vous écrire, liens, temps, brouillons, factures, santé, montre, listes gardées ici) peut voyager aussi, par un dossier que votre synchronisation transporte (Nextcloud, Dropbox, Syncthing), scellé par une phrase de passe : le serveur de ce dossier ne le lit jamais.
+share-help = Le courrier, les contacts, l’agenda et les tâches sur un serveur rejoignent déjà vos autres ordinateurs. Le reste peut voyager par un dossier que votre synchronisation transporte (Nextcloud, Dropbox, Syncthing), scellé par une phrase de passe, pour que son serveur ne le lise jamais : ce que Sioul garde sur cet ordinateur (réglages, qui peut vous écrire, temps, brouillons, factures, santé, montre, listes gardées ici) et, quand aucune synchronisation ne les transporte, vos notes, vos projets et vos papiers.
 share-off = Pas de partage : tout reste sur cet ordinateur.
 share-on = Partagé par { $folder }.
 share-others = { $count ->
@@ -1909,10 +1909,8 @@ share-others = { $count ->
 }
 share-alone = Aucun autre ordinateur pour l’instant : sur l’autre, choisissez le même dossier et tapez la même phrase de passe.
 share-last = Dernier échange ici : { $when }.
-share-outside = Vos projets et vos notes ({ $store }) ne semblent pas être dans un dossier que votre synchronisation transporte : l’autre ordinateur ne les verrait pas. Déplacés dans l’un d’eux (et choisis à nouveau dans Paramètres ▸ Votre dossier et le partage), ils voyagent aussi.
+share-outside = Vos notes et vos projets ({ $store }) ne semblent pas être dans un dossier que votre synchronisation transporte : l’autre ordinateur ne les verrait pas. Allumez Notes, et Projets et argent, ci-dessous pour les faire voyager par ce dossier, scellés ; ou déplacez-les dans un dossier synchronisé (et choisissez-le à nouveau dans Paramètres ▸ Votre dossier et le partage).
 share-phones = Un téléphone ne voit ce dossier que si son application de synchronisation le transporte, et certaines n’en transportent que quelques-uns : l’eDrive de Murena transporte Documents (avec Pictures, Music…), pas le reste de votre cloud. Pour atteindre un tel téléphone, partagez par un dossier dans Documents : arrêtez le partage, puis choisissez-en un là.
-share-projects = Les projets, les budgets et la banque voyagent aussi par ici, scellés
-share-projects-help = Pour un dossier de notes qu’aucune synchronisation ne transporte : ses projets (sioul-cases.toml), ses budgets et comptes bancaires (sioul-budgets.toml) et les mouvements de la banque (sioul-bank.toml) voyagent par ce dossier, scellés comme le reste, chaque appareil les gardant dans son propre dossier de notes. Vos notes elles-mêmes restent. Laissez-le éteint quand votre dossier de notes est synchronisé : il les transporte lui-même.
 folder-not-on-device = Ce dossier n’est pas sur cet appareil : choisissez-en un où votre application de synchronisation garde ses fichiers (Documents, avec l’eDrive de Murena).
 folder-browser-title = Choisir un dossier
 folder-browser-up = Remonter
@@ -1940,6 +1938,87 @@ share-not-shared = Pas partagé : la disposition des pages sur cet écran, les
 share-found = Déjà partagé par vos autres appareils (choisissez-en un) :
 share-files-access = Pour lire le dossier que votre application de synchronisation transporte (eDrive, Syncthing, FolderSync…), Sioul a besoin de l’accès d’Android à vos fichiers.
 share-files-allow = Autoriser l’accès aux fichiers
+share-parts = Ce qui voyage depuis cet appareil
+share-parts-help = Chaque appareil choisit pour lui-même. Une partie éteinte ici reste telle quelle sur vos autres appareils : rien n’y est retiré. Rallumée, elle les rejoint comme le ferait un nouvel appareil.
+share-part-settings = Réglages et comptes
+share-part-settings-carries = Vos réglages et vos comptes (jamais leurs mots de passe), les liens entre les choses, où le Porche a été fermé, les courriels dont vous avez dit qu’ils ne sont pas des paiements.
+share-part-senders = Expéditeurs
+share-part-senders-carries = Qui peut vous écrire (connus, bloqués, sûrs, neutres), ce que le bouclier a lu, les clés publiques des autres.
+share-part-health = Santé
+share-part-health-carries = Les médicaments, les ordonnances et les prises.
+share-part-time = Temps
+share-part-time-carries = Le temps noté, la séance en cours, les choix du jour, où vous vous êtes arrêté, travailler tard ou fini pour aujourd’hui.
+share-part-drafts = Brouillons et factures
+share-part-drafts-carries = Les courriels en cours d’écriture, les factures faites.
+share-part-projects = Projets et argent
+share-part-projects-carries = De votre dossier de notes : les projets et leurs routes de courrier, les budgets, les comptes et mouvements bancaires, les contrats.
+share-part-watch = Montre
+share-part-watch-carries = Les journées de votre montre.
+share-part-lists = Listes gardées ici
+share-part-lists-carries = Les agendas et contacts gardés sur cet appareil seulement.
+share-part-notes = Notes
+share-part-notes-carries = Votre dossier de notes : les notes, leurs images, PDF et mémos, les lettres numérisées. Chaque fichier scellé à part, seul ce qui a changé envoyé ; les fichiers de plus de 64 Mo restent.
+share-part-papers = Papiers
+share-part-papers-carries = Le portefeuille de papiers et ses fichiers.
+share-part-carried = Votre dossier de notes ({ $store }) est déjà transporté par une application de synchronisation : transporté ici aussi, les deux déferaient les changements l’une de l’autre. Pour le partager ici, déplacez-le dans un dossier qu’aucune synchronisation ne transporte, ou laissez-le à cette synchronisation.
+share-part-sent = Dernier envoi : { $when }.
+share-part-received = Dernière réception : { $when }.
+share-part-quiet = Rien d’échangé pour l’instant.
+share-conflict = Deux appareils ont changé le même fichier : les deux versions sont gardées, l’autre sous le nom « { $copy } ».
+share-conflict-gone = Un fichier changé ici a été retiré sur un autre appareil : ce qui a changé est gardé sous le nom « { $copy } ».
+share-damaged = { $file } est arrivé abîmé d’un autre appareil : votre copie ici reste telle quelle jusqu’à ce qu’une entière arrive.
+share-too-big = { $file } dépasse 64 Mo : il reste sur cet appareil.
+share-history-help = Avant qu’un changement venu d’un autre appareil soit écrit dans un fichier ici, le fichier tel qu’il était est gardé sur cet appareil : les 20 dernières versions de chaque fichier, et toutes celles des 30 derniers jours. Elles ne sont jamais partagées.
+share-history-show = Voir les versions précédentes
+share-history-hide = Cacher les versions précédentes
+share-history-empty = Rien de gardé pour l’instant.
+share-versions = { $count ->
+    [one] Une version
+   *[other] { $count } versions
+}
+share-put-back = Remettre
+share-put-back-done = { $file } est revenu comme il était ({ $when }). Le fichier tel qu’il était juste avant est gardé dans la liste aussi.
+share-history-more = { $count ->
+    [one] Un fichier de plus, changé avant : tapez une partie de son nom pour le trouver.
+   *[other] { $count } fichiers de plus, changés avant : tapez une partie d’un nom pour les trouver.
+}
+share-history-filter = Trouver un fichier par son nom
+share-put-back-whole = { $file } revient comme il était ({ $when }) ; le fichier tel qu’il est maintenant est gardé dans la liste.
+share-put-back-nothing = { $file } contient déjà ce que contenait cette version : rien à remettre.
+share-put-back-entries = { $file } comme il était ({ $when }) : { $changed ->
+    [one] une entrée revient à ce qu’elle était
+   *[other] { $changed } entrées reviennent à ce qu’elles étaient
+}, { $returning ->
+    [one] une retirée depuis revient
+   *[other] { $returning } retirées depuis reviennent
+} ; { $kept ->
+    [one] une ajoutée depuis reste
+   *[other] { $kept } ajoutées depuis restent
+}, ici et sur vos autres appareils.
+share-putting-back = Remise en cours…
+share-estimate = { $count ->
+    [one] Un fichier
+   *[other] { $count } fichiers
+}, { $size } en tout, voyageraient depuis cet appareil, chacun scellé à part ; { $big ->
+    [0] aucun n’est trop gros.
+    [one] un de plus de 64 Mo reste.
+   *[other] { $big } de plus de 64 Mo restent.
+} Allumer ?
+share-estimating = Calcul de ce qui voyagerait…
+share-switch-on = Allumer
+share-vanished = { $count ->
+    [one] Un fichier est parti
+   *[other] { $count } fichiers sont partis
+} d’un coup de { $folder } ici : rien n’en est retiré sur vos autres appareils tant que vous ne le dites pas (un disque non monté, un dossier déplacé, un accès retiré auraient le même air).
+share-vanished-confirm = Les retirer partout
+share-older-copy = Une copie plus ancienne a été remise ici à la main (sa date est antérieure à la dernière version vue) : cette version est revenue, la copie ancienne gardée à côté sous le nom « { $copy } ». Pour envoyer une version plus ancienne, utilisez Remettre ci-dessous.
+share-missing = { $file } a changé sur un autre appareil il y a un jour, mais son contenu n’est pas arrivé : l’application de synchronisation transporte-t-elle encore le dossier de partage ?
+share-no-room = { $file } attend : cet appareil manque de place pour lui (et pour la copie gardée avant de l’écrire).
+share-name-clash = { $file } attend : un autre fichier ici n’en diffère que par la casse ou les accents, ce que le stockage de cet appareil prend pour un seul.
+share-refused = { $file } n’est pas écrit : sa place passe par un lien, ou tombe dans le dossier de partage ou dans celui de Sioul.
+share-not-text = { $file } reste ici : son nom n’est pas un texte que Sioul peut transporter.
+share-emptied = { $file } est vide ici : rien n’en est retiré sur vos autres appareils pendant dix minutes.
+share-files-unreadable = Les notes et les papiers attendent : sans l’accès d’Android à tous vos fichiers, Sioul ne voit pas ceux faits par d’autres applications, et les croirait partis.
 
 ## Rappels avant les dates
 reminder-event = { $when } · { $what }
@@ -2531,6 +2610,7 @@ audio-cannot-play = Ce son ne peut pas être lu ici ({ $why }).
 note-memo-failed = Le mémo n’a pas pu être enregistré ({ $why }).
 note-memo-no-microphone = Le système ferme le micro à Sioul : il s’ouvre dans les réglages de confidentialité du système.
 note-link-not-found = « { $path } » n’est pas dans votre dossier de notes.
+note-changed-elsewhere = Cette note a changé ailleurs pendant que vous écriviez : la vôtre est gardée à côté, sous « { $path } ».
 note-link-kept = Les liens de ce type ne s’ouvrent pas depuis une note : { $url }
 right-now-unverified = Son expéditeur n’est pas vérifié : ne vous en servez que si vous venez de le demander à ce site.
 link-program = Un programme, un script ou un installeur : c’est son dossier qui s’ouvre, pour le lancer de là si vous lui faites confiance.
