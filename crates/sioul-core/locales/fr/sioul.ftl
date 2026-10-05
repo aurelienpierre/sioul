@@ -1409,7 +1409,7 @@ health-every-days = { $days ->
     [2] un jour sur deux à { $time }, à partir du { $from }
    *[other] tous les { $days } jours à { $time }, à partir du { $from }
 }
-health-every-hours = toutes les { $hours } heures, à partir du { $from }
+health-every-hours = toutes les { $hours } heures ; prochaine : { $next }
 health-next-refill = pharmacie à partir du { $day }
 health-next-renew = renouveler l’ordonnance à partir du { $day }
 health-no-name = Un nom est nécessaire.
@@ -2314,6 +2314,13 @@ health-missed-body = Avez-vous pris { $doses } ?
 health-missed-open = Répondre
 health-missed-question = Prévus pendant que Sioul était fermé sur tous vos ordinateurs : les avez-vous pris ?
 health-not-taken = Pas pris
+health-taken-when = Pris…
+dose-taken-title = Pris en retard
+dose-taken-due = { $name }, prévu à { $due }.
+dose-taken-when = Pris à
+dose-move-next = Décaler d’autant les prises suivantes
+dose-move-next-help = Les heures entre deux prises sont gardées : pris avec une heure de retard, les suivants viennent une heure plus tard. Votre réponse est proposée la prochaine fois.
+dose-time-wrong = Une heure, comme 09:30.
 health-alone = Ces prises ne sont connues que de cet ordinateur. Si Sioul tourne aussi sur un autre, partagez entre eux (Paramètres ▸ Votre dossier et le partage) : une prise notée sur l’un compte alors sur tous, et seul celui où vous êtes vous la rappelle.
 health-unchecked = Vos autres ordinateurs ont été entendus pour la dernière fois à { $time } : une prise notée là-bas n’apparaît peut-être pas encore ici.
 health-unchecked-yet = Vos autres ordinateurs n’ont pas encore été entendus : une prise notée là-bas n’apparaît peut-être pas encore ici.

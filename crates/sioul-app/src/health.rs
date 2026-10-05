@@ -45,11 +45,15 @@ fn words(schedule: &Schedule) -> String {
             args.set("from", tr().day(*from));
             tr().text("health-every-days", Some(&args))
         }
-        Schedule::Hours { hours, from } => {
-            let from = Timestamp::from_second(*from).map(|t| tr().date(&t.to_zoned(jiff::tz::TimeZone::system()), false)).unwrap_or_default();
+        Schedule::Hours { hours, from, .. } => {
+            // Said by its next dose: a dose taken late may have moved them.
+            let now = Zoned::now();
+            let next = schedule.doses(&now, &now.checked_add(Span::new().hours(i64::from(*hours))).unwrap_or_else(|_| now.clone())).into_iter().next();
+            let next = next.map_or(*from, |z| z.timestamp().as_second());
+            let next = Timestamp::from_second(next).map(|t| tr().date(&t.to_zoned(jiff::tz::TimeZone::system()), false)).unwrap_or_default();
             let mut args = sioul_core::i18n::args();
             args.set("hours", *hours);
-            args.set("from", from);
+            args.set("next", next);
             tr().text("health-every-hours", Some(&args))
         }
     }
@@ -64,6 +68,9 @@ struct DoseRow {
     /// "12:04" when marked taken; "" otherwise.
     taken: String,
     past: bool,
+    /// Past its time by more than half an hour, not marked: marked now, it
+    /// asks when it was taken (`DoseTaken.qml`).
+    late: bool,
 }
 
 #[derive(Serialize)]
@@ -264,32 +271,35 @@ pub(crate) fn page() -> String {
     let now = Zoned::now();
     let morning = now.date().to_zoned(now.time_zone().clone()).unwrap_or_else(|_| now.clone());
     let night = morning.checked_add(Span::new().days(1)).unwrap_or_else(|_| now.clone());
-    let today = health
+    let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    let mut today: Vec<DoseRow> = health
         .doses(&morning, &night)
         .into_iter()
         .map(|d| DoseRow {
-            taken: state.taken.get(&d.key).and_then(|t| Timestamp::from_second(*t).ok()).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default(),
+            taken: state.taken.get(&d.key).map(|t| hm(*t)).unwrap_or_default(),
             past: d.at <= now,
+            late: !state.taken.contains_key(&d.key) && now.timestamp().as_second() - d.at.timestamp().as_second() > GRACE_MINUTES * 60,
             time: d.at.strftime("%H:%M").to_string(),
             key: d.key,
             name: d.name,
             dose: d.dose,
         })
         .collect();
+    // Taken today, at a time the schedule no longer has: a dose taken late or
+    // early moved the next ones (a medicine counted from its last dose).
+    let (from, to) = (morning.timestamp().as_second(), night.timestamp().as_second());
+    for (key, at) in &state.taken {
+        let Some((id, due)) = key.rsplit_once('@') else { continue };
+        let (Some(medicine), Ok(due)) = (health.medicines.iter().find(|m| m.id == id), due.parse::<i64>()) else { continue };
+        if due < from || due >= to || today.iter().any(|d| &d.key == key) {
+            continue;
+        }
+        today.push(DoseRow { key: key.clone(), time: hm(due), name: medicine.name.clone(), dose: medicine.dose.clone(), taken: hm(*at), past: true, late: false });
+    }
+    today.sort_by(|a, b| a.time.cmp(&b.time).then(a.name.cmp(&b.name)));
     let title_of = |id: &Option<String>| id.as_ref().and_then(|id| health.prescriptions.iter().find(|p| &p.id == id)).map(|p| p.title.clone()).unwrap_or_default();
     let errands = health.errands();
-    let missed = state
-        .unanswered(&health, &now, MISSED_HOURS, GRACE_MINUTES)
-        .into_iter()
-        .map(|d| DoseRow {
-            taken: String::new(),
-            past: true,
-            time: if d.at.date() == now.date() { d.at.strftime("%H:%M").to_string() } else { format!("{} {}", tr().weekday_short(d.at.date()), d.at.strftime("%H:%M")) },
-            key: d.key,
-            name: d.name,
-            dose: d.dose,
-        })
-        .collect();
+    let missed = missed_rows(&health, &state, &now);
     json(&HealthPage {
         today,
         missed,
@@ -314,6 +324,34 @@ pub(crate) fn page() -> String {
         watch: watch_view(&health),
         lists: { let config = crate::backend::load_config(); sioul_core::tasks::lists().into_iter().filter(|c| !c.read_only).map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()), "local": c.account == sioul_core::vdir::LOCAL })).collect() },
     })
+}
+
+/// Doses due while Sioul ran nowhere, neither marked nor reminded: a question on the past.
+fn missed_rows(health: &Health, state: &HealthState, now: &Zoned) -> Vec<DoseRow> {
+    state
+        .unanswered(health, now, MISSED_HOURS, GRACE_MINUTES)
+        .into_iter()
+        .map(|d| DoseRow {
+            taken: String::new(),
+            past: true,
+            late: true,
+            time: if d.at.date() == now.date() { d.at.strftime("%H:%M").to_string() } else { format!("{} {}", tr().weekday_short(d.at.date()), d.at.strftime("%H:%M")) },
+            key: d.key,
+            name: d.name,
+            dose: d.dose,
+        })
+        .collect()
+}
+
+/// The same question on the Porch, as JSON: once your other computers were
+/// heard from, so that a dose marked there is not asked about here.
+pub(crate) fn missed() -> String {
+    let heard = !crate::share::on() || crate::share::last_exchange().is_some();
+    let health = load();
+    if !heard || health.medicines.is_empty() {
+        return "[]".into();
+    }
+    json(&missed_rows(&health, &HealthState::load(&HealthState::default_path()), &Zoned::now()))
 }
 
 /// A medicine as its form gives it.
@@ -362,7 +400,9 @@ pub(crate) fn save_medicine(id: &str, edit: &str) -> String {
             "days" => Schedule::Days { days: edit.days.max(1), time: edit.time.trim().to_string(), from: day(&edit.from).unwrap_or(now.date()) },
             "hours" => {
                 let from = edit.from.trim().parse::<jiff::civil::DateTime>().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()).map_or(now.timestamp().as_second(), |z| z.timestamp().as_second());
-                Schedule::Hours { hours: edit.hours.max(1), from }
+                // The answer last given for a late dose stays offered.
+                let follows = load().medicines.iter().any(|m| m.id == id && matches!(m.schedule, Schedule::Hours { follows: true, .. }));
+                Schedule::Hours { hours: edit.hours.max(1), from, follows }
             }
             _ => Schedule::Day { times: edit.times.iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect() },
         };
@@ -510,8 +550,8 @@ fn state_held() -> std::sync::MutexGuard<'static, ()> {
 /// overtaken by the next.
 static TICKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// A dose answered "not taken" when asked afterwards: not asked again.
-pub(crate) fn set_not_taken(key: &str) {
+/// A dose not taken, said afterwards: asked no more.
+pub(crate) fn not_taken(key: &str) {
     let _held = state_held();
     let path = HealthState::default_path();
     let mut state = HealthState::load(&path);
@@ -520,16 +560,82 @@ pub(crate) fn set_not_taken(key: &str) {
     let _ = state.save(&path, now);
 }
 
-/// A dose marked taken, or not.
+/// When a dose is due, from its key ("<medicine>@<Unix seconds>").
+fn due_of(key: &str) -> Option<i64> {
+    key.rsplit_once('@').and_then(|(_, at)| at.parse().ok())
+}
+
+/// Whether a dose marked now is late: more than half an hour past its time.
+pub(crate) fn is_late(key: &str) -> bool {
+    due_of(key).is_some_and(|due| Timestamp::now().as_second() - due > GRACE_MINUTES * 60)
+}
+
+/// A dose taken late, at `time` ("09:30", the last such time before now),
+/// as you say: marked then, and for a medicine taken every few hours, the
+/// next doses moved by as much when asked. Returns what went wrong, else "".
+pub(crate) fn taken_late(key: &str, time: &str, move_next: bool) -> String {
+    let now = Zoned::now();
+    let Some(clock) = time.trim().split_once(':').and_then(|(h, m)| jiff::civil::Time::new(h.trim().parse().ok()?, m.trim().parse().ok()?, 0, 0).ok()) else {
+        return tr().text("dose-time-wrong", None);
+    };
+    let mut at = now.date().to_datetime(clock).to_zoned(now.time_zone().clone()).map(|z| z.timestamp().as_second()).unwrap_or(now.timestamp().as_second());
+    if at > now.timestamp().as_second() {
+        at -= 86_400;
+    }
+    let _held = state_held();
+    let path = HealthState::default_path();
+    let mut state = HealthState::load(&path);
+    let mut health = load();
+    state.taken.insert(key.to_string(), at);
+    state.not_taken.remove(key);
+    let moved = health.taken_late(key, at, move_next);
+    // Saved whenever it is taken every few hours: the answer is kept for next time.
+    let hourly = key.rsplit_once('@').is_some_and(|(id, _)| health.medicines.iter().any(|m| m.id == id && matches!(m.schedule, Schedule::Hours { .. })));
+    if hourly && let Err(e) = save(&health) {
+        return e;
+    }
+    if let Some((before, after)) = moved {
+        state.moved.insert(key.to_string(), [before, after]);
+    }
+    state.save(&path, now.timestamp().as_second()).err().unwrap_or_default()
+}
+
+/// What the late dose's question shows, as JSON: {name, dose, due, now, hourly, follows}.
+pub(crate) fn dose_info(key: &str) -> String {
+    let health = load();
+    let now = Zoned::now();
+    let (Some((id, _)), Some(due)) = (key.rsplit_once('@'), due_of(key)) else { return "null".into() };
+    let Some(medicine) = health.medicines.iter().find(|m| m.id == id) else { return "null".into() };
+    let due = Timestamp::from_second(due).map(|t| t.to_zoned(now.time_zone().clone())).unwrap_or_else(|_| now.clone());
+    let follows = matches!(medicine.schedule, Schedule::Hours { follows: true, .. });
+    serde_json::json!({
+        "name": medicine.name,
+        "dose": medicine.dose,
+        "due": if due.date() == now.date() { due.strftime("%H:%M").to_string() } else { format!("{} {}", tr().weekday_short(due.date()), due.strftime("%H:%M")) },
+        "now": now.strftime("%H:%M").to_string(),
+        "hourly": matches!(medicine.schedule, Schedule::Hours { .. }),
+        "follows": follows,
+    })
+    .to_string()
+}
+
+/// A dose marked taken, or not, as it happens; a mark taken back puts back
+/// the doses its late take moved.
 pub(crate) fn set_taken(key: &str, taken: bool) {
     let _held = state_held();
     let path = HealthState::default_path();
     let mut state = HealthState::load(&path);
     let now = Zoned::now().timestamp().as_second();
+    let mut health = load();
     if taken {
         state.taken.insert(key.to_string(), now);
     } else {
         state.taken.remove(key);
+        if let Some([before, after]) = state.moved.remove(key)
+            && health.taken_back(key, before, after)
+        {
+            let _ = save(&health);
+        }
     }
     let _ = state.save(&path, now);
 }
@@ -612,6 +718,11 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             let key = dose.key.clone();
             let (qt_taken, shared_taken) = (qt.clone(), Arc::clone(shared));
             let taken: Box<dyn FnOnce() + Send> = Box::new(move || {
+                // Pressed more than half an hour late: when it was taken is asked, in the window.
+                if is_late(&key) {
+                    let _ = qt_taken.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from("dose"), QString::default(), QString::from(&key)));
+                    return;
+                }
                 set_taken(&key, true);
                 // Your other computers know at once.
                 crate::share::exchange(&qt_taken, &shared_taken);
@@ -631,7 +742,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             let names: Vec<String> = missed.iter().map(|d| format!("{} {}", d.name, d.at.strftime("%H:%M"))).collect();
             let qt_open = qt.clone();
             let open: Box<dyn FnOnce() + Send> = Box::new(move || {
-                let _ = qt_open.queue(|mut sioul| sioul.as_mut().reminder_opened(QString::from("health"), QString::default(), QString::default()));
+                let _ = qt_open.queue(|mut sioul| sioul.as_mut().reminder_opened(QString::from("porch"), QString::default(), QString::default()));
             });
             let body = say("health-missed-body", &[("doses", names.join(", "))]);
             if let Err(e) = sioul_sync::notify::remind(&tr().text("health-missed", None), &body, Some((tr().text("health-missed-open", None), open))) {

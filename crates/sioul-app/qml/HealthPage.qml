@@ -139,18 +139,16 @@ Item {
                                 elide: Text.ElideRight
                                 color: page.theme.text
                             }
+                            // When it was taken, asked (DoseTaken.qml).
                             Button {
-                                text: page.sioul.text("health-taken")
-                                onClicked: {
-                                    page.sioul.setDoseTaken(missed.modelData.key, true)
-                                    page.reload()
-                                }
+                                text: page.sioul.text("health-taken-when")
+                                onClicked: page.window.askDose(missed.modelData.key)
                             }
                             Button {
                                 flat: true
                                 text: page.sioul.text("health-not-taken")
                                 onClicked: {
-                                    page.sioul.setDoseNotTaken(missed.modelData.key)
+                                    page.sioul.doseNotTaken(missed.modelData.key)
                                     page.reload()
                                 }
                             }
@@ -207,13 +205,18 @@ Item {
                         elide: Text.ElideRight
                         color: dose.modelData.past ? page.theme.text : page.theme.muted
                     }
-                    // Taken: when, said plainly; one click takes it back.
+                    // Taken: when, said plainly; one click takes it back. More than
+                    // half an hour late, when it was taken is asked.
                     Button {
                         flat: dose.modelData.taken !== ""
-                        text: dose.modelData.taken !== "" ? page.sioul.textWith("health-taken-at", "time", dose.modelData.taken) : page.sioul.text("health-taken")
+                        text: dose.modelData.taken !== "" ? page.sioul.textWith("health-taken-at", "time", dose.modelData.taken) : page.sioul.text(dose.modelData.late ? "health-taken-when" : "health-taken")
                         icon.name: dose.modelData.taken !== "" ? "task-complete" : ""
                         icon.color: page.theme.text
                         onClicked: {
+                            if (dose.modelData.taken === "" && dose.modelData.late) {
+                                page.window.askDose(dose.modelData.key)
+                                return
+                            }
                             page.sioul.setDoseTaken(dose.modelData.key, dose.modelData.taken === "")
                             page.reload()
                         }
@@ -707,6 +710,7 @@ Item {
                     inputMask: "99:99"
                 }
             }
+
             Label {
                 text: page.sioul.text("health-field-until")
                 color: page.theme.muted

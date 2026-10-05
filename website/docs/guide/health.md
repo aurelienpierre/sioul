@@ -27,11 +27,13 @@ Then **Until** a day, or for as long as it goes; the **Prescription** it comes f
 
 Each dose of the day, with **Taken**. A dose taken says when; one click takes it back. A dose not marked is simply not marked.
 
+**Taken late**: more than half an hour past its time, **Taken…** asks when you took it (now, unless you change it), or lets you say it was not taken. For a medicine taken every few hours, tick **Move the next doses by as much** to keep the hours between two doses: taken an hour late, the next ones come an hour later. Your answer is offered again next time. Taking the mark back puts the doses back.
+
 ### Reminders
 
 One desktop notification per dose, within half an hour of its time, without sound, with **Taken**. Never repeated. Reminders come in quiet time too: they are yours.
 
-If Sioul was closed at the time, a dose of the last twelve hours that was neither marked nor reminded is asked about once: "Did you take …?", with **Taken** and **Not taken**. It is a question about the past, never a reminder to take one now.
+If Sioul was closed at the time, a dose of the last twelve hours that was neither marked nor reminded is asked about on the Porch at the next start, and on this page: with **Taken…** (when you took it) and **Not taken**. It is a question about the past, never a reminder to take one now.
 
 ### On several computers
 

@@ -1394,7 +1394,7 @@ health-every-days = { $days ->
     [2] every other day at { $time }, from { $from }
    *[other] every { $days } days at { $time }, from { $from }
 }
-health-every-hours = every { $hours } hours, from { $from }
+health-every-hours = every { $hours } hours; next: { $next }
 health-next-refill = pharmacy from { $day }
 health-next-renew = renew the prescription from { $day }
 health-no-name = A name is needed.
@@ -2299,6 +2299,13 @@ health-missed-body = Did you take { $doses }?
 health-missed-open = Answer
 health-missed-question = Due while Sioul was closed on all your computers: did you take them?
 health-not-taken = Not taken
+health-taken-when = Taken…
+dose-taken-title = Taken late
+dose-taken-due = { $name }, due at { $due }.
+dose-taken-when = Taken at
+dose-move-next = Move the next doses by as much
+dose-move-next-help = The hours between two doses are kept: taken an hour late, the next ones come an hour later. Your answer is offered again next time.
+dose-time-wrong = A time, as 09:30.
 health-alone = These doses are known to this computer only. If Sioul also runs on another computer, share between them (Settings ▸ Your folder and sharing): a dose marked on one then counts on all, and only the one you are at reminds you.
 health-unchecked = Your other computers were last heard from at { $time }: a dose marked there may not show here yet.
 health-unchecked-yet = Your other computers are not heard from yet: a dose marked there may not show here yet.

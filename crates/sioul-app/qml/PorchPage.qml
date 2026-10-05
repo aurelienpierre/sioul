@@ -23,6 +23,25 @@ Item {
     property var helpShown: ({})
     // What sites notified, kept for the Porch.
     property var siteNotices: JSON.parse(page.sioul.siteNotices() || "[]")
+    // Doses due while Sioul was closed: asked about here, at the next start.
+    property var missedDoses: []
+
+    function reloadDoses() {
+        page.missedDoses = JSON.parse(page.sioul.missedDoses() || "[]")
+    }
+
+    // Read again when the Porch shows, when its mail is sorted again, and each
+    // minute: a dose marked on another computer comes through the sharing.
+    onVisibleChanged: if (page.visible) page.reloadDoses()
+    onViewChanged: page.reloadDoses()
+    Component.onCompleted: page.reloadDoses()
+
+    Timer {
+        interval: 60000
+        running: page.visible
+        repeat: true
+        onTriggered: page.reloadDoses()
+    }
 
     Connections {
         target: page.sioul
@@ -241,6 +260,75 @@ Item {
                                 onClicked: {
                                     page.sioul.setViewFlag("porch-hours-left", true)
                                     hoursCard.leftAsIs = true
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Doses due while Sioul was closed on all your computers: a question on the
+                // past, answered once (when it was taken, in DoseTaken.qml); never a reminder.
+                Panel {
+                    visible: page.missedDoses.length > 0
+                    Layout.fillWidth: true
+                    theme: page.theme
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 6
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: page.sioul.text("health-missed-question")
+                            wrapMode: Text.Wrap
+                            font.weight: Font.DemiBold
+                            color: page.theme.text
+                        }
+                        Repeater {
+                            model: page.missedDoses
+
+                            // The buttons beside the dose, or under it on a phone.
+                            delegate: GridLayout {
+                                id: missedDose
+
+                                required property var modelData
+
+                                Layout.fillWidth: true
+                                columns: page.width < 600 ? 2 : 3
+                                columnSpacing: 12
+                                rowSpacing: 2
+
+                                Label {
+                                    Layout.preferredWidth: 90
+                                    text: missedDose.modelData.time
+                                    textFormat: Text.PlainText
+                                    font.features: { "tnum": 1 }
+                                    color: page.theme.text
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: missedDose.modelData.name + (missedDose.modelData.dose !== "" ? "  ·  " + missedDose.modelData.dose : "")
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    color: page.theme.text
+                                }
+                                RowLayout {
+                                    Layout.columnSpan: page.width < 600 ? 2 : 1
+                                    Layout.alignment: Qt.AlignRight
+                                    spacing: 6
+
+                                    Button {
+                                        text: page.sioul.text("health-taken-when")
+                                        onClicked: page.window.askDose(missedDose.modelData.key)
+                                    }
+                                    Button {
+                                        flat: true
+                                        text: page.sioul.text("health-not-taken")
+                                        onClicked: {
+                                            page.sioul.doseNotTaken(missedDose.modelData.key)
+                                            page.reloadDoses()
+                                        }
+                                    }
                                 }
                             }
                         }
