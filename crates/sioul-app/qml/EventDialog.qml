@@ -26,6 +26,7 @@ Dialog {
     property var links: []
     readonly property var repeats: ["", "daily", "weekly", "monthly", "yearly"]
     readonly property var marginMinutes: [0, 5, 10, 15, 20, 30, 45, 60, 90, 120]
+    readonly property var ratings: [dialog.sioul.text("task-rating-unsaid"), "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
     // Minutes before and after; the three costs and the gain, 0 to 10 or unsaid (null).
     property var around: ({ before: 0, after: 0 })
     property var demands: ({ cognitive: null, emotional: null, anxiety: null, gain: null })
@@ -243,67 +244,78 @@ Dialog {
                 model: dialog.repeats.map(r => dialog.sioul.text("repeat-" + (r || "none")))
             }
             // Getting there and back, getting ready: kept free around it, never a pause.
-            Repeater {
-                model: ["before", "after"]
-
-                delegate: RowLayout {
-                    id: side
-
-                    required property string modelData
-
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Label {
-                        Layout.preferredWidth: 140
-                        text: dialog.sioul.text("task-field-" + side.modelData)
-                        wrapMode: Text.Wrap
-                        color: dialog.theme.muted
-                    }
-                    ComboBox {
-                        Layout.fillWidth: true
-                        model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.minutesText(m))
-                        currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around[side.modelData]))
-                        onActivated: index => {
-                            const margins = Object.assign({}, dialog.around)
-                            margins[side.modelData] = dialog.marginMinutes[index]
-                            dialog.around = margins
-                        }
-                    }
-                }
+            Label {
+                Layout.maximumWidth: 160
+                text: dialog.sioul.text("task-field-before")
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
+            }
+            ComboBox {
+                Layout.fillWidth: true
+                model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.minutesText(m))
+                currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.before))
+                onActivated: index => dialog.around = Object.assign({}, dialog.around, { before: dialog.marginMinutes[index] })
+            }
+            Label {
+                Layout.maximumWidth: 160
+                text: dialog.sioul.text("task-field-after")
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
+            }
+            ComboBox {
+                Layout.fillWidth: true
+                model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.minutesText(m))
+                currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.after))
+                onActivated: index => dialog.around = Object.assign({}, dialog.around, { after: dialog.marginMinutes[index] })
             }
             // What it costs, and what it gives back: 0 to 10 each, as you feel it.
-            Repeater {
-                model: ["cognitive", "emotional", "anxiety", "gain"]
-
-                delegate: RowLayout {
-                    id: rating
-
-                    required property string modelData
-                    readonly property var value: dialog.demands[rating.modelData]
-
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Label {
-                        Layout.preferredWidth: 140
-                        text: dialog.sioul.text("task-field-" + rating.modelData)
-                        wrapMode: Text.Wrap
-                        color: dialog.theme.muted
-                    }
-                    ComboBox {
-                        Layout.fillWidth: true
-                        model: [dialog.sioul.text("task-rating-unsaid"), "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-                        currentIndex: rating.value === null || rating.value === undefined ? 0 : rating.value + 1
-                        onActivated: index => {
-                            const demands = Object.assign({}, dialog.demands)
-                            demands[rating.modelData] = index === 0 ? null : index - 1
-                            dialog.demands = demands
-                        }
-                    }
-                }
+            Label {
+                Layout.maximumWidth: 160
+                text: dialog.sioul.text("task-field-cognitive")
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
+            }
+            ComboBox {
+                Layout.fillWidth: true
+                model: dialog.ratings
+                currentIndex: dialog.demands.cognitive === null || dialog.demands.cognitive === undefined ? 0 : dialog.demands.cognitive + 1
+                onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { cognitive: index === 0 ? null : index - 1 })
+            }
+            Label {
+                Layout.maximumWidth: 160
+                text: dialog.sioul.text("task-field-emotional")
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
+            }
+            ComboBox {
+                Layout.fillWidth: true
+                model: dialog.ratings
+                currentIndex: dialog.demands.emotional === null || dialog.demands.emotional === undefined ? 0 : dialog.demands.emotional + 1
+                onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { emotional: index === 0 ? null : index - 1 })
+            }
+            Label {
+                Layout.maximumWidth: 160
+                text: dialog.sioul.text("task-field-anxiety")
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
+            }
+            ComboBox {
+                Layout.fillWidth: true
+                model: dialog.ratings
+                currentIndex: dialog.demands.anxiety === null || dialog.demands.anxiety === undefined ? 0 : dialog.demands.anxiety + 1
+                onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { anxiety: index === 0 ? null : index - 1 })
+            }
+            Label {
+                Layout.maximumWidth: 160
+                text: dialog.sioul.text("task-field-gain")
+                wrapMode: Text.Wrap
+                color: dialog.theme.muted
+            }
+            ComboBox {
+                Layout.fillWidth: true
+                model: dialog.ratings
+                currentIndex: dialog.demands.gain === null || dialog.demands.gain === undefined ? 0 : dialog.demands.gain + 1
+                onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { gain: index === 0 ? null : index - 1 })
             }
             Label {
                 visible: dialog.calendars.length > 1 && dialog.key === ""

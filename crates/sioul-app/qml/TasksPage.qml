@@ -151,6 +151,11 @@ Item {
             page.opened = page.shown.now.now.uid
     }
 
+    // For the window's pictures: the open task's folded details shown.
+    function showPanelDetails() {
+        taskPanel.moreShown = true
+    }
+
     Shortcut {
         sequence: "Escape"
         enabled: page.visible && page.opened !== ""

@@ -76,6 +76,28 @@ Panel {
             error.text = ""
     }
 
+    readonly property var marginMinutes: [0, 5, 10, 15, 20, 30, 45, 60, 90, 120]
+    readonly property var ratings: [panel.sioul.text("task-rating-unsaid"), "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+
+    // The time kept before or after it, saved.
+    function changeMargin(side, minutes) {
+        const margins = Object.assign({ before: 0, after: 0 }, panel.detail.edit.margins)
+        margins[side] = minutes
+        panel.change("margins", margins)
+    }
+
+    // A cost or the gain: its place in `ratings` (0: unsaid).
+    function ratingIndex(name) {
+        const value = panel.detail && panel.detail.edit.demands ? panel.detail.edit.demands[name] : null
+        return value === null || value === undefined ? 0 : value + 1
+    }
+
+    function changeRating(name, index) {
+        const demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, gain: null }, panel.detail.edit.demands)
+        demands[name] = index === 0 ? null : index - 1
+        panel.change("demands", demands)
+    }
+
     function minutesText(m) {
         if (m === 0)
             return "—"
@@ -512,75 +534,96 @@ Panel {
                     onActivated: index => panel.change("estimate", minutes[index])
                 }
                 // Getting there and back, getting ready: kept free around it, never a pause.
-                Repeater {
-                    model: ["before", "after"]
-
-                    delegate: RowLayout {
-                        id: side
-
-                        required property string modelData
-                        readonly property var minutes: [0, 5, 10, 15, 20, 30, 45, 60, 90, 120]
-                        readonly property int current: panel.detail && panel.detail.edit.margins ? panel.detail.edit.margins[side.modelData] : 0
-
-                        Layout.columnSpan: 2
-                        Layout.fillWidth: true
-                        spacing: 10
-
-                        Label {
-                            text: panel.sioul.text("task-field-" + side.modelData)
-                            color: panel.theme.muted
-                            Layout.preferredWidth: 120
-                            wrapMode: Text.Wrap
-                            opacity: panel.keeps("margins") ? 1 : 0.45
-                        }
-                        ComboBox {
-                            Layout.fillWidth: true
-                            enabled: panel.canEdit && panel.keeps("margins")
-                            opacity: panel.keeps("margins") ? 1 : 0.45
-                            model: side.minutes.map(m => m === 0 ? panel.sioul.text("task-rating-unsaid") : panel.minutesText(m))
-                            currentIndex: Math.max(0, side.minutes.indexOf(side.current))
-                            onActivated: index => {
-                                const margins = Object.assign({ before: 0, after: 0 }, panel.detail.edit.margins)
-                                margins[side.modelData] = side.minutes[index]
-                                panel.change("margins", margins)
-                            }
-                        }
-                    }
+                Label {
+                    text: panel.sioul.text("task-field-before")
+                    color: panel.theme.muted
+                    Layout.maximumWidth: 120
+                    wrapMode: Text.Wrap
+                    opacity: panel.keeps("margins") ? 1 : 0.45
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    enabled: panel.canEdit && panel.keeps("margins")
+                    opacity: panel.keeps("margins") ? 1 : 0.45
+                    model: panel.marginMinutes.map(m => m === 0 ? panel.sioul.text("task-rating-unsaid") : panel.minutesText(m))
+                    currentIndex: panel.detail && panel.detail.edit.margins ? Math.max(0, panel.marginMinutes.indexOf(panel.detail.edit.margins.before)) : 0
+                    onActivated: index => panel.changeMargin("before", panel.marginMinutes[index])
+                }
+                Label {
+                    text: panel.sioul.text("task-field-after")
+                    color: panel.theme.muted
+                    Layout.maximumWidth: 120
+                    wrapMode: Text.Wrap
+                    opacity: panel.keeps("margins") ? 1 : 0.45
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    enabled: panel.canEdit && panel.keeps("margins")
+                    opacity: panel.keeps("margins") ? 1 : 0.45
+                    model: panel.marginMinutes.map(m => m === 0 ? panel.sioul.text("task-rating-unsaid") : panel.minutesText(m))
+                    currentIndex: panel.detail && panel.detail.edit.margins ? Math.max(0, panel.marginMinutes.indexOf(panel.detail.edit.margins.after)) : 0
+                    onActivated: index => panel.changeMargin("after", panel.marginMinutes[index])
                 }
                 // What it costs, and what it gives back: 0 to 10 each, as you feel it; unsaid until said.
-                Repeater {
-                    model: ["cognitive", "emotional", "anxiety", "gain"]
-
-                    delegate: RowLayout {
-                        id: rating
-
-                        required property string modelData
-                        readonly property var value: panel.detail && panel.detail.edit.demands ? panel.detail.edit.demands[rating.modelData] : null
-
-                        Layout.columnSpan: 2
-                        Layout.fillWidth: true
-                        spacing: 10
-
-                        Label {
-                            text: panel.sioul.text("task-field-" + rating.modelData)
-                            color: panel.theme.muted
-                            Layout.preferredWidth: 120
-                            wrapMode: Text.Wrap
-                            opacity: panel.keeps("costs") ? 1 : 0.45
-                        }
-                        ComboBox {
-                            Layout.fillWidth: true
-                            enabled: panel.canEdit && panel.keeps("costs")
-                            opacity: panel.keeps("costs") ? 1 : 0.45
-                            model: [panel.sioul.text("task-rating-unsaid"), "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-                            currentIndex: rating.value === null || rating.value === undefined ? 0 : rating.value + 1
-                            onActivated: index => {
-                                const demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, gain: null }, panel.detail.edit.demands)
-                                demands[rating.modelData] = index === 0 ? null : index - 1
-                                panel.change("demands", demands)
-                            }
-                        }
-                    }
+                Label {
+                    text: panel.sioul.text("task-field-cognitive")
+                    color: panel.theme.muted
+                    Layout.maximumWidth: 120
+                    wrapMode: Text.Wrap
+                    opacity: panel.keeps("costs") ? 1 : 0.45
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    enabled: panel.canEdit && panel.keeps("costs")
+                    opacity: panel.keeps("costs") ? 1 : 0.45
+                    model: panel.ratings
+                    currentIndex: panel.ratingIndex("cognitive")
+                    onActivated: index => panel.changeRating("cognitive", index)
+                }
+                Label {
+                    text: panel.sioul.text("task-field-emotional")
+                    color: panel.theme.muted
+                    Layout.maximumWidth: 120
+                    wrapMode: Text.Wrap
+                    opacity: panel.keeps("costs") ? 1 : 0.45
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    enabled: panel.canEdit && panel.keeps("costs")
+                    opacity: panel.keeps("costs") ? 1 : 0.45
+                    model: panel.ratings
+                    currentIndex: panel.ratingIndex("emotional")
+                    onActivated: index => panel.changeRating("emotional", index)
+                }
+                Label {
+                    text: panel.sioul.text("task-field-anxiety")
+                    color: panel.theme.muted
+                    Layout.maximumWidth: 120
+                    wrapMode: Text.Wrap
+                    opacity: panel.keeps("costs") ? 1 : 0.45
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    enabled: panel.canEdit && panel.keeps("costs")
+                    opacity: panel.keeps("costs") ? 1 : 0.45
+                    model: panel.ratings
+                    currentIndex: panel.ratingIndex("anxiety")
+                    onActivated: index => panel.changeRating("anxiety", index)
+                }
+                Label {
+                    text: panel.sioul.text("task-field-gain")
+                    color: panel.theme.muted
+                    Layout.maximumWidth: 120
+                    wrapMode: Text.Wrap
+                    opacity: panel.keeps("costs") ? 1 : 0.45
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    enabled: panel.canEdit && panel.keeps("costs")
+                    opacity: panel.keeps("costs") ? 1 : 0.45
+                    model: panel.ratings
+                    currentIndex: panel.ratingIndex("gain")
+                    onActivated: index => panel.changeRating("gain", index)
                 }
                 Label {
                     text: panel.sioul.text("task-field-case")
