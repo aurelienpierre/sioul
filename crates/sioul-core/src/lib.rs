@@ -36,6 +36,7 @@ pub mod lookalike;
 pub mod mailindex;
 pub mod maildir;
 pub mod money;
+pub mod needs;
 pub mod notes;
 pub mod payments;
 pub mod pgp;

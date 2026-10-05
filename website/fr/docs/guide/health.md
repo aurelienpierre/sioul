@@ -41,6 +41,20 @@ Seul l’ordinateur où vous êtes vous fait le rappel. Une prise marquée sur l
 
 **Quand Sioul ne peut pas savoir.** Un médicament pris deux fois peut faire du mal : Sioul ne dit donc jamais qu’une prise n’a pas été prise s’il ne le sait pas. Vos appareils échangent par un dossier qu’un autre programme synchronise, parfois en retard : la synchronisation d’un téléphone peut n’apporter les fichiers que toutes les demi-heures. Quand Sioul n’a pas eu de nouvelles d’un de vos appareils depuis l’heure de la prise, qu’une partie de ce qu’il a écrit n’a pas pu être lue, ou que le registre des prises de cet appareil n’a pas pu être lu, il le dit sous la prise, sur le Porche et sur cette page : « Sioul ne peut pas savoir si elle a été prise : votre portable a été entendu pour la dernière fois le lundi 5 octobre à 07:52. Vérifiez avant de la prendre. » Un rappel attend alors quelques minutes des nouvelles, puis vient avec le titre **À vérifier d’abord**. Regardez l’autre appareil, ou votre pilulier, avant de la prendre.
 
+## Repas, repos et sommeil {#meals-rest-and-sleep}
+
+Des heures gardées libres, réglées avant tout travail : Sioul n’y prévoit aucune tâche, et prévoit le reste de la journée autour d’elles.
+
+- **Repas** : trois pour commencer (petit déjeuner, déjeuner, dîner), chacun à l’heure que vous choisissez, avec les minutes pour le préparer et pour manger. **Ajouter un repas ou un en-cas** pour davantage. Si deux repas sont prévus à plus de quatre heures d’écart, c’est dit là, discrètement.
+- **Siestes** : quand, combien de temps, et quelques minutes pour revenir après.
+- **La nuit** : coucher, lever, et le temps de se préparer à dormir.
+
+Nommez chacun comme vous voulez, choisissez ses jours, et coupez ses avis si vous préférez vous en passer : il reste gardé libre.
+
+**Avis** : deux au plus pour chacun, une fois chacun. D’abord, un quart d’heure avant (à votre choix), « Pas de nouvelle grosse tâche » avec son nom et son heure, pour ne pas commencer ce qu’il faudrait quitter, et **Plus tard**, qui le décale d’un quart d’heure, aujourd’hui seulement. Puis un à l’heure. Rien pendant une réunion, rien pour celui marqué **Pas aujourd’hui**, rien quand il passe. Un avis ne montre qu’un nom et une heure.
+
+Rien de ce que vous mangez ni de votre sommeil n’est demandé ni noté : ni comptes, ni historique. La façon de faire suit la recherche sur la manière dont les personnes qui ont du mal à manger veulent être invitées à le faire ([les notes de recherche (en anglais)](https://aurelienpierre.github.io/sioul/dev/research/meal-prompts.html)).
+
 ## Les ordonnances {#prescriptions}
 
 **Ajouter une ordonnance** : ce qu’elle prescrit, qui l’a écrite, jusqu’à quand elle est valable, combien de jours la pharmacie donne à la fois, et la date du dernier retrait.

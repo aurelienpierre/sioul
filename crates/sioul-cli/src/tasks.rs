@@ -135,7 +135,10 @@ pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::qu
     let now = Zoned::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
     let events = sioul_core::agenda::occurrences(midnight, midnight + 28 * 86_400);
-    let mut settings = Settings::of_hours(&s.config.week_hours(), sioul_core::areas::TaskAreas::of_config(&s.config, cases)).with_events(&now, &events);
+    // Meals, naps and the night first: the work goes around them.
+    let needs = sioul_core::health::Health::load(&sioul_core::health::Health::default_path()).needs;
+    let moved = sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), now.date()).shifts;
+    let mut settings = Settings::of_hours(&s.config.week_hours(), sioul_core::areas::TaskAreas::of_config(&s.config, cases)).with_needs(&needs, moved).with_events(&now, &events);
     settings.default_estimate = s.config.tasks.estimate.unwrap_or(settings.default_estimate);
     settings.today_percent = weather.room();
     // As the window plans: how today is says how many heavy tasks it takes.

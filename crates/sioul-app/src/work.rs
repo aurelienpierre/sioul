@@ -113,7 +113,10 @@ fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, cases: &
     let now = Zoned::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
     let events = sioul_core::agenda::occurrences(midnight, midnight + EVENTS_AHEAD);
-    let mut settings = Settings::of_hours(&config.week_hours(), sioul_core::areas::TaskAreas::of_config(&config, cases)).with_events(&now, &events);
+    // Meals, naps and the night first: the work goes around them.
+    let needs = sioul_core::health::Health::load(&sioul_core::health::Health::default_path()).needs;
+    let moved = sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), now.date()).shifts;
+    let mut settings = Settings::of_hours(&config.week_hours(), sioul_core::areas::TaskAreas::of_config(&config, cases)).with_needs(&needs, moved).with_events(&now, &events);
     settings.default_estimate = config.tasks.estimate.unwrap_or(settings.default_estimate);
     settings.today_percent = weather.room();
     settings.heavy_today = weather.heavy();
@@ -266,7 +269,13 @@ fn today_laid_out(desk: &Desk) -> sioul_core::dayview::DayView {
     let next_midnight = now.date().tomorrow().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()).map_or(midnight + 86_400, |z| z.timestamp().as_second());
     let events = sioul_core::agenda::occurrences(midnight, next_midnight);
     let shown: Vec<Task> = desk.loaded.tasks.iter().filter(|t| desk.filter.quiet.as_ref().is_none_or(|q| q.keeps(t))).cloned().collect();
-    sioul_core::dayview::day(&now, &events, &desk.plan, &shown, &desk.settings)
+    let mut day = sioul_core::dayview::day(&now, &events, &desk.plan, &shown, &desk.settings);
+    // Meals and naps without a name of their own: their usual one, in your language.
+    for block in day.blocks.iter_mut().filter(|b| (b.kind == "meal" || b.kind == "nap") && b.title.trim().is_empty()) {
+        let index = block.key.rsplit_once(':').and_then(|(_, i)| i.parse().ok()).unwrap_or(0);
+        block.title = crate::health::usual_name(block.kind, index);
+    }
+    day
 }
 
 /// The routines, as the page lists them: the admin window's first (made from
