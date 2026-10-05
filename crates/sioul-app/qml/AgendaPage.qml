@@ -25,6 +25,8 @@ Item {
     readonly property var shown: page.sioul.agenda ? JSON.parse(page.sioul.agenda) : ({ days: [], sentence: "", from: "" })
     // "agenda", "day", "week", "month".
     property string mode: "agenda"
+    // A narrow screen (a phone): the title under the arrows, events on two lines.
+    readonly property bool narrow: page.width < 600
     readonly property var modes: ["agenda", "day", "week", "month"]
     property var opened: null
     // On a phone, the event open takes the page; Back closes it (main.qml).
@@ -187,6 +189,7 @@ Item {
                     onClicked: page.move(1)
                 }
                 Label {
+                    visible: !page.narrow
                     Layout.fillWidth: true
                     text: page.title()
                     textFormat: Text.PlainText
@@ -194,19 +197,44 @@ Item {
                     elide: Text.ElideRight
                     color: page.theme.text
                 }
-                // The day, the week and the month, one switch away.
+                // The day, the week and the month, one switch away; on a phone,
+                // in the title's room.
                 ComboBox {
-                    Layout.preferredWidth: 150
+                    Layout.fillWidth: page.narrow
+                    Layout.preferredWidth: page.narrow ? -1 : 150
                     model: page.modes.map(m => page.sioul.text("agenda-mode-" + m))
                     currentIndex: page.modes.indexOf(page.mode)
                     onActivated: index => page.mode = page.modes[index]
                 }
                 Button {
                     visible: page.shown.can_add !== false
+                    Layout.preferredWidth: page.narrow ? 40 : -1
                     text: page.sioul.text("ui-new-event")
                     icon.name: "appointment-new"
                     icon.color: page.theme.text
+                    display: page.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
+                    Accessible.name: page.sioul.text("ui-new-event")
                     onClicked: page.newEvent("")
+                }
+                SettingsButton {
+                    visible: !page.narrow
+                    sioul: page.sioul
+                    theme: page.theme
+                    view: "agenda"
+                }
+            }
+            RowLayout {
+                visible: page.narrow
+                Layout.fillWidth: true
+                spacing: 6
+
+                Label {
+                    Layout.fillWidth: true
+                    text: page.title()
+                    textFormat: Text.PlainText
+                    font.pixelSize: 19
+                    wrapMode: Text.Wrap
+                    color: page.theme.text
                 }
                 SettingsButton {
                     sioul: page.sioul
@@ -269,6 +297,7 @@ Item {
                             required property var modelData
 
                             Layout.fillWidth: true
+                            compact: page.narrow
                             event: modelData
                             theme: page.theme
                             selected: page.opened !== null && page.opened.key === modelData.key && page.opened.start === modelData.start

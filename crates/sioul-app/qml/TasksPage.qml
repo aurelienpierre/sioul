@@ -40,6 +40,9 @@ Item {
     property bool showDone: false
     property string query: ""
     property string caseFilter: ""
+    // A narrow screen (a phone): the board's columns one under the other.
+    readonly property bool narrow: page.width < 640
+    readonly property int halfFlow: Math.floor((viewsFlow.width - viewsFlow.spacing) / 2)
     // One kind, one category; "" for all. Kept between sessions, as the choices above.
     readonly property string kindFilter: page.shown && page.shown.view ? page.shown.view.filter.kind : ""
     readonly property string categoryFilter: page.shown && page.shown.view ? page.shown.view.filter.category : ""
@@ -162,6 +165,8 @@ Item {
             // The ways to see tasks, then the filters: on a second line when the
             // window is too narrow for one, never past its edge.
             Flow {
+                id: viewsFlow
+
                 Layout.fillWidth: true
                 spacing: 6
 
@@ -195,7 +200,8 @@ Item {
                 ComboBox {
                     readonly property var choices: [{ id: "", title: page.sioul.text("task-all-cases") }].concat(page.shown ? page.shown.cases : [])
 
-                    width: 200
+                    // On a phone, two choices a line.
+                    width: page.narrow ? page.halfFlow : 200
                     model: choices.map(c => page.theme.plain(c.title))
                     currentIndex: Math.max(0, choices.findIndex(c => c.id === page.caseFilter))
                     onActivated: index => {
@@ -209,7 +215,7 @@ Item {
 
                     readonly property var choices: [{ id: "", label: page.sioul.text("task-filter-all") }].concat(page.shown ? page.shown.kinds : [])
 
-                    width: 190
+                    width: page.narrow ? page.halfFlow : 190
                     model: choices.map(c => page.theme.plain(c.label))
                     currentIndex: Math.max(0, choices.findIndex(c => c.id === page.kindFilter))
                     Accessible.name: page.sioul.text("task-kind")
@@ -222,7 +228,7 @@ Item {
                     readonly property var choices: [""].concat(page.shown ? page.shown.categories : [])
 
                     visible: choices.length > 1
-                    width: 170
+                    width: page.narrow ? page.halfFlow : 170
                     model: choices.map(c => c === "" ? page.sioul.text("task-filter-any-category") : page.theme.plain(c))
                     currentIndex: Math.max(0, choices.findIndex(c => c.toLowerCase() === page.categoryFilter.toLowerCase()))
                     onActivated: index => page.sioul.filterTasks(page.kindFilter, choices[index])
@@ -804,94 +810,117 @@ Item {
                         Layout.fillWidth: true
                         text: page.shown ? page.shown.board.wip : ""
                         textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
                         color: page.theme.muted
                     }
-                    RowLayout {
+                    // Side by side; on a phone, one under the other, the board scrolled whole.
+                    Flickable {
+                        id: board
+
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        spacing: 10
+                        clip: true
+                        contentWidth: width
+                        contentHeight: page.narrow ? boardGrid.implicitHeight : height
+                        interactive: page.narrow && page.dragging === null
+                        boundsBehavior: Flickable.StopAtBounds
 
-                        Repeater {
-                            id: boardColumns
+                        GridLayout {
+                            id: boardGrid
 
-                            model: page.shown ? page.shown.board.columns : []
+                            width: board.width
+                            height: page.narrow ? implicitHeight : board.height
+                            columns: page.narrow ? 1 : Math.max(1, boardColumns.count)
+                            columnSpacing: 10
+                            rowSpacing: 10
 
-                            delegate: Rectangle {
-                                id: column
+                            Repeater {
+                                id: boardColumns
 
-                                required property var modelData
-                                readonly property string columnId: column.modelData.id
-                                readonly property bool target: {
-                                    if (page.dragging === null || column.columnId === "waiting")
-                                        return false
-                                    const local = column.mapFromItem(null, page.dragPoint.x, page.dragPoint.y)
-                                    return local.x >= 0 && local.y >= 0 && local.x <= column.width && local.y <= column.height
-                                }
+                                model: page.shown ? page.shown.board.columns : []
 
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                Layout.preferredWidth: 1
-                                radius: page.theme.radius
-                                color: column.target ? page.theme.surface : "transparent"
-                                border.color: column.target ? page.theme.accent : page.theme.line
+                                delegate: Rectangle {
+                                    id: column
 
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 8
-                                    spacing: 6
-
-                                    Label {
-                                        text: column.modelData.title
-                                        textFormat: Text.PlainText
-                                        font.weight: Font.DemiBold
-                                        color: page.theme.text
+                                    required property var modelData
+                                    readonly property string columnId: column.modelData.id
+                                    readonly property bool target: {
+                                        if (page.dragging === null || column.columnId === "waiting")
+                                            return false
+                                        const local = column.mapFromItem(null, page.dragPoint.x, page.dragPoint.y)
+                                        return local.x >= 0 && local.y >= 0 && local.x <= column.width && local.y <= column.height
                                     }
-                                    ListView {
-                                        id: cards
 
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        clip: true
-                                        spacing: 4
-                                        model: column.modelData.cards
-                                        interactive: page.dragging === null
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: !page.narrow
+                                    Layout.preferredWidth: 1
+                                    Layout.preferredHeight: page.narrow ? columnContent.implicitHeight + 16 : -1
+                                    radius: page.theme.radius
+                                    color: column.target ? page.theme.surface : "transparent"
+                                    border.color: column.target ? page.theme.accent : page.theme.line
 
-                                        delegate: Item {
-                                            id: holder
+                                    ColumnLayout {
+                                        id: columnContent
 
-                                            required property var modelData
+                                        anchors.fill: parent
+                                        anchors.margins: 8
+                                        spacing: 6
 
-                                            width: cards.width
-                                            height: card.implicitHeight
+                                        Label {
+                                            text: column.modelData.title
+                                            textFormat: Text.PlainText
+                                            font.weight: Font.DemiBold
+                                            color: page.theme.text
+                                        }
+                                        ListView {
+                                            id: cards
 
-                                            TaskRow {
-                                                id: card
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: !page.narrow
+                                            // On a phone, every card: the board scrolls, not the column.
+                                            Layout.preferredHeight: page.narrow ? cards.contentHeight : -1
+                                            clip: true
+                                            spacing: 4
+                                            model: column.modelData.cards
+                                            interactive: !page.narrow && page.dragging === null
 
-                                                width: parent.width
-                                                task: holder.modelData
-                                                theme: page.theme
-                                                sioul: page.sioul
-                                                compact: true
-                                                selected: page.opened === holder.modelData.uid
-                                                opacity: page.dragging !== null && page.dragging.uid === holder.modelData.uid ? 0.4 : 1
-                                                onOpen: uid => page.open(uid)
-                                                onMenu: task => taskMenu.show(task)
-                                                onTick: page.tick(holder.modelData)
-                                            }
-                                            DragHandler {
-                                                id: drag
+                                            delegate: Item {
+                                                id: holder
 
-                                                target: null
-                                                enabled: !holder.modelData.read_only
-                                                onActiveChanged: {
-                                                    if (drag.active) {
-                                                        page.dragging = holder.modelData
-                                                    } else {
-                                                        page.dropAt(page.dragPoint, holder.modelData)
-                                                        page.dragging = null
-                                                    }
+                                                required property var modelData
+
+                                                width: cards.width
+                                                height: card.implicitHeight
+
+                                                TaskRow {
+                                                    id: card
+
+                                                    width: parent.width
+                                                    task: holder.modelData
+                                                    theme: page.theme
+                                                    sioul: page.sioul
+                                                    compact: true
+                                                    selected: page.opened === holder.modelData.uid
+                                                    opacity: page.dragging !== null && page.dragging.uid === holder.modelData.uid ? 0.4 : 1
+                                                    onOpen: uid => page.open(uid)
+                                                    onMenu: task => taskMenu.show(task)
+                                                    onTick: page.tick(holder.modelData)
                                                 }
-                                                onCentroidChanged: page.dragPoint = drag.centroid.scenePosition
+                                                DragHandler {
+                                                    id: drag
+
+                                                    target: null
+                                                    enabled: !holder.modelData.read_only
+                                                    onActiveChanged: {
+                                                        if (drag.active) {
+                                                            page.dragging = holder.modelData
+                                                        } else {
+                                                            page.dropAt(page.dragPoint, holder.modelData)
+                                                            page.dragging = null
+                                                        }
+                                                    }
+                                                    onCentroidChanged: page.dragPoint = drag.centroid.scenePosition
+                                                }
                                             }
                                         }
                                     }

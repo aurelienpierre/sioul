@@ -506,7 +506,7 @@ impl Bank {
 
     pub fn save(&self) -> Result<(), String> {
         let mut doc = toml_edit::DocumentMut::new();
-        doc.decor_mut().set_prefix("# Your bank's movements, read from its exports (docs/accounting.md). Kept here only.\n\n");
+        doc.decor_mut().set_prefix("# Your bank's movements, read from its exports (docs/accounting.md). Kept on your devices only.\n\n");
         let date = |d: Date| toml_edit::value(toml_edit::Datetime { date: Some(toml_edit::Date { year: d.year() as u16, month: d.month() as u8, day: d.day() as u8 }), time: None, offset: None });
         let money = |m: Money| toml_edit::value(m.cents() as f64 / 100.0);
         let mut accounts = toml_edit::ArrayOfTables::new();

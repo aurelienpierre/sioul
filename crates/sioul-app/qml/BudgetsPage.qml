@@ -456,8 +456,9 @@ Item {
                             }
                         }
 
-                        // What waits for you: which budget, then add it, or not.
-                        RowLayout {
+                        // What waits for you: which budget, then add it, or not; on
+                        // more lines when the screen is narrow (a phone).
+                        Flow {
                             visible: mailRow.waiting
                             Layout.fillWidth: true
                             spacing: page.theme.gap
@@ -466,7 +467,7 @@ Item {
                                 id: budgetChoice
 
                                 visible: mailRow.modelData.can_add
-                                Layout.preferredWidth: 260
+                                width: Math.min(260, parent.width)
                                 model: page.view ? page.view.choices.map(c => page.theme.plain(c.title)) : []
                                 currentIndex: page.view ? page.view.choices.findIndex(c => c.id === mailRow.modelData.budget) : -1
                                 displayText: currentIndex < 0 ? "…" : currentText
@@ -476,9 +477,6 @@ Item {
                                 enabled: budgetChoice.currentIndex >= 0
                                 text: page.sioul.text("ui-add-line")
                                 onClicked: page.sioul.addMailLine(mailRow.modelData.key, page.view.choices[budgetChoice.currentIndex].id)
-                            }
-                            Item {
-                                Layout.fillWidth: true
                             }
                             Button {
                                 flat: true

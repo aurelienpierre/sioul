@@ -21,6 +21,8 @@ Item {
 
     property var shown: ({ store: false, problem: "", kinds: [], families: [] })
     property string problem: ""
+    // A narrow screen (a phone): a paper's buttons under it.
+    readonly property bool narrow: page.width < 560
     // The paper to show once the page is read: its id.
     property string wanted: ""
     property alias dialog: paperDialog
@@ -155,12 +157,15 @@ Item {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: paperDialog.edit(row.modelData)
                             }
-                            RowLayout {
+                            // Its buttons beside it, or under it on a phone.
+                            GridLayout {
                                 id: rowLayout
 
                                 anchors.fill: parent
                                 anchors.margins: 8
-                                spacing: 10
+                                columns: page.narrow ? 1 : 2
+                                columnSpacing: 10
+                                rowSpacing: 6
 
                                 ColumnLayout {
                                     Layout.fillWidth: true
@@ -193,24 +198,30 @@ Item {
                                         color: page.theme.muted
                                     }
                                 }
-                                Button {
-                                    visible: row.modelData.can_renew && row.attention
-                                    text: page.sioul.text("papers-plan-renewal")
-                                    onClicked: {
-                                        page.problem = page.sioul.planRenewal(row.modelData.id)
-                                        page.reload()
+                                RowLayout {
+                                    visible: (row.modelData.can_renew && row.attention) || row.modelData.renewal !== "" || row.modelData.file_there
+                                    Layout.alignment: Qt.AlignRight
+                                    spacing: 10
+
+                                    Button {
+                                        visible: row.modelData.can_renew && row.attention
+                                        text: page.sioul.text("papers-plan-renewal")
+                                        onClicked: {
+                                            page.problem = page.sioul.planRenewal(row.modelData.id)
+                                            page.reload()
+                                        }
                                     }
-                                }
-                                Button {
-                                    visible: row.modelData.renewal !== ""
-                                    flat: true
-                                    text: page.sioul.text("papers-renewal-planned")
-                                    onClicked: page.window.openTask(row.modelData.renewal)
-                                }
-                                Button {
-                                    visible: row.modelData.file_there
-                                    text: page.sioul.text("ui-open")
-                                    onClicked: Qt.openUrlExternally(page.theme.fileUrl(row.modelData.file))
+                                    Button {
+                                        visible: row.modelData.renewal !== ""
+                                        flat: true
+                                        text: page.sioul.text("papers-renewal-planned")
+                                        onClicked: page.window.openTask(row.modelData.renewal)
+                                    }
+                                    Button {
+                                        visible: row.modelData.file_there
+                                        text: page.sioul.text("ui-open")
+                                        onClicked: Qt.openUrlExternally(page.theme.fileUrl(row.modelData.file))
+                                    }
                                 }
                             }
                         }

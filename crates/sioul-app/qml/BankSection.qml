@@ -29,6 +29,8 @@ ColumnLayout {
     // The accounts whose movements are unfolded.
     property var unfolded: ({})
     readonly property var kindIcons: ({ "bank": "view-bank", "paypal": "view-financial-account", "stripe": "view-financial-account", "other": "view-financial-account-cash" })
+    // A narrow screen (a phone): an account's buttons under its name, a movement's budget under it.
+    readonly property bool narrow: section.width < 560
     property alias accountDialog: accountDialog
     property alias rulesDialog: rulesDialog
     property alias reserveDialog: reserveDialog
@@ -125,9 +127,11 @@ ColumnLayout {
                 anchors.fill: parent
                 spacing: 6
 
-                RowLayout {
+                GridLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    columns: section.narrow ? 2 : 3
+                    columnSpacing: 8
+                    rowSpacing: 0
 
                     Icon {
                         iconName: section.kindIcons[card.modelData.kind] || "view-bank"
@@ -141,24 +145,33 @@ ColumnLayout {
                         elide: Text.ElideRight
                         color: section.theme.text
                     }
-                    Button {
-                        flat: true
-                        text: section.sioul.text("bank-import")
-                        icon.name: "document-import"
-                        onClicked: {
-                            section.importing = card.modelData.id
-                            picker.open()
+                    RowLayout {
+                        Layout.columnSpan: section.narrow ? 2 : 1
+                        spacing: 8
+
+                        // As wide as their names: the style's buttons are 100 pixels at least.
+                        Button {
+                            flat: true
+                            implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                            text: section.sioul.text("bank-import")
+                            icon.name: "document-import"
+                            onClicked: {
+                                section.importing = card.modelData.id
+                                picker.open()
+                            }
                         }
-                    }
-                    Button {
-                        flat: true
-                        text: section.sioul.text("bank-rules")
-                        onClicked: rulesDialog.show(card.modelData)
-                    }
-                    Button {
-                        flat: true
-                        text: section.sioul.text("ui-edit")
-                        onClicked: accountDialog.edit(card.modelData)
+                        Button {
+                            flat: true
+                            implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                            text: section.sioul.text("bank-rules")
+                            onClicked: rulesDialog.show(card.modelData)
+                        }
+                        Button {
+                            flat: true
+                            implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                            text: section.sioul.text("ui-edit")
+                            onClicked: accountDialog.edit(card.modelData)
+                        }
                     }
                 }
                 Label {
@@ -217,7 +230,8 @@ ColumnLayout {
                 Repeater {
                     model: card.open ? card.modelData.movements : []
 
-                    delegate: RowLayout {
+                    // Where it goes, beside it, or below it when the screen is narrow (a phone).
+                    delegate: GridLayout {
                         id: row
 
                         required property var modelData
@@ -225,7 +239,9 @@ ColumnLayout {
 
                         Layout.fillWidth: true
                         Layout.leftMargin: 12
-                        spacing: 8
+                        columns: section.narrow ? 1 : 2
+                        columnSpacing: 8
+                        rowSpacing: 4
 
                         ColumnLayout {
                             Layout.fillWidth: true

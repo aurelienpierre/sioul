@@ -228,30 +228,35 @@ Item {
                         color: page.theme.muted
                     }
 
-                    // How far back mail and the agenda reach.
-                    RowLayout {
+                    // How far back mail and the agenda reach: the choice below the words
+                    // when the screen is narrow (a phone), what it means under both.
+                    Flow {
                         Layout.fillWidth: true
                         spacing: page.theme.gap
 
                         Label {
+                            height: history.height
+                            verticalAlignment: Text.AlignVCenter
                             text: page.sioul.text("ui-history")
                             color: page.theme.text
                         }
                         ComboBox {
+                            id: history
+
                             readonly property var weeks: [1, 2, 4, 13, 26, 52, 0]
 
-                            Layout.preferredWidth: 200
+                            width: 200
                             model: weeks.map(w => page.sioul.text("history-" + w))
                             currentIndex: Math.max(0, weeks.indexOf(page.sioul.historyWeeks()))
                             onActivated: index => page.sioul.setHistory(weeks[index])
                         }
-                        Label {
-                            Layout.fillWidth: true
-                            text: page.sioul.text("ui-history-note")
-                            wrapMode: Text.Wrap
-                            color: page.theme.muted
-                            font.pixelSize: 13
-                        }
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: page.sioul.text("ui-history-note")
+                        wrapMode: Text.Wrap
+                        color: page.theme.muted
+                        font.pixelSize: 13
                     }
 
                     Repeater {
@@ -270,9 +275,15 @@ Item {
                                 anchors.fill: parent
                                 spacing: 10
 
-                                RowLayout {
+                                // Who it is, whole; what its server offers beside it, or
+                                // below it on a narrow screen (a phone).
+                                GridLayout {
+                                    readonly property bool narrow: card.width < 520
+
                                     Layout.fillWidth: true
-                                    spacing: page.theme.gap
+                                    columns: narrow ? 2 : 3
+                                    columnSpacing: page.theme.gap
+                                    rowSpacing: 4
 
                                     Icon {
                                         iconName: "user-identity"
@@ -282,10 +293,12 @@ Item {
                                         text: card.modelData.identity
                                         font.pixelSize: 17
                                         font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
+                                        // An address has no space to break at: anywhere, rather than cut.
+                                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                                         color: page.theme.text
                                     }
                                     Button {
+                                        Layout.columnSpan: parent.narrow ? 2 : 1
                                         visible: card.modelData.identity.indexOf("@") > 0
                                         flat: true
                                         enabled: !page.sioul.scouting
@@ -1087,7 +1100,8 @@ Item {
                 text: page.sioul.text("account-service-" + service.modelData.service) + (service.modelData.rows.length > 0 ? "  ·  " + service.modelData.rows[0].value : "")
                 textFormat: Text.PlainText
                 font.weight: Font.DemiBold
-                elide: Text.ElideRight
+                // Its server, on a second line rather than cut, on a narrow screen.
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 color: service.modelData.enabled ? page.theme.text : page.theme.muted
             }
             Switch {
@@ -1174,19 +1188,25 @@ Item {
                 }
             }
         }
-        RowLayout {
+        // Its rank, then your name and signature: below one another when the screen is narrow.
+        Flow {
             visible: service.modelData.service === "mail" && service.modelData.enabled
+            Layout.fillWidth: true
             Layout.leftMargin: 28
             spacing: page.theme.gap
 
             Label {
+                height: priority.height
+                verticalAlignment: Text.AlignVCenter
                 text: page.sioul.text("account-row-priority")
                 color: page.theme.muted
             }
             ComboBox {
+                id: priority
+
                 readonly property var levels: ["above", "average", "below"]
 
-                Layout.preferredWidth: 220
+                width: 220
                 model: levels.map(level => page.sioul.text("priority-" + level))
                 currentIndex: levels.indexOf(service.modelData.priority)
                 onActivated: index => page.sioul.setPriority(service.modelData.id, levels[index])
@@ -1225,7 +1245,8 @@ Item {
                     Layout.fillWidth: cell.index % 2 === 1
                     text: cell.modelData
                     textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
+                    // A folder's path has no space to break at: anywhere, then.
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                     font.pixelSize: 13
                     color: cell.index % 2 === 0 ? page.theme.muted : page.theme.text
                 }

@@ -407,6 +407,7 @@ Item {
                             Layout.fillWidth: true
                             text: [bill.modelData.number, bill.modelData.date, bill.modelData.total].join("  ·  ")
                             textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
                             color: page.theme.text
                         }
                         CheckBox {

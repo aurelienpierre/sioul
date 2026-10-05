@@ -226,6 +226,24 @@ ColumnLayout {
             }
         }
     }
+    // Projects and budgets, for a notes folder no sync carries (all devices follow).
+    CheckBox {
+        Layout.fillWidth: true
+        checked: panel.status.projects === true
+        text: panel.sioul.text("share-projects")
+        onToggled: {
+            panel.problem = panel.sioul.setShareProjects(checked)
+            panel.reload()
+        }
+    }
+    Label {
+        Layout.fillWidth: true
+        Layout.leftMargin: 28
+        text: panel.sioul.text("share-projects-help")
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: panel.theme.muted
+    }
     Label {
         Layout.fillWidth: true
         text: panel.sioul.text("share-not-shared")

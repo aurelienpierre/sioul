@@ -273,6 +273,7 @@ Item {
                     }
                     Button {
                         flat: true
+                        implicitWidth: implicitContentWidth + leftPadding + rightPadding
                         text: page.sioul.text("ui-edit")
                         onClicked: medicineDialog.edit(medicine.modelData)
                     }
@@ -331,9 +332,12 @@ Item {
                         }
                     }
                     // Fetched at the pharmacy: the next time is counted from today.
+                    // The buttons as wide as their names (the style's are 100
+                    // pixels at least): more room for the dates on a phone.
                     Button {
                         visible: prescription.modelData.refill_days !== undefined
                         flat: true
+                        implicitWidth: implicitContentWidth + leftPadding + rightPadding
                         text: page.sioul.text("health-refilled")
                         onClicked: {
                             const problem = page.sioul.refilled(prescription.modelData.id)
@@ -344,6 +348,7 @@ Item {
                     }
                     Button {
                         flat: true
+                        implicitWidth: implicitContentWidth + leftPadding + rightPadding
                         text: page.sioul.text("ui-edit")
                         onClicked: prescriptionDialog.edit(prescription.modelData)
                     }
@@ -386,7 +391,9 @@ Item {
                 font.weight: Font.DemiBold
                 color: page.theme.text
             }
-            RowLayout {
+            // The minutes under the sentence when the screen is narrow (a phone).
+            Flow {
+                Layout.fillWidth: true
                 spacing: 8
 
                 CheckBox {
@@ -395,6 +402,8 @@ Item {
                     onToggled: page.setting("movement.enabled", checked)
                 }
                 SpinBox {
+                    id: movingMinutes
+
                     from: 10
                     to: 240
                     stepSize: 5
@@ -405,6 +414,8 @@ Item {
                     onValueModified: page.setting("movement.minutes", value)
                 }
                 Label {
+                    height: movingMinutes.height
+                    verticalAlignment: Text.AlignVCenter
                     text: page.sioul.text("health-minutes")
                     color: page.theme.muted
                 }

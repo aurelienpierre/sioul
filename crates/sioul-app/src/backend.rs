@@ -795,6 +795,10 @@ pub mod qobject {
         #[qinvokable]
         fn files_access(self: &Sioul) -> bool;
 
+        /// Projects and budgets travel through the sharing too, or not; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_share_projects(self: Pin<&mut Sioul>, on: bool) -> QString;
+
         /// A folder's own folders, for Sioul's folder browser, as JSON: {"path", "parent", "folders", "readable"}.
         #[qinvokable]
         fn folders_in(self: &Sioul, path: &QString) -> QString;
@@ -1029,6 +1033,10 @@ pub mod qobject {
         /// Real time on or off: every folder of every address fetched each minute, and the Porch open.
         #[qinvokable]
         fn set_realtime_mode(self: Pin<&mut Sioul>, on: bool);
+
+        /// Images of a phone's screen (`SIOUL_GRAB_PHONE`): its size and its layout.
+        #[qinvokable]
+        fn grab_phone(self: &Sioul) -> bool;
 
         /// Which steps the window takes while saving images: `SIOUL_GRAB_STEPS`,
         /// "pages" by default, or "actions" to act on mail and send some (test accounts only).
@@ -3294,6 +3302,14 @@ impl qobject::Sioul {
         QString::from(&json(&crate::share::candidates()))
     }
 
+    fn set_share_projects(self: Pin<&mut Self>, on: bool) -> QString {
+        let problem = crate::share::set_projects(on);
+        if problem.is_empty() {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&problem)
+    }
+
     fn folders_in(&self, path: &QString) -> QString {
         QString::from(&crate::share::folders_in(&path.to_string()))
     }
@@ -3981,11 +3997,15 @@ impl qobject::Sioul {
         show(&self.qt_thread(), &shared);
     }
 
+    fn grab_phone(&self) -> bool {
+        std::env::var_os("SIOUL_GRAB_PHONE").is_some()
+    }
+
     fn grab_steps(&self) -> QString {
         let steps = std::env::var("SIOUL_GRAB_STEPS").unwrap_or_else(|_| "pages".into());
         // The other steps archive, delete and send mail, answer invitations:
-        // against test servers, from the test build only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" {
+        // against test servers, from the test build only. "demo" and "phone" take pictures alone.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" {
             return QString::from(&steps);
         }
         QString::from("pages")
