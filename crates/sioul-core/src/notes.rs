@@ -58,15 +58,29 @@ pub enum NoteKind {
 }
 
 /// The kind of a file by its extension; None for files the vault leaves out.
+/// Text notes are Markdown, whether named `.md` (Obsidian's way) or `.txt`
+/// (Nextcloud Notes' default, Markdown all the same).
 pub fn kind_of_file(name: &str) -> Option<NoteKind> {
     let extension = name.rsplit_once('.')?.1.to_lowercase();
     Some(match extension.as_str() {
-        "md" => NoteKind::Text,
+        "md" | "txt" => NoteKind::Text,
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" => NoteKind::Image,
         "pdf" => NoteKind::Pdf,
         "mp3" | "ogg" | "oga" | "opus" | "m4a" | "aac" | "wav" | "flac" | "webm" | "3gp" | "amr" => NoteKind::Audio,
         _ => return None,
     })
+}
+
+/// A text note's name without its extension: "letters.md" and "letters.txt"
+/// both give "letters"; any other name is given back as it is.
+pub fn text_stem(name: &str) -> &str {
+    for extension in [".md", ".txt"] {
+        let cut = name.len().saturating_sub(extension.len());
+        if name.len() > extension.len() && name.is_char_boundary(cut) && name[cut..].eq_ignore_ascii_case(extension) {
+            return &name[..cut];
+        }
+    }
+    name
 }
 
 /// One note, as the index knows it.
@@ -94,10 +108,10 @@ impl Note {
         uri_of(&self.path)
     }
 
-    /// Its file name without ".md".
+    /// Its file name without ".md" or ".txt".
     pub fn stem(&self) -> &str {
         let name = self.path.rsplit('/').next().unwrap_or(&self.path);
-        name.strip_suffix(".md").unwrap_or(name)
+        text_stem(name)
     }
 
     /// Its folder in the vault, "" at the root.
@@ -144,7 +158,7 @@ pub fn rename(vault: &Vault, path: &str, name: &str) -> Result<(String, Vec<Stri
     let note = vault.note(path).ok_or_else(|| format!("{path}: no such note"))?;
     let clean: String = name.trim().chars().filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '#' | '^' | '[' | ']') && !c.is_control()).collect();
     // Nothing hidden: a name starting with a dot would take the note out of the list.
-    let clean = clean.trim().trim_start_matches('.').trim_end_matches(".md").trim().to_string();
+    let clean = text_stem(clean.trim().trim_start_matches('.')).trim().to_string();
     if clean.is_empty() {
         return Err(format!("{path}: a note needs a name"));
     }
@@ -162,7 +176,7 @@ pub fn rename(vault: &Vault, path: &str, name: &str) -> Result<(String, Vec<Stri
     std::fs::rename(vault.root.join(path), vault.root.join(&new_path)).map_err(|e| format!("{path}: {e}"))?;
     // The ways other notes name it, and what they say now.
     let old_name = path.rsplit('/').next().unwrap_or(path);
-    let old_stem = if note.kind == NoteKind::Text { old_name.trim_end_matches(".md") } else { old_name };
+    let old_stem = if note.kind == NoteKind::Text { text_stem(old_name) } else { old_name };
     let new_stem = if note.kind == NoteKind::Text { clean.as_str() } else { file.as_str() };
     let mut changed = Vec::new();
     for other in vault.notes.iter().filter(|n| n.kind == NoteKind::Text && n.path != path) {
@@ -172,7 +186,7 @@ pub fn rename(vault: &Vault, path: &str, name: &str) -> Result<(String, Vec<Stri
             (format!("[[{old_stem}]]"), format!("[[{new_stem}]]")),
             (format!("[[{old_stem}|"), format!("[[{new_stem}|")),
             (format!("[[{old_stem}#"), format!("[[{new_stem}#")),
-            (format!("[[{}]]", path.trim_end_matches(".md")), format!("[[{}]]", new_path.trim_end_matches(".md"))),
+            (format!("[[{}]]", text_stem(path)), format!("[[{}]]", text_stem(&new_path))),
             (uri_of(path), uri_of(&new_path)),
             (format!("]({})", encode_path(&relative(other.folder(), path))), format!("]({})", encode_path(&relative(other.folder(), &new_path)))),
             (format!("](<{}>)", relative(other.folder(), path)), format!("](<{}>)", relative(other.folder(), &new_path))),
@@ -242,8 +256,8 @@ pub fn rename_folder(vault: &Vault, path: &str, name: &str) -> Result<(String, V
         let mut next = text.clone();
         for (from, to) in &moved {
             for (old, new) in [
-                (format!("[[{}]]", from.trim_end_matches(".md")), format!("[[{}]]", to.trim_end_matches(".md"))),
-                (format!("[[{}|", from.trim_end_matches(".md")), format!("[[{}|", to.trim_end_matches(".md"))),
+                (format!("[[{}]]", text_stem(from)), format!("[[{}]]", text_stem(to))),
+                (format!("[[{}|", text_stem(from)), format!("[[{}|", text_stem(to))),
                 (uri_of(from), uri_of(to)),
                 (format!("]({})", encode_path(&relative(other.folder(), from))), format!("]({})", encode_path(&relative(other.folder(), to)))),
             ] {
@@ -669,20 +683,20 @@ impl Vault {
         }
         let decoded = decode(target);
         let joined = normalize(&if folder.is_empty() { decoded.clone() } else { format!("{folder}/{decoded}") })?;
-        let candidates = [joined.clone(), format!("{joined}.md")];
+        let candidates = [joined.clone(), format!("{joined}.md"), format!("{joined}.txt")];
         candidates.into_iter().find(|c| self.notes.iter().any(|n| &n.path == c))
     }
 
     /// Obsidian's rule for `[[name]]`: a path that ends with it, the same
     /// folder first, then the shortest path; an alias otherwise.
     fn by_name(&self, folder: &str, name: &str) -> Option<String> {
-        let wanted = name.trim().trim_end_matches(".md").to_lowercase();
+        let wanted = text_stem(name.trim()).to_lowercase();
         if wanted.is_empty() {
             return None;
         }
         let matches = |n: &&Note| {
             let path = n.path.to_lowercase();
-            let path = path.strip_suffix(".md").unwrap_or(&path);
+            let path = text_stem(&path);
             path == wanted || path.ends_with(&format!("/{wanted}"))
         };
         let mut found: Vec<&Note> = self.notes.iter().filter(matches).collect();
@@ -808,14 +822,15 @@ pub fn file_name(title: &str) -> String {
 /// Writes a note next to its place, then moves it in.
 pub fn write(root: &Path, path: &str, text: &str) -> Result<PathBuf, String> {
     let relative = normalize(path).ok_or_else(|| format!("{path}: outside the notes"))?;
-    if !relative.to_lowercase().ends_with(".md") {
+    if kind_of_file(&relative) != Some(NoteKind::Text) {
         return Err(format!("{path}: not a Markdown file"));
     }
     let target = root.join(&relative);
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
-    let temporary = target.with_extension("md.new");
+    let extension = target.extension().and_then(|e| e.to_str()).unwrap_or("md");
+    let temporary = target.with_extension(format!("{extension}.new"));
     std::fs::write(&temporary, text).map_err(|e| format!("{}: {e}", temporary.display()))?;
     std::fs::rename(&temporary, &target).map_err(|e| format!("{}: {e}", target.display()))?;
     Ok(target)
@@ -1042,10 +1057,16 @@ mod tests {
         std::fs::write(dir.join("scan.png"), &png).unwrap();
         std::fs::write(dir.join("memos/memo.ogg"), b"OggS").unwrap();
         std::fs::write(dir.join("form.pdf"), b"%PDF-1.7").unwrap();
-        std::fs::write(dir.join("notes.txt"), "left out").unwrap();
+        // Nextcloud Notes writes `.txt` by default: Markdown all the same.
+        std::fs::write(dir.join("shopping.txt"), "Shopping\n\n- [ ] bread\n").unwrap();
+        std::fs::write(dir.join("data.csv"), "left out").unwrap();
         let vault = Vault::open(&dir);
         let kinds: Vec<(&str, NoteKind)> = vault.notes.iter().map(|n| (n.path.as_str(), n.kind)).collect();
-        assert_eq!(kinds, vec![("form.pdf", NoteKind::Pdf), ("memos/memo.ogg", NoteKind::Audio), ("plan.md", NoteKind::Text), ("scan.png", NoteKind::Image)]);
+        assert_eq!(kinds, vec![("form.pdf", NoteKind::Pdf), ("memos/memo.ogg", NoteKind::Audio), ("plan.md", NoteKind::Text), ("scan.png", NoteKind::Image), ("shopping.txt", NoteKind::Text)]);
+        assert_eq!(vault.note("shopping.txt").map(|n| n.stem()), Some("shopping"));
+        assert_eq!(vault.resolve("", "wiki:shopping").as_deref(), Some("shopping.txt"));
+        assert!(write(&dir, "shopping.txt", "Shopping\n\n- [x] bread\n").is_ok(), "a .txt note is written back as it is");
+        assert!(write(&dir, "data.csv", "x").is_err());
         assert_eq!(vault.note("memos/memo.ogg").map(|n| n.title.as_str()), Some("memo"));
         assert_eq!(image_size(&dir.join("scan.png")), Some((1200, 300)));
         let body = vault.with_links("", "![[scan.png]] and [[memo.ogg]]");

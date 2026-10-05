@@ -1340,13 +1340,15 @@ pub(crate) fn text_stamp(text: &str) -> String {
 /// copies, the same whatever the language (`share::conflict_name`).
 fn conflict_path(root: &Path, path: &str) -> String {
     let (folder, name) = path.rsplit_once('/').map_or(("", path), |(folder, name)| (folder, name));
-    let stem = name.strip_suffix(".md").unwrap_or(name);
+    let stem = notes::text_stem(name);
+    // Its own extension kept: a Nextcloud Notes ".txt" stays one.
+    let extension = &name[stem.len()..];
     let named = sioul_sync::share::conflict_name(stem, Zoned::now().timestamp().as_millisecond());
     let join = |file: String| if folder.is_empty() { file } else { format!("{folder}/{file}") };
-    let mut candidate = join(format!("{named}.md"));
+    let mut candidate = join(format!("{named}{extension}"));
     let mut n = 2;
     while root.join(&candidate).exists() {
-        candidate = join(format!("{named} {n}.md"));
+        candidate = join(format!("{named} {n}{extension}"));
         n += 1;
     }
     candidate
@@ -1839,6 +1841,7 @@ mod tests {
         let second = conflict_path(&root, "admin/Plan.md");
         assert!(second != first && second.ends_with(" 2.md"), "{second}");
         assert!(!conflict_path(&root, "Top.md").contains('/'));
+        assert!(conflict_path(&root, "Shopping.txt").ends_with(".txt"), "a Nextcloud Notes note keeps its extension");
         let _ = std::fs::remove_dir_all(&root);
     }
 }
