@@ -1323,7 +1323,8 @@ mod tests {
 
         // Without the choice, a notes folder stays home.
         let laptop = Computer::new(&base, "laptop");
-        laptop.write("config/config.toml", &format!("case_store = \"{}\"\n", base.join("laptop-notes").display()));
+        // A literal string: a Windows path's backslashes are no escapes.
+        laptop.write("config/config.toml", &format!("case_store = '{}'\n", base.join("laptop-notes").display()));
         let config: Config = toml::from_str(&laptop.read("config/config.toml")).unwrap();
         assert!(stores(&config, &laptop.roots).iter().all(|s| !s.name.starts_with("notes/")));
         let _ = std::fs::remove_dir_all(&base);
