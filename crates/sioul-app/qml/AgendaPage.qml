@@ -167,6 +167,68 @@ Item {
             Layout.preferredWidth: page.opened === null ? columns.width : Math.round((columns.width - columns.spacing) * 0.6)
             spacing: 8
 
+            // Two events at once in the next two weeks, the time to get there and
+            // back counted: said above the agenda until you say to leave it.
+            ColumnLayout {
+                id: overlapsList
+
+                property var rows: []
+
+                function reload() {
+                    overlapsList.rows = JSON.parse(page.sioul.overlaps(14) || "[]")
+                }
+
+                visible: overlapsList.rows.length > 0
+                Layout.fillWidth: true
+                spacing: 4
+                Component.onCompleted: overlapsList.reload()
+
+                Connections {
+                    target: page
+
+                    function onShownChanged() {
+                        overlapsList.reload()
+                    }
+                    function onVisibleChanged() {
+                        if (page.visible)
+                            overlapsList.reload()
+                    }
+                }
+
+                Repeater {
+                    model: overlapsList.rows
+
+                    delegate: RowLayout {
+                        id: clash
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: {
+                                const one = e => e.title + " (" + e.from + "–" + e.to + ")"
+                                const day = new Date(clash.modelData.day + "T12:00:00").toLocaleDateString(page.locale, "dddd d MMMM")
+                                return page.sioul.textArgs("overlap-day", JSON.stringify({ day: day, first: one(clash.modelData.first), second: one(clash.modelData.second) }))
+                            }
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: page.theme.text
+                        }
+                        Button {
+                            flat: true
+                            text: page.sioul.text("overlap-set-aside")
+                            onClicked: {
+                                page.sioul.setOverlapAside(clash.modelData.key)
+                                overlapsList.reload()
+                            }
+                        }
+                    }
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 6

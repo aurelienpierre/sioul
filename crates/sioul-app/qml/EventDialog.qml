@@ -2,7 +2,9 @@
 // Copyright © 2026 Aurélien Pierre
 
 // An event's form: the title, whole days or hours, when, where; folded
-// underneath, notes, how it repeats, and the calendar when there are several.
+// underneath, notes, how it repeats, the time kept before and after it
+// (getting there, getting ready, coming back), what it costs and gives back,
+// and the calendar when there are several.
 
 pragma ComponentBehavior: Bound
 
@@ -23,11 +25,19 @@ Dialog {
     // What a new event is made from: links it carries ("mid:…", "sioul:task/…").
     property var links: []
     readonly property var repeats: ["", "daily", "weekly", "monthly", "yearly"]
+    readonly property var marginMinutes: [0, 5, 10, 15, 20, 30, 45, 60, 90, 120]
+    // Minutes before and after; the three costs and the gain, 0 to 10 or unsaid (null).
+    property var around: ({ before: 0, after: 0 })
+    property var demands: ({ cognitive: null, emotional: null, anxiety: null, gain: null })
 
     signal saved
 
     function pad(n) {
         return n < 10 ? "0" + n : String(n)
+    }
+
+    function minutesText(m) {
+        return m < 60 ? m + " min" : Math.floor(m / 60) + " h" + (m % 60 ? " " + dialog.pad(m % 60) : "")
     }
 
     // Opens on an event, or on a new one on `day` ("2026-10-05"), at `hour` or the next full hour.
@@ -51,7 +61,9 @@ Dialog {
             endTime.text = e.all_day ? "10:00" : e.end.slice(11, 16)
             repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(e.repeat))
             calendar.currentIndex = Math.max(0, dialog.calendars.findIndex(c => c.id === found.calendar))
-            dialog.moreShown = e.notes !== "" || e.repeat !== ""
+            dialog.around = Object.assign({ before: 0, after: 0 }, e.margins)
+            dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, gain: null }, e.demands)
+            dialog.moreShown = e.notes !== "" || e.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0
         } else {
             const now = new Date()
             hour = hour === undefined || hour < 0 ? Math.min(now.getHours() + 1, 23) : hour
@@ -65,6 +77,8 @@ Dialog {
             endTime.text = dialog.pad(Math.min(hour + 1, 23)) + ":" + (hour === 23 ? "59" : "00")
             repeat.currentIndex = 0
             calendar.currentIndex = 0
+            dialog.around = { before: 0, after: 0 }
+            dialog.demands = { cognitive: null, emotional: null, anxiety: null, gain: null }
             dialog.moreShown = false
         }
         dialog.open()
@@ -111,6 +125,8 @@ Dialog {
             end: allDay.checked ? endDay.date : endDay.date + "T" + endTime.text,
             all_day: allDay.checked,
             repeat: dialog.repeats[repeat.currentIndex],
+            margins: dialog.around,
+            demands: dialog.demands,
             links: dialog.links
         }
     }
@@ -225,6 +241,69 @@ Dialog {
 
                 Layout.fillWidth: true
                 model: dialog.repeats.map(r => dialog.sioul.text("repeat-" + (r || "none")))
+            }
+            // Getting there and back, getting ready: kept free around it, never a pause.
+            Repeater {
+                model: ["before", "after"]
+
+                delegate: RowLayout {
+                    id: side
+
+                    required property string modelData
+
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Label {
+                        Layout.preferredWidth: 140
+                        text: dialog.sioul.text("task-field-" + side.modelData)
+                        wrapMode: Text.Wrap
+                        color: dialog.theme.muted
+                    }
+                    ComboBox {
+                        Layout.fillWidth: true
+                        model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.minutesText(m))
+                        currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around[side.modelData]))
+                        onActivated: index => {
+                            const margins = Object.assign({}, dialog.around)
+                            margins[side.modelData] = dialog.marginMinutes[index]
+                            dialog.around = margins
+                        }
+                    }
+                }
+            }
+            // What it costs, and what it gives back: 0 to 10 each, as you feel it.
+            Repeater {
+                model: ["cognitive", "emotional", "anxiety", "gain"]
+
+                delegate: RowLayout {
+                    id: rating
+
+                    required property string modelData
+                    readonly property var value: dialog.demands[rating.modelData]
+
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Label {
+                        Layout.preferredWidth: 140
+                        text: dialog.sioul.text("task-field-" + rating.modelData)
+                        wrapMode: Text.Wrap
+                        color: dialog.theme.muted
+                    }
+                    ComboBox {
+                        Layout.fillWidth: true
+                        model: [dialog.sioul.text("task-rating-unsaid"), "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+                        currentIndex: rating.value === null || rating.value === undefined ? 0 : rating.value + 1
+                        onActivated: index => {
+                            const demands = Object.assign({}, dialog.demands)
+                            demands[rating.modelData] = index === 0 ? null : index - 1
+                            dialog.demands = demands
+                        }
+                    }
+                }
             }
             Label {
                 visible: dialog.calendars.length > 1 && dialog.key === ""

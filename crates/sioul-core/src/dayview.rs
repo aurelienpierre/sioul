@@ -25,7 +25,7 @@ pub struct Block {
     /// Unix seconds.
     pub start: i64,
     pub end: i64,
-    /// "event", "task", "meal", "nap".
+    /// "event", "task", "meal", "nap", "margin" (getting there and back, getting ready).
     pub kind: &'static str,
     pub title: String,
     /// A task's UID, an event's file.
@@ -144,6 +144,13 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         // An event from yesterday evening, or of several days, shows its part of today.
         let (start, end) = (event.start.max(midnight), event.end.max(event.start + 15 * 60).min(day_end));
         view.blocks.push(Block { start, end, kind: "event", title: event.summary.clone(), key: event.key.clone(), energy: String::new(), location: event.location.clone(), column: 0, columns: 1, part: 0 });
+        // Its margins, shown apart: getting there and back is not the event, nor a pause.
+        let margin = |from: i64, to: i64| Block { start: from.max(midnight), end: to.min(day_end), kind: "margin", title: event.summary.clone(), key: event.key.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0 };
+        for block in [margin(start - i64::from(event.margins.before) * 60, start), margin(end, end + i64::from(event.margins.after) * 60)] {
+            if block.end > block.start {
+                view.blocks.push(block);
+            }
+        }
     }
     // Meals and naps, kept free (`needs`): shown, a step never laid over them.
     // The night is kept free too, but not drawn: the day would run from midnight.
@@ -195,7 +202,8 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         // A step up to an hour in one go, in the first gap that holds it; a longer
         // one (or one the plan already cut) from the first gap on, in parts of a
         // quarter of an hour at least.
-        let cut = planned.left > WHOLE || planned.on_start < planned.left.max(SHORTEST);
+        // Never cut when it has margins: going there twice is not the same step.
+        let cut = task.margins.is_empty() && (planned.left > WHOLE || planned.on_start < planned.left.max(SHORTEST));
         let pieces: Vec<(i64, i64)> = if cut {
             let (mut pieces, mut owed, shortest) = (Vec::new(), length, i64::from(SHORTEST) * 60);
             for &(from, to) in &free {
@@ -223,7 +231,17 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         }
         let count = pieces.len();
         for (k, &(from, to)) in pieces.iter().enumerate() {
-            view.blocks.push(Block { start: from, end: to, kind: "task", title: task.title.clone(), key: task.uid.clone(), energy: task.energy.clone(), location: task.location.clone(), column: 0, columns: 1, part: if count > 1 { k as u32 + 1 } else { 0 } });
+            // Its margins at both ends, shown apart: getting there and back is not the step, nor a pause.
+            let (before, after) = (i64::from(task.margins.before) * 60, i64::from(task.margins.after) * 60);
+            let (inner_from, inner_to) = if to - from > before + after { (from + before, to - after) } else { (from, to) };
+            let block = |start: i64, end: i64, kind: &'static str| Block { start, end, kind, title: task.title.clone(), key: task.uid.clone(), energy: task.energy.clone(), location: task.location.clone(), column: 0, columns: 1, part: if count > 1 { k as u32 + 1 } else { 0 } };
+            if inner_from > from {
+                view.blocks.push(block(from, inner_from, "margin"));
+            }
+            view.blocks.push(block(inner_from, inner_to, "task"));
+            if to > inner_to {
+                view.blocks.push(block(inner_to, to, "margin"));
+            }
             busy.push((from, to + pause));
         }
         laid.insert(uid, pieces.last().map_or(0, |p| p.1));
@@ -401,6 +419,24 @@ mod tests {
         let view = laid_out(&at("2026-10-06T08:00"), &[], &[conference], &[]);
         let midnight = at("2026-10-06T00:00").timestamp().as_second();
         assert_eq!((view.blocks[0].start, view.blocks[0].end, view.from, view.to), (midnight, midnight + 86_400, midnight, midnight + 86_400));
+    }
+
+    #[test]
+    fn margins_kept_free_and_shown() {
+        // The dentist 10–11, half an hour to get there, 20 minutes back; posting a
+        // parcel, 30 minutes and a quarter of an hour each way: not before, there is no room.
+        let now = at("2026-10-05T09:00");
+        let hours = vec![window("monday", "09:00", "13:00", "work")];
+        let margins = |before, after| crate::demands::Margins { before, after };
+        let dentist = Occurrence { key: "d.ics".into(), summary: "Dentist".into(), start: at("2026-10-05T10:00").timestamp().as_second(), end: at("2026-10-05T11:00").timestamp().as_second(), margins: margins(30, 20), ..Occurrence::default() };
+        let parcel = Task { margins: margins(15, 15), ..task("parcel", 30, "") };
+        let view = laid_out(&now, &hours, &[dentist], &[parcel]);
+        let pause = i64::from(crate::plan::PAUSE);
+        let kinds: Vec<(&str, &str, i64)> = view.blocks.iter().map(|b| (b.kind, b.title.as_str(), (b.start - at("2026-10-05T00:00").timestamp().as_second()) / 60)).collect();
+        assert_eq!(
+            kinds,
+            vec![("margin", "Dentist", 570), ("event", "Dentist", 600), ("margin", "Dentist", 660), ("margin", "parcel", 680 + pause), ("task", "parcel", 695 + pause), ("margin", "parcel", 725 + pause)]
+        );
     }
 
     #[test]

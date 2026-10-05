@@ -102,6 +102,8 @@ From a message, a sender becomes a contact in one right click, and a contact's p
 | Edit, delete, duplicate, move to another calendar | one step | right click |
 | Invitations by mail (`.ics`, iMIP): add, accept, decline | in view | in the message that brings them |
 | Several calendars, their colours | one step | a filter, folded |
+| Time kept before and after an event (getting there, getting ready, coming back), what it costs and gives back | one step | under "More"; kept free in the plan, shown apart in the day ([tasks.md](tasks.md)) |
+| Two events at once, the time to get there and back counted | in view | today's on the Porch, the next two weeks' above the agenda; each said until you open one to move it or say "Don't mention it again" (kept on this device, `overlaps-set-aside.toml`); an event moved is a new question |
 | Tasks (VTODO) with their links (RFC 9253) | in view | their own place, "Tasks" ([tasks.md](tasks.md)) |
 
 Recurrences are expanded for display (RFC 5545 §3.3.10); times are kept with their time zone and shown in yours.

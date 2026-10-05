@@ -313,6 +313,7 @@ fn main() -> ExitCode {
                 location: location.unwrap_or_default(),
                 repeat: repeat.unwrap_or_default(),
                 notes: String::new(),
+                ..sioul_core::agenda::EventEdit::default()
             };
             dav::new_event(&session, &edit)
         }

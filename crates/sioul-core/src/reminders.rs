@@ -450,6 +450,7 @@ mod tests {
             attendees: vec![],
             read_only: false,
             alarms,
+            ..Occurrence::default()
         }
     }
 

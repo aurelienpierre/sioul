@@ -115,7 +115,8 @@ fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, cases: &
     let events = sioul_core::agenda::occurrences(midnight, midnight + EVENTS_AHEAD);
     // Meals, naps and the night first: the work goes around them.
     let needs = sioul_core::health::Health::load(&sioul_core::health::Health::default_path()).needs;
-    let moved = sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), now.date()).shifts;
+    // Your moves, and each meal pushed past the events it would fall in.
+    let moved = needs.past_events(now.date(), now.time_zone(), &sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), now.date()).shifts, &sioul_core::plan::event_spans(&events, 0));
     let mut settings = Settings::of_hours(&config.week_hours(), sioul_core::areas::TaskAreas::of_config(&config, cases)).with_needs(&needs, moved).with_events(&now, &events);
     settings.default_estimate = config.tasks.estimate.unwrap_or(settings.default_estimate);
     settings.today_percent = weather.room();

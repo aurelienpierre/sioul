@@ -52,7 +52,7 @@ pub fn task_fields_lost(provider: Provider, is_step: bool) -> Vec<&'static str> 
     if provider != Provider::GoogleTasks {
         return Vec::new();
     }
-    let mut lost = vec!["start", "estimate", "case", "kind", "office", "categories", "billable", "energy", "repeat", "waits"];
+    let mut lost = vec!["start", "estimate", "case", "kind", "office", "categories", "billable", "energy", "repeat", "waits", "margins", "costs"];
     if is_step {
         lost.push("steps");
     }
@@ -89,6 +89,8 @@ pub fn task_losses(task: &Task, to: Provider) -> Vec<&'static str> {
     add(!task.categories.is_empty(), "categories");
     add(task.billable.is_some(), "billable");
     add(!task.energy.is_empty(), "energy");
+    add(!task.margins.is_empty(), "margins");
+    add(task.demands != crate::demands::Demands::default(), "costs");
     lost
 }
 

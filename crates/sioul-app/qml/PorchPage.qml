@@ -274,6 +274,86 @@ Item {
                     window: page.window
                 }
 
+                // Two events at once today, the time to get there and back counted:
+                // said here until you open one to move it, or say to leave it.
+                Panel {
+                    id: overlapsCard
+
+                    property var rows: []
+
+                    function reload() {
+                        overlapsCard.rows = JSON.parse(page.sioul.overlaps(1) || "[]").filter(o => o.today)
+                    }
+
+                    visible: overlapsCard.rows.length > 0
+                    Layout.fillWidth: true
+                    theme: page.theme
+                    Component.onCompleted: overlapsCard.reload()
+
+                    Connections {
+                        target: page
+
+                        function onVisibleChanged() {
+                            if (page.visible)
+                                overlapsCard.reload()
+                        }
+                        function onViewChanged() {
+                            overlapsCard.reload()
+                        }
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 6
+
+                        Repeater {
+                            model: overlapsCard.rows
+
+                            delegate: ColumnLayout {
+                                id: overlap
+
+                                required property var modelData
+
+                                Layout.fillWidth: true
+                                spacing: 4
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: page.sioul.textArgs("overlap-today", JSON.stringify({ first: overlap.modelData.first.title + " (" + overlap.modelData.first.from + "–" + overlap.modelData.first.to + ")", second: overlap.modelData.second.title + " (" + overlap.modelData.second.from + "–" + overlap.modelData.second.to + ")" }))
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    color: page.theme.text
+                                }
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Repeater {
+                                        model: [overlap.modelData.first, overlap.modelData.second]
+
+                                        delegate: Button {
+                                            id: openOne
+
+                                            required property var modelData
+
+                                            text: page.sioul.textWith("overlap-open", "title", openOne.modelData.title)
+                                            onClicked: page.window.openThing({ kind: "event", key: openOne.modelData.key, uri: "" })
+                                        }
+                                    }
+                                    Button {
+                                        flat: true
+                                        text: page.sioul.text("overlap-set-aside")
+                                        onClicked: {
+                                            page.sioul.setOverlapAside(overlap.modelData.key)
+                                            overlapsCard.reload()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Doses due while Sioul was closed on all your computers: a question on the
                 // past, answered once (when it was taken, in DoseTaken.qml); never a reminder.
                 Panel {

@@ -146,11 +146,16 @@ pub fn less(stretches: &[(i64, i64, Area)], busy: &[(i64, i64)]) -> Vec<(i64, i6
     out
 }
 
-/// The time events hold, a pause before and after each: timed ones, not
+/// The time events hold: their margins (getting there and back, getting
+/// ready: `demands`), then a pause before and after; timed ones, not
 /// cancelled; shorter than a quarter of an hour, a quarter of an hour.
 pub fn event_spans(events: &[Occurrence], pause: u32) -> Vec<(i64, i64)> {
     let pause = i64::from(pause) * 60;
-    events.iter().filter(|e| !e.cancelled && !e.all_day).map(|e| (e.start - pause, e.end.max(e.start + 15 * 60) + pause)).collect()
+    events
+        .iter()
+        .filter(|e| !e.cancelled && !e.all_day)
+        .map(|e| (e.start - i64::from(e.margins.before) * 60 - pause, e.end.max(e.start + 15 * 60) + i64::from(e.margins.after) * 60 + pause))
+        .collect()
 }
 
 /// How much room the days have for tasks: your hours, each for what it is for.
@@ -631,7 +636,8 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                 return 5;
             }
             let estimate = if tasks[i].estimate > 0 { tasks[i].estimate } else { settings.default_estimate };
-            estimate.saturating_sub(spent.get(&tasks[i].uid).copied().unwrap_or(0)).max(5)
+            // Getting there and back, getting ready: room taken too, never a pause.
+            estimate.saturating_sub(spent.get(&tasks[i].uid).copied().unwrap_or(0)).max(5) + tasks[i].margins.before + tasks[i].margins.after
         })
         .collect();
     let not_before: Vec<Option<Date>> = (0..n)
