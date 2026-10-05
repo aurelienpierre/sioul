@@ -252,6 +252,14 @@ Item {
                 }
             }
 
+            // Where you stopped, when something interrupted you, until it is done.
+            StoppedCard {
+                Layout.fillWidth: true
+                sioul: page.sioul
+                theme: page.theme
+                window: page.window
+            }
+
             // A task in one line, wherever you are on the page. In quiet time, a
             // thought noted waits for work to come back, out of sight.
             CaptureField {

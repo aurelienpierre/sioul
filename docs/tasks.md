@@ -54,6 +54,7 @@ Tasks are CalDAV tasks (VTODO, RFC 5545 §3.6.2) in task lists on your calendar 
 - **What it is for**: work, your admin, leisure, any of them together (`X-SIOUL-AREA`), else as its tags say; the task pages show what fits the hours now ([areas.md](areas.md)).
 
 ## Places
+- **Where you stopped**: one line, left whenever something interrupts you (a pause to move taken, a meal's or the night's notice, the end of the day, a timer stopped, or "Where I stopped…" at any time), shown again at the top of the Porch and of this page, and in the focus window, until "Done" (`sioul_core::stopped`, `StoppedCard.qml`; carried to your other devices). Stopping then costs no fear of forgetting where you were: a cue to resume cuts the time to get back into a task (Trafton et al. 2003; Leroy & Glomb 2018). A timer stopped without a word keeps the line left at its pause.
 - **Now**: the next step and why, its estimate and where you stopped, "Start", "Done", "Not now", "What makes it hard?"; after that, the next one in a line; folded: two other choices, what is started, what you might do if you want, what got done this week.
 - **List**: every open task, a bigger task followed by its steps, in the plan's order, grouped by case or by list; a search; done tasks on request; the optional ones last.
 - **Board**: free to start, started, waiting, done (two weeks). Cards move by dragging: to "Started", to "Done", back to "Free". "Waiting" is decided by what each task waits for, and each card says what. More than three started: one line asks whether to finish or park one.

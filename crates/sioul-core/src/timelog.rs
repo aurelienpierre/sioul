@@ -136,6 +136,21 @@ pub fn update_in(dir: &Path, keys: &[String], change: impl Fn(&mut Session)) -> 
     Ok(changed)
 }
 
+/// The session `key` names, changed by `change`: in place within its month;
+/// moved to another month, written there first, then taken out of its old
+/// one, so that nothing is lost on the way. Returns whether it was found.
+pub fn change_in(dir: &Path, key: &str, change: impl Fn(&mut Session)) -> Result<bool, String> {
+    let Some(old) = sessions_in(dir).into_iter().find(|s| s.key() == key) else { return Ok(false) };
+    let mut new = old.clone();
+    change(&mut new);
+    if month_file(dir, new.start) == month_file(dir, old.start) {
+        return update_in(dir, &[key.to_string()], &change).map(|n| n > 0);
+    }
+    record_in(dir, &new)?;
+    remove_in(dir, &[key.to_string()])?;
+    Ok(true)
+}
+
 /// Takes out the sessions `keys` names (time noted by mistake).
 pub fn remove_in(dir: &Path, keys: &[String]) -> Result<usize, String> {
     let Ok(entries) = std::fs::read_dir(dir) else { return Ok(0) };
@@ -269,6 +284,32 @@ pub fn finish_with_note(now: i64, done: bool, note: &str) -> Result<Option<Sessi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stretch_changed_in_place_or_moved_to_its_month() {
+        let dir = std::env::temp_dir().join(format!("sioul-timelog-change-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let at = |text: &str| -> i64 { format!("{text}[Europe/Paris]").parse::<jiff::Zoned>().unwrap().timestamp().as_second() };
+        let first = Session { task: "t1".into(), start: at("2026-10-05T09:00"), minutes: 120, ..Session::default() };
+        record_in(&dir, &first).unwrap();
+        // A break missed: the end set back to 10:15, a word, another task.
+        assert!(change_in(&dir, &first.key(), |s| {
+            s.minutes = 75;
+            s.note = "the draft, up to page 3".into();
+            s.task = "t2".into();
+        })
+        .unwrap());
+        let all = sessions_in(&dir);
+        assert_eq!((all.len(), all[0].minutes, all[0].task.as_str(), all[0].note.as_str()), (1, 75, "t2", "the draft, up to page 3"));
+        // Moved to the month before: written there, gone from here; one stretch still.
+        let key = all[0].key();
+        assert!(change_in(&dir, &key, |s| s.start = at("2026-09-30T16:00")).unwrap());
+        let all = sessions_in(&dir);
+        assert_eq!(all.len(), 1);
+        assert!(dir.join("2026-09.toml").exists());
+        assert!(!change_in(&dir, "nothing", |_| {}).unwrap(), "a stretch gone is said so");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn time_by_hand_and_billed_once() {

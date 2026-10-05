@@ -68,16 +68,18 @@ SioulWindow {
     // The application is quitting: the session stays on disk, the window goes.
     property bool quitting: false
     // The pause to move: minutes of focus between two (Health page), 0 when off;
-    // the focus counted at the last pause; paused for it now.
+    // the focus counted at the last offer; offered now; taken now.
     property int moveEvery: 0
     property real movedAt: 0
     property bool moving: false
+    property bool breaking: false
     property real sessionStart: 0
 
     // A new session counts from zero, with the pause as the Health page sets it now.
     onSessionChanged: {
         if (focusWindow.session === null) {
             focusWindow.moving = false
+            focusWindow.breaking = false
             focusWindow.sessionStart = 0
             return
         }
@@ -85,24 +87,42 @@ SioulWindow {
             focusWindow.sessionStart = focusWindow.session.start
             focusWindow.movedAt = 0
             focusWindow.moving = false
+            focusWindow.breaking = false
             focusWindow.moveEvery = focusWindow.sioul.movementMinutes()
         }
     }
 
-    // Time to move: the session waits, the window says so, one click goes on.
+    // Time to move: asked, never imposed. The session goes on until you pause
+    // it: something urgent may come first, and a pause missed must not stop
+    // the time counted. Unanswered, it stays asked; "Not now" asks again later.
     function checkMove() {
         if (focusWindow.moveEvery <= 0 || focusWindow.paused || focusWindow.moving || focusWindow.session === null)
             return
         if (focusWindow.elapsed - focusWindow.movedAt >= focusWindow.moveEvery * 60) {
             focusWindow.moving = true
             focusWindow.movedAt = focusWindow.elapsed
-            focusWindow.sioul.focusPause()
             focusWindow.raise()
         }
     }
 
-    function backFromMoving() {
+    // Paused for it: a line on where you stopped, for when you are back.
+    function takeBreak() {
+        focusWindow.breaking = true
+        if (!focusWindow.paused)
+            focusWindow.sioul.focusPause()
+        stoppedLine.text = focusWindow.session ? focusWindow.session.stopped : ""
+        stoppedLine.forceActiveFocus()
+    }
+
+    function notNow() {
         focusWindow.moving = false
+    }
+
+    function backFromMoving() {
+        if (focusWindow.breaking && stoppedLine.text.trim() !== "")
+            focusWindow.sioul.setStopped(stoppedLine.text)
+        focusWindow.moving = false
+        focusWindow.breaking = false
         if (focusWindow.paused)
             focusWindow.sioul.focusPause()
     }
@@ -161,7 +181,7 @@ SioulWindow {
                 font.pixelSize: 16
                 color: focusWindow.theme.text
             }
-            // A pause to move and stretch: the session waits.
+            // A pause to move and stretch, offered: the session goes on until you take it.
             ColumnLayout {
                 visible: focusWindow.moving
                 Layout.fillWidth: true
@@ -169,12 +189,40 @@ SioulWindow {
 
                 Label {
                     Layout.fillWidth: true
-                    text: focusWindow.sioul.text("focus-move")
+                    text: focusWindow.sioul.text(focusWindow.breaking ? "focus-move" : "focus-move-ask")
                     wrapMode: Text.Wrap
                     font.pixelSize: 15
                     color: focusWindow.theme.text
                 }
+                RowLayout {
+                    visible: !focusWindow.breaking
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Button {
+                        Layout.fillWidth: true
+                        text: focusWindow.sioul.text("focus-move-now")
+                        highlighted: true
+                        onClicked: focusWindow.takeBreak()
+                    }
+                    Button {
+                        Layout.fillWidth: true
+                        flat: true
+                        text: focusWindow.sioul.text("focus-move-not-now")
+                        onClicked: focusWindow.notNow()
+                    }
+                }
+                // Where you stopped: one line, shown again when you are back.
+                TextField {
+                    id: stoppedLine
+
+                    visible: focusWindow.breaking
+                    Layout.fillWidth: true
+                    placeholderText: focusWindow.sioul.text("stopped-hint")
+                    onAccepted: focusWindow.backFromMoving()
+                }
                 Button {
+                    visible: focusWindow.breaking
                     Layout.fillWidth: true
                     text: focusWindow.sioul.text("focus-move-back")
                     highlighted: true

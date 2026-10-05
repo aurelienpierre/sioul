@@ -27,7 +27,9 @@ Then **Until** a day, or for as long as it goes; the **Prescription** it comes f
 
 Each dose of the day, with **Taken**. A dose taken says when; one click takes it back. A dose not marked is simply not marked.
 
-**Taken late**: more than half an hour past its time, **Taken…** asks when you took it (now, unless you change it), or lets you say it was not taken. For a medicine taken every few hours, tick **Move the next doses by as much** to keep the hours between two doses: taken an hour late, the next ones come an hour later. Your answer is offered again next time. Taking the mark back puts the doses back.
+**Taken late**: more than half an hour past its time, **Taken…** asks when you took it (now, unless you change it), or lets you say it was not taken.
+
+**Two kinds of medicines.** Those taken at set times of the day keep their times. Those taken every few hours keep the hours between two doses, which the body needs to clear one before the next: each dose you mark, on time, early or late, sets the next one that many hours after it. Taking the mark back puts the doses back.
 
 ### Reminders
 
@@ -83,7 +85,7 @@ In the morning, the Tasks page may say one line, never a notification: after a s
 
 ## Moving
 
-**A pause to move**, every 45 minutes unless you change it: a quiet notification says it is time to move and stretch, even with the window hidden. During a focus session, the session itself pauses for a few minutes; **Back to it** starts it again.
+**A pause to move**, every 45 minutes unless you change it: a quiet notification says it is time to move and stretch, even with the window hidden. During a focus session, the pause is offered, never imposed: **Pause now** pauses the session and lets you note in one line where you stopped; **Not now** goes on, and asks again later. If you miss it, the session keeps counting. **Back to it** starts it again.
 
 ## Chats
 
