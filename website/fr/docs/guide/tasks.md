@@ -68,15 +68,15 @@ Une tâche peut aussi dire **ce que ça coûte**, dans son panneau : *léger*,
 
 Commencer est le plus difficile, alors Sioul y aide. **Commencer** propose d’abord **Juste deux minutes**, puis 15, 25 ou 45 minutes, ou **Sans fin fixée**.
 
-La fenêtre de concentration reste au premier plan pendant que vous travaillez ailleurs. Un disque se vide, d’une couleur neutre, sans tic-tac et sans son.
+La fenêtre de concentration reste au premier plan pendant que vous travaillez ailleurs. Un disque se vide, d’une couleur neutre, sans tic-tac et sans son. Sous Linux et sur un téléphone, une notification montre aussi le temps qui court, avec **Pause** et **Arrêter** ([Temps](time.md#where-time-comes-from)).
 
 - Deux minutes avant la fin : « Encore deux minutes : le moment de trouver où s’arrêter. »
 - À la fin : **Continuer**, ou **S’arrêter ici, cela compte**.
 - S’arrêter propose une ligne, **La prochaine fois, commencer par…**, montrée quand la tâche revient.
 
-Le temps est noté pour la tâche, et pour son projet ([Temps](time.md)). Toutes les 45 minutes, sauf si vous le changez dans [Santé](health.md#moving), une pause pour bouger est proposée : **Faire la pause**, avec une ligne sur où vous en êtes, ou **Pas maintenant** ; manquée, la séance continue de compter.
+Le temps est noté pour la tâche, et pour son projet : pour le facturer, et pour apprendre combien de temps les choses prennent vraiment ([Temps](time.md)). Toutes les 45 minutes, sauf si vous le changez dans [Santé](health.md#moving), une pause pour bouger est proposée : **Faire la pause**, avec une ligne sur où vous en êtes, ou **Pas maintenant** ; manquée, la séance continue de compter.
 
-**Où vous en étiez.** Chaque fois que quelque chose vous interrompt (une pause, un repas, la nuit, la fin de la journée, un minuteur arrêté), vous pouvez laisser une ligne sur où vous en étiez. Elle revient en haut du Porche et de la page Tâches, et dans la fenêtre de concentration, jusqu’à ce que vous appuyiez sur **C’est fait**.
+**Où vous en étiez.** Chaque fois que quelque chose vous interrompt (une pause, un repas, la nuit, la fin de la journée, un minuteur arrêté), vous pouvez laisser une ligne sur où vous en étiez ; **Nouveau ▾ ▸ Où j’en suis…** en laisse une à tout moment. Elle revient en haut du Porche et de la page Tâches, et dans la fenêtre de concentration, jusqu’à ce que vous appuyiez sur **C’est fait**. Quand vous [partagez entre vos appareils](sharing.md), vos autres appareils la montrent aussi.
 
 ### Qu’est-ce qui rend cela difficile ? {#what-makes-it-hard}
 
@@ -84,7 +84,9 @@ Cinq réponses : *Je ne sais pas par où commencer*, *C’est trop gros*, *Cel
 
 ## La journée {#the-day}
 
-**La journée** dispose aujourd’hui heure par heure : vos heures selon ce à quoi elles servent (travail, vos démarches, loisirs), les événements à leur heure, et les étapes que le plan donne aujourd’hui dans les heures prévues pour elles, à partir de maintenant, avec une pause entre elles. Une ligne montre l’heure qu’il est ; l’étape en cours est mise en évidence, la suivante entourée d’un trait.
+**La journée** dispose aujourd’hui heure par heure : vos heures selon ce à quoi elles servent (travail, vos démarches, loisirs), les événements à leur heure, vos repas et vos siestes ([Santé](health.md#meals-rest-and-sleep)), et les étapes que le plan donne aujourd’hui dans les heures prévues pour elles, à partir de maintenant, avec une pause entre elles. Le temps gardé avant et après une tâche ou un événement s’affiche à part, « Autour : … ». Une ligne montre l’heure qu’il est ; l’étape en cours est mise en évidence, la suivante entourée d’un trait. Ce que vous avez fini aujourd’hui reste là où cela s’est terminé, coché ✓ et estompé.
+
+La journée suit l’horloge : la ligne avance avec les minutes, et la journée est disposée à nouveau à partir de maintenant toutes les cinq minutes et chaque fois que vous revenez dans Sioul, avec ce que vos autres appareils ont marqué ou noté entre-temps.
 
 C’est une disposition à regarder, jamais un emploi du temps : rien n’est écrit dans les tâches. Ce qui ne tient pas avant la fin de la journée garde sa place dans le plan, et une ligne le dit.
 
@@ -98,7 +100,7 @@ C’est une disposition à regarder, jamais un emploi du temps : rien n’est 
 À un clic de Maintenant :
 
 - **Liste** : chaque tâche ouverte dans l’ordre du plan, une tâche plus grande suivie de ses étapes, groupées **Par projet** ou **Par liste**, avec une recherche, et **Faites aussi** sur demande. Les tâches facultatives viennent en dernier.
-- **Tableau** : *Libres de commencer*, *Commencées*, *En attente*, *Faites* (les deux dernières semaines). Les cartes se déplacent par glisser-déposer. « En attente » est décidé par ce que chaque tâche attend, et chaque carte dit quoi. Au-delà de trois tâches commencées, une ligne demande : « En finir ou en garer une ? »
+- **Tableau** : *Libres de commencer*, *Commencées*, *En attente*, *Faites* (les deux dernières semaines). Les cartes se déplacent par glisser-déposer, à la souris ou au pavé tactile ; sur un écran tactile, glisser fait défiler le tableau. « En attente » est décidé par ce que chaque tâche attend, et chaque carte dit quoi. Au-delà de trois tâches commencées, une ligne demande : « En finir ou en garer une ? »
 - **Calendrier** : chaque tâche ouverte sur ses jours, la date demandée en petit losange, les jours sans place grisés. Un projet, ou tous.
 
 <figure markdown="span">
@@ -114,7 +116,7 @@ Une tâche s’ouvre à droite, avec **Commencer**, **Fait** et **Pas maintenant
 
 - **ses étapes**, et une de plus en une ligne (« Une étape, en une ligne ») ; les minutes des étapes s’additionnent ;
 - **ce qu’elle attend** (« Attend… » : une autre tâche, trouvée par son titre), et ce qu’elle libère ;
-- repliés : **Peut commencer le**, **Date demandée**, **Prend environ**, **Projet**, **Étiquettes**, **Revient** (la répétition), **Ce que ça coûte**, **Pour** (travail, vos démarches, loisirs : voir [Heures](hours.md)), **Facturé** ([Temps](time.md)), **Demande un bureau ouvert**, **Liste**, et **Notes, en Markdown**. Choisir une autre **Liste** y déplace la tâche ; quand cette liste ne garderait pas tout (Google Tasks garde moins), Sioul dit quoi, et demande d’abord ;
+- repliés : **Peut commencer le**, **Date demandée**, **Prend environ**, **Projet**, **Étiquettes**, **Revient** (la répétition), **Ce que ça coûte**, **Avant** et **Après** (le temps de se préparer, d’y aller et d’en revenir : gardé libre autour d’elle dans votre plan, jamais compté comme une pause ; la journée ne coupe jamais une telle tâche en morceaux), ce qu’elle demande de 0 à 10 (**Réflexion demandée**, **Émotions remuées**, **Anxiété suscitée**) et **Ce que ça apporte**, laissés en blanc tant que vous ne les dites pas : ce que vous dites est écrit dans la tâche et montré ici, et le plan ne s’en sert pas encore ; **Pour** (travail, vos démarches, loisirs : voir [Heures](hours.md)), **Facturé** ([Temps](time.md)), **Demande un bureau ouvert**, **Liste**, et **Notes, en Markdown**. Choisir une autre **Liste** y déplace la tâche ; quand cette liste ne garderait pas tout (Google Tasks garde moins), Sioul dit quoi, et demande d’abord ;
 - **Lié à cela** : le courrier d’où elle vient, ses notes, les personnes, les brouillons, le projet. **Écrire un courriel** commence un message aux personnes qu’elle concerne ; **En faire une note** commence une note liée à elle ; **Lier à…** y lie tout le reste.
 
 Tout peut devenir une tâche : un message, une ligne d’une note, un événement à préparer.
@@ -131,7 +133,7 @@ Une tâche étiquetée `joy` (ce mot anglais, tel quel) est offerte sous **Si vo
 
 - **L’ordre** : une tâche ne passe jamais avant ce qu’elle attend. Des tâches qui s’attendent en boucle sont signalées, calmement : « Ces étapes s’attendent l’une l’autre : … L’une d’elles doit passer d’abord. »
 - **L’étape suivante**, parmi les tâches libres de commencer : celle que vous avez commencée ; puis celle dont la date vient le plus tôt, en comptant le travail qui attend derrière elle ; puis votre propre ordre ; puis celle qui en libère le plus ; puis la plus petite.
-- **Les jours** : chaque tâche va dans les premiers jours qui ont de la place. La place, ce sont vos heures, chaque sorte pour ses propres tâches : les heures de travail au travail, les heures pour vos démarches à vos démarches, le temps libre aux loisirs ([Heures](hours.md)). Les événements en sont retirés, avec cinq minutes avant et après chacun, et chaque étape laisse cinq minutes après elle. Une étape d’une heure au plus n’est jamais coupée ; une plus longue est coupée en morceaux d’au moins un quart d’heure. Sans aucune heure réglée, la place va du lundi au vendredi, de 09:00 à 17:00. La place d’aujourd’hui commence maintenant, et la brume ou le brouillard la réduisent. Les jours de repos, et aujourd’hui une fois la journée close, n’en ont pas.
+- **Les jours** : chaque tâche va dans les premiers jours qui ont de la place. La place, ce sont vos heures, chaque sorte pour ses propres tâches : les heures de travail au travail, les heures pour vos démarches à vos démarches, le temps libre aux loisirs ([Heures](hours.md)). Les événements en sont retirés, avec leur **Avant** et leur **Après**, et cinq minutes avant et après chacun ; chaque étape laisse cinq minutes après elle. L’**Avant** et l’**Après** d’une tâche prennent de la place avec elle. Vos repas, vos siestes et votre nuit sont gardés libres aussi ([Santé](health.md#meals-rest-and-sleep)). Une étape d’une heure au plus n’est jamais coupée ; une plus longue est coupée en morceaux d’au moins un quart d’heure. Sans aucune heure réglée, la place va du lundi au vendredi, de 09:00 à 17:00. La place d’aujourd’hui commence maintenant, et la brume ou le brouillard la réduisent. Les jours de repos, et aujourd’hui une fois la journée close, n’en ont pas.
 - **Vos dates restent les vôtres.** Les jours que donne le plan sont recalculés à chaque fois, et jamais écrits dans vos tâches. Seul ce que vous réglez est gardé : un jour de début, une date demandée, un ordre.
 - **Quand une date ne tiendra pas**, la tâche le dit une fois : « À ce rythme, le plan finit après le 30 octobre. La faire plus tôt, la réduire ou la confier garderait la date. » Près d’une date demandée, Maintenant dit ce qui tient : « Jusqu’au mercredi 7 octobre : environ 30 min d’étapes, 3 h de place. »
 
@@ -184,6 +186,12 @@ Le ⚙ en haut de la page :
 - **Les nouvelles tâches vont dans** : la liste où va une tâche tapée en une ligne.
 - **Ce qui est du travail** et **Ce qui est à vous** : les catégories qui disent à quoi sert une tâche ([Heures](hours.md)).
 - **Code**, en dernier : **Tickets et pull requests GitHub en tâches**, désactivé sauf si vous l’activez. Les vôtres arrivent dans une liste « GitHub » sur cet ordinateur, toutes les trente minutes ; rien n’est écrit sur GitHub.
+
+## Pendant le calme, et au repos {#in-quiet-time-and-at-rest}
+
+Pendant le calme ([Les heures](hours.md#quiet-time)), les pages de tâches ne gardent que ce qui est à vous : le travail attend son retour.
+
+Au repos, hors de toutes les heures que vous avez réglées (la nuit, surtout), la page attend derrière une phrase, « Repos jusqu’à 09:00 : seules les personnes marquées sûres vous joignent. », et **Montrer quand même**. Un champ y note une pensée pour plus tard, en une ligne, hors de vue jusqu’au retour du travail. Les rappels des tâches attendent aussi.
 
 ## Où vivent les tâches {#where-tasks-live}
 

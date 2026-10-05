@@ -41,12 +41,12 @@ Each reminder comes once, as a quiet notification, without sound, never repeated
 - **With Sioul's window closed**: your session starts a small watcher that tells reminders when the window is closed; nothing else runs, no mail is fetched. It needs the `sioul` command installed next to Sioul ([Install](install.md#into-your-application-menu)). Not on Windows yet.
 - **Sites' notifications gathered**, and **Gathered at**: what your sites notify waits, then comes in one notification at these times, for the sites of those hours: 09:00, 13:00 and 18:00 unless you set others. A site in real time, and a call, come at once.
 
-Doses of medicine are reminded from the [Health](health.md) page, and papers to renew from [Papers](papers.md).
+Doses of medicine are reminded from the [Health](health.md) page, and papers to renew from [Papers](papers.md). On a phone, only the doses are reminded for now ([On a phone](first-steps.md#on-a-phone)).
 
 ## Your folder and sharing
 
 - **The notes folder**: your folder of Markdown files, read as a vault: your notes, and beside them your projects, budgets, papers and letters. Sioul links to it; it never owns it.
-- **Between your computers**: sharing what Sioul keeps on this computer alone with your other computers, sealed with a passphrase. See [Sharing between your computers](sharing.md).
+- **Between your computers**: sharing with your other devices what Sioul keeps on this one, part by part, sealed with a passphrase; your notes and papers too, if you switch them on. See [Sharing between your devices](sharing.md).
 
 ## Invoices
 

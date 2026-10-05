@@ -5,7 +5,7 @@ Sioul becomes a complete client while keeping its rule: **only what is used most
 - **In view**: on screen without asking, at most six actions at a time, in two groups (answering; filing away).
 - **One step away**: the right-click menu (also the "…" button and the Menu key, for the keyboard), or a folded section that opens in place.
 - **Settings**: beside what they change: a ⚙ at the end of each page's first row, each setting with a sentence on what it does, saved at once into the configuration file, its comments kept (`settings.rs`, `config::set_value`); "Aa" wherever long text is (font, size, line spacing).
-- **Accounts**, in four tabs: *your accounts*, one card per address with each of its services (mail; calendars, tasks and contacts; Google), each with a switch (off, it keeps its settings and is neither synced nor shown; its calendars wait in their folder, `vdir::set_account_off`), and for mail what it is for, whether it is protected against harassment, how far back, how often, its rank, your name and signature, all in view; "What this server offers" asks the server (`sioul_sync::scout`: the provider's mail settings, calendars and contacts at the well-known addresses, a Nextcloud's version and its apps, Files, Notes, Talk, Deck, said as in Sioul or not yet), and adds the mail of an address whose calendars are here with their password; *add an account*; *senders* (safe, neutral, blocked: one list each, the only place they are edited); *encryption*. Sites are not accounts: they are `[[site]]`, made and changed on the Sites page.
+- **Accounts**, in four tabs: *your accounts*, one card per address with each of its services (mail; calendars, tasks and contacts; Google), each with a switch (off, it keeps its settings and is neither synced nor shown; its calendars wait in their folder, `vdir::set_account_off`), and for mail its rank and your name and signature in view, while what it is for, whether it is protected against harassment, how far back and how often are folded under "Settings for this address" (made when unfolded: a card holding them all took half a second on a phone), its server and folders folded too; "What this server offers" asks the server (`sioul_sync::scout`: the provider's mail settings, calendars and contacts at the well-known addresses, a Nextcloud's version and its apps, Files, Notes, Talk, Deck, said as in Sioul or not yet), and adds the mail of an address whose calendars are here with their password; *add an account*; *senders* (safe, neutral, blocked: one list each, the only place they are edited); *encryption*. Sites are not accounts: they are `[[site]]`, made and changed on the Sites page.
 - **Settings**, in tabs: display, hours, reminders and notifications, your folder and sharing, invoices.
 - **One setting, one place**, by what owns or uses it: an object's own settings where the object is made (an address's area, history, pace and shield on its card in Accounts; a project's routes on its page; a bank account's budgets and rules on its card); a page's display and behaviour behind its ⚙ (Mail: conversations and pace; Tasks: their hours, types, lists, the categories of work and of your own, GitHub; the Porch: the projects it shows, letters, its sorting); what belongs to no single page in Settings (language, colours, your folder, the hours, reminders, invoices, sharing); who may write to you is in Accounts ▸ Senders. A test fails when a setting shows in two places (`settings::tests::each_page_has_its_own`).
 
@@ -94,7 +94,7 @@ From a message, a sender becomes a contact in one right click, and a contact's p
 
 | Feature | Tier | How |
 |---|---|---|
-| What comes: today, then the next two weeks | in view | the default view, a calm list |
+| What comes: what is left of today, then the next two weeks | in view | the default view, a calm list; from today it starts now, an event already over left out (`pim.rs`, `upcoming`), the day and the week still showing it |
 | Week and month | one step | a switch above the list |
 | An event: title, when, where | in view | |
 | Notes, reminders, recurrence, guests, the calendar it belongs to | one step | folded under "More" |
@@ -159,7 +159,7 @@ Recurrences are expanded for display (RFC 5545 §3.3.10); times are kept with th
 - **DNS** for the sender checks: the system's resolver on each (hickory reads Windows' own settings).
 - **Building**: Qt 6 from Qt's installer on Windows (MSVC) and macOS; a CI build on the three systems for each change.
 - **Packages**: Flatpak on Linux, an installer on Windows (MSIX or Inno Setup, `windeployqt`), a disk image on macOS.
-- **Android** comes after, with Qt for Android ([architecture.md](architecture.md)).
+- **Android**: the same window, with Qt for Android ([architecture.md](architecture.md), [android.md](android.md)).
 
 ### As built
 - **Folders**: the XDG variables when set, on every system (tests set them); else XDG on Linux, `%APPDATA%` and `%LOCALAPPDATA%` on Windows, `~/Library/Application Support` on macOS (`directories`). Downloads and the cache follow the same rule.
@@ -170,8 +170,9 @@ Recurrences are expanded for display (RFC 5545 §3.3.10); times are kept with th
 - **Symbols**: the few Sioul writes (→ ▸ ▾ ✓ ⚙) ship as Sioul Symbols, cut from DejaVu Sans (`tools/make-symbols-font.py`, 15 KB, DejaVu's licence alongside), first in line after the text's own font, so that Qt does not look for them through all the system's fonts.
 - **Style**: Qt Quick's Basic style everywhere, the tips Qt makes itself included (`QT_QUICK_CONTROLS_STYLE`, unless set): the system's style (KDE's Breeze, Android's Material) is not loaded for them.
 - **OpenPGP**: Sequoia with its pure-Rust cryptography, the same on the three systems.
-- **Building**: `.github/workflows/build.yml` tests the core, sync and command line, and builds the window, on Linux, Windows and macOS. It runs only when started by hand (Actions, "Build on three systems"), since on a private repository minutes are counted, macOS ones ten times.
-- **Packages**: first files in `packaging/`: a Flatpak manifest (its open points written at the top), an Inno Setup script for Windows (after `windeployqt`), and the steps for a macOS bundle. None has been built yet.
+- **Building**: `.github/workflows/build.yml` tests the core, sync and command line, and builds the window, on Linux, Windows and macOS. It runs on each push to `main` that touches code (the docs and the website are skipped), and by hand (Actions, "Build on three systems"), where a Windows folder and a macOS .dmg can be asked for.
+- **Packages**: `.github/workflows/release.yml` builds four from a version tag and publishes them as a GitHub release (0.0.1, a pre-release, on 4 October 2026): a Windows installer (Inno Setup, `packaging/windows/sioul.iss`, after `windeployqt`), one macOS .dmg for Apple silicon and Intel (the two builds joined by lipo, signed ad hoc, not notarised), an AppImage, and a Flatpak bundle (`packaging/flatpak/`). None is signed yet: Windows and macOS say so the first time.
+- **Android**: an experiment, built: the window as a library that Qt for Android packs into an APK, by `.github/workflows/android.yml` at each change that touches the code; installed by hand, in no store, not ready ([android.md](android.md)).
 
 ## Order
 1. **Mail, writing to the server**: folders, flags, archive, delete, junk, move; writing in Markdown, replies and forwards; sending; drafts.

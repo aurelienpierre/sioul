@@ -50,8 +50,8 @@ On the Porch, a project can have its own lane: **Projects shown here**, in the P
 
 ## Where projects live
 
-In one file, `sioul-cases.toml`, at the root of your notes folder: readable, and written by hand if you like. A project's tasks and events carry its identifier in a standard field, so other calendar programs keep the grouping.
+In one file, `sioul-cases.toml`, at the root of your notes folder: readable, and written by hand if you like. It travels with your notes folder, or through Sioul's sharing once you switch **Projects and money** on in it ([Sharing](sharing.md)). A project's tasks and events carry its identifier in a standard field, so other calendar programs keep the grouping.
 
 ## In quiet time
 
-Projects for clients rest outside working hours: "Work projects rest until work comes back." **Show anyway** shows them all the same. See [Hours](hours.md).
+Projects for clients rest outside working hours: "Work projects rest until work comes back." **Show anyway** shows them all the same. At rest, outside every hours you set, the whole page waits behind one sentence and **Show anyway**. See [Hours](hours.md).

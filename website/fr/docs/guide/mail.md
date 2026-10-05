@@ -89,7 +89,7 @@ Les réglages propres à chaque adresse (à quoi elle sert, jusqu’où elle rem
 
 ## Pendant le calme {#in-quiet-time}
 
-En dehors des heures de travail, les adresses du travail se replient, sans leurs points : « Le courrier du travail se repose jusqu’au retour du travail. Il est là si vous le cherchez. » Voir [Heures](hours.md).
+En dehors des heures de travail, les adresses du travail se replient, sans leurs points : « Le courrier du travail se repose jusqu’au retour du travail. Il est là si vous le cherchez. » Au repos, hors de toutes les heures que vous avez réglées, toutes les adresses se replient : « À cette heure, le courrier se repose : ce qu’écrivent les personnes marquées sûres vient au Porche. Le reste est là si vous le cherchez. » Voir [Heures](hours.md).
 
 ## Pas encore là {#not-there-yet}
 

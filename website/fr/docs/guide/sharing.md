@@ -1,20 +1,55 @@
 ---
-description: Utiliser Sioul sur plusieurs ordinateurs – ce qui voyage par vos serveurs, par votre dossier de notes, et par le journal scellé de Sioul à travers un dossier Nextcloud, Dropbox ou Syncthing, chiffré de bout en bout.
+description: Utiliser Sioul sur plusieurs ordinateurs et un téléphone. Comment cela marche (chaque appareil garde ses propres données ; un dossier que votre application de synchronisation transporte fait passer entre eux des changements scellés), ce que cela protège et ce que cela ne peut pas cacher, ce qui voyage partie par partie, et comment remettre une version précédente.
 ---
 
-# Partager entre vos ordinateurs {#sharing-between-your-computers}
+# Partager entre vos appareils {#sharing-between-your-devices}
 
-Sioul sur un ordinateur de bureau et sur un portable : l’essentiel de ce que vous voyez voyage déjà tout seul. Ce que Sioul est seul à garder peut voyager aussi, scellé par une phrase de passe, par un dossier que votre service de synchronisation transporte déjà : Nextcloud, Dropbox, Syncthing. Aucun serveur à nous entre les deux.
+Chaque appareil garde toutes ses données dans ses propres fichiers, et fonctionne sans les autres. Ce qui doit voyager entre eux passe par un dossier que transporte une application de synchronisation que vous utilisez déjà : Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive, ou une autre. Tout est scellé sur votre appareil avant d’y être écrit : le dossier et son serveur ne contiennent rien qu’ils puissent lire. Aucun serveur à nous, et rien ne parvient au développeur.
+
+## Comment cela marche {#how-it-works}
+
+- **Vos données sont sur vos appareils ; le dossier ne fait que passer des messages entre eux.** Chaque appareil garde sa propre copie, complète. Le dossier partagé contient des changements scellés, envoyés d’un appareil aux autres. Un appareil qui perd le dossier, ou le trouve abîmé, garde tout ce qu’il avait.
+- **Un fichier par appareil, écrit par lui seul.** Chaque appareil écrit ses changements à la fin de son propre fichier dans le dossier, une ligne scellée par changement, et ne touche jamais aux fichiers des autres. Une application de synchronisation fait des « copies en conflit » quand deux appareils changent le même fichier. Ici, cela n’arrive jamais : elle n’a donc jamais à choisir à votre place.
+- **Des changements, pas des copies.** Chaque minute, Sioul compare vos fichiers à ce qu’ils contenaient la dernière fois qu’il les a regardés, et n’envoie que ce qui a changé, une entrée à la fois : un réglage, une ligne de temps, une prise, un expéditeur, une note. Chaque appareil lit les nouvelles lignes des autres et les applique.
+- **Le changement le plus récent l’emporte, entrée par entrée.** Un réglage changé sur deux appareils garde le changement le plus récent. Le temps noté sur chaque appareil reste sur les deux. Une note changée sur deux appareils garde les deux versions, l’une sous un nom qui le dit.
+- **Ce que l’application de synchronisation doit faire : très peu.** Elle doit transporter les nouveaux fichiers, et les fichiers qui grandissent, tôt ou tard et dans n’importe quel ordre. Elle n’a besoin de rien effacer, renommer ni verrouiller. C’est pourquoi n’importe quelle application de synchronisation convient. Une application lente, comme celle d’un téléphone qui regarde toutes les demi-heures, fait arriver les changements en retard, jamais faux.
+- **Ce qu’un appareil ne peut pas savoir, il le dit.** Chaque appareil sait jusqu’où il a lu les autres, et quand chacun a donné des nouvelles pour la dernière fois. Si quelque chose a pu se passer sur un appareil dont il n’a pas encore de nouvelles (une prise notée sur l’ordinateur que l’application du téléphone n’a pas encore apportée), Sioul dit qu’il ne sait pas plutôt que de deviner. La prise est rappelée avec « vérifiez d’abord », jamais comme « pas prise » ([Santé](health.md)).
+
+### Quand quelque chose tourne mal dans le dossier {#when-something-goes-wrong-in-the-folder}
+
+Rien de ce qui arrive dans le dossier ne peut vous retirer vos données. Sioul traite chaque surprise comme quelque chose qu’il ne sait pas :
+
+- **Un fichier coupé, manquant, abîmé ou dans le désordre** (une application de synchronisation qui a remis une copie plus ancienne, un défaut du disque) : ce qu’il contient compte comme inconnu, et c’est dit. Ce n’est jamais lu comme « retiré ».
+- **Un fichier de réglages trouvé vide ou à moitié écrit** sur cet appareil (un plantage, un disque plein) n’est jamais lu comme « tout effacé ». Il attend dix minutes, et rien n’en est retiré ailleurs entre-temps.
+- **Beaucoup de fichiers partis d’un coup**, ou un dossier soudain vide ou illisible (une carte mémoire non montée, un accès retiré) : rien n’en est retiré sur vos autres appareils tant que vous ne le dites pas.
+- **Une copie plus ancienne remise à la main** (une sauvegarde restaurée avec ses anciennes dates) ne défait pas les changements de vos autres appareils.
+- **Un appareil restauré d’une sauvegarde**, ou qui a perdu sa mémoire, reprend là où en est le dossier et rattrape le reste : ce qu’il avait noté après la sauvegarde revient.
+- **Avant qu’un changement d’un autre appareil remplace ou retire un fichier ici**, le fichier tel qu’il était est gardé sur cet appareil, pour le remettre au besoin ([plus bas](#putting-back-an-older-version)).
+
+## Ce que cela protège, et ce que cela ne peut pas cacher {#what-it-protects-and-what-it-cannot-hide}
+
+- **Scellé sur votre appareil.** Chaque changement est chiffré avant d’être écrit dans le dossier, avec XChaCha20-Poly1305, un chiffrement qui détecte aussi toute modification de ce qu’il a scellé. Les notes et les papiers sont compressés, puis scellés en morceaux de 1 Mio.
+- **Une phrase de passe.** La clé est tirée d’une phrase de passe que vous choisissez, par Argon2id, qui est volontairement lent et coûteux à essayer (64 Mio de mémoire et trois passes pour chaque essai). Vous la tapez une fois sur chaque appareil, qui la garde dans son trousseau (sur un téléphone, derrière le KeyStore d’Android). Elle n’est jamais envoyée nulle part. Une phrase fausse est signalée tout de suite. Il lui faut au moins 12 caractères : quelques mots que vous n’oublierez pas.
+- **Ce que le dossier et son serveur peuvent voir** : quel appareil a écrit (un identifiant tiré au hasard, ni votre nom ni celui de l’ordinateur), quand, et combien. Pour les notes et les papiers, la taille de chaque fichier scellé : un document très répandu, comme un formulaire public, pourrait se reconnaître à sa taille. Ils peuvent aussi voir quand un changement reprend un contenu déjà scellé là (un fichier remis tel qu’il était).
+- **Ce qu’ils ne voient jamais** : ce que sont les changements. Ni le nom des choses (adresses, noms de fichiers, réglages), ni leur contenu.
+- **Une falsification se voit.** Chaque ligne est liée à l’appareil qui l’a écrite, à sa place dans le fichier de cet appareil, et à son heure. Une ligne modifiée, déplacée dans le fichier d’un autre appareil, ou remise dans un autre ordre ne s’ouvre pas. Chaque morceau d’un fichier scellé est lié à son fichier et à sa place : on ne peut ni échanger, ni couper, ni ajouter de morceaux. Ce qui ne s’ouvre pas est mis de côté comme abîmé, et c’est dit. Cela n’efface jamais rien.
+- **Quelqu’un qui obtient le dossier mais pas la phrase de passe** (un compte cloud piraté, un hébergeur curieux) ne peut rien lire et rien falsifier. Il peut effacer ou abîmer des fichiers : Sioul le remarque, le dit, et vos appareils ne perdent rien ([plus haut](#when-something-goes-wrong-in-the-folder)).
+- **Quelqu’un qui a la phrase de passe**, ou un de vos appareils déverrouillé, peut lire et envoyer des changements comme n’importe lequel de vos appareils. Même alors, un changement venu du dossier n’est écrit qu’à sa place : jamais à travers un lien, jamais hors de votre dossier de notes, jamais dans les fichiers de Sioul lui-même, jamais en clair dans le dossier de partage.
+- **Les mots de passe ne voyagent jamais.** Les comptes arrivent sur un autre appareil sans leurs mots de passe : chaque appareil les demande une fois, et les garde dans son propre trousseau, ou les prend dans Bitwarden.
+- **Pas encore caché** : les tailles et les heures ci-dessus, et une petite note que chaque appareil laisse dans le dossier, non scellée : quand il a échangé pour la dernière fois, et jusqu’où il a lu les autres.
+
+!!! warning "Une phrase de passe perdue ne se retrouve pas"
+    Personne ne peut la retrouver pour vous : elle n’est jamais envoyée nulle part. Si elle est perdue, arrêtez le partage sur chaque appareil et recommencez avec un nouveau dossier. Rien n’est perdu sur vos appareils.
 
 ## Ce qui voyage, et comment {#what-travels-and-how}
 
-| Quoi | Comment cela rejoint vos autres ordinateurs |
+| Quoi | Comment cela rejoint vos autres appareils |
 |---|---|
 | Courrier, contacts, événements et tâches, avec ce que Sioul écrit dans vos tâches (étapes, attentes, liens, types) | par leurs propres serveurs, comme avec n’importe quel programme |
-| Votre dossier de notes : notes, projets, budgets, papiers, lettres scannées, images et mémos vocaux | par la synchronisation du dossier lui-même |
-| Ce que Sioul garde sur cet ordinateur seul : vos réglages et vos comptes (sans les mots de passe), qui peut vous écrire, les liens entre les choses, le temps passé, les brouillons, les factures, les médicaments et les prises, les journées de votre montre, les listes gardées sur cet ordinateur seulement, l’endroit où le Porche a été fermé | par le journal scellé de Sioul, à travers un dossier que vous choisissez |
+| Votre dossier de notes : notes, projets, budgets, papiers, lettres scannées, images et mémos vocaux | par la synchronisation du dossier lui-même ; ou, quand aucune synchronisation ne le transporte (celui d’un téléphone), par le partage, scellé, une fois que vous les allumez |
+| Ce que Sioul garde sur cet appareil seul : vos réglages et vos comptes (sans les mots de passe), qui peut vous écrire, les liens entre les choses, le temps passé, les brouillons, les factures, les médicaments et les prises, les journées de votre montre, les listes gardées sur cet appareil seulement, l’endroit où le Porche a été fermé | par le partage, scellé |
 
-**Jamais partagé** : l’endroit où sont les choses sur chaque ordinateur (chacun garde ses propres dossiers), la façon dont le texte se lit sur cet écran, la disposition des pages, les notifications du navigateur de cet ordinateur, les caches, et vos propres clés OpenPGP (copiez-les à la main). Les mots de passe restent dans le trousseau de chaque ordinateur : un compte qui arrive d’un autre ordinateur demande son mot de passe une fois.
+**Jamais partagé** : ce que chaque appareil choisit de partager, l’endroit où sont les choses sur chaque appareil (chacun garde ses propres dossiers), la façon dont le texte se lit sur cet écran, la disposition des pages, les notifications du navigateur de cet ordinateur, les caches, et vos propres clés OpenPGP (copiez-les à la main). Les mots de passe restent dans le trousseau de chaque appareil.
 
 ## La mise en place {#setting-it-up}
 
@@ -25,49 +60,78 @@ Sur le premier ordinateur :
 3. **Phrase de passe**, puis **Encore une fois** : quelques mots que vous n’oublierez pas, au moins 12 caractères.
 4. **Partager**.
 
-Sur l’autre ordinateur, choisissez le même dossier (là où votre synchronisation le place sur cet ordinateur). Sioul voit qu’un autre ordinateur partage par ce dossier, et demande la phrase de passe choisie là-bas. Puis **Partager**.
+Sur l’autre appareil, choisissez le même dossier (là où votre synchronisation le place sur cet appareil). Sioul voit qu’un autre appareil partage par ce dossier, et demande la phrase de passe choisie là-bas. Puis **Partager**.
 
-La première fois, une copie de ce qu’avait cet ordinateur est gardée de côté, au cas où. Puis les réglages de l’autre ordinateur arrivent, et ce que seul celui-ci avait part vers l’autre : deux ordinateurs réglés chacun de leur côté finissent avec les réglages du premier et les listes des deux.
+La première fois, une copie de ce qu’avait cet appareil est gardée de côté, au cas où. Puis les réglages de l’autre appareil arrivent, et ce que seul celui-ci avait part vers l’autre : deux appareils réglés chacun de leur côté finissent avec les réglages du premier et les listes des deux.
 
-Ensuite, les changements s’échangent chaque minute, et quand vous choisissez **Tout actualiser** ou **Échanger maintenant**. Le panneau dit par quel dossier vous partagez, avec combien d’autres ordinateurs, et quand ils ont donné des nouvelles pour la dernière fois. **Arrêter le partage** y met fin ; chaque ordinateur garde ses propres fichiers.
+Ensuite, les changements s’échangent chaque minute, et quand vous choisissez **Tout actualiser** ou **Échanger maintenant**. Le panneau dit par quel dossier vous partagez, avec combien d’autres appareils, et quand ils ont donné des nouvelles pour la dernière fois. **Arrêter le partage** y met fin ; chaque appareil garde ses propres fichiers.
 
-Votre dossier de notes voyage par sa propre synchronisation, pas par Sioul. S’il ne semble pas être dans un dossier synchronisé, le panneau le dit : votre autre ordinateur ne verrait pas vos notes et vos projets. Déplacés dans un dossier synchronisé (et choisis à nouveau dans Paramètres), ils voyagent aussi. Ou laissez Sioul transporter les projets, les budgets et la banque : voir plus bas.
+Votre dossier de notes voyage par sa propre synchronisation, pas par Sioul, sauf si vous l’allumez plus bas. S’il ne semble pas être dans un dossier synchronisé, le panneau le dit : votre autre ordinateur ne verrait pas vos notes et vos projets. Déplacés dans un dossier synchronisé (et choisis à nouveau dans Paramètres), ils voyagent aussi ; ou allumez **Notes**, **Projets et argent** et **Papiers**, et Sioul les transporte, scellés.
+
+## Ce qui voyage depuis cet appareil {#what-travels-from-this-device}
+
+Sous **Ce qui voyage depuis cet appareil**, chaque partie a son interrupteur, dit ce qu’elle transporte, et quand elle a envoyé et reçu un changement pour la dernière fois :
+
+| Partie | Ce qu’elle transporte |
+|---|---|
+| Réglages et comptes | vos réglages et vos comptes (jamais leurs mots de passe), les liens entre les choses, l’endroit où le Porche a été fermé, les courriels dont vous avez dit qu’ils ne sont pas des paiements |
+| Expéditeurs | qui peut vous écrire (connus, bloqués, sûrs, neutres), ce que le bouclier a lu, les clés publiques des autres |
+| Santé | les médicaments, les ordonnances et les prises |
+| Temps | le temps noté, la séance en cours, les choix du jour, où vous vous êtes arrêté, travailler tard ou fini pour aujourd’hui |
+| Brouillons et factures | les courriels en cours d’écriture, les factures faites |
+| Projets et argent | de votre dossier de notes : les projets et leurs routes de courrier, les budgets, les comptes et mouvements bancaires, les contrats |
+| Montre | les journées de votre montre |
+| Listes gardées ici | les agendas et contacts gardés sur cet appareil seulement |
+| Notes | votre dossier de notes : les notes, leurs images, PDF et mémos, les lettres numérisées |
+| Papiers | le portefeuille de papiers et ses fichiers |
+
+Chaque appareil choisit pour lui-même : éteindre une partie sur le téléphone ne change rien sur l’ordinateur. Une partie éteinte n’envoie rien et ne retire rien sur vos autres appareils ; rallumée, elle les rejoint comme le ferait un nouvel appareil : ce qu’ils ont arrive d’abord, puis ce que seul celui-ci a part vers eux. Un appareil qui n’a jamais choisi partage ce que Sioul partageait avant que les parties aient leurs interrupteurs : tout sauf les notes et les papiers, et les projets et l’argent si vous les aviez cochés. Avant d’allumer **Notes** ou **Papiers**, le panneau dit combien de fichiers voyageraient, et quelle taille ils font en tout.
+
+## Les notes et les papiers {#notes-and-papers}
+
+Allumés, les notes et les papiers voyagent par le même dossier scellé, un fichier à la fois :
+
+- **Seulement ce qui a changé** : chaque fichier est compressé, scellé à part et envoyé une fois ; une note changée n’envoie que cette note, pas le dossier. Les fichiers de plus de 64 Mo restent sur leur appareil, et le panneau dit lesquels. Sur un téléphone dont l’application de synchronisation n’efface jamais ce qui a été effacé ailleurs (l’eDrive de Murena), chaque fichier scellé qu’elle a apporté reste là-bas dans le dossier de partage : comptez la place de vos notes et de vos papiers deux fois.
+- **Laissé de côté** : ce que votre application de synchronisation ou votre éditeur crée à côté de vos fichiers (fichiers cachés, fichiers `~` et `.tmp`, copies en conflit, verrous d’Office), les noms qui ne sont pas du texte, et ce que transportent les autres parties.
+- **Changé sur deux appareils à la fois** : les deux versions sont gardées. La plus récente garde le nom ; l’autre est gardée à côté, sous le nom « bail (conflict 2026-10-05 16.05).md », sur chaque appareil, et le panneau le dit pendant un jour. Gardez celle que vous voulez, ou fusionnez-les à la main. La page des notes fait de même quand vous enregistrez une note qui a changé sur un autre appareil pendant qu’elle était ouverte.
+- **Une copie plus ancienne remise à la main** (une sauvegarde restaurée avec ses anciennes dates) ne défait pas les changements de vos autres appareils : la version la plus récente revient, la copie ancienne gardée à côté, et le panneau le dit. Pour envoyer une version plus ancienne, utilisez **Remettre**, plus bas.
+- **Retiré** : une note effacée sur un appareil part des autres dix minutes plus tard (elle est peut-être en train de revenir), gardée là-bas parmi les versions précédentes, au cas où.
+- **Beaucoup partis d’un coup** : si beaucoup de fichiers quittent un dossier d’un coup, ou si un dossier devient soudain vide, disparaît ou ne se lit plus, rien n’en est retiré sur vos autres appareils et rien n’y est écrit ; le panneau le dit, avec **Les retirer partout** pour quand vous l’avez fait exprès. Éteindre puis rallumer Notes remplit à nouveau le dossier depuis vos autres appareils.
+- **Des noms qu’un téléphone prend pour un seul** : deux notes dont les noms ne diffèrent que par la casse ou par la façon d’écrire un accent (« Bail.md » et « bail.md ») sont un seul fichier sur un téléphone : la seconde attend, et le panneau le dit ; renommez-en une.
+- **La place** : rien n’est écrit sans place pour lui, et un peu plus ; une note qui ne tient pas attend, c’est dit, et vient quand il y a de la place.
+- **Pas avec un dossier de notes déjà synchronisé** : si une application de synchronisation transporte déjà votre dossier de notes sur cet appareil (Nextcloud, Dropbox, Syncthing, ou, sur un téléphone, le même dossier que celui du partage), Sioul refuse de le transporter aussi, et dit pourquoi : deux transporteurs déferaient les changements l’un de l’autre. Déplacez les notes dans un dossier qu’aucune synchronisation ne transporte pour que Sioul les transporte, ou laissez-les à cette synchronisation. Sioul ne reconnaît pas toutes les applications de synchronisation (Google Drive, Insync, rclone, MEGA…) : laissez Notes éteint là où l’une d’elles transporte vos notes.
+- **Sur Android**, les notes et les papiers attendent tant que Sioul n’a pas l’accès d’Android à tous vos fichiers (sans lui, Sioul ne verrait que les fichiers qu’il a créés).
+
+## Remettre une version précédente {#putting-back-an-older-version}
+
+Avant qu’un changement venu d’un autre appareil soit écrit dans un fichier ici, ou le retire, Sioul garde le fichier tel qu’il était, sur cet appareil seulement : les 20 dernières versions de chaque fichier, et toutes celles des 30 derniers jours ; pour un fichier effacé depuis, celles des 30 derniers jours ; jamais plus d’un gigaoctet en tout, les plus anciennes partant d’abord. Elles ne sont jamais partagées. Une note ou un papier dont la version est encore dans le dossier de partage est gardé comme un renvoi vers elle, pendant deux mois, plutôt que copié.
+
+Dans **Paramètres ▸ Votre dossier et le partage**, **Voir les versions précédentes** les liste : chaque partie, ses fichiers (le dernier changé d’abord ; tapez une partie d’un nom pour en trouver de plus anciens), et sous un fichier ses versions, avec leur date et leur taille. **Remettre** dit d’abord ce que cela changerait, puis remet cette version :
+
+- une note, un papier, un brouillon reviennent entiers ; le fichier tel qu’il était juste avant est gardé dans la liste lui aussi : remettre peut se défaire de la même façon ;
+- un fichier de réglages ou de listes (vos réglages, les prises, le temps noté) revient entrée par entrée : chaque réglage ou marque que la version contenait est remis tel qu’il était, ceux retirés depuis reviennent, et ceux ajoutés depuis restent. Remettre ne retire jamais, sur aucun appareil, ce qui a été ajouté après cette version : une prise notée ce matin reste notée.
+
+L’échange suivant envoie ce qui a été remis à vos autres appareils, comme un changement que vous venez de faire.
 
 ## Sur un téléphone {#on-a-phone}
 
-Sioul pour Android partage de la même façon, par le dossier que l’application de synchronisation de votre téléphone garde sur le téléphone : l’eDrive de Murena, Syncthing, FolderSync, l’application de Nextcloud. Sioul ne parle à aucune d’elles : il lit le dossier.
+Sioul pour Android partage de la même façon, par le dossier que l’application de synchronisation de votre téléphone garde sur le téléphone : l’eDrive de Murena, Syncthing, FolderSync, Autosync, l’application de Nextcloud, ou toute application qui garde un dossier du téléphone en accord avec votre cloud (Nextcloud, Dropbox, Google Drive, OneDrive…). Sioul lit le dossier ; il demande seulement que les nouveaux fichiers, et les fichiers qui grandissent, arrivent un jour de l’autre côté.
 
 - **Où** : certaines applications de synchronisation ne transportent que quelques dossiers. L’eDrive de Murena transporte le dossier **Documents** de votre cloud (avec Pictures, Music…), pas le reste : partagez par un dossier dans Documents, comme `Documents/Sioul`. Sioul en propose un là quand votre dossier synchronisé a un dossier Documents, et le dit quand celui choisi est en dehors.
 - **Sur le téléphone** : Paramètres ▸ Votre dossier et le partage, **Autoriser l’accès aux fichiers** (l’interrupteur d’Android), puis **Choisir…** le dossier, votre phrase de passe, **Partager**.
 - **Les comptes** arrivent sans leurs mots de passe : chacun demande le sien une fois, tapé ou [depuis Bitwarden](accounts.md#an-account-from-your-other-device).
-- **Les projets, les budgets et la banque** : le téléphone garde son propre dossier de notes, qu’aucune synchronisation ne transporte. Cochez **Les projets, les budgets et la banque voyagent aussi par ici, scellés** dans le même panneau, sur n’importe lequel de vos appareils (le choix rejoint les autres) : vos projets, vos budgets, vos comptes bancaires et les mouvements de la banque voyagent alors scellés avec le reste. Vos notes, vos papiers et leurs fichiers restent où ils sont.
-- **Le rythme d’eDrive** : il apporte les changements du cloud environ toutes les demi-heures, plus tôt quand vous synchronisez votre compte Murena à la main ; ceux du téléphone montent tout de suite. Il n’efface jamais d’un côté ce qui a été effacé de l’autre : les anciens tours que Sioul retire restent sur le téléphone, et ne sont pas relus.
+- **Vos notes, vos projets et vos papiers** : le téléphone garde son propre dossier de notes, qu’aucune synchronisation ne transporte. Allumez **Notes**, **Projets et argent** et **Papiers** dans le même panneau, sur le téléphone et sur chaque appareil dont le dossier de notes n’est transporté par aucune synchronisation : ils voyagent alors scellés avec le reste, une note à la fois. Sur un ordinateur dont une application de synchronisation transporte déjà le dossier de notes, ils restent éteints : les notes de cet ordinateur n’arrivent sur le téléphone que depuis un dossier qu’aucune synchronisation ne transporte, avec Notes allumé là aussi.
+- **Le rythme de l’application de synchronisation** : celle d’un téléphone n’apporte souvent les changements du cloud que toutes les demi-heures. Quand l’application offre un moyen de le lui demander (l’eDrive de Murena le fait), Sioul lui demande de regarder tout de suite : après que vous avez noté quelque chose, quand vous revenez dans Sioul, et toutes les cinq minutes tant qu’il est ouvert, pour que ce que vos autres appareils ont noté arrive en une minute. Sinon, cela arrive au rythme de l’application, et les prises disent ce que Sioul ne peut pas savoir entre-temps.
+- **Les prises quand Sioul n’est pas à l’écran** : chaque prise à venir est confiée d’avance au réveil d’Android. À son heure, Sioul demande d’abord des nouvelles à l’application de synchronisation, puis vous la rappelle, ou non si un autre appareil l’a notée prise, ou avec « vérifiez d’abord » s’il ne peut pas savoir.
+- **Les fichiers gardés en ligne seulement** : si votre application de synchronisation garde les fichiers sur le serveur jusqu’à ce que vous les ouvriez (OneDrive, Google Drive, iCloud, les « fichiers virtuels » de Nextcloud), réglez le dossier de partage pour qu’il reste **toujours sur cet appareil**.
+- **Ce qui n’est jamais nécessaire** : les effacements (l’eDrive n’efface jamais d’un côté ce qui a été effacé de l’autre : les anciens fichiers que Sioul retire restent, et ne sont pas relus) ; et rien de ce qu’elle met de côté, comme les copies en conflit, n’est lu.
 
-## Scellé {#sealed}
+## Certaines choses, un appareil à la fois {#some-things-one-device-at-a-time}
 
-Chaque changement est chiffré sur votre ordinateur avant d’être écrit dans le dossier (XChaCha20-Poly1305), avec une clé tirée de votre phrase de passe (Argon2id). Le dossier, et le serveur qui le transporte, voient quel ordinateur a écrit, quand, et combien ; jamais quoi : ni le nom des choses, ni leurs valeurs.
-
-La phrase de passe se tape une fois sur chaque ordinateur, et reste dans son trousseau. Une phrase fausse est signalée tout de suite.
-
-!!! warning "Une phrase de passe perdue ne se retrouve pas"
-    Personne ne peut la retrouver pour vous : elle n’est jamais envoyée nulle part. Si elle est perdue, arrêtez le partage sur chaque ordinateur et recommencez avec un nouveau dossier. Rien n’est perdu sur vos ordinateurs.
-
-## Quand deux ordinateurs changent la même chose {#when-two-computers-change-the-same-thing}
-
-Le changement le plus récent l’emporte, un réglage, une ligne, une entrée à la fois :
-
-- un réglage changé sur chaque ordinateur garde le plus récent ;
-- du temps noté sur chaque ordinateur : les deux restent ;
-- un expéditeur laissé entrer sur un ordinateur puis bloqué plus tard sur l’autre finit bloqué partout.
-
-Un fichier de réglages à moitié écrit, ou abîmé à la main, n’est jamais lu comme vidé : rien n’en est retiré ailleurs.
-
-## Certaines choses, un ordinateur à la fois {#some-things-one-computer-at-a-time}
-
-- **Les médicaments** ne sont rappelés que par l’ordinateur devant lequel vous êtes, pour qu’une prise ne soit pas rappelée deux fois. Une prise notée part tout de suite vers les autres.
+- **Les médicaments** ne sont rappelés que par l’appareil que vous utilisez, pour qu’une prise ne soit pas rappelée deux fois. Une prise notée part tout de suite vers les autres.
 - **La notification regroupée des sites** vient sur l’ordinateur devant lequel vous êtes.
 - **Les factures** sont numérotées sur un seul ordinateur, pour qu’un numéro ne soit jamais donné deux fois. Un autre ordinateur dit où elles se font, et propose **Faire les factures sur cet ordinateur**. Voir [Le temps et les factures](time.md#on-several-computers).
 
 ## Pas encore là {#not-there-yet}
 
-Un serveur de base de données au lieu d’un dossier, pour qui en préfère un ; les brouillons dans le dossier Brouillons de votre serveur de courrier, pour que d’autres programmes de courrier les voient ; les téléphones autres qu’Android. Le format est simple et documenté, pour qu’ils puissent venir.
+Des tailles arrondies par paliers, et les notes des appareils scellées aussi, pour que le dossier en dise encore moins ; un serveur de base de données au lieu d’un dossier, pour qui en préfère un ; les brouillons dans le dossier Brouillons de votre serveur de courrier, pour que d’autres programmes de courrier les voient ; les téléphones autres qu’Android. Le format est simple et documenté ([les notes de conception](https://aurelienpierre.github.io/sioul/dev/database.html), en anglais), pour qu’ils puissent venir.

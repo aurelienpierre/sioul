@@ -27,15 +27,19 @@ Then one card per address, with each of its services: **Mail**; **Calendars, tas
 
 ### A mail address
 
-All in view on its card:
+On its card, **Settings for this address**, folded until you open it:
 
 - **What this address is for**: work, your admin, leisure, any of them together. Its mail comes in the hours for what it is for. Nothing ticked counts as work, so that it never reaches your evenings. See [Hours](hours.md).
 - **How far back**: how many weeks of this address's mail its folders show, or like the other addresses.
 - **Fetch every**: how often its folders other than the inbox are fetched; 0 follows the other addresses. A public address can be fetched twice a day (720 minutes).
 - **Protected against harassment**, and once it is on, **Let the AI read it first**. See [the Porch](porch.md#a-public-address-protected).
+
+Always in view below it:
+
 - **Priority**: *More important*, *Normal* or *Less important*. See [the Porch](porch.md#some-addresses-first-others-last).
 - **Name and signature…**: your name, as recipients see it, and your signature, in Markdown.
-- **Server and folders**, folded: the server, and where its mail is kept on this computer.
+
+Then **Server and folders**, folded: the server, and where its mail is kept on this computer.
 
 Below the cards, **The AI shield** holds the key for Anthropic's service, used only by addresses that let the AI read them first. It is kept in your system's keyring, never in a file; **Forget the key** removes it.
 
@@ -56,6 +60,8 @@ Three forms, one after the other:
 - **Add a mail account**: your address, **Find the server**, your password, **Connect and add**.
 - **Add contacts and calendars**: from a CalDAV and CardDAV server, such as Nextcloud, Fastmail, iCloud or your host.
 - **Google calendars, contacts and tasks**: **Sign in with Google**, on Google's own page.
+
+On a phone, **From this phone's accounts…**, above them, opens Android's own list of the accounts the phone knows. A Google address fills the Google form; any other fills the mail form, whose server Sioul then looks for, and the one for contacts and calendars. Android lends no password: Sioul asks for it once.
 
 Step by step: [First steps](first-steps.md#add-your-mail). Passwords go to your system's keyring, nowhere else.
 

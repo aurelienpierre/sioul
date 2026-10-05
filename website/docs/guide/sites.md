@@ -18,6 +18,8 @@ Some mail never leaves its website: a bank's secure mailbox, the hospital's, the
 
 You log in once, on the site itself. Sioul keeps you logged in; it never stores the site's password itself.
 
+On a phone, the Sites page lists your sites and opens each in your browser: Sioul keeps no login there and gathers no notification. The sites you pinned on a computer come with the settings when you [share between your devices](sharing.md).
+
 ## The list
 
 - **The sites for these hours** come first. The others fold under one line, "Other hours: 3", opened with a click. See [Hours](hours.md).

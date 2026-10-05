@@ -40,9 +40,9 @@ For a French micro-entrepreneur, the invoice carries what the law asks for: the 
 
 ## On your desktop and your laptop
 
-Time noted on one computer is on the others a minute later, and so are the invoices: sealed end to end, through a folder your sync already carries (Nextcloud, Dropbox, Syncthing). There is no server of ours in between. Projects travel with your notes folder; tasks and events through your calendar's server. One computer numbers the invoices, so that a number is never given twice. [Sharing between your computers](sharing.md)
+Time noted on one computer is on the others a minute later, and so are the invoices: sealed end to end, through a folder your sync already carries (Nextcloud, Dropbox, Syncthing). There is no server of ours in between. Projects travel with your notes folder, or through the same sharing where no sync carries that folder; tasks and events through your calendar's server. One computer numbers the invoices, so that a number is never given twice. [Sharing between your devices](sharing.md)
 
-Phones: an Android version is being tried. It is not ready, and does not share with your computers yet.
+Phones: an Android version is being tried, not ready yet. It shares with your computers through the same folder, when your phone's sync app carries it ([On a phone](first-steps.md#on-a-phone)).
 
 ## And then it rests
 

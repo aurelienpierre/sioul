@@ -8,7 +8,7 @@ site_name = "Sioul"
 site_url = "https://aurelienpierre.github.io/sioul/fr/"
 docs_dir = "fr/docs"
 site_dir = "site/fr"
-site_description = "Sioul, un lieu calme pour le courrier, les tâches et les démarches, pensé pour celles et ceux que l’administratif fait souffrir."
+site_description = "Sioul adapte les exigences du travail, des institutions et de l’argent à la personne : le courrier, les tâches et les démarches du quotidien, organisés autour de l’attention, de l’énergie, de la santé et du repos, sur votre propre ordinateur."
 site_author = "Aurélien Pierre"
 copyright = "Copyright &copy; 2026 Aurélien Pierre · Sioul est un logiciel libre, sous licence GPL-3.0-or-later."
 
@@ -46,7 +46,7 @@ nav = [
     ] },
     { "Dans tout Sioul" = [
       { "Les heures : travail, démarches, temps libre" = "guide/hours.md" },
-      { "Partager entre vos ordinateurs" = "guide/sharing.md" },
+      { "Partager entre vos appareils" = "guide/sharing.md" },
       { "Avec un agent d’IA" = "guide/ai-agent.md" },
       { "Vie privée et sécurité" = "guide/privacy-security.md" },
     ] },

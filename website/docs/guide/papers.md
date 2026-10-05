@@ -56,7 +56,7 @@ Rent receipts, payslips and attestations have no end: they are said older than t
 
 ### Where papers live
 
-`sioul-papers.toml` at the root of your notes folder, and the files in its `papers` folder: they travel with your notes. **Take out** removes a paper from the wallet; its file stays where it is.
+`sioul-papers.toml` at the root of your notes folder, and the files in its `papers` folder: they travel with your notes folder, or through Sioul's sharing once you switch **Papers** on in it ([Sharing](sharing.md)). **Take out** removes a paper from the wallet; its file stays where it is.
 
 ## Paper letters
 

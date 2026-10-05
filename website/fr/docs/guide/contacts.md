@@ -26,7 +26,7 @@ Un contact s’ouvre à droite :
 - une petite carte avec une épingle à son adresse, une fois celle-ci placée (plus bas) ;
 - **Lié à cela** : le courrier échangé, les tâches, les événements, les notes, les projets.
 
-**Pour le changer**, **Modifier**, puis **Enregistrer** : il est modifié sur place. **Pour en ajouter un**, le **+** au-dessus de la liste, ou **Nouveau ▾ ▸ Un contact**. Depuis un message, **Ajouter aux contacts** fait de l’expéditeur un contact en un clic.
+**Pour le changer**, **Modifier**, puis **Enregistrer** : il est modifié sur place. Sur un téléphone, **Retour** quitte le formulaire sans enregistrer. **Pour en ajouter un**, le **+** au-dessus de la liste, ou **Nouveau ▾ ▸ Un contact**. Depuis un message, **Ajouter aux contacts** fait de l’expéditeur un contact en un clic.
 
 **Pour en supprimer un**, **Supprimer** : la suppression attend dix secondes, avec **Annuler**.
 

@@ -9,6 +9,10 @@ Sioul is free software, under the GPL-3.0-or-later licence, written in Rust, wit
 
 This section holds the design notes of the repository's `docs/` folder, as they are: what each part does, why, from which research, and where it stands. The [user guide](../index.md) is for using Sioul; these notes are for working on it.
 
+## How it is designed
+
+Sioul adapts the demands of the world to the person: it starts from the person's needs and from what a day can hold, keeps that time, and plans the obligations in what remains; it shows what belongs in the person's attention now; it keeps the ties between things so that the person does not have to. Each rule comes from a chain: an observation in the research, its mechanism, the rule it gives, what Sioul does, and what it refuses to do ([design](design.md), [what the research says](research.md), [the research notes](research/README.md)). Three tests for anything added: it takes admin work off the person rather than moving it elsewhere; its complexity stays on Sioul's side; it is something software may do to a person.
+
 A few words in the notes are older than the window: a *case* is what the window calls a *project*; *admin windows* became working hours, hours for your admin and free time; *Parameters* is the Settings page.
 
 ## Architecture, in brief

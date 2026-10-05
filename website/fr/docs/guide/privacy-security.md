@@ -79,9 +79,9 @@ Les sites que vous épinglez vivent dans un profil de navigateur propre à Sioul
 
 Le code PIN d’une clé de sécurité est demandé dans la boîte de dialogue propre à Sioul. Les identifiants viennent de votre coffre Bitwarden, ouvert par Sioul lui-même, en lecture seule : votre mot de passe principal et vos clés ne sont jamais gardés, et les identifiants restent en mémoire jusqu’à la fermeture de Sioul. Un identifiant fait pour un autre domaine le dit, pour qu’un site qui en imite un autre se remarque. Voir [Les sites](sites.md).
 
-## Entre vos ordinateurs {#between-your-computers}
+## Entre vos appareils {#between-your-devices}
 
-Ce que Sioul garde sur cet ordinateur seul peut voyager vers vos autres ordinateurs par un dossier que votre synchronisation transporte (Nextcloud, Dropbox, Syncthing), chiffré sur votre ordinateur (XChaCha20-Poly1305) avec une clé tirée de votre phrase de passe (Argon2id). Le serveur du dossier voit quel ordinateur a écrit, quand et combien ; jamais quoi. Voir [Partager entre vos ordinateurs](sharing.md).
+Chaque appareil garde ses propres données. Ce qui doit voyager entre vos ordinateurs et votre téléphone passe par un dossier que votre propre application de synchronisation transporte (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…), scellé sur votre appareil avant d’y être écrit (XChaCha20-Poly1305, avec une clé tirée de votre phrase de passe par Argon2id). Le serveur du dossier voit quel appareil a écrit, quand et combien, et la taille de chaque note ou papier scellé ; jamais quoi. Rien de ce qui arrive dans ce dossier, un fichier abîmé ou effacé, ne peut retirer des données à vos appareils. Comment cela marche, ce que cela protège et ce que cela ne peut pas cacher : [Partager entre vos appareils](sharing.md).
 
 ## Le courrier chiffré {#encrypted-mail}
 

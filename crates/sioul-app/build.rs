@@ -135,7 +135,7 @@ fn windows_details() {
     resource
         .set_icon("../../packaging/windows/sioul.ico")
         .set("ProductName", "Sioul")
-        .set("FileDescription", "Sioul, a calm place for mail, tasks and admin")
+        .set("FileDescription", "Sioul, admin that adapts to you")
         .set("CompanyName", "Aurélien Pierre")
         .set("LegalCopyright", "Copyright © 2026 Aurélien Pierre. GPL-3.0-or-later.");
     resource.compile().expect("the program's Windows resources (icon, details)");

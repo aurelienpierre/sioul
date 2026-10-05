@@ -1,17 +1,17 @@
 ---
-description: La santé dans Sioul – des médicaments rappelés une fois et discrètement, les ordonnances et leurs démarches, ce qu’une montre a mesuré sans aucun score, des pauses pour bouger, et une limite par jour pour les discussions.
+description: La santé dans Sioul – des médicaments rappelés une fois et discrètement, les ordonnances et leurs démarches, les repas, le repos et le sommeil gardés libres, ce qu’une montre a mesuré sans aucun score, des pauses pour bouger, et une limite par jour pour les discussions.
 ---
 
 # La santé {#health}
 
-Des médicaments à prendre, des ordonnances à renouveler, une pause pour bouger, une limite pour les discussions. Tout reste sur cet ordinateur ; rien ne compte ce qui a été manqué, rien ne devient rouge.
+Des médicaments à prendre, des ordonnances à renouveler, des repas, du repos et du sommeil gardés libres dans votre plan, une pause pour bouger, une limite pour les discussions. Tout reste sur cet ordinateur ; rien ne compte ce qui a été manqué, rien ne devient rouge.
 
 <figure markdown="span">
   [![La page Santé : une phrase qui dit que médicaments, ordonnances et prises restent sur cet ordinateur ; les prises du jour, l’une marquée « Pris à 07:41 », les autres chacune avec Pris ; les médicaments, chacun avec le moment où il se prend ; une ordonnance, avec quand passer à la pharmacie et quand la renouveler, « Retiré aujourd’hui », et la liste où vont les démarches ; puis la pause pour bouger pendant la concentration, toutes les 45 minutes.](../assets/screens/fr/health.png){ loading=lazy }](../assets/screens/fr/health.png "Ouvrir l’image en grand")
   <figcaption>Les prises du jour d’abord, puis les médicaments et les ordonnances.</figcaption>
 </figure>
 
-La page met d’abord ce qui sert le plus : les prises prévues pendant que Sioul était fermé, puis les prises du jour, puis les médicaments et les ordonnances, puis ce que dit votre montre (une fois qu’elle est réglée), puis les pauses.
+La page met d’abord ce qui sert le plus : les prises prévues pendant que Sioul était fermé, puis les prises du jour, puis les médicaments et les ordonnances, puis ce que dit votre montre (une fois qu’elle est réglée), puis les repas, le repos et le sommeil, puis les pauses.
 
 ## Les médicaments {#medicines}
 
@@ -33,7 +33,9 @@ Chaque prise du jour, avec **Pris**. Une prise faite dit à quelle heure ; un 
 
 ### Les rappels {#reminders}
 
-Une notification sur le bureau par prise, dans la demi-heure qui suit son heure, sans son, avec **Pris**. Jamais répétée. Les rappels viennent aussi pendant le calme : ils sont à vous.
+Une notification sur le bureau par prise, dans la demi-heure qui suit son heure, sans son, avec **Pris** (sous Windows et macOS, la notification n’a pas de bouton : marquez la prise sur cette page). Jamais répétée. Les rappels viennent aussi pendant le calme : ils sont à vous.
+
+**Sur un téléphone**, Android arrête les applications qu’il ne montre pas : Sioul confie donc chaque prise des deux jours qui viennent, à l’avance, au réveil d’Android. À l’heure de la prise, le téléphone réveille Sioul un instant, même s’il était arrêté : Sioul lit d’abord ce que vos autres appareils ont marqué, en demandant à votre application de synchronisation de regarder tout de suite quand il le peut ; puis il vous fait le rappel, ou ne dit rien si la prise a été marquée ailleurs, ou dit **À vérifier d’abord** quand il ne peut pas savoir. **Pris** la marque depuis la notification ; plus d’une demi-heure après son heure, un appui ouvre Sioul pour demander quand vous l’avez prise. Toucher la notification ouvre la prise dans Sioul, et une prise marquée n’importe où retire sa notification. Ces rappels passent par le canal « Doses » d’Android, avec le son habituel des notifications du téléphone, sauf si vous le changez dans les paramètres d’Android. Si Android ne laisse pas Sioul poser d’alarmes exactes (Paramètres ▸ Applications ▸ Sioul ▸ Alarmes et rappels), les rappels peuvent arriver en retard, jusqu’à une heure, et cette page le dit.
 
 Si Sioul était fermé à ce moment-là, une prise des douze dernières heures qui n’a été ni marquée ni rappelée est demandée sur le Porche au démarrage suivant, et sur cette page : avec **Pris…** (quand vous l’avez prise) et **Pas pris**. C’est une question sur le passé, jamais un rappel d’en prendre une maintenant.
 
@@ -41,7 +43,7 @@ Si Sioul était fermé à ce moment-là, une prise des douze dernières heures q
 
 Seul l’ordinateur où vous êtes vous fait le rappel. Une prise marquée sur l’un passe tout de suite aux autres. Pour cela, [partagez entre vos ordinateurs](sharing.md) ; sans cela, la page dit que les prises ne sont connues que de cet ordinateur.
 
-**Quand Sioul ne peut pas savoir.** Un médicament pris deux fois peut faire du mal : Sioul ne dit donc jamais qu’une prise n’a pas été prise s’il ne le sait pas. Vos appareils échangent par un dossier qu’un autre programme synchronise, parfois en retard : la synchronisation d’un téléphone peut n’apporter les fichiers que toutes les demi-heures. Quand Sioul n’a pas eu de nouvelles d’un de vos appareils depuis l’heure de la prise, qu’une partie de ce qu’il a écrit n’a pas pu être lue, ou que le registre des prises de cet appareil n’a pas pu être lu, il le dit sous la prise, sur le Porche et sur cette page : « Sioul ne peut pas savoir si elle a été prise : votre portable a été entendu pour la dernière fois le lundi 5 octobre à 07:52. Vérifiez avant de la prendre. » Un rappel attend alors quelques minutes des nouvelles, puis vient avec le titre **À vérifier d’abord**. Regardez l’autre appareil, ou votre pilulier, avant de la prendre.
+**Quand Sioul ne peut pas savoir.** Un médicament pris deux fois peut faire du mal : Sioul ne dit donc jamais qu’une prise n’a pas été prise s’il ne le sait pas. Vos appareils échangent par un dossier qu’un autre programme synchronise, parfois en retard : la synchronisation d’un téléphone peut n’apporter les fichiers que toutes les demi-heures. Quand Sioul n’a pas eu de nouvelles d’un de vos appareils depuis l’heure de la prise, qu’une partie de ce qu’il a écrit n’a pas pu être lue, ou que le registre des prises de cet appareil n’a pas pu être lu, il le dit sous la prise, sur le Porche et sur cette page : « Sioul ne peut pas savoir si elle a été prise : votre portable a été entendu pour la dernière fois le lundi 5 octobre à 07:52. Vérifiez avant de la prendre. » Un rappel attend alors des nouvelles jusqu’à dix minutes, puis vient avec le titre **À vérifier d’abord**. Regardez l’autre appareil, ou votre pilulier, avant de la prendre.
 
 ## Repas, repos et sommeil {#meals-rest-and-sleep}
 
@@ -53,9 +55,9 @@ Des heures gardées libres, réglées avant tout travail : Sioul n’y prévoi
 
 Nommez chacun comme vous voulez, choisissez ses jours, et coupez ses avis si vous préférez vous en passer : il reste gardé libre.
 
-**Aujourd’hui** : les repas, siestes et la nuit du jour viennent en premier sur la page, chacun avec **15 min plus tard** (autant de fois que vous voulez), **Déplacer à…** une heure, et **Pas aujourd’hui**, pour aujourd’hui seulement, sans qu’aucune question ne soit posée.
+**Aujourd’hui** : les repas, siestes et la nuit du jour viennent en premier dans cette partie de la page, chacun avec **15 min plus tard** (autant de fois que vous voulez ; les minutes sont à votre choix), **Déplacer à…** une heure, et **Pas aujourd’hui** (**Finalement aujourd’hui** le reprend), pour aujourd’hui seulement, sans qu’aucune question ne soit posée. Un repas qui tomberait pendant un événement passe après lui de lui-même, aujourd’hui seulement, avec le temps d’en revenir (l’**Après** de l’événement) ; jamais plus tôt que là où vous l’avez mis.
 
-**Avis** : deux au plus pour chacun, une fois chacun. D’abord, un quart d’heure avant (à votre choix), « Pas de nouvelle grosse tâche » avec son nom et son heure, pour ne pas commencer ce qu’il faudrait quitter. Puis un à l’heure. Chacun a **Options…** : plus tard, à une autre heure, pas aujourd’hui, et une ligne sur où vous en êtes, qui revient à votre retour. Déplacer un repas n’amène jamais d’autres avis. Rien pendant une réunion, rien pour celui qui n’est pas pour aujourd’hui, rien quand il passe. Un avis ne montre qu’un nom et une heure.
+**Avis** : deux au plus pour chacun, une fois chacun. D’abord, un quart d’heure avant (à votre choix), « Pas de nouvelle grosse tâche » avec son nom et son heure, pour ne pas commencer ce qu’il faudrait quitter. Puis un à l’heure. Sous Linux, chacun a **Options…** : plus tard, à une autre heure, pas aujourd’hui, et une ligne sur où vous en êtes, qui revient à votre retour ; ailleurs, les mêmes déplacements sont sous **Aujourd’hui**, plus haut. Déplacer un repas n’amène jamais d’autres avis. Rien pendant une réunion, rien pour celui qui n’est pas pour aujourd’hui, rien quand il passe. Un avis ne montre qu’un nom et une heure.
 
 Rien de ce que vous mangez ni de votre sommeil n’est demandé ni noté : ni comptes, ni historique. La façon de faire suit la recherche sur la manière dont les personnes qui ont du mal à manger veulent être invitées à le faire ([les notes de recherche (en anglais)](https://aurelienpierre.github.io/sioul/dev/research/meal-prompts.html)).
 
@@ -87,7 +89,7 @@ Le matin, la page Tâches peut dire une ligne, jamais une notification : aprè
 
 ## Bouger {#moving}
 
-**Une pause pour bouger**, toutes les 45 minutes sauf si vous changez ce réglage : une notification discrète dit qu’il est temps de bouger et de s’étirer, même la fenêtre cachée. Pendant une séance de concentration, la pause est proposée, jamais imposée : **Faire la pause** met la séance en pause et vous laisse noter en une ligne où vous en êtes ; **Pas maintenant** continue, et redemande plus tard. Si vous la manquez, la séance continue de compter. **Y retourner** la relance.
+**Une pause pour bouger**, toutes les 45 minutes sauf si vous changez ce réglage : une notification discrète dit qu’il est temps de bouger et de s’étirer, même la fenêtre cachée ; sous Linux, son **Où j’en suis…** laisse une ligne pour votre retour. Pendant une séance de concentration, la pause est proposée, jamais imposée : **Faire la pause** met la séance en pause et vous laisse noter en une ligne où vous en êtes ; **Pas maintenant** continue, et redemande plus tard. Si vous la manquez, la séance continue de compter. **Y retourner** la relance.
 
 ## Les discussions {#chats}
 

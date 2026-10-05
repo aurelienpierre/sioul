@@ -1,5 +1,5 @@
 ---
-description: L’agenda dans Sioul – ce qui vient à partir d’aujourd’hui, le jour, la semaine et le mois, les événements et les invitations, un seul rappel discret.
+description: L’agenda dans Sioul – ce qui vient à partir d’aujourd’hui, le jour, la semaine et le mois, les événements et les invitations, deux événements en même temps signalés, un seul rappel discret.
 ---
 
 # L’agenda {#agenda}
@@ -15,21 +15,32 @@ L’agenda montre ce qui vient, à partir d’aujourd’hui, en une liste calme 
 
 Un choix en haut de la page :
 
-- **Ce qui vient** : aujourd’hui, puis les deux prochaines semaines, en liste. C’est là que la page s’ouvre.
+- **Ce qui vient** : ce qui reste à venir aujourd’hui, puis les deux prochaines semaines, en liste. Un événement déjà fini n’y est plus. C’est là que la page s’ouvre.
 - **Jour**, **Semaine**, **Mois**.
 
 Les flèches ◂ et ▸ vont plus tôt et plus tard ; **Aujourd’hui** revient à aujourd’hui.
 
+La page suit l’horloge : la ligne de l’heure actuelle avance avec elle, aujourd’hui devient demain à minuit, et vos agendas sont relus toutes les cinq minutes et chaque fois que vous revenez dans Sioul.
+
 ## Les événements {#events}
 
-**Nouvel événement**, en haut de la page (ou **Nouveau ▾ ▸ Un événement**) : un titre, quand il commence et finit, où. **Toute la journée** se coche d’un clic. **Se répète** : tous les jours, toutes les semaines, tous les mois ou tous les ans. **Agenda** : celui où il va, quand vous en avez plusieurs.
+**Nouvel événement**, en haut de la page (ou **Nouveau ▾ ▸ Un événement**) : un titre, quand il commence et finit, où. **Toute la journée** se coche d’un clic. Repliés sous **Plus** : ses notes ; **Se répète**, tous les jours, toutes les semaines, tous les mois ou tous les ans ; **Agenda**, celui où il va, quand vous en avez plusieurs ; et, si vous le voulez :
 
-Un événement s’ouvre à droite avec son heure et son lieu. Ses notes, sa répétition, les personnes invitées et son agenda sont repliés sous **Plus**.
+- **Avant** et **Après** : le temps de se préparer et d’y aller, et celui d’en revenir. Votre plan le garde libre, et la journée le montre autour de l’événement (« Autour : … »). Il ne compte jamais comme une pause.
+- Ce que l’événement vous demande, de 0 à 10 chacun : **Réflexion demandée**, **Émotions remuées**, **Anxiété suscitée** ; et **Ce que ça apporte**. Rien n’est dit tant que vous ne le dites pas. Ce que vous dites est écrit dans l’événement et se retrouve dans son formulaire ; le plan ne s’en sert pas encore.
 
-- **Pour le changer** : **Modifier l’événement**.
+Un événement s’ouvre à droite avec son jour, son heure, son lieu, son agenda, et s’il se répète. Ses notes, qui l’organise et les personnes invitées sont repliés sous **Plus**.
+
+- **Pour le changer** : **Modifier**.
 - **Pour le supprimer** : **Supprimer**. Il attend dix secondes, avec **Annuler**. Un événement qui se répète demande d’abord : **Cette fois seulement**, ou **Toutes les fois**.
 
 Un événement peut aussi naître d’un message, d’une tâche, ou du rendez-vous d’une lettre papier, et il lui reste lié. Depuis un événement, vous pouvez faire une note (datée, avec la liste des personnes invitées, et **Envoyer aux personnes invitées** une fois écrite) ou une tâche pour le préparer.
+
+## Deux événements en même temps {#two-events-at-once}
+
+Quand deux événements se chevauchent, le temps d’y aller et d’en revenir compté, Sioul le dit : ceux d’aujourd’hui sur le [Porche](porch.md), avec un bouton pour ouvrir chacun ; ceux d’aujourd’hui et des deux semaines suivantes au-dessus de l’agenda, quelle que soit la vue. **Ne plus en parler** les met de côté pour de bon, sur cet appareil. Déplacez l’un des deux, et c’est une nouvelle question. Une fois les deux finis, plus rien n’est dit.
+
+Un repas qui tombe pendant un événement passe après lui, pour ce jour-là seulement (voir [Santé](health.md#meals-rest-and-sleep)).
 
 ## Les invitations {#invitations}
 

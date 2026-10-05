@@ -1,6 +1,6 @@
 # The case store
 
-A case is a dossier: a tax return, a health-cover request, a bill to contest. Its detailed record lives in **your own Markdown files**: an Obsidian vault, a git repository, a folder of notes. Sioul links to the record and never owns it. You, or an AI agent helping you, keep writing in your files as before.
+A case is a dossier: a tax return, a health-cover request, a bill to contest. Its detailed record lives in **your own Markdown files**: an Obsidian vault, the folder of Nextcloud Notes, a git repository, a folder of notes. Sioul links to the record and never owns it. You, or an AI agent helping you, keep writing in your files as before.
 
 ## The manifest
 One file at the root of the case store, `sioul-cases.toml`, names the cases (example: [../examples/sioul-cases.toml](../examples/sioul-cases.toml)).

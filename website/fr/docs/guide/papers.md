@@ -56,7 +56,7 @@ Quittances de loyer, bulletins de paie et attestations n’ont pas de fin : pa
 
 ### Où vivent les papiers {#where-papers-live}
 
-`sioul-papers.toml` à la racine de votre dossier de notes, et les fichiers dans son dossier `papers` : ils voyagent avec vos notes. **Retirer** enlève un papier du portefeuille ; son fichier reste où il est.
+`sioul-papers.toml` à la racine de votre dossier de notes, et les fichiers dans son dossier `papers` : ils voyagent avec votre dossier de notes, ou par le partage de Sioul une fois **Papiers** activé dans le partage ([Le partage](sharing.md)). **Retirer** enlève un papier du portefeuille ; son fichier reste où il est.
 
 ## Le courrier papier {#paper-letters}
 

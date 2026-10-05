@@ -16,13 +16,13 @@ Sioul parle anglais ou français, selon la langue de votre système, sauf si vou
 
 **À gauche**, de haut en bas :
 
-- **Nouveau ▾** crée une chose de n’importe quel type : un message, une tâche, un événement, un contact, une note, un projet, du temps passé, un mouvement de budget, un papier.
+- **Nouveau ▾** crée une chose de n’importe quel type : un message, une tâche, un événement, un contact, une note, un projet, du temps passé, un mouvement de budget, un papier ; et **Où j’en suis…** laisse une ligne sur où vous en êtes ([Les tâches](tasks.md#starting-and-stopping)).
 - **Les lieux** : Porche, Tâches, Courrier, Sites, Agenda, Contacts, Notes, Projets, Temps, Budgets, Papiers, Santé.
 - **Trois icônes**, à part en bas : Comptes (une personne), Paramètres (des curseurs), et Tout actualiser, qui relève à nouveau, d’un coup, le courrier, l’agenda, les tâches et les contacts.
 
 **En bas**, la ligne d’état dit en une phrase ce qui s’est passé en dernier. Après chaque déplacement, suppression ou envoi, « Annuler » y attend dix secondes. Pendant le calme, elle dit quand le travail revient. À son extrémité droite se trouvent les touches, le bouton des sons ([des sons pour se concentrer ou se reposer](tasks.md#sounds)) et la météo d’un lieu que vous choisissez.
 
-**Sur chaque page**, le ⚙ au bout de la première ligne contient les réglages propres à cette page, chacun avec une phrase sur ce qu’il change ; ils sont enregistrés aussitôt. Là où l’on lit du texte long (un message, une note), « Aa » règle la police, sa taille et l’interligne. Un clic droit, ou la touche Menu, sur n’importe quel élément donne ce qui n’est pas en vue.
+**Sur chaque page**, le ⚙ au bout de la première ligne contient les réglages propres à cette page, chacun avec une phrase sur ce qu’il change ; ils sont enregistrés aussitôt. Là où l’on lit du texte long (un message, une note), « Aa » règle la police, sa taille et l’interligne. Un clic droit, la touche Menu, ou un appui long sur un écran tactile, sur n’importe quel élément donne ce qui n’est pas en vue.
 
 ### Touches {#keys}
 
@@ -36,6 +36,23 @@ Tout se fait au clavier : Tab pour se déplacer, Entrée pour choisir, Échap 
 | ++f5++ | Tout actualiser |
 | ++ctrl+enter++ | Envoyer, dans la fenêtre de rédaction |
 
+### Sur un téléphone {#on-a-phone}
+
+Une version Android est à l’essai ([Installer](install.md#on-android)). Sur un téléphone, ou dans une fenêtre de moins de 720 pixels de large :
+
+- **Les lieux** glissent depuis la gauche, derrière ☰ ; une barre en haut nomme la page.
+- **Un volet à la fois** : une page montre sa liste, puis ce que vous ouvrez sur tout l’écran ; **Retour**, sur la barre ou celui d’Android, revient en arrière.
+- **Les menus** s’ouvrent par un appui long sur un écran tactile, là où une souris ferait un clic droit.
+
+Ce qui change sur un téléphone :
+
+- **Les notifications** ne viennent que pour les prises de médicaments ([La santé](health.md#reminders)) et pour le temps qui court ([Le temps](time.md#where-time-comes-from)). Un code que vous avez demandé s’affiche sur le Porche ; les autres rappels n’y viennent pas encore.
+- **Le courrier** est relevé tant que Sioul est ouvert : Android l’arrête en arrière-plan.
+- **Les dossiers** : le **Choisir…** d’un réglage ouvre la liste des dossiers du téléphone, propre à Sioul, avec **Autoriser l’accès aux fichiers** quand Android n’a pas encore donné cet accès à Sioul.
+- **Les sites** s’ouvrent dans votre navigateur ([Les sites](sites.md)) ; les PDF s’ouvrent dans une autre application, avec **Ouvrir avec…**.
+- **Le courrier papier** n’est pas lu, et les pièces jointes ne passent pas par un antivirus : les programmes dont Sioul se sert pour cela sur un ordinateur n’existent pas sur un téléphone.
+- **Vos autres appareils** partagent avec lui par un dossier que l’application de synchronisation du téléphone transporte ([Le partage](sharing.md)). Les mots de passe ne voyagent jamais : chaque compte demande le sien, une fois ([Les comptes](accounts.md#an-account-from-your-other-device)).
+
 ## Ajouter votre courrier {#add-your-mail}
 
 1. Ouvrez **Comptes** (l’icône en forme de personne), puis l’onglet **Ajouter un compte**.
@@ -48,7 +65,7 @@ Gmail, et d’autres fournisseurs quand la validation en deux étapes est activ�
 
 Relever le courrier ne change rien sur votre serveur de courrier. Sioul n’y écrit que lorsque vous agissez : ouvrir un message le marque comme lu, comme dans tout logiciel de courrier ; archiver, supprimer et déplacer se font dix secondes après votre demande, pour que « Annuler » puisse les arrêter.
 
-Ensuite, sur la fiche de l’adresse dans **Vos comptes**, cochez **À quoi sert cette adresse** : travail, vos démarches, loisirs, ou plusieurs. Tant que vous ne l’avez pas dit, une adresse compte comme du travail, pour que son courrier n’atteigne jamais vos soirées. Voir [Les heures](hours.md).
+Ensuite, sur la fiche de l’adresse dans **Vos comptes**, dépliez **Réglages de cette adresse** et cochez **À quoi sert cette adresse** : travail, vos démarches, loisirs, ou plusieurs. Tant que vous ne l’avez pas dit, une adresse compte comme du travail, pour que son courrier n’atteigne jamais vos soirées. Voir [Les heures](hours.md).
 
 ## Ajouter vos agendas, tâches et contacts {#add-your-calendars-tasks-and-contacts}
 

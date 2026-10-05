@@ -1,47 +1,100 @@
 ---
-title: A calm place for mail, tasks and admin
-description: Sioul gathers your mail, tasks, agenda, money and papers in one quiet window, on your own computer. Designed for autistic, ADHD, burnt-out and exhausted people, from research on what helps them.
+title: Admin that adapts to you
+description: Sioul fits the demands of work, institutions and money around what a person can actually give, attention, energy, health and rest first. Mail, tasks and everyday admin in one quiet desktop application, on your own computer, free software designed as an act of care, from research.
 ---
 
 # Sioul
 
 *Sioul* [siwl] is Breton for calm, peaceful, silent.
 
-Sioul is a desktop application that gathers your mail, your tasks and your admin in one quiet window, on your own computer.
+**Most software expects people to adapt to it. Sioul adapts the demands of the world to the person.**
 
-It is designed for people for whom admin hurts: autistic people, people with ADHD, people who are anxious, traumatised, burnt out, depressed, or simply exhausted. It is also for people living with long COVID or another condition that limits energy, such as ME/CFS, and for people with an eating disorder or who eat irregularly.
+Mail, tasks, appointments, bills, the letters institutions leave on their websites, the papers asked again and again: the administrative machinery of modern life assumes someone always available, always at full strength, who remembers how a dozen separate systems relate to each other. Sioul starts from the other end. It begins with what you can give today (your attention, your energy, your health, your rest) and fits the demands of work, institutions and money into what is left.
+
+It is a desktop application for mail, tasks and everyday admin: a quiet place between you and that machinery, on your own computer.
 
 <figure markdown="span">
   [![Sioul's window. On the left, the list of places: Porch, Tasks, Mail, Sites, Agenda, Contacts, Notes, Projects, Time, Budgets, Papers, Health. On the right, the Porch: this week's payments in one line, a one-time code with its Copy button, a chat's news, then the new mail sorted into lanes.](assets/screens/porch.png){ loading=lazy }](assets/screens/porch.png "Open the picture at full size")
-  <figcaption>The Porch, in working hours: codes on top, then the new mail, sorted into lanes.</figcaption>
+  <figcaption>The Porch: what came in waits for the hours you chose; the codes you just asked for come at once.</figcaption>
 </figure>
 
-## Why it exists
+## The other way round
 
-Many neurodivergent people choose to work for themselves. Office life does not fit them: the open-plan office, the noise, the constant interruptions.
+Usual software and Sioul start from opposite ends:
 
-Working for yourself brings more admin than a salaried job: quotes and invoices, taxes, social contributions, clients, the bank. And admin is exactly what ADHD, trauma, depression and burnout make hard.
+| Usual software | Sioul |
+|---|---|
+| starts from your obligations, fills your days with them, and leaves you what remains | starts from your needs and from what today can hold, keeps that time for you, and plans the obligations in what remains |
+| shows everything that has arrived, as soon as it arrives | shows what belongs in your attention now, in the hours you chose |
+| gives each kind of thing its own program, and leaves you to be the glue between them | ties everything together in one place, and keeps the ties for you |
+| counts what is late, overdue, missed | starts the plan again from today, and never counts what was not done |
 
-It is not laziness. Putting off a letter protects your mood for now (Sirois & Pychyl 2013). Administrative burden weighs most on people with the fewest resources left, executive function and health among them (Christensen et al. 2020).
+Each feature of Sioul is a consequence of these four reversals.
 
-Meanwhile, modern life scatters everything:
+### Your needs first, then the work
+
+You set your meals, your rest and your sleep, your hours for work, for your own admin and for yourself, and the time to get ready, to get there and to come back around each event. That time is kept for you. Each day, you can say how it is: clear, haze or fog. The day then holds more or less, and nothing is guessed from what you do. The work is planned in what remains, as one next step, with the reason it comes now. Nothing is ever overdue: a date in the plan is not a debt.
+
+### A porch between the world and your attention
+
+Nothing new walks straight in. Mail, the letters banks and offices leave in their "secure mailboxes", chats: everything waits on the Porch, checked (genuine or forged), sorted, and shown in the hours you chose. The question is not what has arrived, but what belongs in your attention now: a client in your working hours, the tax office in your admin hours, nobody's work in the evening. The codes you just asked a website for come at once.
+
+### The software keeps the links
+
+A letter from the tax office, the task it asks for, the appointment, the PDF, the person who wrote, the payment: one case, each piece tied to the others and found from any of them. Usual software splits them across a mail program, a calendar, a task list, a folder and a bank's website, and leaves you to remember how they relate. In Sioul, the software keeps those relationships. Your own business too: a client's mail, the tasks, the time spent, the invoice, the money expected and the figures for your accountant form one chain.
+
+### Nothing to be afraid of getting wrong
+
+No unread counts, no badges, no red, no sounds, no streaks; nothing moves under your eyes. Anything moved, deleted or sent can be undone for ten seconds. Forged mail is set aside, with the reason. Nothing is sent, deleted or paid without you, not even by an AI agent. The words get the same care: a reminder for a medicine or a meal says what it is, without calling you ill and without praise; stopping early is said plainly, as the ordinary thing it is; there is no forced cheerfulness, and no talking down.
+
+## For anyone whose capacity is limited or changes
+
+Sioul was designed first for the people admin hurts most: autistic people, people with ADHD, people who are anxious, traumatised, burnt out, depressed, or simply exhausted. The same needs come with long COVID, ME/CFS and other conditions that limit energy, with an eating disorder or irregular eating, with caring for someone, with a bad stretch of life. Sioul needs no diagnosis and guesses nothing about your state: you say what you can do, and it plans around that.
+
+Many neurodivergent people work for themselves, because office life does not fit them. Working for yourself brings more admin, and exactly the kind these conditions make hard: quotes and invoices, taxes, contributions, clients, the bank. So Sioul also carries a small business, from a client's first mail to the paid invoice ([below](#working-for-yourself)).
+
+## Admin is hard, and it is not laziness
+
+Putting off a letter protects your mood for now (Sirois & Pychyl 2013). Administrative burden weighs most on the people with the fewest resources left, executive function and health among them (Christensen et al. 2020). And modern life scatters everything:
 
 - mail arrives at several addresses;
 - banks, the tax office and health insurers keep their letters in "secure mailboxes" on their own websites, and only send a mail saying that something is waiting there;
 - chats live in the browser;
 - tasks, appointments, medicines, paper letters and the papers asked again and again (an identity card, the last tax notice, rent receipts) each live somewhere else.
 
-Most software is built to make you answer faster: counts, red badges, sounds, streaks. Sioul starts from the other end. It is designed from the well-being of the person towards the demands of work, admin and money, not to fit the latest management method.
+Usual software adds to the weight: counts, red badges, sounds and streaks, all built to make you answer faster.
 
-## What it does
+## Built on research, and on refusals
+
+Each rule in Sioul comes from a chain: what studies observed, the mechanism behind it, the rule it gives, what Sioul does, and what it refuses to do. A few of them:
+
+- **Fewer, predictable looks at mail.** Checking mail three times a day lowered daily stress in a randomised trial (Kushlev & Dunn 2015). Batching notifications three times a day improved attention and mood, while people given no notifications at all felt *more* anxious (Fitz et al. 2019). So Sioul shows mail in hours you choose, and always says when they come.
+- **Interruptions cost, even when ignored.** A notification left unanswered still disrupts attention (Stothart, Mitchum & Yehnert 2015). So there are no pop-ups, sounds or badges, and the layout never moves under your eyes.
+- **Starting is the hard part.** Autistic inertia is a difficulty acting on intentions, eased by outside scaffolding (Buckle et al. 2021). With ADHD, help belongs at the point of performance (Barkley 2012). So Sioul picks one small next step, and says why.
+- **Progress, never streaks.** Broken streaks lower later engagement, more so when people blame themselves (Silverman & Barasch 2023). So Sioul shows what got done, and never counts what did not.
+- **Evenings are for recovery.** Detaching from work after hours goes with less exhaustion (Wendsche & Lohmann-Haislah 2017), and merely expecting work mail in the evening does harm (Becker et al. 2021). So work rests outside your working hours.
+
+Sioul also refuses things other software does, each refusal with its evidence: streaks, trophies and points; counts of what is "overdue"; repeated reminders; mood, symptom and energy journals; guessing your capacity or your mood from your behaviour or from a watch; a schedule that moves things without asking; an AI or a service that sends, books or pays on its own.
+
+All the findings, with their sources and the rule each one gives: [what the research says](dev/research.md). Each study in detail, with how strong its evidence is, and what was built, left for later or refused: [the research notes](dev/research/README.md). What is not known yet: these rules rest on what was shown to help people; whether Sioul itself lightens the weight of admin is still to be measured, with the people who use it.
+
+## An act of care
+
+Sioul is the working counterpart of a book by the same author, *Design and Engineering, in Spite of Open-Source* ([free, in PDF and EPUB](https://editions.aurelienpierre.com/en/concevoir/)). Its conclusion uses "a word engineering never utters: to design is to care", and it states: "A tool serves its user, or it betrays them. There is no in-between." The book also describes what happens to the people least equipped for it: "First, everyone is conscripted to the computer, for tasks that got done fine without it; then the least equipped are technically set up to fail; then they are made to carry the blame." Everyday admin is where this happens most. Sioul applies the book's method there.
+
+The same reasoning decides how Sioul is built. Your data stays on your computer, in plain files and open formats, and in your own accounts. Your notes are a folder of Markdown files, fully compatible with an Obsidian vault and with Nextcloud Notes: the same folder works in all three, side by side ([Notes](guide/notes.md#the-same-folder-as-obsidian-and-nextcloud-notes)). It travels between your devices sealed, through a folder your own sync app carries. There is no server of ours, and nothing reaches the developer. The code is free software, under the GPL. A tool meant to lift the weight of administrative machinery cannot, without contradicting itself, tie you to a service you cannot leave.
+
+One test for everything added to Sioul: does it take work off the person, rather than move it somewhere else?
+
+## In the window
 
 <div class="grid cards" markdown>
 
--   :lucide-inbox:{ .lg .middle } __Mail waits on a porch__
+-   :lucide-inbox:{ .lg .middle } __The Porch__
 
     ---
 
-    New mail is checked (genuine or forged), sorted, and shown in the hours you chose. The codes and links you just asked a site for come at once, quietly.
+    New mail, checked (genuine or forged) and sorted, shown in the hours you chose; the codes you asked for, at once.
 
     [The Porch](guide/porch.md)
 
@@ -49,7 +102,7 @@ Most software is built to make you answer faster: counts, red badges, sounds, st
 
     ---
 
-    Tasks that wait for each other are ordered into the one step to take now, with its reason. Nothing is ever overdue. Starting is helped, and stopping counts. The time to get ready, get there and come back is kept free around events and tasks, never counted as a pause.
+    Tasks that wait for each other, ordered into the one step to take now, with its reason. Starting is helped, and stopping counts.
 
     [Tasks](guide/tasks.md)
 
@@ -57,11 +110,11 @@ Most software is built to make you answer faster: counts, red badges, sounds, st
 
     ---
 
-    Working hours, hours for your own admin, free time. Each address, site, budget and task belongs to one or several of them. The rest waits, out of sight.
+    Working hours, hours for your own admin, free time. Each address, site, budget and task belongs to one or several; the rest waits, out of sight.
 
     [Hours](guide/hours.md)
 
--   :lucide-folder-open:{ .lg .middle } __Everything in one place__
+-   :lucide-folder-open:{ .lg .middle } __Everything tied together__
 
     ---
 
@@ -81,9 +134,9 @@ Most software is built to make you answer faster: counts, red badges, sounds, st
 
     ---
 
-    It runs on your computer. Your data stays in plain files and in your own accounts. There is no server of ours, and nothing goes to the developer.
+    It runs on your computer, and your phone if you wish. Your data stays in plain files and in your own accounts, and travels between your devices sealed.
 
-    [Privacy policy](privacy.md)
+    [Sharing between your devices](guide/sharing.md)
 
 </div>
 
@@ -119,18 +172,6 @@ No time tracker, timesheet or invoicing service beside it, and no subscription: 
   <figcaption>A client's project: its tasks, its time, its mail and its invoices, on one line of time.</figcaption>
 </figure>
 
-## Built on research
-
-Each choice in Sioul follows what studies found about attention, stress, avoidance and recovery, several of them with autistic or ADHD people. A few of them:
-
-- **Fewer, predictable looks at mail.** Checking mail three times a day lowered daily stress in a randomised trial (Kushlev & Dunn 2015). Batching notifications three times a day improved attention and mood, while people given no notifications at all felt *more* anxious (Fitz et al. 2019). So Sioul shows mail in hours you choose, and always says when they come.
-- **Interruptions cost, even when ignored.** A notification left unanswered still disrupts attention (Stothart, Mitchum & Yehnert 2015). So there are no pop-ups, sounds or badges, and the layout never moves under your eyes.
-- **Starting is the hard part.** Autistic inertia is a difficulty acting on intentions, eased by outside scaffolding (Buckle et al. 2021). With ADHD, help belongs at the point of performance (Barkley 2012). So Sioul picks one small next step, and says why.
-- **Progress, never streaks.** Broken streaks lower later engagement, more so when people blame themselves (Silverman & Barasch 2023). So Sioul shows what got done, and never counts what did not.
-- **Evenings are for recovery.** Detaching from work after hours goes with less exhaustion (Wendsche & Lohmann-Haislah 2017), and merely expecting work mail in the evening does harm (Becker et al. 2021). So work rests outside your working hours.
-
-All the findings, with their sources and the rule each one gives: [what the research says](dev/research.md). Each study in detail, with how strong its evidence is: [the research notes](dev/research/README.md).
-
 ## What it looks like
 
 <div class="grid" markdown>
@@ -159,14 +200,14 @@ All the findings, with their sources and the rule each one gives: [what the rese
 
 ## Where to start
 
-1. [Install Sioul](guide/install.md). For now it is built from its sources, on Linux first.
+1. [Install Sioul](guide/install.md).
 2. [Take the first steps](guide/first-steps.md): add your mail, your calendars and contacts, your Google account, the websites you check.
 3. [Set your hours](guide/hours.md), so that work, admin and rest each have their time.
 4. Then read about [the Porch](guide/porch.md), where new mail waits.
 
 ## Where it stands
 
-Sioul is young (version 0.0.1) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel) and Linux (AppImage and Flatpak) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux, little tried elsewhere yet. An Android version is being tried; it is not ready.
+Sioul is young (version 0.0.1) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel) and Linux (AppImage and Flatpak) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux, little tried elsewhere yet. An Android version is being tried on a phone, with the doses reminded and the sharing working; it is not ready to install.
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 
@@ -177,8 +218,9 @@ It is made by one person, in the open: no support is promised. Questions and rep
 - **HTML mail made safe**: nothing remote loads, nothing runs.
 - **Security keys and Bitwarden**: WebAuthn and FIDO2 keys (a YubiKey) work in the sites you keep. Logins are filled from Bitwarden, read by Sioul itself and never written.
 - **OpenPGP**: signing and encrypting as you send, with Autocrypt and the Web Key Directory.
-- **Sharing between your computers** through a Nextcloud, Dropbox, Syncthing or any synced folder, end-to-end encrypted (XChaCha20-Poly1305, the key made from your passphrase by Argon2id). No server of ours.
-- **Open standards and plain files**: IMAP, SMTP, CalDAV and CardDAV, tasks linked as RFC 9253 says, Maildir, Markdown, TOML.
+- **Sharing between your devices**, a phone included: each device keeps its own data; a folder that any sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…) passes changes between them, each device writing only its own file, sealed end to end (XChaCha20-Poly1305, the key made from your passphrase by Argon2id). Notes and papers travel file by file; earlier versions are kept on each device. No server of ours. [How it works, and what it protects](guide/sharing.md).
+- **AI agents**, only if you connect one: `sioul mcp` serves an agent what Sioul keeps on this computer, through the Model Context Protocol. It never sends, deletes or pays.
+- **Open standards and plain files**: IMAP, SMTP, CalDAV and CardDAV, tasks linked as RFC 9253 says, Maildir, TOML, and notes in Markdown, fully compatible with Obsidian vaults (wikilinks, embeds, tags, front matter, aliases) and with Nextcloud Notes (`.txt` or `.md`, categories as folders).
 - **Free software**, under the GPL-3.0-or-later licence, written in Rust, with a Qt 6 window.
 
 <p class="sioul-quiet" markdown>For developers: [the design notes, the architecture, and how to build and test](dev/index.md).</p>
