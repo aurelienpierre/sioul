@@ -20,7 +20,24 @@ Item {
     required property var theme
     required property var window
 
-    readonly property var shown: page.sioul.tasks ? JSON.parse(page.sioul.tasks) : null
+    // Read while shown: a page out of sight keeps what it showed, and reads
+    // again when it comes back; results landing meanwhile cost nothing.
+    property string tasksText: ""
+    readonly property var shown: page.tasksText ? JSON.parse(page.tasksText) : null
+
+    function takeShown() {
+        if (page.visible)
+            page.tasksText = page.sioul.tasks
+    }
+
+    Connections {
+        target: page.sioul
+
+        function onTasksChanged() {
+            page.takeShown()
+        }
+    }
+    Component.onCompleted: page.takeShown()
     // For the window's images: the task open.
     property alias panel: taskPanel
     property alias routines: routinesDialog
@@ -52,6 +69,7 @@ Item {
     readonly property bool rest: page.window.moment.rest === true && !page.anyway
 
     onVisibleChanged: {
+        page.takeShown()
         if (!page.visible && page.anyway) {
             page.anyway = false
             page.sioul.showTasksAnyway(false)
@@ -741,6 +759,7 @@ Item {
                     sioul: page.sioul
                     theme: page.theme
                     day: page.shown ? page.shown.day : null
+                    onRelay: page.sioul.refreshWork()
                     onOpenTask: uid => page.open(uid)
                     onOpenEvent: key => page.window.openThing({ kind: "event", uri: "", key: key })
                 }
@@ -929,11 +948,13 @@ Item {
                                                     onMenu: task => taskMenu.show(task)
                                                     onTick: page.tick(holder.modelData)
                                                 }
+                                                // With a mouse only: on a touch screen a drag scrolls the board.
                                                 DragHandler {
                                                     id: drag
 
                                                     target: null
                                                     enabled: !holder.modelData.read_only
+                                                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                                                     onActiveChanged: {
                                                         if (drag.active) {
                                                             page.dragging = holder.modelData

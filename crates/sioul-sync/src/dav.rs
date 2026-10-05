@@ -17,6 +17,8 @@
 //!   (`calendar-multiget`, `addressbook-multiget`).
 //! - **When both changed the same item**, the server's version wins and yours
 //!   is kept aside in `$XDG_STATE_HOME/sioul/dav/conflicts`, said in the report.
+//! - **Cut short** (the network lost, the app killed), a sync resumes where it
+//!   stopped: what was sent or brought is known at once, never sent twice.
 //!
 //! Only HTTPS, with the password in the system keyring and sent as Basic
 //! authentication over TLS; for Google, its OAuth access token instead
@@ -24,12 +26,15 @@
 //! needed is a handful of requests.
 
 use crate::SyncError;
+use crate::fetch::{Control, Parked};
 use sioul_core::config::{Account, state_dir};
 use sioul_core::vdir::{self, ItemState, Kind, State};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
+use ureq::unversioned::resolver::DefaultResolver;
+use ureq::unversioned::transport::{Buffers, ConnectionDetails, Connector, DefaultConnector, NextTimeout, Transport};
 
 const DAV: &str = "DAV:";
 const CALDAV: &str = "urn:ietf:params:xml:ns:caldav";
@@ -57,19 +62,85 @@ struct Answer {
     body: String,
 }
 
-fn agent() -> ureq::Agent {
-    ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(60))).http_status_as_error(false).max_redirects(0).allow_non_standard_methods(true).build().into()
+/// How long a request may wait: to connect; for each read or write, so a big
+/// answer trickling in on a weak signal goes on as long as it moves, and one
+/// that stops is given up soon; and for the whole of it, a bound for the worst.
+struct Budget {
+    connect: Duration,
+    stall: Duration,
+    whole: Duration,
+}
+
+const BUDGET: Budget = Budget { connect: Duration::from_secs(20), stall: Duration::from_secs(60), whole: Duration::from_secs(15 * 60) };
+
+fn agent(budget: &Budget) -> ureq::Agent {
+    let config = ureq::Agent::config_builder()
+        .timeout_connect(Some(budget.connect))
+        .timeout_global(Some(budget.whole))
+        .http_status_as_error(false)
+        .max_redirects(0)
+        .allow_non_standard_methods(true)
+        .build();
+    ureq::Agent::with_parts(config, DefaultConnector::new().chain(Stalls(budget.stall)), DefaultResolver::default())
+}
+
+/// Each wait for the network, at most `.0`: ureq's own limits count a whole
+/// phase of a request (all of an answer's body), this one each read and
+/// write. Built on ureq's transport, which follows no semver yet
+/// (`ureq::unversioned`): a ureq update may ask this to change.
+#[derive(Debug)]
+struct Stalls(Duration);
+
+impl Connector<Box<dyn Transport>> for Stalls {
+    type Out = Stalling;
+
+    fn connect(&self, _: &ConnectionDetails, chained: Option<Box<dyn Transport>>) -> Result<Option<Stalling>, ureq::Error> {
+        Ok(chained.map(|transport| Stalling(transport, self.0)))
+    }
+}
+
+#[derive(Debug)]
+struct Stalling(Box<dyn Transport>, Duration);
+
+impl Stalling {
+    fn within(&self, timeout: NextTimeout) -> NextTimeout {
+        NextTimeout { after: timeout.after.min(self.1.into()), reason: timeout.reason }
+    }
+}
+
+impl Transport for Stalling {
+    fn buffers(&mut self) -> &mut dyn Buffers {
+        self.0.buffers()
+    }
+
+    fn transmit_output(&mut self, amount: usize, timeout: NextTimeout) -> Result<(), ureq::Error> {
+        let timeout = self.within(timeout);
+        self.0.transmit_output(amount, timeout)
+    }
+
+    fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
+        let timeout = self.within(timeout);
+        self.0.await_input(timeout)
+    }
+
+    fn is_open(&mut self) -> bool {
+        self.0.is_open()
+    }
+
+    fn is_tls(&self) -> bool {
+        self.0.is_tls()
+    }
 }
 
 impl Client {
     pub fn new(login: &str, password: &str) -> Client {
-        Client { agent: agent(), authorization: Mutex::new(format!("Basic {}", sioul_core::lines::base64_encode(format!("{login}:{password}").as_bytes()))), google: None }
+        Client { agent: agent(&BUDGET), authorization: Mutex::new(format!("Basic {}", sioul_core::lines::base64_encode(format!("{login}:{password}").as_bytes()))), google: None }
     }
 
     /// A Google account, signed in with its access token.
     pub fn google(address: &str) -> Result<Client, SyncError> {
         let token = crate::google::access_token(address, false)?;
-        Ok(Client { agent: agent(), authorization: Mutex::new(format!("Bearer {token}")), google: Some(address.to_string()) })
+        Ok(Client { agent: agent(&BUDGET), authorization: Mutex::new(format!("Bearer {token}")), google: Some(address.to_string()) })
     }
 
     pub fn is_google(&self) -> bool {
@@ -128,6 +199,11 @@ fn allowed(url: &str) -> Result<(), SyncError> {
     }
     #[cfg(feature = "insecure-test-tls")]
     if std::env::var_os("SIOUL_TEST_INSECURE_TLS").is_some() && (url.starts_with("http://localhost") || url.starts_with("http://127.0.0.1")) {
+        return Ok(());
+    }
+    // This crate's own tests, against their stand-in (`stand_in`).
+    #[cfg(test)]
+    if url.starts_with("http://127.0.0.1:") {
         return Ok(());
     }
     Err(SyncError::Tls(format!("{url}: not encrypted")))
@@ -476,42 +552,111 @@ pub fn client_for(account: &Account) -> Result<Client, SyncError> {
 }
 
 /// Syncs every address book and calendar of a contacts-and-calendars account.
+/// An error in one collection (refused, cut, timed out) is said at the end,
+/// the first one, the others synced all the same; a lasting one (a refused
+/// password, a certificate) stops the sync at once.
 pub fn sync(account: &Account) -> Result<Report, SyncError> {
+    sync_with(&client_for(account)?, account)
+}
+
+fn sync_with(client: &Client, account: &Account) -> Result<Report, SyncError> {
     let login = account.login().ok_or(SyncError::NoServer)?;
-    let client = client_for(account)?;
+    // One sync of an account at a time, across processes too (the window's
+    // watcher, `sioul task add`): both would send the same new item, and the
+    // last to keep its state would forget what the other did.
+    let _lock = crate::fetch::lock(&state_dir().join("dav").join(format!("{}.lock", account.id)))?;
     let mut homes = Homes::load(&account.id);
     if homes.is_empty() {
-        homes = discover(&client, account.address.as_deref().unwrap_or(login), account.url.as_deref(), None)?;
+        homes = discover(client, account.address.as_deref().unwrap_or(login), account.url.as_deref(), None)?;
         homes.save(&account.id)?;
     }
     let mut report = Report::default();
+    let mut refused = None;
     for (kind, home) in [(Kind::Contacts, &homes.contacts), (Kind::Calendars, &homes.calendars)] {
         let Some(home) = home else { continue };
         // Google makes, renames and deletes no calendar or address book from here.
         if !client.is_google() {
-            send_changes(&client, &account.id, kind)?;
-            create_pending(&client, &account.id, kind, home)?;
+            go_on(&mut refused, send_changes(client, &account.id, kind))?;
+            go_on(&mut refused, create_pending(client, &account.id, kind, home))?;
         }
-        let mut listed = collections(&client, kind, home)?;
+        let mut listed = match collections(client, kind, home) {
+            Ok(listed) => listed,
+            Err(e) => {
+                go_on(&mut refused, Err(e))?;
+                continue;
+            }
+        };
         // Google's calendars hold events only, whether or not they say it.
         if client.is_google() {
             listed.iter_mut().filter(|l| l.kind == Kind::Calendars && l.components.is_empty()).for_each(|l| l.components = vec!["VEVENT".into()]);
         }
         forget_gone(&account.id, kind, &listed);
         for collection in &listed {
-            sync_collection(&client, &account.id, collection, &mut report)?;
-            report.collections += 1;
+            match sync_collection(client, &account.id, collection, &mut report) {
+                Ok(()) => report.collections += 1,
+                Err(e) => go_on(&mut refused, Err(e))?,
+            }
         }
     }
     // Google's task lists, over Google Tasks.
     if client.is_google() {
-        let tasks = crate::google_tasks::sync(account)?;
-        report.sent += tasks.sent;
-        report.received += tasks.received;
-        report.removed += tasks.removed;
-        report.collections += tasks.collections;
+        match crate::google_tasks::sync(account) {
+            Ok(tasks) => {
+                report.sent += tasks.sent;
+                report.received += tasks.received;
+                report.removed += tasks.removed;
+                report.collections += tasks.collections;
+            }
+            Err(e) => go_on(&mut refused, Err(e))?,
+        }
     }
-    Ok(report)
+    refused.map_or(Ok(report), Err)
+}
+
+/// Syncs an account now, then every `every` until stopped (see
+/// [`Control::pause`]: counted on the wall clock; while quiet, only when
+/// nudged), each sync reported. After a lasting error (a refused password…)
+/// it waits for a nudge instead of ending, then tries again (see
+/// `fetch::Parked`: a refused password, unchanged, not before an hour unless
+/// [`Control::retry`]).
+pub fn watch(account: &Account, control: &Control, every: Duration, report: impl FnMut(Result<Report, SyncError>)) {
+    watch_with(control, every, || sync(account), || crate::secret::password(account).ok(), report);
+}
+
+/// `watch`, syncing with `sync`; `password` reads the one kept now.
+fn watch_with(control: &Control, every: Duration, mut sync: impl FnMut() -> Result<Report, SyncError>, password: impl Fn() -> Option<String>, mut report: impl FnMut(Result<Report, SyncError>)) {
+    while !control.stopped() {
+        let result = sync();
+        let parked = result.as_ref().err().filter(|e| e.is_lasting()).map(|e| Parked::after(e, if e.wants_password() { password() } else { None }));
+        report(result);
+        let Some(parked) = parked else {
+            control.pause(every);
+            continue;
+        };
+        // A "Sync now" asked before this error is not an answer to it.
+        control.retried();
+        loop {
+            if !control.park() {
+                return;
+            }
+            if !parked.refused() || parked.again(password().as_deref()) || control.retried() {
+                break;
+            }
+        }
+    }
+}
+
+/// Goes on after an error of one collection: the first is kept, to say at
+/// the end. A lasting one (a refused password, a certificate) stops there:
+/// the others would meet it too, and retries can lock an account.
+fn go_on(first: &mut Option<SyncError>, result: Result<(), SyncError>) -> Result<(), SyncError> {
+    match result {
+        Err(e) if !e.is_lasting() => {
+            first.get_or_insert(e);
+            Ok(())
+        }
+        other => other,
+    }
 }
 
 /// Collections deleted on the server go here too: they were copies. One made
@@ -534,7 +679,9 @@ fn forget_gone(account: &str, kind: Kind, listed: &[Listed]) {
 /// Tells the server the collections renamed here (PROPPATCH, RFC 4918 §9.2),
 /// and deletes those deleted here (RFC 4918 §9.6), only when the server
 /// holds nothing in them either: one filled elsewhere meanwhile comes back.
+/// One refused, the others are still told; the first refusal is returned.
 fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncError> {
+    let mut refused = None;
     for collection in vdir::every_collection(kind).into_iter().filter(|c| c.account == account) {
         let path = collection.state_path();
         let mut state = State::load(&path);
@@ -545,10 +692,11 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
             let body = format!(r#"<?xml version="1.0" encoding="utf-8"?><d:propertyupdate xmlns:d="DAV:"><d:set><d:prop><d:displayname>{}</d:displayname></d:prop></d:set></d:propertyupdate>"#, xml_escape(&collection.name));
             let answer = client.send("PROPPATCH", &state.url, &[("Content-Type", "application/xml; charset=utf-8")], Some(&body))?;
             if !(200..300).contains(&answer.status) {
-                return Err(SyncError::Server(format!("PROPPATCH {}: {}", state.url, answer.status)));
+                refused.get_or_insert(SyncError::Server(format!("PROPPATCH {}: {}", state.url, answer.status)));
+                continue;
             }
             state.renamed = false;
-            state.save(&path).map_err(SyncError::Disk)?;
+            go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
         }
         if state.deleted {
             let (_, found) = client.propfind(&state.url, "1", "<d:getetag/>")?;
@@ -558,23 +706,26 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
             } else {
                 let answer = client.send("DELETE", &state.url, &[], None)?;
                 if !(200..300).contains(&answer.status) && answer.status != 404 {
-                    return Err(SyncError::Server(format!("DELETE {}: {}", state.url, answer.status)));
+                    refused.get_or_insert(SyncError::Server(format!("DELETE {}: {}", state.url, answer.status)));
+                    continue;
                 }
                 let _ = std::fs::remove_dir_all(&collection.dir);
                 let _ = std::fs::remove_file(&path);
                 continue;
             }
-            state.save(&path).map_err(SyncError::Disk)?;
+            go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
         }
     }
-    Ok(())
+    refused.map_or(Ok(()), Err)
 }
 
 /// Creates on the server the collections made here: a calendar or task list
 /// with MKCALENDAR (RFC 4791 §5.3.1), an address book with an extended MKCOL
 /// (RFC 5689), at `<home><id>/`, with its name, colour and, for a calendar,
-/// what it holds. Already there (405) counts as made.
+/// what it holds. Already there (405) counts as made. One refused, the others
+/// are still made; the first refusal is returned.
 fn create_pending(client: &Client, account: &str, kind: Kind, home: &str) -> Result<(), SyncError> {
+    let mut refused = None;
     for collection in vdir::collections(kind).into_iter().filter(|c| c.account == account) {
         let path = collection.state_path();
         let mut state = State::load(&path);
@@ -603,16 +754,31 @@ fn create_pending(client: &Client, account: &str, kind: Kind, home: &str) -> Res
             200..=299 | 405 => {
                 state.pending = false;
                 state.url = url;
-                state.save(&path).map_err(SyncError::Disk)?;
+                go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
             }
-            status => return Err(SyncError::Server(format!("{method} {url}: {status}"))),
+            status => {
+                refused.get_or_insert(SyncError::Server(format!("{method} {url}: {status}")));
+            }
         }
     }
-    Ok(())
+    refused.map_or(Ok(()), Err)
 }
 
 fn hash_of(path: &Path) -> Option<String> {
-    std::fs::read(path).ok().map(|bytes| vdir::content_hash(&bytes))
+    read_item(path).ok().map(|bytes| vdir::content_hash(&bytes))
+}
+
+/// An item's file, read whole.
+fn read_item(path: &Path) -> std::io::Result<Vec<u8>> {
+    #[cfg(test)]
+    tests::READS.with(|reads| reads.set(reads.get() + 1));
+    std::fs::read(path)
+}
+
+/// An item's file as text; what cannot be read is said with its path.
+fn read_text(path: &Path) -> Result<String, SyncError> {
+    let fail = |e: &dyn std::fmt::Display| SyncError::Disk(format!("{}: {e}", path.display()));
+    String::from_utf8(read_item(path).map_err(|e| fail(&e))?).map_err(|e| fail(&e))
 }
 
 /// A file name for an item, from its address: safe on every system, unique in its folder.
@@ -639,7 +805,9 @@ fn file_name(href: &str, extension: &str, taken: &BTreeSet<String>) -> String {
     name
 }
 
-/// One collection: what changed here goes first, then what changed there.
+/// One collection: what changed here goes first, then what changed there. Its
+/// state follows every answer and is kept whatever happens: what was sent or
+/// brought before an error is known at the next sync, never sent twice.
 fn sync_collection(client: &Client, account: &str, listed: &Listed, report: &mut Report) -> Result<(), SyncError> {
     let kind = listed.kind;
     let dir = vdir::prepare(kind, account, &listed.id, &listed.name, listed.color.as_deref()).map_err(|e| SyncError::Disk(e.to_string()))?;
@@ -648,22 +816,54 @@ fn sync_collection(client: &Client, account: &str, listed: &Listed, report: &mut
     state.url = listed.url.clone();
     state.read_only = listed.read_only;
     state.components = listed.components.clone();
+    let synced = both_ways(client, &dir, listed, &mut state, &state_path, report);
+    state.save(&state_path).map_err(SyncError::Disk)?;
+    synced
+}
+
+/// What changed here, sent; then, unless nothing changed on either side, what
+/// changed there, brought. The ctag is kept once both went through; what the
+/// server refused of an item is said once the rest is done.
+fn both_ways(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_path: &Path, report: &mut Report) -> Result<(), SyncError> {
     let mut refetch: BTreeSet<String> = BTreeSet::new();
-    if !listed.read_only {
-        push(client, kind, &dir, listed, &mut state, &mut refetch, report)?;
-    }
-    let unchanged = state.ctag.is_some() && state.ctag == listed.ctag && refetch.is_empty() && !has_local_changes(&dir, kind, &state);
+    let refused = if listed.read_only { None } else { push(client, listed.kind, dir, listed, state, &mut refetch, report)? };
+    let unchanged = state.ctag.is_some() && state.ctag == listed.ctag && refetch.is_empty() && refused.is_none();
     if !unchanged {
-        pull(client, kind, &dir, listed, &mut state, &refetch, report)?;
+        pull(client, dir, listed, state, state_path, &refetch, report)?;
     }
     state.ctag = listed.ctag.clone();
-    state.save(&state_path).map_err(SyncError::Disk)
+    refused.map_or(Ok(()), Err)
 }
 
 fn has_local_changes(dir: &Path, kind: Kind, state: &State) -> bool {
     let known: BTreeSet<&str> = state.items.iter().map(|i| i.file.as_str()).collect();
     let files = local_files(dir, kind);
-    files.iter().any(|f| !known.contains(f.as_str())) || state.items.iter().any(|i| hash_of(&dir.join(&i.file)).as_deref() != Some(i.hash.as_str()))
+    files.iter().any(|f| !known.contains(f.as_str())) || state.items.iter().any(|i| !unchanged(&dir.join(&i.file), i))
+}
+
+/// Whether an item's file is as last synced: by its size and time when
+/// noted, else by its hash.
+fn unchanged(path: &Path, item: &ItemState) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| as_noted(&m, item)) || hash_of(path).is_some_and(|hash| hash == item.hash)
+}
+
+/// A file's time is trusted to tell it unchanged once this old: a change made
+/// within the same tick of the file system's clock (two seconds on FAT)
+/// would keep it.
+const SETTLED: Duration = Duration::from_secs(2);
+
+/// A file's size and modification time (nanoseconds since 1970), noted to
+/// tell it unchanged later without reading it; the time 0 (unknown) while
+/// too recent, or ahead of now.
+fn stamp(metadata: &std::fs::Metadata) -> (u64, i64) {
+    let settled = metadata.modified().ok().filter(|m| std::time::SystemTime::now().duration_since(*m).is_ok_and(|age| age >= SETTLED));
+    let mtime = settled.and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok()).and_then(|d| i64::try_from(d.as_nanos()).ok()).unwrap_or(0);
+    (metadata.len(), mtime)
+}
+
+/// Whether a file is as noted for its item: the same size and the same settled time.
+fn as_noted(metadata: &std::fs::Metadata, item: &ItemState) -> bool {
+    item.mtime != 0 && stamp(metadata) == (item.size, item.mtime)
 }
 
 fn local_files(dir: &Path, kind: Kind) -> BTreeSet<String> {
@@ -676,61 +876,53 @@ fn local_files(dir: &Path, kind: Kind) -> BTreeSet<String> {
         .collect()
 }
 
-/// Sends what changed here: edits with If-Match, new items with If-None-Match, deletions.
-fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut State, refetch: &mut BTreeSet<String>, report: &mut Report) -> Result<(), SyncError> {
-    let files = local_files(dir, kind);
-    let mut kept: Vec<ItemState> = Vec::new();
-    for item in std::mem::take(&mut state.items) {
-        let path = dir.join(&item.file);
-        let url = absolute(&listed.url, &item.href);
-        let Some(hash) = hash_of(&path) else {
-            // Deleted here: deleted there, unless it changed there meanwhile.
-            let answer = client.send("DELETE", &url, &[("If-Match", &item.etag)], None)?;
-            match answer.status {
-                200..=299 | 404 => report.sent += 1,
-                412 => {
-                    refetch.insert(path_key(&url));
-                    kept.push(item);
-                }
-                status => return Err(SyncError::Server(format!("DELETE {url}: {status}"))),
+/// Sends what changed here: edits with If-Match, new items with If-None-Match,
+/// deletions. The state follows each answer, so a push cut short keeps what
+/// it did. What the server refuses of one item, or what cannot be read of it,
+/// is returned, the others sent all the same; a lost connection stops it.
+fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut State, refetch: &mut BTreeSet<String>, report: &mut Report) -> Result<Option<SyncError>, SyncError> {
+    let mut refused = None;
+    let mut i = 0;
+    while i < state.items.len() {
+        match send_known(client, kind, dir, listed, &state.items[i], refetch, report)? {
+            Sent::Deleted => {
+                state.items.remove(i);
+                continue;
             }
-            continue;
-        };
-        if hash == item.hash {
-            kept.push(item);
-            continue;
+            Sent::Agreed(item) => state.items[i] = item,
+            Sent::Kept => {}
+            Sent::Refused(e) => {
+                refused.get_or_insert(e);
+            }
         }
-        let text = std::fs::read_to_string(&path).map_err(|e| SyncError::Disk(e.to_string()))?;
-        let answer = client.send("PUT", &url, &[("If-Match", &item.etag), ("Content-Type", kind.media_type())], Some(&text))?;
-        match answer.status {
-            200..=299 => {
-                report.sent += 1;
-                // Without an ETag, the server changed what it stored: it comes back at the pull.
-                let etag = answer.etag.unwrap_or_default();
-                if etag.is_empty() {
-                    refetch.insert(path_key(&url));
-                }
-                kept.push(ItemState { etag, hash, ..item });
-            }
-            412 => {
-                // Changed on both sides: theirs comes back, yours is kept aside.
-                report.conflicts.push(set_aside(&path, &text)?);
-                refetch.insert(path_key(&url));
-                kept.push(item);
-            }
-            status => return Err(SyncError::Server(format!("PUT {url}: {status}"))),
-        }
+        i += 1;
     }
-    let known: BTreeSet<String> = kept.iter().map(|i| i.file.clone()).collect();
-    for file in files.iter().filter(|f| !known.contains(*f)) {
-        let path = dir.join(file);
-        let text = std::fs::read_to_string(&path).map_err(|e| SyncError::Disk(e.to_string()))?;
-        let href = format!("{}/{}", listed.url.trim_end_matches('/'), url_segment(file));
+    let known: BTreeSet<String> = state.items.iter().map(|i| i.file.clone()).collect();
+    for file in local_files(dir, kind).into_iter().filter(|f| !known.contains(f)) {
+        let path = dir.join(&file);
+        // Noted before it is read: a change made meanwhile is seen next time.
+        let (size, mtime) = std::fs::metadata(&path).map(|m| stamp(&m)).unwrap_or_default();
+        let text = match read_text(&path) {
+            Ok(text) => text,
+            Err(e) => {
+                refused.get_or_insert(e);
+                continue;
+            }
+        };
+        let href = format!("{}/{}", listed.url.trim_end_matches('/'), url_segment(&file));
         if client.is_google() {
-            create_on_google(client, kind, listed, file, &href, &text, &mut kept, refetch)?;
-            report.sent += 1;
-            // Google may file it under its own name: the whole list is compared at the pull.
-            state.sync_token = None;
+            match create_on_google(client, kind, listed, &file, &href, &text, refetch) {
+                Ok(item) => {
+                    state.items.push(ItemState { size, mtime, ..item });
+                    report.sent += 1;
+                    // Google may file it under its own name: the whole list is compared at the pull.
+                    state.sync_token = None;
+                }
+                Err(e @ SyncError::Server(_)) => {
+                    refused.get_or_insert(e);
+                }
+                Err(e) => return Err(e),
+            }
             continue;
         }
         let answer = client.send("PUT", &href, &[("If-None-Match", "*"), ("Content-Type", kind.media_type())], Some(&text))?;
@@ -741,21 +933,108 @@ fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut St
                 if etag.is_empty() {
                     refetch.insert(path_key(&href));
                 }
-                kept.push(ItemState { href: path_key(&href), file: file.clone(), etag, hash: vdir::content_hash(text.as_bytes()) });
+                state.items.push(ItemState { href: path_key(&href), file, etag, hash: vdir::content_hash(text.as_bytes()), size, mtime });
             }
-            status => return Err(SyncError::Server(format!("PUT {href}: {status}"))),
+            // Already there: sent before and its answer lost, or another item
+            // at that address. Known, never agreed (no ETag, no hash): what the
+            // server holds comes at the pull, and yours is set aside then if it differs.
+            412 => {
+                refetch.insert(path_key(&href));
+                state.items.push(ItemState { href: path_key(&href), file, ..ItemState::default() });
+            }
+            status => {
+                refused.get_or_insert(SyncError::Server(format!("PUT {href}: {status}")));
+            }
         }
     }
-    state.items = kept;
-    Ok(())
+    Ok(refused)
+}
+
+/// What became of an item known to the server, at a push.
+enum Sent {
+    /// Deleted there as it was here: forgotten.
+    Deleted,
+    /// Its state now: sent (the server's new ETag), or found unchanged (its size and time noted).
+    Agreed(ItemState),
+    /// As it was: unchanged, or to read again at the pull.
+    Kept,
+    /// Refused by the server, or unreadable here.
+    Refused(SyncError),
+}
+
+/// One item known to the server, sent if it changed here, deleted there if
+/// deleted here. A file whose size and time are as noted is not read.
+fn send_known(client: &Client, kind: Kind, dir: &Path, listed: &Listed, item: &ItemState, refetch: &mut BTreeSet<String>, report: &mut Report) -> Result<Sent, SyncError> {
+    let path = dir.join(&item.file);
+    let url = absolute(&listed.url, &item.href);
+    let unreadable = |e: std::io::Error| Sent::Refused(SyncError::Disk(format!("{}: {e}", path.display())));
+    let metadata = match std::fs::metadata(&path) {
+        Ok(metadata) => metadata,
+        // Deleted here: deleted there, unless it changed there meanwhile.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let answer = client.send("DELETE", &url, &[("If-Match", &item.etag)], None)?;
+            return Ok(match answer.status {
+                200..=299 | 404 => {
+                    report.sent += 1;
+                    Sent::Deleted
+                }
+                412 => {
+                    refetch.insert(path_key(&url));
+                    Sent::Kept
+                }
+                status => Sent::Refused(SyncError::Server(format!("DELETE {url}: {status}"))),
+            });
+        }
+        Err(e) => return Ok(unreadable(e)),
+    };
+    if as_noted(&metadata, item) {
+        return Ok(Sent::Kept);
+    }
+    // Noted before it is read: a change made meanwhile is seen next time.
+    let (size, mtime) = stamp(&metadata);
+    let bytes = match read_item(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => return Ok(unreadable(e)),
+    };
+    let hash = vdir::content_hash(&bytes);
+    if hash == item.hash {
+        // Unchanged, its size and time noted: not read next time.
+        return Ok(if (size, mtime) == (item.size, item.mtime) { Sent::Kept } else { Sent::Agreed(ItemState { size, mtime, ..item.clone() }) });
+    }
+    if item.hash.is_empty() {
+        // Never agreed: found there when sent as new; compared at the pull.
+        refetch.insert(path_key(&url));
+        return Ok(Sent::Kept);
+    }
+    let text = match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(e) => return Ok(Sent::Refused(SyncError::Disk(format!("{}: {e}", path.display())))),
+    };
+    let answer = client.send("PUT", &url, &[("If-Match", &item.etag), ("Content-Type", kind.media_type())], Some(&text))?;
+    Ok(match answer.status {
+        200..=299 => {
+            report.sent += 1;
+            // Without an ETag, the server changed what it stored: it comes back at the pull.
+            let etag = answer.etag.unwrap_or_default();
+            if etag.is_empty() {
+                refetch.insert(path_key(&url));
+            }
+            Sent::Agreed(ItemState { etag, hash, size, mtime, ..item.clone() })
+        }
+        // Changed on both sides: theirs comes back at the pull, and yours is set aside then.
+        412 => {
+            refetch.insert(path_key(&url));
+            Sent::Kept
+        }
+        status => Sent::Refused(SyncError::Server(format!("PUT {url}: {status}"))),
+    })
 }
 
 /// A new item on Google: no If-None-Match (it takes If-Match only), cards in
 /// vCard 3.0, and a new contact by POST when its address book refuses the
 /// PUT (RFC 5995). Where Google filed it (its Location) is where it is known;
 /// what Google kept of it comes back at the pull.
-#[allow(clippy::too_many_arguments)]
-fn create_on_google(client: &Client, kind: Kind, listed: &Listed, file: &str, href: &str, text: &str, kept: &mut Vec<ItemState>, refetch: &mut BTreeSet<String>) -> Result<(), SyncError> {
+fn create_on_google(client: &Client, kind: Kind, listed: &Listed, file: &str, href: &str, text: &str, refetch: &mut BTreeSet<String>) -> Result<ItemState, SyncError> {
     let sent = if kind == Kind::Contacts { sioul_core::contacts::as_vcard3(text) } else { text.to_string() };
     let mut answer = client.send("PUT", href, &[("Content-Type", kind.media_type())], Some(&sent))?;
     if kind == Kind::Contacts && matches!(answer.status, 403 | 405 | 409) {
@@ -766,8 +1045,7 @@ fn create_on_google(client: &Client, kind: Kind, listed: &Listed, file: &str, hr
     }
     let at = answer.location.as_deref().map_or_else(|| path_key(href), |l| path_key(&absolute(&listed.url, l)));
     refetch.insert(at.clone());
-    kept.push(ItemState { href: at, file: file.to_string(), etag: answer.etag.unwrap_or_default(), hash: vdir::content_hash(text.as_bytes()) });
-    Ok(())
+    Ok(ItemState { href: at, file: file.to_string(), etag: answer.etag.unwrap_or_default(), hash: vdir::content_hash(text.as_bytes()), ..ItemState::default() })
 }
 
 /// A file name as a URL path segment.
@@ -783,59 +1061,81 @@ fn url_segment(name: &str) -> String {
 /// Your version of an item changed on both sides, kept where you can find it.
 /// Not kept (a full disk), the sync stops there: the server's version does not
 /// take its place, and yours is never lost.
-fn set_aside(path: &Path, text: &str) -> Result<PathBuf, SyncError> {
+fn set_aside(path: &Path, mine: &[u8]) -> Result<PathBuf, SyncError> {
     let folder = state_dir().join("dav").join("conflicts");
     let name = format!("{}-{}", jiff::Timestamp::now().as_second(), path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
     let target = folder.join(name);
-    std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(&target, text)).map_err(|e| SyncError::Disk(format!("{}: {e}", target.display())))?;
+    std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(&target, mine)).map_err(|e| SyncError::Disk(format!("{}: {e}", target.display())))?;
     Ok(target)
 }
 
-/// Brings what changed there: by sync token, else by comparing ETags.
-fn pull(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut State, refetch: &BTreeSet<String>, report: &mut Report) -> Result<(), SyncError> {
-    let by_href: BTreeMap<String, usize> = state.items.iter().enumerate().map(|(i, item)| (path_key(&absolute(&listed.url, &item.href)), i)).collect();
+/// An item's file, when it changed here since the server last agreed on it (or never did).
+fn changed_here(path: &Path, item: &ItemState) -> Option<Vec<u8>> {
+    if std::fs::metadata(path).is_ok_and(|m| as_noted(&m, item)) {
+        return None;
+    }
+    read_item(path).ok().filter(|bytes| item.hash.is_empty() || vdir::content_hash(bytes) != item.hash)
+}
+
+/// Lines ended with CRLF, as items are written here (RFC 5545 §3.1, RFC 6350 §3.2).
+fn crlf(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\n', "\r\n")
+}
+
+/// Whether two versions of an item say the same, however their lines end.
+fn same_text(mine: &[u8], theirs: &str) -> bool {
+    crlf(&String::from_utf8_lossy(mine)).trim_end() == crlf(theirs).trim_end()
+}
+
+/// Brings what changed there: by sync token, else by comparing ETags. The
+/// state is kept after each batch, so a pull cut short loses one batch at
+/// most; the sync token moves once everything came.
+fn pull(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_path: &Path, refetch: &BTreeSet<String>, report: &mut Report) -> Result<(), SyncError> {
+    let key = |href: &str| path_key(&absolute(&listed.url, href));
+    let by_href: BTreeMap<String, usize> = state.items.iter().enumerate().map(|(i, item)| (key(&item.href), i)).collect();
     let (changed, gone, token) = match state.sync_token.clone().and_then(|token| changes_since(client, &listed.url, &token).ok().flatten()) {
         Some(found) => found,
         None => everything(client, &listed.url, state, &by_href)?,
     };
-    // Gone there: gone here.
-    let gone: BTreeSet<String> = gone.into_iter().map(|h| path_key(&absolute(&listed.url, &h))).collect();
-    let mut removed_files = Vec::new();
-    state.items.retain(|item| {
-        let key = path_key(&absolute(&listed.url, &item.href));
-        if gone.contains(&key) {
-            removed_files.push(item.file.clone());
-            false
-        } else {
-            true
+    // Gone there: gone here. Changed here meanwhile (an edit saved during the
+    // sync, or one the server refused), yours is set aside first.
+    let gone: BTreeSet<String> = gone.iter().map(|h| key(h)).collect();
+    let mut i = 0;
+    while i < state.items.len() {
+        if !gone.contains(&key(&state.items[i].href)) {
+            i += 1;
+            continue;
         }
-    });
-    for file in removed_files {
-        let _ = std::fs::remove_file(dir.join(file));
+        let path = dir.join(&state.items[i].file);
+        if let Some(mine) = changed_here(&path, &state.items[i]) {
+            report.conflicts.push(set_aside(&path, &mine)?);
+        }
+        let _ = std::fs::remove_file(&path);
+        state.items.remove(i);
         report.removed += 1;
     }
     // Changed there, or to read again after a send.
-    let mut wanted: BTreeMap<String, (String, Option<String>)> = changed
+    let known: BTreeMap<String, usize> = state.items.iter().enumerate().map(|(i, item)| (key(&item.href), i)).collect();
+    let mut wanted: BTreeMap<String, String> = changed
         .into_iter()
-        .filter(|(href, etag)| {
-            let key = path_key(&absolute(&listed.url, href));
-            let known = state.items.iter().find(|i| path_key(&absolute(&listed.url, &i.href)) == key);
-            known.is_none_or(|i| etag.as_deref().is_none_or(|e| e != i.etag)) || refetch.contains(&key)
+        .filter_map(|(href, etag)| {
+            let at = key(&href);
+            let stale = known.get(&at).is_none_or(|&i| etag.as_deref().is_none_or(|e| e != state.items[i].etag));
+            (stale || refetch.contains(&at)).then_some((at, href))
         })
-        .map(|(href, etag)| (path_key(&absolute(&listed.url, &href)), (href, etag)))
         .collect();
-    for key in refetch {
-        if let Some(item) = state.items.iter().find(|i| path_key(&absolute(&listed.url, &i.href)) == *key) {
-            wanted.entry(key.clone()).or_insert((item.href.clone(), None));
+    for at in refetch {
+        if let Some(&i) = known.get(at) {
+            wanted.entry(at.clone()).or_insert_with(|| state.items[i].href.clone());
         }
     }
-    let hrefs: Vec<String> = wanted.values().map(|(href, _)| href.clone()).collect();
+    let hrefs: Vec<String> = wanted.into_values().collect();
     for batch in hrefs.chunks(BATCH) {
-        for (href, etag, data) in fetch(client, kind, &listed.url, batch)? {
-            // Set aside already when sending it was refused.
-            let aside = refetch.contains(&path_key(&absolute(&listed.url, &href)));
-            store(dir, kind, state, &listed.url, (&href, &etag, &data), aside, report)?;
+        for (href, etag, data) in fetch(client, listed.kind, &listed.url, batch)? {
+            store(dir, listed.kind, state, &listed.url, (&href, &etag, &data), report)?;
         }
+        // Kept as it goes: cut short, the next sync goes on from here.
+        state.save(state_path).map_err(SyncError::Disk)?;
     }
     state.sync_token = token.or_else(|| listed.sync_token.clone());
     Ok(())
@@ -923,26 +1223,27 @@ fn fetch(client: &Client, kind: Kind, url: &str, hrefs: &[String]) -> Result<Vec
     Ok(found)
 }
 
-/// Writes an item brought from the server (href, ETag, text); a version changed
-/// here meanwhile is set aside first, unless it already was (`aside`).
-fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data): (&str, &str, &str), aside: bool, report: &mut Report) -> Result<(), SyncError> {
+/// Writes an item brought from the server (href, ETag, text). Your version,
+/// changed here since the server last agreed on it (or never agreed), is set
+/// aside first, unless it is the same.
+fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data): (&str, &str, &str), report: &mut Report) -> Result<(), SyncError> {
     let key = path_key(&absolute(url, href));
-    let taken: BTreeSet<String> = state.items.iter().map(|i| i.file.clone()).chain(local_files(dir, kind)).collect();
     let position = state.items.iter().position(|i| path_key(&absolute(url, &i.href)) == key);
     let file = match position {
         Some(i) => state.items[i].file.clone(),
-        None => file_name(href, kind.extension(), &taken),
+        None => file_name(href, kind.extension(), &state.items.iter().map(|i| i.file.clone()).chain(local_files(dir, kind)).collect()),
     };
     let path = dir.join(&file);
-    if let (Some(i), Some(hash), false) = (position, hash_of(&path), aside)
-        && hash != state.items[i].hash
-        && let Ok(mine) = std::fs::read_to_string(&path)
+    if let Some(i) = position
+        && let Some(mine) = changed_here(&path, &state.items[i])
+        && !same_text(&mine, data)
     {
         report.conflicts.push(set_aside(&path, &mine)?);
     }
-    let text = data.replace("\r\n", "\n").replace('\n', "\r\n");
+    let text = crlf(data);
     vdir::write_item(&path, &text).map_err(SyncError::Disk)?;
-    let item = ItemState { href: href.to_string(), file, etag: etag.to_string(), hash: vdir::content_hash(text.as_bytes()) };
+    // Written now, its time not trusted yet (`SETTLED`): read once at the next sync.
+    let item = ItemState { href: href.to_string(), file, etag: etag.to_string(), hash: vdir::content_hash(text.as_bytes()), ..ItemState::default() };
     match position {
         Some(i) => state.items[i] = item,
         None => state.items.push(item),
@@ -961,9 +1262,684 @@ pub fn test_google(address: &str) -> Result<Homes, SyncError> {
     discover(&Client::google(address)?, address, None, None)
 }
 
+/// Servers on this computer, for this crate's tests: a small HTTP/1.1 server,
+/// a CalDAV server in memory on it with faults to inject, and the home the
+/// tests write in.
+#[cfg(test)]
+pub(crate) mod stand_in {
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+    use std::time::Duration;
+
+    /// The tests' home: the XDG folders point into it, set once, before any
+    /// test reading them goes on (each asks for the home first, and waits here
+    /// while it is made); the other tests of this crate read none. Each test
+    /// syncs an account of its own, so they run side by side.
+    pub(crate) fn home() -> &'static Path {
+        static HOME: OnceLock<PathBuf> = OnceLock::new();
+        HOME.get_or_init(|| {
+            forget_old_homes();
+            let root = std::env::temp_dir().join(format!("sioul-sync-tests-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            for (variable, folder) in [("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"), ("XDG_STATE_HOME", "state"), ("XDG_CACHE_HOME", "cache")] {
+                let dir = root.join(folder);
+                std::fs::create_dir_all(&dir).unwrap();
+                // SAFETY: set once, inside this initialiser, before any test
+                // that reads these folders goes on (see above).
+                unsafe { std::env::set_var(variable, &dir) };
+            }
+            root
+        })
+    }
+
+    /// The homes of earlier runs, gone: those whose run is over (no such
+    /// process, where that can be told), or an hour old; a run going on beside
+    /// this one keeps its own.
+    fn forget_old_homes() {
+        let hour_ago = std::time::SystemTime::now() - Duration::from_secs(3600);
+        for entry in std::fs::read_dir(std::env::temp_dir()).into_iter().flatten().filter_map(Result::ok) {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(process) = name.strip_prefix("sioul-sync-tests-") else { continue };
+            let over = cfg!(target_os = "linux") && !Path::new("/proc").join(process).exists();
+            let old = entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| t < hour_ago);
+            if over || old {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+
+    /// A request, as read.
+    pub(crate) struct Request {
+        pub method: String,
+        /// Its path, as sent.
+        pub path: String,
+        headers: Vec<(String, String)>,
+        pub body: String,
+    }
+
+    impl Request {
+        pub fn header(&self, name: &str) -> Option<&str> {
+            self.headers.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
+        }
+    }
+
+    pub(crate) struct Reply {
+        pub status: u16,
+        pub headers: Vec<(&'static str, String)>,
+        pub body: String,
+    }
+
+    impl Reply {
+        pub fn new(status: u16, body: impl Into<String>) -> Reply {
+            Reply { status, headers: Vec::new(), body: body.into() }
+        }
+    }
+
+    /// How a server misbehaves, for one request.
+    #[derive(Debug, Clone, Copy)]
+    pub(crate) enum Fault {
+        /// Answers this status, doing nothing.
+        Status(u16),
+        /// Closes the connection, doing nothing: the network dropped.
+        Drop,
+        /// Does it, then closes without answering: the answer was lost.
+        Lost,
+        /// Waits this long, then does it.
+        Late(Duration),
+        /// Does it, and sends the answer's body in pieces over this long.
+        Trickle(Duration),
+    }
+
+    /// A stand-in: how it misbehaves for a request, if at all, and its answer, the request done.
+    pub(crate) trait Server: Send + Sync + 'static {
+        fn misbehaves(&self, request: &Request) -> Option<Fault>;
+        fn answer(&self, request: &Request) -> Reply;
+    }
+
+    /// Serves on 127.0.0.1 until the tests end, a thread and a request per
+    /// connection. Its address: "http://127.0.0.1:port".
+    pub(crate) fn serve(server: Arc<dyn Server>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        std::thread::spawn(move || {
+            for stream in listener.incoming().filter_map(Result::ok) {
+                let server = Arc::clone(&server);
+                std::thread::spawn(move || exchange(stream, server.as_ref()));
+            }
+        });
+        base
+    }
+
+    fn exchange(mut stream: TcpStream, server: &dyn Server) {
+        let Some(request) = read(&stream) else { return };
+        let fault = server.misbehaves(&request);
+        let reply = match fault {
+            Some(Fault::Status(status)) => Reply::new(status, ""),
+            Some(Fault::Drop) => return,
+            Some(Fault::Lost) => {
+                server.answer(&request);
+                return;
+            }
+            Some(Fault::Late(wait)) => {
+                std::thread::sleep(wait);
+                server.answer(&request)
+            }
+            Some(Fault::Trickle(_)) | None => server.answer(&request),
+        };
+        let headers: String = reply.headers.iter().map(|(name, value)| format!("{name}: {value}\r\n")).collect();
+        let head = format!("HTTP/1.1 {} Stand-in\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n", reply.status, reply.body.len());
+        if stream.write_all(head.as_bytes()).is_err() {
+            return;
+        }
+        match fault {
+            Some(Fault::Trickle(over)) => {
+                let pieces = 30;
+                for piece in reply.body.as_bytes().chunks(reply.body.len() / pieces + 1) {
+                    std::thread::sleep(over / pieces as u32);
+                    if stream.write_all(piece).and_then(|()| stream.flush()).is_err() {
+                        return;
+                    }
+                }
+            }
+            _ => {
+                let _ = stream.write_all(reply.body.as_bytes());
+            }
+        }
+    }
+
+    fn read(stream: &TcpStream) -> Option<Request> {
+        let mut reader = BufReader::new(stream);
+        let mut line = String::new();
+        reader.read_line(&mut line).ok()?;
+        let mut words = line.split_whitespace();
+        let (method, path) = (words.next()?.to_string(), words.next()?.to_string());
+        let mut headers: Vec<(String, String)> = Vec::new();
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).ok()?;
+            let Some((name, value)) = line.trim_end().split_once(':') else { break };
+            headers.push((name.trim().to_string(), value.trim().to_string()));
+        }
+        let length = headers.iter().find(|(n, _)| n.eq_ignore_ascii_case("content-length")).and_then(|(_, v)| v.parse().ok()).unwrap_or(0);
+        let mut body = vec![0; length];
+        reader.read_exact(&mut body).ok()?;
+        Some(Request { method, path, headers, body: String::from_utf8_lossy(&body).into_owned() })
+    }
+
+    /// A fault for the `nth` request (from 1) that `matches`, once.
+    pub(crate) fn nth(n: usize, matches: impl Fn(&Request) -> bool + Send + 'static, fault: Fault) -> impl FnMut(&Request) -> Option<Fault> + Send + 'static {
+        let mut count = 0;
+        move |request| {
+            if !matches(request) {
+                return None;
+            }
+            count += 1;
+            (count == n).then_some(fault)
+        }
+    }
+
+    type Faults = Vec<Box<dyn FnMut(&Request) -> Option<Fault> + Send>>;
+
+    /// A CalDAV server in memory: calendars under /cal/, every change numbered
+    /// (ETags, ctags and sync tokens come from that), faults to inject, and
+    /// every request seen.
+    #[derive(Default)]
+    pub(crate) struct Dav {
+        held: Mutex<Held>,
+        faults: Mutex<Faults>,
+    }
+
+    #[derive(Default)]
+    struct Held {
+        /// Calendar ("a") → item ("x.ics") → (ETag, text).
+        calendars: BTreeMap<String, BTreeMap<String, (String, String)>>,
+        version: u64,
+        /// Every change: (version, calendar, item).
+        changes: Vec<(u64, String, String)>,
+        /// "PUT /cal/a/x.ics 201", in order.
+        seen: Vec<String>,
+    }
+
+    impl Dav {
+        /// A server with these calendars, empty; and the address of their home.
+        pub(crate) fn start(calendars: &[&str]) -> (Arc<Dav>, String) {
+            let dav = Arc::new(Dav::default());
+            for name in calendars {
+                dav.held().calendars.insert(name.to_string(), BTreeMap::new());
+            }
+            let base = serve(dav.clone());
+            (dav, format!("{base}/cal/"))
+        }
+
+        fn held(&self) -> MutexGuard<'_, Held> {
+            self.held.lock().unwrap()
+        }
+
+        /// An item written there, as another device does.
+        pub(crate) fn put(&self, calendar: &str, item: &str, text: &str) {
+            self.held().store(calendar, item, text);
+        }
+
+        /// An item deleted there, as another device does.
+        pub(crate) fn delete(&self, calendar: &str, item: &str) {
+            self.held().delete(calendar, item);
+        }
+
+        /// A calendar's items: name → text.
+        pub(crate) fn items(&self, calendar: &str) -> BTreeMap<String, String> {
+            self.held().calendars[calendar].iter().map(|(name, (_, text))| (name.clone(), text.clone())).collect()
+        }
+
+        /// The requests seen, in order: "PUT /cal/a/x.ics 201".
+        pub(crate) fn seen(&self) -> Vec<String> {
+            self.held().seen.clone()
+        }
+
+        /// A fault, asked of each request until it says one.
+        pub(crate) fn fault(&self, fault: impl FnMut(&Request) -> Option<Fault> + Send + 'static) {
+            self.faults.lock().unwrap().push(Box::new(fault));
+        }
+    }
+
+    impl Server for Dav {
+        fn misbehaves(&self, request: &Request) -> Option<Fault> {
+            let fault = self.faults.lock().unwrap().iter_mut().find_map(|f| f(request));
+            // Late or slow, it is answered all the same, and seen then.
+            if let Some(fault @ (Fault::Status(_) | Fault::Drop | Fault::Lost)) = fault {
+                self.held().seen.push(format!("{} {} {fault:?}", request.method, request.path));
+            }
+            fault
+        }
+
+        fn answer(&self, request: &Request) -> Reply {
+            let mut held = self.held();
+            let reply = held.answer(request);
+            held.seen.push(format!("{} {} {}", request.method, request.path, reply.status));
+            reply
+        }
+    }
+
+    fn found(href: &str, props: &str) -> String {
+        format!("<d:response><d:href>{href}</d:href><d:propstat><d:prop>{props}</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>")
+    }
+
+    fn missing(href: &str) -> String {
+        format!("<d:response><d:href>{href}</d:href><d:status>HTTP/1.1 404 Not Found</d:status></d:response>")
+    }
+
+    fn multistatus(responses: &str) -> Reply {
+        Reply::new(207, format!(r#"<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/">{responses}</d:multistatus>"#))
+    }
+
+    fn etag_prop(etag: &str) -> String {
+        format!("<d:getetag>{}</d:getetag>", super::xml_escape(etag))
+    }
+
+    impl Held {
+        fn store(&mut self, calendar: &str, item: &str, text: &str) -> String {
+            self.version += 1;
+            let etag = format!("\"e{}\"", self.version);
+            self.calendars.get_mut(calendar).expect("a calendar of the stand-in").insert(item.to_string(), (etag.clone(), text.to_string()));
+            self.changes.push((self.version, calendar.to_string(), item.to_string()));
+            etag
+        }
+
+        fn delete(&mut self, calendar: &str, item: &str) {
+            if self.calendars.get_mut(calendar).and_then(|items| items.remove(item)).is_some() {
+                self.version += 1;
+                self.changes.push((self.version, calendar.to_string(), item.to_string()));
+            }
+        }
+
+        /// The last change of a calendar: its ctag and its sync token.
+        fn last(&self, calendar: &str) -> u64 {
+            self.changes.iter().filter(|(_, c, _)| c == calendar).map(|(v, _, _)| *v).max().unwrap_or(0)
+        }
+
+        fn calendar_props(&self, calendar: &str) -> String {
+            let last = self.last(calendar);
+            format!("<d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>{calendar}</d:displayname><cs:getctag>ctag-{last}</cs:getctag><d:sync-token>token-{last}</d:sync-token>")
+        }
+
+        fn answer(&mut self, request: &Request) -> Reply {
+            let path = super::path_key(&request.path);
+            let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+            match (request.method.as_str(), parts.as_slice()) {
+                ("PROPFIND", ["cal"]) => {
+                    let mut out = found("/cal/", "<d:resourcetype><d:collection/></d:resourcetype>");
+                    for calendar in self.calendars.keys() {
+                        out += &found(&format!("/cal/{calendar}/"), &self.calendar_props(calendar));
+                    }
+                    multistatus(&out)
+                }
+                (_, ["cal", calendar, ..]) if !self.calendars.contains_key(*calendar) => Reply::new(404, ""),
+                ("PROPFIND", ["cal", calendar]) => {
+                    let mut out = found(&format!("/cal/{calendar}/"), &self.calendar_props(calendar));
+                    for (item, (etag, _)) in &self.calendars[*calendar] {
+                        out += &found(&format!("/cal/{calendar}/{item}"), &format!("{}<d:resourcetype/>", etag_prop(etag)));
+                    }
+                    multistatus(&out)
+                }
+                ("REPORT", ["cal", calendar]) if request.body.contains("sync-collection") => self.changes_since(calendar, &request.body),
+                ("REPORT", ["cal", calendar]) => self.multiget(calendar, &request.body),
+                ("PUT", ["cal", calendar, item]) => {
+                    let current = self.calendars[*calendar].get(*item).map(|(etag, _)| etag.clone());
+                    let refused = match (request.header("If-None-Match"), request.header("If-Match")) {
+                        (Some("*"), _) => current.is_some(),
+                        (_, Some(wanted)) => current.as_deref() != Some(wanted),
+                        _ => false,
+                    };
+                    if refused {
+                        return Reply::new(412, "");
+                    }
+                    let etag = self.store(calendar, item, &request.body);
+                    Reply { status: if current.is_some() { 204 } else { 201 }, headers: vec![("ETag", etag)], body: String::new() }
+                }
+                ("DELETE", ["cal", calendar, item]) => match (self.calendars[*calendar].get(*item), request.header("If-Match")) {
+                    (None, _) => Reply::new(404, ""),
+                    (Some((etag, _)), Some(wanted)) if etag != wanted => Reply::new(412, ""),
+                    _ => {
+                        self.delete(calendar, item);
+                        Reply::new(204, "")
+                    }
+                },
+                ("GET", ["cal", calendar, item]) => match self.calendars[*calendar].get(*item) {
+                    Some((etag, text)) => Reply { status: 200, headers: vec![("ETag", etag.clone())], body: text.clone() },
+                    None => Reply::new(404, ""),
+                },
+                _ => Reply::new(405, ""),
+            }
+        }
+
+        /// RFC 6578: what changed since a token of this calendar; a token it never gave is refused.
+        fn changes_since(&self, calendar: &str, body: &str) -> Reply {
+            let doc = roxmltree::Document::parse(body).unwrap();
+            let token = doc.descendants().find(|n| n.has_tag_name(("DAV:", "sync-token"))).and_then(|n| n.text()).unwrap_or("");
+            let Some(since) = token.trim().strip_prefix("token-").and_then(|t| t.parse::<u64>().ok()) else { return Reply::new(403, "") };
+            let changed: BTreeSet<&str> = self.changes.iter().filter(|(v, c, _)| *v > since && c == calendar).map(|(_, _, item)| item.as_str()).collect();
+            let mut out = String::new();
+            for item in changed {
+                let href = format!("/cal/{calendar}/{item}");
+                out += &match self.calendars[calendar].get(item) {
+                    Some((etag, _)) => found(&href, &etag_prop(etag)),
+                    None => missing(&href),
+                };
+            }
+            out += &format!("<d:sync-token>token-{}</d:sync-token>", self.last(calendar));
+            multistatus(&out)
+        }
+
+        fn multiget(&self, calendar: &str, body: &str) -> Reply {
+            let doc = roxmltree::Document::parse(body).unwrap();
+            let mut out = String::new();
+            for href in doc.descendants().filter(|n| n.has_tag_name(("DAV:", "href"))).filter_map(|n| n.text()) {
+                let key = super::path_key(href);
+                let item = key.rsplit('/').next().unwrap_or("");
+                out += &match self.calendars[calendar].get(item) {
+                    Some((etag, text)) => found(href, &format!("{}<c:calendar-data>{}</c:calendar-data>", etag_prop(etag), super::xml_escape(text))),
+                    None => missing(href),
+                };
+            }
+            multistatus(&out)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::stand_in::{Dav, Fault, home, nth};
     use super::*;
+
+    /// A contacts-and-calendars account, the test's own.
+    fn account(id: &str) -> Account {
+        home();
+        toml::from_str(&format!("id = \"{id}\"\nkind = \"dav\"\naddress = \"jane@example.org\"\nhost = \"127.0.0.1\"\n")).unwrap()
+    }
+
+    fn client() -> Client {
+        Client::new("jane", "secret")
+    }
+
+    fn event(uid: &str, summary: &str) -> String {
+        format!(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//tests//EN\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261005T120000Z\r\nDTSTART:20261006T090000Z\r\nDTEND:20261006T100000Z\r\nSUMMARY:{summary}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        )
+    }
+
+    /// A calendar as the stand-in lists it now.
+    fn listed(client: &Client, home: &str, name: &str) -> Listed {
+        collections(client, Kind::Calendars, home).unwrap().into_iter().find(|l| l.id == name).unwrap()
+    }
+
+    /// One calendar synced, as the account's sync does it.
+    fn sync_one(client: &Client, account: &str, home: &str, name: &str) -> Result<Report, SyncError> {
+        let mut report = Report::default();
+        sync_collection(client, account, &listed(client, home, name), &mut report).map(|()| report)
+    }
+
+    fn folder(account: &str, calendar: &str) -> PathBuf {
+        Kind::Calendars.root().join(account).join(calendar)
+    }
+
+    fn state_of(account: &str, calendar: &str) -> State {
+        State::load(&vdir::state_path(account, Kind::Calendars, calendar))
+    }
+
+    fn puts(dav: &Dav) -> Vec<String> {
+        dav.seen().into_iter().filter(|s| s.starts_with("PUT")).collect()
+    }
+
+    /// F1: the first pull of a big calendar, cut at its second batch (Android
+    /// killed Sioul, the network dropped), resumes at the next sync: nothing
+    /// sent back, nothing set aside.
+    #[test]
+    fn an_interrupted_pull_resumes() {
+        home();
+        let (dav, home) = Dav::start(&["big"]);
+        for n in 0..120 {
+            dav.put("big", &format!("e{n}.ics"), &event(&format!("uid-{n}"), &format!("Event {n}")));
+        }
+        dav.fault(nth(2, |r| r.method == "REPORT" && r.body.contains("multiget"), Fault::Drop));
+        let client = client();
+        assert!(matches!(sync_one(&client, "resumes", &home, "big"), Err(SyncError::Network(_))));
+        let report = sync_one(&client, "resumes", &home, "big").unwrap();
+        assert_eq!((report.sent, report.received, report.conflicts.len()), (0, 70, 0), "{report:?}");
+        assert_eq!(local_files(&folder("resumes", "big"), Kind::Calendars).len(), 120);
+        assert_eq!(dav.items("big").len(), 120);
+        assert!(puts(&dav).is_empty(), "{:?}", dav.seen());
+    }
+
+    /// F1: an event made here is sent, then the network drops before the
+    /// calendar is read: the next sync knows it was sent.
+    #[test]
+    fn a_sent_event_is_not_sent_again() {
+        home();
+        let (dav, home) = Dav::start(&["work"]);
+        dav.put("work", "known.ics", &event("known", "Known"));
+        let client = client();
+        sync_one(&client, "sent-once", &home, "work").unwrap();
+        dav.put("work", "theirs.ics", &event("theirs", "Theirs"));
+        std::fs::write(folder("sent-once", "work").join("mine.ics"), event("mine", "Mine")).unwrap();
+        dav.fault(nth(1, |r| r.method == "REPORT" && r.body.contains("sync-collection"), Fault::Drop));
+        dav.fault(nth(1, |r| r.method == "PROPFIND" && r.path == "/cal/work/", Fault::Drop));
+        assert!(sync_one(&client, "sent-once", &home, "work").is_err());
+        let report = sync_one(&client, "sent-once", &home, "work").unwrap();
+        assert_eq!((report.sent, report.received, report.conflicts.len()), (0, 1, 0), "{report:?}");
+        assert_eq!(puts(&dav), ["PUT /cal/work/mine.ics 201"]);
+        assert_eq!(dav.items("work").len(), 3);
+    }
+
+    /// F1: the answer to a new event's PUT is lost (stored there, the
+    /// connection dropped): sent again, it is found there, the same: no
+    /// conflict. Another item at that address is one: the server's kept, yours set aside.
+    #[test]
+    fn a_lost_answer_is_not_a_conflict() {
+        home();
+        let (dav, home) = Dav::start(&["home"]);
+        let client = client();
+        sync_one(&client, "lost", &home, "home").unwrap();
+        let dir = folder("lost", "home");
+        std::fs::write(dir.join("new.ics"), event("new", "New")).unwrap();
+        dav.fault(nth(1, |r| r.method == "PUT", Fault::Lost));
+        assert!(matches!(sync_one(&client, "lost", &home, "home"), Err(SyncError::Network(_))));
+        let report = sync_one(&client, "lost", &home, "home").unwrap();
+        assert!(report.conflicts.is_empty(), "{report:?}");
+        assert_eq!(dav.items("home").len(), 1);
+        assert_eq!(std::fs::read_to_string(dir.join("new.ics")).unwrap(), event("new", "New"));
+
+        dav.put("home", "clash.ics", &event("theirs", "Theirs"));
+        std::fs::write(dir.join("clash.ics"), event("mine", "Mine")).unwrap();
+        let report = sync_one(&client, "lost", &home, "home").unwrap();
+        assert_eq!(report.conflicts.len(), 1, "{report:?}");
+        assert!(std::fs::read_to_string(&report.conflicts[0]).unwrap().contains("SUMMARY:Mine"));
+        assert!(std::fs::read_to_string(dir.join("clash.ics")).unwrap().contains("SUMMARY:Theirs"));
+        let report = sync_one(&client, "lost", &home, "home").unwrap();
+        assert_eq!((report.sent, report.received, report.conflicts.len()), (0, 0, 0), "{report:?}");
+    }
+
+    /// F1: a calendar the server fails on, or whose connection drops, does
+    /// not keep the others from syncing.
+    #[test]
+    fn one_bad_calendar_does_not_stop_the_others() {
+        let account = account("bad-one");
+        let (dav, home) = Dav::start(&["a", "b"]);
+        Homes { calendars: Some(home), contacts: None }.save(&account.id).unwrap();
+        dav.put("b", "new.ics", &event("new", "New in b"));
+        dav.fault(nth(1, |r| r.method == "PROPFIND" && r.path == "/cal/a/", Fault::Status(500)));
+        let result = sync_with(&client(), &account);
+        assert!(matches!(&result, Err(SyncError::Server(e)) if e.contains("/cal/a/")), "{result:?}");
+        assert!(folder("bad-one", "b").join("new.ics").exists());
+        dav.put("b", "newer.ics", &event("newer", "Newer in b"));
+        dav.fault(nth(1, |r| r.method == "PROPFIND" && r.path == "/cal/a/", Fault::Drop));
+        assert!(matches!(sync_with(&client(), &account), Err(SyncError::Network(_))));
+        assert!(folder("bad-one", "b").join("newer.ics").exists());
+        assert_eq!(sync_with(&client(), &account).unwrap().collections, 2);
+    }
+
+    thread_local! {
+        /// Item files read on this thread: each test syncs on its own.
+        pub(super) static READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    fn reads() -> usize {
+        READS.with(std::cell::Cell::get)
+    }
+
+    /// F9: a sync with nothing changed here reads no file, each known by its
+    /// size and time; a file edited since is read, and sent.
+    #[test]
+    fn unchanged_files_are_not_read() {
+        home();
+        let (dav, home) = Dav::start(&["many"]);
+        for n in 0..1000 {
+            dav.put("many", &format!("e{n}.ics"), &event(&format!("u{n}"), "Same"));
+        }
+        let client = client();
+        sync_one(&client, "unread", &home, "many").unwrap();
+        // Written by that sync a moment ago, their times are not trusted yet; an hour later they are.
+        let dir = folder("unread", "many");
+        let hour_ago = std::time::SystemTime::now() - Duration::from_secs(3600);
+        for file in local_files(&dir, Kind::Calendars) {
+            std::fs::File::options().write(true).open(dir.join(file)).unwrap().set_modified(hour_ago).unwrap();
+        }
+        sync_one(&client, "unread", &home, "many").unwrap();
+        let before = reads();
+        assert_eq!(sync_one(&client, "unread", &home, "many").unwrap().sent, 0);
+        assert_eq!(reads() - before, 0, "nothing read");
+        std::fs::write(dir.join("e7.ics"), event("u7", "Edited")).unwrap();
+        let before = reads();
+        assert_eq!(sync_one(&client, "unread", &home, "many").unwrap().sent, 1);
+        assert_eq!(reads() - before, 1, "the edited file only");
+        assert!(dav.items("many")["e7.ics"].contains("SUMMARY:Edited"));
+    }
+
+    /// F7: an answer that keeps coming, however slowly, is read to its end
+    /// (here over six times the stall limit); one that stops coming is given
+    /// up after one stall, not after the whole budget.
+    #[test]
+    fn a_slow_answer_is_read_while_it_moves() {
+        home();
+        let (dav, home) = Dav::start(&["slow"]);
+        for n in 0..40 {
+            dav.put("slow", &format!("e{n}.ics"), &event(&format!("u{n}"), "Slow"));
+        }
+        let budget = Budget { connect: Duration::from_secs(5), stall: Duration::from_millis(500), whole: Duration::from_secs(60) };
+        let client = Client { agent: agent(&budget), ..client() };
+        dav.fault(nth(1, |r| r.body.contains("multiget"), Fault::Trickle(Duration::from_secs(3))));
+        let started = std::time::Instant::now();
+        assert_eq!(sync_one(&client, "slow", &home, "slow").unwrap().received, 40);
+        assert!(started.elapsed() > Duration::from_secs(3));
+        dav.put("slow", "late.ics", &event("late", "Late"));
+        dav.fault(nth(1, |r| r.body.contains("sync-collection"), Fault::Late(Duration::from_secs(5))));
+        dav.fault(nth(1, |r| r.method == "PROPFIND" && r.path == "/cal/slow/", Fault::Late(Duration::from_secs(5))));
+        let started = std::time::Instant::now();
+        assert!(matches!(sync_one(&client, "slow", &home, "slow"), Err(SyncError::Network(_))));
+        assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
+    }
+
+    /// A2: after a refused password the watcher waits, parked, instead of
+    /// ending: nudged with the same password kept, it does not try again
+    /// (retries can lock an account), unless "Sync now" asks; with another
+    /// password, it does at once.
+    #[test]
+    fn a_refused_password_parks_the_watcher() {
+        let control = Control::default();
+        let syncs = std::sync::atomic::AtomicUsize::new(0);
+        let kept = std::sync::Mutex::new("old".to_string());
+        let (said, heard) = std::sync::mpsc::channel();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                let sync = || match syncs.fetch_add(1, std::sync::atomic::Ordering::Relaxed) {
+                    0 | 1 => Err(SyncError::Login("PROPFIND: 401".into())),
+                    _ => Ok(Report::default()),
+                };
+                watch_with(&control, Duration::from_secs(3600), sync, || Some(kept.lock().unwrap().clone()), |result| said.send(result.is_ok()).unwrap());
+            });
+            assert_eq!(heard.recv_timeout(Duration::from_secs(5)), Ok(false), "refused");
+            control.nudge();
+            assert!(heard.recv_timeout(Duration::from_millis(300)).is_err(), "the same password: parked");
+            control.retry();
+            assert_eq!(heard.recv_timeout(Duration::from_secs(5)), Ok(false), "Sync now: tried, refused again");
+            *kept.lock().unwrap() = "new".into();
+            control.nudge();
+            assert_eq!(heard.recv_timeout(Duration::from_secs(5)), Ok(true), "another: synced at once");
+            control.stop();
+        });
+        assert_eq!(syncs.load(std::sync::atomic::Ordering::Relaxed), 3);
+    }
+
+    /// F8: an event deleted there while changed here: your version is set
+    /// aside before its file goes, never lost.
+    #[test]
+    fn a_change_to_an_item_gone_there_is_set_aside() {
+        home();
+        let (dav, home) = Dav::start(&["gone"]);
+        dav.put("gone", "x.ics", &event("x", "Before"));
+        let client = client();
+        sync_one(&client, "gone-edited", &home, "gone").unwrap();
+        let file = folder("gone-edited", "gone").join("x.ics");
+        dav.delete("gone", "x.ics");
+        std::fs::write(&file, event("x", "Edited here")).unwrap();
+        let report = sync_one(&client, "gone-edited", &home, "gone").unwrap();
+        assert_eq!((report.removed, report.conflicts.len()), (1, 1), "{report:?}");
+        assert!(std::fs::read_to_string(&report.conflicts[0]).unwrap().contains("SUMMARY:Edited here"));
+        assert!(!file.exists());
+        assert!(state_of("gone-edited", "gone").items.is_empty());
+    }
+
+    /// F5: two syncs of one account at once (the window's watcher and `sioul
+    /// task add`) take turns: a new event is sent once, and known once.
+    #[test]
+    fn one_sync_of_an_account_at_a_time() {
+        let account = account("one-at-a-time");
+        let (dav, home) = Dav::start(&["a"]);
+        Homes { calendars: Some(home), contacts: None }.save(&account.id).unwrap();
+        sync_with(&client(), &account).unwrap();
+        std::fs::write(folder("one-at-a-time", "a").join("new.ics"), event("new", "New")).unwrap();
+        dav.fault(|r| (r.method == "PUT").then_some(Fault::Late(Duration::from_millis(300))));
+        let both: Vec<_> = (0..2)
+            .map(|_| {
+                let account = account.clone();
+                std::thread::spawn(move || sync_with(&client(), &account))
+            })
+            .collect();
+        for sync in both {
+            sync.join().unwrap().unwrap();
+        }
+        assert_eq!(puts(&dav), ["PUT /cal/a/new.ics 201"]);
+        assert_eq!(state_of("one-at-a-time", "a").items.iter().filter(|i| i.file == "new.ics").count(), 1);
+    }
+
+    /// F1: a push cut by the network keeps its place: the items sent before
+    /// carry their new ETags, the others are still known as they were.
+    #[test]
+    fn a_cut_push_keeps_its_place() {
+        home();
+        let (dav, home) = Dav::start(&["four"]);
+        for n in 0..4 {
+            dav.put("four", &format!("e{n}.ics"), &event(&format!("u{n}"), "Before"));
+        }
+        let client = client();
+        sync_one(&client, "cut-push", &home, "four").unwrap();
+        let dir = folder("cut-push", "four");
+        for n in 0..4 {
+            std::fs::write(dir.join(format!("e{n}.ics")), event(&format!("u{n}"), "After")).unwrap();
+        }
+        let before = state_of("cut-push", "four").items;
+        dav.fault(nth(3, |r| r.method == "PUT", Fault::Drop));
+        let mut state = state_of("cut-push", "four");
+        let (mut refetch, mut report) = (BTreeSet::new(), Report::default());
+        assert!(push(&client, Kind::Calendars, &dir, &listed(&client, &home, "four"), &mut state, &mut refetch, &mut report).is_err());
+        assert_eq!(state.items.len(), 4, "every item still known: {:?}", state.items);
+        for (now, then) in state.items.iter().zip(&before).take(2) {
+            assert_ne!(now.etag, then.etag);
+            assert_eq!(Some(now.hash.clone()), hash_of(&dir.join(&now.file)));
+        }
+        assert_eq!(state.items[2..], before[2..]);
+    }
 
     #[test]
     fn reads_a_multistatus() {

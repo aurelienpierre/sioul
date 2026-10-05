@@ -102,6 +102,11 @@ Item {
         function onLinksChanged() {
             page.reload()
         }
+        // Time noted on another device, come through the sharing.
+        function onSharedIn(stores) {
+            if (page.visible && stores.indexOf("data/time/") >= 0)
+                page.reload()
+        }
     }
 
     ScrollView {

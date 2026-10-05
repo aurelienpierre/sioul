@@ -20,9 +20,39 @@ Item {
     required property var theme
     required property var window
 
-    readonly property var accounts: page.sioul.mailAccounts ? JSON.parse(page.sioul.mailAccounts) : []
-    readonly property var shown: page.sioul.mailFolder ? JSON.parse(page.sioul.mailFolder) : null
-    readonly property var drafts: page.sioul.drafts ? JSON.parse(page.sioul.drafts) : []
+    // Read while shown: a page out of sight keeps what it showed, and reads
+    // again when it comes back; results landing meanwhile cost nothing.
+    property string mailAccountsText: ""
+    readonly property var accounts: page.mailAccountsText ? JSON.parse(page.mailAccountsText) : []
+
+    function takeShown() {
+        if (page.visible)
+            page.draftsText = page.sioul.drafts
+        if (page.visible)
+            page.mailFolderText = page.sioul.mailFolder
+        if (page.visible)
+            page.mailAccountsText = page.sioul.mailAccounts
+    }
+
+    Connections {
+        target: page.sioul
+
+        function onDraftsChanged() {
+            page.takeShown()
+        }
+        function onMailFolderChanged() {
+            page.takeShown()
+        }
+        function onMailAccountsChanged() {
+            page.takeShown()
+        }
+    }
+    onVisibleChanged: page.takeShown()
+    Component.onCompleted: page.takeShown()
+    property string mailFolderText: ""
+    readonly property var shown: page.mailFolderText ? JSON.parse(page.mailFolderText) : null
+    property string draftsText: ""
+    readonly property var drafts: page.draftsText ? JSON.parse(page.draftsText) : []
     property string account: ""
     property string folder: ""
     // Sioul's own drafts, instead of a folder.
@@ -649,10 +679,12 @@ Item {
                         onTapped: rowMenu.show(row.modelData)
                     }
                     // Dragged sideways, towards the folders: the row, or the selection it is in.
+                    // With a mouse only: on a touch screen a drag scrolls the list.
                     DragHandler {
                         id: dragger
 
                         target: null
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                         grabPermissions: PointerHandler.CanTakeOverFromAnything
                         onActiveChanged: {
                             if (dragger.active)

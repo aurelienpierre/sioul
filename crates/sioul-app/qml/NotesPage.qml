@@ -23,7 +23,25 @@ Item {
 
     // A narrow screen (a phone): what is tied to a note goes under it.
     readonly property bool narrow: page.width < 640
-    readonly property var shown: page.sioul.notes ? JSON.parse(page.sioul.notes) : ({ missing: false, notes: [], recent: [], tree: false })
+    // Read while shown: a page out of sight keeps what it showed, and reads
+    // again when it comes back; results landing meanwhile cost nothing.
+    property string notesText: ""
+    readonly property var shown: page.notesText ? JSON.parse(page.notesText) : ({ missing: false, notes: [], recent: [], tree: false })
+
+    function takeShown() {
+        if (page.visible)
+            page.notesText = page.sioul.notes
+    }
+
+    Connections {
+        target: page.sioul
+
+        function onNotesChanged() {
+            page.takeShown()
+        }
+    }
+    onVisibleChanged: page.takeShown()
+    Component.onCompleted: page.takeShown()
     property string path: ""
     property var note: null
     // The note open, as what new things are tied to.

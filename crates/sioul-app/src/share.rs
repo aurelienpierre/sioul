@@ -6,6 +6,7 @@
 //! the pages read again when another computer's changes came in.
 
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
+use cxx_qt_lib::QString;
 use serde::Serialize;
 use sioul_core::config::{expand_home, state_dir};
 use sioul_sync::share;
@@ -314,6 +315,7 @@ pub(crate) fn last_exchange() -> Option<(i64, bool)> {
 /// `take` takes the part here on purpose. Sharing off: this computer alone.
 /// The second value: the folder could not be written, so the others may not know.
 pub(crate) fn keeper(part: &str, rule: sioul_sync::lease::Rule, active: i64, take: bool) -> (sioul_sync::lease::Keeper, bool) {
+    let _claiming = CLAIMING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let here = share::Here::load(&state_dir());
     let alone = sioul_sync::lease::Keeper::alone(&here.id);
     let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return (alone, false) };
@@ -324,6 +326,17 @@ pub(crate) fn keeper(part: &str, rule: sioul_sync::lease::Rule, active: i64, tak
         Err(_) => (alone, true),
     }
 }
+
+/// Who keeps a part, as the claims read now, without claiming it. Sharing off: this computer alone.
+pub(crate) fn looked(part: &str, rule: sioul_sync::lease::Rule) -> sioul_sync::lease::Keeper {
+    let here = share::Here::load(&state_dir());
+    let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return sioul_sync::lease::Keeper::alone(&here.id) };
+    sioul_sync::lease::look(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), rule)
+}
+
+/// Claims renewed or closed one at a time: a phone put away and back at once
+/// never ends with a "closed" written after it came back.
+static CLAIMING: Mutex<()> = Mutex::new(());
 
 /// The parts this computer claims (`keeper`): closed together.
 const PARTS: [&str; 3] = ["health", "notices", crate::projects::INVOICES];
@@ -342,6 +355,11 @@ pub(crate) fn closing() {
         let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory };
         let _ = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond());
     }
+    let _claiming = CLAIMING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Back already (a phone put away a moment): its claims stay open.
+    if cfg!(target_os = "android") && !crate::backend::AWAY.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
     let wrote = share::written(&memory, &here.id);
     for part in PARTS {
         let _ = sioul_sync::lease::close(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), wrote);
@@ -351,11 +369,11 @@ pub(crate) fn closing() {
 /// The others' claims on the doses, and what was read of their records: what
 /// this computer knows of the doses they marked (`health::know`). None when
 /// sharing is off.
-pub(crate) fn others_on_health() -> Option<(String, Vec<sioul_sync::lease::Claim>, share::Heard)> {
+pub(crate) fn others_on_health() -> Option<(String, Vec<sioul_sync::lease::Claim>, share::Heard, Vec<share::Other>)> {
     let here = share::Here::load(&state_dir());
     let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
     let claims = sioul_sync::lease::claims(&folder, &key, "health").into_iter().filter(|c| c.computer != here.id).collect();
-    Some((here.id.clone(), claims, share::heard(&memory_path(), &here.id)))
+    Some((here.id.clone(), claims, share::heard(&memory_path(), &here.id), share::others(&folder, &here.id)))
 }
 
 /// The doses' record read again from every computer's records at the next
@@ -368,8 +386,106 @@ pub(crate) fn rebuild_health_record() -> String {
     share::rebuild(&memory_path(), &here.id, &["state/health-state.toml"]).err().unwrap_or_default()
 }
 
+/// Sync apps that can be asked to look for changes now, on a phone: their
+/// package, receiver and action. The sharing never depends on it (docs/database.md,
+/// "What the sync app must do"): without one, what the other devices wrote
+/// comes at the sync app's own pace, later, and doubts say so meanwhile.
+/// Each is asked; one not installed hears nothing. Add others the same way,
+/// with the source that shows their receiver (and its package in the
+/// manifest's <queries>).
+const CARRIERS: &[(&str, &str, &str)] = &[
+    // Murena's eDrive (/e/OS) looks every half hour; its "force scan" receiver
+    // (receivers/DebugCmdReceiver.java, exported) looks now.
+    ("foundation.e.drive", "foundation.e.drive.receivers.DebugCmdReceiver", "foundation.e.drive.action.FORCE_SCAN"),
+];
+
+/// Every known sync app asked to look now (`CARRIERS`); elsewhere than a phone, nothing.
+fn ask_carriers() {
+    #[cfg(target_os = "android")]
+    for (package, receiver, action) in CARRIERS {
+        let text = |s: &str| std::ffi::CString::new(s).unwrap_or_default();
+        let (package, receiver, action) = (text(package), text(receiver), text(action));
+        unsafe { crate::backend::sioul_android_broadcast(package.as_ptr(), receiver.as_ptr(), action.as_ptr()) };
+    }
+}
+
+/// When the sync app was last asked to look (Unix seconds), and whether Sioul is on the screen.
+static NUDGED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+static SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Sioul on the phone's screen, or put away: the sync app is asked to look only while it is shown.
+pub(crate) fn set_shown(shown: bool) {
+    SHOWN.store(shown, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// On a phone: the sync app asked to look now rather than at its own pace
+/// (`ask_carriers`), at most once in `every` seconds (once a minute at least);
+/// with `then_read`, an exchange twenty seconds later reads what came down.
+/// Elsewhere, nothing: the desktop's sync apps look by themselves within seconds.
+pub(crate) fn nudge(qt: &QtThread, shared: &Arc<Shared>, every: i64, then_read: bool) {
+    use std::sync::atomic::Ordering;
+    let now = jiff::Timestamp::now().as_second();
+    let last = NUDGED.load(Ordering::Relaxed);
+    if !cfg!(target_os = "android") || now - last < every.max(60) || NUDGED.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_err() {
+        return;
+    }
+    if share::Here::load(&state_dir()).folder_path().is_none() {
+        return;
+    }
+    ask_carriers();
+    if then_read {
+        let (qt, shared) = (qt.clone(), Arc::clone(shared));
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(20));
+            exchange(&qt, &shared);
+        });
+    }
+}
+
+/// Each minute: while Sioul is shown on a phone, the sync app asked to look every five minutes.
+pub(crate) fn nudge_tick(qt: &QtThread, shared: &Arc<Shared>) {
+    if SHOWN.load(std::sync::atomic::Ordering::Relaxed) {
+        nudge(qt, shared, 5 * 60, true);
+    }
+}
+
 /// An exchange, when sharing is on: off the window's thread; the pages read
 /// again when changes came in.
+/// One exchange here and now, on the calling thread, without the window (an
+/// Android alarm wakes Sioul with nothing on the screen): with `fetch_first`,
+/// the sync app is asked to bring what the other devices wrote, and given
+/// twenty seconds. None when sharing is off. Waits for an exchange running.
+pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, String>> {
+    let here = share::Here::load(&state_dir());
+    let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
+    // The sync app asked to bring the others' news, and given twenty seconds;
+    // asked a moment ago already (two doses due at once), only what is left of them.
+    if fetch_first && cfg!(target_os = "android") {
+        use std::sync::atomic::Ordering;
+        let now = jiff::Timestamp::now().as_second();
+        let last = NUDGED.load(Ordering::Relaxed);
+        let waited = if now - last < 20 {
+            now - last
+        } else {
+            NUDGED.store(now, Ordering::Relaxed);
+            ask_carriers();
+            0
+        };
+        std::thread::sleep(std::time::Duration::from_secs((20 - waited).max(0) as u64));
+    }
+    let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let stores = share::stores(&load_config(), &share::Roots::here());
+    let memory = memory_path();
+    let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory };
+    let outcome = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond());
+    if let Ok(outcome) = &outcome
+        && outcome.sent > 0
+    {
+        ask_carriers();
+    }
+    Some(outcome)
+}
+
 pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
@@ -380,10 +496,24 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
         let now = jiff::Timestamp::now();
         let memory = memory_path();
         let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory };
-        let (written, accounts, problems) = match share::exchange(&sharing, &stores, now.as_millisecond()) {
-            Ok(outcome) => (!outcome.written.is_empty(), outcome.written.contains("config/config.toml"), outcome.problems),
-            Err(e) => (false, false, vec![e]),
+        let (written, accounts, problems, sent) = match share::exchange(&sharing, &stores, now.as_millisecond()) {
+            Ok(outcome) => {
+                if !outcome.written.is_empty() {
+                    let names = outcome.written.iter().cloned().collect::<Vec<_>>().join("\n");
+                    let _ = qt.queue(move |mut sioul| sioul.as_mut().shared_in(QString::from(&names)));
+                }
+                (!outcome.written.is_empty(), outcome.written.contains("config/config.toml"), outcome.problems, outcome.sent)
+            }
+            Err(e) => (false, false, vec![e], 0),
         };
+        // What was marked here goes up now, not at the sync app's next look.
+        if sent > 0 {
+            nudge(&qt, &shared, 60, false);
+        }
+        // On a phone nobody reads the status line: what went wrong goes to its log too.
+        if cfg!(target_os = "android") && !problems.is_empty() {
+            eprintln!("sioul: sharing: {}", problems.join("; "));
+        }
         let mut said = problems;
         said.dedup();
         if let Ok(mut last) = LAST.lock() {

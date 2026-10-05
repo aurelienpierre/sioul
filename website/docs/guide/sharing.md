@@ -35,13 +35,15 @@ Your notes folder travels by its own sync, not by Sioul. If it does not seem to 
 
 ## On a phone
 
-Sioul for Android shares the same way, through the folder your phone's sync app keeps on the phone: Murena's eDrive, Syncthing, FolderSync, Nextcloud's own app. Sioul talks to none of them: it reads the folder.
+Sioul for Android shares the same way, through the folder your phone's sync app keeps on the phone: Murena's eDrive, Syncthing, FolderSync, Autosync, Nextcloud's own app, or any app that keeps a folder on the phone in step with your cloud (Nextcloud, Dropbox, Google Drive, OneDrive…). Sioul reads the folder; it asks only that new files, and files that grow, reach the other side some day.
 
 - **Where**: some sync apps carry only a few folders. Murena's eDrive carries your cloud's **Documents** (with Pictures, Music…), not the rest of it: share through a folder inside Documents, such as `Documents/Sioul`. Sioul suggests one there when your synced folder has a Documents folder, and says so when the one chosen is outside it.
 - **On the phone**: Settings ▸ Your folder and sharing, **Allow access to files** (Android's switch), then **Choose…** the folder, your passphrase, **Share**.
 - **Accounts** come without their passwords: each asks for its own once, typed or [from Bitwarden](accounts.md#an-account-from-your-other-device).
 - **Projects, budgets and the bank**: the phone keeps a notes folder of its own, which no sync carries. Tick **Projects, budgets and the bank travel here too, sealed** in the same panel, on any of your devices (the choice reaches the others): your projects, budgets, bank accounts and the bank's movements then travel sealed with the rest. Your notes, papers and their files stay where they are.
-- **eDrive's pace**: it brings the cloud's changes about every half hour, sooner when you sync your Murena account by hand; the phone's own changes go up at once. It never deletes on one side what was deleted on the other: the old rounds Sioul clears stay on the phone, and are not read again.
+- **The sync app's pace**: a phone's sync app often brings the cloud's changes only every half hour. When the app offers a way to be asked (Murena's eDrive does), Sioul asks it to look now: after you mark something, when you come back to Sioul, and every five minutes while it is open, so what your other devices marked comes within a minute. Otherwise it comes at the app's pace, and the doses say what Sioul cannot know meanwhile.
+- **Files kept online only**: if your sync app keeps files on the server until you open them (OneDrive, Google Drive, iCloud, Nextcloud's "virtual files"), set the sharing folder to stay **always on this device**.
+- **What is never needed**: deletions (eDrive never deletes on one side what was deleted on the other: the old files Sioul clears stay, and are not read again), and nothing it keeps aside, such as conflicted copies, is read.
 
 ## Sealed
 

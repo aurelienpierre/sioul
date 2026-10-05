@@ -20,7 +20,25 @@ Item {
     required property var theme
     required property var window
 
-    readonly property var shown: page.sioul.contacts ? JSON.parse(page.sioul.contacts) : ({ contacts: [], sentence: "", can_add: false })
+    // Read while shown: a page out of sight keeps what it showed, and reads
+    // again when it comes back; results landing meanwhile cost nothing.
+    property string contactsText: ""
+    readonly property var shown: page.contactsText ? JSON.parse(page.contactsText) : ({ contacts: [], sentence: "", can_add: false })
+
+    function takeShown() {
+        if (page.visible)
+            page.contactsText = page.sioul.contacts
+    }
+
+    Connections {
+        target: page.sioul
+
+        function onContactsChanged() {
+            page.takeShown()
+        }
+    }
+    onVisibleChanged: page.takeShown()
+    Component.onCompleted: page.takeShown()
     property string openKey: ""
     property var person: null
     // The contact open, as what new things are tied to.

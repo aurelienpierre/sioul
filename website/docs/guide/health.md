@@ -35,6 +35,8 @@ Each dose of the day, with **Taken**. A dose taken says when; one click takes it
 
 One desktop notification per dose, within half an hour of its time, without sound, with **Taken**. Never repeated. Reminders come in quiet time too: they are yours.
 
+**On a phone**, Android stops apps it does not show, so Sioul gives each coming dose to Android's alarm clock. At the dose's time the phone wakes Sioul for a moment, even when it was stopped: Sioul first brings what your other devices marked, then reminds you, or not if the dose was taken elsewhere, or says **Check first** when it cannot tell. **Taken** marks it from the notification; tapping the notification opens the dose in Sioul. If Android does not let Sioul set exact alarms (Settings ▸ Apps ▸ Sioul ▸ Alarms & reminders), reminders can come a few minutes late, and this page says so.
+
 If Sioul was closed at the time, a dose of the last twelve hours that was neither marked nor reminded is asked about on the Porch at the next start, and on this page: with **Taken…** (when you took it) and **Not taken**. It is a question about the past, never a reminder to take one now.
 
 ### On several computers

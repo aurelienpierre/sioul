@@ -64,6 +64,10 @@ pub struct Claim {
     /// It closed then (quit, or put away): it marks nothing until it says otherwise.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub closed: bool,
+    /// The file's size changed at each writing, so that every sync app brings
+    /// it (`share::pad_for`): read by nobody.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub pad: String,
 }
 
 /// Who keeps a part now.
@@ -147,13 +151,19 @@ pub fn renew(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64
     // A claim that lapsed, or closed, starts again: its age counts from now.
     let since = old.as_ref().filter(|c| c.until > now && !c.closed).map_or(now, |c| c.since);
     let taken = if take { now } else { old.as_ref().map_or(0, |c| c.taken) };
-    let claim = Claim { computer: computer.to_string(), name: host_name(), since, renewed: now, until: now + ALIVE, active: active.max(old.as_ref().map_or(0, |c| c.active)), taken, wrote, closed: false };
-    let plain = serde_json::to_vec(&claim).map_err(|e| e.to_string())?;
-    let path = folder_of(folder, part).join(format!("{computer}.lease"));
-    crate::share::write_atomically(&path, crate::share::seal(key, &bound(part, computer), &plain).as_bytes())?;
+    let claim = Claim { computer: computer.to_string(), name: host_name(), since, renewed: now, until: now + ALIVE, active: active.max(old.as_ref().map_or(0, |c| c.active)), taken, wrote, closed: false, pad: String::new() };
+    write(folder, key, part, computer, &claim)?;
     claims.retain(|c| c.computer != computer);
     claims.push(claim);
     Ok(keeper(&claims, part, computer, rule, now))
+}
+
+/// A claim sealed into its file, its size changed from the one there (`share::pad_for`).
+fn write(folder: &Path, key: &[u8; 32], part: &str, computer: &str, claim: &Claim) -> Result<(), String> {
+    let path = folder_of(folder, part).join(format!("{computer}.lease"));
+    let sealed = |pad: usize| serde_json::to_vec(&Claim { pad: ".".repeat(pad), ..claim.clone() }).map(|plain| crate::share::seal(key, &bound(part, computer), &plain)).map_err(|e| e.to_string());
+    let pad = crate::share::pad_for(&path, |pad| sealed(pad).map_or(0, |s| s.len() as u64));
+    crate::share::write_atomically(&path, sealed(pad)?.as_bytes())
 }
 
 /// Who keeps `part`, as read now, without claiming it.
@@ -164,7 +174,7 @@ pub fn look(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64,
 fn keeper(claims: &[Claim], part: &str, computer: &str, rule: Rule, now: i64) -> Keeper {
     let others: Vec<&Claim> = claims.iter().filter(|c| c.computer != computer && c.until > now).collect();
     let others_heard = others.iter().map(|c| c.renewed).max().unwrap_or(0);
-    let Some(chosen) = choose(claims, rule, now) else { return Keeper::alone(computer) };
+let Some(chosen) = choose(claims, rule, now) else { return Keeper::alone(computer) };
     let mine = chosen.computer == computer;
     // Settled: this computer has kept it, as seen here, for the settling time.
     let settled = match KEPT.lock() {
@@ -185,9 +195,8 @@ fn keeper(claims: &[Claim], part: &str, computer: &str, rule: Rule, now: i64) ->
 /// others know everything it marked before it closed.
 pub fn close(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64, wrote: Option<(u32, u64)>) -> Result<(), String> {
     let old = read(folder, key, part).into_iter().find(|c| c.computer == computer);
-    let claim = Claim { computer: computer.to_string(), name: host_name(), since: now, renewed: now, until: now, active: old.as_ref().map_or(0, |c| c.active), taken: old.as_ref().map_or(0, |c| c.taken), wrote, closed: true };
-    let plain = serde_json::to_vec(&claim).map_err(|e| e.to_string())?;
-    crate::share::write_atomically(&folder_of(folder, part).join(format!("{computer}.lease")), crate::share::seal(key, &bound(part, computer), &plain).as_bytes())?;
+    let claim = Claim { computer: computer.to_string(), name: host_name(), since: now, renewed: now, until: now, active: old.as_ref().map_or(0, |c| c.active), taken: old.as_ref().map_or(0, |c| c.taken), wrote, closed: true, pad: String::new() };
+    write(folder, key, part, computer, &claim)?;
     if let Ok(mut kept) = KEPT.lock() {
         kept.remove(part);
     }

@@ -35,11 +35,19 @@ Item {
             flick.contentY = Math.max(0, Math.min(needsSection.y - 12, flick.contentHeight - flick.height))
     }
 
+    // Made again off the window's thread; shown when it comes (`healthView`).
     function reload() {
-        const text = page.sioul.healthPage()
-        if (text !== "")
-            page.shown = JSON.parse(text)
+        page.sioul.refreshHealth()
         needsSection.reload()
+    }
+
+    Connections {
+        target: page.sioul
+
+        function onHealthViewChanged() {
+            if (page.sioul.healthView !== "")
+                page.shown = JSON.parse(page.sioul.healthView)
+        }
     }
 
     function setting(key, value) {
@@ -52,10 +60,20 @@ Item {
     onVisibleChanged: if (page.visible) page.reload()
     Component.onCompleted: page.reload()
 
+    // A dose marked, or a medicine changed, on another device: shown at once.
+    Connections {
+        target: page.sioul
+
+        function onSharedIn(stores) {
+            if (page.visible && (stores.indexOf("state/health-state.toml") >= 0 || stores.indexOf("data/health.toml") >= 0))
+                page.reload()
+        }
+    }
+
     // Doses pass their time while the page is open.
     Timer {
         interval: 60000
-        running: page.visible
+        running: page.visible && !page.sioul.away
         repeat: true
         onTriggered: page.reload()
     }
@@ -397,7 +415,7 @@ Item {
             }
             // Where the pharmacy and the renewals go: a list your phone has.
             RowLayout {
-                visible: page.shown.lists && page.shown.lists.length > 0
+                visible: !!page.shown.lists && page.shown.lists.length > 0
                 Layout.fillWidth: true
                 spacing: 8
 

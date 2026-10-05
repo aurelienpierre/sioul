@@ -22,7 +22,24 @@ Item {
 
     // Month and day names in Sioul's language, not the system's.
     readonly property var locale: Qt.locale(page.sioul.text("qt-locale"))
-    readonly property var shown: page.sioul.agenda ? JSON.parse(page.sioul.agenda) : ({ days: [], sentence: "", from: "" })
+    // Read while shown: a page out of sight keeps what it showed, and reads
+    // again when it comes back; results landing meanwhile cost nothing.
+    property string agendaText: ""
+    readonly property var shown: page.agendaText ? JSON.parse(page.agendaText) : ({ days: [], sentence: "", from: "" })
+
+    function takeShown() {
+        if (page.visible)
+            page.agendaText = page.sioul.agenda
+    }
+
+    Connections {
+        target: page.sioul
+
+        function onAgendaChanged() {
+            page.takeShown()
+        }
+    }
+    onVisibleChanged: page.takeShown()
     // "agenda", "day", "week", "month".
     property string mode: "agenda"
     // A narrow screen (a phone): the title under the arrows, events on two lines.
@@ -59,27 +76,34 @@ Item {
         return d
     }
 
-    // The past the list shows above today: the history setting, in days (everything: five years).
-    function historyDays() {
-        const weeks = page.sioul.historyWeeks()
-        return weeks === 0 ? 5 * 365 : weeks * 7
-    }
-
     function length(mode) {
         return mode === "day" ? 1 : mode === "week" ? 7 : mode === "month" ? 42 : 15
     }
 
     property date anchor: new Date()
 
-    function load() {
-        let first = page.startOf(page.anchor, page.mode)
-        let days = page.length(page.mode)
-        // From today, the list also holds the past, above: it opens on today all the same.
-        if (page.mode === "agenda" && page.iso(page.anchor) === page.iso(new Date())) {
-            first = new Date(first.getTime() - page.historyDays() * 86400000)
-            days += page.historyDays()
+    // Shown from today: the page follows the days as they turn.
+    property bool followsToday: true
+
+    // Read again every five minutes while shown, and when the app comes back:
+    // events over leave the list, what another device or the server changed comes in.
+    Timer {
+        interval: 5 * 60000
+        running: page.visible && !page.sioul.away
+        repeat: true
+        onRunningChanged: if (running) triggered()
+        onTriggered: {
+            if (page.followsToday && page.iso(page.anchor) !== page.iso(new Date()))
+                page.anchor = new Date()
+            page.load()
         }
-        page.sioul.showDays(page.iso(first), days)
+    }
+
+    function load() {
+        page.followsToday = page.iso(page.anchor) === page.iso(new Date())
+        // From today, the list is what comes: an event over is shown only when you go back (◂).
+        const upcoming = page.mode === "agenda" && page.followsToday
+        page.sioul.showDays(page.iso(page.startOf(page.anchor, page.mode)), page.length(page.mode), upcoming)
     }
 
     function move(steps) {
@@ -144,7 +168,10 @@ Item {
     }
 
     onModeChanged: page.load()
-    Component.onCompleted: page.load()
+    Component.onCompleted: {
+        page.takeShown()
+        page.load()
+    }
 
     Shortcut {
         sequence: "Escape"
@@ -172,28 +199,12 @@ Item {
             ColumnLayout {
                 id: overlapsList
 
-                property var rows: []
-
-                function reload() {
-                    overlapsList.rows = JSON.parse(page.sioul.overlaps(14) || "[]")
-                }
+                // Made with the agenda, off the window's thread.
+                readonly property var rows: JSON.parse(page.sioul.overlaps || "[]")
 
                 visible: overlapsList.rows.length > 0
                 Layout.fillWidth: true
                 spacing: 4
-                Component.onCompleted: overlapsList.reload()
-
-                Connections {
-                    target: page
-
-                    function onShownChanged() {
-                        overlapsList.reload()
-                    }
-                    function onVisibleChanged() {
-                        if (page.visible)
-                            overlapsList.reload()
-                    }
-                }
 
                 Repeater {
                     model: overlapsList.rows
@@ -220,10 +231,7 @@ Item {
                         Button {
                             flat: true
                             text: page.sioul.text("overlap-set-aside")
-                            onClicked: {
-                                page.sioul.setOverlapAside(clash.modelData.key)
-                                overlapsList.reload()
-                            }
+                            onClicked: page.sioul.setOverlapAside(clash.modelData.key)
                         }
                     }
                 }
@@ -325,7 +333,7 @@ Item {
                 spacing: 12
                 model: page.shown.days.filter(d => d.events.length > 0 || d.today)
                 ScrollBar.vertical: ScrollBar {}
-                // The past is above: the list opens on today.
+                // Opened on today (its first day, from today).
                 onCountChanged: Qt.callLater(() => {
                     const today = daysList.model.findIndex(d => d.today)
                     if (today >= 0)

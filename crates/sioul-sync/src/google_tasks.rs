@@ -59,17 +59,19 @@ struct Api<'a> {
     address: &'a str,
     agent: ureq::Agent,
     token: Mutex<String>,
+    /// Where it is: Google's (`api()`).
+    base: String,
 }
 
 impl<'a> Api<'a> {
     fn new(address: &'a str) -> Result<Api<'a>, SyncError> {
         let agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(60))).http_status_as_error(false).build().into();
-        Ok(Api { address, agent, token: Mutex::new(crate::google::access_token(address, false)?) })
+        Ok(Api { address, agent, token: Mutex::new(crate::google::access_token(address, false)?), base: api() })
     }
 
     /// One call: its status and its JSON (null when none).
     fn call(&self, method: &str, path: &str, body: Option<&Value>) -> Result<(u16, Value), SyncError> {
-        let url = format!("{}{path}", api());
+        let url = format!("{}{path}", self.base);
         for attempt in 0..2 {
             let token = self.token.lock().map(|t| t.clone()).unwrap_or_default();
             let request = ureq::http::Request::builder()
@@ -247,10 +249,14 @@ fn sync_list(api: &Api, account: &str, id: &str, local: &str, title: &str, zone:
     state.read_only = false;
     // A little before now: what changes while this runs comes again next time.
     let started = Timestamp::now() - jiff::SignedDuration::from_secs(120);
-    push(api, id, &dir, &mut state, zone, report)?;
-    pull(api, id, &dir, &mut state, report)?;
-    state.sync_token = Some(started.strftime("%Y-%m-%dT%H:%M:%S.000Z").to_string());
-    state.save(&state_path).map_err(SyncError::Disk)
+    // The state is kept whatever happens (and after each task made on Google):
+    // a task sent is known at the next sync, never sent twice.
+    let synced = push(api, id, &dir, &mut state, &state_path, zone, report).and_then(|()| pull(api, id, &dir, &mut state, report));
+    if synced.is_ok() {
+        state.sync_token = Some(started.strftime("%Y-%m-%dT%H:%M:%S.000Z").to_string());
+    }
+    state.save(&state_path).map_err(SyncError::Disk)?;
+    synced
 }
 
 /// The UID in a task's file.
@@ -261,34 +267,36 @@ fn uid_in(path: &Path) -> Option<String> {
 
 /// What changed here, sent: deleted, changed (patched, moved under its
 /// parent), new (inserted, parents first: Google has one level of steps).
-fn push(api: &Api, list: &str, dir: &Path, state: &mut State, zone: &TimeZone, report: &mut Report) -> Result<(), SyncError> {
+/// The state follows each answer, and is kept after each task made on Google.
+fn push(api: &Api, list: &str, dir: &Path, state: &mut State, state_path: &Path, zone: &TimeZone, report: &mut Report) -> Result<(), SyncError> {
     // UID → Google's id, for parents.
     let mut google_of: BTreeMap<String, String> = state.items.iter().filter_map(|i| Some((uid_in(&dir.join(&i.file))?, i.href.clone()))).collect();
-    let mut kept: Vec<ItemState> = Vec::new();
-    let mut again: Vec<String> = Vec::new();
-    for item in std::mem::take(&mut state.items) {
+    let mut i = 0;
+    while i < state.items.len() {
+        let item = state.items[i].clone();
         let path = dir.join(&item.file);
         let Some(hash) = hash_of(&path) else {
             match api.call("DELETE", &format!("/lists/{list}/tasks/{}", item.href), None)? {
                 (200..=299 | 404 | 410, _) => report.sent += 1,
                 (status, _) => return Err(SyncError::Server(format!("DELETE task {}: {status}", item.href))),
             }
+            state.items.remove(i);
             continue;
         };
         if hash == item.hash {
-            kept.push(item);
+            i += 1;
             continue;
         }
         let text = std::fs::read_to_string(&path).map_err(|e| SyncError::Disk(e.to_string()))?;
         let Some(task) = tasks::task_of_text(&text, zone) else {
-            kept.push(item);
+            i += 1;
             continue;
         };
         let answer = match api.call("PATCH", &format!("/lists/{list}/tasks/{}", item.href), Some(&fields_of(&task)))? {
             (200..=299, answer) => answer,
-            // Gone there meanwhile: yours goes again, as new.
+            // Gone there meanwhile: forgotten, so that yours goes again, as new, below.
             (404 | 410, _) => {
-                again.push(item.file);
+                state.items.remove(i);
                 continue;
             }
             (status, _) => return Err(SyncError::Server(format!("PATCH task {}: {status}", item.href))),
@@ -298,14 +306,14 @@ fn push(api: &Api, list: &str, dir: &Path, state: &mut State, zone: &TimeZone, r
         let text = merged(&text, &answer, task.parent());
         vdir::write_item(&path, &text).map_err(SyncError::Disk)?;
         report.sent += 1;
-        kept.push(ItemState { etag: answer["etag"].as_str().unwrap_or_default().to_string(), hash: vdir::content_hash(text.as_bytes()), ..item });
+        state.items[i] = ItemState { etag: answer["etag"].as_str().unwrap_or_default().to_string(), hash: vdir::content_hash(text.as_bytes()), ..item };
+        i += 1;
     }
     // New here: those whose parent is new too come after it.
-    let known: BTreeSet<String> = kept.iter().map(|i| i.file.clone()).collect();
+    let known: BTreeSet<String> = state.items.iter().map(|i| i.file.clone()).collect();
     let mut new: Vec<(String, String, tasks::Task)> = files(dir)
         .into_iter()
         .filter(|f| !known.contains(f))
-        .chain(again)
         .filter_map(|file| {
             let text = std::fs::read_to_string(dir.join(&file)).ok()?;
             let task = tasks::task_of_text(&text, zone)?;
@@ -324,11 +332,12 @@ fn push(api: &Api, list: &str, dir: &Path, state: &mut State, zone: &TimeZone, r
         let Some(id) = answer["id"].as_str() else { continue };
         google_of.insert(task.uid.clone(), id.to_string());
         let text = merged(&text, &answer, task.parent());
+        state.items.push(ItemState { href: id.to_string(), file: file.clone(), etag: answer["etag"].as_str().unwrap_or_default().to_string(), hash: vdir::content_hash(text.as_bytes()), ..ItemState::default() });
+        // Known before anything else: killed now, it is not made twice.
+        state.save(state_path).map_err(SyncError::Disk)?;
         vdir::write_item(&dir.join(&file), &text).map_err(SyncError::Disk)?;
         report.sent += 1;
-        kept.push(ItemState { href: id.to_string(), file, etag: answer["etag"].as_str().unwrap_or_default().to_string(), hash: vdir::content_hash(text.as_bytes()) });
     }
-    state.items = kept;
     Ok(())
 }
 
@@ -380,7 +389,7 @@ fn pull(api: &Api, list: &str, dir: &Path, state: &mut State, report: &mut Repor
         };
         let text = merged(&before, task, parent.as_deref());
         vdir::write_item(&dir.join(&file), &text).map_err(SyncError::Disk)?;
-        let item = ItemState { href: id.to_string(), file, etag: etag.to_string(), hash: vdir::content_hash(text.as_bytes()) };
+        let item = ItemState { href: id.to_string(), file, etag: etag.to_string(), hash: vdir::content_hash(text.as_bytes()), ..ItemState::default() };
         match position {
             Some(i) => state.items[i] = item,
             None => state.items.push(item),
@@ -497,6 +506,9 @@ pub fn merged(text: &str, task: &Value, parent: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dav::stand_in::{Fault, Reply, Request, Server, home, nth, serve};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn a_task_both_ways() {
@@ -517,6 +529,124 @@ mod tests {
         assert!(text.contains("UID:mine") && text.contains("CATEGORIES:joy") && text.contains("RELATED-TO;RELTYPE=DEPENDS-ON:other"), "{text}");
         assert!(text.contains("SUMMARY:New\r\nSTATUS:NEEDS-ACTION\r\nBEGIN:VALARM") && !text.contains("Old"), "{text}");
         assert_eq!(fields_of(&tasks::task_of_text(&text, &TimeZone::UTC).unwrap())["due"], Value::Null);
+    }
+
+    /// Google Tasks in memory, one list, for these tests: its tasks by id
+    /// (deleted ones gone), and faults to inject.
+    #[derive(Default)]
+    struct Google {
+        held: Mutex<BTreeMap<String, Value>>,
+        made: AtomicUsize,
+        faults: Mutex<Vec<Box<dyn FnMut(&Request) -> Option<Fault> + Send>>>,
+    }
+
+    impl Google {
+        fn with(titles: &[(&str, &str)]) -> Arc<Google> {
+            let google = Arc::new(Google::default());
+            for (id, title) in titles {
+                let task = json!({ "id": id, "etag": format!("\"{id}-0\""), "title": title, "status": "needsAction", "updated": "2026-10-01T08:00:00.000Z" });
+                google.held.lock().unwrap().insert(id.to_string(), task);
+            }
+            google
+        }
+
+        fn titles(&self) -> Vec<String> {
+            let mut titles: Vec<String> = self.held.lock().unwrap().values().map(|t| t["title"].as_str().unwrap_or("").to_string()).collect();
+            titles.sort();
+            titles
+        }
+    }
+
+    impl Server for Google {
+        fn misbehaves(&self, request: &Request) -> Option<Fault> {
+            self.faults.lock().unwrap().iter_mut().find_map(|f| f(request))
+        }
+
+        fn answer(&self, request: &Request) -> Reply {
+            let mut held = self.held.lock().unwrap();
+            let (path, query) = request.path.split_once('?').unwrap_or((request.path.as_str(), ""));
+            let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+            let made = || self.made.fetch_add(1, Ordering::Relaxed) + 1;
+            match (request.method.as_str(), parts.as_slice()) {
+                ("GET", ["lists", _, "tasks"]) => Reply::new(200, json!({ "items": held.values().collect::<Vec<_>>() }).to_string()),
+                ("POST", ["lists", _, "tasks"]) => {
+                    let id = format!("n{}", made());
+                    let mut task: Value = serde_json::from_str(&request.body).unwrap();
+                    task["id"] = json!(id);
+                    task["etag"] = json!(format!("\"{id}-0\""));
+                    task["updated"] = json!("2026-10-05T10:00:00.000Z");
+                    if let Some(parent) = query.split('&').find_map(|p| p.strip_prefix("parent=")) {
+                        task["parent"] = json!(parent);
+                    }
+                    held.insert(id, task.clone());
+                    Reply::new(200, task.to_string())
+                }
+                ("PATCH", ["lists", _, "tasks", id]) => match held.get_mut(*id) {
+                    Some(task) => {
+                        let change: Value = serde_json::from_str(&request.body).unwrap();
+                        for (name, value) in change.as_object().into_iter().flatten() {
+                            task[name] = value.clone();
+                        }
+                        task["etag"] = json!(format!("\"{id}-{}\"", made()));
+                        Reply::new(200, task.to_string())
+                    }
+                    None => Reply::new(404, ""),
+                },
+                ("DELETE", ["lists", _, "tasks", id]) => {
+                    held.remove(*id);
+                    Reply::new(204, "")
+                }
+                _ => Reply::new(404, ""),
+            }
+        }
+    }
+
+    /// The API, at a stand-in.
+    fn api_at(base: &str) -> Api<'static> {
+        let agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+        Api { address: "you@example.org", agent, token: Mutex::new("test-token".into()), base: base.to_string() }
+    }
+
+    fn sync_once(api: &Api, account: &str) -> Result<Report, SyncError> {
+        let mut report = Report::default();
+        sync_list(api, account, "L", "tasks-L", "Tasks", &TimeZone::UTC, &mut report).map(|()| report)
+    }
+
+    fn list_dir(account: &str) -> std::path::PathBuf {
+        Kind::Calendars.root().join(account).join("tasks-L")
+    }
+
+    /// F4: a task deleted on Google while changed here is made again there, once.
+    #[test]
+    fn a_task_gone_there_and_changed_here_is_made_once() {
+        home();
+        let google = Google::with(&[("g1", "Call")]);
+        let api = api_at(&serve(google.clone()));
+        sync_once(&api, "gt-once").unwrap();
+        let file = list_dir("gt-once").join("g1.ics");
+        google.held.lock().unwrap().remove("g1");
+        std::fs::write(&file, std::fs::read_to_string(&file).unwrap().replace("SUMMARY:Call", "SUMMARY:Call the notary")).unwrap();
+        sync_once(&api, "gt-once").unwrap();
+        assert_eq!(google.titles(), ["Call the notary"]);
+    }
+
+    /// F1, Google Tasks: a task made on Google is known at once: a sync cut
+    /// after it does not make it twice.
+    #[test]
+    fn a_task_made_on_google_is_not_made_twice() {
+        home();
+        let google = Google::with(&[]);
+        let api = api_at(&serve(google.clone()));
+        sync_once(&api, "gt-twice").unwrap();
+        let zone = TimeZone::UTC;
+        for (uid, title) in [("a-uid", "First"), ("b-uid", "Second")] {
+            let edit = tasks::TaskEdit { title: title.into(), ..Default::default() };
+            std::fs::write(list_dir("gt-twice").join(format!("{uid}.ics")), tasks::new_task(&edit, uid, &zone, &jiff::Zoned::now()).unwrap()).unwrap();
+        }
+        google.faults.lock().unwrap().push(Box::new(nth(2, |r| r.method == "POST", Fault::Status(500))));
+        assert!(sync_once(&api, "gt-twice").is_err());
+        sync_once(&api, "gt-twice").unwrap();
+        assert_eq!(google.titles(), ["First", "Second"]);
     }
 
     /// Against a stand-in for Google (tools/google-tasks-stand-in.py), with

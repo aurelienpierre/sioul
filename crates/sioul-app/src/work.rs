@@ -263,12 +263,17 @@ struct TasksShown {
 }
 
 /// Today, laid out: the events of today and the steps the plan gives today, those the page shows.
-fn today_laid_out(desk: &Desk) -> sioul_core::dayview::DayView {
+fn today_laid_out(desk: &Desk, shared: &Shared) -> sioul_core::dayview::DayView {
     let now = Zoned::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
     // Until the next midnight: a day of 23 or 25 hours when the clocks change.
     let next_midnight = now.date().tomorrow().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()).map_or(midnight + 86_400, |z| z.timestamp().as_second());
-    let events = sioul_core::agenda::occurrences(midnight, next_midnight);
+    // Events deleted, or an occurrence left out, while "Undo" is offered: gone already.
+    let (removed, skipped) = crate::mail::hidden_pim(shared);
+    let events: Vec<sioul_core::agenda::Occurrence> = sioul_core::agenda::occurrences(midnight, next_midnight)
+        .into_iter()
+        .filter(|o| !removed.contains(std::path::Path::new(&o.key)) && !skipped.contains(&(std::path::PathBuf::from(&o.key), o.start)))
+        .collect();
     let shown: Vec<Task> = desk.loaded.tasks.iter().filter(|t| desk.filter.quiet.as_ref().is_none_or(|q| q.keeps(t))).cloned().collect();
     let mut day = sioul_core::dayview::day(&now, &events, &desk.plan, &shown, &desk.settings);
     // Meals and naps without a name of their own: their usual one, in your language.
@@ -445,13 +450,14 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
             first_step_task: first.1,
             morning: crate::health::morning_word(),
             budget: desk.next_budget(),
-            day: today_laid_out(&desk),
+            day: today_laid_out(&desk, &shared),
         };
         let tasks_json = crate::backend::json(&shown);
         let notes_json = notes_list(&desk.loaded, &state.notes_query, state.notes_tree);
         let focus_json = focus_json(&desk);
         let _ = qt.queue(move |mut sioul| {
-            if sioul.shared().work_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
+            // Only the newest (see `backend::show`).
+            if sioul.shared().work_generation.load(Ordering::Relaxed) != generation || sioul.shared().work_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
                 return;
             }
             sioul.as_mut().set_tasks(QString::from(&tasks_json));
