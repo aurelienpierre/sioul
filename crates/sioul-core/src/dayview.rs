@@ -25,7 +25,8 @@ pub struct Block {
     /// Unix seconds.
     pub start: i64,
     pub end: i64,
-    /// "event", "task", "meal", "nap", "margin" (getting there and back, getting ready).
+    /// "event", "task", "meal", "nap", "margin" (getting there and back, getting
+    /// ready), "done" (a task done today, kept in view).
     pub kind: &'static str,
     pub title: String,
     /// A task's UID, an event's file.
@@ -151,6 +152,12 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
                 view.blocks.push(block);
             }
         }
+    }
+    // What was done today stays in view, where it ended: its length, a quarter of an hour at least, an hour at most.
+    for task in tasks.iter().filter(|t| t.status == crate::tasks::Status::Completed) {
+        let Some(done) = task.completed.filter(|&at| at >= midnight && at < next_midnight) else { continue };
+        let length = i64::from(task.estimate.clamp(15, 60)) * 60;
+        view.blocks.push(Block { start: (done - length).max(midnight), end: done.max(midnight + 15 * 60), kind: "done", title: task.title.clone(), key: task.uid.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0 });
     }
     // Meals and naps, kept free (`needs`): shown, a step never laid over them.
     // The night is kept free too, but not drawn: the day would run from midnight.
@@ -419,6 +426,17 @@ mod tests {
         let view = laid_out(&at("2026-10-06T08:00"), &[], &[conference], &[]);
         let midnight = at("2026-10-06T00:00").timestamp().as_second();
         assert_eq!((view.blocks[0].start, view.blocks[0].end, view.from, view.to), (midnight, midnight + 86_400, midnight, midnight + 86_400));
+    }
+
+    #[test]
+    fn done_today_stays_in_view() {
+        let now = at("2026-10-05T15:00");
+        let done_at = at("2026-10-05T11:00").timestamp().as_second();
+        let letter = Task { status: crate::tasks::Status::Completed, completed: Some(done_at), ..task("letter", 30, "") };
+        let yesterday = Task { status: crate::tasks::Status::Completed, completed: Some(done_at - 86_400), ..task("old", 30, "") };
+        let view = laid_out(&now, &[], &[], &[letter, yesterday]);
+        let done: Vec<(&str, &str, i64)> = view.blocks.iter().map(|b| (b.kind, b.title.as_str(), (b.end - b.start) / 60)).collect();
+        assert_eq!(done, vec![("done", "letter", 30)]);
     }
 
     #[test]

@@ -135,204 +135,221 @@ Dialog {
     anchors.centerIn: Overlay.overlay
     modal: true
     width: Math.min(560, (parent ? parent.width : 560) - 32)
+    // Taller than the window, every detail unfolded: the form scrolls, its buttons stay.
+    height: Math.min(implicitHeight, (Overlay.overlay ? Overlay.overlay.height : 800) - 32)
     title: dialog.key ? dialog.sioul.text("ui-edit-event") : dialog.sioul.text("ui-new-event")
 
-    ColumnLayout {
-        width: parent.width
-        spacing: 10
+    ScrollView {
+        id: scroll
 
-        TextField {
-            id: title
+        anchors.fill: parent
+        contentWidth: availableWidth
+        clip: true
 
-            Layout.fillWidth: true
-            placeholderText: dialog.sioul.text("event-title")
-        }
-        CheckBox {
-            id: allDay
+        ColumnLayout {
+            width: scroll.availableWidth
+            spacing: 10
 
-            text: dialog.sioul.text("agenda-all-day")
-        }
-        GridLayout {
-            columns: 3
-            columnSpacing: 8
-            rowSpacing: 6
-
-            Label {
-                text: dialog.sioul.text("event-starts")
-                color: dialog.theme.muted
-            }
-            DateField {
-                id: startDay
-
-                theme: dialog.theme
-                locale: Qt.locale(dialog.sioul.text("qt-locale"))
-                pickLabel: dialog.sioul.text("event-pick-day")
-                // The end follows the start when it would come before it.
-                onEdited: if (endDay.date < startDay.date) endDay.date = startDay.date
-            }
             TextField {
-                id: startTime
+                id: title
 
-                visible: !allDay.checked
-                Layout.preferredWidth: 80
-                inputMask: "99:99"
+                Layout.fillWidth: true
+                placeholderText: dialog.sioul.text("event-title")
             }
-            Label {
-                text: dialog.sioul.text("event-ends")
-                color: dialog.theme.muted
+            CheckBox {
+                id: allDay
+
+                text: dialog.sioul.text("agenda-all-day")
             }
-            DateField {
-                id: endDay
+            GridLayout {
+                columns: 3
+                columnSpacing: 8
+                rowSpacing: 6
 
-                theme: dialog.theme
-                locale: Qt.locale(dialog.sioul.text("qt-locale"))
-                pickLabel: dialog.sioul.text("event-pick-day")
-            }
-            TextField {
-                id: endTime
-
-                visible: !allDay.checked
-                Layout.preferredWidth: 80
-                inputMask: "99:99"
-            }
-        }
-        TextField {
-            id: place
-
-            Layout.fillWidth: true
-            placeholderText: dialog.sioul.text("event-where")
-        }
-
-        Button {
-            flat: true
-            text: (dialog.moreShown ? "▾  " : "▸  ") + dialog.sioul.text("ui-more-details")
-            onClicked: dialog.moreShown = !dialog.moreShown
-        }
-        GridLayout {
-            visible: dialog.moreShown
-            Layout.fillWidth: true
-            columns: 2
-            columnSpacing: 8
-            rowSpacing: 6
-
-            Label {
-                Layout.alignment: Qt.AlignTop
-                text: dialog.sioul.text("contact-notes")
-                color: dialog.theme.muted
-            }
-            TextArea {
-                id: notes
-
-                // A field shows where it is: a border, darker when it has the focus.
-                background: Rectangle {
-                    color: dialog.theme.surface
-                    radius: dialog.theme.radius
-                    border.color: notes.activeFocus ? dialog.theme.focus : dialog.theme.line
+                Label {
+                    text: dialog.sioul.text("event-starts")
+                    color: dialog.theme.muted
                 }
-                Layout.fillWidth: true
-                Layout.preferredHeight: 80
-                wrapMode: TextArea.Wrap
+                DateField {
+                    id: startDay
+
+                    theme: dialog.theme
+                    locale: Qt.locale(dialog.sioul.text("qt-locale"))
+                    pickLabel: dialog.sioul.text("event-pick-day")
+                    // The end follows the start when it would come before it.
+                    onEdited: if (endDay.date < startDay.date) endDay.date = startDay.date
+                }
+                TextField {
+                    id: startTime
+
+                    visible: !allDay.checked
+                    Layout.preferredWidth: 80
+                    inputMask: "99:99"
+                }
+                Label {
+                    text: dialog.sioul.text("event-ends")
+                    color: dialog.theme.muted
+                }
+                DateField {
+                    id: endDay
+
+                    theme: dialog.theme
+                    locale: Qt.locale(dialog.sioul.text("qt-locale"))
+                    pickLabel: dialog.sioul.text("event-pick-day")
+                }
+                TextField {
+                    id: endTime
+
+                    visible: !allDay.checked
+                    Layout.preferredWidth: 80
+                    inputMask: "99:99"
+                }
             }
-            Label {
-                text: dialog.sioul.text("event-repeat")
-                color: dialog.theme.muted
-            }
-            ComboBox {
-                id: repeat
+            TextField {
+                id: place
 
                 Layout.fillWidth: true
-                model: dialog.repeats.map(r => dialog.sioul.text("repeat-" + (r || "none")))
+                placeholderText: dialog.sioul.text("event-where")
             }
-            // Getting there and back, getting ready: kept free around it, never a pause.
-            Label {
-                Layout.maximumWidth: 160
-                text: dialog.sioul.text("task-field-before")
-                wrapMode: Text.Wrap
-                color: dialog.theme.muted
-            }
-            ComboBox {
-                Layout.fillWidth: true
-                model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.minutesText(m))
-                currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.before))
-                onActivated: index => dialog.around = Object.assign({}, dialog.around, { before: dialog.marginMinutes[index] })
-            }
-            Label {
-                Layout.maximumWidth: 160
-                text: dialog.sioul.text("task-field-after")
-                wrapMode: Text.Wrap
-                color: dialog.theme.muted
-            }
-            ComboBox {
-                Layout.fillWidth: true
-                model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.minutesText(m))
-                currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.after))
-                onActivated: index => dialog.around = Object.assign({}, dialog.around, { after: dialog.marginMinutes[index] })
-            }
-            // What it costs, and what it gives back: 0 to 10 each, as you feel it.
-            Label {
-                Layout.maximumWidth: 160
-                text: dialog.sioul.text("task-field-cognitive")
-                wrapMode: Text.Wrap
-                color: dialog.theme.muted
-            }
-            ComboBox {
-                Layout.fillWidth: true
-                model: dialog.ratings
-                currentIndex: dialog.demands.cognitive === null || dialog.demands.cognitive === undefined ? 0 : dialog.demands.cognitive + 1
-                onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { cognitive: index === 0 ? null : index - 1 })
-            }
-            Label {
-                Layout.maximumWidth: 160
-                text: dialog.sioul.text("task-field-emotional")
-                wrapMode: Text.Wrap
-                color: dialog.theme.muted
-            }
-            ComboBox {
-                Layout.fillWidth: true
-                model: dialog.ratings
-                currentIndex: dialog.demands.emotional === null || dialog.demands.emotional === undefined ? 0 : dialog.demands.emotional + 1
-                onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { emotional: index === 0 ? null : index - 1 })
-            }
-            Label {
-                Layout.maximumWidth: 160
-                text: dialog.sioul.text("task-field-anxiety")
-                wrapMode: Text.Wrap
-                color: dialog.theme.muted
-            }
-            ComboBox {
-                Layout.fillWidth: true
-                model: dialog.ratings
-                currentIndex: dialog.demands.anxiety === null || dialog.demands.anxiety === undefined ? 0 : dialog.demands.anxiety + 1
-                onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { anxiety: index === 0 ? null : index - 1 })
-            }
-            Label {
-                Layout.maximumWidth: 160
-                text: dialog.sioul.text("task-field-gain")
-                wrapMode: Text.Wrap
-                color: dialog.theme.muted
-            }
-            ComboBox {
-                Layout.fillWidth: true
-                model: dialog.ratings
-                currentIndex: dialog.demands.gain === null || dialog.demands.gain === undefined ? 0 : dialog.demands.gain + 1
-                onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { gain: index === 0 ? null : index - 1 })
-            }
-            Label {
-                visible: dialog.calendars.length > 1 && dialog.key === ""
-                text: dialog.sioul.text("event-calendar")
-                color: dialog.theme.muted
-            }
-            ComboBox {
-                id: calendar
 
-                visible: dialog.calendars.length > 1 && dialog.key === ""
+            Button {
+                flat: true
+                text: (dialog.moreShown ? "▾  " : "▸  ") + dialog.sioul.text("ui-more-details")
+                onClicked: dialog.moreShown = !dialog.moreShown
+            }
+            GridLayout {
+                visible: dialog.moreShown
                 Layout.fillWidth: true
-                model: dialog.calendars.map(c => dialog.theme.plain(c.name))
+                columns: 2
+                columnSpacing: 8
+                rowSpacing: 6
+
+                Label {
+                    Layout.alignment: Qt.AlignTop
+                    text: dialog.sioul.text("contact-notes")
+                    color: dialog.theme.muted
+                }
+                TextArea {
+                    id: notes
+
+                    // A field shows where it is: a border, darker when it has the focus.
+                    background: Rectangle {
+                        color: dialog.theme.surface
+                        radius: dialog.theme.radius
+                        border.color: notes.activeFocus ? dialog.theme.focus : dialog.theme.line
+                    }
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 80
+                    wrapMode: TextArea.Wrap
+                }
+                Label {
+                    text: dialog.sioul.text("event-repeat")
+                    color: dialog.theme.muted
+                }
+                ComboBox {
+                    id: repeat
+
+                    Layout.fillWidth: true
+                    model: dialog.repeats.map(r => dialog.sioul.text("repeat-" + (r || "none")))
+                }
+                // Getting there and back, getting ready: kept free around it, never a pause.
+                Label {
+                    Layout.maximumWidth: 160
+                    text: dialog.sioul.text("task-field-before")
+                    wrapMode: Text.Wrap
+                    color: dialog.theme.muted
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.minutesText(m))
+                    currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.before))
+                    onActivated: index => dialog.around = Object.assign({}, dialog.around, { before: dialog.marginMinutes[index] })
+                }
+                Label {
+                    Layout.maximumWidth: 160
+                    text: dialog.sioul.text("task-field-after")
+                    wrapMode: Text.Wrap
+                    color: dialog.theme.muted
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.minutesText(m))
+                    currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.after))
+                    onActivated: index => dialog.around = Object.assign({}, dialog.around, { after: dialog.marginMinutes[index] })
+                }
+                // What it costs, and what it gives back: 0 to 10 each, as you feel it.
+                Label {
+                    Layout.maximumWidth: 160
+                    text: dialog.sioul.text("task-field-cognitive")
+                    wrapMode: Text.Wrap
+                    color: dialog.theme.muted
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: dialog.ratings
+                    currentIndex: dialog.demands.cognitive === null || dialog.demands.cognitive === undefined ? 0 : dialog.demands.cognitive + 1
+                    onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { cognitive: index === 0 ? null : index - 1 })
+                }
+                Label {
+                    Layout.maximumWidth: 160
+                    text: dialog.sioul.text("task-field-emotional")
+                    wrapMode: Text.Wrap
+                    color: dialog.theme.muted
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: dialog.ratings
+                    currentIndex: dialog.demands.emotional === null || dialog.demands.emotional === undefined ? 0 : dialog.demands.emotional + 1
+                    onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { emotional: index === 0 ? null : index - 1 })
+                }
+                Label {
+                    Layout.maximumWidth: 160
+                    text: dialog.sioul.text("task-field-anxiety")
+                    wrapMode: Text.Wrap
+                    color: dialog.theme.muted
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: dialog.ratings
+                    currentIndex: dialog.demands.anxiety === null || dialog.demands.anxiety === undefined ? 0 : dialog.demands.anxiety + 1
+                    onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { anxiety: index === 0 ? null : index - 1 })
+                }
+                Label {
+                    Layout.maximumWidth: 160
+                    text: dialog.sioul.text("task-field-gain")
+                    wrapMode: Text.Wrap
+                    color: dialog.theme.muted
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: dialog.ratings
+                    currentIndex: dialog.demands.gain === null || dialog.demands.gain === undefined ? 0 : dialog.demands.gain + 1
+                    onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { gain: index === 0 ? null : index - 1 })
+                }
+                Label {
+                    visible: dialog.calendars.length > 1 && dialog.key === ""
+                    text: dialog.sioul.text("event-calendar")
+                    color: dialog.theme.muted
+                }
+                ComboBox {
+                    id: calendar
+
+                    visible: dialog.calendars.length > 1 && dialog.key === ""
+                    Layout.fillWidth: true
+                    model: dialog.calendars.map(c => dialog.theme.plain(c.name))
+                }
             }
         }
+    }
+
+    footer: ColumnLayout {
+        spacing: 6
+
         Label {
             visible: dialog.problem !== ""
             Layout.fillWidth: true
+            Layout.leftMargin: 12
+            Layout.rightMargin: 12
             text: dialog.problem
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
@@ -340,6 +357,9 @@ Dialog {
         }
         RowLayout {
             Layout.fillWidth: true
+            Layout.leftMargin: 12
+            Layout.rightMargin: 12
+            Layout.bottomMargin: 12
 
             Item {
                 Layout.fillWidth: true
