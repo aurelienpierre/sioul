@@ -314,6 +314,13 @@ pub struct ItemState {
     pub etag: String,
     /// A hash of the file as last synced: a different one means it was changed here.
     pub hash: String,
+    /// The file's size and modification time (nanoseconds since 1970) when
+    /// last found as synced: both the same, it is unchanged, and not read.
+    /// A time of 0 is unknown: the file is read and its hash compared.
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub mtime: i64,
 }
 
 impl State {

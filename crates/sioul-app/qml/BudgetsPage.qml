@@ -18,7 +18,25 @@ Item {
     required property var theme
     required property var window
 
-    readonly property var view: page.sioul.budgets ? JSON.parse(page.sioul.budgets) : null
+    // Read while shown: a page out of sight keeps what it showed, and reads
+    // again when it comes back; results landing meanwhile cost nothing.
+    property string budgetsText: ""
+    readonly property var view: page.budgetsText ? JSON.parse(page.budgetsText) : null
+
+    function takeShown() {
+        if (page.visible)
+            page.budgetsText = page.sioul.budgets
+    }
+
+    Connections {
+        target: page.sioul
+
+        function onBudgetsChanged() {
+            page.takeShown()
+        }
+    }
+    onVisibleChanged: page.takeShown()
+    Component.onCompleted: page.takeShown()
     // A budget opened: its ledger and its balance.
     property string openId: ""
 

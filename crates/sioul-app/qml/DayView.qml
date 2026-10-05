@@ -23,11 +23,34 @@ ColumnLayout {
     required property var theme
     // The page's `day`: {from, to, now, hours: [{start, end, kind}], blocks: [{start, end, kind, title, key, energy, location, column, columns, part}], all_day, more}.
     property var day: null
+    // Now on the clock (Unix seconds): the line moves each minute while the day is shown.
+    property real now: Date.now() / 1000
     readonly property var blocks: dayView.day ? dayView.day.blocks : []
     readonly property var hours: dayView.day && dayView.day.hours ? dayView.day.hours : []
     // The block under way, and the next one; margins around them are neither.
-    readonly property int current: dayView.blocks.findIndex(b => b.kind !== "margin" && b.kind !== "done" && b.start <= dayView.day.now && dayView.day.now < b.end)
-    readonly property int next: dayView.blocks.findIndex(b => b.kind !== "margin" && b.kind !== "done" && b.start > (dayView.day ? dayView.day.now : 0))
+    readonly property int current: dayView.blocks.findIndex(b => b.kind !== "margin" && b.kind !== "done" && b.start <= dayView.now && dayView.now < b.end)
+    readonly property int next: dayView.blocks.findIndex(b => b.kind !== "margin" && b.kind !== "done" && b.start > dayView.now)
+
+    // Laid again from now every five minutes, and as soon as the app comes back:
+    // what another device marked done or noted comes in through the sharing.
+    signal relay
+
+    Timer {
+        interval: 60000
+        running: dayView.visible && !dayView.sioul.away
+        repeat: true
+        triggeredOnStart: true
+        // Shown again, or the app back: laid again at once.
+        onRunningChanged: if (running) dayView.relay()
+        onTriggered: {
+            dayView.now = Date.now() / 1000
+            dayView.showNow(false)
+            dayView.ticks = (dayView.ticks + 1) % 5
+            if (dayView.ticks === 0)
+                dayView.relay()
+        }
+    }
+    property int ticks: 0
 
     // Air inside a card, above and below its text.
     readonly property int padding: 8
@@ -99,7 +122,7 @@ ColumnLayout {
     function showNow(always) {
         if (!dayView.day || flick.height <= 0)
             return
-        const now = Math.min(Math.max(dayView.day.now, dayView.day.from), dayView.day.to)
+        const now = Math.min(Math.max(dayView.now, dayView.day.from), dayView.day.to)
         const hour = dayView.day.from + Math.floor((now - dayView.day.from) / 3600) * 3600
         if (!always && hour === dayView.anchoredHour)
             return
@@ -343,9 +366,9 @@ ColumnLayout {
 
         // Now.
         Rectangle {
-            visible: dayView.day !== null && dayView.day.now >= dayView.day.from && dayView.day.now <= dayView.day.to
+            visible: dayView.day !== null && dayView.now >= dayView.day.from && dayView.now <= dayView.day.to
             x: 56
-            y: dayView.day ? dayView.at(dayView.day.now) - 1 : 0
+            y: dayView.day ? dayView.at(dayView.now) - 1 : 0
             width: flick.width - 56
             height: 2
             color: dayView.theme.accent

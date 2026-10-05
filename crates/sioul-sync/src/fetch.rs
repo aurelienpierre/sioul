@@ -29,7 +29,9 @@ use sioul_core::maildir::{self, Fetched};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::{Condvar, Mutex, PoisonError};
+use std::task::{Poll, Waker};
+use std::time::{Duration, Instant, SystemTime};
 
 /// What one sync brought.
 #[derive(Debug, Clone, Default)]
@@ -69,15 +71,30 @@ const REALTIME: Duration = Duration::from_secs(60);
 /// would bring the inbox sooner than wished (RFC 2177 renews under 29 minutes).
 const SLOW: Duration = Duration::from_secs(25 * 60);
 
+/// How often a long wait looks at the wall clock: the monotonic clock, which
+/// timers count, stops while a phone sleeps.
+const LOOK: Duration = Duration::from_secs(60);
+
 /// How a watcher is told to stop, or to fetch now instead of waiting, and at what pace.
 #[derive(Debug, Default)]
 pub struct Control {
     stop: AtomicBool,
     nudge: AtomicBool,
+    /// "Sync now": a refused password is tried again too.
+    retry: AtomicBool,
     /// Every folder, every minute, until switched off.
     realtime: AtomicBool,
     /// Seconds between two fetches of the other folders; 0 for the default.
     pace: std::sync::atomic::AtomicU64,
+    /// The app in the background (a phone's app put away): nothing starts on
+    /// a timer but the inbox's watch; a nudge still does, and leaving it is one.
+    quiet: AtomicBool,
+    /// Wakes the pauses at once (`ring`); `lock` keeps a ring from passing
+    /// unheard between a look at the flags and the wait.
+    bell: Condvar,
+    lock: Mutex<()>,
+    /// The async waits (the mail watcher's), woken with the pauses.
+    wakers: Mutex<Vec<Waker>>,
 }
 
 impl Control {
@@ -114,31 +131,158 @@ impl Control {
         !self.realtime() && self.round() > SLOW
     }
 
-    /// Ends the watch at the next occasion (within half a second when waiting).
+    /// What a round of the mail watcher brings besides the inbox's new mail:
+    /// the inbox's changes and older mail, and the other folders when they
+    /// are `due`. Quiet, neither: they wait for the first round after.
+    fn brings(&self, due: bool) -> (bool, bool) {
+        let full = !self.quiet();
+        (full, full && due)
+    }
+
+    /// Quiet or not: the app put away, or back. Quiet, a watcher starts
+    /// nothing on its timer but the inbox's IDLE (new mail is still noticed,
+    /// the other folders wait); leaving it wakes the watcher, as a nudge.
+    pub fn set_quiet(&self, quiet: bool) {
+        if self.quiet.swap(quiet, Ordering::Relaxed) && !quiet {
+            self.nudge();
+        }
+    }
+
+    pub fn quiet(&self) -> bool {
+        self.quiet.load(Ordering::Relaxed)
+    }
+
+    /// Ends the watch at the next occasion: at once when waiting.
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Relaxed);
+        self.ring();
     }
 
     /// Fetches now: ends the current wait, IDLE or pause.
     pub fn nudge(&self) {
         self.nudge.store(true, Ordering::Relaxed);
+        self.ring();
+    }
+
+    /// "Sync now": a nudge, after which a watcher parked on a refused
+    /// password tries it again, unchanged (see `Parked`).
+    pub fn retry(&self) {
+        self.retry.store(true, Ordering::Relaxed);
+        self.nudge();
+    }
+
+    /// Whether "Sync now" was asked since last looked.
+    pub(crate) fn retried(&self) -> bool {
+        self.retry.swap(false, Ordering::Relaxed)
     }
 
     pub fn stopped(&self) -> bool {
         self.stop.load(Ordering::Relaxed)
     }
 
-    /// Waits `length` on this thread, or less when stopped or nudged.
-    pub fn pause(&self, length: Duration) {
-        let end = std::time::Instant::now() + length;
-        while std::time::Instant::now() < end && !self.wakes() {
-            std::thread::sleep(Duration::from_millis(500));
+    /// Wakes every wait, to look at the flags again.
+    fn ring(&self) {
+        let _held = self.lock.lock().unwrap_or_else(PoisonError::into_inner);
+        self.bell.notify_all();
+        for waker in std::mem::take(&mut *self.wakers.lock().unwrap_or_else(PoisonError::into_inner)) {
+            waker.wake();
         }
+    }
+
+    /// An async wait, woken at the next ring.
+    fn listen(&self, waker: &Waker) {
+        let mut wakers = self.wakers.lock().unwrap_or_else(PoisonError::into_inner);
+        if !wakers.iter().any(|w| w.will_wake(waker)) {
+            wakers.push(waker.clone());
+        }
+    }
+
+    /// Waits `length` on this thread, or less when stopped or nudged. Counted
+    /// on the wall clock too: a phone asleep for an hour ends a pause of 15
+    /// minutes as soon as it wakes. While quiet, only a nudge ends it.
+    pub fn pause(&self, length: Duration) {
+        self.pause_by(length, SystemTime::now, LOOK);
+    }
+
+    /// `pause`, the wall clock read with `wall`, at least every `look`.
+    fn pause_by(&self, length: Duration, wall: impl Fn() -> SystemTime, look: Duration) {
+        let end = Deadline::after(length, wall());
+        let mut held = self.lock.lock().unwrap_or_else(PoisonError::into_inner);
+        while !self.wakes() {
+            let left = end.left(wall());
+            held = if self.quiet() {
+                self.bell.wait(held).unwrap_or_else(PoisonError::into_inner)
+            } else if left.is_zero() {
+                return;
+            } else {
+                self.bell.wait_timeout(held, left.min(look)).unwrap_or_else(PoisonError::into_inner).0
+            };
+        }
+    }
+
+    /// Waits for a nudge, however long, quiet or not: a watcher parked after
+    /// a lasting error, instead of ending. False when stopped.
+    pub fn park(&self) -> bool {
+        let mut held = self.lock.lock().unwrap_or_else(PoisonError::into_inner);
+        while !self.wakes() {
+            held = self.bell.wait(held).unwrap_or_else(PoisonError::into_inner);
+        }
+        !self.stopped()
     }
 
     /// Whether the wait should end; a nudge is used up by ending one.
     fn wakes(&self) -> bool {
         self.stopped() || self.nudge.swap(false, Ordering::Relaxed)
+    }
+}
+
+/// A refused password is tried again, unchanged, this long after at the
+/// soonest, however often the watcher is nudged: retries can lock an account.
+const REFUSED_AGAIN: Duration = Duration::from_secs(60 * 60);
+
+/// A watcher parked after a lasting error: it waits for a nudge (a new
+/// password, "Sync now", the app back) instead of ending, then tries again;
+/// a refused password, unchanged, not before `REFUSED_AGAIN`, unless asked
+/// to ([`Control::retry`]).
+pub(crate) struct Parked {
+    refused: Option<String>,
+    since: SystemTime,
+}
+
+impl Parked {
+    /// After `error`, met with `password` (the one refused, when it says so).
+    pub(crate) fn after(error: &SyncError, password: Option<String>) -> Parked {
+        Parked { refused: password.filter(|_| error.wants_password()), since: SystemTime::now() }
+    }
+
+    /// Whether going on depends on the password kept: one was refused.
+    pub(crate) fn refused(&self) -> bool {
+        self.refused.is_some()
+    }
+
+    /// Whether to try again, nudged, with the password kept now.
+    pub(crate) fn again(&self, kept: Option<&str>) -> bool {
+        self.refused.as_deref().is_none_or(|refused| kept.is_some_and(|k| k != refused) || SystemTime::now().duration_since(self.since).is_ok_and(|d| d >= REFUSED_AGAIN))
+    }
+}
+
+/// The end of a wait, on both clocks: the wall clock counts a phone's sleep,
+/// the monotonic clock keeps a wall clock put back from stretching it.
+struct Deadline {
+    wall: Option<SystemTime>,
+    steady: Option<Instant>,
+}
+
+impl Deadline {
+    fn after(length: Duration, now: SystemTime) -> Deadline {
+        Deadline { wall: now.checked_add(length), steady: Instant::now().checked_add(length) }
+    }
+
+    /// What is left of it, by whichever clock is further along; zero when over.
+    fn left(&self, now: SystemTime) -> Duration {
+        let wall = self.wall.map_or(Duration::MAX, |end| end.duration_since(now).unwrap_or_default());
+        let steady = self.steady.map_or(Duration::MAX, |end| end.saturating_duration_since(Instant::now()));
+        wall.min(steady)
     }
 }
 
@@ -177,7 +321,7 @@ async fn other_folders(session: &mut Imap, account: &Account) -> Result<(Vec<Pat
     mailbox::save(&account.id, &list)?;
     let (mut written, mut held_back) = (Vec::new(), false);
     for folder in list.iter().filter(|f| f.role != Role::Inbox && mailbox::fetched(f, &list, account)) {
-        let report = fetch_folder(session, account, folder).await?;
+        let report = fetch_folder(session, account, folder, true).await?;
         written.extend(report.new.into_iter().chain(report.elsewhere));
         held_back |= report.held_back;
     }
@@ -186,7 +330,9 @@ async fn other_folders(session: &mut Imap, account: &Account) -> Result<(Vec<Pat
 
 /// Keeps the inbox open and fetches what arrives, until stopped (see
 /// [`Control`]). Every sync is reported, even an empty one, and every error,
-/// before trying again; a refused login ends it (see [`SyncError::is_lasting`]).
+/// before trying again; after a lasting one (a refused login, see
+/// [`SyncError::is_lasting`]) it waits for a nudge, then tries again with the
+/// password kept then (see `Parked`).
 pub fn watch(account: &Account, password: &str, control: &Control, mut report: impl FnMut(Result<Report, SyncError>)) {
     let server = match Server::of(account) {
         Ok(server) => server,
@@ -197,16 +343,33 @@ pub fn watch(account: &Account, password: &str, control: &Control, mut report: i
         Err(e) => return report(Err(e)),
     };
     runtime.block_on(async {
+        let mut password = password.to_string();
         let mut pause = FIRST_PAUSE;
         while !control.stopped() {
-            let Err(e) = keep_open(&server, password, account, control, &mut report, &mut pause).await else { continue };
-            let lasting = e.is_lasting();
+            let Err(e) = keep_open(&server, &password, account, control, &mut report, &mut pause).await else { continue };
+            let parked = e.is_lasting().then(|| Parked::after(&e, Some(password.clone())));
             report(Err(e));
-            if lasting {
-                return;
+            if let Some(parked) = parked {
+                control.retried();
+                loop {
+                    woken(control).await;
+                    if control.stopped() {
+                        return;
+                    }
+                    if !parked.refused() {
+                        break;
+                    }
+                    let kept = crate::secret::password(account).ok();
+                    if parked.again(kept.as_deref()) || control.retried() {
+                        password = kept.unwrap_or(password);
+                        break;
+                    }
+                }
+                pause = FIRST_PAUSE;
+                continue;
             }
-            wait(pause, control).await;
-            pause = (pause * 2).min(LONGEST_PAUSE);
+            // Nudged (the app back, "Sync now"): tried again at once, and soon again if it fails.
+            pause = if wait(pause, control).await { FIRST_PAUSE } else { (pause * 2).min(LONGEST_PAUSE) };
         }
     });
 }
@@ -225,8 +388,9 @@ async fn keep_open(
     // The other folders: at the start, then at each quiet round (five minutes), not at each arrival.
     let mut others_due = true;
     while !control.stopped() {
-        let mut new = fetch_new(&mut session, account).await?;
-        if others_due {
+        let (full, others) = control.brings(others_due);
+        let mut new = fetch_folder(&mut session, account, &folders::folder(INBOX, None, None), full).await?;
+        if others {
             let (elsewhere, held_back) = other_folders(&mut session, account).await?;
             new.elsewhere.extend(elsewhere);
             new.held_back |= held_back;
@@ -266,14 +430,14 @@ async fn keep_open(
 
 /// Fetches the inbox's new messages into the Maildir.
 async fn fetch_new(session: &mut Imap, account: &Account) -> Result<Report, SyncError> {
-    fetch_folder(session, account, &folders::folder(INBOX, None, None)).await
+    fetch_folder(session, account, &folders::folder(INBOX, None, None), true).await
 }
 
-/// Fetches a folder's new messages into its Maildir, then brings back what
-/// changed there on the server. One fetch at a time per account, across
-/// processes too (the window and `sioul sync`): otherwise both would see the
-/// same new UIDs and write each message twice.
-async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder) -> Result<Report, SyncError> {
+/// Fetches a folder's new messages into its Maildir, then (`full`) brings
+/// back what changed there on the server and older mail. One fetch at a time
+/// per account, across processes too (the window and `sioul sync`):
+/// otherwise both would see the same new UIDs and write each message twice.
+async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder, full: bool) -> Result<Report, SyncError> {
     let state_path = state_dir().join("sync").join(format!("{}.toml", account.id));
     let _lock = lock(&state_path.with_extension("lock"))?;
     let inbox = imap::within(COMMAND, session.examine(&folder.name)).await?.map_err(imap::server)?;
@@ -289,12 +453,9 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder) ->
         None => format!("SINCE {}", imap_date(first_window(account))),
     };
     let found = imap::within(COMMAND, session.uid_search(&query)).await?.map_err(imap::server)?;
-    // "UID n:*" also returns the newest message when nothing is newer (RFC 9051 §6.4.8).
-    let mut uids: Vec<u32> = found.into_iter().filter(|uid| *uid > last_uid).collect();
-    uids.sort_unstable();
     let root = account.maildir_path().join(&folder.local);
+    let (uids, mut newest) = to_fetch(found, last_uid, &root, validity);
     let mut report = Report { account: account.id.clone(), new: Vec::new(), first: known.is_none(), inbox: inbox.exists, elsewhere: Vec::new(), held_back: false };
-    let mut newest = last_uid;
     // Without DNS (offline), mail is stored unchecked; a later pass checks it.
     let verifier = if uids.is_empty() { None } else { Verifier::new() };
     for batch in uids.chunks(BATCH) {
@@ -303,6 +464,12 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder) ->
         let written = store_checked(arrived, validity, &root, verifier.as_ref()).await?;
         newest = written.iter().map(|(uid, _)| *uid).fold(newest, u32::max);
         report.new.extend(written.into_iter().map(|(_, path)| path));
+        let reached = known.map_or_else(|| Reach::first(account), |k| k.reach());
+        state.folders.insert(key.into(), FolderState { uidvalidity: validity, last_uid: newest, since: reached.since, everything: reached.everything });
+        state.save(&state_path)?;
+    }
+    if uids.is_empty() && newest > last_uid {
+        // Here already, from a sync stopped before it could say so.
         let reached = known.map_or_else(|| Reach::first(account), |k| k.reach());
         state.folders.insert(key.into(), FolderState { uidvalidity: validity, last_uid: newest, since: reached.since, everything: reached.everything });
         state.save(&state_path)?;
@@ -316,11 +483,30 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder) ->
             state.save(&state_path)?;
         }
     }
-    if let Some(known) = known {
+    if let Some(known) = known
+        && full
+    {
         mailbox::reconcile(session, &root, validity).await?;
         backfill(session, &mut state, &state_path, key, known, &root, validity, &mut report).await?;
     }
     Ok(report)
+}
+
+/// The UIDs to fetch of those found, oldest first, and the newest of those
+/// here already (else `last_uid`). Here already: a sync stopped between
+/// storing mail and saving where it stopped, or whose state was lost, finds
+/// them again, and they are not stored twice.
+fn to_fetch(found: impl IntoIterator<Item = u32>, last_uid: u32, root: &Path, validity: u32) -> (Vec<u32>, u32) {
+    // "UID n:*" also returns the newest message when nothing is newer (RFC 9051 §6.4.8).
+    let mut uids: Vec<u32> = found.into_iter().filter(|uid| *uid > last_uid).collect();
+    if uids.is_empty() {
+        return (uids, last_uid);
+    }
+    let here = local_uids(root, validity);
+    let newest = uids.iter().copied().filter(|uid| here.contains(uid)).fold(last_uid, u32::max);
+    uids.retain(|uid| !here.contains(uid));
+    uids.sort_unstable();
+    (uids, newest)
 }
 
 /// How far back a folder was fetched: since a day (Unix seconds), or everything.
@@ -515,18 +701,23 @@ impl SyncState {
         std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
     }
 
+    /// Written next to its place, then moved: an interruption never leaves
+    /// half a state, which would be read as none (every folder's first window
+    /// fetched again).
     fn save(&self, path: &Path) -> Result<(), SyncError> {
         let fail = |e: std::io::Error| SyncError::Disk(format!("{}: {e}", path.display()));
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(fail)?;
         }
         let text = toml::to_string(self).map_err(|e| SyncError::Disk(e.to_string()))?;
-        std::fs::write(path, text).map_err(fail)
+        let temporary = path.with_extension("toml.new");
+        std::fs::write(&temporary, text).map_err(fail)?;
+        std::fs::rename(&temporary, path).map_err(fail)
     }
 }
 
 /// An exclusive lock on a file, released when the returned file is dropped.
-fn lock(path: &Path) -> Result<std::fs::File, SyncError> {
+pub(crate) fn lock(path: &Path) -> Result<std::fs::File, SyncError> {
     let fail = |e: std::io::Error| SyncError::Disk(format!("{}: {e}", path.display()));
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(fail)?;
@@ -546,16 +737,30 @@ pub(crate) fn block_on<T>(future: impl Future<Output = Result<T, SyncError>>) ->
 
 /// Returns when the watcher is stopped or nudged.
 async fn woken(control: &Control) {
-    while !control.wakes() {
-        tokio::time::sleep(Duration::from_millis(500)).await;
-    }
+    std::future::poll_fn(|context| {
+        if control.wakes() {
+            return Poll::Ready(());
+        }
+        control.listen(context.waker());
+        // Rung between the look and the listening: not missed.
+        if control.wakes() { Poll::Ready(()) } else { Poll::Pending }
+    })
+    .await;
 }
 
-/// Waits `length`, or less when stopped or nudged.
-async fn wait(length: Duration, control: &Control) {
-    tokio::select! {
-        () = tokio::time::sleep(length) => {}
-        () = woken(control) => {}
+/// Waits `length`, or less when stopped or nudged; on the wall clock too (see
+/// `Deadline`). Whether it was nudged.
+async fn wait(length: Duration, control: &Control) -> bool {
+    let end = Deadline::after(length, SystemTime::now());
+    loop {
+        let left = end.left(SystemTime::now());
+        if left.is_zero() {
+            return false;
+        }
+        tokio::select! {
+            () = tokio::time::sleep(left.min(LOOK)) => {}
+            () = woken(control) => return !control.stopped(),
+        }
     }
 }
 
@@ -579,6 +784,162 @@ mod tests {
         account.sync_days = Some(3);
         assert_eq!(first_window(&account), today.checked_sub(jiff::Span::new().days(3)).unwrap());
         assert!(!Reach::first(&account).everything);
+    }
+
+    /// F3b: a nudge ends a pause at once, not at the next look half a second later.
+    #[test]
+    fn a_nudge_ends_a_pause_at_once() {
+        let control = Control::default();
+        let started = Instant::now();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                std::thread::sleep(Duration::from_millis(50));
+                control.nudge();
+            });
+            control.pause(Duration::from_secs(10));
+        });
+        assert!(started.elapsed() < Duration::from_millis(400), "{:?}", started.elapsed());
+    }
+
+    /// F3b: the same for the mail watcher's waits, which say they were
+    /// nudged (a failed connection is then tried again at once, and its
+    /// pause starts over).
+    #[test]
+    fn a_nudge_ends_a_wait_at_once() {
+        let control = Control::default();
+        let started = Instant::now();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                std::thread::sleep(Duration::from_millis(50));
+                control.nudge();
+            });
+            assert!(runtime().unwrap().block_on(wait(Duration::from_secs(10), &control)), "nudged");
+        });
+        assert!(started.elapsed() < Duration::from_millis(400), "{:?}", started.elapsed());
+        assert!(!runtime().unwrap().block_on(wait(Duration::from_millis(20), &control)), "to its end");
+    }
+
+    /// A1: a pause counts the wall clock: a phone asleep past its end ends it
+    /// as it wakes, not fifteen awake minutes later.
+    #[test]
+    fn a_pause_counts_the_time_asleep() {
+        let control = Control::default();
+        let start = SystemTime::now();
+        let looks = std::cell::Cell::new(0);
+        // The clock read at the start, at the first look, then after an hour asleep.
+        let wall = || {
+            looks.set(looks.get() + 1);
+            if looks.get() <= 2 { start } else { start + Duration::from_secs(3600) }
+        };
+        let started = Instant::now();
+        control.pause_by(Duration::from_secs(15 * 60), wall, Duration::from_millis(20));
+        assert!(started.elapsed() < Duration::from_secs(1), "{:?}", started.elapsed());
+        assert_eq!(looks.get(), 3);
+    }
+
+    /// Quiet (the app put away): a pause ends only when nudged, and leaving
+    /// quiet is a nudge; the mail watcher brings the inbox's new mail only.
+    #[test]
+    fn quiet_waits_for_a_nudge() {
+        let control = Control::default();
+        assert_eq!(control.brings(true), (true, true));
+        control.set_quiet(true);
+        assert_eq!(control.brings(true), (false, false));
+        let (done, ended) = std::sync::mpsc::channel();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                control.pause(Duration::from_millis(30));
+                done.send(()).unwrap();
+            });
+            assert!(ended.recv_timeout(Duration::from_millis(300)).is_err(), "not on its timer");
+            control.nudge();
+            ended.recv_timeout(Duration::from_secs(5)).expect("a nudge ends it");
+            s.spawn(|| {
+                control.pause(Duration::from_millis(30));
+                done.send(()).unwrap();
+            });
+            assert!(ended.recv_timeout(Duration::from_millis(300)).is_err(), "still quiet");
+            control.set_quiet(false);
+            ended.recv_timeout(Duration::from_secs(5)).expect("leaving quiet ends it");
+        });
+        assert_eq!(control.brings(false), (true, false));
+    }
+
+    /// A2: a watcher parked after a lasting error waits for a nudge, quiet
+    /// or not; stopped, it ends.
+    #[test]
+    fn a_parked_watcher_waits_for_a_nudge() {
+        let control = Control::default();
+        control.set_quiet(true);
+        let (done, ended) = std::sync::mpsc::channel();
+        std::thread::scope(|s| {
+            s.spawn(|| done.send(control.park()).unwrap());
+            assert!(ended.recv_timeout(Duration::from_millis(200)).is_err(), "parked");
+            control.nudge();
+            assert_eq!(ended.recv_timeout(Duration::from_secs(5)), Ok(true), "nudged: tries again");
+            s.spawn(|| done.send(control.park()).unwrap());
+            control.stop();
+            assert_eq!(ended.recv_timeout(Duration::from_secs(5)), Ok(false), "stopped: ends");
+        });
+    }
+
+    /// A2: a refused password is tried again once another is kept, or an hour
+    /// later, however often nudged; anything else lasting, at the next nudge.
+    #[test]
+    fn a_refused_password_waits_for_another() {
+        let parked = Parked::after(&SyncError::Login("refused".into()), Some("old".into()));
+        assert!(parked.refused());
+        assert!(!parked.again(Some("old")) && !parked.again(None));
+        assert!(parked.again(Some("new")));
+        let hour_later = Parked { since: SystemTime::now() - REFUSED_AGAIN, ..parked };
+        assert!(hour_later.again(Some("old")));
+        let portal = Parked::after(&SyncError::Tls("certificate".into()), Some("old".into()));
+        assert!(!portal.refused() && portal.again(Some("old")));
+    }
+
+    /// A folder of this test's own, empty.
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("sioul-fetch-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// F2: a sync stopped between storing mail and saving where it stopped,
+    /// or whose state was lost, does not store the same messages twice.
+    #[test]
+    fn mail_already_here_is_not_fetched_again() {
+        let root = scratch("already-here");
+        let message = |validity, uid| Fetched { origin: ImapOrigin { validity, uid }, flags: String::new(), received: None, raw: b"Subject: x\r\n\r\nx\r\n" };
+        for (validity, uid) in [(7, 3), (7, 4), (6, 5)] {
+            maildir::store(&root, &message(validity, uid)).unwrap();
+        }
+        assert_eq!(to_fetch([5, 3, 4], 2, &root, 7), (vec![5], 4), "5 of another UIDVALIDITY is another message");
+        // Where sync stopped forgotten: the first window again, nothing twice.
+        assert_eq!(to_fetch([3, 4], 0, &root, 7), (vec![], 4));
+        assert_eq!(to_fetch([4], 4, &root, 7), (vec![], 4), "the newest, given again by UID 5:*");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// F2: where sync stopped is written next to its place, then moved: a
+    /// write cut short never leaves half a state, which would be read as
+    /// none (the last 14 days of every folder fetched again).
+    #[test]
+    fn where_sync_stopped_is_replaced_whole() {
+        let dir = scratch("state");
+        let path = dir.join("account.toml");
+        let mut state = SyncState::default();
+        state.folders.insert("INBOX".into(), FolderState { uidvalidity: 7, last_uid: 41, since: None, everything: true });
+        state.save(&path).unwrap();
+        // Another name for the same file: written over in place, it would change too.
+        let before = dir.join("before.toml");
+        std::fs::hard_link(&path, &before).unwrap();
+        state.folders.get_mut("INBOX").unwrap().last_uid = 42;
+        state.save(&path).unwrap();
+        assert_eq!(SyncState::load(&before).folders["INBOX"].last_uid, 41, "replaced, not written over");
+        assert_eq!(SyncState::load(&path).folders["INBOX"].last_uid, 42);
+        assert!(!path.with_extension("toml.new").exists());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

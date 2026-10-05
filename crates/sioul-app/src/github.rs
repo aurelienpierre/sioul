@@ -37,7 +37,7 @@ pub(crate) fn start(qt: &QtThread, shared: &Arc<Shared>) {
     {
         let Ok(mut running) = shared.github.lock() else { return };
         if let Some(running) = running.as_ref() {
-            running.nudge();
+            running.retry();
             return;
         }
         *running = Some(Arc::clone(&control));
@@ -54,7 +54,8 @@ pub(crate) fn start(qt: &QtThread, shared: &Arc<Shared>) {
                 Ok(_) => crate::work::show_work(&qt, &shared),
                 Err(e) => {
                     set_status(&qt, e.sentence(tr(), "GitHub"));
-                    if e.is_lasting() {
+                    // A lasting error (a token refused): waits for a nudge, never ends.
+                    if e.is_lasting() && !control.park() {
                         break;
                     }
                 }

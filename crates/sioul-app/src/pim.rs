@@ -35,11 +35,13 @@ pub(crate) struct PimState {
     pub query: String,
     pub from: jiff::civil::Date,
     pub days: i64,
+    /// What comes only: events over already are left out (the list opened on today).
+    pub upcoming: bool,
 }
 
 impl Default for PimState {
     fn default() -> PimState {
-        PimState { query: String::new(), from: Zoned::now().date(), days: view::AGENDA_DAYS }
+        PimState { query: String::new(), from: Zoned::now().date(), days: view::AGENDA_DAYS, upcoming: true }
     }
 }
 
@@ -55,20 +57,26 @@ pub(crate) fn show_pim(qt: &QtThread, shared: &Arc<Shared>) {
         let zone = TimeZone::system();
         let from = state.from.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
         let to = from + state.days * 86_400 + 3_600;
+        let now = Zoned::now().timestamp().as_second();
         let occurrences: Vec<agenda::Occurrence> = agenda::occurrences(from, to)
             .into_iter()
             .filter(|o| !removed.contains(Path::new(&o.key)) && !skipped.contains(&(PathBuf::from(&o.key), o.start)))
+            // What comes: an event over is the past, shown only when you go back to it.
+            .filter(|o| !state.upcoming || o.end.max(o.start) > now)
             .collect();
         let mut shown = view::agenda(&occurrences, state.from, state.days, tr(), &zone);
         // The planning shows the hours given to something, not the night.
         view::set_hours(&mut shown, &load_config().week_hours(), &zone);
         let agenda = json(&shown);
+        let clashes = overlaps(14, &removed, &skipped);
         let _ = qt.queue(move |mut sioul| {
-            if sioul.shared().pim_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
+            // Only the newest (see `backend::show`).
+            if sioul.shared().pim_generation.load(Ordering::Relaxed) != generation || sioul.shared().pim_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
                 return;
             }
             sioul.as_mut().set_contacts(QString::from(&contacts));
             sioul.as_mut().set_agenda(QString::from(&agenda));
+            sioul.as_mut().set_overlaps(QString::from(&clashes));
         });
     });
 }
@@ -127,22 +135,16 @@ pub(crate) fn start_dav_watcher(qt: &QtThread, shared: &Arc<Shared>, account: Ac
     {
         let Ok(mut watchers) = shared.dav_watchers.lock() else { return };
         if let Some(running) = watchers.get(&account.id) {
-            running.nudge();
+            // Asked again ("Sync now", an account changed): a refused password is tried again too.
+            running.retry();
             return;
         }
         watchers.insert(account.id.clone(), Arc::clone(&control));
     }
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
-        while !control.stopped() {
-            let result = dav::sync(&account);
-            let lasting = result.as_ref().err().is_some_and(SyncError::is_lasting);
-            reported(&qt, &shared, &account, result);
-            if lasting {
-                break;
-            }
-            control.pause(DAV_PAUSE);
-        }
+        // After a lasting error (a refused password) it waits for a nudge, never ends.
+        dav::watch(&account, &control, DAV_PAUSE, |result| reported(&qt, &shared, &account, result));
         if let Ok(mut watchers) = shared.dav_watchers.lock()
             && watchers.get(&account.id).is_some_and(|c| Arc::ptr_eq(c, &control))
         {
@@ -161,17 +163,26 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
         statuses.insert(account.id.clone(), (line.clone(), problem));
     }
     crate::backend::want_password(shared, &account.id, result.as_ref().err());
-    match result {
+    // The pages again only when something came, went or clashed: a sync that
+    // changed nothing every quarter of an hour costs nothing (a phone's battery).
+    let changed = match result {
         Ok(report) => {
+            let changed = report.sent + report.received + report.removed > 0 || !report.conflicts.is_empty();
             for conflict in report.conflicts {
                 tell(qt, shared, say("dav-conflict", &[("path", conflict.display().to_string())]));
             }
+            changed
         }
-        Err(_) => set_status(qt, line),
+        Err(_) => {
+            set_status(qt, line);
+            true
+        }
+    };
+    if changed {
+        show(qt, shared);
+        show_pim(qt, shared);
+        crate::work::show_work(qt, shared);
     }
-    show(qt, shared);
-    show_pim(qt, shared);
-    crate::work::show_work(qt, shared);
 }
 
 /// A contact, every field, for its card and its form.
@@ -281,7 +292,7 @@ struct EventView {
 /// Two events at once in the next `days` days, their margins counted, those
 /// set aside left out, as JSON: [{key, day, today, first, second}], each
 /// event {key, title, from, to} ("09:30"), for the Porch and the agenda.
-pub(crate) fn overlaps(days: i64) -> String {
+pub(crate) fn overlaps(days: i64, removed: &std::collections::BTreeSet<PathBuf>, skipped: &std::collections::BTreeSet<(PathBuf, i64)>) -> String {
     let now = Zoned::now();
     let zone = now.time_zone().clone();
     let midnight = now.date().to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
@@ -289,7 +300,11 @@ pub(crate) fn overlaps(days: i64) -> String {
     let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
     let day = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).date()).ok();
     let one = |e: &agenda::Occurrence| serde_json::json!({ "key": e.key, "title": e.summary, "from": hm(e.start), "to": hm(e.end) });
-    let rows: Vec<serde_json::Value> = sioul_core::overlaps::overlaps(&agenda::occurrences(midnight, midnight + days.max(1) * 86_400))
+    let events: Vec<agenda::Occurrence> = agenda::occurrences(midnight, midnight + days.max(1) * 86_400)
+        .into_iter()
+        .filter(|o| !removed.contains(Path::new(&o.key)) && !skipped.contains(&(PathBuf::from(&o.key), o.start)))
+        .collect();
+    let rows: Vec<serde_json::Value> = sioul_core::overlaps::overlaps(&events)
         .iter()
         // Over already: nothing to do about it.
         .filter(|o| !aside.keys.contains(&o.key) && o.first.end.max(o.second.end) > now.timestamp().as_second())

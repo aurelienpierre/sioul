@@ -18,27 +18,51 @@ Item {
     required property var theme
     required property var window
 
-    readonly property var view: page.sioul.porch ? JSON.parse(page.sioul.porch) : ({ open: false, closed: null, right_now: [], summary: "", status: "", lanes: [] })
+    // Read while shown: a page out of sight keeps what it showed, and reads
+    // again when it comes back; results landing meanwhile cost nothing.
+    property string porchText: ""
+    readonly property var view: page.porchText ? JSON.parse(page.porchText) : ({ open: false, closed: null, right_now: [], summary: "", status: "", lanes: [] })
+
+    function takeShown() {
+        if (page.visible)
+            page.porchText = page.sioul.porch
+    }
+
+    Connections {
+        target: page.sioul
+
+        function onPorchChanged() {
+            page.takeShown()
+        }
+    }
     // Lanes whose "?" is open, by key.
     property var helpShown: ({})
     // What sites notified, kept for the Porch.
     property var siteNotices: JSON.parse(page.sioul.siteNotices() || "[]")
-    // Doses due while Sioul was closed: asked about here, at the next start.
-    property var missedDoses: []
+    // Doses due while Sioul was closed: asked about here, at the next start;
+    // made off the window's thread (`missedView`).
+    readonly property var missedDoses: JSON.parse(page.sioul.missedView || "[]")
 
     function reloadDoses() {
-        page.missedDoses = JSON.parse(page.sioul.missedDoses() || "[]")
+        page.sioul.refreshHealth()
     }
 
     // Read again when the Porch shows, when its mail is sorted again, and each
     // minute: a dose marked on another computer comes through the sharing.
-    onVisibleChanged: if (page.visible) page.reloadDoses()
+    onVisibleChanged: {
+        page.takeShown()
+        if (page.visible)
+            page.reloadDoses()
+    }
     onViewChanged: page.reloadDoses()
-    Component.onCompleted: page.reloadDoses()
+    Component.onCompleted: {
+        page.takeShown()
+        page.reloadDoses()
+    }
 
     Timer {
         interval: 60000
-        running: page.visible
+        running: page.visible && !page.sioul.away
         repeat: true
         onTriggered: page.reloadDoses()
     }
@@ -279,28 +303,12 @@ Item {
                 Panel {
                     id: overlapsCard
 
-                    property var rows: []
-
-                    function reload() {
-                        overlapsCard.rows = JSON.parse(page.sioul.overlaps(1) || "[]").filter(o => o.today)
-                    }
+                    // Made with the agenda, off the window's thread.
+                    readonly property var rows: JSON.parse(page.sioul.overlaps || "[]").filter(o => o.today)
 
                     visible: overlapsCard.rows.length > 0
                     Layout.fillWidth: true
                     theme: page.theme
-                    Component.onCompleted: overlapsCard.reload()
-
-                    Connections {
-                        target: page
-
-                        function onVisibleChanged() {
-                            if (page.visible)
-                                overlapsCard.reload()
-                        }
-                        function onViewChanged() {
-                            overlapsCard.reload()
-                        }
-                    }
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -343,10 +351,7 @@ Item {
                                     Button {
                                         flat: true
                                         text: page.sioul.text("overlap-set-aside")
-                                        onClicked: {
-                                            page.sioul.setOverlapAside(overlap.modelData.key)
-                                            overlapsCard.reload()
-                                        }
+                                        onClicked: page.sioul.setOverlapAside(overlap.modelData.key)
                                     }
                                 }
                             }

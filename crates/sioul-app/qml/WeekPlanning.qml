@@ -94,8 +94,9 @@ ColumnLayout {
 
     Timer {
         interval: 60000
-        running: planning.visible
+        running: planning.visible && !planning.sioul.away
         repeat: true
+        triggeredOnStart: true
         onTriggered: planning.now = planning.minutesNow()
     }
 

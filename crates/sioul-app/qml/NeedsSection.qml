@@ -28,9 +28,18 @@ ColumnLayout {
     // A narrow screen: each block's numbers under its name.
     readonly property bool narrow: section.width < 560
 
+    // Today's rows come with the health views, off the window's thread (`needsView`).
     function reload() {
         section.shown = JSON.parse(section.sioul.needs())
-        section.today = JSON.parse(section.sioul.needsToday() || "[]")
+        section.sioul.refreshHealth()
+    }
+
+    Connections {
+        target: section.sioul
+
+        function onNeedsViewChanged() {
+            section.today = JSON.parse(section.sioul.needsView || "[]")
+        }
     }
 
     // The settings changed by `change` (on a copy), saved, and read again.

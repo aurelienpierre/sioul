@@ -22,7 +22,10 @@ fn load() -> Health {
 }
 
 fn save(health: &Health) -> Result<(), String> {
-    health.save(&Health::default_path())
+    health.save(&Health::default_path())?;
+    // A medicine changed: a phone's alarms follow (`alarms`).
+    crate::alarms::schedule();
+    Ok(())
 }
 
 /// "12:00 and 18:00", "12:00, 15:00 and 18:00".
@@ -314,7 +317,15 @@ pub(crate) fn page() -> String {
         today,
         missed,
         shared_note: if health.medicines.is_empty() { String::new() } else { shared_note(&knowledge) },
-        reminded_there: REMINDED_THERE.lock().map(|r| r.clone()).unwrap_or_default(),
+        reminded_there: [
+            REMINDED_THERE.lock().map(|r| r.clone()).unwrap_or_default(),
+            if health.medicines.is_empty() || crate::alarms::notifications_allowed() { String::new() } else { tr().text("dose-notifications-off", None) },
+            if health.medicines.is_empty() || crate::alarms::exact() { String::new() } else { tr().text("dose-alarms-inexact", None) },
+        ]
+        .into_iter()
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join(" "),
         medicines: health.medicines.iter().map(|m| MedicineRow { when: words(&m.schedule), prescription_title: title_of(&m.prescription), medicine: m.clone() }).collect(),
         prescriptions: health
             .prescriptions
@@ -548,6 +559,142 @@ fn shared_note(knowledge: &Knowledge) -> String {
     if doubts.is_empty() { String::new() } else { say("dose-doubt-now", &[("why", why(&doubts))]) }
 }
 
+/// The Health page, the doses due while closed and today's meals and naps,
+/// made on a thread (they read the doses' record and the other devices'
+/// claims, a shared folder that may be slow) and shown.
+pub(crate) fn show_health(qt: &QtThread, shared: &Arc<Shared>) {
+    let qt = qt.clone();
+    crate::backend::coalesced(shared, |s| &s.health_job, move |_| {
+        let (view, missed, needs) = (page(), missed(), needs_today());
+        let _ = qt.queue(move |mut sioul| {
+            sioul.as_mut().set_health_view(QString::from(&view));
+            sioul.as_mut().set_missed_view(QString::from(&missed));
+            sioul.as_mut().set_needs_view(QString::from(&needs));
+        });
+    });
+}
+
+// ---------------------------------------------------------------- phone alarms
+
+/// How far ahead the coming doses are given to Android's alarm clock.
+const ALARMS_AHEAD_HOURS: i64 = 48;
+
+/// A dose as a reminder names it: "Levothyroxine · 75 µg".
+fn named(dose: &sioul_core::health::Dose) -> String {
+    if dose.dose.is_empty() { dose.name.clone() } else { format!("{} · {}", dose.name, dose.dose) }
+}
+
+/// The coming doses, as Android's alarm clock is given them (`alarms::schedule`):
+/// [{key, at (Unix milliseconds), title}], from half an hour ago to two days
+/// ahead, those marked or reminded left out. A record that does not read
+/// leaves none out: the decision at their time reads it again.
+pub(crate) fn alarms_coming() -> String {
+    let health = load();
+    let state = HealthState::read(&HealthState::default_path()).unwrap_or_default();
+    let now = Zoned::now();
+    let start = now.checked_sub(Span::new().minutes(GRACE_MINUTES)).unwrap_or_else(|_| now.clone());
+    let end = now.checked_add(Span::new().hours(ALARMS_AHEAD_HOURS)).unwrap_or_else(|_| now.clone());
+    let rows: Vec<serde_json::Value> = health
+        .doses(&start, &end)
+        .into_iter()
+        .filter(|d| !state.taken.contains_key(&d.key) && !state.not_taken.contains_key(&d.key) && !state.reminded.contains_key(&d.key))
+        .map(|d| serde_json::json!({ "key": d.key, "at": d.at.timestamp().as_millisecond(), "title": named(&d) }))
+        .collect();
+    serde_json::Value::Array(rows).to_string()
+}
+
+/// The doses of the last day marked taken or not taken: their reminders, if
+/// shown on a phone, are taken away (`alarms::schedule`).
+pub(crate) fn marked_lately() -> Vec<String> {
+    let Ok(state) = HealthState::read(&HealthState::default_path()) else { return Vec::new() };
+    let since = Timestamp::now().as_second() - 26 * 3600;
+    state.taken.keys().chain(state.not_taken.keys()).filter(|key| due_of(key).is_some_and(|due| due >= since)).cloned().collect()
+}
+
+/// How long a reminder shown on a phone is checked again (every quarter of an
+/// hour, the sync app asked first), so that a dose marked on another device
+/// takes it away: three hours after the dose's time.
+const SHOWN_WATCH: i64 = 3 * 3600;
+const SHOWN_EVERY: i64 = 15 * 60;
+
+/// At a dose's time, Android's alarm asks what to say (`alarms`), maybe with
+/// nothing on the screen. What your other devices marked is read first (the
+/// sync app asked to bring it); then, as the window would: taken, not taken
+/// said, or reminded already: nothing; kept by another device you use: its
+/// turn, asked again after the wait for news; not known: after that wait,
+/// reminded with the doubt said first; else the dose. Recorded `reminded`
+/// only when shown, so that another device still reminds what was not.
+/// JSON {show, title, body, again_at (Unix ms, 0: never)}.
+pub(crate) fn alarm_decide(key: &str) -> String {
+    let answer = |show: bool, title: &str, body: &str, again: i64| serde_json::json!({ "show": show, "title": title, "body": body, "again_at": again * 1000, "taken": tr().text("health-taken", None) }).to_string();
+    let _ = crate::share::exchange_here(true);
+    let health = load();
+    let now = Zoned::now();
+    let stamp = now.timestamp().as_second();
+    let _held = state_held();
+    let state = record();
+    let start = now.checked_sub(Span::new().hours(MISSED_HOURS)).unwrap_or_else(|_| now.clone());
+    let end = now.checked_add(Span::new().hours(ALARMS_AHEAD_HOURS)).unwrap_or_else(|_| now.clone());
+    // The medicine taken out, or its doses moved: this one is no more, nor its reminder.
+    let Some(dose) = health.doses(&start, &end).into_iter().find(|d| d.key == key) else {
+        crate::alarms::remove_reminder(key);
+        return answer(false, "", "", 0);
+    };
+    let due = dose.at.timestamp().as_second();
+    // Marked, here or on another device: its reminder, if shown, goes.
+    if state.taken.contains_key(key) || state.not_taken.contains_key(key) {
+        crate::alarms::remove_reminder(key);
+        return answer(false, "", "", 0);
+    }
+    // Reminded already (here, still shown, or on another device): looked at
+    // again a while, so that a mark made elsewhere takes the reminder away.
+    if state.reminded.contains_key(key) || SENT.lock().is_ok_and(|sent| sent.contains(key)) {
+        let again = if stamp < due + SHOWN_WATCH { stamp + SHOWN_EVERY } else { 0 };
+        return answer(false, "", "", again);
+    }
+    // Too early (moved later): at its time.
+    if due > stamp + 60 {
+        return answer(false, "", "", due);
+    }
+    let waiting = stamp < due + WAIT_FOR_NEWS;
+    let keeper = crate::share::looked("health", sioul_sync::lease::Rule::FollowsYou);
+    if !keeper.mine && waiting {
+        return answer(false, "", "", due + WAIT_FOR_NEWS);
+    }
+    let doubt = doubt_of(&know(), due, stamp);
+    if !doubt.is_empty() && waiting {
+        return answer(false, "", "", due + WAIT_FOR_NEWS);
+    }
+    let named = named(&dose);
+    let (title, body) = if doubt.is_empty() { (named, dose.at.strftime("%H:%M").to_string()) } else { (say("dose-check-title", &[("dose", named)]), format!("{}. {doubt}", dose.at.strftime("%H:%M"))) };
+    if let Ok(mut sent) = SENT.lock() {
+        sent.insert(key.to_string());
+    }
+    let _ = change(|record| {
+        record.reminded.insert(key.to_string(), stamp);
+    });
+    drop(_held);
+    // Your other devices know it was reminded: they do not remind it again.
+    let _ = crate::share::exchange_here(false);
+    // Shown: looked at again while it may still be shown (a mark elsewhere takes it away).
+    answer(true, &title, &body, stamp + SHOWN_EVERY)
+}
+
+/// "Taken", pressed on the phone's reminder. More than half an hour late, when
+/// it was taken is asked in the window instead (`open`). JSON {done, open, line}.
+pub(crate) fn alarm_taken(key: &str) -> String {
+    if is_late(key) {
+        return serde_json::json!({ "done": false, "open": true, "line": tr().text("dose-alarm-late", None) }).to_string();
+    }
+    let problem = set_taken(key, true);
+    if !problem.is_empty() {
+        return serde_json::json!({ "done": false, "open": true, "line": problem }).to_string();
+    }
+    let _ = crate::share::exchange_here(false);
+    let line = say("health-taken-at", &[("time", Zoned::now().strftime("%H:%M").to_string())]);
+    serde_json::json!({ "done": true, "open": false, "line": line }).to_string()
+}
+
 // ---------------------------------------------------------------- knowing
 
 /// How long a dose not known here waits for news from your other devices
@@ -615,7 +762,11 @@ fn change(change: impl Fn(&mut HealthState)) -> String {
     let path = HealthState::default_path();
     let now = Timestamp::now().as_second();
     match HealthState::update(&path, now, &change) {
-        Ok(()) => String::new(),
+        Ok(()) => {
+            // A dose marked: a phone's alarm for it goes (`alarms`).
+            crate::alarms::schedule();
+            String::new()
+        }
         Err(Problem::Unsound(_)) => {
             repair();
             match HealthState::update(&path, now, &change) {
@@ -669,7 +820,7 @@ static KNOWING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 fn know() -> Knowledge {
     let now = Timestamp::now().as_second();
     let record_lost = record_doubt();
-    let Some((_, claims, heard)) = crate::share::others_on_health() else { return Knowledge { record_lost, peers: Vec::new() } };
+    let Some((_, claims, heard, others)) = crate::share::others_on_health() else { return Knowledge { record_lost, peers: Vec::new() } };
     let _held = KNOWING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut kept: Peers = std::fs::read_to_string(peers_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     learn(&mut kept, &claims, &heard, now);
@@ -677,7 +828,14 @@ fn know() -> Knowledge {
         let _ = std::fs::create_dir_all(sioul_core::config::state_dir().join("share"));
         let _ = std::fs::write(peers_path(), text);
     }
-    Knowledge { record_lost, peers: kept.peers.into_values().map(|s| s.peer).collect() }
+    let mut peers: Vec<Peer> = kept.peers.values().map(|s| s.peer.clone()).collect();
+    // A device sharing through the folder this last week whose claim does not
+    // read here (its seal not arrived yet, a damaged file): a peer all the
+    // same, never heard from, so that its doses are said not known.
+    for other in others.iter().filter(|o| !kept.peers.contains_key(&o.id) && now - o.heard < 7 * 86_400) {
+        peers.push(Peer { name: tr().text("share-other-device", None), heard: other.heard, ..Peer::default() });
+    }
+    Knowledge { record_lost, peers }
 }
 
 /// What the others' claims say, learned: each one's name, how late its news
@@ -1109,7 +1267,9 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         needs_tick(qt, shared, &health, &now);
     }
     let mut reminded: Vec<String> = Vec::new();
-    if keeper.mine && keeper.settled {
+    // On a phone, Android's alarm clock reminds, Sioul shown or not (`alarms`).
+    crate::alarms::schedule();
+    if keeper.mine && keeper.settled && !cfg!(target_os = "android") {
         for dose in state.to_remind(&health, &now, GRACE_MINUTES) {
             if SENT.lock().is_ok_and(|sent| sent.contains(&dose.key)) {
                 continue;
@@ -1121,11 +1281,10 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             if !doubt.is_empty() && stamp < due + WAIT_FOR_NEWS {
                 continue;
             }
-            reminded.push(dose.key.clone());
             if let Ok(mut sent) = SENT.lock() {
                 sent.insert(dose.key.clone());
             }
-            let named = if dose.dose.is_empty() { dose.name.clone() } else { format!("{} · {}", dose.name, dose.dose) };
+            let named = named(&dose);
             let (title, body) = if doubt.is_empty() {
                 (named, dose.at.strftime("%H:%M").to_string())
             } else {
@@ -1146,8 +1305,11 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
                 // Your other computers know at once.
                 crate::share::exchange(&qt_taken, &shared_taken);
             });
-            if let Err(e) = sioul_sync::notify::remind(&title, &body, Some((tr().text("health-taken", None), taken))) {
-                tell(qt, shared, e);
+            // Recorded reminded only when shown: else another device reminds it,
+            // and the question on doses due while closed still asks about it.
+            match sioul_sync::notify::remind(&title, &body, Some((tr().text("health-taken", None), taken))) {
+                Ok(()) => reminded.push(dose.key.clone()),
+                Err(e) => tell(qt, shared, e),
             }
         }
     }
@@ -1155,7 +1317,8 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     // the past, after your other computers were heard from (a dose marked
     // there comes first), and only where you are; what is not known, said.
     let heard = !crate::share::on() || crate::share::last_exchange().is_some();
-    if heard && keeper.mine && !ASKED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+    // On a phone, without notifications, the Porch asks it (`missed`).
+    if heard && keeper.mine && !cfg!(target_os = "android") && !ASKED.swap(true, std::sync::atomic::Ordering::Relaxed) {
         let missed = state.unanswered(&health, &now, MISSED_HOURS, GRACE_MINUTES);
         if !missed.is_empty() {
             let names: Vec<String> = missed.iter().map(|d| format!("{} {}", d.name, d.at.strftime("%H:%M"))).collect();
@@ -1220,7 +1383,7 @@ mod tests {
     use sioul_sync::lease::Claim;
 
     fn claim(renewed: i64, wrote: Option<(u32, u64)>, closed: bool) -> Claim {
-        Claim { computer: "laptop-id".into(), name: "laptop".into(), since: 0, renewed, until: renewed + 300, active: renewed, taken: 0, wrote, closed }
+        Claim { computer: "laptop-id".into(), name: "laptop".into(), since: 0, renewed, until: renewed + 300, active: renewed, taken: 0, wrote, closed, pad: String::new() }
     }
 
     fn heard_up_to(n: u64) -> sioul_sync::share::Heard {

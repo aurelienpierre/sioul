@@ -6,6 +6,7 @@
 //! A library: the desktop program (main.rs) runs it, and so does Android's
 //! (android/main.cpp, docs/android.md).
 
+mod alarms;
 mod backend;
 mod bank;
 mod contracts;

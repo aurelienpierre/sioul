@@ -216,7 +216,8 @@ pub(crate) fn show_mail(qt: &QtThread, shared: &Arc<Shared>) {
         let generation = shared.mail_generation.fetch_add(1, Ordering::Relaxed) + 1;
         let views = views(shared);
         let _ = qt.queue(move |mut sioul| {
-            if sioul.shared().mail_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
+            // Only the newest (see `backend::show`).
+            if sioul.shared().mail_generation.load(Ordering::Relaxed) != generation || sioul.shared().mail_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
                 return;
             }
             sioul.as_mut().set_mail_accounts(QString::from(&views.accounts));
@@ -382,20 +383,67 @@ fn schedule(qt: &QtThread, shared: &Arc<Shared>, work: Work, line: String) {
     }
     let _ = qt.queue(move |mut sioul| sioul.as_mut().set_undo_line(QString::from(&line)));
     show(qt, shared);
+    // An event deleted or left out: gone from the day and the agenda at once.
+    let events = matches!(pending.work, Work::Remove { .. } | Work::Skip { .. });
+    if events {
+        crate::work::show_work(qt, shared);
+        crate::pim::show_pim(qt, shared);
+    }
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(UNDO_SECONDS));
-        if pending.taken.swap(true, Ordering::Relaxed) {
-            return;
-        }
-        // Done: the line says it, without "Undo" now.
-        let line = perform(&pending.work, &shared).or_else(|| Some(pending.line.clone()));
-        forget(&qt, &shared, &pending);
-        if let Some(line) = line {
-            tell(&qt, &shared, line);
-        }
-        show(&qt, &shared);
+        finish(&qt, &shared, &pending);
     });
+}
+
+/// What waited, done now if nobody did it yet: its timer ran out, or the app is put away.
+fn finish(qt: &QtThread, shared: &Arc<Shared>, pending: &Arc<Pending>) {
+    if pending.taken.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    // Done: the line says it, without "Undo" now.
+    let line = perform(&pending.work, shared).or_else(|| Some(pending.line.clone()));
+    forget(qt, shared, pending);
+    if let Some(line) = line {
+        tell(qt, shared, line);
+    }
+    show(qt, shared);
+    if matches!(pending.work, Work::Remove { .. } | Work::Skip { .. }) {
+        crate::work::show_work(qt, shared);
+    }
+}
+
+/// Put away on a phone, Sioul may be stopped any moment: what waits for its
+/// ten seconds is done now rather than lost (an event deleted would come back).
+pub(crate) fn finish_all(qt: &QtThread, shared: &Arc<Shared>) {
+    for pending in shared.pending.lock().map(|p| p.clone()).unwrap_or_default() {
+        finish(qt, shared, &pending);
+    }
+}
+
+/// Every watcher: mail, calendars and contacts, GitHub.
+fn every_watcher(shared: &Shared) -> Vec<Arc<sioul_sync::Control>> {
+    let mut all: Vec<Arc<sioul_sync::Control>> = shared.watchers.lock().map(|w| w.values().cloned().collect()).unwrap_or_default();
+    all.extend(shared.dav_watchers.lock().map(|w| w.values().cloned().collect::<Vec<_>>()).unwrap_or_default());
+    all.extend(shared.github.lock().ok().and_then(|g| g.clone()));
+    all
+}
+
+/// Put away on a phone: the watchers keep only what notices new mail (the
+/// inbox's IDLE); the other folders, calendars and GitHub wait for its return.
+pub(crate) fn quiet_watchers(shared: &Shared) {
+    for control in every_watcher(shared) {
+        control.set_quiet(true);
+    }
+}
+
+/// Back on a phone's screen, where pauses may have slept through hours: every
+/// watcher fetches now (leaving quiet wakes it).
+pub(crate) fn wake_watchers(shared: &Shared) {
+    for control in every_watcher(shared) {
+        control.set_quiet(false);
+        control.nudge();
+    }
 }
 
 /// A note in the trash: "Undo" stays offered for a moment, as for mail.

@@ -58,11 +58,21 @@ pub mod qobject {
         #[qproperty(QString, undo_line)]
         #[qproperty(QString, contacts)]
         #[qproperty(QString, agenda)]
+        // Two events at once in the next two weeks (`pim::overlaps`), made with the agenda, off the window's thread.
+        #[qproperty(QString, overlaps)]
+        // The Health page, the doses due while Sioul was closed, today's meals and
+        // naps (`health::show_health`), made off the window's thread: they read the
+        // doses' record and your other devices' claims.
+        #[qproperty(QString, health_view)]
+        #[qproperty(QString, missed_view)]
+        #[qproperty(QString, needs_view)]
         #[qproperty(QString, tasks)]
         #[qproperty(QString, notes)]
         #[qproperty(QString, focus_session)]
         #[qproperty(QString, reading)]
         #[qproperty(bool, realtime)]
+        // Put away on a phone (in the background): the pages' clocks and reloads stop until it is back.
+        #[qproperty(bool, away)]
         #[qproperty(QString, mode)]
         #[qproperty(QString, forecast)]
         #[qproperty(QString, places_found)]
@@ -306,7 +316,7 @@ pub mod qobject {
 
         /// Shows `days` days of the agenda from `from` ("2026-10-05"; empty: today).
         #[qinvokable]
-        fn show_days(self: Pin<&mut Sioul>, from: &QString, days: i32);
+        fn show_days(self: Pin<&mut Sioul>, from: &QString, days: i32, upcoming: bool);
 
         /// The calendars a new event can go into, as JSON.
         #[qinvokable]
@@ -633,9 +643,9 @@ pub mod qobject {
         #[qinvokable]
         fn needs_today(self: &Sioul) -> QString;
 
-        /// Two events at once in the next `days` days, as JSON (those set aside left out).
+        /// The health views made again, off the window's thread (`healthView`, `missedView`, `needsView`).
         #[qinvokable]
-        fn overlaps(self: &Sioul, days: i32) -> QString;
+        fn refresh_health(self: Pin<&mut Sioul>);
 
         /// An overlap set aside for good; returns what went wrong, else "".
         #[qinvokable]
@@ -1139,6 +1149,12 @@ pub mod qobject {
         #[qsignal]
         fn letters_changed(self: Pin<&mut Sioul>);
 
+        /// Your other devices' changes written here by the sharing: the stores
+        /// written, one per line ("data/time/", "state/health-state.toml"…), for
+        /// the pages that show them to read again.
+        #[qsignal]
+        fn shared_in(self: Pin<&mut Sioul>, stores: QString);
+
         /// A reminder's "Open" was pressed: what it is about ("task", "event", "budget"), shown.
         #[qsignal]
         fn reminder_opened(self: Pin<&mut Sioul>, kind: QString, uri: QString, key: QString);
@@ -1199,6 +1215,9 @@ unsafe extern "C" {
     fn sioul_android_files_access() -> bool;
     /// Android's own switch for it.
     fn sioul_android_ask_files_access();
+    /// A sync app asked to look for changes now: an explicit broadcast to its
+    /// receiver, nothing when it is not installed (android/main.cpp).
+    pub(crate) fn sioul_android_broadcast(package: *const std::ffi::c_char, receiver: *const std::ffi::c_char, action: *const std::ffi::c_char);
 }
 
 /// Android: the account chosen in the phone's chooser, or two empty texts
@@ -1237,11 +1256,16 @@ pub struct SioulRust {
     undo_line: QString,
     contacts: QString,
     agenda: QString,
+    overlaps: QString,
+    health_view: QString,
+    missed_view: QString,
+    needs_view: QString,
     tasks: QString,
     notes: QString,
     focus_session: QString,
     reading: QString,
     realtime: bool,
+    away: bool,
     mode: QString,
     forecast: QString,
     places_found: QString,
@@ -1313,6 +1337,7 @@ pub(crate) struct Shared {
     pub(crate) mail_job: Job,
     pub(crate) pim_job: Job,
     pub(crate) work_job: Job,
+    pub(crate) health_job: Job,
 }
 
 /// The plan is made again every twelve hours, and when the day changes: a task
@@ -1327,7 +1352,29 @@ pub(crate) fn config_path() -> PathBuf {
 }
 
 pub(crate) fn load_config() -> Config {
-    Config::load(&config_path()).unwrap_or_default()
+    // Read a hundred times a minute: parsed again only when the file changed
+    // (its size or its time), as the sharing or another window may change it.
+    // A time younger than two seconds is not trusted: two writings of one size
+    // within a tick of the clock look alike.
+    type Parsed = (PathBuf, u64, std::time::SystemTime, Config);
+    static PARSED: Mutex<Option<Parsed>> = Mutex::new(None);
+    let path = config_path();
+    let settled = |time: &std::time::SystemTime| time.elapsed().is_ok_and(|age| age > std::time::Duration::from_secs(2));
+    let stamp = std::fs::metadata(&path).ok().and_then(|m| Some((m.len(), m.modified().ok()?))).filter(|(_, time)| settled(time));
+    if let Some((size, time)) = stamp
+        && let Ok(parsed) = PARSED.lock()
+        && let Some((p, s, t, config)) = parsed.as_ref()
+        && *p == path
+        && *s == size
+        && *t == time
+    {
+        return config.clone();
+    }
+    let config = Config::load(&path).unwrap_or_default();
+    if let (Some((size, time)), Ok(mut parsed)) = (stamp, PARSED.lock()) {
+        *parsed = Some((path, size, time, config.clone()));
+    }
+    config
 }
 
 /// One translator for the session: the configuration's language, else the session's.
@@ -1466,11 +1513,22 @@ pub(crate) fn one_at_a_time(lock: &Mutex<()>) -> Option<std::sync::MutexGuard<'_
 pub(crate) struct Job {
     running: AtomicBool,
     again: AtomicBool,
+    /// Asked while Sioul was put away: done once it is back.
+    deferred: AtomicBool,
 }
+
+/// Sioul put away on a phone: the pages are not computed for nobody (Android
+/// stops an app that works in the background); each job asked meanwhile runs
+/// once when it is back (`back_here`).
+pub(crate) static AWAY: AtomicBool = AtomicBool::new(false);
 
 /// Runs `work` on a thread for the job `which` picks out (see `Job`).
 pub(crate) fn coalesced(shared: &Arc<Shared>, which: fn(&Shared) -> &Job, work: impl Fn(&Arc<Shared>) + Send + 'static) {
     let job = which(shared);
+    if AWAY.load(Ordering::SeqCst) {
+        job.deferred.store(true, Ordering::SeqCst);
+        return;
+    }
     job.again.store(true, Ordering::SeqCst);
     if job.running.swap(true, Ordering::SeqCst) {
         return;
@@ -1745,7 +1803,9 @@ pub(crate) fn show(qt: &QtThread, shared: &Arc<Shared>) {
         let views = compute(shared);
         let _ = qt.queue(move |mut sioul| {
             let shared = Arc::clone(&sioul.rust().shared);
-            if shared.shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
+            // Only the newest: results queued while the window was frozen (a phone
+            // with Sioul in the back) are not applied one after the other at its return.
+            if shared.generation.load(Ordering::Relaxed) != generation || shared.shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {
                 return;
             }
             if let Ok(mut shown) = shared.shown.lock() {
@@ -1928,8 +1988,8 @@ fn start_watcher(qt: &QtThread, shared: &Arc<Shared>, account: Account) {
     {
         let Ok(mut watchers) = shared.watchers.lock() else { return };
         if let Some(running) = watchers.get(&account.id) {
-            // Already watching: fetch now instead.
-            running.nudge();
+            // Already watching: fetch now instead, a refused password tried again too.
+            running.retry();
             return;
         }
         watchers.insert(account.id.clone(), Arc::clone(&control));
@@ -2878,12 +2938,12 @@ impl qobject::Sioul {
         pim::delete_contact(&self.qt_thread(), &self.shared(), &key.to_string());
     }
 
-    fn show_days(self: Pin<&mut Self>, from: &QString, days: i32) {
+    fn show_days(self: Pin<&mut Self>, from: &QString, days: i32, upcoming: bool) {
         let shared = self.shared();
         if let Ok(mut state) = shared.pim.lock() {
             state.from = from.to_string().parse().unwrap_or_else(|_| Zoned::now().date());
-            // Up to five years: the agenda's past reaches as far back as the history setting.
-            state.days = i64::from(days.clamp(1, 5 * 366));
+            state.days = i64::from(days.clamp(1, 366));
+            state.upcoming = upcoming;
         }
         pim::show_pim(&self.qt_thread(), &shared);
     }
@@ -3566,12 +3626,14 @@ impl qobject::Sioul {
         QString::from(&crate::health::needs_today())
     }
 
-    fn overlaps(&self, days: i32) -> QString {
-        QString::from(&crate::pim::overlaps(i64::from(days)))
+    fn refresh_health(self: Pin<&mut Self>) {
+        crate::health::show_health(&self.qt_thread(), &self.shared());
     }
 
     fn set_overlap_aside(self: Pin<&mut Self>, key: &QString) -> QString {
-        QString::from(&crate::pim::set_overlap_aside(&key.to_string()))
+        let problem = crate::pim::set_overlap_aside(&key.to_string());
+        pim::show_pim(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
     }
 
     fn move_need(self: Pin<&mut Self>, key: &QString, minutes: i32, time: &QString) -> QString {
@@ -3589,14 +3651,55 @@ impl qobject::Sioul {
         QString::from(&crate::health::missed())
     }
 
-    fn going_away(self: Pin<&mut Self>) {
-        crate::share::closing();
+    // Both off the window's thread: Android waits for the window to answer
+    // when it puts Sioul away, and an exchange can take seconds.
+    fn going_away(mut self: Pin<&mut Self>) {
+        self.as_mut().set_away(true);
+        AWAY.store(true, Ordering::SeqCst);
+        std::thread::spawn(crate::alarms::schedule);
+        crate::share::set_shown(false);
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        std::thread::spawn(move || {
+            crate::mail::quiet_watchers(&shared);
+            crate::mail::finish_all(&qt, &shared);
+            crate::share::closing();
+            // The closed claims go up at once.
+            crate::share::nudge(&qt, &shared, 0, false);
+        });
     }
 
-    fn back_here(self: Pin<&mut Self>) {
+    fn back_here(mut self: Pin<&mut Self>) {
+        self.as_mut().set_away(false);
+        AWAY.store(false, Ordering::SeqCst);
+        // A dose's reminder tapped while away: its question, at once.
+        if let Some(key) = crate::alarms::opened() {
+            self.as_mut().reminder_opened(QString::from("dose"), QString::default(), QString::from(&key));
+        }
+        // What was asked while away, computed once now.
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        if shared.views_job.deferred.swap(false, Ordering::SeqCst) | shared.mail_job.deferred.swap(false, Ordering::SeqCst) {
+            show(&qt, &shared);
+        }
+        if shared.pim_job.deferred.swap(false, Ordering::SeqCst) {
+            pim::show_pim(&qt, &shared);
+        }
+        if shared.work_job.deferred.swap(false, Ordering::SeqCst) {
+            work::show_work(&qt, &shared);
+        }
+        if shared.health_job.deferred.swap(false, Ordering::SeqCst) {
+            crate::health::show_health(&qt, &shared);
+        }
+        crate::share::set_shown(true);
         let now = jiff::Timestamp::now().as_second();
         self.shared().active.store(now, std::sync::atomic::Ordering::Relaxed);
-        let _ = crate::share::keeper("health", sioul_sync::lease::Rule::FollowsYou, now, false);
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        std::thread::spawn(move || {
+            let _ = crate::share::keeper("health", sioul_sync::lease::Rule::FollowsYou, now, false);
+            // What the other devices marked meanwhile comes down, and is read;
+            // mail and calendars fetched now, not when their pauses end.
+            crate::share::nudge(&qt, &shared, 0, true);
+            crate::mail::wake_watchers(&shared);
+        });
     }
 
     fn touch(self: Pin<&mut Self>) {
@@ -3852,6 +3955,18 @@ impl qobject::Sioul {
     }
 
     fn refresh_mode(mut self: Pin<&mut Self>) {
+        // Doses to remind, errands to make: off the window's thread.
+        let (qt, shared_tick) = (self.qt_thread(), self.shared());
+        std::thread::spawn(move || crate::health::tick(&qt, &shared_tick));
+        // Put away on a phone: the reminders only, and an exchange every five
+        // minutes; the rest waits until it is back (Android stops an app that
+        // works in the background, and nobody looks at its pages then).
+        if *self.as_ref().away() {
+            if Zoned::now().minute() % 5 == 0 {
+                crate::share::exchange(&self.qt_thread(), &self.shared());
+            }
+            return;
+        }
         // The plan, made again on the clock.
         let now = Zoned::now();
         let (stamp, day) = (now.timestamp().as_second(), i64::from(now.date().year()) * 1000 + i64::from(now.date().day_of_year()));
@@ -3861,17 +3976,21 @@ impl qobject::Sioul {
             shared.planned_at.store(stamp, Ordering::Relaxed);
             shared.planned_day.store(day, Ordering::Relaxed);
         } else if stamp - last >= REPLAN_EVERY || shared.planned_day.load(Ordering::Relaxed) != day {
+            // A new day: the agenda and today's overlaps follow it too.
+            if shared.planned_day.load(Ordering::Relaxed) != day {
+                pim::show_pim(&self.qt_thread(), &shared);
+            }
             shared.planned_at.store(stamp, Ordering::Relaxed);
             shared.planned_day.store(day, Ordering::Relaxed);
             work::show_work(&self.qt_thread(), &shared);
         }
-        // Doses to remind, errands to make: off the window's thread.
-        let (qt, shared_tick) = (self.qt_thread(), self.shared());
-        std::thread::spawn(move || crate::health::tick(&qt, &shared_tick));
         // What changed here goes to your other computers, theirs comes in.
         crate::share::exchange(&self.qt_thread(), &self.shared());
-        // Invoices stay with the computer that makes them: its claim renewed.
-        crate::projects::keep_invoices(&self.shared());
+        crate::share::nudge_tick(&self.qt_thread(), &self.shared());
+        // Invoices stay with the computer that makes them: its claim renewed,
+        // off the window's thread (it reads and writes the sharing folder).
+        let shared_invoices = self.shared();
+        std::thread::spawn(move || crate::projects::keep_invoices(&shared_invoices));
         // What sites notified, gathered at the times you set.
         crate::sites::gather_tick(&self.qt_thread(), &self.shared());
         // Your sites' own icons, when missing or a week old.

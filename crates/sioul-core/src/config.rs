@@ -15,7 +15,7 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct Config {
     /// The language of what Sioul says ("fr", "en"); the session's language if unset.
     pub language: Option<String>,

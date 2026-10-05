@@ -74,7 +74,10 @@ SioulWindow {
                 continue
             // Accounts and Settings take no window.
             const given = i === 11 || i === 12 ? { sioul: sioul, theme: theme } : { sioul: sioul, theme: theme, window: window }
+            const began = Date.now()
             loaders[i].setSource(window.pageFiles[i], given)
+            // How long each page takes to make, in the log (a phone's: adb logcat).
+            console.info("sioul-perf: " + window.pageFiles[i] + " made in " + (Date.now() - began) + " ms")
         }
     }
     readonly property var porchPage: porchPageLoader.item
@@ -239,10 +242,18 @@ SioulWindow {
         enabled: Qt.platform.os === "android"
 
         function onStateChanged() {
-            if (Qt.application.state === Qt.ApplicationSuspended || Qt.application.state === Qt.ApplicationHidden)
+            if (Qt.application.state === Qt.ApplicationSuspended || Qt.application.state === Qt.ApplicationHidden) {
+                // No text field keeps the focus in the back (the keyboard goes
+                // with it): Qt's text handles would keep asking Android for the
+                // clipboard, refused.
+                window.contentItem.forceActiveFocus()
                 sioul.goingAway()
-            else if (Qt.application.state === Qt.ApplicationActive)
+            }
+            else if (Qt.application.state === Qt.ApplicationActive) {
                 sioul.backHere()
+                // What waited while it was away: the plan, the mode, the sites' notices.
+                sioul.refreshMode()
+            }
         }
     }
 
@@ -2188,11 +2199,14 @@ SioulWindow {
 
                         Label {
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 40
                             text: sioul.undoLine !== "" ? sioul.undoLine : sioul.status
                             // Server answers and file names: never read as rich text.
                             textFormat: Text.PlainText
                             color: sioul.undoLine !== "" ? theme.text : theme.muted
                             elide: Text.ElideRight
+                            // Never over the line beside it, however little room is left.
+                            clip: true
                         }
                         // Quiet time, or work kept late: the line, and behind it the
                         // way back, never suggested.
@@ -2200,7 +2214,8 @@ SioulWindow {
                             id: modeButton
 
                             visible: window.moment.line !== "" && sioul.undoLine === ""
-                            Layout.maximumWidth: Math.round(window.width * 0.55)
+                            // Room shared with what just happened, when something did.
+                            Layout.maximumWidth: Math.round(window.width * (sioul.status !== "" ? 0.3 : 0.55))
                             Layout.preferredHeight: 28
                             flat: true
                             text: window.moment.line
