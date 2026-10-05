@@ -26,8 +26,8 @@ ColumnLayout {
     readonly property var blocks: dayView.day ? dayView.day.blocks : []
     readonly property var hours: dayView.day && dayView.day.hours ? dayView.day.hours : []
     // The block under way, and the next one; margins around them are neither.
-    readonly property int current: dayView.blocks.findIndex(b => b.kind !== "margin" && b.start <= dayView.day.now && dayView.day.now < b.end)
-    readonly property int next: dayView.blocks.findIndex(b => b.kind !== "margin" && b.start > (dayView.day ? dayView.day.now : 0))
+    readonly property int current: dayView.blocks.findIndex(b => b.kind !== "margin" && b.kind !== "done" && b.start <= dayView.day.now && dayView.day.now < b.end)
+    readonly property int next: dayView.blocks.findIndex(b => b.kind !== "margin" && b.kind !== "done" && b.start > (dayView.day ? dayView.day.now : 0))
 
     // Air inside a card, above and below its text.
     readonly property int padding: 8
@@ -270,6 +270,8 @@ ColumnLayout {
                 readonly property bool isNeed: block.modelData.kind === "meal" || block.modelData.kind === "nap"
                 // Getting there and back, getting ready, around an event or a step: kept free, lighter.
                 readonly property bool isMargin: block.modelData.kind === "margin"
+                // Done today: kept in view, ticked.
+                readonly property bool isDone: block.modelData.kind === "done"
                 readonly property bool now: block.index === dayView.current
                 readonly property bool comingNext: block.index === dayView.next
                 readonly property string part: dayView.partOf(block.modelData)
@@ -308,6 +310,8 @@ ColumnLayout {
                         text: {
                             if (block.isMargin)
                                 return dayView.sioul.textWith("day-margin", "what", block.modelData.title)
+                            if (block.isDone)
+                                return "✓  " + block.modelData.title
                             const title = block.part === "" ? block.modelData.title : block.modelData.title + " (" + block.part + ")"
                             return block.modelData.location === "" ? title : title + " · " + block.modelData.location
                         }
@@ -316,7 +320,7 @@ ColumnLayout {
                         maximumLineCount: Math.max(1, Math.floor((block.height - 2 * dayView.padding) / titleMetrics.height))
                         wrapMode: Text.Wrap
                         font.weight: block.now && !block.isMargin ? Font.DemiBold : Font.Normal
-                        color: block.isMargin ? dayView.theme.muted : dayView.theme.text
+                        color: block.isMargin || block.isDone ? dayView.theme.muted : dayView.theme.text
                     }
                     Label {
                         visible: block.modelData.energy !== ""
