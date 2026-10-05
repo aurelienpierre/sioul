@@ -42,26 +42,39 @@ Item {
 
     // A movement added by hand, from "New".
     function startNew() {
-        newMovement.choose()
+        newMovement.now().choose()
     }
 
-    property alias contracts: contractsSection
-    property alias bank: bankSection
+    // The sections below the first screen, made after it, without holding the
+    // window (a phone took over a second for the page); made at once when asked.
+    function bankNow() {
+        bankLoader.asynchronous = false
+        return bankLoader.item
+    }
+
+    function contractsNow() {
+        contractsLoader.asynchronous = false
+        return contractsLoader.item
+    }
+
+    readonly property var contracts: contractsLoader.item
+    readonly property var bank: bankLoader.item
 
     // The bank accounts in view: for the window's images.
     function showBank() {
+        page.bankNow()
         const flick = scroll.contentItem as Flickable
         if (flick)
-            flick.contentY = Math.max(0, Math.min(bankSection.y - 8, flick.contentHeight - flick.height))
+            flick.contentY = Math.max(0, Math.min(bankLoader.y - 8, flick.contentHeight - flick.height))
     }
 
     // A contract shown, or started from a mail.
     function openContract(id) {
-        contractsSection.open(id)
+        page.contractsNow().open(id)
     }
 
     function startContract(prefill) {
-        contractsSection.start(prefill)
+        page.contractsNow().start(prefill)
     }
 
     function openFirst() {
@@ -125,7 +138,7 @@ Item {
                     text: page.sioul.text("budget-new")
                     icon.name: "list-add"
                     icon.color: page.theme.text
-                    onClicked: newBudget.edit("", null)
+                    onClicked: newBudget.now().edit("", null)
                 }
             }
             Label {
@@ -287,7 +300,7 @@ Item {
                 Button {
                     text: page.sioul.text("reserve-new")
                     icon.name: "list-add"
-                    onClicked: bankSection.reserveDialog.edit(null)
+                    onClicked: page.bankNow().reserveDialog.now().edit(null)
                 }
             }
             Repeater {
@@ -323,7 +336,7 @@ Item {
                             Button {
                                 flat: true
                                 text: page.sioul.text("ui-edit")
-                                onClicked: bankSection.reserveDialog.edit(bankSection.shown.reserves.find(r => r.id === reserveCard.modelData.id) || null)
+                                onClicked: page.bankNow().reserveDialog.now().edit(page.bankNow().shown.reserves.find(r => r.id === reserveCard.modelData.id) || null)
                             }
                         }
                         GridLayout {
@@ -355,151 +368,165 @@ Item {
             }
 
             // The bank: what passed, what did not, the month ahead.
-            BankSection {
-                id: bankSection
+            Loader {
+                id: bankLoader
 
                 Layout.fillWidth: true
-                sioul: page.sioul
-                theme: page.theme
+                asynchronous: true
+                sourceComponent: BankSection {
+                    sioul: page.sioul
+                    theme: page.theme
+                }
             }
 
             // What you are bound to: renewals, notices, how to stop each.
-            ContractsSection {
-                id: contractsSection
+            Loader {
+                id: contractsLoader
 
                 Layout.fillWidth: true
-                sioul: page.sioul
-                theme: page.theme
-                window: page.window
-            }
-
-            // The mail about money.
-            Label {
-                visible: page.view !== null
-                Layout.topMargin: page.theme.gap
-                text: page.view ? page.view.mail_title : ""
-                textFormat: Text.PlainText
-                font.pixelSize: 19
-                color: page.theme.text
-            }
-            Label {
-                visible: page.view !== null && page.view.mail.length === 0
-                text: page.sioul.text("mail-none")
-                color: page.theme.muted
-            }
-            Repeater {
-                model: page.view ? page.view.mail : []
-
-                delegate: Panel {
-                    id: mailRow
-
-                    required property var modelData
-                    readonly property bool waiting: mailRow.modelData.state === "proposed"
-
-                    Layout.fillWidth: true
+                asynchronous: true
+                sourceComponent: ContractsSection {
+                    sioul: page.sioul
                     theme: page.theme
-                    opacity: mailRow.modelData.state === "duplicate" ? 0.7 : 1
+                    window: page.window
+                }
+            }
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        spacing: 6
+            // The mail about money: made after the first screen, as the bank.
+            Loader {
+                Layout.fillWidth: true
+                asynchronous: true
+                sourceComponent: ColumnLayout {
+                    spacing: 8
 
-                        RowLayout {
-                            spacing: 8
+                    Label {
+                        visible: page.view !== null
+                        Layout.topMargin: page.theme.gap
+                        text: page.view ? page.view.mail_title : ""
+                        textFormat: Text.PlainText
+                        font.pixelSize: 19
+                        color: page.theme.text
+                    }
+                    Label {
+                        visible: page.view !== null && page.view.mail.length === 0
+                        text: page.sioul.text("mail-none")
+                        color: page.theme.muted
+                    }
+                    Repeater {
+                        model: page.view ? page.view.mail : []
 
-                            Icon {
-                                iconName: page.kindIcon(mailRow.modelData.kind)
-                                size: 16
-                            }
-                            Label {
-                                text: mailRow.modelData.kind_label
-                                textFormat: Text.PlainText
-                                color: page.theme.muted
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: mailRow.modelData.party
-                                textFormat: Text.PlainText
-                                font.weight: Font.DemiBold
-                                elide: Text.ElideRight
-                                color: page.theme.text
-                            }
-                            Label {
-                                text: mailRow.modelData.amount
-                                textFormat: Text.PlainText
-                                font.weight: Font.DemiBold
-                                font.features: { "tnum": 1 }
-                                color: mailRow.modelData.credit ? page.theme.accent : page.theme.text
-                            }
-                        }
-                        Label {
+                        delegate: Panel {
+                            id: mailRow
+
+                            required property var modelData
+                            readonly property bool waiting: mailRow.modelData.state === "proposed"
+
                             Layout.fillWidth: true
-                            text: mailRow.modelData.date + "  ·  " + mailRow.modelData.subject
-                            textFormat: Text.PlainText
-                            elide: Text.ElideRight
-                            color: page.theme.muted
-                            font.pixelSize: 13
-                        }
-                        RowLayout {
-                            visible: mailRow.modelData.note !== ""
-                            Layout.fillWidth: true
-                            spacing: 8
+                            theme: page.theme
+                            opacity: mailRow.modelData.state === "duplicate" ? 0.7 : 1
 
-                            Icon {
-                                iconName: mailRow.modelData.state === "recorded" ? "dialog-ok-apply" : mailRow.modelData.state === "duplicate" ? "edit-copy" : "view-financial-budget"
-                                size: 16
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: mailRow.modelData.note
-                                textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
-                                color: page.theme.muted
-                            }
-                        }
-                        RowLayout {
-                            visible: mailRow.modelData.doubtful && mailRow.waiting
-                            Layout.fillWidth: true
-                            spacing: 8
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 6
 
-                            Icon {
-                                iconName: "dialog-warning"
-                                size: 16
-                            }
-                            Label {
-                                Layout.fillWidth: true
-                                text: page.sioul.text("note-doubtful")
-                                wrapMode: Text.Wrap
-                                color: page.theme.warm
-                            }
-                        }
+                                RowLayout {
+                                    spacing: 8
 
-                        // What waits for you: which budget, then add it, or not; on
-                        // more lines when the screen is narrow (a phone).
-                        Flow {
-                            visible: mailRow.waiting
-                            Layout.fillWidth: true
-                            spacing: page.theme.gap
+                                    Icon {
+                                        iconName: page.kindIcon(mailRow.modelData.kind)
+                                        size: 16
+                                    }
+                                    Label {
+                                        text: mailRow.modelData.kind_label
+                                        textFormat: Text.PlainText
+                                        color: page.theme.muted
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: mailRow.modelData.party
+                                        textFormat: Text.PlainText
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                        color: page.theme.text
+                                    }
+                                    Label {
+                                        text: mailRow.modelData.amount
+                                        textFormat: Text.PlainText
+                                        font.weight: Font.DemiBold
+                                        font.features: { "tnum": 1 }
+                                        color: mailRow.modelData.credit ? page.theme.accent : page.theme.text
+                                    }
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: mailRow.modelData.date + "  ·  " + mailRow.modelData.subject
+                                    textFormat: Text.PlainText
+                                    elide: Text.ElideRight
+                                    color: page.theme.muted
+                                    font.pixelSize: 13
+                                }
+                                RowLayout {
+                                    visible: mailRow.modelData.note !== ""
+                                    Layout.fillWidth: true
+                                    spacing: 8
 
-                            ComboBox {
-                                id: budgetChoice
+                                    Icon {
+                                        iconName: mailRow.modelData.state === "recorded" ? "dialog-ok-apply" : mailRow.modelData.state === "duplicate" ? "edit-copy" : "view-financial-budget"
+                                        size: 16
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: mailRow.modelData.note
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.Wrap
+                                        color: page.theme.muted
+                                    }
+                                }
+                                RowLayout {
+                                    visible: mailRow.modelData.doubtful && mailRow.waiting
+                                    Layout.fillWidth: true
+                                    spacing: 8
 
-                                visible: mailRow.modelData.can_add
-                                width: Math.min(260, parent.width)
-                                model: page.view ? page.view.choices.map(c => page.theme.plain(c.title)) : []
-                                currentIndex: page.view ? page.view.choices.findIndex(c => c.id === mailRow.modelData.budget) : -1
-                                displayText: currentIndex < 0 ? "…" : currentText
-                            }
-                            Button {
-                                visible: mailRow.modelData.can_add
-                                enabled: budgetChoice.currentIndex >= 0
-                                text: page.sioul.text("ui-add-line")
-                                onClicked: page.sioul.addMailLine(mailRow.modelData.key, page.view.choices[budgetChoice.currentIndex].id)
-                            }
-                            Button {
-                                flat: true
-                                text: page.sioul.text("ui-not-payment")
-                                onClicked: page.sioul.ignoreMailLine(mailRow.modelData.key)
+                                    Icon {
+                                        iconName: "dialog-warning"
+                                        size: 16
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: page.sioul.text("note-doubtful")
+                                        wrapMode: Text.Wrap
+                                        color: page.theme.warm
+                                    }
+                                }
+
+                                // What waits for you: which budget, then add it, or not; on
+                                // more lines when the screen is narrow (a phone).
+                                Flow {
+                                    visible: mailRow.waiting
+                                    Layout.fillWidth: true
+                                    spacing: page.theme.gap
+
+                                    ComboBox {
+                                        id: budgetChoice
+
+                                        visible: mailRow.modelData.can_add
+                                        width: Math.min(260, parent.width)
+                                        model: page.view ? page.view.choices.map(c => page.theme.plain(c.title)) : []
+                                        currentIndex: page.view ? page.view.choices.findIndex(c => c.id === mailRow.modelData.budget) : -1
+                                        displayText: currentIndex < 0 ? "…" : currentText
+                                    }
+                                    Button {
+                                        visible: mailRow.modelData.can_add
+                                        enabled: budgetChoice.currentIndex >= 0
+                                        text: page.sioul.text("ui-add-line")
+                                        onClicked: page.sioul.addMailLine(mailRow.modelData.key, page.view.choices[budgetChoice.currentIndex].id)
+                                    }
+                                    Button {
+                                        flat: true
+                                        text: page.sioul.text("ui-not-payment")
+                                        onClicked: page.sioul.ignoreMailLine(mailRow.modelData.key)
+                                    }
+                                }
                             }
                         }
                     }
@@ -512,20 +539,32 @@ Item {
         }
     }
 
-    BudgetDialog {
+    Later {
         id: newBudget
 
-        sioul: page.sioul
-        theme: page.theme
-        onSaved: id => page.openId = id
+        sourceComponent: Component {
+            BudgetDialog {
+                id: newBudgetForm
+
+                sioul: page.sioul
+                theme: page.theme
+                onSaved: id => page.openId = id
+            }
+        }
     }
 
     // A movement from "New", its budget chosen in it.
-    MovementDialog {
+    Later {
         id: newMovement
 
-        sioul: page.sioul
-        theme: page.theme
-        budgets: page.view ? page.view.choices : []
+        sourceComponent: Component {
+            MovementDialog {
+                id: newMovementForm
+
+                sioul: page.sioul
+                theme: page.theme
+                budgets: page.view ? page.view.choices : []
+            }
+        }
     }
 }

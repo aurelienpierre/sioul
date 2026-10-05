@@ -39,13 +39,13 @@ Item {
     // A new paper, from nothing.
     function startNew() {
         page.reload()
-        paperDialog.begin("", "", "other")
+        paperDialog.now().begin("", "", "other")
     }
 
     // A paper made from a file kept (an attachment): what it is, asked.
     function startFrom(file, title, kind) {
         page.reload()
-        paperDialog.begin(file, title, kind)
+        paperDialog.now().begin(file, title, kind)
     }
 
     // A paper of the wallet, its form open.
@@ -53,7 +53,7 @@ Item {
         for (const family of page.shown.families)
             for (const paper of family.papers)
                 if (paper.id === id) {
-                    paperDialog.edit(paper)
+                    paperDialog.now().edit(paper)
                     return
                 }
         page.wanted = id
@@ -155,7 +155,7 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: paperDialog.edit(row.modelData)
+                                onClicked: paperDialog.now().edit(row.modelData)
                             }
                             // Its buttons beside it, or under it on a phone.
                             GridLayout {
@@ -231,13 +231,19 @@ Item {
         }
     }
 
-    PaperDialog {
+    Later {
         id: paperDialog
 
-        sioul: page.sioul
-        theme: page.theme
-        window: page.window
-        kinds: page.shown.kinds
-        onSaved: page.reload()
+        sourceComponent: Component {
+            PaperDialog {
+                id: paperDialogForm
+
+                sioul: page.sioul
+                theme: page.theme
+                window: page.window
+                kinds: page.shown.kinds
+                onSaved: page.reload()
+            }
+        }
     }
 }

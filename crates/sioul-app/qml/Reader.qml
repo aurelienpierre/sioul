@@ -219,7 +219,7 @@ Panel {
                 compact: reader.compact
                 iconName: "list-add"
                 label: reader.sioul.text("ui-add-new")
-                onClicked: addMenu.popup(addButton, 0, addButton.height)
+                onClicked: addMenu.now().popup(addButton, 0, addButton.height)
             }
             // Tied to what is there already: a task, an event, a project, anything.
             ActionButton {
@@ -230,7 +230,7 @@ Panel {
                 enabled: reader.source.uri !== ""
                 iconName: "insert-link"
                 label: reader.sioul.text("ui-link-existing")
-                onClicked: linkMenu.popup(linkButton, 0, linkButton.height)
+                onClicked: linkMenu.now().popup(linkButton, 0, linkButton.height)
             }
             Item {
                 Layout.fillWidth: true
@@ -284,25 +284,37 @@ Panel {
             }
         }
 
-        AddMenu {
+        Later {
             id: addMenu
 
-            sioul: reader.sioul
-            window: reader.window
-            source: reader.source
+            sourceComponent: Component {
+                AddMenu {
+                    id: addMenuForm
+
+                    sioul: reader.sioul
+                    window: reader.window
+                    source: reader.source
+                }
+            }
         }
 
-        SioulMenu {
+        Later {
             id: linkMenu
 
-            Repeater {
-                model: ["task", "event", "case", ""]
+            sourceComponent: Component {
+                SioulMenu {
+                    id: linkMenuForm
 
-                delegate: MenuItem {
-                    required property string modelData
+                    Repeater {
+                        model: ["task", "event", "case", ""]
 
-                    text: reader.sioul.text(modelData === "" ? "link-kind-all" : "link-kind-" + modelData)
-                    onTriggered: reader.window.linkFrom(reader.source, modelData)
+                        delegate: MenuItem {
+                            required property string modelData
+
+                            text: reader.sioul.text(modelData === "" ? "link-kind-all" : "link-kind-" + modelData)
+                            onTriggered: reader.window.linkFrom(reader.source, modelData)
+                        }
+                    }
                 }
             }
         }
@@ -327,7 +339,7 @@ Panel {
             }
             MenuItem {
                 text: reader.sioul.text("ui-move-to")
-                onTriggered: moveDialog.open()
+                onTriggered: moveDialog.now().open()
             }
             MenuSeparator {}
             MenuItem {
@@ -374,7 +386,7 @@ Panel {
                         checked: standingMenu.current === modelData
                         onTriggered: {
                             if (modelData === "blocked")
-                                blockDialog.open()
+                                blockDialog.now().open()
                             else
                                 reader.sioul.setStanding(reader.reading.from_address, modelData)
                             // The click ticked or unticked it: the tick says the standing again.
@@ -385,7 +397,7 @@ Panel {
             }
             MenuItem {
                 text: reader.sioul.text("ui-show-source")
-                onTriggered: sourceDialog.open()
+                onTriggered: sourceDialog.now().open()
             }
         }
 
@@ -422,7 +434,7 @@ Panel {
                 }
                 Button {
                     text: reader.sioul.text("ui-block")
-                    onClicked: blockDialog.open()
+                    onClicked: blockDialog.now().open()
                 }
                 Button {
                     text: reader.sioul.text("ui-trash")
@@ -1070,96 +1082,114 @@ Panel {
     }
 
     // Blocking: the address, or everyone at its domain; said before it is done.
-    Dialog {
+    Later {
         id: blockDialog
 
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(520, reader.window.width - 2 * reader.theme.gap)
-        title: reader.sioul.text("ui-block-title")
+        sourceComponent: Component {
+            Dialog {
+                id: blockDialogForm
 
-        ColumnLayout {
-            width: parent.width
-            spacing: 10
+                parent: Overlay.overlay
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(520, reader.window.width - 2 * reader.theme.gap)
+                title: reader.sioul.text("ui-block-title")
 
-            Label {
-                Layout.fillWidth: true
-                text: reader.sioul.text("ui-block-text")
-                wrapMode: Text.Wrap
-                color: reader.theme.text
-            }
-            Button {
-                Layout.fillWidth: true
-                text: reader.reading && reader.reading.block_address ? reader.theme.plain(reader.sioul.textWith("ui-block-address", "address", reader.reading.block_address)) : ""
-                onClicked: {
-                    reader.sioul.block(reader.reading.block_address)
-                    blockDialog.close()
-                    reader.closeRequested()
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 10
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: reader.sioul.text("ui-block-text")
+                        wrapMode: Text.Wrap
+                        color: reader.theme.text
+                    }
+                    Button {
+                        Layout.fillWidth: true
+                        text: reader.reading && reader.reading.block_address ? reader.theme.plain(reader.sioul.textWith("ui-block-address", "address", reader.reading.block_address)) : ""
+                        onClicked: {
+                            reader.sioul.block(reader.reading.block_address)
+                            blockDialogForm.close()
+                            reader.closeRequested()
+                        }
+                    }
+                    Button {
+                        Layout.fillWidth: true
+                        visible: reader.reading !== null && !!reader.reading.block_domain
+                        text: reader.reading && reader.reading.block_domain ? reader.theme.plain(reader.sioul.textWith("ui-block-domain", "domain", reader.reading.block_domain)) : ""
+                        onClicked: {
+                            reader.sioul.block(reader.reading.block_domain)
+                            blockDialogForm.close()
+                            reader.closeRequested()
+                        }
+                    }
+                    Button {
+                        Layout.alignment: Qt.AlignRight
+                        text: reader.sioul.text("ui-cancel")
+                        onClicked: blockDialogForm.close()
+                    }
                 }
-            }
-            Button {
-                Layout.fillWidth: true
-                visible: reader.reading !== null && !!reader.reading.block_domain
-                text: reader.reading && reader.reading.block_domain ? reader.theme.plain(reader.sioul.textWith("ui-block-domain", "domain", reader.reading.block_domain)) : ""
-                onClicked: {
-                    reader.sioul.block(reader.reading.block_domain)
-                    blockDialog.close()
-                    reader.closeRequested()
-                }
-            }
-            Button {
-                Layout.alignment: Qt.AlignRight
-                text: reader.sioul.text("ui-cancel")
-                onClicked: blockDialog.close()
             }
         }
     }
 
     // Moving: every account's folders, this one's included.
-    MoveDialog {
+    Later {
         id: moveDialog
 
-        sioul: reader.sioul
-        theme: reader.theme
-        onAboutToShow: {
-            const place = JSON.parse(reader.sioul.place(reader.key) || "{}")
-            moveDialog.fromAccount = place.account || ""
-            moveDialog.fromFolder = place.folder || ""
+        sourceComponent: Component {
+            MoveDialog {
+                id: moveDialogForm
+
+                sioul: reader.sioul
+                theme: reader.theme
+                onAboutToShow: {
+                    const place = JSON.parse(reader.sioul.place(reader.key) || "{}")
+                    moveDialogForm.fromAccount = place.account || ""
+                    moveDialogForm.fromFolder = place.folder || ""
+                }
+                onChosen: (account, folder) => reader.sioul.moveMessages(JSON.stringify([reader.key]), account, folder)
+            }
         }
-        onChosen: (account, folder) => reader.sioul.moveMessages(JSON.stringify([reader.key]), account, folder)
     }
 
     // The message as it came: headers, parts, encodings.
-    Dialog {
+    Later {
         id: sourceDialog
 
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
-        width: reader.window.width * 0.8
-        height: reader.window.height * 0.8
-        title: reader.sioul.text("ui-show-source")
+        sourceComponent: Component {
+            Dialog {
+                id: sourceDialogForm
 
-        // Sioul's own button, in your language: Qt's standard ones are not translated.
-        footer: DialogButtonBox {
-            Button {
-                text: reader.sioul.text("ui-close")
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
-        }
+                parent: Overlay.overlay
+                anchors.centerIn: parent
+                modal: true
+                width: reader.window.width * 0.8
+                height: reader.window.height * 0.8
+                title: reader.sioul.text("ui-show-source")
 
-        ScrollView {
-            anchors.fill: parent
+                // Sioul's own button, in your language: Qt's standard ones are not translated.
+                footer: DialogButtonBox {
+                    Button {
+                        text: reader.sioul.text("ui-close")
+                        DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                    }
+                }
 
-            TextArea {
-                text: sourceDialog.visible ? reader.sioul.source(reader.key) : ""
-                readOnly: true
-                selectByMouse: true
-                wrapMode: TextArea.WrapAnywhere
-                font.family: reader.theme.mono
-                font.pixelSize: 12
-                color: reader.theme.text
+                ScrollView {
+                    anchors.fill: parent
+
+                    TextArea {
+                        text: sourceDialogForm.visible ? reader.sioul.source(reader.key) : ""
+                        readOnly: true
+                        selectByMouse: true
+                        wrapMode: TextArea.WrapAnywhere
+                        font.family: reader.theme.mono
+                        font.pixelSize: 12
+                        color: reader.theme.text
+                    }
+                }
             }
         }
     }

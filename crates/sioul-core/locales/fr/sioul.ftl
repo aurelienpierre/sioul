@@ -308,6 +308,7 @@ account-switch-help = Éteint, il garde ses réglages et n’est ni synchronisé
 account-on = « { $id } » est rallumé.
 account-off = « { $id } » est éteint : gardé avec ses réglages, ni synchronisé ni montré.
 account-details = Serveur et dossiers
+account-settings = Réglages de cette adresse
 scout-button = Ce que ce serveur offre
 scout-asking = Le serveur est interrogé…
 scout-title = Ce que { $server } offre
@@ -976,6 +977,12 @@ focus-stop = Arrêter
 focus-breadcrumb = La prochaine fois, commencer par…
 focus-done = Fait
 focus-keep = Garder
+# Le temps qui court, dans les notifications du système : depuis quand, avec le temps choisi ou sans fin ; en pause, le temps jusqu’ici.
+focus-notification-planned = Depuis { $time }, { $minutes } min choisies
+focus-notification-open = Depuis { $time }, sans fin fixée
+focus-notification-paused = En pause, { $minutes } min jusqu’ici
+# Son canal sur Android, tel que les réglages d’Android le nomment.
+focus-notification-channel = Minuteur de concentration
 note-search = Chercher dans les notes
 note-new = Nouvelle note
 note-title = Son titre

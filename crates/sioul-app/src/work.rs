@@ -455,6 +455,8 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
         let tasks_json = crate::backend::json(&shown);
         let notes_json = notes_list(&desk.loaded, &state.notes_query, state.notes_tree);
         let focus_json = focus_json(&desk);
+        // The time running, in the system's notifications as in the focus window.
+        crate::timenote::follow(&qt, shared);
         let _ = qt.queue(move |mut sioul| {
             // Only the newest (see `backend::show`).
             if sioul.shared().work_generation.load(Ordering::Relaxed) != generation || sioul.shared().work_shown_generation.fetch_max(generation, Ordering::Relaxed) > generation {

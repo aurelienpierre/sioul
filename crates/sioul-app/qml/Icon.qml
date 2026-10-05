@@ -26,6 +26,8 @@ IconImage {
 
     name: iconName
     sourceSize: Qt.size(size, size)
+    // Read on a thread: a page with many icons waited for each (half a second on a phone).
+    asynchronous: true
     Layout.preferredWidth: size
     Layout.preferredHeight: size
     Accessible.ignored: icon.tip === ""

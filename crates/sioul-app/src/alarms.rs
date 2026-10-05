@@ -102,7 +102,7 @@ pub(crate) fn opened() -> Option<String> {
 }
 
 /// A text handed to Android's side, freed by `sioul_string_free`.
-fn handed(text: String) -> *mut c_char {
+pub(crate) fn handed(text: String) -> *mut c_char {
     CString::new(text).unwrap_or_default().into_raw()
 }
 
@@ -110,7 +110,7 @@ fn handed(text: String) -> *mut c_char {
 ///
 /// # Safety
 /// `key` is null, or a zero-terminated text valid for the call.
-unsafe fn key_of(key: *const c_char) -> String {
+pub(crate) unsafe fn key_of(key: *const c_char) -> String {
     if key.is_null() {
         return String::new();
     }
@@ -145,7 +145,8 @@ pub unsafe extern "C" fn sioul_alarm_taken(key: *const c_char) -> *mut c_char {
     handed(answer)
 }
 
-/// A text handed by `sioul_alarm_decide` or `sioul_alarm_taken`, given back.
+/// A text handed by `sioul_alarm_decide`, `sioul_alarm_taken` or
+/// `sioul_time_action` (timenote.rs), given back.
 ///
 /// # Safety
 /// `text` is null, or came from one of them and is given back once.

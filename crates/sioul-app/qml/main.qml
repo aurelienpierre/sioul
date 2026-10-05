@@ -1167,17 +1167,17 @@ SioulWindow {
                 () => budgetsPage.showBank(),
                 () => {},
                 () => grabber.save("accounts-movements"),
-                () => budgetsPage.bank.rulesDialog.show(budgetsPage.bank.shown.accounts[0]),
+                () => budgetsPage.bank.rulesDialog.now().show(budgetsPage.bank.shown.accounts[0]),
                 () => {},
-                () => grabber.savePopup(budgetsPage.bank.rulesDialog, "accounts-rules"),
+                () => grabber.savePopup(budgetsPage.bank.rulesDialog.item, "accounts-rules"),
                 () => budgetsPage.bank.rulesDialog.close(),
-                () => budgetsPage.bank.accountDialog.edit(budgetsPage.bank.shown.accounts[0]),
+                () => budgetsPage.bank.accountDialog.now().edit(budgetsPage.bank.shown.accounts[0]),
                 () => {},
-                () => grabber.savePopup(budgetsPage.bank.accountDialog, "accounts-form"),
+                () => grabber.savePopup(budgetsPage.bank.accountDialog.item, "accounts-form"),
                 () => budgetsPage.bank.accountDialog.close(),
-                () => budgetsPage.bank.reserveDialog.edit(budgetsPage.bank.shown.reserves[1]),
+                () => budgetsPage.bank.reserveDialog.now().edit(budgetsPage.bank.shown.reserves[1]),
                 () => {},
-                () => grabber.savePopup(budgetsPage.bank.reserveDialog, "accounts-reserve"),
+                () => grabber.savePopup(budgetsPage.bank.reserveDialog.item, "accounts-reserve"),
                 () => budgetsPage.bank.reserveDialog.close(),
                 () => window.close()
             ]
@@ -1241,7 +1241,7 @@ SioulWindow {
                 () => grabber.save("budgets-contracts"),
                 () => budgetsPage.openContract("assurance-habitation"),
                 () => {},
-                () => budgetsPage.contracts.dialog.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/contract-dialog.png")),
+                () => budgetsPage.contracts.dialog.item.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/contract-dialog.png")),
                 () => window.close()
             ]
             // The day seen, the routines, one played.
@@ -1250,9 +1250,9 @@ SioulWindow {
                 () => tasksPage.mode = "day",
                 () => {},
                 () => grabber.save("day"),
-                () => tasksPage.routines.show(),
+                () => tasksPage.routines.now().show(),
                 () => {},
-                () => tasksPage.routines.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/routines.png")),
+                () => tasksPage.routines.item.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/routines.png")),
                 () => tasksPage.routines.close(),
                 () => window.playRoutine(JSON.parse(sioul.routines())[0]),
                 () => {},
@@ -1288,7 +1288,7 @@ SioulWindow {
                 () => grabber.save("papers"),
                 () => papersPage.open("passeport"),
                 () => {},
-                () => papersPage.dialog.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/paper-dialog.png")),
+                () => papersPage.dialog.item.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/paper-dialog.png")),
                 () => papersPage.dialog.close(),
                 () => sioul.status = sioul.planRenewal("passeport"),
                 () => papersPage.reload(),
@@ -1653,8 +1653,8 @@ SioulWindow {
                 () => timePage.move(-1),
                 () => timePage.changeFirst(),
                 () => {
-                    if (timePage.changing.opened)
-                        grabber.savePopup(timePage.changing, "time-change")
+                    if (timePage.changing.item && timePage.changing.item.opened)
+                        grabber.savePopup(timePage.changing.item, "time-change")
                 },
                 () => timePage.changing.close(),
                 () => window.page = 9,

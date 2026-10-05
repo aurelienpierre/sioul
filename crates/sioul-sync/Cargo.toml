@@ -60,6 +60,9 @@ keyring = { workspace = true, features = ["sync-secret-service", "crypto-rust"] 
 [target.'cfg(windows)'.dependencies]
 keyring = { workspace = true, features = ["windows-native"] }
 windows = { version = "0.62", features = ["Win32_System_Antimalware", "Win32_Foundation", "Win32_Storage_FileSystem"] }
+# The notification of the time running (notify.rs): changed in place, its buttons
+# pressed any number of times, heard on the connection that showed it.
+dbus = "0.9"
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { workspace = true, features = ["apple-native"] }
 # Android: the KeyStore keeps a key, the app's private storage what it encrypts

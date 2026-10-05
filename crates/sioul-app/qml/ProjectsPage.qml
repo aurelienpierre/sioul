@@ -61,7 +61,7 @@ Item {
 
     // A new project: its form.
     function startNew() {
-        projectDialog.edit("", null)
+        projectDialog.now().edit("", null)
     }
 
     function openFirst() {
@@ -151,7 +151,7 @@ Item {
                     text: page.sioul.text("project-new")
                     icon.name: "list-add"
                     icon.color: page.theme.text
-                    onClicked: projectDialog.edit("", null)
+                    onClicked: projectDialog.now().edit("", null)
                 }
             }
             Label {
@@ -288,7 +288,7 @@ Item {
                         text: page.sioul.text("ui-edit")
                         icon.name: "document-edit"
                         icon.color: page.theme.text
-                        onClicked: projectDialog.edit(page.openId, page.shown)
+                        onClicked: projectDialog.now().edit(page.openId, page.shown)
                     }
                 }
 
@@ -320,7 +320,7 @@ Item {
                         text: page.sioul.text("time-note")
                         icon.name: "chronometer-start"
                         icon.color: page.theme.text
-                        onClicked: timeDialog.begin(page.openId)
+                        onClicked: timeDialog.now().begin(page.openId)
                     }
                     Button {
                         visible: page.shown !== null && page.shown.is_project && page.shown.unbilled !== ""
@@ -507,24 +507,36 @@ Item {
         }
     }
 
-    ProjectDialog {
+    Later {
         id: projectDialog
 
-        sioul: page.sioul
-        theme: page.theme
-        onSaved: id => page.open(id)
-        onRemoved: {
-            page.openId = ""
-            page.reload()
+        sourceComponent: Component {
+            ProjectDialog {
+                id: projectDialogForm
+
+                sioul: page.sioul
+                theme: page.theme
+                onSaved: id => page.open(id)
+                onRemoved: {
+                    page.openId = ""
+                    page.reload()
+                }
+            }
         }
     }
 
-    TimeDialog {
+    Later {
         id: timeDialog
 
-        sioul: page.sioul
-        theme: page.theme
-        onSaved: page.reload()
+        sourceComponent: Component {
+            TimeDialog {
+                id: timeDialogForm
+
+                sioul: page.sioul
+                theme: page.theme
+                onSaved: page.reload()
+            }
+        }
     }
 
     // Rest: one line, and the projects if you ask.

@@ -30,6 +30,7 @@ fn main() {
         "qml/ContactForm.qml",
         "qml/LabeledRows.qml",
         "qml/DateField.qml",
+        "qml/Later.qml",
         "qml/EventDialog.qml",
         "qml/EventRow.qml",
         "qml/WeekPlanning.qml",

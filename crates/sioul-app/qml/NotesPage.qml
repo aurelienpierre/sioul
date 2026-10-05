@@ -166,7 +166,7 @@ Item {
     // The note changed last, for the window's images.
     // A new note: its name asked first.
     function startNew() {
-        newNote.open()
+        newNote.now().open()
     }
 
     function openFirst() {
@@ -322,7 +322,7 @@ Item {
                     text: page.sioul.text("note-new")
                     icon.name: "document-new"
                     icon.color: page.theme.text
-                    onClicked: newNote.open()
+                    onClicked: newNote.now().open()
                 }
                 ToolButton {
                     visible: !page.shown.missing
@@ -332,7 +332,7 @@ Item {
                     ToolTip.visible: hovered
                     ToolTip.text: page.sioul.text("note-folder-new")
                     ToolTip.delay: 400
-                    onClicked: folderName.ask(page.sioul.text("note-folder-new"), "", name => page.sioul.makeFolder("", name), page.sioul.text("note-folder-make"))
+                    onClicked: folderName.now().ask(page.sioul.text("note-folder-new"), "", name => page.sioul.makeFolder("", name), page.sioul.text("note-folder-make"))
                 }
                 // One click starts a memo, one stops it; it opens as a note.
                 // As wide as what it shows: a button's background asks for 100 pixels.
@@ -437,9 +437,9 @@ Item {
                         acceptedButtons: Qt.RightButton
                         onTapped: {
                             if (row.folder)
-                                folderMenu.show(row.modelData.path)
+                                folderMenu.now().show(row.modelData.path)
                             else
-                                noteMenu.show(row.modelData.note)
+                                noteMenu.now().show(row.modelData.note)
                         }
                     }
 
@@ -768,228 +768,258 @@ Item {
         }
     }
 
-    Dialog {
+    Later {
         id: newNote
 
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(440, page.width - 2 * page.theme.gap)
-        title: page.sioul.text("note-new")
-        onAboutToShow: noteTitle.clear()
-        // Sioul's own buttons: Qt's standard ones ("OK", "Cancel") are not translated here.
-        footer: DialogButtonBox {
-            Button {
-                text: page.sioul.text("note-make")
-                highlighted: true
-                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-            }
-            Button {
-                text: page.sioul.text("ui-cancel")
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
-        }
-        onAccepted: {
-            const made = page.sioul.createNote(noteTitle.text, "[]")
-            if (made !== "") {
-                page.open(made)
-                page.editing = true
-            }
-        }
+        sourceComponent: Component {
+            Dialog {
+                id: newNoteForm
 
-        TextField {
-            id: noteTitle
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(440, page.width - 2 * page.theme.gap)
+                title: page.sioul.text("note-new")
+                onAboutToShow: noteTitle.clear()
+                // Sioul's own buttons: Qt's standard ones ("OK", "Cancel") are not translated here.
+                footer: DialogButtonBox {
+                    Button {
+                        text: page.sioul.text("note-make")
+                        highlighted: true
+                        DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                    }
+                    Button {
+                        text: page.sioul.text("ui-cancel")
+                        DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                    }
+                }
+                onAccepted: {
+                    const made = page.sioul.createNote(noteTitle.text, "[]")
+                    if (made !== "") {
+                        page.open(made)
+                        page.editing = true
+                    }
+                }
 
-            width: parent.width
-            placeholderText: page.sioul.text("note-title")
-            onAccepted: newNote.accept()
+                TextField {
+                    id: noteTitle
+
+                    width: parent.width
+                    placeholderText: page.sioul.text("note-title")
+                    onAccepted: newNoteForm.accept()
+                }
+            }
         }
     }
 
     // Right click on a note: open it, or tie it to something new or something that exists.
-    SioulMenu {
+    Later {
         id: noteMenu
 
-        property var target: null
-        property var source: null
+        sourceComponent: Component {
+            SioulMenu {
+                id: noteMenuForm
 
-        function show(note) {
-            noteMenu.target = note
-            noteMenu.source = { uri: page.sioul.uriOf("note", note.path), kind: "note", key: note.path, title: note.title }
-            noteMenu.popup()
-        }
+                property var target: null
+                property var source: null
 
-        MenuItem {
-            text: page.sioul.text("ui-open")
-            onTriggered: page.open(noteMenu.target.path)
-        }
-        MenuSeparator {}
-        AddMenu {
-            sioul: page.sioul
-            window: page.window
-            source: noteMenu.source
-        }
-        MenuItem {
-            text: page.sioul.text("ui-link-existing")
-            onTriggered: page.window.linkFrom(noteMenu.source)
-        }
-        MenuSeparator {}
-        MenuItem {
-            text: page.sioul.text("note-rename")
-            onTriggered: renameNote.begin(noteMenu.target)
-        }
-        // To the vault's trash, out of sight, "Undo" offered.
-        MenuItem {
-            text: page.sioul.text("note-trash")
-            onTriggered: {
-                const problem = page.sioul.trashNote(noteMenu.target.path)
-                if (problem !== "")
-                    page.sioul.status = problem
-                else if (page.path === noteMenu.target.path) {
-                    page.path = ""
-                    page.note = null
+                function show(note) {
+                    noteMenuForm.target = note
+                    noteMenuForm.source = { uri: page.sioul.uriOf("note", note.path), kind: "note", key: note.path, title: note.title }
+                    noteMenuForm.popup()
+                }
+
+                MenuItem {
+                    text: page.sioul.text("ui-open")
+                    onTriggered: page.open(noteMenuForm.target.path)
+                }
+                MenuSeparator {}
+                AddMenu {
+                    sioul: page.sioul
+                    window: page.window
+                    source: noteMenuForm.source
+                }
+                MenuItem {
+                    text: page.sioul.text("ui-link-existing")
+                    onTriggered: page.window.linkFrom(noteMenuForm.source)
+                }
+                MenuSeparator {}
+                MenuItem {
+                    text: page.sioul.text("note-rename")
+                    onTriggered: renameNote.now().begin(noteMenuForm.target)
+                }
+                // To the vault's trash, out of sight, "Undo" offered.
+                MenuItem {
+                    text: page.sioul.text("note-trash")
+                    onTriggered: {
+                        const problem = page.sioul.trashNote(noteMenuForm.target.path)
+                        if (problem !== "")
+                            page.sioul.status = problem
+                        else if (page.path === noteMenuForm.target.path) {
+                            page.path = ""
+                            page.note = null
+                        }
+                    }
                 }
             }
         }
     }
 
     // Right click on a folder: a note or a folder in it, a new name, or out when empty.
-    SioulMenu {
+    Later {
         id: folderMenu
 
-        property string path: ""
-        readonly property bool empty: !page.shown.notes.some(n => n.path.startsWith(folderMenu.path + "/")) && !(page.shown.folders || []).some(f => f.startsWith(folderMenu.path + "/"))
+        sourceComponent: Component {
+            SioulMenu {
+                id: folderMenuForm
 
-        function show(path) {
-            folderMenu.path = path
-            folderMenu.popup()
-        }
+                property string path: ""
+                readonly property bool empty: !page.shown.notes.some(n => n.path.startsWith(folderMenuForm.path + "/")) && !(page.shown.folders || []).some(f => f.startsWith(folderMenuForm.path + "/"))
 
-        MenuItem {
-            text: page.sioul.text("note-new-here")
-            onTriggered: folderName.ask(page.sioul.text("note-new"), "", title => {
-                const made = page.sioul.createNoteIn(folderMenu.path, title)
-                if (made !== "") {
-                    page.open(made)
-                    page.editing = true
+                function show(path) {
+                    folderMenuForm.path = path
+                    folderMenuForm.popup()
                 }
-                return ""
-            }, page.sioul.text("note-make"))
-        }
-        MenuItem {
-            text: page.sioul.text("note-folder-new-inside")
-            onTriggered: folderName.ask(page.sioul.text("note-folder-new"), "", name => page.sioul.makeFolder(folderMenu.path, name), page.sioul.text("note-folder-make"))
-        }
-        MenuSeparator {}
-        MenuItem {
-            text: page.sioul.text("note-folder-rename")
-            onTriggered: folderName.ask(page.sioul.text("note-folder-rename"), folderMenu.path.split("/").pop(), name => {
-                const answer = JSON.parse(page.sioul.renameFolder(folderMenu.path, name))
-                return answer.error || ""
-            }, page.sioul.text("ui-rename"))
-        }
-        MenuItem {
-            enabled: folderMenu.empty
-            text: folderMenu.empty ? page.sioul.text("note-folder-remove") : page.sioul.text("note-folder-remove-full")
-            onTriggered: {
-                const problem = page.sioul.removeFolder(folderMenu.path)
-                if (problem !== "")
-                    page.sioul.status = problem
+
+                MenuItem {
+                    text: page.sioul.text("note-new-here")
+                    onTriggered: folderName.now().ask(page.sioul.text("note-new"), "", title => {
+                        const made = page.sioul.createNoteIn(folderMenuForm.path, title)
+                        if (made !== "") {
+                            page.open(made)
+                            page.editing = true
+                        }
+                        return ""
+                    }, page.sioul.text("note-make"))
+                }
+                MenuItem {
+                    text: page.sioul.text("note-folder-new-inside")
+                    onTriggered: folderName.now().ask(page.sioul.text("note-folder-new"), "", name => page.sioul.makeFolder(folderMenuForm.path, name), page.sioul.text("note-folder-make"))
+                }
+                MenuSeparator {}
+                MenuItem {
+                    text: page.sioul.text("note-folder-rename")
+                    onTriggered: folderName.now().ask(page.sioul.text("note-folder-rename"), folderMenuForm.path.split("/").pop(), name => {
+                        const answer = JSON.parse(page.sioul.renameFolder(folderMenuForm.path, name))
+                        return answer.error || ""
+                    }, page.sioul.text("ui-rename"))
+                }
+                MenuItem {
+                    enabled: folderMenuForm.empty
+                    text: folderMenuForm.empty ? page.sioul.text("note-folder-remove") : page.sioul.text("note-folder-remove-full")
+                    onTriggered: {
+                        const problem = page.sioul.removeFolder(folderMenuForm.path)
+                        if (problem !== "")
+                            page.sioul.status = problem
+                    }
+                }
             }
         }
     }
 
     // A name asked for: a new folder, a folder renamed, a note in a folder.
-    Dialog {
+    Later {
         id: folderName
 
-        property var action: null
-        property string problem: ""
-        // What its button does, in words: "Make the folder", "Rename".
-        property string verb: ""
+        sourceComponent: Component {
+            Dialog {
+                id: folderNameForm
 
-        function ask(title, current, action, verb) {
-            folderName.title = title
-            folderName.action = action
-            folderName.verb = verb
-            folderName.problem = ""
-            folderField.text = current
-            folderName.open()
-            folderField.selectAll()
-            folderField.forceActiveFocus()
-        }
+                property var action: null
+                property string problem: ""
+                // What its button does, in words: "Make the folder", "Rename".
+                property string verb: ""
 
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(440, page.width - 2 * page.theme.gap)
-        // Sioul's own buttons: Qt's standard ones ("OK", "Cancel") are not translated here.
-        footer: DialogButtonBox {
-            Button {
-                text: folderName.verb
-                highlighted: true
-                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                function ask(title, current, action, verb) {
+                    folderNameForm.title = title
+                    folderNameForm.action = action
+                    folderNameForm.verb = verb
+                    folderNameForm.problem = ""
+                    folderField.text = current
+                    folderNameForm.open()
+                    folderField.selectAll()
+                    folderField.forceActiveFocus()
+                }
+
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(440, page.width - 2 * page.theme.gap)
+                // Sioul's own buttons: Qt's standard ones ("OK", "Cancel") are not translated here.
+                footer: DialogButtonBox {
+                    Button {
+                        text: folderNameForm.verb
+                        highlighted: true
+                        DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                    }
+                    Button {
+                        text: page.sioul.text("ui-cancel")
+                        DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                    }
+                }
+                onAccepted: {
+                    const problem = folderNameForm.action ? folderNameForm.action(folderField.text) : ""
+                    if (problem)
+                        page.sioul.status = problem
+                }
+
+                TextField {
+                    id: folderField
+
+                    width: parent.width
+                    onAccepted: folderNameForm.accept()
+                }
             }
-            Button {
-                text: page.sioul.text("ui-cancel")
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
-        }
-        onAccepted: {
-            const problem = folderName.action ? folderName.action(folderField.text) : ""
-            if (problem)
-                page.sioul.status = problem
-        }
-
-        TextField {
-            id: folderField
-
-            width: parent.width
-            onAccepted: folderName.accept()
         }
     }
 
     // A new name: the notes, tasks and ties naming it follow.
-    Dialog {
+    Later {
         id: renameNote
 
-        property string path: ""
+        sourceComponent: Component {
+            Dialog {
+                id: renameNoteForm
 
-        function begin(note) {
-            renameNote.path = note.path
-            const name = note.path.split("/").pop()
-            newName.text = note.kind === "text" || name.endsWith(".md") ? name.replace(/\.md$/, "") : name.replace(/\.[^.]*$/, "")
-            renameNote.open()
-            newName.selectAll()
-            newName.forceActiveFocus()
-        }
+                property string path: ""
 
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(440, page.width - 2 * page.theme.gap)
-        title: page.sioul.text("note-rename")
-        footer: DialogButtonBox {
-            Button {
-                text: page.sioul.text("ui-rename")
-                highlighted: true
-                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                function begin(note) {
+                    renameNoteForm.path = note.path
+                    const name = note.path.split("/").pop()
+                    newName.text = note.kind === "text" || name.endsWith(".md") ? name.replace(/\.md$/, "") : name.replace(/\.[^.]*$/, "")
+                    renameNoteForm.open()
+                    newName.selectAll()
+                    newName.forceActiveFocus()
+                }
+
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(440, page.width - 2 * page.theme.gap)
+                title: page.sioul.text("note-rename")
+                footer: DialogButtonBox {
+                    Button {
+                        text: page.sioul.text("ui-rename")
+                        highlighted: true
+                        DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                    }
+                    Button {
+                        text: page.sioul.text("ui-cancel")
+                        DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                    }
+                }
+                onAccepted: {
+                    const answer = JSON.parse(page.sioul.renameNoteForm(renameNoteForm.path, newName.text))
+                    if (answer.error)
+                        page.sioul.status = answer.error
+                    else if (page.path === renameNoteForm.path)
+                        page.pending = answer.path
+                }
+
+                TextField {
+                    id: newName
+
+                    width: parent.width
+                    onAccepted: renameNoteForm.accept()
+                }
             }
-            Button {
-                text: page.sioul.text("ui-cancel")
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
-        }
-        onAccepted: {
-            const answer = JSON.parse(page.sioul.renameNote(renameNote.path, newName.text))
-            if (answer.error)
-                page.sioul.status = answer.error
-            else if (page.path === renameNote.path)
-                page.pending = answer.path
-        }
-
-        TextField {
-            id: newName
-
-            width: parent.width
-            onAccepted: renameNote.accept()
         }
     }
 }

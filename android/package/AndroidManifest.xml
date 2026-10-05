@@ -111,6 +111,12 @@
                 <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
+        <!-- The time running's buttons, Pause, Go on and Stop (package/src/
+             com/aurelienpierre/sioul/TimeReceiver.java): sent by its
+             notification, by no other app. -->
+        <receiver
+            android:name="com.aurelienpierre.sioul.TimeReceiver"
+            android:exported="false" />
         <!-- A reminder tapped: its dose kept for Sioul, which comes up on its
              question (DoseOpener.java); never shown itself. -->
         <activity

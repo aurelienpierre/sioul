@@ -23,6 +23,7 @@ mod projects;
 mod remind;
 mod share;
 mod sites;
+mod timenote;
 mod work;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
@@ -152,6 +153,8 @@ pub fn run() -> i32 {
         Some(app) => app.exec(),
         None => 1,
     };
+    // The time running's notification goes with the window (a phone's stays).
+    timenote::closing();
     // What was marked goes out, and your other devices learn this one closed.
     share::closing();
     code

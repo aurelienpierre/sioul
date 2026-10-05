@@ -3972,6 +3972,10 @@ impl qobject::Sioul {
         let (stamp, day) = (now.timestamp().as_second(), i64::from(now.date().year()) * 1000 + i64::from(now.date().day_of_year()));
         let shared = self.shared();
         let last = shared.planned_at.load(Ordering::Relaxed);
+        // The time running's notification: what changed elsewhere (another
+        // device, the command line), or while a phone had Sioul put away.
+        let (qt_time, shared_time) = (self.qt_thread(), self.shared());
+        std::thread::spawn(move || crate::timenote::follow(&qt_time, &shared_time));
         if last == 0 {
             shared.planned_at.store(stamp, Ordering::Relaxed);
             shared.planned_day.store(day, Ordering::Relaxed);
