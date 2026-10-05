@@ -887,6 +887,124 @@ pub(crate) fn chats_covered() -> bool {
     record().chats_covered(&Zoned::now())
 }
 
+// ---------------------------------------------------------------- meals, rest and sleep
+
+/// A block's usual name, in your language: breakfast, lunch, dinner, then
+/// "Meal 4"; a nap; winding down for the night.
+pub(crate) fn usual_name(kind: &str, index: usize) -> String {
+    match (kind, index) {
+        ("meal", 0..=2) => tr().text(&format!("need-meal-{index}"), None),
+        ("meal", n) => say("need-meal-n", &[("n", (n + 1).to_string())]),
+        ("nap", _) => tr().text("need-nap", None),
+        _ => tr().text("need-sleep", None),
+    }
+}
+
+fn name_of(kept: &sioul_core::needs::Kept) -> String {
+    if kept.name.trim().is_empty() { usual_name(kept.kind, kept.index) } else { kept.name.clone() }
+}
+
+/// Each minute, from the computer you are at: a block's heads-up about the
+/// work, `heads_up` minutes before it ("No new big task"), with "Later";
+/// then one at its time. Two at most, each once, only near its time; none
+/// while an event goes on, none for a block skipped today. Its name and time
+/// only: safe to be read by someone else (docs/health.md).
+fn needs_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned) {
+    let needs = &health.needs;
+    if !(needs.meals_on || needs.naps_on || needs.sleep_on) {
+        return;
+    }
+    let path = sioul_core::needs::Today::default_path();
+    let mut today = sioul_core::needs::Today::load(&path, now.date());
+    let stamp = now.timestamp().as_second();
+    let moved = today.shifts.clone();
+    let kept = needs.kept_on(now.date(), now.time_zone(), &|key: &str| moved.get(key).copied().unwrap_or(0));
+    let due = today.due(&kept, needs.heads_up, stamp);
+    if due.is_empty() {
+        return;
+    }
+    let _ = today.save(&path);
+    // In a meeting, nothing is said: the time stays kept.
+    let meeting = sioul_core::agenda::occurrences(stamp - 86_400, stamp + 60).iter().any(|e| !e.cancelled && !e.all_day && e.start <= stamp && e.end > stamp);
+    if meeting {
+        return;
+    }
+    let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    for (block, heads_up) in due {
+        let name = name_of(block);
+        if heads_up {
+            // "Later", once a day: the block a few minutes on, today only.
+            let action: Option<(String, Box<dyn FnOnce() + Send>)> = (!today.shifts.contains_key(&block.key)).then(|| {
+                let (key, qt_later, shared_later) = (block.key.clone(), qt.clone(), Arc::clone(shared));
+                let later: Box<dyn FnOnce() + Send> = Box::new(move || {
+                    later_today(&key);
+                    crate::work::show_work(&qt_later, &shared_later);
+                });
+                (tr().text("need-later", None), later)
+            });
+            if let Err(e) = sioul_sync::notify::remind(&tr().text("need-heads-up", None), &say("need-at", &[("name", name), ("time", hm(block.start))]), action) {
+                tell(qt, shared, e);
+            }
+        } else if let Err(e) = sioul_sync::notify::remind(&name, &hm(block.start), None) {
+            tell(qt, shared, e);
+        }
+    }
+}
+
+/// A block moved a few minutes on, today only ("Later"); once.
+pub(crate) fn later_today(key: &str) {
+    let path = sioul_core::needs::Today::default_path();
+    let now = Zoned::now();
+    let mut today = sioul_core::needs::Today::load(&path, now.date());
+    if today.shifts.contains_key(key) {
+        return;
+    }
+    today.shifts.insert(key.to_string(), i64::from(load().needs.later));
+    let _ = today.save(&path);
+}
+
+/// A block skipped today, or not: no notice, kept free all the same.
+pub(crate) fn skip_today(key: &str, skip: bool) -> String {
+    let path = sioul_core::needs::Today::default_path();
+    let mut today = sioul_core::needs::Today::load(&path, Zoned::now().date());
+    if skip {
+        today.skipped.insert(key.to_string());
+    } else {
+        today.skipped.remove(key);
+    }
+    today.save(&path).err().unwrap_or_default()
+}
+
+/// Meals, naps and the night as the page sets them, as JSON: the settings,
+/// the usual names, the long gaps between meals, today's moves and skips.
+pub(crate) fn needs_page() -> String {
+    let needs = load().needs;
+    let today = sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), Zoned::now().date());
+    serde_json::json!({
+        "needs": needs,
+        "usual": {
+            "meals": (0..needs.meals.len().max(3) + 1).map(|i| usual_name("meal", i)).collect::<Vec<_>>(),
+            "nap": usual_name("nap", 0),
+            "sleep": usual_name("sleep", 0),
+        },
+        "gaps": needs.long_gaps().into_iter().map(|(from, to)| say("need-gap", &[("from", from), ("to", to)])).collect::<Vec<_>>(),
+        "skipped": today.skipped,
+        "moved": today.shifts,
+    })
+    .to_string()
+}
+
+/// Meals, naps and the night saved as the page gives them; returns what went wrong, else "".
+pub(crate) fn save_needs(edit: &str) -> String {
+    let needs: sioul_core::needs::Needs = match serde_json::from_str(edit) {
+        Ok(needs) => needs,
+        Err(e) => return e.to_string(),
+    };
+    let mut health = load();
+    health.needs = needs;
+    save(&health).err().unwrap_or_default()
+}
+
 /// Each minute: a dose due is reminded once, quietly, with "Taken"; a refill
 /// or a renewal coming becomes a task in a list kept on this computer.
 pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
@@ -894,10 +1012,13 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     watch_tick(qt, shared);
     let health = load();
     if health.medicines.is_empty() && health.prescriptions.is_empty() {
-        // No medicines: only the pause to move, from the computer you are at.
+        // No medicines: the pause to move, meals and rest, from the computer you are at.
         let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
         let (keeper, _) = crate::share::keeper("health", sioul_sync::lease::Rule::FollowsYou, active, false);
         movement_tick(qt, shared, &health, &Zoned::now(), keeper.mine);
+        if keeper.mine && keeper.settled {
+            needs_tick(qt, shared, &health, &Zoned::now());
+        }
         return;
     }
     // One computer reminds: the one you are at, once it has been so long
@@ -914,6 +1035,9 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         *there = if keeper.mine { String::new() } else { say("health-reminded-there", &[("computer", keeper.name.clone())]) };
     }
     movement_tick(qt, shared, &health, &now, keeper.mine);
+    if keeper.mine && keeper.settled {
+        needs_tick(qt, shared, &health, &now);
+    }
     let mut reminded: Vec<String> = Vec::new();
     if keeper.mine && keeper.settled {
         for dose in state.to_remind(&health, &now, GRACE_MINUTES) {

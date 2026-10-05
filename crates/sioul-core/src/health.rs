@@ -38,6 +38,9 @@ pub struct Health {
     /// Offers from the watch (a walk, a pause): on unless you say.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub watch_offers: bool,
+    /// Meals, naps and the night: times kept free, set first (`needs`).
+    #[serde(default)]
+    pub needs: crate::needs::Needs,
 }
 
 fn is_true(value: &bool) -> bool {

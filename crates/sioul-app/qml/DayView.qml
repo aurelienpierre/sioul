@@ -266,6 +266,8 @@ ColumnLayout {
                 required property var modelData
                 required property int index
                 readonly property bool isEvent: block.modelData.kind === "event"
+                // A meal or a nap kept free (docs/health.md): shown, never a step to open.
+                readonly property bool isNeed: block.modelData.kind === "meal" || block.modelData.kind === "nap"
                 readonly property bool now: block.index === dayView.current
                 readonly property bool comingNext: block.index === dayView.next
                 readonly property string part: dayView.partOf(block.modelData)
@@ -278,7 +280,7 @@ ColumnLayout {
                 height: dayView.heightOf(block.index)
                 clip: true
                 radius: 4
-                color: block.now ? dayView.theme.hover : block.isEvent ? dayView.theme.surface : dayView.theme.button
+                color: block.now ? dayView.theme.hover : block.isEvent || block.isNeed ? dayView.theme.surface : dayView.theme.button
                 border.color: block.now || block.comingNext ? dayView.theme.accent : dayView.theme.line
                 border.width: block.now ? 2 : 1
 
@@ -323,6 +325,7 @@ ColumnLayout {
                     }
                 }
                 MouseArea {
+                    enabled: !block.isNeed
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: block.isEvent ? dayView.openEvent(block.modelData.key) : dayView.openTask(block.modelData.key)

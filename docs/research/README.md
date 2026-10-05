@@ -9,6 +9,7 @@ The research behind Sioul's design, in detail: what was found, how strong the ev
 | [life-admin.md](life-admin.md) | What does running one's life admin need beyond tasks: dates remembered, letters, money, offices, helpers; why tools get dropped; what to refuse? | October 2026 |
 | [wearables.md](wearables.md) | How can a local desktop app read a person's own Garmin data, and turn it into calm offers of breaks and movement? | October 2026 |
 | [platform.md](platform.md) | Google calendars, contacts and tasks; security keys and one-time codes in the embedded browser; GitHub as a source of tasks: which facts decided the implementation? | October 2026 |
+| [meal-prompts.md](meal-prompts.md) | How do people with eating disorders, and people who eat irregularly (burnout, depression, ADHD), want to be invited to eat; what harm do food apps and reminders do; what follows for meals, naps and sleep kept free in the plan? 31 design criteria, 11 open questions. | October 2026 |
 | [bundling.md](bundling.md) | A Bitwarden client with nothing to install, an antivirus beside a GPL-3.0 program, sounds to focus or rest by, a weather applet: which licences and facts decided them? | October 2026 |
 
 ## How to read them

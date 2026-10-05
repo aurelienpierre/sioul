@@ -617,6 +617,18 @@ pub mod qobject {
         #[qinvokable]
         fn dose_info(self: &Sioul, key: &QString) -> QString;
 
+        /// Meals, naps and the night, for the Health page, as JSON.
+        #[qinvokable]
+        fn needs(self: &Sioul) -> QString;
+
+        /// Meals, naps and the night saved; returns what went wrong, else "".
+        #[qinvokable]
+        fn save_needs(self: Pin<&mut Sioul>, edit: &QString) -> QString;
+
+        /// A block skipped today, or not; returns what went wrong, else "".
+        #[qinvokable]
+        fn skip_need(self: Pin<&mut Sioul>, key: &QString, skip: bool) -> QString;
+
         /// The doses due while Sioul was closed, for the Porch, as JSON: [{key, time, name, dose}].
         #[qinvokable]
         fn missed_doses(self: &Sioul) -> QString;
@@ -3493,6 +3505,21 @@ impl qobject::Sioul {
 
     fn dose_info(&self, key: &QString) -> QString {
         QString::from(&crate::health::dose_info(&key.to_string()))
+    }
+
+    fn needs(&self) -> QString {
+        QString::from(&crate::health::needs_page())
+    }
+
+    fn save_needs(self: Pin<&mut Self>, edit: &QString) -> QString {
+        let problem = crate::health::save_needs(&edit.to_string());
+        // The plan goes around them at once.
+        crate::work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn skip_need(self: Pin<&mut Self>, key: &QString, skip: bool) -> QString {
+        QString::from(&crate::health::skip_today(&key.to_string(), skip))
     }
 
     fn missed_doses(&self) -> QString {

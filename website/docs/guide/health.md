@@ -41,6 +41,20 @@ Only the computer you are at reminds you. A dose marked taken on one goes to the
 
 **When Sioul can't tell.** A dose taken twice can harm, so Sioul never says a dose was not taken unless it knows. Your devices exchange through a folder another program syncs, sometimes late: a phone's sync can bring files only every half hour. When Sioul has not heard from one of your devices since the dose was due, or part of what it wrote could not be read, or this device's own record of doses could not be read, it says so under the dose, on the Porch and on this page: "Sioul can't tell whether it was taken: your laptop was last heard on Monday 5 October at 07:52. Check before taking it." A reminder in that case first waits a few minutes for news, then comes titled **Check first**. Look at the other device, or at your pill box, before taking the dose.
 
+## Meals, rest and sleep
+
+Times kept free, set before any work: Sioul plans no task in them, and plans the rest of the day around them.
+
+- **Meals**: three to begin with (breakfast, lunch, dinner), each at the time you choose, with the minutes it takes to get it ready and to eat. **Add a meal or a snack** for more. If two meals are planned more than four hours apart, it is said there, quietly.
+- **Naps**: when, how long, and a few minutes to come back after it.
+- **The night**: bedtime, waking, and the time to wind down before bed.
+
+Name each as you like, choose its weekdays, and turn its notices off if you would rather not have them: it stays kept free.
+
+**Notices**: two at most for each, each once. First, a quarter of an hour before (you choose), "No new big task" with its name and time, so you do not start something you would have to leave, and **Later**, which moves it a quarter of an hour, today only. Then one at the time. Nothing during a meeting, nothing for one marked **Not today**, nothing when one passes. A notice shows only a name and a time.
+
+Nothing about what you eat or how you sleep is asked or recorded: no counts, no history. The way it works follows research on how people who struggle with eating want to be invited to eat ([the research notes](../dev/research/meal-prompts.md)).
+
 ## Prescriptions
 
 **Add a prescription**: what it is for, who wrote it, until when it is valid, how many days the pharmacy gives at a time, and when it was last fetched.

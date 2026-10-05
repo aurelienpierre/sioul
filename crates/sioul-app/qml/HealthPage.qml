@@ -28,6 +28,13 @@ Item {
     property var shown: ({ today: [], missed: [], shared_note: "", reminded_there: "", medicines: [], prescriptions: [], movement: { enabled: true, minutes: 45 }, chats: { enabled: false, minutes: 60, locked_minutes: 30 } })
     readonly property var locale: Qt.locale(page.sioul.text("qt-locale"))
 
+    // Meals, rest and sleep in view: where the Porch's hours card sends you, and the window's tests.
+    function showNeeds() {
+        const flick = scroll.contentItem as Flickable
+        if (flick)
+            flick.contentY = Math.max(0, Math.min(needsSection.y - 12, flick.contentHeight - flick.height))
+    }
+
     function reload() {
         const text = page.sioul.healthPage()
         if (text !== "")
@@ -415,6 +422,15 @@ Item {
                 theme: page.theme
                 watch: page.shown.watch || null
                 onSetting: (key, value) => page.setting(key, value)
+            }
+
+            // Meals, naps and the night: kept free of tasks, the work planned around them.
+            NeedsSection {
+                id: needsSection
+
+                Layout.fillWidth: true
+                sioul: page.sioul
+                theme: page.theme
             }
 
             // A pause to move, while focusing.

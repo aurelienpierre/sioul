@@ -25,7 +25,7 @@ pub struct Block {
     /// Unix seconds.
     pub start: i64,
     pub end: i64,
-    /// "event", "task".
+    /// "event", "task", "meal", "nap".
     pub kind: &'static str,
     pub title: String,
     /// A task's UID, an event's file.
@@ -145,9 +145,18 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         let (start, end) = (event.start.max(midnight), event.end.max(event.start + 15 * 60).min(day_end));
         view.blocks.push(Block { start, end, kind: "event", title: event.summary.clone(), key: event.key.clone(), energy: String::new(), location: event.location.clone(), column: 0, columns: 1, part: 0 });
     }
-    // Held: the events with a pause around each, what passed, and each step laid, with its pause.
+    // Meals and naps, kept free (`needs`): shown, a step never laid over them.
+    // The night is kept free too, but not drawn: the day would run from midnight.
+    for kept in settings.needs.kept_on(today, &zone, &|key: &str| settings.shifts.get(key).copied().unwrap_or(0)).into_iter().filter(|k| k.kind != "sleep") {
+        let (start, end) = (kept.start.max(midnight), kept.end.min(day_end));
+        if end > start {
+            view.blocks.push(Block { start, end, kind: kept.kind, title: kept.name.clone(), key: kept.key.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0 });
+        }
+    }
+    // Held: the events with a pause around each, what is kept free, what passed, and each step laid, with its pause.
     let pause = i64::from(settings.pause) * 60;
     let mut busy: Vec<(i64, i64)> = crate::plan::event_spans(events, settings.pause);
+    busy.extend(settings.kept_on(today, &zone, today));
     busy.push((i64::MIN, rounded(stamp)));
     let mut laid: BTreeMap<&str, i64> = BTreeMap::new();
     for uid in &plan.order {
@@ -292,6 +301,23 @@ mod tests {
         assert_eq!(view.from, at("2026-10-05T09:00").timestamp().as_second());
         assert_eq!(view.to, at("2026-10-05T12:00").timestamp().as_second());
         assert!(view.blocks.iter().all(|b| (b.column, b.columns) == (0, 1)), "nothing overlaps");
+    }
+
+    #[test]
+    fn no_step_over_a_meal() {
+        // Work 9:00–17:00 straight; lunch kept from 12:10 (getting it ready) to 13:00.
+        let now = at("2026-10-05T11:30");
+        let hours = vec![window("monday", "09:00", "17:00", "work")];
+        let needs = crate::needs::Needs { meals_on: true, ..crate::needs::Needs::default() };
+        let settings = Settings::of_hours(&hours, TaskAreas::usual()).with_needs(&needs, BTreeMap::new()).with_events(&now, &[]);
+        let tasks = vec![task("short", 20, ""), task("long", 60, "")];
+        let made = plan(&tasks, now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        let view = day(&now, &[], &made, &tasks, &settings);
+        // The short one before lunch; the long one after it, never across it.
+        let steps: Vec<(&str, i64)> = laid(&view).into_iter().filter(|(t, _)| *t == "short" || *t == "long").collect();
+        assert_eq!(steps, vec![("short", 690), ("long", 780)], "{:?}", laid(&view));
+        let lunch = view.blocks.iter().find(|b| b.key == "meal:1").unwrap();
+        assert_eq!((lunch.start, lunch.end), (at("2026-10-05T12:10").timestamp().as_second(), at("2026-10-05T13:00").timestamp().as_second()));
     }
 
     #[test]
