@@ -56,6 +56,7 @@ pub mod shield;
 pub mod sounds;
 pub mod sites;
 pub mod state;
+pub mod stopped;
 pub mod taskview;
 pub mod tasks;
 pub mod text;

@@ -1614,6 +1614,14 @@ SioulWindow {
                     timePage.anyway = true
                 },
                 () => grabber.save("time"),
+                // Last week's, which has some: the first stretch changed.
+                () => timePage.move(-1),
+                () => timePage.changeFirst(),
+                () => {
+                    if (timePage.changing.opened)
+                        grabber.savePopup(timePage.changing, "time-change")
+                },
+                () => timePage.changing.close(),
                 () => window.page = 9,
                 () => grabber.save("budgets"),
                 () => budgetsPage.openFirst(),

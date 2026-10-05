@@ -266,6 +266,14 @@ Item {
                     }
                 }
 
+                // Where you stopped, when something interrupted you: first, until it is done.
+                StoppedCard {
+                    Layout.fillWidth: true
+                    sioul: page.sioul
+                    theme: page.theme
+                    window: page.window
+                }
+
                 // Doses due while Sioul was closed on all your computers: a question on the
                 // past, answered once (when it was taken, in DoseTaken.qml); never a reminder.
                 Panel {

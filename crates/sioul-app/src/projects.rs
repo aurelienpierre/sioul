@@ -199,6 +199,70 @@ pub(crate) fn note_time(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> Stri
     result.err().unwrap_or_default()
 }
 
+/// A stretch of time changed, as its form gives it: its day, from when to
+/// when, what it was, its task and project.
+#[derive(Deserialize)]
+struct TimeChange {
+    day: String,
+    from: String,
+    to: String,
+    #[serde(default)]
+    project: String,
+    #[serde(default)]
+    task: String,
+    #[serde(default)]
+    note: String,
+    #[serde(default)]
+    unbilled: bool,
+}
+
+/// Any stretch of time changed once noted, by the timer or by hand: its
+/// start, its end, what it was, its task, its project. Billed time stays as
+/// billed. Returns what went wrong, else "".
+pub(crate) fn change_time(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str) -> String {
+    let result = serde_json::from_str::<TimeChange>(edit).map_err(|e| e.to_string()).and_then(|edit| {
+        if timelog::sessions().iter().any(|s| s.key() == key && !s.invoice.is_empty()) {
+            return Err(tr().text("time-billed-stays", None));
+        }
+        let day = edit.day.parse::<Date>().map_err(|_| tr().text("time-bad-day", None))?;
+        let clock = |text: &str| text.split_once(':').and_then(|(h, m)| jiff::civil::Time::new(h.trim().parse().ok()?, m.trim().parse().ok()?, 0, 0).ok());
+        let (Some(from), Some(to)) = (clock(&edit.from), clock(&edit.to)) else { return Err(tr().text("time-bad-hours", None)) };
+        let start = day.to_datetime(from).to_zoned(TimeZone::system()).map_err(|e| e.to_string())?.timestamp().as_second();
+        // Ending at or before it began: past midnight.
+        let mut end = day.to_datetime(to).to_zoned(TimeZone::system()).map_err(|e| e.to_string())?.timestamp().as_second();
+        if end <= start {
+            end += 86_400;
+        }
+        let minutes = u32::try_from((end - start + 30) / 60).unwrap_or(0);
+        if minutes == 0 {
+            return Err(tr().text("time-no-minutes", None));
+        }
+        if edit.project.is_empty() && edit.task.is_empty() {
+            return Err(tr().text("time-no-project-chosen", None));
+        }
+        let changed = timelog::change_in(&timelog::folder(), key, |s| {
+            s.start = start;
+            s.minutes = minutes;
+            s.task = edit.task.clone();
+            s.project = edit.project.clone();
+            s.note = edit.note.trim().to_string();
+            s.unbilled = edit.unbilled;
+        })?;
+        if changed { Ok(()) } else { Err(tr().text("time-gone", None)) }
+    });
+    work::refresh(qt, shared);
+    result.err().unwrap_or_default()
+}
+
+/// The tasks time can be given to, as JSON [{uid, title, case}]: the open
+/// ones, and `keep` (the stretch's own task, done or not).
+pub(crate) fn task_choices(shared: &Shared, keep: &str) -> String {
+    let loaded = loaded(shared);
+    let mut tasks: Vec<&sioul_core::tasks::Task> = loaded.tasks.iter().filter(|t| t.status.is_open() || t.uid == keep).collect();
+    tasks.sort_by_key(|t| t.title.to_lowercase());
+    json(&tasks.iter().map(|t| serde_json::json!({ "uid": t.uid, "title": t.title, "case": t.cases.first().cloned().unwrap_or_default() })).collect::<Vec<_>>())
+}
+
 /// Takes out time noted by hand; billed time stays.
 pub(crate) fn remove_time(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> String {
     let billed = timelog::sessions().iter().any(|s| s.key() == key && !s.invoice.is_empty());

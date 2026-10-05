@@ -27,7 +27,9 @@ Puis **Jusqu’au** : un jour, ou aussi longtemps que le traitement dure ; l
 
 Chaque prise du jour, avec **Pris**. Une prise faite dit à quelle heure ; un clic l’annule. Une prise non marquée est simplement non marquée.
 
-**Pris en retard** : plus d’une demi-heure après son heure, **Pris…** demande quand vous l’avez prise (maintenant, sauf si vous changez l’heure), ou vous laisse dire qu’elle n’a pas été prise. Pour un médicament pris toutes les quelques heures, cochez **Décaler d’autant les prises suivantes** pour garder les heures entre deux prises : prise avec une heure de retard, les suivantes viennent une heure plus tard. Votre réponse est proposée la prochaine fois. Retirer la marque remet les prises à leur place.
+**Pris en retard** : plus d’une demi-heure après son heure, **Pris…** demande quand vous l’avez prise (maintenant, sauf si vous changez l’heure), ou vous laisse dire qu’elle n’a pas été prise.
+
+**Deux sortes de médicaments.** Ceux pris à heures fixes dans la journée gardent leurs heures. Ceux pris toutes les quelques heures gardent les heures entre deux prises, dont le corps a besoin pour éliminer l’une avant la suivante : chaque prise que vous marquez, à l’heure, en avance ou en retard, place la suivante autant d’heures après. Retirer la marque remet les prises à leur place.
 
 ### Les rappels {#reminders}
 
@@ -83,7 +85,7 @@ Le matin, la page Tâches peut dire une ligne, jamais une notification : aprè
 
 ## Bouger {#moving}
 
-**Une pause pour bouger**, toutes les 45 minutes sauf si vous changez ce réglage : une notification discrète dit qu’il est temps de bouger et de s’étirer, même la fenêtre cachée. Pendant une séance de concentration, la séance elle-même se met en pause quelques minutes ; **Y retourner** la relance.
+**Une pause pour bouger**, toutes les 45 minutes sauf si vous changez ce réglage : une notification discrète dit qu’il est temps de bouger et de s’étirer, même la fenêtre cachée. Pendant une séance de concentration, la pause est proposée, jamais imposée : **Faire la pause** met la séance en pause et vous laisse noter en une ligne où vous en êtes ; **Pas maintenant** continue, et redemande plus tard. Si vous la manquez, la séance continue de compter. **Y retourner** la relance.
 
 ## Les discussions {#chats}
 

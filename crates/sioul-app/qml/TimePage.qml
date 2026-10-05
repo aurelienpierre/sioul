@@ -3,8 +3,8 @@
 
 // Time spent: a week, a month or a year, as bars stacked by project, the
 // hours of each project and what is left to bill, then each stretch of time,
-// newest first. Time is noted by hand here too; a right click takes out what
-// was noted by mistake.
+// newest first. Time is noted by hand here too; a click changes any stretch
+// not billed (its start, its end, what, its task), its menu takes it out.
 
 pragma ComponentBehavior: Bound
 
@@ -33,6 +33,14 @@ Item {
     // A narrow screen (a phone): the title and the choices under the arrows,
     // each stretch of time on two lines.
     readonly property bool narrow: page.width < 600
+
+    // For the window's tests: the first stretch, being changed.
+    property alias changing: timeDialog
+
+    function changeFirst() {
+        if (page.shown && page.shown.entries.length > 0)
+            timeDialog.change(page.shown.entries[0])
+    }
 
     function iso(d) {
         const pad = n => n < 10 ? "0" + n : String(n)
@@ -357,9 +365,15 @@ Item {
                         radius: page.theme.radius
                     }
 
+                    // Any stretch not billed: changed with a click (its start, its end, what,
+                    // its task), or taken out from its menu.
+                    onClicked: {
+                        if (entry.modelData.invoice === "")
+                            timeDialog.change(entry.modelData)
+                    }
                     TapHandler {
                         acceptedButtons: Qt.RightButton
-                        enabled: entry.modelData.by_hand && entry.modelData.invoice === ""
+                        enabled: entry.modelData.invoice === ""
                         onTapped: {
                             entryMenu.key = entry.modelData.key
                             entryMenu.entry = entry.modelData

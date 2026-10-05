@@ -74,7 +74,9 @@ La fenêtre de concentration reste au premier plan pendant que vous travaillez a
 - À la fin : **Continuer**, ou **S’arrêter ici, cela compte**.
 - S’arrêter propose une ligne, **La prochaine fois, commencer par…**, montrée quand la tâche revient.
 
-Le temps est noté pour la tâche, et pour son projet ([Temps](time.md)). Toutes les 45 minutes, sauf si vous le changez dans [Santé](health.md#moving), une séance fait une pause de quelques minutes pour bouger ; un clic la relance.
+Le temps est noté pour la tâche, et pour son projet ([Temps](time.md)). Toutes les 45 minutes, sauf si vous le changez dans [Santé](health.md#moving), une pause pour bouger est proposée : **Faire la pause**, avec une ligne sur où vous en êtes, ou **Pas maintenant** ; manquée, la séance continue de compter.
+
+**Où vous en étiez.** Chaque fois que quelque chose vous interrompt (une pause, un repas, la nuit, la fin de la journée, un minuteur arrêté), vous pouvez laisser une ligne sur où vous en étiez. Elle revient en haut du Porche et de la page Tâches, et dans la fenêtre de concentration, jusqu’à ce que vous appuyiez sur **C’est fait**.
 
 ### Qu’est-ce qui rend cela difficile ? {#what-makes-it-hard}
 

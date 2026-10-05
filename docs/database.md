@@ -16,7 +16,7 @@ Built: sharing through a folder your sync carries (Nextcloud, Dropbox, Syncthing
 | `time/<month>.toml`, `time/running.toml` | one entry per session (start, task, project); the session running now whole |
 | `drafts/`, `invoices/`, `pgp/others/`, `shield/` | one entry per file |
 | `health.toml` | one entry per setting; prescriptions and medicines one each (by id) |
-| `health-state.toml`, `quiet.toml`, `today.toml`, `money.toml`, `porch.toml` | one entry per setting, mark, dose, word; each account's Porch mark whole |
+| `health-state.toml`, `quiet.toml`, `today.toml`, `money.toml`, `porch.toml`, `stopped.toml` (where you stopped) | one entry per setting, mark, dose, word; each account's Porch mark whole |
 | `watch/` (a day each), `watch-offers.json` | one entry per file |
 | lists kept on this computer only (`calendars/local/`, `contacts/local/`, their state in `dav/local/`) | one entry per file |
 | with `share_projects`: `sioul-cases.toml`, `sioul-budgets.toml`, `sioul-bank.toml` from the notes folder | projects, budgets, presets, reserves and bank accounts one each (by id); a choice for one movement by its account and movement; lines, covers, mail rules and splits one each, as themselves; the bank's accounts by id, its movements by account and the bank's own id |

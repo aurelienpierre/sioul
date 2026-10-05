@@ -24,7 +24,7 @@ Time spent is noted as you work, and becomes invoices for the projects you do fo
 - **The focus timer**: the minutes of a [focus session](tasks.md#starting-and-stopping) count for its task, and for the task's project.
 - **Note time**, on this page, on a project's page, or with **New ▾ ▸ Time spent**: a meeting, a call, work done away from the timer. **For** (a project, or a task), **How long** (`1h30`, `45m`, `90`), **When**, **What it was**, and **Not to bill** when it should not be.
 
-A right click on time noted by hand: **Change this time**, or **Take this time out**. Time already on an invoice stays as it was billed.
+Click any stretch of time, timed or noted by hand, to change it: its task, its project, its day, from when to when, and what it was; the time the timer kept after a pause you missed comes back that way. A right click also offers **Take this time out**. Time already on an invoice stays as it was billed.
 
 ### Billed or not
 

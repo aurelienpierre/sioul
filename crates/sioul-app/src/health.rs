@@ -45,8 +45,8 @@ fn words(schedule: &Schedule) -> String {
             args.set("from", tr().day(*from));
             tr().text("health-every-days", Some(&args))
         }
-        Schedule::Hours { hours, from, .. } => {
-            // Said by its next dose: a dose taken late may have moved them.
+        Schedule::Hours { hours, from } => {
+            // Said by its next dose: each dose taken sets the next.
             let now = Zoned::now();
             let next = schedule.doses(&now, &now.checked_add(Span::new().hours(i64::from(*hours))).unwrap_or_else(|_| now.clone())).into_iter().next();
             let next = next.map_or(*from, |z| z.timestamp().as_second());
@@ -412,9 +412,7 @@ pub(crate) fn save_medicine(id: &str, edit: &str) -> String {
             "days" => Schedule::Days { days: edit.days.max(1), time: edit.time.trim().to_string(), from: day(&edit.from).unwrap_or(now.date()) },
             "hours" => {
                 let from = edit.from.trim().parse::<jiff::civil::DateTime>().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()).map_or(now.timestamp().as_second(), |z| z.timestamp().as_second());
-                // The answer last given for a late dose stays offered.
-                let follows = load().medicines.iter().any(|m| m.id == id && matches!(m.schedule, Schedule::Hours { follows: true, .. }));
-                Schedule::Hours { hours: edit.hours.max(1), from, follows }
+                Schedule::Hours { hours: edit.hours.max(1), from }
             }
             _ => Schedule::Day { times: edit.times.iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect() },
         };
@@ -764,9 +762,9 @@ pub(crate) fn is_late(key: &str) -> bool {
 }
 
 /// A dose taken late, at `time` ("09:30", the last such time before now),
-/// as you say: marked then, and for a medicine taken every few hours, the
-/// next doses moved by as much when asked. Returns what went wrong, else "".
-pub(crate) fn taken_late(key: &str, time: &str, move_next: bool) -> String {
+/// as you say: marked then; for a medicine taken every few hours, the next
+/// doses that many hours after it. Returns what went wrong, else "".
+pub(crate) fn taken_late(key: &str, time: &str) -> String {
     let now = Zoned::now();
     let Some(clock) = time.trim().split_once(':').and_then(|(h, m)| jiff::civil::Time::new(h.trim().parse().ok()?, m.trim().parse().ok()?, 0, 0).ok()) else {
         return tr().text("dose-time-wrong", None);
@@ -777,10 +775,10 @@ pub(crate) fn taken_late(key: &str, time: &str, move_next: bool) -> String {
     }
     let _held = state_held();
     let mut health = load();
-    let moved = health.taken_late(key, at, move_next);
-    // Saved whenever it is taken every few hours: the answer is kept for next time.
-    let hourly = key.rsplit_once('@').is_some_and(|(id, _)| health.medicines.iter().any(|m| m.id == id && matches!(m.schedule, Schedule::Hours { .. })));
-    if hourly && let Err(e) = save(&health) {
+    let moved = health.taken_at(key, at);
+    if moved.is_some()
+        && let Err(e) = save(&health)
+    {
         return e;
     }
     let problem = change(|state| {
@@ -800,34 +798,48 @@ pub(crate) fn taken_late(key: &str, time: &str, move_next: bool) -> String {
     problem
 }
 
-/// What the late dose's question shows, as JSON: {name, dose, due, now, hourly, follows}.
+/// What the late dose's question shows, as JSON: {name, dose, due, now, hours}.
 pub(crate) fn dose_info(key: &str) -> String {
     let health = load();
     let now = Zoned::now();
     let (Some((id, _)), Some(due)) = (key.rsplit_once('@'), due_of(key)) else { return "null".into() };
     let Some(medicine) = health.medicines.iter().find(|m| m.id == id) else { return "null".into() };
     let due = Timestamp::from_second(due).map(|t| t.to_zoned(now.time_zone().clone())).unwrap_or_else(|_| now.clone());
-    let follows = matches!(medicine.schedule, Schedule::Hours { follows: true, .. });
+    let hours = match medicine.schedule {
+        Schedule::Hours { hours, .. } => hours,
+        _ => 0,
+    };
     serde_json::json!({
         "name": medicine.name,
         "dose": medicine.dose,
         "due": if due.date() == now.date() { due.strftime("%H:%M").to_string() } else { format!("{} {}", tr().weekday_short(due.date()), due.strftime("%H:%M")) },
         "now": now.strftime("%H:%M").to_string(),
-        "hourly": matches!(medicine.schedule, Schedule::Hours { .. }),
-        "follows": follows,
+        // Every few hours: the next dose comes that many hours after the one taken.
+        "hours": hours,
     })
     .to_string()
 }
 
-/// A dose marked taken, or not, as it happens; a mark taken back puts back
-/// the doses its late take moved. Returns what went wrong, else "".
+/// A dose marked taken, or not, as it happens: taken every few hours, the
+/// next doses come that many hours after now; a mark taken back puts them
+/// back. Returns what went wrong, else "".
 pub(crate) fn set_taken(key: &str, taken: bool) -> String {
     let _held = state_held();
     let now = Timestamp::now().as_second();
+    let mut health = load();
+    let shift = if taken { health.taken_at(key, now) } else { None };
+    if shift.is_some()
+        && let Err(e) = save(&health)
+    {
+        return e;
+    }
     let moved = std::sync::Mutex::new(None);
     let problem = change(|state| {
         if taken {
             state.taken.insert(key.to_string(), now);
+            if let Some((before, after)) = shift {
+                state.moved.insert(key.to_string(), [before, after]);
+            }
         } else {
             state.taken.remove(key);
             if let Ok(mut moved) = moved.lock() {

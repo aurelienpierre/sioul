@@ -120,12 +120,15 @@ pub struct EntryView {
     pub note: String,
     pub billable: bool,
     pub invoice: String,
-    /// Noted by hand, so it can be changed or taken out.
+    /// Noted by hand: it can be taken out. Every stretch not billed can be changed.
     pub by_hand: bool,
-    /// As the form takes it: "2026-10-03", "14:30", minutes.
+    /// As the form takes it: "2026-10-03", from "14:30" to "15:15", minutes.
     pub day: String,
     pub at: String,
+    pub until: String,
     pub minutes: u32,
+    /// The task it was given to (its UID); "" for a project alone.
+    pub task: String,
 }
 
 /// The Time page, for a week, a month or a year.
@@ -305,7 +308,9 @@ pub fn view(all: &[Entry], cases: &[Case], sessions_by_hand: &dyn Fn(&str) -> bo
                 by_hand: sessions_by_hand(&e.key),
                 day: e.day.to_string(),
                 at: jiff::Timestamp::from_second(e.start).map(|t| t.to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M").to_string()).unwrap_or_default(),
+                until: jiff::Timestamp::from_second(e.start + i64::from(e.minutes) * 60).map(|t| t.to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M").to_string()).unwrap_or_default(),
                 minutes: e.minutes,
+                task: e.task.clone(),
             })
             .collect(),
         sentence: if total == 0 { tr.text(&format!("time-nothing-{period}"), None) } else { String::new() },

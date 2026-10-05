@@ -2,9 +2,9 @@
 // Copyright © 2026 Aurélien Pierre
 
 // A dose marked more than half an hour past its time, or due while Sioul was
-// closed: when it was taken (now, unless you say), or that it was not. A
-// medicine taken every few hours can move its next doses by as much, so the
-// hours between two doses are kept; the answer is offered again next time.
+// closed: when it was taken (now, unless you say), or that it was not. For a
+// medicine taken every few hours, the next dose comes that many hours after
+// the time said: the hours between two doses are kept.
 
 pragma ComponentBehavior: Bound
 
@@ -32,14 +32,13 @@ Dialog {
         dialog.info = info
         dialog.problem = ""
         when.text = info.now
-        moveNext.checked = info.follows === true
         dialog.open()
         when.forceActiveFocus()
         when.selectAll()
     }
 
     function taken() {
-        dialog.problem = dialog.sioul.doseTakenAt(dialog.key, when.text, moveNext.visible && moveNext.checked)
+        dialog.problem = dialog.sioul.doseTakenAt(dialog.key, when.text)
         if (dialog.problem !== "")
             return
         dialog.close()
@@ -79,17 +78,11 @@ Dialog {
                 onAccepted: dialog.taken()
             }
         }
-        CheckBox {
-            id: moveNext
-
-            visible: dialog.info !== null && dialog.info.hourly === true
-            Layout.fillWidth: true
-            text: dialog.sioul.text("dose-move-next")
-        }
+        // Every few hours: the hours between two doses are kept, from the time said.
         Label {
-            visible: moveNext.visible
+            visible: dialog.info !== null && dialog.info.hours > 0
             Layout.fillWidth: true
-            text: dialog.sioul.text("dose-move-next-help")
+            text: dialog.info === null ? "" : dialog.sioul.textWith("dose-next-after", "hours", String(dialog.info.hours))
             wrapMode: Text.Wrap
             font.pixelSize: 13
             color: dialog.theme.muted

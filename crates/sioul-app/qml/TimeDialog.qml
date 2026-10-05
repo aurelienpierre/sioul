@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Time noted by hand: a meeting, a call, work done away from the timer. For
-// a project (or a task), on a day, how long, a word on what it was.
+// Time noted by hand (a meeting, a call, work done away from the timer), or
+// any stretch changed once noted, the timer's too: its task, its project,
+// its day, from when to when, a word on what it was.
 
 pragma ComponentBehavior: Bound
 
@@ -16,20 +17,37 @@ Dialog {
     required property var sioul
     required property var theme
     property var projects: []
+    // "No task", then the open tasks (and the stretch's own).
+    property var tasks: []
     property string problem: ""
     // The stretch being changed, by its key; "" for a new one.
     property string replacing: ""
 
     signal saved
 
-    // How long, as typed: "1h30", "1 h 30", "90", "45m", "45 min".
-    function minutesOf(text) {
-        const t = text.trim().toLowerCase().replace(/\s+/g, "")
-        const hours = t.match(/^(\d+)h(\d+)?(min|m)?$/)
-        if (hours)
-            return Number(hours[1]) * 60 + Number(hours[2] || 0)
-        const minutes = t.match(/^(\d+)(min|m)?$/)
-        return minutes ? Number(minutes[1]) : 0
+    // "09:30" → minutes of the day; -1 when it is no time.
+    function minuteOf(text) {
+        const parts = text.split(":")
+        const h = Number(parts[0]), m = Number(parts[1])
+        return parts.length === 2 && parts[0].trim() !== "" && h >= 0 && h < 24 && m >= 0 && m < 60 ? h * 60 + m : -1
+    }
+
+    // From one time to the other, past midnight when it ends before it begins.
+    function lengthOf(fromText, toText) {
+        const from = dialog.minuteOf(fromText), to = dialog.minuteOf(toText)
+        if (from < 0 || to < 0)
+            return 0
+        return to > from ? to - from : to + 24 * 60 - from
+    }
+
+    function length() {
+        return dialog.lengthOf(at.text, until.text)
+    }
+
+    function clock(minutes) {
+        const pad = n => n < 10 ? "0" + n : String(n)
+        const m = ((minutes % 1440) + 1440) % 1440
+        return pad(Math.floor(m / 60)) + ":" + pad(m % 60)
     }
 
     function today() {
@@ -38,53 +56,54 @@ Dialog {
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
     }
 
-    // A stretch noted before, to change: its day, time, length, project, word.
+    // A stretch noted before, by the timer or by hand: its day, from, to, task, project, word.
     function change(entry) {
-        dialog.begin(entry.project)
+        dialog.begin(entry.project, entry.task)
         dialog.replacing = entry.key
         day.date = entry.day
         at.text = entry.at
-        length.text = String(entry.minutes)
-        note.text = entry.note !== "" ? entry.note : entry.title
+        until.text = entry.until
+        note.text = entry.note
         unbilled.checked = !entry.billable
     }
 
-    function begin(project) {
+    function begin(project, task) {
         // Open projects, and the one asked for even when closed: a stretch changed
         // there must not move to another project unseen.
-        dialog.projects = JSON.parse(dialog.sioul.projectRows() || "[]").filter(p => p.status !== "closed" || p.id === project)
+        const projects = JSON.parse(dialog.sioul.projectRows() || "[]").filter(p => p.status !== "closed" || p.id === project)
+        dialog.projects = [{ id: "", title: dialog.sioul.text("time-own-project") }].concat(projects)
+        dialog.tasks = [{ uid: "", title: dialog.sioul.text("time-no-task"), case: "" }].concat(JSON.parse(dialog.sioul.taskChoices(task || "") || "[]"))
         dialog.replacing = ""
         dialog.problem = ""
         day.date = dialog.today()
-        at.text = ""
-        length.text = ""
+        // The half hour just gone, to change as it was.
+        const now = new Date()
+        const minutes = Math.floor((now.getHours() * 60 + now.getMinutes()) / 5) * 5
+        at.text = dialog.clock(minutes - 30)
+        until.text = dialog.clock(minutes)
         note.text = ""
         unbilled.checked = false
-        which.currentIndex = Math.max(0, dialog.projects.findIndex(p => p.id === project))
+        which.currentIndex = Math.max(0, dialog.projects.findIndex(p => p.id === (project || "")))
+        what.currentIndex = Math.max(0, dialog.tasks.findIndex(t => t.uid === (task || "")))
         dialog.open()
-        length.forceActiveFocus()
+        at.forceActiveFocus()
     }
 
     function save() {
         const chosen = dialog.projects[which.currentIndex]
-        const edit = {
-            day: day.date,
-            at: at.text,
-            minutes: dialog.minutesOf(length.text),
-            project: chosen ? chosen.id : "",
-            note: note.text,
-            unbilled: unbilled.checked
+        const task = dialog.tasks[what.currentIndex]
+        const project = chosen ? chosen.id : ""
+        const minutes = dialog.length()
+        if (minutes === 0) {
+            dialog.problem = dialog.sioul.text("time-bad-hours")
+            return
         }
-        const problem = dialog.sioul.noteTime(JSON.stringify(edit))
+        const problem = dialog.replacing !== ""
+            ? dialog.sioul.changeTime(dialog.replacing, JSON.stringify({ day: day.date, from: at.text, to: until.text, project: project, task: task ? task.uid : "", note: note.text, unbilled: unbilled.checked }))
+            : dialog.sioul.noteTime(JSON.stringify({ day: day.date, at: at.text, minutes: minutes, project: project, task: task ? task.uid : "", note: note.text, unbilled: unbilled.checked }))
         if (problem !== "") {
             dialog.problem = problem
             return
-        }
-        // Changed: the new stretch is noted first, then the old one taken out.
-        if (dialog.replacing !== "") {
-            const left = dialog.sioul.removeTime(dialog.replacing)
-            if (left !== "")
-                dialog.sioul.status = left
         }
         dialog.close()
         dialog.saved()
@@ -102,6 +121,22 @@ Dialog {
         rowSpacing: 8
 
         Label {
+            text: dialog.sioul.text("time-field-task")
+            color: dialog.theme.muted
+        }
+        ComboBox {
+            id: what
+
+            Layout.fillWidth: true
+            model: dialog.tasks.map(t => dialog.theme.plain(t.title))
+            // A task chosen: its project, unless one was chosen for this stretch.
+            onActivated: index => {
+                const task = dialog.tasks[index]
+                if (task && task.case !== "" && which.currentIndex === 0)
+                    which.currentIndex = Math.max(0, dialog.projects.findIndex(p => p.id === task.case))
+            }
+        }
+        Label {
             text: dialog.sioul.text("time-field-project")
             color: dialog.theme.muted
         }
@@ -112,36 +147,52 @@ Dialog {
             model: dialog.projects.map(p => dialog.theme.plain(p.title))
         }
         Label {
-            text: dialog.sioul.text("time-field-length")
-            color: dialog.theme.muted
-        }
-        TextField {
-            id: length
-
-            Layout.fillWidth: true
-            placeholderText: dialog.sioul.text("time-field-length-hint")
-            onAccepted: dialog.save()
-        }
-        Label {
             text: dialog.sioul.text("time-field-day")
             color: dialog.theme.muted
         }
+        DateField {
+            id: day
+
+            theme: dialog.theme
+            locale: Qt.locale(dialog.sioul.text("qt-locale"))
+            pickLabel: dialog.sioul.text("event-pick-day")
+        }
+        Label {
+            text: dialog.sioul.text("time-field-from")
+            color: dialog.theme.muted
+        }
+        // From, to, and how long that makes.
         RowLayout {
             spacing: 8
 
-            DateField {
-                id: day
-
-                theme: dialog.theme
-                locale: Qt.locale(dialog.sioul.text("qt-locale"))
-                pickLabel: dialog.sioul.text("event-pick-day")
-            }
             TextField {
                 id: at
 
                 Layout.preferredWidth: 70
-                placeholderText: "14:00"
                 inputMask: "99:99;_"
+                inputMethodHints: Qt.ImhTime
+                Accessible.name: dialog.sioul.text("time-field-from")
+                onAccepted: dialog.save()
+            }
+            Label {
+                text: dialog.sioul.text("time-field-to")
+                color: dialog.theme.muted
+            }
+            TextField {
+                id: until
+
+                Layout.preferredWidth: 70
+                inputMask: "99:99;_"
+                inputMethodHints: Qt.ImhTime
+                Accessible.name: dialog.sioul.text("time-field-to")
+                onAccepted: dialog.save()
+            }
+            Label {
+                readonly property int minutes: dialog.lengthOf(at.text, until.text)
+
+                visible: minutes > 0
+                text: Math.floor(minutes / 60) > 0 ? Math.floor(minutes / 60) + " h " + String(minutes % 60).padStart(2, "0") : minutes + " min"
+                color: dialog.theme.muted
             }
         }
         Label {
@@ -161,7 +212,7 @@ Dialog {
         CheckBox {
             id: unbilled
 
-            visible: dialog.projects.length > 0 && dialog.projects[which.currentIndex] && dialog.projects[which.currentIndex].is_project
+            visible: dialog.projects.length > 0 && !!dialog.projects[which.currentIndex] && dialog.projects[which.currentIndex].is_project === true
             text: dialog.sioul.text("time-field-unbilled")
         }
         Label {

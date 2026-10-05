@@ -1022,7 +1022,28 @@ struct FocusShown {
 fn focus_json(desk: &Desk) -> String {
     let Some(running) = timelog::running() else { return String::new() };
     let title = desk.task(&running.task).map(|t| t.title.clone()).unwrap_or_default();
-    crate::backend::json(&FocusShown { stopped: desk.stopped.get(&running.task).cloned().unwrap_or_default(), task: running.task, title, start: running.start, planned: running.planned, paused_at: running.paused_at, paused: running.paused })
+    // Where you stopped: the line left at a pause of this session first, else the last session's.
+    let left = sioul_core::stopped::Stopped::load(&sioul_core::stopped::Stopped::default_path()).filter(|s| s.task == running.task && s.at >= running.start).map(|s| s.text);
+    let stopped = left.or_else(|| desk.stopped.get(&running.task).cloned()).unwrap_or_default();
+    crate::backend::json(&FocusShown { stopped, task: running.task, title, start: running.start, planned: running.planned, paused_at: running.paused_at, paused: running.paused })
+}
+
+/// Where you stopped, as JSON: {text, when, task, title}; "null" when no line is left.
+pub(crate) fn stopped(shared: &Shared) -> String {
+    let Some(stopped) = sioul_core::stopped::Stopped::load(&sioul_core::stopped::Stopped::default_path()) else { return "null".into() };
+    let title = loaded(shared).tasks.iter().find(|t| t.uid == stopped.task).map(|t| t.title.clone()).unwrap_or_default();
+    let when = Timestamp::from_second(stopped.at).map(|t| tr().when(&t.to_zoned(TimeZone::system()))).unwrap_or_default();
+    serde_json::json!({ "text": stopped.text, "when": when, "task": stopped.task, "title": title }).to_string()
+}
+
+/// A line left on where you stopped, about the task the timer runs for, if
+/// any; an empty line: done. Returns what went wrong, else "".
+pub(crate) fn set_stopped(qt: &QtThread, shared: &Arc<Shared>, text: &str) -> String {
+    let task = timelog::running().map(|r| r.task).unwrap_or_default();
+    let problem = sioul_core::stopped::Stopped::keep(&sioul_core::stopped::Stopped::default_path(), text, &task, Timestamp::now().as_second()).err().unwrap_or_default();
+    show_work(qt, shared);
+    crate::backend::show(qt, shared);
+    problem
 }
 
 /// Starts a focus session on a task; one already running ends first, kept.
@@ -1064,6 +1085,9 @@ pub(crate) fn focus_extend(qt: &QtThread, shared: &Arc<Shared>, minutes: i32) {
 pub(crate) fn focus_stop(qt: &QtThread, shared: &Arc<Shared>, done: bool, note: &str) -> String {
     let now = Timestamp::now().as_second();
     let Some(running) = timelog::running() else { return String::new() };
+    // No word given: the line left at a pause of this session, if any.
+    let left = sioul_core::stopped::Stopped::load(&sioul_core::stopped::Stopped::default_path()).filter(|s| s.task == running.task && s.at >= running.start).map(|s| s.text).unwrap_or_default();
+    let note = if note.trim().is_empty() { left.as_str() } else { note };
     let session = match timelog::finish_with_note(now, done, note.trim()) {
         Ok(Some(session)) => session,
         Ok(None) => return String::new(),

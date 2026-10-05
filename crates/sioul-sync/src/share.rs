@@ -181,6 +181,7 @@ pub fn stores(config: &Config, roots: &Roots) -> Vec<Store> {
         file("state/money.toml", s.join("money.toml"), Shape::Toml(&MONEY_RULES)),
         file("state/today.toml", s.join("today.toml"), Shape::Toml(&TODAY_RULES)),
         file("state/quiet.toml", s.join("quiet.toml"), Shape::Toml(&PLAIN_RULES)),
+        file("state/stopped.toml", s.join("stopped.toml"), Shape::Toml(&PLAIN_RULES)),
         file("state/health-state.toml", s.join("health-state.toml"), Shape::Toml(&PLAIN_RULES)),
         file("state/watch-offers.json", s.join("watch-offers.json"), Shape::Whole),
         folder("state/shield/", s.join("shield"), Shape::Whole, &[]),

@@ -608,10 +608,10 @@ pub mod qobject {
         #[qinvokable]
         fn dose_not_taken(self: Pin<&mut Sioul>, key: &QString);
 
-        /// A dose taken late, at `time` ("09:30"); `move_next` moves the next
-        /// doses of a medicine taken every few hours by as much. Returns what went wrong, else "".
+        /// A dose taken late, at `time` ("09:30"); taken every few hours, the
+        /// next doses come that many hours after it. Returns what went wrong, else "".
         #[qinvokable]
-        fn dose_taken_at(self: Pin<&mut Sioul>, key: &QString, time: &QString, move_next: bool) -> QString;
+        fn dose_taken_at(self: Pin<&mut Sioul>, key: &QString, time: &QString) -> QString;
 
         /// What the late dose's question shows, as JSON.
         #[qinvokable]
@@ -1008,6 +1008,23 @@ pub mod qobject {
         /// Takes out time noted by hand; returns what went wrong.
         #[qinvokable]
         fn remove_time(self: Pin<&mut Sioul>, key: &QString) -> QString;
+
+        /// Where you stopped, as JSON: {text, when, task, title}; "null" for none.
+        #[qinvokable]
+        fn stopped(self: &Sioul) -> QString;
+
+        /// A line left on where you stopped (an empty one: done); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_stopped(self: Pin<&mut Sioul>, text: &QString) -> QString;
+
+        /// A stretch of time changed once noted (by the timer or by hand): its
+        /// day, from, to, what, task, project. Returns what went wrong, else "".
+        #[qinvokable]
+        fn change_time(self: Pin<&mut Sioul>, key: &QString, edit: &QString) -> QString;
+
+        /// The tasks time can be given to, as JSON: the open ones, and `keep`.
+        #[qinvokable]
+        fn task_choices(self: &Sioul, keep: &QString) -> QString;
 
         /// The invoice of a project's unbilled hours: {"number", "html", "pdf"} or {"error"}.
         #[qinvokable]
@@ -3495,8 +3512,8 @@ impl qobject::Sioul {
         crate::share::exchange(&self.qt_thread(), &self.shared());
     }
 
-    fn dose_taken_at(self: Pin<&mut Self>, key: &QString, time: &QString, move_next: bool) -> QString {
-        let problem = crate::health::taken_late(&key.to_string(), &time.to_string(), move_next);
+    fn dose_taken_at(self: Pin<&mut Self>, key: &QString, time: &QString) -> QString {
+        let problem = crate::health::taken_late(&key.to_string(), &time.to_string());
         if problem.is_empty() {
             crate::share::exchange(&self.qt_thread(), &self.shared());
         }
@@ -3942,6 +3959,22 @@ impl qobject::Sioul {
 
     fn note_time(self: Pin<&mut Self>, edit: &QString) -> QString {
         QString::from(&crate::projects::note_time(&self.qt_thread(), &self.shared(), &edit.to_string()))
+    }
+
+    fn stopped(&self) -> QString {
+        QString::from(&crate::work::stopped(&self.shared()))
+    }
+
+    fn set_stopped(self: Pin<&mut Self>, text: &QString) -> QString {
+        QString::from(&crate::work::set_stopped(&self.qt_thread(), &self.shared(), &text.to_string()))
+    }
+
+    fn change_time(self: Pin<&mut Self>, key: &QString, edit: &QString) -> QString {
+        QString::from(&crate::projects::change_time(&self.qt_thread(), &self.shared(), &key.to_string(), &edit.to_string()))
+    }
+
+    fn task_choices(&self, keep: &QString) -> QString {
+        QString::from(&crate::projects::task_choices(&self.shared(), &keep.to_string()))
     }
 
     fn remove_time(self: Pin<&mut Self>, key: &QString) -> QString {
