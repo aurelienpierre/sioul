@@ -227,6 +227,8 @@ SioulWindow {
         } else if (kind === "paper") {
             window.page = 13
             papersPage.startNew()
+        } else if (kind === "stopped") {
+            window.askNeed("")
         }
     }
 
@@ -301,6 +303,15 @@ SioulWindow {
         doseTaken.item.ask(key)
     }
 
+    // A meal's, a nap's or the night's question (later, at another time, not
+    // today), or "" to note where you stopped alone (Interruption.qml, made
+    // the first time); the pages showing them read again.
+    function askNeed(key) {
+        if (interruption.item === null)
+            interruption.setSource("Interruption.qml", { sioul: sioul, theme: theme })
+        interruption.item.ask(key)
+    }
+
     // Whatever a link leads to, opened where it lives.
     function openThing(item) {
         const id = uri => decodeURIComponent(item.uri.slice(uri.length))
@@ -335,6 +346,10 @@ SioulWindow {
             window.page = 0
         else if (item.kind === "dose")
             window.askDose(item.key)
+        else if (item.kind === "need")
+            window.askNeed(item.key)
+        else if (item.kind === "stopped")
+            window.askNeed("")
         else if (item.kind === "site") {
             window.page = 3
             sitesPage.open(item.key || decodeURIComponent(item.uri.slice("sioul:site/".length)))
@@ -1632,6 +1647,16 @@ SioulWindow {
                 () => healthPage.showNeeds(),
                 () => {},
                 () => grabber.save("health-needs"),
+                // Lunch's question: later, at another time, not today, where you stopped.
+                () => window.askNeed("meal:1"),
+                () => {
+                    if (interruption.item !== null && interruption.item.opened)
+                        grabber.savePopup(interruption.item, "need-question")
+                },
+                () => {
+                    if (interruption.item !== null)
+                        interruption.item.close()
+                },
                 () => budgetsPage.openId = "",
                 () => window.page = 11,
                 () => grabber.save("accounts"),
@@ -1758,6 +1783,17 @@ SioulWindow {
     }
     Loader {
         id: doseTaken
+    }
+    Loader {
+        id: interruption
+    }
+    Connections {
+        target: interruption.item
+
+        function onChanged() {
+            if (window.healthPage)
+                window.healthPage.reload()
+        }
     }
     Connections {
         target: doseTaken.item

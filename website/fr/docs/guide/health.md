@@ -53,7 +53,9 @@ Des heures gardées libres, réglées avant tout travail : Sioul n’y prévoi
 
 Nommez chacun comme vous voulez, choisissez ses jours, et coupez ses avis si vous préférez vous en passer : il reste gardé libre.
 
-**Avis** : deux au plus pour chacun, une fois chacun. D’abord, un quart d’heure avant (à votre choix), « Pas de nouvelle grosse tâche » avec son nom et son heure, pour ne pas commencer ce qu’il faudrait quitter, et **Plus tard**, qui le décale d’un quart d’heure, aujourd’hui seulement. Puis un à l’heure. Rien pendant une réunion, rien pour celui marqué **Pas aujourd’hui**, rien quand il passe. Un avis ne montre qu’un nom et une heure.
+**Aujourd’hui** : les repas, siestes et la nuit du jour viennent en premier sur la page, chacun avec **15 min plus tard** (autant de fois que vous voulez), **Déplacer à…** une heure, et **Pas aujourd’hui**, pour aujourd’hui seulement, sans qu’aucune question ne soit posée.
+
+**Avis** : deux au plus pour chacun, une fois chacun. D’abord, un quart d’heure avant (à votre choix), « Pas de nouvelle grosse tâche » avec son nom et son heure, pour ne pas commencer ce qu’il faudrait quitter. Puis un à l’heure. Chacun a **Options…** : plus tard, à une autre heure, pas aujourd’hui, et une ligne sur où vous en êtes, qui revient à votre retour. Déplacer un repas n’amène jamais d’autres avis. Rien pendant une réunion, rien pour celui qui n’est pas pour aujourd’hui, rien quand il passe. Un avis ne montre qu’un nom et une heure.
 
 Rien de ce que vous mangez ni de votre sommeil n’est demandé ni noté : ni comptes, ni historique. La façon de faire suit la recherche sur la manière dont les personnes qui ont du mal à manger veulent être invitées à le faire ([les notes de recherche (en anglais)](https://aurelienpierre.github.io/sioul/dev/research/meal-prompts.html)).
 
