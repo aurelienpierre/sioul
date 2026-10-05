@@ -132,6 +132,8 @@ Dialog {
         }
     }
 
+    // Over the whole window, whatever item made it (a Later's is 0 by 0).
+    parent: Overlay.overlay
     anchors.centerIn: Overlay.overlay
     modal: true
     width: Math.min(560, (parent ? parent.width : 560) - 32)

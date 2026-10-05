@@ -29,6 +29,22 @@ Menu {
         return Math.min(Math.max(200, widest + menu.leftPadding + menu.rightPadding + (list.interactive ? 12 : 0)), room)
     }
 
+    // Sioul's window, with its own properties (not only a window's).
+    function sioulWindow(): var {
+        return menu.parent ? menu.parent.Window.window : null
+    }
+
+    // Opened by a long press (main.qml's menuAt): where the finger is.
+    onAboutToShow: {
+        const window = menu.sioulWindow()
+        if (window && window.menuAt) {
+            const at = menu.parent.mapFromItem(null, window.menuAt.x, window.menuAt.y)
+            menu.x = at.x
+            menu.y = at.y
+            window.menuAt = null
+        }
+    }
+
     contentItem: ListView {
         id: list
 

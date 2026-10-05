@@ -39,6 +39,12 @@ Item {
     Component.onCompleted: page.takeShown()
     // A budget opened: its ledger and its balance.
     property string openId: ""
+    // The budget's detail, made the first time one opens.
+    property bool detailMade: false
+    onOpenIdChanged: {
+        if (page.openId !== "")
+            page.detailMade = true
+    }
 
     // A movement added by hand, from "New".
     function startNew() {
@@ -102,13 +108,20 @@ Item {
         anchors.margins: page.theme.gap
         contentWidth: availableWidth
 
-        BudgetDetail {
+        // Made with the first budget opened, then kept.
+        Loader {
             width: opened.availableWidth
-            sioul: page.sioul
-            theme: page.theme
-            window: page.window
-            budget: page.openId
-            onBack: page.openId = ""
+            active: page.detailMade
+
+            sourceComponent: Component {
+                BudgetDetail {
+                    sioul: page.sioul
+                    theme: page.theme
+                    window: page.window
+                    budget: page.openId
+                    onBack: page.openId = ""
+                }
+            }
         }
     }
 

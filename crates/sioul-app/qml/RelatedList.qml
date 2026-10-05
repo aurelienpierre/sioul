@@ -76,8 +76,16 @@ ColumnLayout {
                 border.color: thing.visualFocus ? related.theme.focus : "transparent"
             }
 
+            // On a touch screen, the menu comes at a long press; letting go then opens nothing.
+            onPressAndHold: {
+                thing.Window.window.menuAt = thing.mapToItem(null, thing.pressX, thing.pressY)
+                tieMenu.target = thing.modelData
+                tieMenu.popup()
+            }
             TapHandler {
                 acceptedButtons: Qt.RightButton
+                // A touch has no buttons: on a touch screen, the row's long press.
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                 onTapped: {
                     tieMenu.target = thing.modelData
                     tieMenu.popup()

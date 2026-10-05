@@ -407,8 +407,15 @@ Item {
                                 onClicked: page.openFolder(accountBlock.modelData.id, folderRow.modelData.name)
 
                                 // Right click: kept here or on the server only; an empty folder of yours deleted.
+                                // On a touch screen, the menu comes at a long press; letting go then opens nothing.
+                                onPressAndHold: {
+                                    folderRow.Window.window.menuAt = folderRow.mapToItem(null, folderRow.pressX, folderRow.pressY)
+                                    folderMenu.now().show(accountBlock.modelData.id, folderRow.modelData)
+                                }
                                 TapHandler {
                                     acceptedButtons: Qt.RightButton
+                                    // A touch has no buttons: on a touch screen, the row's long press.
+                                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                                     onTapped: folderMenu.now().show(accountBlock.modelData.id, folderRow.modelData)
                                 }
 
@@ -680,8 +687,15 @@ Item {
                         acceptedButtons: Qt.LeftButton
                         onTapped: page.clickRow(row.index, row.modelData.key, point.modifiers)
                     }
+                    // On a touch screen, the menu comes at a long press; letting go then opens nothing.
+                    onPressAndHold: {
+                        row.Window.window.menuAt = row.mapToItem(null, row.pressX, row.pressY)
+                        rowMenu.now().show(row.modelData)
+                    }
                     TapHandler {
                         acceptedButtons: Qt.RightButton
+                        // A touch has no buttons: on a touch screen, the row's long press.
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                         onTapped: rowMenu.now().show(row.modelData)
                     }
                     // Dragged sideways, towards the folders: the row, or the selection it is in.

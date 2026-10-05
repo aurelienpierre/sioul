@@ -690,6 +690,7 @@ Item {
                     page.reload()
                 }
 
+                parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
                 width: Math.min(520, page.width - 2 * page.theme.gap)
@@ -918,6 +919,7 @@ Item {
                     page.reload()
                 }
 
+                parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
                 width: Math.min(520, page.width - 2 * page.theme.gap)

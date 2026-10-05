@@ -20,6 +20,7 @@
 #include <QDir>
 #include <QGuiApplication>
 #include <QJniObject>
+#include <QQuickWindow>
 #include <QString>
 #include <QtCore/qcoreapplication_platform.h>
 #include <QtCore/private/qandroidextras_p.h>
@@ -524,6 +525,21 @@ extern "C" void sioul_android_time_note(const char *json)
     }
     if (*json)
         askNotifications();
+}
+
+// Sioul away (in the back, the screen off): what the window draws with (its
+// scene graph and graphics, about 90 MB on a phone) given back to Android,
+// made again when Sioul comes back. Qt keeps it by default; here it lets go
+// when the window is no longer shown and `releaseResources` is asked
+// (main.qml, as Sioul goes away). Once the window is made, on its thread.
+extern "C" void sioul_android_lean_window()
+{
+    for (QWindow *window : QGuiApplication::topLevelWindows()) {
+        if (auto *quick = qobject_cast<QQuickWindow *>(window)) {
+            quick->setPersistentGraphics(false);
+            quick->setPersistentSceneGraph(false);
+        }
+    }
 }
 
 // DoseAlarms.java's side here: Sioul started without its window, then Rust's

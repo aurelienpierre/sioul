@@ -376,8 +376,19 @@ Item {
                         if (entry.modelData.invoice === "")
                             timeDialog.now().change(entry.modelData)
                     }
+                    // On a touch screen, the menu comes at a long press; letting go then opens nothing.
+                    onPressAndHold: {
+                        entry.Window.window.menuAt = entry.mapToItem(null, entry.pressX, entry.pressY)
+                        if (entry.modelData.invoice !== "")
+                            return
+                        entryMenu.key = entry.modelData.key
+                        entryMenu.entry = entry.modelData
+                        entryMenu.popup()
+                    }
                     TapHandler {
                         acceptedButtons: Qt.RightButton
+                        // A touch has no buttons: on a touch screen, the row's long press.
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                         enabled: entry.modelData.invoice === ""
                         onTapped: {
                             entryMenu.key = entry.modelData.key

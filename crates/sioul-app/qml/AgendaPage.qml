@@ -46,6 +46,8 @@ Item {
     readonly property bool narrow: page.width < 600
     readonly property var modes: ["agenda", "day", "week", "month"]
     property var opened: null
+    // The event the menu or the deletion asks about.
+    property var menuTarget: null
     // On a phone, the event open takes the page; Back closes it (main.qml).
     readonly property bool canGoBack: page.opened !== null
     function back() {
@@ -138,8 +140,10 @@ Item {
         return page.anchor.toLocaleDateString(page.locale, "MMMM yyyy")
     }
 
+    // A new event on `day`: "2026-10-05", a date, or nothing for the day shown.
     function newEvent(day) {
-        eventDialog.now().edit("", day || page.iso(page.anchor))
+        const shown = day instanceof Date ? page.iso(day) : day
+        eventDialog.now().edit("", shown || page.iso(page.anchor))
     }
 
     // For the window's tests.
@@ -373,8 +377,8 @@ Item {
                             selected: page.opened !== null && page.opened.key === modelData.key && page.opened.start === modelData.start
                             onOpen: page.opened = modelData
                             onMenu: {
-                                eventMenu.target = modelData
-                                eventMenu.popup()
+                                page.menuTarget = modelData
+                                eventMenu.now().popup()
                             }
                         }
                     }
@@ -393,8 +397,8 @@ Item {
                 opened: page.opened
                 onOpen: event => page.opened = event
                 onMenu: event => {
-                    eventMenu.target = event
-                    eventMenu.popup()
+                    page.menuTarget = event
+                    eventMenu.now().popup()
                 }
                 onNewAt: (day, hour) => eventDialog.now().edit("", day, hour)
             }
@@ -612,7 +616,7 @@ Item {
                         flat: true
                         text: page.sioul.text("ui-delete")
                         onClicked: {
-                            eventMenu.target = page.opened
+                            page.menuTarget = page.opened
                             deleteChoice.now().open()
                         }
                     }
@@ -629,32 +633,37 @@ Item {
     }
 
     // Right click on an event.
-    SioulMenu {
+    Later {
         id: eventMenu
 
-        property var target: null
-        readonly property var source: eventMenu.target && eventMenu.target.uid ? { uri: "sioul:event/" + encodeURIComponent(eventMenu.target.uid), kind: "event", key: eventMenu.target.key, title: eventMenu.target.summary, start: eventMenu.target.start } : null
+        sourceComponent: Component {
+            SioulMenu {
+                id: eventMenuForm
 
-        MenuItem {
-            enabled: eventMenu.target !== null && !eventMenu.target.read_only
-            text: page.sioul.text("ui-edit")
-            onTriggered: eventDialog.now().edit(eventMenu.target.key, "")
-        }
-        MenuItem {
-            enabled: eventMenu.target !== null && !eventMenu.target.read_only
-            text: page.sioul.text("ui-delete")
-            onTriggered: deleteChoice.now().open()
-        }
-        MenuSeparator {}
-        AddMenu {
-            sioul: page.sioul
-            window: page.window
-            source: eventMenu.source
-        }
-        MenuItem {
-            enabled: eventMenu.source !== null
-            text: page.sioul.text("ui-link-existing")
-            onTriggered: page.window.linkFrom(eventMenu.source)
+                readonly property var source: page.menuTarget && page.menuTarget.uid ? { uri: "sioul:event/" + encodeURIComponent(page.menuTarget.uid), kind: "event", key: page.menuTarget.key, title: page.menuTarget.summary, start: page.menuTarget.start } : null
+
+                MenuItem {
+                    enabled: page.menuTarget !== null && !page.menuTarget.read_only
+                    text: page.sioul.text("ui-edit")
+                    onTriggered: eventDialog.now().edit(page.menuTarget.key, "")
+                }
+                MenuItem {
+                    enabled: page.menuTarget !== null && !page.menuTarget.read_only
+                    text: page.sioul.text("ui-delete")
+                    onTriggered: deleteChoice.now().open()
+                }
+                MenuSeparator {}
+                AddMenu {
+                    sioul: page.sioul
+                    window: page.window
+                    source: eventMenuForm.source
+                }
+                MenuItem {
+                    enabled: eventMenuForm.source !== null
+                    text: page.sioul.text("ui-link-existing")
+                    onTriggered: page.window.linkFrom(eventMenuForm.source)
+                }
+            }
         }
     }
 
@@ -666,13 +675,14 @@ Item {
             Dialog {
                 id: deleteChoiceForm
 
+                parent: Overlay.overlay
                 anchors.centerIn: parent
                 modal: true
                 width: Math.min(440, page.width - 2 * page.theme.gap)
-                title: eventMenu.target ? page.theme.plain(eventMenu.target.summary) : ""
+                title: page.menuTarget ? page.theme.plain(page.menuTarget.summary) : ""
                 onAboutToShow: {
-                    if (eventMenu.target && !eventMenu.target.recurring) {
-                        page.sioul.deleteEvent(eventMenu.target.key, eventMenu.target.start, false)
+                    if (page.menuTarget && !page.menuTarget.recurring) {
+                        page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, false)
                         page.opened = null
                         Qt.callLater(() => deleteChoiceForm.close())
                     }
@@ -686,7 +696,7 @@ Item {
                         Layout.fillWidth: true
                         text: page.sioul.text("agenda-delete-this")
                         onClicked: {
-                            page.sioul.deleteEvent(eventMenu.target.key, eventMenu.target.start, true)
+                            page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, true)
                             page.opened = null
                             deleteChoiceForm.close()
                         }
@@ -695,7 +705,7 @@ Item {
                         Layout.fillWidth: true
                         text: page.sioul.text("agenda-delete-all")
                         onClicked: {
-                            page.sioul.deleteEvent(eventMenu.target.key, eventMenu.target.start, false)
+                            page.sioul.deleteEvent(page.menuTarget.key, page.menuTarget.start, false)
                             page.opened = null
                             deleteChoiceForm.close()
                         }

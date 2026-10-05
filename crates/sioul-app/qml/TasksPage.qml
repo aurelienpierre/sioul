@@ -37,7 +37,11 @@ Item {
             page.takeShown()
         }
     }
-    Component.onCompleted: page.takeShown()
+    Component.onCompleted: {
+        page.takeShown()
+        if (!page.rest)
+            page.nowMade = true
+    }
     // For the window's images: the task open.
     readonly property var panel: panelLoader.item
     // The task's panel, made the first time a task opens (a form of many fields), then kept.
@@ -46,8 +50,14 @@ Item {
     property alias routines: routinesDialog
     // "now", "day", "list", "board", "timeline".
     property string mode: "now"
-    // The views made so far: each the first time it is shown.
+    // The views made so far: each the first time it is shown; "now" not
+    // while the rest cover hides it.
     property var made: ({ now: true })
+    property bool nowMade: false
+    onRestChanged: {
+        if (!page.rest)
+            page.nowMade = true
+    }
     onModeChanged: {
         const made = Object.assign({}, page.made)
         made[page.mode] = true
@@ -341,197 +351,405 @@ Item {
                 Layout.fillHeight: true
                 currentIndex: ["now", "day", "list", "board", "timeline"].indexOf(page.mode)
 
-                // Now: the next step, why, and the one after it.
-                ScrollView {
-                    id: nowScroll
+                // Now: the next step, why, and the one after it. Made when first shown
+                // outside rest: behind the rest cover it waits.
+                Loader {
+                    active: page.nowMade
 
-                    contentWidth: availableWidth
-                    clip: true
+                    sourceComponent: Component {
+                        ScrollView {
+                            id: nowScroll
 
-                    ColumnLayout {
-                        width: Math.min(nowScroll.availableWidth, 680)
-                        x: Math.max(0, (nowScroll.availableWidth - width) / 2)
-                        spacing: 12
-
-                        // Quiet time: the rest of the day, and when work comes back.
-                        ColumnLayout {
-                            visible: page.shown !== null && page.shown.quiet
-                            Layout.fillWidth: true
-                            spacing: 2
-
-                            Label {
-                                text: page.sioul.text(page.window.moment.reason === "time-off" ? "quiet-time-off-title" : "quiet-title")
-                                textFormat: Text.PlainText
-                                font.pixelSize: 20
-                                color: page.theme.text
-                            }
-                            Label {
-                                visible: page.window.moment.line !== ""
-                                Layout.fillWidth: true
-                                text: page.window.moment.line
-                                textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
-                                color: page.theme.muted
-                            }
-                        }
-                        // The day starts with the step the plan had when the day before closed.
-                        Panel {
-                            visible: page.shown !== null && page.shown.first_step !== ""
-                            Layout.fillWidth: true
-                            theme: page.theme
-
-                            RowLayout {
-                                anchors.fill: parent
-                                spacing: 10
-
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: page.shown ? page.shown.first_step : ""
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    font.pixelSize: 17
-                                    color: page.theme.text
-                                }
-                                Button {
-                                    visible: page.shown !== null && page.shown.first_step_task !== ""
-                                    text: page.sioul.text("focus-two")
-                                    icon.name: "chronometer-start"
-                                    icon.color: page.theme.text
-                                    onClicked: {
-                                        page.focusOn(page.shown.first_step_task, 2)
-                                        page.sioul.clearFirstStep()
-                                    }
-                                }
-                                Button {
-                                    flat: true
-                                    text: page.sioul.text("first-step-clear")
-                                    onClicked: page.sioul.clearFirstStep()
-                                }
-                            }
-                        }
-
-                        // How today is: chosen, never guessed. Work's question, so not in quiet time.
-                        RowLayout {
-                            visible: page.shown !== null && !page.shown.quiet
-                            Layout.fillWidth: true
-                            spacing: 6
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: page.sioul.text("task-weather")
-                                color: page.theme.muted
-                                horizontalAlignment: Text.AlignRight
-                            }
-                            Repeater {
-                                model: ["clear", "haze", "fog"]
-
-                                delegate: Button {
-                                    id: weatherButton
-
-                                    required property string modelData
-
-                                    text: page.sioul.text("task-weather-" + weatherButton.modelData)
-                                    flat: !checked
-                                    checkable: true
-                                    checked: page.shown !== null && page.shown.weather === weatherButton.modelData
-                                    onClicked: {
-                                        const already = page.shown !== null && page.shown.weather === weatherButton.modelData
-                                        page.sioul.setWeather(weatherButton.modelData)
-                                        // A click on the weather chosen unticks it, and nothing comes
-                                        // back to tick it again: its binding does.
-                                        if (already)
-                                            weatherButton.checked = Qt.binding(() => page.shown !== null && page.shown.weather === weatherButton.modelData)
-                                    }
-                                }
-                            }
-                        }
-                        // What the watch says of this morning: an offer, never an alarm.
-                        RowLayout {
-                            visible: page.shown !== null && !page.shown.quiet && page.shown.morning !== "" && page.shown.weather === "clear"
-                            Layout.fillWidth: true
-                            spacing: 8
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: page.shown && page.shown.morning !== "" ? page.sioul.text("watch-morning-" + page.shown.morning) : ""
-                                textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
-                                color: page.theme.muted
-                            }
-                            Button {
-                                flat: true
-                                text: page.sioul.text("watch-morning-lighter")
-                                onClicked: page.sioul.setWeather(page.shown.morning === "strain" ? "fog" : "haze")
-                            }
-                        }
-                        Label {
-                            visible: page.shown !== null && page.shown.now.weather_note !== ""
-                            Layout.fillWidth: true
-                            text: page.shown ? page.shown.now.weather_note : ""
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            color: page.theme.muted
-                        }
-                        // The next date asked within a week: the time it needs, the room there is.
-                        Label {
-                            visible: page.shown !== null && page.shown.budget !== ""
-                            Layout.fillWidth: true
-                            text: page.shown ? page.shown.budget : ""
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            color: page.theme.muted
-                        }
-
-                        Panel {
-                            Layout.fillWidth: true
-                            theme: page.theme
-                            accent: page.shown !== null && page.shown.now.now !== null
+                            contentWidth: availableWidth
+                            clip: true
 
                             ColumnLayout {
-                                anchors.fill: parent
-                                spacing: 8
+                                width: Math.min(nowScroll.availableWidth, 680)
+                                x: Math.max(0, (nowScroll.availableWidth - width) / 2)
+                                spacing: 12
 
-                                Label {
-                                    visible: page.shown !== null && page.shown.now.now === null
+                                // Quiet time: the rest of the day, and when work comes back.
+                                ColumnLayout {
+                                    visible: page.shown !== null && page.shown.quiet
                                     Layout.fillWidth: true
-                                    text: page.shown ? page.shown.now.empty : ""
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    font.pixelSize: 17
-                                    color: page.theme.text
-                                }
-                                Label {
-                                    visible: page.shown !== null && page.shown.now.now !== null
-                                    text: page.sioul.text("task-now-title")
-                                    font.pixelSize: 13
-                                    color: page.theme.muted
-                                }
-                                Label {
-                                    visible: page.shown !== null && page.shown.now.now !== null
-                                    Layout.fillWidth: true
-                                    text: page.shown && page.shown.now.now ? page.shown.now.now.title : ""
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    font.pixelSize: 22
-                                    color: page.theme.text
+                                    spacing: 2
 
-                                    TapHandler {
-                                        onTapped: page.open(page.shown.now.now.uid)
+                                    Label {
+                                        text: page.sioul.text(page.window.moment.reason === "time-off" ? "quiet-time-off-title" : "quiet-title")
+                                        textFormat: Text.PlainText
+                                        font.pixelSize: 20
+                                        color: page.theme.text
+                                    }
+                                    Label {
+                                        visible: page.window.moment.line !== ""
+                                        Layout.fillWidth: true
+                                        text: page.window.moment.line
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.Wrap
+                                        color: page.theme.muted
                                     }
                                 }
-                                // The bigger task it is a step of, and its case.
-                                Label {
-                                    readonly property var task: page.shown && page.shown.now.now ? page.shown.now.now : null
-
-                                    visible: task !== null && text !== ""
+                                // The day starts with the step the plan had when the day before closed.
+                                Panel {
+                                    visible: page.shown !== null && page.shown.first_step !== ""
                                     Layout.fillWidth: true
-                                    text: task ? [task.parent].concat(task.cases).filter(t => t !== "").join("  ·  ") : ""
+                                    theme: page.theme
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        spacing: 10
+
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: page.shown ? page.shown.first_step : ""
+                                            textFormat: Text.PlainText
+                                            wrapMode: Text.Wrap
+                                            font.pixelSize: 17
+                                            color: page.theme.text
+                                        }
+                                        Button {
+                                            visible: page.shown !== null && page.shown.first_step_task !== ""
+                                            text: page.sioul.text("focus-two")
+                                            icon.name: "chronometer-start"
+                                            icon.color: page.theme.text
+                                            onClicked: {
+                                                page.focusOn(page.shown.first_step_task, 2)
+                                                page.sioul.clearFirstStep()
+                                            }
+                                        }
+                                        Button {
+                                            flat: true
+                                            text: page.sioul.text("first-step-clear")
+                                            onClicked: page.sioul.clearFirstStep()
+                                        }
+                                    }
+                                }
+
+                                // How today is: chosen, never guessed. Work's question, so not in quiet time.
+                                RowLayout {
+                                    visible: page.shown !== null && !page.shown.quiet
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: page.sioul.text("task-weather")
+                                        color: page.theme.muted
+                                        horizontalAlignment: Text.AlignRight
+                                    }
+                                    Repeater {
+                                        model: ["clear", "haze", "fog"]
+
+                                        delegate: Button {
+                                            id: weatherButton
+
+                                            required property string modelData
+
+                                            text: page.sioul.text("task-weather-" + weatherButton.modelData)
+                                            flat: !checked
+                                            checkable: true
+                                            checked: page.shown !== null && page.shown.weather === weatherButton.modelData
+                                            onClicked: {
+                                                const already = page.shown !== null && page.shown.weather === weatherButton.modelData
+                                                page.sioul.setWeather(weatherButton.modelData)
+                                                // A click on the weather chosen unticks it, and nothing comes
+                                                // back to tick it again: its binding does.
+                                                if (already)
+                                                    weatherButton.checked = Qt.binding(() => page.shown !== null && page.shown.weather === weatherButton.modelData)
+                                            }
+                                        }
+                                    }
+                                }
+                                // What the watch says of this morning: an offer, never an alarm.
+                                RowLayout {
+                                    visible: page.shown !== null && !page.shown.quiet && page.shown.morning !== "" && page.shown.weather === "clear"
+                                    Layout.fillWidth: true
+                                    spacing: 8
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: page.shown && page.shown.morning !== "" ? page.sioul.text("watch-morning-" + page.shown.morning) : ""
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.Wrap
+                                        color: page.theme.muted
+                                    }
+                                    Button {
+                                        flat: true
+                                        text: page.sioul.text("watch-morning-lighter")
+                                        onClicked: page.sioul.setWeather(page.shown.morning === "strain" ? "fog" : "haze")
+                                    }
+                                }
+                                Label {
+                                    visible: page.shown !== null && page.shown.now.weather_note !== ""
+                                    Layout.fillWidth: true
+                                    text: page.shown ? page.shown.now.weather_note : ""
                                     textFormat: Text.PlainText
                                     wrapMode: Text.Wrap
                                     color: page.theme.muted
                                 }
+                                // The next date asked within a week: the time it needs, the room there is.
+                                Label {
+                                    visible: page.shown !== null && page.shown.budget !== ""
+                                    Layout.fillWidth: true
+                                    text: page.shown ? page.shown.budget : ""
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    color: page.theme.muted
+                                }
+
+                                Panel {
+                                    Layout.fillWidth: true
+                                    theme: page.theme
+                                    accent: page.shown !== null && page.shown.now.now !== null
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        spacing: 8
+
+                                        Label {
+                                            visible: page.shown !== null && page.shown.now.now === null
+                                            Layout.fillWidth: true
+                                            text: page.shown ? page.shown.now.empty : ""
+                                            textFormat: Text.PlainText
+                                            wrapMode: Text.Wrap
+                                            font.pixelSize: 17
+                                            color: page.theme.text
+                                        }
+                                        Label {
+                                            visible: page.shown !== null && page.shown.now.now !== null
+                                            text: page.sioul.text("task-now-title")
+                                            font.pixelSize: 13
+                                            color: page.theme.muted
+                                        }
+                                        Label {
+                                            visible: page.shown !== null && page.shown.now.now !== null
+                                            Layout.fillWidth: true
+                                            text: page.shown && page.shown.now.now ? page.shown.now.now.title : ""
+                                            textFormat: Text.PlainText
+                                            wrapMode: Text.Wrap
+                                            font.pixelSize: 22
+                                            color: page.theme.text
+
+                                            TapHandler {
+                                                onTapped: page.open(page.shown.now.now.uid)
+                                            }
+                                        }
+                                        // The bigger task it is a step of, and its case.
+                                        Label {
+                                            readonly property var task: page.shown && page.shown.now.now ? page.shown.now.now : null
+
+                                            visible: task !== null && text !== ""
+                                            Layout.fillWidth: true
+                                            text: task ? [task.parent].concat(task.cases).filter(t => t !== "").join("  ·  ") : ""
+                                            textFormat: Text.PlainText
+                                            wrapMode: Text.Wrap
+                                            color: page.theme.muted
+                                        }
+                                        Repeater {
+                                            model: page.shown && page.shown.now.now ? page.shown.now.why.concat(page.shown.now.picked !== "" ? [page.shown.now.picked] : []) : []
+
+                                            delegate: Label {
+                                                required property string modelData
+
+                                                Layout.fillWidth: true
+                                                text: modelData
+                                                textFormat: Text.PlainText
+                                                wrapMode: Text.Wrap
+                                                color: page.theme.muted
+                                            }
+                                        }
+                                        Label {
+                                            readonly property var task: page.shown && page.shown.now.now ? page.shown.now.now : null
+
+                                            visible: task !== null && text !== ""
+                                            Layout.fillWidth: true
+                                            text: task ? [task.estimate, task.stopped, task.steps].filter(t => t !== "").join("  ·  ") : ""
+                                            textFormat: Text.PlainText
+                                            wrapMode: Text.Wrap
+                                            color: page.theme.text
+                                        }
+                                        Flow {
+                                            visible: page.shown !== null && page.shown.now.now !== null
+                                            Layout.fillWidth: true
+                                            spacing: 6
+
+                                            Button {
+                                                text: page.sioul.text("task-start")
+                                                icon.name: "chronometer-start"
+                                                icon.color: page.theme.accentText
+                                                highlighted: true
+                                                onClicked: nowStart.now().popup()
+
+                                                Later {
+                                                    id: nowStart
+
+                                                    sourceComponent: Component {
+                                                        SioulMenu {
+                                                            id: nowStartForm
+
+                                                            Repeater {
+                                                                model: [2, 15, 25, 45, 0]
+
+                                                                delegate: MenuItem {
+                                                                    required property int modelData
+
+                                                                    text: modelData === 2 ? page.sioul.text("focus-two") : modelData === 0 ? page.sioul.text("focus-open-ended") : page.sioul.textWith("focus-for", "minutes", String(modelData))
+                                                                    onTriggered: page.focusOn(page.shown.now.now.uid, modelData)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Button {
+                                                text: page.sioul.text("task-done")
+                                                icon.name: "task-complete"
+                                                icon.color: page.theme.text
+                                                onClicked: page.sioul.setTaskStatus(page.shown.now.now.uid, "completed")
+                                            }
+                                            Button {
+                                                flat: true
+                                                text: page.sioul.text("task-not-now")
+                                                onClicked: page.sioul.notNow(page.shown.now.now.uid)
+                                            }
+                                            Button {
+                                                flat: true
+                                                text: page.sioul.text("task-hard")
+                                                onClicked: hardMenu.now().popup()
+
+                                                // What makes it hard: one matching help each.
+                                                Later {
+                                                    id: hardMenu
+
+                                                    sourceComponent: Component {
+                                                        SioulMenu {
+                                                            id: hardMenuForm
+
+                                                            MenuItem {
+                                                                text: page.sioul.text("task-hard-how")
+                                                                onTriggered: page.open(page.shown.now.now.uid)
+                                                            }
+                                                            MenuItem {
+                                                                text: page.sioul.text("task-hard-big")
+                                                                onTriggered: {
+                                                                    page.open(page.shown.now.now.uid)
+                                                                    Qt.callLater(() => panelLoader.item.addStep())
+                                                                }
+                                                            }
+                                                            MenuItem {
+                                                                text: page.sioul.text("task-hard-dread")
+                                                                onTriggered: page.focusOn(page.shown.now.now.uid, 2)
+                                                            }
+                                                            MenuItem {
+                                                                text: page.sioul.text("task-hard-boring")
+                                                                onTriggered: page.focusOn(page.shown.now.now.uid, 2)
+                                                            }
+                                                            MenuItem {
+                                                                text: page.sioul.text("task-hard-energy")
+                                                                onTriggered: page.sioul.setWeather("fog")
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // After a heavy step: something that gives back, offered.
+                                Label {
+                                    visible: page.shown !== null && page.shown.now.rest !== null
+                                    text: page.sioul.text("task-rest-offer")
+                                    font.pixelSize: 13
+                                    color: page.theme.muted
+                                    Layout.topMargin: 4
+                                }
+                                TaskRow {
+                                    visible: page.shown !== null && page.shown.now.rest !== null
+                                    Layout.fillWidth: true
+                                    task: page.shown && page.shown.now.rest ? page.shown.now.rest : ({ uid: "", title: "", status: "", due: "", estimate: "", steps: "", waits: "", stopped: "", list: "", done_on: "", read_only: true, has_steps: false })
+                                    theme: page.theme
+                                    sioul: page.sioul
+                                    compact: true
+                                    onOpen: uid => page.open(uid)
+                                    onMenu: task => taskMenu.now().show(task)
+                                    onTick: page.tick(page.shown.now.rest)
+                                }
+
+                                // The one after it, in a line.
+                                Label {
+                                    visible: page.shown !== null && page.shown.now.then !== null
+                                    text: page.sioul.text("task-then")
+                                    font.pixelSize: 13
+                                    color: page.theme.muted
+                                    Layout.topMargin: 4
+                                }
+                                TaskRow {
+                                    visible: page.shown !== null && page.shown.now.then !== null
+                                    Layout.fillWidth: true
+                                    task: page.shown && page.shown.now.then ? page.shown.now.then : ({ uid: "", title: "", status: "", due: "", estimate: "", steps: "", waits: "", stopped: "", list: "", done_on: "", read_only: true, has_steps: false })
+                                    theme: page.theme
+                                    sioul: page.sioul
+                                    compact: true
+                                    onOpen: uid => page.open(uid)
+                                    onMenu: task => taskMenu.now().show(task)
+                                    onTick: page.tick(page.shown.now.then)
+                                }
+
+                                // Behind a key: two other choices, what is started, done this week.
                                 Repeater {
-                                    model: page.shown && page.shown.now.now ? page.shown.now.why.concat(page.shown.now.picked !== "" ? [page.shown.now.picked] : []) : []
+                                    model: [
+                                        { key: "others", label: "task-other-choices", items: page.shown ? page.shown.now.others : [] },
+                                        { key: "started", label: "task-started", items: page.shown ? page.shown.now.started : [] },
+                                        { key: "joy", label: "task-joy", items: page.shown ? page.shown.now.joy : [] },
+                                        { key: "done", label: "task-done-week", items: page.shown ? page.shown.now.done_week : [] }
+                                    ]
+
+                                    delegate: ColumnLayout {
+                                        id: fold
+
+                                        required property var modelData
+                                        readonly property bool open: fold.modelData.key === "others" ? page.othersShown : fold.modelData.key === "started" ? page.startedShown : fold.modelData.key === "joy" ? page.joyShown : page.doneShown
+
+                                        visible: fold.modelData.items.length > 0
+                                        Layout.fillWidth: true
+                                        spacing: 2
+
+                                        Button {
+                                            flat: true
+                                            text: (fold.open ? "▾  " : "▸  ") + page.sioul.text(fold.modelData.label)
+                                            onClicked: {
+                                                if (fold.modelData.key === "others")
+                                                    page.othersShown = !page.othersShown
+                                                else if (fold.modelData.key === "started")
+                                                    page.startedShown = !page.startedShown
+                                                else if (fold.modelData.key === "joy")
+                                                    page.joyShown = !page.joyShown
+                                                else
+                                                    page.doneShown = !page.doneShown
+                                            }
+                                        }
+                                        Repeater {
+                                            model: fold.open ? fold.modelData.items : []
+
+                                            delegate: TaskRow {
+                                                required property var modelData
+
+                                                Layout.fillWidth: true
+                                                task: modelData
+                                                theme: page.theme
+                                                sioul: page.sioul
+                                                compact: true
+                                                selected: page.opened === modelData.uid
+                                                onOpen: uid => page.open(uid)
+                                                onMenu: task => taskMenu.now().show(task)
+                                                onTick: page.tick(modelData)
+                                            }
+                                        }
+                                    }
+                                }
+                                Repeater {
+                                    model: page.shown ? page.shown.now.loops.concat(page.shown.now.wip !== "" ? [page.shown.now.wip] : []) : []
 
                                     delegate: Label {
                                         required property string modelData
@@ -543,223 +761,22 @@ Item {
                                         color: page.theme.muted
                                     }
                                 }
-                                Label {
-                                    readonly property var task: page.shown && page.shown.now.now ? page.shown.now.now : null
-
-                                    visible: task !== null && text !== ""
-                                    Layout.fillWidth: true
-                                    text: task ? [task.estimate, task.stopped, task.steps].filter(t => t !== "").join("  ·  ") : ""
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    color: page.theme.text
-                                }
-                                Flow {
-                                    visible: page.shown !== null && page.shown.now.now !== null
-                                    Layout.fillWidth: true
-                                    spacing: 6
-
-                                    Button {
-                                        text: page.sioul.text("task-start")
-                                        icon.name: "chronometer-start"
-                                        icon.color: page.theme.accentText
-                                        highlighted: true
-                                        onClicked: nowStart.now().popup()
-
-                                        Later {
-                                            id: nowStart
-
-                                            sourceComponent: Component {
-                                                SioulMenu {
-                                                    id: nowStartForm
-
-                                                    Repeater {
-                                                        model: [2, 15, 25, 45, 0]
-
-                                                        delegate: MenuItem {
-                                                            required property int modelData
-
-                                                            text: modelData === 2 ? page.sioul.text("focus-two") : modelData === 0 ? page.sioul.text("focus-open-ended") : page.sioul.textWith("focus-for", "minutes", String(modelData))
-                                                            onTriggered: page.focusOn(page.shown.now.now.uid, modelData)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Button {
-                                        text: page.sioul.text("task-done")
-                                        icon.name: "task-complete"
-                                        icon.color: page.theme.text
-                                        onClicked: page.sioul.setTaskStatus(page.shown.now.now.uid, "completed")
-                                    }
-                                    Button {
-                                        flat: true
-                                        text: page.sioul.text("task-not-now")
-                                        onClicked: page.sioul.notNow(page.shown.now.now.uid)
-                                    }
-                                    Button {
-                                        flat: true
-                                        text: page.sioul.text("task-hard")
-                                        onClicked: hardMenu.now().popup()
-
-                                        // What makes it hard: one matching help each.
-                                        Later {
-                                            id: hardMenu
-
-                                            sourceComponent: Component {
-                                                SioulMenu {
-                                                    id: hardMenuForm
-
-                                                    MenuItem {
-                                                        text: page.sioul.text("task-hard-how")
-                                                        onTriggered: page.open(page.shown.now.now.uid)
-                                                    }
-                                                    MenuItem {
-                                                        text: page.sioul.text("task-hard-big")
-                                                        onTriggered: {
-                                                            page.open(page.shown.now.now.uid)
-                                                            Qt.callLater(() => panelLoader.item.addStep())
-                                                        }
-                                                    }
-                                                    MenuItem {
-                                                        text: page.sioul.text("task-hard-dread")
-                                                        onTriggered: page.focusOn(page.shown.now.now.uid, 2)
-                                                    }
-                                                    MenuItem {
-                                                        text: page.sioul.text("task-hard-boring")
-                                                        onTriggered: page.focusOn(page.shown.now.now.uid, 2)
-                                                    }
-                                                    MenuItem {
-                                                        text: page.sioul.text("task-hard-energy")
-                                                        onTriggered: page.sioul.setWeather("fog")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // After a heavy step: something that gives back, offered.
-                        Label {
-                            visible: page.shown !== null && page.shown.now.rest !== null
-                            text: page.sioul.text("task-rest-offer")
-                            font.pixelSize: 13
-                            color: page.theme.muted
-                            Layout.topMargin: 4
-                        }
-                        TaskRow {
-                            visible: page.shown !== null && page.shown.now.rest !== null
-                            Layout.fillWidth: true
-                            task: page.shown && page.shown.now.rest ? page.shown.now.rest : ({ uid: "", title: "", status: "", due: "", estimate: "", steps: "", waits: "", stopped: "", list: "", done_on: "", read_only: true, has_steps: false })
-                            theme: page.theme
-                            sioul: page.sioul
-                            compact: true
-                            onOpen: uid => page.open(uid)
-                            onMenu: task => taskMenu.now().show(task)
-                            onTick: page.tick(page.shown.now.rest)
-                        }
-
-                        // The one after it, in a line.
-                        Label {
-                            visible: page.shown !== null && page.shown.now.then !== null
-                            text: page.sioul.text("task-then")
-                            font.pixelSize: 13
-                            color: page.theme.muted
-                            Layout.topMargin: 4
-                        }
-                        TaskRow {
-                            visible: page.shown !== null && page.shown.now.then !== null
-                            Layout.fillWidth: true
-                            task: page.shown && page.shown.now.then ? page.shown.now.then : ({ uid: "", title: "", status: "", due: "", estimate: "", steps: "", waits: "", stopped: "", list: "", done_on: "", read_only: true, has_steps: false })
-                            theme: page.theme
-                            sioul: page.sioul
-                            compact: true
-                            onOpen: uid => page.open(uid)
-                            onMenu: task => taskMenu.now().show(task)
-                            onTick: page.tick(page.shown.now.then)
-                        }
-
-                        // Behind a key: two other choices, what is started, done this week.
-                        Repeater {
-                            model: [
-                                { key: "others", label: "task-other-choices", items: page.shown ? page.shown.now.others : [] },
-                                { key: "started", label: "task-started", items: page.shown ? page.shown.now.started : [] },
-                                { key: "joy", label: "task-joy", items: page.shown ? page.shown.now.joy : [] },
-                                { key: "done", label: "task-done-week", items: page.shown ? page.shown.now.done_week : [] }
-                            ]
-
-                            delegate: ColumnLayout {
-                                id: fold
-
-                                required property var modelData
-                                readonly property bool open: fold.modelData.key === "others" ? page.othersShown : fold.modelData.key === "started" ? page.startedShown : fold.modelData.key === "joy" ? page.joyShown : page.doneShown
-
-                                visible: fold.modelData.items.length > 0
-                                Layout.fillWidth: true
-                                spacing: 2
-
+                                // Out of energy before the list is done: today's tasks
+                                // move to their next day, and work rests until it is back.
                                 Button {
+                                    visible: page.shown !== null && !page.shown.quiet
+                                    Layout.topMargin: 12
+                                    Layout.alignment: Qt.AlignHCenter
                                     flat: true
-                                    text: (fold.open ? "▾  " : "▸  ") + page.sioul.text(fold.modelData.label)
-                                    onClicked: {
-                                        if (fold.modelData.key === "others")
-                                            page.othersShown = !page.othersShown
-                                        else if (fold.modelData.key === "started")
-                                            page.startedShown = !page.startedShown
-                                        else if (fold.modelData.key === "joy")
-                                            page.joyShown = !page.joyShown
-                                        else
-                                            page.doneShown = !page.doneShown
-                                    }
-                                }
-                                Repeater {
-                                    model: fold.open ? fold.modelData.items : []
-
-                                    delegate: TaskRow {
-                                        required property var modelData
-
-                                        Layout.fillWidth: true
-                                        task: modelData
-                                        theme: page.theme
-                                        sioul: page.sioul
-                                        compact: true
-                                        selected: page.opened === modelData.uid
-                                        onOpen: uid => page.open(uid)
-                                        onMenu: task => taskMenu.now().show(task)
-                                        onTick: page.tick(modelData)
-                                    }
+                                    text: page.sioul.text("done-button")
+                                    icon.name: "weather-clear-night"
+                                    icon.color: page.theme.text
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: page.sioul.text("done-button-help")
+                                    ToolTip.delay: 500
+                                    onClicked: page.stopForToday()
                                 }
                             }
-                        }
-                        Repeater {
-                            model: page.shown ? page.shown.now.loops.concat(page.shown.now.wip !== "" ? [page.shown.now.wip] : []) : []
-
-                            delegate: Label {
-                                required property string modelData
-
-                                Layout.fillWidth: true
-                                text: modelData
-                                textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
-                                color: page.theme.muted
-                            }
-                        }
-                        // Out of energy before the list is done: today's tasks
-                        // move to their next day, and work rests until it is back.
-                        Button {
-                            visible: page.shown !== null && !page.shown.quiet
-                            Layout.topMargin: 12
-                            Layout.alignment: Qt.AlignHCenter
-                            flat: true
-                            text: page.sioul.text("done-button")
-                            icon.name: "weather-clear-night"
-                            icon.color: page.theme.text
-                            ToolTip.visible: hovered
-                            ToolTip.text: page.sioul.text("done-button-help")
-                            ToolTip.delay: 500
-                            onClicked: page.stopForToday()
                         }
                     }
                 }

@@ -36,6 +36,10 @@ unsafe extern "C" {
     /// Sioul's own icon on its windows (cpp/appicon.cpp); once the application is made.
     #[cfg(not(target_os = "android"))]
     fn sioul_set_window_icon();
+    /// On a phone, what the window draws with given back while Sioul is away
+    /// (android/main.cpp); once the window is made.
+    #[cfg(target_os = "android")]
+    fn sioul_android_lean_window();
     /// Sioul's symbols font, and the system's fonts and image formats read on
     /// a thread of their own (cpp/warmup.cpp); once the application is made.
     fn sioul_warm_up();
@@ -148,6 +152,11 @@ pub fn run() -> i32 {
     if let Some(engine) = engine.as_mut() {
         engine.load(&QUrl::from("qrc:/qt/qml/com/aurelienpierre/sioul/qml/main.qml"));
     }
+    #[cfg(target_os = "android")]
+    // SAFETY: the window is made (above); called once, on the main thread.
+    unsafe {
+        sioul_android_lean_window()
+    };
     timing("the window loaded");
     let code = match app.as_mut() {
         Some(app) => app.exec(),
