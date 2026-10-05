@@ -39,6 +39,8 @@ If Sioul was closed at the time, a dose of the last twelve hours that was neithe
 
 Only the computer you are at reminds you. A dose marked taken on one goes to the others at once. For that, share between your computers ([Sharing](sharing.md)); without it, the page says the doses are known to this computer only.
 
+**When Sioul can't tell.** A dose taken twice can harm, so Sioul never says a dose was not taken unless it knows. Your devices exchange through a folder another program syncs, sometimes late: a phone's sync can bring files only every half hour. When Sioul has not heard from one of your devices since the dose was due, or part of what it wrote could not be read, or this device's own record of doses could not be read, it says so under the dose, on the Porch and on this page: "Sioul can't tell whether it was taken: your laptop was last heard on Monday 5 October at 07:52. Check before taking it." A reminder in that case first waits a few minutes for news, then comes titled **Check first**. Look at the other device, or at your pill box, before taking the dose.
+
 ## Prescriptions
 
 **Add a prescription**: what it is for, who wrote it, until when it is valid, how many days the pharmacy gives at a time, and when it was last fetched.

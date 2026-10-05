@@ -10,7 +10,9 @@
 //! sealed like the records (`leases/<part>/<computer>.lease`), one writer per
 //! file so the sync never makes conflicted copies; renewed each minute while
 //! Sioul runs, alive five minutes after its last renewal, taken out when Sioul
-//! quits. Every computer reads the same claims the same way:
+//! quits, or is put away on a phone: then it says so (`close`) with how far
+//! it wrote its records, so the others know it marks nothing until it is
+//! back (docs/health.md, "Knowing"). Every computer reads the same claims the same way:
 //! - a part that follows you (medicines) is kept by the live claim used most
 //!   recently: the computer you are at;
 //! - a part that stays put (invoices) is kept by the live claim taken last,
@@ -54,6 +56,14 @@ pub struct Claim {
     pub active: i64,
     /// Taken on purpose then; 0 never.
     pub taken: i64,
+    /// How far it had written its records when it renewed: its round and the
+    /// number of the last (`share::written`). Read that far, everything it
+    /// said until then is known; none from a Sioul that does not say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wrote: Option<(u32, u64)>,
+    /// It closed then (quit, or put away): it marks nothing until it says otherwise.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub closed: bool,
 }
 
 /// Who keeps a part now.
@@ -92,6 +102,11 @@ fn bound(part: &str, computer: &str) -> String {
     format!("lease{}{part}{}{computer}", '\u{1f}', '\u{1f}')
 }
 
+/// Every claim on `part` that reads, live or not.
+pub fn claims(folder: &Path, key: &[u8; 32], part: &str) -> Vec<Claim> {
+    read(folder, key, part)
+}
+
 fn read(folder: &Path, key: &[u8; 32], part: &str) -> Vec<Claim> {
     let Ok(entries) = std::fs::read_dir(folder_of(folder, part)) else { return Vec::new() };
     entries
@@ -123,15 +138,16 @@ fn choose<'a>(claims: &'a [Claim], rule: Rule, now: i64) -> Option<&'a Claim> {
 static KEPT: Mutex<BTreeMap<String, (String, i64)>> = Mutex::new(BTreeMap::new());
 
 /// This computer's claim on `part`, renewed (made the first time): `active`
-/// is when you were last at this computer, `take` takes the part on purpose.
-/// Returns who keeps it now.
-pub fn renew(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64, active: i64, take: bool, rule: Rule) -> Result<Keeper, String> {
+/// is when you were last at this computer, `take` takes the part on purpose,
+/// `wrote` how far it wrote its records. Returns who keeps it now.
+#[allow(clippy::too_many_arguments)]
+pub fn renew(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64, active: i64, take: bool, rule: Rule, wrote: Option<(u32, u64)>) -> Result<Keeper, String> {
     let mut claims = read(folder, key, part);
     let old = claims.iter().find(|c| c.computer == computer).cloned();
-    // A claim that lapsed starts again: its age counts from now.
-    let since = old.as_ref().filter(|c| c.until > now).map_or(now, |c| c.since);
+    // A claim that lapsed, or closed, starts again: its age counts from now.
+    let since = old.as_ref().filter(|c| c.until > now && !c.closed).map_or(now, |c| c.since);
     let taken = if take { now } else { old.as_ref().map_or(0, |c| c.taken) };
-    let claim = Claim { computer: computer.to_string(), name: host_name(), since, renewed: now, until: now + ALIVE, active: active.max(old.as_ref().map_or(0, |c| c.active)), taken };
+    let claim = Claim { computer: computer.to_string(), name: host_name(), since, renewed: now, until: now + ALIVE, active: active.max(old.as_ref().map_or(0, |c| c.active)), taken, wrote, closed: false };
     let plain = serde_json::to_vec(&claim).map_err(|e| e.to_string())?;
     let path = folder_of(folder, part).join(format!("{computer}.lease"));
     crate::share::write_atomically(&path, crate::share::seal(key, &bound(part, computer), &plain).as_bytes())?;
@@ -164,12 +180,18 @@ fn keeper(claims: &[Claim], part: &str, computer: &str, rule: Rule, now: i64) ->
     Keeper { computer: chosen.computer.clone(), name: chosen.name.clone(), mine, settled, others_heard, others: others.len() }
 }
 
-/// This computer's claim on `part` taken out: Sioul quits.
-pub fn release(folder: &Path, part: &str, computer: &str) {
-    let _ = std::fs::remove_file(folder_of(folder, part).join(format!("{computer}.lease")));
+/// This computer's claim on `part` closed: Sioul quits, or is put away on a
+/// phone. It keeps nothing, and says how far it wrote its records, so the
+/// others know everything it marked before it closed.
+pub fn close(folder: &Path, key: &[u8; 32], part: &str, computer: &str, now: i64, wrote: Option<(u32, u64)>) -> Result<(), String> {
+    let old = read(folder, key, part).into_iter().find(|c| c.computer == computer);
+    let claim = Claim { computer: computer.to_string(), name: host_name(), since: now, renewed: now, until: now, active: old.as_ref().map_or(0, |c| c.active), taken: old.as_ref().map_or(0, |c| c.taken), wrote, closed: true };
+    let plain = serde_json::to_vec(&claim).map_err(|e| e.to_string())?;
+    crate::share::write_atomically(&folder_of(folder, part).join(format!("{computer}.lease")), crate::share::seal(key, &bound(part, computer), &plain).as_bytes())?;
     if let Ok(mut kept) = KEPT.lock() {
         kept.remove(part);
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -187,19 +209,21 @@ mod tests {
         let dir = folder("follow");
         let key = [7u8; 32];
         // The desktop alone: it keeps them at once, nobody else to wait for.
-        let alone = renew(&dir, &key, "health", "desktop", 1000, 1000, false, Rule::FollowsYou).unwrap();
+        let alone = renew(&dir, &key, "health", "desktop", 1000, 1000, false, Rule::FollowsYou, None).unwrap();
         assert!(alone.mine && alone.settled);
         // The laptop opens and is used: it keeps them, but acts only once settled.
-        let laptop = renew(&dir, &key, "health", "laptop", 1060, 1060, false, Rule::FollowsYou).unwrap();
+        let laptop = renew(&dir, &key, "health", "laptop", 1060, 1060, false, Rule::FollowsYou, None).unwrap();
         assert!(laptop.mine && !laptop.settled, "the desktop may not have seen it yet");
-        let desktop = renew(&dir, &key, "health", "desktop", 1070, 1000, false, Rule::FollowsYou).unwrap();
+        let desktop = renew(&dir, &key, "health", "desktop", 1070, 1000, false, Rule::FollowsYou, None).unwrap();
         assert!(!desktop.mine, "the desktop steps back");
         assert_eq!(desktop.others, 1);
-        let later = renew(&dir, &key, "health", "laptop", 1060 + SETTLING, 1060 + SETTLING, false, Rule::FollowsYou).unwrap();
+        let later = renew(&dir, &key, "health", "laptop", 1060 + SETTLING, 1060 + SETTLING, false, Rule::FollowsYou, None).unwrap();
         assert!(later.mine && later.settled);
-        // The laptop closes: its claim lapses, the desktop keeps them again.
-        release(&dir, "health", "laptop");
-        let back = renew(&dir, &key, "health", "desktop", 1200, 1200, false, Rule::FollowsYou).unwrap();
+        // The laptop closes: it says so, and how far it wrote; the desktop keeps them again.
+        close(&dir, &key, "health", "laptop", 1190, Some((1, 12))).unwrap();
+        let closed = claims(&dir, &key, "health").into_iter().find(|c| c.computer == "laptop").unwrap();
+        assert!(closed.closed && closed.wrote == Some((1, 12)) && closed.until <= 1190);
+        let back = renew(&dir, &key, "health", "desktop", 1200, 1200, false, Rule::FollowsYou, None).unwrap();
         assert!(back.mine);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -208,13 +232,13 @@ mod tests {
     fn invoices_stay_put() {
         let dir = folder("stay");
         let key = [9u8; 32];
-        let first = renew(&dir, &key, "invoices", "desktop", 1000, 1000, false, Rule::StaysPut).unwrap();
+        let first = renew(&dir, &key, "invoices", "desktop", 1000, 1000, false, Rule::StaysPut, None).unwrap();
         assert!(first.mine);
         // Used later, the laptop does not take them: the oldest keeps them.
-        let laptop = renew(&dir, &key, "invoices", "laptop", 1100, 1100, false, Rule::StaysPut).unwrap();
+        let laptop = renew(&dir, &key, "invoices", "laptop", 1100, 1100, false, Rule::StaysPut, None).unwrap();
         assert!(!laptop.mine && laptop.name == host_name());
         // Taken on purpose: the laptop keeps them, once settled.
-        let taken = renew(&dir, &key, "invoices", "laptop", 1200, 1200, true, Rule::StaysPut).unwrap();
+        let taken = renew(&dir, &key, "invoices", "laptop", 1200, 1200, true, Rule::StaysPut, None).unwrap();
         assert!(taken.mine && !taken.settled);
         assert!(!look(&dir, &key, "invoices", "desktop", 1210, Rule::StaysPut).mine);
         // Claims not renewed die: nobody else keeps them then.

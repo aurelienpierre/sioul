@@ -230,6 +230,20 @@ SioulWindow {
         }
     }
 
+    // Put away on a phone: what was marked goes out, and your other devices
+    // learn this one marks nothing until it is back. Its next minute says it is.
+    Connections {
+        target: Qt.application
+        enabled: Qt.platform.os === "android"
+
+        function onStateChanged() {
+            if (Qt.application.state === Qt.ApplicationSuspended || Qt.application.state === Qt.ApplicationHidden)
+                sioul.goingAway()
+            else if (Qt.application.state === Qt.ApplicationActive)
+                sioul.backHere()
+        }
+    }
+
     // A reminder's "Open": what it is about, shown, the window brought forward.
     Connections {
         target: sioul

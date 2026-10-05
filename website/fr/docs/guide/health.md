@@ -39,6 +39,8 @@ Si Sioul était fermé à ce moment-là, une prise des douze dernières heures q
 
 Seul l’ordinateur où vous êtes vous fait le rappel. Une prise marquée sur l’un passe tout de suite aux autres. Pour cela, [partagez entre vos ordinateurs](sharing.md) ; sans cela, la page dit que les prises ne sont connues que de cet ordinateur.
 
+**Quand Sioul ne peut pas savoir.** Un médicament pris deux fois peut faire du mal : Sioul ne dit donc jamais qu’une prise n’a pas été prise s’il ne le sait pas. Vos appareils échangent par un dossier qu’un autre programme synchronise, parfois en retard : la synchronisation d’un téléphone peut n’apporter les fichiers que toutes les demi-heures. Quand Sioul n’a pas eu de nouvelles d’un de vos appareils depuis l’heure de la prise, qu’une partie de ce qu’il a écrit n’a pas pu être lue, ou que le registre des prises de cet appareil n’a pas pu être lu, il le dit sous la prise, sur le Porche et sur cette page : « Sioul ne peut pas savoir si elle a été prise : votre portable a été entendu pour la dernière fois le lundi 5 octobre à 07:52. Vérifiez avant de la prendre. » Un rappel attend alors quelques minutes des nouvelles, puis vient avec le titre **À vérifier d’abord**. Regardez l’autre appareil, ou votre pilulier, avant de la prendre.
+
 ## Les ordonnances {#prescriptions}
 
 **Ajouter une ordonnance** : ce qu’elle prescrit, qui l’a écrite, jusqu’à quand elle est valable, combien de jours la pharmacie donne à la fois, et la date du dernier retrait.

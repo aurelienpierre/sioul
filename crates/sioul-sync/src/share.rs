@@ -411,8 +411,14 @@ fn flatten(path: Vec<String>, value: &toml::Value, rules: &Rules, out: &mut Vec<
 
 // ---------------------------------------------------------------- writing entries
 
-/// Writes entries into one file: each `(entry, value)`, `None` taking it out.
+/// Writes entries into one file: each `(entry, value)`, `None` taking it out;
+/// under the file's lock, as the window writes some of these files too
+/// (the doses' record: `sioul_core::filelock`).
 fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)]) -> Result<(), String> {
+    sioul_core::filelock::with_lock(path, || write_entries_locked(store, path, changes))
+}
+
+fn write_entries_locked(store: &Store, path: &Path, changes: &[(&str, Option<&str>)]) -> Result<(), String> {
     match store.shape {
         Shape::Whole => {
             let (_, value) = changes.last().ok_or("nothing")?;
@@ -752,6 +758,18 @@ struct Memory {
     /// How far each other computer's records were read: its round and the bytes read in it.
     #[serde(default)]
     read: BTreeMap<String, (u32, u64)>,
+    /// The last record read from each other computer: its round and number.
+    /// Its claims say how far it wrote (`lease::Claim::wrote`): read that far,
+    /// everything it said until then is known here (docs/health.md, "Knowing").
+    #[serde(default)]
+    read_n: BTreeMap<String, (u32, u64)>,
+    /// When a line of another computer's could not be read here (Unix seconds): what it said is lost.
+    #[serde(default)]
+    broken: BTreeMap<String, i64>,
+    /// Files whose entries are read again from every computer's records, this
+    /// one's too, at the next exchange (`rebuild`): a record lost here comes back.
+    #[serde(default)]
+    rebuild: BTreeSet<String>,
     /// Others' changes not written yet (their file could not be read, or is
     /// one this version does not know): tried again at each exchange.
     #[serde(default)]
@@ -941,8 +959,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         .filter(|(key, (_, c, w))| newer(*c, w, memory.entries.get(key).map(|k| (k.c, k.w.as_str()))))
         .collect();
     let all = rounds(sharing.folder);
-    for (computer, their_rounds) in all.iter().filter(|(c, _)| *c != sharing.computer) {
-        let (mut start, mut skip) = memory.read.get(computer).copied().unwrap_or((0, 0));
+    // Rebuilding a file: this computer's own records are read again too, for its entries only.
+    let rebuilding = std::mem::take(&mut memory.rebuild);
+    for (computer, their_rounds) in all.iter().filter(|(c, _)| *c != sharing.computer || !rebuilding.is_empty()) {
+        let own = computer == sharing.computer;
+        let (mut start, mut skip) = if own { (0, 0) } else { memory.read.get(computer).copied().unwrap_or((0, 0)) };
         if !their_rounds.contains(&start) {
             // Not begun, or that round was removed: the oldest kept starts with all that counts.
             (start, skip) = (their_rounds[0], 0);
@@ -957,15 +978,30 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             // Only whole lines: one still arriving is read next time.
             for line in text.split_inclusive('\n').filter(|l| l.ends_with('\n')) {
                 let Ok(record) = serde_json::from_str::<Line>(line) else {
+                    // Never passed over in silence: it may have been a dose marked taken.
                     offset += line.len() as u64;
+                    if !own {
+                        outcome.problems.push(format!("share-other-line:{computer}"));
+                        memory.broken.insert(computer.clone(), now_ms / 1000);
+                    }
                     continue;
                 };
                 let Some(change) = open(sharing.key, &bound(computer, round, record.n, record.c), &record.s).and_then(|p| serde_json::from_slice::<Change>(&p).ok()) else {
                     outcome.problems.push(format!("share-other-seal:{computer}"));
-                    memory.read.insert(computer.clone(), (round, offset));
+                    if !own {
+                        memory.read.insert(computer.clone(), (round, offset));
+                    }
                     break 'rounds;
                 };
                 offset += line.len() as u64;
+                if own {
+                    // Only the entries of the files rebuilt; the rest is this computer's as it is.
+                    if rebuilding.contains(file_of(&change.k)) && newer(record.c, computer, winners.get(&change.k).map(|(_, c, w)| (*c, w.as_str()))) && memory.entries.get(&change.k).is_none_or(|k| (record.c, computer.as_str()) > (k.c, k.w.as_str())) {
+                        winners.insert(change.k, (change.v, record.c, computer.clone()));
+                    }
+                    continue;
+                }
+                memory.read_n.insert(computer.clone(), (round, record.n));
                 memory.clock = memory.clock.max(record.c);
                 let known = memory.entries.get(&change.k).map(|k| (k.c, k.w.as_str()));
                 let pending = winners.get(&change.k).map(|(_, c, w)| (*c, w.as_str()));
@@ -973,7 +1009,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     winners.insert(change.k, (change.v, record.c, computer.clone()));
                 }
             }
-            memory.read.insert(computer.clone(), (round, offset));
+            if !own {
+                memory.read.insert(computer.clone(), (round, offset));
+            }
         }
     }
 
@@ -1103,6 +1141,53 @@ fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &F
     memory.round += 1;
     memory.seq = 0;
     append(sharing, memory, &ours)
+}
+
+/// How far this computer wrote its records: its round and the number of the
+/// last, for its claims to say (`lease::Claim::wrote`); none before sharing.
+pub fn written(memory: &Path, computer: &str) -> Option<(u32, u64)> {
+    let memory = Memory::load(memory, computer);
+    memory.joined.then_some((memory.round.max(1), memory.seq))
+}
+
+/// What this computer read of the others' records.
+#[derive(Debug, Default, Clone)]
+pub struct Heard {
+    /// Each computer's last record read here: its round and number.
+    pub read: BTreeMap<String, (u32, u64)>,
+    /// When a line of each could not be read here (Unix seconds).
+    pub broken: BTreeMap<String, i64>,
+}
+
+impl Heard {
+    /// Whether everything `computer` wrote up to `wrote` (its round and
+    /// number, as its claim says) is read here. Nothing written yet (number 0)
+    /// is all read; a round begun anew opens with everything it holds.
+    pub fn complete(&self, computer: &str, wrote: (u32, u64)) -> bool {
+        wrote.1 == 0 || self.read.get(computer).is_some_and(|read| *read >= wrote)
+    }
+}
+
+pub fn heard(memory: &Path, computer: &str) -> Heard {
+    let memory = Memory::load(memory, computer);
+    Heard { read: memory.read_n, broken: memory.broken }
+}
+
+/// The entries of `files` read again from every computer's records, this
+/// one's too, at the next exchange; this computer forgets it held them, so
+/// that a record lost or broken here, started again empty, takes nothing out
+/// elsewhere and gets back what was written (docs/database.md, "Prudence").
+pub fn rebuild(memory: &Path, computer: &str, files: &[&str]) -> Result<(), String> {
+    let mut state = Memory::load(memory, computer);
+    state.entries.retain(|key, _| !files.contains(&file_of(key)));
+    state.pending.retain(|key, _| !files.contains(&file_of(key)));
+    for file in files {
+        state.files.remove(*file);
+        state.rebuild.insert((*file).to_string());
+    }
+    // The others' records read again from their oldest kept round.
+    state.read.clear();
+    state.save(memory)
 }
 
 fn seen_path(folder: &Path, computer: &str) -> PathBuf {
@@ -1327,6 +1412,56 @@ mod tests {
         laptop.write("config/config.toml", &format!("case_store = '{}'\n", base.join("laptop-notes").display()));
         let config: Config = toml::from_str(&laptop.read("config/config.toml")).unwrap();
         assert!(stores(&config, &laptop.roots).iter().all(|s| !s.name.starts_with("notes/")));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn what_was_read_is_known_and_a_lost_record_comes_back() {
+        let base = scratch("doses");
+        let folder = base.join("shared");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        desk.write("state/health-state.toml", "[taken]\n\"d@100\" = 110\n");
+        desk.exchange(&folder, &key, NOW);
+        phone.exchange(&folder, &key, NOW + MINUTE);
+        assert!(phone.read("state/health-state.toml").contains("d@100"));
+        // What the desk wrote, the phone read: as far as the desk's claim would say.
+        let wrote = written(&desk.memory, &desk.id).unwrap();
+        assert!(wrote.1 > 0);
+        let read = heard(&phone.memory, &phone.id);
+        assert!(read.complete(&desk.id, wrote));
+        assert!(!read.complete(&desk.id, (wrote.0, wrote.1 + 1)), "a record not read yet is not known");
+        assert!(read.complete("someone", (1, 0)), "nothing written, nothing to read");
+
+        // A line of the desk's that does not read is said, never passed over; what follows is still read.
+        desk.write("state/health-state.toml", "[taken]\n\"d@100\" = 110\n\"d@200\" = 210\n");
+        desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+        let round = round_file(&folder, &desk.id, wrote.0);
+        let mut text = std::fs::read_to_string(&round).unwrap();
+        let last = text.trim_end().rfind('\n').map_or(0, |i| i + 1);
+        text.insert_str(last, "{broken\n");
+        std::fs::write(&round, text).unwrap();
+        let outcome = phone.exchange(&folder, &key, NOW + 3 * MINUTE);
+        assert!(outcome.problems.iter().any(|p| p == &format!("share-other-line:{}", desk.id)), "{:?}", outcome.problems);
+        assert!(heard(&phone.memory, &phone.id).broken.contains_key(&desk.id));
+        assert!(phone.read("state/health-state.toml").contains("d@200"), "the next line came");
+
+        // The phone's record is lost: set aside, started again empty, rebuilt from the records.
+        phone.write("state/health-state.toml", &format!("{}\"d@300\" = 310\n", phone.read("state/health-state.toml")));
+        phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+        assert!(desk.exchange(&folder, &key, NOW + 5 * MINUTE).received > 0);
+        assert!(desk.read("state/health-state.toml").contains("d@300"));
+        std::fs::remove_file(phone.path("state/health-state.toml")).unwrap();
+        rebuild(&phone.memory, &phone.id, &["state/health-state.toml"]).unwrap();
+        // A dose marked meanwhile, in a new record holding only it.
+        phone.write("state/health-state.toml", "[taken]\n\"d@400\" = 410\n");
+        phone.exchange(&folder, &key, NOW + 6 * MINUTE);
+        let back = phone.read("state/health-state.toml");
+        assert!(back.contains("d@100") && back.contains("d@200") && back.contains("d@300") && back.contains("d@400"), "{back}");
+        // Nothing taken out on the desk: every mark is still there, the new one too.
+        desk.exchange(&folder, &key, NOW + 7 * MINUTE);
+        let there = desk.read("state/health-state.toml");
+        assert!(there.contains("d@100") && there.contains("d@200") && there.contains("d@300") && there.contains("d@400"), "{there}");
         let _ = std::fs::remove_dir_all(&base);
     }
 

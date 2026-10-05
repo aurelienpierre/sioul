@@ -21,6 +21,7 @@ pub mod compose;
 pub mod config;
 pub mod contracts;
 pub mod dayview;
+pub mod filelock;
 pub mod contacts;
 pub mod folders;
 pub mod github;

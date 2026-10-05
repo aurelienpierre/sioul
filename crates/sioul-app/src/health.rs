@@ -13,7 +13,7 @@ use cxx_qt_lib::QString;
 use jiff::civil::Date;
 use jiff::{Span, Timestamp, Zoned};
 use serde::{Deserialize, Serialize};
-use sioul_core::health::{ChatLimit, ErrandKind, Health, HealthState, Medicine, Movement, Prescription, Schedule};
+use sioul_core::health::{ChatLimit, Doubt, ErrandKind, Health, HealthState, Medicine, Movement, Peer, Prescription, Problem, Schedule};
 use sioul_core::tasks::TaskEdit;
 use std::sync::Arc;
 
@@ -71,6 +71,9 @@ struct DoseRow {
     /// Past its time by more than half an hour, not marked: marked now, it
     /// asks when it was taken (`DoseTaken.qml`).
     late: bool,
+    /// Not marked here, but whether it was taken is not known here: why, in
+    /// a sentence; "" when it is known (docs/health.md, "Knowing").
+    doubt: String,
 }
 
 #[derive(Serialize)]
@@ -267,7 +270,8 @@ fn errands_list(health: &Health) -> Option<String> {
 /// The health page, as JSON.
 pub(crate) fn page() -> String {
     let health = load();
-    let state = HealthState::load(&HealthState::default_path());
+    let state = record();
+    let knowledge = know();
     let now = Zoned::now();
     let morning = now.date().to_zoned(now.time_zone().clone()).unwrap_or_else(|_| now.clone());
     let night = morning.checked_add(Span::new().days(1)).unwrap_or_else(|_| now.clone());
@@ -275,14 +279,20 @@ pub(crate) fn page() -> String {
     let mut today: Vec<DoseRow> = health
         .doses(&morning, &night)
         .into_iter()
-        .map(|d| DoseRow {
-            taken: state.taken.get(&d.key).map(|t| hm(*t)).unwrap_or_default(),
-            past: d.at <= now,
-            late: !state.taken.contains_key(&d.key) && now.timestamp().as_second() - d.at.timestamp().as_second() > GRACE_MINUTES * 60,
-            time: d.at.strftime("%H:%M").to_string(),
-            key: d.key,
-            name: d.name,
-            dose: d.dose,
+        .map(|d| {
+            let (due, stamp) = (d.at.timestamp().as_second(), now.timestamp().as_second());
+            let marked = state.taken.contains_key(&d.key);
+            DoseRow {
+                taken: state.taken.get(&d.key).map(|t| hm(*t)).unwrap_or_default(),
+                past: d.at <= now,
+                late: !marked && stamp - due > GRACE_MINUTES * 60,
+                // Due, not marked here: whether it was taken elsewhere, said when not known.
+                doubt: if marked || due > stamp { String::new() } else { doubt_of(&knowledge, due, stamp) },
+                time: d.at.strftime("%H:%M").to_string(),
+                key: d.key,
+                name: d.name,
+                dose: d.dose,
+            }
         })
         .collect();
     // Taken today, at a time the schedule no longer has: a dose taken late or
@@ -294,16 +304,16 @@ pub(crate) fn page() -> String {
         if due < from || due >= to || today.iter().any(|d| &d.key == key) {
             continue;
         }
-        today.push(DoseRow { key: key.clone(), time: hm(due), name: medicine.name.clone(), dose: medicine.dose.clone(), taken: hm(*at), past: true, late: false });
+        today.push(DoseRow { key: key.clone(), time: hm(due), name: medicine.name.clone(), dose: medicine.dose.clone(), taken: hm(*at), past: true, late: false, doubt: String::new() });
     }
     today.sort_by(|a, b| a.time.cmp(&b.time).then(a.name.cmp(&b.name)));
     let title_of = |id: &Option<String>| id.as_ref().and_then(|id| health.prescriptions.iter().find(|p| &p.id == id)).map(|p| p.title.clone()).unwrap_or_default();
     let errands = health.errands();
-    let missed = missed_rows(&health, &state, &now);
+    let missed = missed_rows(&health, &state, &knowledge, &now);
     json(&HealthPage {
         today,
         missed,
-        shared_note: if health.medicines.is_empty() { String::new() } else { shared_note() },
+        shared_note: if health.medicines.is_empty() { String::new() } else { shared_note(&knowledge) },
         reminded_there: REMINDED_THERE.lock().map(|r| r.clone()).unwrap_or_default(),
         medicines: health.medicines.iter().map(|m| MedicineRow { when: words(&m.schedule), prescription_title: title_of(&m.prescription), medicine: m.clone() }).collect(),
         prescriptions: health
@@ -326,8 +336,9 @@ pub(crate) fn page() -> String {
     })
 }
 
-/// Doses due while Sioul ran nowhere, neither marked nor reminded: a question on the past.
-fn missed_rows(health: &Health, state: &HealthState, now: &Zoned) -> Vec<DoseRow> {
+/// Doses due while Sioul ran nowhere, neither marked nor reminded: a question
+/// on the past, each saying when whether it was taken is not known here.
+fn missed_rows(health: &Health, state: &HealthState, knowledge: &Knowledge, now: &Zoned) -> Vec<DoseRow> {
     state
         .unanswered(health, now, MISSED_HOURS, GRACE_MINUTES)
         .into_iter()
@@ -335,6 +346,7 @@ fn missed_rows(health: &Health, state: &HealthState, now: &Zoned) -> Vec<DoseRow
             taken: String::new(),
             past: true,
             late: true,
+            doubt: doubt_of(knowledge, d.at.timestamp().as_second(), now.timestamp().as_second()),
             time: if d.at.date() == now.date() { d.at.strftime("%H:%M").to_string() } else { format!("{} {}", tr().weekday_short(d.at.date()), d.at.strftime("%H:%M")) },
             key: d.key,
             name: d.name,
@@ -351,7 +363,7 @@ pub(crate) fn missed() -> String {
     if !heard || health.medicines.is_empty() {
         return "[]".into();
     }
-    json(&missed_rows(&health, &HealthState::load(&HealthState::default_path()), &Zoned::now()))
+    json(&missed_rows(&health, &record(), &know(), &Zoned::now()))
 }
 
 /// A medicine as its form gives it.
@@ -518,23 +530,206 @@ fn movement_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zon
 
 /// The question on doses due while Sioul was closed: asked once a session.
 static ASKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Doses reminded in this session: never twice, even when the record cannot be written.
+static SENT: std::sync::Mutex<std::collections::BTreeSet<String>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
 /// "Reminders come on <computer>", when another computer keeps them.
 static REMINDED_THERE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
-/// Why the doses here may not be all: this computer alone, or the others not
-/// heard from lately (a dose marked there not come yet); "" when all is known.
-fn shared_note() -> String {
+/// Why the doses here may not be all: this computer alone, or what is not
+/// known of your other devices now; "" when all is known.
+fn shared_note(knowledge: &Knowledge) -> String {
     if !crate::share::on() {
         return tr().text("health-alone", None);
     }
-    match crate::share::last_exchange() {
-        Some((at, true)) if jiff::Timestamp::now().as_second() - at < 5 * 60 => String::new(),
-        Some((at, _)) => {
-            let at = Timestamp::from_second(at).map(|t| t.to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M").to_string()).unwrap_or_default();
-            say("health-unchecked", &[("time", at)])
-        }
-        None => tr().text("health-unchecked-yet", None),
+    let now = Timestamp::now().as_second();
+    let doubts = sioul_core::health::doubts(now, now, knowledge.record_lost, &knowledge.peers);
+    if doubts.is_empty() { String::new() } else { say("dose-doubt-now", &[("why", why(&doubts))]) }
+}
+
+// ---------------------------------------------------------------- knowing
+
+/// How long a dose not known here waits for news from your other devices
+/// before it is reminded all the same, the doubt said.
+const WAIT_FOR_NEWS: i64 = 10 * 60;
+
+/// The doses' record found broken or gone here, kept on this computer only
+/// (`$XDG_STATE_HOME/sioul/health-doubt.toml`): the doses due before stay
+/// not known, for a day.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct RecordDoubt {
+    since: i64,
+    /// Where the broken record was kept aside; "" when it was gone.
+    #[serde(default)]
+    aside: String,
+}
+
+fn record_doubt_path() -> std::path::PathBuf {
+    sioul_core::config::state_dir().join("health-doubt.toml")
+}
+
+fn record_doubt() -> Option<i64> {
+    let doubt: RecordDoubt = toml::from_str(&std::fs::read_to_string(record_doubt_path()).ok()?).ok()?;
+    Some(doubt.since)
+}
+
+fn write_record_doubt(since: i64, aside: &str) {
+    let doubt = RecordDoubt { since, aside: aside.to_string() };
+    if let Ok(text) = toml::to_string(&doubt) {
+        let _ = std::fs::write(record_doubt_path(), text);
     }
+}
+
+/// The doses' record. One that cannot be trusted is never read as empty: it
+/// is repaired (`repair`), and the doses due before are said not known.
+fn record() -> HealthState {
+    let path = HealthState::default_path();
+    match HealthState::read(&path) {
+        Ok(state) => state,
+        Err(_) => {
+            repair();
+            HealthState::read(&path).unwrap_or_default()
+        }
+    }
+}
+
+/// A record that cannot be trusted: nothing it held may be taken out on your
+/// other devices, so the sharing forgets it first and reads it again from
+/// every device's records at the next exchange; then it is kept aside and a
+/// new one starts. Sharing failing that, it is left as it is: never started
+/// again empty where the sharing could take marks out elsewhere.
+fn repair() {
+    let now = Timestamp::now().as_second();
+    if crate::share::on() && !crate::share::rebuild_health_record().is_empty() {
+        write_record_doubt(now, "");
+        return;
+    }
+    let aside = HealthState::set_aside(&HealthState::default_path(), now).ok().flatten().map(|p| p.display().to_string()).unwrap_or_default();
+    write_record_doubt(now, &aside);
+}
+
+/// The record changed by `change`, under its lock; one that cannot be trusted
+/// is repaired first, then changed. Returns what went wrong, else "".
+fn change(change: impl Fn(&mut HealthState)) -> String {
+    let path = HealthState::default_path();
+    let now = Timestamp::now().as_second();
+    match HealthState::update(&path, now, &change) {
+        Ok(()) => String::new(),
+        Err(Problem::Unsound(_)) => {
+            repair();
+            match HealthState::update(&path, now, &change) {
+                Ok(()) => String::new(),
+                Err(_) => tr().text("dose-record-broken", None),
+            }
+        }
+        Err(Problem::Write(e)) => e,
+    }
+}
+
+/// What this computer saw of your other devices, for the doses: kept here
+/// only (`$XDG_STATE_HOME/sioul/share/peers.json`), never shared.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct Peers {
+    #[serde(default)]
+    peers: std::collections::BTreeMap<String, PeerSeen>,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+struct PeerSeen {
+    peer: Peer,
+    /// Its last claim seen here: when it renewed it (its clock).
+    #[serde(default)]
+    renewed: i64,
+    /// When this computer last looked (its clock): news is timed only while it watches.
+    #[serde(default)]
+    looked: i64,
+    /// How late its last claims came here, in seconds.
+    #[serde(default)]
+    delays: Vec<i64>,
+}
+
+fn peers_path() -> std::path::PathBuf {
+    sioul_core::config::state_dir().join("share").join("peers.json")
+}
+
+/// What is known here of the doses marked elsewhere: this computer's record,
+/// and each other device sharing with it (`sioul_core::health::doubts`).
+pub(crate) struct Knowledge {
+    record_lost: Option<i64>,
+    peers: Vec<Peer>,
+}
+
+/// One look at a time at the others' claims.
+static KNOWING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// What this computer knows now: the others' claims on the doses read (each
+/// says how far it wrote its records, and whether it closed), set against
+/// what was read of their records here.
+fn know() -> Knowledge {
+    let now = Timestamp::now().as_second();
+    let record_lost = record_doubt();
+    let Some((_, claims, heard)) = crate::share::others_on_health() else { return Knowledge { record_lost, peers: Vec::new() } };
+    let _held = KNOWING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut kept: Peers = std::fs::read_to_string(peers_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    learn(&mut kept, &claims, &heard, now);
+    if let Ok(text) = serde_json::to_string(&kept) {
+        let _ = std::fs::create_dir_all(sioul_core::config::state_dir().join("share"));
+        let _ = std::fs::write(peers_path(), text);
+    }
+    Knowledge { record_lost, peers: kept.peers.into_values().map(|s| s.peer).collect() }
+}
+
+/// What the others' claims say, learned: each one's name, how late its news
+/// comes, and until when everything it wrote is read here.
+fn learn(kept: &mut Peers, claims: &[sioul_sync::lease::Claim], heard: &sioul_sync::share::Heard, now: i64) {
+    for claim in claims {
+        let seen = kept.peers.entry(claim.computer.clone()).or_default();
+        seen.peer.name = claim.name.clone();
+        if claim.renewed > seen.renewed {
+            // How late its news comes, timed only while watching: a claim
+            // found after this computer was closed is old, not late.
+            if seen.renewed > 0 && now - seen.looked <= 2 * 60 {
+                seen.delays.push((now - claim.renewed).max(0));
+                let keep = seen.delays.len().saturating_sub(60);
+                seen.delays.drain(..keep);
+            }
+            seen.renewed = claim.renewed;
+        }
+        seen.looked = now;
+        seen.peer.delay = seen.delays.iter().copied().max();
+        seen.peer.heard = seen.peer.heard.max(claim.renewed);
+        // Everything it wrote until its claim, read here: known until then.
+        if let Some(wrote) = claim.wrote
+            && heard.complete(&claim.computer, wrote)
+            && claim.renewed >= seen.peer.known_until
+        {
+            seen.peer.known_until = claim.renewed;
+            seen.peer.closed = claim.closed;
+        }
+        seen.peer.broken = heard.broken.get(&claim.computer).copied();
+    }
+}
+
+/// Why a dose is not known, in words: "your laptop: last heard at 07:52".
+fn why(doubts: &[Doubt]) -> String {
+    let zone = jiff::tz::TimeZone::system();
+    let when = |at: i64| Timestamp::from_second(at).map(|t| tr().when(&t.to_zoned(zone.clone()))).unwrap_or_default();
+    let parts: Vec<String> = doubts
+        .iter()
+        .map(|doubt| match doubt {
+            Doubt::Record { since } => say("dose-doubt-record", &[("when", when(*since))]),
+            Doubt::Unheard { name, until: 0, .. } => say("dose-doubt-never", &[("name", name.clone())]),
+            Doubt::Unheard { name, until, closed: true } => say("dose-doubt-closed", &[("name", name.clone()), ("when", when(*until))]),
+            Doubt::Unheard { name, until, closed: false } => say("dose-doubt-open", &[("name", name.clone()), ("when", when(*until))]),
+            Doubt::Broken { name } => say("dose-doubt-broken", &[("name", name.clone())]),
+        })
+        .collect();
+    parts.join("; ")
+}
+
+/// A dose's doubt, as a row says it; "" when it is known.
+fn doubt_of(knowledge: &Knowledge, due: i64, now: i64) -> String {
+    let doubts = sioul_core::health::doubts(due, now, knowledge.record_lost, &knowledge.peers);
+    if doubts.is_empty() { String::new() } else { say("dose-doubt", &[("why", why(&doubts))]) }
 }
 
 /// The doses' state is read, changed and written by the minute's tick, the
@@ -550,14 +745,12 @@ fn state_held() -> std::sync::MutexGuard<'static, ()> {
 /// overtaken by the next.
 static TICKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// A dose not taken, said afterwards: asked no more.
-pub(crate) fn not_taken(key: &str) {
-    let _held = state_held();
-    let path = HealthState::default_path();
-    let mut state = HealthState::load(&path);
-    let now = Zoned::now().timestamp().as_second();
-    state.not_taken.insert(key.to_string(), now);
-    let _ = state.save(&path, now);
+/// A dose not taken, said afterwards: asked no more. Returns what went wrong, else "".
+pub(crate) fn not_taken(key: &str) -> String {
+    let now = Timestamp::now().as_second();
+    change(|state| {
+        state.not_taken.insert(key.to_string(), now);
+    })
 }
 
 /// When a dose is due, from its key ("<medicine>@<Unix seconds>").
@@ -583,21 +776,28 @@ pub(crate) fn taken_late(key: &str, time: &str, move_next: bool) -> String {
         at -= 86_400;
     }
     let _held = state_held();
-    let path = HealthState::default_path();
-    let mut state = HealthState::load(&path);
     let mut health = load();
-    state.taken.insert(key.to_string(), at);
-    state.not_taken.remove(key);
     let moved = health.taken_late(key, at, move_next);
     // Saved whenever it is taken every few hours: the answer is kept for next time.
     let hourly = key.rsplit_once('@').is_some_and(|(id, _)| health.medicines.iter().any(|m| m.id == id && matches!(m.schedule, Schedule::Hours { .. })));
     if hourly && let Err(e) = save(&health) {
         return e;
     }
-    if let Some((before, after)) = moved {
-        state.moved.insert(key.to_string(), [before, after]);
+    let problem = change(|state| {
+        state.taken.insert(key.to_string(), at);
+        state.not_taken.remove(key);
+        if let Some((before, after)) = moved {
+            state.moved.insert(key.to_string(), [before, after]);
+        }
+    });
+    // Not marked: the doses it moved go back.
+    if !problem.is_empty()
+        && let Some((before, after)) = moved
+        && health.taken_back(key, before, after)
+    {
+        let _ = save(&health);
     }
-    state.save(&path, now.timestamp().as_second()).err().unwrap_or_default()
+    problem
 }
 
 /// What the late dose's question shows, as JSON: {name, dose, due, now, hourly, follows}.
@@ -620,24 +820,28 @@ pub(crate) fn dose_info(key: &str) -> String {
 }
 
 /// A dose marked taken, or not, as it happens; a mark taken back puts back
-/// the doses its late take moved.
-pub(crate) fn set_taken(key: &str, taken: bool) {
+/// the doses its late take moved. Returns what went wrong, else "".
+pub(crate) fn set_taken(key: &str, taken: bool) -> String {
     let _held = state_held();
-    let path = HealthState::default_path();
-    let mut state = HealthState::load(&path);
-    let now = Zoned::now().timestamp().as_second();
-    let mut health = load();
-    if taken {
-        state.taken.insert(key.to_string(), now);
-    } else {
-        state.taken.remove(key);
-        if let Some([before, after]) = state.moved.remove(key)
-            && health.taken_back(key, before, after)
-        {
+    let now = Timestamp::now().as_second();
+    let moved = std::sync::Mutex::new(None);
+    let problem = change(|state| {
+        if taken {
+            state.taken.insert(key.to_string(), now);
+        } else {
+            state.taken.remove(key);
+            if let Ok(mut moved) = moved.lock() {
+                *moved = state.moved.remove(key);
+            }
+        }
+    });
+    if let Some([before, after]) = moved.into_inner().ok().flatten() {
+        let mut health = load();
+        if health.taken_back(key, before, after) {
             let _ = save(&health);
         }
     }
-    let _ = state.save(&path, now);
+    problem
 }
 
 /// The pause to move and the chats' limit: "movement.enabled", "movement.minutes",
@@ -672,17 +876,15 @@ pub(crate) fn movement_minutes() -> i32 {
 pub(crate) fn chat_minute() -> bool {
     let limit = load().chats;
     let _held = state_held();
-    let path = HealthState::default_path();
-    let mut state = HealthState::load(&path);
     let now = Zoned::now();
-    let covered = state.chat_minute(&limit, &now);
-    let _ = state.save(&path, now.timestamp().as_second());
-    covered
+    let covered = std::sync::atomic::AtomicBool::new(false);
+    let _ = change(|state| covered.store(state.chat_minute(&limit, &now), std::sync::atomic::Ordering::Relaxed));
+    covered.into_inner()
 }
 
 /// Whether chats are covered now.
 pub(crate) fn chats_covered() -> bool {
-    HealthState::load(&HealthState::default_path()).chats_covered(&Zoned::now())
+    record().chats_covered(&Zoned::now())
 }
 
 /// Each minute: a dose due is reminded once, quietly, with "Taken"; a refill
@@ -704,17 +906,37 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     let active = shared.active.load(std::sync::atomic::Ordering::Relaxed);
     let (keeper, _) = crate::share::keeper("health", sioul_sync::lease::Rule::FollowsYou, active, false);
     let _held = state_held();
-    let path = HealthState::default_path();
-    let mut state = HealthState::load(&path);
+    let state = record();
+    let knowledge = know();
     let now = Zoned::now();
+    let stamp = now.timestamp().as_second();
     if let Ok(mut there) = REMINDED_THERE.lock() {
         *there = if keeper.mine { String::new() } else { say("health-reminded-there", &[("computer", keeper.name.clone())]) };
     }
     movement_tick(qt, shared, &health, &now, keeper.mine);
+    let mut reminded: Vec<String> = Vec::new();
     if keeper.mine && keeper.settled {
         for dose in state.to_remind(&health, &now, GRACE_MINUTES) {
-            state.reminded.insert(dose.key.clone(), now.timestamp().as_second());
-            let title = if dose.dose.is_empty() { dose.name.clone() } else { format!("{} · {}", dose.name, dose.dose) };
+            if SENT.lock().is_ok_and(|sent| sent.contains(&dose.key)) {
+                continue;
+            }
+            // Not known whether it was taken on another device: news is waited
+            // for a while; then it is reminded all the same, the doubt said first.
+            let due = dose.at.timestamp().as_second();
+            let doubt = doubt_of(&knowledge, due, stamp);
+            if !doubt.is_empty() && stamp < due + WAIT_FOR_NEWS {
+                continue;
+            }
+            reminded.push(dose.key.clone());
+            if let Ok(mut sent) = SENT.lock() {
+                sent.insert(dose.key.clone());
+            }
+            let named = if dose.dose.is_empty() { dose.name.clone() } else { format!("{} · {}", dose.name, dose.dose) };
+            let (title, body) = if doubt.is_empty() {
+                (named, dose.at.strftime("%H:%M").to_string())
+            } else {
+                (say("dose-check-title", &[("dose", named)]), format!("{}. {doubt}", dose.at.strftime("%H:%M")))
+            };
             let key = dose.key.clone();
             let (qt_taken, shared_taken) = (qt.clone(), Arc::clone(shared));
             let taken: Box<dyn FnOnce() + Send> = Box::new(move || {
@@ -723,18 +945,21 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
                     let _ = qt_taken.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from("dose"), QString::default(), QString::from(&key)));
                     return;
                 }
-                set_taken(&key, true);
+                let problem = set_taken(&key, true);
+                if !problem.is_empty() {
+                    tell(&qt_taken, &shared_taken, problem);
+                }
                 // Your other computers know at once.
                 crate::share::exchange(&qt_taken, &shared_taken);
             });
-            if let Err(e) = sioul_sync::notify::remind(&title, &dose.at.strftime("%H:%M").to_string(), Some((tr().text("health-taken", None), taken))) {
+            if let Err(e) = sioul_sync::notify::remind(&title, &body, Some((tr().text("health-taken", None), taken))) {
                 tell(qt, shared, e);
             }
         }
     }
     // Doses due while Sioul ran nowhere: asked about once, as a question on
     // the past, after your other computers were heard from (a dose marked
-    // there comes first), and only where you are.
+    // there comes first), and only where you are; what is not known, said.
     let heard = !crate::share::on() || crate::share::last_exchange().is_some();
     if heard && keeper.mine && !ASKED.swap(true, std::sync::atomic::Ordering::Relaxed) {
         let missed = state.unanswered(&health, &now, MISSED_HOURS, GRACE_MINUTES);
@@ -744,7 +969,11 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             let open: Box<dyn FnOnce() + Send> = Box::new(move || {
                 let _ = qt_open.queue(|mut sioul| sioul.as_mut().reminder_opened(QString::from("porch"), QString::default(), QString::default()));
             });
-            let body = say("health-missed-body", &[("doses", names.join(", "))]);
+            let doubts: Vec<String> = missed.iter().map(|d| doubt_of(&knowledge, d.at.timestamp().as_second(), stamp)).filter(|d| !d.is_empty()).collect();
+            let mut body = say("health-missed-body", &[("doses", names.join(", "))]);
+            if let Some(doubt) = doubts.first() {
+                body = format!("{body} {doubt}");
+            }
             if let Err(e) = sioul_sync::notify::remind(&tr().text("health-missed", None), &body, Some((tr().text("health-missed-open", None), open))) {
                 tell(qt, shared, e);
             }
@@ -753,28 +982,81 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     // Errands: a task each, the day it comes into view, made once, in the list
     // the phone has; those made on this computer before move there, once.
     let target = errands_list(&health);
+    let mut made: Vec<(String, String)> = Vec::new();
     for errand in health.errands().into_iter().filter(|e| e.day <= now.date().checked_add(Span::new().days(7)).unwrap_or(now.date())) {
         if state.errands.contains_key(&errand.key) {
             continue;
         }
         let title = say(if errand.kind == ErrandKind::Refill { "health-errand-refill" } else { "health-errand-renew" }, &[("title", errand.title.clone())]);
         let edit = TaskEdit { title, start: errand.day.to_string(), categories: vec![tr().text("health-category", None)], estimate: 30, ..TaskEdit::default() };
-        let made = match &target {
+        let task = match &target {
             Some(list) => work::create_task(qt, shared, &edit, list),
             None => work::local_task(qt, shared, &tr().text("health-list", None), &edit),
         };
-        if let Ok(uid) = made {
-            state.errands.insert(errand.key, uid);
+        if let Ok(uid) = task {
+            made.push((errand.key, uid));
         }
     }
     if let Some(list) = target.as_ref().filter(|l| !l.starts_with(&format!("{}/", sioul_core::vdir::LOCAL))) {
         let loaded = work::loaded(shared);
-        for uid in state.errands.values() {
+        for uid in state.errands.values().chain(made.iter().map(|(_, uid)| uid)) {
             let here = loaded.tasks.iter().find(|t| &t.uid == uid).is_some_and(|t| t.status.is_open() && t.list_id.starts_with(&format!("{}/", sioul_core::vdir::LOCAL)));
             if here {
                 let _ = work::move_task(qt, shared, uid, list, true);
             }
         }
     }
-    let _ = state.save(&path, now.timestamp().as_second());
+    // What this minute did, written over nothing anyone else wrote meanwhile.
+    let problem = change(|record| {
+        for key in &reminded {
+            record.reminded.insert(key.clone(), stamp);
+        }
+        for (key, uid) in &made {
+            record.errands.insert(key.clone(), uid.clone());
+        }
+    });
+    if !problem.is_empty() && (!reminded.is_empty() || !made.is_empty()) {
+        tell(qt, shared, problem);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sioul_sync::lease::Claim;
+
+    fn claim(renewed: i64, wrote: Option<(u32, u64)>, closed: bool) -> Claim {
+        Claim { computer: "laptop-id".into(), name: "laptop".into(), since: 0, renewed, until: renewed + 300, active: renewed, taken: 0, wrote, closed }
+    }
+
+    fn heard_up_to(n: u64) -> sioul_sync::share::Heard {
+        sioul_sync::share::Heard { read: [("laptop-id".to_string(), (1, n))].into(), broken: Default::default() }
+    }
+
+    #[test]
+    fn what_the_others_claims_teach() {
+        let mut kept = Peers::default();
+        // Seen for the first time, an old claim: known until then, but no delay measured from it.
+        learn(&mut kept, &[claim(1_000, Some((1, 5)), false)], &heard_up_to(5), 9_000);
+        let peer = &kept.peers["laptop-id"].peer;
+        assert_eq!((peer.known_until, peer.delay, peer.name.as_str()), (1_000, None, "laptop"));
+        // Watching, each new claim times how late it came.
+        learn(&mut kept, &[claim(9_030, Some((1, 6)), false)], &heard_up_to(6), 9_060);
+        learn(&mut kept, &[claim(9_090, Some((1, 6)), false)], &heard_up_to(6), 9_120);
+        assert_eq!(kept.peers["laptop-id"].peer.delay, Some(30));
+        // A record it wrote not read here yet: known only until the claim before.
+        learn(&mut kept, &[claim(9_150, Some((1, 9)), false)], &heard_up_to(6), 9_180);
+        assert_eq!(kept.peers["laptop-id"].peer.known_until, 9_090);
+        // Read, and it says it closed: known until then, closed.
+        learn(&mut kept, &[claim(9_200, Some((1, 9)), true)], &heard_up_to(9), 9_240);
+        let peer = &kept.peers["laptop-id"].peer;
+        assert!(peer.closed && peer.known_until == 9_200);
+        // Its news comes within a minute: a dose due after it closed is known.
+        assert!(sioul_core::health::doubts(9_600, 9_700, None, std::slice::from_ref(peer)).is_empty());
+        // An older Sioul that never says how far it wrote: heard, never known.
+        let mut old = Peers::default();
+        learn(&mut old, &[claim(9_000, None, false)], &heard_up_to(99), 9_030);
+        assert_eq!(old.peers["laptop-id"].peer.known_until, 0);
+        assert_eq!(sioul_core::health::doubts(9_010, 9_030, None, &[old.peers["laptop-id"].peer.clone()]).len(), 1);
+    }
 }

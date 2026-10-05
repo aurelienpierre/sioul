@@ -330,6 +330,74 @@ impl Health {
     }
 }
 
+/// Another computer sharing with this one, as known here, for the doses
+/// (docs/health.md, "Knowing"): until when everything it wrote is read here,
+/// whether it said it closed, how late its news comes.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Peer {
+    /// Its name, to say where: the host's.
+    pub name: String,
+    /// Everything it wrote until then (Unix seconds) is read here; 0: never sure.
+    #[serde(default)]
+    pub known_until: i64,
+    /// At `known_until`, it said it closed (quit, or put away on a phone):
+    /// it marks nothing until it says otherwise.
+    #[serde(default)]
+    pub closed: bool,
+    /// The longest its news took to come here in the last day, in seconds;
+    /// none measured yet.
+    #[serde(default)]
+    pub delay: Option<i64>,
+    /// When a line it wrote was found unreadable here: what it said is lost.
+    #[serde(default)]
+    pub broken: Option<i64>,
+    /// When it was last heard at all.
+    #[serde(default)]
+    pub heard: i64,
+}
+
+/// Why a dose is not known here: whether it was taken, Sioul cannot tell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Doubt {
+    /// This computer's record of doses could not be read, or was lost, then.
+    Record { since: i64 },
+    /// Another computer may have marked it: everything it wrote is known
+    /// until then (0: never), and it was open or closed then.
+    Unheard { name: String, until: i64, closed: bool },
+    /// A line another computer wrote could not be read here.
+    Broken { name: String },
+}
+
+/// The longest a closed computer's news may take to come here for it to count
+/// as closed: had it opened again, it would be known by now.
+pub const NEWS_IN: i64 = 3 * 60;
+
+/// Why a dose due at `due` (Unix seconds) is not known here now; none when it
+/// is. Known means: this computer's record reads, and every other computer
+/// sharing with it, heard in the last month, was heard after the dose was due
+/// with everything it wrote until then read here, or said it closed before
+/// and its news comes within minutes. A dose taken twice can harm: whatever
+/// is not known is said, never guessed.
+pub fn doubts(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> Vec<Doubt> {
+    let mut out = Vec::new();
+    // Doses due before the record was found broken or gone, in the day before.
+    if let Some(since) = record_lost.filter(|since| due <= *since && *since - due < 86_400) {
+        out.push(Doubt::Record { since });
+    }
+    for peer in peers.iter().filter(|p| now - p.heard < 30 * 86_400) {
+        // A line lost from around the dose's time may have been its mark.
+        if peer.broken.is_some_and(|at| at >= due - 6 * 3600) {
+            out.push(Doubt::Broken { name: peer.name.clone() });
+            continue;
+        }
+        let known = peer.known_until >= due || (peer.closed && peer.delay.is_some_and(|d| d <= NEWS_IN));
+        if !known {
+            out.push(Doubt::Unheard { name: peer.name.clone(), until: peer.known_until, closed: peer.closed });
+        }
+    }
+    out
+}
+
 /// What the body's files hold is yours alone: on Unix, readable by you only
 /// (0600), whatever the system's default for new files.
 pub(crate) fn keep_private(path: &Path) {
@@ -403,16 +471,83 @@ pub struct HealthState {
     pub chats_locked_until: Option<i64>,
 }
 
+/// Why the doses' record cannot be trusted: what it held is not known.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unsound {
+    /// It does not read: half written, broken by hand, or by a disk.
+    Unreadable,
+    /// It is gone, though it was written here before (its witness says so).
+    Lost,
+}
+
+/// A change to the doses' record that could not be made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Problem {
+    /// The record cannot be trusted: nothing is written over it.
+    Unsound(Unsound),
+    /// It could not be written (a full disk): what it says.
+    Write(String),
+}
+
 impl HealthState {
     pub fn default_path() -> PathBuf {
         crate::config::state_dir().join("health-state.toml")
     }
 
-    pub fn load(path: &Path) -> HealthState {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    /// A hidden file beside the record, made the first time it is written:
+    /// the record gone with its witness there was lost, not never written.
+    fn witness(path: &Path) -> PathBuf {
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        path.with_file_name(format!(".{name}.written"))
     }
 
-    /// Saved, its marks older than a week dropped.
+    /// The doses' record as written, or why it cannot be trusted. Never an
+    /// empty record in place of one that does not read: a dose taken would
+    /// look not taken, and written back empty, the sharing would take every
+    /// mark out on your other devices too.
+    pub fn read(path: &Path) -> Result<HealthState, Unsound> {
+        match std::fs::read_to_string(path) {
+            Ok(text) => toml::from_str(&text).map_err(|_| Unsound::Unreadable),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                if Self::witness(path).exists() {
+                    Err(Unsound::Lost)
+                } else {
+                    Ok(HealthState::default())
+                }
+            }
+            Err(_) => Err(Unsound::Unreadable),
+        }
+    }
+
+    /// The record changed by `change`, one writer at a time (the window, the
+    /// sharing: `filelock`): read again, changed, written, under the lock, so
+    /// that no change made meanwhile is written over.
+    pub fn update<T>(path: &Path, now: i64, change: impl FnOnce(&mut HealthState) -> T) -> Result<T, Problem> {
+        crate::filelock::with_lock(path, || {
+            let mut state = HealthState::read(path).map_err(Problem::Unsound)?;
+            let out = change(&mut state);
+            state.save(path, now).map_err(Problem::Write)?;
+            Ok(out)
+        })
+    }
+
+    /// A record that cannot be trusted, kept aside as `<name>.unreadable-<time>`
+    /// for whoever wants to look, with its witness: a new one can start. Only
+    /// once nothing it held can be taken out elsewhere (`share::rebuild`).
+    pub fn set_aside(path: &Path, now: i64) -> Result<Option<PathBuf>, String> {
+        crate::filelock::with_lock(path, || {
+            let _ = std::fs::remove_file(Self::witness(path));
+            if !path.exists() {
+                return Ok(None);
+            }
+            let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let aside = path.with_file_name(format!("{name}.unreadable-{now}"));
+            std::fs::rename(path, &aside).map_err(|e| format!("{}: {e}", path.display()))?;
+            Ok(Some(aside))
+        })
+    }
+
+    /// Saved, its marks older than a week dropped. Use `update`: it holds the lock.
     pub fn save(&mut self, path: &Path, now: i64) -> Result<(), String> {
         let week = now - 7 * 86_400;
         self.taken.retain(|_, at| *at >= week);
@@ -427,7 +562,12 @@ impl HealthState {
         let temporary = path.with_extension("toml.new");
         std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
         keep_private(&temporary);
-        std::fs::rename(&temporary, path).map_err(fail)
+        std::fs::rename(&temporary, path).map_err(fail)?;
+        let witness = Self::witness(path);
+        if !witness.exists() {
+            std::fs::write(&witness, "").map_err(fail)?;
+        }
+        Ok(())
     }
 
     /// The doses to remind now: due in the last `minutes`, not taken, not reminded yet.
@@ -529,6 +669,64 @@ mod tests {
         let again: Health = toml::from_str(&toml::to_string(&health).unwrap()).unwrap();
         assert_eq!(again, health);
         assert!(!toml::to_string(&eight()).unwrap().contains("follows"));
+    }
+
+    #[test]
+    fn a_record_that_cannot_be_trusted_is_never_taken_for_empty() {
+        let dir = std::env::temp_dir().join(format!("sioul-health-record-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("health-state.toml");
+        // Never written: an empty record, honestly.
+        assert_eq!(HealthState::read(&path), Ok(HealthState::default()));
+        HealthState::update(&path, 1_000, |s| s.taken.insert("d@1".into(), 1_000)).unwrap();
+        assert!(HealthState::read(&path).unwrap().taken.contains_key("d@1"));
+        // Broken: not empty, unreadable; and nothing is written over it.
+        std::fs::write(&path, "taken = { \"d@1\" = ").unwrap();
+        assert_eq!(HealthState::read(&path), Err(Unsound::Unreadable));
+        assert_eq!(HealthState::update(&path, 1_060, |s| s.taken.clear()), Err(Problem::Unsound(Unsound::Unreadable)));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "taken = { \"d@1\" = ", "left as it was");
+        // Gone after being written: lost, not new.
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(HealthState::read(&path), Err(Unsound::Lost));
+        // Set aside (here, nothing left to keep), a new record can start.
+        assert_eq!(HealthState::set_aside(&path, 1_120), Ok(None));
+        assert_eq!(HealthState::read(&path), Ok(HealthState::default()));
+        // A broken one is kept aside for whoever wants to look.
+        std::fs::write(&path, "nonsense = [").unwrap();
+        let aside = HealthState::set_aside(&path, 1_180).unwrap().unwrap();
+        assert_eq!(std::fs::read_to_string(&aside).unwrap(), "nonsense = [");
+        assert_eq!(HealthState::read(&path), Ok(HealthState::default()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_dose_is_known_or_said_unknown() {
+        let due = 1_800_000_000;
+        let peer = |known_until: i64, closed: bool, delay: Option<i64>| Peer { name: "laptop".into(), known_until, closed, delay, broken: None, heard: known_until.max(due - 3_600) };
+        // Alone, with a record that reads: known.
+        assert!(doubts(due, due + 60, None, &[]).is_empty());
+        // The laptop heard after the dose was due, everything it wrote read: known.
+        assert!(doubts(due, due + 600, None, &[peer(due + 120, false, Some(30))]).is_empty());
+        // Last heard before the dose, open: it may have marked it.
+        assert_eq!(doubts(due, due + 600, None, &[peer(due - 300, false, Some(30))]), vec![Doubt::Unheard { name: "laptop".into(), until: due - 300, closed: false }]);
+        // Closed before, and its news comes within minutes: known.
+        assert!(doubts(due, due + 600, None, &[peer(due - 3_600, true, Some(60))]).is_empty());
+        // Closed before, but its news can take half an hour (a phone's sync): not known.
+        assert_eq!(doubts(due, due + 600, None, &[peer(due - 3_600, true, Some(1_800))]).len(), 1);
+        // Closed, its delay never measured: not known.
+        assert_eq!(doubts(due, due + 600, None, &[peer(due - 3_600, true, None)]).len(), 1);
+        // Never heard complete (an older Sioul that does not say what it wrote): not known.
+        assert_eq!(doubts(due, due + 600, None, &[Peer { name: "phone".into(), heard: due, ..Peer::default() }]).len(), 1);
+        // A line of it lost around the dose's time: not known, whatever else.
+        let broken = Peer { broken: Some(due - 60), ..peer(due + 120, false, Some(30)) };
+        assert_eq!(doubts(due, due + 600, None, &[broken]), vec![Doubt::Broken { name: "laptop".into() }]);
+        // Gone for over a month: no longer counted.
+        let gone = Peer { heard: due - 40 * 86_400, ..peer(0, false, None) };
+        assert!(doubts(due, due + 600, None, &[gone]).is_empty());
+        // This computer's record was found broken after the dose was due: not known; doses due after are.
+        assert_eq!(doubts(due, due + 600, Some(due + 300), &[]), vec![Doubt::Record { since: due + 300 }]);
+        assert!(doubts(due + 900, due + 1_000, Some(due + 300), &[]).is_empty());
     }
 
     #[test]

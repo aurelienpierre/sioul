@@ -117,40 +117,55 @@ Item {
                     Repeater {
                         model: page.shown.missed
 
-                        delegate: RowLayout {
+                        delegate: ColumnLayout {
                             id: missed
 
                             required property var modelData
 
                             Layout.fillWidth: true
-                            spacing: 12
+                            spacing: 2
 
-                            Label {
-                                Layout.preferredWidth: 90
-                                text: missed.modelData.time
-                                textFormat: Text.PlainText
-                                font.features: { "tnum": 1 }
-                                color: page.theme.text
-                            }
-                            Label {
+                            RowLayout {
                                 Layout.fillWidth: true
-                                text: missed.modelData.name + (missed.modelData.dose !== "" ? "  ·  " + missed.modelData.dose : "")
-                                textFormat: Text.PlainText
-                                elide: Text.ElideRight
-                                color: page.theme.text
-                            }
-                            // When it was taken, asked (DoseTaken.qml).
-                            Button {
-                                text: page.sioul.text("health-taken-when")
-                                onClicked: page.window.askDose(missed.modelData.key)
-                            }
-                            Button {
-                                flat: true
-                                text: page.sioul.text("health-not-taken")
-                                onClicked: {
-                                    page.sioul.doseNotTaken(missed.modelData.key)
-                                    page.reload()
+                                spacing: 12
+
+                                Label {
+                                    Layout.preferredWidth: 90
+                                    text: missed.modelData.time
+                                    textFormat: Text.PlainText
+                                    font.features: { "tnum": 1 }
+                                    color: page.theme.text
                                 }
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: missed.modelData.name + (missed.modelData.dose !== "" ? "  ·  " + missed.modelData.dose : "")
+                                    textFormat: Text.PlainText
+                                    elide: Text.ElideRight
+                                    color: page.theme.text
+                                }
+                                // When it was taken, asked (DoseTaken.qml).
+                                Button {
+                                    text: page.sioul.text("health-taken-when")
+                                    onClicked: page.window.askDose(missed.modelData.key)
+                                }
+                                Button {
+                                    flat: true
+                                    text: page.sioul.text("health-not-taken")
+                                    onClicked: {
+                                        page.sioul.doseNotTaken(missed.modelData.key)
+                                        page.reload()
+                                    }
+                                }
+                            }
+                            // Whether it was taken on another device is not known here: said, never guessed.
+                            Label {
+                                visible: missed.modelData.doubt !== ""
+                                Layout.fillWidth: true
+                                text: missed.modelData.doubt
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                font.pixelSize: 13
+                                color: page.theme.warm
                             }
                         }
                     }
@@ -183,43 +198,58 @@ Item {
             Repeater {
                 model: page.shown.today
 
-                delegate: RowLayout {
+                delegate: ColumnLayout {
                     id: dose
 
                     required property var modelData
 
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: 2
 
-                    Label {
-                        Layout.preferredWidth: 52
-                        text: dose.modelData.time
-                        textFormat: Text.PlainText
-                        font.features: { "tnum": 1 }
-                        color: dose.modelData.past ? page.theme.text : page.theme.muted
-                    }
-                    Label {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: dose.modelData.name + (dose.modelData.dose !== "" ? "  ·  " + dose.modelData.dose : "")
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                        color: dose.modelData.past ? page.theme.text : page.theme.muted
-                    }
-                    // Taken: when, said plainly; one click takes it back. More than
-                    // half an hour late, when it was taken is asked.
-                    Button {
-                        flat: dose.modelData.taken !== ""
-                        text: dose.modelData.taken !== "" ? page.sioul.textWith("health-taken-at", "time", dose.modelData.taken) : page.sioul.text(dose.modelData.late ? "health-taken-when" : "health-taken")
-                        icon.name: dose.modelData.taken !== "" ? "task-complete" : ""
-                        icon.color: page.theme.text
-                        onClicked: {
-                            if (dose.modelData.taken === "" && dose.modelData.late) {
-                                page.window.askDose(dose.modelData.key)
-                                return
-                            }
-                            page.sioul.setDoseTaken(dose.modelData.key, dose.modelData.taken === "")
-                            page.reload()
+                        spacing: 12
+
+                        Label {
+                            Layout.preferredWidth: 52
+                            text: dose.modelData.time
+                            textFormat: Text.PlainText
+                            font.features: { "tnum": 1 }
+                            color: dose.modelData.past ? page.theme.text : page.theme.muted
                         }
+                        Label {
+                            Layout.fillWidth: true
+                            text: dose.modelData.name + (dose.modelData.dose !== "" ? "  ·  " + dose.modelData.dose : "")
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: dose.modelData.past ? page.theme.text : page.theme.muted
+                        }
+                        // Taken: when, said plainly; one click takes it back. More than
+                        // half an hour late, when it was taken is asked.
+                        Button {
+                            flat: dose.modelData.taken !== ""
+                            text: dose.modelData.taken !== "" ? page.sioul.textWith("health-taken-at", "time", dose.modelData.taken) : page.sioul.text(dose.modelData.late ? "health-taken-when" : "health-taken")
+                            icon.name: dose.modelData.taken !== "" ? "task-complete" : ""
+                            icon.color: page.theme.text
+                            onClicked: {
+                                if (dose.modelData.taken === "" && dose.modelData.late) {
+                                    page.window.askDose(dose.modelData.key)
+                                    return
+                                }
+                                page.sioul.setDoseTaken(dose.modelData.key, dose.modelData.taken === "")
+                                page.reload()
+                            }
+                        }
+                    }
+                    // Not marked here, and not known whether it was taken on another device: said, never guessed.
+                    Label {
+                        visible: dose.modelData.doubt !== ""
+                        Layout.fillWidth: true
+                        text: dose.modelData.doubt
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 13
+                        color: page.theme.warm
                     }
                 }
             }

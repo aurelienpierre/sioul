@@ -147,10 +147,13 @@ pub fn run() -> i32 {
         engine.load(&QUrl::from("qrc:/qt/qml/com/aurelienpierre/sioul/qml/main.qml"));
     }
     timing("the window loaded");
-    match app.as_mut() {
+    let code = match app.as_mut() {
         Some(app) => app.exec(),
         None => 1,
-    }
+    };
+    // What was marked goes out, and your other devices learn this one closed.
+    share::closing();
+    code
 }
 
 /// Android: [`run`], for the program Qt for Android starts (android/main.cpp).
