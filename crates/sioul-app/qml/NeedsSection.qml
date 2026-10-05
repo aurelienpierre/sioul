@@ -31,6 +31,7 @@ ColumnLayout {
     // Today's rows come with the health views, off the window's thread (`needsView`).
     function reload() {
         section.shown = JSON.parse(section.sioul.needs())
+        section.today = JSON.parse(section.sioul.needsView || "[]")
         section.sioul.refreshHealth()
     }
 
