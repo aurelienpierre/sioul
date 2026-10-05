@@ -6,9 +6,10 @@
 //! Two axes. The senders' lists (safe, neutral, blocked: `porch.rs`) say who
 //! may reach you. Areas say what a source (an address, a site, a chat) or a
 //! task is for: work, your own admin, or leisure; and your week says which
-//! hours are for which. Hours set for none of them are personal time: no work,
-//! and no assumption on admin or leisure. Time off and a day closed early are
-//! free time. So work does not reach your evenings, and admin waits for its
+//! hours are for which. Hours set for none of them are rest: only the people
+//! you marked safe reach you, and the sites for leisure; no tasks, no
+//! projects, no time noted. Time off and a day closed early are free time.
+//! So work does not reach your evenings, and admin waits for its
 //! own hours instead of spreading over your rest: recovery needs detachment
 //! from work (Sonnentag & Fritz 2007, 2015), a real risk for whoever works
 //! from home or for themselves.
@@ -102,7 +103,8 @@ pub enum Time {
     Admin,
     /// Free time: rest, leisure; time off and a day closed early too.
     Leisure,
-    /// Hours set for nothing: yours, admin or leisure as you like; never work.
+    /// Hours set for nothing, when some are set: rest. Only your safe
+    /// senders' mail and the sites for leisure; no tasks, no projects, no time.
     #[default]
     Personal,
     /// No hours set at all: everything comes, as before any were set.
@@ -180,14 +182,16 @@ pub struct Week {
 
 /// Whether something for `area` comes forward in `time`: for one of the
 /// things the hours are for. Admin without hours of its own comes in work
-/// time; work without hours is never set aside, except in free time.
+/// time; work without hours comes in admin's. Outside every hours set, rest:
+/// a source for leisure (a chat with friends) still comes, nothing else; mail
+/// only from your safe senders (`quiet::mail_in_view`), no tasks (`quiet::QuietTasks`).
 pub fn in_view(area: Area, time: Time, week: Week) -> bool {
     match time {
         Time::Work => area.work || (!week.admin_hours && area.admin),
         Time::Admin => area.admin || (!week.work_hours && area.work),
         // Free time is kept free, work hours or not.
         Time::Leisure => area.leisure,
-        Time::Personal => area.admin || area.leisure || (!week.work_hours && area.work),
+        Time::Personal => area.leisure,
         Time::Any => true,
         // Admin hours within free time: admin's and leisure's both.
         Time::Several(open) => (open.work && in_view(area, Time::Work, week)) || (open.admin && in_view(area, Time::Admin, week)) || (open.leisure && in_view(area, Time::Leisure, week)),
@@ -276,7 +280,8 @@ mod tests {
         assert!(!in_view(Area::WORK, Time::Leisure, set));
         assert!(!in_view(Area::ADMIN, Time::Work, set), "admin has its own hours");
         assert!(in_view(Area::ADMIN, Time::Work, Week::default()), "until it has some");
-        assert!(in_view(Area::ADMIN, Time::Admin, set) && in_view(Area::ADMIN, Time::Personal, set));
+        assert!(in_view(Area::ADMIN, Time::Admin, set) && !in_view(Area::ADMIN, Time::Personal, set), "outside every hours, rest");
+        assert!(in_view(Area::LEISURE, Time::Personal, set), "a chat with friends");
         assert!(!in_view(Area::ADMIN, Time::Leisure, set), "free time is free");
         assert!(in_view(Area::LEISURE, Time::Leisure, set) && !in_view(Area::LEISURE, Time::Admin, set) && !in_view(Area::LEISURE, Time::Work, set));
         assert!(in_view(Area::PERSONAL, Time::Leisure, set) && in_view(Area::PERSONAL, Time::Admin, set) && !in_view(Area::PERSONAL, Time::Work, set));
@@ -285,8 +290,8 @@ mod tests {
         let both = Area::WORK.with(Area::LEISURE);
         assert!(in_view(both, Time::Work, set) && in_view(both, Time::Leisure, set) && !in_view(both, Time::Admin, set));
         let no_work = Week { admin_hours: true, ..Week::default() };
-        assert!(in_view(Area::WORK, Time::Personal, no_work), "no work hours: work is never set aside");
-        assert!(!in_view(Area::WORK, Time::Leisure, no_work), "but free time stays free");
+        assert!(in_view(Area::WORK, Time::Admin, no_work), "no work hours: work comes in admin's");
+        assert!(!in_view(Area::WORK, Time::Personal, no_work) && !in_view(Area::WORK, Time::Leisure, no_work), "rest and free time stay free");
         // Admin hours within free time: both come, never work.
         let both = Time::of(Area::parse("admin+leisure").unwrap());
         assert_eq!(both, Time::Several(Area::PERSONAL));

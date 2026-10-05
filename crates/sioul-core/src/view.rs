@@ -1063,7 +1063,8 @@ pub struct FolderEntry {
 /// The accounts and their folders, ranked as their mail is: above, average, below.
 /// Views of other folders are not listed, but Gmail's "All Mail", its archive.
 /// The mail page's accounts; `hours` what the hours now are for (None: no hours
-/// set): an address whose area does not fit them rests (docs/areas.md).
+/// set): an address whose area does not fit them rests, and every address
+/// outside every hours set (docs/areas.md).
 pub fn mail_accounts(accounts: &[(Account, Vec<Folder>)], tr: &Translator, hours: Option<(crate::areas::Time, crate::areas::Week)>) -> Vec<MailAccountView> {
     let mut ranked: Vec<&(Account, Vec<Folder>)> = accounts.iter().collect();
     ranked.sort_by_key(|(account, _)| account.priority);
@@ -1073,7 +1074,7 @@ pub fn mail_accounts(accounts: &[(Account, Vec<Folder>)], tr: &Translator, hours
             let root = account.maildir_path();
             // An address whose area is unsaid is work's.
             let area = account.area.as_deref().and_then(crate::areas::Area::parse).unwrap_or(crate::areas::Area::WORK);
-            let resting = hours.is_some_and(|(time, week)| !crate::areas::in_view(area, time, week));
+            let resting = hours.is_some_and(|(time, week)| time == crate::areas::Time::Personal || !crate::areas::in_view(area, time, week));
             // "All Mail" stands for the archive where there is none (Gmail).
             let has_archive = folders.iter().any(|f| f.role == Role::Archive);
             // Two folders for one purpose ("Archive" and "Archives") each keep their own name.

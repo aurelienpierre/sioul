@@ -449,7 +449,7 @@ Item {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
             Layout.topMargin: page.theme.gap
-            text: page.sioul.text("mail-resting")
+            text: page.sioul.text(page.window.moment.rest === true ? "mail-rest" : "mail-resting")
             wrapMode: Text.Wrap
             color: page.theme.muted
         }
