@@ -2,10 +2,11 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Meals, naps and the night, set first: times kept free of tasks, the work
-// planned around them (docs/health.md, "Meals, rest and sleep"). Each block
-// is named as you like, on the weekdays you choose, its notices on or off;
-// "Not today" keeps it free without a word. Nothing about eating or sleeping
-// is recorded here, and nothing is said when one passes.
+// planned around them (docs/health.md, "Meals, rest and sleep"). Today's
+// first, each a few minutes later, at another time or not today, without a
+// word asked; then each block, named as you like, on the weekdays you
+// choose, its notices on or off. Nothing about eating or sleeping is
+// recorded here, and nothing is said when one passes.
 
 pragma ComponentBehavior: Bound
 
@@ -18,6 +19,9 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
+    required property var window
+    // Today's, as they are now: moved, skipped.
+    property var today: []
     // {needs, usual, gaps, skipped, moved}, as the backend gives it.
     property var shown: ({ needs: { meals_on: false, meals: [], naps_on: false, naps: [], sleep_on: false, sleep: { bed: "23:00", wake: "07:00", wind_down: 60, notices: true }, heads_up: 15, later: 15 }, usual: { meals: [], nap: "", sleep: "" }, gaps: [], skipped: [], moved: {} })
     property string problem: ""
@@ -26,6 +30,7 @@ ColumnLayout {
 
     function reload() {
         section.shown = JSON.parse(section.sioul.needs())
+        section.today = JSON.parse(section.sioul.needsToday() || "[]")
     }
 
     // The settings changed by `change` (on a copy), saved, and read again.
@@ -38,6 +43,11 @@ ColumnLayout {
 
     function skip(key, skip) {
         section.problem = section.sioul.skipNeed(key, skip)
+        section.reload()
+    }
+
+    function later(key) {
+        section.problem = section.sioul.moveNeed(key, 0, "")
         section.reload()
     }
 
@@ -63,6 +73,65 @@ ColumnLayout {
         wrapMode: Text.Wrap
         font.pixelSize: 13
         color: section.theme.muted
+    }
+
+    // Today's, as they are now: a few minutes later, at another time, or not today.
+    Label {
+        visible: section.today.length > 0
+        Layout.topMargin: 4
+        text: section.sioul.text("needs-today")
+        font.weight: Font.DemiBold
+        color: section.theme.text
+    }
+    Repeater {
+        model: section.today
+
+        // The buttons beside it, or under it on a phone.
+        delegate: GridLayout {
+            id: row
+
+            required property var modelData
+
+            Layout.fillWidth: true
+            columns: section.narrow ? 1 : 2
+            columnSpacing: 10
+            rowSpacing: 2
+
+            Label {
+                Layout.fillWidth: true
+                text: row.modelData.from + "–" + row.modelData.to + "   " + row.modelData.name + (row.modelData.moved !== 0 ? "   · " + section.sioul.textWith("needs-moved", "minutes", String(row.modelData.moved)) : "")
+                textFormat: Text.PlainText
+                font.strikeout: row.modelData.skipped
+                wrapMode: Text.Wrap
+                color: row.modelData.past || row.modelData.skipped ? section.theme.muted : section.theme.text
+            }
+            Flow {
+                visible: !row.modelData.past
+                Layout.alignment: Qt.AlignRight
+                spacing: 6
+
+                Button {
+                    visible: !row.modelData.skipped
+                    flat: true
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    text: section.sioul.textWith("need-later-n", "minutes", String(section.shown.needs.later))
+                    onClicked: section.later(row.modelData.key)
+                }
+                Button {
+                    visible: !row.modelData.skipped
+                    flat: true
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    text: section.sioul.text("need-move-to") + "…"
+                    onClicked: section.window.askNeed(row.modelData.key)
+                }
+                Button {
+                    flat: true
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    text: section.sioul.text(row.modelData.skipped ? "need-unskip" : "needs-not-today")
+                    onClicked: section.skip(row.modelData.key, !row.modelData.skipped)
+                }
+            }
+        }
     }
 
     // Meals.
@@ -159,11 +228,6 @@ ColumnLayout {
             text: section.sioul.text("needs-notices")
             checked: section.shown.needs.sleep.notices
             onToggled: section.edit(needs => needs.sleep.notices = checked)
-        }
-        CheckBox {
-            text: section.sioul.text("needs-not-today")
-            checked: section.shown.skipped.indexOf("sleep") >= 0
-            onToggled: section.skip("sleep", checked)
         }
     }
 
@@ -284,11 +348,6 @@ ColumnLayout {
                             editor.change(block => block.name = text.trim())
                     }
                 }
-                CheckBox {
-                    text: section.sioul.text("needs-not-today")
-                    checked: section.shown.skipped.indexOf(editor.key) >= 0
-                    onToggled: section.skip(editor.key, checked)
-                }
                 ToolButton {
                     icon.name: "user-trash"
                     icon.color: section.theme.text
@@ -350,11 +409,6 @@ ColumnLayout {
                     text: section.sioul.text("needs-notices")
                     checked: editor.block.notices
                     onToggled: editor.change(block => block.notices = checked)
-                }
-                Label {
-                    visible: section.shown.moved[editor.key] !== undefined
-                    text: section.sioul.textWith("needs-moved", "minutes", String(section.shown.moved[editor.key] || 0))
-                    color: section.theme.muted
                 }
             }
         }

@@ -521,7 +521,11 @@ fn movement_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zon
         return;
     }
     MOVED.store(stamp, Ordering::Relaxed);
-    if let Err(e) = sioul_sync::notify::remind(&tr().text("health-move", None), &tr().text("health-move-body", None), None) {
+    let qt_open = qt.clone();
+    let open: Box<dyn FnOnce() + Send> = Box::new(move || {
+        let _ = qt_open.queue(|mut sioul| sioul.as_mut().reminder_opened(QString::from("stopped"), QString::default(), QString::default()));
+    });
+    if let Err(e) = sioul_sync::notify::remind(&tr().text("health-move", None), &tr().text("health-move-body", None), Some((tr().text("stopped-note", None), open))) {
         tell(qt, shared, e);
     }
 }
@@ -944,35 +948,66 @@ fn needs_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned)
     let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
     for (block, heads_up) in due {
         let name = name_of(block);
-        if heads_up {
-            // "Later", once a day: the block a few minutes on, today only.
-            let action: Option<(String, Box<dyn FnOnce() + Send>)> = (!today.shifts.contains_key(&block.key)).then(|| {
-                let (key, qt_later, shared_later) = (block.key.clone(), qt.clone(), Arc::clone(shared));
-                let later: Box<dyn FnOnce() + Send> = Box::new(move || {
-                    later_today(&key);
-                    crate::work::show_work(&qt_later, &shared_later);
-                });
-                (tr().text("need-later", None), later)
-            });
-            if let Err(e) = sioul_sync::notify::remind(&tr().text("need-heads-up", None), &say("need-at", &[("name", name), ("time", hm(block.start))]), action) {
-                tell(qt, shared, e);
-            }
-        } else if let Err(e) = sioul_sync::notify::remind(&name, &hm(block.start), None) {
+        // One button: the window's question (later, at another time, not
+        // today; a line on where you stopped).
+        let (key, qt_open) = (block.key.clone(), qt.clone());
+        let open: Box<dyn FnOnce() + Send> = Box::new(move || {
+            let _ = qt_open.queue(move |mut sioul| sioul.as_mut().reminder_opened(QString::from("need"), QString::default(), QString::from(&key)));
+        });
+        let action = Some((tr().text("need-open", None), open));
+        let shown = if heads_up {
+            sioul_sync::notify::remind(&tr().text("need-heads-up", None), &say("need-at", &[("name", name), ("time", hm(block.start))]), action)
+        } else {
+            sioul_sync::notify::remind(&name, &hm(block.start), action)
+        };
+        if let Err(e) = shown {
             tell(qt, shared, e);
         }
     }
 }
 
-/// A block moved a few minutes on, today only ("Later"); once.
-pub(crate) fn later_today(key: &str) {
+/// A block moved today only: by `minutes` more ("Later": by the minutes
+/// set, again and again), or to start at `time` ("13:30"). Its notices are
+/// not given again for it: moving it never brings a nag. Returns what went wrong, else "".
+pub(crate) fn move_today(key: &str, minutes: i64, time: &str) -> String {
     let path = sioul_core::needs::Today::default_path();
     let now = Zoned::now();
     let mut today = sioul_core::needs::Today::load(&path, now.date());
-    if today.shifts.contains_key(key) {
-        return;
-    }
-    today.shifts.insert(key.to_string(), i64::from(load().needs.later));
-    let _ = today.save(&path);
+    let shift = if time.is_empty() {
+        today.shifts.get(key).copied().unwrap_or(0) + if minutes == 0 { i64::from(load().needs.later) } else { minutes }
+    } else {
+        // To start at that time: from where it starts without any move.
+        let Some(clock) = time.split_once(':').and_then(|(h, m)| jiff::civil::Time::new(h.trim().parse().ok()?, m.trim().parse().ok()?, 0, 0).ok()) else { return tr().text("dose-time-wrong", None) };
+        let target = now.date().to_datetime(clock).to_zoned(now.time_zone().clone()).map(|z| z.timestamp().as_second()).unwrap_or(0);
+        let Some(base) = load().needs.kept_on(now.date(), now.time_zone(), &|_| 0).into_iter().find(|k| k.key == key) else { return String::new() };
+        (target - base.start) / 60
+    };
+    today.shifts.insert(key.to_string(), shift);
+    today.save(&path).err().unwrap_or_default()
+}
+
+/// Today's meals, naps and night as they are now, as JSON: [{key, kind,
+/// name, from, to, moved, skipped, past}], for the Health page and the question.
+pub(crate) fn needs_today() -> String {
+    let needs = load().needs;
+    let now = Zoned::now();
+    let today = sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), now.date());
+    let moved = today.shifts.clone();
+    let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    let stamp = now.timestamp().as_second();
+    let rows: Vec<serde_json::Value> = needs
+        .kept_on(now.date(), now.time_zone(), &|key: &str| moved.get(key).copied().unwrap_or(0))
+        .iter()
+        // The night ending this morning is yesterday's.
+        .filter(|k| !(k.kind == "sleep" && k.start < stamp - 12 * 3600))
+        .map(|k| serde_json::json!({ "key": k.key, "kind": k.kind, "name": name_of(k), "from": hm(k.start), "to": hm(k.end), "moved": moved.get(&k.key).copied().unwrap_or(0), "skipped": today.skipped.contains(&k.key), "past": k.end <= stamp }))
+        .collect();
+    json(&rows)
+}
+
+/// The minutes "Later" moves a block by.
+pub(crate) fn later_minutes() -> u32 {
+    load().needs.later
 }
 
 /// A block skipped today, or not: no notice, kept free all the same.

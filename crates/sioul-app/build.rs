@@ -95,6 +95,7 @@ fn main() {
         "qml/DoseTaken.qml",
         "qml/NeedsSection.qml",
         "qml/StoppedCard.qml",
+        "qml/Interruption.qml",
         "qml/BankSection.qml",
         "qml/LettersSection.qml",
     ];

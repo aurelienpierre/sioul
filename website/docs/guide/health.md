@@ -53,7 +53,9 @@ Times kept free, set before any work: Sioul plans no task in them, and plans the
 
 Name each as you like, choose its weekdays, and turn its notices off if you would rather not have them: it stays kept free.
 
-**Notices**: two at most for each, each once. First, a quarter of an hour before (you choose), "No new big task" with its name and time, so you do not start something you would have to leave, and **Later**, which moves it a quarter of an hour, today only. Then one at the time. Nothing during a meeting, nothing for one marked **Not today**, nothing when one passes. A notice shows only a name and a time.
+**Today**: today's meals, naps and night come first on the page, each with **15 min later** (as often as you like), **Move to…** a time, and **Not today**, for today only, without a word asked.
+
+**Notices**: two at most for each, each once. First, a quarter of an hour before (you choose), "No new big task" with its name and time, so you do not start something you would have to leave. Then one at the time. Each has **Options…**: later, at another time, not today, and one line on where you stopped, shown again when you are back. Moving a meal never brings more notices. Nothing during a meeting, nothing for one not today, nothing when one passes. A notice shows only a name and a time.
 
 Nothing about what you eat or how you sleep is asked or recorded: no counts, no history. The way it works follows research on how people who struggle with eating want to be invited to eat ([the research notes](../dev/research/meal-prompts.md)).
 

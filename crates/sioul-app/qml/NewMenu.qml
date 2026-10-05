@@ -27,7 +27,9 @@ SioulMenu {
         ["movement", "new-movement", "view-financial-account-add"],
         ["paper", "new-paper", "document-new"],
         ["time", "new-time", "chronometer-start"],
-        ["project", "new-project", "folder-new"]
+        ["project", "new-project", "folder-new"],
+        // One line on where you stopped, for when you are back.
+        ["stopped", "new-stopped", "bookmarks-organize"]
     ]
 
     Repeater {

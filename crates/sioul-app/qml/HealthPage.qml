@@ -39,6 +39,7 @@ Item {
         const text = page.sioul.healthPage()
         if (text !== "")
             page.shown = JSON.parse(text)
+        needsSection.reload()
     }
 
     function setting(key, value) {
@@ -431,6 +432,7 @@ Item {
                 Layout.fillWidth: true
                 sioul: page.sioul
                 theme: page.theme
+                window: page.window
             }
 
             // A pause to move, while focusing.

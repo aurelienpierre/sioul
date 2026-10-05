@@ -629,6 +629,19 @@ pub mod qobject {
         #[qinvokable]
         fn skip_need(self: Pin<&mut Sioul>, key: &QString, skip: bool) -> QString;
 
+        /// Today's meals, naps and night as they are now, as JSON.
+        #[qinvokable]
+        fn needs_today(self: &Sioul) -> QString;
+
+        /// A block moved today only: `minutes` more (0: the minutes "Later" moves
+        /// it by), or to start at `time` ("13:30"). Returns what went wrong, else "".
+        #[qinvokable]
+        fn move_need(self: Pin<&mut Sioul>, key: &QString, minutes: i32, time: &QString) -> QString;
+
+        /// The minutes "Later" moves a block by.
+        #[qinvokable]
+        fn needs_later(self: &Sioul) -> i32;
+
         /// The doses due while Sioul was closed, for the Porch, as JSON: [{key, time, name, dose}].
         #[qinvokable]
         fn missed_doses(self: &Sioul) -> QString;
@@ -3536,7 +3549,24 @@ impl qobject::Sioul {
     }
 
     fn skip_need(self: Pin<&mut Self>, key: &QString, skip: bool) -> QString {
-        QString::from(&crate::health::skip_today(&key.to_string(), skip))
+        let problem = crate::health::skip_today(&key.to_string(), skip);
+        crate::work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn needs_today(&self) -> QString {
+        QString::from(&crate::health::needs_today())
+    }
+
+    fn move_need(self: Pin<&mut Self>, key: &QString, minutes: i32, time: &QString) -> QString {
+        let problem = crate::health::move_today(&key.to_string(), i64::from(minutes), &time.to_string());
+        // The plan goes around it where it is now.
+        crate::work::show_work(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn needs_later(&self) -> i32 {
+        i32::try_from(crate::health::later_minutes()).unwrap_or(15)
     }
 
     fn missed_doses(&self) -> QString {
