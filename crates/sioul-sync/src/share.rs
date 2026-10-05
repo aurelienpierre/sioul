@@ -2733,7 +2733,7 @@ pub fn confirm_gone(memory: &Path, computer: &str, store: &str) -> Result<(), St
 /// One exchange at a time on this computer, whatever runs it (two Sioul
 /// started, the command line): a lock on `<state>/share/exchange.lock`, held
 /// while it runs, let go when the file returned is. `wait`: until the
-/// running one ends; else none while another holds it.
+/// running one ends; else none while another holds it a second on.
 pub fn exchange_lock(memory: &Path, wait: bool) -> Result<Option<std::fs::File>, String> {
     let path = memory.with_file_name("exchange.lock");
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
@@ -2745,11 +2745,17 @@ pub fn exchange_lock(memory: &Path, wait: bool) -> Result<Option<std::fs::File>,
         file.lock().map_err(fail)?;
         return Ok(Some(file));
     }
-    match file.try_lock() {
-        Ok(()) => Ok(Some(file)),
-        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
-        Err(std::fs::TryLockError::Error(e)) => Err(fail(e)),
+    // A program starting elsewhere in Sioul holds a copy of every file open
+    // then until it runs (a Mac's take milliseconds): the last exchange's lock,
+    // let go a moment before, may still be held by it. Tried again for a second.
+    for _ in 0..50 {
+        match file.try_lock() {
+            Ok(()) => return Ok(Some(file)),
+            Err(std::fs::TryLockError::WouldBlock) => std::thread::sleep(std::time::Duration::from_millis(20)),
+            Err(std::fs::TryLockError::Error(e)) => return Err(fail(e)),
+        }
     }
+    Ok(None)
 }
 
 fn seen_path(folder: &Path, computer: &str) -> PathBuf {
@@ -3555,9 +3561,9 @@ mod tests {
 
         // A list that cannot be read is left alone, and nothing of it is taken out elsewhere.
         a.write("state/quiet.toml", "work_until = 5\n");
-        a.exchange(&folder, &key, NOW + 4 * MINUTE);
-        b.exchange(&folder, &key, NOW + 5 * MINUTE);
-        assert!(b.read("state/quiet.toml").contains("work_until = 5"));
+        let sent = a.exchange(&folder, &key, NOW + 4 * MINUTE);
+        let received = b.exchange(&folder, &key, NOW + 5 * MINUTE);
+        assert!(b.read("state/quiet.toml").contains("work_until = 5"), "{sent:?} {received:?}");
         b.write("state/quiet.toml", "work_until = [ broken");
         b.exchange(&folder, &key, NOW + 6 * MINUTE);
         a.exchange(&folder, &key, NOW + 7 * MINUTE);
@@ -3735,6 +3741,8 @@ mod tests {
         for n in 0..3 {
             put(&notes, &format!("scans/{n}.pdf"), &noise(1_500_000, n));
         }
+        // Read after they changed, not in the same millisecond (such a file is read again, its time too coarse to trust).
+        std::thread::sleep(std::time::Duration::from_millis(5));
         let blobs = || std::fs::read_dir(folder.join("blobs")).unwrap().count();
         assert_eq!(desk.exchange_with(&folder, &key, NOW, &notes, &["notes"]).sent, 303);
         assert_eq!(blobs(), 303);
@@ -4409,6 +4417,21 @@ mod tests {
         assert_eq!((outcome.problems.as_slice(), outcome.sent), (&["share-busy".to_string()][..], 0));
         drop(running);
         assert_eq!(desk.exchange(&folder, &key, NOW + MINUTE).sent, 1);
+        // Held a moment only (a program starting elsewhere in Sioul holds a copy
+        // of the lock until it runs, a Mac's for milliseconds): waited for.
+        let memory = desk.memory.clone();
+        let (held, release) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let running = exchange_lock(&memory, true).unwrap();
+            held.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            drop(running);
+        });
+        release.recv().unwrap();
+        desk.write("config/safe-senders.txt", "a@example.org\nb@example.org\n");
+        let outcome = desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+        assert_eq!((outcome.problems.len(), outcome.sent), (0, 1), "{outcome:?}");
+        holder.join().unwrap();
         // Files being written never share a name.
         let path = folder.join("x.toml");
         let (one, two) = (temporary(&path), temporary(&path));
@@ -4419,20 +4442,41 @@ mod tests {
     // F14
     #[test]
     fn names_one_storage_takes_for_one_are_never_both_written() {
+        // The decision, whatever the disk running this: a name another file
+        // here or known has by its case, or by how an accent is written, is not its own.
+        let known = |file: &str| (format!("{file}#"), Known { c: 1, w: "desk".into(), h: "h".into(), b: String::new() });
+        let names = Names::new(&[known("files/notes/Lease.md"), known("files/notes/\u{e9}t\u{e9}.md")].into(), &Found::default());
+        assert!(names.clash("files/notes/lease.md") && names.clash("files/notes/LEASE.md") && names.clash("files/notes/e\u{301}te\u{301}.md"));
+        assert!(!names.clash("files/notes/Lease.md") && !names.clash("files/notes/\u{e9}t\u{e9}.md") && !names.clash("files/notes/other.md"));
+        // Between two devices, with the names this disk can hold apart: Windows'
+        // and a Mac's take "Lease.md" and "lease.md" for one file, a Mac's
+        // "\u{e9}t\u{e9}" written two ways too; Linux's holds both.
         let base = scratch("case");
         let folder = base.join("Sioul");
         let key = quick_key(&folder, "four words make a passphrase").unwrap();
         let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
         let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
-        // Two names a phone's storage takes for one: by case, and by how an accent is written.
-        put(&dn, "Lease.md", b"upper\n");
-        put(&dn, "lease.md", b"lower\n");
-        put(&dn, "\u{e9}t\u{e9}.md", b"composed\n");
-        put(&dn, "e\u{301}te\u{301}.md", b"decomposed\n");
+        let apart = |one: &str, other: &str| {
+            let probe = base.join("probe");
+            std::fs::create_dir_all(&probe).unwrap();
+            std::fs::write(probe.join(one), b"").unwrap();
+            let apart = !probe.join(other).exists();
+            std::fs::remove_dir_all(&probe).unwrap();
+            apart
+        };
+        put(&dn, "other.md", b"other\n");
+        let mut pairs = 0;
+        for (one, other) in [("Lease.md", "lease.md"), ("\u{e9}t\u{e9}.md", "e\u{301}te\u{301}.md")] {
+            if apart(one, other) {
+                put(&dn, one, b"one\n");
+                put(&dn, other, b"other way\n");
+                pairs += 1;
+            }
+        }
         desk.exchange_with(&folder, &key, NOW, &dn, &["notes"]);
         let outcome = laptop.exchange_with(&folder, &key, NOW + MINUTE, &ln, &["notes"]);
-        assert_eq!(outcome.problems.iter().filter(|p| p.starts_with("share-name-clash:")).count(), 2, "{outcome:?}");
-        assert_eq!(files_in(&ln).len(), 2);
+        assert_eq!(outcome.problems.iter().filter(|p| p.starts_with("share-name-clash:")).count(), pairs, "{outcome:?}");
+        assert_eq!(files_in(&ln).len(), 1 + pairs);
         // What another part carries is never a note, whatever its case.
         let config = Config { case_store: Some("/notes".into()), ..Config::default() };
         let every = stores_of(&config, &laptop.roots, &|_| true);
@@ -4567,15 +4611,18 @@ mod tests {
         put(&dn, ".lease.md.1-1.sioul.tmp", b"half");
         dated(&dn.join(".lease.md.1-1.sioul.tmp"), std::time::SystemTime::now() - std::time::Duration::from_secs(7200));
         put(&dn, ".lease.md.1-2.sioul.tmp", b"being written");
+        // A name that is not text, where the disk holds one (Linux's does; a Mac's refuses it, Windows' names are text).
         #[cfg(unix)]
-        {
+        let latin = {
             use std::os::unix::ffi::OsStrExt;
-            std::fs::write(dn.join(std::ffi::OsStr::from_bytes(b"caf\xe9.md")), b"latin-1").unwrap();
-        }
+            std::fs::write(dn.join(std::ffi::OsStr::from_bytes(b"caf\xe9.md")), b"latin-1").is_ok()
+        };
+        #[cfg(not(unix))]
+        let latin = false;
         let outcome = desk.exchange_with(&folder, &key, NOW, &dn, &["notes"]);
         assert!(!dn.join(".lease.md.1-1.sioul.tmp").exists() && dn.join(".lease.md.1-2.sioul.tmp").exists());
-        #[cfg(unix)]
-        assert!(outcome.problems.iter().any(|p| p.starts_with("share-not-text:files/notes/caf")) && outcome.sent == 1, "{outcome:?}");
+        assert_eq!(outcome.problems.iter().any(|p| p.starts_with("share-not-text:files/notes/caf")), latin, "{outcome:?}");
+        assert_eq!(outcome.sent, 1, "{outcome:?}");
         let _ = std::fs::remove_dir_all(&base);
     }
 
