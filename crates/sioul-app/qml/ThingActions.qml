@@ -4,6 +4,8 @@
 // The two buttons every card ends with: something new tied to it, or a tie
 // to something that exists. Right click in a list offers the same.
 
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
@@ -27,7 +29,7 @@ RowLayout {
         text: actions.sioul.text("ui-add-new") + "  ▾"
         icon.name: "list-add"
         icon.color: actions.theme.text
-        onClicked: addMenu.popup(addButton, 0, addButton.height)
+        onClicked: addMenu.now().popup(addButton, 0, addButton.height)
     }
     Button {
         enabled: actions.source !== null && actions.source.uri !== ""
@@ -38,11 +40,17 @@ RowLayout {
         onClicked: actions.window.linkFrom(actions.source)
     }
 
-    AddMenu {
+    Later {
         id: addMenu
 
-        sioul: actions.sioul
-        window: actions.window
-        source: actions.source
+        sourceComponent: Component {
+            AddMenu {
+                id: addMenuForm
+
+                sioul: actions.sioul
+                window: actions.window
+                source: actions.source
+            }
+        }
     }
 }

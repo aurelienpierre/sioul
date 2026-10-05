@@ -78,7 +78,7 @@ ColumnLayout {
             enabled: section.shown.store
             text: section.sioul.text("bank-account-new")
             icon.name: "list-add"
-            onClicked: accountDialog.edit(null)
+            onClicked: accountDialog.now().edit(null)
         }
         // Before any account is declared: an export taken in as it names itself, for the watch.
         Button {
@@ -164,13 +164,13 @@ ColumnLayout {
                             flat: true
                             implicitWidth: implicitContentWidth + leftPadding + rightPadding
                             text: section.sioul.text("bank-rules")
-                            onClicked: rulesDialog.show(card.modelData)
+                            onClicked: rulesDialog.now().show(card.modelData)
                         }
                         Button {
                             flat: true
                             implicitWidth: implicitContentWidth + leftPadding + rightPadding
                             text: section.sioul.text("ui-edit")
-                            onClicked: accountDialog.edit(card.modelData)
+                            onClicked: accountDialog.now().edit(card.modelData)
                         }
                     }
                 }
@@ -393,35 +393,53 @@ ColumnLayout {
         }
     }
 
-    BankAccountDialog {
+    Later {
         id: accountDialog
 
-        sioul: section.sioul
-        theme: section.theme
-        budgets: section.shown.budgets
-        reserves: section.shown.reserves
-        onDone: section.say("")
-    }
+        sourceComponent: Component {
+            BankAccountDialog {
+                id: accountDialogForm
 
-    BankRulesDialog {
-        id: rulesDialog
-
-        sioul: section.sioul
-        theme: section.theme
-        budgets: section.shown.budgets
-        reserves: section.shown.reserves
-        accounts: section.shown.accounts
-        onChanged: {
-            section.reload()
-            rulesDialog.refresh(section.shown.accounts)
+                sioul: section.sioul
+                theme: section.theme
+                budgets: section.shown.budgets
+                reserves: section.shown.reserves
+                onDone: section.say("")
+            }
         }
     }
 
-    ReserveDialog {
+    Later {
+        id: rulesDialog
+
+        sourceComponent: Component {
+            BankRulesDialog {
+                id: rulesDialogForm
+
+                sioul: section.sioul
+                theme: section.theme
+                budgets: section.shown.budgets
+                reserves: section.shown.reserves
+                accounts: section.shown.accounts
+                onChanged: {
+                    section.reload()
+                    rulesDialogForm.refresh(section.shown.accounts)
+                }
+            }
+        }
+    }
+
+    Later {
         id: reserveDialog
 
-        sioul: section.sioul
-        theme: section.theme
-        onDone: section.say("")
+        sourceComponent: Component {
+            ReserveDialog {
+                id: reserveDialogForm
+
+                sioul: section.sioul
+                theme: section.theme
+                onDone: section.say("")
+            }
+        }
     }
 }

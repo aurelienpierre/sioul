@@ -139,21 +139,21 @@ Item {
     }
 
     function newEvent(day) {
-        eventDialog.edit("", day || page.iso(page.anchor))
+        eventDialog.now().edit("", day || page.iso(page.anchor))
     }
 
     // For the window's tests.
     function fillEvent(text, from, to, how) {
-        eventDialog.fill(text, from, to, how)
+        eventDialog.now().fill(text, from, to, how)
     }
 
     function saveEvent() {
-        eventDialog.accept()
+        eventDialog.now().accept()
     }
 
     // A new event made from something else: a message, a task.
     function makeFrom(text, note, link) {
-        eventDialog.makeFrom(text, note, link, page.iso(new Date()))
+        eventDialog.now().makeFrom(text, note, link, page.iso(new Date()))
     }
 
     // An event by its file, from a link: shown when it is in the days shown, else its form.
@@ -164,7 +164,7 @@ Item {
                     page.opened = event
                     return
                 }
-        eventDialog.edit(key, "")
+        eventDialog.now().edit(key, "")
     }
 
     onModeChanged: page.load()
@@ -396,7 +396,7 @@ Item {
                     eventMenu.target = event
                     eventMenu.popup()
                 }
-                onNewAt: (day, hour) => eventDialog.edit("", day, hour)
+                onNewAt: (day, hour) => eventDialog.now().edit("", day, hour)
             }
 
             // The month: the days in a grid, three events at most in each, then "…".
@@ -605,7 +605,7 @@ Item {
                     Button {
                         visible: page.opened !== null && !page.opened.read_only
                         text: page.sioul.text("ui-edit")
-                        onClicked: eventDialog.edit(page.opened.key, "")
+                        onClicked: eventDialog.now().edit(page.opened.key, "")
                     }
                     Button {
                         visible: page.opened !== null && !page.opened.read_only
@@ -613,7 +613,7 @@ Item {
                         text: page.sioul.text("ui-delete")
                         onClicked: {
                             eventMenu.target = page.opened
-                            deleteChoice.open()
+                            deleteChoice.now().open()
                         }
                     }
                     Item {
@@ -638,12 +638,12 @@ Item {
         MenuItem {
             enabled: eventMenu.target !== null && !eventMenu.target.read_only
             text: page.sioul.text("ui-edit")
-            onTriggered: eventDialog.edit(eventMenu.target.key, "")
+            onTriggered: eventDialog.now().edit(eventMenu.target.key, "")
         }
         MenuItem {
             enabled: eventMenu.target !== null && !eventMenu.target.read_only
             text: page.sioul.text("ui-delete")
-            onTriggered: deleteChoice.open()
+            onTriggered: deleteChoice.now().open()
         }
         MenuSeparator {}
         AddMenu {
@@ -659,56 +659,68 @@ Item {
     }
 
     // A repeating event: this time, or every time. A single one: no question.
-    Dialog {
+    Later {
         id: deleteChoice
 
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(440, page.width - 2 * page.theme.gap)
-        title: eventMenu.target ? page.theme.plain(eventMenu.target.summary) : ""
-        onAboutToShow: {
-            if (eventMenu.target && !eventMenu.target.recurring) {
-                page.sioul.deleteEvent(eventMenu.target.key, eventMenu.target.start, false)
-                page.opened = null
-                Qt.callLater(() => deleteChoice.close())
-            }
-        }
+        sourceComponent: Component {
+            Dialog {
+                id: deleteChoiceForm
 
-        ColumnLayout {
-            width: parent.width
-            spacing: 8
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(440, page.width - 2 * page.theme.gap)
+                title: eventMenu.target ? page.theme.plain(eventMenu.target.summary) : ""
+                onAboutToShow: {
+                    if (eventMenu.target && !eventMenu.target.recurring) {
+                        page.sioul.deleteEvent(eventMenu.target.key, eventMenu.target.start, false)
+                        page.opened = null
+                        Qt.callLater(() => deleteChoiceForm.close())
+                    }
+                }
 
-            Button {
-                Layout.fillWidth: true
-                text: page.sioul.text("agenda-delete-this")
-                onClicked: {
-                    page.sioul.deleteEvent(eventMenu.target.key, eventMenu.target.start, true)
-                    page.opened = null
-                    deleteChoice.close()
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 8
+
+                    Button {
+                        Layout.fillWidth: true
+                        text: page.sioul.text("agenda-delete-this")
+                        onClicked: {
+                            page.sioul.deleteEvent(eventMenu.target.key, eventMenu.target.start, true)
+                            page.opened = null
+                            deleteChoiceForm.close()
+                        }
+                    }
+                    Button {
+                        Layout.fillWidth: true
+                        text: page.sioul.text("agenda-delete-all")
+                        onClicked: {
+                            page.sioul.deleteEvent(eventMenu.target.key, eventMenu.target.start, false)
+                            page.opened = null
+                            deleteChoiceForm.close()
+                        }
+                    }
+                    Button {
+                        Layout.alignment: Qt.AlignRight
+                        text: page.sioul.text("ui-cancel")
+                        onClicked: deleteChoiceForm.close()
+                    }
                 }
-            }
-            Button {
-                Layout.fillWidth: true
-                text: page.sioul.text("agenda-delete-all")
-                onClicked: {
-                    page.sioul.deleteEvent(eventMenu.target.key, eventMenu.target.start, false)
-                    page.opened = null
-                    deleteChoice.close()
-                }
-            }
-            Button {
-                Layout.alignment: Qt.AlignRight
-                text: page.sioul.text("ui-cancel")
-                onClicked: deleteChoice.close()
             }
         }
     }
 
-    EventDialog {
+    Later {
         id: eventDialog
 
-        sioul: page.sioul
-        theme: page.theme
-        onSaved: page.opened = null
+        sourceComponent: Component {
+            EventDialog {
+                id: eventDialogForm
+
+                sioul: page.sioul
+                theme: page.theme
+                onSaved: page.opened = null
+            }
+        }
     }
 }

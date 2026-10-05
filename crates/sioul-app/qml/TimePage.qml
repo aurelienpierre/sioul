@@ -39,7 +39,7 @@ Item {
 
     function changeFirst() {
         if (page.shown && page.shown.entries.length > 0)
-            timeDialog.change(page.shown.entries[0])
+            timeDialog.now().change(page.shown.entries[0])
     }
 
     function iso(d) {
@@ -49,7 +49,7 @@ Item {
 
     // Time spent, noted by hand.
     function startNew() {
-        timeDialog.begin(page.project)
+        timeDialog.now().begin(page.project)
     }
 
     function reload() {
@@ -172,7 +172,7 @@ Item {
                     icon.color: page.theme.text
                     display: page.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
                     Accessible.name: page.sioul.text("time-note")
-                    onClicked: timeDialog.begin(page.project)
+                    onClicked: timeDialog.now().begin(page.project)
                 }
                 // A project's billable time, as a spreadsheet.
                 ToolButton {
@@ -182,7 +182,7 @@ Item {
                     ToolTip.visible: hovered
                     ToolTip.text: page.sioul.text("time-export")
                     ToolTip.delay: 400
-                    onClicked: timeExport.begin(page.project)
+                    onClicked: timeExport.now().begin(page.project)
                 }
             }
             Label {
@@ -374,7 +374,7 @@ Item {
                     // its task), or taken out from its menu.
                     onClicked: {
                         if (entry.modelData.invoice === "")
-                            timeDialog.change(entry.modelData)
+                            timeDialog.now().change(entry.modelData)
                     }
                     TapHandler {
                         acceptedButtons: Qt.RightButton
@@ -463,7 +463,7 @@ Item {
 
         MenuItem {
             text: page.sioul.text("time-change")
-            onTriggered: timeDialog.change(entryMenu.entry)
+            onTriggered: timeDialog.now().change(entryMenu.entry)
         }
         MenuItem {
             text: page.sioul.text("time-remove")
@@ -471,12 +471,18 @@ Item {
         }
     }
 
-    TimeDialog {
+    Later {
         id: timeDialog
 
-        sioul: page.sioul
-        theme: page.theme
-        onSaved: page.reload()
+        sourceComponent: Component {
+            TimeDialog {
+                id: timeDialogForm
+
+                sioul: page.sioul
+                theme: page.theme
+                onSaved: page.reload()
+            }
+        }
     }
 
     // Work rests: one line, and the page behind it if you ask.
@@ -488,12 +494,18 @@ Item {
         onShown: page.anyway = true
     }
 
-    TimeExport {
+    Later {
         id: timeExport
 
-        sioul: page.sioul
-        theme: page.theme
-        window: page.window
-        projects: page.projects
+        sourceComponent: Component {
+            TimeExport {
+                id: timeExportForm
+
+                sioul: page.sioul
+                theme: page.theme
+                window: page.window
+                projects: page.projects
+            }
+        }
     }
 }

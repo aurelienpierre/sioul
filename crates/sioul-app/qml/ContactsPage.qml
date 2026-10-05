@@ -319,6 +319,10 @@ Item {
                 spacing: 2
                 model: page.shown.contacts
                 ScrollBar.vertical: ScrollBar {}
+                // Rows given again to the contacts scrolled in, rather than made anew: a
+                // phone made and shaped each one at every pass.
+                reuseItems: true
+                cacheBuffer: 600
 
                 delegate: ItemDelegate {
                     id: row

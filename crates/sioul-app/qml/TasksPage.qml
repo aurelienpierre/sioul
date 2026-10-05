@@ -39,10 +39,20 @@ Item {
     }
     Component.onCompleted: page.takeShown()
     // For the window's images: the task open.
-    property alias panel: taskPanel
+    readonly property var panel: panelLoader.item
+    // The task's panel, made the first time a task opens (a form of many fields), then kept.
+    property bool panelMade: false
+    onOpenedChanged: if (page.opened !== "") page.panelMade = true
     property alias routines: routinesDialog
     // "now", "day", "list", "board", "timeline".
     property string mode: "now"
+    // The views made so far: each the first time it is shown.
+    property var made: ({ now: true })
+    onModeChanged: {
+        const made = Object.assign({}, page.made)
+        made[page.mode] = true
+        page.made = made
+    }
     property string opened: ""
     // On a phone, the task open takes the page; Back closes it (main.qml).
     readonly property bool canGoBack: page.opened !== ""
@@ -113,29 +123,17 @@ Item {
         page.sioul.focusStart(uid, minutes)
     }
 
-    // A card dropped on a column: started, done, or free again.
-    function dropAt(point, task) {
-        for (let i = 0; i < boardColumns.count; ++i) {
-            const column = boardColumns.itemAt(i)
-            const local = column.mapFromItem(null, point.x, point.y)
-            if (local.x < 0 || local.y < 0 || local.x > column.width || local.y > column.height)
-                continue
-            const status = ({ "ready": "needs-action", "doing": "in-process", "done": "completed" })[page.shown.board.columns[i].id]
-            if (status && status !== task.status)
-                page.sioul.setTaskStatus(task.uid, status)
-        }
-    }
 
     // The day closed at once; the screen after it says where everything went.
     function stopForToday() {
         const closing = page.sioul.doneForTheDay()
         if (closing !== "")
-            doneDialog.show(JSON.parse(closing))
+            doneDialog.now().show(JSON.parse(closing))
     }
 
     // For the window's tests.
     function grabStop(path) {
-        doneDialog.grab(path)
+        doneDialog.now().grab(path)
     }
 
     // For the window's tests: the settings, open or closed, and as an image.
@@ -149,7 +147,7 @@ Item {
 
     // For the window's tests: the screen closed.
     function closeStop() {
-        doneDialog.accept()
+        doneDialog.now().accept()
     }
 
     // For the window's tests.
@@ -161,7 +159,7 @@ Item {
     // A task with its folded details shown (for captures).
     function openDetails(uid) {
         page.opened = uid
-        taskPanel.moreShown = true
+        panelLoader.item.moreShown = true
     }
 
     function openFirst() {
@@ -171,7 +169,7 @@ Item {
 
     // For the window's pictures: the open task's folded details shown.
     function showPanelDetails() {
-        taskPanel.moreShown = true
+        panelLoader.item.moreShown = true
     }
 
     Shortcut {
@@ -227,7 +225,7 @@ Item {
                     flat: true
                     text: page.sioul.text("routines")
                     icon.name: "media-playback-start"
-                    onClicked: routinesDialog.show()
+                    onClicked: routinesDialog.now().show()
                 }
                 // The board and the timeline: one case, or all.
                 ComboBox {
@@ -565,19 +563,25 @@ Item {
                                         icon.name: "chronometer-start"
                                         icon.color: page.theme.accentText
                                         highlighted: true
-                                        onClicked: nowStart.popup()
+                                        onClicked: nowStart.now().popup()
 
-                                        SioulMenu {
+                                        Later {
                                             id: nowStart
 
-                                            Repeater {
-                                                model: [2, 15, 25, 45, 0]
+                                            sourceComponent: Component {
+                                                SioulMenu {
+                                                    id: nowStartForm
 
-                                                delegate: MenuItem {
-                                                    required property int modelData
+                                                    Repeater {
+                                                        model: [2, 15, 25, 45, 0]
 
-                                                    text: modelData === 2 ? page.sioul.text("focus-two") : modelData === 0 ? page.sioul.text("focus-open-ended") : page.sioul.textWith("focus-for", "minutes", String(modelData))
-                                                    onTriggered: page.focusOn(page.shown.now.now.uid, modelData)
+                                                        delegate: MenuItem {
+                                                            required property int modelData
+
+                                                            text: modelData === 2 ? page.sioul.text("focus-two") : modelData === 0 ? page.sioul.text("focus-open-ended") : page.sioul.textWith("focus-for", "minutes", String(modelData))
+                                                            onTriggered: page.focusOn(page.shown.now.now.uid, modelData)
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -596,34 +600,40 @@ Item {
                                     Button {
                                         flat: true
                                         text: page.sioul.text("task-hard")
-                                        onClicked: hardMenu.popup()
+                                        onClicked: hardMenu.now().popup()
 
                                         // What makes it hard: one matching help each.
-                                        SioulMenu {
+                                        Later {
                                             id: hardMenu
 
-                                            MenuItem {
-                                                text: page.sioul.text("task-hard-how")
-                                                onTriggered: page.open(page.shown.now.now.uid)
-                                            }
-                                            MenuItem {
-                                                text: page.sioul.text("task-hard-big")
-                                                onTriggered: {
-                                                    page.open(page.shown.now.now.uid)
-                                                    Qt.callLater(() => taskPanel.addStep())
+                                            sourceComponent: Component {
+                                                SioulMenu {
+                                                    id: hardMenuForm
+
+                                                    MenuItem {
+                                                        text: page.sioul.text("task-hard-how")
+                                                        onTriggered: page.open(page.shown.now.now.uid)
+                                                    }
+                                                    MenuItem {
+                                                        text: page.sioul.text("task-hard-big")
+                                                        onTriggered: {
+                                                            page.open(page.shown.now.now.uid)
+                                                            Qt.callLater(() => panelLoader.item.addStep())
+                                                        }
+                                                    }
+                                                    MenuItem {
+                                                        text: page.sioul.text("task-hard-dread")
+                                                        onTriggered: page.focusOn(page.shown.now.now.uid, 2)
+                                                    }
+                                                    MenuItem {
+                                                        text: page.sioul.text("task-hard-boring")
+                                                        onTriggered: page.focusOn(page.shown.now.now.uid, 2)
+                                                    }
+                                                    MenuItem {
+                                                        text: page.sioul.text("task-hard-energy")
+                                                        onTriggered: page.sioul.setWeather("fog")
+                                                    }
                                                 }
-                                            }
-                                            MenuItem {
-                                                text: page.sioul.text("task-hard-dread")
-                                                onTriggered: page.focusOn(page.shown.now.now.uid, 2)
-                                            }
-                                            MenuItem {
-                                                text: page.sioul.text("task-hard-boring")
-                                                onTriggered: page.focusOn(page.shown.now.now.uid, 2)
-                                            }
-                                            MenuItem {
-                                                text: page.sioul.text("task-hard-energy")
-                                                onTriggered: page.sioul.setWeather("fog")
                                             }
                                         }
                                     }
@@ -647,7 +657,7 @@ Item {
                             sioul: page.sioul
                             compact: true
                             onOpen: uid => page.open(uid)
-                            onMenu: task => taskMenu.show(task)
+                            onMenu: task => taskMenu.now().show(task)
                             onTick: page.tick(page.shown.now.rest)
                         }
 
@@ -667,7 +677,7 @@ Item {
                             sioul: page.sioul
                             compact: true
                             onOpen: uid => page.open(uid)
-                            onMenu: task => taskMenu.show(task)
+                            onMenu: task => taskMenu.now().show(task)
                             onTick: page.tick(page.shown.now.then)
                         }
 
@@ -717,7 +727,7 @@ Item {
                                         compact: true
                                         selected: page.opened === modelData.uid
                                         onOpen: uid => page.open(uid)
-                                        onMenu: task => taskMenu.show(task)
+                                        onMenu: task => taskMenu.now().show(task)
                                         onTick: page.tick(modelData)
                                     }
                                 }
@@ -755,88 +765,100 @@ Item {
                 }
 
                 // The day: events at their times, today's steps in the gaps, now.
-                DayView {
-                    sioul: page.sioul
-                    theme: page.theme
-                    day: page.shown ? page.shown.day : null
-                    onRelay: page.sioul.refreshWork()
-                    onOpenTask: uid => page.open(uid)
-                    onOpenEvent: key => page.window.openThing({ kind: "event", uri: "", key: key })
+                // Made the first time it is shown.
+                Loader {
+                    active: page.made["day"] === true
+                    sourceComponent: Component {
+                        DayView {
+                            sioul: page.sioul
+                            theme: page.theme
+                            day: page.shown ? page.shown.day : null
+                            onRelay: page.sioul.refreshWork()
+                            onOpenTask: uid => page.open(uid)
+                            onOpenEvent: key => page.window.openThing({ kind: "event", uri: "", key: key })
+                        }
+                    }
                 }
 
                 // The list: every open task, a bigger one followed by its steps.
-                ColumnLayout {
-                    spacing: 8
+                // Made the first time it is shown.
+                Loader {
+                    active: page.made["list"] === true
+                    sourceComponent: Component {
+                        ColumnLayout {
+                            spacing: 8
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
 
-                        TextField {
-                            Layout.fillWidth: true
-                            placeholderText: page.sioul.text("task-search")
-                            onTextEdited: {
-                                page.query = text
-                                page.apply()
+                                TextField {
+                                    Layout.fillWidth: true
+                                    placeholderText: page.sioul.text("task-search")
+                                    onTextEdited: {
+                                        page.query = text
+                                        page.apply()
+                                    }
+                                }
+                                ComboBox {
+                                    model: [page.sioul.text("task-by-case"), page.sioul.text("task-by-list")]
+                                    currentIndex: page.by === "list" ? 1 : 0
+                                    onActivated: index => {
+                                        page.by = index === 1 ? "list" : "case"
+                                        page.apply()
+                                    }
+                                }
+                                CheckBox {
+                                    text: page.sioul.text("task-show-done")
+                                    checked: page.showDone
+                                    onToggled: {
+                                        page.showDone = checked
+                                        page.apply()
+                                    }
+                                }
                             }
-                        }
-                        ComboBox {
-                            model: [page.sioul.text("task-by-case"), page.sioul.text("task-by-list")]
-                            currentIndex: page.by === "list" ? 1 : 0
-                            onActivated: index => {
-                                page.by = index === 1 ? "list" : "case"
-                                page.apply()
-                            }
-                        }
-                        CheckBox {
-                            text: page.sioul.text("task-show-done")
-                            checked: page.showDone
-                            onToggled: {
-                                page.showDone = checked
-                                page.apply()
-                            }
-                        }
-                    }
-                    ListView {
-                        id: groups
+                            ListView {
+                                id: groups
 
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        spacing: 14
-                        model: page.shown ? page.shown.list.groups : []
-                        ScrollBar.vertical: ScrollBar {}
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                spacing: 14
+                                model: page.shown ? page.shown.list.groups : []
+                                ScrollBar.vertical: ScrollBar {}
 
-                        delegate: ColumnLayout {
-                            id: group
+                                delegate: ColumnLayout {
+                                    id: group
 
-                            required property var modelData
-
-                            width: groups.width - 12
-                            spacing: 2
-
-                            Label {
-                                text: group.modelData.title
-                                textFormat: Text.PlainText
-                                font.weight: Font.DemiBold
-                                font.pixelSize: 16
-                                color: page.theme.text
-                            }
-                            Repeater {
-                                model: group.modelData.rows
-
-                                delegate: TaskRow {
                                     required property var modelData
 
-                                    Layout.fillWidth: true
-                                    task: modelData
-                                    theme: page.theme
-                                    sioul: page.sioul
-                                    depth: modelData.depth
-                                    selected: page.opened === modelData.uid
-                                    onOpen: uid => page.open(uid)
-                                    onMenu: task => taskMenu.show(task)
-                                    onTick: page.tick(modelData)
+                                    width: groups.width - 12
+                                    spacing: 2
+
+                                    Label {
+                                        text: group.modelData.title
+                                        textFormat: Text.PlainText
+                                        font.weight: Font.DemiBold
+                                        font.pixelSize: 16
+                                        color: page.theme.text
+                                    }
+                                    Repeater {
+                                        model: group.modelData.rows
+
+                                        delegate: TaskRow {
+                                            required property var modelData
+
+                                            Layout.fillWidth: true
+                                            task: modelData
+                                            theme: page.theme
+                                            sioul: page.sioul
+                                            depth: modelData.depth
+                                            selected: page.opened === modelData.uid
+                                            onOpen: uid => page.open(uid)
+                                            onMenu: task => taskMenu.now().show(task)
+                                            onTick: page.tick(modelData)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -844,126 +866,147 @@ Item {
                 }
 
                 // The board: free to start, started, waiting, done. Cards move by dragging.
-                ColumnLayout {
-                    spacing: 6
+                // Made the first time it is shown.
+                Loader {
+                    active: page.made["board"] === true
+                    sourceComponent: Component {
+                        ColumnLayout {
+                            id: boardView
 
-                    Label {
-                        visible: page.shown !== null && page.shown.board.wip !== ""
-                        Layout.fillWidth: true
-                        text: page.shown ? page.shown.board.wip : ""
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: page.theme.muted
-                    }
-                    // Side by side; on a phone, one under the other, the board scrolled whole.
-                    Flickable {
-                        id: board
+                            // A card dropped on a column: started, done, or free again.
+                            function dropAt(point, task) {
+                                for (let i = 0; i < boardColumns.count; ++i) {
+                                    const column = boardColumns.itemAt(i)
+                                    const local = column.mapFromItem(null, point.x, point.y)
+                                    if (local.x < 0 || local.y < 0 || local.x > column.width || local.y > column.height)
+                                        continue
+                                    const status = ({ "ready": "needs-action", "doing": "in-process", "done": "completed" })[page.shown.board.columns[i].id]
+                                    if (status && status !== task.status)
+                                        page.sioul.setTaskStatus(task.uid, status)
+                                }
+                            }
 
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        contentWidth: width
-                        contentHeight: page.narrow ? boardGrid.implicitHeight : height
-                        interactive: page.narrow && page.dragging === null
-                        boundsBehavior: Flickable.StopAtBounds
+                            spacing: 6
 
-                        GridLayout {
-                            id: boardGrid
+                            Label {
+                                visible: page.shown !== null && page.shown.board.wip !== ""
+                                Layout.fillWidth: true
+                                text: page.shown ? page.shown.board.wip : ""
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                color: page.theme.muted
+                            }
+                            // Side by side; on a phone, one under the other, the board scrolled whole.
+                            Flickable {
+                                id: board
 
-                            width: board.width
-                            height: page.narrow ? implicitHeight : board.height
-                            columns: page.narrow ? 1 : Math.max(1, boardColumns.count)
-                            columnSpacing: 10
-                            rowSpacing: 10
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                contentWidth: width
+                                contentHeight: page.narrow ? boardGrid.implicitHeight : height
+                                interactive: page.narrow && page.dragging === null
+                                boundsBehavior: Flickable.StopAtBounds
 
-                            Repeater {
-                                id: boardColumns
+                                GridLayout {
+                                    id: boardGrid
 
-                                model: page.shown ? page.shown.board.columns : []
+                                    width: board.width
+                                    height: page.narrow ? implicitHeight : board.height
+                                    columns: page.narrow ? 1 : Math.max(1, boardColumns.count)
+                                    columnSpacing: 10
+                                    rowSpacing: 10
 
-                                delegate: Rectangle {
-                                    id: column
+                                    Repeater {
+                                        id: boardColumns
 
-                                    required property var modelData
-                                    readonly property string columnId: column.modelData.id
-                                    readonly property bool target: {
-                                        if (page.dragging === null || column.columnId === "waiting")
-                                            return false
-                                        const local = column.mapFromItem(null, page.dragPoint.x, page.dragPoint.y)
-                                        return local.x >= 0 && local.y >= 0 && local.x <= column.width && local.y <= column.height
-                                    }
+                                        model: page.shown ? page.shown.board.columns : []
 
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: !page.narrow
-                                    Layout.preferredWidth: 1
-                                    Layout.preferredHeight: page.narrow ? columnContent.implicitHeight + 16 : -1
-                                    radius: page.theme.radius
-                                    color: column.target ? page.theme.surface : "transparent"
-                                    border.color: column.target ? page.theme.accent : page.theme.line
+                                        delegate: Rectangle {
+                                            id: column
 
-                                    ColumnLayout {
-                                        id: columnContent
-
-                                        anchors.fill: parent
-                                        anchors.margins: 8
-                                        spacing: 6
-
-                                        Label {
-                                            text: column.modelData.title
-                                            textFormat: Text.PlainText
-                                            font.weight: Font.DemiBold
-                                            color: page.theme.text
-                                        }
-                                        ListView {
-                                            id: cards
+                                            required property var modelData
+                                            readonly property string columnId: column.modelData.id
+                                            readonly property bool target: {
+                                                if (page.dragging === null || column.columnId === "waiting")
+                                                    return false
+                                                const local = column.mapFromItem(null, page.dragPoint.x, page.dragPoint.y)
+                                                return local.x >= 0 && local.y >= 0 && local.x <= column.width && local.y <= column.height
+                                            }
 
                                             Layout.fillWidth: true
                                             Layout.fillHeight: !page.narrow
-                                            // On a phone, every card: the board scrolls, not the column.
-                                            Layout.preferredHeight: page.narrow ? cards.contentHeight : -1
-                                            clip: true
-                                            spacing: 4
-                                            model: column.modelData.cards
-                                            interactive: !page.narrow && page.dragging === null
+                                            Layout.preferredWidth: 1
+                                            Layout.preferredHeight: page.narrow ? columnContent.implicitHeight + 16 : -1
+                                            radius: page.theme.radius
+                                            color: column.target ? page.theme.surface : "transparent"
+                                            border.color: column.target ? page.theme.accent : page.theme.line
 
-                                            delegate: Item {
-                                                id: holder
+                                            ColumnLayout {
+                                                id: columnContent
 
-                                                required property var modelData
+                                                anchors.fill: parent
+                                                anchors.margins: 8
+                                                spacing: 6
 
-                                                width: cards.width
-                                                height: card.implicitHeight
-
-                                                TaskRow {
-                                                    id: card
-
-                                                    width: parent.width
-                                                    task: holder.modelData
-                                                    theme: page.theme
-                                                    sioul: page.sioul
-                                                    compact: true
-                                                    selected: page.opened === holder.modelData.uid
-                                                    opacity: page.dragging !== null && page.dragging.uid === holder.modelData.uid ? 0.4 : 1
-                                                    onOpen: uid => page.open(uid)
-                                                    onMenu: task => taskMenu.show(task)
-                                                    onTick: page.tick(holder.modelData)
+                                                Label {
+                                                    text: column.modelData.title
+                                                    textFormat: Text.PlainText
+                                                    font.weight: Font.DemiBold
+                                                    color: page.theme.text
                                                 }
-                                                // With a mouse only: on a touch screen a drag scrolls the board.
-                                                DragHandler {
-                                                    id: drag
+                                                ListView {
+                                                    id: cards
 
-                                                    target: null
-                                                    enabled: !holder.modelData.read_only
-                                                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                                                    onActiveChanged: {
-                                                        if (drag.active) {
-                                                            page.dragging = holder.modelData
-                                                        } else {
-                                                            page.dropAt(page.dragPoint, holder.modelData)
-                                                            page.dragging = null
+                                                    Layout.fillWidth: true
+                                                    Layout.fillHeight: !page.narrow
+                                                    // On a phone, every card: the board scrolls, not the column.
+                                                    Layout.preferredHeight: page.narrow ? cards.contentHeight : -1
+                                                    clip: true
+                                                    spacing: 4
+                                                    model: column.modelData.cards
+                                                    interactive: !page.narrow && page.dragging === null
+
+                                                    delegate: Item {
+                                                        id: holder
+
+                                                        required property var modelData
+
+                                                        width: cards.width
+                                                        height: card.implicitHeight
+
+                                                        TaskRow {
+                                                            id: card
+
+                                                            width: parent.width
+                                                            task: holder.modelData
+                                                            theme: page.theme
+                                                            sioul: page.sioul
+                                                            compact: true
+                                                            selected: page.opened === holder.modelData.uid
+                                                            opacity: page.dragging !== null && page.dragging.uid === holder.modelData.uid ? 0.4 : 1
+                                                            onOpen: uid => page.open(uid)
+                                                            onMenu: task => taskMenu.now().show(task)
+                                                            onTick: page.tick(holder.modelData)
+                                                        }
+                                                        // With a mouse only: on a touch screen a drag scrolls the board.
+                                                        DragHandler {
+                                                            id: drag
+
+                                                            target: null
+                                                            enabled: !holder.modelData.read_only
+                                                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                                            onActiveChanged: {
+                                                                if (drag.active) {
+                                                                    page.dragging = holder.modelData
+                                                                } else {
+                                                                    boardView.dropAt(page.dragPoint, holder.modelData)
+                                                                    page.dragging = null
+                                                                }
+                                                            }
+                                                            onCentroidChanged: page.dragPoint = drag.centroid.scenePosition
                                                         }
                                                     }
-                                                    onCentroidChanged: page.dragPoint = drag.centroid.scenePosition
                                                 }
                                             }
                                         }
@@ -975,69 +1018,91 @@ Item {
                 }
 
                 // The timeline: each open task on the days the plan gives it.
-                TaskTimeline {
-                    sioul: page.sioul
-                    theme: page.theme
-                    timeline: page.shown ? page.shown.timeline : null
-                    opened: page.opened
-                    onOpen: uid => page.open(uid)
+                // Made the first time it is shown.
+                Loader {
+                    active: page.made["timeline"] === true
+                    sourceComponent: Component {
+                        TaskTimeline {
+                            sioul: page.sioul
+                            theme: page.theme
+                            timeline: page.shown ? page.shown.timeline : null
+                            opened: page.opened
+                            onOpen: uid => page.open(uid)
+                        }
+                    }
                 }
             }
         }
 
-        TaskPanel {
-            id: taskPanel
+        Loader {
+            id: panelLoader
 
+            active: page.panelMade
             visible: page.opened !== ""
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
             Layout.preferredWidth: Math.round((columns.width - columns.spacing) * 0.42)
-            theme: page.theme
-            sioul: page.sioul
-            window: page.window
-            uid: page.opened
-            cases: page.shown ? page.shown.cases : []
-            kinds: page.shown ? page.shown.kinds : []
-            categories: page.shown ? page.shown.categories : []
-            onClosed: page.opened = ""
-            onFocusRequested: (uid, minutes) => page.focusOn(uid, minutes)
+
+            sourceComponent: TaskPanel {
+                theme: page.theme
+                sioul: page.sioul
+                window: page.window
+                uid: page.opened
+                cases: page.shown ? page.shown.cases : []
+                kinds: page.shown ? page.shown.kinds : []
+                categories: page.shown ? page.shown.categories : []
+                onClosed: page.opened = ""
+                onFocusRequested: (uid, minutes) => page.focusOn(uid, minutes)
+            }
         }
     }
 
-    DoneDialog {
+    Later {
         id: doneDialog
 
-        sioul: page.sioul
-        theme: page.theme
-        window: page.window
+        sourceComponent: Component {
+            DoneDialog {
+                id: doneDialogForm
+
+                sioul: page.sioul
+                theme: page.theme
+                window: page.window
+            }
+        }
     }
 
     // Right click on a task: open it, or tie it to something new or something that exists.
-    SioulMenu {
+    Later {
         id: taskMenu
 
-        property var target: null
-        readonly property var source: taskMenu.target ? { uri: "sioul:task/" + encodeURIComponent(taskMenu.target.uid), kind: "task", key: taskMenu.target.uid, title: taskMenu.target.title } : null
+        sourceComponent: Component {
+            SioulMenu {
+                id: taskMenuForm
 
-        function show(task) {
-            taskMenu.target = task
-            taskMenu.popup()
-        }
+                property var target: null
+                readonly property var source: taskMenuForm.target ? { uri: "sioul:task/" + encodeURIComponent(taskMenuForm.target.uid), kind: "task", key: taskMenuForm.target.uid, title: taskMenuForm.target.title } : null
 
-        MenuItem {
-            text: page.sioul.text("ui-open")
-            onTriggered: page.open(taskMenu.target.uid)
-        }
-        MenuSeparator {}
-        AddMenu {
-            sioul: page.sioul
-            window: page.window
-            source: taskMenu.source
-        }
-        MenuItem {
-            text: page.sioul.text("ui-link-existing")
-            onTriggered: page.window.linkFrom(taskMenu.source)
+                function show(task) {
+                    taskMenuForm.target = task
+                    taskMenuForm.popup()
+                }
+
+                MenuItem {
+                    text: page.sioul.text("ui-open")
+                    onTriggered: page.open(taskMenuForm.target.uid)
+                }
+                MenuSeparator {}
+                AddMenu {
+                    sioul: page.sioul
+                    window: page.window
+                    source: taskMenuForm.source
+                }
+                MenuItem {
+                    text: page.sioul.text("ui-link-existing")
+                    onTriggered: page.window.linkFrom(taskMenuForm.source)
+                }
+            }
         }
     }
 
@@ -1062,12 +1127,18 @@ Item {
         }
     }
 
-    RoutinesDialog {
+    Later {
         id: routinesDialog
 
-        sioul: page.sioul
-        theme: page.theme
-        onPlay: routine => page.window.playRoutine(routine)
+        sourceComponent: Component {
+            RoutinesDialog {
+                id: routinesDialogForm
+
+                sioul: page.sioul
+                theme: page.theme
+                onPlay: routine => page.window.playRoutine(routine)
+            }
+        }
     }
 
     // Rest: one line, a thought noted for later, and the tasks if you ask.

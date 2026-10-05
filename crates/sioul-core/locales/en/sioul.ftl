@@ -293,6 +293,7 @@ account-switch-help = Off, it keeps its settings and is neither synced nor shown
 account-on = “{ $id }” is on again.
 account-off = “{ $id }” is off: kept with its settings, neither synced nor shown.
 account-details = Server and folders
+account-settings = Settings for this address
 scout-button = What this server offers
 scout-asking = Asking the server…
 scout-title = What { $server } offers
@@ -961,6 +962,12 @@ focus-stop = Stop
 focus-breadcrumb = Next time, start by…
 focus-done = Done
 focus-keep = Keep
+# The time running, in the system's notifications: since when, with the time chosen or without an end; paused, the time so far.
+focus-notification-planned = Since { $time }, { $minutes } min chosen
+focus-notification-open = Since { $time }, without an end
+focus-notification-paused = Paused, { $minutes } min so far
+# Android's channel for it, as Android's settings list it.
+focus-notification-channel = Focus timer
 note-search = Search the notes
 note-new = New note
 note-title = Its title

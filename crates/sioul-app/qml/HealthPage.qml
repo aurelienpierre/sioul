@@ -32,16 +32,23 @@ Item {
     function showNeeds() {
         const flick = scroll.contentItem as Flickable
         if (flick)
-            flick.contentY = Math.max(0, Math.min(needsSection.y - 12, flick.contentHeight - flick.height))
+            flick.contentY = Math.max(0, Math.min(page.needsNow().y - 12, flick.contentHeight - flick.height))
     }
 
     // Shown as last made at once, made again off the window's thread, shown
     // again when it comes (`healthView`): a view made the same as before
     // announces no change, so the page never waits for one.
+    // Meals, rest and sleep: made after the first screen, at once when asked.
+    function needsNow() {
+        needsLoader.asynchronous = false
+        return needsLoader
+    }
+
     function reload() {
         page.takeView()
         page.sioul.refreshHealth()
-        needsSection.reload()
+        if (needsLoader.item)
+            needsLoader.item.reload()
     }
 
     function takeView() {
@@ -117,7 +124,7 @@ Item {
                     ToolTip.visible: hovered
                     ToolTip.text: page.sioul.text("ui-settings")
                     ToolTip.delay: 300
-                    onClicked: healthPanel.open()
+                    onClicked: healthPanel.now().open()
                 }
             }
             Label {
@@ -303,7 +310,7 @@ Item {
                     text: page.sioul.text("health-add-medicine")
                     icon.name: "list-add"
                     icon.color: page.theme.text
-                    onClicked: medicineDialog.edit(null)
+                    onClicked: medicineDialog.now().edit(null)
                 }
             }
             Repeater {
@@ -341,7 +348,7 @@ Item {
                         flat: true
                         implicitWidth: implicitContentWidth + leftPadding + rightPadding
                         text: page.sioul.text("ui-edit")
-                        onClicked: medicineDialog.edit(medicine.modelData)
+                        onClicked: medicineDialog.now().edit(medicine.modelData)
                     }
                 }
             }
@@ -362,7 +369,7 @@ Item {
                     text: page.sioul.text("health-add-prescription")
                     icon.name: "list-add"
                     icon.color: page.theme.text
-                    onClicked: prescriptionDialog.edit(null)
+                    onClicked: prescriptionDialog.now().edit(null)
                 }
             }
             Repeater {
@@ -416,7 +423,7 @@ Item {
                         flat: true
                         implicitWidth: implicitContentWidth + leftPadding + rightPadding
                         text: page.sioul.text("ui-edit")
-                        onClicked: prescriptionDialog.edit(prescription.modelData)
+                        onClicked: prescriptionDialog.now().edit(prescription.modelData)
                     }
                 }
             }
@@ -440,24 +447,31 @@ Item {
                 }
             }
 
-            // The watch: what it says of today and the week, once one is set up.
-            WatchPanel {
+            // The watch: what it says of today and the week, once one is set up;
+            // made after the first screen, without holding the window.
+            Loader {
                 visible: !!page.shown.watch && page.shown.watch.any
                 Layout.fillWidth: true
-                sioul: page.sioul
-                theme: page.theme
-                watch: page.shown.watch || null
-                onSetting: (key, value) => page.setting(key, value)
+                asynchronous: true
+                sourceComponent: WatchPanel {
+                    sioul: page.sioul
+                    theme: page.theme
+                    watch: page.shown.watch || null
+                    onSetting: (key, value) => page.setting(key, value)
+                }
             }
 
             // Meals, naps and the night: kept free of tasks, the work planned around them.
-            NeedsSection {
-                id: needsSection
+            Loader {
+                id: needsLoader
 
                 Layout.fillWidth: true
-                sioul: page.sioul
-                theme: page.theme
-                window: page.window
+                asynchronous: true
+                sourceComponent: NeedsSection {
+                    sioul: page.sioul
+                    theme: page.theme
+                    window: page.window
+                }
             }
 
             // A pause to move, while focusing.
@@ -569,469 +583,493 @@ Item {
     }
 
     // The page's settings: where the watch's files come from, whether it may offer a pause.
-    Popup {
+    Later {
         id: healthPanel
 
-        parent: Overlay.overlay
-        x: Math.round((parent.width - width) / 2)
-        y: Math.round(parent.height / 6)
-        width: Math.min(520, parent.width - 2 * page.theme.gap)
-        modal: true
-        padding: page.theme.gap
+        sourceComponent: Component {
+            Popup {
+                id: healthPanelForm
 
-        background: Rectangle {
-            color: page.theme.background
-            radius: page.theme.radius
-            border.color: page.theme.line
-        }
+                parent: Overlay.overlay
+                x: Math.round((parent.width - width) / 2)
+                y: Math.round(parent.height / 6)
+                width: Math.min(520, parent.width - 2 * page.theme.gap)
+                modal: true
+                padding: page.theme.gap
 
-        contentItem: ColumnLayout {
-            spacing: 8
+                background: Rectangle {
+                    color: page.theme.background
+                    radius: page.theme.radius
+                    border.color: page.theme.line
+                }
 
-            Label {
-                text: page.sioul.text("ui-settings")
-                font.pixelSize: 17
-                font.weight: Font.DemiBold
-                color: page.theme.text
-            }
-            WatchPanel {
-                Layout.fillWidth: true
-                part: "settings"
-                sioul: page.sioul
-                theme: page.theme
-                watch: page.shown.watch || null
-                onSetting: (key, value) => page.setting(key, value)
-            }
-            Button {
-                Layout.alignment: Qt.AlignRight
-                text: page.sioul.text("ui-close")
-                onClicked: healthPanel.close()
+                contentItem: ColumnLayout {
+                    spacing: 8
+
+                    Label {
+                        text: page.sioul.text("ui-settings")
+                        font.pixelSize: 17
+                        font.weight: Font.DemiBold
+                        color: page.theme.text
+                    }
+                    WatchPanel {
+                        Layout.fillWidth: true
+                        part: "settings"
+                        sioul: page.sioul
+                        theme: page.theme
+                        watch: page.shown.watch || null
+                        onSetting: (key, value) => page.setting(key, value)
+                    }
+                    Button {
+                        Layout.alignment: Qt.AlignRight
+                        text: page.sioul.text("ui-close")
+                        onClicked: healthPanelForm.close()
+                    }
+                }
             }
         }
     }
 
     // A medicine: its name, its dose, when it is taken, until when, and its prescription.
-    Dialog {
+    Later {
         id: medicineDialog
 
-        property string medicineId: ""
-        property string problem: ""
-        readonly property var everies: ["day", "days", "hours"]
+        sourceComponent: Component {
+            Dialog {
+                id: medicineDialogForm
 
-        function edit(medicine) {
-            medicineDialog.medicineId = medicine ? medicine.id : ""
-            medicineDialog.problem = ""
-            medicineName.text = medicine ? medicine.name : ""
-            medicineDose.text = medicine ? medicine.dose || "" : ""
-            const schedule = medicine ? medicine.schedule : { every: "day", times: ["08:00"] }
-            every.currentIndex = Math.max(0, medicineDialog.everies.indexOf(schedule.every))
-            times.text = schedule.every === "day" ? schedule.times.join(", ") : "08:00"
-            everyDays.value = schedule.every === "days" ? schedule.days : 2
-            everyHours.value = schedule.every === "hours" ? schedule.hours : 6
-            dayTime.text = schedule.every === "days" ? schedule.time : "08:00"
-            // Today on this computer's clock: toISOString would give the day in UTC, yesterday after midnight.
-            from.date = schedule.every === "days" ? schedule.from : Qt.formatDate(new Date(), "yyyy-MM-dd")
-            const start = schedule.every === "hours" ? new Date(schedule.from * 1000) : new Date()
-            hourFrom.text = start.toTimeString().slice(0, 5)
-            until.date = medicine && medicine.until ? medicine.until : ""
-            const prescriptions = page.shown.prescriptions
-            link.currentIndex = medicine && medicine.prescription ? Math.max(0, prescriptions.findIndex(p => p.id === medicine.prescription) + 1) : 0
-            paused.checked = medicine ? medicine.paused === true : false
-            medicineDialog.open()
-            medicineName.forceActiveFocus()
-        }
+                property string medicineId: ""
+                property string problem: ""
+                readonly property var everies: ["day", "days", "hours"]
 
-        function save() {
-            const kind = medicineDialog.everies[every.currentIndex]
-            const today = Qt.formatDate(new Date(), "yyyy-MM-dd")
-            const edit = {
-                name: medicineName.text,
-                dose: medicineDose.text,
-                every: kind,
-                times: times.text.split(",").map(t => t.trim()).filter(t => t !== ""),
-                days: everyDays.value,
-                hours: everyHours.value,
-                time: dayTime.text,
-                from: kind === "hours" ? today + "T" + hourFrom.text : from.date,
-                until: until.date,
-                prescription: link.currentIndex > 0 ? page.shown.prescriptions[link.currentIndex - 1].id : "",
-                paused: paused.checked
-            }
-            const answer = JSON.parse(page.sioul.saveMedicine(medicineDialog.medicineId, JSON.stringify(edit)))
-            if (answer.error) {
-                medicineDialog.problem = answer.error
-                return
-            }
-            medicineDialog.close()
-            page.reload()
-        }
-
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(520, page.width - 2 * page.theme.gap)
-        title: medicineDialog.medicineId === "" ? page.sioul.text("health-add-medicine") : page.sioul.text("health-medicine")
-
-        contentItem: GridLayout {
-            columns: 2
-            columnSpacing: 10
-            rowSpacing: 8
-
-            Label {
-                text: page.sioul.text("health-field-name")
-                color: page.theme.muted
-            }
-            TextField {
-                id: medicineName
-
-                Layout.fillWidth: true
-            }
-            Label {
-                text: page.sioul.text("health-field-dose")
-                color: page.theme.muted
-            }
-            TextField {
-                id: medicineDose
-
-                Layout.fillWidth: true
-                placeholderText: page.sioul.text("health-field-dose-hint")
-            }
-            Label {
-                text: page.sioul.text("health-field-when")
-                color: page.theme.muted
-            }
-            ComboBox {
-                id: every
-
-                Layout.fillWidth: true
-                model: medicineDialog.everies.map(e => page.sioul.text("health-every-" + e + "-choice"))
-            }
-            Label {
-                visible: every.currentIndex === 0
-                text: page.sioul.text("health-field-times")
-                color: page.theme.muted
-            }
-            TextField {
-                id: times
-
-                visible: every.currentIndex === 0
-                Layout.fillWidth: true
-                placeholderText: "12:00, 18:00"
-            }
-            Label {
-                visible: every.currentIndex === 1
-                text: page.sioul.text("health-field-every-days")
-                color: page.theme.muted
-            }
-            RowLayout {
-                visible: every.currentIndex === 1
-                spacing: 6
-
-                SpinBox {
-                    id: everyDays
-
-                    from: 1
-                    to: 90
-                    editable: true
+                function edit(medicine) {
+                    medicineDialogForm.medicineId = medicine ? medicine.id : ""
+                    medicineDialogForm.problem = ""
+                    medicineName.text = medicine ? medicine.name : ""
+                    medicineDose.text = medicine ? medicine.dose || "" : ""
+                    const schedule = medicine ? medicine.schedule : { every: "day", times: ["08:00"] }
+                    every.currentIndex = Math.max(0, medicineDialogForm.everies.indexOf(schedule.every))
+                    times.text = schedule.every === "day" ? schedule.times.join(", ") : "08:00"
+                    everyDays.value = schedule.every === "days" ? schedule.days : 2
+                    everyHours.value = schedule.every === "hours" ? schedule.hours : 6
+                    dayTime.text = schedule.every === "days" ? schedule.time : "08:00"
+                    // Today on this computer's clock: toISOString would give the day in UTC, yesterday after midnight.
+                    from.date = schedule.every === "days" ? schedule.from : Qt.formatDate(new Date(), "yyyy-MM-dd")
+                    const start = schedule.every === "hours" ? new Date(schedule.from * 1000) : new Date()
+                    hourFrom.text = start.toTimeString().slice(0, 5)
+                    until.date = medicine && medicine.until ? medicine.until : ""
+                    const prescriptions = page.shown.prescriptions
+                    link.currentIndex = medicine && medicine.prescription ? Math.max(0, prescriptions.findIndex(p => p.id === medicine.prescription) + 1) : 0
+                    paused.checked = medicine ? medicine.paused === true : false
+                    medicineDialogForm.open()
+                    medicineName.forceActiveFocus()
                 }
-                Label {
-                    text: page.sioul.text("health-field-at")
-                    color: page.theme.muted
+
+                function save() {
+                    const kind = medicineDialogForm.everies[every.currentIndex]
+                    const today = Qt.formatDate(new Date(), "yyyy-MM-dd")
+                    const edit = {
+                        name: medicineName.text,
+                        dose: medicineDose.text,
+                        every: kind,
+                        times: times.text.split(",").map(t => t.trim()).filter(t => t !== ""),
+                        days: everyDays.value,
+                        hours: everyHours.value,
+                        time: dayTime.text,
+                        from: kind === "hours" ? today + "T" + hourFrom.text : from.date,
+                        until: until.date,
+                        prescription: link.currentIndex > 0 ? page.shown.prescriptions[link.currentIndex - 1].id : "",
+                        paused: paused.checked
+                    }
+                    const answer = JSON.parse(page.sioul.saveMedicine(medicineDialogForm.medicineId, JSON.stringify(edit)))
+                    if (answer.error) {
+                        medicineDialogForm.problem = answer.error
+                        return
+                    }
+                    medicineDialogForm.close()
+                    page.reload()
                 }
-                TextField {
-                    id: dayTime
 
-                    Layout.preferredWidth: 70
-                    inputMask: "99:99"
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(520, page.width - 2 * page.theme.gap)
+                title: medicineDialogForm.medicineId === "" ? page.sioul.text("health-add-medicine") : page.sioul.text("health-medicine")
+
+                contentItem: GridLayout {
+                    columns: 2
+                    columnSpacing: 10
+                    rowSpacing: 8
+
+                    Label {
+                        text: page.sioul.text("health-field-name")
+                        color: page.theme.muted
+                    }
+                    TextField {
+                        id: medicineName
+
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: page.sioul.text("health-field-dose")
+                        color: page.theme.muted
+                    }
+                    TextField {
+                        id: medicineDose
+
+                        Layout.fillWidth: true
+                        placeholderText: page.sioul.text("health-field-dose-hint")
+                    }
+                    Label {
+                        text: page.sioul.text("health-field-when")
+                        color: page.theme.muted
+                    }
+                    ComboBox {
+                        id: every
+
+                        Layout.fillWidth: true
+                        model: medicineDialogForm.everies.map(e => page.sioul.text("health-every-" + e + "-choice"))
+                    }
+                    Label {
+                        visible: every.currentIndex === 0
+                        text: page.sioul.text("health-field-times")
+                        color: page.theme.muted
+                    }
+                    TextField {
+                        id: times
+
+                        visible: every.currentIndex === 0
+                        Layout.fillWidth: true
+                        placeholderText: "12:00, 18:00"
+                    }
+                    Label {
+                        visible: every.currentIndex === 1
+                        text: page.sioul.text("health-field-every-days")
+                        color: page.theme.muted
+                    }
+                    RowLayout {
+                        visible: every.currentIndex === 1
+                        spacing: 6
+
+                        SpinBox {
+                            id: everyDays
+
+                            from: 1
+                            to: 90
+                            editable: true
+                        }
+                        Label {
+                            text: page.sioul.text("health-field-at")
+                            color: page.theme.muted
+                        }
+                        TextField {
+                            id: dayTime
+
+                            Layout.preferredWidth: 70
+                            inputMask: "99:99"
+                        }
+                    }
+                    Label {
+                        visible: every.currentIndex === 1
+                        text: page.sioul.text("health-field-from")
+                        color: page.theme.muted
+                    }
+                    DateField {
+                        id: from
+
+                        visible: every.currentIndex === 1
+                        theme: page.theme
+                        locale: page.locale
+                    }
+                    Label {
+                        visible: every.currentIndex === 2
+                        text: page.sioul.text("health-field-every-hours")
+                        color: page.theme.muted
+                    }
+                    RowLayout {
+                        visible: every.currentIndex === 2
+                        spacing: 6
+
+                        SpinBox {
+                            id: everyHours
+
+                            from: 1
+                            to: 48
+                            editable: true
+                        }
+                        Label {
+                            text: page.sioul.text("health-field-from-time")
+                            color: page.theme.muted
+                        }
+                        TextField {
+                            id: hourFrom
+
+                            Layout.preferredWidth: 70
+                            inputMask: "99:99"
+                        }
+                    }
+
+                    Label {
+                        text: page.sioul.text("health-field-until")
+                        color: page.theme.muted
+                    }
+                    DateField {
+                        id: until
+
+                        theme: page.theme
+                        locale: page.locale
+                    }
+                    Label {
+                        text: page.sioul.text("health-field-prescription")
+                        color: page.theme.muted
+                    }
+                    ComboBox {
+                        id: link
+
+                        Layout.fillWidth: true
+                        model: [page.sioul.text("health-no-prescription")].concat(page.shown.prescriptions.map(p => page.theme.plain(p.title)))
+                    }
+                    Item {
+                        Layout.preferredHeight: 1
+                    }
+                    CheckBox {
+                        id: paused
+
+                        visible: medicineDialogForm.medicineId !== ""
+                        text: page.sioul.text("health-pause")
+                    }
+                    Label {
+                        visible: medicineDialogForm.problem !== ""
+                        Layout.columnSpan: 2
+                        Layout.fillWidth: true
+                        text: medicineDialogForm.problem
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: page.theme.warm
+                    }
                 }
-            }
-            Label {
-                visible: every.currentIndex === 1
-                text: page.sioul.text("health-field-from")
-                color: page.theme.muted
-            }
-            DateField {
-                id: from
 
-                visible: every.currentIndex === 1
-                theme: page.theme
-                locale: page.locale
-            }
-            Label {
-                visible: every.currentIndex === 2
-                text: page.sioul.text("health-field-every-hours")
-                color: page.theme.muted
-            }
-            RowLayout {
-                visible: every.currentIndex === 2
-                spacing: 6
+                // The buttons inside an Item: a DialogButtonBox as the footer itself closes
+                // the dialog on "Save" even when saving fails, and what went wrong is never read.
+                footer: Item {
+                    implicitWidth: medicineButtons.implicitWidth
+                    implicitHeight: medicineButtons.implicitHeight
 
-                SpinBox {
-                    id: everyHours
+                    DialogButtonBox {
+                        id: medicineButtons
 
-                    from: 1
-                    to: 48
-                    editable: true
+                        anchors.fill: parent
+
+                        Button {
+                            text: page.sioul.text("ui-save")
+                            highlighted: true
+                            DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                        }
+                        Button {
+                            text: page.sioul.text("ui-cancel")
+                            DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                        }
+                        Button {
+                            visible: medicineDialogForm.medicineId !== ""
+                            flat: true
+                            text: page.sioul.text("health-remove")
+                            DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
+                            onClicked: removeAsk.now().askFor(medicineName.text, page.sioul.text("health-remove-medicine-ask"), page.sioul.text("health-remove"), medicineDialogForm.medicineId, medicineDialogForm)
+                        }
+                        onAccepted: medicineDialogForm.save()
+                        onRejected: medicineDialogForm.close()
+                    }
                 }
-                Label {
-                    text: page.sioul.text("health-field-from-time")
-                    color: page.theme.muted
-                }
-                TextField {
-                    id: hourFrom
-
-                    Layout.preferredWidth: 70
-                    inputMask: "99:99"
-                }
-            }
-
-            Label {
-                text: page.sioul.text("health-field-until")
-                color: page.theme.muted
-            }
-            DateField {
-                id: until
-
-                theme: page.theme
-                locale: page.locale
-            }
-            Label {
-                text: page.sioul.text("health-field-prescription")
-                color: page.theme.muted
-            }
-            ComboBox {
-                id: link
-
-                Layout.fillWidth: true
-                model: [page.sioul.text("health-no-prescription")].concat(page.shown.prescriptions.map(p => page.theme.plain(p.title)))
-            }
-            Item {
-                Layout.preferredHeight: 1
-            }
-            CheckBox {
-                id: paused
-
-                visible: medicineDialog.medicineId !== ""
-                text: page.sioul.text("health-pause")
-            }
-            Label {
-                visible: medicineDialog.problem !== ""
-                Layout.columnSpan: 2
-                Layout.fillWidth: true
-                text: medicineDialog.problem
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                color: page.theme.warm
-            }
-        }
-
-        // The buttons inside an Item: a DialogButtonBox as the footer itself closes
-        // the dialog on "Save" even when saving fails, and what went wrong is never read.
-        footer: Item {
-            implicitWidth: medicineButtons.implicitWidth
-            implicitHeight: medicineButtons.implicitHeight
-
-            DialogButtonBox {
-                id: medicineButtons
-
-                anchors.fill: parent
-
-                Button {
-                    text: page.sioul.text("ui-save")
-                    highlighted: true
-                    DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-                }
-                Button {
-                    text: page.sioul.text("ui-cancel")
-                    DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-                }
-                Button {
-                    visible: medicineDialog.medicineId !== ""
-                    flat: true
-                    text: page.sioul.text("health-remove")
-                    DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
-                    onClicked: removeAsk.askFor(medicineName.text, page.sioul.text("health-remove-medicine-ask"), page.sioul.text("health-remove"), medicineDialog.medicineId, medicineDialog)
-                }
-                onAccepted: medicineDialog.save()
-                onRejected: medicineDialog.close()
             }
         }
     }
 
     // A prescription: what, who, until when, how often at the pharmacy.
-    Dialog {
+    Later {
         id: prescriptionDialog
 
-        property string prescriptionId: ""
-        property string problem: ""
+        sourceComponent: Component {
+            Dialog {
+                id: prescriptionDialogForm
 
-        function edit(prescription) {
-            prescriptionDialog.prescriptionId = prescription ? prescription.id : ""
-            prescriptionDialog.problem = ""
-            what.text = prescription ? prescription.title : ""
-            prescriber.text = prescription ? prescription.prescriber || "" : ""
-            validUntil.date = prescription && prescription.until ? prescription.until : ""
-            refillDays.value = prescription && prescription.refill_days ? prescription.refill_days : 0
-            lastRefill.date = prescription && prescription.last_refill ? prescription.last_refill : ""
-            prescriptionNote.text = prescription ? prescription.note || "" : ""
-            prescriptionDialog.open()
-            what.forceActiveFocus()
-        }
+                property string prescriptionId: ""
+                property string problem: ""
 
-        function save() {
-            const edit = { title: what.text, prescriber: prescriber.text, until: validUntil.date, refill_days: refillDays.value, last_refill: lastRefill.date, note: prescriptionNote.text }
-            const answer = JSON.parse(page.sioul.savePrescription(prescriptionDialog.prescriptionId, JSON.stringify(edit)))
-            if (answer.error) {
-                prescriptionDialog.problem = answer.error
-                return
-            }
-            prescriptionDialog.close()
-            page.reload()
-        }
-
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(520, page.width - 2 * page.theme.gap)
-        title: prescriptionDialog.prescriptionId === "" ? page.sioul.text("health-add-prescription") : page.sioul.text("health-prescription")
-
-        contentItem: GridLayout {
-            columns: 2
-            columnSpacing: 10
-            rowSpacing: 8
-
-            Label {
-                text: page.sioul.text("health-field-what")
-                color: page.theme.muted
-            }
-            TextField {
-                id: what
-
-                Layout.fillWidth: true
-                placeholderText: page.sioul.text("health-field-what-hint")
-            }
-            Label {
-                text: page.sioul.text("health-field-prescriber")
-                color: page.theme.muted
-            }
-            TextField {
-                id: prescriber
-
-                Layout.fillWidth: true
-            }
-            Label {
-                text: page.sioul.text("health-field-valid-until")
-                color: page.theme.muted
-            }
-            DateField {
-                id: validUntil
-
-                theme: page.theme
-                locale: page.locale
-            }
-            Label {
-                text: page.sioul.text("health-field-refill-days")
-                color: page.theme.muted
-            }
-            RowLayout {
-                spacing: 6
-
-                SpinBox {
-                    id: refillDays
-
-                    from: 0
-                    to: 365
-                    editable: true
+                function edit(prescription) {
+                    prescriptionDialogForm.prescriptionId = prescription ? prescription.id : ""
+                    prescriptionDialogForm.problem = ""
+                    what.text = prescription ? prescription.title : ""
+                    prescriber.text = prescription ? prescription.prescriber || "" : ""
+                    validUntil.date = prescription && prescription.until ? prescription.until : ""
+                    refillDays.value = prescription && prescription.refill_days ? prescription.refill_days : 0
+                    lastRefill.date = prescription && prescription.last_refill ? prescription.last_refill : ""
+                    prescriptionNote.text = prescription ? prescription.note || "" : ""
+                    prescriptionDialogForm.open()
+                    what.forceActiveFocus()
                 }
-                Label {
-                    text: page.sioul.text("health-days-at-a-time")
-                    color: page.theme.muted
+
+                function save() {
+                    const edit = { title: what.text, prescriber: prescriber.text, until: validUntil.date, refill_days: refillDays.value, last_refill: lastRefill.date, note: prescriptionNote.text }
+                    const answer = JSON.parse(page.sioul.savePrescription(prescriptionDialogForm.prescriptionId, JSON.stringify(edit)))
+                    if (answer.error) {
+                        prescriptionDialogForm.problem = answer.error
+                        return
+                    }
+                    prescriptionDialogForm.close()
+                    page.reload()
                 }
-            }
-            Label {
-                text: page.sioul.text("health-field-last-refill")
-                color: page.theme.muted
-            }
-            DateField {
-                id: lastRefill
 
-                theme: page.theme
-                locale: page.locale
-            }
-            Label {
-                text: page.sioul.text("health-field-note")
-                color: page.theme.muted
-            }
-            TextField {
-                id: prescriptionNote
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(520, page.width - 2 * page.theme.gap)
+                title: prescriptionDialogForm.prescriptionId === "" ? page.sioul.text("health-add-prescription") : page.sioul.text("health-prescription")
 
-                Layout.fillWidth: true
-            }
-            Label {
-                visible: prescriptionDialog.problem !== ""
-                Layout.columnSpan: 2
-                Layout.fillWidth: true
-                text: prescriptionDialog.problem
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                color: page.theme.warm
-            }
-        }
+                contentItem: GridLayout {
+                    columns: 2
+                    columnSpacing: 10
+                    rowSpacing: 8
 
-        // The buttons inside an Item, as the medicine's: saving that fails keeps the form open.
-        footer: Item {
-            implicitWidth: prescriptionButtons.implicitWidth
-            implicitHeight: prescriptionButtons.implicitHeight
+                    Label {
+                        text: page.sioul.text("health-field-what")
+                        color: page.theme.muted
+                    }
+                    TextField {
+                        id: what
 
-            DialogButtonBox {
-                id: prescriptionButtons
+                        Layout.fillWidth: true
+                        placeholderText: page.sioul.text("health-field-what-hint")
+                    }
+                    Label {
+                        text: page.sioul.text("health-field-prescriber")
+                        color: page.theme.muted
+                    }
+                    TextField {
+                        id: prescriber
 
-                anchors.fill: parent
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: page.sioul.text("health-field-valid-until")
+                        color: page.theme.muted
+                    }
+                    DateField {
+                        id: validUntil
 
-                Button {
-                    text: page.sioul.text("ui-save")
-                    highlighted: true
-                    DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                        theme: page.theme
+                        locale: page.locale
+                    }
+                    Label {
+                        text: page.sioul.text("health-field-refill-days")
+                        color: page.theme.muted
+                    }
+                    RowLayout {
+                        spacing: 6
+
+                        SpinBox {
+                            id: refillDays
+
+                            from: 0
+                            to: 365
+                            editable: true
+                        }
+                        Label {
+                            text: page.sioul.text("health-days-at-a-time")
+                            color: page.theme.muted
+                        }
+                    }
+                    Label {
+                        text: page.sioul.text("health-field-last-refill")
+                        color: page.theme.muted
+                    }
+                    DateField {
+                        id: lastRefill
+
+                        theme: page.theme
+                        locale: page.locale
+                    }
+                    Label {
+                        text: page.sioul.text("health-field-note")
+                        color: page.theme.muted
+                    }
+                    TextField {
+                        id: prescriptionNote
+
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        visible: prescriptionDialogForm.problem !== ""
+                        Layout.columnSpan: 2
+                        Layout.fillWidth: true
+                        text: prescriptionDialogForm.problem
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: page.theme.warm
+                    }
                 }
-                Button {
-                    text: page.sioul.text("ui-cancel")
-                    DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+
+                // The buttons inside an Item, as the medicine's: saving that fails keeps the form open.
+                footer: Item {
+                    implicitWidth: prescriptionButtons.implicitWidth
+                    implicitHeight: prescriptionButtons.implicitHeight
+
+                    DialogButtonBox {
+                        id: prescriptionButtons
+
+                        anchors.fill: parent
+
+                        Button {
+                            text: page.sioul.text("ui-save")
+                            highlighted: true
+                            DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                        }
+                        Button {
+                            text: page.sioul.text("ui-cancel")
+                            DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                        }
+                        Button {
+                            visible: prescriptionDialogForm.prescriptionId !== ""
+                            flat: true
+                            text: page.sioul.text("health-remove")
+                            DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
+                            onClicked: removeAsk.now().askFor(what.text, page.sioul.text("health-remove-prescription-ask"), page.sioul.text("health-remove"), prescriptionDialogForm.prescriptionId, prescriptionDialogForm)
+                        }
+                        onAccepted: prescriptionDialogForm.save()
+                        onRejected: prescriptionDialogForm.close()
+                    }
                 }
-                Button {
-                    visible: prescriptionDialog.prescriptionId !== ""
-                    flat: true
-                    text: page.sioul.text("health-remove")
-                    DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
-                    onClicked: removeAsk.askFor(what.text, page.sioul.text("health-remove-prescription-ask"), page.sioul.text("health-remove"), prescriptionDialog.prescriptionId, prescriptionDialog)
-                }
-                onAccepted: prescriptionDialog.save()
-                onRejected: prescriptionDialog.close()
             }
         }
     }
 
-    ConfirmDialog {
+    Later {
         id: removeAsk
 
-        property string target: ""
-        property var form: null
+        sourceComponent: Component {
+            ConfirmDialog {
+                id: removeAskForm
 
-        function askFor(heading, sentence, action, target, form) {
-            removeAsk.target = target
-            removeAsk.form = form
-            removeAsk.title = page.theme.plain(heading)
-            removeAsk.sentence = sentence
-            removeAsk.action = action
-            removeAsk.open()
-        }
+                property string target: ""
+                property var form: null
 
-        sioul: page.sioul
-        theme: page.theme
-        onConfirmed: {
-            const problem = page.sioul.removeHealth(removeAsk.target)
-            if (problem !== "")
-                page.sioul.status = problem
-            if (removeAsk.form)
-                removeAsk.form.close()
-            page.reload()
+                function askFor(heading, sentence, action, target, form) {
+                    removeAskForm.target = target
+                    removeAskForm.form = form
+                    removeAskForm.title = page.theme.plain(heading)
+                    removeAskForm.sentence = sentence
+                    removeAskForm.action = action
+                    removeAskForm.open()
+                }
+
+                sioul: page.sioul
+                theme: page.theme
+                onConfirmed: {
+                    const problem = page.sioul.removeHealth(removeAskForm.target)
+                    if (problem !== "")
+                        page.sioul.status = problem
+                    if (removeAskForm.form)
+                        removeAskForm.form.close()
+                    page.reload()
+                }
+            }
         }
     }
 }

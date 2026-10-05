@@ -61,6 +61,12 @@ Item {
     property string query: ""
     // The message being read, by its file, and its row.
     property string openKey: ""
+    // Whether a message was opened since the page was made: its reader is made then.
+    property bool readerMade: false
+    onOpenKeyChanged: {
+        if (page.openKey !== "")
+            page.readerMade = true
+    }
     // On a phone, one at a time: the folders (asked for), the list, the
     // message; Back goes the other way (main.qml).
     property bool foldersShown: false
@@ -370,7 +376,7 @@ Item {
                                     ToolTip.visible: hovered
                                     ToolTip.text: page.sioul.text("folder-new-button")
                                     ToolTip.delay: 600
-                                    onClicked: newFolderDialog.ask(accountBlock.modelData.id, accountBlock.modelData.title)
+                                    onClicked: newFolderDialog.now().ask(accountBlock.modelData.id, accountBlock.modelData.title)
                                 }
                                 // Something unread in its inbox, said without a number.
                                 Rectangle {
@@ -403,7 +409,7 @@ Item {
                                 // Right click: kept here or on the server only; an empty folder of yours deleted.
                                 TapHandler {
                                     acceptedButtons: Qt.RightButton
-                                    onTapped: folderMenu.show(accountBlock.modelData.id, folderRow.modelData)
+                                    onTapped: folderMenu.now().show(accountBlock.modelData.id, folderRow.modelData)
                                 }
 
                                 background: Rectangle {
@@ -609,7 +615,7 @@ Item {
                     text: page.sioul.text("ui-move-to")
                     onClicked: {
                         page.dragKeys = page.selectedKeys
-                        moveDialog.open()
+                        moveDialog.now().open()
                     }
                 }
                 ToolButton {
@@ -676,7 +682,7 @@ Item {
                     }
                     TapHandler {
                         acceptedButtons: Qt.RightButton
-                        onTapped: rowMenu.show(row.modelData)
+                        onTapped: rowMenu.now().show(row.modelData)
                     }
                     // Dragged sideways, towards the folders: the row, or the selection it is in.
                     // With a mouse only: on a touch screen a drag scrolls the list.
@@ -849,20 +855,29 @@ Item {
             }
         }
 
-        Reader {
-            id: reader
+        // The reader is made with the first message opened, then kept.
+        Loader {
+            id: readerLoader
 
-            visible: page.openKey !== "" && reader.reading !== null
+            active: page.readerMade
+            visible: page.openKey !== "" && readerLoader.item !== null && readerLoader.item.reading !== null
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
             Layout.preferredWidth: Math.round((columns.width - columns.spacing) * 0.62)
-            sioul: page.sioul
-            theme: page.theme
-            window: page.window
-            key: page.openKey
-            item: page.opened
-            onCloseRequested: page.openKey = ""
+
+            sourceComponent: Component {
+                Reader {
+                    id: reader
+
+                    sioul: page.sioul
+                    theme: page.theme
+                    window: page.window
+                    key: page.openKey
+                    item: page.opened
+                    onCloseRequested: page.openKey = ""
+                }
+            }
         }
     }
 
@@ -890,242 +905,278 @@ Item {
         }
     }
 
-    MoveDialog {
+    Later {
         id: moveDialog
 
-        sioul: page.sioul
-        theme: page.theme
-        fromAccount: page.account
-        fromFolder: page.folder
-        onChosen: (account, folder) => page.dropOn(account, folder)
+        sourceComponent: Component {
+            MoveDialog {
+                id: moveDialogForm
+
+                sioul: page.sioul
+                theme: page.theme
+                fromAccount: page.account
+                fromFolder: page.folder
+                onChosen: (account, folder) => page.dropOn(account, folder)
+            }
+        }
     }
 
     // Right click on a message: what is not in view.
     // A folder: kept here or on the server only; an empty folder of yours, deleted.
-    SioulMenu {
+    Later {
         id: folderMenu
 
-        property string account: ""
-        property var folder: null
+        sourceComponent: Component {
+            SioulMenu {
+                id: folderMenuForm
 
-        function show(account, folder) {
-            folderMenu.account = account
-            folderMenu.folder = folder
-            folderMenu.popup()
-        }
+                property string account: ""
+                property var folder: null
 
-        MenuItem {
-            id: keepItem
+                function show(account, folder) {
+                    folderMenuForm.account = account
+                    folderMenuForm.folder = folder
+                    folderMenuForm.popup()
+                }
 
-            enabled: folderMenu.folder !== null && folderMenu.folder.role !== "inbox"
-            text: page.sioul.text("folder-keep")
-            checkable: true
-            checked: folderMenu.folder !== null && folderMenu.folder.kept
-            onTriggered: {
-                // What the folder is now decides, not the tick the click left; the tick
-                // then says it again (forgetting it may still be cancelled).
-                if (!folderMenu.folder.kept)
-                    page.say(page.sioul.keepFolder(folderMenu.account, folderMenu.folder.name, true))
-                else
-                    forgetDialog.ask(folderMenu.account, folderMenu.folder)
-                keepItem.checked = Qt.binding(() => folderMenu.folder !== null && folderMenu.folder.kept)
+                MenuItem {
+                    id: keepItem
+
+                    enabled: folderMenuForm.folder !== null && folderMenuForm.folder.role !== "inbox"
+                    text: page.sioul.text("folder-keep")
+                    checkable: true
+                    checked: folderMenuForm.folder !== null && folderMenuForm.folder.kept
+                    onTriggered: {
+                        // What the folder is now decides, not the tick the click left; the tick
+                        // then says it again (forgetting it may still be cancelled).
+                        if (!folderMenuForm.folder.kept)
+                            page.say(page.sioul.keepFolder(folderMenuForm.account, folderMenuForm.folder.name, true))
+                        else
+                            forgetDialog.now().ask(folderMenuForm.account, folderMenuForm.folder)
+                        keepItem.checked = Qt.binding(() => folderMenuForm.folder !== null && folderMenuForm.folder.kept)
+                    }
+                }
+                MenuItem {
+                    enabled: folderMenuForm.folder !== null && folderMenuForm.folder.role === "other"
+                    text: page.sioul.text("folder-delete")
+                    onTriggered: deleteDialog.now().ask(folderMenuForm.account, folderMenuForm.folder)
+                }
             }
-        }
-        MenuItem {
-            enabled: folderMenu.folder !== null && folderMenu.folder.role === "other"
-            text: page.sioul.text("folder-delete")
-            onTriggered: deleteDialog.ask(folderMenu.account, folderMenu.folder)
         }
     }
 
     // Not kept here: the copy goes, the server keeps everything.
-    Dialog {
+    Later {
         id: forgetDialog
 
-        property string account: ""
-        property var folder: null
+        sourceComponent: Component {
+            Dialog {
+                id: forgetDialogForm
 
-        function ask(account, folder) {
-            forgetDialog.account = account
-            forgetDialog.folder = folder
-            forgetDialog.open()
-        }
+                property string account: ""
+                property var folder: null
 
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(440, (parent ? parent.width : 440) - 2 * page.theme.gap)
-        title: forgetDialog.folder ? page.theme.plain(forgetDialog.folder.title) : ""
+                function ask(account, folder) {
+                    forgetDialogForm.account = account
+                    forgetDialogForm.folder = folder
+                    forgetDialogForm.open()
+                }
 
-        contentItem: Label {
-            text: page.sioul.text("folder-forget-ask")
-            wrapMode: Text.Wrap
-            color: page.theme.text
-        }
+                parent: Overlay.overlay
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(440, (parent ? parent.width : 440) - 2 * page.theme.gap)
+                title: forgetDialogForm.folder ? page.theme.plain(forgetDialogForm.folder.title) : ""
 
-        footer: DialogButtonBox {
-            Button {
-                text: page.sioul.text("folder-forget")
-                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                contentItem: Label {
+                    text: page.sioul.text("folder-forget-ask")
+                    wrapMode: Text.Wrap
+                    color: page.theme.text
+                }
+
+                footer: DialogButtonBox {
+                    Button {
+                        text: page.sioul.text("folder-forget")
+                        DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                    }
+                    Button {
+                        text: page.sioul.text("ui-cancel")
+                        highlighted: true
+                        DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                    }
+                }
+
+                onAccepted: page.say(page.sioul.keepFolder(forgetDialogForm.account, forgetDialogForm.folder.name, false))
             }
-            Button {
-                text: page.sioul.text("ui-cancel")
-                highlighted: true
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
         }
-
-        onAccepted: page.say(page.sioul.keepFolder(forgetDialog.account, forgetDialog.folder.name, false))
     }
 
     // A new folder on an account's server: its name.
-    Dialog {
+    Later {
         id: newFolderDialog
 
-        property string account: ""
-        property string accountTitle: ""
+        sourceComponent: Component {
+            Dialog {
+                id: newFolderDialogForm
 
-        function ask(account, title) {
-            newFolderDialog.account = account
-            newFolderDialog.accountTitle = title
-            newFolderName.text = ""
-            newFolderDialog.open()
-            newFolderName.forceActiveFocus()
-        }
+                property string account: ""
+                property string accountTitle: ""
 
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(440, (parent ? parent.width : 440) - 2 * page.theme.gap)
-        title: page.sioul.textWith("folder-new-title", "account", newFolderDialog.accountTitle)
+                function ask(account, title) {
+                    newFolderDialogForm.account = account
+                    newFolderDialogForm.accountTitle = title
+                    newFolderName.text = ""
+                    newFolderDialogForm.open()
+                    newFolderName.forceActiveFocus()
+                }
 
-        contentItem: TextField {
-            id: newFolderName
+                parent: Overlay.overlay
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(440, (parent ? parent.width : 440) - 2 * page.theme.gap)
+                title: page.sioul.textWith("folder-new-title", "account", newFolderDialogForm.accountTitle)
 
-            placeholderText: page.sioul.text("folder-new")
-            onAccepted: newFolderDialog.accept()
-        }
+                contentItem: TextField {
+                    id: newFolderName
 
-        footer: DialogButtonBox {
-            Button {
-                text: page.sioul.text("folder-new-make")
-                highlighted: true
-                enabled: newFolderName.text.trim() !== ""
-                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                    placeholderText: page.sioul.text("folder-new")
+                    onAccepted: newFolderDialogForm.accept()
+                }
+
+                footer: DialogButtonBox {
+                    Button {
+                        text: page.sioul.text("folder-new-make")
+                        highlighted: true
+                        enabled: newFolderName.text.trim() !== ""
+                        DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                    }
+                    Button {
+                        text: page.sioul.text("ui-cancel")
+                        DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                    }
+                }
+
+                onAccepted: {
+                    if (newFolderName.text.trim() !== "")
+                        page.sioul.createFolder(newFolderDialogForm.account, newFolderName.text.trim())
+                }
             }
-            Button {
-                text: page.sioul.text("ui-cancel")
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
-        }
-
-        onAccepted: {
-            if (newFolderName.text.trim() !== "")
-                page.sioul.createFolder(newFolderDialog.account, newFolderName.text.trim())
         }
     }
 
     // An empty folder of yours, taken off the server.
-    Dialog {
+    Later {
         id: deleteDialog
 
-        property string account: ""
-        property var folder: null
+        sourceComponent: Component {
+            Dialog {
+                id: deleteDialogForm
 
-        function ask(account, folder) {
-            deleteDialog.account = account
-            deleteDialog.folder = folder
-            deleteDialog.open()
-        }
+                property string account: ""
+                property var folder: null
 
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(440, (parent ? parent.width : 440) - 2 * page.theme.gap)
-        title: deleteDialog.folder ? page.theme.plain(deleteDialog.folder.title) : ""
+                function ask(account, folder) {
+                    deleteDialogForm.account = account
+                    deleteDialogForm.folder = folder
+                    deleteDialogForm.open()
+                }
 
-        contentItem: Label {
-            text: page.sioul.text("folder-delete-ask")
-            wrapMode: Text.Wrap
-            color: page.theme.text
-        }
+                parent: Overlay.overlay
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(440, (parent ? parent.width : 440) - 2 * page.theme.gap)
+                title: deleteDialogForm.folder ? page.theme.plain(deleteDialogForm.folder.title) : ""
 
-        footer: DialogButtonBox {
-            Button {
-                text: page.sioul.text("folder-delete")
-                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                contentItem: Label {
+                    text: page.sioul.text("folder-delete-ask")
+                    wrapMode: Text.Wrap
+                    color: page.theme.text
+                }
+
+                footer: DialogButtonBox {
+                    Button {
+                        text: page.sioul.text("folder-delete")
+                        DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+                    }
+                    Button {
+                        text: page.sioul.text("ui-cancel")
+                        highlighted: true
+                        DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                    }
+                }
+
+                onAccepted: page.sioul.deleteFolder(deleteDialogForm.account, deleteDialogForm.folder.name)
             }
-            Button {
-                text: page.sioul.text("ui-cancel")
-                highlighted: true
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
         }
-
-        onAccepted: page.sioul.deleteFolder(deleteDialog.account, deleteDialog.folder.name)
     }
 
-    SioulMenu {
+    Later {
         id: rowMenu
 
-        property var target: null
-        property var source: null
+        sourceComponent: Component {
+            SioulMenu {
+                id: rowMenuForm
 
-        function show(item) {
-            rowMenu.target = item
-            rowMenu.source = { uri: page.sioul.uriOf("mail", item.key), kind: "mail", key: item.key, title: item.subject, name: item.who, address: item.address, known: false }
-            rowMenu.popup()
-        }
+                property var target: null
+                property var source: null
 
-        MenuItem {
-            text: page.sioul.text("ui-reply")
-            onTriggered: page.window.compose("reply", rowMenu.target.key)
-        }
-        MenuItem {
-            text: page.sioul.text("ui-forward")
-            onTriggered: page.window.compose("forward", rowMenu.target.key)
-        }
-        MenuSeparator {}
-        MenuItem {
-            text: rowMenu.target && rowMenu.target.unread ? page.sioul.text("ui-mark-read") : page.sioul.text("ui-mark-unread")
-            onTriggered: page.sioul.act(rowMenu.target.key, rowMenu.target.unread ? "read" : "unread", "")
-        }
-        MenuItem {
-            text: rowMenu.target && rowMenu.target.flagged ? page.sioul.text("ui-unflag") : page.sioul.text("ui-flag")
-            onTriggered: page.sioul.act(rowMenu.target.key, rowMenu.target.flagged ? "unflag" : "flag", "")
-        }
-        MenuSeparator {}
-        MenuItem {
-            visible: page.shown !== null && page.shown.role !== "archive"
-            height: visible ? implicitHeight : 0
-            text: page.sioul.text("ui-archive")
-            onTriggered: page.sioul.act(rowMenu.target.key, "archive", "")
-        }
-        MenuItem {
-            text: page.shown && page.shown.role === "trash" ? page.sioul.text("ui-delete-for-good") : page.sioul.text("ui-trash")
-            onTriggered: page.sioul.act(rowMenu.target.key, "trash", "")
-        }
-        MenuItem {
-            text: page.shown && page.shown.role === "junk" ? page.sioul.text("ui-not-junk") : page.sioul.text("ui-junk")
-            onTriggered: page.sioul.act(rowMenu.target.key, page.shown && page.shown.role === "junk" ? "not-junk" : "junk", "")
-        }
-        MenuItem {
-            text: page.sioul.text("ui-move-to")
-            onTriggered: {
-                page.dragKeys = page.selected[rowMenu.target.key] ? page.selectedKeys : [rowMenu.target.key]
-                moveDialog.open()
+                function show(item) {
+                    rowMenuForm.target = item
+                    rowMenuForm.source = { uri: page.sioul.uriOf("mail", item.key), kind: "mail", key: item.key, title: item.subject, name: item.who, address: item.address, known: false }
+                    rowMenuForm.popup()
+                }
+
+                MenuItem {
+                    text: page.sioul.text("ui-reply")
+                    onTriggered: page.window.compose("reply", rowMenuForm.target.key)
+                }
+                MenuItem {
+                    text: page.sioul.text("ui-forward")
+                    onTriggered: page.window.compose("forward", rowMenuForm.target.key)
+                }
+                MenuSeparator {}
+                MenuItem {
+                    text: rowMenuForm.target && rowMenuForm.target.unread ? page.sioul.text("ui-mark-read") : page.sioul.text("ui-mark-unread")
+                    onTriggered: page.sioul.act(rowMenuForm.target.key, rowMenuForm.target.unread ? "read" : "unread", "")
+                }
+                MenuItem {
+                    text: rowMenuForm.target && rowMenuForm.target.flagged ? page.sioul.text("ui-unflag") : page.sioul.text("ui-flag")
+                    onTriggered: page.sioul.act(rowMenuForm.target.key, rowMenuForm.target.flagged ? "unflag" : "flag", "")
+                }
+                MenuSeparator {}
+                MenuItem {
+                    visible: page.shown !== null && page.shown.role !== "archive"
+                    height: visible ? implicitHeight : 0
+                    text: page.sioul.text("ui-archive")
+                    onTriggered: page.sioul.act(rowMenuForm.target.key, "archive", "")
+                }
+                MenuItem {
+                    text: page.shown && page.shown.role === "trash" ? page.sioul.text("ui-delete-for-good") : page.sioul.text("ui-trash")
+                    onTriggered: page.sioul.act(rowMenuForm.target.key, "trash", "")
+                }
+                MenuItem {
+                    text: page.shown && page.shown.role === "junk" ? page.sioul.text("ui-not-junk") : page.sioul.text("ui-junk")
+                    onTriggered: page.sioul.act(rowMenuForm.target.key, page.shown && page.shown.role === "junk" ? "not-junk" : "junk", "")
+                }
+                MenuItem {
+                    text: page.sioul.text("ui-move-to")
+                    onTriggered: {
+                        page.dragKeys = page.selected[rowMenuForm.target.key] ? page.selectedKeys : [rowMenuForm.target.key]
+                        moveDialog.now().open()
+                    }
+                }
+                MenuSeparator {}
+                AddMenu {
+                    sioul: page.sioul
+                    window: page.window
+                    source: rowMenuForm.source
+                }
+                MenuItem {
+                    enabled: rowMenuForm.source !== null && rowMenuForm.source.uri !== ""
+                    text: page.sioul.text("ui-link-existing")
+                    onTriggered: page.window.linkFrom(rowMenuForm.source)
+                }
             }
-        }
-        MenuSeparator {}
-        AddMenu {
-            sioul: page.sioul
-            window: page.window
-            source: rowMenu.source
-        }
-        MenuItem {
-            enabled: rowMenu.source !== null && rowMenu.source.uri !== ""
-            text: page.sioul.text("ui-link-existing")
-            onTriggered: page.window.linkFrom(rowMenu.source)
         }
     }
 

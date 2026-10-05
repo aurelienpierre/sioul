@@ -29,14 +29,14 @@ ColumnLayout {
     // A contract to say, from a mail or a payment.
     function start(prefill) {
         section.reload()
-        contractDialog.begin(prefill)
+        contractDialog.now().begin(prefill)
     }
 
     function open(id) {
         section.reload()
         const contract = section.shown.contracts.find(c => c.id === id)
         if (contract)
-            contractDialog.edit(contract)
+            contractDialog.now().edit(contract)
     }
 
     spacing: 8
@@ -139,38 +139,44 @@ ColumnLayout {
                 Button {
                     flat: true
                     text: section.sioul.text("routines-change")
-                    onClicked: contractDialog.edit(row.modelData)
+                    onClicked: contractDialog.now().edit(row.modelData)
                 }
                 Button {
                     visible: !row.ended
                     text: section.sioul.text("contracts-stop")
-                    onClicked: stopMenu.popup()
+                    onClicked: stopMenu.now().popup()
 
-                    SioulMenu {
+                    Later {
                         id: stopMenu
 
-                        MenuItem {
-                            visible: row.modelData.cancel_is_page
-                            height: visible ? implicitHeight : 0
-                            text: section.sioul.text("contracts-stop-page")
-                            onTriggered: Qt.openUrlExternally(row.modelData.cancel)
-                        }
-                        MenuItem {
-                            text: section.sioul.text("contracts-stop-letter")
-                            onTriggered: {
-                                const made = JSON.parse(section.sioul.contractLetter(row.modelData.id))
-                                if (made.draft)
-                                    section.window.openDraft(made.draft)
-                                else
-                                    section.problem = made.error
-                            }
-                        }
-                        MenuItem {
-                            text: section.sioul.text("contracts-stop-ended")
-                            onTriggered: {
-                                const edit = Object.assign({}, row.modelData, { ended: Qt.formatDate(new Date(), "yyyy-MM-dd") })
-                                section.problem = section.sioul.saveContract(row.modelData.id, JSON.stringify(edit))
-                                section.reload()
+                        sourceComponent: Component {
+                            SioulMenu {
+                                id: stopMenuForm
+
+                                MenuItem {
+                                    visible: row.modelData.cancel_is_page
+                                    height: visible ? implicitHeight : 0
+                                    text: section.sioul.text("contracts-stop-page")
+                                    onTriggered: Qt.openUrlExternally(row.modelData.cancel)
+                                }
+                                MenuItem {
+                                    text: section.sioul.text("contracts-stop-letter")
+                                    onTriggered: {
+                                        const made = JSON.parse(section.sioul.contractLetter(row.modelData.id))
+                                        if (made.draft)
+                                            section.window.openDraft(made.draft)
+                                        else
+                                            section.problem = made.error
+                                    }
+                                }
+                                MenuItem {
+                                    text: section.sioul.text("contracts-stop-ended")
+                                    onTriggered: {
+                                        const edit = Object.assign({}, row.modelData, { ended: Qt.formatDate(new Date(), "yyyy-MM-dd") })
+                                        section.problem = section.sioul.saveContract(row.modelData.id, JSON.stringify(edit))
+                                        section.reload()
+                                    }
+                                }
                             }
                         }
                     }
@@ -215,14 +221,20 @@ ColumnLayout {
         }
     }
 
-    ContractDialog {
+    Later {
         id: contractDialog
 
-        sioul: section.sioul
-        theme: section.theme
-        window: section.window
-        kinds: section.shown.kinds
-        presets: section.shown.presets
-        onSaved: section.reload()
+        sourceComponent: Component {
+            ContractDialog {
+                id: contractDialogForm
+
+                sioul: section.sioul
+                theme: section.theme
+                window: section.window
+                kinds: section.shown.kinds
+                presets: section.shown.presets
+                onSaved: section.reload()
+            }
+        }
     }
 }

@@ -138,6 +138,9 @@ Panel {
             TextField {
                 id: title
 
+                // Its own width, not its wrapped text's: the column gives it the rest
+                // (the text's width would follow the width it sets, a binding loop).
+                implicitWidth: 120
                 Layout.fillWidth: true
                 text: panel.card ? panel.card.title : ""
                 readOnly: !panel.canEdit
@@ -168,19 +171,25 @@ Panel {
                     icon.color: panel.theme.accentText
                     highlighted: true
                     enabled: panel.canEdit
-                    onClicked: startMenu.popup()
+                    onClicked: startMenu.now().popup()
 
-                    SioulMenu {
+                    Later {
                         id: startMenu
 
-                        Repeater {
-                            model: [2, 15, 25, 45, 0]
+                        sourceComponent: Component {
+                            SioulMenu {
+                                id: startMenuForm
 
-                            delegate: MenuItem {
-                                required property int modelData
+                                Repeater {
+                                    model: [2, 15, 25, 45, 0]
 
-                                text: modelData === 2 ? panel.sioul.text("focus-two") : modelData === 0 ? panel.sioul.text("focus-open-ended") : panel.sioul.textWith("focus-for", "minutes", String(modelData))
-                                onTriggered: panel.focusRequested(panel.uid, modelData)
+                                    delegate: MenuItem {
+                                        required property int modelData
+
+                                        text: modelData === 2 ? panel.sioul.text("focus-two") : modelData === 0 ? panel.sioul.text("focus-open-ended") : panel.sioul.textWith("focus-for", "minutes", String(modelData))
+                                        onTriggered: panel.focusRequested(panel.uid, modelData)
+                                    }
+                                }
                             }
                         }
                     }
@@ -393,48 +402,57 @@ Panel {
             TextField {
                 id: waitsFor
 
+                // The tasks found by their title, offered below.
+                property var matches: []
+
                 visible: panel.canEdit
                 enabled: panel.keeps("waits")
                 opacity: panel.keeps("waits") ? 1 : 0.45
                 Layout.fillWidth: true
                 placeholderText: panel.keeps("waits") ? panel.sioul.text("task-waits-add") : panel.sioul.text("google-tasks-greyed")
                 onTextEdited: {
-                    found.model = waitsFor.text.trim() === "" ? [] : JSON.parse(panel.sioul.searchTasks(waitsFor.text, panel.uid))
-                    if (found.model.length > 0)
-                        foundPopup.open()
+                    waitsFor.matches = waitsFor.text.trim() === "" ? [] : JSON.parse(panel.sioul.searchTasks(waitsFor.text, panel.uid))
+                    if (waitsFor.matches.length > 0)
+                        foundPopup.now().open()
                 }
                 Keys.onEscapePressed: {
                     waitsFor.clear()
                     foundPopup.close()
                 }
 
-                Popup {
+                Later {
                     id: foundPopup
 
-                    y: waitsFor.height
-                    width: waitsFor.width
-                    padding: 4
+                    sourceComponent: Component {
+                        Popup {
+                            id: foundPopupForm
 
-                    ListView {
-                        id: found
+                            y: waitsFor.height
+                            width: waitsFor.width
+                            padding: 4
 
-                        implicitHeight: Math.min(contentHeight, 240)
-                        width: parent.width
-                        clip: true
-                        model: []
+                            ListView {
+                                id: found
 
-                        delegate: ItemDelegate {
-                            id: option
+                                implicitHeight: Math.min(contentHeight, 240)
+                                width: parent.width
+                                clip: true
+                                model: waitsFor.matches
 
-                            required property var modelData
+                                delegate: ItemDelegate {
+                                    id: option
 
-                            width: found.width
-                            // "&" doubled: a button reads one as a key to underline.
-                            text: panel.theme.plain(option.modelData.title).replace(/&/g, "&&")
-                            onClicked: {
-                                panel.sioul.setWaits(panel.uid, option.modelData.uid, true)
-                                waitsFor.clear()
-                                foundPopup.close()
+                                    required property var modelData
+
+                                    width: found.width
+                                    // "&" doubled: a button reads one as a key to underline.
+                                    text: panel.theme.plain(option.modelData.title).replace(/&/g, "&&")
+                                    onClicked: {
+                                        panel.sioul.setWaits(panel.uid, option.modelData.uid, true)
+                                        waitsFor.clear()
+                                        foundPopupForm.close()
+                                    }
+                                }
                             }
                         }
                     }

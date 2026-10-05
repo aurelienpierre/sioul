@@ -5,14 +5,16 @@
 // window is Rust's (crates/sioul-app/src/lib.rs). Here, what a desktop gives
 // a program and Android does not: the folders, named the XDG way; the
 // language; the system's certificates; a log for what Rust writes to stderr;
-// the Java side Rust needs for the KeyStore and the DNS servers; and the
-// doses' alarms (package/src/com/aurelienpierre/sioul/DoseAlarms.java).
+// the Java side Rust needs for the KeyStore and the DNS servers; the doses'
+// alarms (package/src/com/aurelienpierre/sioul/DoseAlarms.java); and the time
+// running's notification (TimeNote.java).
 //
-// Android may start Sioul for a dose's alarm alone: DoseAlarms.java then
-// loads this library without Qt's Java side, which only Qt's loader starts,
-// when the window opens. So all an alarm reaches here (the start, the sync
-// apps' broadcasts, the alarms, the tapped dose) speaks to Java directly
-// (JNI), never through Qt's (QJniObject).
+// Android may start Sioul for a dose's alarm, or a button of the time
+// running, alone: DoseAlarms.java then loads this library without Qt's Java
+// side, which only Qt's loader starts, when the window opens. So all they
+// reach here (the start, the sync apps' broadcasts, the alarms, the tapped
+// dose, the time running) speaks to Java directly (JNI), never through Qt's
+// (QJniObject).
 
 #include <QByteArray>
 #include <QDir>
@@ -40,6 +42,9 @@ extern "C" void sioul_android_account_chosen(const char *name, const char *kind)
 // to sioul_string_free.
 extern "C" char *sioul_alarm_decide(const char *key);
 extern "C" char *sioul_alarm_taken(const char *key);
+// A button of the time running (crates/sioul-app/src/timenote.rs): the note
+// shown next, as JSON, also given back to sioul_string_free.
+extern "C" char *sioul_time_action(const char *action);
 extern "C" void sioul_string_free(char *text);
 
 namespace {
@@ -89,11 +94,13 @@ QJniObject applicationContext()
 }
 
 // Java, without Qt: the process's JavaVM, given when Java loads this library;
-// the application's Context, given at the start; DoseAlarms.java, found when
-// the library is loaded, by the app's class loader, which Rust's threads lack.
+// the application's Context, given at the start; DoseAlarms.java and
+// TimeNote.java, found when the library is loaded, by the app's class
+// loader, which Rust's threads lack.
 JavaVM *javaVm = nullptr;
 std::atomic<jobject> appContext = nullptr;
 jclass doseAlarms = nullptr;
+jclass timeNote = nullptr;
 
 // This thread's JNIEnv. A thread of Rust's is attached to Java the first time,
 // and let go when it ends.
@@ -173,6 +180,26 @@ jmethodID doseMethod(JNIEnv *env, const char *name, const char *signature)
         return nullptr;
     const jmethodID id = env->GetStaticMethodID(doseAlarms, name, signature);
     return threw(env) ? nullptr : id;
+}
+
+// A static method of TimeNote.java; null when it is not there.
+jmethodID timeMethod(JNIEnv *env, const char *name, const char *signature)
+{
+    if (!timeNote)
+        return nullptr;
+    const jmethodID id = env->GetStaticMethodID(timeNote, name, signature);
+    return threw(env) ? nullptr : id;
+}
+
+// One of the app's classes, kept for Rust's threads; null when it is not there.
+jclass appClass(JNIEnv *env, const char *name)
+{
+    const jclass found = env->FindClass(name);
+    if (threw(env) || !found)
+        return nullptr;
+    const auto kept = static_cast<jclass>(env->NewGlobalRef(found));
+    env->DeleteLocalRef(found);
+    return kept;
 }
 
 // Sioul's folders, the XDG way, in the app's private storage, which no other
@@ -286,13 +313,10 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *)
     JNIEnv *env = nullptr;
     if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK)
         return JNI_ERR;
-    if (!doseAlarms) {
-        const jclass found = env->FindClass("com/aurelienpierre/sioul/DoseAlarms");
-        if (!threw(env) && found) {
-            doseAlarms = static_cast<jclass>(env->NewGlobalRef(found));
-            env->DeleteLocalRef(found);
-        }
-    }
+    if (!doseAlarms)
+        doseAlarms = appClass(env, "com/aurelienpierre/sioul/DoseAlarms");
+    if (!timeNote)
+        timeNote = appClass(env, "com/aurelienpierre/sioul/TimeNote");
     return JNI_VERSION_1_6;
 }
 
@@ -480,6 +504,28 @@ extern "C" bool sioul_android_take_opened(char *key, int size)
     return true;
 }
 
+// The time running, in Android's notifications while a focus session runs
+// (crates/sioul-app/src/timenote.rs): JSON as TimeNote.java reads it, put up
+// or changed; "" takes it away. Its first showing asks for notifications
+// from Android 13, as the doses do. Any thread.
+extern "C" void sioul_android_time_note(const char *json)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !json)
+        return;
+    {
+        const LocalFrame frame(env);
+        const jmethodID show = timeMethod(env, "show", "(Landroid/content/Context;Ljava/lang/String;)V");
+        if (!show)
+            return;
+        env->CallStaticVoidMethod(timeNote, show, context, javaText(env, json));
+        threw(env);
+    }
+    if (*json)
+        askNotifications();
+}
+
 // DoseAlarms.java's side here: Sioul started without its window, then Rust's
 // answers at a dose's alarm, on a thread of Java's (each may take half a
 // minute: never Android's main thread).
@@ -496,6 +542,14 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_DoseAlarms_na
 extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_DoseAlarms_nativeTaken(JNIEnv *env, jclass, jstring key)
 {
     return answered(env, sioul_alarm_taken(utf8(env, key).constData()));
+}
+
+// TimeReceiver.java's side: a button of the time running, after DoseAlarms
+// loaded and started Sioul's library; on a thread of Java's (it waits for the
+// sharing: never Android's main thread).
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_TimeNote_nativeAction(JNIEnv *env, jclass, jstring action)
+{
+    return answered(env, sioul_time_action(utf8(env, action).constData()));
 }
 
 int main(int, char *[])

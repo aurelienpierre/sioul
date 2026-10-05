@@ -91,7 +91,7 @@ ColumnLayout {
             icon.color: detail.theme.text
             display: detail.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
             Accessible.name: detail.sioul.text("ui-edit")
-            onClicked: budgetDialog.edit(detail.budget, detail.shown)
+            onClicked: budgetDialog.now().edit(detail.budget, detail.shown)
         }
         Button {
             implicitWidth: 40
@@ -233,7 +233,7 @@ ColumnLayout {
             text: detail.sioul.text("budget-add")
             icon.name: "list-add"
             icon.color: detail.theme.text
-            onClicked: movementDialog.begin(detail.budget)
+            onClicked: movementDialog.now().begin(detail.budget)
         }
     }
     Label {
@@ -325,7 +325,7 @@ ColumnLayout {
         MenuSeparator {}
         MenuItem {
             text: detail.sioul.text("budget-line-change")
-            onTriggered: lineChange.begin(lineMenu.line)
+            onTriggered: lineChange.now().begin(lineMenu.line)
         }
         MenuItem {
             text: detail.sioul.text("budget-line-remove")
@@ -334,13 +334,19 @@ ColumnLayout {
     }
 
     // A line changed in place: its label, amount and date; its links stay.
-    LineDialog {
+    Later {
         id: lineChange
 
-        sioul: detail.sioul
-        theme: detail.theme
-        window: detail.window
-        onChanged: detail.reload()
+        sourceComponent: Component {
+            LineDialog {
+                id: lineChangeForm
+
+                sioul: detail.sioul
+                theme: detail.theme
+                window: detail.window
+                onChanged: detail.reload()
+            }
+        }
     }
 
     // A line taken out of the file: asked once.
@@ -357,20 +363,32 @@ ColumnLayout {
         }
     }
 
-    BudgetDialog {
+    Later {
         id: budgetDialog
 
-        sioul: detail.sioul
-        theme: detail.theme
-        onSaved: detail.reload()
-        onRemoved: detail.back()
+        sourceComponent: Component {
+            BudgetDialog {
+                id: budgetDialogForm
+
+                sioul: detail.sioul
+                theme: detail.theme
+                onSaved: detail.reload()
+                onRemoved: detail.back()
+            }
+        }
     }
 
-    MovementDialog {
+    Later {
         id: movementDialog
 
-        sioul: detail.sioul
-        theme: detail.theme
-        onSaved: detail.reload()
+        sourceComponent: Component {
+            MovementDialog {
+                id: movementDialogForm
+
+                sioul: detail.sioul
+                theme: detail.theme
+                onSaved: detail.reload()
+            }
+        }
     }
 }

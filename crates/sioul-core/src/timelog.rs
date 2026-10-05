@@ -259,7 +259,8 @@ pub fn finish_in(dir: &Path, now: i64, done: bool) -> Result<Option<Session>, St
     finish_noted_in(dir, now, done, "")
 }
 
-fn finish_noted_in(dir: &Path, now: i64, done: bool, note: &str) -> Result<Option<Session>, String> {
+/// Ends the running session kept in `dir`, with where you stopped.
+pub fn finish_noted_in(dir: &Path, now: i64, done: bool, note: &str) -> Result<Option<Session>, String> {
     let Some(running) = running_in(dir) else { return Ok(None) };
     let mut session = running.finished(now, done);
     session.note = note.to_string();
