@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Health and well-being, kept on this computer only: prescriptions, when to
-//! fetch their medicines and when to renew them; medicines and when to take
-//! them; a pause to move during long focus; a daily limit on chats. Never
-//! sent anywhere: the tasks it makes go to a list kept here (`local`).
+//! Health and well-being: prescriptions, when to fetch their medicines and
+//! when to renew them; medicines and when to take them; a pause to move during
+//! long focus; a daily limit on chats. Sent nowhere, except sealed to your
+//! other devices when you share with them (docs/database.md).
 //!
 //! Nothing here counts what was missed. A dose not marked taken is simply not
-//! marked; the next one comes as planned.
+//! marked; the next one comes as planned. One marked late says when it was
+//! taken, and a medicine taken every few hours may move its next doses by as much.
 
 use jiff::civil::{Date, Time};
 use jiff::{Span, Timestamp, Zoned};
@@ -99,7 +100,14 @@ pub enum Schedule {
         from: Date,
     },
     /// Every `hours` hours from `from`, Unix seconds ("every 6 hours from now").
-    Hours { hours: u32, from: i64 },
+    /// `follows`: a dose taken late moved the next ones by as much, last time
+    /// (`Health::taken_late`); asked again each time, this the answer offered.
+    Hours {
+        hours: u32,
+        from: i64,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        follows: bool,
+    },
 }
 
 /// "18:00" → 18:00.
@@ -152,7 +160,7 @@ impl Schedule {
                     day = next;
                 }
             }
-            Schedule::Hours { hours, from } => {
+            Schedule::Hours { hours, from, .. } => {
                 if *hours == 0 {
                     return out;
                 }
@@ -265,6 +273,41 @@ impl Health {
         out
     }
 
+    /// A dose taken late, at `at` (Unix seconds), as you say. For a medicine
+    /// taken every few hours, when you ask, the next doses move by as much:
+    /// the hours between two doses are kept (an antibiotic every 8 hours).
+    /// The answer is kept, to be offered next time. Returns where the doses
+    /// started before and after they moved, to put them back if the mark is
+    /// taken back; none when nothing moved.
+    pub fn taken_late(&mut self, key: &str, at: i64, move_next: bool) -> Option<(i64, i64)> {
+        let (id, due) = key.rsplit_once('@')?;
+        let due: i64 = due.parse().ok()?;
+        let medicine = self.medicines.iter_mut().find(|m| m.id == id)?;
+        let Schedule::Hours { hours, from, follows } = &mut medicine.schedule else { return None };
+        *follows = move_next;
+        let step = i64::from(*hours) * 3600;
+        if !move_next || step == 0 || at == due {
+            return None;
+        }
+        let before = *from;
+        *from = at + step;
+        Some((before, *from))
+    }
+
+    /// A mark taken back: the doses it moved go back where they were, unless
+    /// they moved again since. Returns whether they did.
+    pub fn taken_back(&mut self, key: &str, before: i64, after: i64) -> bool {
+        let Some((id, _)) = key.rsplit_once('@') else { return false };
+        let Some(medicine) = self.medicines.iter_mut().find(|m| m.id == id) else { return false };
+        match &mut medicine.schedule {
+            Schedule::Hours { from, .. } if *from == after => {
+                *from = before;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// The pharmacy and the doctor, as errands: when a prescription's
     /// medicines run out (two days before) and when it ends (two weeks before).
     pub fn errands(&self) -> Vec<Errand> {
@@ -344,6 +387,10 @@ pub struct HealthState {
     /// Doses answered "not taken" when asked afterwards, by key; kept a week.
     #[serde(default)]
     pub not_taken: BTreeMap<String, i64>,
+    /// Doses whose take moved the next ones, by key: where they started
+    /// before and after (`Health::taken_at`); kept with the mark.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub moved: BTreeMap<String, [i64; 2]>,
     /// Errands whose task was made, by key.
     #[serde(default)]
     pub errands: BTreeMap<String, String>,
@@ -371,6 +418,7 @@ impl HealthState {
         self.taken.retain(|_, at| *at >= week);
         self.reminded.retain(|_, at| *at >= week);
         self.not_taken.retain(|_, at| *at >= week);
+        self.moved.retain(|key, _| self.taken.contains_key(key));
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(fail)?;
@@ -442,9 +490,45 @@ mod tests {
         let shown: Vec<String> = other.doses(&at("2026-10-03T09:00[Europe/Paris]"), &at("2026-10-09T00:00[Europe/Paris]")).iter().map(|z| z.strftime("%d").to_string()).collect();
         assert_eq!(shown, vec!["04", "06", "08"]);
         // Every six hours from 18:30.
-        let six = Schedule::Hours { hours: 6, from: at("2026-10-03T18:30[Europe/Paris]").timestamp().as_second() };
+        let six = Schedule::Hours { hours: 6, from: at("2026-10-03T18:30[Europe/Paris]").timestamp().as_second(), follows: false };
         let shown: Vec<String> = six.doses(&at("2026-10-04T00:00[Europe/Paris]"), &at("2026-10-04T13:00[Europe/Paris]")).iter().map(|z| z.strftime("%H:%M").to_string()).collect();
         assert_eq!(shown, vec!["00:30", "06:30", "12:30"]);
+    }
+
+    #[test]
+    fn a_late_dose_moves_the_next_ones_when_asked() {
+        let eight = || Health {
+            medicines: vec![Medicine { id: "antibiotic".into(), name: "Antibiotic".into(), dose: String::new(), schedule: Schedule::Hours { hours: 8, from: at("2026-10-05T08:00[Europe/Paris]").timestamp().as_second(), follows: false }, prescription: None, until: None, paused: false }],
+            ..Health::default()
+        };
+        let times = |health: &Health| -> Vec<String> { health.doses(&at("2026-10-05T12:00[Europe/Paris]"), &at("2026-10-06T12:00[Europe/Paris]")).iter().map(|d| d.at.strftime("%H:%M").to_string()).collect() };
+        let key = format!("antibiotic@{}", at("2026-10-05T08:00[Europe/Paris]").timestamp().as_second());
+        let late = at("2026-10-05T09:30[Europe/Paris]").timestamp().as_second();
+        // Not asked: the next doses keep their times.
+        let mut kept = eight();
+        assert_eq!(kept.taken_late(&key, late, false), None);
+        assert_eq!(times(&kept), ["16:00", "00:00", "08:00"]);
+        // Asked: an hour and a half late, the next ones too; the answer kept for next time.
+        let mut health = eight();
+        let (before, after) = health.taken_late(&key, late, true).unwrap();
+        assert_eq!(times(&health), ["17:30", "01:30", "09:30"]);
+        assert!(matches!(health.medicines[0].schedule, Schedule::Hours { follows: true, .. }));
+        // The mark taken back: where they were.
+        assert!(health.taken_back(&key, before, after));
+        assert_eq!(times(&health), ["16:00", "00:00", "08:00"]);
+        // Moved again since: a mark taken back later leaves them.
+        let (before, after) = health.taken_late(&key, late, true).unwrap();
+        let later = format!("antibiotic@{}", at("2026-10-05T17:30[Europe/Paris]").timestamp().as_second());
+        health.taken_late(&later, at("2026-10-05T18:00[Europe/Paris]").timestamp().as_second(), true).unwrap();
+        assert!(!health.taken_back(&key, before, after));
+        assert_eq!(times(&health), ["02:00", "10:00"], "8 hours after the one taken at 18:00");
+        // Medicines at set times keep them.
+        let mut daily = Health { medicines: vec![Medicine { schedule: Schedule::Day { times: vec!["08:00".into()] }, ..eight().medicines[0].clone() }], ..Health::default() };
+        assert_eq!(daily.taken_late(&key, late, true), None);
+        // Written as kept, read back the same; unsaid when off.
+        let again: Health = toml::from_str(&toml::to_string(&health).unwrap()).unwrap();
+        assert_eq!(again, health);
+        assert!(!toml::to_string(&eight()).unwrap().contains("follows"));
     }
 
     #[test]

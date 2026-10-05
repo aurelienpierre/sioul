@@ -27,11 +27,13 @@ Puis **Jusqu’au** : un jour, ou aussi longtemps que le traitement dure ; l
 
 Chaque prise du jour, avec **Pris**. Une prise faite dit à quelle heure ; un clic l’annule. Une prise non marquée est simplement non marquée.
 
+**Pris en retard** : plus d’une demi-heure après son heure, **Pris…** demande quand vous l’avez prise (maintenant, sauf si vous changez l’heure), ou vous laisse dire qu’elle n’a pas été prise. Pour un médicament pris toutes les quelques heures, cochez **Décaler d’autant les prises suivantes** pour garder les heures entre deux prises : prise avec une heure de retard, les suivantes viennent une heure plus tard. Votre réponse est proposée la prochaine fois. Retirer la marque remet les prises à leur place.
+
 ### Les rappels {#reminders}
 
 Une notification sur le bureau par prise, dans la demi-heure qui suit son heure, sans son, avec **Pris**. Jamais répétée. Les rappels viennent aussi pendant le calme : ils sont à vous.
 
-Si Sioul était fermé à ce moment-là, une prise des douze dernières heures qui n’a été ni marquée ni rappelée fait l’objet d’une seule question : « Avez-vous pris … ? », avec **Pris** et **Pas pris**. C’est une question sur le passé, jamais un rappel d’en prendre une maintenant.
+Si Sioul était fermé à ce moment-là, une prise des douze dernières heures qui n’a été ni marquée ni rappelée est demandée sur le Porche au démarrage suivant, et sur cette page : avec **Pris…** (quand vous l’avez prise) et **Pas pris**. C’est une question sur le passé, jamais un rappel d’en prendre une maintenant.
 
 ### Sur plusieurs ordinateurs {#on-several-computers}
 

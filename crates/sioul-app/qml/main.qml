@@ -279,6 +279,14 @@ SioulWindow {
         onTriggered: sioul.touch()
     }
 
+    // A dose marked late, or due while Sioul was closed: when it was taken
+    // (DoseTaken.qml, made the first time); the pages showing doses read them again.
+    function askDose(key) {
+        if (doseTaken.item === null)
+            doseTaken.setSource("DoseTaken.qml", { sioul: sioul, theme: theme })
+        doseTaken.item.ask(key)
+    }
+
     // Whatever a link leads to, opened where it lives.
     function openThing(item) {
         const id = uri => decodeURIComponent(item.uri.slice(uri.length))
@@ -311,6 +319,8 @@ SioulWindow {
             window.page = 10
         else if (item.kind === "porch")
             window.page = 0
+        else if (item.kind === "dose")
+            window.askDose(item.key)
         else if (item.kind === "site") {
             window.page = 3
             sitesPage.open(item.key || decodeURIComponent(item.uri.slice("sioul:site/".length)))
@@ -1522,6 +1532,19 @@ SioulWindow {
             readonly property var pages: [
                 () => window.page = 0,
                 () => grabber.save("porch"),
+                // A dose due while Sioul was closed, when there is one: when it was taken, asked.
+                () => {
+                    if (porchPage.missedDoses.length > 0)
+                        window.askDose(porchPage.missedDoses[0].key)
+                },
+                () => {
+                    if (doseTaken.item !== null && doseTaken.item.opened)
+                        grabber.savePopup(doseTaken.item, "dose-taken")
+                },
+                () => {
+                    if (doseTaken.item !== null)
+                        doseTaken.item.close()
+                },
                 () => {
                     for (const lane of porchPage.view.lanes)
                         if (lane.key === "people" || lane.key === "screener")
@@ -1704,6 +1727,19 @@ SioulWindow {
     // "Link to…" (LinkPicker.qml, linkFrom) and something new (NewMenu.qml, showNewMenu).
     Loader {
         id: linkPicker
+    }
+    Loader {
+        id: doseTaken
+    }
+    Connections {
+        target: doseTaken.item
+
+        function onAnswered() {
+            if (window.healthPage)
+                window.healthPage.reload()
+            if (window.porchPage)
+                window.porchPage.reloadDoses()
+        }
     }
     Loader {
         id: newMenu

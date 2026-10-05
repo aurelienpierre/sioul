@@ -599,13 +599,27 @@ pub mod qobject {
         #[qinvokable]
         fn refilled(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
-        /// A dose marked taken, or not.
+        /// A dose marked taken, or not, as it happens: taken late or early, it
+        /// may move the next ones (a medicine counted from its last dose).
         #[qinvokable]
         fn set_dose_taken(self: Pin<&mut Sioul>, key: &QString, taken: bool);
 
-        /// A dose due while Sioul was closed, answered "not taken": not asked again.
+        /// A dose not taken, said afterwards: not asked again.
         #[qinvokable]
-        fn set_dose_not_taken(self: Pin<&mut Sioul>, key: &QString);
+        fn dose_not_taken(self: Pin<&mut Sioul>, key: &QString);
+
+        /// A dose taken late, at `time` ("09:30"); `move_next` moves the next
+        /// doses of a medicine taken every few hours by as much. Returns what went wrong, else "".
+        #[qinvokable]
+        fn dose_taken_at(self: Pin<&mut Sioul>, key: &QString, time: &QString, move_next: bool) -> QString;
+
+        /// What the late dose's question shows, as JSON.
+        #[qinvokable]
+        fn dose_info(self: &Sioul, key: &QString) -> QString;
+
+        /// The doses due while Sioul was closed, for the Porch, as JSON: [{key, time, name, dose}].
+        #[qinvokable]
+        fn missed_doses(self: &Sioul) -> QString;
 
         /// You are at this window now: what follows you (medicines' reminders) comes here.
         #[qinvokable]
@@ -3449,9 +3463,25 @@ impl qobject::Sioul {
         crate::share::exchange(&self.qt_thread(), &self.shared());
     }
 
-    fn set_dose_not_taken(self: Pin<&mut Self>, key: &QString) {
-        crate::health::set_not_taken(&key.to_string());
+    fn dose_not_taken(self: Pin<&mut Self>, key: &QString) {
+        crate::health::not_taken(&key.to_string());
         crate::share::exchange(&self.qt_thread(), &self.shared());
+    }
+
+    fn dose_taken_at(self: Pin<&mut Self>, key: &QString, time: &QString, move_next: bool) -> QString {
+        let problem = crate::health::taken_late(&key.to_string(), &time.to_string(), move_next);
+        if problem.is_empty() {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&problem)
+    }
+
+    fn dose_info(&self, key: &QString) -> QString {
+        QString::from(&crate::health::dose_info(&key.to_string()))
+    }
+
+    fn missed_doses(&self) -> QString {
+        QString::from(&crate::health::missed())
     }
 
     fn touch(self: Pin<&mut Self>) {

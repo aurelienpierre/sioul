@@ -92,6 +92,7 @@ fn main() {
         "qml/AccountPassword.qml",
         "qml/FolderBrowser.qml",
         "qml/RestCover.qml",
+        "qml/DoseTaken.qml",
         "qml/BankSection.qml",
         "qml/LettersSection.qml",
     ];
