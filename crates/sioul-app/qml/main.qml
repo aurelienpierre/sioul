@@ -1587,6 +1587,11 @@ SioulWindow {
                 () => porchPage.openFirst(),
                 () => grabber.save("message"),
                 () => window.page = 1,
+                // At rest the tasks are hidden: shown anyway, as the page's button does.
+                () => {
+                    tasksPage.anyway = true
+                    sioul.showTasksAnyway(true)
+                },
                 () => grabber.save("tasks-now"),
                 () => tasksPage.mode = "list",
                 () => grabber.save("tasks-list"),
@@ -1594,8 +1599,12 @@ SioulWindow {
                 () => grabber.save("tasks-board"),
                 () => tasksPage.mode = "timeline",
                 () => grabber.save("tasks-timeline"),
+                () => tasksPage.mode = "day",
+                () => grabber.save("tasks-day"),
                 () => tasksPage.openFirst(),
                 () => grabber.save("tasks-panel"),
+                () => tasksPage.showPanelDetails(),
+                () => grabber.save("tasks-panel-more"),
                 () => tasksPage.mode = "now",
                 () => window.page = 2,
                 () => grabber.save("mail"),
