@@ -9,7 +9,7 @@ description: Sioul gathers your mail, tasks, agenda, money and papers in one qui
 
 Sioul is a desktop application that gathers your mail, your tasks and your admin in one quiet window, on your own computer.
 
-It is designed for people for whom admin hurts: autistic people, people with ADHD, people who are anxious, traumatised, burnt out, depressed, or simply exhausted.
+It is designed for people for whom admin hurts: autistic people, people with ADHD, people who are anxious, traumatised, burnt out, depressed, or simply exhausted. It is also for people living with long COVID or another condition that limits energy, such as ME/CFS, and for people with an eating disorder or who eat irregularly.
 
 <figure markdown="span">
   [![Sioul's window. On the left, the list of places: Porch, Tasks, Mail, Sites, Agenda, Contacts, Notes, Projects, Time, Budgets, Papers, Health. On the right, the Porch: this week's payments in one line, a one-time code with its Copy button, a chat's news, then the new mail sorted into lanes.](assets/screens/porch.png){ loading=lazy }](assets/screens/porch.png "Open the picture at full size")
@@ -49,7 +49,7 @@ Most software is built to make you answer faster: counts, red badges, sounds, st
 
     ---
 
-    Tasks that wait for each other are ordered into the one step to take now, with its reason. Nothing is ever overdue. Starting is helped, and stopping counts.
+    Tasks that wait for each other are ordered into the one step to take now, with its reason. Nothing is ever overdue. Starting is helped, and stopping counts. The time to get ready, get there and come back is kept free around events and tasks, never counted as a pause.
 
     [Tasks](guide/tasks.md)
 
@@ -89,12 +89,25 @@ Most software is built to make you answer faster: counts, red badges, sounds, st
 
 Your Google calendars, contacts and tasks can come too. If you sign in with your Google account, Sioul reads and writes them, only to show them beside the rest of your admin and to save the changes you make there, and keeps a copy on your computer. Nothing goes to the developer. What it reads, where it keeps it, and how to take the access back: [privacy policy](privacy.md#google-calendars-contacts-and-tasks).
 
+## Meals, rest and sleep first
+
+Your day is planned from your needs. The work goes in what is left.
+
+- **You set them**: how many meals, at what times, how long they take and the time to get them ready; naps; bedtime, waking and the time to wind down.
+- **Kept free**: the plan puts no task in them, and plans the work around them.
+- **Two notices at most, each once**: a quarter of an hour before, "No new big task"; then one at the time.
+- **Moved without a word asked**: **15 min later**, **Move to…** a time, or **Not today**, for today only.
+- **Events come first**: a meal that would fall in an event moves after it.
+- **Nothing about food**: what you eat, portions and numbers are never asked, recorded or shown. No "missed", no praise.
+
+Sioul does not treat anything: it plans around the needs you set. [Meals, rest and sleep](guide/health.md#meals-rest-and-sleep)
+
 ## Working for yourself
 
 Freelancers, consultants, the self-employed: the work you sell and the admin it brings live in the same window, from the client's first mail to the paid invoice.
 
 - **A project per client**, whose mail comes to it by itself: by the client's domain or addresses, by words in a subject or in an attachment's name.
-- **Time counted while you work.** The focus timer counts for the task and its project; a meeting or a call is noted in a few keys: `1h30`.
+- **Time counted while you work.** The focus timer counts for the task and its project; a meeting or a call is noted in a few keys: `1h30`. The same record is kept to learn how long things really take: [how long things take](guide/time.md#how-long-things-take).
 - **What is left to bill**, for each project, in hours and in money, always in view.
 - **The invoice in one click**: a line per task at the project's rate, numbers that never skip or repeat, the mentions French law asks for, a PDF; then the money expected in your budget until it is paid.
 - **A spreadsheet for your accountant**, and the same time and invoices on your desktop and your laptop, sealed end to end.

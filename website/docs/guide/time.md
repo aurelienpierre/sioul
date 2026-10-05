@@ -1,10 +1,13 @@
 ---
-description: Time spent and invoices in Sioul - time from the focus timer and noted by hand, what is left to bill, a spreadsheet export, and invoices numbered without gaps.
+description: Time spent in Sioul - from the focus timer and noted by hand, kept to bill clients and to learn how long things really take; what is left to bill, a spreadsheet export, and invoices numbered without gaps.
 ---
 
 # Time and invoices
 
-Time spent is noted as you work, and becomes invoices for the projects you do for clients.
+Time spent is noted as you work. It is kept for two uses:
+
+- **billing**: the hours you work for clients become invoices;
+- **planning**: set beside your guesses, it tells how long things really take. The plan will use it next: see [How long things take](#how-long-things-take).
 
 <figure markdown="span">
   [![The Time page on "Week": a bar per day, stacked in a few calm colours by project; under it, each project's hours and what is left to bill, then each stretch of time, newest first.](../assets/screens/time.png){ loading=lazy }](../assets/screens/time.png "Open the picture at full size")
@@ -29,6 +32,22 @@ Click any stretch of time, timed or noted by hand, to change it: its task, its p
 ### Billed or not
 
 Work for a client is billed. A task can say otherwise, under **Billed** in its panel: *As its project says*, *Its time is billed*, or *Not billed*.
+
+## How long things take
+
+A task's **Takes about** is a guess. The time noted for it is what it took. The two together tell how your guesses compare with the time things really take.
+
+**Today**, the record is there: the focus window, the time on this page, each line open to change. The plan does not use it yet: it plans each task by its **Takes about**, as you wrote it.
+
+**Next**, the plan will use it to correct your guesses, in the plan only:
+
+- it compares the time spent with the time guessed, over about the past two weeks, for each kind of task;
+- it sizes the plan with that ratio: if letters took twice what you guessed, the next letter gets twice its guess in the plan;
+- the margin for the unexpected stays on the whole day, not on each task.
+
+It never scores you, never shows anything as late, never fills in **Takes about** for you, and never compares you with anyone.
+
+Timing leisure is up to you. Gaps are fine: time not noted is left out, not counted against anything.
 
 ## A spreadsheet of billable time
 
