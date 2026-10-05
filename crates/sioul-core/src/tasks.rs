@@ -161,6 +161,10 @@ pub struct Task {
     /// What it takes (`X-SIOUL-ENERGY`): "light", "heavy", or "rest" for what
     /// gives back (a walk, music); "" for the usual.
     pub energy: String,
+    /// Minutes kept before and after it: getting there, getting ready (`demands`).
+    pub margins: crate::demands::Margins,
+    /// What it costs and gives back, rated 0 to 10 (`demands`).
+    pub demands: crate::demands::Demands,
     pub relations: Vec<Relation>,
     pub links: Vec<Link>,
     pub contacts: Vec<ContactRef>,
@@ -418,6 +422,10 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             "X-SIOUL-ENERGY" => task.energy = energy_of(value),
             "X-SIOUL-OFFICE-HOURS" => task.office_times = crate::window::ranges_text(&crate::window::parse_ranges(&lines::unescape(value))),
             "X-SIOUL-AREA" => task.area = crate::areas::Area::parse(value).map(|a| a.id()).unwrap_or_default(),
+            crate::demands::BEFORE => task.margins.before = crate::demands::minutes_of(value),
+            crate::demands::AFTER => task.margins.after = crate::demands::minutes_of(value),
+            crate::demands::COST => task.demands.read_cost(value),
+            crate::demands::GAIN => task.demands.read_gain(value),
             "LINK" => task.links.push(link_of(line)),
             "CONTACT" => task.contacts.push(contact(line)),
             "REFID" => task.cases.push(lines::unescape(value.trim())),
@@ -486,6 +494,12 @@ pub struct TaskEdit {
     /// "light", "heavy", "rest", or "" for the usual.
     #[serde(default)]
     pub energy: String,
+    /// Minutes kept before and after it.
+    #[serde(default)]
+    pub margins: crate::demands::Margins,
+    /// What it costs and gives back, 0 to 10 each; none unsaid.
+    #[serde(default)]
+    pub demands: crate::demands::Demands,
     /// The task it is a step of, by UID; "" for none.
     #[serde(default)]
     pub parent: String,
@@ -522,6 +536,8 @@ impl TaskEdit {
             area: task.area.clone(),
             billable: task.billable,
             energy: task.energy.clone(),
+            margins: task.margins,
+            demands: task.demands,
             parent: task.parent().unwrap_or_default().to_string(),
             waits_for: task.depends_on().map(|r| r.uid.clone()).collect(),
             links: task.links.clone(),
@@ -554,6 +570,8 @@ impl TaskEdit {
             office_hours: self.office_hours,
             office_times: if self.office_hours { crate::window::ranges_text(&crate::window::parse_ranges(&self.office_times)) } else { String::new() },
             area: crate::areas::Area::parse(&self.area).map(|a| a.id()).unwrap_or_default(),
+            margins: crate::demands::Margins { before: self.margins.before.min(24 * 60), after: self.margins.after.min(24 * 60) },
+            demands: crate::demands::Demands { cognitive: self.demands.cognitive.map(|v| v.min(10)), emotional: self.demands.emotional.map(|v| v.min(10)), anxiety: self.demands.anxiety.map(|v| v.min(10)), gain: self.demands.gain.map(|v| v.min(10)) },
             parent: self.parent.trim().to_string(),
             waits_for: unique(self.waits_for.iter().map(|u| u.trim().to_string()).filter(|u| !u.is_empty())),
             links: unique(self.links.iter().filter(|l| !l.uri.trim().is_empty()).map(|l| Link { uri: l.uri.trim().to_string(), label: l.label.trim().to_string(), rel: l.rel.trim().to_string() })),
@@ -637,6 +655,8 @@ struct Changed {
     area: bool,
     billable: bool,
     energy: bool,
+    margins: bool,
+    demands: bool,
     repeat: bool,
 }
 
@@ -658,11 +678,13 @@ impl Changed {
             area: old.area != new.area,
             billable: old.billable != new.billable,
             energy: old.energy != new.energy,
+            margins: old.margins != new.margins,
+            demands: old.demands != new.demands,
             repeat: old.repeat != new.repeat,
         }
     }
 
-    const ALL: Changed = Changed { title: true, notes: true, location: true, status: true, start: true, due: true, estimate: true, priority: true, categories: true, kind: true, office: true, office_times: true, area: true, billable: true, energy: true, repeat: true };
+    const ALL: Changed = Changed { title: true, notes: true, location: true, status: true, start: true, due: true, estimate: true, priority: true, categories: true, kind: true, office: true, office_times: true, area: true, billable: true, energy: true, margins: true, demands: true, repeat: true };
 
     /// Whether a line of this name is written again.
     fn rewrites(&self, name: &str) -> bool {
@@ -680,6 +702,8 @@ impl Changed {
             "X-SIOUL-ENERGY" => self.energy,
             "X-SIOUL-OFFICE-HOURS" => self.office_times,
             "X-SIOUL-AREA" => self.area,
+            crate::demands::BEFORE | crate::demands::AFTER => self.margins,
+            crate::demands::COST | crate::demands::GAIN => self.demands,
             "RRULE" => self.repeat,
             _ => false,
         }
@@ -733,6 +757,22 @@ fn field_lines(edit: &TaskEdit, changed: Changed, zone: &TimeZone, now: &Zoned) 
     }
     if changed.energy && !energy_of(&edit.energy).is_empty() {
         out.push(format!("X-SIOUL-ENERGY:{}", energy_of(&edit.energy).to_ascii_uppercase()));
+    }
+    if changed.margins {
+        if edit.margins.before > 0 {
+            out.push(format!("{}:{}", crate::demands::BEFORE, edit.margins.before));
+        }
+        if edit.margins.after > 0 {
+            out.push(format!("{}:{}", crate::demands::AFTER, edit.margins.after));
+        }
+    }
+    if changed.demands {
+        if edit.demands.has_cost() {
+            out.push(format!("{}:{}", crate::demands::COST, edit.demands.cost_value()));
+        }
+        if let Some(gain) = edit.demands.gain {
+            out.push(format!("{}:{gain}", crate::demands::GAIN));
+        }
     }
     if changed.repeat && matches!(edit.repeat.as_str(), "daily" | "weekly" | "monthly" | "yearly") {
         out.push(format!("RRULE:FREQ={}", edit.repeat.to_ascii_uppercase()));

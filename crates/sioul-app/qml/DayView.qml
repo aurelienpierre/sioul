@@ -25,9 +25,9 @@ ColumnLayout {
     property var day: null
     readonly property var blocks: dayView.day ? dayView.day.blocks : []
     readonly property var hours: dayView.day && dayView.day.hours ? dayView.day.hours : []
-    // The block under way, and the next one.
-    readonly property int current: dayView.blocks.findIndex(b => b.start <= dayView.day.now && dayView.day.now < b.end)
-    readonly property int next: dayView.blocks.findIndex(b => b.start > (dayView.day ? dayView.day.now : 0))
+    // The block under way, and the next one; margins around them are neither.
+    readonly property int current: dayView.blocks.findIndex(b => b.kind !== "margin" && b.start <= dayView.day.now && dayView.day.now < b.end)
+    readonly property int next: dayView.blocks.findIndex(b => b.kind !== "margin" && b.start > (dayView.day ? dayView.day.now : 0))
 
     // Air inside a card, above and below its text.
     readonly property int padding: 8
@@ -268,6 +268,8 @@ ColumnLayout {
                 readonly property bool isEvent: block.modelData.kind === "event"
                 // A meal or a nap kept free (docs/health.md): shown, never a step to open.
                 readonly property bool isNeed: block.modelData.kind === "meal" || block.modelData.kind === "nap"
+                // Getting there and back, getting ready, around an event or a step: kept free, lighter.
+                readonly property bool isMargin: block.modelData.kind === "margin"
                 readonly property bool now: block.index === dayView.current
                 readonly property bool comingNext: block.index === dayView.next
                 readonly property string part: dayView.partOf(block.modelData)
@@ -280,8 +282,8 @@ ColumnLayout {
                 height: dayView.heightOf(block.index)
                 clip: true
                 radius: 4
-                color: block.now ? dayView.theme.hover : block.isEvent || block.isNeed ? dayView.theme.surface : dayView.theme.button
-                border.color: block.now || block.comingNext ? dayView.theme.accent : dayView.theme.line
+                color: block.isMargin ? "transparent" : block.now ? dayView.theme.hover : block.isEvent || block.isNeed ? dayView.theme.surface : dayView.theme.button
+                border.color: !block.isMargin && (block.now || block.comingNext) ? dayView.theme.accent : dayView.theme.line
                 border.width: block.now ? 2 : 1
 
                 RowLayout {
@@ -304,6 +306,8 @@ ColumnLayout {
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignTop
                         text: {
+                            if (block.isMargin)
+                                return dayView.sioul.textWith("day-margin", "what", block.modelData.title)
                             const title = block.part === "" ? block.modelData.title : block.modelData.title + " (" + block.part + ")"
                             return block.modelData.location === "" ? title : title + " · " + block.modelData.location
                         }
@@ -311,8 +315,8 @@ ColumnLayout {
                         elide: Text.ElideRight
                         maximumLineCount: Math.max(1, Math.floor((block.height - 2 * dayView.padding) / titleMetrics.height))
                         wrapMode: Text.Wrap
-                        font.weight: block.now ? Font.DemiBold : Font.Normal
-                        color: dayView.theme.text
+                        font.weight: block.now && !block.isMargin ? Font.DemiBold : Font.Normal
+                        color: block.isMargin ? dayView.theme.muted : dayView.theme.text
                     }
                     Label {
                         visible: block.modelData.energy !== ""
@@ -325,7 +329,7 @@ ColumnLayout {
                     }
                 }
                 MouseArea {
-                    enabled: !block.isNeed
+                    enabled: !block.isNeed && !block.isMargin
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: block.isEvent ? dayView.openEvent(block.modelData.key) : dayView.openTask(block.modelData.key)

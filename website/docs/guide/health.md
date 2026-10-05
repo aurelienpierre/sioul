@@ -53,7 +53,7 @@ Times kept free, set before any work: Sioul plans no task in them, and plans the
 
 Name each as you like, choose its weekdays, and turn its notices off if you would rather not have them: it stays kept free.
 
-**Today**: today's meals, naps and night come first on the page, each with **15 min later** (as often as you like), **Move to…** a time, and **Not today**, for today only, without a word asked.
+**Today**: today's meals, naps and night come first on the page, each with **15 min later** (as often as you like), **Move to…** a time, and **Not today**, for today only, without a word asked. A meal that would fall in an event moves after it by itself, today only, with the time to come back from it (the event's **After**); never earlier than you moved it.
 
 **Notices**: two at most for each, each once. First, a quarter of an hour before (you choose), "No new big task" with its name and time, so you do not start something you would have to leave. Then one at the time. Each has **Options…**: later, at another time, not today, and one line on where you stopped, shown again when you are back. Moving a meal never brings more notices. Nothing during a meeting, nothing for one not today, nothing when one passes. A notice shows only a name and a time.
 

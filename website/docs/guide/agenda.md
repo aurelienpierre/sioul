@@ -26,10 +26,21 @@ The arrows ◂ and ▸ go earlier and later; **Today** comes back to today.
 
 An event opens on the right with its time and place. Its notes, how it repeats, its guests and its calendar are folded under **More**.
 
+Also under **More**, if you want them:
+
+- **Before** and **After**: the time to get ready and get there, and to come back. Your plan keeps it free, and the day shows it around the event ("Around: …"). It is never counted as a pause.
+- How much the event asks of you, from 0 to 10 each: **thinking**, **feelings**, **anxiety**; and **what it gives back**. Nothing is said until you say it.
+
 - **To change it**: **Change the event**.
 - **To delete it**: **Delete**. It waits ten seconds, with **Undo**. A repeating event asks first: **Only this time**, or **Every time**.
 
 An event can also be made from a message, from a task, or from a paper letter's appointment, and stays tied to it. From an event, you can make a note (dated, with its guests listed, and **Send to the guests** once written) or a task to prepare it.
+
+## Two events at once
+
+When two events overlap, the time to get there and back counted, Sioul says so: today's on the [Porch](porch.md), with a button to open each one; the next two weeks' above the agenda. **Don't mention it again** sets it aside for good. Move one of them and it is a new question.
+
+A meal that falls in an event moves after it, for that day only (see [Health](health.md)).
 
 ## Invitations
 

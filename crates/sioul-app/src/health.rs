@@ -922,6 +922,29 @@ fn name_of(kept: &sioul_core::needs::Kept) -> String {
 
 /// Each minute, from the computer you are at: a block's heads-up about the
 /// work, `heads_up` minutes before it ("No new big task"), with "Later";
+/// Today's events' held times (their margins counted), read again five
+/// minutes after at most: the needs' tick runs every minute.
+fn held_today(now: &Zoned) -> Vec<(i64, i64)> {
+    static CACHE: std::sync::Mutex<Option<(i64, Date, Vec<(i64, i64)>)>> = std::sync::Mutex::new(None);
+    let stamp = now.timestamp().as_second();
+    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, day, held)) = cache.as_ref()
+        && *day == now.date()
+        && (0..300).contains(&(stamp - at))
+    {
+        return held.clone();
+    }
+    let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(stamp, |z| z.timestamp().as_second());
+    let held = sioul_core::plan::event_spans(&sioul_core::agenda::occurrences(midnight, midnight + 26 * 3600), 0);
+    *cache = Some((stamp, now.date(), held.clone()));
+    held
+}
+
+/// Today's moves: yours, and each meal pushed past the events it would fall in.
+pub(crate) fn moves_today(needs: &sioul_core::needs::Needs, moved: &std::collections::BTreeMap<String, i64>, now: &Zoned) -> std::collections::BTreeMap<String, i64> {
+    needs.past_events(now.date(), now.time_zone(), moved, &held_today(now))
+}
+
 /// then one at its time. Two at most, each once, only near its time; none
 /// while an event goes on, none for a block skipped today. Its name and time
 /// only: safe to be read by someone else (docs/health.md).
@@ -933,7 +956,7 @@ fn needs_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned)
     let path = sioul_core::needs::Today::default_path();
     let mut today = sioul_core::needs::Today::load(&path, now.date());
     let stamp = now.timestamp().as_second();
-    let moved = today.shifts.clone();
+    let moved = moves_today(needs, &today.shifts, now);
     let kept = needs.kept_on(now.date(), now.time_zone(), &|key: &str| moved.get(key).copied().unwrap_or(0));
     let due = today.due(&kept, needs.heads_up, stamp);
     if due.is_empty() {
@@ -992,7 +1015,7 @@ pub(crate) fn needs_today() -> String {
     let needs = load().needs;
     let now = Zoned::now();
     let today = sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), now.date());
-    let moved = today.shifts.clone();
+    let moved = moves_today(&needs, &today.shifts, &now);
     let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
     let stamp = now.timestamp().as_second();
     let rows: Vec<serde_json::Value> = needs

@@ -278,6 +278,34 @@ struct EventView {
     read_only: bool,
 }
 
+/// Two events at once in the next `days` days, their margins counted, those
+/// set aside left out, as JSON: [{key, day, today, first, second}], each
+/// event {key, title, from, to} ("09:30"), for the Porch and the agenda.
+pub(crate) fn overlaps(days: i64) -> String {
+    let now = Zoned::now();
+    let zone = now.time_zone().clone();
+    let midnight = now.date().to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
+    let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path());
+    let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    let day = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).date()).ok();
+    let one = |e: &agenda::Occurrence| serde_json::json!({ "key": e.key, "title": e.summary, "from": hm(e.start), "to": hm(e.end) });
+    let rows: Vec<serde_json::Value> = sioul_core::overlaps::overlaps(&agenda::occurrences(midnight, midnight + days.max(1) * 86_400))
+        .iter()
+        // Over already: nothing to do about it.
+        .filter(|o| !aside.keys.contains(&o.key) && o.first.end.max(o.second.end) > now.timestamp().as_second())
+        .map(|o| serde_json::json!({ "key": o.key, "day": day(o.second.start).map(|d| d.to_string()).unwrap_or_default(), "today": day(o.second.start) == Some(now.date()), "first": one(&o.first), "second": one(&o.second) }))
+        .collect();
+    json(&rows)
+}
+
+/// An overlap set aside for good; returns what went wrong, else "".
+pub(crate) fn set_overlap_aside(key: &str) -> String {
+    let path = sioul_core::overlaps::SetAside::default_path();
+    let mut aside = sioul_core::overlaps::SetAside::load(&path);
+    aside.keys.insert(key.to_string());
+    aside.save(&path).err().unwrap_or_default()
+}
+
 /// An event as its form shows it.
 pub(crate) fn event(key: &str) -> String {
     let Some(path) = ours(key) else { return String::new() };

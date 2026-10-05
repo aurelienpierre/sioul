@@ -633,6 +633,14 @@ pub mod qobject {
         #[qinvokable]
         fn needs_today(self: &Sioul) -> QString;
 
+        /// Two events at once in the next `days` days, as JSON (those set aside left out).
+        #[qinvokable]
+        fn overlaps(self: &Sioul, days: i32) -> QString;
+
+        /// An overlap set aside for good; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_overlap_aside(self: Pin<&mut Sioul>, key: &QString) -> QString;
+
         /// A block moved today only: `minutes` more (0: the minutes "Later" moves
         /// it by), or to start at `time` ("13:30"). Returns what went wrong, else "".
         #[qinvokable]
@@ -3556,6 +3564,14 @@ impl qobject::Sioul {
 
     fn needs_today(&self) -> QString {
         QString::from(&crate::health::needs_today())
+    }
+
+    fn overlaps(&self, days: i32) -> QString {
+        QString::from(&crate::pim::overlaps(i64::from(days)))
+    }
+
+    fn set_overlap_aside(self: Pin<&mut Self>, key: &QString) -> QString {
+        QString::from(&crate::pim::set_overlap_aside(&key.to_string()))
     }
 
     fn move_need(self: Pin<&mut Self>, key: &QString, minutes: i32, time: &QString) -> QString {

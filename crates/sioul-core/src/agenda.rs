@@ -56,6 +56,10 @@ pub struct Occurrence {
     pub read_only: bool,
     /// Its alarms (VALARM), in seconds from its start: -900 for a quarter of an hour before.
     pub alarms: Vec<i64>,
+    /// Minutes kept before and after it: getting there and back (`demands`).
+    pub margins: crate::demands::Margins,
+    /// What it costs and gives back, rated 0 to 10 (`demands`).
+    pub demands: crate::demands::Demands,
 }
 
 /// Someone invited, and what they answered.
@@ -82,6 +86,19 @@ fn calcard_zone(zone: &TimeZone) -> calcard::common::timezone::Tz {
 
 fn text_of(component: &ICalendarComponent, property: &ICalendarProperty) -> String {
     component.property(property).and_then(|e| e.values.first()).and_then(ICalendarValue::as_text).unwrap_or_default().trim().to_string()
+}
+
+/// Its margins, costs and gain, from Sioul's own properties (`demands`).
+fn demands_of(component: &ICalendarComponent) -> (crate::demands::Margins, crate::demands::Demands) {
+    let other = |name: &str| text_of(component, &ICalendarProperty::Other(name.to_string()));
+    let margins = crate::demands::Margins { before: crate::demands::minutes_of(&other(crate::demands::BEFORE)), after: crate::demands::minutes_of(&other(crate::demands::AFTER)) };
+    let mut demands = crate::demands::Demands::default();
+    demands.read_cost(&other(crate::demands::COST));
+    let gain = other(crate::demands::GAIN);
+    if !gain.is_empty() {
+        demands.read_gain(&gain);
+    }
+    (margins, demands)
 }
 
 /// A date without a time: the event lasts whole days.
@@ -169,6 +186,7 @@ pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, 
         }
         let status = text_of(component, &ICalendarProperty::Status).to_ascii_uppercase();
         let (organizer, attendees) = people(component);
+        let (margins, demands) = demands_of(component);
         found.push(Occurrence {
             key: path.display().to_string(),
             uid: component.uid().unwrap_or_default().to_string(),
@@ -187,6 +205,8 @@ pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, 
             attendees,
             read_only: calendar.read_only,
             alarms: alarms_of(&ical, component, start, end - start),
+            margins,
+            demands,
         });
     }
     found
@@ -220,6 +240,12 @@ pub struct EventEdit {
     /// "", "daily", "weekly", "monthly", "yearly".
     #[serde(default)]
     pub repeat: String,
+    /// Minutes kept before and after it.
+    #[serde(default)]
+    pub margins: crate::demands::Margins,
+    /// What it costs and gives back, 0 to 10 each; none unsaid.
+    #[serde(default)]
+    pub demands: crate::demands::Demands,
 }
 
 /// An event as the form shows it, from its file, in your time zone.
@@ -251,6 +277,7 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         .unwrap_or_default()
         .to_ascii_uppercase();
     let repeat = ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].into_iter().find(|f| rule.contains(&format!("FREQ={f}"))).map(str::to_lowercase).unwrap_or_default();
+    let (margins, demands) = demands_of(master);
     Some(EventEdit {
         title: lines::unescape(&text_of(master, &ICalendarProperty::Summary)),
         location: lines::unescape(&text_of(master, &ICalendarProperty::Location)),
@@ -260,6 +287,8 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         end: if all_day { end.date().checked_sub(1.day()).unwrap_or(end.date()).to_string() } else { end.strftime("%Y-%m-%dT%H:%M").to_string() },
         all_day,
         repeat,
+        margins,
+        demands,
     })
 }
 
@@ -372,10 +401,12 @@ struct Changed {
     location: bool,
     notes: bool,
     rule: bool,
+    margins: bool,
+    demands: bool,
 }
 
 impl Changed {
-    const ALL: Changed = Changed { title: true, location: true, notes: true, rule: true };
+    const ALL: Changed = Changed { title: true, location: true, notes: true, rule: true, margins: true, demands: true };
 }
 
 /// SUMMARY, LOCATION, DESCRIPTION and the repeat rule, those that changed.
@@ -392,6 +423,22 @@ fn content_lines(edit: &EventEdit, changed: Changed) -> Vec<String> {
     }
     if changed.rule {
         out.extend(rule_line(&edit.repeat));
+    }
+    if changed.margins {
+        if edit.margins.before > 0 {
+            out.push(format!("{}:{}", crate::demands::BEFORE, edit.margins.before.min(24 * 60)));
+        }
+        if edit.margins.after > 0 {
+            out.push(format!("{}:{}", crate::demands::AFTER, edit.margins.after.min(24 * 60)));
+        }
+    }
+    if changed.demands {
+        if edit.demands.has_cost() {
+            out.push(format!("{}:{}", crate::demands::COST, edit.demands.cost_value()));
+        }
+        if let Some(gain) = edit.demands.gain {
+            out.push(format!("{}:{}", crate::demands::GAIN, gain.min(10)));
+        }
     }
     out
 }
@@ -417,7 +464,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
     let times_changed = before.as_ref().is_none_or(|b| (&b.start, &b.end, b.all_day) != (&edit.start, &edit.end, edit.all_day));
     let rule_changed = before.as_ref().is_none_or(|b| b.repeat != edit.repeat);
     let changed = match &before {
-        Some(b) => Changed { title: b.title.trim() != edit.title.trim(), location: b.location.trim() != edit.location.trim(), notes: b.notes.trim() != edit.notes.trim(), rule: rule_changed },
+        Some(b) => Changed { title: b.title.trim() != edit.title.trim(), location: b.location.trim() != edit.location.trim(), notes: b.notes.trim() != edit.notes.trim(), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands },
         None => Changed::ALL,
     };
     let (times, tzid) = if times_changed || rule_changed { time_lines(edit, &zone)? } else { (Vec::new(), None) };
@@ -428,6 +475,8 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
             || (changed.title && name == "SUMMARY")
             || (changed.location && name == "LOCATION")
             || (changed.notes && name == "DESCRIPTION")
+            || (changed.margins && (name == crate::demands::BEFORE || name == crate::demands::AFTER))
+            || (changed.demands && (name == crate::demands::COST || name == crate::demands::GAIN))
     };
     let source = lines::unfold(text);
     let mut out: Vec<String> = Vec::with_capacity(source.len() + 8);

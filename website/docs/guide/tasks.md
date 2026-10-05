@@ -114,7 +114,7 @@ A task opens on the right, with **Start**, **Done** and **Not now**, then:
 
 - **its steps**, and one more in a line ("A step, in one line"); the steps' minutes are added up;
 - **what it waits for** ("Waits for…": another task, found by its title), and what it frees;
-- folded: **Can start from**, **Date asked**, **Takes about**, **Project**, **Tags**, **Comes back** (repeating), **What it takes**, **For** (work, your admin, leisure: see [Hours](hours.md)), **Billed** ([Time](time.md)), **Needs an open office**, **List**, and **Notes, in Markdown**. Another **List** moves the task there; when that list would not keep everything (Google Tasks keeps less), Sioul says what, and asks first;
+- folded: **Can start from**, **Date asked**, **Takes about**, **Project**, **Tags**, **Comes back** (repeating), **What it takes**, **Before** and **After** (the time to get ready, get there and come back: kept free around it in your plan, never counted as a pause; such a task is never cut in parts), how much it asks from 0 to 10 (**thinking**, **feelings**, **anxiety**) and **what it gives back**, unsaid until you say them, **For** (work, your admin, leisure: see [Hours](hours.md)), **Billed** ([Time](time.md)), **Needs an open office**, **List**, and **Notes, in Markdown**. Another **List** moves the task there; when that list would not keep everything (Google Tasks keeps less), Sioul says what, and asks first;
 - **Tied to it**: the mail it came from, its notes, the people, the drafts, the project. **Write an email** starts a message to the people it involves; **Make a note** starts a note tied to it; **Link to…** ties anything else.
 
 Anything can become a task: a message, a line of a note, an event to prepare.

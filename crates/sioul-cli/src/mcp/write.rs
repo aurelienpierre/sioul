@@ -201,7 +201,7 @@ pub fn add_event(s: &Session, args: &Args) -> Result<Answer, String> {
             .ok_or_else(|| format!("No calendar “{}” takes events here (account/id).", one_line(&id)))?,
         None => agenda::default_calendar().ok_or_else(|| s.tr.text("dav-no-calendar", None))?,
     };
-    let edit = EventEdit { title, location: args.line("location")?.unwrap_or_default(), notes: args.body("notes")?, start, end, all_day, repeat };
+    let edit = EventEdit { title, location: args.line("location")?.unwrap_or_default(), notes: args.body("notes")?, start, end, all_day, repeat, ..EventEdit::default() };
     let zone = TimeZone::system();
     let text = agenda::new_event(&edit, &zone)?;
     let path = free_item(agenda::new_path(&calendar), || agenda::new_path(&calendar));

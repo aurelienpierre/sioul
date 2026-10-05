@@ -275,6 +275,28 @@ impl Needs {
         out
     }
 
+    /// Today's moves, each meal pushed past the events it would fall in
+    /// (`held`: their times with their margins, Unix seconds): from your own
+    /// moves, later only, to the end of the event, by whole five minutes; a
+    /// meal pushed into a next event goes past it too.
+    pub fn past_events(&self, date: Date, zone: &TimeZone, moved: &BTreeMap<String, i64>, held: &[(i64, i64)]) -> BTreeMap<String, i64> {
+        let mut shifts = moved.clone();
+        for _ in 0..8 {
+            let current = shifts.clone();
+            let mut pushed = false;
+            for block in self.kept_on(date, zone, &|key: &str| current.get(key).copied().unwrap_or(0)).iter().filter(|k| k.kind == "meal") {
+                if let Some(end) = held.iter().filter(|&&(from, to)| from < block.end && to > block.start).map(|&(_, to)| to).max() {
+                    *shifts.entry(block.key.clone()).or_insert(0) += (end - block.start + 299) / 300 * 5;
+                    pushed = true;
+                }
+            }
+            if !pushed {
+                break;
+            }
+        }
+        shifts
+    }
+
     /// The spans kept free on `date`, for the plan: no task in them.
     pub fn busy_on(&self, date: Date, zone: &TimeZone, shift: &dyn Fn(&str) -> i64) -> Vec<(i64, i64)> {
         self.kept_on(date, zone, shift).into_iter().map(|k| (k.start, k.end)).collect()
@@ -310,6 +332,24 @@ mod tests {
 
     fn none(_: &str) -> i64 {
         0
+    }
+
+    #[test]
+    fn meals_pushed_past_events() {
+        let monday: Date = "2026-10-05".parse().unwrap();
+        let needs = Needs { meals_on: true, ..Needs::default() };
+        let at = |text: &str| format!("2026-10-05T{text}").parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone()).unwrap().timestamp().as_second();
+        // A meeting 12:00–13:15, a quarter of an hour to come back: lunch (made from 12:10) from 13:30.
+        let shifts = needs.past_events(monday, &zone(), &BTreeMap::new(), &[(at("12:00"), at("13:30"))]);
+        assert_eq!(shifts.get("meal:1"), Some(&80));
+        assert_eq!(shifts.get("meal:0"), None, "breakfast untouched");
+        // Moved already to 14:00 by you: past the meeting, left there.
+        let mine = BTreeMap::from([("meal:1".to_string(), 110)]);
+        assert_eq!(needs.past_events(monday, &zone(), &mine, &[(at("12:00"), at("13:30"))]).get("meal:1"), Some(&110));
+        // Pushed into a second event: past it too, on whole five minutes.
+        let shifts = needs.past_events(monday, &zone(), &BTreeMap::new(), &[(at("12:00"), at("13:30")), (at("13:40"), at("14:02"))]);
+        let kept = needs.kept_on(monday, &zone(), &|key: &str| shifts.get(key).copied().unwrap_or(0));
+        assert_eq!(hm(kept.iter().find(|k| k.key == "meal:1").unwrap().start), "05 14:05");
     }
 
     #[test]
