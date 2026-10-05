@@ -953,6 +953,8 @@ pub struct Outcome {
     pub received: usize,
     /// What went wrong, in a word each; the rest went on.
     pub problems: Vec<String>,
+    /// The others' changes waiting to be written here (their file unreadable, or not shared here).
+    pub pending: usize,
 }
 
 /// Before the first exchange, a copy of every shared file, in case.
@@ -1232,6 +1234,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     }
 
     outcome.sent = out.len();
+    outcome.pending = memory.pending.len();
     if memory.round == 0 {
         memory.round = 1;
     }

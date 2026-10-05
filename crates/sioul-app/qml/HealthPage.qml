@@ -35,18 +35,25 @@ Item {
             flick.contentY = Math.max(0, Math.min(needsSection.y - 12, flick.contentHeight - flick.height))
     }
 
-    // Made again off the window's thread; shown when it comes (`healthView`).
+    // Shown as last made at once, made again off the window's thread, shown
+    // again when it comes (`healthView`): a view made the same as before
+    // announces no change, so the page never waits for one.
     function reload() {
+        page.takeView()
         page.sioul.refreshHealth()
         needsSection.reload()
+    }
+
+    function takeView() {
+        if (page.sioul.healthView !== "")
+            page.shown = JSON.parse(page.sioul.healthView)
     }
 
     Connections {
         target: page.sioul
 
         function onHealthViewChanged() {
-            if (page.sioul.healthView !== "")
-                page.shown = JSON.parse(page.sioul.healthView)
+            page.takeView()
         }
     }
 

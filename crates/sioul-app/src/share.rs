@@ -496,8 +496,10 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
         let now = jiff::Timestamp::now();
         let memory = memory_path();
         let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory };
+        let (mut received, mut pending) = (0, 0);
         let (written, accounts, problems, sent) = match share::exchange(&sharing, &stores, now.as_millisecond()) {
             Ok(outcome) => {
+                (received, pending) = (outcome.received, outcome.pending);
                 if !outcome.written.is_empty() {
                     let names = outcome.written.iter().cloned().collect::<Vec<_>>().join("\n");
                     let _ = qt.queue(move |mut sioul| sioul.as_mut().shared_in(QString::from(&names)));
@@ -510,9 +512,10 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
         if sent > 0 {
             nudge(&qt, &shared, 60, false);
         }
-        // On a phone nobody reads the status line: what went wrong goes to its log too.
-        if cfg!(target_os = "android") && !problems.is_empty() {
-            eprintln!("sioul: sharing: {}", problems.join("; "));
+        // On a phone nobody reads the status line: what each exchange did goes to its
+        // log (adb logcat), counts and problems only, never what was exchanged.
+        if cfg!(target_os = "android") {
+            eprintln!("sioul: sharing: {sent} sent, {received} received, {pending} waiting{}{}", if problems.is_empty() { "" } else { "; " }, problems.join("; "));
         }
         let mut said = problems;
         said.dedup();

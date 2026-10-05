@@ -566,6 +566,9 @@ pub(crate) fn show_health(qt: &QtThread, shared: &Arc<Shared>) {
     let qt = qt.clone();
     crate::backend::coalesced(shared, |s| &s.health_job, move |_| {
         let (view, missed, needs) = (page(), missed(), needs_today());
+        if cfg!(target_os = "android") {
+            eprintln!("sioul: health: {} medicines, {} prescriptions", load().medicines.len(), load().prescriptions.len());
+        }
         let _ = qt.queue(move |mut sioul| {
             sioul.as_mut().set_health_view(QString::from(&view));
             sioul.as_mut().set_missed_view(QString::from(&missed));
