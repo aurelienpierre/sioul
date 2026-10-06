@@ -29,7 +29,7 @@ Nothing here goes beyond what is built. The standards behind each line, and wher
 | [Antivirus and scanned letters](#antivirus-and-scanned-letters) | ClamAV, Microsoft Defender, Tesseract and Poppler | **Tested** on Linux; Defender **expected** |
 | [AI agents](#ai-agents) | Claude Code, Claude Desktop, other MCP clients that start a program | **Tested** on its own, not yet inside those clients |
 | [GitHub](#github) | your issues and pull requests, read with a token | **Tested** against a stand-in of GitHub |
-| [Systems](#systems) | Linux (AppImage, Flatpak), Windows 10 and 11, macOS 13 and later; Android, being tried | Linux in daily use; Windows and macOS built and tested by GitHub, not yet run by a person; Android tried on one phone |
+| [Systems](#systems) | Linux (AppImage, Flatpak), Windows 10 and 11, macOS 13 and later; Android 9 and later (an APK) | Linux in daily use; Windows and macOS built and tested by GitHub, not yet run by a person; Android in daily use on one phone |
 
 ## Mail
 
@@ -198,8 +198,8 @@ How to connect one, and what it may see: [Using an AI agent](ai-agent.md).
 
 | | Linux | Windows | macOS | Android |
 |---|---|---|---|---|
-| Package | AppImage, Flatpak, or from the sources | an installer, Windows 10 and 11 (64-bit) | a disk image, macOS 13 and later | an APK, installed by hand (Android 9 and later, 64-bit) |
-| How sure | in daily use, on Fedora | built and tested by GitHub at each change, not yet run by a person | the same | tried on one phone (Android 12) |
+| Package | AppImage, Flatpak, or from the sources | an installer, Windows 10 and 11 (64-bit) | a disk image, macOS 13 and later | an APK from the releases page, installed by hand (Android 9 and later, 64-bit) |
+| How sure | in daily use, on Fedora | built and tested by GitHub at each change, not yet run by a person | the same | in daily use on one phone (Android 12) |
 | Passwords kept in | your keyring (GNOME Keyring, KWallet) | the Credential Manager | the Keychain | Android's KeyStore |
 | Reminders with the window closed | yes | not yet | yes | doses and the wake-up alarm |
 | Notifications | yes, with buttons; the time running | yes | yes | doses, the time running, the alarm |

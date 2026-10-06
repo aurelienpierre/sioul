@@ -1,8 +1,10 @@
-# Sioul for Android, an experiment (docs/android.md): an APK for 64-bit ARM
-# phones, Android 9 and later, signed for sideloading.
+# Sioul for Android (docs/android.md): an APK for 64-bit ARM phones,
+# Android 9 and later, signed for sideloading.
 #
 # Runs on each push to main that touches the code or android/, and by hand:
-# Actions → "Android" → "Run workflow". The APK is the run's artifact.
+# Actions → "Android" → "Run workflow". The APK is the run's artifact. For a
+# version, release.yml calls it on the version's tag and puts the APK on the
+# release.
 #
 # Versions checked on 4 October 2026: actions/setup-java v6.0.1,
 # jurplel/install-qt-action v4.4.1, Qt 6.11.3 for Android (built with NDK
@@ -20,6 +22,13 @@ on:
       - 'Cargo.lock'
       - '.github/workflows/android.yml'
   workflow_dispatch:
+  # From release.yml: the APK of a version, built from its tag.
+  workflow_call:
+    inputs:
+      ref:
+        description: 'The tag to build'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -46,6 +55,9 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The version's tag when release.yml calls this; else the push's own.
+          ref: ${{ inputs.ref }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:

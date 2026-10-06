@@ -184,7 +184,7 @@ Le même raisonnement décide de la façon dont Sioul est construit. Vos donnée
 
 ## Où il en est {#where-it-stands}
 
-Sioul est jeune (version 0.0.1) et change souvent ; il sert tous les jours. Des paquets pour Windows, macOS (puces Apple et Intel) et Linux (AppImage et Flatpak) sont sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest) ([Installer](guide/install.md)) : construits et testés par GitHub, utilisés chaque jour sur Linux, encore peu essayés ailleurs. Une version Android est à l’essai sur un téléphone, avec les rappels des prises et le partage qui fonctionnent ; elle n’est pas encore prête à installer.
+Sioul est jeune (version 0.0.2) et change souvent ; il sert tous les jours. Des paquets pour Windows, macOS (puces Apple et Intel), Linux (AppImage et Flatpak) et Android (téléphones 64 bits, Android 9 et suivants) sont sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest) ([Installer](guide/install.md)) : construits et testés par GitHub, utilisés chaque jour sur Linux et sur un téléphone Android, encore peu essayés ailleurs.
 
 Il est fait par une seule personne, au grand jour : aucune assistance n’est promise. Les questions et les signalements sont les bienvenus dans les [tickets GitHub](https://github.com/aurelienpierre/sioul/issues).
 

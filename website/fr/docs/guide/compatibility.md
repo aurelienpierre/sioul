@@ -29,7 +29,7 @@ Rien ici ne va au-delà de ce qui est construit. Les normes derrière chaque lig
 | [Antivirus et courrier scanné](#antivirus-and-scanned-letters) | ClamAV, Microsoft Defender, Tesseract et Poppler | **Testé** sur Linux ; Defender **attendu** |
 | [Agents d’IA](#ai-agents) | Claude Code, Claude Desktop, les autres clients MCP qui lancent un programme | **Testé** seul, pas encore dans ces clients |
 | [GitHub](#github) | vos tickets et pull requests, lus avec un jeton | **Testé** face à une imitation de GitHub |
-| [Systèmes](#systems) | Linux (AppImage, Flatpak), Windows 10 et 11, macOS 13 et suivants ; Android, en essai | Linux utilisé chaque jour ; Windows et macOS construits et testés par GitHub, pas encore lancés par une personne ; Android essayé sur un téléphone |
+| [Systèmes](#systems) | Linux (AppImage, Flatpak), Windows 10 et 11, macOS 13 et suivants ; Android 9 et suivants (un APK) | Linux utilisé chaque jour ; Windows et macOS construits et testés par GitHub, pas encore lancés par une personne ; Android utilisé chaque jour sur un téléphone |
 
 ## Courrier {#mail}
 
@@ -198,8 +198,8 @@ Comment en connecter un, et ce qu’il peut voir : [Avec un agent d’IA](ai-a
 
 | | Linux | Windows | macOS | Android |
 |---|---|---|---|---|
-| Paquet | AppImage, Flatpak, ou depuis les sources | un installateur, Windows 10 et 11 (64 bits) | une image disque, macOS 13 et suivants | un APK, installé à la main (Android 9 et suivants, 64 bits) |
-| À quel point c’est sûr | utilisé chaque jour, sur Fedora | construit et testé par GitHub à chaque changement, pas encore lancé par une personne | de même | essayé sur un téléphone (Android 12) |
+| Paquet | AppImage, Flatpak, ou depuis les sources | un installateur, Windows 10 et 11 (64 bits) | une image disque, macOS 13 et suivants | un APK de la page des versions, installé à la main (Android 9 et suivants, 64 bits) |
+| À quel point c’est sûr | utilisé chaque jour, sur Fedora | construit et testé par GitHub à chaque changement, pas encore lancé par une personne | de même | utilisé chaque jour sur un téléphone (Android 12) |
 | Les mots de passe sont gardés dans | votre trousseau (GNOME Keyring, KWallet) | le Gestionnaire d’identification | le Trousseau d’accès | le KeyStore d’Android |
 | Les rappels, fenêtre fermée | oui | pas encore | oui | les prises et le réveil |
 | Les notifications | oui, avec des boutons ; le temps qui court | oui | oui | les prises, le temps qui court, le réveil |

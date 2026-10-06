@@ -4176,7 +4176,7 @@ dependencies = [
 
 [[package]]
 name = "sioul-app"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "cxx",
  "cxx-qt",
@@ -4193,7 +4193,7 @@ dependencies = [
 
 [[package]]
 name = "sioul-cli"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "clap",
  "jiff",
@@ -4207,7 +4207,7 @@ dependencies = [
 
 [[package]]
 name = "sioul-core"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "ammonia",
  "calcard",
@@ -4233,7 +4233,7 @@ dependencies = [
 
 [[package]]
 name = "sioul-sync"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "aes",
  "aes-gcm",

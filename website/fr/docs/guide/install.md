@@ -30,7 +30,7 @@ Mesuré le 6 octobre 2026 sur un ordinateur Linux à 8 cœurs, Sioul et tous le
 - **Les sites sont la part lourde.** Chacun gardé ouvert coûte ce que coûte un onglet de navigateur, 150 à 350 Mo, et le processeur qu’utilise sa page : une messagerie qui se tient à jour toute seule est la plus active.
 - **Disque** : quelques mégaoctets lus et écrits en quelques minutes.
 - **Fenêtre fermée**, le veilleur des rappels (Paramètres ▸ Rappels et notifications) prend 10 Mo et presque pas de processeur.
-- **Sur un téléphone** (Android, à l’essai ; un téléphone de 2019) : environ 200 Mo quand Sioul est à l’écran et 140 Mo une fois mis de côté, avec presque pas de processeur alors ; chaque page s’ouvre en 0,1 à 0,5 s la première fois, puis tout de suite.
+- **Sur un téléphone** (Android, un téléphone de 2019) : environ 200 Mo quand Sioul est à l’écran et 140 Mo une fois mis de côté, avec presque pas de processeur alors ; chaque page s’ouvre en 0,1 à 0,5 s la première fois, puis tout de suite.
 - **Ce qu’il faut prévoir** : 4 Go de mémoire pour Sioul et quelques sites à côté de vos autres programmes, 8 Go pour garder beaucoup de sites ouverts ; sans sites, Sioul demande très peu. N’importe quel processeur des dix dernières années.
 
 La mesure peut être refaite sur n’importe quel ordinateur : `tools/measure-load.py` dans les sources ([building.md, en anglais](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
@@ -138,7 +138,13 @@ Pas encore essayé. Les étapes sont dans [packaging/macos/README.md (en anglais
 
 ## Sur Android {#on-android}
 
-Une version Android est à l’essai, pour les téléphones 64 bits sous Android 9 ou plus récent. Elle n’est pas prête, et elle n’est pas sur la page des versions : GitHub la construit à chaque changement, et les [notes sur Android (en anglais)](https://aurelienpierre.github.io/sioul/dev/android.html) disent comment la construire et ce qui y change. Ce qui change à l’usage : [Sur un téléphone](first-steps.md#on-a-phone).
+Pour les téléphones 64 bits sous Android 9 ou plus récent. Sioul n’est pas dans une boutique d’applications : son APK, `Sioul-<version>-android-arm64.apk`, est sur [la page des versions](https://github.com/aurelienpierre/sioul/releases/latest).
+
+1. Sur le téléphone, ouvrez la page des versions et téléchargez l’APK.
+2. Ouvrez-le. Android demande si votre navigateur (ou votre gestionnaire de fichiers) peut installer des applications : autorisez-le, puis **Installer**. Play Protect, si le téléphone l’a, peut dire qu’il ne connaît pas l’application.
+3. Chaque version est signée de la même clé, celle de Sioul : la suivante s’installe par-dessus, vos données gardées.
+
+Ce que Sioul demande ensuite, et ce qui change à l’usage : [Sur un téléphone](first-steps.md#on-a-phone). Comment l’APK est construit, par GitHub ou à la main, et ce qui diffère sur Android : les [notes sur Android (en anglais)](https://aurelienpierre.github.io/sioul/dev/android.html).
 
 ## Ensuite {#next}
 
