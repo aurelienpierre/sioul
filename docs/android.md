@@ -1,9 +1,9 @@
 # Android
 
-Sioul on Android is an experiment: the same window, built for 64-bit ARM phones running Android 9 or later, installed by hand (an APK). It is not in a store, and parts of Sioul do not work there yet (below).
+Sioul runs on Android: the same window, built for 64-bit ARM phones running Android 9 or later, installed by hand from the APK on the releases page. Each version is signed with Sioul's key, so the next one installs over it, the phone's data kept. It is not in a store, and parts of Sioul do not work there (below).
 
 ## Building it
-**On GitHub**: `.github/workflows/android.yml` runs on each push to `main` that touches the code or `android/`, and by hand (Actions, "Android", "Run workflow"). The APK is the run's artifact, `sioul-android-arm64`.
+**On GitHub**: `.github/workflows/android.yml` runs on each push to `main` that touches the code or `android/`, and by hand (Actions, "Android", "Run workflow"). The APK is the run's artifact, `sioul-android-arm64`. For a version, the packages' workflow (`.github/workflows/release.yml`) calls the same workflow on the version's tag and puts the APK on the release, `Sioul-<version>-android-arm64.apk`. Both sign it with Sioul's key, kept in the repository's secrets (`ANDROID_KEYSTORE`, the keystore in base64, and `ANDROID_KEYSTORE_PASSWORD`); without them, with a key made for that run alone, which a phone takes for another app.
 
 **By hand**, with:
 - Qt for Android 6.11 (`android_arm64_v8a`) with Qt Multimedia, Qt Positioning, Qt Location, Qt Image Formats and Qt SerialPort, and the desktop Qt of the same version, whose tools build for Android;

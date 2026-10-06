@@ -47,7 +47,7 @@ Tout se fait au clavier : Tab pour se déplacer, Entrée pour choisir, Échap 
 
 ### Sur un téléphone {#on-a-phone}
 
-Une version Android est à l’essai ([Installer](install.md#on-android)). Sur un téléphone, ou dans une fenêtre de moins de 720 pixels de large :
+Sioul sur un téléphone : [Installer](install.md#on-android). Sur un téléphone, ou dans une fenêtre de moins de 720 pixels de large :
 
 - **Les lieux** glissent depuis la gauche, derrière ☰, avec leur nom à côté de leur icône ; une barre en haut nomme la page.
 - **La ligne d’état** est en bas de l’écran d’un téléphone, chacun de ses boutons réduit à son icône : un appui long sur l’un dit ce qu’il est. Quand sa phrase est coupée, un appui dessus la montre en entier.
@@ -57,13 +57,14 @@ Une version Android est à l’essai ([Installer](install.md#on-android)). Sur u
 Ce qui change sur un téléphone :
 
 - **Les notifications** viennent pour les prises de médicaments ([La santé](health.md#reminders)), le temps qui court ([Le temps](time.md#where-time-comes-from)), les événements ([L’agenda](agenda.md#reminders)) et le nouveau courrier à ses heures ([Le Porche](porch.md#new-mail-told-at-its-times)). Un code que vous avez demandé s’affiche sur le Porche ; les autres rappels n’y viennent pas encore.
+- **Les appels** peuvent être filtrés une fois que vous laissez Sioul être « l’appli numéro de l’appelant et spam » d’Android : qui peut sonner, et quand, selon qui peut vous joindre ; les autres vont sur votre messagerie ([Les appels](calls.md)).
 - **Les notifications des autres applications** peuvent être retenues jusqu’à leur heure, une fois que vous donnez à Sioul l’accès aux notifications d’Android : les messages des personnes selon qui peut vous joindre, le reste aux heures de regroupement ([Paramètres](settings.md#other-apps)).
 - **Le courrier** est relevé tant que Sioul est ouvert : Android l’arrête en arrière-plan.
 - **Le partage** : Sioul est dans le menu de partage d’Android, et chacune de vos adresses aussi ; les liens de courrier s’ouvrent dedans ([Le courrier](mail.md#from-other-apps)).
 - **Les dossiers** : le **Choisir…** d’un réglage ouvre la liste des dossiers du téléphone, propre à Sioul, avec **Autoriser l’accès aux fichiers** quand Android n’a pas encore donné cet accès à Sioul.
 - **Les sites** s’ouvrent dans votre navigateur ([Les sites](sites.md)) ; les PDF s’ouvrent dans une autre application, avec **Ouvrir avec…**.
 - **Le courrier papier** n’est pas lu, et les pièces jointes ne passent pas par un antivirus : les programmes dont Sioul se sert pour cela sur un ordinateur n’existent pas sur un téléphone.
-- **Vos autres appareils** partagent avec lui par un dossier que l’application de synchronisation du téléphone transporte ([Le partage](sharing.md)). Les mots de passe ne voyagent jamais : chaque compte demande le sien, une fois ([Les comptes](accounts.md#an-account-from-your-other-device)).
+- **Vos autres appareils** partagent avec lui par un dossier que l’application de synchronisation du téléphone transporte, ou que Sioul tient lui-même à jour avec votre Nextcloud ([Le partage](sharing.md)). Les mots de passe ne voyagent jamais : chaque compte demande le sien, une fois ([Les comptes](accounts.md#an-account-from-your-other-device)).
 - **Une carte sur l’écran d’accueil** : le widget de Sioul (un appui long sur l’écran d’accueil, **Widgets**) dit à quoi sert ce moment, le Porche tel qu’il se montre (en dehors des heures choisies pour le courrier, seulement quand il ouvre), la prochaine étape pendant le travail ou les démarches, et une prise prévue, jamais comme « pas prise » : « vérifiez avant de la prendre » quand un autre appareil peut savoir. Un appui ouvre le Porche, ou **Maintenant** sur l’étape. Sans le réglage **Détails sur l’écran d’accueil** ([Paramètres](settings.md#display)), elle ne nomme aucun expéditeur, objet, code, prise ni étape.
 
 ## Ajouter votre courrier {#add-your-mail}

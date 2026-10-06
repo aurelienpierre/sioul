@@ -30,7 +30,7 @@ Measured on 6 October 2026 on a Linux computer with 8 cores, with Sioul and ever
 - **The sites are the heavy part.** Each one kept open costs what a tab of a web browser costs, 150 to 350 MB, and the processor its page uses: a chat that keeps itself up to date is the busiest.
 - **Disk**: a few megabytes read and written in a few minutes.
 - **With the window closed**, the reminder watcher (Settings ▸ Reminders and notifications) takes 10 MB and almost no processor.
-- **On a phone** (Android, being tried; a 2019 phone): about 200 MB while Sioul is on the screen and 140 MB once it is put away, with almost no processor then; each page opens in 0.1 to 0.5 s the first time, and at once after.
+- **On a phone** (Android, a 2019 phone): about 200 MB while Sioul is on the screen and 140 MB once it is put away, with almost no processor then; each page opens in 0.1 to 0.5 s the first time, and at once after.
 - **What to plan for**: 4 GB of memory for Sioul and a few sites beside your other programs, 8 GB to keep many sites open; without sites, Sioul needs very little. Any processor of the last ten years.
 
 The measure can be made again on any computer: `tools/measure-load.py` in the sources ([building.md](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
@@ -138,7 +138,13 @@ Not tried yet. The steps are in [packaging/macos/README.md](https://github.com/a
 
 ## On Android
 
-An Android version is being tried, for 64-bit phones with Android 9 or later. It is not ready, and it is not on the releases page: GitHub builds it at each change, and the [notes on Android](../dev/android.md) say how to build it and what differs there. What changes in use: [On a phone](first-steps.md#on-a-phone).
+For 64-bit phones with Android 9 or later. Sioul is not in a store: its APK, `Sioul-<version>-android-arm64.apk`, is on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest).
+
+1. On the phone, open the releases page and download the APK.
+2. Open it. Android asks whether your browser (or your file manager) may install apps: allow it, then **Install**. Play Protect, where the phone has it, may say it does not know the app.
+3. Each version is signed with the same key, Sioul's: the next one installs over it, your data kept.
+
+What Sioul then asks for, and what changes in use: [On a phone](first-steps.md#on-a-phone). How the APK is built, by GitHub or by hand, and what differs on Android: the [notes on Android](../dev/android.md).
 
 ## Next
 

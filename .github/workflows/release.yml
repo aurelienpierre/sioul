@@ -1,6 +1,6 @@
 # Builds Sioul's packages and publishes them as a GitHub release.
 #
-# A tag "v0.0.1" pushed: the four packages are built from it, then a release
+# A tag "v0.0.1" pushed: the five packages are built from it, then a release
 # of that name is made with them (a pre-release while the version starts
 # with 0). Started by hand (Actions, "Packages", "Run workflow"): the packages
 # are built and kept on the run's page, nothing is published, unless a tag
@@ -11,7 +11,9 @@
 # - macOS: one .dmg for Apple silicon and Intel (both builds joined by lipo),
 #   signed ad hoc, not notarised;
 # - Linux: an AppImage (linuxdeploy and its Qt plugin), and a Flatpak bundle
-#   (packaging/flatpak/, on the KDE runtime and Qt WebEngine's BaseApp).
+#   (packaging/flatpak/, on the KDE runtime and Qt WebEngine's BaseApp);
+# - Android: an APK for 64-bit phones (android.yml, called on the tag),
+#   signed with Sioul's key, so that each version installs over the last.
 # Not signed: Windows and macOS say so the first time (packaging/release-notes.md).
 
 name: Packages
@@ -257,9 +259,19 @@ jobs:
           path: Sioul-*.flatpak
           if-no-files-found: error
 
+  # The same workflow as each push's, on the version's tag; its secrets hold
+  # Sioul's signing key.
+  android:
+    name: Android APK
+    needs: version
+    uses: ./.github/workflows/android.yml
+    with:
+      ref: ${{ needs.version.outputs.tag || github.ref }}
+    secrets: inherit
+
   release:
     name: Release
-    needs: [version, windows, macos, appimage, flatpak]
+    needs: [version, windows, macos, appimage, flatpak, android]
     if: needs.version.outputs.tag != ''
     runs-on: ubuntu-24.04
     steps:
@@ -271,6 +283,11 @@ jobs:
           pattern: package-*
           path: dist
           merge-multiple: true
+      # The APK, android.yml's artifact.
+      - uses: actions/download-artifact@v7
+        with:
+          name: sioul-android-arm64
+          path: dist
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

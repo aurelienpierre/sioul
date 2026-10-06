@@ -47,7 +47,7 @@ Everything works from the keyboard: Tab to move, Enter to choose, Escape to go b
 
 ### On a phone
 
-An Android version is being tried ([Install](install.md#on-android)). On a phone, or in a window under 720 pixels wide:
+Sioul on a phone: [Install](install.md#on-android). On a phone, or in a window under 720 pixels wide:
 
 - **The places** slide in from the left, behind ☰, with their names beside their icons; a bar on top names the page.
 - **The status line** is at the bottom of a phone's screen, each of its buttons an icon alone: a long press on one says what it is. When its sentence is cut short, a tap on it shows it whole.
@@ -57,13 +57,14 @@ An Android version is being tried ([Install](install.md#on-android)). On a phone
 What differs on a phone:
 
 - **Notifications** come for doses ([Health](health.md#reminders)), the time running ([Time](time.md#where-time-comes-from)), events ([Agenda](agenda.md#reminders)) and new mail at its times ([The Porch](porch.md#new-mail-told-at-its-times)). A code you asked for shows on the Porch; the other reminders do not come there yet.
+- **Calls** can be screened once you let Sioul be Android's "Caller ID & spam app": who may ring, and when, as who may reach you says; the others go to your voicemail ([Calls](calls.md)).
 - **Other apps' notifications** can be held until their time, once you give Sioul Android's notification access: messages from people as who may reach you says, the rest at the gathered times ([Settings](settings.md#other-apps)).
 - **Mail** is fetched while Sioul is open: Android stops it in the background.
 - **Sharing**: Sioul is in Android's share sheet, and so is each of your addresses; mail links open in it ([Mail](mail.md#from-other-apps)).
 - **Folders**: a setting's **Choose…** opens Sioul's own list of the phone's folders, with **Allow access to files** when Android has not given Sioul that access yet.
 - **Sites** open in your browser ([Sites](sites.md)); PDFs open in another app, with **Open with…**.
 - **Paper letters** are not read, and attachments are not checked by an antivirus: the programs Sioul uses for that on a computer do not exist on a phone.
-- **Your other devices** share with it through a folder your phone's sync app carries ([Sharing](sharing.md)). Passwords never travel: each account asks for its own, once ([Accounts](accounts.md#an-account-from-your-other-device)).
+- **Your other devices** share with it through a folder your phone's sync app carries, or that Sioul keeps in step with your Nextcloud itself ([Sharing](sharing.md)). Passwords never travel: each account asks for its own, once ([Accounts](accounts.md#an-account-from-your-other-device)).
 - **A card on the home screen**: Sioul's widget (a long press on the home screen, **Widgets**) says what now is for, the Porch as it shows now (outside the hours chosen for mail, only when it opens), the next step in work or admin time, and a dose due, never as "not taken": "check before taking it" when another device may know. A tap opens the Porch, or **Now** on the step. With **Details on the home screen** turned off ([Settings](settings.md#display)), it names no sender, subject, code, dose or step.
 
 ## Add your mail
