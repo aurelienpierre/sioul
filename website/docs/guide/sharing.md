@@ -15,6 +15,12 @@ Each device keeps all of its data in its own files, and works without the others
 - **What the sync app has to do: very little.** It must carry new files, and files that grow, sooner or later and in any order. It does not need to delete, rename or lock anything. That is why any sync app works. A slow one, such as a phone's that looks every half hour, makes changes come late, never wrong.
 - **What a device cannot know, it says.** Each device says in the folder how it is: when it started, when it closed properly, whether it is in use, and when it last shared. Each knows how far it has read the others. A device that closed properly sent everything it marked; one in use is known while its news keeps coming. If something may have happened on a device whose news has not come (a dose marked on the phone while in use, which its sync app has not carried yet), Sioul says it does not know rather than guessing, and names that device. The dose is reminded with "check first", never as "not taken" ([Health](health.md#on-several-computers)).
 
+### When the sync app is late {#when-the-sync-app-is-late}
+
+Sync apps carry files at their own pace, and Sioul cannot hurry most of them. A computer's Nextcloud client sends a change within seconds; a phone's app may wait for its next scan, half an hour or more, and can leave some files behind for longer: on 6 October 2026, Murena's eDrive left a computer's changes on the server for hours while it scanned every few minutes. Until a change arrives, the other device does not know it: a do-not-disturb switch, a dose marked taken, whether the computer is still open. A device that cannot know says so (doses: "check before taking it"); it never guesses.
+
+WebDAV is the one protocol for which Sioul takes matters into its own hands. When the shared folder sits on a Nextcloud server Sioul already has an account for (Murena's included), it also reads the other devices' files from the server itself, as a backup, and keeps whichever copy is newer: a phone then follows within about a minute, whatever its sync app does. It only reads; sending stays the sync app's work. With any other sync app (Syncthing, Dropbox, Google Drive…), changes arrive when that app brings them. That is why Nextcloud is the first choice: [where to get one](compatibility.md#where-to-get-a-nextcloud).
+
 ### When something goes wrong in the folder
 
 Nothing that happens in the folder can take your data away from you. Sioul treats every surprise as something it does not know:
@@ -52,6 +58,8 @@ Nothing that happens in the folder can take your data away from you. Sioul treat
 **Never shared**: what each device chooses to share, where things are on each device (each keeps its own folders), how text reads on this screen, how pages are laid out, this device's browser notices, caches, and your own OpenPGP keys (copy them by hand). Passwords stay in each device's keyring.
 
 ## Setting it up
+
+No cloud yet? Nextcloud is the one Sioul is tested with: [where to get a Nextcloud](compatibility.md#where-to-get-a-nextcloud).
 
 On the first device:
 

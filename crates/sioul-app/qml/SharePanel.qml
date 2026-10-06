@@ -19,7 +19,9 @@ ColumnLayout {
     required property var sioul
     required property var theme
 
-    property var status: ({ on: false, folder: "", sealed: false, lines: [], problems: [], parts: [], vanished: [], devices: [] })
+    property var status: ({ on: false, folder: "", sealed: false, lines: [], problems: [], parts: [], vanished: [], devices: [], backup: {} })
+    // The other devices' files fetched from the server too: {shown, line, on, given, found}.
+    readonly property var backup: panel.status.backup || ({})
     property string problem: ""
     // Notes or papers about to be switched on: what would travel, said first.
     property string asking: ""
@@ -65,6 +67,8 @@ ColumnLayout {
         panel.status = JSON.parse(panel.sioul.shareStatus(folderField.text))
         if (!folderField.activeFocus)
             folderField.text = panel.status.folder
+        if (!placeField.activeFocus)
+            placeField.text = (panel.status.backup || {}).given || ""
         panel.candidates = panel.status.on || !panel.filesAccess ? [] : JSON.parse(panel.sioul.shareCandidates() || "[]").filter(c => c !== folderField.text)
     }
 
@@ -322,6 +326,95 @@ ColumnLayout {
                 }
             }
         }
+    }
+    // The other devices' files fetched from the server too (docs/database.md,
+    // "Fetched from the server too"): where it stands, this device's switch,
+    // and the folder's place there, given by hand when it is not found.
+    RowLayout {
+        visible: panel.backup.shown === true
+        Layout.topMargin: 12
+        Layout.fillWidth: true
+        spacing: 8
+
+        Switch {
+            Layout.alignment: Qt.AlignTop
+            checked: panel.backup.on === true
+            Accessible.name: panel.sioul.text("share-backup-switch")
+            onToggled: {
+                panel.problem = panel.sioul.setShareBackup(checked)
+                panel.reload()
+                lookAgain.restart()
+            }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 1
+
+            Label {
+                Layout.fillWidth: true
+                text: panel.sioul.text("share-backup-switch")
+                wrapMode: Text.Wrap
+                color: panel.theme.text
+            }
+            Label {
+                Layout.fillWidth: true
+                text: panel.sioul.text("share-backup-help")
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
+            }
+            // From where, and since when; or why not, in words.
+            Label {
+                visible: text !== ""
+                Layout.fillWidth: true
+                text: panel.backup.line || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.text
+            }
+        }
+    }
+    Label {
+        visible: placeRow.visible
+        Layout.fillWidth: true
+        text: panel.sioul.text("share-backup-place")
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: panel.theme.muted
+    }
+    RowLayout {
+        id: placeRow
+
+        visible: panel.backup.shown === true && panel.backup.on === true && (panel.backup.found !== true || (panel.backup.given || "") !== "")
+        Layout.fillWidth: true
+        spacing: 8
+
+        TextField {
+            id: placeField
+
+            Layout.fillWidth: true
+            placeholderText: "Documents/Sioul"
+            Accessible.name: panel.sioul.text("share-backup-place")
+            onAccepted: lookThere.clicked()
+        }
+        Button {
+            id: lookThere
+
+            text: panel.sioul.text("share-backup-look")
+            onClicked: {
+                panel.problem = panel.sioul.shareBackupPlace(placeField.text)
+                panel.reload()
+                lookAgain.restart()
+            }
+        }
+    }
+    // Looked for off the window's thread: said a few seconds later.
+    Timer {
+        id: lookAgain
+
+        interval: 4000
+        onTriggered: panel.reload()
     }
     // What travels from this device: each part's switch, what it carries, when it last exchanged.
     Label {

@@ -635,9 +635,13 @@ pub const AUTOMATIC: &[&str] = &[
 /// Gives one message its lane and its reasons.
 pub fn triage(card: Card, ctx: &Context) -> Triaged {
     let auth = trust::read_auth_results(&card.headers, ctx.trusted_ids);
+    // Bulk headers never rule a code out: they only narrow where it is read (`codes::detect_message`).
+    let detected = codes::detect_message(&card);
     // A proof counts for the domain of the address shown, never for another one.
-    let (trust, proof) = trust::judge_sender(auth.as_ref(), card.is_list, card.sender_domain());
-    let code = codes::detect(&card.subject, &card.excerpt).filter(|c| !expired(c, sent(&card), ctx.now));
+    // A mailing list excuses a DMARC failure (it rewrites what it relays), but
+    // no list relays your codes: a code failing DMARC is forged, list headers or not.
+    let (trust, proof) = trust::judge_sender(auth.as_ref(), card.is_list && detected.is_none(), card.sender_domain());
+    let code = detected.filter(|c| !expired(c, sent(&card), ctx.now));
     // A shielded address's mail is read before anything else is decided.
     let assessment = ctx.shielded.then(|| {
         let by_ai = crate::shield::ai_key(&card).and_then(|key| ctx.assessments?.get(&key)).cloned();

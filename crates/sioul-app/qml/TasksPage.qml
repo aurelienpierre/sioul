@@ -280,11 +280,15 @@ Item {
                         }
                     }
                 }
-                // Routines: steps played one at a time.
+                // Routines: steps played one at a time; what they are, in its tip.
                 Button {
                     flat: true
                     text: page.sioul.text("routines")
                     icon.name: "media-playback-start"
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: page.sioul.text("routines-tip")
+                    Accessible.description: page.sioul.text("routines-tip")
                     onClicked: routinesDialog.now().show()
                 }
                 // The board and the timeline: one case, or all.

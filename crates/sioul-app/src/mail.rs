@@ -17,7 +17,7 @@ use sioul_core::card::Card;
 use sioul_core::compose::{self, Draft, DraftKind};
 use sioul_core::config::{Account, Config};
 use sioul_core::folders::{Folder, Role};
-use sioul_core::{maildir, view};
+use sioul_core::{maildir, unsubscribe, view};
 use sioul_sync::mailbox::{self, Action};
 use sioul_sync::{SyncError, secret};
 use std::collections::BTreeSet;
@@ -60,6 +60,8 @@ enum Work {
     /// drag): "Undo" runs `back`, which puts back what was there and says
     /// what went wrong, else "".
     Back { back: Box<dyn Fn(&QtThread, &Arc<Shared>) -> String + Send + Sync> },
+    /// Leaving a list, in one click or by a message from `account`; the message stays where it is.
+    Unsubscribe { list: unsubscribe::List, sender: String, account: String, way: unsubscribe::Way },
 }
 
 pub(crate) struct Pending {
@@ -101,7 +103,8 @@ fn hidden(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<String>) {
                 drafts.insert(draft.clone());
             }
             Work::Many(works) => works.iter().for_each(|w| add(w, files, drafts)),
-            Work::Act { .. } | Work::Skip { .. } | Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } => {}
+            // Leaving its list, a message stays in view where it is.
+            Work::Act { .. } | Work::Skip { .. } | Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } | Work::Unsubscribe { .. } => {}
         }
     }
     for pending in shared.pending.lock().map(|p| p.clone()).unwrap_or_default() {
@@ -541,6 +544,7 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
             Err(e) => Some(format!("{}: {e}", file.display())),
         },
         Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } => None,
+        Work::Unsubscribe { list, sender, account, way } => Some(unsubscribe_now(list, sender, account, way, shared)),
         Work::Skip { account, file, start } => {
             let skipped = std::fs::read_to_string(file).ok().and_then(|text| sioul_core::agenda::skip_occurrence(&text, *start));
             match skipped.map(|text| sioul_core::vdir::write_item(file, &text)) {
@@ -581,6 +585,125 @@ fn send_now(id: &str, shared: &Shared) -> String {
             e.sentence(tr(), &account.id)
         }
         Err(e) => say("mail-not-sent", &[("detail", e.sentence(tr(), &account.id))]),
+    }
+}
+
+/// What a message offers to leave its list (docs/client.md, "Unsubscribing"),
+/// judged as the Reader judges it, and the account a request by mail goes
+/// out from: the one the message came to, when it sends.
+fn unsubscribe_offer(config: &Config, triaged: &sioul_core::porch::Triaged) -> Option<(unsubscribe::Offer, Option<Account>)> {
+    let account = triaged.card.account.as_deref();
+    let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == account).map(|s| s.trusted_ids).unwrap_or_default();
+    let mut offer = unsubscribe::offer(&triaged.card, &trusted, triaged.trust, &triaged.lane, &triaged.reasons)?;
+    // In the junk, as spam: answering it tells its sender your address is read.
+    let file = triaged.card.path.as_deref();
+    if file.and_then(|f| mailbox::folder_of(config.account_of(f)?, f)).is_some_and(|f| f.role == Role::Junk) {
+        offer.way = Err(unsubscribe::Refusal::Spam);
+    }
+    let sender = account.and_then(|id| config.account(id)).filter(|a| a.syncs() && a.address.is_some()).cloned();
+    Some((offer, sender))
+}
+
+/// The Reader's button for a message: none when it names no way out of a list.
+pub(crate) fn unsubscribe_view(config: &Config, triaged: &sioul_core::porch::Triaged) -> Option<unsubscribe::UnsubscribeView> {
+    let (offer, sender) = unsubscribe_offer(config, triaged)?;
+    let record = unsubscribe::Record::load(&unsubscribe::Record::default_path());
+    let from = sender.as_ref().and_then(|a| a.address.as_deref());
+    Some(unsubscribe::view(&offer, &record, from, tr(), Zoned::now().date()))
+}
+
+/// One click on "Unsubscribe": one click (RFC 8058) or a message to the list
+/// waits ten seconds with "Undo", as sending does; a list that takes it only
+/// on its web page has the page returned, to open in the browser, at once.
+/// What cannot be done is said in the status line, the button's tip.
+pub(crate) fn unsubscribe(qt: &QtThread, shared: &Arc<Shared>, config: &Config, triaged: Option<sioul_core::porch::Triaged>) -> String {
+    let Some(triaged) = triaged else {
+        set_status(qt, tr().text("mail-message-gone", None));
+        return String::new();
+    };
+    let Some((offer, sender)) = unsubscribe_offer(config, &triaged) else { return String::new() };
+    let record = unsubscribe::Record::default_path();
+    let shown = unsubscribe::view(&offer, &unsubscribe::Record::load(&record), sender.as_ref().and_then(|a| a.address.as_deref()), tr(), Zoned::now().date());
+    if !shown.offered {
+        tell(qt, shared, shown.tip);
+        return String::new();
+    }
+    // A demo profile stays off the network.
+    if crate::backend::offline() {
+        tell(qt, shared, tr().text("unsubscribe-demo", None));
+        return String::new();
+    }
+    let list = offer.list.clone();
+    let address = triaged.card.from_address.clone().unwrap_or_default();
+    match offer.way {
+        Ok(unsubscribe::Way::Page { url }) => {
+            let left = unsubscribe::Left { key: list.key.clone(), name: list.name.clone(), address, way: "page".into(), at: Zoned::now().timestamp().as_second() };
+            if let Err(e) = unsubscribe::Record::add(&record, left) {
+                set_status(qt, e);
+            }
+            tell(qt, shared, say("unsubscribe-page-open", &[("list", list.name)]));
+            url
+        }
+        Ok(way) => {
+            let line = say("unsubscribe-pending", &[("list", list.name.clone())]);
+            // Asked already, still waiting: its line again, not a second request.
+            let waiting = shared.pending.lock().is_ok_and(|p| p.iter().any(|p| !p.taken.load(Ordering::Relaxed) && matches!(&p.work, Work::Unsubscribe { list: l, .. } if l.key == list.key)));
+            if waiting {
+                let _ = qt.queue(move |mut sioul| sioul.as_mut().set_undo_line(QString::from(&line)));
+                return String::new();
+            }
+            let account = sender.map(|a| a.id).unwrap_or_default();
+            schedule(qt, shared, Work::Unsubscribe { list, sender: address, account, way }, line);
+            String::new()
+        }
+        Err(_) => String::new(),
+    }
+}
+
+/// Leaves a list, its ten seconds gone: posts the one click, or sends the
+/// message from `account` as any message is sent (a copy in Sent, which
+/// Gmail files itself). Done, it is kept in the record. Returns what the
+/// status line says.
+fn unsubscribe_now(list: &unsubscribe::List, sender: &str, account: &str, way: &unsubscribe::Way, shared: &Shared) -> String {
+    let failed = |why: String| say("unsubscribe-failed", &[("list", list.name.clone()), ("why", why)]);
+    let done = |way: &str| {
+        let left = unsubscribe::Left { key: list.key.clone(), name: list.name.clone(), address: sender.to_string(), way: way.to_string(), at: Zoned::now().timestamp().as_second() };
+        unsubscribe::Record::add(&unsubscribe::Record::default_path(), left).err()
+    };
+    match way {
+        unsubscribe::Way::OneClick { url } => match sioul_sync::unsubscribe::one_click(url) {
+            Ok(sioul_sync::unsubscribe::Outcome::Done) => done("one-click").unwrap_or_else(|| say("unsubscribe-done-one-click", &[("list", list.name.clone())])),
+            Ok(sioul_sync::unsubscribe::Outcome::Refused(code)) => failed(say("unsubscribe-why-status", &[("code", code.to_string())])),
+            Ok(sioul_sync::unsubscribe::Outcome::Elsewhere(host)) => failed(say("unsubscribe-why-redirect", &[("host", host)])),
+            Ok(sioul_sync::unsubscribe::Outcome::TimedOut) => failed(say("unsubscribe-why-timeout", &[("seconds", sioul_sync::unsubscribe::WAIT.as_secs().to_string())])),
+            Err(SyncError::Tls(detail)) => failed(say("unsubscribe-why-tls", &[("detail", detail)])),
+            Err(e) => failed(say("unsubscribe-why-network", &[("detail", e.detail().to_string())])),
+        },
+        unsubscribe::Way::Mail { to, subject, body } => {
+            let config = load_config();
+            let Some(account) = config.account(account).filter(|a| a.syncs()).cloned() else {
+                return failed(say("account-unknown", &[("id", account.to_string())]));
+            };
+            let me = account.address.clone().unwrap_or_default();
+            let name = account.name.clone().unwrap_or_default();
+            let sent = unsubscribe::request((&name, &me), to, subject, body, Zoned::now().timestamp().as_second()).and_then(|outgoing| {
+                let password = secret::password(&account).map_err(|e| e.sentence(tr(), &account.id))?;
+                let account = crate::pim::with_smtp(&account)?;
+                match sioul_sync::send::send(&account, &password, &outgoing) {
+                    // Sent; a copy not filed in Sent changes nothing for the list.
+                    Ok(()) | Err(SyncError::NotFiled(_)) => Ok(()),
+                    Err(e) => Err(e.sentence(tr(), &account.id)),
+                }
+            });
+            match sent {
+                Ok(()) => {
+                    nudge(shared, &account.id);
+                    done("mail").unwrap_or_else(|| say("unsubscribe-done-mail", &[("list", list.name.clone()), ("to", to.clone())]))
+                }
+                Err(why) => failed(why),
+            }
+        }
+        unsubscribe::Way::Page { .. } => String::new(),
     }
 }
 
@@ -635,7 +758,7 @@ pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>) -> Option<String> {
             crate::pim::show_pim(qt, shared);
             (problem.unwrap_or_else(|| tr().text("undo-done", None)), None)
         }
-        Work::Act { .. } | Work::Across { .. } | Work::Many(_) => (tr().text("undo-done", None), None),
+        Work::Act { .. } | Work::Across { .. } | Work::Many(_) | Work::Unsubscribe { .. } => (tr().text("undo-done", None), None),
     };
     tell(qt, shared, line);
     draft

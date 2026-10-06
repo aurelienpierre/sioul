@@ -188,6 +188,11 @@ impl Draft {
     }
 }
 
+/// A new message's own name, the left part of its Message-ID: unique to this moment and this program.
+pub fn new_message_id() -> String {
+    new_id()
+}
+
 /// A name unique enough for a draft or a Message-ID: the time, and a little of the process.
 fn new_id() -> String {
     use std::hash::{Hash, Hasher};

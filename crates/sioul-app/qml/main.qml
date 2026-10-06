@@ -40,9 +40,64 @@ SioulWindow {
     // A phone's screen is the window, whatever its size.
     minimumWidth: Qt.platform.os === "android" || window.phoneGrab ? 0 : 680
     minimumHeight: Qt.platform.os === "android" || window.phoneGrab ? 0 : 480
-    visible: true
+    // A desktop's window opens maximized; a phone's is its screen; the pictures' keep their size.
+    visibility: Qt.platform.os === "android" ? Window.AutomaticVisibility : sioul.grabFolder() !== "" ? Window.Windowed : Window.Maximized
     title: "Sioul"
     theme: theme
+
+    // How the window was shown before it went to the tray: shown again so.
+    property int shownAs: Window.Maximized
+    // What full screen (F11) goes back to.
+    property int beforeFullScreen: Window.Maximized
+    // Quitting for good (the tray's menu, Ctrl+Q): the close goes through.
+    property bool quitting: false
+    onVisibilityChanged: {
+        if (window.visibility === Window.Maximized || window.visibility === Window.Windowed || window.visibility === Window.FullScreen)
+            window.shownAs = window.visibility
+    }
+    // The system tray holds Sioul (qml-desktop/Tray.qml): closing the window hides it there.
+    readonly property bool trayHolds: trayLoader.item !== null && trayLoader.item.available === true
+
+    // Hidden in the tray, Sioul going on behind; said once, the first time.
+    function hideToTray() {
+        window.hide()
+        if (!sioul.viewFlag("tray-said")) {
+            sioul.setViewFlag("tray-said", true)
+            trayLoader.item.showMessage(sioul.text("tray-said-title"), sioul.text("tray-said"))
+        }
+    }
+
+    // Shown again as it was (from the tray), and brought forward.
+    function bringBack() {
+        if (!window.visible)
+            window.visibility = window.shownAs
+        window.raise()
+        window.requestActivate()
+    }
+
+    // The tray's click: hidden when the window is in front, else brought back.
+    function toggleShown() {
+        if (window.visible && window.active)
+            window.hideToTray()
+        else
+            window.bringBack()
+    }
+
+    // Quit for good: the tray's menu, Ctrl+Q.
+    function quitSioul() {
+        window.quitting = true
+        window.close()
+    }
+
+    // F11: full screen, or back to how it was.
+    function toggleFullScreen() {
+        if (window.visibility === Window.FullScreen) {
+            window.visibility = window.beforeFullScreen
+            return
+        }
+        window.beforeFullScreen = window.visibility === Window.Windowed ? Window.Windowed : Window.Maximized
+        window.visibility = Window.FullScreen
+    }
 
     // The writing windows open, one per draft.
     property var drafts: []
@@ -51,12 +106,8 @@ SioulWindow {
     // A phone, or a window as narrow: the places pulled over the pages from the left.
     readonly property bool compact: window.width < 720
     property bool placesOpen: false
-    // The places hidden beside the pages (F9, or the button at their foot): this
-    // device's choice, read as Sioul starts; a phone's ☰ is not concerned.
-    property bool placesHidden: false
     // The places made the first time they show, then kept (Places.qml): a
-    // phone's drawer at its first ☰, a column hidden as Sioul starts when it is
-    // shown again; never before this device's choice is read.
+    // phone's drawer at its first ☰; the column beside the pages at once.
     property bool placesMade: false
     onPlacesOpenChanged: {
         if (window.placesOpen)
@@ -66,10 +117,11 @@ SioulWindow {
         if (window.railShown)
             window.placesMade = true
     }
-    // Their names beside their icons (Settings ▸ Display), wherever they are beside the pages.
+    // Their names beside their icons, or their icons only: the button at their
+    // foot, F9, or Settings ▸ Display, one setting; wherever they are beside the pages.
     readonly property bool placesNamed: sioul.reading ? JSON.parse(sioul.reading).places_named === true : false
-    // The places beside the pages: a window wide enough, and not hidden.
-    readonly property bool railShown: !window.compact && !window.placesHidden
+    // The places beside the pages: a window wide enough; never hidden.
+    readonly property bool railShown: !window.compact
     // Where a long press opened a menu, for the menu to come there (SioulMenu.qml):
     // a touch screen has no cursor to place it at. Forgotten after a moment.
     property var menuAt: null
@@ -314,14 +366,14 @@ SioulWindow {
         }
     }
 
-    // A reminder's "Open": what it is about, shown, the window brought forward.
+    // A reminder's "Open", or Sioul started again while it runs: what it is
+    // about, shown, the window brought forward, back from the tray if hidden there.
     Connections {
         target: sioul
 
         function onReminderOpened(kind, uri, key) {
             window.openThing({ kind: kind, uri: uri, key: key })
-            window.raise()
-            window.requestActivate()
+            window.bringBack()
         }
 
         // An attachment kept in the wallet: what it is, asked.
@@ -368,22 +420,27 @@ SioulWindow {
     function showNewMenu() {
         if (newMenu.item === null)
             newMenu.setSource("NewMenu.qml", { sioul: sioul, window: window })
-        // Under New where it shows; the places hidden or put away, at the page's top left.
+        // Under New where it shows; the drawer put away, at the page's top left.
         const under = (window.railShown || window.placesOpen) && places.shown !== null
         newMenu.item.popup(under ? places.shown.addButton : pages, under ? 0 : theme.gap, under ? places.shown.addButton.height : theme.gap)
     }
 
-    // The places beside the pages hidden, or shown again; kept on this device.
-    // The keyboard's focus on them goes to the button that brings them back,
-    // and back; with a ring when it came by the keyboard (`byKeys`).
+    // The places' names shown beside their icons, or their icons only (the
+    // button at their foot, F9; the setting of Settings ▸ Display). On a phone,
+    // or in a window as narrow, the drawer pulled out or put away instead. The
+    // keyboard's focus on the places stays on the button, with a ring when it
+    // came by the keyboard (`byKeys`).
     function togglePlaces(byKeys) {
+        if (window.compact) {
+            window.placesOpen = !window.placesOpen
+            return
+        }
         let inPlaces = false
         for (let item = window.activeFocusItem; item !== null; item = item.parent)
-            inPlaces = inPlaces || item === places || item === showPlaces
-        window.placesHidden = !window.placesHidden
-        sioul.setViewFlag("places-hidden", window.placesHidden)
-        if (inPlaces && (window.placesHidden || places.shown !== null))
-            (window.placesHidden ? showPlaces : places.shown.hideButton).forceActiveFocus(byKeys ? Qt.TabFocusReason : Qt.MouseFocusReason)
+            inPlaces = inPlaces || item === places
+        sioul.setSetting("places_named", window.placesNamed ? "false" : "true")
+        if (inPlaces && places.shown !== null)
+            places.shown.namesButton.forceActiveFocus(byKeys ? Qt.TabFocusReason : Qt.MouseFocusReason)
     }
 
     // The places' names and keys, at the right of the button under the pointer,
@@ -582,13 +639,29 @@ SioulWindow {
         window.makePages()
         sioul.mark("the Porch made")
         sioul.start()
-        // The places as this device left them, before the first frame.
-        window.placesHidden = sioul.viewFlag("places-hidden")
+        // The places beside the pages, made before the first frame.
         window.placesMade = window.placesMade || window.railShown
+        // The system tray, on a desktop; never while taking the documentation's pictures.
+        if (Qt.platform.os !== "android" && sioul.grabFolder() === "")
+            trayLoader.setSource(Qt.resolvedUrl("../qml-desktop/Tray.qml"), { window: window, sioul: sioul })
         sioul.mark("Sioul started")
     }
-    // What waits for "Undo" is done before the window goes, not lost.
-    onClosing: {
+
+    // Sioul in the system tray (qml-desktop/Tray.qml): a desktop's only.
+    Loader {
+        id: trayLoader
+    }
+
+    // Closed while the tray holds Sioul: the window hides there, and Sioul goes
+    // on behind it (reminders, medicines, mail, the sharing); quitting is the
+    // tray's menu or Ctrl+Q. Else, what waits for "Undo" is done before the
+    // window goes, not lost.
+    onClosing: close => {
+        if (window.trayHolds && !window.quitting) {
+            close.accepted = false
+            window.hideToTray()
+            return
+        }
         for (const open of window.drafts)
             open.close()
         if (window.focusWindow) {
@@ -616,8 +689,7 @@ SioulWindow {
                     window.page = 0
                 else if (what.startsWith("sioul:task/"))
                     window.openTask(decodeURIComponent(what.slice("sioul:task/".length)))
-                window.raise()
-                window.requestActivate()
+                window.bringBack()
             }
         }
     }
@@ -642,8 +714,7 @@ SioulWindow {
             onCloseDay: {
                 window.page = 1
                 window.tasksPage.stopForToday()
-                window.raise()
-                window.requestActivate()
+                window.bringBack()
             }
         }
     }
@@ -730,7 +801,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -756,6 +827,20 @@ SioulWindow {
                 () => grabber.save("health-week-readable"),
                 () => window.close()
             ]
+            // Leaving a list from a message (SIOUL_GRAB_STEPS=unsubscribe; SIOUL_GRAB_PHONE
+            // for a phone's): a newsletter open in Mail, Unsubscribe in its row; then a
+            // client's message, without it.
+            readonly property var unsubscribeSteps: [
+                () => window.page = 2,
+                () => {},
+                () => mailPage.openSubject(grabber.demoFrench ? "Lettres & Pixels" : "Type & Pixels"),
+                () => {},
+                () => grabber.save("unsubscribe-reader"),
+                () => mailPage.openSubject(grabber.demoFrench ? "deux petites modifications" : "two small changes"),
+                () => {},
+                () => grabber.save("unsubscribe-none"),
+                () => window.close()
+            ]
             // The places (SIOUL_GRAB_STEPS=rail): the column of icons, a tip, the
             // keyboard's focus, the names asked for, hidden (New's menu then at the
             // page's corner), a short window scrolled. On a demo profile: it changes
@@ -778,20 +863,15 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("rail-named"),
+                // The button at its foot: the icons only again.
                 () => window.togglePlaces(false),
                 () => {},
-                () => grabber.save("rail-named-hidden"),
-                () => sioul.setSetting("places_named", "false"),
-                () => {},
-                () => grabber.save("rail-hidden"),
+                () => grabber.save("rail-icons"),
                 () => window.showNewMenu(),
                 () => {},
-                () => grabber.saveWindow("rail-hidden-new"),
+                () => grabber.saveWindow("rail-new"),
                 () => newMenu.item.close(),
-                () => {
-                    window.togglePlaces(false)
-                    window.height = 540
-                },
+                () => window.height = 540,
                 () => {},
                 () => grabber.save("rail-short"),
                 () => places.shown.repeater.itemAt(11).forceActiveFocus(Qt.TabFocusReason),
@@ -2665,15 +2745,22 @@ SioulWindow {
         sequence: "F5"
         onActivated: sioul.syncNow()
     }
-    // The places hidden or shown again beside the pages; on a phone, pulled over them or put away.
+    // The places' names shown or their icons only; on a phone, the drawer pulled over the pages or put away.
     Shortcut {
         sequence: "F9"
-        onActivated: {
-            if (window.compact)
-                window.placesOpen = !window.placesOpen
-            else
-                window.togglePlaces(true)
-        }
+        onActivated: window.togglePlaces(true)
+    }
+    // A desktop's window: full screen, or back; and quitting for good, closing
+    // the window hiding it in the tray while one holds Sioul.
+    Shortcut {
+        sequence: "F11"
+        enabled: Qt.platform.os !== "android"
+        onActivated: window.toggleFullScreen()
+    }
+    Shortcut {
+        sequence: "Ctrl+Q"
+        enabled: Qt.platform.os !== "android"
+        onActivated: window.quitSioul()
     }
 
     Rectangle {
@@ -2686,8 +2773,8 @@ SioulWindow {
             anchors.fill: parent
 
             // The places: a narrow column of icons beside the pages, their names
-            // beside them when Settings ▸ Display says so, hidden altogether by the
-            // button at its foot or F9 (Places.qml); on a phone, or in a window as
+            // beside them or not by the button at its foot or F9 (Places.qml; the
+            // same setting as Settings ▸ Display); on a phone, or in a window as
             // narrow, pulled over the pages from the left, with their names.
             Rectangle {
                 id: places
@@ -2698,7 +2785,6 @@ SioulWindow {
                 readonly property Places shown: placesContent.item as Places
 
                 z: 2
-                visible: window.compact || !window.placesHidden
                 // With names, as wide as "Refresh everything" needs at its size.
                 width: places.named ? 216 : 56
                 height: parent.height
@@ -2874,27 +2960,12 @@ SioulWindow {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: showPlaces.visible ? 10 : theme.gap
+                        anchors.leftMargin: theme.gap
                         // The pauses' place at the end is kept; what does not fit is cut, never over it.
                         anchors.rightMargin: pausesRow.width + 2 * theme.gap
                         spacing: theme.gap
                         clip: true
 
-                        // The places hidden (F9): the button that shows them again,
-                        // where the one that hid them was; its icon alone, its words in
-                        // its tip, so that the line keeps its room.
-                        RailButton {
-                            id: showPlaces
-
-                            visible: window.placesHidden && !window.compact
-                            Layout.preferredWidth: 36
-                            Layout.preferredHeight: 28
-                            theme: theme
-                            iconName: "sidebar-expand-left"
-                            name: sioul.text("ui-places-show")
-                            keys: "F9"
-                            onChosen: window.togglePlaces(showPlaces.visualFocus)
-                        }
                         Label {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 40

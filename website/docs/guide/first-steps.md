@@ -17,15 +17,15 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 **On the left**, a narrow column of icons, from top to bottom:
 
 - **New ▾**, the **+**, makes something of any kind: a message, a task, an event, a contact, a note, a project, time spent, a budget movement, a paper; and **Where I stopped…** leaves one line on where you were ([Tasks](tasks.md#starting-and-stopping)).
-- **The places**, one icon each: Porch (an inbox tray), Tasks (a checklist), Mail (an envelope), Sites (a globe), Agenda (a calendar), Contacts (a person and lines), Notes (a notepad), Projects (a folder), Time (a clock), Budgets (a wallet), Papers (a card), Health (a heart). The place shown is marked by a soft tint and a short bar.
-- **Three icons**, apart at the bottom: Accounts (a person), Settings (sliders), and Refresh everything, which fetches mail, the agenda, tasks and contacts again at once.
-- **At its foot**, level with the status line, the button that hides the column (++f9++): the pages take the whole width, and the same button, at the start of the status line, shows it again. Each device keeps its own choice, and the keys keep working.
+- **The places**, one icon each: Porch (an inbox tray), Tasks (a checklist), Mail (an envelope), Sites (a globe and its meridians), Agenda (a calendar), Contacts (a person and lines), Notes (a notepad), Projects (a folder), Time (a clock), Budgets (a wallet), Papers (a card), Health (a heart). The place shown is marked by a soft tint and a short bar.
+- **Apart at the bottom**: **Close the work day** (a ticked list) and, under it, **Close the whole day** (a moon), at any hour ([the end of the day](tasks.md#the-end-of-the-day)); then three icons, side by side when the names show: Accounts (a person), Settings (sliders), and Refresh everything, which fetches mail, the agenda, tasks and contacts again at once.
+- **At its foot**, level with the status line, the button that shows the places' names beside their icons, in a wider column, or keeps their icons only (++f9++): the same choice as **Settings ▸ Display ▸ Show the places' names beside their icons**.
 
-Each icon's name, with its key, shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen. To see the names beside the icons all the time, in a wider column: **Settings ▸ Display ▸ Show the places' names beside their icons**.
+Each icon's name, with its key, shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen.
 
 **At the bottom**, the status line says one sentence about what happened last. After anything is moved, deleted or sent, "Undo" waits there for ten seconds. In quiet time, it says when work comes back; once the day's hours are over, it offers to close the work day, and in the evening the day. At its right end are the keys, the sound button ([sounds to focus or rest by](tasks.md#sounds)) and the weather at a place you choose.
 
-**On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. Where long text is read (a message, a note), "Aa" sets the font, its size and the space between lines. A right click, the Menu key, or a long press on a touch screen, on anything gives what is not in view.
+**On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. How long text reads (the font, its size and the space between lines) is in the ⚙ of Mail and of the Porch, and behind "Aa" in Notes. A right click, the Menu key, or a long press on a touch screen, on anything gives what is not in view.
 
 ### Keys
 
@@ -37,7 +37,9 @@ Everything works from the keyboard: Tab to move, Enter to choose, Escape to go b
 | ++ctrl+n++ | New ▾ |
 | ++ctrl+z++ | Undo, while it is offered |
 | ++f5++ | Refresh everything |
-| ++f9++ | Hide the places, or show them again; in a narrow window, pull them out or put them away |
+| ++f9++ | The places' names beside their icons, or their icons only; in a narrow window, pull the places out or put them away |
+| ++f11++ | Full screen, or back |
+| ++ctrl+q++ | Quit Sioul (closing the window hides it in the system tray) |
 | ++ctrl+enter++ | Send, in the writing window |
 
 ### On a phone
@@ -126,6 +128,8 @@ The secure mailboxes of your bank, your health insurer, the tax office; a chat; 
 On the **Sites** page, **Usual sites ▾** lists about 400 of them by country, or **Pin a site** finds one by a word ("bank", "ameli"), or takes any address by hand. You log in once; the site keeps you logged in. See [Sites](sites.md).
 
 ## Keep Sioul open
+
+On a computer, Sioul opens maximized; ++f11++ shows it full screen, and back. Its icon in the system tray shows or hides the window: closing the window hides it there, and Sioul goes on behind it, mail, reminders and medicines included. **Quit Sioul** is in the icon's menu, or ++ctrl+q++. Without a system tray (GNOME without its extension), closing the window quits.
 
 While its window is open, Sioul keeps each inbox open on the server: a code or a sign-in link you asked a site for reaches you within seconds, as one quiet notification, whatever the hour.
 

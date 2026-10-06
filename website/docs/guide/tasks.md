@@ -252,13 +252,17 @@ There is no count of what was not done. The next working day opens on that first
 
 **At the end of your hours**, the status line offers **Close the work day**, and one quiet notification says "Work hours are over", once, never while you sleep or during a meeting. A day that ends without the button closes as usual; its review stays offered until the evening.
 
-**Before sleep**, **Close the day** looks back over the whole day: work, admin and leisure ([Health](health.md#before-sleep)).
+**At any hour**, two buttons at the bottom of the places close the work day, **Close the work day** (a ticked list), and the whole day, **Close the whole day** (a moon), one under the other. The status line offers each only at its time; these buttons are always there, on a phone in the places' drawer.
+
+**Before sleep**, **Close the whole day** looks back over the whole day: work, admin and leisure ([Health](health.md#before-sleep)).
 
 Your answers stay on your devices, in plain files (`~/.local/share/sioul/reviews/`), and travel with the sharing's time. The mix is what the plan learns from: which days went fine, which were too much. Nothing is shown as a score.
 
 ## Routines
 
-**Routines**, at the top of the page: steps played one at a time, the next one said before it comes. You write one step a line, with its minutes: "10 min Open the Porch", "Make tea 5".
+A **routine** is a sequence you go through often, in the same order: getting ready to go out, starting the work day, your admin hours. You write its steps once, each with its minutes; Sioul then plays them one at a time on a timer and says the next step before it comes, so the order and the clock are not yours to keep in mind. Autistic adults who find starting and switching hard name routines among what helps, "so that I don't have to think about it quite so hard" (Buckle et al. 2021). A routine is not a task: nothing is planned, counted or late, and you can stop at any step.
+
+**Routines**, at the top of the Tasks page, lists them; a new one is written one step a line, with its minutes: "10 min Open the Porch", "Make tea 5".
 
 A routine plays in a small window on top: the step, its time draining in a neutral colour, "Then: …", and the routine as dots. **Done**, **Open** (what the step opens), **+5 min**, **Skip**, **Pause**, **Stop**. None of it is counted.
 

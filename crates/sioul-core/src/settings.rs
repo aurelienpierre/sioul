@@ -237,6 +237,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.group = tr.text("set-letters-group", None);
             let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.case_store_path().map(|r| crate::letters::Letters::folder(&r).join("inbox").display().to_string()).unwrap_or_default());
             b.push("letters.inbox", "letters-inbox", Kind::Folder, SettingValue::Text(inbox));
+            // How a message opened here reads: the reading panel's own, shown where messages are read.
+            b.group = tr.text("ui-reading", None);
+            reading(&mut b, config);
             // Every lane, empty or not, in the order mail is sorted, each with how
             // mail lands there and what the Porch itself decides of it; a
             // project's lane is in its page.
@@ -260,6 +263,28 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             Builder::range(s, 1.0, 240.0, 1.0, "min");
             // Each address's own: in Accounts, on its card.
             b.note(tr.text("set-accounts-elsewhere", None), Vec::new());
+            // How a message reads: the reading panel's own ("Aa" in Notes), shown where messages are read.
+            b.group = tr.text("ui-reading", None);
+            reading(&mut b, config);
+            // The lists you left from a message, newest first: kept on this device (`unsubscribe::Record`).
+            let mut left = crate::unsubscribe::Record::load(&crate::unsubscribe::Record::default_path()).lists;
+            if !left.is_empty() {
+                left.sort_by_key(|l| std::cmp::Reverse(l.at));
+                let zone = jiff::tz::TimeZone::system();
+                let today = jiff::Timestamp::now().to_zoned(zone.clone()).date();
+                let lines = left
+                    .iter()
+                    .map(|l| {
+                        let mut args = crate::i18n::args();
+                        args.set("list", l.name.clone());
+                        args.set("date", jiff::Timestamp::from_second(l.at).map(|t| tr.day_in(t.to_zoned(zone.clone()).date(), today)).unwrap_or_default());
+                        args.set("way", tr.text(&format!("unsubscribe-way-{}", l.way), None));
+                        tr.text("unsubscribed-line", Some(&args))
+                    })
+                    .collect();
+                b.group = tr.text("unsubscribed-group", None);
+                b.note(tr.text("unsubscribed-note", None), lines);
+            }
         }
         // Who may write to you, and when, in Accounts ▸ Senders: the matrix of
         // when each list's mail comes; the four lists; your contacts' categories,
@@ -643,7 +668,8 @@ mod tests {
         // Your contacts' categories are this computer's: left out too.
         let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY)).map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("notes"), vec!["notes_folder"]);
-        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes"]);
+        // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
+        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "reading.family", "reading.size", "reading.spacing"]);
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);
@@ -655,7 +681,7 @@ mod tests {
         let notes = porch.iter().filter(|s| s.kind == Kind::Note).count();
         // Where the hours went, the order, then public, people, screener, filed, less important, set aside, hostile.
         assert_eq!(notes, 1 + 1 + 7, "{porch:?}");
-        assert_eq!(keys("porch"), vec!["letters.inbox", "known", "filed_words"]);
+        assert_eq!(keys("porch"), vec!["letters.inbox", "reading.family", "reading.size", "reading.spacing", "known", "filed_words"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
         // Sioul as a whole: language and looks, your folder, who may write, hours, reminders, invoices.
         let parameters = keys("parameters");
@@ -668,8 +694,11 @@ mod tests {
                 "invoice.folder", "invoice.rate"
             ]
         );
-        // Nothing is set in two places: a setting has one owner.
+        // Nothing is set in two places: a setting has one owner. The reading
+        // panel's own ("Aa" in Notes) are shown in Mail's and the Porch's too,
+        // where messages are read, as each lane's are in the Porch's.
         let mut seen: std::collections::BTreeMap<String, &str> = std::collections::BTreeMap::new();
+        let keys = |view: &str| keys(view).into_iter().filter(|k| view == "reading" || !k.starts_with("reading.")).collect::<Vec<_>>();
         assert_eq!(keys("reading"), vec!["reading.family", "reading.size", "reading.spacing"]);
         assert_eq!(keys("senders"), vec!["reach", "safe", "neutral", "restricted", "blocked"]);
         // The matrix: three lists down, five times across, as the configuration says or as usual.

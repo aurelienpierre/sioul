@@ -76,3 +76,45 @@ fn what_you_send_yourself_comes_in() {
     let forged = porch::triage(mail("fail"), &ctx);
     assert_eq!(forged.lane, Lane::SetAside);
 }
+
+/// Codes, sign-in links and resets that sites send through their newsletter
+/// services, with the same bulk headers (`List-Unsubscribe`, `List-Id`,
+/// `Precedence: bulk`, a service's own markers): at once, as any code. A
+/// newsletter that talks about passwords stays filed; a forged code stays set
+/// aside, list headers or not; a code whose sender is not verified keeps its warning.
+#[test]
+fn codes_sent_with_bulk_headers_come_at_once() {
+    let known = KnownSenders::default();
+    let senders = porch::Senders::default();
+    let ids = vec!["mx.example.net".to_string()];
+    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[] };
+    let triaged: Vec<_> = maildir::read_messages(&fixtures().join("porch-bulk")).into_iter().map(|c| porch::triage(c, &ctx)).collect();
+    assert_eq!(triaged.len(), 7);
+    assert!(triaged.iter().all(|t| t.card.is_list), "every one carries bulk headers");
+    let find = |part: &str| triaged.iter().find(|t| t.card.subject.contains(part)).unwrap_or_else(|| panic!("{part}"));
+    let kind = |part: &str| find(part).code.as_ref().map(|c| (c.kind, c.code.clone()));
+
+    // An account's security code, a shop's sign-in code, a sign-in link, a reset in French.
+    for (part, expected) in [
+        ("security code", (CodeKind::Code, Some("482913".to_string()))),
+        ("Sign-in attempt", (CodeKind::Code, Some("551204".to_string()))),
+        ("Sign in to Readwell", (CodeKind::SignInLink, None)),
+        ("Réinitialisation", (CodeKind::PasswordReset, None)),
+    ] {
+        let t = find(part);
+        assert_eq!((t.lane.clone(), kind(part)), (Lane::RightNow, Some(expected)), "{part}: {:?}", t.reasons);
+        assert_eq!(t.trust, Trust::Verified, "{part}");
+        assert!(!t.reasons.iter().any(|r| matches!(r, Reason::UnverifiedCode(_))), "{part}");
+    }
+    // A newsletter's articles about passwords, resets and sign-in links: filed, no code.
+    let news = find("Weekly Byte");
+    assert_eq!((news.lane.clone(), news.code.clone(), news.reasons.last()), (Lane::Filed, None, Some(&Reason::Newsletter)));
+    // A code failing DMARC under a policy that rejects it: forged, whatever its list headers say.
+    let forged = find("Your verification code");
+    assert_eq!((forged.lane.clone(), forged.trust), (Lane::SetAside, Trust::Forged));
+    assert_eq!(forged.reasons.last(), Some(&Reason::Forged));
+    // A code from a sender nothing verifies: at once, with its warning.
+    let unverified = find("one-time code");
+    assert_eq!((unverified.lane.clone(), kind("one-time code")), (Lane::RightNow, Some((CodeKind::Code, Some("309118".to_string())))));
+    assert!(unverified.reasons.contains(&Reason::UnverifiedCode(CodeKind::Code)));
+}

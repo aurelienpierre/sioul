@@ -34,7 +34,8 @@ Above the message, always in the same place:
 
 - **Reply**, **Reply to all** (only when there are others to answer), **Forward**;
 - **Add ▾** (a task, an event, a note, a reply, the sender to your contacts) and **Link to…** (anything else: a task, a note, a project);
-- **Archive**, **Delete**, **Junk**.
+- **Archive**, **Delete**, **Junk**;
+- **Unsubscribe**, on a newsletter or a list's message that says how to leave it ([below](#unsubscribing)).
 
 Archiving, deleting and junking happen at once, with **Undo** in the status line for ten seconds; the server is told only after that. There is no "are you sure?". In the trash, **Delete for good** deletes it for good, with the same ten seconds.
 
@@ -47,6 +48,20 @@ Opening a message marks it read, as any mail program does.
 - ++ctrl++ + click adds a message to the selection or takes it out; ++shift++ + click takes everything since the last one clicked; ++ctrl+a++ takes all; ++escape++ none.
 - A bar then marks them read, archives, deletes or moves them, under one **Undo**.
 - Messages can be dragged onto any folder of any address. Into another address, a message is taken off the first one only once the second server has it.
+
+### Unsubscribing
+
+A newsletter or a list's message that says how to leave it has **Unsubscribe** above it. One click, and ten seconds later Sioul does what the list asks:
+
+- it **tells the list's server**, when the list offers this and its signature proves the request is the list's own: the "one click" most newsletters offer;
+- else it **sends the list the message it asks for**, from the address the newsletter came to; the message goes to Sent like any other;
+- else, when only a web page can do it, it **opens that page** in your browser, at once: you finish there.
+
+**Undo** stays in the status line for those ten seconds. Then the line says "Unsubscribed from Type & Pixels.", or why not. The message itself stays where it is.
+
+The button rests, dimmed, on mail that is forged, set aside as spam, hostile, in the junk, or from a sender Sioul cannot verify: answering such mail would tell its sender that your address is read, or reach someone else. Its tip, or a tap on a phone, says why.
+
+A list you left shows **Unsubscribed**, and when. If its mail keeps coming, block the sender: ⋮ ▸ **Their mail** ▸ **Blocked**. The lists you left are in the Mail page's ⚙, under **Lists you left**, on this device.
 
 ### Invitations
 
@@ -89,6 +104,8 @@ The ⚙ at the top of the Mail page:
 
 - **By conversation**: messages grouped with their answers.
 - **Fetch every**: how often the folders other than the inbox are fetched. The inbox comes as soon as the server says something arrived.
+- **Font**, **Size**, **Line spacing**: how messages read. The same three are in the Porch's ⚙, and behind **Aa** in Notes.
+- **Lists you left**: each list you left from a message, when and how, once there is one.
 
 Each address's own settings (what it is for, how far back, how often, its protection) are on its card in [Accounts](accounts.md#your-accounts).
 

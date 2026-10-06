@@ -65,8 +65,8 @@ Panel {
     // The row's width, each action as wide as `width` says. "Junk" counts
     // whether it shows or not: it hides when the row is too narrow.
     function actionsWidth(width) {
-        const named = [replyButton, replyAllButton, forwardButton, addButton, linkButton, archiveButton, trashButton].filter(b => b.visible).concat([junkButton])
-        return named.reduce((sum, b) => sum + width(b), 0) + readingButton.implicitWidth + moreButton.implicitWidth + (named.length + 2) * actionRow.spacing
+        const named = [replyButton, replyAllButton, forwardButton, addButton, linkButton, archiveButton, trashButton, unsubscribeButton].filter(b => b.visible).concat([junkButton])
+        return named.reduce((sum, b) => sum + width(b), 0) + moreButton.implicitWidth + (named.length + 1) * actionRow.spacing
     }
 
     function trustColor(level) {
@@ -264,12 +264,30 @@ Panel {
                 label: reader.role === "junk" ? reader.sioul.text("ui-not-junk") : reader.sioul.text("ui-junk")
                 onClicked: reader.act(reader.role === "junk" ? "not-junk" : "junk")
             }
-            SettingsButton {
-                id: readingButton
+            // Leaving the list this message comes from, in one click (docs/client.md,
+            // "Unsubscribing"): only for mail that names a way out. When nothing
+            // may be contacted (forged, spam, nothing proven) it rests dimmed,
+            // and its tip (a tap, on a phone) says why. How text reads is in
+            // the page's ⚙.
+            ActionButton {
+                id: unsubscribeButton
 
-                sioul: reader.sioul
+                readonly property var offer: reader.reading && reader.reading.unsubscribe ? reader.reading.unsubscribe : null
+
                 theme: reader.theme
-                reading: true
+                compact: reader.compact
+                visible: unsubscribeButton.offer !== null
+                opacity: unsubscribeButton.offer !== null && unsubscribeButton.offer.offered ? 1 : 0.5
+                iconName: "dialog-cancel"
+                label: unsubscribeButton.offer !== null ? unsubscribeButton.offer.label : ""
+                ToolTip.visible: unsubscribeButton.hovered
+                ToolTip.text: unsubscribeButton.offer !== null ? unsubscribeButton.offer.tip : ""
+                Accessible.description: unsubscribeButton.offer !== null ? unsubscribeButton.offer.tip : ""
+                onClicked: {
+                    const page = reader.sioul.unsubscribe(reader.key)
+                    if (page !== "")
+                        Qt.openUrlExternally(page)
+                }
             }
             ActionButton {
                 id: moreButton

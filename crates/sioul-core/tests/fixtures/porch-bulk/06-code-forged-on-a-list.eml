@@ -1,0 +1,13 @@
+Authentication-Results: mx.example.net; dkim=fail header.d=bank.example; spf=fail smtp.mailfrom=bank.example;
+	dmarc=fail (p=reject) header.from=bank.example policy.dmarc=reject
+From: Bank Example <security@bank.example>
+To: you@example.org
+Subject: Your verification code
+Date: Fri, 02 Oct 2026 09:30:00 +0200
+Message-ID: <fake-6@bulk-sender.test>
+List-Id: <alerts.bank.example>
+List-Unsubscribe: <mailto:leave@bulk-sender.test>
+Precedence: bulk
+Content-Type: text/plain; charset=UTF-8
+
+Your verification code is 660412. Enter it to keep your account open.

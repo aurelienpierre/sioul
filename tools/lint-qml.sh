@@ -17,10 +17,12 @@ fi
 lint=$(mktemp -d "$repo/target/lint-qml.XXXX")
 trap 'rm -rf "$lint"' EXIT
 module=$lint/com/aurelienpierre/sioul
-mkdir -p "$module/qml"
+mkdir -p "$module/qml" "$module/qml-desktop"
 cp "$generated/com/aurelienpierre/sioul/qmldir" "$generated/com/aurelienpierre/sioul/plugin.qmltypes" "$module/"
 cp "$repo"/crates/sioul-app/qml/*.qml "$module/qml/"
+# The desktop's own pages (the system tray), apart from what the phone's build reads.
+cp "$repo"/crates/sioul-app/qml-desktop/*.qml "$module/qml-desktop/"
 cd "$module"
 # Fedora names the Qt 6 tool qmllint-qt6; a bare qmllint may be Qt 5's.
 qmllint=$(command -v qmllint-qt6 || command -v qmllint6 || echo /usr/lib64/qt6/bin/qmllint)
-"$qmllint" -I "$lint" qml/*.qml
+"$qmllint" -I "$lint" qml/*.qml qml-desktop/*.qml

@@ -38,14 +38,20 @@ fn night(now: &Zoned) -> Option<(i64, i64)> {
     crate::hours::blocks(now).kept.iter().filter(|k| k.kind == "sleep" && k.end > stamp).min_by_key(|k| k.start).map(|k| (k.start, k.at))
 }
 
-/// What the status line offers at `now`, in `mode`.
-fn offer_at(now: &Zoned, mode: &Mode) -> Option<Offer> {
+/// Where the day stands at `now`, as the offer reads it: today's end of work,
+/// the night, whether the work day was closed, and the reviews of yesterday and today.
+fn standing(now: &Zoned) -> (Option<Zoned>, Option<(i64, i64)>, bool, Reviews) {
     let config = load_config();
     let overrides = Overrides::load(&Overrides::default_path());
-    let moment = Moment { now, mode, work_end: work_end(&config, now), night: night(now), closed_today: overrides.closed_today(now) };
     let today = now.date();
     let reviews = Reviews::load_between(&Reviews::default_path(), today.yesterday().unwrap_or(today), today);
-    reviews::offer(&moment, &reviews)
+    (work_end(&config, now), night(now), overrides.closed_today(now), reviews)
+}
+
+/// What the status line offers at `now`, in `mode`.
+fn offer_at(now: &Zoned, mode: &Mode) -> Option<Offer> {
+    let (work_end, night, closed_today, reviews) = standing(now);
+    reviews::offer(&Moment { now, mode, work_end, night, closed_today }, &reviews)
 }
 
 /// For the status line (`mode_json`): {kind, date, line, button}; kind "" when

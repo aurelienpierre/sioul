@@ -36,7 +36,7 @@ use std::time::Duration;
 use ureq::unversioned::resolver::DefaultResolver;
 use ureq::unversioned::transport::{Buffers, ConnectionDetails, Connector, DefaultConnector, NextTimeout, Transport};
 
-const DAV: &str = "DAV:";
+pub(crate) const DAV: &str = "DAV:";
 const CALDAV: &str = "urn:ietf:params:xml:ns:caldav";
 const CARDDAV: &str = "urn:ietf:params:xml:ns:carddav";
 const CALSERVER: &str = "http://calendarserver.org/ns/";
@@ -65,15 +65,15 @@ struct Answer {
 /// How long a request may wait: to connect; for each read or write, so a big
 /// answer trickling in on a weak signal goes on as long as it moves, and one
 /// that stops is given up soon; and for the whole of it, a bound for the worst.
-struct Budget {
-    connect: Duration,
-    stall: Duration,
-    whole: Duration,
+pub(crate) struct Budget {
+    pub(crate) connect: Duration,
+    pub(crate) stall: Duration,
+    pub(crate) whole: Duration,
 }
 
 const BUDGET: Budget = Budget { connect: Duration::from_secs(20), stall: Duration::from_secs(60), whole: Duration::from_secs(15 * 60) };
 
-fn agent(budget: &Budget) -> ureq::Agent {
+pub(crate) fn agent(budget: &Budget) -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .timeout_connect(Some(budget.connect))
         .timeout_global(Some(budget.whole))
@@ -193,7 +193,7 @@ impl Client {
 }
 
 /// Plain HTTP only to this computer, and only in a test build.
-fn allowed(url: &str) -> Result<(), SyncError> {
+pub(crate) fn allowed(url: &str) -> Result<(), SyncError> {
     if url.starts_with("https://") {
         return Ok(());
     }
@@ -211,21 +211,21 @@ fn allowed(url: &str) -> Result<(), SyncError> {
 
 /// One `response` of a multistatus: an address and what was found there.
 #[derive(Debug, Default, Clone)]
-struct Response {
-    href: String,
+pub(crate) struct Response {
+    pub(crate) href: String,
     /// The status of the whole response (sync-collection says 404 for what went).
-    status: Option<u16>,
-    props: Vec<Prop>,
+    pub(crate) status: Option<u16>,
+    pub(crate) props: Vec<Prop>,
 }
 
 /// One property, found (200) or not.
 #[derive(Debug, Default, Clone)]
-struct Prop {
+pub(crate) struct Prop {
     ns: String,
     name: String,
     status: u16,
     text: String,
-    hrefs: Vec<String>,
+    pub(crate) hrefs: Vec<String>,
     /// Child elements, by namespace and name (resourcetype, privileges).
     children: Vec<(String, String)>,
     /// `name` attributes of `comp` children (supported-calendar-component-set).
@@ -233,15 +233,15 @@ struct Prop {
 }
 
 impl Response {
-    fn prop(&self, ns: &str, name: &str) -> Option<&Prop> {
+    pub(crate) fn prop(&self, ns: &str, name: &str) -> Option<&Prop> {
         self.props.iter().find(|p| p.ns == ns && p.name == name && p.status / 100 == 2)
     }
 
-    fn text(&self, ns: &str, name: &str) -> Option<String> {
+    pub(crate) fn text(&self, ns: &str, name: &str) -> Option<String> {
         self.prop(ns, name).map(|p| p.text.trim().to_string()).filter(|t| !t.is_empty())
     }
 
-    fn is(&self, ns: &str, kind: &str) -> bool {
+    pub(crate) fn is(&self, ns: &str, kind: &str) -> bool {
         self.prop(DAV, "resourcetype").is_some_and(|p| p.children.iter().any(|(n, k)| n == ns && k == kind))
     }
 }
@@ -251,7 +251,7 @@ fn status_code(text: &str) -> Option<u16> {
 }
 
 /// The responses of a 207 Multi-Status, and the sync token when one came.
-fn multistatus(xml: &str) -> Result<(Vec<Response>, Option<String>), SyncError> {
+pub(crate) fn multistatus(xml: &str) -> Result<(Vec<Response>, Option<String>), SyncError> {
     let doc = roxmltree::Document::parse(xml).map_err(|e| SyncError::Server(format!("XML: {e}")))?;
     let mut responses = Vec::new();
     let mut token = None;
@@ -309,7 +309,7 @@ pub fn absolute(base: &str, href: &str) -> String {
 }
 
 /// The path of an address, percent-decoded: what to compare hrefs by, however a server writes them.
-fn path_key(url: &str) -> String {
+pub(crate) fn path_key(url: &str) -> String {
     let path = url.find("://").and_then(|i| url[i + 3..].find('/').map(|j| &url[i + 3 + j..])).unwrap_or(url);
     let mut out = Vec::with_capacity(path.len());
     let bytes = path.as_bytes();

@@ -2,12 +2,13 @@
 // Copyright © 2026 Aurélien Pierre
 
 // The places, on the left of the window (main.qml): New, then the places
-// where your things live, then, apart at the bottom, the accounts, the
-// settings and one button that refreshes everything; at its foot, level with
-// the status line, the button that hides them (F9). One icon each
+// where your things live, then, apart at the bottom, closing the work day or
+// the day (at any hour), the accounts, the settings and one button that
+// refreshes everything; at its foot, level with the status line, the button
+// that shows their names or keeps their icons only (F9). One icon each
 // (RailButton.qml), their names beside them when `named`; scrolled when the
 // window is too short for them all. Made the first time they show: a phone's
-// drawer is not made before ☰ is pressed, nor a column hidden as Sioul starts.
+// drawer is not made before ☰ is pressed.
 
 pragma ComponentBehavior: Bound
 
@@ -27,9 +28,9 @@ Item {
     // The buttons' margin on each side.
     readonly property int inset: column.named ? 8 : 6
     // What the window reaches: New (its menu comes under it), the button that
-    // hides the places (the keyboard's focus comes back to it), the places.
+    // shows the names or keeps the icons (the keyboard's focus stays on it), the places.
     readonly property alias addButton: newButton
-    readonly property alias hideButton: hidePlaces
+    readonly property alias namesButton: namesToggle
     readonly property alias list: placesList
     readonly property alias repeater: placesRepeater
 
@@ -94,7 +95,7 @@ Item {
                     { page: 0, name: "ui-porch", iconName: "mail-folder-inbox" },
                     { page: 1, name: "ui-tasks", iconName: "view-calendar-tasks" },
                     { page: 2, name: "ui-mail", iconName: "mail-message" },
-                    { page: 3, name: "ui-sites", iconName: "globe" },
+                    { page: 3, name: "ui-sites", iconName: "sioul-web" },
                     { page: 4, name: "ui-agenda", iconName: "view-calendar" },
                     { page: 5, name: "ui-contacts", iconName: "user-properties" },
                     { page: 6, name: "ui-notes", iconName: "view-pim-notes" },
@@ -134,8 +135,10 @@ Item {
         }
     }
 
-    // Sioul itself, apart: the accounts, the settings, and everything fetched
-    // again; in a phone's drawer, one row of icons.
+    // Apart: closing the work day, and the whole day, named where the places'
+    // names show; then Sioul itself, the accounts, the settings and everything
+    // fetched again, their icons alone, on one row where the column is wide
+    // enough (with names, a phone's drawer), else one under the other.
     Column {
         id: foot
 
@@ -150,15 +153,46 @@ Item {
             height: 1
             color: column.theme.line
         }
+        // The work day, and the whole day, closed at any hour (docs/reviews.md):
+        // each review asks how it went, all of it optional; the status line
+        // offers each only at its time. Each tip says, on a line of its own,
+        // what closing does.
+        Column {
+            width: foot.width
+            spacing: 2
+
+            Repeater {
+                model: [{ kind: "work", iconName: "task-complete" }, { kind: "night", iconName: "system-suspend" }]
+
+                delegate: RailButton {
+                    id: closeButton
+
+                    required property var modelData
+
+                    width: foot.width
+                    height: column.row
+                    theme: column.theme
+                    iconName: closeButton.modelData.iconName
+                    name: column.sioul.text("review-close-" + closeButton.modelData.kind)
+                    tip: closeButton.name + "\n" + column.sioul.text("review-close-" + closeButton.modelData.kind + "-tip")
+                    named: column.named
+                    sayTip: column.window.sayRailTip
+                    onChosen: {
+                        column.window.placesOpen = false
+                        column.window.reviewDay(closeButton.modelData.kind)
+                    }
+                }
+            }
+        }
         Grid {
             id: footGrid
 
-            // Their names beside them when asked for; a phone's drawer keeps its row of icons.
-            readonly property bool named: column.named && !column.window.compact
+            // Three icons side by side where they fit; else stacked (the icons' column).
+            readonly property bool row: foot.width >= 3 * 44 + 2 * 4
 
             anchors.horizontalCenter: parent.horizontalCenter
-            columns: column.window.compact ? 3 : 1
-            spacing: column.window.compact ? 4 : 2
+            columns: footGrid.row ? 3 : 1
+            spacing: footGrid.row ? 4 : 2
 
             Repeater {
                 model: [{ page: 11, name: "ui-accounts", iconName: "user-identity" }, { page: 12, name: "ui-parameters", iconName: "settings-configure" }]
@@ -168,12 +202,11 @@ Item {
 
                     required property var modelData
 
-                    width: column.window.compact ? 44 : foot.width
+                    width: footGrid.row ? 44 : foot.width
                     height: column.row
                     theme: column.theme
                     iconName: sioulButton.modelData.iconName
                     name: column.sioul.text(sioulButton.modelData.name)
-                    named: footGrid.named
                     place: true
                     current: column.window.page === sioulButton.modelData.page
                     sayTip: column.window.sayRailTip
@@ -187,14 +220,13 @@ Item {
             RailButton {
                 id: refreshButton
 
-                width: column.window.compact ? 44 : foot.width
+                width: footGrid.row ? 44 : foot.width
                 height: column.row
                 theme: column.theme
                 iconName: "view-refresh"
                 name: column.sioul.text("ui-refresh-short")
                 keys: "F5"
                 tip: column.sioul.busy ? column.sioul.text("ui-refreshing") : column.sioul.text("ui-refresh-all")
-                named: footGrid.named
                 enabled: !column.sioul.busy
                 sayTip: column.window.sayRailTip
                 onChosen: column.sioul.syncNow()
@@ -213,7 +245,7 @@ Item {
     }
 
     // Its foot, level with the status line and under its line: the button that
-    // hides the places, where the one that shows them again comes (main.qml).
+    // shows the places' names beside their icons, or keeps the icons only (F9).
     Item {
         id: strip
 
@@ -229,19 +261,19 @@ Item {
             color: column.theme.line
         }
         RailButton {
-            id: hidePlaces
+            id: namesToggle
 
             x: column.inset
             anchors.verticalCenter: parent.verticalCenter
             width: strip.width - 2 * column.inset
             height: 28
             theme: column.theme
-            iconName: "sidebar-collapse-left"
-            name: column.sioul.text("ui-places-hide")
+            iconName: column.named ? "sidebar-collapse-left" : "sidebar-expand-left"
+            name: column.sioul.text(column.named ? "ui-places-names-hide" : "ui-places-names-show")
             keys: "F9"
             named: column.named
             sayTip: column.window.sayRailTip
-            onChosen: column.window.togglePlaces(hidePlaces.visualFocus)
+            onChosen: column.window.togglePlaces(namesToggle.visualFocus)
         }
     }
 }

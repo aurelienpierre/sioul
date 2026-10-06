@@ -130,16 +130,26 @@ pub fn publish(folder: &Path, key: &[u8; 32], entry: &Entry) -> Result<(), Strin
 /// does not (its seal not arrived, damaged, another key's, written by an
 /// older Sioul's sharing that knows no `working`): those are no entry, never
 /// one read as closed. Files of other names (a sync app's conflicted copies,
-/// half-written ones) are not read.
+/// half-written ones) are not read. Of an entry fetched from the server too
+/// (`remote::overlay`), the later of the two copies (`written`); the
+/// folder's on a tie.
 pub fn all(folder: &Path, key: &[u8; 32]) -> (Vec<Entry>, Vec<String>) {
     let (mut entries, mut unread) = (Vec::new(), Vec::new());
-    let Ok(listing) = std::fs::read_dir(folder_of(folder)) else { return (entries, unread) };
-    for path in listing.filter_map(Result::ok).map(|e| e.path()) {
-        let Some(id) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".device")).map(str::to_string) else { continue };
-        if id.len() != 36 || uuid::Uuid::parse_str(&id).is_err() {
-            continue;
-        }
-        let entry = crate::share::read_small(&path).and_then(|text| crate::share::open(key, &bound(&id), text.trim())).and_then(|plain| serde_json::from_slice::<Entry>(&plain).ok()).filter(|entry| entry.id == id);
+    let fetched = crate::remote::overlay(folder);
+    let ids = |dir: &Path| -> Vec<String> {
+        let listing = std::fs::read_dir(folder_of(dir)).into_iter().flatten().filter_map(Result::ok);
+        listing.filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_suffix(".device")).map(str::to_string)).filter(|id| id.len() == 36 && uuid::Uuid::parse_str(id).is_ok()).collect()
+    };
+    let mut all: std::collections::BTreeSet<String> = ids(folder).into_iter().collect();
+    if let Some(fetched) = &fetched {
+        all.extend(ids(fetched));
+    }
+    let read = |dir: &Path, id: &str| crate::share::read_small(&file_of(dir, id)).and_then(|text| crate::share::open(key, &bound(id), text.trim())).and_then(|plain| serde_json::from_slice::<Entry>(&plain).ok()).filter(|entry| entry.id == id);
+    for id in all {
+        let entry = match (read(folder, &id), fetched.as_deref().and_then(|f| read(f, &id))) {
+            (Some(here), Some(fetched)) => Some(if written(&fetched) > written(&here) { fetched } else { here }),
+            (here, fetched) => here.or(fetched),
+        };
         match entry {
             Some(entry) => entries.push(entry),
             None => unread.push(id),
@@ -148,6 +158,13 @@ pub fn all(folder: &Path, key: &[u8; 32]) -> (Vec<Entry>, Vec<String>) {
     entries.sort_by(|a, b| a.id.cmp(&b.id));
     unread.sort();
     (entries, unread)
+}
+
+/// When an entry was written, as far as its times tell: each writing sets
+/// one of them to its device's clock then (a start, a close, an exchange), and
+/// none goes back.
+fn written(entry: &Entry) -> (i64, i64, i64, i64, i64) {
+    (entry.started.max(entry.closed).max(entry.imported), entry.closed, entry.started, entry.imported, entry.exported)
 }
 
 /// Where this device keeps its own entry, never shared.

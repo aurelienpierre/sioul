@@ -34,7 +34,8 @@ Au-dessus du message, toujours au même endroit :
 
 - **Répondre**, **Répondre à tous** (seulement quand il y a d’autres personnes à qui répondre), **Transférer** ;
 - **Ajouter ▾** (une tâche, un événement, une note, une réponse, l’expéditeur dans vos contacts) et **Lier à…** (tout le reste : une tâche, une note, un projet) ;
-- **Archiver**, **Supprimer**, **Indésirable**.
+- **Archiver**, **Supprimer**, **Indésirable** ;
+- **Se désabonner**, sur une lettre d’information ou le message d’une liste qui dit comment la quitter ([plus bas](#unsubscribing)).
 
 Archiver, supprimer et mettre aux indésirables se font tout de suite, avec **Annuler** dans la ligne d’état pendant dix secondes ; le serveur n’est prévenu qu’après. Il n’y a pas de « Voulez-vous vraiment ? ». Dans la corbeille, **Supprimer définitivement** supprime pour de bon, avec les mêmes dix secondes.
 
@@ -47,6 +48,20 @@ Ouvrir un message le marque comme lu, comme le fait tout logiciel de courrier.
 - ++ctrl++ + clic ajoute un message à la sélection ou l’en retire ; ++"Maj"++ + clic prend tout depuis le dernier cliqué ; ++ctrl+a++ prend tout ; ++"Échap"++, rien.
 - Une barre les marque alors comme lus, les archive, les supprime ou les déplace, sous un seul **Annuler**.
 - Les messages peuvent être glissés sur n’importe quel dossier de n’importe quelle adresse. Vers une autre adresse, un message n’est retiré de la première qu’une fois que le second serveur l’a reçu.
+
+### Se désabonner {#unsubscribing}
+
+Une lettre d’information ou le message d’une liste qui dit comment la quitter a **Se désabonner** au-dessus. Un clic, et dix secondes plus tard Sioul fait ce que la liste demande :
+
+- il **prévient le serveur de la liste**, quand elle le propose et que sa signature prouve que la demande vient bien d’elle : le « en un clic » que proposent la plupart des lettres d’information ;
+- sinon il **envoie à la liste le message qu’elle demande**, depuis l’adresse où la lettre est arrivée ; le message va dans Envoyés comme les autres ;
+- sinon, quand seule une page web peut le faire, il **ouvre cette page** dans votre navigateur, tout de suite : vous terminez là-bas.
+
+**Annuler** reste dans la ligne d’état pendant ces dix secondes. Ensuite la ligne dit « Désabonnement de Lettres & Pixels fait. », ou pourquoi pas. Le message lui-même reste où il est.
+
+Le bouton reste en retrait, estompé, sur un message falsifié, mis de côté comme indésirable, hostile, dans les indésirables, ou d’un expéditeur que Sioul ne peut pas vérifier : y répondre dirait à son expéditeur que votre adresse est lue, ou toucherait quelqu’un d’autre. Son info-bulle, ou un toucher sur un téléphone, dit pourquoi.
+
+Une liste quittée montre **Abonnement arrêté**, et depuis quand. Si ses messages continuent d’arriver, bloquez l’expéditeur : ⋮ ▸ **Son courrier** ▸ **Bloqué**. Les listes quittées sont dans le ⚙ de la page Courrier, sous **Listes quittées**, sur cet appareil.
 
 ### Les invitations {#invitations}
 
@@ -89,6 +104,8 @@ Le ⚙ en haut de la page Courrier :
 
 - **Par conversation** : les messages groupés avec leurs réponses.
 - **Relever toutes les** : la fréquence à laquelle les dossiers autres que la boîte de réception sont relevés. La boîte de réception arrive dès que le serveur signale du nouveau.
+- **Police**, **Taille**, **Interligne** : la lecture des messages. Les trois mêmes sont dans le ⚙ du Porche, et derrière **Aa** dans les Notes.
+- **Listes quittées** : chaque liste quittée depuis un message, quand et comment, dès qu’il y en a une.
 
 Les réglages propres à chaque adresse (à quoi elle sert, jusqu’où elle remonte, à quel rythme elle est relevée, sa protection) sont sur sa fiche dans [Comptes](accounts.md#your-accounts).
 

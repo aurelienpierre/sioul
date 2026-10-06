@@ -78,6 +78,7 @@ pub mod timelog;
 pub mod timereport;
 pub mod today;
 pub mod trust;
+pub mod unsubscribe;
 pub mod vdir;
 pub mod view;
 pub mod weather;

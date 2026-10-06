@@ -17,15 +17,15 @@ Sioul parle anglais ou français, selon la langue de votre système, sauf si vou
 **À gauche**, une étroite colonne d’icônes, de haut en bas :
 
 - **Nouveau ▾**, le **+**, crée une chose de n’importe quel type : un message, une tâche, un événement, un contact, une note, un projet, du temps passé, un mouvement de budget, un papier ; et **Où j’en suis…** laisse une ligne sur où vous en êtes ([Les tâches](tasks.md#starting-and-stopping)).
-- **Les lieux**, une icône chacun : Porche (une corbeille à courrier), Tâches (une liste à cocher), Courrier (une enveloppe), Sites (un globe), Agenda (un calendrier), Contacts (une personne et des lignes), Notes (un bloc-notes), Projets (un dossier), Temps (une horloge), Budgets (un portefeuille), Papiers (une carte), Santé (un cœur). Le lieu affiché est marqué d’une teinte douce et d’une courte barre.
-- **Trois icônes**, à part en bas : Comptes (une personne), Paramètres (des curseurs), et Tout actualiser, qui relève à nouveau, d’un coup, le courrier, l’agenda, les tâches et les contacts.
-- **À son pied**, au niveau de la ligne d’état, le bouton qui masque la colonne (++f9++) : les pages prennent toute la largeur, et le même bouton, au début de la ligne d’état, la fait revenir. Chaque appareil garde son propre choix, et les touches continuent de fonctionner.
+- **Les lieux**, une icône chacun : Porche (une corbeille à courrier), Tâches (une liste à cocher), Courrier (une enveloppe), Sites (un globe et ses méridiens), Agenda (un calendrier), Contacts (une personne et des lignes), Notes (un bloc-notes), Projets (un dossier), Temps (une horloge), Budgets (un portefeuille), Papiers (une carte), Santé (un cœur). Le lieu affiché est marqué d’une teinte douce et d’une courte barre.
+- **À part en bas** : **Clore la journée de travail** (une liste cochée) et, dessous, **Clore toute la journée** (une lune), à toute heure ([la fin de la journée](tasks.md#the-end-of-the-day)) ; puis trois icônes, côte à côte quand les noms s’affichent : Comptes (une personne), Paramètres (des curseurs), et Tout actualiser, qui relève à nouveau, d’un coup, le courrier, l’agenda, les tâches et les contacts.
+- **À son pied**, au niveau de la ligne d’état, le bouton qui affiche le nom des lieux à côté de leur icône, dans une colonne plus large, ou ne garde que leurs icônes (++f9++) : le même choix que **Paramètres ▸ Affichage ▸ Afficher le nom des lieux à côté de leur icône**.
 
-Le nom de chaque icône, avec sa touche, s’affiche quand le pointeur s’y arrête, quand le clavier l’atteint, ou par un appui long sur un écran tactile. Pour voir les noms à côté des icônes en permanence, dans une colonne plus large : **Paramètres ▸ Affichage ▸ Afficher le nom des lieux à côté de leur icône**.
+Le nom de chaque icône, avec sa touche, s’affiche quand le pointeur s’y arrête, quand le clavier l’atteint, ou par un appui long sur un écran tactile.
 
 **En bas**, la ligne d’état dit en une phrase ce qui s’est passé en dernier. Après chaque déplacement, suppression ou envoi, « Annuler » y attend dix secondes. Pendant le calme, elle dit quand le travail revient ; une fois les heures du jour finies, elle propose de clore la journée de travail, et le soir la journée. À son extrémité droite se trouvent les touches, le bouton des sons ([des sons pour se concentrer ou se reposer](tasks.md#sounds)) et la météo d’un lieu que vous choisissez.
 
-**Sur chaque page**, le ⚙ au bout de la première ligne contient les réglages propres à cette page, chacun avec une phrase sur ce qu’il change ; ils sont enregistrés aussitôt. Là où l’on lit du texte long (un message, une note), « Aa » règle la police, sa taille et l’interligne. Un clic droit, la touche Menu, ou un appui long sur un écran tactile, sur n’importe quel élément donne ce qui n’est pas en vue.
+**Sur chaque page**, le ⚙ au bout de la première ligne contient les réglages propres à cette page, chacun avec une phrase sur ce qu’il change ; ils sont enregistrés aussitôt. La lecture du texte long (la police, sa taille et l’interligne) est dans le ⚙ du Courrier et du Porche, et derrière « Aa » dans les Notes. Un clic droit, la touche Menu, ou un appui long sur un écran tactile, sur n’importe quel élément donne ce qui n’est pas en vue.
 
 ### Touches {#keys}
 
@@ -37,7 +37,9 @@ Tout se fait au clavier : Tab pour se déplacer, Entrée pour choisir, Échap 
 | ++ctrl+n++ | Nouveau ▾ |
 | ++ctrl+z++ | Annuler, tant que c’est proposé |
 | ++f5++ | Tout actualiser |
-| ++f9++ | Masquer les lieux, ou les faire revenir ; dans une fenêtre étroite, les sortir ou les ranger |
+| ++f9++ | Le nom des lieux à côté de leur icône, ou leurs icônes seules ; dans une fenêtre étroite, sortir les lieux ou les ranger |
+| ++f11++ | Plein écran, ou en sortir |
+| ++ctrl+q++ | Quitter Sioul (fermer la fenêtre la masque dans la zone de notification) |
 | ++ctrl+enter++ | Envoyer, dans la fenêtre de rédaction |
 
 ### Sur un téléphone {#on-a-phone}
@@ -126,6 +128,8 @@ Les messageries sécurisées de votre banque, de l’Assurance maladie, des imp�
 Sur la page **Sites**, **Sites courants ▾** en liste environ 400, par pays, ou **Épingler un site** en trouve un par un mot (« banque », « ameli »), ou prend n’importe quelle adresse à la main. Vous vous connectez une fois ; le site garde votre session. Voir [Les sites](sites.md).
 
 ## Garder Sioul ouvert {#keep-sioul-open}
+
+Sur un ordinateur, Sioul s’ouvre agrandi ; ++f11++ le met en plein écran, et l’en sort. Son icône dans la zone de notification affiche ou masque la fenêtre : fermer la fenêtre la masque là, et Sioul continue derrière, courrier, rappels et médicaments compris. **Quitter Sioul** est dans le menu de l’icône, ou ++ctrl+q++. Sans zone de notification (GNOME sans son extension), fermer la fenêtre quitte Sioul.
 
 Tant que sa fenêtre est ouverte, Sioul garde chaque boîte de réception ouverte sur le serveur : un code ou un lien de connexion que vous avez demandé à un site vous parvient en quelques secondes, en une seule notification discrète, à n’importe quelle heure.
 

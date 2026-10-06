@@ -1,0 +1,21 @@
+Authentication-Results: mx.example.net; dkim=pass header.d=readwell.example header.s=mail header.b=cXV4cXV4;
+	spf=pass smtp.mailfrom=mg.readwell.example; dmarc=pass header.from=readwell.example
+From: Readwell <noreply@readwell.example>
+To: you@example.org
+Subject: Sign in to Readwell
+Date: Fri, 02 Oct 2026 09:20:00 +0200
+Message-ID: <magic-3@readwell.example>
+List-Id: Readwell accounts <accounts.readwell.example>
+List-Unsubscribe: <https://readwell.example/settings/email>
+X-Mailgun-Tag: sign-in
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Hi,
+
+Click the link below to sign in to your Readwell account.
+
+Sign in to Readwell <https://link.readwell.example/ls/click?upn=u001.c2lnbi1pbi10b2tlbi0wMDAx-2BZm9vYmFy&token=77158249>
+
+This link will expire in 15 minutes and can only be used once. If you didn't request this, you can safely ignore this email.

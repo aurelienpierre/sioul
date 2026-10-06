@@ -124,10 +124,13 @@ fn main() {
         "qml/DndSetup.qml",
     ];
     let desktop_only = ["qml/SitesPage.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml"];
+    // The system tray (qml-desktop/Tray.qml), on desktops only, in a folder of its own: the
+    // phone's build reads qml/ for the modules to carry (android/CMakeLists.txt,
+    // QT_QML_ROOT_PATH), and Qt.labs.platform would bring Qt Widgets along.
     let pages: Vec<&str> = if android {
         pages.into_iter().filter(|page| !desktop_only.contains(page)).chain(["qml/android/SitesPage.qml", "qml/android/PdfView.qml"]).collect()
     } else {
-        pages.to_vec()
+        pages.into_iter().chain(["qml-desktop/Tray.qml"]).collect()
     };
     // Line spacing for editable text, which Qt Quick does not offer; PDFs written; the window's
     // icon; text and images made ready at the start.

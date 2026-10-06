@@ -252,13 +252,17 @@ Ce qui n’a pas été fait n’est pas compté. Le jour travaillé suivant s’
 
 **À la fin de vos heures**, la ligne d’état propose **Clore la journée de travail**, et une notification discrète dit « Les heures de travail sont finies », une fois, jamais pendant le sommeil ni pendant une réunion. Une journée finie sans le bouton se clôt comme d’habitude ; sa revue reste proposée jusqu’au soir.
 
-**Avant de dormir**, **Clore la journée** revient sur toute la journée : travail, démarches et loisirs ([Santé](health.md#before-sleep)).
+**À toute heure**, deux boutons en bas des lieux closent la journée de travail, **Clore la journée de travail** (une liste cochée), et toute la journée, **Clore toute la journée** (une lune), l’un sous l’autre. La ligne d’état ne propose chacun qu’à son heure ; ces boutons sont toujours là, sur un téléphone dans le tiroir des lieux.
+
+**Avant de dormir**, **Clore toute la journée** revient sur toute la journée : travail, démarches et loisirs ([Santé](health.md#before-sleep)).
 
 Vos réponses restent sur vos appareils, dans des fichiers lisibles (`~/.local/share/sioul/reviews/`), et voyagent avec le temps partagé. Le mélange est ce dont le plan apprend : quelles journées se sont bien passées, lesquelles ont été trop pleines. Rien n’est montré comme un score.
 
 ## Routines {#routines}
 
-**Routines**, en haut de la page : des étapes jouées une à une, la suivante dite avant qu’elle vienne. Vous écrivez une étape par ligne, avec ses minutes : « 10 min Ouvrir le Porche », « Faire un thé 5 ».
+Une **routine** est une suite que vous refaites souvent, dans le même ordre : se préparer à sortir, commencer la journée de travail, vos heures de démarches. Vous en écrivez les étapes une fois, chacune avec ses minutes ; Sioul les joue ensuite une à une sur un minuteur et dit l’étape suivante avant qu’elle vienne : l’ordre et l’heure ne sont plus à garder en tête. Des adultes autistes qui ont du mal à démarrer et à changer d’activité citent les routines parmi ce qui aide, « pour ne pas avoir à y penser autant » (Buckle et al. 2021). Une routine n’est pas une tâche : rien n’est planifié, compté ni en retard, et vous pouvez vous arrêter à n’importe quelle étape.
+
+**Routines**, en haut de la page des tâches, les liste ; une nouvelle s’écrit une étape par ligne, avec ses minutes : « 10 min Ouvrir le Porche », « Faire un thé 5 ».
 
 Une routine se joue dans une petite fenêtre au premier plan : l’étape, son temps qui se vide d’une couleur neutre, « Ensuite : … », et la routine en points. **Fait**, **Ouvrir** (ce que l’étape ouvre), **+5 min**, **Passer**, **Pause**, **Arrêter**. Rien de tout cela n’est compté.
 

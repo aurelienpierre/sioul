@@ -47,9 +47,10 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: 8
 
+        // Listed: what a routine is, and what it is for; written: how its steps are written.
         Label {
             Layout.fillWidth: true
-            text: routines.sioul.text("routines-help")
+            text: routines.sioul.text(routines.editing === null ? "routines-what" : "routines-help")
             wrapMode: Text.Wrap
             font.pixelSize: 13
             color: routines.theme.muted

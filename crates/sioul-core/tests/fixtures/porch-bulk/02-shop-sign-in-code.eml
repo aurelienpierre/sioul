@@ -1,0 +1,20 @@
+Authentication-Results: mx.example.net; dkim=pass header.d=shop.example header.s=k1 header.b=YWJjZGVm;
+	spf=pass smtp.mailfrom=bounces.shop.example; dmarc=pass header.from=shop.example
+From: Shop Example <no-reply@shop.example>
+To: you@example.org
+Subject: Sign-in attempt
+Date: Fri, 02 Oct 2026 09:15:00 +0200
+Message-ID: <signin-2@shop.example>
+List-Unsubscribe: <https://email.shop.example/unsub/9f8e7d6c5b4a>
+List-Unsubscribe-Post: List-Unsubscribe=One-Click
+Feedback-ID: 1.eu-west-1.abcdefgh:AmazonSES
+X-SES-Outgoing: 2026.10.02-192.0.2.15
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Someone is trying to sign in to your Shop Example account.
+
+To finish signing in, enter this code: 551 204
+
+It expires in 10 minutes. If this wasn't you, change your password.

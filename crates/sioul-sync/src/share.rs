@@ -1445,16 +1445,49 @@ fn round_file(folder: &Path, computer: &str, round: u32) -> PathBuf {
 }
 
 /// Every computer sharing through the folder: those that wrote records, and
-/// those that only read so far (their notes).
+/// those that only read so far (their notes); in the copy fetched from the
+/// server too (`remote::overlay`).
 fn computers(folder: &Path) -> BTreeSet<String> {
-    let mut out: BTreeSet<String> = rounds(folder).into_keys().collect();
-    for entry in std::fs::read_dir(folder).into_iter().flatten().filter_map(Result::ok) {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if let Some(id) = name.strip_suffix(".toml").filter(|id| id.len() == 36 && uuid::Uuid::parse_str(id).is_ok()) {
-            out.insert(id.to_string());
+    let mut out: BTreeSet<String> = rounds_with(folder).into_keys().collect();
+    for dir in std::iter::once(folder.to_path_buf()).chain(crate::remote::overlay(folder)) {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if let Some(id) = name.strip_suffix(".toml").filter(|id| id.len() == 36 && uuid::Uuid::parse_str(id).is_ok()) {
+                out.insert(id.to_string());
+            }
         }
     }
     out
+}
+
+/// The computers' files in the folder and in the copy fetched from the
+/// server (`remote::overlay`): computer → its rounds, those of either.
+fn rounds_with(folder: &Path) -> BTreeMap<String, Vec<u32>> {
+    let mut all = rounds(folder);
+    if let Some(fetched) = crate::remote::overlay(folder) {
+        for (computer, theirs) in rounds(&fetched) {
+            let list = all.entry(computer).or_default();
+            list.extend(theirs);
+            list.sort_unstable();
+            list.dedup();
+        }
+    }
+    all
+}
+
+/// Another computer's round, from the longer of its two copies: the folder's,
+/// and the one fetched from the server (`remote::overlay`). Records only
+/// grow: the longer holds all the shorter does, and where each line starts
+/// is the same in both.
+fn open_round(folder: &Path, computer: &str, round: u32) -> std::io::Result<std::fs::File> {
+    let here = round_file(folder, computer, round);
+    let Some(fetched) = crate::remote::overlay(folder).map(|f| round_file(&f, computer, round)) else { return std::fs::File::open(here) };
+    let size = |path: &Path| std::fs::metadata(path).map(|m| m.len()).ok();
+    match (size(&here), size(&fetched)) {
+        (Some(a), Some(b)) if b > a => std::fs::File::open(fetched),
+        (None, Some(_)) => std::fs::File::open(fetched),
+        _ => std::fs::File::open(here),
+    }
 }
 
 /// The computers' files in the folder: computer → its rounds.
@@ -1547,6 +1580,10 @@ fn keep_copies(stores: &[Store], memory: &Path, today: &str) {
 pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outcome, String> {
     std::fs::create_dir_all(sharing.folder).map_err(|e| format!("{}: {e}", sharing.folder.display()))?;
     let Some(_running) = exchange_lock(sharing.memory, !sharing.files)? else { return Ok(Outcome { problems: vec!["share-busy".into()], ..Outcome::default() }) };
+    // What was fetched from the server too, read beside the folder, the newer
+    // copy of each other device's file (`remote`); none until a server's
+    // folder is confirmed to be this one.
+    crate::remote::attach(sharing.folder, sharing.memory);
     let mut memory = Memory::load_all(sharing.memory, sharing.computer);
     let mut outcome = Outcome::default();
     // Notes and papers only when asked (not for a dose's alarm, a button
@@ -1746,7 +1783,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     for (key, (value, _, _)) in winners.iter().filter(|(key, _)| key.starts_with(FILES)) {
         named.entry(key.clone()).or_default().extend(value.as_deref().map(|v| value_hash(key, v)).into_iter().chain(bases.get(key).cloned()).filter(|h| !h.is_empty()));
     }
-    let all = rounds(sharing.folder);
+    let all = rounds_with(sharing.folder);
     // Rebuilding a file: this computer's own records are read again too, for its entries only.
     let rebuilding = std::mem::take(&mut memory.rebuild);
     let rebuilt = |file: &str| rebuilding.contains("*") || rebuilding.contains(file) || rebuilding.iter().any(|r| r.ends_with('/') && file.starts_with(r.as_str()));
@@ -1759,7 +1796,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         }
         'rounds: for &round in their_rounds.iter().filter(|r| **r >= start) {
             let mut offset = if round == start { skip } else { 0 };
-            let Ok(mut file) = std::fs::File::open(round_file(sharing.folder, computer, round)) else {
+            let opened = if own { std::fs::File::open(round_file(sharing.folder, computer, round)) } else { open_round(sharing.folder, computer, round) };
+            let Ok(mut file) = opened else {
                 if !own {
                     memory.read.insert(computer.clone(), (round, offset));
                 }
@@ -2305,14 +2343,15 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
     if let Some(wanted) = &wanted {
         // Found damaged before, and the same copy still: not opened again.
         let blob = crate::blobs::name(sharing.key, &wanted.h);
-        let copy = std::fs::metadata(crate::blobs::path(sharing.folder, sharing.key, &wanted.h)).ok().map(|m| crate::blobs::fingerprint(&m));
+        let source = blob_folder(sharing.folder, sharing.key, &wanted.h);
+        let copy = std::fs::metadata(crate::blobs::path(&source, sharing.key, &wanted.h)).ok().map(|m| crate::blobs::fingerprint(&m));
         if copy.is_some() && damaged.get(&blob) == copy.as_ref() {
             return Err(Fault::Broken);
         }
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(local)?;
         }
-        match crate::blobs::get(sharing.folder, sharing.key, &wanted.h, &temporary) {
+        match crate::blobs::get(&source, sharing.key, &wanted.h, &temporary) {
             Err(Fault::Broken) => {
                 damaged.extend(copy.map(|copy| (blob, copy)));
                 return Err(Fault::Broken);
@@ -2388,6 +2427,16 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
         Some((stat, copy, kept)) => Received::Written { stat, copy: copy.map(in_store), kept },
         None => Received::Later,
     })
+}
+
+/// Where a sealed file is opened from: the sharing folder, else the copy
+/// fetched from the server (`remote::overlay`) when only it holds that file.
+fn blob_folder(folder: &Path, key: &[u8; 32], hash: &str) -> PathBuf {
+    let there = |dir: &Path| std::fs::metadata(crate::blobs::path(dir, key, hash)).is_ok_and(|m| m.len() > 0);
+    match crate::remote::overlay(folder) {
+        Some(fetched) if !there(folder) && there(&fetched) => fetched,
+        _ => folder.to_path_buf(),
+    }
 }
 
 /// The name of the copy kept beside a file two devices changed, the same on
@@ -2551,7 +2600,7 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
         crate::history::Kept::Copy(version) => std::fs::copy(&version, &temporary).map(|_| ()).map_err(fail),
         crate::history::Kept::Sealed { hash, .. } => {
             let (folder, key) = vault.ok_or_else(|| format!("{file}: kept in the sharing folder, which is not set here"))?;
-            crate::blobs::get(folder, key, &hash, &temporary).map_err(|fault| match fault {
+            crate::blobs::get(&blob_folder(folder, key, &hash), key, &hash, &temporary).map_err(|fault| match fault {
                 crate::blobs::Fault::Missing => format!("share-missing:{file}"),
                 crate::blobs::Fault::Broken => format!("share-damaged:{file}"),
                 crate::blobs::Fault::Room => format!("share-no-room:{file}"),
@@ -2807,7 +2856,7 @@ fn write_seen(sharing: &Sharing, memory: &Memory, all: &BTreeMap<String, Vec<u32
         read: memory.read.iter().filter(|(c, _)| all.contains_key(*c)).map(|(c, (round, _))| (c.clone(), *round)).collect(),
         pad: String::new(),
     };
-    if read_seen(sharing.folder, sharing.computer).is_some_and(|old| old.round == seen.round && old.read == seen.read && seen.at - old.at < 15 * 60) {
+    if read_seen_in(sharing.folder, sharing.computer).is_some_and(|old| old.round == seen.round && old.read == seen.read && seen.at - old.at < 15 * 60) {
         return;
     }
     let path = seen_path(sharing.folder, sharing.computer);
@@ -2818,8 +2867,18 @@ fn write_seen(sharing: &Sharing, memory: &Memory, all: &BTreeMap<String, Vec<u32
     }
 }
 
-fn read_seen(folder: &Path, computer: &str) -> Option<Seen> {
+fn read_seen_in(folder: &Path, computer: &str) -> Option<Seen> {
     read_small(&seen_path(folder, computer)).and_then(|t| toml::from_str(&t).ok())
+}
+
+/// Another computer's notes, the later of the folder's and the copy fetched
+/// from the server (`remote::overlay`); the folder's on a tie.
+fn read_seen(folder: &Path, computer: &str) -> Option<Seen> {
+    let here = read_seen_in(folder, computer);
+    match (here, crate::remote::overlay(folder).and_then(|fetched| read_seen_in(&fetched, computer))) {
+        (Some(here), Some(fetched)) => Some(if fetched.at > here.at { fetched } else { here }),
+        (here, fetched) => here.or(fetched),
+    }
 }
 
 /// This computer's old files, once every other computer heard lately has read past them.
