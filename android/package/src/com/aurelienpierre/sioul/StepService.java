@@ -49,6 +49,9 @@ import java.util.Locale;
  *   sync app brings a step three seconds later, without waiting for the alarm.
  * - While Sioul's window is on the screen, it exchanges by itself: the steps
  *   wait.
+ * - While this phone screens calls (Calls.java), its notification offers "Let
+ *   every call through", for an hour or until turned off, and "Screen calls
+ *   again"; each step keeps the calls' table in step too.
  *
  * Rust's questions come through call(verb, json) (android/main.cpp), also
  * from Sioul's own process: starting and stopping the service, the stars of
@@ -59,6 +62,8 @@ public final class StepService extends Service
 {
     static final String TAG = DoseAlarms.TAG;
     static final String STEP = "com.aurelienpierre.sioul.action.STEP";
+    /** "Let every call through" pressed on the notification (StepReceiver): extras "on", "minutes". */
+    static final String CALLS = "com.aurelienpierre.sioul.action.CALLS";
     private static final String CHANNEL = "steps";
     private static final int NOTE = 0x5137;
     private static final String KEPT = "sioul-steps";
@@ -80,6 +85,12 @@ public final class StepService extends Service
     private String line = "";
     private String title = "";
     private String channelName = "";
+    /**
+     * The calls screened, as Rust words them at each step: {screening, through,
+     * line, hour, off, again} (crates/sioul-app/src/calls.rs, `step`);
+     * empty while this phone does not screen calls.
+     */
+    private String calls = "";
     /** A step asked while one runs: the phone stays awake for it. */
     private volatile boolean posted;
 
@@ -124,7 +135,8 @@ public final class StepService extends Service
             case "contacts-allowed":
                 return DndContacts.allowed(context) ? "true" : "false";
             default:
-                return null;
+                // The calls screened (Calls.java): the role, its pages, the phone app's dial pad.
+                return verb.startsWith("calls-") ? Calls.call(context, verb, asked) : null;
             }
         } catch (JSONException | RuntimeException e) {
             Log.e(TAG, "Steps: " + verb + " failed: " + e);
@@ -335,9 +347,56 @@ public final class StepService extends Service
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .setContentIntent(open(this));
-        if (!line.isEmpty())
-            note.setContentText(line);
+        // The calls' line while every call rings ("Every call rings until 15:30."), after do-not-disturb's.
+        JSONObject words = callsWords();
+        String through = words == null ? "" : words.optString("line", "");
+        String text = line.isEmpty() ? through : through.isEmpty() ? line : line + " " + through;
+        if (!text.isEmpty())
+            note.setContentText(text);
+        // "Let every call through" while this phone screens calls: for an hour or until
+        // turned off; once on, "Screen calls again" (docs/android.md, "Calls").
+        if (words != null && words.optBoolean("screening")) {
+            if (words.optBoolean("through")) {
+                note.addAction(action(this, 0x5142, words.optString("again", ""), false, 0));
+            } else {
+                note.addAction(action(this, 0x5140, words.optString("hour", ""), true, 60));
+                note.addAction(action(this, 0x5141, words.optString("off", ""), true, 0));
+            }
+        }
         return note.build();
+    }
+
+    private JSONObject callsWords()
+    {
+        if (calls.isEmpty())
+            return null;
+        try {
+            return new JSONObject(calls);
+        } catch (JSONException e) {
+            return null;
+        }
+    }
+
+    /** One of the notification's buttons for the calls: on for `minutes` (0: until turned off), or off. */
+    private static Notification.Action action(Context context, int code, String title, boolean on, int minutes)
+    {
+        Intent press = new Intent(context, StepReceiver.class).setAction(CALLS).putExtra("on", on).putExtra("minutes", minutes);
+        PendingIntent pending = PendingIntent.getBroadcast(context, code, press, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        return new Notification.Action.Builder(null, title, pending).build();
+    }
+
+    /**
+     * "Let every call through" pressed on the notification (StepReceiver, in
+     * this process): kept for the screening at once (Calls.press), then a
+     * step, in which Rust shares it with your other devices and words the
+     * notification again.
+     */
+    static void callsPressed(Context context, boolean on, int minutes)
+    {
+        Calls.press(context, on, minutes);
+        StepService service = running;
+        if (service != null)
+            service.step("calls", 0);
     }
 
     /** A tap: Sioul, as by its icon. */
@@ -384,10 +443,13 @@ public final class StepService extends Service
             String said = answer.optString("line", "");
             String words = answer.optString("title", title);
             String channel = answer.optString("channel", channelName);
-            if (!said.equals(line) || !words.equals(title) || !channel.equals(channelName)) {
+            JSONObject callsSaid = answer.optJSONObject("calls");
+            String callsNow = callsSaid == null ? "" : callsSaid.toString();
+            if (!said.equals(line) || !words.equals(title) || !channel.equals(channelName) || !callsNow.equals(calls)) {
                 line = said;
                 title = words;
                 channelName = channel;
+                calls = callsNow;
                 refresh();
             }
         } catch (Throwable e) {

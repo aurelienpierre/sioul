@@ -2,12 +2,12 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Do-not-disturb's switch, in the status line beside the sounds
-// (docs/do-not-disturb.md): one click turns it on until you turn it off, on
-// every device, or off; a right click or a long press says until when, and
-// where it holds. Its words say where it holds ("on every device", "here
-// only") and why; no colour but the accent while it is on. Apart from the
-// pauses' buttons, at the line's end, so that the two are never taken for
-// one another.
+// (docs/do-not-disturb.md), a button of the line (LineButton.qml): one click
+// turns it on until you turn it off, on every device, or off; a right click
+// or a long press says until when, and where it holds. Its words say where it
+// holds ("on every device", "here only") and why; no colour but the accent
+// while it is on. Apart from the pauses' buttons, at the line's end, so that
+// the two are never taken for one another.
 
 pragma ComponentBehavior: Bound
 
@@ -15,32 +15,29 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-ToolButton {
+LineButton {
     id: applet
 
     required property var sioul
-    required property var theme
     // The status line's moment (main.qml), its `dnd` part (everywhere.rs's `moment`).
     required property var moment
-    property bool compact: false
     readonly property var dnd: applet.moment && applet.moment.dnd ? applet.moment.dnd : ({ on: false, button: true, line: "", why_line: "", details: [], manual: false, end_time: "" })
     readonly property bool on: applet.dnd.on === true
 
     // The switch hidden in the settings shows only while something holds it on.
     visible: applet.dnd.button !== false || applet.on
-    implicitHeight: 28
     checkable: true
     checked: applet.on
+    switchedOn: applet.on
+    // A long press opens its menu.
+    tipOnHold: false
     icon.name: applet.on ? "notification-disabled" : "notification-inactive"
     display: applet.compact || !applet.on ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
     text: applet.on ? applet.dnd.line : applet.sioul.text("dnd-switch")
-    Accessible.name: applet.on ? applet.dnd.line : applet.sioul.text("dnd-switch")
-    Accessible.description: applet.tip()
-    ToolTip.visible: hovered && !(menuLoader.item !== null && menuLoader.item.opened)
-    ToolTip.text: applet.tip()
-    ToolTip.delay: 600
+    tip: applet.tipText()
+    menuOpen: menuLoader.item !== null && (menuLoader.item as SioulMenu).opened
 
-    function tip(): string {
+    function tipText(): string {
         if (!applet.on)
             return applet.sioul.text("dnd-switch-tip-off")
         return applet.sioul.textArgs("dnd-switch-tip-on", JSON.stringify({ line: applet.dnd.line, why: applet.dnd.why_line }))
@@ -53,7 +50,7 @@ ToolButton {
         menu.popup()
     }
 
-    onClicked: {
+    onChosen: {
         // On (from anything): off, on every device; off: on until turned off.
         applet.sioul.dndToggle(!applet.on, 0)
         applet.checked = Qt.binding(() => applet.on)
@@ -88,6 +85,8 @@ ToolButton {
 
         acceptedDevices: PointerDevice.TouchScreen
         onLongPressed: {
+            // Letting go then changes nothing.
+            applet.held = true
             const window = applet.Window.window
             if (window)
                 window.menuAt = hold.point.scenePosition

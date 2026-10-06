@@ -19,7 +19,7 @@ Each device keeps all of its data in its own files, and works without the others
 
 Sync apps carry files at their own pace, and Sioul cannot hurry most of them. A computer's Nextcloud client sends a change within seconds; a phone's app may wait for its next scan, half an hour or more, and can leave some files behind for longer: on 6 October 2026, Murena's eDrive left a computer's changes on the server for hours while it scanned every few minutes. Until a change arrives, the other device does not know it: a do-not-disturb switch, a dose marked taken, whether the computer is still open. A device that cannot know says so (doses: "check before taking it"); it never guesses.
 
-WebDAV is the one protocol for which Sioul takes matters into its own hands. When the shared folder sits on a Nextcloud server Sioul already has an account for (Murena's included), it also reads the other devices' files from the server itself, as a backup, and keeps whichever copy is newer: a phone then follows within about a minute, whatever its sync app does. It only reads; sending stays the sync app's work. With any other sync app (Syncthing, Dropbox, Google Drive…), changes arrive when that app brings them. That is why Nextcloud is the first choice: [where to get one](compatibility.md#where-to-get-a-nextcloud).
+WebDAV is the one protocol for which Sioul takes matters into its own hands. When the shared folder sits on a Nextcloud server Sioul already has an account for (Murena's included), it also reads the other devices' files from the server itself, as a backup, and keeps whichever copy is newer: a phone then follows within about a minute, whatever its sync app does. With Nextcloud, a sync app is even optional: Sioul can keep the folder in step itself, sending as well as fetching, so that a phone needs no other app ([setting it up](#setting-it-up)). With any other sync app (Syncthing, Dropbox, Google Drive…), changes arrive when that app brings them. That is why Nextcloud is the first choice: [where to get one](compatibility.md#where-to-get-a-nextcloud).
 
 ### When something goes wrong in the folder
 
@@ -53,7 +53,7 @@ Nothing that happens in the folder can take your data away from you. Sioul treat
 |---|---|
 | Mail, contacts, events and tasks, with what Sioul writes in your tasks (steps, waits, links, kinds) | by their own servers, as with any program |
 | Your notes folder: notes, projects, budgets, papers, scanned letters, pictures and memos | by the folder's own sync; or, when no sync carries it (a phone's), through the sharing, sealed, once you switch them on |
-| What Sioul keeps on this device alone: your settings and accounts (without passwords), who may write to you, the ties between things, time spent, drafts, invoices, medicines and doses, your watch's days, lists kept on this device only, where the Porch was closed | through the sharing, sealed |
+| What Sioul keeps on this device alone: your settings and accounts (without passwords), who may reach you, the ties between things, time spent, drafts, invoices, medicines and doses, your watch's days, lists kept on this device only, where the Porch was closed | through the sharing, sealed |
 
 **Never shared**: what each device chooses to share, where things are on each device (each keeps its own folders), how text reads on this screen, how pages are laid out, this device's browser notices, caches, and your own OpenPGP keys (copy them by hand). Passwords stay in each device's keyring.
 
@@ -70,6 +70,8 @@ On the first device:
 
 On the other device, choose the same folder (as your sync shows it there). Sioul sees that another device shares through it, and asks for the passphrase chosen there. Then **Share**.
 
+With a Nextcloud account in Sioul (Murena's included), a device needs no sync app at all: choose **Sioul keeps it in step with your Nextcloud itself**, the account, and the folder's place among your files there (`Documents/Sioul`), then the passphrase: typed twice when the folder is new there, once when another device shares through it already. Sioul keeps its own copy of the folder on that device and sends and fetches the files itself; devices that use a sync app on the same folder share with it as before ([why](#when-the-sync-app-is-late)).
+
 The first time, a copy of what this device had is kept aside, in case. Then the other device's settings come, and what this one alone had goes out: two devices set up apart end with the first one's settings and both of their lists.
 
 From then on, changes are exchanged each minute, and when you choose **Refresh everything** or **Exchange now**. The panel says through which folder you share, with how many other devices, and when they were last heard from. Under **Your other devices**, it lists each one: in use now, or closed at 22:14, and when it last shared; one you said is off, with **Count it again**; one silent for a week, with **Forget this device**. **Stop sharing** ends it; each device keeps its own files.
@@ -85,7 +87,7 @@ Under **What travels from this device**, each part has its switch, says what it 
 | Part | What it carries |
 |---|---|
 | Settings and accounts | your settings and accounts (never their passwords), the ties between things, where the Porch was closed, mail you said is no payment, do-not-disturb's switch |
-| Senders | who may write to you (known, blocked, safe, neutral, restricted), who may reach you during do-not-disturb, what the shield read, others' public keys |
+| Senders | who may reach you (the lists: known, blocked, safe, neutral, restricted, with addresses, numbers and cards), who may reach you during do-not-disturb, what the shield read, others' public keys |
 | Health | medicines, prescriptions and the doses taken |
 | Time | time noted, the session running, the day's choices, where you stopped, working late or done for the day |
 | Drafts and invoices | mail being written, invoices made |
@@ -127,6 +129,7 @@ The next exchange sends what was put back to your other devices, as a change you
 
 Sioul for Android shares the same way, through the folder your phone's sync app keeps on the phone: Murena's eDrive, Syncthing, FolderSync, Autosync, Nextcloud's own app, or any app that keeps a folder on the phone in step with your cloud (Nextcloud, Dropbox, Google Drive, OneDrive…). Sioul reads the folder; it asks only that new files, and files that grow, reach the other side some day.
 
+- **No sync app at all**: with your Nextcloud account in Sioul (Murena's included), choose **Sioul keeps it in step with your Nextcloud itself** when you start sharing on the phone: Sioul then sends and fetches the files itself, and the phone needs neither eDrive nor another sync app for the sharing ([setting it up](#setting-it-up)).
 - **Where**: some sync apps carry only a few folders. Murena's eDrive carries your cloud's **Documents** (with Pictures, Music…), not the rest of it: share through a folder inside Documents, such as `Documents/Sioul`. Sioul suggests one there when your synced folder has a Documents folder, and says so when the one chosen is outside it.
 - **On the phone**: Settings ▸ Your folder and sharing, **Allow access to files** (Android's switch), then **Choose…** the folder, your passphrase, **Share**.
 - **Accounts** come without their passwords: each asks for its own once, typed or [from Bitwarden](accounts.md#an-account-from-your-other-device).

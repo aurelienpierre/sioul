@@ -79,7 +79,7 @@ struct DuplicatesView {
 struct CleaningView {
     key: String,
     name: String,
-    /// "06 08 12 34 56, the same as +33 6 08 12 34 56", a line each.
+    /// "04 65 71 12 34, the same as +33 4 65 71 12 34", a line each.
     lines: Vec<String>,
 }
 
@@ -106,7 +106,7 @@ struct Side {
 struct PairView {
     first: Side,
     second: Side,
-    /// "Both have the same name, the number 06 08 12 34 56."
+    /// "Both have the same name, the number 04 65 71 12 34."
     share: String,
     /// The side whose name is offered first: the fuller name.
     lead: &'static str,
@@ -294,17 +294,17 @@ mod tests {
     #[test]
     fn the_view_says_it_in_words() {
         let tr = Translator::new("en");
-        let everyone = [contact("/a.vcf", "J. Dupont", &["06 08 12 34 56"]), contact("/b.vcf", "Jean Dupont", &["+33 6 08 12 34 56"])];
+        let everyone = [contact("/a.vcf", "J. Dupont", &["04 65 71 12 34"]), contact("/b.vcf", "Jean Dupont", &["+33 4 65 71 12 34"])];
         let france = phones::region_named("FR");
         let pairs = duplicates::pairs(&everyone, france, &NotTheSame::default());
-        let cleanings = vec![Cleaning { key: "/a.vcf".into(), name: "J. Dupont".into(), removed: vec![duplicates::Removed { kind: "phone".into(), value: "06 08 12 34 56".into(), kept: "+33 6 08 12 34 56".into() }] }];
+        let cleanings = vec![Cleaning { key: "/a.vcf".into(), name: "J. Dupont".into(), removed: vec![duplicates::Removed { kind: "phone".into(), value: "04 65 71 12 34".into(), kept: "+33 4 65 71 12 34".into() }] }];
         let done = vec![Done { id: "1-merge".into(), at: 1_791_000_000, kind: "merge".into(), names: vec!["Jean Dupont".into(), "J. Dupont".into()], changes: Vec::new() }];
         let shown = view(&everyone, &cleanings, &pairs, &done, france, &tr);
         assert_eq!(shown.region, "Country of numbers written without one: France. The settings (⚙) change it.");
         assert_eq!(shown.within, "One card holds a number or an address twice. Ticked, it keeps one of each:");
-        assert_eq!(shown.cleanings[0].lines, ["06 08 12 34 56, the same as +33 6 08 12 34 56"]);
+        assert_eq!(shown.cleanings[0].lines, ["04 65 71 12 34, the same as +33 4 65 71 12 34"]);
         assert_eq!(shown.between, "One pair of cards may be one person.");
-        assert_eq!(shown.pairs[0].share, "Both have the number 06 08 12 34 56.");
+        assert_eq!(shown.pairs[0].share, "Both have the number 04 65 71 12 34.");
         // The fuller name is offered first.
         assert_eq!((shown.pairs[0].first.name.as_str(), shown.pairs[0].lead), ("J. Dupont", "second"));
         assert_eq!((shown.pairs[0].first.book.as_str(), shown.done[0].said.as_str()), ("In Contacts", "Merged: Jean Dupont, J. Dupont"));

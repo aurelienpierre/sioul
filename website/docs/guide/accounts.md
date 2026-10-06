@@ -1,10 +1,10 @@
 ---
-description: The Accounts page in Sioul - your addresses and their services, adding an account, who may write to you and when, and your encryption keys.
+description: The Accounts page in Sioul - your addresses and their services, adding an account, who may reach you and when (mail, calls, other apps' messages), and your encryption keys.
 ---
 
 # Accounts
 
-**Accounts** is the person icon at the bottom of the left column. It has four tabs: **Your accounts**, **Add an account**, **Senders**, **Encryption**.
+**Accounts** is the person icon at the bottom of the left column. It has four tabs: **Your accounts**, **Add an account**, **Who may reach you**, **Encryption**.
 
 Sites (secure mailboxes, chats) are not accounts: they are made and changed on the [Sites](sites.md) page.
 
@@ -69,43 +69,59 @@ On a phone, **From this phone's accounts…**, above them, opens Android's own l
 
 Step by step: [First steps](first-steps.md#add-your-mail). Passwords go to your system's keyring, nowhere else.
 
-## Senders
+## Who may reach you {#senders}
 
 <figure markdown="span">
-  [![The Senders tab: a grid of boxes, the lists Safe, Neutral and Restricted down and the times Work, Admin, Leisure, Meals and Sleep across; then four lists, "Safe: any time", "Neutral: work, admin", "Restricted: work" and "Blocked: never", each with addresses and patterns such as *@example.org, and a field to add one; then your contacts' categories, each with a list or none.](../assets/screens/accounts-senders.png){ loading=lazy }](../assets/screens/accounts-senders.png "Open the picture at full size")
-  <figcaption>Who may write to you, and when.</figcaption>
+  [![The tab Who may reach you: three buttons, Mail, Calls and Messages, above a grid of boxes, the states down (Safe, Neutral, Restricted, Strangers, Hidden numbers for calls, and Blocked, never ticked) and the times across (Work, Admin, Leisure, Meals, Sleep, Pause), each row with Always and Never; then four lists with addresses, numbers and patterns such as *@example.org; then the people and the categories placed on a list.](../assets/screens/accounts-senders.png){ loading=lazy }](../assets/screens/accounts-senders.png "Open the picture at full size")
+  <figcaption>Who may reach you, and when.</figcaption>
 </figure>
 
-Who may write to you, and when, whatever the address they write to.
+Who may reach you, and when: by mail, by phone, and through other apps' messages, whatever the address or the number they use.
 
-**When each list's mail comes**: a grid of boxes, the lists down (Safe, Neutral, Restricted), the five times across (Work, Admin, Leisure, Meals, Sleep: see [Hours](hours.md)). Tick as many as you like on each row. Ticked, their mail comes then; unticked, it waits, never lost, for the next time ticked. On a narrow screen the grid scrolls sideways. As it comes:
+**Five states.** Everyone is in one of them:
 
-| | Work | Admin | Leisure | Meals | Sleep |
-|---|---|---|---|---|---|
-| Safe | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Neutral | ✓ | ✓ | | | |
-| Restricted | ✓ | | | | |
-
-The codes and links you just asked a site for, and what you send yourself, come at once whatever the grid says. While you sleep nothing notifies: mail ticked for sleep shows on the Porch if you open Sioul, without a sound or a notification.
-
-**Four lists**, each saying its times:
-
-- **Safe**: friends, chosen colleagues, chosen family. Their mail skips the screener, and comes to any of your addresses. Only you put someone there.
-- **Neutral**: everyone no list names, strangers included. Name someone here to keep them neutral inside a domain or a category on another list.
+- **Strangers**: in none of your address books, and on no list.
+- **Safe**: friends, chosen colleagues, chosen family. Only you put someone there.
+- **Neutral**: anyone in your address books, until you choose otherwise.
 - **Restricted**: those you would rather hear from only at chosen times: a demanding client, someone whose mail weighs.
-- **Blocked**: spam and harassment, set aside for good, never shown, never counted, never notified. Nothing is deleted.
+- **Blocked**: spam and harassment. Never, on any channel: their mail set aside for good, never shown, never counted, never notified; their calls refused. Nothing is deleted.
 
-Each line is an address, or a pattern with `*`: `*@example.org` for everyone there, `*@*.example.org` for its subdomains. Nobody is blocked for sharing a server or a domain with someone else.
+Strangers used to count as neutral. They have a row of their own now: their mail keeps the neutral's times until you change it, and their calls are refused at every time until you tick a box.
 
-The mail of a neutral or restricted sender comes only to an address for what now is for (work's address in working hours, a personal address in admin hours and leisure); when the two never meet, their list's times alone decide, so that nothing waits for good.
+**When each comes**: three buttons choose the channel, **Mail**, **Calls** or **Messages** (texts and chats from other apps, on a phone); the grid below is that channel's, the states down, the times across (Work, Admin, Leisure, Meals, Sleep: see [Hours](hours.md); **Pause**: the pause, see [Pauses](pauses.md)). Tick as many as you like on each row; **Always** and **Never**, at the row's end, tick or untick all of it in one click. Ticked, they come then. Unticked, mail and messages wait, never lost, for the next time ticked, and calls are refused. The blocked have a row too, never ticked. On a phone each row's name stands above its boxes. As it comes:
 
-**Your contacts' categories**: one row for each category your contacts use (Friends, Family, Clients…), with a choice: **No list**, **Safe**, **Neutral**, **Restricted** or **Blocked**. Everyone whose contact card is in the category takes it, at each of their addresses. Nothing goes on a list by itself, family and friends included.
+| Mail | Work | Admin | Leisure | Meals | Sleep | Pause |
+|---|---|---|---|---|---|---|
+| Safe | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Neutral | ✓ | ✓ | | | | |
+| Restricted | ✓ | | | | | |
+| Strangers | ✓ | ✓ | | | | |
 
-**From the person to the group**: a person's own choice comes first, then the categories on their contact card, then their address's domain; everyone else is neutral. So one friend can be neutral while the category Friends is safe, and a colleague in Friends stays safe in a domain you marked restricted. When the same level gives two answers (a person in two categories on two lists), blocked wins, then restricted, then neutral, then safe.
+| Calls | Work | Admin | Leisure | Meals | Sleep | Pause |
+|---|---|---|---|---|---|---|
+| Safe | ✓ | ✓ | ✓ | ✓ | | |
+| Neutral | ✓ | ✓ | | | | |
+| Restricted | ✓ | | | | | |
+| Strangers | | | | | | |
+| Hidden numbers | ✓ | ✓ | | | | |
+
+Messages follow mail's grid, row by row, until you change one of their rows. Hidden numbers are calls that show no number: someone who hides theirs, and often a hospital's switchboard, which is why they ring in working and admin hours.
+
+The codes and links you just asked a site for, and what you send yourself, come at once whatever the grid says. While you sleep nothing notifies: mail ticked for sleep shows on the Porch if you open Sioul, without a sound or a notification. In Free time only the Safe row counts, at its Leisure box ([Pauses](pauses.md)).
+
+**Four lists**: Safe, Neutral, Restricted and Blocked. Each line is an address, a phone number (`+33 1 99 00 12 34`, written as you like), or a pattern with `*`: `*@example.org` for everyone there, `*@*.example.org` for its subdomains, `+33899*` for every number that starts so. Nobody is blocked for sharing a server or a domain with someone else.
+
+The mail of a neutral or restricted sender, or of a stranger, comes only to an address for what now is for (work's address in working hours, a personal address in admin hours and leisure); when the two never meet, their row alone decides, so that nothing waits for good.
+
+**People on a list**: everyone you placed on a list from their card in [Contacts](contacts.md), each with a choice: **As their categories say**, **Safe**, **Neutral**, **Restricted** or **Blocked**. The card decides for all its addresses and numbers, those added later too.
+
+**Your contacts' categories**: one row for each category your contacts use (Friends, Family, Clients…), with a choice: **No list**, **Safe**, **Neutral**, **Restricted** or **Blocked**. Everyone whose contact card is in the category takes it, at each of their addresses and numbers. Nothing goes on a list by itself, family and friends included.
+
+**From the person to the group**: a person's own choice comes first (their address or number, then their card), then the categories on their card, then a domain or the start of a number; then, neutral: anyone in your address books, and anyone you let in from the screener; everyone else is a stranger. So one friend can be neutral while the category Friends is safe, and a colleague in Friends stays safe in a domain you marked restricted. When the same level gives two answers (a person in two categories on two lists), blocked wins, then restricted, then neutral, then safe.
 
 Forged mail is judged apart, before the lists: a forged message is set aside even when it claims a safe sender's address, and weighed as a stranger's.
 
-From a message or a contact, **Their mail** puts someone in one of the four lists, or back to **As their categories say**. The lists themselves, with their patterns, and the categories are edited here only.
+From a message, **Their mail** puts the sender's address on one of the four lists, or back to **As their categories say**. From a contact's card, **Their list** does it for the person, all their addresses and numbers.
 
 ## Encryption
 

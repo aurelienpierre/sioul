@@ -11,19 +11,22 @@ Sioul parle anglais ou français, selon la langue de votre système, sauf si vou
 ## La fenêtre {#the-window}
 
 <figure markdown="span">
-  [![La fenêtre de Sioul : à gauche, une étroite colonne d’icônes, Nouveau (un plus), puis les lieux, du Porche à Santé, celui affiché marqué, et trois icônes en bas (Comptes, Paramètres, Tout actualiser) ; à droite, le Porche ; tout en bas, la ligne d’état avec les touches, le bouton des sons et la météo.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
+  [![La fenêtre de Sioul : en haut, sur toute la largeur, sa barre de titre, la ligne d’état avec les touches, le bouton des sons, la météo, Temps libre et Pause, puis les boutons de la fenêtre ; à gauche, une étroite colonne d’icônes, Nouveau (un plus), puis les lieux, du Porche à Santé, celui affiché marqué, et trois icônes en bas (Comptes, Paramètres, Tout actualiser) ; à droite, le Porche.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
 </figure>
+
+**En haut**, sur toute la largeur de la fenêtre, la ligne d’état est sa barre de titre. Elle dit en une phrase ce qui s’est passé en dernier. Après chaque déplacement, suppression ou envoi, « Annuler » y attend dix secondes. Pendant le calme, elle dit quand le travail revient ; une fois les heures du jour finies, elle propose de clore la journée de travail, et le soir la journée. Plus loin se trouvent les touches, [Ne pas déranger](pauses.md#do-not-disturb-on-every-device), le bouton des sons ([des sons pour se concentrer ou se reposer](tasks.md#sounds)), la météo d’un lieu que vous choisissez, et à son extrémité [**Temps libre** et **Pause**](pauses.md).
+
+- **Son extrémité gauche**, au-dessus des lieux, porte le bouton qui affiche le nom des lieux à côté de leur icône, dans une colonne plus large, ou ne garde que leurs icônes (++f9++) : le même choix que **Paramètres ▸ Affichage ▸ Afficher le nom des lieux à côté de leur icône**.
+- **Les boutons de la fenêtre**, réduire, agrandir ou restaurer, et fermer, sont du côté où votre système les met, dans son ordre : KDE Plasma, GNOME et Xfce le disent dans leurs réglages ; à gauche sur un Mac, à droite sous Windows.
+- **Faites-la glisser** là où rien d’autre ne se trouve, la phrase comprise, pour déplacer la fenêtre ; **double-cliquez** dessus pour agrandir la fenêtre ou lui rendre sa taille. Les bords de la fenêtre la redimensionnent.
 
 **À gauche**, une étroite colonne d’icônes, de haut en bas :
 
 - **Nouveau ▾**, le **+**, crée une chose de n’importe quel type : un message, une tâche, un événement, un contact, une note, un projet, du temps passé, un mouvement de budget, un papier ; et **Où j’en suis…** laisse une ligne sur où vous en êtes ([Les tâches](tasks.md#starting-and-stopping)).
 - **Les lieux**, une icône chacun : Porche (une corbeille à courrier), Tâches (une liste à cocher), Courrier (une enveloppe), Sites (un globe et ses méridiens), Agenda (un calendrier), Contacts (une personne et des lignes), Notes (un bloc-notes), Projets (un dossier), Temps (une horloge), Budgets (un portefeuille), Papiers (une carte), Santé (un cœur). Le lieu affiché est marqué d’une teinte douce et d’une courte barre.
 - **À part en bas** : **Clore la journée de travail** (une liste cochée) et, dessous, **Clore toute la journée** (une lune), à toute heure ([la fin de la journée](tasks.md#the-end-of-the-day)) ; puis trois icônes, côte à côte quand les noms s’affichent : Comptes (une personne), Paramètres (des curseurs), et Tout actualiser, qui relève à nouveau, d’un coup, le courrier, l’agenda, les tâches et les contacts.
-- **À son pied**, au niveau de la ligne d’état, le bouton qui affiche le nom des lieux à côté de leur icône, dans une colonne plus large, ou ne garde que leurs icônes (++f9++) : le même choix que **Paramètres ▸ Affichage ▸ Afficher le nom des lieux à côté de leur icône**.
 
 Le nom de chaque icône, avec sa touche, s’affiche quand le pointeur s’y arrête, quand le clavier l’atteint, ou par un appui long sur un écran tactile.
-
-**En bas**, la ligne d’état dit en une phrase ce qui s’est passé en dernier. Après chaque déplacement, suppression ou envoi, « Annuler » y attend dix secondes. Pendant le calme, elle dit quand le travail revient ; une fois les heures du jour finies, elle propose de clore la journée de travail, et le soir la journée. À son extrémité droite se trouvent les touches, le bouton des sons ([des sons pour se concentrer ou se reposer](tasks.md#sounds)) et la météo d’un lieu que vous choisissez.
 
 **Sur chaque page**, le ⚙ au bout de la première ligne contient les réglages propres à cette page, chacun avec une phrase sur ce qu’il change ; ils sont enregistrés aussitôt. La lecture du texte long (la police, sa taille et l’interligne) est dans le ⚙ du Courrier et du Porche, et derrière « Aa » dans les Notes. Un clic droit, la touche Menu, ou un appui long sur un écran tactile, sur n’importe quel élément donne ce qui n’est pas en vue.
 
@@ -47,12 +50,14 @@ Tout se fait au clavier : Tab pour se déplacer, Entrée pour choisir, Échap 
 Une version Android est à l’essai ([Installer](install.md#on-android)). Sur un téléphone, ou dans une fenêtre de moins de 720 pixels de large :
 
 - **Les lieux** glissent depuis la gauche, derrière ☰, avec leur nom à côté de leur icône ; une barre en haut nomme la page.
+- **La ligne d’état** est en bas de l’écran d’un téléphone, chacun de ses boutons réduit à son icône : un appui long sur l’un dit ce qu’il est. Quand sa phrase est coupée, un appui dessus la montre en entier.
 - **Un volet à la fois** : une page montre sa liste, puis ce que vous ouvrez sur tout l’écran ; **Retour**, sur la barre ou celui d’Android, revient en arrière.
 - **Les menus** s’ouvrent par un appui long sur un écran tactile, là où une souris ferait un clic droit.
 
 Ce qui change sur un téléphone :
 
 - **Les notifications** viennent pour les prises de médicaments ([La santé](health.md#reminders)), le temps qui court ([Le temps](time.md#where-time-comes-from)), les événements ([L’agenda](agenda.md#reminders)) et le nouveau courrier à ses heures ([Le Porche](porch.md#new-mail-told-at-its-times)). Un code que vous avez demandé s’affiche sur le Porche ; les autres rappels n’y viennent pas encore.
+- **Les notifications des autres applications** peuvent être retenues jusqu’à leur heure, une fois que vous donnez à Sioul l’accès aux notifications d’Android : les messages des personnes selon qui peut vous joindre, le reste aux heures de regroupement ([Paramètres](settings.md#other-apps)).
 - **Le courrier** est relevé tant que Sioul est ouvert : Android l’arrête en arrière-plan.
 - **Le partage** : Sioul est dans le menu de partage d’Android, et chacune de vos adresses aussi ; les liens de courrier s’ouvrent dedans ([Le courrier](mail.md#from-other-apps)).
 - **Les dossiers** : le **Choisir…** d’un réglage ouvre la liste des dossiers du téléphone, propre à Sioul, avec **Autoriser l’accès aux fichiers** quand Android n’a pas encore donné cet accès à Sioul.

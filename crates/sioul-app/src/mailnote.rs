@@ -25,7 +25,8 @@ use sioul_core::areas::{Area, Time};
 use sioul_core::config::Config;
 use sioul_core::mailnote::{self, Ledger, Letter};
 use sioul_core::porch::{self, Triaged};
-use sioul_core::quiet::{Mode, Overrides, Reach};
+use sioul_core::quiet::{Mode, Overrides};
+use sioul_core::reach::{Matrix, Reach};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -96,7 +97,7 @@ fn gate() -> Option<Box<dyn Fn(&str) -> bool>> {
 struct Seen {
     config: Config,
     mode: Mode,
-    reach: Reach,
+    reach: Matrix,
     /// Read when a message is judged, not for the minute's moment: the
     /// contacts' categories are looked at for it.
     senders: std::cell::OnceCell<porch::Senders>,
@@ -111,7 +112,7 @@ impl Seen {
         let stamp = now.timestamp().as_second();
         let mode = crate::hours::mode_at(now);
         let overrides = Overrides::load(&Overrides::default_path());
-        let reach = sioul_core::pause::reach_now(Reach::of(&config.reach), &mode, sioul_core::pause::nothing_now(&overrides, &config.free_time));
+        let reach = sioul_core::pause::reach_now(Reach::of(&config.reach).mail, &mode, sioul_core::pause::nothing_now(&overrides, &config.free_time));
         let may = config.reminders.mail && mailnote::may_tell(&mode) && !crate::hours::quiet_slot() && !overrides.porch_rests(stamp);
         Seen { config, mode, reach, senders: std::cell::OnceCell::new(), may, gate: gate() }
     }

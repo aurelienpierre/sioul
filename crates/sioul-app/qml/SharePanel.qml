@@ -32,6 +32,11 @@ ColumnLayout {
     property string openFile: ""
     property var confirming: null
     property bool puttingBack: false
+    // How this device reaches the folder: through a folder a sync app carries,
+    // or Sioul keeping it in step with a Nextcloud itself, no sync app
+    // (docs/database.md, "Kept in step by Sioul itself"); started off the window's thread.
+    property bool byServer: false
+    property bool starting: false
 
     function listHistory() {
         panel.sioul.shareHistory(historyFilter.text)
@@ -54,6 +59,15 @@ ColumnLayout {
             const counted = JSON.parse(estimate || "{}")
             if (counted.part === panel.asking)
                 panel.estimate = counted.text || ""
+        }
+        function onShareStarted(problem) {
+            panel.starting = false
+            panel.problem = problem
+            if (problem === "") {
+                passphrase.clear()
+                again.clear()
+            }
+            panel.reload()
         }
     }
     // Android: no folder dialog (it hands out content:// addresses, not paths);
@@ -148,14 +162,14 @@ ColumnLayout {
     }
     // The folders your other devices already share through: one tap.
     Label {
-        visible: panel.candidates.length > 0
+        visible: panel.candidates.length > 0 && !panel.byServer
         Layout.fillWidth: true
         text: panel.sioul.text("share-found")
         wrapMode: Text.Wrap
         color: panel.theme.muted
     }
     Repeater {
-        model: panel.candidates
+        model: panel.byServer ? [] : panel.candidates
 
         delegate: Button {
             required property string modelData
@@ -166,7 +180,33 @@ ColumnLayout {
             onClicked: panel.choose(modelData)
         }
     }
-    // Not shared yet: the folder and the passphrase.
+    // Not shared yet: how, the folder, and the passphrase.
+    ColumnLayout {
+        visible: !panel.status.on
+        Layout.fillWidth: true
+        spacing: 0
+
+        RadioButton {
+            Layout.fillWidth: true
+            checked: !panel.byServer
+            text: panel.sioul.text("share-mode-folder")
+            onToggled: panel.byServer = !checked
+        }
+        RadioButton {
+            Layout.fillWidth: true
+            checked: panel.byServer
+            text: panel.sioul.text("share-mode-server")
+            onToggled: panel.byServer = checked
+        }
+        Label {
+            visible: panel.byServer
+            Layout.fillWidth: true
+            text: panel.sioul.text((panel.status.servers || []).length > 0 ? "share-server-help" : "share-server-none")
+            wrapMode: Text.Wrap
+            font.pixelSize: 13
+            color: panel.theme.muted
+        }
+    }
     GridLayout {
         visible: !panel.status.on
         Layout.fillWidth: true
@@ -175,19 +215,53 @@ ColumnLayout {
         rowSpacing: 6
 
         Label {
+            visible: !panel.byServer
             text: panel.sioul.text("share-folder")
             color: panel.theme.muted
         }
         TextField {
             id: folderField
 
+            visible: !panel.byServer
             Layout.fillWidth: true
             placeholderText: panel.android ? "/storage/emulated/0/Documents/Sioul" : "~/Nextcloud/Sioul"
             onEditingFinished: panel.reload()
         }
         Button {
+            visible: !panel.byServer
             text: panel.sioul.text("share-choose")
             onClicked: panel.android ? panel.browse() : folderPicker.open()
+        }
+        // Sioul keeping it itself: which account's server, and where among its files.
+        Label {
+            visible: panel.byServer
+            text: panel.sioul.text("share-server-account")
+            color: panel.theme.muted
+        }
+        ComboBox {
+            id: accountBox
+
+            visible: panel.byServer
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            model: panel.status.servers || []
+            textRole: "label"
+            valueRole: "id"
+            Accessible.name: panel.sioul.text("share-server-account")
+        }
+        Label {
+            visible: panel.byServer
+            text: panel.sioul.text("share-server-place")
+            color: panel.theme.muted
+        }
+        TextField {
+            id: serverPlace
+
+            visible: panel.byServer
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            text: "Documents/Sioul"
+            Accessible.name: panel.sioul.text("share-server-place")
         }
         Label {
             text: panel.sioul.text("share-passphrase")
@@ -201,14 +275,14 @@ ColumnLayout {
             sioul: panel.sioul
         }
         Label {
-            visible: !panel.status.sealed
+            visible: panel.byServer || !panel.status.sealed
             text: panel.sioul.text("share-again")
             color: panel.theme.muted
         }
         PasswordField {
             id: again
 
-            visible: !panel.status.sealed
+            visible: panel.byServer || !panel.status.sealed
             Layout.columnSpan: 2
             Layout.fillWidth: true
             sioul: panel.sioul
@@ -216,11 +290,18 @@ ColumnLayout {
         Label {
             Layout.columnSpan: 3
             Layout.fillWidth: true
-            text: panel.sioul.text(panel.status.sealed ? "share-passphrase-known" : "share-passphrase-hint")
+            text: panel.sioul.text(panel.byServer ? "share-server-passphrase-hint" : panel.status.sealed ? "share-passphrase-known" : "share-passphrase-hint")
             wrapMode: Text.Wrap
             font.pixelSize: 13
             color: panel.theme.muted
         }
+    }
+    Label {
+        visible: panel.starting
+        Layout.fillWidth: true
+        text: panel.sioul.text("share-server-starting")
+        wrapMode: Text.Wrap
+        color: panel.theme.muted
     }
     Label {
         visible: panel.problem !== ""
@@ -235,9 +316,17 @@ ColumnLayout {
 
         Button {
             visible: !panel.status.on
+            enabled: !panel.starting && (!panel.byServer || (panel.status.servers || []).length > 0)
             highlighted: true
             text: panel.sioul.text("share-start")
             onClicked: {
+                // Sioul keeping it itself: the server asked off the window's thread, `shareStarted` brings the end.
+                if (panel.byServer) {
+                    panel.starting = true
+                    panel.problem = ""
+                    panel.sioul.startSharingOnServer(accountBox.currentValue || "", serverPlace.text, passphrase.text, again.text)
+                    return
+                }
                 panel.problem = panel.sioul.startSharing(folderField.text, passphrase.text, again.text)
                 if (panel.problem === "") {
                     passphrase.clear()

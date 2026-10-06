@@ -28,8 +28,8 @@ Item {
             page.shareMade = true
     }
     // One tab at a time: how it looks, the hours, reminders and notifications,
-    // your folder and sharing, invoices.
-    readonly property var sections: ["look", "hours", "reminders", "pauses", "dnd", "files", "invoices"]
+    // your folder and sharing, invoices; on a phone, its calls and other apps' notifications.
+    readonly property var sections: ["look", "hours", "reminders", "pauses", "dnd"].concat(Qt.platform.os === "android" ? ["calls", "apps"] : []).concat(["files", "invoices"])
     // The pause's screen tried from its setup (main.qml shows it, nothing held).
     signal tryPause
     property string section: "look"
@@ -59,6 +59,9 @@ Item {
         const row = page.rows.find(r => r.key === key)
         if (row)
             page.section = row.section
+        // A tab without settings of its own (Calls): the tab itself.
+        else if (page.sections.includes(key))
+            page.section = key
         toSetting.key = key
         toSetting.restart()
     }
@@ -195,6 +198,35 @@ Item {
                     DndSetup {
                         sioul: page.sioul
                         theme: page.theme
+                    }
+                }
+            }
+
+            // Calls, on a phone: Sioul as the caller ID & spam app, what always rings, where a declined call goes (docs/android.md, "Calls").
+            Loader {
+                active: page.section === "calls"
+                visible: active
+                Layout.fillWidth: true
+
+                sourceComponent: Component {
+                    CallsSetup {
+                        sioul: page.sioul
+                        theme: page.theme
+                    }
+                }
+            }
+
+            // Other apps' notifications, on a phone: the access, holding, each app and conversation (docs/android.md, "Notifications from other apps").
+            Loader {
+                active: page.section === "apps"
+                visible: active
+                Layout.fillWidth: true
+
+                sourceComponent: Component {
+                    AppNotesSetup {
+                        sioul: page.sioul
+                        theme: page.theme
+                        onShowSetting: key => page.showSetting(key)
                     }
                 }
             }

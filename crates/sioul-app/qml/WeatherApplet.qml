@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// The weather in the status line, in one colour: now, then hour by hour for
-// the next two hours, each as an icon and a temperature (now alone when the
-// window is narrow), the line's room kept for the rest; a tip says what they
-// are. On a click, the next four hours, then the parts of the days to come,
-// and where the data comes from. Without a place, a quiet icon that offers to
-// choose one.
+// The weather in the status line, in one colour, a button of the line
+// (LineButton.qml): now, then hour by hour for the next two hours, each as an
+// icon and a temperature (now alone when the window is narrow), the line's
+// room kept for the rest; a tip says what they are. On a click, the next four
+// hours, then the parts of the days to come, and where the data comes from.
+// Without a place, a quiet icon that offers to choose one.
 
 pragma ComponentBehavior: Bound
 
@@ -14,15 +14,17 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-ToolButton {
+LineButton {
     id: applet
 
     required property var sioul
-    required property var theme
+    // Its pop-up under it, the line at the window's top (a computer's title bar); else above it.
+    property bool below: false
     readonly property var shown: applet.sioul.forecast ? JSON.parse(applet.sioul.forecast) : null
     readonly property var now: applet.shown && applet.shown.view.now ? applet.shown.view.now : null
-    // The next two hours beside now, when the window has room for them; the rest on a click.
-    readonly property var hours: applet.now && applet.Window.width >= 900 ? applet.shown.view.hours.slice(0, 2) : []
+    // The next two hours beside now, when the window has room for them (a
+    // title bar shares its width with the window's buttons); the rest on a click.
+    readonly property var hours: applet.now && !applet.compact && applet.Window.width >= (applet.below ? 1200 : 900) ? applet.shown.view.hours.slice(0, 2) : []
     property bool choosing: false
     readonly property var places: applet.sioul.placesFound ? JSON.parse(applet.sioul.placesFound) : []
 
@@ -41,16 +43,14 @@ ToolButton {
         popupLoader.item.open()
     }
 
-    implicitHeight: 28
+    // Its icon and the temperature, narrow too.
     display: AbstractButton.TextBesideIcon
     icon.name: applet.now ? applet.now.icon : "weather-none-available-symbolic"
-    icon.color: applet.theme.muted
     text: applet.now ? applet.now.temperature : ""
-    Accessible.name: applet.now ? [applet.now].concat(applet.hours).map(s => s.label + ": " + s.words + ", " + s.temperature).join("; ") : applet.sioul.text("weather-choose")
-    ToolTip.visible: hovered && !(popupLoader.item !== null && popupLoader.item.opened)
-    ToolTip.text: applet.now ? applet.theme.plain(applet.sioul.textWith(applet.hours.length > 0 ? "weather-tip-hours" : "weather-tip", "place", applet.shown.place) + "\n" + applet.now.words) : applet.sioul.text("weather-choose")
-    ToolTip.delay: 600
-    onClicked: {
+    name: applet.now ? [applet.now].concat(applet.hours).map(s => s.label + ": " + s.words + ", " + s.temperature).join("; ") : applet.sioul.text("weather-choose")
+    tip: applet.now ? applet.sioul.textWith(applet.hours.length > 0 ? "weather-tip-hours" : "weather-tip", "place", applet.shown.place) + "\n" + applet.now.words : applet.sioul.text("weather-choose")
+    menuOpen: popupLoader.item !== null && (popupLoader.item as Popup).opened
+    onChosen: {
         applet.choosing = applet.shown === null
         applet.openPopup()
     }
@@ -119,7 +119,7 @@ ToolButton {
         sourceComponent: Popup {
             id: popup
 
-            y: -height - 6
+            y: applet.below ? applet.height + 6 : -height - 6
             x: Math.min(0, applet.parent ? applet.parent.width - applet.x - width : 0)
             width: 360
             padding: 12

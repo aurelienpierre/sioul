@@ -7,9 +7,11 @@
 //! (android/main.cpp, docs/android.md).
 
 mod alarms;
+mod appnotes;
 mod backend;
 mod bank;
 mod blocks;
+mod calls;
 mod capacity;
 mod contracts;
 mod crypto;
@@ -52,6 +54,11 @@ unsafe extern "C" {
     /// made (cpp/webengine.cpp). Android has no Qt WebEngine: its Sites page opens sites in the browser.
     #[cfg(not(target_os = "android"))]
     fn sioul_start_web_engine();
+    /// On a computer, Sioul's application, a widgets application (cpp/application.cpp):
+    /// the system tray's menu is made of widgets on Plasma. `values` holds `count` C
+    /// strings, the program's arguments, which it copies; made with `new`.
+    #[cfg(not(target_os = "android"))]
+    fn sioul_new_application(count: i32, values: *const *const std::ffi::c_char) -> *mut std::ffi::c_void;
     /// Sioul's own icon on its windows (cpp/appicon.cpp); once the application is made.
     #[cfg(not(target_os = "android"))]
     fn sioul_set_window_icon();
@@ -165,11 +172,20 @@ pub fn run() -> i32 {
         // SAFETY: as above.
         unsafe { std::env::set_var("QT_QUICK_CONTROLS_STYLE", "Basic") };
     }
+    // Where the system puts a window's buttons, read meanwhile for Sioul's own
+    // title bar (desktop.rs); after the environment is set, which it reads.
+    #[cfg(not(target_os = "android"))]
+    desktop::warm_up();
     // SAFETY: called once, before any Qt object exists, as Qt WebEngine asks.
     #[cfg(not(target_os = "android"))]
     unsafe {
         sioul_start_web_engine()
     };
+    // On a computer, a widgets application: Plasma's system tray makes its menu
+    // of widgets, and aborted Sioul without one. A phone has no tray.
+    #[cfg(not(target_os = "android"))]
+    let mut app = widgets_application();
+    #[cfg(target_os = "android")]
     let mut app = QGuiApplication::new();
     if let Some(mut app) = app.as_mut() {
         app.as_mut().set_application_name(&QString::from("Sioul"));
@@ -225,6 +241,29 @@ pub fn run() -> i32 {
     // The next Sioul started opens by itself rather than knocking here.
     outside::stop_listening();
     code
+}
+
+/// A widgets application (QApplication), as the QGuiApplication CXX-Qt works
+/// with, which it is: made by cpp/application.cpp from the program's
+/// arguments, as `QGuiApplication::new` makes its own.
+#[cfg(not(target_os = "android"))]
+fn widgets_application() -> cxx::UniquePtr<QGuiApplication> {
+    let arguments: Vec<std::ffi::CString> = std::env::args_os()
+        .filter_map(|argument| {
+            // Unix's arguments are bytes; Windows's, read as UTF-8, as CXX-Qt reads them.
+            #[cfg(unix)]
+            let bytes = std::os::unix::ffi::OsStrExt::as_bytes(argument.as_os_str()).to_vec();
+            #[cfg(windows)]
+            let bytes = argument.to_string_lossy().into_owned().into_bytes();
+            std::ffi::CString::new(bytes).ok()
+        })
+        .collect();
+    let pointers: Vec<*const std::ffi::c_char> = arguments.iter().map(|argument| argument.as_ptr()).collect();
+    let count = i32::try_from(pointers.len()).unwrap_or(0);
+    // SAFETY: `pointers` holds `count` C strings, alive during the call, which the
+    // application copies. It returns a QApplication made with `new`, a QGuiApplication,
+    // which the UniquePtr deletes as it deletes CXX-Qt's own; called once, on the main thread.
+    unsafe { cxx::UniquePtr::from_raw(sioul_new_application(count, pointers.as_ptr()).cast()) }
 }
 
 /// Android: [`run`], for the program Qt for Android starts (android/main.cpp).

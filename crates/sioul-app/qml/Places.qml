@@ -4,8 +4,9 @@
 // The places, on the left of the window (main.qml): New, then the places
 // where your things live, then, apart at the bottom, closing the work day or
 // the day (at any hour), the accounts, the settings and one button that
-// refreshes everything; at its foot, level with the status line, the button
-// that shows their names or keeps their icons only (F9). One icon each
+// refreshes everything; at its foot, level with the status line where that
+// line is at the bottom, the button that shows their names or keeps their
+// icons only (F9; on a computer, at the title bar's left end). One icon each
 // (RailButton.qml), their names beside them when `named`; scrolled when the
 // window is too short for them all. Made the first time they show: a phone's
 // drawer is not made before ☰ is pressed.
@@ -244,12 +245,14 @@ Item {
         onRunningChanged: if (!running) refreshButton.glyph.rotation = 0
     }
 
-    // Its foot, level with the status line and under its line: the button that
-    // shows the places' names beside their icons, or keeps the icons only (F9).
+    // Its foot, level with the status line and under its line, where that line
+    // is at the bottom (a tablet): the button that shows the places' names
+    // beside their icons, or keeps the icons only (F9). On a computer, that
+    // button is at the title bar's left end, above the places (TitleBar.qml).
     Item {
         id: strip
 
-        visible: !column.window.compact
+        visible: !column.window.compact && !column.window.ownTitleBar
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

@@ -1,10 +1,10 @@
 # Areas and hours: what comes when
 
 Two questions decide what Sioul brings forward, and they are separate:
-- **Who may reach you, and when**: the senders' lists (safe, neutral, restricted, blocked) and the times each list's mail comes ([porch.md](porch.md), "Who may write to you"). That is about people.
+- **Who may reach you, and when**: five states, the same for mail, calls and other apps' messages (strangers, in none of your address books and on no list; the blocked, never; and for the people in your address books safe, neutral, restricted), and a matrix per channel of the times each comes ([porch.md](porch.md), "Who may reach you, and when"). That is about people.
 - **What a thing is for, and whether now is for it**: areas and the five times, this page. That is about sources (an address, a site, a chat) and tasks.
 
-They meet in one place, mail: your safe senders' mail comes at the times ticked for them, to any of your addresses; the others' mail comes at the times ticked for their list, to an address for what now is for. The codes and links you just asked a site for, and what you send yourself, come at once, whatever the time.
+They meet in one place, mail: your safe senders' mail comes at the times ticked for them, to any of your addresses; the others' mail (neutral, restricted, strangers) comes at the times ticked for their row, to an address for what now is for. Calls and other apps' messages follow their own matrices alone. The codes and links you just asked a site for, and what you send yourself, come at once, whatever the time.
 
 This is a health matter before it is a filter. Work that reaches the evening keeps people from recovering, and detaching from work after hours is what recovery needs most (Sonnentag & Fritz 2007, 2015). The risk is highest for people who work from home or for themselves, for whom nothing else marks the end of the day. Admin left to spread over every evening weighs too, even when nobody is working.
 
@@ -19,6 +19,7 @@ A source or a task is for **work**, for **your own admin** (bills, letters, offi
 | A budget | its form ("Edit"): "For" (`[[budget]] area`) | your admin; the older `personal` reads as leisure |
 | A site | the site's ⋮ ▸ For (`area`) | by its type: secure mailboxes and client areas (offices, banks, suppliers) are admin; chats, social networks and dating, leisure; video calls and other sites, admin and leisure |
 | A task | the task's panel, "For" (`X-SIOUL-AREA`) | by its tags and projects: work's (`[quiet] work`, a client's project, GitHub), leisure's (joy, family, friends…), both personal ones (health), else admin |
+| An app's notifications, on a phone | Settings ▸ Other apps, under the app: "For" ([android.md](android.md#notifications-from-other-apps)) | any time: the gathered times and who may reach you decide alone |
 
 Mail addresses are the one place nothing is mixed for you: asking what each address is for is what separates a business address from a personal one.
 
@@ -33,13 +34,13 @@ What now is for is one of five times (`sioul_core::areas::Time`, decided by `sio
 | **Sleep** | the night, from winding down to waking; each nap with its minutes to come back | Health: the night, naps |
 | **Leisure** | every other time: evenings, days without hours, time off, a day closed early ("Done for today"), Free time | nothing to set |
 
-**Which comes first**, when they overlap: the pause, then sleep, then Free time, then meals, then the hours ([pauses.md](pauses.md)). The pause (« En pause ») holds everything Sioul shows, whatever the time, as sleep does (`Reason::Paused`); Free time (« Temps libre ») is leisure whatever the hour, until you come back or the night begins, and the working time it took moves the end of today's work later, within limits (`Reason::FreeTime`, `Reason::Extended`). A meal inside working hours is a meal while it lasts. "Work now" may last over a night: the night stays sleep. "Done for today" is leisure until work comes back; "A little longer" and "Work now" are work. Time off is leisure. Work and admin hours at once bring what each of them brings, all together (`Time::Several`), until the first of them closes.
+**Which comes first**, when they overlap: the pause, then sleep, then Free time, then meals, then the hours ([pauses.md](pauses.md)). The pause (« En pause ») holds everything Sioul shows, whatever the time, as sleep does (`Reason::Paused`), with its own column in the matrices of who may reach you; Free time (« Temps libre ») is leisure whatever the hour, until you come back or the night begins, and the working time it took moves the end of today's work later, within limits (`Reason::FreeTime`, `Reason::Extended`). A meal inside working hours is a meal while it lasts. "Work now" may last over a night: the night stays sleep. "Done for today" is leisure until work comes back; "A little longer" and "Work now" are work. Time off is leisure. Work and admin hours at once bring what each of them brings, all together (`Time::Several`), until the first of them closes.
 
 **The hour before bed is sleep's.** Health keeps the wind-down free, and the programmes it comes from make that hour free of what keeps the mind going (Harvey et al. 2021): a work message or a notification is exactly that. The status line says it apart: "Winding down: nothing disturbs until 07:00." The night's own notice at its time, the start of the wind-down, still comes: it is the one that says the night begins, and it offers to close the day ([reviews.md](reviews.md)). From the wind-down, the status line offers nothing more.
 
 **A block taken out for one day** (off that day, on the Health page) is no meal or sleep that day; one made quiet that day (no notice) still is.
 
-**No working or admin hours at all**: everything comes, as before any were set (`Time::Any`); meals and sleep keep their time when Health sets them. Leisure lets only your safe senders through: someone who has not set hours yet would see no other mail.
+**No working or admin hours at all**: everything comes, as before any were set (`Time::Any`); meals and sleep keep their time when Health sets them. Leisure lets only your safe senders through: someone who has not set hours yet would see no other mail. Calls and other apps' messages read such a time as working and admin hours together: a row ticked for either comes (`reach::Moment`).
 
 **No night set**: nights are leisure, and nothing keeps notifications away while you sleep. The Porch asks for it in a card, "Set my night" (the Health page, at its meals and night) or "Leave as is", which stops asking.
 
@@ -68,7 +69,7 @@ Settings ▸ Hours has two weeks: **working hours** and **hours for your admin**
 **Leisure is not set.** Leisure is every time not given to work, admin, a meal or sleep; "Free time" is now the name of a pause you take ([pauses.md](pauses.md)). Hours an older Sioul set as leisure (`kind = "leisure"`, its "free time") stay in the file, untouched, read without a word and left aside (`Config::week_hours`); saving the other weeks keeps them.
 
 ### Mail
-Who may write to you when is a matrix: for your safe, neutral and restricted senders, the times their mail comes ([porch.md](porch.md), "Who may write to you"). The address it came to narrows it: your safe senders' mail comes to any address; the others' only to an address for what now is for, unless the two never meet in your week (a stranger writing to an address for leisure, strangers ticked only for work and admin; a restricted sender writing to your personal address): then their list alone decides, so that no mail waits for good. While admin has no hours of its own, working hours take its ticks too; while work has none, admin hours take work's, as areas are lent. Budgets follow the areas, by what each is for (your admin when unsaid).
+Who may reach you when is a matrix per channel: for mail, the times each state's mail comes, strangers included ([porch.md](porch.md), "Who may reach you, and when"). The address it came to narrows it: your safe senders' mail comes to any address; the others' (neutral, restricted, strangers) only to an address for what now is for, unless the two never meet in your week (a stranger writing to an address for leisure, strangers ticked only for work and admin; a restricted sender writing to your personal address): then their row alone decides, so that no mail waits for good. While admin has no hours of its own, working hours take its ticks too; while work has none, admin hours take work's, as areas are lent. Budgets follow the areas, by what each is for (your admin when unsaid).
 
 ### Sites
 The sites for now are listed; the others fold under one line, "Other hours: 3", opened with a click. A site's notifications wait until a gathered notification falls in its hours (see [sites.md](sites.md)). A site in real time, and a call, come at once, but only while its area fits now, and never while you sleep.

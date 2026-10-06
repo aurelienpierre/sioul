@@ -248,7 +248,8 @@ mod tests {
     use super::*;
     use crate::areas::{Area, Time, Week};
     use crate::porch::{SenderList, Senders};
-    use crate::quiet::{Reach, Reason as Why};
+    use crate::quiet::Reason as Why;
+    use crate::reach::Reach;
 
     /// A message as the Porch judges it, fetched into `account`; `headers` before the subject.
     fn message(account: &str, from: &str, headers: &str, subject: &str, id: &str, senders: &Senders, priority: crate::config::Priority) -> Triaged {
@@ -360,7 +361,7 @@ mod tests {
         let stranger = message("work", "Someone <someone@elsewhere.example>", "", "A question", "10@elsewhere.example", &senders, usual);
         let week = Week { work_hours: true, admin_hours: false, meals: true, sleep: true };
         let senders = &senders;
-        let in_view = |time: Time| move |t: &Triaged| crate::quiet::mail_in_view(t, senders, &Reach::default(), Area::WORK, time, week);
+        let in_view = |time: Time| move |t: &Triaged| crate::quiet::mail_in_view(t, senders, &Reach::default().mail, Area::WORK, time, week);
         // A neutral sender writing to a work address: told in work time, waiting in the evening.
         assert_eq!(sort(&[stranger.clone()], &Ledger::default(), false, in_view(Time::Work)).now.len(), 1);
         assert_eq!(sort(&[stranger.clone()], &Ledger::default(), false, in_view(Time::Leisure)).later.len(), 1);

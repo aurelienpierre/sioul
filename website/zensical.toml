@@ -46,6 +46,7 @@ nav = [
     { "Across Sioul" = [
       { "Hours: work, your admin, leisure, meals, sleep" = "guide/hours.md" },
       { "Pauses: Free time and Pause" = "guide/pauses.md" },
+      { "Calls: who may ring, and when" = "guide/calls.md" },
       { "Sharing between your devices" = "guide/sharing.md" },
       { "Using an AI agent" = "guide/ai-agent.md" },
       { "Privacy and security" = "guide/privacy-security.md" },

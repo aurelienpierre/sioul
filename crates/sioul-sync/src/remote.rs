@@ -55,9 +55,11 @@ pub(crate) struct Limits {
     pub(crate) small: Duration,
     pub(crate) large: Duration,
     pub(crate) pull: Duration,
+    /// A sealed note or paper, as long as it moves.
+    pub(crate) blob: Duration,
 }
 
-pub(crate) const LIMITS: Limits = Limits { wait: Duration::from_secs(10), small: Duration::from_secs(10), large: Duration::from_secs(60), pull: Duration::from_secs(30) };
+pub(crate) const LIMITS: Limits = Limits { wait: Duration::from_secs(10), small: Duration::from_secs(10), large: Duration::from_secs(60), pull: Duration::from_secs(30), blob: Duration::from_secs(15 * 60) };
 
 /// Looked for again this long after the last look, when not found (seconds).
 pub const LOOK_AGAIN: i64 = 6 * 3600;
@@ -142,12 +144,26 @@ pub struct State {
     /// ("not-found:murena.io", "network:murena.io"); "" when all is well.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub said: String,
+    /// `MIRROR` when Sioul keeps the folder in step itself, no sync app: the
+    /// folder here is its own copy (`mirror_of`), the server's is the one the
+    /// devices share; "" beside a sync app's folder.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub mode: String,
+    /// The folder's place in the account's files, as given ("Documents/Sioul"): to say where.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub place: String,
+    /// When this device's own files last went up (`MIRROR`, Unix seconds).
+    #[serde(default)]
+    pub pushed: i64,
     /// The server's files as last fetched, or found here already, by their path in the folder.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub files: BTreeMap<String, Fetched>,
     /// The server's folders as last looked through, by their path ("" the folder itself, "devices/").
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub folders: BTreeMap<String, Looked>,
+    /// This device's own files as they last went up (`MIRROR`), by their path in the folder.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sent: BTreeMap<String, Sent>,
 }
 
 /// A file of the server, as last fetched: its ETag and size there.
@@ -166,6 +182,18 @@ pub struct Looked {
     pub etag: String,
     #[serde(default)]
     pub at: i64,
+}
+
+/// One of this device's own files as it last went up (`MIRROR`): its size and
+/// time here (nanoseconds), its ETag there ("" when the server did not say).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Sent {
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub modified: u64,
+    #[serde(default)]
+    pub etag: String,
 }
 
 impl State {
@@ -269,7 +297,7 @@ fn seal_of(folder: &Path) -> Option<Vec<u8>> {
 /// What was fetched for this folder may be read: fetched for it, under its seal.
 fn usable(folder: &Path, memory: &Path) -> bool {
     let state = State::load(memory);
-    state.folder == shown(folder) && seal_of(folder).is_some_and(|here| seal_of(&cache_of(memory)).is_some_and(|fetched| fetched == here))
+    state.mode != MIRROR && state.folder == shown(folder) && seal_of(folder).is_some_and(|here| seal_of(&cache_of(memory)).is_some_and(|fetched| fetched == here))
 }
 
 /// Sharing stopped here: what was fetched and known goes, and nothing is read beside the folder.
@@ -298,6 +326,7 @@ pub struct Login {
 pub(crate) struct Server {
     small: ureq::Agent,
     large: ureq::Agent,
+    blobs: ureq::Agent,
     authorization: String,
     started: Instant,
     limits: Limits,
@@ -344,6 +373,7 @@ impl Server {
         Ok(Server {
             small: dav::agent(&budget(limits.small)),
             large: dav::agent(&budget(limits.large)),
+            blobs: dav::agent(&budget(limits.blob)),
             authorization: format!("Basic {}", sioul_core::lines::base64_encode(format!("{}:{password}", login.user).as_bytes())),
             started: Instant::now(),
             limits,
@@ -351,6 +381,10 @@ impl Server {
     }
 
     pub(crate) fn request(&self, large: bool, method: &str, url: &str, headers: &[(&str, &str)], body: Vec<u8>) -> Result<ureq::http::Response<ureq::Body>, SyncError> {
+        self.request_with(if large { &self.large } else { &self.small }, method, url, headers, body)
+    }
+
+    fn request_with(&self, agent: &ureq::Agent, method: &str, url: &str, headers: &[(&str, &str)], body: Vec<u8>) -> Result<ureq::http::Response<ureq::Body>, SyncError> {
         dav::allowed(url)?;
         if self.started.elapsed() > self.limits.pull {
             return Err(SyncError::Network("out of time".into()));
@@ -360,7 +394,6 @@ impl Server {
             request = request.header(*name, *value);
         }
         let request = request.body(body).map_err(|e| SyncError::Server(e.to_string()))?;
-        let agent = if large { &self.large } else { &self.small };
         let response = agent.run(request).map_err(|e| failed(&e))?;
         if response.status().as_u16() == 401 {
             return Err(SyncError::Login(format!("{method}: 401")));
@@ -457,6 +490,83 @@ impl Server {
         }
         Ok(Some(Got { start, bytes, error }))
     }
+
+    /// A file sent whole (`PUT`), over what is there as it was seen: `If-Match`
+    /// its ETag, or `If-None-Match: *` when none was there. Its status, and its
+    /// ETag there when the server says it.
+    pub(crate) fn put(&self, url: &str, body: Vec<u8>, seen: Option<&str>) -> Result<(u16, Option<String>), SyncError> {
+        let precondition = match seen {
+            Some(etag) => ("If-Match", etag),
+            None => ("If-None-Match", "*"),
+        };
+        let response = self.request(true, "PUT", url, &[precondition, ("Content-Type", "application/octet-stream")], body)?;
+        Ok((response.status().as_u16(), header(&response, "ETag").or_else(|| header(&response, "OC-ETag"))))
+    }
+
+    /// A folder made (`MKCOL`): 201 made, 405 there already.
+    pub(crate) fn mkcol(&self, url: &str) -> Result<u16, SyncError> {
+        Ok(self.request(false, "MKCOL", url, &[], Vec::new())?.status().as_u16())
+    }
+
+    /// One of this device's files taken out (`DELETE`), only as it was seen (`If-Match`) when its ETag is known.
+    pub(crate) fn delete(&self, url: &str, seen: Option<&str>) -> Result<u16, SyncError> {
+        let headers: Vec<(&str, &str)> = seen.map(|etag| vec![("If-Match", etag)]).unwrap_or_default();
+        Ok(self.request(false, "DELETE", url, &headers, Vec::new())?.status().as_u16())
+    }
+
+    /// A file's ETag there now (`Depth: 0`); none when it is not there.
+    pub(crate) fn etag(&self, url: &str) -> Result<Option<String>, SyncError> {
+        let mut response = self.request(false, "PROPFIND", url, &[("Depth", "0"), ("Content-Type", XML)], LIST.as_bytes().to_vec())?;
+        match response.status().as_u16() {
+            207 => {}
+            404 => return Ok(None),
+            status => return Err(SyncError::Server(format!("PROPFIND: {status}"))),
+        }
+        let body = response.body_mut().with_config().limit(LISTING).read_to_string().map_err(|e| failed(&e))?;
+        let (responses, _) = dav::multistatus(&body)?;
+        Ok(responses.first().map(|r| r.text(DAV, "getetag").unwrap_or_default()))
+    }
+
+    /// A file fetched whole into `path`, under a hidden name beside it, then
+    /// renamed once all of it came (its length said, or chunked to its end),
+    /// at most `limit` bytes, as long as it moves (`Limits::blob`). Its size;
+    /// none when it is not there, or larger.
+    pub(crate) fn download(&self, url: &str, path: &Path, limit: u64) -> Result<Option<u64>, SyncError> {
+        let mut response = self.request_with(&self.blobs, "GET", url, &[("Accept-Encoding", "identity")], Vec::new())?;
+        match response.status().as_u16() {
+            200 => {}
+            404 | 410 => return Ok(None),
+            status => return Err(SyncError::Server(format!("GET: {status}"))),
+        }
+        let length = response.body().content_length();
+        let chunked = header(&response, "Transfer-Encoding").is_some_and(|t| t.to_ascii_lowercase().contains("chunked"));
+        if length.is_some_and(|l| l > limit) {
+            return Ok(None);
+        }
+        if length.is_none() && !chunked {
+            return Err(SyncError::Network("GET: its end cannot be told".into()));
+        }
+        let temporary = crate::share::temporary(path);
+        let disk = |e: std::io::Error| SyncError::Disk(format!("{}: {e}", path.display()));
+        let written = (|| -> Result<u64, SyncError> {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(disk)?;
+            }
+            let mut out = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary).map_err(disk)?;
+            let mut reader = response.body_mut().with_config().limit(limit).reader();
+            let copied = std::io::copy(&mut reader, &mut out).map_err(|e| SyncError::Network(e.to_string()))?;
+            if length.is_some_and(|l| l != copied) {
+                return Err(SyncError::Network("GET: cut".into()));
+            }
+            out.sync_all().map_err(disk)?;
+            std::fs::rename(&temporary, path).map_err(disk)?;
+            Ok(copied)
+        })();
+        if written.is_err() {
+            let _ = std::fs::remove_file(&temporary);
+        }
+        written.map(Some)
+    }
 }
 
 /// A path in a folder of the server as an address's: each name percent-encoded ("Mes documents/Sioul" → "Mes%20documents/Sioul").
@@ -475,6 +585,7 @@ fn code(error: &SyncError, host: &str) -> String {
         SyncError::Network(_) => "network",
         SyncError::NoPassword => "no-password",
         SyncError::Disk(_) => "disk",
+        SyncError::Server(d) if d == "quota" => "quota",
         _ => "server",
     };
     format!("{kind}:{host}")
@@ -568,6 +679,10 @@ pub fn find(memory: &Path, folder: &Path, logins: &[Login], places: &[String], n
 
 pub(crate) fn find_with(memory: &Path, folder: &Path, logins: &[Login], places: &[String], now: i64, limits: Limits) -> State {
     let mut state = State::load(memory);
+    // Sioul keeping the folder itself: nothing to look for.
+    if state.mode == MIRROR {
+        return state;
+    }
     if state.folder != shown(folder) {
         // Another folder: what was fetched for the last one goes.
         let _ = std::fs::remove_dir_all(cache_of(memory));
@@ -717,6 +832,8 @@ pub struct Pulled {
     pub listed: usize,
     /// Files that came down and are kept.
     pub fetched: usize,
+    /// This device's own files that went up (`MIRROR`).
+    pub sent: usize,
     /// Bytes that came down.
     pub bytes: u64,
     /// What went wrong, as `State::said` says it; none when it went through.
@@ -746,6 +863,11 @@ pub fn pull(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64) ->
 pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64, limits: Limits) -> Pulled {
     let mut state = State::load(memory);
     let mut pulled = Pulled::default();
+    // Sioul keeping the folder itself: no backup beside it (`step`).
+    if state.mode == MIRROR {
+        pulled.problem = Some("mirror".into());
+        return pulled;
+    }
     if !state.confirmed_for(folder) || state.account != login.account {
         pulled.problem = Some("not-confirmed".into());
         return pulled;
@@ -768,7 +890,7 @@ pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
     }
     state.tried = now;
     let host = state.host();
-    let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Puller { server: &server, folder, into: &cache, own, state: &mut state, pulled: &mut pulled, now }.run());
+    let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Puller { server: &server, folder, into: &cache, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false }.run());
     match outcome {
         Ok(()) => {
             state.last = now;
@@ -794,7 +916,7 @@ pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
 /// file gone would read as cut, and the doses would doubt for hours).
 pub fn tidy(memory: &Path, folder: &Path, own: &str) {
     let state = State::load(memory);
-    if state.folder == shown(folder) {
+    if state.folder == shown(folder) && state.mode != MIRROR {
         tidy_cache(&state, folder, &cache_of(memory), own);
     }
 }
@@ -871,6 +993,12 @@ struct Puller<'a> {
     state: &'a mut State,
     pulled: &'a mut Pulled,
     now: i64,
+    /// This device's own files seen in the folders looked through, their ETags there (`MIRROR`).
+    own_there: BTreeMap<String, String>,
+    /// The folders of the server looked through in this step ("" the folder itself, "devices/").
+    covered: BTreeSet<String>,
+    /// Sioul keeping the folder itself, its copy lost: none of its records here.
+    lost: bool,
 }
 
 impl Puller<'_> {
@@ -880,7 +1008,7 @@ impl Puller<'_> {
 
     /// A folder of the server not changed since it was last looked through, lately.
     fn unchanged(&self, relative: &str, etag: &str) -> bool {
-        !etag.is_empty() && self.state.folders.get(relative).is_some_and(|l| l.etag == etag && self.now - l.at < LIST_AGAIN)
+        !self.lost && !etag.is_empty() && self.state.folders.get(relative).is_some_and(|l| l.etag == etag && self.now - l.at < LIST_AGAIN)
     }
 
     /// A folder looked through to its end: until it changes, not again for a while.
@@ -896,13 +1024,18 @@ impl Puller<'_> {
         self.pulled.listed += root.items.len();
         // Never fetched from a folder sealed otherwise.
         self.seal(&root)?;
+        // Sioul keeping the folder itself, its copy lost (none of its records
+        // here): everything looked through again, what it wrote brought back first.
+        self.lost = self.mirror() && own_latest(self.folder, self.own).is_none();
         if self.unchanged("", &root.etag) {
             return Ok(());
         }
+        self.own_listed("", &root);
         for (name, item) in root.items.iter().filter(|(_, item)| !item.dir) {
             match kind_of(name) {
                 Some((Kind::Round, id)) if id != self.own => self.round(name, item)?,
                 Some((Kind::Seen, id)) if id != self.own => self.small(name, item)?,
+                Some(_) if self.mirror() => self.restore(name, item)?,
                 _ => {}
             }
         }
@@ -911,10 +1044,13 @@ impl Puller<'_> {
         {
             let listing = self.server.list(&self.url("devices/"))?;
             self.pulled.listed += listing.items.len();
+            self.own_listed("devices/", &listing);
             for (name, item) in listing.items.iter().filter(|(_, item)| !item.dir) {
                 let relative = format!("devices/{name}");
-                if kind_of(&relative).is_some_and(|(_, id)| id != self.own) {
-                    self.small(&relative, item)?;
+                match kind_of(&relative) {
+                    Some((_, id)) if id != self.own => self.small(&relative, item)?,
+                    Some(_) if self.mirror() => self.restore(&relative, item)?,
+                    _ => {}
                 }
             }
             self.forget_gone("devices/", &listing);
@@ -932,10 +1068,13 @@ impl Puller<'_> {
                 }
                 let listing = self.server.list(&self.url(&dir))?;
                 self.pulled.listed += listing.items.len();
+                self.own_listed(&dir, &listing);
                 for (name, item) in listing.items.iter().filter(|(_, item)| !item.dir) {
                     let relative = format!("{dir}{name}");
-                    if kind_of(&relative).is_some_and(|(_, id)| id != self.own) {
-                        self.small(&relative, item)?;
+                    match kind_of(&relative) {
+                        Some((_, id)) if id != self.own => self.small(&relative, item)?,
+                        Some(_) if self.mirror() => self.restore(&relative, item)?,
+                        _ => {}
                     }
                 }
                 self.forget_gone(&dir, &listing);
@@ -943,9 +1082,43 @@ impl Puller<'_> {
             }
             self.looked("leases/", &parts.etag);
         }
+        // Sioul keeping the folder itself: the sealed notes and papers the others put there come too.
+        if self.mirror()
+            && let Some(blobs) = root.items.get("blobs").filter(|item| item.dir)
+            && !self.unchanged("blobs/", &blobs.etag)
+        {
+            let listing = self.server.list(&self.url("blobs/"))?;
+            self.pulled.listed += listing.items.len();
+            self.own_listed("blobs/", &listing);
+            for (name, item) in listing.items.iter().filter(|(name, item)| !item.dir && !name.starts_with('.')) {
+                self.blob(&format!("blobs/{name}"), item)?;
+            }
+            self.looked("blobs/", &listing.etag);
+        }
         self.forget_gone("", &root);
         self.looked("", &root.etag);
         Ok(())
+    }
+
+    /// Sioul keeps the folder itself (`MIRROR`): what comes goes into it, no sync app beside.
+    fn mirror(&self) -> bool {
+        self.into == self.folder
+    }
+
+    /// A folder of the server just looked through: this device's own files
+    /// in it (`MIRROR`), their ETags there, for what goes up next.
+    fn own_listed(&mut self, dir: &str, listing: &Listing) {
+        self.covered.insert(dir.to_string());
+        for (name, item) in listing.items.iter().filter(|(_, item)| !item.dir) {
+            let relative = format!("{dir}{name}");
+            let own = match kind_of(&relative) {
+                Some((_, id)) => id == self.own,
+                None => dir == "blobs/" && self.state.sent.contains_key(&relative),
+            };
+            if own {
+                self.own_there.insert(relative, item.etag.clone());
+            }
+        }
     }
 
     /// The server's seal, read again when it changed there or every six
@@ -976,7 +1149,10 @@ impl Puller<'_> {
         let gone: Vec<String> = self.state.files.keys().filter(|path| path.strip_prefix(dir).is_some_and(|name| !name.contains('/') && !listing.items.contains_key(name))).cloned().collect();
         for path in gone {
             self.state.files.remove(&path);
-            if path != "seal.toml" && self.into != self.folder {
+            // Beside a sync app, the copy fetched goes; Sioul keeping the folder
+            // itself, another device's records its writer let go (every device read past them).
+            let round = matches!(kind_of(&path), Some((Kind::Round, _)));
+            if path != "seal.toml" && (self.into != self.folder || round) {
                 let _ = std::fs::remove_file(self.into.join(&path));
             }
         }
@@ -987,7 +1163,8 @@ impl Puller<'_> {
     /// synced folder's copy, and only when all of it came.
     fn small(&mut self, relative: &str, item: &Item) -> Result<(), Stop> {
         let known = Fetched { etag: item.etag.clone(), size: item.size };
-        if !item.etag.is_empty() && self.state.files.get(relative) == Some(&known) {
+        // Sioul keeping the folder itself, one gone from its copy comes again.
+        if !item.etag.is_empty() && self.state.files.get(relative) == Some(&known) && (!self.mirror() || self.folder.join(relative).exists()) {
             return Ok(());
         }
         if item.size > crate::share::SMALL_FILE {
@@ -1010,6 +1187,161 @@ impl Puller<'_> {
         }
         self.state.files.insert(relative.to_string(), known);
         Ok(())
+    }
+
+    /// One of this device's own files there and not here (`MIRROR`), never
+    /// sent from here, or its copy lost (`lost`: none of its records here):
+    /// brought back, so that it goes on after its last record rather than
+    /// numbering them again over the others' reading.
+    fn restore(&mut self, relative: &str, item: &Item) -> Result<(), Stop> {
+        let here = self.folder.join(relative);
+        if here.exists() || (self.state.sent.contains_key(relative) && !self.lost) || item.size > LARGEST {
+            return Ok(());
+        }
+        let Some(got) = self.server.tail(&self.url(relative), 0)? else { return Ok(()) };
+        if let Some(e) = got.error {
+            return Err(Stop::Failed(e));
+        }
+        // Records keep their whole lines only.
+        let keep = if matches!(kind_of(relative), Some((Kind::Round, _))) { got.bytes.iter().rposition(|b| *b == b'\n').map_or(0, |at| at + 1) } else { got.bytes.len() };
+        crate::share::write_atomically(&here, &got.bytes[..keep]).map_err(|e| Stop::Failed(SyncError::Disk(e)))?;
+        let modified = std::fs::metadata(&here).map(|m| crate::share::modified_ns(&m)).unwrap_or(0);
+        let etag = if keep == got.bytes.len() { item.etag.clone() } else { String::new() };
+        self.state.sent.insert(relative.to_string(), Sent { size: keep as u64, modified, etag });
+        self.pulled.fetched += 1;
+        self.pulled.bytes += keep as u64;
+        Ok(())
+    }
+
+    /// A sealed file another device put there and not here (`MIRROR`):
+    /// fetched whole, kept only whole. One sent from here never comes back.
+    fn blob(&mut self, relative: &str, item: &Item) -> Result<(), Stop> {
+        let here = self.folder.join(relative);
+        if self.state.sent.contains_key(relative) || item.size > BLOB_LIMIT {
+            return Ok(());
+        }
+        let known = Fetched { etag: item.etag.clone(), size: item.size };
+        if std::fs::metadata(&here).is_ok_and(|m| m.len() == item.size) {
+            self.state.files.insert(relative.to_string(), known);
+            return Ok(());
+        }
+        if let Some(size) = self.server.download(&self.url(relative), &here, BLOB_LIMIT)? {
+            self.pulled.fetched += 1;
+            self.pulled.bytes += size;
+            self.state.files.insert(relative.to_string(), known);
+        }
+        Ok(())
+    }
+
+    /// This device's own files (`MIRROR`) changed here since they went up, or
+    /// changed or gone there since (seen in the folders just looked through),
+    /// sent, in `own_files`' order, each over what is there as it was seen
+    /// (`send`). Then what it let go here goes there too: its records past
+    /// their time (`remove_old_rounds`: every device read past them), never
+    /// its last round, and nothing while none of its records is here; the
+    /// sealed files it swept.
+    fn push(&mut self) -> Result<(), Stop> {
+        for relative in own_files(self.folder, self.own, self.state) {
+            let Ok(meta) = std::fs::metadata(self.folder.join(&relative)) else { continue };
+            let (size, modified) = (meta.len(), crate::share::modified_ns(&meta));
+            let sent = self.state.sent.get(&relative).cloned();
+            let covered = self.covered.contains(dir_of(&relative));
+            let there = self.own_there.get(&relative).cloned();
+            let same_here = sent.as_ref().is_some_and(|s| s.size == size && s.modified == modified);
+            // Its ETag there, unsaid when it went up, known now.
+            if same_here
+                && let (Some(sent), Some(etag)) = (&sent, &there)
+                && sent.etag.is_empty()
+            {
+                self.state.sent.insert(relative.clone(), Sent { etag: etag.clone(), ..sent.clone() });
+                continue;
+            }
+            let same_there = !covered || there.as_deref() == sent.as_ref().map(|s| s.etag.as_str());
+            if same_here && same_there {
+                continue;
+            }
+            let seen = if covered { there } else { sent.map(|s| s.etag).filter(|e| !e.is_empty()) };
+            self.send(&relative, size, modified, seen)?;
+        }
+        if let Some(latest) = own_latest(self.folder, self.own)
+            && self.covered.contains("")
+        {
+            let gone: Vec<(String, String)> = self
+                .own_there
+                .iter()
+                .filter(|(relative, _)| matches!(kind_of(relative), Some((Kind::Round, _))) && self.state.sent.contains_key(*relative) && !self.folder.join(relative).exists())
+                .filter(|(relative, _)| relative.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse::<u32>().ok()).is_some_and(|round| round < latest))
+                .map(|(relative, etag)| (relative.clone(), etag.clone()))
+                .collect();
+            for (relative, etag) in gone {
+                self.take_out(&relative, Some(etag))?;
+            }
+        }
+        let swept: Vec<(String, String)> = self.state.sent.iter().filter(|(relative, _)| relative.starts_with("blobs/") && !self.folder.join(relative).exists()).map(|(relative, sent)| (relative.clone(), sent.etag.clone())).collect();
+        for (relative, etag) in swept {
+            self.take_out(&relative, Some(etag).filter(|e| !e.is_empty()))?;
+        }
+        Ok(())
+    }
+
+    /// One of this device's files sent whole over what is there as it was
+    /// seen (`seen`: its ETag; none there). Refused because it changed there
+    /// meanwhile (`412`), sent again over what is there now: it is this
+    /// device's own. A folder missing there (`409`), made first. A sealed file
+    /// goes only where none is: one there already is the same. Refused again
+    /// and again: left for the next step; nothing here is lost.
+    fn send(&mut self, relative: &str, size: u64, modified: u64, seen: Option<String>) -> Result<(), Stop> {
+        let blob = relative.starts_with("blobs/");
+        let bytes = std::fs::read(self.folder.join(relative)).map_err(|e| Stop::Failed(SyncError::Disk(format!("{relative}: {e}"))))?;
+        let url = self.url(relative);
+        let mut seen = if blob { None } else { seen };
+        for attempt in 0..3 {
+            let (status, etag) = self.server.put(&url, bytes.clone(), seen.as_deref())?;
+            match status {
+                200 | 201 | 204 => {
+                    self.state.sent.insert(relative.to_string(), Sent { size, modified, etag: etag.unwrap_or_default() });
+                    self.pulled.sent += 1;
+                    self.pulled.bytes += bytes.len() as u64;
+                    return Ok(());
+                }
+                412 if blob => {
+                    self.state.sent.insert(relative.to_string(), Sent { size, modified, etag: String::new() });
+                    return Ok(());
+                }
+                412 => seen = self.server.etag(&url)?,
+                409 if attempt == 0 => self.make_folders(relative)?,
+                507 => return Err(Stop::Failed(SyncError::Server("quota".into()))),
+                status => return Err(Stop::Failed(SyncError::Server(format!("PUT: {status}")))),
+            }
+        }
+        Err(Stop::Failed(SyncError::Server("PUT: 412".into())))
+    }
+
+    /// The folders a file's path goes through, made there (`MKCOL`) when missing.
+    fn make_folders(&mut self, relative: &str) -> Result<(), Stop> {
+        let mut at = String::new();
+        let names: Vec<&str> = relative.split('/').collect();
+        for name in &names[..names.len().saturating_sub(1)] {
+            at = format!("{at}{name}/");
+            match self.server.mkcol(&self.url(&at))? {
+                201 | 405 => {}
+                status => return Err(Stop::Failed(SyncError::Server(format!("MKCOL: {status}")))),
+            }
+        }
+        Ok(())
+    }
+
+    /// One of this device's files taken out there, only as it was seen when
+    /// its ETag is known; gone already, or changed there since (another device
+    /// sealed the same content again), forgotten here all the same.
+    fn take_out(&mut self, relative: &str, seen: Option<String>) -> Result<(), Stop> {
+        match self.server.delete(&self.url(relative), seen.as_deref())? {
+            200 | 204 | 404 | 412 => {
+                self.state.sent.remove(relative);
+                Ok(())
+            }
+            status => Err(Stop::Failed(SyncError::Server(format!("DELETE: {status}")))),
+        }
     }
 
     /// A device's records, when the server's copy is longer than both the
@@ -1115,6 +1447,186 @@ fn read_range(path: &Path, from: u64, to: u64) -> Option<Vec<u8>> {
     let mut bytes = vec![0u8; usize::try_from(to.saturating_sub(from)).ok()?];
     file.read_exact(&mut bytes).ok()?;
     Some(bytes)
+}
+
+// ---------------------------------------------------------------- kept in step by Sioul itself
+
+/// The mode where Sioul keeps the folder in step with the server itself, no
+/// sync app at all (docs/database.md, "Kept in step by Sioul itself"): the
+/// folder here is its own copy (`mirror_of`), the server's the one the
+/// devices share, a device beside a sync app reading the same.
+pub const MIRROR: &str = "mirror";
+
+/// Sioul's own copy of the folder in that mode: `<state>/share/mirror/`.
+pub fn mirror_of(memory: &Path) -> PathBuf {
+    memory.with_file_name("mirror")
+}
+
+/// A sealed file is never fetched past this: the largest note's, sealed.
+const BLOB_LIMIT: u64 = crate::blobs::LARGEST + (1 << 20);
+
+/// A folder of an account's files as Sioul keeping it itself finds it: its
+/// address, where it is among the files, and its seal when it has one
+/// (another device shares through it: joining), else none (a new sharing).
+pub struct Opened {
+    pub url: String,
+    root: String,
+    pub place: String,
+    pub seal: Option<Vec<u8>>,
+}
+
+/// Where `place` ("Documents/Sioul") is among `login`'s files, and what it
+/// holds; why not, in a code as `State::said` has them.
+pub fn open(login: &Login, place: &str) -> Result<Opened, String> {
+    open_with(login, place, LIMITS)
+}
+
+pub(crate) fn open_with(login: &Login, place: &str, limits: Limits) -> Result<Opened, String> {
+    let host = host_of(&login.url);
+    let place = place.trim().trim_matches('/').to_string();
+    if place.is_empty() {
+        return Err("no-place".into());
+    }
+    let server = Server::new(login, limits).map_err(|e| code(&e, &login.account))?;
+    let root = files_root(&server, login).map_err(|e| code(&e, &host))?.ok_or_else(|| format!("no-files:{host}"))?;
+    let url = format!("{root}{}/", encode_path(&place));
+    let seal = server.small(&format!("{url}seal.toml")).map_err(|e| code(&e, &host))?.map(|(bytes, _)| bytes);
+    Ok(Opened { url, root, place, seal })
+}
+
+/// A new sharing there: each missing folder of its place made (`MKCOL`),
+/// then `folder`'s seal sent only if none is there yet (`If-None-Match: *`):
+/// two devices starting at once never seal it twice ("sealed-meanwhile").
+pub fn create(login: &Login, opened: &Opened, folder: &Path) -> Result<(), String> {
+    create_with(login, opened, folder, LIMITS)
+}
+
+pub(crate) fn create_with(login: &Login, opened: &Opened, folder: &Path, limits: Limits) -> Result<(), String> {
+    let host = host_of(&login.url);
+    let failed = |e: SyncError| code(&e, &host);
+    let server = Server::new(login, limits).map_err(failed)?;
+    let mut at = opened.root.clone();
+    for name in opened.place.split('/').filter(|n| !n.is_empty()) {
+        at = format!("{at}{}/", encode_path(name));
+        if !matches!(server.mkcol(&at).map_err(failed)?, 201 | 405) {
+            return Err(format!("server:{host}"));
+        }
+    }
+    let seal = seal_of(folder).ok_or_else(|| "no-seal".to_string())?;
+    match server.put(&format!("{}seal.toml", opened.url), seal, None).map_err(failed)?.0 {
+        200 | 201 | 204 => Ok(()),
+        412 => Err("sealed-meanwhile".into()),
+        _ => Err(format!("server:{host}")),
+    }
+}
+
+/// From now on Sioul keeps `folder` in step with `opened` itself (`MIRROR`),
+/// with `login`'s account: what the backup knew goes.
+pub fn begin(memory: &Path, folder: &Path, login: &Login, opened: &Opened, now: i64) -> Result<(), String> {
+    let _ = std::fs::remove_dir_all(cache_of(memory));
+    let state = State { mode: MIRROR.into(), place: opened.place.clone(), folder: shown(folder), account: login.account.clone(), url: opened.url.clone(), confirmed: now, sealed: now, ..State::default() };
+    let path = state_path(memory);
+    sioul_core::filelock::with_lock(&path, || state.write(memory))
+}
+
+/// One step of Sioul keeping the folder itself (`MIRROR`): with `whole`, the
+/// server's folder looked through first and the other devices' newer files
+/// brought into the copy here, as `pull` brings them beside a synced folder
+/// (their sealed notes and papers too); then this device's own files changed
+/// since they went up, or changed there since, sent (`Puller::push`). Never
+/// another device's file written; nothing here lost when the server refuses.
+/// One step at a time on this device, whichever process runs it.
+pub fn step(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64, whole: bool) -> Pulled {
+    step_with(memory, folder, own, login, now, whole, LIMITS)
+}
+
+pub(crate) fn step_with(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64, whole: bool, limits: Limits) -> Pulled {
+    sioul_core::filelock::with_lock(&memory.with_file_name("mirror.step"), || {
+        let mut state = State::load(memory);
+        let mut pulled = Pulled::default();
+        if state.mode != MIRROR || !state.confirmed_for(folder) || state.account != login.account {
+            pulled.problem = Some("not-confirmed".into());
+            return pulled;
+        }
+        let host = state.host();
+        if whole {
+            state.tried = now;
+        }
+        let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| {
+            let mut puller = Puller { server: &server, folder, into: folder, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false };
+            if whole {
+                puller.run()?;
+            }
+            puller.push()
+        });
+        match outcome {
+            Ok(()) => {
+                if whole {
+                    state.last = now;
+                }
+                state.pushed = now;
+                state.said.clear();
+            }
+            Err(Stop::Unconfirmed(why)) => {
+                state.confirmed = 0;
+                state.said = why;
+            }
+            Err(Stop::Failed(e)) => state.said = code(&e, &host),
+        }
+        let _ = state.save(memory);
+        pulled.problem = (!state.said.is_empty()).then(|| state.said.clone());
+        pulled
+    })
+}
+
+/// The folder a file of the folder is in, as the server's listings are kept: "" the folder itself, "devices/", "leases/health/".
+fn dir_of(relative: &str) -> &str {
+    relative.rfind('/').map_or("", |at| &relative[..=at])
+}
+
+/// This device's own files in the folder (`MIRROR`), by their path in it, in
+/// the order they go up: the sealed files it made (in `blobs/`, not
+/// fetched), its records, its notes to the others, its claims, its entry
+/// last: it says how far its records went.
+fn own_files(folder: &Path, own: &str, state: &State) -> Vec<String> {
+    let names = |dir: &Path| -> Vec<String> {
+        std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| !n.starts_with('.')).collect()
+    };
+    let mut out: Vec<String> = names(&folder.join("blobs")).into_iter().map(|n| format!("blobs/{n}")).filter(|r| !state.files.contains_key(r)).collect();
+    let mut records: Vec<(u8, u32, String)> = names(folder)
+        .into_iter()
+        .filter_map(|name| match kind_of(&name) {
+            Some((Kind::Round, id)) if id == own => Some((0, name.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse().ok()).unwrap_or(0), name)),
+            Some((Kind::Seen, id)) if id == own => Some((1, 0, name)),
+            _ => None,
+        })
+        .collect();
+    records.sort();
+    out.extend(records.into_iter().map(|(_, _, name)| name));
+    let mut parts: Vec<String> = std::fs::read_dir(folder.join("leases")).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+    parts.sort();
+    out.extend(parts.into_iter().map(|part| format!("leases/{part}/{own}.lease")).filter(|claim| folder.join(claim).is_file()));
+    let entry = format!("devices/{own}.device");
+    if folder.join(&entry).is_file() {
+        out.push(entry);
+    }
+    out
+}
+
+/// The highest round of this device's records in the folder here; none when it holds none.
+fn own_latest(folder: &Path, own: &str) -> Option<u32> {
+    std::fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            match kind_of(&name) {
+                Some((Kind::Round, id)) if id == own => name.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse().ok()),
+                _ => None,
+            }
+        })
+        .max()
 }
 
 #[cfg(test)]
@@ -1270,6 +1782,9 @@ pub(crate) mod fake {
             match request.method.as_str() {
                 "PROPFIND" => propfind(request, &relative, &path),
                 "GET" => get(request, &path),
+                "PUT" => put(request, &path),
+                "MKCOL" => mkcol(&path),
+                "DELETE" => delete(request, &path),
                 _ => (405, Vec::new(), Vec::new()),
             }
         }
@@ -1345,6 +1860,51 @@ pub(crate) mod fake {
         (207, vec![("Content-Type", "application/xml; charset=utf-8".into())], multistatus(&out))
     }
 
+    /// A file written whole (`PUT`), as Nextcloud does: its folder there, the
+    /// precondition met (`If-None-Match: *` none there, `If-Match` its ETag).
+    fn put(request: &Request, path: &Path) -> Reply {
+        if !path.parent().is_some_and(Path::is_dir) {
+            return (409, Vec::new(), Vec::new());
+        }
+        let current = path.is_file().then(|| format!("\"{}\"", etag_of(path)));
+        let refused = match (request.header("If-None-Match"), request.header("If-Match")) {
+            (Some("*"), _) => current.is_some(),
+            (_, Some(wanted)) => current.as_deref() != Some(wanted),
+            _ => false,
+        };
+        if refused {
+            return (412, Vec::new(), Vec::new());
+        }
+        std::fs::write(path, &request.body).unwrap();
+        (if current.is_some() { 204 } else { 201 }, vec![("ETag", format!("\"{}\"", etag_of(path)))], Vec::new())
+    }
+
+    fn mkcol(path: &Path) -> Reply {
+        if path.exists() {
+            return (405, Vec::new(), Vec::new());
+        }
+        if !path.parent().is_some_and(Path::is_dir) {
+            return (409, Vec::new(), Vec::new());
+        }
+        std::fs::create_dir(path).unwrap();
+        (201, Vec::new(), Vec::new())
+    }
+
+    fn delete(request: &Request, path: &Path) -> Reply {
+        if !path.exists() {
+            return (404, Vec::new(), Vec::new());
+        }
+        if request.header("If-Match").is_some_and(|wanted| format!("\"{}\"", etag_of(path)) != wanted) {
+            return (412, Vec::new(), Vec::new());
+        }
+        if path.is_dir() {
+            std::fs::remove_dir_all(path).unwrap();
+        } else {
+            std::fs::remove_file(path).unwrap();
+        }
+        (204, Vec::new(), Vec::new())
+    }
+
     fn get(request: &Request, path: &Path) -> Reply {
         let Ok(bytes) = std::fs::read(path) else { return (404, Vec::new(), Vec::new()) };
         let etag = format!("\"{}\"", etag_of(path));
@@ -1372,7 +1932,7 @@ mod tests {
     const SEAL: &str = "# Sioul: how your devices' shared records are sealed (docs/database.md).\nversion = 1\nsalt = \"AAAAAAAAAAAAAAAAAAAAAA==\"\nmemory_kib = 65536\npasses = 3\ncheck = \"one\"\n";
     const OTHER_SEAL: &str = "# Sioul: how your devices' shared records are sealed (docs/database.md).\nversion = 1\nsalt = \"BBBBBBBBBBBBBBBBBBBBBB==\"\nmemory_kib = 65536\npasses = 3\ncheck = \"two\"\n";
     /// The network's limits, short: a test does not wait ten seconds.
-    const TEST: Limits = Limits { wait: Duration::from_millis(700), small: Duration::from_secs(3), large: Duration::from_secs(5), pull: Duration::from_secs(30) };
+    const TEST: Limits = Limits { wait: Duration::from_millis(700), small: Duration::from_secs(3), large: Duration::from_secs(5), pull: Duration::from_secs(30), blob: Duration::from_secs(5) };
     const DUE: i64 = 1_800_000_000;
 
     fn scratch(name: &str) -> PathBuf {
@@ -1998,5 +2558,247 @@ mod tests {
         assert_eq!(State::load(&w.phone.memory).on, Some(false));
         State::choose(&w.phone.memory, |s| s.on = None).unwrap();
         assert!(State::load(&w.phone.memory).fetching());
+    }
+
+    // ------------------------------------------------ kept in step by Sioul itself
+
+    /// Two devices with no sync app at all, each keeping its own copy of the
+    /// folder in step with the server through Sioul alone (`MIRROR`).
+    struct Pair {
+        base: PathBuf,
+        fake: Arc<Fake>,
+        desk: Device,
+        desk_folder: PathBuf,
+        phone: Device,
+        phone_folder: PathBuf,
+    }
+
+    impl Pair {
+        fn new(name: &str) -> Pair {
+            let base = scratch(name);
+            let files = base.join("cloud");
+            std::fs::create_dir_all(&files).unwrap();
+            let fake = Fake::start(&files);
+            let desk = Device::new(&base, "desk", COMPUTER);
+            let phone = Device::new(&base, "phone", PHONE);
+            let (desk_folder, phone_folder) = (mirror_of(&desk.memory), mirror_of(&phone.memory));
+            let login = fake.login();
+            // The desk starts sharing there: the folder made, its seal sent.
+            let opened = open_with(&login, "Documents/Sioul", TEST).unwrap();
+            assert!(opened.seal.is_none(), "nothing there yet");
+            put(&desk_folder, "seal.toml", SEAL);
+            create_with(&login, &opened, &desk_folder, TEST).unwrap();
+            begin(&desk.memory, &desk_folder, &login, &opened, DUE - 7_300).unwrap();
+            // A second start there at once finds it sealed: never sealed twice.
+            assert_eq!(create_with(&login, &opened, &desk_folder, TEST), Err("sealed-meanwhile".to_string()));
+            // The phone joins it: the seal brought into its own copy.
+            let joined = open_with(&login, "/Documents/Sioul/", TEST).unwrap();
+            assert_eq!(joined.seal.as_deref(), Some(SEAL.as_bytes()));
+            put_bytes(&phone_folder, "seal.toml", joined.seal.as_deref().unwrap());
+            begin(&phone.memory, &phone_folder, &login, &joined, DUE - 7_250).unwrap();
+            let pair = Pair { base, fake, desk, desk_folder, phone, phone_folder };
+            pair.desk.session(&pair.desk_folder, |e| e.start(DUE - 7_200));
+            pair.phone.session(&pair.phone_folder, |e| e.start(DUE - 7_200));
+            pair.turn(true, DUE - 7_100);
+            pair.turn(false, DUE - 7_090);
+            pair.turn(true, DUE - 7_080);
+            pair
+        }
+
+        fn device(&self, desk: bool) -> (&Device, &Path) {
+            if desk { (&self.desk, &self.desk_folder) } else { (&self.phone, &self.phone_folder) }
+        }
+
+        fn step(&self, desk: bool, now: i64, whole: bool) -> Pulled {
+            let (device, folder) = self.device(desk);
+            step_with(&device.memory, folder, &device.id, &self.fake.login(), now, whole, TEST)
+        }
+
+        /// As the window does each minute: the server looked through, an exchange, what it wrote sent.
+        fn turn(&self, desk: bool, now: i64) -> Outcome {
+            let before = self.step(desk, now, true);
+            assert!(before.problem.is_none(), "{before:?}");
+            let outcome = self.device(desk).0.exchange(self.device(desk).1, now);
+            let after = self.step(desk, now, false);
+            assert!(after.problem.is_none(), "{after:?}");
+            outcome
+        }
+    }
+
+    impl Drop for Pair {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.base);
+        }
+    }
+
+    #[test]
+    fn two_devices_without_a_sync_app_share_through_the_server_alone() {
+        let p = Pair::new("mirror");
+        // Do-not-disturb turned on at the desk: on the phone at its next turn.
+        p.desk.press(true, DUE + 10);
+        p.turn(true, DUE + 20);
+        p.turn(false, DUE + 30);
+        let press = p.phone.dnd().expect("the desk's press");
+        assert!(press.on && press.from == p.desk.id, "{press:?}");
+        // A dose marked taken on the phone: on the desk at its next turn.
+        p.phone.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000040\n");
+        p.turn(false, DUE + 40);
+        p.turn(true, DUE + 50);
+        assert!(p.desk.read("health-state.toml").contains("levo@1800000000"));
+        // Turned off on the phone: off on the desk.
+        p.phone.press(false, DUE + 60);
+        p.turn(false, DUE + 70);
+        p.turn(true, DUE + 80);
+        assert!(!p.desk.dnd().unwrap().on);
+        // Each knows how the other is, from the server alone.
+        let phone = p.desk.sees(&p.desk_folder, &p.phone, DUE + 90);
+        assert!(phone.complete && phone.said.as_ref().is_some_and(|s| s.working && s.exported >= DUE + 70), "{phone:?}");
+        assert!(doubts_now(DUE - 100, DUE + 90, None, &[phone]).is_empty(), "a dose due before its last export is known");
+        // Neither the backup nor its reading beside the folder ever run on a folder Sioul keeps itself.
+        assert_eq!(pull_with(&p.phone.memory, &p.phone_folder, &p.phone.id, &p.fake.login(), DUE + 95, TEST).problem.as_deref(), Some("mirror"));
+        assert!(attach(&p.phone_folder, &p.phone.memory).is_none());
+    }
+
+    #[test]
+    fn a_device_never_writes_another_devices_file() {
+        let p = Pair::new("own");
+        for minute in 0..6 {
+            for desk in [true, false] {
+                let device = p.device(desk).0;
+                if minute % 2 == 0 {
+                    device.press(minute % 4 == 0, DUE + minute * 60 + 1);
+                }
+                p.fake.forget_seen();
+                p.turn(desk, DUE + minute * 60 + if desk { 0 } else { 30 });
+                for line in p.fake.seen() {
+                    let path = line.split(' ').nth(1).unwrap_or_default();
+                    if line.starts_with("PUT ") || line.starts_with("DELETE ") {
+                        assert!(path.contains(&device.id) || path.contains("/blobs/"), "{line}");
+                    } else {
+                        assert!(line.starts_with("GET ") || line.starts_with("PROPFIND ") || line.starts_with("MKCOL "), "{line}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_refused_or_failed_upload_is_never_lost() {
+        let p = Pair::new("refused");
+        p.phone.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000040\n");
+        for (n, fault) in [Fault::Status(412), Fault::Status(500), Fault::Drop].into_iter().enumerate() {
+            p.fake.clear_faults();
+            let id = p.phone.id.clone();
+            p.fake.fault(move |r| (r.method == "PUT" && r.path.contains(&id) && r.path.ends_with(".jsonl")).then_some(fault));
+            let now = DUE + 40 + n as i64 * 10;
+            // Its step looks through the server, and sends what waits: refused again.
+            let _ = p.step(false, now, true);
+            p.phone.exchange(&p.phone_folder, now);
+            let pushed = p.step(false, now, false);
+            assert!(pushed.problem.is_some(), "{fault:?}: {pushed:?}");
+            assert!(p.phone.read("health-state.toml").contains("levo@"), "nothing lost here");
+            p.turn(true, now + 5);
+            assert!(!p.desk.read("health-state.toml").contains("levo@"), "{fault:?}: not there yet");
+        }
+        // The server takes it again: it goes, and the desk has it.
+        p.fake.clear_faults();
+        p.turn(false, DUE + 100);
+        p.turn(true, DUE + 110);
+        assert!(p.desk.read("health-state.toml").contains("levo@1800000000"));
+        let heard = crate::share::heard(&p.desk.memory, &p.desk.id);
+        assert!(!heard.broken.contains_key(&p.phone.id), "{heard:?}");
+    }
+
+    #[test]
+    fn its_copy_lost_a_device_goes_on_after_its_last_record() {
+        let p = Pair::new("lost");
+        p.phone.write("health-state.toml", "[taken]\n\"one@1800000000\" = 1800000010\n");
+        p.turn(false, DUE + 20);
+        p.turn(true, DUE + 25);
+        // The phone's copy of the folder lost, its memory kept: its records come back from the server, numbering goes on.
+        for entry in std::fs::read_dir(&p.phone_folder).unwrap().filter_map(Result::ok) {
+            if entry.file_name() != "seal.toml" {
+                let _ = std::fs::remove_dir_all(entry.path());
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+        p.phone.write("health-state.toml", "[taken]\n\"one@1800000000\" = 1800000010\n\"two@1800000000\" = 1800000030\n");
+        let outcome = p.turn(false, DUE + 40);
+        assert!(outcome.problems.iter().all(|p| !p.starts_with("share-own")), "{:?}", outcome.problems);
+        p.turn(true, DUE + 50);
+        let record = p.desk.read("health-state.toml");
+        assert!(record.contains("one@") && record.contains("two@"), "{record}");
+        let heard = crate::share::heard(&p.desk.memory, &p.desk.id);
+        assert!(!heard.broken.contains_key(&p.phone.id), "no gap nor cut on the desk: {heard:?}");
+        // The others' files came back too.
+        assert!(p.phone_folder.join(format!("devices/{}.device", p.desk.id)).exists());
+    }
+
+    #[test]
+    fn sealed_files_travel_whole_and_go_when_swept() {
+        let p = Pair::new("blobs");
+        let source = p.base.join("note.md");
+        std::fs::write(&source, "a note\n".repeat(1000)).unwrap();
+        let (hash, _) = crate::blobs::hash_file(&source).unwrap();
+        crate::blobs::put(&p.desk_folder, &KEY, &source, &hash).unwrap();
+        let name = crate::blobs::name(&KEY, &hash);
+        p.turn(true, DUE + 10);
+        p.turn(false, DUE + 20);
+        let sealed = std::fs::read(p.desk_folder.join("blobs").join(&name)).unwrap();
+        assert_eq!(std::fs::read(p.phone_folder.join("blobs").join(&name)).unwrap(), sealed);
+        // Never sent back by the phone, which did not make it.
+        p.fake.forget_seen();
+        p.turn(false, DUE + 30);
+        assert!(p.fake.seen().iter().all(|l| !(l.starts_with("PUT ") && l.contains("/blobs/"))), "{:?}", p.fake.seen());
+        // Swept on the desk: taken out there.
+        std::fs::remove_file(p.desk_folder.join("blobs").join(&name)).unwrap();
+        p.turn(true, DUE + 40);
+        assert!(!p.fake.files.join("Documents/Sioul/blobs").join(&name).exists());
+    }
+
+    /// A device beside its sync app (the desk: its folder is the server's) and
+    /// a phone with none, Sioul keeping its copy: one folder, both ways.
+    #[test]
+    fn a_device_with_a_sync_app_and_one_without_share_one_folder() {
+        let w = World::new("mixed");
+        let lone = Device::new(&w.base, "lone", PHONE);
+        let folder = mirror_of(&lone.memory);
+        let login = w.fake.login();
+        let opened = open_with(&login, "Documents/Sioul", TEST).unwrap();
+        put_bytes(&folder, "seal.toml", opened.seal.as_deref().expect("sealed by the desk"));
+        begin(&lone.memory, &folder, &login, &opened, DUE).unwrap();
+        lone.session(&folder, |e| e.start(DUE));
+        let turn = |now: i64| {
+            assert!(step_with(&lone.memory, &folder, &lone.id, &login, now, true, TEST).problem.is_none());
+            lone.exchange(&folder, now);
+            assert!(step_with(&lone.memory, &folder, &lone.id, &login, now, false, TEST).problem.is_none());
+        };
+        turn(DUE + 10);
+        // Do-not-disturb turned on at the desk: the phone without a sync app has it.
+        w.desk.press(true, DUE + 20);
+        w.desk.exchange(&w.server, DUE + 30);
+        turn(DUE + 40);
+        assert!(lone.dnd().is_some_and(|p| p.on && p.from == w.desk.id));
+        // A dose answered on that phone: the desk reads it in its own folder.
+        lone.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000050\n");
+        turn(DUE + 50);
+        w.desk.exchange(&w.server, DUE + 60);
+        assert!(w.desk.read("health-state.toml").contains("levo@1800000000"));
+        let seen = w.desk.sees(&w.server, &lone, DUE + 70);
+        assert!(seen.complete && seen.said.is_some_and(|s| s.working), "the desk knows how the phone is");
+    }
+
+    #[test]
+    fn keeping_the_folder_is_inert_until_set_up() {
+        let w = World::new("inert");
+        w.fake.forget_seen();
+        let stepped = step_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), DUE, true, TEST);
+        assert_eq!(stepped.problem.as_deref(), Some("not-confirmed"));
+        assert!(w.fake.seen().is_empty(), "not a request");
+        // The backup confirmed is not Sioul keeping the folder: nothing sent either.
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        w.fake.forget_seen();
+        assert_eq!(step_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), DUE + 1, false, TEST).problem.as_deref(), Some("not-confirmed"));
+        assert!(w.fake.seen().is_empty());
     }
 }

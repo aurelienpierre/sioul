@@ -6,10 +6,10 @@ description: Les heures dans Sioul – heures de travail et heures pour vos dém
 
 Deux questions décident de ce que Sioul met en avant, et elles restent séparées :
 
-- **Qui peut vous joindre, et quand** : les personnes que vous mettez sur une liste (sûrs, neutres, restreints, bloqués) et les moments où vient le courrier de chaque liste ([Comptes ▸ Expéditeurs](accounts.md#senders)).
+- **Qui peut vous joindre, et quand** : cinq états, les inconnus, les bloqués (jamais), et pour les personnes de vos carnets d’adresses sûrs, neutres ou restreints ; et pour le courrier, les appels et les messages des autres applications, les moments où vient chacun ([Comptes ▸ Qui peut vous joindre](accounts.md#senders)).
 - **À quoi sert une chose, et si ce moment est fait pour elle** : cette page.
 
-Elles se rejoignent en un point, le courrier : celui de vos expéditeurs sûrs vient aux moments cochés pour eux, à n’importe laquelle de vos adresses ; celui des autres aux moments cochés pour leur liste, à une adresse faite pour le moment présent. Le courrier que vous vous envoyez, et les codes et liens que vous venez de demander à un site, arrivent toujours tout de suite.
+Elles se rejoignent en un point, le courrier : celui de vos expéditeurs sûrs vient aux moments cochés pour eux, à n’importe laquelle de vos adresses ; celui des autres (neutres, restreints, inconnus) aux moments cochés pour leur ligne, à une adresse faite pour le moment présent. Les appels et les messages des autres applications suivent leur propre grille, seule. Le courrier que vous vous envoyez, et les codes et liens que vous venez de demander à un site, arrivent toujours tout de suite.
 
 C’est une question de santé avant d’être un filtre. Le travail qui atteint la soirée empêche de récupérer, et le risque est le plus fort pour les personnes qui travaillent chez elles ou à leur compte, pour qui rien d’autre ne marque la fin de la journée. Des démarches étalées sur toutes les soirées pèsent aussi, même pour qui ne travaille pas.
 
@@ -61,7 +61,7 @@ La ligne d’état dit ce qu’est le moment présent, et jusqu’à quand : �
 
 ## Ce qui suit le moment présent {#what-follows-the-time}
 
-- **Le courrier** : aux moments cochés pour la liste de l’expéditeur ([Comptes ▸ Expéditeurs](accounts.md#senders)). Le courrier de vos expéditeurs sûrs vient à n’importe quelle adresse ; celui des autres seulement à une adresse faite pour le moment présent, sauf si les deux ne se rencontrent jamais dans votre semaine : les moments de leur liste décident alors seuls, pour que rien n’attende pour toujours.
+- **Le courrier** : aux moments cochés pour la ligne de l’expéditeur ([Comptes ▸ Qui peut vous joindre](accounts.md#senders)). Le courrier de vos expéditeurs sûrs vient à n’importe quelle adresse ; celui des autres seulement à une adresse faite pour le moment présent, sauf si les deux ne se rencontrent jamais dans votre semaine : les moments de leur ligne décident alors seuls, pour que rien n’attende pour toujours.
 - **Les sites** : ceux du moment présent viennent en premier ; les autres se replient sous « Autres heures ». Leurs notifications attendent leurs heures, temps réel et appels compris, et aucune ne vient pendant le sommeil.
 - **Les tâches** : les pages de tâches gardent ce qui convient, et le plan place chaque tâche dans les heures prévues pour elle : le travail aux heures de travail, vos démarches aux heures de démarches. Les loisirs n’ont pas d’heures : ce qui n’est que pour les loisirs ne prend pas de place dans le plan et n’attend rien. La prochaine étape n’est jamais un appel à un bureau fermé à ce moment.
 - **Les budgets** : selon ce à quoi chacun sert.
@@ -99,7 +99,7 @@ Sans nuit réglée sur la page Santé, les nuits sont des loisirs et rien n’é
 **Travailler maintenant** montre le travail quelles que soient les heures, comme aux heures de travail. Dans le calme, c’est une case à côté de **Temps réel** sur le Porche, et un choix dans le menu de la ligne d’état, sur chaque page.
 
 <figure markdown="span">
-  [![Le Porche avec « Travailler maintenant » coché à côté de « Temps réel » en haut, et la ligne d’état, en bas, qui dit « Le travail est montré jusqu’à 17:00, à votre demande. »](../assets/screens/fr/work-now.png){ loading=lazy }](../assets/screens/fr/work-now.png "Ouvrir l’image en grand")
+  [![Le Porche avec « Travailler maintenant » coché à côté de « Temps réel » en haut, et au-dessus la ligne d’état, la barre de titre de la fenêtre, qui dit « Le travail est montré jusqu’à 17:00, à votre demande. »](../assets/screens/fr/work-now.png){ loading=lazy }](../assets/screens/fr/work-now.png "Ouvrir l’image en grand")
   <figcaption>Travailler maintenant : le travail montré quelles que soient les heures, jusqu’à ce que vous décochiez la case.</figcaption>
 </figure>
 

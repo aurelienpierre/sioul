@@ -127,7 +127,7 @@ Le partage n’a besoin que d’un dossier qu’une application de synchronisati
 
 ### Où trouver un Nextcloud {#where-to-get-a-nextcloud}
 
-Nextcloud est le moyen de synchronisation avec lequel Sioul est testé, et le seul que Sioul lit lui-même quand l’application de synchronisation d’un téléphone est en retard : en WebDAV, en secours ([pourquoi](sharing.md#when-the-sync-app-is-late)). Tout compte Nextcloud convient ; le même compte peut aussi tenir vos agendas, vos tâches et vos contacts. Les fichiers de Sioul sont petits : quelques mégaoctets, davantage si vous partagez vos notes et vos papiers.
+Nextcloud est le moyen de synchronisation avec lequel Sioul est testé, et le seul que Sioul atteint lui-même, en WebDAV : en secours quand l’application de synchronisation d’un téléphone est en retard, ou sans aucune application de synchronisation, Sioul tenant le dossier à jour lui-même ([pourquoi](sharing.md#when-the-sync-app-is-late)). Tout compte Nextcloud convient ; le même compte peut aussi tenir vos agendas, vos tâches et vos contacts. Les fichiers de Sioul sont petits : quelques mégaoctets, davantage si vous partagez vos notes et vos papiers.
 
 | Où | Gratuit | Payant | Remarques |
 |---|---|---|---|

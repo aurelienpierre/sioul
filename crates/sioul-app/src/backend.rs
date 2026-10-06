@@ -168,7 +168,7 @@ pub mod qobject {
         #[qinvokable]
         fn set_standing(self: Pin<&mut Sioul>, entry: &QString, standing: &QString);
 
-        /// Where an address stands: "safe", "neutral", "restricted" or "blocked".
+        /// Who an address is: "safe", "neutral", "restricted", "blocked" or "stranger".
         #[qinvokable]
         fn standing(self: &Sioul, address: &QString) -> QString;
 
@@ -181,6 +181,16 @@ pub mod qobject {
         /// a list's name, or "" for "As their categories say".
         #[qinvokable]
         fn set_standing_of(self: Pin<&mut Sioul>, addresses: &QString, standing: &QString);
+
+        /// "Their list" for a contact's card (`key`: its file): who they are,
+        /// why, the choices, their addresses and numbers with lists of their own (`senders`).
+        #[qinvokable]
+        fn person_of(self: &Sioul, key: &QString) -> QString;
+
+        /// "Their list" chosen for a contact's card, all their addresses and
+        /// numbers: a list's name, or "" for "As their categories say".
+        #[qinvokable]
+        fn set_person(self: Pin<&mut Sioul>, key: &QString, standing: &QString);
 
         /// Writes the line a message about money stands for into a budget.
         #[qinvokable]
@@ -1055,6 +1065,13 @@ pub mod qobject {
         #[qinvokable]
         fn share_backup_place(self: Pin<&mut Sioul>, place: &QString) -> QString;
 
+        /// Starts sharing through a folder of an account's files that Sioul
+        /// keeps in step itself, no sync app (`account`: its id; `place`:
+        /// "Documents/Sioul"), joined or made there, off the window's thread:
+        /// `share_started` says how it went.
+        #[qinvokable]
+        fn start_sharing_on_server(self: Pin<&mut Sioul>, account: &QString, place: &QString, passphrase: &QString, again: &QString);
+
         /// A folder's own folders, for Sioul's folder browser, as JSON: {"path", "parent", "folders", "readable"}.
         #[qinvokable]
         fn folders_in(self: &Sioul, path: &QString) -> QString;
@@ -1276,6 +1293,35 @@ pub mod qobject {
         #[qinvokable]
         fn dnd_change(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
 
+        /// Settings ▸ Other apps, on a phone, as JSON (`appnotes::setup`).
+        #[qinvokable]
+        fn app_notes_setup(self: &Sioul) -> QString;
+
+        /// A choice of that tab, or one of Android's pages (`appnotes::change`): the tab again, as JSON.
+        #[qinvokable]
+        fn app_notes_change(self: &Sioul, verb: &QString, json: &QString) -> QString;
+
+        /// "Let every call through" (docs/android.md, "Calls"; `calls::press`): on
+        /// for `minutes` (0: until turned off), or calls screened again; on every device.
+        #[qinvokable]
+        fn calls_through(self: Pin<&mut Sioul>, on: bool, minutes: i32);
+
+        /// The Porch's list of calls declined on this phone, as JSON (`calls::view`).
+        #[qinvokable]
+        fn calls_view(self: &Sioul) -> QString;
+
+        /// An action of that list (`calls::act`): {said, url, shared}, as JSON.
+        #[qinvokable]
+        fn calls_action(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
+
+        /// Settings ▸ Calls, on a phone, as JSON (`calls::setup`).
+        #[qinvokable]
+        fn calls_setup(self: &Sioul) -> QString;
+
+        /// An action of that tab (`calls::setup_change`): the tab again, as JSON.
+        #[qinvokable]
+        fn calls_setup_change(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
+
         /// The cases and projects, for their list, as JSON.
         #[qinvokable]
         fn project_rows(self: &Sioul) -> QString;
@@ -1431,6 +1477,11 @@ pub mod qobject {
         /// What switching Notes or Papers on would send (`share_estimate`), as JSON {"part", "text"}.
         #[qsignal]
         fn share_estimated(self: Pin<&mut Sioul>, estimate: QString);
+
+        /// Sharing through a folder Sioul keeps in step with a server itself
+        /// (`start_sharing_on_server`): "" when it started, else why not.
+        #[qsignal]
+        fn share_started(self: Pin<&mut Sioul>, problem: QString);
 
         /// A reminder's "Open" was pressed: what it is about ("task", "event", "budget"), shown.
         #[qsignal]
@@ -2049,7 +2100,9 @@ pub(crate) fn mode_json() -> String {
         // Free time's choices and today's end of work (docs/pauses.md).
         "pauses": crate::pauses::moment(&config, &overrides, &now),
         // Do-not-disturb on every device (docs/do-not-disturb.md): its switch and where it holds.
-        "dnd": crate::everywhere::moment()
+        "dnd": crate::everywhere::moment(),
+        // "Let every call through", while a phone of yours screens calls (docs/android.md, "Calls").
+        "calls": crate::calls::moment()
     })
     .to_string()
 }
@@ -2070,7 +2123,7 @@ fn compute(shared: &Shared) -> Views {
         // Who may write to you when: the matrix of Accounts ▸ Senders.
         // In free time, only your safe senders, or no one (docs/pauses.md).
         let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-        let reach = sioul_core::pause::reach_now(sioul_core::quiet::Reach::of(&world.config.reach), &mode, sioul_core::pause::nothing_now(&overrides, &world.config.free_time));
+        let reach = sioul_core::pause::reach_now(sioul_core::reach::Reach::of(&world.config.reach).mail, &mode, sioul_core::pause::nothing_now(&overrides, &world.config.free_time));
         items.retain(|t| sioul_core::quiet::mail_in_view(t, &world.senders, &reach, area_of(t), mode.time, mode.week));
     }
     // Asleep no project shows: what your senders wrote about one comes among the people you know.
@@ -2107,7 +2160,8 @@ fn compute(shared: &Shared) -> Views {
     let statuses = shared.statuses.lock().map(|s| s.clone()).unwrap_or_default();
     let wanted = shared.password_wanted.lock().map(|w| w.clone()).unwrap_or_default();
     Views {
-        porch: json(&porch),
+        // On a phone, a line on other apps' notifications held and come back (docs/android.md).
+        porch: crate::appnotes::with_line(json(&porch)),
         budgets,
         accounts: json(&view::accounts(&world.config, tr(), &statuses, &wanted)),
         blocked: json(&world.senders.blocked.entries()),
@@ -2939,7 +2993,7 @@ impl qobject::Sioul {
     }
 
     fn standing(&self, address: &QString) -> QString {
-        QString::from(porch::Senders::load(&load_config()).standing(&address.to_string()).as_str())
+        QString::from(porch::Senders::load(&load_config()).who(&address.to_string()).id())
     }
 
     fn standing_of(&self, addresses: &QString) -> QString {
@@ -2948,6 +3002,21 @@ impl qobject::Sioul {
 
     fn set_standing_of(mut self: Pin<&mut Self>, addresses: &QString, standing: &QString) {
         let line = crate::senders::set_standing_of(&addresses.to_string(), &standing.to_string());
+        if line.is_empty() {
+            return;
+        }
+        self.as_mut().set_status(QString::from(&line));
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        show(&qt, &shared);
+        pim::show_pim(&qt, &shared);
+    }
+
+    fn person_of(&self, key: &QString) -> QString {
+        QString::from(&crate::senders::person_json(&key.to_string()))
+    }
+
+    fn set_person(mut self: Pin<&mut Self>, key: &QString, standing: &QString) {
+        let line = crate::senders::set_person(&key.to_string(), &standing.to_string());
         if line.is_empty() {
             return;
         }
@@ -4708,6 +4777,53 @@ impl qobject::Sioul {
         QString::from(&answer)
     }
 
+    fn app_notes_setup(&self) -> QString {
+        QString::from(&crate::appnotes::setup())
+    }
+
+    fn app_notes_change(&self, verb: &QString, json: &QString) -> QString {
+        QString::from(&crate::appnotes::change(&verb.to_string(), &json.to_string()))
+    }
+
+    fn calls_through(mut self: Pin<&mut Self>, on: bool, minutes: i32) {
+        if let Err(e) = crate::calls::press(on, minutes) {
+            self.as_mut().set_status(QString::from(&e));
+            return;
+        }
+        // The phone's table at once, the status line again, your other devices told.
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        std::thread::spawn(move || {
+            crate::calls::refresh(true);
+            let _ = qt.queue(|mut sioul| sioul.as_mut().set_mode(QString::from(&mode_json())));
+            crate::share::exchange(&qt, &shared);
+        });
+    }
+
+    fn calls_view(&self) -> QString {
+        QString::from(&crate::calls::view())
+    }
+
+    fn calls_action(self: Pin<&mut Self>, verb: &QString, json: &QString) -> QString {
+        let answer = crate::calls::act(&verb.to_string(), &json.to_string());
+        // A number blocked: the table at once, your other devices told (the lists travel).
+        if answer.contains("\"shared\":true") {
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            std::thread::spawn(move || {
+                crate::calls::refresh(true);
+                crate::share::exchange(&qt, &shared);
+            });
+        }
+        QString::from(&answer)
+    }
+
+    fn calls_setup(&self) -> QString {
+        QString::from(&crate::calls::setup())
+    }
+
+    fn calls_setup_change(self: Pin<&mut Self>, verb: &QString, json: &QString) -> QString {
+        QString::from(&crate::calls::setup_change(&verb.to_string(), &json.to_string()))
+    }
+
     /// The overrides changed, then every page shown again for the time it is.
     fn change_overrides(mut self: Pin<&mut Self>, change: impl FnOnce(&mut sioul_core::quiet::Overrides)) {
         let path = sioul_core::quiet::Overrides::default_path();
@@ -4944,8 +5060,11 @@ impl qobject::Sioul {
         // "rail" shows the places with their icons alone and with their
         // names (main.qml), "pauses" free time and the pause (docs/pauses.md), "blocks" a task pinned to a
         // time and left to the plan again (docs/tasks.md), "unsubscribe" a newsletter open
-        // with its Unsubscribe button (docs/client.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe"].contains(&steps.as_str()) && offline()) {
+        // with its Unsubscribe button (docs/client.md), "reach" who may reach you on each
+        // channel and a contact's list (docs/porch.md), "line" the status line with all it
+        // may hold, a new draft deleted and taken back (docs/design.md), "share-panel" the
+        // sharing's tab before sharing, its two ways (docs/database.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "reach", "line", "share-panel"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -5029,6 +5148,10 @@ impl qobject::Sioul {
             crate::share::exchange(&self.qt_thread(), &self.shared());
         }
         QString::from(&problem)
+    }
+
+    fn start_sharing_on_server(self: Pin<&mut Self>, account: &QString, place: &QString, passphrase: &QString, again: &QString) {
+        crate::share::start_on_server(&self.qt_thread(), &self.shared(), account.to_string(), place.to_string(), passphrase.to_string(), again.to_string());
     }
 }
 

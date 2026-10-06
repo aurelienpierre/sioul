@@ -122,8 +122,8 @@ pub struct Config {
     /// The Porch's own choices (docs/porch.md).
     #[serde(default)]
     pub porch: PorchSettings,
-    /// Who may reach you when: for each list, the times its mail comes
-    /// (docs/porch.md, "Who may write to you"). Shared with your settings.
+    /// Who may reach you when, on each channel: mail, calls, messages from
+    /// other apps (docs/porch.md, "Who may reach you, and when"). Shared with your settings.
     #[serde(default)]
     pub reach: ReachSettings,
     /// The camera, microphone and speaker calls in sites use (docs/sites.md).
@@ -150,9 +150,12 @@ pub struct PorchSettings {
     pub hidden_projects: Vec<String>,
 }
 
-/// When each list's mail comes: the times ticked for it ("work", "admin",
-/// "leisure", "meals", "sleep"). A list left out keeps its usual times
-/// (`quiet::Reach::default`); an empty one comes never.
+/// Who may reach you when, channel by channel (docs/porch.md, "Who may reach
+/// you, and when"): each row the columns ticked for it ("work", "admin",
+/// "leisure", "meals", "sleep", "pause"). Mail's rows are at the top of
+/// `[reach]`, where an older Sioul wrote them; calls' in `[reach.calls]`,
+/// messages' in `[reach.messages]`. A row left out keeps its usual times
+/// (`reach::Reach::of`); an empty one is never.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct ReachSettings {
     #[serde(default)]
@@ -161,6 +164,30 @@ pub struct ReachSettings {
     pub neutral: Option<Vec<String>>,
     #[serde(default)]
     pub restricted: Option<Vec<String>>,
+    /// Mail from strangers. Its absence says the rows were written before the
+    /// five states: strangers then as the neutral, each row's pause as its sleep.
+    #[serde(default)]
+    pub stranger: Option<Vec<String>>,
+    #[serde(default)]
+    pub calls: RowSettings,
+    #[serde(default)]
+    pub messages: RowSettings,
+}
+
+/// One channel's rows, each the columns ticked for it; a row left out keeps its usual times.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct RowSettings {
+    #[serde(default)]
+    pub safe: Option<Vec<String>>,
+    #[serde(default)]
+    pub neutral: Option<Vec<String>>,
+    #[serde(default)]
+    pub restricted: Option<Vec<String>>,
+    #[serde(default)]
+    pub stranger: Option<Vec<String>>,
+    /// Calls only: hidden numbers.
+    #[serde(default)]
+    pub hidden: Option<Vec<String>>,
 }
 
 /// Days off, from one day to another, both included.
@@ -397,7 +424,7 @@ pub struct MapSettings {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct ContactSettings {
     /// The country of numbers written without one, by its ISO code ("FR"),
-    /// to compare "06 08…" with "+33 6 08…"; unset: the system's locale's,
+    /// to compare "04 65…" with "+33 4 65…"; unset: the system's locale's,
     /// else Sioul's language's (`phones::chosen`).
     #[serde(default)]
     pub region: Option<String>,
@@ -1435,20 +1462,46 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
         return write_document(path, &doc);
     }
     // A row of who may reach you when: written even empty, which is "never"
-    // (an empty list elsewhere takes the key out, its default back).
-    if let Some(row) = key.strip_prefix("reach.") {
+    // (an empty list elsewhere takes the key out, its default back). Mail's
+    // rows at the top of `[reach]` ("reach.safe"), calls' and messages' in
+    // their own tables ("reach.calls.hidden").
+    if let Some(rest) = key.strip_prefix("reach.") {
         let times: Vec<String> = match setting {
             SettingValue::Texts(times) => times.iter().map(|t| t.trim().to_lowercase()).filter(|t| !t.is_empty()).collect(),
             SettingValue::Ints(none) if none.is_empty() => Vec::new(),
             _ => return Err(format!("{key}: times expected")),
         };
-        if !matches!(row, "safe" | "neutral" | "restricted") {
-            return Err(format!("{key}: safe, neutral or restricted"));
+        let (channel, row) = rest.split_once('.').unwrap_or(("mail", rest));
+        let rows: &[&str] = match channel {
+            "mail" | "messages" => &["safe", "neutral", "restricted", "stranger"],
+            "calls" => &["safe", "neutral", "restricted", "stranger", "hidden"],
+            _ => return Err(format!("{key}: mail, calls or messages")),
+        };
+        if !rows.contains(&row) {
+            return Err(format!("{key}: {}", rows.join(", ")));
         }
+        // Mail's rows as an older Sioul wrote them (no strangers' row, the
+        // pause as sleep): all four written as they read now, the pause said,
+        // before one changes, so that the others keep what they meant.
+        let older = channel == "mail" && doc.get("reach").and_then(|r| r.get("stranger")).is_none();
+        let before = older.then(|| toml::from_str::<Config>(&doc.to_string()).map_or(crate::reach::Matrix::MAIL, |c| crate::reach::Reach::of(&c.reach).mail));
         if !doc.contains_key("reach") {
             doc["reach"] = toml_edit::table();
         }
-        let section = doc["reach"].as_table_like_mut().ok_or_else(|| format!("{}: reach is not a table", path.display()))?;
+        let reach = doc["reach"].as_table_like_mut().ok_or_else(|| format!("{}: reach is not a table", path.display()))?;
+        if let Some(mail) = before {
+            for (name, row) in [("safe", mail.safe), ("neutral", mail.neutral), ("restricted", mail.restricted), ("stranger", mail.stranger)] {
+                reach.insert(name, value(row.ids().into_iter().collect::<Array>()));
+            }
+        }
+        let section = if channel == "mail" {
+            reach
+        } else {
+            if reach.get(channel).is_none() {
+                reach.insert(channel, toml_edit::table());
+            }
+            reach.get_mut(channel).and_then(Item::as_table_like_mut).ok_or_else(|| format!("{}: reach.{channel} is not a table", path.display()))?
+        };
         let item = value(times.iter().map(String::as_str).collect::<Array>());
         match section.get_mut(row) {
             Some(slot) => *slot = item,
@@ -1815,14 +1868,30 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
         std::fs::write(&path, "# Mine.\n[[window]]\nday = \"saturday\"\nstart = \"10:00\"\nend = \"18:00\"\nkind = \"leisure\"\n").unwrap();
+        use crate::reach::{Matrix, Reach, Times};
+        let words = |list: &[&str]| list.iter().map(|w| w.to_string()).collect::<Vec<_>>();
+        // An older Sioul's mail rows: the pause was sleep's, strangers were neutral.
+        std::fs::write(&path, "# Mine.\n[[window]]\nday = \"saturday\"\nstart = \"10:00\"\nend = \"18:00\"\nkind = \"leisure\"\n\n[reach]\nsafe = [\"work\", \"admin\", \"leisure\", \"meals\", \"sleep\"]\n").unwrap();
         // A row unticked to the last box is "never", written as such: not its usual times back.
         set_value(&path, "reach.restricted", &serde_json::from_str("[]").unwrap()).unwrap();
         set_value(&path, "reach.neutral", &SettingValue::Texts(vec!["leisure".into(), "Meals".into()])).unwrap();
         let config = Config::load(&path).unwrap();
-        assert_eq!((config.reach.restricted.as_deref(), config.reach.neutral.as_deref(), config.reach.safe.as_deref()), (Some(&[][..]), Some(&["leisure".to_string(), "meals".to_string()][..]), None));
-        let reach = crate::quiet::Reach::of(&config.reach);
-        assert_eq!((reach.restricted, reach.neutral.ids(), reach.safe), (crate::quiet::Times::NEVER, vec!["leisure", "meals"], crate::quiet::Times::ALL));
+        assert_eq!((config.reach.restricted.as_deref(), config.reach.neutral.as_deref()), (Some(&[][..]), Some(&words(&["leisure", "meals"])[..])));
+        // The first row written wrote mail's four as they read: the safe's pause said, strangers as the neutral were then.
+        assert_eq!((config.reach.safe.clone(), config.reach.stranger.clone()), (Some(words(&["work", "admin", "leisure", "meals", "sleep", "pause"])), Some(words(&["work", "admin"]))));
+        let reach = Reach::of(&config.reach);
+        assert_eq!((reach.mail.restricted, reach.mail.neutral.ids(), reach.mail.safe, reach.mail.stranger.ids()), (Times::NEVER, vec!["leisure", "meals"], Times::ALL, vec!["work", "admin"]));
         assert!(set_value(&path, "reach.blocked", &SettingValue::Texts(vec!["work".into()])).is_err(), "the blocked never come");
+        // Calls in a table of their own; hidden numbers are a row of calls only.
+        set_value(&path, "reach.calls.stranger", &SettingValue::Texts(vec!["work".into()])).unwrap();
+        set_value(&path, "reach.calls.hidden", &serde_json::from_str("[]").unwrap()).unwrap();
+        assert!(set_value(&path, "reach.messages.hidden", &SettingValue::Texts(vec!["work".into()])).is_err());
+        assert!(set_value(&path, "reach.mail.blocked", &SettingValue::Texts(vec!["work".into()])).is_err());
+        set_value(&path, "reach.messages.safe", &SettingValue::Texts(vec!["leisure".into(), "pause".into()])).unwrap();
+        let reach = Reach::of(&Config::load(&path).unwrap().reach);
+        assert_eq!((reach.calls.stranger.ids(), reach.calls.hidden, reach.calls.safe), (vec!["work"], Times::NEVER, Matrix::CALLS.safe));
+        assert_eq!(reach.messages, Matrix { hidden: Times::NEVER, safe: Times { leisure: true, pause: true, ..Times::NEVER }, ..reach.mail }, "messages as mail, row by row, until said");
+        assert!(std::fs::read_to_string(&path).unwrap().contains("[reach.calls]"));
         // Working hours saved: the older free time stays in the file, read and left aside.
         set_value(&path, "window", &SettingValue::Windows(vec![WindowValue { day: "monday".into(), start: "09:00".into(), end: "17:00".into(), minutes: 0 }])).unwrap();
         let config = Config::load(&path).unwrap();

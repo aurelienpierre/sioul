@@ -89,6 +89,10 @@ Sioul reads and keeps your mail, calendars, contacts, tasks, notes, budgets, pap
 - **The sites you pin**, as any browser: each is also asked for its own icon.
 - **Antivirus signatures**, once a day, only when your system keeps none of its own.
 
+On a phone, if you give Sioul Android's notification access, it reads the notifications of the apps you let it see, on the phone, to hold them until their time; it keeps none of their words and sends nothing of them anywhere, your other devices included ([Settings](guide/settings.md#other-apps)).
+
+On a phone, if you make Sioul Android's caller ID & spam app, Android shows it each call's number before the phone rings; Sioul decides there, on the phone, keeps the list of the calls it declined on the phone, and sends no number anywhere: no server, no lookup, your other devices included. It never answers, records or listens to a call ([Calls](guide/calls.md)).
+
 The complete list, with when each happens: [Privacy and security](guide/privacy-security.md#what-leaves-your-computer-and-when).
 
 Sioul has no analytics, no advertising, no tracking, and no crash reports.

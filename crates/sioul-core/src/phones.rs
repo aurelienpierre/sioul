@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Phone numbers, compared rather than rewritten: "06 08 12 34 56",
-//! "06.08.12.34.56", "+33 6 08 12 34 56", "+33 (0)6 08 12 34 56" and
-//! "0033608123456" are one number, written five ways. Each number gets a key,
+//! Phone numbers, compared rather than rewritten: "04 65 71 12 34",
+//! "04.65.71.12.34", "+33 4 65 71 12 34", "+33 (0)4 65 71 12 34" and
+//! "0033465711234" are one number, written five ways. Each number gets a key,
 //! its international form (E.164, ITU-T) with its extension, and two numbers
 //! with one key are the same; what the card says stays as it was written.
 //!
@@ -13,7 +13,7 @@
 //! prefix dropped in the international form ("0" in most of Europe, "1" in
 //! North America, none in Spain or Italy) and how long a number is, so that a
 //! short code ("3631", "112") is never given a country. Values with letters
-//! ("1-800-FLOWERS"), stars and hashes ("*#06#") are compared as written.
+//! ("1-555-SIOUL"), stars and hashes ("*#06#") are compared as written.
 //! The rules are those of each country's numbering plan, as the ITU publishes
 //! them (https://www.itu.int/oth/T0202); libphonenumber knows every country
 //! but weighs megabytes, for what this table does for the usual ones.
@@ -134,7 +134,7 @@ fn drops_written_trunk(calling: &str) -> bool {
     REGIONS.iter().any(|r| r.calling == calling && r.trunk == "0")
 }
 
-/// "+330608123456" → "+33608123456": a trunk 0 written after a country code that has none.
+/// "+330465711234" → "+33465711234": a trunk 0 written after a country code that has none.
 fn without_written_trunk(digits: &str) -> String {
     // Country codes are a prefix code (no code starts another): at most one matches.
     for length in 1..=3 {
@@ -210,7 +210,7 @@ fn without_zero_in_parentheses(number: &str) -> String {
     format!("{}{kept}{}", &number[..at], &number[at + 3..])
 }
 
-/// A number's key, to compare it: its international form ("+33608123456"),
+/// A number's key, to compare it: its international form ("+33465711234"),
 /// its extension after ";ext=". A number written without its country takes
 /// `region`'s; a short code and a value that is not a number are compared as
 /// written, spaces aside. Never shown, never written to a card.
@@ -255,7 +255,7 @@ fn number_key(number: &str, region: Option<&Region>) -> Option<String> {
                 let calling = if region.french { french_overseas(national).unwrap_or("33") } else { region.calling };
                 Some(format!("+{calling}{national}"))
             }
-            // Without its trunk prefix ("608123456" in France): as written.
+            // Without its trunk prefix ("465711234" in France): as written.
             _ => Some(digits),
         },
     }
@@ -285,9 +285,9 @@ mod tests {
 
     #[test]
     fn france_its_spaces_and_its_prefix() {
-        let all = ["\u{202a}+33 6 08 12 34 56\u{202c}", "06 08 12 34 56", "06.08.12.34.56", "06-08-12-34-56", "0608123456", "+33 6 08 12 34 56", "+33 (0)6 08 12 34 56", "+33 06 08 12 34 56", "0033 6 08 12 34 56", "tel:+33-6-08-12-34-56", "06\u{a0}08\u{202f}12 34 56"];
+        let all = ["\u{202a}+33 4 65 71 12 34\u{202c}", "04 65 71 12 34", "04.65.71.12.34", "04-65-71-12-34", "0465711234", "+33 4 65 71 12 34", "+33 (0)4 65 71 12 34", "+33 04 65 71 12 34", "0033 4 65 71 12 34", "tel:+33-4-65-71-12-34", "04\u{a0}65\u{202f}71 12 34"];
         for written in all {
-            assert_eq!(key_in(written, "FR"), "+33608123456", "{written}");
+            assert_eq!(key_in(written, "FR"), "+33465711234", "{written}");
         }
         // Overseas departments share the ten-digit plan, with their own codes.
         assert_eq!(key_in("0692 12 34 56", "FR"), "+262692123456");
@@ -296,12 +296,12 @@ mod tests {
         assert_eq!(key_in("0696 12 34 56", "FR"), "+596696123456");
         assert_eq!(key_in("0594 12 34 56", "FR"), "+594594123456");
         // From Réunion, a Paris number is still France's.
-        assert_eq!(key_in("01 23 45 67 89", "RE"), "+33123456789");
+        assert_eq!(key_in("01 99 00 67 89", "RE"), "+33199006789");
         assert_eq!(key_in("0692 12 34 56", "RE"), "+262692123456");
         // Short codes and numbers without their 0 are left as written.
         assert_eq!(key_in("36 31", "FR"), "3631");
         assert_eq!(key_in("112", "FR"), "112");
-        assert_eq!(key_in("608123456", "FR"), "608123456");
+        assert_eq!(key_in("465711234", "FR"), "465711234");
     }
 
     #[test]
@@ -309,8 +309,8 @@ mod tests {
         assert_eq!(key_in("0475 12 34 56", "BE"), "+32475123456");
         assert_eq!(key_in("02 123 45 67", "BE"), "+3221234567");
         assert_eq!(key_in("+32 (0)2 123 45 67", "FR"), "+3221234567");
-        assert_eq!(key_in("044 668 18 00", "CH"), "+41446681800");
-        assert_eq!(key_in("0041 44 668 18 00", "FR"), "+41446681800");
+        assert_eq!(key_in("044 000 12 34", "CH"), "+41440001234");
+        assert_eq!(key_in("0041 44 000 12 34", "FR"), "+41440001234");
         // Luxembourg has no trunk prefix: the whole number takes +352.
         assert_eq!(key_in("621 123 456", "LU"), "+352621123456");
         assert_eq!(key_in("+352 621 123 456", "FR"), "+352621123456");
@@ -352,12 +352,12 @@ mod tests {
         // Seven digits without the area code: as written.
         assert_eq!(key_in("555-0100", "US"), "5550100");
         // Abroad from there: "011".
-        assert_eq!(key_in("011 33 6 08 12 34 56", "US"), "+33608123456");
+        assert_eq!(key_in("011 33 4 65 71 12 34", "US"), "+33465711234");
         assert_eq!(key_in("0412 345 678", "AU"), "+61412345678");
-        assert_eq!(key_in("0011 33 6 08 12 34 56", "AU"), "+33608123456");
+        assert_eq!(key_in("0011 33 4 65 71 12 34", "AU"), "+33465711234");
         assert_eq!(key_in("021 123 4567", "NZ"), "+64211234567");
         assert_eq!(key_in("090-1234-5678", "JP"), "+819012345678");
-        assert_eq!(key_in("010 33 6 08 12 34 56", "JP"), "+33608123456");
+        assert_eq!(key_in("010 33 4 65 71 12 34", "JP"), "+33465711234");
         assert_eq!(key_in("098765 43210", "IN"), "+919876543210");
         assert_eq!(key_in("06 61 23 45 67", "MA"), "+212661234567");
         assert_eq!(key_in("0551 23 45 67", "DZ"), "+213551234567");
@@ -368,23 +368,23 @@ mod tests {
 
     #[test]
     fn extensions_kept_and_odd_values_left_alone() {
-        assert_eq!(key_in("+33 1 23 45 67 89 poste 123", "FR"), "+33123456789;ext=123");
-        assert_eq!(key_in("01 23 45 67 89 ext. 123", "FR"), "+33123456789;ext=123");
+        assert_eq!(key_in("+33 1 99 00 67 89 poste 123", "FR"), "+33199006789;ext=123");
+        assert_eq!(key_in("01 99 00 67 89 ext. 123", "FR"), "+33199006789;ext=123");
         assert_eq!(key_in("+1 212 555 0100 x12", "US"), "+12125550100;ext=12");
         assert_eq!(key_in("tel:+1-212-555-0100;ext=12", "FR"), "+12125550100;ext=12");
-        assert_eq!(key_in("01 23 45 67 89 #12", "FR"), "+33123456789;ext=12");
-        assert_eq!(key_in("01 23 45 67 89,12", "FR"), "+33123456789;ext=12");
+        assert_eq!(key_in("01 99 00 67 89 #12", "FR"), "+33199006789;ext=12");
+        assert_eq!(key_in("01 99 00 67 89,12", "FR"), "+33199006789;ext=12");
         // Another extension is another number.
-        assert_ne!(key_in("+33 1 23 45 67 89 poste 12", "FR"), key_in("+33 1 23 45 67 89", "FR"));
+        assert_ne!(key_in("+33 1 99 00 67 89 poste 12", "FR"), key_in("+33 1 99 00 67 89", "FR"));
         // Not numbers: compared as written, spaces aside, case aside.
         assert_eq!(key_in("*#06#", "FR"), "*#06#");
-        assert_eq!(key_in("1-800-FLOWERS", "US"), "1-800-flowers");
+        assert_eq!(key_in("1-555-SIOUL", "US"), "1-555-sioul");
         assert_eq!(key_in("sip:jane@example.org", "FR"), "sip:jane@example.org");
         // No country known: national numbers compared by their digits.
-        assert_eq!(key("06 08 12 34 56", None), "0608123456");
-        assert_eq!(key("+33 6 08 12 34 56", None), "+33608123456");
-        assert!(is_whole("+33608123456") && is_whole("0608123456") && !is_whole("3631") && !is_whole("*#06#"));
-        assert!(is_international(" +33 6 08") && is_international("tel:+33608") && !is_international("06 08"));
+        assert_eq!(key("04 65 71 12 34", None), "0465711234");
+        assert_eq!(key("+33 4 65 71 12 34", None), "+33465711234");
+        assert!(is_whole("+33465711234") && is_whole("0465711234") && !is_whole("3631") && !is_whole("*#06#"));
+        assert!(is_international(" +33 4 65") && is_international("tel:+33465") && !is_international("04 65"));
     }
 
     #[test]

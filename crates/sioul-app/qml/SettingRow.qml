@@ -34,8 +34,9 @@ ColumnLayout {
 
     spacing: 3
 
+    // A grid's name is its channel's, said by the buttons above it (Accounts).
     Label {
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "matrix"
         Layout.fillWidth: true
         text: field.setting.label
         font.weight: Font.DemiBold
@@ -78,8 +79,11 @@ ColumnLayout {
         }
     }
 
-    // Boxes in a grid: the lists down, the times across (who may write to
-    // you when). Made only for it; sideways on a screen too narrow for it.
+    // Boxes in a grid: the states down, the times and the pause across (who
+    // may reach you when, on one channel). Each row ticked or unticked whole
+    // in one click (Always, Never); the blocked, a row never ticked. On a
+    // screen too narrow for a row, its name stands above its boxes; sideways
+    // when even the boxes are too wide.
     Loader {
         active: field.setting.kind === "matrix"
         visible: active
@@ -92,8 +96,8 @@ ColumnLayout {
                 readonly property var rows: field.setting.rows || []
                 readonly property var columns: field.setting.choices || []
                 readonly property var ticked: field.setting.value || []
-                // Each column as wide as its heading, a box at least; the lists'
-                // names as wide as the widest: the grid fits a phone when it can.
+                // Each column as wide as its heading, a box at least; the
+                // rows' names as wide as the widest: the grid fits a phone when it can.
                 readonly property var widths: {
                     const out = []
                     for (let i = 0; i < heads.count; i++) {
@@ -110,6 +114,15 @@ ColumnLayout {
                             width = Math.max(width, name.implicitWidth + 12)
                     }
                     return width
+                }
+                readonly property real boxesWidth: grid.widths.reduce((sum, w) => sum + w, 0)
+                readonly property real buttonsWidth: alwaysWidth.implicitWidth + neverWidth.implicitWidth + 8
+                // A row's name above its boxes when name, boxes and buttons do not fit side by side.
+                readonly property bool narrow: grid.width > 0 && grid.nameWidth + grid.boxesWidth + grid.buttonsWidth > grid.width
+
+                // A whole row at once: every column, or none.
+                function whole(row, on) {
+                    field.save(field.setting.key + "." + row, on ? grid.columns.map(c => c.value) : [])
                 }
 
                 implicitHeight: table.implicitHeight + (wide.visible ? wide.height : 0)
@@ -138,6 +151,24 @@ ColumnLayout {
                         text: modelData.label
                     }
                 }
+                Button {
+                    id: alwaysWidth
+
+                    visible: false
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    flat: true
+                    font.pixelSize: 13
+                    text: field.sioul.text("reach-row-always")
+                }
+                Button {
+                    id: neverWidth
+
+                    visible: false
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    flat: true
+                    font.pixelSize: 13
+                    text: field.sioul.text("reach-row-never")
+                }
 
                 ColumnLayout {
                     id: table
@@ -148,6 +179,7 @@ ColumnLayout {
                         spacing: 0
 
                         Item {
+                            visible: !grid.narrow
                             Layout.preferredWidth: grid.nameWidth
                             Layout.preferredHeight: 1
                         }
@@ -171,46 +203,99 @@ ColumnLayout {
                     Repeater {
                         model: grid.rows
 
-                        delegate: RowLayout {
+                        delegate: ColumnLayout {
                             id: list
 
                             required property var modelData
+                            // The blocked: never, a row nothing ticks.
+                            readonly property bool fixed: list.modelData.value === "blocked"
 
                             spacing: 0
 
-                            Label {
-                                Layout.preferredWidth: grid.nameWidth
-                                text: list.modelData.label
-                                color: field.theme.text
+                            // On a narrow screen: the name on its own line, Always and Never at its end.
+                            RowLayout {
+                                visible: grid.narrow
+                                Layout.preferredWidth: grid.boxesWidth
+                                Layout.topMargin: 6
+                                spacing: 0
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: list.modelData.label
+                                    elide: Text.ElideRight
+                                    color: list.fixed ? field.theme.muted : field.theme.text
+                                }
+                                Repeater {
+                                    model: list.fixed ? [] : [true, false]
+
+                                    delegate: Button {
+                                        required property bool modelData
+
+                                        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                                        implicitHeight: implicitContentHeight + topPadding + bottomPadding
+                                        flat: true
+                                        font.pixelSize: 13
+                                        text: field.sioul.text(modelData ? "reach-row-always" : "reach-row-never")
+                                        Accessible.name: list.modelData.label + ", " + text
+                                        onClicked: grid.whole(list.modelData.value, modelData)
+                                    }
+                                }
                             }
-                            Repeater {
-                                model: grid.columns
+                            RowLayout {
+                                spacing: 0
 
-                                delegate: Item {
-                                    id: cell
+                                Label {
+                                    visible: !grid.narrow
+                                    Layout.preferredWidth: grid.nameWidth
+                                    text: list.modelData.label
+                                    color: list.fixed ? field.theme.muted : field.theme.text
+                                }
+                                Repeater {
+                                    model: grid.columns
 
-                                    required property var modelData
-                                    required property int index
-                                    readonly property string cellKey: list.modelData.value + ":" + cell.modelData.value
+                                    delegate: Item {
+                                        id: cell
 
-                                    Layout.preferredWidth: grid.widths[cell.index] || 40
-                                    Layout.preferredHeight: box.implicitHeight
+                                        required property var modelData
+                                        required property int index
+                                        readonly property string cellKey: list.modelData.value + ":" + cell.modelData.value
 
-                                    CheckBox {
-                                        id: box
+                                        Layout.preferredWidth: grid.widths[cell.index] || 40
+                                        Layout.preferredHeight: box.implicitHeight
 
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        checked: grid.ticked.indexOf(cell.cellKey) >= 0
-                                        Accessible.name: list.modelData.label + ", " + cell.modelData.label
-                                        ToolTip.visible: hovered
-                                        ToolTip.text: list.modelData.label + " · " + cell.modelData.label
-                                        ToolTip.delay: 600
-                                        onToggled: {
-                                            // The row's times, this one as ticked now.
-                                            const times = grid.columns.map(c => c.value).filter(v => v === cell.modelData.value ? box.checked : grid.ticked.indexOf(list.modelData.value + ":" + v) >= 0)
-                                            field.save(field.setting.key + "." + list.modelData.value, times)
-                                            box.checked = Qt.binding(() => grid.ticked.indexOf(cell.cellKey) >= 0)
+                                        CheckBox {
+                                            id: box
+
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            enabled: !list.fixed
+                                            checked: !list.fixed && grid.ticked.indexOf(cell.cellKey) >= 0
+                                            Accessible.name: list.modelData.label + ", " + cell.modelData.label
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: list.fixed ? field.sioul.text("reach-row-blocked") : list.modelData.label + " · " + cell.modelData.label
+                                            ToolTip.delay: 600
+                                            onToggled: {
+                                                // The row's times, this one as ticked now.
+                                                const times = grid.columns.map(c => c.value).filter(v => v === cell.modelData.value ? box.checked : grid.ticked.indexOf(list.modelData.value + ":" + v) >= 0)
+                                                field.save(field.setting.key + "." + list.modelData.value, times)
+                                                box.checked = Qt.binding(() => !list.fixed && grid.ticked.indexOf(cell.cellKey) >= 0)
+                                            }
                                         }
+                                    }
+                                }
+                                // On a wide screen: Always and Never after the boxes.
+                                Repeater {
+                                    model: grid.narrow || list.fixed ? [] : [true, false]
+
+                                    delegate: Button {
+                                        required property bool modelData
+
+                                        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                                        implicitHeight: implicitContentHeight + topPadding + bottomPadding
+                                        flat: true
+                                        font.pixelSize: 13
+                                        text: field.sioul.text(modelData ? "reach-row-always" : "reach-row-never")
+                                        Accessible.name: list.modelData.label + ", " + text
+                                        onClicked: grid.whole(list.modelData.value, modelData)
                                     }
                                 }
                             }
@@ -831,7 +916,8 @@ ColumnLayout {
         }
         TextField {
             Layout.fillWidth: true
-            placeholderText: field.sioul.text(field.setting.kind === "words" ? "set-words-add" : "set-senders-add")
+            // The four lists take numbers too; the senders you let in, addresses only.
+            placeholderText: field.sioul.text(field.setting.kind === "words" ? "set-words-add" : field.setting.key === "known" ? "set-senders-add" : "set-senders-add-number")
             onAccepted: {
                 if (text.trim() === "")
                     return

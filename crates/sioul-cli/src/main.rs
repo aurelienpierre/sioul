@@ -622,7 +622,9 @@ fn print_mail_lines(s: &Session, ledger: &Ledger, maildirs: &[PathBuf]) {
 fn block_command(s: &Session, entry: Option<&str>) -> Result<(), String> {
     let path = s.config.blocked_senders_path();
     let Some(entry) = entry else {
-        let entries = SenderList::load(&path).entries();
+        // Addresses and patterns, then numbers and cards, as their lines write them.
+        let list = SenderList::load(&path);
+        let entries: Vec<String> = list.entries().into_iter().chain(list.numbers().iter().map(|n| format!("{}{n}", porch::TEL))).chain(list.cards().iter().map(|c| format!("{}{c}", porch::CONTACT))).collect();
         if entries.is_empty() {
             println!("{}", s.tr.text("blocked-none", None));
         }

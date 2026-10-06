@@ -9,10 +9,12 @@
 
 pub mod accounts;
 pub mod agenda;
+pub mod appnotes;
 pub mod areas;
 pub mod bank;
 pub mod blocks;
 pub mod budget;
+pub mod calls;
 pub mod capabilities;
 pub mod capacity;
 pub mod capture;
@@ -58,6 +60,7 @@ pub mod presets;
 pub mod papers;
 pub mod pause;
 pub mod quiet;
+pub mod reach;
 pub mod reviews;
 pub mod routines;
 pub mod reminders;
@@ -81,6 +84,7 @@ pub mod trust;
 pub mod unsubscribe;
 pub mod vdir;
 pub mod view;
+pub mod voicemail;
 pub mod weather;
 pub mod wearable;
 pub mod window;

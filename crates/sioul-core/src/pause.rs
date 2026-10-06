@@ -25,7 +25,8 @@
 
 use crate::areas::Area;
 use crate::i18n::Translator;
-use crate::quiet::{Blocks, Mode, Overrides, Reach, Reason, Times};
+use crate::quiet::{Blocks, Mode, Overrides, Reason};
+use crate::reach::{Matrix, Times};
 use crate::window::AdminWindow;
 use jiff::Zoned;
 use jiff::civil::Date;
@@ -223,15 +224,22 @@ pub fn nothing_now(overrides: &Overrides, settings: &FreeTimeSettings) -> bool {
     overrides.free_nothing.unwrap_or(settings.nothing)
 }
 
-/// Who may write to you now (docs/pauses.md): in Free time, your safe senders
-/// at the times you ticked for them, or no one; the others wait whatever
-/// their ticks. Codes you asked for and what you send yourself always come
-/// (`quiet::mail_in_view`). Otherwise the matrix as set.
-pub fn reach_now(reach: Reach, mode: &Mode, nothing: bool) -> Reach {
+/// Who may write to you now (docs/pauses.md), for mail's rule
+/// (`quiet::mail_in_view`, which reads the time): in the pause, each row's
+/// pause box, in the place of its sleep box (the pause's time is sleep's,
+/// `quiet::mode`); in Free time, your safe senders at the times you ticked
+/// for them, or no one; the others wait whatever their ticks. Codes you
+/// asked for and what you send yourself always come. Otherwise the matrix as
+/// set. Calls and messages read the same from `reach::Moment`.
+pub fn reach_now(reach: Matrix, mode: &Mode, nothing: bool) -> Matrix {
+    if mode.paused() {
+        let paused = |times: Times| Times { sleep: times.pause, ..times };
+        return Matrix { safe: paused(reach.safe), neutral: paused(reach.neutral), restricted: paused(reach.restricted), stranger: paused(reach.stranger), hidden: paused(reach.hidden) };
+    }
     if mode.reason != Reason::FreeTime {
         return reach;
     }
-    Reach { safe: if nothing { Times::NEVER } else { reach.safe }, neutral: Times::NEVER, restricted: Times::NEVER }
+    Matrix { safe: if nothing { Times::NEVER } else { reach.safe }, neutral: Times::NEVER, restricted: Times::NEVER, stranger: Times::NEVER, hidden: Times::NEVER }
 }
 
 // ---------------------------------------------------------------- the end of work
@@ -740,9 +748,9 @@ mod tests {
         assert!(may_tell(&m, Notice::Dose, false, false) && may_tell(&m, Notice::Code, false, false) && may_tell(&m, Notice::Alarm, false, false));
         assert!(!may_tell(&m, Notice::Other, true, true));
         // Only the safe list: neutral and restricted wait whatever their ticks; "Nothing at all", no one.
-        let all_ticked = Reach { safe: Times::ALL, neutral: Times::ALL, restricted: Times::ALL };
+        let all_ticked = Matrix { safe: Times::ALL, neutral: Times::ALL, restricted: Times::ALL, stranger: Times::ALL, hidden: Times::ALL };
         let narrowed = reach_now(all_ticked, &m, false);
-        assert_eq!((narrowed.safe, narrowed.neutral, narrowed.restricted), (Times::ALL, Times::NEVER, Times::NEVER));
+        assert_eq!((narrowed.safe, narrowed.neutral, narrowed.restricted, narrowed.stranger), (Times::ALL, Times::NEVER, Times::NEVER, Times::NEVER));
         assert_eq!(reach_now(all_ticked, &m, true).safe, Times::NEVER);
         let working = mode(&week(), &[], &Overrides::default(), &health(&now), &now);
         assert_eq!(reach_now(all_ticked, &working, true), all_ticked, "outside Free time, the matrix as set");
