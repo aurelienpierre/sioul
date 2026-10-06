@@ -50,7 +50,7 @@ impl Card {
         let message = MessageParser::default().parse(raw)?;
         let from = message.from().and_then(|a| a.first());
         let headers = RawHeaders::parse(raw);
-        let excerpt: String = message.body_text(0).map(|b| b.chars().take(EXCERPT_LIMIT).collect()).unwrap_or_default();
+        let excerpt = excerpt_of(&message);
         Some(Card {
             path: None,
             account: None,
@@ -84,6 +84,31 @@ impl Card {
         let raw = std::fs::read(self.path.as_ref()?).ok()?;
         let message = MessageParser::default().parse(&raw)?;
         Some(message.body_text(0).map(|b| b.into_owned()).unwrap_or_default())
+    }
+}
+
+/// Below this many characters shown (web addresses and spaces aside), a text
+/// version may be a stand-in for the HTML one.
+const STUB: usize = 160;
+
+/// The start of the text: the text version; when it is a stand-in that says
+/// much less than the HTML version ("View this email in your browser", or
+/// nothing but links), the HTML read as text after it, so that the code or
+/// the link a site sent is read where it is.
+fn excerpt_of(message: &mail_parser::Message<'_>) -> String {
+    let text = message.body_text(0).unwrap_or_default();
+    // Its start is enough to tell: a stand-in is short.
+    let start: String = text.chars().take(EXCERPT_LIMIT).collect();
+    let shown = crate::text::visible_len(&start);
+    let html = (shown < STUB)
+        .then(|| message.body_html(0))
+        .flatten()
+        .map(|html| mail_parser::decoders::html::html_to_text(&html))
+        .filter(|html| crate::text::visible_len(html) > 2 * shown.max(1));
+    match html {
+        Some(html) if shown == 0 => html.chars().take(EXCERPT_LIMIT).collect(),
+        Some(html) => format!("{}\n\n{html}", text.trim_end()).chars().take(EXCERPT_LIMIT).collect(),
+        None => start,
     }
 }
 

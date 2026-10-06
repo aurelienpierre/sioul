@@ -22,7 +22,7 @@ Nothing here goes beyond what is built. The standards behind each line, and wher
 | [Google](#google) | calendars, contacts and Google Tasks, signed in on Google's page | **Expected**: tried only against a stand-in of Google Tasks |
 | [Other apps on the same accounts](#other-apps-on-the-same-accounts) | Thunderbird and phone mail apps; Nextcloud Tasks, Tasks.org; DAVx⁵ with OpenTasks or jtx Board | **Expected**, from their code. **Limit**: a task tied to another by a wait, changed on a phone through DAVx⁵ |
 | [Notes](#notes) | Obsidian, Nextcloud Notes, any Markdown editor | **Tested** on files written as each writes them |
-| [Sharing between your devices](#sharing-between-your-devices) | any app that keeps a folder in step: Nextcloud, Murena's eDrive, Syncthing, Dropbox, Google Drive, OneDrive… | **Tested** with a simulator of how sync apps behave, and with eDrive on a phone; **expected** with the others |
+| [Sharing between your devices](#sharing-between-your-devices) | Nextcloud first ([where to get one](#where-to-get-a-nextcloud)); any app that keeps a folder in step: Nextcloud, Murena's eDrive, Syncthing, Dropbox, Google Drive, OneDrive… | **Tested** with a simulator of how sync apps behave, and with eDrive on a phone; **expected** with the others |
 | [Sites](#sites) | websites that work in Chrome or Chromium: secure mailboxes, chats, calls; security keys | **Expected**; seen working with Proton Mail. **Limits**: on a phone, sites open in your browser |
 | [Logins and keys](#logins-and-keys) | Bitwarden (its cloud, your own server, Vaultwarden); OpenPGP with GnuPG and other mail programs | GnuPG **tested** both ways; Bitwarden **tested** with the owner's own vault, in daily use (6 October 2026) |
 | [Your watch](#your-watch) | a Garmin watch's own files: from the watch, from Gadgetbridge, or from Garmin's export | **Tested** on files made by hand, not on a real watch |
@@ -124,6 +124,21 @@ Sharing needs only a folder that a sync app keeps in step between your devices: 
 | The sharing folder, on a phone | Android's access to all files; a folder the sync app keeps on the phone | Murena's eDrive 1.9.2, on /e/OS: the folder came at its next full scan | Nextcloud's app, Syncthing, FolderSync, Autosync | eDrive carries only Documents, Pictures, Music…: share through `Documents/Sioul`. It never deletes what was deleted elsewhere: count on room twice over. Only eDrive is asked to look at once; other apps bring changes at their own pace, often each half hour |
 | Notes and papers, carried by Sioul | a notes folder that no sync app carries | the simulator | — | refused where a sync app already carries the notes folder. Recognised: Nextcloud, Dropbox, Syncthing, and folders named ownCloud, Sync, OneDrive, pCloudDrive or Seafile. **Not recognised**: Google Drive, Insync, rclone, MEGA: leave Notes off where they carry your notes |
 | Changed on two devices | — | the simulator | — | both versions are kept, one named "(conflict …)"; the sync apps' own conflicted copies are never read |
+
+### Where to get a Nextcloud {#where-to-get-a-nextcloud}
+
+Nextcloud is the sync backend Sioul is tested with, and the only one Sioul reads itself when a phone's sync app is late: over WebDAV, as a backup ([why](sharing.md#when-the-sync-app-is-late)). Any Nextcloud account does; the same account can also hold your calendars, tasks and contacts. Sioul's own files are small: a few megabytes, more if you share your notes and papers.
+
+| Where | Free | Paid | Notes |
+|---|---|---|---|
+| [Murena](https://murena.io/signup), France | 1 GB | 20 GB to 2 TB | the account Sioul is tested with; mail, calendars, contacts and files in one |
+| [Zaclys](https://www.zaclys.com/), France | a free plan | 12 € a year | a small French host of free software |
+| [CHATONS](https://entraide.chatons.org/), France | depends on the host | depends on the host | a collective of ethical hosts: search for "cloud" or "Nextcloud" |
+| [Hetzner Storage Share](https://www.hetzner.com/storage/storage-share/), Germany | — | from 1 TB | Nextcloud kept up by Hetzner, in its data centre in Falkenstein |
+| [Nextcloud's own list](https://nextcloud.com/sign-up/) | 2 to 5 GB | more space, a server of your own | hosts in several countries; the paid offers fund the free accounts |
+| [Your own server](https://nextcloud.com/install/) | — | — | Nextcloud is free software; a small server or a Raspberry Pi is enough for one person |
+
+Checked on 6 October 2026. Offers change: read each host's terms, and where your files are kept, before you choose.
 
 ## Sites
 

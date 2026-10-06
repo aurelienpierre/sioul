@@ -118,7 +118,24 @@ pub fn claims(folder: &Path, key: &[u8; 32], part: &str) -> Vec<Claim> {
     read(folder, key, part)
 }
 
+/// The claims on `part`: of one fetched from the server too
+/// (`remote::overlay`), the later renewed of the two copies; the folder's on a tie.
 fn read(folder: &Path, key: &[u8; 32], part: &str) -> Vec<Claim> {
+    let mut by: BTreeMap<String, Claim> = BTreeMap::new();
+    for dir in std::iter::once(folder.to_path_buf()).chain(crate::remote::overlay(folder)) {
+        for claim in read_in(&dir, key, part) {
+            match by.get(&claim.computer) {
+                Some(kept) if (kept.renewed, kept.until) >= (claim.renewed, claim.until) => {}
+                _ => {
+                    by.insert(claim.computer.clone(), claim);
+                }
+            }
+        }
+    }
+    by.into_values().collect()
+}
+
+fn read_in(folder: &Path, key: &[u8; 32], part: &str) -> Vec<Claim> {
     let Ok(entries) = std::fs::read_dir(folder_of(folder, part)) else { return Vec::new() };
     entries
         .filter_map(Result::ok)

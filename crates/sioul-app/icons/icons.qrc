@@ -39,7 +39,6 @@
     <file>sioul/16/folder-trash.svg</file>
     <file>sioul/16/folder.svg</file>
     <file>sioul/16/games-hint.svg</file>
-    <file>sioul/16/globe.svg</file>
     <file>sioul/16/go-bottom.svg</file>
     <file>sioul/16/go-down.svg</file>
     <file>sioul/16/go-next.svg</file>
@@ -84,6 +83,7 @@
     <file>sioul/16/settings-configure.svg</file>
     <file>sioul/16/sidebar-collapse-left.svg</file>
     <file>sioul/16/sidebar-expand-left.svg</file>
+    <file>sioul/16/sioul-web.svg</file>
     <file>sioul/16/system-search.svg</file>
     <file>sioul/16/system-users.svg</file>
     <file>sioul/16/task-complete.svg</file>
@@ -155,7 +155,6 @@
     <file>sioul/22/folder-trash.svg</file>
     <file>sioul/22/folder.svg</file>
     <file>sioul/22/games-hint.svg</file>
-    <file>sioul/22/globe.svg</file>
     <file>sioul/22/go-bottom.svg</file>
     <file>sioul/22/go-down.svg</file>
     <file>sioul/22/go-next.svg</file>
@@ -201,7 +200,9 @@
     <file>sioul/22/settings-configure.svg</file>
     <file>sioul/22/sidebar-collapse-left.svg</file>
     <file>sioul/22/sidebar-expand-left.svg</file>
+    <file>sioul/22/sioul-web.svg</file>
     <file>sioul/22/system-search.svg</file>
+    <file>sioul/22/system-suspend.svg</file>
     <file>sioul/22/system-users.svg</file>
     <file>sioul/22/task-complete.svg</file>
     <file>sioul/22/task-new.svg</file>
@@ -253,7 +254,6 @@
     <file>sioul/32/folder-new.svg</file>
     <file>sioul/32/folder-trash.svg</file>
     <file>sioul/32/folder.svg</file>
-    <file>sioul/32/globe.svg</file>
     <file>sioul/32/go-bottom.svg</file>
     <file>sioul/32/go-down.svg</file>
     <file>sioul/32/go-next.svg</file>
@@ -283,7 +283,9 @@
     <file>sioul/32/overflow-menu.svg</file>
     <file>sioul/32/package-x-generic.svg</file>
     <file>sioul/32/settings-configure.svg</file>
+    <file>sioul/32/sioul-web.svg</file>
     <file>sioul/32/system-search.svg</file>
+    <file>sioul/32/system-suspend.svg</file>
     <file>sioul/32/system-users.svg</file>
     <file>sioul/32/text-x-generic.svg</file>
     <file>sioul/32/user-trash.svg</file>
@@ -360,7 +362,6 @@
     <file>sioul-dark/16/folder-trash.svg</file>
     <file>sioul-dark/16/folder.svg</file>
     <file>sioul-dark/16/games-hint.svg</file>
-    <file>sioul-dark/16/globe.svg</file>
     <file>sioul-dark/16/go-bottom.svg</file>
     <file>sioul-dark/16/go-down.svg</file>
     <file>sioul-dark/16/go-next.svg</file>
@@ -405,6 +406,7 @@
     <file>sioul-dark/16/settings-configure.svg</file>
     <file>sioul-dark/16/sidebar-collapse-left.svg</file>
     <file>sioul-dark/16/sidebar-expand-left.svg</file>
+    <file>sioul-dark/16/sioul-web.svg</file>
     <file>sioul-dark/16/system-search.svg</file>
     <file>sioul-dark/16/system-users.svg</file>
     <file>sioul-dark/16/task-complete.svg</file>
@@ -476,7 +478,6 @@
     <file>sioul-dark/22/folder-trash.svg</file>
     <file>sioul-dark/22/folder.svg</file>
     <file>sioul-dark/22/games-hint.svg</file>
-    <file>sioul-dark/22/globe.svg</file>
     <file>sioul-dark/22/go-bottom.svg</file>
     <file>sioul-dark/22/go-down.svg</file>
     <file>sioul-dark/22/go-next.svg</file>
@@ -522,7 +523,9 @@
     <file>sioul-dark/22/settings-configure.svg</file>
     <file>sioul-dark/22/sidebar-collapse-left.svg</file>
     <file>sioul-dark/22/sidebar-expand-left.svg</file>
+    <file>sioul-dark/22/sioul-web.svg</file>
     <file>sioul-dark/22/system-search.svg</file>
+    <file>sioul-dark/22/system-suspend.svg</file>
     <file>sioul-dark/22/system-users.svg</file>
     <file>sioul-dark/22/task-complete.svg</file>
     <file>sioul-dark/22/task-new.svg</file>
@@ -574,7 +577,6 @@
     <file>sioul-dark/32/folder-new.svg</file>
     <file>sioul-dark/32/folder-trash.svg</file>
     <file>sioul-dark/32/folder.svg</file>
-    <file>sioul-dark/32/globe.svg</file>
     <file>sioul-dark/32/go-bottom.svg</file>
     <file>sioul-dark/32/go-down.svg</file>
     <file>sioul-dark/32/go-next.svg</file>
@@ -604,7 +606,9 @@
     <file>sioul-dark/32/overflow-menu.svg</file>
     <file>sioul-dark/32/package-x-generic.svg</file>
     <file>sioul-dark/32/settings-configure.svg</file>
+    <file>sioul-dark/32/sioul-web.svg</file>
     <file>sioul-dark/32/system-search.svg</file>
+    <file>sioul-dark/32/system-suspend.svg</file>
     <file>sioul-dark/32/system-users.svg</file>
     <file>sioul-dark/32/text-x-generic.svg</file>
     <file>sioul-dark/32/user-trash.svg</file>

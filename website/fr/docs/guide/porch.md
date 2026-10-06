@@ -30,7 +30,9 @@ Les codes à usage unique, les mots de passe temporaires, les réinitialisations
 
 Rien d’autre ne s’ouvre avec. Une fois expiré, le code est masqué, et le message va dans sa file. Il expire quand le message le dit, sinon quand son type expire d’habitude : un code après 30 minutes, un lien de connexion après une heure, une réinitialisation de mot de passe après deux heures, un lien pour confirmer une adresse après un jour, un mot de passe temporaire après une semaine.
 
-Les faux messages « votre code » sont une ruse d’hameçonnage courante. Un message falsifié est mis de côté. Celui d’un expéditeur seulement *non vérifié* arrive quand même, avec un avertissement : ne vous en servez que si vous venez de le demander à ce site.
+Beaucoup de sites envoient leurs codes et leurs liens par les mêmes services que leurs lettres d’information, avec les mêmes en-têtes. Ils arrivent quand même tout de suite. Sioul cherche le code dans leur objet et en haut de leur texte, là où un site met ce que vous avez demandé : l’article d’une lettre d’information sur les mots de passe reste une lettre d’information.
+
+Les faux messages « votre code » sont une ruse d’hameçonnage courante. Un message falsifié est mis de côté, même quand il porte les en-têtes d’une lettre d’information. Celui d’un expéditeur seulement *non vérifié* arrive quand même, avec un avertissement : ne vous en servez que si vous venez de le demander à ce site.
 
 ## Le nouveau courrier, dit à ses heures {#new-mail-told-at-its-times}
 
@@ -85,7 +87,7 @@ Puis le texte, rendu sûr :
 - Chaque lien montre son adresse complète sous le message tant que le pointeur est dessus, avant que vous cliquiez.
 - Les **Pièces jointes** sont repliées, une ligne chacune, avec leur type, leur nom et leur taille. En ouvrir ou en enregistrer une lance d’abord l’antivirus ; si l’appareil n’en a pas, Sioul le dit et demande avant d’ouvrir. Voir [Vie privée et sécurité](privacy-security.md#attachments-and-the-antivirus).
 
-Depuis le message : répondre, transférer, archiver, supprimer, et le reste, comme sur la page [Courrier](mail.md).
+Depuis le message : répondre, transférer, archiver, supprimer, et le reste, comme sur la page [Courrier](mail.md). Une lettre d’information a aussi **Se désabonner** ([Courrier](mail.md#unsubscribing)).
 
 ## Terminé pour l’instant {#done-for-now}
 
@@ -133,10 +135,11 @@ Le courrier hostile va dans sa propre file, repliée, qui ne montre ni le nom de
 
 ## Les réglages du Porche {#the-porchs-settings}
 
-Le ⚙ en haut du Porche contient ce qui n’appartient qu’au Porche :
+Le ⚙ en haut du Porche contient ce qui n’appartient qu’au Porche, et la lecture d’un message ouvert ici :
 
 - **Projets montrés ici** : quels projets ont une file sur le Porche. Le courrier des autres reste sur leur page dans Projets.
 - **Courrier papier ▸ Où arrivent les scans** : le dossier où arrivent vos scans.
+- **Lecture du texte** : la police, sa taille et l’interligne d’un message ouvert ici, les mêmes que dans le ⚙ de la page Courrier.
 - **Comment le courrier est trié** : chaque file, dans l’ordre du tri, avec ses règles ; les expéditeurs que vous connaissez ; les mots qui rendent un expéditeur automatique (no-reply…).
 
 Ce qui appartient à autre chose se règle là où se trouve cette chose : le rang et la protection d’une adresse sur sa fiche dans [Comptes](accounts.md), les règles d’un projet sur sa page dans [Projets](projects.md), qui peut vous écrire et quand dans [Comptes ▸ Expéditeurs](accounts.md#senders), vos heures dans [Paramètres](settings.md#hours).

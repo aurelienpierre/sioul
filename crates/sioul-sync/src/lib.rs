@@ -41,6 +41,8 @@ pub mod lease;
 pub mod mailbox;
 pub mod notify;
 pub mod ocr;
+// The sharing folder fetched from its server too, beside the sync app (docs/database.md).
+pub mod remote;
 // Signing in to IMAP and SMTP with an access token (XOAUTH2): Google's mail.
 pub mod sasl;
 pub mod scout;
@@ -48,6 +50,7 @@ pub mod secret;
 pub mod send;
 pub mod share;
 pub mod shield_ai;
+pub mod unsubscribe;
 pub mod verify;
 pub mod weather;
 

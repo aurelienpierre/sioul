@@ -94,9 +94,9 @@ Nothing about what you eat or how you sleep is asked or recorded: no counts, no 
 
 ## Before sleep
 
-When the wind-down begins, the night's notice has **Close the day** beside **Options…** (on Linux), as long as that day is not closed. In the evening, from three hours before the wind-down, the status line offers it too; and on this page, under today, **Close the day** in the evening and during the night.
+When the wind-down begins, the night's notice has **Close the whole day** beside **Options…** (on Linux), as long as that day is not closed. In the evening, from three hours before the wind-down, the status line offers it too; and on this page, under today, **Close the whole day** in the evening and during the night.
 
-It opens the same sheet as at the end of work, over the whole day: what you said of the morning, the end of work as you said it then, tomorrow's first step if one was named, and what the day asked and gave, in words only ("Thinking: heavy for you.", "Some time gave back."). Then how the day felt, its mix, and a note, each optional. **Close the day** keeps them; **Not now** changes nothing.
+It opens the same sheet as at the end of work, over the whole day: what you said of the morning, the end of work as you said it then, tomorrow's first step if one was named, and what the day asked and gave, in words only ("Thinking: heavy for you.", "Some time gave back."). Then how the day felt, its mix, and a note, each optional. **Close the whole day** keeps them; **Not now** changes nothing.
 
 No number, no score, no colour. Under each day before, on this page, the words you said then and your notes. From the wind-down on, the status line offers nothing more.
 

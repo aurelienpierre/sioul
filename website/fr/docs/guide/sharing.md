@@ -15,6 +15,12 @@ Chaque appareil garde toutes ses données dans ses propres fichiers, et fonction
 - **Ce que l’application de synchronisation doit faire : très peu.** Elle doit transporter les nouveaux fichiers, et les fichiers qui grandissent, tôt ou tard et dans n’importe quel ordre. Elle n’a besoin de rien effacer, renommer ni verrouiller. C’est pourquoi n’importe quelle application de synchronisation convient. Une application lente, comme celle d’un téléphone qui regarde toutes les demi-heures, fait arriver les changements en retard, jamais faux.
 - **Ce qu’un appareil ne peut pas savoir, il le dit.** Chaque appareil dit dans le dossier où il en est : quand il a démarré, quand il s’est fermé proprement, s’il est utilisé, et quand il a partagé pour la dernière fois. Chacun sait jusqu’où il a lu les autres. Un appareil fermé proprement a envoyé tout ce qu’il avait noté ; un appareil utilisé est connu tant que ses nouvelles continuent d’arriver. Si quelque chose a pu se passer sur un appareil dont les nouvelles ne sont pas arrivées (une prise notée sur le téléphone pendant qu’il était utilisé, que son application de synchronisation n’a pas encore apportée), Sioul dit qu’il ne sait pas plutôt que de deviner, et nomme cet appareil. La prise est rappelée avec « vérifiez d’abord », jamais comme « pas prise » ([Santé](health.md#on-several-computers)).
 
+### Quand l’application de synchronisation est en retard {#when-the-sync-app-is-late}
+
+Les applications de synchronisation transportent les fichiers à leur rythme, et Sioul ne peut presser la plupart d’entre elles. Le client Nextcloud d’un ordinateur envoie un changement en quelques secondes ; l’application d’un téléphone peut attendre son prochain examen, une demi-heure ou plus, et laisser certains fichiers en arrière plus longtemps encore : le 6 octobre 2026, l’eDrive de Murena a laissé des heures sur le serveur les changements d’un ordinateur, tout en examinant le dossier toutes les quelques minutes. Tant qu’un changement n’est pas arrivé, l’autre appareil l’ignore : un « Ne pas déranger » activé, une prise notée, l’ordinateur encore ouvert ou non. Un appareil qui ne peut pas savoir le dit (pour les prises : « vérifiez avant de la prendre ») ; il ne devine jamais.
+
+WebDAV est le seul protocole pour lequel Sioul prend les choses en main. Quand le dossier partagé est sur un serveur Nextcloud où Sioul a déjà un compte (celui de Murena compris), il lit aussi lui-même les fichiers des autres appareils sur le serveur, en secours, et garde la copie la plus récente : un téléphone suit alors en une minute environ, quoi que fasse son application de synchronisation. Il ne fait que lire ; l’envoi reste le travail de l’application de synchronisation. Avec toute autre application (Syncthing, Dropbox, Google Drive…), les changements arrivent quand elle les apporte. C’est pourquoi Nextcloud est le premier choix : [où en trouver un](compatibility.md#where-to-get-a-nextcloud).
+
 ### Quand quelque chose tourne mal dans le dossier {#when-something-goes-wrong-in-the-folder}
 
 Rien de ce qui arrive dans le dossier ne peut vous retirer vos données. Sioul traite chaque surprise comme quelque chose qu’il ne sait pas :
@@ -52,6 +58,8 @@ Rien de ce qui arrive dans le dossier ne peut vous retirer vos données. Sioul t
 **Jamais partagé** : ce que chaque appareil choisit de partager, l’endroit où sont les choses sur chaque appareil (chacun garde ses propres dossiers), la façon dont le texte se lit sur cet écran, la disposition des pages, les notifications du navigateur de cet appareil, les caches, et vos propres clés OpenPGP (copiez-les à la main). Les mots de passe restent dans le trousseau de chaque appareil.
 
 ## La mise en place {#setting-it-up}
+
+Pas encore de cloud ? Sioul est testé avec Nextcloud : [où trouver un Nextcloud](compatibility.md#where-to-get-a-nextcloud).
 
 Sur le premier appareil :
 

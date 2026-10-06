@@ -14,7 +14,7 @@ La page Paramètres a cinq onglets.
 
 - **Langue** : celle du système, English ou Français. Toutes les phrases de Sioul la suivent.
 - **Couleurs** : claires, sombres, ou celles du système. Les icônes suivent au prochain démarrage.
-- **Afficher le nom des lieux à côté de leur icône** : les lieux, à gauche de la fenêtre, montrent leur nom à côté de leur icône, dans une colonne plus large, pour qui lit plus facilement des mots que des icônes. Sans ce réglage, leurs icônes seules ; le nom de chacun s’affiche quand le pointeur s’y arrête, quand le clavier l’atteint, ou par un appui long sur un écran tactile. Il suit vos réglages sur vos autres appareils, quand vous les [partagez](sharing.md).
+- **Afficher le nom des lieux à côté de leur icône** : les lieux, à gauche de la fenêtre, montrent leur nom à côté de leur icône, dans une colonne plus large, pour qui lit plus facilement des mots que des icônes. Sans ce réglage, leurs icônes seules ; le nom de chacun s’affiche quand le pointeur s’y arrête, quand le clavier l’atteint, ou par un appui long sur un écran tactile. Il suit vos réglages sur vos autres appareils, quand vous les [partagez](sharing.md). Le bouton au pied des lieux, ou ++f9++, le change aussi.
 - **Afficher les mots de passe pendant la saisie** : chaque champ de mot de passe, de phrase de passe ou de clé montre ce que vous tapez dès le départ, sur cet appareil. Sans ce réglage, l’œil au bout de chaque champ affiche ou masque ce que vous avez tapé, à tout moment.
 - **Détails sur l’écran d’accueil** (sur un téléphone) : la carte de Sioul sur l’écran d’accueil du téléphone nomme les premières lettres qui attendent sur le Porche, avec leur expéditeur et leur objet, un code que vous venez de demander à un site, une prise prévue, et le titre de la prochaine étape ([Premiers pas](first-steps.md#on-a-phone)). Sans ce réglage, elle ne dit que ce à quoi sert ce moment, combien de lettres sont arrivées, et qu’une prochaine étape attend : pour un téléphone dont d’autres voient l’écran d’accueil. Ce téléphone seulement.
 
@@ -81,8 +81,8 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 
 | Page | Derrière son ⚙ |
 |---|---|
-| [Porche](porch.md#the-porchs-settings) | les projets qui y sont montrés, où arrivent les scans, comment le courrier est trié |
-| [Courrier](mail.md#settings) | par conversation, à quel rythme les dossiers sont relevés |
+| [Porche](porch.md#the-porchs-settings) | les projets qui y sont montrés, où arrivent les scans, la lecture d’un message, comment le courrier est trié |
+| [Courrier](mail.md#settings) | par conversation, à quel rythme les dossiers sont relevés, la lecture d’un message, les listes quittées |
 | [Tâches](tasks.md#the-tasks-settings) | heures de bureau, types, catégories, listes de tâches, où vont les nouvelles tâches, ce qui est du travail et ce qui est à vous, GitHub |
 | [Agenda](agenda.md#the-agenda-settings) | agendas, l’heure à laquelle commence la journée |
 | [Contacts](contacts.md#the-contacts-settings) | carnets d’adresses, la carte |
@@ -90,7 +90,7 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 | [Sites](sites.md#logins-from-bitwarden) | votre compte Bitwarden |
 | [Santé](health.md#your-watch) | le dossier de votre montre, les propositions douces |
 
-Les réglages propres à chaque adresse sont sur sa fiche dans [Comptes](accounts.md#a-mail-address). Partout où se lit un long texte (un message, une note), **Aa** règle la police, sa taille et l’interligne.
+Les réglages propres à chaque adresse sont sur sa fiche dans [Comptes](accounts.md#a-mail-address). La lecture du texte long (la police, sa taille et l’interligne) est dans le ⚙ des pages où se lisent les messages, Courrier et Porche, et derrière **Aa** dans les Notes : un seul réglage, montré là où il sert.
 
 ## Où les réglages sont gardés {#where-settings-are-kept}
 

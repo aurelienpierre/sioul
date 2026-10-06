@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- The web, a globe with its meridians: Sioul's Sites place. Drawn for Sioul in Breeze's line style (LGPL-3.0-or-later, as the Breeze icons beside it). -->
+  <g fill="none" stroke="#232629" stroke-width="1">
+    <circle cx="8" cy="8" r="6.5"/>
+    <ellipse cx="8" cy="8" rx="2.5" ry="6.5"/>
+    <path d="M2.52 4.5H13.48M1.52 7.5H14.48M2.00 10.5H14.00"/>
+  </g>
+</svg>

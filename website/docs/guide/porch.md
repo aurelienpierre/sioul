@@ -30,7 +30,9 @@ One-time codes, temporary passwords, password resets, sign-in links and links to
 
 Nothing else opens with it. Once it has expired, it is hidden, and the message goes to its lane. It expires when the message says, else when its kind usually does: a code after 30 minutes, a sign-in link after an hour, a password reset after two hours, a link to confirm an address after a day, a temporary password after a week.
 
-Fake "your code" messages are a common phishing trick. A forged one is set aside. One from a sender that is only *not verified* still comes, with a warning: use it only if you just asked that site for it.
+Many sites send their codes and links through the same services as their newsletters, with the same headers. They still come at once. Sioul looks for the code in their subject and at the top of their text, where a site puts what you asked for: a newsletter's article about passwords stays a newsletter.
+
+Fake "your code" messages are a common phishing trick. A forged one is set aside, even when it carries a newsletter's headers. One from a sender that is only *not verified* still comes, with a warning: use it only if you just asked that site for it.
 
 ## New mail, told at its times
 
@@ -85,7 +87,7 @@ Then the text, made safe:
 - Every link shows its full address under the message while the pointer is on it, before you click.
 - **Attachments** are folded, one line each with their kind, name and size. Opening or saving one runs the antivirus first; if the device has none, Sioul says so and asks before opening. See [Privacy and security](privacy-security.md#attachments-and-the-antivirus).
 
-From the message: reply, forward, archive, delete, and the rest, as on the [Mail](mail.md) page.
+From the message: reply, forward, archive, delete, and the rest, as on the [Mail](mail.md) page. A newsletter has **Unsubscribe** too ([Mail](mail.md#unsubscribing)).
 
 ## Done for now
 
@@ -133,10 +135,11 @@ Hostile mail goes to its own folded lane, which shows neither the sender's name 
 
 ## The Porch's settings
 
-The ⚙ at the top of the Porch holds what is the Porch's alone:
+The ⚙ at the top of the Porch holds what is the Porch's alone, and how a message opened here reads:
 
 - **Projects shown here**: which projects have a lane on the Porch. The others' mail stays on their page in Projects.
 - **Paper letters ▸ Where scans arrive**: the folder your scans come to.
+- **How text reads**: the font, its size and the space between lines of a message opened here, the same as in the Mail page's ⚙.
 - **How mail is sorted**: every lane, in the order mail is sorted, with its rules; the senders you know; the words that make a sender automatic (no-reply…).
 
 What belongs to something else is set where that thing is: an address's rank and protection on its card in [Accounts](accounts.md), a project's routes on its page in [Projects](projects.md), who may write to you when in [Accounts ▸ Senders](accounts.md#senders), your hours in [Settings](settings.md#hours).

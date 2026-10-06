@@ -94,9 +94,9 @@ Rien de ce que vous mangez ni de votre sommeil n’est demandé ni noté : ni 
 
 ## Avant de dormir {#before-sleep}
 
-Quand le moment de se détendre commence, l’avis de la nuit a **Clore la journée** à côté d’**Options…** (sous Linux), tant que la journée n’est pas close. Le soir, à partir de trois heures avant, la ligne d’état le propose aussi ; et sur cette page, sous aujourd’hui, **Clore la journée** le soir et pendant la nuit.
+Quand le moment de se détendre commence, l’avis de la nuit a **Clore toute la journée** à côté d’**Options…** (sous Linux), tant que la journée n’est pas close. Le soir, à partir de trois heures avant, la ligne d’état le propose aussi ; et sur cette page, sous aujourd’hui, **Clore toute la journée** le soir et pendant la nuit.
 
-Il ouvre la même feuille qu’à la fin du travail, sur toute la journée : ce que vous avez dit du matin, la fin du travail telle que vous l’avez dite alors, la première étape de demain si elle a été nommée, et ce que la journée a demandé et donné, en mots seulement (« Réflexion : charge lourde pour vous. », « Du temps vous a ressourcé. »). Puis comment la journée a été, son mélange, et une note, chacun facultatif. **Clore la journée** les garde ; **Pas maintenant** ne change rien.
+Il ouvre la même feuille qu’à la fin du travail, sur toute la journée : ce que vous avez dit du matin, la fin du travail telle que vous l’avez dite alors, la première étape de demain si elle a été nommée, et ce que la journée a demandé et donné, en mots seulement (« Réflexion : charge lourde pour vous. », « Du temps vous a ressourcé. »). Puis comment la journée a été, son mélange, et une note, chacun facultatif. **Clore toute la journée** les garde ; **Pas maintenant** ne change rien.
 
 Aucun nombre, aucun score, aucune couleur. Sous chaque jour passé, sur cette page, les mots que vous aviez dits alors et vos notes. Dès le moment de se détendre, la ligne d’état ne propose plus rien.
 

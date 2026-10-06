@@ -347,6 +347,8 @@ struct Status {
     vanished: Vec<Vanished>,
     /// Your other devices, as this one knows them: in use, closed, silent, off as you said.
     devices: Vec<crate::health::DeviceRow>,
+    /// The other devices' files fetched from the server too: where it stands, the switch, the place given by hand.
+    backup: Backup,
 }
 
 /// Files gone at once from a folder of notes or papers, held until you say.
@@ -390,6 +392,7 @@ pub(crate) fn status(folder: &str) -> String {
     let mut vanished = Vec::new();
     if on {
         lines.push(say("share-on", &[("folder", chosen.clone())]));
+        attached(&here);
         let others = share::others(&path, &here.id);
         match others.iter().map(|o| o.heard).max() {
             Some(heard) => {
@@ -446,7 +449,8 @@ pub(crate) fn status(folder: &str) -> String {
         })
         .collect();
     let devices = if on { crate::health::device_rows() } else { Vec::new() };
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, devices })
+    let backup = backup(on, &path);
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, devices, backup })
 }
 
 fn problem_text(code: &str) -> String {
@@ -658,6 +662,10 @@ pub(crate) fn stop() -> String {
         let state = state_dir();
         let _writing = HERE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut here = share::Here::load(&state);
+        // What was fetched from the server, and where: forgotten with the folder.
+        if let Some(folder) = here.folder_path() {
+            sioul_sync::remote::forget(&memory_path(), &folder);
+        }
         here.folder = None;
         // Starting again later reads the others first, as the first time.
         let memory = memory_path();
@@ -685,7 +693,7 @@ pub(crate) fn keeper(part: &str, rule: sioul_sync::lease::Rule, active: i64, tak
     let _claiming = CLAIMING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let here = share::Here::load(&state_dir());
     let alone = sioul_sync::lease::Keeper::alone(&here.id);
-    let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return (alone, false) };
+    let (Some(folder), Some(key)) = (attached(&here), key()) else { return (alone, false) };
     // The claim says how far this computer wrote its records: read that far, the others know all it marked.
     let wrote = share::written(&memory_path(), &here.id);
     match sioul_sync::lease::renew(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), active, take, rule, wrote) {
@@ -697,7 +705,7 @@ pub(crate) fn keeper(part: &str, rule: sioul_sync::lease::Rule, active: i64, tak
 /// Who keeps a part, as the claims read now, without claiming it. Sharing off: this computer alone.
 pub(crate) fn looked(part: &str, rule: sioul_sync::lease::Rule) -> sioul_sync::lease::Keeper {
     let here = share::Here::load(&state_dir());
-    let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return sioul_sync::lease::Keeper::alone(&here.id) };
+    let (Some(folder), Some(key)) = (attached(&here), key()) else { return sioul_sync::lease::Keeper::alone(&here.id) };
     sioul_sync::lease::look(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), rule)
 }
 
@@ -764,7 +772,7 @@ pub(crate) struct Others {
 /// they marked (`health::know`). None when sharing is off.
 pub(crate) fn others_on_health() -> Option<Others> {
     let here = share::Here::load(&state_dir());
-    let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
+    let (Some(folder), Some(key)) = (attached(&here), key()) else { return None };
     let claims = sioul_sync::lease::claims(&folder, &key, "health").into_iter().filter(|c| c.computer != here.id).collect();
     let (mut entries, mut unread) = sioul_sync::devices::all(&folder, &key);
     entries.retain(|e| e.id != here.id);
@@ -779,7 +787,7 @@ pub(crate) fn vault() -> Option<(String, Option<(PathBuf, [u8; 32])>)> {
     if here.id.is_empty() {
         return None;
     }
-    let vault = here.folder_path().zip(key());
+    let vault = attached(&here).zip(key());
     Some((here.id, vault))
 }
 
@@ -885,6 +893,11 @@ pub(crate) fn nudge_tick(qt: &QtThread, shared: &Arc<Shared>) {
 pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, String>> {
     let here = here();
     let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
+    // The server asked too, meanwhile, when the folder is found there (`fetch_from_server`).
+    let fetching = fetch_first.then(|| {
+        let here = here.clone();
+        std::thread::spawn(move || fetch_from_server(&here, true))
+    });
     // The sync app asked to bring the others' news, and given twenty seconds;
     // asked a moment ago already (two doses due at once), only what is left of them.
     if fetch_first && cfg!(target_os = "android") {
@@ -899,6 +912,14 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
             0
         };
         std::thread::sleep(std::time::Duration::from_secs((20 - waited).max(0) as u64));
+    }
+    // What the server brings, waited for a few seconds more at most: never
+    // the whole of a slow network's (a dose's alarm has a minute in all).
+    if let Some(fetching) = fetching {
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(if cfg!(target_os = "android") { 5 } else { 15 });
+        while !fetching.is_finished() && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
     }
     // The one running told to hurry, then waited for: notes and papers wait,
     // what is marked never does (a dose, a button pressed).
@@ -933,6 +954,8 @@ fn remember(problems: &[String], now: i64) {
 pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
+        // The other devices' files from the server too, when due, before they are read.
+        fetch_from_server(&here(), false);
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
         let here = here();
         let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return };
@@ -998,9 +1021,233 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
     });
 }
 
+// ---------------------------------------------------------------- fetched from the server too
+
+/// One look or fetch at a time in this process: two exchanges' threads never fetch at once.
+static FETCHING: Mutex<()> = Mutex::new(());
+
+/// The sharing folder, and what was fetched from its server read beside it
+/// from now on in this process (`sioul_sync::remote::attach`): cheap, no network.
+fn attached(here: &share::Here) -> Option<PathBuf> {
+    let folder = here.folder_path()?;
+    sioul_sync::remote::attach(&folder, &memory_path());
+    Some(folder)
+}
+
+/// The contacts-and-calendars accounts whose server may keep files
+/// Nextcloud's way (found under `/remote.php/`: Nextcloud, Murena, ownCloud),
+/// each with its password from the keyring as their sync has it. Google's never.
+fn logins(config: &Config) -> Vec<sioul_sync::remote::Login> {
+    config.accounts.iter().filter(|a| a.auth.as_deref() != Some("google")).filter_map(login_of).collect()
+}
+
+fn login_of(account: &sioul_core::config::Account) -> Option<sioul_sync::remote::Login> {
+    let url = account.url.clone().filter(|u| account.is_dav() && u.contains("/remote.php/"))?;
+    Some(sioul_sync::remote::Login { account: account.id.clone(), url, user: account.login()?.to_string(), password: sioul_sync::secret::password(account).ok() })
+}
+
+/// What the Nextcloud client says it carries, on a computer: its `nextcloud.cfg`.
+fn nextcloud_configs() -> Vec<String> {
+    if cfg!(target_os = "android") {
+        return Vec::new();
+    }
+    let home = expand_home("~");
+    let windows = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("Nextcloud/nextcloud.cfg"));
+    [Some(home.join(".config/Nextcloud/nextcloud.cfg")), Some(home.join("Library/Preferences/Nextcloud/nextcloud.cfg")), windows].into_iter().flatten().filter_map(|p| std::fs::read_to_string(p).ok()).collect()
+}
+
+/// Whether to fetch from the server now: a minute after the last try at
+/// most; on a phone, that often only while another device is in use, else at
+/// the background step's pace, and never while you sleep (nothing is
+/// coming); a dose's alarm, a waking or the background step asking for news
+/// (`urgent`), twenty seconds after the last.
+fn fetch_due(phone: bool, tried: i64, now: i64, in_use: bool, asleep: bool, urgent: bool) -> bool {
+    let since = now - tried;
+    if urgent {
+        since >= 20
+    } else if !phone || in_use {
+        since >= 60
+    } else if asleep {
+        false
+    } else {
+        since >= crate::steps::STEP_AWAKE - 30
+    }
+}
+
+/// The other devices' files fetched from the server too (docs/database.md,
+/// "Fetched from the server too"), when the sharing folder is found on one of
+/// your accounts' servers under the same seal, and it is due (`fetch_due`).
+/// Looked for at once when asked, else every six hours. Never on the window's
+/// thread; the switch off, not a request.
+fn fetch_from_server(here: &share::Here, urgent: bool) {
+    let Some(folder) = attached(here) else { return };
+    let Ok(_fetching) = FETCHING.try_lock() else { return };
+    let memory = memory_path();
+    let now = jiff::Timestamp::now().as_second();
+    let mut state = sioul_sync::remote::State::load(&memory);
+    if !state.fetching() || here.id.is_empty() {
+        sioul_sync::remote::tidy(&memory, &folder, &here.id);
+        return;
+    }
+    let config = load_config();
+    let login = |account: &str| config.accounts.iter().find(|a| a.id == account).and_then(login_of);
+    // Its account gone, or its password: looked for again.
+    if state.look_due(&folder, now) || (state.confirmed_for(&folder) && login(&state.account).is_none_or(|l| l.password.is_none())) {
+        let places = sioul_sync::remote::places(&folder, &nextcloud_configs());
+        state = sioul_sync::remote::find(&memory, &folder, &logins(&config), &places, now);
+    }
+    if !state.confirmed_for(&folder) {
+        return;
+    }
+    let phone = cfg!(target_os = "android");
+    let in_use = phone && crate::devices::others_in_use();
+    let asleep = phone && crate::everywhere::rest_now() == (true, false);
+    if !fetch_due(phone, state.tried, now, in_use, asleep, urgent) {
+        return;
+    }
+    let Some(login) = login(&state.account) else { return };
+    let pulled = sioul_sync::remote::pull(&memory, &folder, &here.id, &login, now);
+    // On a phone, its log (adb logcat): a count and a code, never a name nor an address.
+    if phone {
+        let code = pulled.problem.as_deref().map(|p| format!("; {}", p.split(':').next().unwrap_or_default())).unwrap_or_default();
+        eprintln!("sioul: sharing: {} fetched from the server{code}", pulled.fetched);
+    }
+}
+
+/// Fetched from the server too, as the panel shows it.
+#[derive(Serialize)]
+struct Backup {
+    /// Shown: sharing is on.
+    shown: bool,
+    /// Where things stand, in words.
+    line: String,
+    /// The switch: fetching from the server, on this device.
+    on: bool,
+    /// The place given by hand; "" when looked for by itself.
+    given: String,
+    /// Found under the same seal.
+    found: bool,
+}
+
+fn backup(on: bool, folder: &Path) -> Backup {
+    let state = sioul_sync::remote::State::load(&memory_path());
+    let line = if on { backup_line(&state, folder) } else { String::new() };
+    Backup { shown: on, line, on: state.fetching(), given: state.given.clone(), found: state.confirmed_for(folder) }
+}
+
+/// Where the backup stands, in words: from where, and since when, or why not.
+fn backup_line(state: &sioul_sync::remote::State, folder: &Path) -> String {
+    let host = state.host();
+    let (code, about) = state.said.split_once(':').unwrap_or((state.said.as_str(), ""));
+    let about = || about.to_string();
+    if !state.fetching() {
+        return if host.is_empty() { tr().text("share-backup-off-none", None) } else { say("share-backup-off", &[("host", host)]) };
+    }
+    if state.confirmed_for(folder) {
+        let why = |code: &str| {
+            tr().text(
+                match code {
+                    "login" => "share-backup-why-login",
+                    "tls" => "share-backup-why-tls",
+                    "network" => "share-backup-why-network",
+                    "disk" => "share-backup-why-disk",
+                    _ => "share-backup-why-server",
+                },
+                None,
+            )
+        };
+        return match (code, state.last) {
+            ("", 0) => say("share-backup-soon", &[("host", host)]),
+            ("", last) => say("share-backup-on", &[("host", host), ("when", when(last))]),
+            (code, 0) => say("share-backup-failing-never", &[("host", host), ("why", why(code))]),
+            (code, last) => say("share-backup-failing", &[("host", host), ("when", when(last)), ("why", why(code))]),
+        };
+    }
+    if state.looked == 0 || state.folder != folder.display().to_string() || state.asked > state.looked {
+        return tr().text("share-backup-looking", None);
+    }
+    match code {
+        "no-account" => tr().text("share-backup-no-account", None),
+        "no-account-for" => say("share-backup-no-account-for", &[("host", about())]),
+        "not-found" => say("share-backup-not-found", &[("hosts", about())]),
+        "seal-differs" => say("share-backup-seal-differs", &[("host", about())]),
+        "seal-gone" => say("share-backup-seal-gone", &[("host", about())]),
+        "login" => say("share-backup-login", &[("host", about())]),
+        "no-password" => say("share-backup-no-password", &[("account", about())]),
+        "no-seal" => String::new(),
+        _ => say("share-backup-unreachable", &[("host", about())]),
+    }
+}
+
+/// The other devices' files fetched from the server too, or not: this
+/// device's own choice, never shared. "" when kept, else why not.
+pub(crate) fn set_backup(on: bool) -> String {
+    let now = jiff::Timestamp::now().as_second();
+    let chosen = sioul_sync::remote::State::choose(&memory_path(), |state| {
+        state.on = (!on).then_some(false);
+        // On again: looked for at once.
+        if on {
+            state.asked = now;
+        }
+    });
+    chosen.err().unwrap_or_default()
+}
+
+/// The sharing folder's place on the server, given by hand ("Documents/Sioul",
+/// or its address; "" to look for it by itself): looked at with the next
+/// exchange, that place alone. "" when kept, else why not.
+pub(crate) fn set_backup_place(place: &str) -> String {
+    let now = jiff::Timestamp::now().as_second();
+    let chosen = sioul_sync::remote::State::choose(&memory_path(), |state| {
+        state.given = place.trim().to_string();
+        state.asked = now;
+    });
+    chosen.err().unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_server_is_asked_at_the_pace_of_the_others_news() {
+        let now = 100_000;
+        // A computer: once a minute.
+        assert!(fetch_due(false, now - 60, now, false, false, false));
+        assert!(!fetch_due(false, now - 59, now, false, false, false));
+        // A phone: once a minute while another device is in use, asleep or not.
+        assert!(fetch_due(true, now - 60, now, true, true, false));
+        assert!(!fetch_due(true, now - 30, now, true, false, false));
+        // Else at the background step's pace, and never while you sleep.
+        assert!(!fetch_due(true, now - 120, now, false, false, false));
+        assert!(fetch_due(true, now - crate::steps::STEP_AWAKE, now, false, false, false));
+        assert!(!fetch_due(true, now - 3_600, now, false, true, false));
+        // A dose's alarm, a waking, the background step asking: twenty seconds after the last.
+        assert!(fetch_due(true, now - 20, now, false, true, true));
+        assert!(!fetch_due(true, now - 10, now, false, true, true));
+    }
+
+    #[test]
+    fn where_the_backup_stands_in_words() {
+        use sioul_sync::remote::State;
+        let folder = Path::new("/storage/emulated/0/Documents/Sioul");
+        let here = folder.display().to_string();
+        let found = State { folder: here.clone(), url: "https://murena.io/remote.php/dav/files/jane/Documents/Sioul/".into(), account: "murena".into(), confirmed: 1, looked: 1, ..State::default() };
+        assert!(backup_line(&found, folder).contains("murena.io"));
+        let fetched = State { last: jiff::Timestamp::now().as_second(), ..found.clone() };
+        assert!(backup_line(&fetched, folder).contains("murena.io"));
+        let failing = State { said: "network:murena.io".into(), ..fetched.clone() };
+        assert_ne!(backup_line(&failing, folder), backup_line(&fetched, folder));
+        let off = State { on: Some(false), ..fetched.clone() };
+        assert!(backup_line(&off, folder).contains("murena.io"));
+        let looking = State { folder: here.clone(), ..State::default() };
+        assert_eq!(backup_line(&looking, folder), tr().text("share-backup-looking", None));
+        for said in ["no-account", "not-found:murena.io", "seal-differs:murena.io", "seal-gone:murena.io", "login:murena.io", "no-password:murena", "network:murena.io", "no-account-for:cloud.example.org"] {
+            let state = State { folder: here.clone(), looked: 1, said: said.into(), ..State::default() };
+            let line = backup_line(&state, folder);
+            assert!(!line.is_empty() && !line.contains("share-backup"), "{said}: {line}");
+        }
+    }
 
     #[test]
     fn documents_folders() {

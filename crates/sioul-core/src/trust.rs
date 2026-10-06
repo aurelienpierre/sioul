@@ -100,6 +100,46 @@ pub fn read_auth_results(headers: &RawHeaders, trusted_ids: &[String]) -> Option
         .find(|r| trusted_ids.iter().any(|id| id.eq_ignore_ascii_case(&r.authserv_id)))
 }
 
+/// A DKIM signature that passed, as a results header records it: the
+/// signer's domain (`header.d`, else the domain of `header.i`), its selector
+/// (`header.s`) and the start of the signature itself (`header.b`), when written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DkimPass {
+    pub domain: String,
+    pub selector: Option<String>,
+    /// As written: base64 is case-sensitive.
+    pub b: Option<String>,
+}
+
+/// The DKIM signatures that passed, read from the header `read_auth_results`
+/// reads (the topmost from a server you trust); none from a header that
+/// cannot be read to its end.
+pub fn dkim_passes(headers: &RawHeaders, trusted_ids: &[String]) -> Vec<DkimPass> {
+    let trusted = |value: &&str| parse_auth_results(value).is_some_and(|r| trusted_ids.iter().any(|id| id.eq_ignore_ascii_case(&r.authserv_id)));
+    let Some(value) = headers.all("Authentication-Results").find(trusted) else { return Vec::new() };
+    let (parts, balanced) = results_of(value);
+    if !balanced {
+        return Vec::new();
+    }
+    parts
+        .iter()
+        .skip(1)
+        .filter_map(|part| {
+            let (method, rest) = part.trim().split_once('=')?;
+            if !method.split('/').next().unwrap_or(method).trim().eq_ignore_ascii_case("dkim") {
+                return None;
+            }
+            let words = words_of(rest);
+            if Outcome::parse(words.first()?) != Outcome::Pass {
+                return None;
+            }
+            let property = |name: &str| words.iter().filter_map(|w| w.split_once('=')).find(|(key, _)| key.eq_ignore_ascii_case(name)).map(|(_, value)| value.trim_matches(['"', ';']).to_string());
+            let domain = property("header.d").or_else(|| property("header.i").map(|i| i.rsplit_once('@').map_or(i.clone(), |(_, d)| d.to_string())))?;
+            Some(DkimPass { domain: domain.to_ascii_lowercase(), selector: property("header.s").map(|s| s.to_ascii_lowercase()), b: property("header.b").filter(|b| !b.is_empty()) })
+        })
+        .collect()
+}
+
 /// The authserv-id your provider writes, learned from its mail: the id of the
 /// topmost Authentication-Results header of most messages.
 ///
@@ -267,7 +307,7 @@ fn words_of(text: &str) -> Vec<String> {
 
 /// Whether two domains belong together, as DMARC's relaxed alignment has it:
 /// the same, or one below the other ("mail.example.org" and "example.org").
-fn aligned(a: &str, b: &str) -> bool {
+pub(crate) fn aligned(a: &str, b: &str) -> bool {
     let (a, b) = (a.trim_end_matches('.').to_ascii_lowercase(), b.trim_end_matches('.').to_ascii_lowercase());
     !a.is_empty() && !b.is_empty() && (a == b || a.ends_with(&format!(".{b}")) || b.ends_with(&format!(".{a}")))
 }

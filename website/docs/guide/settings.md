@@ -14,7 +14,7 @@ The Settings page has five tabs.
 
 - **Language**: the system's, English or French. Every sentence Sioul says follows it.
 - **Colours**: light, dark, or as the system has them. The icons follow at the next start.
-- **Show the places' names beside their icons**: the places on the left of the window show their names beside their icons, in a wider column, for whoever reads words more easily than icons. Without it, their icons alone; each one's name shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen. It travels with your settings to your other devices, when you [share them](sharing.md).
+- **Show the places' names beside their icons**: the places on the left of the window show their names beside their icons, in a wider column, for whoever reads words more easily than icons. Without it, their icons alone; each one's name shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen. It travels with your settings to your other devices, when you [share them](sharing.md). The button at the foot of the places, or ++f9++, changes it too.
 - **Show passwords as you type**: every password, passphrase and key field shows what you type from the start, on this device. Without it, the eye at the end of each field shows or hides what you typed, at any time.
 - **Details on the home screen** (on a phone): Sioul's card on the phone's home screen names the first letters waiting on the Porch, with their sender and subject, a code you just asked a site for, a dose due, and the next step's title ([First steps](first-steps.md#on-a-phone)). Turned off, it says only what now is for, how many letters came, and that a next step waits: for a phone whose home screen others see. This phone only.
 
@@ -81,8 +81,8 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 
 | Page | Behind its ⚙ |
 |---|---|
-| [Porch](porch.md#the-porchs-settings) | the projects shown there, where scans arrive, how mail is sorted |
-| [Mail](mail.md#settings) | by conversation, how often folders are fetched |
+| [Porch](porch.md#the-porchs-settings) | the projects shown there, where scans arrive, how a message reads, how mail is sorted |
+| [Mail](mail.md#settings) | by conversation, how often folders are fetched, how a message reads, the lists you left |
 | [Tasks](tasks.md#the-tasks-settings) | office hours, kinds, categories, task lists, where new tasks go, what is work and what is yours, GitHub |
 | [Agenda](agenda.md#the-agenda-settings) | calendars, the hour the day opens on |
 | [Contacts](contacts.md#the-contacts-settings) | address books, the map |
@@ -90,7 +90,7 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | [Sites](sites.md#logins-from-bitwarden) | your Bitwarden account |
 | [Health](health.md#your-watch) | your watch's folder, gentle offers |
 
-Each address's own settings are on its card in [Accounts](accounts.md#a-mail-address). Wherever long text is read (a message, a note), **Aa** sets the font, its size and the space between lines.
+Each address's own settings are on its card in [Accounts](accounts.md#a-mail-address). How long text reads (the font, its size and the space between lines) is in the ⚙ of the pages where messages are read, Mail and the Porch, and behind **Aa** in Notes: one setting, shown where it is used.
 
 ## Where settings are kept
 

@@ -2,10 +2,11 @@
 // Copyright © 2026 Aurélien Pierre
 
 // The weather in the status line, in one colour: now, then hour by hour for
-// the next four hours, each as an icon and a temperature (now alone when the
-// window is narrow); a tip says what they are. On a click, the same hours,
-// then the parts of the days to come, and where the data comes from. Without
-// a place, a quiet icon that offers to choose one.
+// the next two hours, each as an icon and a temperature (now alone when the
+// window is narrow), the line's room kept for the rest; a tip says what they
+// are. On a click, the next four hours, then the parts of the days to come,
+// and where the data comes from. Without a place, a quiet icon that offers to
+// choose one.
 
 pragma ComponentBehavior: Bound
 
@@ -20,8 +21,8 @@ ToolButton {
     required property var theme
     readonly property var shown: applet.sioul.forecast ? JSON.parse(applet.sioul.forecast) : null
     readonly property var now: applet.shown && applet.shown.view.now ? applet.shown.view.now : null
-    // The next hours beside now, when the window has room for them.
-    readonly property var hours: applet.now && applet.Window.width >= 900 ? applet.shown.view.hours : []
+    // The next two hours beside now, when the window has room for them; the rest on a click.
+    readonly property var hours: applet.now && applet.Window.width >= 900 ? applet.shown.view.hours.slice(0, 2) : []
     property bool choosing: false
     readonly property var places: applet.sioul.placesFound ? JSON.parse(applet.sioul.placesFound) : []
 

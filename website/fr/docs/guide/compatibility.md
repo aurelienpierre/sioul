@@ -22,7 +22,7 @@ Rien ici ne va au-delà de ce qui est construit. Les normes derrière chaque lig
 | [Google](#google) | agendas, contacts et Google Tasks, connexion sur la page de Google | **Attendu** : essayé seulement face à une imitation de Google Tasks |
 | [Les autres applications sur les mêmes comptes](#other-apps-on-the-same-accounts) | Thunderbird et les applications de courrier des téléphones ; Nextcloud Tasks, Tasks.org ; DAVx⁵ avec OpenTasks ou jtx Board | **Attendu**, d’après leur code. **Limite** : une tâche liée à une autre par une attente, changée sur un téléphone par DAVx⁵ |
 | [Les notes](#notes) | Obsidian, Nextcloud Notes, tout éditeur Markdown | **Testé** sur des fichiers écrits comme chacun les écrit |
-| [Partager entre vos appareils](#sharing-between-your-devices) | toute application qui garde un dossier en accord : Nextcloud, l’eDrive de Murena, Syncthing, Dropbox, Google Drive, OneDrive… | **Testé** avec un simulateur de la façon dont se comportent les applications de synchronisation, et avec eDrive sur un téléphone ; **attendu** avec les autres |
+| [Partager entre vos appareils](#sharing-between-your-devices) | Nextcloud d’abord ([où en trouver un](#where-to-get-a-nextcloud)) ; toute application qui garde un dossier en accord : Nextcloud, l’eDrive de Murena, Syncthing, Dropbox, Google Drive, OneDrive… | **Testé** avec un simulateur de la façon dont se comportent les applications de synchronisation, et avec eDrive sur un téléphone ; **attendu** avec les autres |
 | [Les sites](#sites) | les sites web qui fonctionnent dans Chrome ou Chromium : messageries sécurisées, discussions, appels ; clés de sécurité | **Attendu** ; vu fonctionner avec Proton Mail. **Limites** : sur un téléphone, les sites s’ouvrent dans votre navigateur |
 | [Identifiants et clés](#logins-and-keys) | Bitwarden (son cloud, votre propre serveur, Vaultwarden) ; OpenPGP avec GnuPG et les autres logiciels de courrier | GnuPG **testé** dans les deux sens ; Bitwarden **testé** avec le propre coffre du propriétaire, utilisé chaque jour (6 octobre 2026) |
 | [Votre montre](#your-watch) | les fichiers d’une montre Garmin : depuis la montre, depuis Gadgetbridge, ou depuis l’export de Garmin | **Testé** sur des fichiers faits à la main, pas sur une vraie montre |
@@ -124,6 +124,21 @@ Le partage n’a besoin que d’un dossier qu’une application de synchronisati
 | Le dossier de partage, sur un téléphone | l’accès d’Android à tous les fichiers ; un dossier que l’application de synchronisation garde sur le téléphone | l’eDrive de Murena 1.9.2, sur /e/OS : le dossier est arrivé à son examen complet suivant | l’application de Nextcloud, Syncthing, FolderSync, Autosync | eDrive ne transporte que Documents, Pictures, Music… : partagez par `Documents/Sioul`. Il n’efface jamais ce qui a été effacé ailleurs : comptez la place deux fois. Seul eDrive est prié de regarder tout de suite ; les autres applications apportent les changements à leur rythme, souvent toutes les demi-heures |
 | Les notes et les papiers, transportés par Sioul | un dossier de notes qu’aucune application de synchronisation ne transporte | le simulateur | — | refusé là où une application de synchronisation transporte déjà le dossier de notes. Reconnus : Nextcloud, Dropbox, Syncthing, et les dossiers nommés ownCloud, Sync, OneDrive, pCloudDrive ou Seafile. **Pas reconnus** : Google Drive, Insync, rclone, MEGA : laissez Notes désactivé là où ils transportent vos notes |
 | Changé sur deux appareils | — | le simulateur | — | les deux versions sont gardées, l’une nommée « (conflit …) » ; les copies en conflit des applications de synchronisation ne sont jamais lues |
+
+### Où trouver un Nextcloud {#where-to-get-a-nextcloud}
+
+Nextcloud est le moyen de synchronisation avec lequel Sioul est testé, et le seul que Sioul lit lui-même quand l’application de synchronisation d’un téléphone est en retard : en WebDAV, en secours ([pourquoi](sharing.md#when-the-sync-app-is-late)). Tout compte Nextcloud convient ; le même compte peut aussi tenir vos agendas, vos tâches et vos contacts. Les fichiers de Sioul sont petits : quelques mégaoctets, davantage si vous partagez vos notes et vos papiers.
+
+| Où | Gratuit | Payant | Remarques |
+|---|---|---|---|
+| [Murena](https://murena.io/signup), France | 1 Go | de 20 Go à 2 To | le compte avec lequel Sioul est testé ; courrier, agendas, contacts et fichiers en un seul |
+| [Zaclys](https://www.zaclys.com/), France | une offre gratuite | 12 € par an | un petit hébergeur français de logiciels libres |
+| [CHATONS](https://entraide.chatons.org/), France | selon l’hébergeur | selon l’hébergeur | un collectif d’hébergeurs éthiques : cherchez « cloud » ou « Nextcloud » |
+| [Hetzner Storage Share](https://www.hetzner.com/storage/storage-share/), Allemagne | — | à partir de 1 To | un Nextcloud tenu à jour par Hetzner, dans son centre de données de Falkenstein |
+| [La liste de Nextcloud](https://nextcloud.com/sign-up/) | de 2 à 5 Go | plus d’espace, un serveur à vous | des hébergeurs dans plusieurs pays ; les offres payantes financent les comptes gratuits |
+| [Votre propre serveur](https://nextcloud.com/install/) | — | — | Nextcloud est un logiciel libre ; un petit serveur ou un Raspberry Pi suffit pour une personne |
+
+Vérifié le 6 octobre 2026. Les offres changent : lisez les conditions de chaque hébergeur, et où vos fichiers sont gardés, avant de choisir.
 
 ## Les sites {#sites}
 

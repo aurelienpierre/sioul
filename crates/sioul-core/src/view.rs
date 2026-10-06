@@ -900,6 +900,8 @@ pub struct MessageView {
     pub role: Option<Role>,
     /// Encrypted or signed with OpenPGP, and what came of it.
     pub protection: Option<ProtectionView>,
+    /// Leaving its list in one click, when it names a way out (`unsubscribe::view`); the window fills it.
+    pub unsubscribe: Option<crate::unsubscribe::UnsubscribeView>,
 }
 
 /// A part of a message's text (see `reading::Part`), with its rich text.
@@ -1001,6 +1003,7 @@ pub fn message_from(raw: &[u8], path: &std::path::Path, triaged: &Triaged, own: 
         flagged,
         role: None,
         protection: pgp.map(|p| protection_line(&p, tr)),
+        unsubscribe: None,
     })
 }
 
@@ -1231,8 +1234,11 @@ pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids:
             ("own", String::new(), String::new())
         } else {
             let results = trust::read_auth_results(&card.headers, trusted_ids);
-            // As the Porch judges it: a signature counts for the sender's own domain only.
-            let judged = trust::judge_sender(results.as_ref(), card.is_list, card.sender_domain()).0;
+            // As the Porch judges it: a signature counts for the sender's own domain only,
+            // and a list excuses a DMARC failure, never for a code (`porch::triage`).
+            let failed = results.as_ref().is_some_and(|r| r.dmarc == Some(trust::Outcome::Fail));
+            let code = card.is_list && failed && crate::codes::detect_message(card).is_some();
+            let judged = trust::judge_sender(results.as_ref(), card.is_list && !code, card.sender_domain()).0;
             let level = match judged {
                 Trust::Verified => "verified",
                 Trust::Unverified => "unverified",

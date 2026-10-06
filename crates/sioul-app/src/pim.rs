@@ -571,7 +571,7 @@ fn send_answer(message: &Path, text: &str, asked: &agenda::Invitation, answer: &
 }
 
 /// The account with its sending server, found and kept when it had none.
-fn with_smtp(account: &Account) -> Result<Account, String> {
+pub(crate) fn with_smtp(account: &Account) -> Result<Account, String> {
     if account.smtp_host.is_some() {
         return Ok(account.clone());
     }

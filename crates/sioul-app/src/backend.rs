@@ -251,6 +251,12 @@ pub mod qobject {
         #[qinvokable]
         fn move_messages(self: Pin<&mut Sioul>, keys: &QString, account: &QString, folder: &QString);
 
+        /// Leaves the list a message comes from (docs/client.md, "Unsubscribing"):
+        /// one click or a message after ten seconds to undo; returns the web page
+        /// to open in the browser when the list takes it only there, else "".
+        #[qinvokable]
+        fn unsubscribe(self: Pin<&mut Sioul>, key: &QString) -> QString;
+
         /// Cancels the newest act still waiting.
         #[qinvokable]
         fn undo(self: Pin<&mut Sioul>);
@@ -1037,6 +1043,17 @@ pub mod qobject {
         /// window's thread: `share_estimated` brings it.
         #[qinvokable]
         fn share_estimate(self: Pin<&mut Sioul>, part: &QString);
+
+        /// The other devices' files fetched from the server too, or not, on
+        /// this device (docs/database.md); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_share_backup(self: Pin<&mut Sioul>, on: bool) -> QString;
+
+        /// The sharing folder's place on the server, given by hand
+        /// ("Documents/Sioul", or its address; "" to look for it by itself),
+        /// looked at off the window's thread; returns what went wrong, else "".
+        #[qinvokable]
+        fn share_backup_place(self: Pin<&mut Sioul>, place: &QString) -> QString;
 
         /// A folder's own folders, for Sioul's folder browser, as JSON: {"path", "parent", "folders", "readable"}.
         #[qinvokable]
@@ -2852,6 +2869,7 @@ impl qobject::Sioul {
             };
             let mut shown = view::message_from(opened.as_deref().unwrap_or(&raw), &path, &triaged, &own, tr(), protection)?;
             shown.role = mail::locate(&key.to_string()).and_then(|(account, file)| sioul_sync::mailbox::folder_of(&account, &file)).map(|f| f.role);
+            shown.unsubscribe = mail::unsubscribe_view(&world.config, &triaged);
             Some(shown)
         });
         QString::from(&shown.map_or_else(String::new, |m| json(&m)))
@@ -3194,6 +3212,12 @@ impl qobject::Sioul {
     fn move_messages(self: Pin<&mut Self>, keys: &QString, account: &QString, folder: &QString) {
         let keys: Vec<String> = serde_json::from_str(&keys.to_string()).unwrap_or_default();
         mail::move_many(&self.qt_thread(), &self.shared(), &keys, &account.to_string(), &folder.to_string());
+    }
+
+    fn unsubscribe(self: Pin<&mut Self>, key: &QString) -> QString {
+        let world = World::load();
+        let triaged = world.judge(&key.to_string()).map(|(_, triaged)| triaged);
+        QString::from(&mail::unsubscribe(&self.qt_thread(), &self.shared(), &world.config, triaged))
     }
 
     fn undo(mut self: Pin<&mut Self>) {
@@ -4917,10 +4941,11 @@ impl qobject::Sioul {
         // closes the day with its review (docs/reviews.md), "site-open", "site-quit" and
         // "site-during" open the test site, close its pages and the window
         // (tools/check-sites.py quit), "site-share" shares its screen (tools/check-sites.py share),
-        // "rail" shows the places hidden and with their
+        // "rail" shows the places with their icons alone and with their
         // names (main.qml), "pauses" free time and the pause (docs/pauses.md), "blocks" a task pinned to a
-        // time and left to the plan again (docs/tasks.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks"].contains(&steps.as_str()) && offline()) {
+        // time and left to the plan again (docs/tasks.md), "unsubscribe" a newsletter open
+        // with its Unsubscribe button (docs/client.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -4987,6 +5012,23 @@ impl qobject::Sioul {
             let counted = crate::share::estimate(&part);
             let _ = qt.queue(move |mut sioul| sioul.as_mut().share_estimated(QString::from(&counted)));
         });
+    }
+
+    fn set_share_backup(self: Pin<&mut Self>, on: bool) -> QString {
+        let problem = crate::share::set_backup(on);
+        // Looked for and fetched with the exchange, off the window's thread.
+        if problem.is_empty() {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&problem)
+    }
+
+    fn share_backup_place(self: Pin<&mut Self>, place: &QString) -> QString {
+        let problem = crate::share::set_backup_place(&place.to_string());
+        if problem.is_empty() {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&problem)
     }
 }
 

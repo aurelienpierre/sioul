@@ -1,0 +1,21 @@
+Authentication-Results: mx.example.net; dkim=pass header.d=accounts.example.com header.s=s2048 header.b=Qm9vYmFy;
+	spf=pass smtp.mailfrom=accounts.example.com; dmarc=pass header.from=accounts.example.com
+From: Example Account Team <account-security-noreply@accounts.example.com>
+To: you@example.org
+Subject: Example account security code
+Date: Fri, 02 Oct 2026 09:12:00 +0200
+Message-ID: <otp-1@accounts.example.com>
+List-Unsubscribe: <mailto:unsubscribe@accounts.example.com?subject=unsubscribe>
+Precedence: bulk
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Please use the following security code for the Example account yo***@example.org.
+
+Security code: 482913
+
+If you don't recognise the Example account yo***@example.org, you can click https://account.example.com/r/abc123 to remove your email address from that account.
+
+Thanks,
+The Example account team
