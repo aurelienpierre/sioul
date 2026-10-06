@@ -664,7 +664,8 @@ fn expired(code: &OneTimeCode, sent: Option<i64>, now: Option<i64>) -> bool {
 /// When a message was sent, for its code's validity: its Date, never later than
 /// it reached your provider (its file's time, `maildir::store`), so that a
 /// message dated in the future, or not dated, cannot keep a code on top for good.
-fn sent(card: &Card) -> Option<i64> {
+/// The phone's home screen card hides a code at the same time (sioul-app's `homecard`).
+pub fn sent(card: &Card) -> Option<i64> {
     let arrived = card
         .path
         .as_ref()

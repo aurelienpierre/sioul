@@ -458,7 +458,8 @@ impl Moment<'_> {
 /// included) or work, nor once that review is given; the next morning never
 /// opens on yesterday.
 pub fn offer(moment: &Moment, reviews: &Reviews) -> Option<Offer> {
-    if moment.mode.sleeps() || moment.mode.time.works() {
+    // Nothing offered at work, asleep or paused, nor in Free time (docs/pauses.md).
+    if moment.mode.sleeps() || moment.mode.time.works() || moment.mode.free() {
         return None;
     }
     let stamp = moment.now.timestamp().as_second();

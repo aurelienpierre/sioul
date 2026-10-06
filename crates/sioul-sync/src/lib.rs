@@ -22,9 +22,13 @@ pub mod antivirus;
 pub mod bitwarden;
 pub mod blobs;
 pub mod dav;
+pub mod devices;
 pub mod discover;
 pub mod favicon;
 pub mod disk;
+// The desktop's do-not-disturb during Sioul's pauses (Plasma's inhibition, dconf's changes).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+pub mod dnd;
 pub mod fetch;
 pub mod geocode;
 pub mod github;
@@ -37,6 +41,8 @@ pub mod lease;
 pub mod mailbox;
 pub mod notify;
 pub mod ocr;
+// Signing in to IMAP and SMTP with an access token (XOAUTH2): Google's mail.
+pub mod sasl;
 pub mod scout;
 pub mod secret;
 pub mod send;
@@ -46,7 +52,7 @@ pub mod verify;
 pub mod weather;
 
 pub use discover::{Found, FoundBy, Smtp, discover, discover_smtp};
-pub use fetch::{Control, Report, sync, test, watch};
+pub use fetch::{Control, Report, inbox, sync, test, watch};
 
 use sioul_core::config::{self, Account, Config};
 use sioul_core::i18n::{self, Translator};

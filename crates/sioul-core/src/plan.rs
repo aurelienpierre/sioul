@@ -212,6 +212,18 @@ pub struct Settings {
     /// What your record says (`capacity`): ratings, corrected lengths, budgets,
     /// free time, the gain slot. Its default changes nothing.
     pub capacity: crate::capacity::Planning,
+    /// Today's end of work moved by free time: (usual end, moved end), Unix
+    /// seconds (`with_extension`, docs/pauses.md). Hours, not capacity: the
+    /// budgets do not see it, and only light steps go there.
+    pub extension: Option<(i64, i64)>,
+    /// Minutes of today's room in it, kept for light steps (`with_events`).
+    pub light_only: u32,
+    /// Tasks pinned to a time (`blocks`), by UID: each laid in its block, the
+    /// block's time out of its day's room (`with_pins`, before `with_events`).
+    pub pins: BTreeMap<String, crate::blocks::Pin>,
+    /// Tasks done, by UID: the block that held their work, (start, end) in
+    /// Unix seconds, where the day shows them done.
+    pub records: BTreeMap<String, (i64, i64)>,
 }
 
 impl Default for Settings {
@@ -251,6 +263,10 @@ impl Settings {
             shifts: BTreeMap::new(),
             needs_days: crate::needs::Days::default(),
             capacity: crate::capacity::Planning::default(),
+            extension: None,
+            light_only: 0,
+            pins: BTreeMap::new(),
+            records: BTreeMap::new(),
         }
     }
 
@@ -282,6 +298,16 @@ impl Settings {
         self
     }
 
+    /// The tasks pinned to a time (`blocks::Blocks`): before `with_events`,
+    /// which takes each block's time, its margins and a pause around it, out of
+    /// its day's room, as an event's. Counted once: the plan lays the task
+    /// there without taking room again, and the block is no event of its own.
+    pub fn with_pins(mut self, blocks: crate::blocks::Blocks) -> Settings {
+        self.pins = blocks.pins;
+        self.records = blocks.records;
+        self
+    }
+
     /// The times kept free on `date`, as that day has them; today's meals
     /// moved past its events as said (`shifts`).
     pub fn kept_on(&self, date: Date, zone: &TimeZone, today: Date) -> Vec<(i64, i64)> {
@@ -295,12 +321,44 @@ impl Settings {
         self.needs.kept_with(date, zone, &self.needs_days, &|key: &str| pushed.get(key).copied().unwrap_or(0)).into_iter().map(|k| (k.start, k.end)).collect()
     }
 
+    /// Today's end of work moved by free time, (usual end, moved end): before
+    /// `with_events`, which gives today the room, light steps only there.
+    pub fn with_extension(mut self, extension: Option<(i64, i64)>) -> Settings {
+        self.extension = extension.filter(|(from, to)| to > from);
+        self
+    }
+
+    /// The moved end's stretch on `date`, outside the hours already there: none
+    /// on another day (docs/pauses.md).
+    pub fn extension_on(&self, date: Date, zone: &TimeZone) -> Vec<(i64, i64)> {
+        self.extra_on(date, zone, &stretches(&self.windows, date, zone, self.anything)).into_iter().map(|(a, b, _)| (a, b)).collect()
+    }
+
+    fn extra_on(&self, date: Date, zone: &TimeZone, hours: &[(i64, i64, Area)]) -> Vec<(i64, i64, Area)> {
+        let Some((from, to)) = self.extension else { return Vec::new() };
+        if jiff::Timestamp::from_second(from).ok().map(|t| t.to_zoned(zone.clone()).date()) != Some(date) {
+            return Vec::new();
+        }
+        less(&[(from, to, Area::WORK)], &hours.iter().map(|h| (h.0, h.1)).collect::<Vec<_>>())
+    }
+
+    /// `date`'s hours as stretches, in order, the moved end of work included.
+    pub fn hours_on(&self, date: Date, zone: &TimeZone) -> Vec<(i64, i64, Area)> {
+        let mut hours = stretches(&self.windows, date, zone, self.anything);
+        hours.extend(self.extra_on(date, zone, &hours));
+        hours.sort_by_key(|h| h.0);
+        hours
+    }
+
     /// Today from `now` on, and the coming days with events: the events taken
     /// out of their hours, a pause before and after each (appointments, meetings).
     pub fn with_events(mut self, now: &Zoned, events: &[Occurrence]) -> Settings {
         let zone = now.time_zone().clone();
         let today = now.date();
-        let busy = event_spans(events, self.pause);
+        let mut busy = event_spans(events, self.pause);
+        // The blocks tasks are pinned to: their time held as an event's, a pause around it.
+        let pause = i64::from(self.pause) * 60;
+        busy.extend(self.pins.values().map(|pin| (pin.span().0 - pause, pin.span().1 + pause)));
         let day_of = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(zone.clone()).date());
         // Every day an event covers (a trip, three days of a conference), and
         // the day before, whose hours may run past midnight; as far as the plan goes.
@@ -320,7 +378,9 @@ impl Settings {
             dates.extend([date, date.tomorrow().unwrap_or(date)].into_iter().filter(|d| *d >= today));
         }
         // Meals move past the events with their margins, as today's (`Needs::past_events_on`).
-        let held = event_spans(events, 0);
+        let mut held = event_spans(events, 0);
+        // Past the blocks tasks are pinned to as well, as the Health page moves them.
+        held.extend(self.pins.values().map(crate::blocks::Pin::span));
         for date in dates {
             let mut taken = busy.clone();
             taken.extend(self.kept_held(date, &zone, today, &held));
@@ -328,7 +388,13 @@ impl Settings {
                 // From the next five minutes, as the day's layout starts.
                 taken.push((i64::MIN, (now.timestamp().as_second() + 299) / 300 * 300));
             }
-            let room = Room::of(&less(&stretches(&self.windows, date, &zone, self.anything), &taken));
+            let usual = stretches(&self.windows, date, &zone, self.anything);
+            // The end of work moved by free time today: room for light steps only.
+            let extra = self.extra_on(date, &zone, &usual);
+            if !extra.is_empty() {
+                self.light_only = Room::of(&less(&extra, &taken)).total();
+            }
+            let room = Room::of(&less(&[usual, extra].concat(), &taken));
             self.days.insert(date, room);
         }
         self
@@ -428,6 +494,8 @@ pub struct Plan {
     pub days: BTreeMap<Date, Vec<(String, u32)>>,
     /// Minutes each day keeps free for steps running long (`capacity::slack`).
     pub slack: BTreeMap<Date, u32>,
+    /// The open tasks pinned to a time, by UID: their block (`blocks`).
+    pub pins: BTreeMap<String, crate::blocks::Pin>,
 }
 
 /// The time budget until a date asked (Shovel's "cushion"): what must be done
@@ -456,7 +524,9 @@ pub fn cushion(tasks: &[Task], plan: &Plan, settings: &Settings, today: Date, da
             continue;
         }
         let Some(planned) = open(&uid) else { continue };
-        need = need.saturating_add(planned.laid);
+        // Pinned to a time by then: its block's time is out of the room already, counted once.
+        let held = plan.pins.get(&uid).filter(|pin| pin.date <= date).map_or(0, |pin| pin.minutes().saturating_add(pin.before).saturating_add(pin.after));
+        need = need.saturating_add(planned.laid.saturating_sub(held));
         if let Some(task) = tasks.iter().find(|t| t.uid == uid) {
             kinds = kinds.with(settings.usable(task));
         }
@@ -760,6 +830,8 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let capacity = &settings.capacity;
     let rates: Vec<crate::capacity::Rates> = tasks.iter().map(|t| capacity.rates_of(t)).collect();
     let heavy: Vec<bool> = rates.iter().map(|r| r.level() == crate::demands::Level::Heavy).collect();
+    // Light steps alone may take today's end of work moved by free time (docs/pauses.md).
+    let light: Vec<bool> = rates.iter().map(|r| matches!(r.level(), crate::demands::Level::Light | crate::demands::Level::Rest)).collect();
     let column = |i: usize| match tasks[i].status {
         Status::Completed | Status::Cancelled => Column::Done,
         Status::InProcess => Column::Doing,
@@ -817,8 +889,10 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
             if own.is_empty() { settings.office_days } else { crate::window::days_open(&own) }
         })
         .collect();
-    // A step given a time today by hand (dragged in the day, `Task::at`): today, whatever the room.
-    let pinned: Vec<bool> = tasks.iter().map(|t| t.at_on(today, &TimeZone::system()).is_some()).collect();
+    // Pinned to a time (a block, `blocks`): on the block's day, its time held there already (`with_pins`).
+    let pins: Vec<Option<&crate::blocks::Pin>> = tasks.iter().map(|t| settings.pins.get(&t.uid).filter(|_| t.status.is_open())).collect();
+    // A step given a time today by a drag before blocks (`Task::at`, read still): today, whatever the room.
+    let pinned: Vec<bool> = tasks.iter().enumerate().map(|(i, t)| pins[i].is_none() && t.at_on(today, &TimeZone::system()).is_some()).collect();
     // A day's room for tasks, in minutes: today's by its weather.
     let room_for_tasks = |day: Date| settings.room_on(day).total() * if day == today { settings.today_percent } else { 100 } / 100;
     // The half hour kept on a day for the slot of time for you after its costliest block.
@@ -834,17 +908,55 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
         // Minutes taken from each day's room, kind by kind (as `Settings::room_on` lists them).
         let mut used: BTreeMap<Date, Vec<u32>> = BTreeMap::new();
         let mut heavy_used: BTreeMap<Date, u32> = BTreeMap::new();
+        // Today's minutes for light steps only, taken by them first.
+        let mut light_used: u32 = 0;
         // What the tasks laid each day weigh (`capacity::Load`).
         let mut loaded: BTreeMap<Date, Load> = BTreeMap::new();
         // The minutes laid each day, summed and squared: what its free time grows with.
         let mut sums: BTreeMap<Date, (f32, f32)> = BTreeMap::new();
         let mut out = Layout { start: vec![None; n], finish: vec![None; n], on_start: vec![0; n], days: BTreeMap::new(), left: BTreeMap::new() };
+        // Pinned to a time, first, so that what each day holds sees them: on its block's day, the block's
+        // minutes and its margins, whatever the room, the budgets or what it waits for. No room is taken:
+        // its time is out of the day's room already (`Settings::with_pins`).
+        for (i, pin) in pins.iter().enumerate() {
+            let Some(pin) = pin else { continue };
+            let day = pin.date.max(today);
+            let held = pin.minutes().saturating_add(pin.before).saturating_add(pin.after).max(SHORTEST);
+            let room = settings.room_on(day);
+            used.entry(day).or_insert_with(|| vec![0; room.0.len()]);
+            if heavy[i] {
+                *heavy_used.entry(day).or_insert(0) += 1;
+            }
+            crate::capacity::add(loaded.entry(day).or_insert([0.0; 5]), &rates[i].load(held));
+            let sum = sums.entry(day).or_insert((0.0, 0.0));
+            (sum.0, sum.1) = (sum.0 + held as f32, sum.1 + (held as f32).powi(2));
+            out.days.entry(day).or_default().push((i, held));
+            (out.start[i], out.finish[i], out.on_start[i]) = (Some(day), Some(day), held);
+        }
         for &i in &order {
             let mut earliest = not_before[i].unwrap_or(today).max(today);
             for &(p, gap) in &preds[i] {
                 if let Some(end) = out.finish[p] {
                     earliest = earliest.max(add_days(end, gap_days(gap)));
                 }
+            }
+            // Pinned (laid above): a bigger task spans its block and its steps; what its block does not hold of
+            // a step goes on from the next day, as any step (a quarter of an hour at least).
+            let mut rest = None;
+            if let Some(pin) = pins[i] {
+                let day = pin.date.max(today);
+                if open_steps[i] > 0 {
+                    let steps = || graph.children[i].iter().filter(|&&c| open[c]);
+                    out.start[i] = steps().filter_map(|&c| out.start[c]).chain([day]).min();
+                    out.finish[i] = steps().filter_map(|&c| out.finish[c]).chain([day]).max();
+                    continue;
+                }
+                let left = laid[i].max(SHORTEST).saturating_sub(out.on_start[i]);
+                if left < SHORTEST || (optional[i] && tasks[i].status != Status::InProcess) {
+                    continue;
+                }
+                earliest = earliest.max(add_days(day, 1));
+                rest = Some(left);
             }
             if optional[i] && tasks[i].status != Status::InProcess {
                 continue;
@@ -856,7 +968,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                 out.finish[i] = steps().filter_map(|&c| out.finish[c]).max().or(Some(earliest));
                 continue;
             }
-            let minutes_all = laid[i].max(SHORTEST);
+            let minutes_all = rest.unwrap_or(laid[i].max(SHORTEST));
             // Given a time today by hand: today, whole, whatever the room, the budgets or what it waits for.
             if pinned[i] {
                 let room = settings.room_on(today);
@@ -881,7 +993,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
             let biggest = (0..7).filter(|&d| !tasks[i].office_hours || office_days[i][d]).map(|d| settings.week[d].for_kinds(usable[i])).max().unwrap_or(0);
             // No hours ever for what it is for (on days its office opens): it waits for none.
             if biggest == 0 {
-                (out.start[i], out.finish[i]) = (Some(earliest), Some(earliest));
+                (out.start[i], out.finish[i]) = (out.start[i].or(Some(earliest)), Some(earliest));
                 continue;
             }
             let (mut day, mut minutes) = (earliest, minutes_all);
@@ -911,6 +1023,9 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                     let first = kinds.iter().all(|&k| taken[k] == 0);
                     let pause = if first { 0 } else { settings.pause };
                     let open_here: u32 = kinds.iter().map(|&k| free_in(k, taken)).sum::<u32>().saturating_sub(pause);
+                    // The moved end's minutes not taken yet stay for light steps.
+                    let kept_light = if day == today { settings.light_only.saturating_sub(light_used) } else { 0 };
+                    let open_here = if light[i] { open_here } else { open_here.saturating_sub(kept_light) };
                     // Kept free: the slot of time for you after the day's costliest block, and time for
                     // steps running long: the day, this part laid, must still hold the 85th percentile
                     // of its total (`capacity::slack_estimate`), a third of its room at most.
@@ -988,6 +1103,9 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                         }
                         if heavy[i] {
                             *heavy_used.entry(day).or_insert(0) += 1;
+                        }
+                        if light[i] && day == today {
+                            light_used += (part + settings.pause).min(settings.light_only.saturating_sub(light_used));
                         }
                         crate::capacity::add(loaded.entry(day).or_insert([0.0; 5]), &rates[i].load(part));
                         let sum = sums.entry(day).or_insert((0.0, 0.0));
@@ -1084,6 +1202,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
         streams: (0..n).map(|i| (tasks[i].uid.clone(), stream[i])).collect(),
         days: placed_days.into_iter().map(|(date, steps)| (date, steps.into_iter().map(|(i, m)| (tasks[i].uid.clone(), m)).collect())).collect(),
         slack,
+        pins: pins.iter().enumerate().filter_map(|(i, pin)| pin.map(|pin| (tasks[i].uid.clone(), pin.clone()))).collect(),
     }
 }
 
@@ -1644,6 +1763,70 @@ mod tests {
         let huge = Task { due: "2026-10-30".into(), ..task("huge", u32::MAX) };
         let made = plan(&[sent, answer, huge], now.date(), &Settings::flat([1, 1, 1, 1, 1, 0, 0]), &BTreeMap::new(), &BTreeSet::new());
         assert!(made.items["answer"].start.is_some() && made.items["huge"].latest_start.is_some());
+    }
+
+    /// A task pinned to a block from `from` to `to` ("2026-10-07T14:00", in Paris), by its UID.
+    fn pinned(uid: &str, from: &str, to: &str) -> (String, crate::blocks::Pin) {
+        let zone = TimeZone::get("Europe/Paris").unwrap();
+        let at = |text: &str| text.parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap();
+        let (start, end) = (at(from), at(to));
+        let pin = crate::blocks::Pin { key: format!("{uid}.ics"), uid: format!("block-{uid}"), start: start.timestamp().as_second(), end: end.timestamp().as_second(), date: start.date(), before: 0, after: 0, read_only: false };
+        (uid.to_string(), pin)
+    }
+
+    /// Offices' usual hours (Monday to Friday, 9:00 to 17:00), no pause, from Monday 5 October 8:00, with these pins.
+    fn with_pins(pins: Vec<(String, crate::blocks::Pin)>, limit: Option<f32>) -> (Settings, Zoned) {
+        let now: Zoned = "2026-10-05T08:00[Europe/Paris]".parse().unwrap();
+        let mut settings = Settings { pause: 0, ..Settings::default() };
+        settings.capacity.limit = limit.map(|l| [l; 5]);
+        let blocks = crate::blocks::Blocks { pins: pins.into_iter().collect(), ..crate::blocks::Blocks::default() };
+        (settings.with_pins(blocks).with_events(&now, &[]), now)
+    }
+
+    #[test]
+    fn a_task_pinned_to_a_block_is_laid_there_once() {
+        let (wednesday, thursday) = (day("2026-10-07"), day("2026-10-08"));
+        let (settings, now) = with_pins(vec![pinned("bank", "2026-10-07T14:00", "2026-10-07T15:00")], None);
+        // Its hour is out of Wednesday's room, as an event's would be: once.
+        assert_eq!((settings.room_on(wednesday).total(), settings.room_on(day("2026-10-06")).total()), (480 - 60, 480));
+        let tasks = vec![task("bank", 30), task("letter", 30)];
+        let made = plan(&tasks, now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        // Laid on its block's day, for the block's hour, once, whatever its estimate; the rest as before.
+        assert_eq!((made.items["bank"].start, made.items["bank"].finish, made.items["bank"].on_start), (Some(wednesday), Some(wednesday), 60));
+        assert_eq!(made.days[&wednesday].iter().filter(|(u, _)| u == "bank").count(), 1);
+        assert!(made.days.iter().all(|(d, steps)| *d == wednesday || steps.iter().all(|(u, _)| u != "bank")));
+        assert_eq!((made.items["letter"].start, made.pins["bank"].key.as_str()), (Some(now.date()), "bank.ics"));
+        // Longer than its block: the rest from the next day, as any step.
+        let (settings, now) = with_pins(vec![pinned("thesis", "2026-10-07T14:00", "2026-10-07T15:00")], None);
+        let made = plan(&[task("thesis", 180)], now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!((made.items["thesis"].start, made.items["thesis"].on_start, made.items["thesis"].finish), (Some(wednesday), 60, Some(thursday)));
+        assert_eq!(made.days[&thursday], vec![("thesis".to_string(), 120)]);
+        // Something to do only if you want: pinned all the same, the time is yours.
+        let (settings, now) = with_pins(vec![pinned("music", "2026-10-07T18:00", "2026-10-07T19:00")], None);
+        let music = Task { categories: vec!["joy".into()], ..task("music", 60) };
+        let made = plan(&[music], now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!((made.items["music"].start, made.ready.len()), (Some(wednesday), 0));
+    }
+
+    #[test]
+    fn a_pinned_task_weighs_on_its_day_once() {
+        // A budget of 10 a day (8.5 laid); "heavy" rated 8 pinned on Wednesday for an hour; "other" rated 8, from Wednesday.
+        let (wednesday, thursday) = (day("2026-10-07"), day("2026-10-08"));
+        let (settings, now) = with_pins(vec![pinned("heavy", "2026-10-07T10:00", "2026-10-07T11:00")], Some(10.0));
+        let other = Task { start: "2026-10-07".into(), ..rated("other", 60, 8) };
+        let made = plan(&[rated("heavy", 60, 8), other.clone()], now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        // What Wednesday holds sees the pinned hour first: the other goes on Thursday.
+        assert_eq!((made.items["heavy"].start, made.items["other"].start), (Some(wednesday), Some(thursday)));
+        // Unpinned, it would have taken Wednesday.
+        let (free, _) = with_pins(Vec::new(), Some(10.0));
+        let made = plan(&[other], now.date(), &free, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!(made.items["other"].start, Some(wednesday));
+        // The time budget until Wednesday counts the pinned hour once: its time is out of the room already.
+        let (settings, now) = with_pins(vec![pinned("bank", "2026-10-07T14:00", "2026-10-07T15:00")], None);
+        let bank = Task { due: "2026-10-07".into(), ..task("bank", 60) };
+        let made = plan(std::slice::from_ref(&bank), now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        let budget = cushion(std::slice::from_ref(&bank), &made, &settings, now.date(), wednesday);
+        assert_eq!((budget.need, budget.room), (0, 480 + 480 + 420));
     }
 
     #[test]

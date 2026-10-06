@@ -58,11 +58,17 @@ One desktop notification per dose, within half an hour of its time, without soun
 
 If Sioul was closed at the time, a dose of the last twelve hours that was neither marked nor reminded is asked about on the Porch at the next start, and on this page: with **Taken…** (when you took it) and **Not taken**. It is a question about the past, never a reminder to take one now.
 
+**On the Porch** too, each dose of the day not marked yet waits from its time on, whether its notification reached you or not: its time, its name and **Taken** (more than half an hour late, **Taken…** asks when you took it). It shows whatever your hours, and stays until you mark it, the day ends or twelve hours have passed; while you sleep with doses kept silent, it waits for your waking.
+
 ### On several devices {#on-several-computers}
 
 Only the device you are using reminds you. A dose marked taken on one goes to the others at once. For that, share between your devices ([Sharing](sharing.md)); without it, the page says the doses are known to this device only.
 
-**When Sioul can't tell.** A dose taken twice can harm, so Sioul never says a dose was not taken unless it knows. Your devices exchange through a folder another program syncs, sometimes late: a phone's sync can bring files only every half hour. When Sioul has not heard from one of your devices since the dose was due, or part of what it wrote could not be read, or this device's own record of doses could not be read, it says so under the dose, on the Porch and on this page: "Sioul can't tell whether it was taken: your laptop was last heard on Monday 5 October at 07:52. Check before taking it." A reminder in that case first waits up to ten minutes for news, then comes titled **Check first**. Look at the other device, or at your pill box, before taking the dose.
+**When Sioul can't tell.** A dose taken twice can harm, so Sioul never says a dose was not taken unless it knows. Your devices exchange through a folder another program syncs, sometimes late: a phone's sync can bring files only every half hour. So each device says in that folder how it is: when it started, when it closed properly, whether it is in use, and when it last shared. A device that closed properly sent everything it marked before closing: Sioul knows, without waiting for its news, however slow its sync. A device in use is known while what it shares keeps coming. When one has not shared since the dose was due, or not lately, Sioul says so under the dose, on the Porch and on this page, naming it: "Sioul can't tell whether it was taken: the phone was in use and last shared at 07:45. Check before taking it." The same when part of what a device wrote could not be read, or this device's own record of doses could not be read. A reminder in that case first waits up to ten minutes for news, then comes titled **Check first**. Look at the other device, or at your pill box, before taking the dose.
+
+The doubt goes by itself as soon as that device shares again, or closes properly. If the device is off (a flat battery, a laptop that stopped without closing), say so: **This device is off**, under the doubt. Sioul then leaves it aside until it starts again, and says so on this page; it never takes that as an answer: the dose stays yours to mark. A device silent for a week no longer counts either. [Settings ▸ Your folder and sharing](sharing.md#setting-it-up) lists your devices, how each one is, and when it last shared.
+
+**Answered differently on two devices.** Each dose that falls due is a record your devices share: not taken yet, until one of them captures your answer. If two devices captured different answers (taken on the phone, not taken here), both are kept and both said, never one picked for you: "Marked taken on the phone at 08:02, skipped here at 08:10. Check which is right before taking it." Choose with **Taken** or **Not taken**.
 
 ## Meals, rest and sleep
 
@@ -130,4 +136,4 @@ In the morning, the Tasks page may say one line, never a notification: after a s
 
 ## Where it is kept
 
-On this device, in three files of Sioul's own folders: what you enter, the days that differ, and the doses marked. They go nowhere, unless you share between your devices: then they travel sealed, through your own synced folder ([Sharing](sharing.md)).
+On this device, in four files of Sioul's own folders: what you enter, the days that differ, the doses marked, and each dose that fell due with the answers your devices gave. They go nowhere, unless you share between your devices: then they travel sealed, through your own synced folder ([Sharing](sharing.md)).

@@ -380,7 +380,9 @@ final class DoseAlarms
         PendingIntent open = PendingIntent.getActivity(context, key.hashCode(),
                                                        new Intent(context, DoseOpener.class).setData(address(key)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                                                        PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        return new Notification.Builder(context, CHANNEL)
+        // During a pause that lets doses through, their own channel, which
+        // passes the pause's do-not-disturb (PauseMode); "Doses" otherwise.
+        return new Notification.Builder(context, PauseMode.dosesChannelNow(context))
             .setSmallIcon(R.drawable.sioul_notification)
             .setColor(context.getColor(R.color.sioul_green))
             .setContentTitle(title)

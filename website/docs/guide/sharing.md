@@ -13,7 +13,7 @@ Each device keeps all of its data in its own files, and works without the others
 - **Changes, not copies.** Each minute, Sioul compares your files with what they held at its last look, and sends only what changed, one entry at a time: a setting, a line of time, a dose, a sender, a note. Each device reads the new lines of the others and applies them.
 - **The later change wins, entry by entry.** A setting changed on two devices keeps the later change. Time noted on each device stays on both. A note changed on two devices keeps both versions, one of them under a name that says so.
 - **What the sync app has to do: very little.** It must carry new files, and files that grow, sooner or later and in any order. It does not need to delete, rename or lock anything. That is why any sync app works. A slow one, such as a phone's that looks every half hour, makes changes come late, never wrong.
-- **What a device cannot know, it says.** Each device knows how far it has read the others, and when it last heard from each one. If something may have happened on a device not heard from yet (a dose marked on the desktop that the phone's sync app has not brought), Sioul says it does not know rather than guessing. The dose is reminded with "check first", never as "not taken" ([Health](health.md)).
+- **What a device cannot know, it says.** Each device says in the folder how it is: when it started, when it closed properly, whether it is in use, and when it last shared. Each knows how far it has read the others. A device that closed properly sent everything it marked; one in use is known while its news keeps coming. If something may have happened on a device whose news has not come (a dose marked on the phone while in use, which its sync app has not carried yet), Sioul says it does not know rather than guessing, and names that device. The dose is reminded with "check first", never as "not taken" ([Health](health.md#on-several-computers)).
 
 ### When something goes wrong in the folder
 
@@ -64,7 +64,7 @@ On the other device, choose the same folder (as your sync shows it there). Sioul
 
 The first time, a copy of what this device had is kept aside, in case. Then the other device's settings come, and what this one alone had goes out: two devices set up apart end with the first one's settings and both of their lists.
 
-From then on, changes are exchanged each minute, and when you choose **Refresh everything** or **Exchange now**. The panel says through which folder you share, with how many other devices, and when they were last heard from. **Stop sharing** ends it; each device keeps its own files.
+From then on, changes are exchanged each minute, and when you choose **Refresh everything** or **Exchange now**. The panel says through which folder you share, with how many other devices, and when they were last heard from. Under **Your other devices**, it lists each one: in use now, or closed at 22:14, and when it last shared; one you said is off, with **Count it again**; one silent for a week, with **Forget this device**. **Stop sharing** ends it; each device keeps its own files.
 
 Your notes folder travels by its own sync, not by Sioul, unless you switch it on below. If it does not seem to be inside a synced folder, the panel says so: your other device would not see your notes and projects. Moved into one (and chosen again in Settings), they travel too; or switch **Notes**, **Projects and money** and **Papers** on, and Sioul carries them, sealed.
 
@@ -74,8 +74,8 @@ Under **What travels from this device**, each part has its switch, says what it 
 
 | Part | What it carries |
 |---|---|
-| Settings and accounts | your settings and accounts (never their passwords), the ties between things, where the Porch was closed, mail you said is no payment |
-| Senders | who may write to you (known, blocked, safe, neutral, restricted), what the shield read, others' public keys |
+| Settings and accounts | your settings and accounts (never their passwords), the ties between things, where the Porch was closed, mail you said is no payment, do-not-disturb's switch |
+| Senders | who may write to you (known, blocked, safe, neutral, restricted), who may reach you during do-not-disturb, what the shield read, others' public keys |
 | Health | medicines, prescriptions and the doses taken |
 | Time | time noted, the session running, the day's choices, where you stopped, working late or done for the day |
 | Drafts and invoices | mail being written, invoices made |
@@ -122,6 +122,7 @@ Sioul for Android shares the same way, through the folder your phone's sync app 
 - **Accounts** come without their passwords: each asks for its own once, typed or [from Bitwarden](accounts.md#an-account-from-your-other-device).
 - **Your notes, projects and papers**: the phone keeps a notes folder of its own, which no sync carries. Switch **Notes**, **Projects and money** and **Papers** on in the same panel, on the phone and on each device whose notes folder no sync carries: they then travel sealed with the rest, a note at a time. On a computer whose notes folder a sync app already carries, they stay off: that computer's notes reach the phone only from a folder no sync carries, with Notes switched on there too.
 - **The sync app's pace**: a phone's sync app often brings the cloud's changes only every half hour. When the app offers a way to be asked (Murena's eDrive does), Sioul asks it to look now: after you mark something, when you come back to Sioul, and every five minutes while it is open, so what your other devices marked comes within a minute. Otherwise it comes at the app's pace, and the doses say what Sioul cannot know meanwhile.
+- **With Sioul closed**: Sioul keeps your devices in step in the background, with one quiet notification. It asks the sync app to look every few minutes (every two while another device is in use, every fifteen while you sleep), and reads what the sync app brings as soon as it is written: do-not-disturb turned on at your computer follows within a few minutes ([Do not disturb on every device](pauses.md#do-not-disturb-on-every-device)). Turned off, changes come when you open Sioul.
 - **Doses while Sioul is not on the screen**: each coming dose is given ahead to Android's alarm clock. At its time, Sioul first asks the sync app for news, then reminds you, or not if another device marked it taken, or with "check first" if it cannot know.
 - **Files kept online only**: if your sync app keeps files on the server until you open them (OneDrive, Google Drive, iCloud, Nextcloud's "virtual files"), set the sharing folder to stay **always on this device**.
 - **What is never needed**: deletions (eDrive never deletes on one side what was deleted on the other: the old files Sioul clears stay, and are not read again), and nothing it keeps aside, such as conflicted copies, is read.

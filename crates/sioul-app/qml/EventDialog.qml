@@ -3,9 +3,10 @@
 
 // An event's form: the title, whole days or hours, when, where; folded
 // underneath, notes, how it repeats, the time kept before and after it
-// (getting there, getting ready, coming back), what it costs and gives back
-// (four costs and a gain, sliders from 0 to 10, unsaid until said), and the
-// calendar when there are several. Opened from an event's details ("Edit"),
+// (getting there, getting ready, coming back), when it is reminded (as
+// usual, not this one, or so long before: docs/reminders.md), what it costs
+// and gives back (four costs and a gain, sliders from 0 to 10, unsaid until
+// said), and the calendar when there are several. Opened from an event's details ("Edit"),
 // or new.
 
 pragma ComponentBehavior: Bound
@@ -31,6 +32,9 @@ Dialog {
     // Minutes before and after; the four costs and the gain, 0 to 10 or unsaid (null).
     property var around: ({ before: 0, after: 0 })
     property var demands: ({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null })
+    // Its reminder before it: "" as usual, "none", or minutes ("15"); and the choices offered.
+    property string remind: ""
+    property var reminds: []
 
     signal saved
 
@@ -77,7 +81,9 @@ Dialog {
             calendar.currentIndex = Math.max(0, dialog.calendars.findIndex(c => c.id === found.calendar))
             dialog.around = Object.assign({ before: 0, after: 0 }, e.margins)
             dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, e.demands)
-            dialog.moreShown = e.notes !== "" || e.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0 || ["cognitive", "emotional", "anxiety", "body", "gain"].some(n => dialog.rating(n) !== null)
+            dialog.remind = e.remind || ""
+            dialog.reminds = JSON.parse(dialog.sioul.reminderChoices(dialog.remind) || "[]")
+            dialog.moreShown = e.notes !== "" || e.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0 || dialog.remind !== "" || ["cognitive", "emotional", "anxiety", "body", "gain"].some(n => dialog.rating(n) !== null)
         } else {
             const now = new Date()
             hour = hour === undefined || hour < 0 ? Math.min(now.getHours() + 1, 23) : hour
@@ -93,6 +99,8 @@ Dialog {
             calendar.currentIndex = 0
             dialog.around = { before: 0, after: 0 }
             dialog.demands = { cognitive: null, emotional: null, anxiety: null, body: null, gain: null }
+            dialog.remind = ""
+            dialog.reminds = JSON.parse(dialog.sioul.reminderChoices("") || "[]")
             dialog.moreShown = false
         }
         dialog.open()
@@ -141,6 +149,7 @@ Dialog {
             repeat: dialog.repeats[repeat.currentIndex],
             margins: dialog.around,
             demands: dialog.demands,
+            remind: dialog.remind,
             links: dialog.links
         }
     }
@@ -291,6 +300,21 @@ Dialog {
                     model: dialog.marginMinutes.map(m => m === 0 ? dialog.sioul.text("task-rating-unsaid") : dialog.minutesText(m))
                     currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.after))
                     onActivated: index => dialog.around = Object.assign({}, dialog.around, { after: dialog.marginMinutes[index] })
+                }
+                // Its reminder: as usual (Settings ▸ Reminders and notifications),
+                // not this one, or so long before it and its time to get there.
+                Label {
+                    Layout.maximumWidth: 160
+                    text: dialog.sioul.text("event-remind")
+                    wrapMode: Text.Wrap
+                    color: dialog.theme.muted
+                }
+                ComboBox {
+                    Layout.fillWidth: true
+                    textRole: "label"
+                    model: dialog.reminds
+                    currentIndex: Math.max(0, dialog.reminds.findIndex(c => c.value === dialog.remind))
+                    onActivated: index => dialog.remind = dialog.reminds[index].value
                 }
                 // What it costs, and what it gives back: 0 to 10 each, as you feel it;
                 // unsaid until said, never 0 by default (RatingSlider.qml).

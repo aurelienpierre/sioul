@@ -44,9 +44,9 @@ L’heure avant le coucher appartient au sommeil : la Santé la garde libre, e
 
 ## Les heures {#the-hours}
 
-Dans [Paramètres ▸ Heures](settings.md#hours), deux semaines : **Heures de travail** et **Heures pour vos démarches**. Chaque jour de chacune est actif ou non, avec une plage horaire ou plusieurs (09:00–12:00 et 14:00–17:00, un déjeuner entre les deux). **Congés**, en dessous, prend les vacances et les arrêts maladie. Il n’y a plus de temps libre à régler : les loisirs, c’est tout le reste du temps, et les repas et le sommeil viennent de la page Santé, à un bouton de là.
+Dans [Paramètres ▸ Heures](settings.md#hours), deux semaines : **Heures de travail** et **Heures pour vos démarches**. Chaque jour de chacune est actif ou non, avec une plage horaire ou plusieurs (09:00–12:00 et 14:00–17:00, un déjeuner entre les deux). **Congés**, en dessous, prend les vacances et les arrêts maladie. Il n’y a pas de loisirs à régler : c’est tout le reste du temps, et les repas et le sommeil viennent de la page Santé, à un bouton de là.
 
-Le temps libre réglé en heures par un Sioul plus ancien reste dans vos paramètres, intact, et ne compte plus.
+Les loisirs réglés en heures par un Sioul plus ancien (son « temps libre ») restent dans vos paramètres, intacts, et ne comptent plus. Le **temps libre** est maintenant une pause que vous prenez, quelle que soit l’heure : voir [Les pauses](pauses.md).
 
 | Maintenant | Ce qui vient en avant | Ce qui attend |
 |---|---|---|
@@ -57,7 +57,7 @@ Le temps libre réglé en heures par un Sioul plus ancien reste dans vos paramè
 | Sommeil | rien ne notifie ; les loisirs, si vous ouvrez Sioul | tout le reste, et toute notification sauf les prises |
 | Aucune heure de travail ni de démarches | tout, comme avant d’en régler (repas et sommeil gardent leur temps) | rien |
 
-La ligne d’état dit ce qu’est le moment présent, et jusqu’à quand : « Temps des démarches jusqu’à 19:00 : organismes, factures, courriers. », « Repas jusqu’à 13:00. », « Temps libre jusqu’à 22:00 : ce qui vous plaît. », « Avant de dormir : rien ne dérange jusqu’à 07:00. »
+La ligne d’état dit ce qu’est le moment présent, et jusqu’à quand : « Temps des démarches jusqu’à 19:00 : organismes, factures, courriers. », « Repas jusqu’à 13:00. », « Loisirs jusqu’à 22:00 : ce qui vous plaît. », « Avant de dormir : rien ne dérange jusqu’à 07:00. »
 
 ## Ce qui suit le moment présent {#what-follows-the-time}
 

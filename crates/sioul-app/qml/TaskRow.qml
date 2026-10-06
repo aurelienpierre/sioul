@@ -126,6 +126,22 @@ ItemDelegate {
                     font.strikeout: row.task.status === "cancelled"
                     color: row.done ? row.theme.muted : row.theme.text
                 }
+                // Pinned to a time (its block in your calendar, docs/tasks.md): a small pin and when, quietly.
+                Icon {
+                    visible: !!row.task.pinned_time && !row.done
+                    iconName: "pin"
+                    size: 12
+                    color: row.theme.accent
+                    tip: row.task.pinned || ""
+                }
+                Label {
+                    visible: !!row.task.pinned_time && !row.done
+                    text: row.task.pinned_time || ""
+                    textFormat: Text.PlainText
+                    font.pixelSize: 12
+                    font.features: { "tnum": 1 }
+                    color: row.theme.accent
+                }
                 Rectangle {
                     visible: row.task.list !== ""
                     Layout.preferredWidth: 8

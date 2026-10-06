@@ -241,8 +241,9 @@ account-found = Trouvé : { $server }, { $by }.
 account-by-provider = d’après les réglages publiés par votre fournisseur
 account-by-ispdb = d’après la liste de fournisseurs de Thunderbird
 account-by-guess = une supposition : vérifiez-la avant de continuer
+account-by-google = les serveurs de Google, puisque Google garde le courrier de cette adresse
 account-login = Identifiant : { $login }
-account-gmail-hint = Gmail demande ici un mot de passe d’application, pas votre mot de passe habituel : myaccount.google.com/apppasswords (la validation en deux étapes doit être activée).
+account-gmail-hint = Google refuse ici le mot de passe de votre compte : créez pour Sioul un mot de passe d’application sur myaccount.google.com/apppasswords (il demande la validation en deux étapes), et donnez-le à la place.
 account-app-password-hint = Si ce compte utilise la validation en deux étapes, il peut demander un mot de passe d’application.
 account-password-prompt = Mot de passe pour { $address } (il va dans le trousseau de votre système, nulle part ailleurs) :
 account-connected = Connexion réussie : la boîte de réception contient { $n ->
@@ -598,6 +599,27 @@ compose-below-forward = Sous votre texte : le message de { $name } du { $date 
 compose-kept = Le brouillon est gardé dans Brouillons.
 compose-not-a-file = { $path } n’est pas un fichier.
 compose-bad-address = « { $entry } » n’est pas une adresse.
+compose-attaching = { $count ->
+    [one] Ajout du fichier…
+   *[other] Ajout des { $count } fichiers…
+}
+compose-wait-files = Pas encore : les fichiers partagés sont encore en cours d’ajout.
+
+## Écrire depuis d’autres applications : un partage, un lien mailto: (outside.rs).
+handed-attached = { $count ->
+    [one] Le fichier est joint.
+   *[other] Les { $count } fichiers sont joints.
+}
+handed-missing = { $count ->
+    [one] Non joint : { $files }.
+   *[other] Non joints : { $files }.
+}
+handed-a-file = un fichier
+handed-stopped = Sioul s’est arrêté pendant sa copie : partagez-le de nouveau
+handed-refused = donné par son emplacement sur le téléphone, ce que Sioul refuse d’une autre application
+handed-no-account = Quelque chose a été partagé avec Sioul, mais aucun compte de courrier n’envoie encore : ajoutez-en un dans Comptes, puis partagez de nouveau.
+share-write-from = Écrire depuis { $address }
+share-address-gone = Cette adresse n’est plus dans Sioul.
 
 ## Annuler, dix secondes.
 undo-archived = Archivé.
@@ -1040,6 +1062,20 @@ task-drop = Abandonner
 # Les détails d’une tâche : les horaires de son bureau non donnés, les habituels.
 task-office-usual-short = horaires habituels des bureaux
 task-drop-help = Plus à faire finalement : gardée, barrée, hors du plan. « Rouvrir » la ramène.
+task-do-at = Faire à…
+task-do-at-help = Un créneau dans votre agenda : le plan y place la tâche, et tout agenda le montre.
+task-do-at-day = Jour
+task-do-at-time = Heure
+task-do-at-length = Durée
+task-do-at-save = Fixer
+task-pinned-move = Déplacer…
+task-pinned-open = Ouvrir dans l’agenda
+task-pinned-menu = Que faire de cette heure
+task-pinned = Fixée : { $when }
+task-pinned-today = aujourd’hui, { $from }–{ $to }
+task-pinned-day = { $day }, { $from }–{ $to }
+task-pinned-read-only = Son agenda est en lecture seule ici : déplacez-le dans l’application d’où il vient.
+blocks-calendar = Tâches planifiées
 # Le temps que prennent les choses de ce genre, comparé à la première estimation, montré sur demande (ratio_line).
 task-ratio-ask = Combien de temps ça prend, d’habitude
 task-hard = Qu’est-ce qui rend cela difficile ?
@@ -1172,6 +1208,11 @@ set-planning-gain-slots-help = Deux moments par jour, l’un après l’étape l
 set-task-list = Les nouvelles tâches vont dans
 set-task-list-help = La liste où va une tâche tapée en une ligne.
 set-task-list-first = La première liste faite pour les tâches
+set-task-blocks = Les créneaux vont dans
+set-task-blocks-help = Où s’écrit une tâche fixée à une heure : un événement, que tout agenda montre, celui de votre téléphone aussi. « Tâches planifiées » est créé au premier besoin, sur le compte de la liste de la tâche, ou sur cet appareil.
+set-task-blocks-own = « Tâches planifiées », avec la liste de chaque tâche
+set-task-block-alarms = Une alarme dans chaque créneau
+set-task-block-alarms-help = Cinq minutes avant lui, pour les agendas de vos autres appareils ; dans les créneaux faits ou déplacés désormais. Sans elle, Sioul vous rappelle un créneau comme tout événement, et un téléphone ne vous le rappelle pas deux fois.
 set-case-store = Le dossier des notes
 set-case-store-help = Votre dossier de fichiers Markdown, lu comme un coffre : vos notes, et à côté vos projets (sioul-cases.toml) et vos budgets (sioul-budgets.toml). Sioul s’y lie et ne le possède jamais.
 set-notes-folder = Les nouvelles notes vont dans
@@ -1438,6 +1479,8 @@ account-password-use = Utiliser
 account-password-keep = Garder
 account-password-testing = Le serveur est interrogé…
 account-password-kept = { $account } : mot de passe gardé ; la synchronisation reprend.
+account-signed-in-again = { $account } : reconnecté avec Google ; son courrier revient.
+account-app-password-title = Mot de passe d’application pour { $account }
 bitwarden-unlock-help-password = Votre mot de passe principal ouvre le coffre ici, par Sioul lui-même ; il n’est pas gardé, et le coffre reste ouvert jusqu’à la fermeture de Sioul.
 site-none = Pas encore de site. Une messagerie sécurisée (celle d’une banque, d’un hôpital, des impôts), une discussion, tout site à garder sous la main : connecté une fois, gardé ici.
 site-choose = Un site, à gauche.
@@ -1876,6 +1919,25 @@ google-denied = Google n’a donné aucun accès : rien n’a changé.
 google-state = Une réponse est arrivée qui n’était pas pour Sioul : rien n’a changé.
 google-other = Votre navigateur s’est connecté en tant que { $address }, pas à l’adresse donnée : rien n’a changé, et cet accès est rendu à Google.
 google-cancelled = Arrêté : rien n’a changé.
+# Le courrier de Google (Gmail, Google Workspace) : un mot de passe d’application, ou la connexion de Google avec une clé à vous (docs/google.md, « Mail »).
+ui-gmail-choice-app-password = Utiliser un mot de passe d’application
+ui-gmail-choice-sign-in = Se connecter avec Google
+ui-gmail-app-password-guide = Google refuse ici le mot de passe de votre compte. Créez pour Sioul un mot de passe d’application sur myaccount.google.com/apppasswords (il demande la validation en deux étapes), puis collez-le ci-dessous.
+ui-gmail-app-password-field = Mot de passe d’application (de Google)
+ui-gmail-sign-in-key-kept = La page de Google s’ouvre dans votre navigateur, avec votre clé Google gardée sur cet appareil. Sioul garde l’accès dans le trousseau du système : aucun mot de passe.
+ui-gmail-sign-in-own-key = Pour le courrier, Google n’accepte qu’une clé à vous : un projet gratuit dans Google Cloud, fait une fois, en un quart d’heure environ. Google dit ensuite que l’application n’est pas validée : c’est la vôtre.
+ui-gmail-steps-text =
+    1. Sur [console.cloud.google.com](https://console.cloud.google.com), créez un projet nommé Sioul, ou ouvrez celui de vos agendas Google.
+    2. Dans *API et services → Bibliothèque*, activez **Gmail API**.
+    3. Dans *Google Auth Platform* : *Branding*, un nom et votre adresse ; *Audience*, Externe, et vous-même comme utilisateur test ; *Accès aux données*, le champ d’application `https://mail.google.com/`.
+    4. *Clients → Créer un client → Application de bureau*. Copiez son identifiant et son secret tout de suite : Google ne montre le secret qu’une fois.
+    5. *Audience → Publier l’application*. Si elle reste en test, Google coupe l’accès tous les sept jours. Utilisée par vous seulement, elle n’a pas à être examinée par Google.
+    6. Collez les deux ici et connectez-vous. Google dit que l’application n’est pas validée : c’est la vôtre. Choisissez *Paramètres avancés*, puis *Accéder à Sioul*, et laissez cochée la case de l’accès à Gmail.
+ui-gmail-again-app-password = Mot de passe d’application…
+ui-google-waiting-phone = Votre navigateur est ouvert sur la page de Google. Quand Google dit que Sioul a l’accès, revenez à Sioul : il termine ici.
+google-mail-built-in = Google ne laisse pas encore la clé de Sioul lire le courrier : l’accès à Gmail demande que Google examine Sioul, ce qui n’est pas fait. Utilisez un mot de passe d’application, ou une clé Google à vous.
+google-mail-no-key = Aucune clé Google à vous n’est gardée sur cet appareil pour { $address } : donnez son identifiant client et son secret, ou utilisez un mot de passe d’application.
+google-mail-unticked = Google n’a donné aucun accès à votre courrier : sur la page de Google, laissez cochée la case de l’accès à Gmail. Rien n’a changé.
 sync-error-google-again = { $account } : Google demande de vous reconnecter.
 sync-error-google-testing = { $account } : Google a mis fin à la connexion au bout de sept jours, comme il le fait tant que votre projet Google est en test. Dans Google Cloud : Google Auth Platform ▸ Audience ▸ Publier l’application ; puis reconnectez-vous : elle dure ensuite.
 google-no-collections = Google ne crée ni agenda ni carnet d’adresses depuis un autre programme : créez-le sur les pages de Google.
@@ -1920,6 +1982,11 @@ settings-tab-files = Votre dossier et le partage
 settings-tab-invoices = Factures
 ui-refresh-all = Tout actualiser : courrier, agenda, tâches, contacts (F5)
 ui-refreshing = Actualisation…
+# La colonne des lieux, à gauche de la fenêtre.
+ui-places = Lieux
+ui-places-hide = Masquer les lieux
+ui-places-show = Afficher les lieux
+ui-refresh-short = Tout actualiser
 budget-add-budget = Budget
 set-look-group = Langue et apparence
 set-hours-group = Heures de travail et calme
@@ -2038,6 +2105,21 @@ share-others = { $count ->
 }
 share-alone = Aucun autre appareil pour l’instant : sur l’autre, choisissez le même dossier et tapez la même phrase de passe.
 share-last = Dernier échange ici : { $when }.
+share-devices = Vos autres appareils
+share-device-in-use = Utilisé en ce moment ; dernier partage { $when }.
+share-device-quiet = Utilisé lors de son dernier partage, { $when }, et silencieux depuis : il s’est peut-être arrêté sans se fermer.
+share-device-closed = Fermé { $when } ; dernier partage { $shared }.
+share-device-older = Un Sioul plus ancien : entendu pour la dernière fois { $when }.
+share-device-unread = Ce qu’il dit ne se lit pas encore ici.
+share-device-off = Compté comme éteint, comme vous l’avez dit, jusqu’à ce qu’il partage de nouveau.
+share-device-silent = Silencieux depuis { $when } : il ne compte plus pour vos prises.
+share-device-apart = Il ne partage pas ses prises.
+share-device-ahead = Son horloge est en avance d’au moins { $minutes ->
+    [one] une minute
+   *[other] { $minutes } minutes
+} sur celle-ci.
+share-device-count-again = Le compter de nouveau
+share-device-forget = Oublier cet appareil
 share-outside = Vos notes et vos projets ({ $store }) ne semblent pas être dans un dossier que votre synchronisation transporte : l’autre appareil ne les verrait pas. Allumez Notes, et Projets et argent, ci-dessous pour les faire voyager par ce dossier, scellés ; ou déplacez-les dans un dossier synchronisé (et choisissez-le à nouveau dans Paramètres ▸ Votre dossier et le partage).
 share-phones = Un téléphone ne voit ce dossier que si son application de synchronisation le transporte, et certaines n’en transportent que quelques-uns : l’eDrive de Murena transporte Documents (avec Pictures, Music…), pas le reste de votre cloud. Pour atteindre un tel téléphone, partagez par un dossier dans Documents : arrêtez le partage, puis choisissez-en un là.
 folder-not-on-device = Ce dossier n’est pas sur cet appareil : choisissez-en un où votre application de synchronisation garde ses fichiers (Documents, avec l’eDrive de Murena).
@@ -2070,9 +2152,9 @@ share-files-allow = Autoriser l’accès aux fichiers
 share-parts = Ce qui voyage depuis cet appareil
 share-parts-help = Chaque appareil choisit pour lui-même. Une partie éteinte ici reste telle quelle sur vos autres appareils : rien n’y est retiré. Rallumée, elle les rejoint comme le ferait un nouvel appareil.
 share-part-settings = Réglages et comptes
-share-part-settings-carries = Vos réglages et vos comptes (jamais leurs mots de passe), les liens entre les choses, où le Porche a été fermé, les courriels dont vous avez dit qu’ils ne sont pas des paiements.
+share-part-settings-carries = Vos réglages et vos comptes (jamais leurs mots de passe), les liens entre les choses, où le Porche a été fermé, les courriels dont vous avez dit qu’ils ne sont pas des paiements, l’interrupteur de « Ne pas déranger ».
 share-part-senders = Expéditeurs
-share-part-senders-carries = Qui peut vous écrire (connus, bloqués, sûrs, neutres, restreints), ce que le bouclier a lu, les clés publiques des autres.
+share-part-senders-carries = Qui peut vous écrire (connus, bloqués, sûrs, neutres, restreints), qui peut vous joindre pendant « Ne pas déranger », ce que le bouclier a lu, les clés publiques des autres.
 share-part-health = Santé
 share-part-health-carries = Les médicaments, les ordonnances et les prises.
 share-part-time = Temps
@@ -2159,6 +2241,54 @@ remind-told = dit
 remind-running = Les rappels sont déjà surveillés sur cet appareil.
 remind-watching = Rappels surveillés : chacun vient une fois, en notification discrète. Ctrl+C arrête.
 reminder-open = Ouvrir
+# Avant un événement (docs/reminders.md) : « 14:00 · Dentiste, dans 15 minutes ».
+reminder-before = { $time } · { $what }, { $in }
+reminder-in-minutes = dans { $minutes ->
+        [one] une minute
+       *[other] { $minutes } minutes
+    }
+reminder-in-hours = dans { $hours ->
+        [one] une heure
+       *[other] { $hours } heures
+    }
+reminder-in-hours-minutes = dans { $hours } h { $minutes }
+reminder-in-now = maintenant
+reminder-margin = Se préparer, y aller : dès { $time }.
+reminder-margin-now = Se préparer, y aller : maintenant.
+remind-lead = { $minutes ->
+        [0] aucun
+        [one] une minute
+        [60] 1 heure
+        [120] 2 heures
+       *[other] { $minutes } minutes
+    }
+set-reminders-before = Avant un événement
+set-reminders-before-help = Un rappel discret, tant de temps avant chaque événement, compté avant le temps de se préparer et d’y aller : un événement à 14:00 avec 30 minutes pour y aller est rappelé à 13:15. Chaque événement peut dire le sien (Rappel, dans son formulaire). Pas pour les journées entières, ni pour les agendas que vous lisez seulement.
+set-reminders-before-none = Aucun
+set-reminders-before-exact = Sur ce téléphone, ils viennent à l’heure, Sioul ouvert ou non.
+set-reminders-before-inexact = Sur ce téléphone, Android ne laisse pas Sioul poser d’alarmes exactes : ces rappels peuvent arriver jusqu’à une heure en retard. Paramètres ▸ Applications ▸ Sioul ▸ Alarmes et rappels.
+event-remind = Rappel
+event-remind-usual = Comme d’habitude ({ $lead })
+event-remind-none = Pas pour celui-ci
+event-remind-before = { $lead } avant
+event-reminds = Rappel : { $when }
+event-reminds-none = Pas de rappel avant
+events-channel = Événements
+# Le nouveau courrier, dit aux heures où il peut venir (docs/porch.md, « Notifications »).
+mail-note-title = { $Countf } { $n ->
+        [one] lettre
+       *[other] lettres
+    }
+mail-note-opens = Le Porche ouvre : { $countf } { $n ->
+        [one] lettre vous attend
+       *[other] lettres vous attendent
+    }.
+mail-note-letter = { $sender }, { $subject }
+mail-channel = Nouveau courrier
+set-reminders-mail = Nouveau courrier : notifier aux heures où il peut venir
+set-reminders-mail-help = Quand arrive du courrier que vos listes laissent passer maintenant, une seule notification discrète pour le lot : combien, et les premiers expéditeurs avec leur objet. Le courrier qui attendait son heure est dit une fois, quand elle vient. Jamais pendant le sommeil ni une pause ; jamais pour les codes (ils ont la leur), ni pour ce qui est mis de côté, bloqué, envoyé par vous-même ou arrivé sur vos comptes moins importants.
+set-reminders-mail-newsletters = Avec les lettres d’information
+set-reminders-mail-newsletters-help = Les lettres d’information et les listes de diffusion, rangées sur le Porche, sont dites aussi. Les expéditeurs automatiques (une facture de no-reply) le sont de toute façon.
 reminders-closed-unavailable = Pas encore sous Windows : les rappels viennent quand la fenêtre de Sioul est ouverte.
 reminders-closed-no-command = La commande « sioul » n’est pas installée à côté de Sioul : les rappels viennent quand la fenêtre est ouverte.
 set-reminders-group = Rappels
@@ -2567,6 +2697,8 @@ password-show = Afficher le mot de passe
 password-hide = Masquer le mot de passe
 set-passwords-shown = Afficher les mots de passe pendant la saisie
 set-passwords-shown-help = Chaque champ de mot de passe, de phrase de passe ou de clé montre ce que vous tapez dès le départ, sur cet appareil ; l’œil au bout de chaque champ l’affiche ou le masque à tout moment.
+set-places-named = Afficher le nom des lieux à côté de leur icône
+set-places-named-help = Les lieux, à gauche de la fenêtre, montrent leur nom à côté de leur icône, dans une colonne plus large : certaines personnes lisent plus facilement des mots que des icônes. Sans ce réglage, leurs icônes seules, et le nom de chacun quand le pointeur s’y arrête, ou par un appui long sur un écran tactile.
 bitwarden-factor-7 = Clé de sécurité (YubiKey, FIDO2)
 bitwarden-code-7 = Deuxième étape : votre clé de sécurité.
 bitwarden-key-use = Utiliser la clé de sécurité
@@ -2589,11 +2721,18 @@ bitwarden-key-stop = Arrêter
 bitwarden-key-not-allowed = La clé n’a pas servi à temps, ou la demande a été annulée.
 bitwarden-choose = Choisir un identifiant…
 bitwarden-choose-title = Quel identifiant ?
-bitwarden-choose-site = Pour { $site } :
-bitwarden-choose-none = Bitwarden ne garde aucun identifiant pour { $site } : cherchez parmi tous.
-bitwarden-choose-search = Chercher dans tous vos identifiants
-bitwarden-choose-found = Dans votre coffre :
+bitwarden-choose-by-site = Site
+bitwarden-choose-by-site-hint = Un domaine ou un mot
+bitwarden-choose-by-user = Nom d’utilisateur
+bitwarden-choose-by-user-hint = Une partie suffit
+bitwarden-choose-empty = Vider ce champ
+bitwarden-choose-ask = Tapez un site, un nom d’utilisateur, ou les deux.
 bitwarden-choose-nothing = Rien trouvé.
+bitwarden-choose-nothing-both = Aucun identifiant n’a les deux : videz l’un des champs pour en voir plus.
+bitwarden-choose-more = { $count ->
+    [one] Encore un identifiant : précisez la recherche.
+   *[other] Encore { $count } identifiants : précisez la recherche.
+}
 bitwarden-choose-other-site = pour { $site }
 bitwarden-choose-fill = Remplir
 task-office-open = Ouvert du
@@ -2621,6 +2760,23 @@ share-other-device = un autre de vos appareils
 dose-doubt-closed = { $name } s’est fermé { $when }, et ses nouvelles peuvent tarder à arriver
 dose-doubt-open = { $name } a été entendu pour la dernière fois { $when }
 dose-doubt-broken = une partie de ce qu’a écrit { $name } n’a pas pu être lue
+dose-doubt-working = { $name } était utilisé et a partagé pour la dernière fois { $when }
+dose-doubt-quiet = { $name } était utilisé quand il a partagé pour la dernière fois, { $when }, et n’a rien dit depuis : il s’est peut-être arrêté sans se fermer
+dose-doubt-coming = ce que { $name } a partagé { $when } n’est pas encore tout arrivé ici
+dose-doubt-apart = { $name } ne partage pas ses prises (la santé n’y est pas partagée)
+device-the-phone = le téléphone
+when-at = à { $time }
+device-off = Cet appareil est éteint
+device-off-named = { $name } est éteint
+dose-off-note = { $name } compte comme éteint, comme vous l’avez dit : une prise notée là-bas n’apparaîtrait pas ici avant qu’il partage de nouveau.
+dose-answers = Marquée { $answers }. Vérifiez ce qui est juste avant de la prendre.
+dose-answer-taken-here = prise ici { $when }
+dose-answer-taken-on = prise sur { $name } { $when }
+dose-answer-taken = prise { $when }
+dose-answer-skipped-here = pas prise ici { $when }
+dose-answer-skipped-on = pas prise sur { $name } { $when }
+dose-answer-skipped = pas prise { $when }
+dose-answer-other-on = répondue sur { $name } { $when }, en des mots que ce Sioul ne connaît pas
 dose-check-title = À vérifier d’abord : { $dose }
 dose-alarm-fallback = Une prise est prévue : ouvrez Sioul pour vérifier.
 dose-alarm-late = Pris en retard : touchez pour dire à quelle heure.
@@ -2729,7 +2885,7 @@ site-by-hand = Ou à la main :
 site-later = Autres heures : { $count }
 link-kind-site = Sites
 mode-admin = Temps des démarches jusqu’à { $until } : organismes, factures, courriers.
-mode-leisure = Temps libre jusqu’à { $until } : ce qui vous plaît.
+mode-leisure = Loisirs jusqu’à { $until } : ce qui vous plaît.
 set-windows-admin = Heures pour vos démarches
 set-windows-admin-help = Vos démarches viennent alors : organismes, factures, courriers, courses de santé. Une fois ces heures réglées, les démarches ne viennent plus pendant les heures de travail, sauf les appels à un bureau, qui gardent les heures de bureau.
 set-reminders-gather = Notifications des sites regroupées
@@ -2829,6 +2985,7 @@ ocr-hint-packages = Tesseract et Poppler, depuis les paquets de votre système
 google-page-granted = Sioul a l’accès. Vous pouvez fermer cet onglet.
 google-page-denied = Google n’a donné aucun accès : rien n’a changé. Vous pouvez fermer cet onglet.
 google-page-foreign = Cette réponse n’était pas pour Sioul. Vous pouvez fermer cet onglet.
+google-page-granted-phone = Sioul a l’accès. Revenez à Sioul : il termine là-bas.
 ui-all-files = Tous les fichiers
 ## Formulaires, notes et mémos : montants illisibles, boutons, liens, micro.
 amount-unreadable = « { $text } » n’est pas un montant : écrivez-le en chiffres, comme 1200 ou -650,50.
@@ -2976,3 +3133,287 @@ review-closed-night = La journée est close.
 review-kept = Vos mots sont gardés.
 # Sur la journée de la page Santé.
 review-line-said = Comment s’est passée la journée :
+
+## Les deux pauses : temps libre et pause (docs/pauses.md)
+# La ligne d’état : quelle pause est en cours, avec ses mots.
+mode-free-time = Temps libre : seuls vos expéditeurs sûrs, les rappels de prises et vos codes vous joignent. Le travail reprend à votre retour.
+mode-free-time-nothing = Temps libre : seuls les rappels de prises et vos codes vous joignent. Le travail reprend à votre retour.
+mode-paused = En pause.
+# La rangée du bas : le temps libre, un interrupteur ; la pause, à part.
+free-time = Temps libre
+free-time-tip = Temps libre maintenant : loisirs quelle que soit l’heure ; seuls vos expéditeurs sûrs vous joignent.
+free-time-back = Revenir du temps libre
+pause-button = Pause
+pause-tip = Pause : Sioul garde tout en attente jusqu’à votre retour. Il n’envoie rien.
+# Le menu du temps libre dans la ligne d’état, et le retour.
+free-menu-keep = Garder ma fin habituelle ({ $time })
+free-menu-nothing = Rien du tout
+free-back-moved = Aujourd’hui, le travail va jusqu’à { $time }.
+free-keep-end = Garder ma fin habituelle
+free-kept = Le travail finit à { $time }, comme d’habitude.
+# La page Tâches en temps libre : des loisirs proposés, jamais une liste à finir.
+free-title = Temps libre
+free-offers = Si vous voulez :
+free-offers-none = Rien à faire ici.
+# L’écran de la pause : des faits sur Sioul, jamais sur vous (P11–P12).
+pause-title = En pause.
+pause-text = Sioul garde tout en attente : courrier, tâches, messages. Rien de nouveau ne s’affichera ici avant votre retour. D’ici là, Sioul ne vous demande rien.
+pause-doses-come = Les rappels de prises viennent toujours.
+pause-helps = Ce qui vous aide
+pause-breathing = Guide de respiration
+pause-numbers-more = Autres numéros
+pause-back = Revenir
+pause-try = Essai : rien n’est mis en attente.
+pause-number-emergency = Urgence
+pause-number-crisis = Parler à quelqu’un maintenant, jour et nuit
+pause-number-medical = Urgence médicale
+pause-number-text = Par écrit
+pause-number-care = Soins urgents, hors urgence vitale
+pause-number-call-or-text = appel ou SMS
+pause-number-text-word = envoyer « { $word } » par SMS
+pause-number-by-text = par SMS
+# Le retour (P23) : aucune question, aucun compte.
+pause-back-title = Vous êtes de retour. Rien n’a été perdu.
+pause-back-lighter = Le reste de la journée est allégé.
+pause-back-rest = Le travail attend jusqu’à { $back }.
+pause-back-tomorrow = Demain peut aussi être plus léger.
+pause-lighten-tomorrow = Alléger demain
+pause-tomorrow-lighter = Demain est allégé aussi.
+pause-back-go = Continuer
+porch-rests = Après la pause, le Porche ouvre { $when }. D’ici là, ce qui arrive est vérifié et trié.
+# Paramètres ▸ Pauses : préparé un jour calme (P1).
+settings-tab-pauses = Pauses
+set-free-time-group = Temps libre
+set-free-nothing = Rien du tout
+set-free-nothing-help = En temps libre, même vos expéditeurs sûrs ne vous joignent pas. Les rappels de prises et les codes demandés viennent toujours.
+set-free-moves = La fin du travail se décale
+set-free-moves-help = Le temps libre pris sur les heures de travail repousse d’autant la fin du travail du jour, jamais au-delà d’une heure avant de vous préparer à dormir, de votre fin au plus tard ou du temps pour vous du soir. Désactivé, le travail garde sa fin habituelle, et ce qui n’y tient plus va aux jours suivants.
+set-free-latest = Fin du travail au plus tard
+set-free-latest-help = Au plus tant après votre fin habituelle.
+set-free-movement = Proposer le mouvement et l’exercice
+set-free-movement-help = Parmi les loisirs que propose le temps libre. À désactiver si une maladie limite votre énergie : aucun exercice n’est alors suggéré.
+set-pause-group = Pause
+set-pause-about = Sioul n’est pas un service d’urgence. Il ne vous surveille pas. Il n’agit que lorsque vous appuyez sur Pause.
+set-pause-doses = Les rappels de prises viennent toujours
+set-pause-doses-help = Pendant une pause, comme pendant le sommeil. Désactivé, ils attendent votre retour.
+set-pause-people = Les contacts favoris passent
+set-pause-people-help = Sur le téléphone : appels et messages de vos contacts favoris, et de quiconque appelle deux fois en 15 minutes. Désactivé, personne.
+set-pause-helps = Ce qui vous aide
+set-pause-helps-help = Avec vos mots, une chose par ligne. Une ligne avec un lien ou le chemin d’un fichier l’ouvre depuis la pause : une playlist, des photos, un film.
+set-pause-breathing = Guide de respiration
+set-pause-breathing-help = Une forme lente pour respirer avec elle, montrée seulement quand vous la touchez, l’expiration plus longue que l’inspiration.
+set-pause-pace = Respirations par minute
+set-pause-pace-help = Le rythme du guide de respiration.
+set-pause-grounding = Une ligne pour la pause
+set-pause-grounding-help = Une ligne avec vos mots, montrée pendant la pause.
+set-pause-after = Au retour
+set-pause-after-help = Ce que tient le reste de la journée après une pause. Le travail ne passe jamais sur la soirée.
+set-pause-after-lighter = Allégé, comme un jour de brume
+set-pause-after-rest = Plus de travail aujourd’hui
+set-pause-after-as-is = Comme prévu
+set-pause-country = Numéros pour
+set-pause-country-help = Le numéro d’urgence et la ligne d’écoute montrés pendant une pause.
+set-pause-country-usual = Le pays des numéros de téléphone
+set-pause-country-fr = France
+set-pause-country-gb = Royaume-Uni
+set-pause-country-us = États-Unis
+set-pause-country-ca = Canada
+set-pause-country-eu = Ailleurs dans l’Union européenne
+pause-setup-dnd = Ne pas déranger
+pause-setup-try = Essayer l’écran de pause
+pause-setup-try-help = Montre l’écran tel qu’il sera. Rien n’est mis en attente.
+pause-setup-forget = Oublier la dernière pause
+pause-setup-forget-help = Sioul ne garde que le début et la fin de la dernière pause, pour annuler.
+pause-setup-forgotten = Oubliée.
+
+## Ne pas déranger pendant les deux pauses (crates/sioul-app/src/dnd.rs, docs/pauses.md) : ce que Sioul
+## a mis en silence et ce qu’il n’a pas pu, dit tel quel sur la ligne de la pause et dans ses réglages.
+dnd-name-pause = En pause
+dnd-name-free-time = Temps libre
+dnd-trigger-pause = Quand vous appuyez sur Pause dans Sioul
+dnd-trigger-free-time = Quand vous prenez du temps libre dans Sioul
+dnd-trigger-global = Quand Ne pas déranger est activé dans Sioul, sur l’un de vos appareils
+dnd-name-global = Ne pas déranger (Sioul)
+dnd-doses-channel = Prises pendant une pause
+dnd-own-held = Sioul retient ses propres notifications.
+dnd-own-held-doses = Sioul retient ses propres notifications, sauf les rappels de prises.
+dnd-offer-access = Ouvrir la page d’Android
+dnd-offer-starred = Contacts favoris
+dnd-offer-plasma = Paramètres de notification de Plasma
+dnd-phone-can = Sioul peut mettre ce téléphone en silence, avec des modes Ne pas déranger qui lui sont propres.
+dnd-phone-needs-access = Pour mettre ce téléphone en silence, Sioul a besoin de l’accès « Ne pas déranger » d’Android.
+dnd-phone-no-access = Votre téléphone n’est pas en silence : Sioul n’a pas l’accès « Ne pas déranger » d’Android.
+dnd-phone-too-old = L’Android de ce téléphone est trop ancien pour que Sioul le mette en silence : il faut Android 10 ou plus récent.
+dnd-phone-callback = Les secours peuvent rappeler depuis un numéro que vous ne connaissez pas ({ $number }) : un second appel dans les 15 minutes passe, et vous pouvez mettre ce numéro en favori dans vos contacts.
+dnd-phone-callback-unknown = Les secours peuvent rappeler depuis un numéro que vous ne connaissez pas : un second appel dans les 15 minutes passe.
+dnd-phone-starred = Les appels et messages de votre téléphone sont en silence, sauf ceux des contacts favoris et les appels répétés.
+dnd-phone-nobody = Les appels et messages de votre téléphone sont en silence, pour tout le monde.
+dnd-phone-as-set = Votre téléphone est en silence comme son mode « { $name } » est réglé dans les paramètres d’Android.
+dnd-phone-set-there = Ce mode est réglé autrement dans les paramètres d’Android, qui l’emportent.
+dnd-phone-alarms-doses = Les alarmes et les rappels de prises viennent quand même.
+dnd-phone-alarms = Les alarmes sonnent quand même.
+dnd-phone-alarms-silenced = Les alarmes sont en silence aussi, comme ce mode est réglé.
+dnd-phone-doses = Les rappels de prises s’affichent quand même.
+dnd-phone-doses-shade = Les rappels de prises attendent dans le volet des notifications, sans son.
+dnd-phone-doses-blocked = Les rappels de prises sont en silence aussi : leur canal a été changé dans les paramètres d’Android.
+dnd-phone-already = Un mode Ne pas déranger était déjà actif ; Sioul le laisse comme il était.
+dnd-phone-failed = Votre téléphone n’a pas pu être mis en silence : { $why }
+dnd-phone-no-answer = Votre téléphone n’a pas pu être mis en silence : Android n’a pas répondu.
+dnd-phone-disabled = Votre téléphone n’est pas en silence : son mode « { $name } » est désactivé dans les paramètres d’Android.
+dnd-phone-turned-off = Le mode Ne pas déranger a été désactivé sur le téléphone entre-temps ; Sioul le laisse désactivé.
+dnd-phone-off = Votre téléphone n’est plus mis en silence par Sioul.
+dnd-phone-still = Un mode Ne pas déranger reste actif, comme avant.
+dnd-plasma-can = Sioul peut mettre en silence les notifications de ce bureau, avec le mode « Ne pas déranger » de Plasma.
+dnd-plasma-on = Les notifications de ce bureau sont en silence, avec le mode « Ne pas déranger » de Plasma.
+dnd-plasma-doses = Les rappels de prises de Sioul s’affichent quand même.
+dnd-plasma-doses-hidden = Plasma est réglé pour cacher même les notifications importantes en mode « Ne pas déranger » : les rappels de prises de Sioul ne peuvent donc pas s’afficher ici pendant qu’il met ce bureau en silence, sauf si Sioul peut « Afficher dans le mode Ne pas déranger » dans les paramètres de notification de Plasma.
+dnd-plasma-failed = Les notifications de ce bureau n’ont pas pu être mises en silence : { $why }
+dnd-plasma-off = Les notifications de ce bureau s’affichent de nouveau.
+dnd-gnome-can = GNOME ne laisse Sioul mettre ce bureau en silence qu’en activant votre propre « Ne pas déranger » : Sioul ne le fait que si vous l’autorisez ici, et le désactive après.
+dnd-gnome-consent = Activer « Ne pas déranger » de GNOME avec celui de Sioul, et le désactiver après
+dnd-gnome-cannot = Les notifications de ce bureau ne peuvent pas être mises en silence par Sioul : GNOME garde son interrupteur « Ne pas déranger » pour vous, sous l’horloge de la barre du haut.
+dnd-gnome-on = Les bannières de notification de ce bureau sont cachées : Sioul a activé « Ne pas déranger » de GNOME, et le désactive après.
+dnd-gnome-already = « Ne pas déranger » de GNOME était déjà actif ; Sioul le laisse comme vous l’avez réglé.
+dnd-gnome-sandboxed = Les notifications de ce bureau ne peuvent pas être mises en silence par Sioul depuis son bac à sable Flatpak : « Ne pas déranger » de GNOME est sous l’horloge de la barre du haut.
+dnd-gnome-failed = « Ne pas déranger » de GNOME n’a pas pu être changé : { $why }
+dnd-gnome-off = « Ne pas déranger » de GNOME est de nouveau désactivé, comme avant.
+dnd-gnome-left = « Ne pas déranger » de GNOME a été changé entre-temps ; Sioul le laisse comme il est.
+dnd-desktop-cannot = Les notifications de ce bureau ne peuvent pas être mises en silence par Sioul : { $name } n’en donne aucun moyen aux applications.
+dnd-desktop-cannot-unknown = Les notifications de ce bureau ne peuvent pas être mises en silence par Sioul.
+dnd-mac-can = Quand Sioul met ce Mac en silence, il lance votre raccourci « { $on } », et « { $off } » après.
+dnd-mac-cannot = Les notifications de ce Mac ne peuvent pas être mises en silence par Sioul sans un raccourci nommé « { $on } » qui active une concentration, et un autre nommé « { $off } » qui la désactive : macOS ne laisse les applications le faire d’aucune autre façon.
+dnd-mac-on = Sioul a lancé votre raccourci « { $on } ».
+dnd-mac-failed = Votre raccourci « { $name } » ne s’est pas lancé : { $why }
+dnd-mac-off = Sioul a lancé votre raccourci « { $off } ».
+dnd-mac-no-off = La concentration de votre Mac reste comme votre raccourci l’a laissée : il n’y a pas de raccourci « { $off } ».
+dnd-windows-cannot = Les notifications de cet ordinateur ne peuvent pas être mises en silence par Sioul : Windows réserve le mode Ne pas déranger aux applications que Microsoft approuve. Son interrupteur est dans le centre de notifications (touche Windows + N).
+
+## Ne pas déranger sur tous vos appareils : l’interrupteur, ses raisons, la liste des personnes qui peuvent
+## vous joindre, le téléphone en arrière-plan (crates/sioul-core/src/everywhere.rs, crates/sioul-app/src/everywhere.rs,
+## crates/sioul-app/src/steps.rs, docs/do-not-disturb.md).
+dnd-everywhere = Ne pas déranger, sur tous vos appareils.
+dnd-everywhere-until = Ne pas déranger, sur tous vos appareils, jusqu’à { $until }.
+dnd-here-only = Ne pas déranger, ici seulement.
+dnd-here-only-until = Ne pas déranger, ici seulement, jusqu’à { $until }.
+dnd-not-everywhere = Ne pas déranger, pas sur tous vos appareils.
+dnd-not-everywhere-until = Ne pas déranger, pas sur tous vos appareils, jusqu’à { $until }.
+dnd-elsewhere = Ne pas déranger, sur vos autres appareils ; celui-ci ne retient que les notifications de Sioul.
+dnd-elsewhere-until = Ne pas déranger jusqu’à { $until }, sur vos autres appareils ; celui-ci ne retient que les notifications de Sioul.
+dnd-own-only = Ne pas déranger : cet appareil ne retient que les notifications de Sioul.
+dnd-own-only-until = Ne pas déranger jusqu’à { $until } : cet appareil ne retient que les notifications de Sioul.
+dnd-device-here = Ici
+dnd-device-on = Sur { $name }
+dnd-device-phone = votre téléphone
+dnd-device-other = un autre appareil
+dnd-device-silenced = { $device } : en silence.
+dnd-device-cannot = { $device } : { $line }
+dnd-device-unsilenced = { $device } : pas en silence.
+dnd-device-behind = { $device } : pas encore.
+dnd-why-manual = Activé avec l’interrupteur.
+dnd-why-manual-from = Activé depuis { $device }.
+dnd-why-focus = Pendant que vous vous concentrez sur une tâche.
+dnd-why-sleep = Pendant votre sommeil.
+dnd-why-paused = Pendant la pause.
+dnd-why-free-time = Pendant votre temps libre.
+dnd-switch = Ne pas déranger
+dnd-switch-tip-off = Ne pas déranger, sur tous vos appareils : appels, messages et courrier attendent, sauf ceux des personnes de votre liste. Un clic droit, ou un appui long, pour choisir jusqu’à quand.
+dnd-switch-tip-on = { $line } { $why } Un clic le désactive, sur tous vos appareils.
+dnd-for-30 = Pendant 30 minutes
+dnd-for-60 = Pendant une heure
+dnd-for-120 = Pendant deux heures
+dnd-until-time = Jusqu’à { $time }
+dnd-until-off = Jusqu’à ce que je le désactive
+dnd-turn-off = Le désactiver, sur tous vos appareils
+dnd-open-settings = Réglages de « Ne pas déranger »…
+settings-tab-dnd = Ne pas déranger
+set-dnd-group = Ne pas déranger, sur tous vos appareils
+set-dnd-button = L’interrupteur dans la ligne d’état
+set-dnd-button-help = Un interrupteur à côté des sons active et désactive « Ne pas déranger », sur tous vos appareils à la fois. Décoché, l’interrupteur est caché ; le reste ci-dessous vaut toujours.
+set-dnd-focus = Pendant que je me concentre sur une tâche
+set-dnd-focus-help = « Ne pas déranger » tient tant qu’une séance de concentration compte, sur tous vos appareils, et se lève 30 minutes après le temps choisi (trois heures pour une séance sans durée) : une séance oubliée ne vous rend jamais injoignable longtemps.
+set-dnd-pauses = Pendant les pauses
+set-dnd-pauses-help = Le temps libre et la pause mettent aussi vos appareils en silence, comme leurs propres réglages le disent. Décoché, elles ne retiennent que les notifications de Sioul.
+set-dnd-sleep = Pendant mon sommeil
+set-dnd-sleep-help = « Ne pas déranger » tient du moment de se préparer au coucher jusqu’au réveil, et pendant les siestes, sur tous vos appareils. Les alarmes et les rappels de prises viennent toujours.
+set-dnd-people = Les personnes de ma liste passent
+set-dnd-people-help = Leurs appels et messages sonnent sur un téléphone où elles sont en favori, ainsi qu’un second appel du même numéro dans les 15 minutes ; leur courrier est notifié. Décoché : personne, sauf les alarmes et les rappels de prises.
+set-dnd-background = Garder ce téléphone à jour en arrière-plan
+set-dnd-background-help = Sioul fermé, une notification discrète reste dans le volet pendant que Sioul suit vos autres appareils : « Ne pas déranger » en quelques minutes, le courrier à ses heures. Décoché, les changements arrivent quand vous ouvrez Sioul. Ce téléphone seulement.
+dnd-setup-here = Sur cet appareil
+dnd-setup-critical = Pendant « Ne pas déranger », les notifications de Sioul pour les personnes de votre liste partent comme importantes, et ce bureau les affiche.
+dnd-setup-plasma-mail = Plasma est réglé pour cacher même les notifications importantes en mode « Ne pas déranger » : le courrier des personnes de votre liste ne peut pas s’afficher ici pendant ce temps, sauf si Sioul peut s’afficher dans ce mode dans les paramètres de notification de Plasma.
+dnd-setup-list = Qui peut vous joindre pendant « Ne pas déranger »
+dnd-setup-list-help = La même liste sur tous vos appareils, gardée scellée dans votre dossier de partage. Leur courrier est notifié pendant « Ne pas déranger » ; sur un téléphone, leurs appels et messages sonnent une fois ces personnes mises en favori.
+dnd-setup-empty = Personne pour l’instant.
+dnd-setup-add-safe = Ajouter vos expéditeurs sûrs
+dnd-setup-add-contact = Ajouter un contact…
+dnd-setup-add-person = Ajouter quelqu’un à la main
+dnd-setup-search = Nom, numéro ou adresse
+dnd-setup-no-match = Aucun contact ne correspond.
+dnd-setup-name = Nom
+dnd-setup-phones = Numéros, un par ligne
+dnd-setup-emails = Adresses, une par ligne
+dnd-setup-save = Enregistrer
+dnd-setup-cancel = Annuler
+dnd-setup-edit = Modifier
+dnd-setup-remove = Retirer de la liste
+dnd-setup-added-safe = { $n ->
+    [0] Vos expéditeurs sûrs sont déjà sur la liste.
+    [one] Une personne ajoutée depuis vos expéditeurs sûrs.
+   *[other] { $Countf } personnes ajoutées depuis vos expéditeurs sûrs.
+}
+dnd-setup-patterns = { $n ->
+    [one] Une entrée de la liste « Sûrs » est un motif, qui ne nomme personne : laissée de côté.
+   *[other] { $Countf } entrées de la liste « Sûrs » sont des motifs, qui ne nomment personne : laissées de côté.
+}
+dnd-setup-no-number = Pas de numéro : ses appels et messages ne peuvent pas passer.
+dnd-setup-no-email = Pas d’adresse : son courrier n’est pas notifié pendant « Ne pas déranger ».
+dnd-setup-unreadable = La liste n’a pas pu être lue, rien n’a donc été changé : { $why }
+dnd-stars-title = En favori sur ce téléphone
+dnd-stars-all = Chaque personne de votre liste qui a un numéro est en favori sur ce téléphone : ses appels et messages sonnent pendant « Ne pas déranger ».
+dnd-stars-missing = { $n ->
+    [one] Une personne de votre liste n’est pas en favori sur ce téléphone.
+   *[other] { $Countf } personnes de votre liste ne sont pas en favori sur ce téléphone.
+}
+dnd-stars-why = Android ne laisse passer que les contacts en favori dans votre application Contacts : mettez-les en favori là. Sioul ne modifie jamais vos contacts.
+dnd-stars-starred = En favori
+dnd-stars-not-starred = Pas en favori
+dnd-stars-unknown = Pas parmi les contacts de ce téléphone
+dnd-stars-no-number = Pas de numéro
+dnd-stars-open = Ouvrir son contact
+dnd-stars-add = Ajouter aux contacts
+dnd-stars-permission = Pour dire qui, sur votre liste, est en favori sur ce téléphone, Sioul a besoin de lire vos contacts. Il ne les modifie jamais.
+dnd-stars-allow = Autoriser la lecture des contacts
+dnd-stars-again = Regarder à nouveau
+dnd-stars-repeat = Un second appel du même numéro dans les 15 minutes sonne aussi, quel que soit l’appelant : les secours peuvent rappeler depuis un numéro que vous ne connaissez pas.
+dnd-steps-title = En arrière-plan
+dnd-steps-on = Sioul suit vos autres appareils, l’application fermée ; une notification discrète le dit.
+dnd-steps-off = Sioul ne suit vos autres appareils que lorsqu’il est ouvert.
+dnd-steps-battery = Android peut arrêter Sioul en arrière-plan pour ménager la batterie : autorisez-le à fonctionner en arrière-plan.
+dnd-steps-battery-ok = Android laisse Sioul fonctionner en arrière-plan.
+dnd-steps-allow = Autoriser en arrière-plan
+dnd-steps-channel = Appareils à jour
+dnd-steps-note = Sioul tient vos appareils à jour
+
+## La carte sur l’écran d’accueil d’un téléphone (docs/android.md, « The card on the home screen »).
+home-card-work = Travail jusqu’à { $until }.
+home-card-when-at = à { $time }
+home-card-when-yesterday = hier à { $time }
+home-card-porch-opens = Le Porche ouvre { $when }.
+home-card-porch-rests = Après la pause, le Porche ouvre { $when }.
+home-card-porch-closed = Le Porche est fermé pour le moment.
+home-card-many = Beaucoup de lettres sont arrivées.
+home-card-setup = Sioul n’est pas encore configuré.
+home-card-beyond = Ouvrez Sioul pour mettre cette carte à jour.
+home-card-step-plain = Votre prochaine étape
+home-card-code-plain = { $kind ->
+        [code] Un code attend sur le Porche.
+        [password] Un mot de passe attend sur le Porche.
+        [reset] Une réinitialisation de mot de passe attend sur le Porche.
+        [link] Un lien de connexion attend sur le Porche.
+       *[confirm] Un lien de confirmation attend sur le Porche.
+    }
+home-card-dose = { $dose }, { $time }
+home-card-dose-check = { $dose }, { $time } : vérifiez avant de la prendre.
+set-home-card-details = Détails sur l’écran d’accueil
+set-home-card-details-help = La carte de Sioul sur l’écran d’accueil de ce téléphone nomme les premières lettres qui attendent sur le Porche, avec leur expéditeur et leur objet, un code que vous venez de demander à un site, une prise prévue, et le titre de la prochaine étape. Sans ce réglage, elle ne dit que ce à quoi sert ce moment, combien de lettres sont arrivées, et qu’une prochaine étape attend : pour un téléphone dont d’autres voient l’écran d’accueil. Ce téléphone seulement.

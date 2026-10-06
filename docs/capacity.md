@@ -87,6 +87,7 @@ R: G6 (median of the last five after-ratings), CB6 (after-task ratings for learn
   - a task finished that day without any record, at its corrected length;
   - time noted for a project alone, as usual work;
   - events by their length, with their own ratings, else as usual;
+  - a task's time block (an event pinning a task: [tasks.md](tasks.md), "Pinned to a time") never as an event: it is the task's time, counted with the task, by its records like any task; a block over without the task done counts for nothing;
   - meals, naps and sleep never (they are needs, G4).
   - A task rated after it that day counts with that day's rating.
   - R: CB10, CB12. G: events without ratings counted as usual (biased; said here).
@@ -173,13 +174,15 @@ R: G6 (median of the last five after-ratings), CB6 (after-task ratings for learn
   - clear 100 %, haze 60 %, fog 30 %, of both its room and its budgets;
   - fog stays the day said bad. CB36's bad day is about 60 %, but haze already is, so fog goes lower, as its room already did.
   - G: fog 30 %.
+- **After a pause** ([pauses.md](pauses.md)): the rest of today, and tomorrow if you ask, hold no more than a hazy day, 60 % of the room and the budgets and one heavy step, the morning's weather unchanged (`pause::today_level`). R: CB36 (the bad day, about 60 %), P23.
+- **Free time's moved end** ([pauses.md](pauses.md)): today's room grows by the stretch the end of work moved, for light steps only, laid there first; the budgets do not grow (hours, not capacity). R: GP9, GP12–GP13; O: light steps only.
 - **The days before and after an event whose highest cost is 7 or more** take one heavy task fewer and hold three quarters of their budgets. R: CB34 (#MEAction "radical rest"; NICE 1.11.4 pre-emptive rest; Chu 2018). G: 7, three quarters, one fewer.
 - **A step too heavy for what the day still holds** goes to a later day. A long step that can be cut takes the part the budget lets in, a quarter of an hour at least. A step heavier than an ordinary empty day's budget gets a day of its own: the first day with no other task.
 - **A task with margins is never cut**, owner's decision:
   - the plan lays it whole on the first day whose room holds it with its margins;
   - longer than any day's room, it gets a day of its own;
   - the day lays it whole in a gap that holds it, else not today.
-- **A step given a time today by hand** (dragged in the day, `X-SIOUL-AT`) stays today, at its time, whatever the room or the budgets.
+- **A task pinned to a time** (its time block, an event: [tasks.md](tasks.md), "Pinned to a time") is laid on its block's day first, whatever the room or the budgets: the block's time, its margins and a pause around it leave that day's room once, as an event's would, and the task is counted there at its block's minutes, its own load and heaviness, never an event's besides. Laid first, it is what each other step of that day is weighed against: the budgets, the heavy steps a day takes and the free time kept for steps running long all see it (the free time grows with its minutes too). Longer than its block, its rest goes on from the next day. The time budget until a date asked counts its block once (`plan::cushion`). A step given a time today by a drag before blocks (`X-SIOUL-AT`, read still) stays today, at its time, as before.
 - **Half an hour of each day with two hours of room or more** is kept for the time-for-you slot after the day's costliest block (section 9). G.
 - **Even days**, off by default.
   - With them, the plan is made once to see the coming week's load, events included, then again with each day held to the week's mean on each cost, never above 85 % of its budget.

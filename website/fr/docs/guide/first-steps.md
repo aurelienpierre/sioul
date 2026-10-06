@@ -11,14 +11,17 @@ Sioul parle anglais ou français, selon la langue de votre système, sauf si vou
 ## La fenêtre {#the-window}
 
 <figure markdown="span">
-  [![La fenêtre de Sioul : à gauche, Nouveau, puis les lieux, du Porche à Santé, et trois icônes en bas (Comptes, Paramètres, Tout actualiser) ; à droite, le Porche ; tout en bas, la ligne d’état avec les touches, le bouton des sons et la météo.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
+  [![La fenêtre de Sioul : à gauche, une étroite colonne d’icônes, Nouveau (un plus), puis les lieux, du Porche à Santé, celui affiché marqué, et trois icônes en bas (Comptes, Paramètres, Tout actualiser) ; à droite, le Porche ; tout en bas, la ligne d’état avec les touches, le bouton des sons et la météo.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
 </figure>
 
-**À gauche**, de haut en bas :
+**À gauche**, une étroite colonne d’icônes, de haut en bas :
 
-- **Nouveau ▾** crée une chose de n’importe quel type : un message, une tâche, un événement, un contact, une note, un projet, du temps passé, un mouvement de budget, un papier ; et **Où j’en suis…** laisse une ligne sur où vous en êtes ([Les tâches](tasks.md#starting-and-stopping)).
-- **Les lieux** : Porche, Tâches, Courrier, Sites, Agenda, Contacts, Notes, Projets, Temps, Budgets, Papiers, Santé.
+- **Nouveau ▾**, le **+**, crée une chose de n’importe quel type : un message, une tâche, un événement, un contact, une note, un projet, du temps passé, un mouvement de budget, un papier ; et **Où j’en suis…** laisse une ligne sur où vous en êtes ([Les tâches](tasks.md#starting-and-stopping)).
+- **Les lieux**, une icône chacun : Porche (une corbeille à courrier), Tâches (une liste à cocher), Courrier (une enveloppe), Sites (un globe), Agenda (un calendrier), Contacts (une personne et des lignes), Notes (un bloc-notes), Projets (un dossier), Temps (une horloge), Budgets (un portefeuille), Papiers (une carte), Santé (un cœur). Le lieu affiché est marqué d’une teinte douce et d’une courte barre.
 - **Trois icônes**, à part en bas : Comptes (une personne), Paramètres (des curseurs), et Tout actualiser, qui relève à nouveau, d’un coup, le courrier, l’agenda, les tâches et les contacts.
+- **À son pied**, au niveau de la ligne d’état, le bouton qui masque la colonne (++f9++) : les pages prennent toute la largeur, et le même bouton, au début de la ligne d’état, la fait revenir. Chaque appareil garde son propre choix, et les touches continuent de fonctionner.
+
+Le nom de chaque icône, avec sa touche, s’affiche quand le pointeur s’y arrête, quand le clavier l’atteint, ou par un appui long sur un écran tactile. Pour voir les noms à côté des icônes en permanence, dans une colonne plus large : **Paramètres ▸ Affichage ▸ Afficher le nom des lieux à côté de leur icône**.
 
 **En bas**, la ligne d’état dit en une phrase ce qui s’est passé en dernier. Après chaque déplacement, suppression ou envoi, « Annuler » y attend dix secondes. Pendant le calme, elle dit quand le travail revient ; une fois les heures du jour finies, elle propose de clore la journée de travail, et le soir la journée. À son extrémité droite se trouvent les touches, le bouton des sons ([des sons pour se concentrer ou se reposer](tasks.md#sounds)) et la météo d’un lieu que vous choisissez.
 
@@ -34,24 +37,27 @@ Tout se fait au clavier : Tab pour se déplacer, Entrée pour choisir, Échap 
 | ++ctrl+n++ | Nouveau ▾ |
 | ++ctrl+z++ | Annuler, tant que c’est proposé |
 | ++f5++ | Tout actualiser |
+| ++f9++ | Masquer les lieux, ou les faire revenir ; dans une fenêtre étroite, les sortir ou les ranger |
 | ++ctrl+enter++ | Envoyer, dans la fenêtre de rédaction |
 
 ### Sur un téléphone {#on-a-phone}
 
 Une version Android est à l’essai ([Installer](install.md#on-android)). Sur un téléphone, ou dans une fenêtre de moins de 720 pixels de large :
 
-- **Les lieux** glissent depuis la gauche, derrière ☰ ; une barre en haut nomme la page.
+- **Les lieux** glissent depuis la gauche, derrière ☰, avec leur nom à côté de leur icône ; une barre en haut nomme la page.
 - **Un volet à la fois** : une page montre sa liste, puis ce que vous ouvrez sur tout l’écran ; **Retour**, sur la barre ou celui d’Android, revient en arrière.
 - **Les menus** s’ouvrent par un appui long sur un écran tactile, là où une souris ferait un clic droit.
 
 Ce qui change sur un téléphone :
 
-- **Les notifications** ne viennent que pour les prises de médicaments ([La santé](health.md#reminders)) et pour le temps qui court ([Le temps](time.md#where-time-comes-from)). Un code que vous avez demandé s’affiche sur le Porche ; les autres rappels n’y viennent pas encore.
+- **Les notifications** viennent pour les prises de médicaments ([La santé](health.md#reminders)), le temps qui court ([Le temps](time.md#where-time-comes-from)), les événements ([L’agenda](agenda.md#reminders)) et le nouveau courrier à ses heures ([Le Porche](porch.md#new-mail-told-at-its-times)). Un code que vous avez demandé s’affiche sur le Porche ; les autres rappels n’y viennent pas encore.
 - **Le courrier** est relevé tant que Sioul est ouvert : Android l’arrête en arrière-plan.
+- **Le partage** : Sioul est dans le menu de partage d’Android, et chacune de vos adresses aussi ; les liens de courrier s’ouvrent dedans ([Le courrier](mail.md#from-other-apps)).
 - **Les dossiers** : le **Choisir…** d’un réglage ouvre la liste des dossiers du téléphone, propre à Sioul, avec **Autoriser l’accès aux fichiers** quand Android n’a pas encore donné cet accès à Sioul.
 - **Les sites** s’ouvrent dans votre navigateur ([Les sites](sites.md)) ; les PDF s’ouvrent dans une autre application, avec **Ouvrir avec…**.
 - **Le courrier papier** n’est pas lu, et les pièces jointes ne passent pas par un antivirus : les programmes dont Sioul se sert pour cela sur un ordinateur n’existent pas sur un téléphone.
 - **Vos autres appareils** partagent avec lui par un dossier que l’application de synchronisation du téléphone transporte ([Le partage](sharing.md)). Les mots de passe ne voyagent jamais : chaque compte demande le sien, une fois ([Les comptes](accounts.md#an-account-from-your-other-device)).
+- **Une carte sur l’écran d’accueil** : le widget de Sioul (un appui long sur l’écran d’accueil, **Widgets**) dit à quoi sert ce moment, le Porche tel qu’il se montre (en dehors des heures choisies pour le courrier, seulement quand il ouvre), la prochaine étape pendant le travail ou les démarches, et une prise prévue, jamais comme « pas prise » : « vérifiez avant de la prendre » quand un autre appareil peut savoir. Un appui ouvre le Porche, ou **Maintenant** sur l’étape. Sans le réglage **Détails sur l’écran d’accueil** ([Paramètres](settings.md#display)), elle ne nomme aucun expéditeur, objet, code, prise ni étape.
 
 ## Ajouter votre courrier {#add-your-mail}
 
@@ -61,13 +67,22 @@ Ce qui change sur un téléphone :
 4. Tapez votre **mot de passe**. Il va dans le trousseau de votre système, nulle part ailleurs.
 5. Choisissez **Se connecter et ajouter**. Sioul essaie le mot de passe avant de garder quoi que ce soit, puis relève votre courrier récent.
 
-Gmail, et d’autres fournisseurs quand la validation en deux étapes est activée, demandent un **mot de passe d’application** au lieu de votre mot de passe habituel : vous le créez dans les réglages de votre compte chez le fournisseur (pour Gmail, sur myaccount.google.com/apppasswords). Quand le fournisseur est connu, le formulaire propose **Créer un mot de passe d’application**, qui ouvre la bonne page.
+Certains fournisseurs demandent un **mot de passe d’application** au lieu de votre mot de passe habituel quand la validation en deux étapes est activée : vous le créez dans les réglages de votre compte chez le fournisseur. Gmail et Google Workspace : ci-dessous.
 
 Les adresses Outlook.com, Hotmail et Microsoft 365 ne peuvent pas encore être ajoutées : Microsoft n’accepte plus des autres logiciels de courrier que sa propre page de connexion ([Fonctionne avec](compatibility.md#mail)).
 
 Relever le courrier ne change rien sur votre serveur de courrier. Sioul n’y écrit que lorsque vous agissez : ouvrir un message le marque comme lu, comme dans tout logiciel de courrier ; archiver, supprimer et déplacer se font dix secondes après votre demande, pour que « Annuler » puisse les arrêter.
 
 Ensuite, sur la fiche de l’adresse dans **Vos comptes**, dépliez **Réglages de cette adresse** et cochez **À quoi sert cette adresse** : travail, vos démarches, loisirs, ou plusieurs. Tant que vous ne l’avez pas dit, une adresse compte comme du travail, pour que son courrier n’atteigne jamais vos soirées. Voir [Les heures](hours.md).
+
+### Gmail et Google Workspace {#gmail-and-google-workspace}
+
+Google refuse le mot de passe de votre compte dans les autres logiciels de courrier. Sioul reconnaît le courrier de Google à son adresse (gmail.com, googlemail.com) ou aux serveurs qui reçoivent le courrier de votre domaine (Google Workspace), et propose deux façons au lieu d’un mot de passe :
+
+- **Utiliser un mot de passe d’application** : créez pour Sioul un mot de passe d’application sur myaccount.google.com/apppasswords (il demande la validation en deux étapes ; **Créer un mot de passe d’application** ouvre la page dans votre navigateur), collez-le sous **Mot de passe d’application (de Google)**, puis **Se connecter et ajouter**.
+- **Se connecter avec Google** : la page de Google elle-même s’ouvre dans votre navigateur. Pour le courrier, Google n’accepte qu’une clé Google à vous, pas celle de Sioul : un projet gratuit dans Google Cloud, fait une fois (**Faire votre clé Google** déplie les étapes), celui de vos agendas Google si vous l’avez fait. Google dit ensuite que l’application n’est pas validée : c’est la vôtre ; choisissez *Paramètres avancés*, puis *Accéder à Sioul*, et laissez cochée la case de l’accès à Gmail. Publiez le projet (*Audience → Publier l’application*) : s’il reste en test, Google coupe l’accès tous les sept jours.
+
+Une fois votre clé gardée sur cet appareil, **Se connecter avec Google** est la façon choisie d’abord, et ne demande rien d’autre. Sur un téléphone, quand Google dit que Sioul a l’accès, revenez à Sioul : il termine là. Si Android a fermé Sioul entre-temps, rien n’a changé : reconnectez-vous.
 
 ## Ajouter vos agendas, tâches et contacts {#add-your-calendars-tasks-and-contacts}
 
@@ -92,7 +107,7 @@ Sioul garde l’accès dans le trousseau de votre système. Google garde moins d
 !!! note "Si Sioul demande une clé Google"
     Une copie de Sioul construite sans sa propre clé Google demande la vôtre. **Faire votre clé Google** déplie les étapes dans Comptes : un projet gratuit dans Google Cloud, un quart d’heure environ, une fois. Vous pouvez aussi choisir **Utiliser une clé Google à moi** à tout moment.
 
-Le courrier de Google s’ajoute comme n’importe quel compte de courrier, plus haut, avec un mot de passe d’application.
+Le courrier de Google s’ajoute dans le formulaire du courrier, plus haut : avec un mot de passe d’application, ou connecté avec Google ([Gmail et Google Workspace](#gmail-and-google-workspace)).
 
 ## Choisir votre dossier de notes {#choose-your-notes-folder}
 

@@ -438,7 +438,7 @@ Item {
                                     spacing: 2
 
                                     Label {
-                                        text: page.sioul.text(page.window.moment.reason === "time-off" ? "quiet-time-off-title" : page.window.moment.reason === "meal" ? "quiet-meal-title" : "quiet-title")
+                                        text: page.sioul.text(page.window.moment.reason === "free-time" ? "free-title" : page.window.moment.reason === "time-off" ? "quiet-time-off-title" : page.window.moment.reason === "meal" ? "quiet-meal-title" : "quiet-title")
                                         textFormat: Text.PlainText
                                         font.pixelSize: 20
                                         color: page.theme.text
@@ -555,9 +555,9 @@ Item {
                                     wrapMode: Text.Wrap
                                     color: page.theme.muted
                                 }
-                                // The next date asked within a week: the time it needs, the room there is.
+                                // The next date asked within a week: the time it needs, the room there is; not in free time.
                                 Label {
-                                    visible: page.shown !== null && page.shown.budget !== ""
+                                    visible: page.shown !== null && page.shown.budget !== "" && page.window.moment.reason !== "free-time"
                                     Layout.fillWidth: true
                                     text: page.shown ? page.shown.budget : ""
                                     textFormat: Text.PlainText
@@ -565,7 +565,45 @@ Item {
                                     color: page.theme.muted
                                 }
 
+                                // Free time (docs/pauses.md): leisure offered, never a list to finish:
+                                // no next step, no timer, no count.
+                                ColumnLayout {
+                                    visible: page.window.moment.reason === "free-time"
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: page.sioul.text(page.shown && page.shown.free.length > 0 ? "free-offers" : "free-offers-none")
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.Wrap
+                                        color: page.theme.muted
+                                    }
+                                    Repeater {
+                                        model: page.shown ? page.shown.free : []
+
+                                        delegate: Button {
+                                            id: offer
+
+                                            required property var modelData
+
+                                            Layout.maximumWidth: parent ? parent.width : implicitWidth
+                                            flat: true
+                                            text: offer.modelData.title
+                                            onClicked: page.open(offer.modelData.uid)
+
+                                            contentItem: Label {
+                                                text: offer.text
+                                                textFormat: Text.PlainText
+                                                wrapMode: Text.Wrap
+                                                font.pixelSize: 17
+                                                color: page.theme.text
+                                            }
+                                        }
+                                    }
+                                }
                                 Panel {
+                                    visible: page.window.moment.reason !== "free-time"
                                     Layout.fillWidth: true
                                     theme: page.theme
                                     accent: page.shown !== null && page.shown.now.now !== null
@@ -600,6 +638,29 @@ Item {
 
                                             TapHandler {
                                                 onTapped: page.open(page.shown.now.now.uid)
+                                            }
+                                        }
+                                        // Pinned to a time: a pin, and when (its block, docs/tasks.md), quietly.
+                                        RowLayout {
+                                            id: nowPinned
+
+                                            readonly property string pinned: page.shown && page.shown.now.now ? page.shown.now.now.pinned || "" : ""
+
+                                            visible: nowPinned.pinned !== ""
+                                            Layout.fillWidth: true
+                                            spacing: 8
+
+                                            Icon {
+                                                iconName: "pin"
+                                                size: 16
+                                                color: page.theme.accent
+                                            }
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: nowPinned.pinned
+                                                textFormat: Text.PlainText
+                                                wrapMode: Text.Wrap
+                                                color: page.theme.accent
                                             }
                                         }
                                         // The bigger task it is a step of, and its case.
@@ -765,7 +826,7 @@ Item {
                                     Layout.topMargin: 4
                                 }
                                 TaskRow {
-                                    visible: page.shown !== null && page.shown.now.rest !== null
+                                    visible: page.shown !== null && page.shown.now.rest !== null && page.window.moment.reason !== "free-time"
                                     Layout.fillWidth: true
                                     task: page.shown && page.shown.now.rest ? page.shown.now.rest : ({ uid: "", title: "", status: "", due: "", estimate: "", steps: "", waits: "", stopped: "", list: "", done_on: "", read_only: true, has_steps: false })
                                     theme: page.theme
@@ -776,16 +837,16 @@ Item {
                                     onTick: page.tick(page.shown.now.rest)
                                 }
 
-                                // The one after it, in a line.
+                                // The one after it, in a line; in free time, nothing to finish (docs/pauses.md).
                                 Label {
-                                    visible: page.shown !== null && page.shown.now.then !== null
+                                    visible: page.shown !== null && page.shown.now.then !== null && page.window.moment.reason !== "free-time"
                                     text: page.sioul.text("task-then")
                                     font.pixelSize: 13
                                     color: page.theme.muted
                                     Layout.topMargin: 4
                                 }
                                 TaskRow {
-                                    visible: page.shown !== null && page.shown.now.then !== null
+                                    visible: page.shown !== null && page.shown.now.then !== null && page.window.moment.reason !== "free-time"
                                     Layout.fillWidth: true
                                     task: page.shown && page.shown.now.then ? page.shown.now.then : ({ uid: "", title: "", status: "", due: "", estimate: "", steps: "", waits: "", stopped: "", list: "", done_on: "", read_only: true, has_steps: false })
                                     theme: page.theme
@@ -798,7 +859,7 @@ Item {
 
                                 // Behind a key: two other choices, what is started, done this week.
                                 Repeater {
-                                    model: [
+                                    model: page.window.moment.reason === "free-time" ? [] : [
                                         { key: "others", label: "task-other-choices", items: page.shown ? page.shown.now.others : [] },
                                         { key: "started", label: "task-started", items: page.shown ? page.shown.now.started : [] },
                                         { key: "joy", label: "task-joy", items: page.shown ? page.shown.now.joy : [] },
@@ -890,6 +951,8 @@ Item {
                             sioul: page.sioul
                             theme: page.theme
                             day: page.shown ? page.shown.day : null
+                            // The window's clock: the line at now follows it.
+                            now: page.window.now
                             onRelay: page.sioul.refreshWork()
                             onOpenTask: uid => page.open(uid)
                             onOpenEvent: key => page.window.openThing({ kind: "event", uri: "", key: key })
@@ -1143,6 +1206,7 @@ Item {
                             sioul: page.sioul
                             theme: page.theme
                             timeline: page.shown ? page.shown.timeline : null
+                            today: page.window.today
                             opened: page.opened
                             onOpen: uid => page.open(uid)
                             onMenu: task => taskMenu.now().show(task)

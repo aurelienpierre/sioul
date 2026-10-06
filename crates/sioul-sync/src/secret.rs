@@ -36,8 +36,14 @@ fn testing() -> bool {
     false
 }
 
-/// The password kept for the account.
+/// The password kept for the account. A mail account signed in with Google
+/// has none: what stands for it is its grant's mark (`sasl::OAuth::mark`),
+/// unused by the servers, which are given an access token instead; no grant
+/// kept here, Google's sign-in is asked again.
 pub fn password(account: &Account) -> Result<String, SyncError> {
+    if let Some(oauth) = crate::sasl::OAuth::of(account) {
+        return oauth.mark(account.login().ok_or(SyncError::NoServer)?);
+    }
     // Tests against a local server leave the keyring alone (never in Sioul's builds).
     #[cfg(feature = "insecure-test-tls")]
     if let Ok(password) = std::env::var("SIOUL_TEST_PASSWORD") {

@@ -14,6 +14,7 @@
     <file>sioul/16/camera-video.svg</file>
     <file>sioul/16/chronometer-start.svg</file>
     <file>sioul/16/chronometer.svg</file>
+    <file>sioul/16/clock.svg</file>
     <file>sioul/16/contact-new.svg</file>
     <file>sioul/16/dialog-cancel.svg</file>
     <file>sioul/16/dialog-ok-apply.svg</file>
@@ -38,8 +39,10 @@
     <file>sioul/16/folder-trash.svg</file>
     <file>sioul/16/folder.svg</file>
     <file>sioul/16/games-hint.svg</file>
+    <file>sioul/16/globe.svg</file>
     <file>sioul/16/go-bottom.svg</file>
     <file>sioul/16/go-down.svg</file>
+    <file>sioul/16/go-next.svg</file>
     <file>sioul/16/go-previous.svg</file>
     <file>sioul/16/go-up.svg</file>
     <file>sioul/16/im-user.svg</file>
@@ -48,6 +51,7 @@
     <file>sioul/16/insert-link.svg</file>
     <file>sioul/16/internet-services.svg</file>
     <file>sioul/16/list-add.svg</file>
+    <file>sioul/16/love.svg</file>
     <file>sioul/16/mail-attachment.svg</file>
     <file>sioul/16/mail-flag.svg</file>
     <file>sioul/16/mail-folder-inbox.svg</file>
@@ -72,20 +76,25 @@
     <file>sioul/16/overflow-menu.svg</file>
     <file>sioul/16/package-x-generic.svg</file>
     <file>sioul/16/password-copy.svg</file>
+    <file>sioul/16/pin.svg</file>
     <file>sioul/16/run-build.svg</file>
     <file>sioul/16/security-high.svg</file>
     <file>sioul/16/security-low.svg</file>
     <file>sioul/16/security-medium.svg</file>
     <file>sioul/16/settings-configure.svg</file>
+    <file>sioul/16/sidebar-collapse-left.svg</file>
+    <file>sioul/16/sidebar-expand-left.svg</file>
     <file>sioul/16/system-search.svg</file>
     <file>sioul/16/system-users.svg</file>
     <file>sioul/16/task-complete.svg</file>
     <file>sioul/16/task-new.svg</file>
     <file>sioul/16/text-x-generic.svg</file>
     <file>sioul/16/user-identity.svg</file>
+    <file>sioul/16/user-properties.svg</file>
     <file>sioul/16/user-trash.svg</file>
     <file>sioul/16/view-bank.svg</file>
     <file>sioul/16/view-calendar-day.svg</file>
+    <file>sioul/16/view-calendar-tasks.svg</file>
     <file>sioul/16/view-calendar-timeline.svg</file>
     <file>sioul/16/view-calendar.svg</file>
     <file>sioul/16/view-filter.svg</file>
@@ -120,6 +129,7 @@
     <file>sioul/22/camera-video.svg</file>
     <file>sioul/22/chronometer-start.svg</file>
     <file>sioul/22/chronometer.svg</file>
+    <file>sioul/22/clock.svg</file>
     <file>sioul/22/contact-new.svg</file>
     <file>sioul/22/dialog-cancel.svg</file>
     <file>sioul/22/dialog-ok-apply.svg</file>
@@ -138,14 +148,17 @@
     <file>sioul/22/edit-copy.svg</file>
     <file>sioul/22/edit-undo.svg</file>
     <file>sioul/22/emblem-favorite.svg</file>
+    <file>sioul/22/flower-shape.svg</file>
     <file>sioul/22/folder-documents.svg</file>
     <file>sioul/22/folder-mail.svg</file>
     <file>sioul/22/folder-new.svg</file>
     <file>sioul/22/folder-trash.svg</file>
     <file>sioul/22/folder.svg</file>
     <file>sioul/22/games-hint.svg</file>
+    <file>sioul/22/globe.svg</file>
     <file>sioul/22/go-bottom.svg</file>
     <file>sioul/22/go-down.svg</file>
+    <file>sioul/22/go-next.svg</file>
     <file>sioul/22/go-previous.svg</file>
     <file>sioul/22/go-up.svg</file>
     <file>sioul/22/im-user.svg</file>
@@ -154,6 +167,7 @@
     <file>sioul/22/insert-link.svg</file>
     <file>sioul/22/internet-services.svg</file>
     <file>sioul/22/list-add.svg</file>
+    <file>sioul/22/love.svg</file>
     <file>sioul/22/mail-attachment.svg</file>
     <file>sioul/22/mail-flag.svg</file>
     <file>sioul/22/mail-folder-inbox.svg</file>
@@ -174,25 +188,33 @@
     <file>sioul/22/media-playback-start.svg</file>
     <file>sioul/22/media-playback-stop.svg</file>
     <file>sioul/22/media-record.svg</file>
+    <file>sioul/22/notification-disabled.svg</file>
+    <file>sioul/22/notification-inactive.svg</file>
     <file>sioul/22/overflow-menu.svg</file>
     <file>sioul/22/package-x-generic.svg</file>
     <file>sioul/22/password-copy.svg</file>
+    <file>sioul/22/pin.svg</file>
     <file>sioul/22/run-build.svg</file>
     <file>sioul/22/security-high.svg</file>
     <file>sioul/22/security-low.svg</file>
     <file>sioul/22/security-medium.svg</file>
     <file>sioul/22/settings-configure.svg</file>
+    <file>sioul/22/sidebar-collapse-left.svg</file>
+    <file>sioul/22/sidebar-expand-left.svg</file>
     <file>sioul/22/system-search.svg</file>
     <file>sioul/22/system-users.svg</file>
     <file>sioul/22/task-complete.svg</file>
     <file>sioul/22/task-new.svg</file>
     <file>sioul/22/text-x-generic.svg</file>
     <file>sioul/22/user-identity.svg</file>
+    <file>sioul/22/user-properties.svg</file>
     <file>sioul/22/user-trash.svg</file>
     <file>sioul/22/view-bank.svg</file>
     <file>sioul/22/view-calendar-day.svg</file>
+    <file>sioul/22/view-calendar-tasks.svg</file>
     <file>sioul/22/view-calendar-timeline.svg</file>
     <file>sioul/22/view-calendar.svg</file>
+    <file>sioul/22/view-certificate.svg</file>
     <file>sioul/22/view-filter.svg</file>
     <file>sioul/22/view-financial-account-add.svg</file>
     <file>sioul/22/view-financial-account-cash.svg</file>
@@ -208,6 +230,7 @@
     <file>sioul/22/view-sort.svg</file>
     <file>sioul/22/view-task.svg</file>
     <file>sioul/22/view-visible.svg</file>
+    <file>sioul/22/wallet-open.svg</file>
     <file>sioul/22/x-office-document.svg</file>
     <file>sioul/32/application-menu.svg</file>
     <file>sioul/32/application-pdf.svg</file>
@@ -230,12 +253,15 @@
     <file>sioul/32/folder-new.svg</file>
     <file>sioul/32/folder-trash.svg</file>
     <file>sioul/32/folder.svg</file>
+    <file>sioul/32/globe.svg</file>
     <file>sioul/32/go-bottom.svg</file>
     <file>sioul/32/go-down.svg</file>
+    <file>sioul/32/go-next.svg</file>
     <file>sioul/32/go-previous.svg</file>
     <file>sioul/32/go-up.svg</file>
     <file>sioul/32/image-x-generic.svg</file>
     <file>sioul/32/inode-directory.svg</file>
+    <file>sioul/32/love.svg</file>
     <file>sioul/32/mail-attachment.svg</file>
     <file>sioul/32/mail-flag.svg</file>
     <file>sioul/32/mail-forward.svg</file>
@@ -309,6 +335,7 @@
     <file>sioul-dark/16/camera-video.svg</file>
     <file>sioul-dark/16/chronometer-start.svg</file>
     <file>sioul-dark/16/chronometer.svg</file>
+    <file>sioul-dark/16/clock.svg</file>
     <file>sioul-dark/16/contact-new.svg</file>
     <file>sioul-dark/16/dialog-cancel.svg</file>
     <file>sioul-dark/16/dialog-ok-apply.svg</file>
@@ -333,8 +360,10 @@
     <file>sioul-dark/16/folder-trash.svg</file>
     <file>sioul-dark/16/folder.svg</file>
     <file>sioul-dark/16/games-hint.svg</file>
+    <file>sioul-dark/16/globe.svg</file>
     <file>sioul-dark/16/go-bottom.svg</file>
     <file>sioul-dark/16/go-down.svg</file>
+    <file>sioul-dark/16/go-next.svg</file>
     <file>sioul-dark/16/go-previous.svg</file>
     <file>sioul-dark/16/go-up.svg</file>
     <file>sioul-dark/16/im-user.svg</file>
@@ -343,6 +372,7 @@
     <file>sioul-dark/16/insert-link.svg</file>
     <file>sioul-dark/16/internet-services.svg</file>
     <file>sioul-dark/16/list-add.svg</file>
+    <file>sioul-dark/16/love.svg</file>
     <file>sioul-dark/16/mail-attachment.svg</file>
     <file>sioul-dark/16/mail-flag.svg</file>
     <file>sioul-dark/16/mail-folder-inbox.svg</file>
@@ -367,20 +397,25 @@
     <file>sioul-dark/16/overflow-menu.svg</file>
     <file>sioul-dark/16/package-x-generic.svg</file>
     <file>sioul-dark/16/password-copy.svg</file>
+    <file>sioul-dark/16/pin.svg</file>
     <file>sioul-dark/16/run-build.svg</file>
     <file>sioul-dark/16/security-high.svg</file>
     <file>sioul-dark/16/security-low.svg</file>
     <file>sioul-dark/16/security-medium.svg</file>
     <file>sioul-dark/16/settings-configure.svg</file>
+    <file>sioul-dark/16/sidebar-collapse-left.svg</file>
+    <file>sioul-dark/16/sidebar-expand-left.svg</file>
     <file>sioul-dark/16/system-search.svg</file>
     <file>sioul-dark/16/system-users.svg</file>
     <file>sioul-dark/16/task-complete.svg</file>
     <file>sioul-dark/16/task-new.svg</file>
     <file>sioul-dark/16/text-x-generic.svg</file>
     <file>sioul-dark/16/user-identity.svg</file>
+    <file>sioul-dark/16/user-properties.svg</file>
     <file>sioul-dark/16/user-trash.svg</file>
     <file>sioul-dark/16/view-bank.svg</file>
     <file>sioul-dark/16/view-calendar-day.svg</file>
+    <file>sioul-dark/16/view-calendar-tasks.svg</file>
     <file>sioul-dark/16/view-calendar-timeline.svg</file>
     <file>sioul-dark/16/view-calendar.svg</file>
     <file>sioul-dark/16/view-filter.svg</file>
@@ -415,6 +450,7 @@
     <file>sioul-dark/22/camera-video.svg</file>
     <file>sioul-dark/22/chronometer-start.svg</file>
     <file>sioul-dark/22/chronometer.svg</file>
+    <file>sioul-dark/22/clock.svg</file>
     <file>sioul-dark/22/contact-new.svg</file>
     <file>sioul-dark/22/dialog-cancel.svg</file>
     <file>sioul-dark/22/dialog-ok-apply.svg</file>
@@ -433,14 +469,17 @@
     <file>sioul-dark/22/edit-copy.svg</file>
     <file>sioul-dark/22/edit-undo.svg</file>
     <file>sioul-dark/22/emblem-favorite.svg</file>
+    <file>sioul-dark/22/flower-shape.svg</file>
     <file>sioul-dark/22/folder-documents.svg</file>
     <file>sioul-dark/22/folder-mail.svg</file>
     <file>sioul-dark/22/folder-new.svg</file>
     <file>sioul-dark/22/folder-trash.svg</file>
     <file>sioul-dark/22/folder.svg</file>
     <file>sioul-dark/22/games-hint.svg</file>
+    <file>sioul-dark/22/globe.svg</file>
     <file>sioul-dark/22/go-bottom.svg</file>
     <file>sioul-dark/22/go-down.svg</file>
+    <file>sioul-dark/22/go-next.svg</file>
     <file>sioul-dark/22/go-previous.svg</file>
     <file>sioul-dark/22/go-up.svg</file>
     <file>sioul-dark/22/im-user.svg</file>
@@ -449,6 +488,7 @@
     <file>sioul-dark/22/insert-link.svg</file>
     <file>sioul-dark/22/internet-services.svg</file>
     <file>sioul-dark/22/list-add.svg</file>
+    <file>sioul-dark/22/love.svg</file>
     <file>sioul-dark/22/mail-attachment.svg</file>
     <file>sioul-dark/22/mail-flag.svg</file>
     <file>sioul-dark/22/mail-folder-inbox.svg</file>
@@ -469,25 +509,33 @@
     <file>sioul-dark/22/media-playback-start.svg</file>
     <file>sioul-dark/22/media-playback-stop.svg</file>
     <file>sioul-dark/22/media-record.svg</file>
+    <file>sioul-dark/22/notification-disabled.svg</file>
+    <file>sioul-dark/22/notification-inactive.svg</file>
     <file>sioul-dark/22/overflow-menu.svg</file>
     <file>sioul-dark/22/package-x-generic.svg</file>
     <file>sioul-dark/22/password-copy.svg</file>
+    <file>sioul-dark/22/pin.svg</file>
     <file>sioul-dark/22/run-build.svg</file>
     <file>sioul-dark/22/security-high.svg</file>
     <file>sioul-dark/22/security-low.svg</file>
     <file>sioul-dark/22/security-medium.svg</file>
     <file>sioul-dark/22/settings-configure.svg</file>
+    <file>sioul-dark/22/sidebar-collapse-left.svg</file>
+    <file>sioul-dark/22/sidebar-expand-left.svg</file>
     <file>sioul-dark/22/system-search.svg</file>
     <file>sioul-dark/22/system-users.svg</file>
     <file>sioul-dark/22/task-complete.svg</file>
     <file>sioul-dark/22/task-new.svg</file>
     <file>sioul-dark/22/text-x-generic.svg</file>
     <file>sioul-dark/22/user-identity.svg</file>
+    <file>sioul-dark/22/user-properties.svg</file>
     <file>sioul-dark/22/user-trash.svg</file>
     <file>sioul-dark/22/view-bank.svg</file>
     <file>sioul-dark/22/view-calendar-day.svg</file>
+    <file>sioul-dark/22/view-calendar-tasks.svg</file>
     <file>sioul-dark/22/view-calendar-timeline.svg</file>
     <file>sioul-dark/22/view-calendar.svg</file>
+    <file>sioul-dark/22/view-certificate.svg</file>
     <file>sioul-dark/22/view-filter.svg</file>
     <file>sioul-dark/22/view-financial-account-add.svg</file>
     <file>sioul-dark/22/view-financial-account-cash.svg</file>
@@ -503,6 +551,7 @@
     <file>sioul-dark/22/view-sort.svg</file>
     <file>sioul-dark/22/view-task.svg</file>
     <file>sioul-dark/22/view-visible.svg</file>
+    <file>sioul-dark/22/wallet-open.svg</file>
     <file>sioul-dark/22/x-office-document.svg</file>
     <file>sioul-dark/32/application-menu.svg</file>
     <file>sioul-dark/32/application-pdf.svg</file>
@@ -525,12 +574,15 @@
     <file>sioul-dark/32/folder-new.svg</file>
     <file>sioul-dark/32/folder-trash.svg</file>
     <file>sioul-dark/32/folder.svg</file>
+    <file>sioul-dark/32/globe.svg</file>
     <file>sioul-dark/32/go-bottom.svg</file>
     <file>sioul-dark/32/go-down.svg</file>
+    <file>sioul-dark/32/go-next.svg</file>
     <file>sioul-dark/32/go-previous.svg</file>
     <file>sioul-dark/32/go-up.svg</file>
     <file>sioul-dark/32/image-x-generic.svg</file>
     <file>sioul-dark/32/inode-directory.svg</file>
+    <file>sioul-dark/32/love.svg</file>
     <file>sioul-dark/32/mail-attachment.svg</file>
     <file>sioul-dark/32/mail-flag.svg</file>
     <file>sioul-dark/32/mail-forward.svg</file>

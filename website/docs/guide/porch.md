@@ -14,12 +14,12 @@ The Porch is where new mail waits until you look: from every address, checked (g
 ## When it opens
 
 - **In your hours**, the Porch says until when it is open ("Open until 17:00."), then shows what came, sorted into lanes.
-- **Outside your hours**, the Porch says when it opens next, and nothing else: no counts, no names. **Open it anyway** stays possible, quietly. Meanwhile, what comes is checked and sorted.
+- **Outside your hours**, the Porch says when it opens next, and nothing else of your mail: no counts, no names. Your doses of the day still show (below). **Open it anyway** stays possible, quietly. Meanwhile, what comes is checked and sorted.
 - **Without any hours set**, the Porch is always open.
 
 Which mail comes when follows who wrote, list by list, at the times you tick for each list, and what each address is for: work, your admin, leisure. See [Who may write to you](accounts.md#senders) and [Hours](hours.md).
 
-Mail keeps arriving in the background all the while. The Porch only decides when it is shown.
+Mail keeps arriving in the background all the while. The Porch only decides when it is shown, and when it is told ([below](#new-mail-told-at-its-times)).
 
 ## Codes and links come at once
 
@@ -31,6 +31,16 @@ One-time codes, temporary passwords, password resets, sign-in links and links to
 Nothing else opens with it. Once it has expired, it is hidden, and the message goes to its lane. It expires when the message says, else when its kind usually does: a code after 30 minutes, a sign-in link after an hour, a password reset after two hours, a link to confirm an address after a day, a temporary password after a week.
 
 Fake "your code" messages are a common phishing trick. A forged one is set aside. One from a sender that is only *not verified* still comes, with a warning: use it only if you just asked that site for it.
+
+## New mail, told at its times
+
+When mail your lists let through now arrives, one quiet notification says it, for the whole batch: "Two letters", and the first senders with their subjects: "Murena, Your invoice · Alice, Dinner on Friday". **Open** shows the Porch.
+
+- **What waited** (mail that came outside its list's times, while you slept or paused) is told once, when its time comes: "The Porch opens: three letters wait for you."
+- **Never** for codes (they have their own, above), mail set aside, blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.
+- **No sound.** With a phone and a computer, only the one you used last tells.
+
+Settings ▸ Reminders and notifications ▸ **New mail: notify at the times it may come**, and **Include newsletters** ([Settings](settings.md#reminders-and-notifications)).
 
 ## The lanes
 
@@ -99,6 +109,7 @@ When there is something, a few lines come before the lanes:
 - **When your night is not set**, a card says that nothing keeps notifications away while you sleep, with **Set my night** (which opens the Health page where meals and the night are set) and **Leave as is**. See [Hours](hours.md#sleep).
 - **Where you stopped**: the line you left when something interrupted you, with its task, until you press **Done**. See [Tasks](tasks.md#starting-and-stopping).
 - **Two events at once today**, the time to get there and back counted, with **Open "…"** for each and **Don't mention it again**. See [Agenda](agenda.md#two-events-at-once).
+- **Today's doses not marked yet**, from their time on, whether a notification reminded you or not: each with its time, its name and **Taken** (more than half an hour late, **Taken…** asks when you took it). Whatever your hours: a dose is not mail. Each stays until you mark it, the day ends or twelve hours have passed; while you sleep with doses kept silent, they wait for your waking. When another device may know more, the doubt is said under the dose: check before taking it. See [Health](health.md#reminders).
 - **Doses due while Sioul was closed**, neither marked nor reminded anywhere: **Taken…** (when you took it) or **Not taken**. When another device may know more, the doubt is said under the dose. See [Health](health.md#reminders).
 - **"*The site* has news"**: what the websites you keep in Sioul notified, waiting for you. Opening the site clears its news. See [Sites](sites.md).
 - **Paper letters** you scanned, each as a card: who, what, how much, by when. See [Papers and letters](papers.md#paper-letters).
@@ -137,7 +148,7 @@ On each address's card in Accounts, **Priority**: *More important*, *Normal* or 
 ## Why it works this way
 
 - Checking mail three times a day lowered daily stress in a randomised trial (Kushlev & Dunn 2015). Batching notifications helped attention and mood, while having none at all made people more anxious (Fitz et al. 2019): what helps is predictability, not silence. So the Porch opens in hours you choose, and says when.
-- Interrupted people work faster, with more stress and frustration (Mark, Gudith & Klocke 2008), and a notification left unanswered still costs attention (Stothart, Mitchum & Yehnert 2015). So nothing pops up, and nothing moves under your eyes when mail arrives.
+- Interrupted people work faster, with more stress and frustration (Mark, Gudith & Klocke 2008), and a notification left unanswered still costs attention (Stothart, Mitchum & Yehnert 2015). So nothing pops up outside the times you choose, one notification says a whole batch, and nothing moves under your eyes when mail arrives.
 - People avoid information they expect to hurt (Sweeny et al. 2010). So what a message is, who sent it and how far that is verified come before its text.
 
 More in [what the research says](../dev/research.md).

@@ -5,8 +5,11 @@
 // where and as long as it happens, side by side with what overlaps it. Whole
 // days sit in a band on top. Only the hours given to work, your admin or free
 // time are shown, and those of any event outside them: not the night. They
-// fill the height, scrolled only when that would make an hour too thin. A
-// quiet line marks now. A double click on an empty hour makes an event there.
+// fill the height, and grow past it, scrolled, until each event's title reads
+// whole in its card: on a phone's week the cards are narrow and their titles
+// take several lines (up to `zoomMost` an hour; past it, the shortest end their
+// title with "…"). A quiet line marks now. A double click on an empty hour
+// makes an event there.
 //
 // An event is moved by hand (docs/client.md, "Calendars"): dragged, it keeps
 // its length, to another time, and in the week to another day; by its
@@ -33,7 +36,9 @@ ColumnLayout {
     required property var locale
     // The event open on the right, to show it chosen.
     property var opened: null
-    readonly property int gutter: 52
+    // A phone's width: the hours' column narrower, so the days get the room.
+    readonly property bool narrow: planning.width < 600
+    readonly property int gutter: planning.narrow ? 40 : 52
     // The hours shown, in minutes from midnight, whole hours: those given to
     // something (docs/areas.md), else the usual day from its start to 22:00;
     // widened to every event of the days shown.
@@ -63,9 +68,71 @@ ColumnLayout {
         return { from: from, to: to }
     }
     readonly property int hoursShown: (planning.range.to - planning.range.from) / 60
-    // As tall as the window allows; never thinner than a line of text.
-    readonly property real hourHeight: Math.max(30, hours.height / Math.max(1, planning.hoursShown))
     readonly property real dayWidth: Math.max(40, (planning.width - planning.gutter - 12) / Math.max(1, planning.days.length))
+
+    // The cards' type, measured: the lines a title takes at its card's width.
+    readonly property real titleLine: Math.ceil(Math.max(titleFont.height, titleFont.lineSpacing))
+    readonly property real timeLine: Math.ceil(Math.max(timeFont.height, timeFont.lineSpacing))
+    // Above and under a card's text; a card is never less than one line of title.
+    readonly property int cardPadding: 4
+    readonly property real cardLeast: planning.cardPadding + planning.titleLine
+    // An hour at most this tall: past it, the shortest cards end their title with "…".
+    readonly property real zoomMost: 160
+
+    // The width a card gives its text: its slot among what overlaps it, less
+    // its colour bar and margins (`block` below).
+    function textWidthOf(event) {
+        return (planning.dayWidth - 4) / Math.max(1, event.columns) - 2 - 8
+    }
+
+    // The lines `text` takes at `width`, as a card's title wraps it: words to a
+    // line while they fit, a word longer than the line broken where it must.
+    function linesOf(text, width) {
+        if (width <= 0)
+            return 1
+        const space = titleFont.advanceWidth(" ")
+        let lines = 1
+        let used = 0
+        for (const word of String(text).split(/\s+/)) {
+            if (word === "")
+                continue
+            let w = titleFont.advanceWidth(word)
+            if (used > 0 && used + space + w <= width) {
+                used += space + w
+                continue
+            }
+            if (used > 0)
+                lines += 1
+            while (w > width) {
+                lines += 1
+                w -= width
+            }
+            used = w
+        }
+        return lines
+    }
+
+    // How tall an hour must be for every card to show its whole title: the
+    // tallest that one of them asks, by its title's lines over its length.
+    // A title on one line asks nothing: a card's least height holds it.
+    readonly property real legibleHour: {
+        let most = 0
+        for (const day of planning.days) {
+            for (const event of day.events) {
+                if (event.all_day)
+                    continue
+                const lines = planning.linesOf(event.summary, planning.textWidthOf(event))
+                if (lines < 2)
+                    continue
+                const length = Math.max(5, event.to_minute - event.from_minute) / 60
+                most = Math.max(most, (planning.cardPadding + lines * planning.titleLine + 1) / length)
+            }
+        }
+        return most
+    }
+    // As tall as the window allows, never thinner than a line of text; taller,
+    // scrolled, when a card would cut its title, up to `zoomMost`.
+    readonly property real hourHeight: Math.max(30, hours.height / Math.max(1, planning.hoursShown), Math.min(planning.zoomMost, planning.legibleHour))
 
     // Where a minute of the day sits.
     function yOf(minute) {
@@ -87,14 +154,13 @@ ColumnLayout {
 
     // When the hours do not all fit: on today, an hour before now; else the first.
     function scrollToStart() {
-        const minutes = planning.days.some(d => d.today) ? Math.max(planning.range.from, planning.minutesNow() - 60) : planning.range.from
+        const minutes = planning.todayIndex >= 0 ? Math.max(planning.range.from, planning.minuteNow - 60) : planning.range.from
         hours.contentY = Math.max(0, Math.min(planning.yOf(minutes) - 4, hours.contentHeight - hours.height))
     }
 
     onVisibleChanged: {
         if (!planning.visible)
             return
-        planning.now = planning.minutesNow()
         Qt.callLater(planning.scrollToStart)
     }
     // The days read again: what was drawn where an event went is the event itself now.
@@ -104,18 +170,27 @@ ColumnLayout {
             Qt.callLater(planning.scrollToStart)
     }
 
-    function minutesNow() {
-        const now = new Date()
-        return now.getHours() * 60 + now.getMinutes()
+    // Now on the clock (Unix seconds) and today ("2026-10-06"): the window's
+    // clock (main.qml), moved at each minute's turn and when the app comes
+    // back. Only the line follows it, and today's marks when the day turns.
+    property real now: Date.now() / 1000
+    property string today: {
+        const d = new Date()
+        const pad = n => n < 10 ? "0" + n : String(n)
+        return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
     }
-
-    // Now, in minutes from midnight, for its line: moved on each minute while shown.
-    property int now: planning.minutesNow()
+    // Now in minutes from midnight, for its line.
+    readonly property int minuteNow: {
+        const d = new Date(planning.now * 1000)
+        return d.getHours() * 60 + d.getMinutes()
+    }
+    // Today's column among the days shown; -1 when today is not shown.
+    readonly property int todayIndex: planning.days.findIndex(d => d.date === planning.today)
 
     // An event's block, as its column draws it: {x, y, width, height} in the hours' content.
     function blockOf(event, column) {
         const slot = (planning.dayWidth - 4) / Math.max(1, event.columns)
-        return { x: planning.gutter + column * planning.dayWidth + 2 + event.column * slot, y: planning.yOf(event.from_minute), width: slot - 2, height: Math.max(18, (event.to_minute - event.from_minute) / 60 * planning.hourHeight - 1) }
+        return { x: planning.gutter + column * planning.dayWidth + 2 + event.column * slot, y: planning.yOf(event.from_minute), width: slot - 2, height: Math.max(planning.cardLeast, (event.to_minute - event.from_minute) / 60 * planning.hourHeight - 1) }
     }
 
     // Its end in this day's column, not cut at midnight: its bottom edge is its end.
@@ -234,15 +309,32 @@ ColumnLayout {
         onTriggered: planning.landed = null
     }
 
-    Timer {
-        interval: 60000
-        running: planning.visible && !planning.sioul.away
-        repeat: true
-        triggeredOnStart: true
-        onTriggered: planning.now = planning.minutesNow()
-    }
-
     spacing: 4
+
+    // The cards' type, for measuring their titles and times: as their labels
+    // have it (the window's family, these sizes). Never shown.
+    Label {
+        id: titleType
+
+        visible: false
+        font.pixelSize: 12
+    }
+    Label {
+        id: timeType
+
+        visible: false
+        font.pixelSize: 11
+    }
+    FontMetrics {
+        id: titleFont
+
+        font: titleType.font
+    }
+    FontMetrics {
+        id: timeFont
+
+        font: timeType.font
+    }
 
     // The days.
     RowLayout {
@@ -265,8 +357,8 @@ ColumnLayout {
                 // Narrow days (a phone's week): the weekday above its number.
                 text: planning.dayWidth < 64 ? new Date(dayTitle.modelData.date + "T12:00:00").toLocaleDateString(planning.locale, "ddd") + "\n" + Number(dayTitle.modelData.date.slice(8, 10)) : new Date(dayTitle.modelData.date + "T12:00:00").toLocaleDateString(planning.locale, "ddd d")
                 textFormat: Text.PlainText
-                font.weight: dayTitle.modelData.today ? Font.Bold : Font.DemiBold
-                color: dayTitle.modelData.today ? planning.theme.accent : planning.theme.text
+                font.weight: dayTitle.modelData.date === planning.today ? Font.Bold : Font.DemiBold
+                color: dayTitle.modelData.date === planning.today ? planning.theme.accent : planning.theme.text
             }
         }
     }
@@ -409,7 +501,7 @@ ColumnLayout {
 
                     Rectangle {
                         anchors.fill: parent
-                        color: column.modelData.today ? planning.theme.surface : "transparent"
+                        color: column.index === planning.todayIndex ? planning.theme.surface : "transparent"
                         opacity: 0.6
                         border.color: planning.theme.line
                         border.width: 0
@@ -432,10 +524,30 @@ ColumnLayout {
                             readonly property bool taken: planning.grab !== null && planning.grab.event.key === block.modelData.key && planning.grab.event.start === block.modelData.start
                             readonly property bool away: (block.taken && drag.dragging) || (planning.landed !== null && planning.landed.event.key === block.modelData.key && planning.landed.event.start === block.modelData.start)
 
+                            // Its text's width, the lines its title takes there, and the lines its height gives it.
+                            readonly property real textWidth: block.width - 8
+                            readonly property int lines: planning.linesOf(block.modelData.summary, block.textWidth)
+                            readonly property int room: Math.max(1, Math.floor((block.height - planning.cardPadding) / planning.titleLine))
+                            // Its time under the whole title, when there is a line for it: with its
+                            // place when that fits the card's width, else alone, else its start alone
+                            // (a phone's week: "09:00"); none in a card too small.
+                            readonly property string time: {
+                                if (block.height < planning.cardPadding + block.lines * planning.titleLine + planning.timeLine)
+                                    return ""
+                                const when = block.modelData.when
+                                const placed = when + (block.modelData.location ? "  ·  " + block.modelData.location : "")
+                                if (timeFont.advanceWidth(placed) <= block.textWidth)
+                                    return placed
+                                if (timeFont.advanceWidth(when) <= block.textWidth)
+                                    return when
+                                const start = /^\d{1,2}:\d{2}/.exec(when)
+                                return start && timeFont.advanceWidth(start[0]) <= block.textWidth ? start[0] : ""
+                            }
+
                             x: 2 + block.modelData.column * block.slot
                             y: planning.yOf(block.modelData.from_minute)
                             width: block.slot - 2
-                            height: Math.max(18, (block.modelData.to_minute - block.modelData.from_minute) / 60 * planning.hourHeight - 1)
+                            height: Math.max(planning.cardLeast, (block.modelData.to_minute - block.modelData.from_minute) / 60 * planning.hourHeight - 1)
                             radius: 4
                             color: planning.chosen(block.modelData) ? planning.theme.line : planning.theme.background
                             border.color: block.taken ? planning.theme.accent : block.modelData.color ? block.modelData.color : planning.theme.accent
@@ -453,44 +565,50 @@ ColumnLayout {
                             }
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 7
-                                anchors.rightMargin: 3
-                                anchors.topMargin: 2
+                                anchors.leftMargin: 6
+                                anchors.rightMargin: 2
+                                anchors.topMargin: planning.cardPadding / 2
                                 spacing: 0
 
+                                // The whole title, on as many lines as it takes and the card holds.
                                 Label {
                                     Layout.fillWidth: true
                                     text: block.modelData.summary
                                     textFormat: Text.PlainText
                                     elide: Text.ElideRight
-                                    wrapMode: block.height > 40 ? Text.Wrap : Text.NoWrap
-                                    maximumLineCount: 2
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: block.room
+                                    // As `titleType`, which measures it.
                                     font.pixelSize: 12
                                     font.strikeout: block.modelData.cancelled
                                     color: planning.theme.text
                                 }
                                 Label {
-                                    visible: block.height > 34
+                                    visible: block.time !== ""
                                     Layout.fillWidth: true
-                                    text: block.modelData.when + (block.modelData.location ? "  ·  " + block.modelData.location : "")
+                                    text: block.time
                                     textFormat: Text.PlainText
                                     elide: Text.ElideRight
+                                    // As `timeType`, which measures it.
                                     font.pixelSize: 11
                                     color: planning.theme.muted
                                 }
                             }
                         }
                     }
-
-                    // Now: a quiet line in today's column.
-                    Rectangle {
-                        visible: column.modelData.today && planning.now >= planning.range.from && planning.now <= planning.range.to
-                        y: planning.yOf(planning.now)
-                        width: parent.width
-                        height: 2
-                        color: planning.theme.accent
-                    }
                 }
+            }
+
+            // Now: a quiet line in today's column, one for the planning; the
+            // clock moves it alone, nothing else is laid again.
+            Rectangle {
+                objectName: "nowLine"
+                visible: planning.todayIndex >= 0 && planning.minuteNow >= planning.range.from && planning.minuteNow <= planning.range.to
+                x: planning.gutter + Math.max(0, planning.todayIndex) * planning.dayWidth
+                y: planning.yOf(planning.minuteNow)
+                width: planning.dayWidth
+                height: 2
+                color: planning.theme.accent
             }
 
             // Where the event taken goes, and a tag with its times above it, out
@@ -508,7 +626,7 @@ ColumnLayout {
                 x: ghost.day ? planning.gutter + ghost.shownAt.column * planning.dayWidth + 2 : 0
                 y: planning.yOf(ghost.from)
                 width: planning.dayWidth - 4
-                height: Math.max(18, (ghost.until - ghost.from) / 60 * planning.hourHeight - 1)
+                height: Math.max(planning.cardLeast, (ghost.until - ghost.from) / 60 * planning.hourHeight - 1)
                 radius: 4
                 color: Qt.rgba(planning.theme.accent.r, planning.theme.accent.g, planning.theme.accent.b, 0.16)
                 border.color: planning.theme.accent

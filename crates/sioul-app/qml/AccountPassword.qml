@@ -3,8 +3,8 @@
 
 // An account's password, given on this device: an account come from another
 // device arrives without one, since passwords never travel. Typed, or taken
-// from your Bitwarden vault, searched by the account's address; tested with
-// the account's server before this device's keyring keeps it.
+// from your Bitwarden vault, found by its address as the user name; tested
+// with the account's server before this device's keyring keeps it.
 
 pragma ComponentBehavior: Bound
 
@@ -23,6 +23,8 @@ Dialog {
     property string note: ""
     // Bitwarden: "missing" (no account set), "locked" or "unlocked".
     property string vault: "missing"
+    // Google's mail (Gmail, Google Workspace): an app password, never the account's own.
+    readonly property bool google: dialog.account !== null && (dialog.account.host || "").toLowerCase() === "imap.gmail.com"
 
     function ask(account) {
         dialog.account = account
@@ -39,7 +41,7 @@ Dialog {
         return dialog.account !== null && dialog.account.host ? "https://" + dialog.account.host : ""
     }
 
-    // The vault opened first when it is locked; then its logins, searched by the account's address.
+    // The vault opened first when it is locked; then its logins, found by the account's address as the user name.
     function fromVault() {
         dialog.problem = ""
         dialog.vault = dialog.sioul.bitwardenState()
@@ -48,7 +50,7 @@ Dialog {
         else if (dialog.vault === "locked")
             unlock.begin()
         else
-            chooser.begin(dialog.site(), dialog.account.address || "")
+            chooser.now().beginForAccount(dialog.site(), dialog.account.address || "")
     }
 
     // A login chosen in the vault: its password tested and kept at once.
@@ -74,7 +76,7 @@ Dialog {
     anchors.centerIn: parent
     modal: true
     width: Math.min(460, (parent ? parent.width : 460) - 2 * dialog.theme.gap)
-    title: dialog.account !== null ? dialog.sioul.textWith("account-password-title", "account", dialog.account.address || dialog.account.id) : ""
+    title: dialog.account !== null ? (dialog.google ? dialog.sioul.textWith("account-app-password-title", "account", dialog.account.address || dialog.account.id) : dialog.sioul.textWith("account-password-title", "account", dialog.account.address || dialog.account.id)) : ""
     onClosed: password.text = ""
 
     Connections {
@@ -95,16 +97,24 @@ Dialog {
 
         Label {
             Layout.fillWidth: true
-            text: dialog.sioul.text("account-password-help")
+            text: dialog.google ? dialog.sioul.text("ui-gmail-app-password-guide") : dialog.sioul.text("account-password-help")
             wrapMode: Text.Wrap
             color: dialog.theme.text
+        }
+        // Google's page for app passwords, in the system's browser.
+        Button {
+            visible: dialog.google
+            text: dialog.sioul.text("ui-app-passwords")
+            icon.name: "internet-web-browser"
+            icon.color: dialog.theme.text
+            onClicked: Qt.openUrlExternally("https://myaccount.google.com/apppasswords")
         }
         PasswordField {
             id: password
 
             sioul: dialog.sioul
             Layout.fillWidth: true
-            placeholderText: dialog.sioul.text("ui-password")
+            placeholderText: dialog.google ? dialog.sioul.text("ui-gmail-app-password-field") : dialog.sioul.text("ui-password")
             onAccepted: dialog.keep()
         }
         Button {
@@ -156,16 +166,23 @@ Dialog {
         theme: dialog.theme
         onUnlocked: {
             dialog.vault = "unlocked"
-            chooser.begin(dialog.site(), dialog.account.address || "")
+            chooser.now().beginForAccount(dialog.site(), dialog.account.address || "")
         }
     }
 
-    LoginChooser {
+    // Made the first time. Another domain than the server's is no warning
+    // here: the password goes to the account's own server.
+    Later {
         id: chooser
 
-        sioul: dialog.sioul
-        theme: dialog.theme
-        takeText: dialog.sioul.text("account-password-use")
-        onChosen: item => dialog.take(item)
+        sourceComponent: Component {
+            LoginChooser {
+                sioul: dialog.sioul
+                theme: dialog.theme
+                warnElsewhere: false
+                takeText: dialog.sioul.text("account-password-use")
+                onChosen: item => dialog.take(item)
+            }
+        }
     }
 }

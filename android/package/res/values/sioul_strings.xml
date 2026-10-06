@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<resources>
+    <!-- The pause's button outside Sioul: the home screen's shortcut, the
+         quick-settings tile. "Pause" in French too. -->
+    <string name="sioul_pause">Pause</string>
+</resources>

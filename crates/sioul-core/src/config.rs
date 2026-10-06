@@ -22,6 +22,10 @@ pub struct Config {
     /// "light" or "dark"; the system's colours if unset.
     #[serde(default)]
     pub theme: Option<String>,
+    /// The places, on the left of the window, with their names beside their
+    /// icons: for whoever reads words more easily than icons. Their icons alone if unset.
+    #[serde(default)]
+    pub places_named: bool,
     /// The folder of Markdown files that holds the record of each case.
     pub case_store: Option<String>,
     /// Projects, budgets and the bank's movements (`sioul-cases.toml`,
@@ -67,6 +71,15 @@ pub struct Config {
     /// Reminders before dates: events, dates asked, waits, payments (docs/reminders.md).
     #[serde(default)]
     pub reminders: ReminderSettings,
+    /// Free time, the global pause (`[free_time]`, docs/pauses.md).
+    #[serde(default)]
+    pub free_time: crate::pause::FreeTimeSettings,
+    /// The pause, set up on a calm day (`[pause]`, docs/pauses.md).
+    #[serde(default)]
+    pub pause: crate::pause::PauseSettings,
+    /// Do-not-disturb on every device: what turns it on, who gets through (`[dnd]`, docs/do-not-disturb.md).
+    #[serde(default)]
+    pub dnd: crate::everywhere::DndSettings,
     /// Paper letters: where their scans arrive (docs/porch.md).
     #[serde(default)]
     pub letters: LetterSettings,
@@ -250,6 +263,14 @@ pub struct TaskSettings {
     /// The kinds of task, as you named them (`[[tasks.kind]]`); Sioul's when unsaid.
     #[serde(rename = "kind", default)]
     pub kinds: Option<Vec<TaskKind>>,
+    /// The calendar time blocks go into, "account/id" (docs/tasks.md, "Pinned
+    /// to a time"); unsaid: "Planned tasks", made at first use with the task's list.
+    #[serde(default)]
+    pub blocks: Option<String>,
+    /// An alarm in each block made or moved, five minutes before it; off when
+    /// unsaid (Sioul reminds of blocks as of events; a phone would remind twice).
+    #[serde(default)]
+    pub block_alarms: bool,
 }
 
 /// What a day holds, as the plan learns it from your days (docs/capacity.md).
@@ -417,6 +438,17 @@ pub struct ReminderSettings {
     /// wait for waking.
     #[serde(default = "yes")]
     pub doses_in_sleep: bool,
+    /// Minutes before an event, counted before its margin "before" (getting
+    /// ready, getting there), its reminder; 0 for none. Each event may say its
+    /// own (`X-SIOUL-REMIND`, docs/reminders.md).
+    #[serde(default = "fifteen")]
+    pub before_event: u32,
+    /// New mail notified, once per batch, at the times it may come (docs/porch.md, "Notifications").
+    #[serde(default = "yes")]
+    pub mail: bool,
+    /// Newsletters among it (the Filed lane's lists); automatic senders (a bill from no-reply) are.
+    #[serde(default)]
+    pub mail_newsletters: bool,
 }
 
 impl ReminderSettings {
@@ -429,12 +461,16 @@ impl ReminderSettings {
 
 impl Default for ReminderSettings {
     fn default() -> Self {
-        ReminderSettings { events: true, asked_days: 2, payment_days: 2, waits: true, gather: true, gathered: None, doses_in_sleep: true }
+        ReminderSettings { events: true, asked_days: 2, payment_days: 2, waits: true, gather: true, gathered: None, doses_in_sleep: true, before_event: 15, mail: true, mail_newsletters: false }
     }
 }
 
 fn two() -> u32 {
     2
+}
+
+fn fifteen() -> u32 {
+    15
 }
 
 /// What GitHub brings, once asked; its token is in the keyring.
@@ -938,6 +974,10 @@ pub fn add_imap_account(path: &Path, account: &Account) -> Result<(), String> {
     if let Some(days) = account.sync_days {
         table["sync_days"] = value(i64::from(days));
     }
+    // Signed in with Google (its access token, not a password: docs/google.md, "Mail").
+    if let Some(auth) = &account.auth {
+        table["auth"] = value(auth.as_str());
+    }
     table["trusted_authserv_ids"] = value(account.trusted_authserv_ids.iter().map(String::as_str).collect::<Array>());
     append_account(path, table)
 }
@@ -1155,6 +1195,24 @@ pub fn remove_account(path: &Path, id: &str) -> Result<(), String> {
 /// Records the authserv-ids to trust for an account (learned at its first sync).
 pub fn set_trusted_ids(path: &Path, id: &str, ids: &[String]) -> Result<(), String> {
     set_account_item(path, id, "trusted_authserv_ids", value(ids.iter().map(String::as_str).collect::<Array>()))
+}
+
+/// How an account signs in: `Some("google")` for Google's sign-in (an access
+/// token), None for a password (an app password given instead).
+pub fn set_auth(path: &Path, id: &str, auth: Option<&str>) -> Result<(), String> {
+    match auth {
+        Some(auth) => set_account_item(path, id, "auth", value(auth)),
+        None => {
+            let mut doc = read_document(path)?;
+            let table = doc
+                .get_mut("account")
+                .and_then(Item::as_array_of_tables_mut)
+                .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
+                .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
+            table.remove("auth");
+            write_document(path, &doc)
+        }
+    }
 }
 
 /// Records an account's sending server (found from its address when first needed).
@@ -1783,6 +1841,26 @@ mod tests {
         let gmail = config.account("gmail").unwrap();
         assert_eq!(gmail.port_or_default(), 993);
         assert!(gmail.syncs());
+    }
+
+    #[test]
+    fn a_mail_account_signed_in_with_google_keeps_it() {
+        let dir = std::env::temp_dir().join(format!("sioul-config-google-{}", std::process::id()));
+        let path = dir.join("config.toml");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut account = Account::imap("gmail", "you@gmail.com", "imap.gmail.com", 993, Security::Tls, None);
+        account.auth = Some("google".into());
+        add_imap_account(&path, &account).unwrap();
+        assert_eq!(Config::load(&path).unwrap().account("gmail").and_then(|a| a.auth.clone()).as_deref(), Some("google"));
+        // An account with a password says nothing of it.
+        add_imap_account(&path, &Account::imap("other", "you@example.org", "imap.example.org", 993, Security::Tls, None)).unwrap();
+        assert_eq!(Config::load(&path).unwrap().account("other").and_then(|a| a.auth.clone()), None);
+        // Given an app password instead: a password's account again.
+        set_auth(&path, "gmail", None).unwrap();
+        assert_eq!(Config::load(&path).unwrap().account("gmail").and_then(|a| a.auth.clone()), None);
+        set_auth(&path, "gmail", Some("google")).unwrap();
+        assert_eq!(Config::load(&path).unwrap().account("gmail").and_then(|a| a.auth.clone()).as_deref(), Some("google"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

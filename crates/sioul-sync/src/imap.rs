@@ -6,8 +6,11 @@
 //! TLS is rustls with the ring provider, checked against the system's
 //! certificates (Mozilla's list when a system has none). STARTTLS is done here,
 //! by hand, before the IMAP client starts: the login never travels in clear.
+//! An account signed in with Google gives an access token instead of a
+//! password (SASL XOAUTH2, `sasl.rs`).
 
 use crate::SyncError;
+use crate::sasl::{ImapXoauth2, OAuth};
 use async_imap::{Client, Session};
 use rustls::pki_types::ServerName;
 use sioul_core::config::{Account, Security};
@@ -31,6 +34,8 @@ pub(crate) struct Server {
     pub port: u16,
     pub security: Security,
     pub login: String,
+    /// Signed in with an access token rather than a password.
+    pub oauth: Option<OAuth>,
 }
 
 impl Server {
@@ -40,14 +45,45 @@ impl Server {
             port: account.port_or_default(),
             security: account.security,
             login: account.login().ok_or(SyncError::NoServer)?.to_string(),
+            oauth: OAuth::of(account),
         })
     }
 }
 
-/// Connects, encrypts and logs in.
+/// Connects, encrypts and logs in: with the password, or, for an account
+/// signed in with OAuth, with an access token (the password is then unused).
 pub(crate) async fn open(server: &Server, password: &str) -> Result<Imap, SyncError> {
+    if let Some(oauth) = server.oauth {
+        return sign_in_with_tokens(&server.login, || connect(server), |fresh| oauth.token_async(&server.login, fresh), oauth).await;
+    }
     let client = connect(server).await?;
-    within(COMMAND, client.login(&server.login, password)).await?.map_err(|(e, _)| login_error(e))
+    within(COMMAND, client.login(&server.login, password)).await?.map_err(|(e, _)| login_error(e, &server.host))
+}
+
+/// AUTHENTICATE XOAUTH2 on connections `connect` makes, with the tokens
+/// `token` gives: the one kept first; refused, a fresh one, once (the one kept
+/// may have ended early: a password changed, the access withdrawn); refused
+/// again, the access must be given again.
+pub(crate) async fn sign_in_with_tokens<T, C, CF, K, KF>(login: &str, connect: C, token: K, oauth: OAuth) -> Result<Session<T>, SyncError>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
+    C: Fn() -> CF,
+    CF: Future<Output = Result<Client<T>, SyncError>>,
+    K: Fn(bool) -> KF,
+    KF: Future<Output = Result<String, SyncError>>,
+{
+    let mut refusal = String::new();
+    for fresh in [false, true] {
+        let token = token(fresh).await?;
+        let client = connect().await?;
+        let mut sasl = ImapXoauth2::new(login, &token);
+        match within(COMMAND, client.authenticate("XOAUTH2", &mut sasl)).await? {
+            Ok(session) => return Ok(session),
+            Err((async_imap::error::Error::No(m) | async_imap::error::Error::Bad(m), _)) => refusal = sasl.refusal.clone().unwrap_or_else(|| m.trim().to_string()),
+            Err((other, _)) => return Err(SyncError::Network(other.to_string())),
+        }
+    }
+    Err(oauth.refused(&refusal))
 }
 
 /// Connects and encrypts, up to the server's greeting.
@@ -144,13 +180,14 @@ fn tls_error(e: std::io::Error) -> SyncError {
 }
 
 /// A refused login; "application-specific password required" (Gmail) gets its own
-/// sentence, since the usual password will never work there.
-fn login_error(e: async_imap::error::Error) -> SyncError {
+/// sentence, since the usual password will never work there. So does any
+/// password Google's server refuses: it takes app passwords only.
+fn login_error(e: async_imap::error::Error, host: &str) -> SyncError {
     match e {
         async_imap::error::Error::No(m) | async_imap::error::Error::Bad(m) => {
             let detail = m.trim().to_string();
             let lower = detail.to_ascii_lowercase();
-            if lower.contains("application-specific password") || lower.contains("app password") {
+            if lower.contains("application-specific password") || lower.contains("app password") || host.eq_ignore_ascii_case(crate::discover::GOOGLE_IMAP) {
                 SyncError::AppPassword(detail)
             } else {
                 SyncError::Login(detail)
@@ -175,9 +212,12 @@ mod tests {
     #[test]
     fn tells_app_passwords_apart() {
         let gmail = async_imap::error::Error::No("[ALERT] Application-specific password required: https://support.google.com/accounts/answer/185833 (Failure)".into());
-        assert!(matches!(login_error(gmail), SyncError::AppPassword(_)));
+        assert!(matches!(login_error(gmail, "mail.example.org"), SyncError::AppPassword(_)));
         let wrong = async_imap::error::Error::No("[AUTHENTICATIONFAILED] Authentication failed.".into());
-        assert!(matches!(login_error(wrong), SyncError::Login(_)));
+        assert!(matches!(login_error(wrong, "mail.example.org"), SyncError::Login(_)));
+        // Google refusing a password: an app password, made at Google, is the way.
+        let google = async_imap::error::Error::No("[AUTHENTICATIONFAILED] Invalid credentials (Failure)".into());
+        assert!(matches!(login_error(google, "imap.gmail.com"), SyncError::AppPassword(_)));
     }
 
     /// Reaches real servers, so it runs only when asked: `cargo test -- --ignored`.
@@ -187,11 +227,11 @@ mod tests {
     fn reaches_real_servers_up_to_the_greeting() {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         for (host, port, security) in [("imap.gmail.com", 993, Security::Tls), ("mail.ecloud.global", 993, Security::Tls), ("outlook.office365.com", 143, Security::Starttls)] {
-            let server = Server { host: host.into(), port, security, login: String::new() };
+            let server = Server { host: host.into(), port, security, login: String::new(), oauth: None };
             let client = runtime.block_on(connect(&server));
             assert!(client.is_ok(), "{host}:{port}: {:?}", client.err());
         }
-        let wrong_name = Server { host: "wrong.host.badssl.com".into(), port: 443, security: Security::Tls, login: String::new() };
+        let wrong_name = Server { host: "wrong.host.badssl.com".into(), port: 443, security: Security::Tls, login: String::new(), oauth: None };
         assert!(matches!(runtime.block_on(connect(&wrong_name)), Err(SyncError::Tls(_))));
     }
 }

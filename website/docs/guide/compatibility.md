@@ -17,13 +17,13 @@ Nothing here goes beyond what is built. The standards behind each line, and wher
 
 | Area | Works with | How sure |
 |---|---|---|
-| [Mail](#mail) | any IMAP and SMTP server that takes a password over an encrypted connection; Gmail with an app password | **Tested** with a test server, and a real mailbox in daily use; **expected** elsewhere. **Not supported**: Outlook.com, Hotmail, Microsoft 365 |
+| [Mail](#mail) | any IMAP and SMTP server that takes a password over an encrypted connection; Gmail and Google Workspace with an app password, or by signing in with Google with a key of your own | **Tested** with a test server, and a real mailbox in daily use; **expected** elsewhere. **Not supported**: Outlook.com, Hotmail, Microsoft 365 |
 | [Calendars, tasks and contacts](#calendars-tasks-and-contacts) | any CalDAV and CardDAV server over HTTPS: Nextcloud (Murena's too), Radicale, Fastmail, Posteo, mailbox.org, iCloud, your host's | **Tested** with Radicale, and in daily use with Murena (Nextcloud) since 4 October 2026; **expected** with the others. **Limits**: iCloud's reminders; Baïkal must be set to Basic sign-in |
 | [Google](#google) | calendars, contacts and Google Tasks, signed in on Google's page | **Expected**: tried only against a stand-in of Google Tasks |
 | [Other apps on the same accounts](#other-apps-on-the-same-accounts) | Thunderbird and phone mail apps; Nextcloud Tasks, Tasks.org; DAVx⁵ with OpenTasks or jtx Board | **Expected**, from their code. **Limit**: a task tied to another by a wait, changed on a phone through DAVx⁵ |
 | [Notes](#notes) | Obsidian, Nextcloud Notes, any Markdown editor | **Tested** on files written as each writes them |
 | [Sharing between your devices](#sharing-between-your-devices) | any app that keeps a folder in step: Nextcloud, Murena's eDrive, Syncthing, Dropbox, Google Drive, OneDrive… | **Tested** with a simulator of how sync apps behave, and with eDrive on a phone; **expected** with the others |
-| [Sites](#sites) | websites that work in Chrome or Chromium: secure mailboxes, chats, calls; security keys | **Expected**; seen working with Proton Mail. **Limits**: sharing the screen in a call; on a phone, sites open in your browser |
+| [Sites](#sites) | websites that work in Chrome or Chromium: secure mailboxes, chats, calls; security keys | **Expected**; seen working with Proton Mail. **Limits**: on a phone, sites open in your browser |
 | [Logins and keys](#logins-and-keys) | Bitwarden (its cloud, your own server, Vaultwarden); OpenPGP with GnuPG and other mail programs | GnuPG **tested** both ways; Bitwarden **tested** with the owner's own vault, in daily use (6 October 2026) |
 | [Your watch](#your-watch) | a Garmin watch's own files: from the watch, from Gadgetbridge, or from Garmin's export | **Tested** on files made by hand, not on a real watch |
 | [Antivirus and scanned letters](#antivirus-and-scanned-letters) | ClamAV, Microsoft Defender, Tesseract and Poppler | **Tested** on Linux; Defender **expected** |
@@ -41,13 +41,13 @@ Nothing here goes beyond what is built. The standards behind each line, and wher
 | Archive, delete, junk, move | MOVE, else UIDPLUS; folders marked by their purpose | GreenMail: archive, delete | most servers | without MOVE and UIDPLUS, the original stays marked as deleted until another program clears it; unmarked folders are found by their names, and a missing Trash, Junk or Archive is made |
 | What other programs changed | — | — | any server | read, flagged, moved or deleted elsewhere: seen at each round, by asking every message's flags, which is slower on very big folders |
 | Sending | SMTP on port 465 (encrypted) or 587 (STARTTLS), your password | GreenMail | your provider's sending server | a copy goes into Sent (Gmail files its own); no unencrypted connection |
-| Gmail | an app password, which needs Google's two-step verification | its server reached by hand; its refusal of a usual password recognised, in tests | Gmail | "All Mail" serves as the archive |
+| Gmail and Google Workspace | an app password, which needs Google's two-step verification; or "Sign in with Google" with a Google key of your own | its server reached by hand; its refusal of a usual password recognised, in tests; signing in with Google against stand-ins only | Gmail; Workspace domains, recognised by their mail servers | "All Mail" serves as the archive. Not tried against Google itself. Gmail's access is restricted by Google: not with Sioul's own key |
 | Encrypted mail | OpenPGP, as PGP/MIME | GnuPG 2.4, both ways | Thunderbird, Proton, any program that reads PGP/MIME | see [Logins and keys](#logins-and-keys) |
 
 **Not supported**:
 
 - **Outlook.com, Hotmail and Live addresses**: since 16 September 2024, Microsoft takes only its own sign-in page from other mail programs, and Sioul has none for mail. **Microsoft 365** work and school addresses: the same.
-- **Gmail without an app password**, for the same reason: Google's sign-in is built for calendars, contacts and tasks, not for Gmail.
+- **Gmail with Sioul's own Google key**: Google restricts full mail access, and Sioul's key is not verified for it. Use an app password, or a Google key of your own ([Google](#google)).
 - JMAP servers, POP3, and Exchange's own protocols.
 - **Proton Mail through its Bridge**: not tried. Sioul trusts only the certificates your system trusts, so Bridge's own certificate would have to be added to your system first. Proton Mail works as a [site](#sites).
 
@@ -85,7 +85,7 @@ Thunderbird, your phone's mail app and the webmail see the same mailbox:
 | Calendars | Google's CalDAV | — | Google | no calendar made, renamed or deleted from Sioul; no tasks in a Google calendar; Google adds your default reminders to every event, and shifts events written without a time zone |
 | Contacts | Google's CardDAV | — | Google | Google keeps the older vCard: labels, birthdays without a year and newer fields are lost, said before a contact moves there; no new address book |
 | Tasks | Google Tasks | a stand-in of Google Tasks | Google Tasks | Google keeps a title, notes, done or not, a day, and one level of steps; the rest is greyed in the task's form, with why |
-| Gmail | an app password | see [Mail](#mail) | | |
+| Gmail | an app password, or "Sign in with Google" with your own key | see [Mail](#mail) | | |
 
 ## Other apps on the same accounts
 
@@ -132,9 +132,9 @@ Sites run in Qt WebEngine, the engine of Chromium, in a profile of their own, ap
 | Feature | What it needs | Tested with | Expected with | Limits |
 |---|---|---|---|---|
 | Websites | — | Proton Mail's web app, in use | sites that work in Chrome or Chromium | signing in with Google inside a site may be refused: Google blocks sign-ins in embedded browsers |
-| Staying logged in | the site's cookies and storage, kept | — | most sites | — |
+| Staying logged in | the site's cookies and storage, kept; each page closed as a browser closes its tabs when Sioul quits | a test page that keeps its login as Discord does | most sites | Sioul killed (a crash, the power cut) loses what its pages held |
 | Notifications | the site's own | — | any site that notifies | kept for your hours ([Sites](sites.md#notifications-at-your-pace)) |
-| Calls | the microphone, the camera and the speaker, allowed per site | — | the calls of chats and video sites that work in Chrome | **sharing the screen does not work yet** (found on 6 October 2026); full screen is not available |
+| Calls | the microphone, the camera and the speaker, allowed per site; sharing a screen, a window or nothing, chosen in Sioul's dialog | sharing the screen: a test page, on a screen nobody sees | the calls of chats and video sites that work in Chrome | full screen is not available |
 | Security keys (FIDO2, WebAuthn) | a USB key such as a YubiKey; on Linux, Qt WebEngine built with udev (Fedora's is) | — | GitHub, Google, Proton, Bitwarden | passkeys kept in a phone or in the system: not on Linux and macOS. On Windows, Windows' own dialog asks. A plain touch shows nothing in Sioul |
 | Downloads and PDFs | — | — | — | downloads go to your downloads folder; a PDF opens in the site's view |
 | Logins from Bitwarden | see [Logins and keys](#logins-and-keys) | | | |

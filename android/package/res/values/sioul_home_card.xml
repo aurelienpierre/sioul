@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Sioul's card on the home screen (HomeCard.java): Sioul's light colours
+     (crates/sioul-app/qml/Theme.qml: surface, text, muted, accent), the dark
+     ones in values-night; its size; the line the launcher's list of widgets
+     shows, in English only: Qt's Gradle template keeps the English resources
+     alone (resConfig "en"), so the card's own words are Rust's and Java's. -->
+<resources>
+    <color name="sioul_home_card_surface">#fbfaf7</color>
+    <color name="sioul_home_card_text">#2d2a26</color>
+    <color name="sioul_home_card_muted">#6b655c</color>
+    <color name="sioul_home_card_accent">#4c6b5c</color>
+    <dimen name="sioul_home_card_radius">16dp</dimen>
+    <dimen name="sioul_home_card_padding">14dp</dimen>
+    <dimen name="sioul_home_card_gap">6dp</dimen>
+    <string name="sioul_home_card_description">What now is for, the Porch and your next step.</string>
+</resources>

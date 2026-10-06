@@ -14,12 +14,12 @@ Le Porche est l’endroit où le nouveau courrier attend que vous regardiez : 
 ## Quand il ouvre {#when-it-opens}
 
 - **À vos heures**, le Porche dit jusqu’à quand il est ouvert (« Ouvert jusqu’à 12:00. »), puis montre ce qui est arrivé, réparti en files.
-- **En dehors de vos heures**, le Porche dit quand il ouvre la prochaine fois, et rien d’autre : aucun nombre, aucun nom. **L’ouvrir quand même** reste possible, discrètement. D’ici là, ce qui arrive est vérifié et trié.
+- **En dehors de vos heures**, le Porche dit quand il ouvre la prochaine fois, et rien d’autre de votre courrier : aucun nombre, aucun nom. Vos prises du jour s’affichent quand même (plus bas). **L’ouvrir quand même** reste possible, discrètement. D’ici là, ce qui arrive est vérifié et trié.
 - **Sans aucune heure réglée**, le Porche est toujours ouvert.
 
 Quel courrier vient quand dépend de qui écrit, liste par liste, aux moments que vous cochez pour chaque liste, et de ce à quoi sert chaque adresse : travail, vos démarches, loisirs. Voir [Qui peut vous écrire](accounts.md#senders) et [Les heures](hours.md).
 
-Pendant tout ce temps, le courrier continue d’arriver en arrière-plan. Le Porche décide seulement quand il est montré.
+Pendant tout ce temps, le courrier continue d’arriver en arrière-plan. Le Porche décide seulement quand il est montré, et quand il est dit ([plus bas](#new-mail-told-at-its-times)).
 
 ## Les codes et les liens arrivent tout de suite {#codes-and-links-come-at-once}
 
@@ -31,6 +31,16 @@ Les codes à usage unique, les mots de passe temporaires, les réinitialisations
 Rien d’autre ne s’ouvre avec. Une fois expiré, le code est masqué, et le message va dans sa file. Il expire quand le message le dit, sinon quand son type expire d’habitude : un code après 30 minutes, un lien de connexion après une heure, une réinitialisation de mot de passe après deux heures, un lien pour confirmer une adresse après un jour, un mot de passe temporaire après une semaine.
 
 Les faux messages « votre code » sont une ruse d’hameçonnage courante. Un message falsifié est mis de côté. Celui d’un expéditeur seulement *non vérifié* arrive quand même, avec un avertissement : ne vous en servez que si vous venez de le demander à ce site.
+
+## Le nouveau courrier, dit à ses heures {#new-mail-told-at-its-times}
+
+Quand arrive du courrier que vos listes laissent passer maintenant, une seule notification discrète le dit, pour tout le lot : « Deux lettres », et les premiers expéditeurs avec leur objet : « Murena, Votre facture · Alice, Dîner vendredi ». **Ouvrir** montre le Porche.
+
+- **Ce qui attendait** (le courrier arrivé hors des heures de sa liste, pendant votre sommeil ou une pause) est dit une fois, quand son heure vient : « Le Porche ouvre : trois lettres vous attendent. »
+- **Jamais** pour les codes (ils ont la leur, plus haut), le courrier mis de côté, les expéditeurs bloqués, vos adresses moins importantes, ce que vous vous envoyez, les lettres d’information sauf si vous les incluez, ni le courrier déjà lu ailleurs. Rien pendant le sommeil ni une pause.
+- **Sans son.** Avec un téléphone et un ordinateur, seul celui dont vous vous êtes servi en dernier le dit.
+
+Paramètres ▸ Rappels et notifications ▸ **Nouveau courrier : notifier aux heures où il peut venir**, et **Avec les lettres d’information** ([Paramètres](settings.md#reminders-and-notifications)).
 
 ## Les files {#the-lanes}
 
@@ -99,6 +109,7 @@ Quand il y a quelque chose, quelques lignes viennent avant les files :
 - **Quand votre nuit n’est pas réglée**, une carte dit que rien n’éloigne les notifications pendant que vous dormez, avec **Régler ma nuit** (qui ouvre la page Santé là où se règlent les repas et la nuit) et **Laisser ainsi**. Voir [Les heures](hours.md#sleep).
 - **Où vous en étiez** : la ligne que vous avez laissée quand quelque chose est venu vous interrompre, avec sa tâche, jusqu’à ce que vous appuyiez sur **C’est fait**. Voir [Les tâches](tasks.md#starting-and-stopping).
 - **Deux événements en même temps aujourd’hui**, le temps d’y aller et d’en revenir compté, avec **Ouvrir « … »** pour chacun et **Ne plus en parler**. Voir [L’agenda](agenda.md#two-events-at-once).
+- **Les prises du jour pas encore marquées**, à partir de leur heure, qu’une notification vous les ait rappelées ou non : chacune avec son heure, son nom et **Pris** (plus d’une demi-heure en retard, **Pris…** demande quand vous l’avez prise). Quelles que soient vos heures : une prise n’est pas du courrier. Chacune reste jusqu’à ce que vous la marquiez, que la journée finisse ou que douze heures soient passées ; pendant votre sommeil, si les prises restent silencieuses, elles attendent votre réveil. Quand un autre appareil peut en savoir plus, le doute est dit sous la prise : vérifiez avant de la prendre. Voir [La santé](health.md#reminders).
 - **Les prises prévues pendant que Sioul était fermé**, ni marquées ni rappelées nulle part : **Pris…** (quand vous l’avez prise) ou **Pas pris**. Quand un autre appareil peut en savoir plus, le doute est dit sous la prise. Voir [La santé](health.md#reminders).
 - **« Du nouveau sur &lt;site&gt; »** : ce que les sites que vous gardez dans Sioul ont notifié, et qui vous attend. Ouvrir le site efface ses nouvelles. Voir [Les sites](sites.md).
 - **Le courrier papier** que vous avez scanné, chaque lettre en carte : qui, quoi, combien, pour quand. Voir [Les papiers et les lettres](papers.md#paper-letters).
@@ -137,7 +148,7 @@ Sur la fiche de chaque adresse dans Comptes, **Priorité** : *Plus important*,
 ## Pourquoi il fonctionne ainsi {#why-it-works-this-way}
 
 - Relever son courrier trois fois par jour a fait baisser le stress quotidien dans un essai randomisé (Kushlev & Dunn 2015). Regrouper les notifications a aidé l’attention et l’humeur, alors que n’en recevoir aucune rendait les personnes plus anxieuses (Fitz et al. 2019) : ce qui aide, c’est la prévisibilité, pas le silence. Le Porche ouvre donc aux heures que vous choisissez, et dit quand.
-- Les personnes interrompues travaillent plus vite, avec plus de stress et de frustration (Mark, Gudith & Klocke 2008), et une notification laissée sans réponse coûte quand même de l’attention (Stothart, Mitchum & Yehnert 2015). Rien ne surgit donc, et rien ne bouge sous vos yeux quand le courrier arrive.
+- Les personnes interrompues travaillent plus vite, avec plus de stress et de frustration (Mark, Gudith & Klocke 2008), et une notification laissée sans réponse coûte quand même de l’attention (Stothart, Mitchum & Yehnert 2015). Rien ne surgit donc hors des heures que vous choisissez, une seule notification dit tout un lot, et rien ne bouge sous vos yeux quand le courrier arrive.
 - On évite les informations dont on attend qu’elles fassent mal (Sweeny et al. 2010). Ce qu’est un message, qui l’a envoyé et à quel point c’est vérifié viennent donc avant son texte.
 
 Plus de détails dans [ce que dit la recherche (en anglais)](https://aurelienpierre.github.io/sioul/dev/research.html).

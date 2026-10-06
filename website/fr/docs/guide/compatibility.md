@@ -17,13 +17,13 @@ Rien ici ne va au-delà de ce qui est construit. Les normes derrière chaque lig
 
 | Domaine | Fonctionne avec | À quel point c’est sûr |
 |---|---|---|
-| [Courrier](#mail) | tout serveur IMAP et SMTP qui accepte un mot de passe sur une connexion chiffrée ; Gmail avec un mot de passe d’application | **Testé** avec un serveur de test, et une vraie boîte aux lettres utilisée chaque jour ; **attendu** ailleurs. **Non pris en charge** : Outlook.com, Hotmail, Microsoft 365 |
+| [Courrier](#mail) | tout serveur IMAP et SMTP qui accepte un mot de passe sur une connexion chiffrée ; Gmail et Google Workspace avec un mot de passe d’application, ou en se connectant avec Google avec une clé à vous | **Testé** avec un serveur de test, et une vraie boîte aux lettres utilisée chaque jour ; **attendu** ailleurs. **Non pris en charge** : Outlook.com, Hotmail, Microsoft 365 |
 | [Agendas, tâches et contacts](#calendars-tasks-and-contacts) | tout serveur CalDAV et CardDAV en HTTPS : Nextcloud (celui de Murena aussi), Radicale, Fastmail, Posteo, mailbox.org, iCloud, celui de votre hébergeur | **Testé** avec Radicale, et utilisé chaque jour avec Murena (Nextcloud) depuis le 4 octobre 2026 ; **attendu** avec les autres. **Limites** : les rappels d’iCloud ; Baïkal doit être réglé sur l’identification Basic |
 | [Google](#google) | agendas, contacts et Google Tasks, connexion sur la page de Google | **Attendu** : essayé seulement face à une imitation de Google Tasks |
 | [Les autres applications sur les mêmes comptes](#other-apps-on-the-same-accounts) | Thunderbird et les applications de courrier des téléphones ; Nextcloud Tasks, Tasks.org ; DAVx⁵ avec OpenTasks ou jtx Board | **Attendu**, d’après leur code. **Limite** : une tâche liée à une autre par une attente, changée sur un téléphone par DAVx⁵ |
 | [Les notes](#notes) | Obsidian, Nextcloud Notes, tout éditeur Markdown | **Testé** sur des fichiers écrits comme chacun les écrit |
 | [Partager entre vos appareils](#sharing-between-your-devices) | toute application qui garde un dossier en accord : Nextcloud, l’eDrive de Murena, Syncthing, Dropbox, Google Drive, OneDrive… | **Testé** avec un simulateur de la façon dont se comportent les applications de synchronisation, et avec eDrive sur un téléphone ; **attendu** avec les autres |
-| [Les sites](#sites) | les sites web qui fonctionnent dans Chrome ou Chromium : messageries sécurisées, discussions, appels ; clés de sécurité | **Attendu** ; vu fonctionner avec Proton Mail. **Limites** : partager l’écran pendant un appel ; sur un téléphone, les sites s’ouvrent dans votre navigateur |
+| [Les sites](#sites) | les sites web qui fonctionnent dans Chrome ou Chromium : messageries sécurisées, discussions, appels ; clés de sécurité | **Attendu** ; vu fonctionner avec Proton Mail. **Limites** : sur un téléphone, les sites s’ouvrent dans votre navigateur |
 | [Identifiants et clés](#logins-and-keys) | Bitwarden (son cloud, votre propre serveur, Vaultwarden) ; OpenPGP avec GnuPG et les autres logiciels de courrier | GnuPG **testé** dans les deux sens ; Bitwarden **testé** avec le propre coffre du propriétaire, utilisé chaque jour (6 octobre 2026) |
 | [Votre montre](#your-watch) | les fichiers d’une montre Garmin : depuis la montre, depuis Gadgetbridge, ou depuis l’export de Garmin | **Testé** sur des fichiers faits à la main, pas sur une vraie montre |
 | [Antivirus et courrier scanné](#antivirus-and-scanned-letters) | ClamAV, Microsoft Defender, Tesseract et Poppler | **Testé** sur Linux ; Defender **attendu** |
@@ -41,13 +41,13 @@ Rien ici ne va au-delà de ce qui est construit. Les normes derrière chaque lig
 | Archiver, supprimer, indésirable, déplacer | MOVE, sinon UIDPLUS ; des dossiers marqués par leur usage | GreenMail : archiver, supprimer | la plupart des serveurs | sans MOVE ni UIDPLUS, l’original reste marqué comme supprimé jusqu’à ce qu’un autre programme le retire ; les dossiers non marqués sont trouvés par leur nom, et une Corbeille, des Indésirables ou des Archives manquants sont créés |
 | Ce que les autres programmes ont changé | — | — | tout serveur | lu, signalé, déplacé ou supprimé ailleurs : vu à chaque passage, en demandant les marques de chaque message, ce qui est plus lent pour les très gros dossiers |
 | Envoyer | SMTP sur le port 465 (chiffré) ou 587 (STARTTLS), votre mot de passe | GreenMail | le serveur d’envoi de votre fournisseur | une copie va dans Envoyés (Gmail range la sienne) ; aucune connexion non chiffrée |
-| Gmail | un mot de passe d’application, qui demande la validation en deux étapes de Google | son serveur atteint à la main ; son refus d’un mot de passe habituel reconnu, dans les tests | Gmail | « Tous les messages » sert d’archive |
+| Gmail et Google Workspace | un mot de passe d’application, qui demande la validation en deux étapes de Google ; ou « Se connecter avec Google » avec une clé Google à vous | son serveur atteint à la main ; son refus d’un mot de passe habituel reconnu, dans les tests ; la connexion avec Google contre des doublures seulement | Gmail ; les domaines Workspace, reconnus par leurs serveurs de courrier | « Tous les messages » sert d’archive. Pas essayé contre Google lui-même. L’accès à Gmail est restreint par Google : pas avec la clé de Sioul |
 | Le courrier chiffré | OpenPGP, en PGP/MIME | GnuPG 2.4, dans les deux sens | Thunderbird, Proton, tout programme qui lit le PGP/MIME | voir [Identifiants et clés](#logins-and-keys) |
 
 **Non pris en charge** :
 
 - **Les adresses Outlook.com, Hotmail et Live** : depuis le 16 septembre 2024, Microsoft n’accepte plus des autres logiciels de courrier que sa propre page de connexion, et Sioul n’en a pas pour le courrier. **Microsoft 365**, adresses professionnelles et scolaires : de même.
-- **Gmail sans mot de passe d’application**, pour la même raison : la connexion par Google est construite pour les agendas, les contacts et les tâches, pas pour Gmail.
+- **Gmail avec la clé Google de Sioul** : Google restreint l’accès complet au courrier, et la clé de Sioul n’est pas vérifiée pour cela. Utilisez un mot de passe d’application, ou une clé Google à vous ([Google](#google)).
 - Les serveurs JMAP, POP3, et les protocoles propres à Exchange.
 - **Proton Mail par son Bridge** : pas essayé. Sioul ne fait confiance qu’aux certificats auxquels votre système fait confiance : celui du Bridge devrait d’abord être ajouté à votre système. Proton Mail fonctionne comme [site](#sites).
 
@@ -85,7 +85,7 @@ Thunderbird, l’application de courrier de votre téléphone et le webmail voie
 | Les agendas | le CalDAV de Google | — | Google | aucun agenda créé, renommé ou supprimé depuis Sioul ; pas de tâches dans un agenda Google ; Google ajoute vos rappels par défaut à chaque événement, et décale les événements écrits sans fuseau horaire |
 | Les contacts | le CardDAV de Google | — | Google | Google garde l’ancienne version des vCard : les libellés, les anniversaires sans année et les champs plus récents sont perdus, ce qui est dit avant qu’un contact n’y aille ; aucun nouveau carnet d’adresses |
 | Les tâches | Google Tasks | une imitation de Google Tasks | Google Tasks | Google garde un titre, des notes, fait ou non, un jour, et un niveau d’étapes ; le reste est grisé dans le formulaire de la tâche, en disant pourquoi |
-| Gmail | un mot de passe d’application | voir [Courrier](#mail) | | |
+| Gmail | un mot de passe d’application, ou « Se connecter avec Google » avec votre propre clé | voir [Courrier](#mail) | | |
 
 ## Les autres applications sur les mêmes comptes {#other-apps-on-the-same-accounts}
 
@@ -132,9 +132,9 @@ Les sites tournent dans Qt WebEngine, le moteur de Chromium, dans un profil à e
 | Fonction | Ce qu’il faut | Testé avec | Attendu avec | Limites |
 |---|---|---|---|---|
 | Les sites web | — | l’application web de Proton Mail, utilisée | les sites qui fonctionnent dans Chrome ou Chromium | se connecter avec Google dans un site peut être refusé : Google bloque les connexions dans les navigateurs intégrés |
-| Rester connecté | les cookies et le stockage du site, gardés | — | la plupart des sites | — |
+| Rester connecté | les cookies et le stockage du site, gardés ; chaque page fermée comme un navigateur ferme ses onglets quand Sioul se ferme | une page de test qui garde sa connexion comme Discord | la plupart des sites | Sioul tué (un plantage, une coupure de courant) perd ce que ses pages gardaient |
 | Les notifications | celles du site | — | tout site qui envoie des notifications | gardées pour vos heures ([Les sites](sites.md#notifications-at-your-pace)) |
-| Les appels | le micro, la caméra et le haut-parleur, permis site par site | — | les appels des discussions et des sites de visioconférence qui fonctionnent dans Chrome | **partager l’écran ne fonctionne pas encore** (trouvé le 6 octobre 2026) ; le plein écran n’est pas disponible |
+| Les appels | le micro, la caméra et le haut-parleur, permis site par site ; partager un écran, une fenêtre ou rien, choisi dans la fenêtre de Sioul | partager l’écran : une page de test, sur un écran que personne ne voit | les appels des discussions et des sites de visioconférence qui fonctionnent dans Chrome | le plein écran n’est pas disponible |
 | Les clés de sécurité (FIDO2, WebAuthn) | une clé USB comme une YubiKey ; sur Linux, un Qt WebEngine construit avec udev (celui de Fedora l’est) | — | GitHub, Google, Proton, Bitwarden | les clés d’accès gardées dans un téléphone ou dans le système : pas sur Linux ni macOS. Sur Windows, la boîte de dialogue de Windows elle-même demande. Un simple toucher ne montre rien dans Sioul |
 | Les téléchargements et les PDF | — | — | — | les téléchargements vont dans votre dossier de téléchargements ; un PDF s’ouvre dans la vue du site |
 | Les identifiants de Bitwarden | voir [Identifiants et clés](#logins-and-keys) | | | |

@@ -6,11 +6,16 @@
 // unless the system's own is set (Vulkan, Metal, Direct3D). That is all
 // QtWebEngineQuick::initialize() does in Qt 6.11, done here without linking
 // Qt WebEngine: its libraries (Chromium's, a thousand files) are loaded when
-// the Sites page imports it, not each time Sioul starts.
+// the Sites page imports it, not each time Sioul starts. As Sioul quits, the
+// sites' pages are closed as a browser closes its tabs (sioul_close_sites).
 
 #include <QCoreApplication>
+#include <QEventLoop>
+#include <QJSValue>
+#include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
+#include <QTimer>
 
 extern "C" void sioul_start_web_engine()
 {
@@ -19,4 +24,30 @@ extern "C" void sioul_start_web_engine()
     if (api != QSGRendererInterface::OpenGL && api != QSGRendererInterface::Vulkan && api != QSGRendererInterface::Metal
         && api != QSGRendererInterface::Direct3D11)
         QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+}
+
+// Sioul has quit, its windows gone: each site's page is closed as a browser
+// closes its tabs, before Qt WebEngine shuts down with the application. The
+// page's beforeunload, pagehide and unload run; some sites keep a login only
+// in the open page and write it back to their storage then (Discord's token):
+// destroyed without them, the page loses it. SitesPage.qml's closeAll()
+// closes them and says how many are still closing; this waits for its
+// sitesClosed(), two seconds at most (Chromium gives a page that does not
+// answer half a second for each step). Nothing to do when the Sites page was
+// never made. docs/sites.md, "Closing".
+extern "C" void sioul_close_sites(QQmlApplicationEngine *engine)
+{
+    const auto roots = engine ? engine->rootObjects() : QList<QObject *>();
+    // main.qml's `sitesPage`, null until the page is made.
+    const QVariant page = roots.isEmpty() ? QVariant() : roots.first()->property("sitesPage");
+    QObject *sites = page.metaType() == QMetaType::fromType<QJSValue>() ? page.value<QJSValue>().toQObject() : page.value<QObject *>();
+    if (!sites)
+        return;
+    QEventLoop loop;
+    QObject::connect(sites, SIGNAL(sitesClosed()), &loop, SLOT(quit()));
+    QVariant closing;
+    if (!QMetaObject::invokeMethod(sites, "closeAll", Q_RETURN_ARG(QVariant, closing)) || closing.toInt() <= 0)
+        return;
+    QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+    loop.exec();
 }

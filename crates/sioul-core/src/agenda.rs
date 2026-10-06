@@ -60,6 +60,13 @@ pub struct Occurrence {
     pub margins: crate::demands::Margins,
     /// What it costs and gives back, rated 0 to 10 (`demands`).
     pub demands: crate::demands::Demands,
+    /// The task it is the time block of (`X-SIOUL-TASK`, `blocks`), by UID; "" for an event of its own.
+    pub task: String,
+    /// The turn of a repeating task that block pins (`X-SIOUL-TURN`): "2026-10-09"; "" otherwise.
+    pub turn: String,
+    /// Its reminder before, as it says it (`reminders::REMIND`): "" as usual,
+    /// "NONE", "15"; a changed occurrence's own, else its series'.
+    pub remind: String,
 }
 
 /// Someone invited, and what they answered.
@@ -247,6 +254,9 @@ pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, 
             alarms: alarms_of(&ical, component, start, end - start),
             margins,
             demands,
+            task: text_of(component, &ICalendarProperty::Other(crate::blocks::TASK.to_string())),
+            turn: text_of(component, &ICalendarProperty::Other(crate::blocks::TURN.to_string())),
+            remind: remind_of(&ical, component),
         });
     }
     found
@@ -286,6 +296,34 @@ pub struct EventEdit {
     /// What it costs and gives back, 0 to 10 each; none unsaid.
     #[serde(default)]
     pub demands: crate::demands::Demands,
+    /// Its reminder before: "" as usual, "none" not this one, "15" minutes before (`reminders::REMIND`).
+    #[serde(default)]
+    pub remind: String,
+}
+
+/// An event's reminder before (`reminders::REMIND`), as the form says it:
+/// "" as usual, "none", or minutes ("15").
+fn remind_word(value: &str) -> String {
+    match crate::reminders::Remind::read(value) {
+        crate::reminders::Remind::Usual => String::new(),
+        crate::reminders::Remind::Never => "none".to_string(),
+        crate::reminders::Remind::Minutes(minutes) => minutes.to_string(),
+    }
+}
+
+/// What an occurrence says of its reminder: its own, else, a changed one
+/// (RECURRENCE-ID) saying nothing, its series'.
+fn remind_of(ical: &ICalendar, component: &ICalendarComponent) -> String {
+    let name = ICalendarProperty::Other(crate::reminders::REMIND.to_string());
+    let own = text_of(component, &name);
+    if !own.is_empty() || component.property(&ICalendarProperty::RecurrenceId).is_none() {
+        return own;
+    }
+    ical.components
+        .iter()
+        .find(|c| c.component_type == ICalendarComponentType::VEvent && c.property(&ICalendarProperty::RecurrenceId).is_none() && c.uid() == component.uid())
+        .map(|series| text_of(series, &name))
+        .unwrap_or_default()
 }
 
 /// An event as the form shows it, from its file, in your time zone.
@@ -329,7 +367,23 @@ pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
         repeat,
         margins,
         demands,
+        remind: remind_word(&text_of(master, &ICalendarProperty::Other(crate::reminders::REMIND.to_string()))),
     })
+}
+
+/// The main event's first occurrence still there, as the agenda shows it:
+/// (start, end) in Unix seconds, to the second; None when the text holds no
+/// event. Times without a zone are in `zone`.
+pub fn first_times(text: &str, zone: &TimeZone) -> Option<(i64, i64)> {
+    let ical = parse(&for_expansion(text))?;
+    let (index, _) = ical.components.iter().enumerate().find(|(_, c)| c.component_type == ICalendarComponentType::VEvent && c.property(&ICalendarProperty::RecurrenceId).is_none())?;
+    let first = ical.expand_dates(calcard_zone(zone), FIRST_LOOKED_AT).events.into_iter().find(|e| e.comp_id as usize == index)?;
+    let start = first.start.timestamp();
+    let end = match first.end {
+        TimeOrDelta::Time(end) => end.timestamp(),
+        TimeOrDelta::Delta(delta) => start + delta.num_seconds(),
+    };
+    Some((start, end))
 }
 
 /// The start and end the form means, in your time zone.
@@ -443,10 +497,11 @@ struct Changed {
     rule: bool,
     margins: bool,
     demands: bool,
+    remind: bool,
 }
 
 impl Changed {
-    const ALL: Changed = Changed { title: true, location: true, notes: true, rule: true, margins: true, demands: true };
+    const ALL: Changed = Changed { title: true, location: true, notes: true, rule: true, margins: true, demands: true, remind: true };
 }
 
 /// SUMMARY, LOCATION, DESCRIPTION and the repeat rule, those that changed.
@@ -480,6 +535,11 @@ fn content_lines(edit: &EventEdit, changed: Changed) -> Vec<String> {
             out.push(format!("{}:{}", crate::demands::GAIN, gain.min(10)));
         }
     }
+    if changed.remind
+        && let Some(value) = crate::reminders::Remind::read(&edit.remind).value()
+    {
+        out.push(format!("{}:{value}", crate::reminders::REMIND));
+    }
     out
 }
 
@@ -504,7 +564,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
     let times_changed = before.as_ref().is_none_or(|b| (&b.start, &b.end, b.all_day) != (&edit.start, &edit.end, edit.all_day));
     let rule_changed = before.as_ref().is_none_or(|b| b.repeat != edit.repeat);
     let changed = match &before {
-        Some(b) => Changed { title: b.title.trim() != edit.title.trim(), location: b.location.trim() != edit.location.trim(), notes: b.notes.trim() != edit.notes.trim(), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands },
+        Some(b) => Changed { title: b.title.trim() != edit.title.trim(), location: b.location.trim() != edit.location.trim(), notes: b.notes.trim() != edit.notes.trim(), rule: rule_changed, margins: b.margins != edit.margins, demands: b.demands != edit.demands, remind: crate::reminders::Remind::read(&b.remind) != crate::reminders::Remind::read(&edit.remind) },
         None => Changed::ALL,
     };
     let (times, tzid) = if times_changed || rule_changed { time_lines(edit, &zone)? } else { (Vec::new(), None) };
@@ -517,6 +577,7 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
             || (changed.notes && name == "DESCRIPTION")
             || (changed.margins && (name == crate::demands::BEFORE || name == crate::demands::AFTER))
             || (changed.demands && (name == crate::demands::COST || name == crate::demands::GAIN))
+            || (changed.remind && name == crate::reminders::REMIND)
     };
     let source = lines::unfold(text);
     let mut out: Vec<String> = Vec::with_capacity(source.len() + 8);
@@ -1001,9 +1062,11 @@ pub fn event_refs() -> Vec<EventRef> {
         .collect()
 }
 
-/// Where a new event goes: the first calendar that can be written to and takes events.
+/// Where a new event goes: the first calendar that can be written to and takes
+/// events, the one made for time blocks last (`blocks::CALENDAR`).
 pub fn default_calendar() -> Option<Collection> {
-    vdir::collections(Kind::Calendars).into_iter().find(|c| !c.read_only && c.holds("VEVENT"))
+    let writable: Vec<Collection> = vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only && c.holds("VEVENT")).collect();
+    writable.iter().find(|c| c.id != crate::blocks::CALENDAR).or(writable.first()).cloned()
 }
 
 /// The file a new event gets in a calendar.

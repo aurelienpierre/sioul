@@ -136,6 +136,8 @@ fn post(window: Option<(&QtThread, &Arc<Shared>)>) -> Option<Note> {
     if shown.note.as_ref() != Some(&note) {
         put(&mut shown, note.as_ref(), window);
         shown.note = Some(note.clone());
+        // Do-not-disturb while you focus follows the session at once (docs/do-not-disturb.md).
+        std::thread::spawn(crate::everywhere::apply);
     }
     note
 }

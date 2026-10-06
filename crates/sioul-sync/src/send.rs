@@ -3,13 +3,15 @@
 
 //! Sending: SMTP submission (RFC 6409), over TLS from the first byte (465,
 //! RFC 8314) or upgraded by STARTTLS (587), with the account's login and
-//! password; then a copy into Sent with `APPEND`, except at Gmail, which files
-//! its own.
+//! password, or an access token (`AUTH XOAUTH2`) for an account signed in
+//! with Google; then a copy into Sent with `APPEND`, except at Gmail, which
+//! files its own.
 
 use crate::SyncError;
 use crate::fetch::block_on;
 use crate::imap::{self, COMMAND, Server};
 use crate::mailbox;
+use crate::sasl::{self, OAuth};
 use mail_send::SmtpClientBuilder;
 use mail_send::smtp::message::Message;
 use sioul_core::compose::{self, Draft, Outgoing};
@@ -76,38 +78,70 @@ fn with_smtp(config_path: &Path, account: &Account) -> Result<Account, SyncError
     Ok(account)
 }
 
-/// Sends the message, then files a copy in Sent.
+/// The sending server's client, logged in with `credentials` when given
+/// (an account signed in with OAuth logs in after, `sasl::smtp_xoauth2`).
+fn smtp_builder<'a>(account: &Account, host: &'a str, credentials: Option<(&'a str, &'a str)>) -> Result<SmtpClientBuilder<&'a str>, SyncError> {
+    let builder = SmtpClientBuilder::new(host, account.smtp_port_or_default())
+        .map_err(SyncError::Network)?
+        .implicit_tls(account.smtp_security == Security::Tls)
+        // Not this computer's name, which providers copy into the message's
+        // Received header for everyone to read: an address literal, as RFC
+        // 5321 §4.1.4 allows a client without a name to give.
+        .helo_host("[127.0.0.1]")
+        .timeout(SMTP);
+    let builder = match credentials {
+        Some(credentials) => builder.credentials(credentials),
+        None => builder,
+    };
+    // Android: mail-send checks certificates with rustls-platform-verifier,
+    // which there needs Java code Sioul does not ship; the same check as
+    // for IMAP instead (Android's certificates, else Mozilla's).
+    #[cfg(target_os = "android")]
+    let builder = {
+        let mut builder = builder;
+        builder.tls_connector = tokio_rustls::TlsConnector::from(crate::imap::tls_config());
+        builder
+    };
+    #[cfg(feature = "insecure-test-tls")]
+    let builder = if std::env::var_os("SIOUL_TEST_INSECURE_TLS").is_some() { builder.allow_invalid_certs() } else { builder };
+    Ok(builder)
+}
+
+/// Sends the message, then files a copy in Sent. An account signed in with
+/// OAuth logs in with an access token (`password` unused): the one kept,
+/// then, refused, a fresh one, once.
 pub fn send(account: &Account, password: &str, outgoing: &Outgoing) -> Result<(), SyncError> {
     let host = account.smtp_host.clone().ok_or(SyncError::NoServer)?;
     let login = account.login().ok_or(SyncError::NoServer)?.to_string();
+    let oauth = OAuth::of(account);
     block_on(async {
-        let builder = SmtpClientBuilder::new(host.as_str(), account.smtp_port_or_default())
-            .map_err(SyncError::Network)?
-            .implicit_tls(account.smtp_security == Security::Tls)
-            // Not this computer's name, which providers copy into the message's
-            // Received header for everyone to read: an address literal, as RFC
-            // 5321 §4.1.4 allows a client without a name to give.
-            .helo_host("[127.0.0.1]")
-            .credentials((login.as_str(), password))
-            .timeout(SMTP);
-        // Android: mail-send checks certificates with rustls-platform-verifier,
-        // which there needs Java code Sioul does not ship; the same check as
-        // for IMAP instead (Android's certificates, else Mozilla's).
-        #[cfg(target_os = "android")]
-        let builder = {
-            let mut builder = builder;
-            builder.tls_connector = tokio_rustls::TlsConnector::from(crate::imap::tls_config());
-            builder
+        let mut client = match oauth {
+            None => smtp_builder(account, &host, Some((login.as_str(), password)))?.connect().await.map_err(smtp_error)?,
+            Some(oauth) => {
+                let (mut signed_in, mut refusal) = (None, String::new());
+                for fresh in [false, true] {
+                    let token = oauth.token_async(&login, fresh).await?;
+                    let mut client = smtp_builder(account, &host, None)?.connect().await.map_err(smtp_error)?;
+                    match sasl::smtp_xoauth2(&mut client, &login, &token).await.map_err(smtp_error)? {
+                        Ok(()) => {
+                            signed_in = Some(client);
+                            break;
+                        }
+                        Err(said) => {
+                            refusal = said;
+                            let _ = client.quit().await;
+                        }
+                    }
+                }
+                signed_in.ok_or_else(|| oauth.refused(&refusal))?
+            }
         };
-        #[cfg(feature = "insecure-test-tls")]
-        let builder = if std::env::var_os("SIOUL_TEST_INSECURE_TLS").is_some() { builder.allow_invalid_certs() } else { builder };
-        let mut client = builder.connect().await.map_err(smtp_error)?;
         let message = Message::new(outgoing.from.as_str(), outgoing.recipients.iter().map(String::as_str), outgoing.raw.as_slice());
         client.send(message).await.map_err(smtp_error)?;
         let _ = client.quit().await;
         Ok(())
     })?;
-    if account.host.as_deref().is_some_and(|h| h.eq_ignore_ascii_case("imap.gmail.com")) {
+    if account.host.as_deref().is_some_and(|h| h.eq_ignore_ascii_case(crate::discover::GOOGLE_IMAP)) {
         return Ok(());
     }
     // Sent, but its copy may not be filed: that is said, the message is not sent twice.

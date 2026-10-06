@@ -251,6 +251,45 @@ pub struct CardView {
     /// How heavy, from its costs when any is rated: "light", "usual", "heavy",
     /// "rest" (it gives back); "" when none is rated (its word stands: `energy`).
     pub level: &'static str,
+    /// Pinned to a time (its block, `blocks`): "Pinned: today, 14:00–14:45"; "" when not.
+    pub pinned: String,
+    /// The same, short, beside a pin on its row: "14:00" today, "Thu 8 Oct 10:00" another day; "" when not.
+    pub pinned_time: String,
+}
+
+/// Where a task is pinned, as its panel shows it.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PinView {
+    /// "today, 14:00–14:45", "Thursday 8 October, 10:00–10:30".
+    pub when: String,
+    /// Its start on the clock, "2026-10-08T10:00": where "Do at…" opens.
+    pub at: String,
+    /// Its minutes, its margins aside.
+    pub minutes: u32,
+    /// The block's file, to open it as an event.
+    pub key: String,
+    /// Its calendar can only be read here.
+    pub read_only: bool,
+}
+
+/// "today, 14:00–14:45", "Thursday 8 October, 10:00–10:30": a block's time in words.
+fn pinned_when(cx: &Context, pin: &crate::blocks::Pin) -> String {
+    let zone = cx.offices.now.as_ref().map_or_else(TimeZone::system, |z| z.time_zone().clone());
+    let clock = |seconds: i64| Timestamp::from_second(seconds).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    let (from, to) = (clock(pin.start), clock(pin.end));
+    if pin.date == cx.today {
+        cx.say("task-pinned-today", &[("from", from), ("to", to)])
+    } else {
+        cx.say("task-pinned-day", &[("day", cx.tr.day_in(pin.date, cx.today)), ("from", from), ("to", to)])
+    }
+}
+
+/// Where a task is pinned, for its panel; None when it is not.
+pub fn pin_view(cx: &Context, uid: &str) -> Option<PinView> {
+    let pin = cx.plan.pins.get(uid)?;
+    let zone = cx.offices.now.as_ref().map_or_else(TimeZone::system, |z| z.time_zone().clone());
+    let at = Timestamp::from_second(pin.start).ok()?.to_zoned(zone).strftime("%Y-%m-%dT%H:%M").to_string();
+    Some(PinView { when: pinned_when(cx, pin), at, minutes: pin.minutes(), key: pin.key.clone(), read_only: pin.read_only })
 }
 
 /// A task in words.
@@ -313,7 +352,16 @@ pub fn card(cx: &Context, task: &Task) -> CardView {
         done_on,
         links: task.links.len() + task.contacts.len(),
         level: task.demands.level().map_or("", crate::demands::Level::id),
+        pinned: cx.plan.pins.get(&task.uid).map(|pin| cx.say("task-pinned", &[("when", pinned_when(cx, pin))])).unwrap_or_default(),
+        pinned_time: cx.plan.pins.get(&task.uid).map(|pin| pinned_short(cx, pin)).unwrap_or_default(),
     }
+}
+
+/// "14:00" today, "Thu 8 Oct 10:00" another day: where a task is pinned, beside a pin on its row.
+fn pinned_short(cx: &Context, pin: &crate::blocks::Pin) -> String {
+    let zone = cx.offices.now.as_ref().map_or_else(TimeZone::system, |z| z.time_zone().clone());
+    let Ok(start) = Timestamp::from_second(pin.start).map(|t| t.to_zoned(zone)) else { return String::new() };
+    if pin.date == cx.today { start.strftime("%H:%M").to_string() } else { cx.tr.date(&start, true) }
 }
 
 /// The Now page: the next step, why, and the one after it.
@@ -406,11 +454,12 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
         view.tied_note = cx.tr.text("task-only-tied", None);
     }
     let free: Vec<&Task> = if others.is_empty() { not_aside } else { others };
-    // A step given a time later today (dragged in the day) waits for it: the
-    // others come first; it is still proposed when nothing else is free.
+    // A step pinned to a time later (its block, `blocks`; or a time given today
+    // by a drag before blocks) waits for it: the others come first; it is still
+    // proposed when nothing else is free.
     let stamp = cx.offices.now.as_ref().map_or_else(|| Timestamp::now().as_second(), |z| z.timestamp().as_second());
     let zone = cx.offices.now.as_ref().map_or_else(TimeZone::system, |z| z.time_zone().clone());
-    let (later, sooner): (Vec<&Task>, Vec<&Task>) = free.into_iter().partition(|t| t.at_on(cx.today, &zone).is_some_and(|at| at > stamp + 15 * 60));
+    let (later, sooner): (Vec<&Task>, Vec<&Task>) = free.into_iter().partition(|t| cx.plan.pins.get(&t.uid).map_or_else(|| t.at_on(cx.today, &zone), |pin| Some(pin.start)).is_some_and(|at| at > stamp + 15 * 60));
     let free: Vec<&Task> = sooner.into_iter().chain(later).collect();
     // Fog: only small steps; if none is small, the smallest.
     let candidates: Vec<&Task> = if weather == Weather::Fog {
@@ -805,6 +854,10 @@ pub struct DetailView {
     /// On request: how tasks like it usually go against the first guess, in a
     /// sentence; "" when there is nothing worth saying (`capacity::ratio_line`).
     pub ratio_line: String,
+    /// Pinned to a time: its block; None when the plan places it.
+    pub pin: Option<PinView>,
+    /// "Do at…"'s length by default, in minutes: what the plan lays for it, its margins aside (`blocks::default_minutes`).
+    pub pin_minutes: u32,
 }
 
 pub fn detail(cx: &Context, task: &Task, sessions: &[crate::timelog::Session], related: &[Related]) -> DetailView {
@@ -838,6 +891,8 @@ pub fn detail(cx: &Context, task: &Task, sessions: &[crate::timelog::Session], r
         estimate_first: task.estimate_first,
         felt_on: task.felt.last().and_then(|f| f.on).map(|d| d.to_string()).unwrap_or_default(),
         ratio_line: String::new(),
+        pin: pin_view(cx, &task.uid),
+        pin_minutes: crate::blocks::default_minutes(task, cx.planned(&task.uid).map(|p| p.laid).filter(|l| *l > 0), 30),
     }
 }
 

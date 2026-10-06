@@ -9,18 +9,30 @@
 mod alarms;
 mod backend;
 mod bank;
+mod blocks;
 mod capacity;
 mod contracts;
 mod crypto;
 mod desktop;
+mod devices;
+mod dnd;
+mod eventalarms;
 mod duplicates;
+// Do-not-disturb on every device, and the phone in the background (docs/do-not-disturb.md).
+mod everywhere;
 mod github;
+// Google's mail signed in on Google's page (docs/google.md, "Mail").
+mod gmail;
 mod health;
+mod homecard;
 mod hours;
 mod mail;
+mod mailnote;
 mod letters;
 mod map;
+mod outside;
 mod papers;
+mod pauses;
 mod pim;
 mod projects;
 mod remind;
@@ -28,6 +40,7 @@ mod reviews;
 mod senders;
 mod share;
 mod sites;
+mod steps;
 mod timenote;
 mod wake;
 mod work;
@@ -42,6 +55,15 @@ unsafe extern "C" {
     /// Sioul's own icon on its windows (cpp/appicon.cpp); once the application is made.
     #[cfg(not(target_os = "android"))]
     fn sioul_set_window_icon();
+    /// SIGTERM, SIGINT and SIGHUP end Sioul as its window's close does
+    /// (cpp/signals.cpp); once the application is made.
+    #[cfg(not(target_os = "android"))]
+    fn sioul_quit_on_signals();
+    /// Sioul has quit: the sites' pages closed as a browser closes its tabs,
+    /// before Qt WebEngine shuts down (cpp/webengine.cpp). `engine` is the
+    /// QQmlApplicationEngine.
+    #[cfg(not(target_os = "android"))]
+    fn sioul_close_sites(engine: *mut std::ffi::c_void);
     /// On a phone, what the window draws with given back while Sioul is away
     /// (android/main.cpp); once the window is made.
     #[cfg(target_os = "android")]
@@ -116,6 +138,18 @@ pub fn run() -> i32 {
     unsafe { cxx_qt_init_crate_sioul_app() };
     // Mail, keys, drafts and caches are kept in folders that are yours alone.
     sioul_core::config::make_private_dirs();
+    // A mail link clicked (`sioul-app mailto:…`), or Sioul started again:
+    // handed to the Sioul of this profile already open, if one is, which
+    // opens the draft or comes forward; else this one opens, and listens for
+    // the next (docs/client.md, "Writing from other applications").
+    let addresses = outside::addresses();
+    if outside::hand_over(&addresses) {
+        return 0;
+    }
+    outside::listen();
+    if !addresses.is_empty() {
+        outside::hand(&addresses);
+    }
     // Qt's QML engine looks, for each file it loads, for variants of it in
     // folders named after the language, the system and the style ("+fr_FR/",
     // "+android/", "+Material/"). Sioul has none, and on a phone the looking
@@ -153,6 +187,12 @@ pub fn run() -> i32 {
     unsafe {
         sioul_set_window_icon()
     };
+    // The session ending (SIGTERM), Ctrl+C, the terminal closed: Sioul quits as by its window.
+    #[cfg(not(target_os = "android"))]
+    // SAFETY: the application exists; called once, on the main thread.
+    unsafe {
+        sioul_quit_on_signals()
+    };
     desktop::icons();
     let mut engine = QQmlApplicationEngine::new();
     if let Some(engine) = engine.as_mut() {
@@ -164,14 +204,26 @@ pub fn run() -> i32 {
         sioul_android_lean_window()
     };
     timing("the window loaded");
+    // A session begins: your other devices learn this one is working (docs/database.md,
+    // "Devices"). Off the window's thread: the keyring may take a moment the first time.
+    std::thread::spawn(devices::window_opened);
     let code = match app.as_mut() {
         Some(app) => app.exec(),
         None => 1,
     };
+    // The sites' pages closed before Qt WebEngine shuts down with the
+    // application: some sites write their login back only then (docs/sites.md, "Closing").
+    #[cfg(not(target_os = "android"))]
+    if !engine.is_null() {
+        // SAFETY: the engine lives until this function ends; on the main thread, the windows gone.
+        unsafe { sioul_close_sites(engine.as_mut_ptr().cast()) };
+    }
     // The time running's notification goes with the window (a phone's stays).
     timenote::closing();
     // What was marked goes out, and your other devices learn this one closed.
     share::closing();
+    // The next Sioul started opens by itself rather than knocking here.
+    outside::stop_listening();
     code
 }
 

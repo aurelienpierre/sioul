@@ -100,6 +100,8 @@ fn read_loaded(shared: &Shared) -> Loaded {
     let mut fresh = Loaded::read(&load_config());
     let (removed, _) = mail::hidden_pim(shared);
     fresh.tasks.retain(|t| !removed.contains(Path::new(&t.key)));
+    // An event deleted, a task's time block left to the plan: gone from what things are tied to, too.
+    fresh.events.retain(|e| !removed.contains(Path::new(&e.key)));
     fresh
 }
 
@@ -107,21 +109,31 @@ fn read_loaded(shared: &Shared) -> Loaded {
 const EVENTS_AHEAD: i64 = 28 * 86_400;
 
 /// The room for tasks: your hours, each kind for its own tasks, less the
-/// events of the coming weeks; today's from now, scaled by the weather.
-fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, cases: &[sioul_core::cases::Case]) -> Settings {
+/// events of the coming weeks and the blocks tasks are pinned to; today's
+/// from now, scaled by the weather.
+fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, cases: &[sioul_core::cases::Case], tasks: &[Task], shared: &Shared) -> Settings {
     let config = load_config();
     let now = Zoned::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
-    let events = sioul_core::agenda::occurrences(midnight, midnight + EVENTS_AHEAD);
+    let read = sioul_core::agenda::occurrences(midnight, midnight + EVENTS_AHEAD);
+    // The tasks pinned to a time: a block is its task's time, never an event of its own (docs/tasks.md, "Pinned to a time").
+    let pins = crate::blocks::pins(shared, &read, tasks, &now);
+    // Meals move past the blocks as past any event, as the Health page moves them.
+    let held = sioul_core::plan::event_spans(&read, 0);
+    let events = sioul_core::blocks::without_blocks(read, tasks);
     // Meals, naps and the night first: the work goes around them, as each day has them.
     let needs = sioul_core::health::Health::load(&sioul_core::health::Health::default_path()).needs;
     let days = crate::health::days();
     // Today's meals pushed past the events they would fall in (another day's: `with_events`).
-    let pushed = needs.past_events_on(now.date(), now.time_zone(), &days, &sioul_core::plan::event_spans(&events, 0));
-    let mut settings = Settings::of_hours(&config.week_hours(), sioul_core::areas::TaskAreas::of_config(&config, cases)).with_needs(&needs, pushed).with_days(days).with_events(&now, &events);
+    let pushed = needs.past_events_on(now.date(), now.time_zone(), &days, &held);
+    // Today's end of work moved by free time (docs/pauses.md): its room for light steps only.
+    let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
+    let day = sioul_core::pause::Day::of(&config, crate::hours::blocks(&now), &events);
+    let extension = sioul_core::pause::moved_today(&overrides, &day.evening(), &now, config.free_time.moves);
+    let mut settings = Settings::of_hours(&config.week_hours(), sioul_core::areas::TaskAreas::of_config(&config, cases)).with_needs(&needs, pushed).with_days(days).with_extension(extension).with_pins(pins).with_events(&now, &events);
     settings.default_estimate = config.tasks.estimate.unwrap_or(settings.default_estimate);
-    settings.today_percent = weather.room();
-    settings.heavy_today = weather.heavy();
+    // Today by its weather, and no heavier than a hazy day after a pause (docs/pauses.md).
+    (settings.today_percent, settings.heavy_today) = sioul_core::pause::today_level(&overrides, now.date(), weather);
     settings.closed = situation.closed.clone();
     settings.office_days = situation.office_days;
     settings.office_hours = config.office_hours();
@@ -160,7 +172,7 @@ struct Desk {
 }
 
 impl Desk {
-    fn new(loaded: Arc<Loaded>) -> Desk {
+    fn new(loaded: Arc<Loaded>, shared: &Shared) -> Desk {
         let date = Zoned::now().date();
         let today = Today::load(&Today::default_path(), date);
         let sessions = timelog::sessions();
@@ -168,7 +180,7 @@ impl Desk {
         let stopped = sessions.iter().filter(|s| !s.note.is_empty()).map(|s| (s.task.clone(), s.note.clone())).collect();
         let situation = situation(&loaded.cases);
         // What your record says: ratings said after tasks, corrected lengths, what a day holds (docs/capacity.md).
-        let settings = crate::capacity::planned(settings(today.weather, &situation, &loaded.cases), &loaded.tasks, &sessions);
+        let settings = crate::capacity::planned(settings(today.weather, &situation, &loaded.cases, &loaded.tasks, shared), &loaded.tasks, &sessions);
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
         // Asleep no task shows, unless the page asked to see them all.
         let anyway = situation.mode.sleeps() && SHOWN_ANYWAY.load(Ordering::Relaxed);
@@ -263,6 +275,8 @@ struct TasksShown {
     budget: String,
     /// Today laid out: events at their times, today's steps in the gaps.
     day: sioul_core::dayview::DayView,
+    /// In free time, leisure offered, never a list to finish (docs/pauses.md).
+    free: Vec<serde_json::Value>,
 }
 
 /// Today, laid out: the events of today and the steps the plan gives today, those the page shows.
@@ -311,7 +325,7 @@ pub(crate) fn routines(shared: &Shared) -> String {
         text: String,
         builtin: bool,
     }
-    let desk = Desk::new(loaded(shared));
+    let desk = Desk::new(loaded(shared), shared);
     let mut steps = vec![Step { title: tr().text("routine-admin-porch", None), minutes: 10, open: "porch".into() }];
     if let Some(next) = desk.plan.next.as_deref().and_then(|uid| desk.task(uid)) {
         steps.push(Step { title: say("routine-admin-next", &[("title", next.title.clone())]), minutes: desk.plan.items.get(&next.uid).map_or(25, |p| p.left.clamp(5, 45)), open: links::task_uri(&next.uid) });
@@ -430,7 +444,15 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
             *cache = Some(Arc::clone(&fresh));
         }
         let state = shared.work.lock().map(|s| s.clone()).unwrap_or_default();
-        let mut desk = Desk::new(fresh);
+        let mut desk = Desk::new(fresh, &shared);
+        // What changed elsewhere in the blocks set right, a time given by a drag before them made one:
+        // laid again then, at once (`blocks::upkeep`; nothing written when nothing differs).
+        if crate::blocks::upkeep(&shared, &desk.loaded.tasks, &Zoned::now()) {
+            show_work(&qt, &shared);
+            pim::show_pim(&qt, &shared);
+        }
+        // The phone's home screen card: the next step as each coming time will have it (homecard.rs).
+        crate::homecard::plan_seen(&desk.loaded, &desk.plan, &desk.today, &desk.spent, &desk.stopped);
         desk.filter = Filter { case: state.case.clone(), quiet: desk.filter.quiet.clone(), ..state.filter.clone() };
         let cx = desk.context();
         let case = Some(state.case.as_str()).filter(|c| !c.is_empty());
@@ -469,6 +491,7 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
             morning: crate::health::morning_word(),
             budget: desk.next_budget(),
             day: today_laid_out(&desk, &shared),
+            free: crate::pauses::offers(&desk.loaded.tasks, desk.filter.quiet.as_ref(), crate::hours::mode_now().free()),
         };
         let tasks_json = crate::backend::json(&shown);
         // The steps laid elsewhere now (a meal moved, a step given a time): the Health page's day follows at once.
@@ -559,9 +582,9 @@ pub(crate) fn closing(shared: &Shared) -> Closed {
     let sessions = timelog::sessions();
     let spent = timelog::spent(&sessions, 0, i64::MAX);
     let mut situation = situation(&loaded.cases);
-    let before = plan::plan(&loaded.tasks, date, &settings(today.weather, &situation, &loaded.cases), &spent, &today.aside);
+    let before = plan::plan(&loaded.tasks, date, &settings(today.weather, &situation, &loaded.cases, &loaded.tasks, shared), &spent, &today.aside);
     situation.closed.insert(date);
-    let after = plan::plan(&loaded.tasks, date, &settings(today.weather, &situation, &loaded.cases), &spent, &today.aside);
+    let after = plan::plan(&loaded.tasks, date, &settings(today.weather, &situation, &loaded.cases, &loaded.tasks, shared), &spent, &today.aside);
     let config = load_config();
     let back = sioul_core::quiet::after_today(&config.working_hours(), &config.time_off, &now, i8::try_from(config.agenda.day_start.unwrap_or(7)).unwrap_or(7));
     let back_day = back.date();
@@ -887,7 +910,7 @@ fn retarget_note(qt: &QtThread, shared: &Arc<Shared>, loaded: &Loaded, path: &st
 /// One task in full, with its lists and what it is tied to, as JSON.
 pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     let loaded = loaded(shared);
-    let desk = Desk::new(Arc::clone(&loaded));
+    let desk = Desk::new(Arc::clone(&loaded), shared);
     let Some(task) = desk.task(uid) else { return String::new() };
     let related = loaded.world().related(&links::task_uri(uid));
     let mut detail = taskview::detail(&desk.context(), task, &desk.sessions, &related);
@@ -925,6 +948,8 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
             return create(qt, shared, &edit, list);
         }
         change(qt, shared, uid, |text| tasks::apply(text, &edit, &TimeZone::system(), &Zoned::now()))?;
+        // Its blocks to come follow its title and, when it comes back, its turn (`blocks`).
+        crate::blocks::follow(qt, shared, uid);
         Ok(uid.to_string())
     });
     answer(result)
@@ -988,16 +1013,20 @@ pub(crate) fn set_status(qt: &QtThread, shared: &Arc<Shared>, uid: &str, status:
         "cancelled" => Status::Cancelled,
         _ => Status::NeedsAction,
     };
-    let before = Desk::new(loaded(shared));
+    let before = Desk::new(loaded(shared), shared);
     let result = change(qt, shared, uid, |text| tasks::set_status(text, status, &TimeZone::system(), &Zoned::now()));
     if let Err(e) = result {
         return e;
+    }
+    // Done or dropped (a repeating one's turn done): its blocks not begun go, one under way ends now (`blocks`).
+    if matches!(status, Status::Completed | Status::Cancelled) {
+        crate::blocks::closed(qt, shared, uid, Timestamp::now().as_second());
     }
     if status != Status::Completed {
         return String::new();
     }
     // What finishing it freed, said once (docs/tasks.md: close the loop fast).
-    let after = Desk::new(Arc::new(read_loaded(shared)));
+    let after = Desk::new(Arc::new(read_loaded(shared)), shared);
     let effect = taskview::done_effect(&after.context(), &before.plan, uid);
     let line = if effect.is_empty() { tr().text("task-done-said", None) } else { format!("{} {effect}", tr().text("task-done-said", None)) };
     tell(qt, shared, line.clone());
@@ -1036,36 +1065,33 @@ pub(crate) fn set_waits(qt: &QtThread, shared: &Arc<Shared>, uid: &str, other: &
     result.err().unwrap_or_default()
 }
 
-/// A step given a time today by a drag in the day view ("2026-10-06T14:30",
-/// `tasks::AT`), or left to the plan again (""): only that line of the task
-/// changes, its own dates stay as set (docs/tasks.md, "The plan proposes; your
-/// dates stay yours"); the day is laid again at once, and "Undo" offered for
-/// ten seconds, which gives back the time it had. Returns what went wrong, else "".
-pub(crate) fn set_at(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str) -> String {
-    let task = match find(shared, uid) {
-        Ok(task) => task,
-        Err(e) => return e,
-    };
-    let was = task.at.clone();
-    if was == at {
-        return String::new();
-    }
-    let given = |text: &str, at: &str| -> Result<String, String> {
+/// A task pinned to a time ("2026-10-06T14:30", your time zone) for
+/// `minutes` (0: as long as its block is, else what the plan lays for it), or
+/// left to the plan again (""): its time block, an event, made, moved or taken
+/// away (`blocks`); its own dates stay as set (docs/tasks.md, "The plan
+/// proposes; your dates stay yours", "Pinned to a time"); the day is laid
+/// again at once, and "Undo" offered for ten seconds. Returns what went wrong, else "".
+pub(crate) fn set_at(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str, minutes: u32) -> String {
+    if at.is_empty() { crate::blocks::unpin(qt, shared, uid) } else { crate::blocks::pin(qt, shared, uid, at, minutes) }
+}
+
+/// A task by its UID, as last read.
+pub(crate) fn find_task(shared: &Shared, uid: &str) -> Result<Task, String> {
+    find(shared, uid)
+}
+
+/// A task renamed from its time block (its event's form): its title only, from its file as it is.
+pub(crate) fn retitle(qt: &QtThread, shared: &Arc<Shared>, uid: &str, title: &str) -> Result<(), String> {
+    change(qt, shared, uid, |text| {
         let zone = TimeZone::system();
         let task = tasks::task_of_text(text, &zone).ok_or_else(|| tr().text("task-gone", None))?;
-        tasks::apply(text, &TaskEdit { at: at.to_string(), ..TaskEdit::of(&task) }, &zone, &Zoned::now())
-    };
-    if let Err(e) = change(qt, shared, uid, |text| given(text, at)) {
-        return e;
-    }
-    // Said as the day will have it: its title and its time, or that the plan places it.
-    let line = match at.get(11..16) {
-        Some(time) => say("drag-done", &[("what", task.title.clone()), ("time", time.to_string())]),
-        None => say("day-let-plan-done", &[("title", task.title.clone())]),
-    };
-    let uid = uid.to_string();
-    mail::offer_back(qt, shared, line, move |qt, shared| change(qt, shared, &uid, |text| given(text, &was)).err().unwrap_or_default());
-    String::new()
+        tasks::apply(text, &TaskEdit { title: title.to_string(), ..TaskEdit::of(&task) }, &zone, &Zoned::now())
+    })
+}
+
+/// The minutes the plan lays for a task, its margins with it (`plan::Planned::laid`); None when it plans none.
+pub(crate) fn laid(shared: &Shared, uid: &str) -> Option<u32> {
+    Desk::new(loaded(shared), shared).plan.items.get(uid).map(|p| p.laid).filter(|m| *m > 0)
 }
 
 /// Puts a task off until tomorrow.
@@ -1090,7 +1116,13 @@ pub(crate) fn delete(qt: &QtThread, shared: &Arc<Shared>, uid: &str) {
     let Ok(task) = find(shared, uid) else { return };
     let path = PathBuf::from(&task.key);
     let account = account_of(&path).unwrap_or_default();
-    mail::schedule_removal(qt, shared, &account, path, tr().text("undo-task-deleted", None));
+    // Its time blocks to come go with it, under the same "Undo" (`blocks`).
+    let blocks = crate::blocks::with_task(uid);
+    if blocks.is_empty() {
+        mail::schedule_removal(qt, shared, &account, path, tr().text("undo-task-deleted", None));
+    } else {
+        mail::schedule_removals(qt, shared, std::iter::once((account, path)).chain(blocks).collect(), None, tr().text("undo-task-deleted", None));
+    }
     if let Ok(mut cache) = shared.loaded.lock() {
         *cache = None;
     }

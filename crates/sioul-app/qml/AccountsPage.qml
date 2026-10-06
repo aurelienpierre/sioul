@@ -72,8 +72,10 @@ Item {
                 return
             tabs.currentIndex = 1
             if (kind === "com.google") {
+                // Its calendars' form and its mail's, whose server is Google's:
+                // an app password or Google's page, never the account's password.
                 addTab.item.googleFor(name)
-                page.showGoogle()
+                page.addMailFor(name)
             } else {
                 addTab.item.davFor(name, false)
                 page.addMailFor(name)
@@ -92,6 +94,16 @@ Item {
     function addDavFor(address) {
         tabs.currentIndex = 1
         addTab.item.davFor(address, true)
+    }
+
+    // A mail account signed in with Google, signed in again (or given an app
+    // password instead): the mail form, its address, Google's two ways.
+    function googleMailAgain(account) {
+        tabs.currentIndex = 1
+        addTab.item.mailFor(account.address)
+        page.againId = account.id
+        page.lastForm = "mail"
+        page.sioul.discover(account.address)
     }
 
     // An account's password, given on this device (AccountPassword.qml): made the first time.
@@ -126,6 +138,8 @@ Item {
 
     // Which form a message from the backend is about: "mail", "dav" or "google".
     property string lastForm: "mail"
+    // The mail form signs this account in again (Google's mail), rather than adding one.
+    property string againId: ""
     property bool davServerShown: false
     property bool googleStepsShown: false
     // Sioul's own Google key in this build, and whether you would rather use yours.
@@ -488,11 +502,21 @@ Item {
                                 security.currentIndex = found.security === "starttls" ? 1 : 0
                                 login.text = found.login
                                 password.text = ""
-                                password.forceActiveFocus()
+                                // Once the found address's own bindings (its key kept) have followed.
+                                Qt.callLater(() => {
+                                    if (googleMail.item)
+                                        googleMail.item.reset()
+                                })
+                                // Google's mail asks no account password: its own form instead.
+                                if (!found.google)
+                                    password.forceActiveFocus()
                             }
                             function clear() {
                                 addressField.text = ""
                                 password.text = ""
+                                page.againId = ""
+                                if (googleMail.item)
+                                    googleMail.item.reset()
                                 davAddress.text = ""
                                 davPassword.text = ""
                                 davUrl.text = ""
@@ -573,6 +597,7 @@ Item {
                                             enabled: addressField.text.indexOf("@") > 0 && !page.sioul.formBusy
                                             onClicked: {
                                                 page.lastForm = "mail"
+                                                page.againId = ""
                                                 page.sioul.discover(addressField.text)
                                             }
                                         }
@@ -592,6 +617,7 @@ Item {
                                             color: page.theme.text
                                         }
                                         Label {
+                                            visible: !page.found || !page.found.google
                                             Layout.fillWidth: true
                                             text: page.found ? page.found.hint : ""
                                             textFormat: Text.PlainText
@@ -599,11 +625,34 @@ Item {
                                             color: page.theme.warm
                                         }
                                         Button {
-                                            visible: page.found !== null && !!page.found.help_url
+                                            visible: page.found !== null && !!page.found.help_url && !page.found.google
                                             text: page.sioul.text("ui-app-passwords")
                                             onClicked: Qt.openUrlExternally(page.found.help_url)
                                         }
+                                        // Google's mail: an app password or Google's page (GoogleMail.qml),
+                                        // made the first time an address is Google's.
+                                        Loader {
+                                            id: googleMail
+
+                                            active: page.found !== null && page.found.google === true
+                                            visible: active
+                                            Layout.fillWidth: true
+                                            sourceComponent: GoogleMail {
+                                                sioul: page.sioul
+                                                theme: page.theme
+                                                address: addressField.text
+                                                found: page.found
+                                                againId: page.againId
+                                                onStarted: page.lastForm = "mail"
+                                                onDone: {
+                                                    addTab.item.clear()
+                                                    page.sioul.found = ""
+                                                    tabs.currentIndex = 0
+                                                }
+                                            }
+                                        }
                                         GridLayout {
+                                            visible: !page.found || !page.found.google
                                             Layout.fillWidth: true
                                             columns: 2
                                             columnSpacing: page.theme.gap
@@ -658,6 +707,7 @@ Item {
                                             }
                                         }
                                         Label {
+                                            visible: !page.found || !page.found.google
                                             Layout.fillWidth: true
                                             text: page.sioul.text("ui-password-note")
                                             wrapMode: Text.Wrap
@@ -666,6 +716,7 @@ Item {
                                         Button {
                                             id: connect
 
+                                            visible: !page.found || !page.found.google
                                             text: page.sioul.formBusy ? page.sioul.text("ui-connecting") : page.sioul.text("ui-connect")
                                             enabled: !page.sioul.formBusy && password.text.length > 0 && host.text.length > 0
                                             onClicked: {
@@ -820,10 +871,19 @@ Item {
                                         checked: page.ownGoogleKey
                                         onToggled: page.ownGoogleKey = checked
                                     }
+                                    // Its sentence wraps: on one line, it was wider than a phone.
                                     Button {
+                                        id: googleStepsButton
+
                                         visible: !page.googleBuiltIn || page.ownGoogleKey
+                                        Layout.fillWidth: true
                                         flat: true
                                         text: (page.googleStepsShown ? "▾  " : "▸  ") + page.sioul.text("ui-google-steps")
+                                        contentItem: Label {
+                                            text: googleStepsButton.text
+                                            wrapMode: Text.Wrap
+                                            color: page.theme.text
+                                        }
                                         onClicked: page.googleStepsShown = !page.googleStepsShown
                                     }
                                     Label {
@@ -1256,13 +1316,33 @@ Item {
             }
             // Google ended the access: its page again, with the key kept.
             Button {
-                visible: service.modelData.google && service.modelData.status_error
+                visible: service.modelData.google && service.modelData.service !== "mail" && service.modelData.status_error
                 enabled: !page.sioul.formBusy
                 text: page.sioul.text("ui-google-again")
                 onClicked: {
                     page.lastForm = "google"
                     page.sioul.addGoogle(service.modelData.address, "", "", service.modelData.id)
                 }
+            }
+        }
+        // Google's mail signed in with Google, its access ended (or never given on
+        // this device): Google's page again, or an app password instead; never
+        // the account's password. Below the line, to fit a phone.
+        Flow {
+            visible: service.modelData.google && service.modelData.service === "mail" && service.modelData.status_error
+            Layout.fillWidth: true
+            Layout.leftMargin: 28
+            spacing: 8
+
+            Button {
+                enabled: !page.sioul.formBusy
+                text: page.sioul.text("ui-google-again")
+                onClicked: page.googleMailAgain(service.modelData)
+            }
+            Button {
+                enabled: !page.sioul.formBusy
+                text: page.sioul.text("ui-gmail-again-app-password")
+                onClicked: page.askPassword(service.modelData)
             }
         }
         // Mail: what it is for, its shield, how far back, how often: folded, made

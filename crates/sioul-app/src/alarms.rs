@@ -134,6 +134,8 @@ pub unsafe extern "C" fn sioul_alarm_decide(key: *const c_char) -> *mut c_char {
         let body = std::panic::catch_unwind(|| crate::backend::tr().text("dose-alarm-fallback", None)).unwrap_or_else(|_| "A dose is due: open Sioul to check it.".into());
         serde_json::json!({ "show": true, "title": "Sioul", "body": body, "again_at": 0 }).to_string()
     });
+    // The home screen's card says the doses as they are now (homecard.rs).
+    let _ = std::panic::catch_unwind(crate::homecard::doses_changed);
     handed(answer)
 }
 
@@ -145,6 +147,8 @@ pub unsafe extern "C" fn sioul_alarm_decide(key: *const c_char) -> *mut c_char {
 pub unsafe extern "C" fn sioul_alarm_taken(key: *const c_char) -> *mut c_char {
     let key = unsafe { key_of(key) };
     let answer = std::panic::catch_unwind(|| crate::health::alarm_taken(&key)).unwrap_or_else(|_| r#"{"done":false,"open":true,"line":""}"#.to_string());
+    // The home screen's card says the doses as they are now (homecard.rs).
+    let _ = std::panic::catch_unwind(crate::homecard::doses_changed);
     handed(answer)
 }
 

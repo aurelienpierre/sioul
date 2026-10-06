@@ -30,6 +30,8 @@ SioulWindow {
     property bool leaving: false
     // What OpenPGP allows: signing with your key, encrypting to every recipient's.
     property var protection: compose.draft ? compose.draft.protection : ({ can_sign: false, can_encrypt: false, missing: [] })
+    // "Attaching 2 files…" while files shared from another application are copied (outside.rs).
+    property string attaching: compose.draft && compose.draft.attaching ? compose.draft.attaching : ""
 
     signal finished(string id)
 
@@ -67,6 +69,16 @@ SioulWindow {
 
         function onKeysChanged() {
             compose.readProtection()
+        }
+
+        // The files shared from another application came: attached, or said why not.
+        function onDraftFilesArrived(id, line, problem) {
+            if (id !== compose.draftId)
+                return
+            compose.attaching = ""
+            compose.reloadAttachments()
+            compose.note = line
+            compose.problem = problem
         }
     }
 
@@ -519,7 +531,8 @@ SioulWindow {
                 }
                 Label {
                     Layout.fillWidth: true
-                    text: compose.note !== "" ? compose.note : compose.sioul.text("ui-markdown-hint")
+                    // Files still coming are said until they are there, unless something stops sending.
+                    text: compose.attaching !== "" && !compose.problem ? compose.attaching : (compose.note !== "" ? compose.note : compose.sioul.text("ui-markdown-hint"))
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: compose.problem ? compose.theme.warm : compose.theme.muted

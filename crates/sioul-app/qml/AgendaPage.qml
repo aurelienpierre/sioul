@@ -70,13 +70,24 @@ Item {
             page.takeShown()
         }
     }
-    onVisibleChanged: page.takeShown()
+    onVisibleChanged: {
+        page.takeShown()
+        if (page.visible)
+            page.readAgain()
+    }
     // "agenda", "day", "week", "month".
     property string mode: "agenda"
     // A narrow screen (a phone): the title under the arrows, events on two lines.
     readonly property bool narrow: page.width < 600
     readonly property var modes: ["agenda", "day", "week", "month"]
     property var opened: null
+    // When the open event is reminded, and its own choice (docs/reminders.md): {line, remind, writable}.
+    property var reminder: ({})
+    readonly property var reminds: page.reminder.writable ? JSON.parse(page.sioul.reminderChoices(page.reminder.remind || "") || "[]") : []
+    function readReminder() {
+        page.reminder = page.opened ? JSON.parse(page.sioul.eventReminder(page.opened.key, page.opened.start) || "{}") : ({})
+    }
+    onOpenedChanged: page.readReminder()
     // The event the menu or the deletion asks about.
     property var menuTarget: null
     // On a phone, the event open takes the page; Back closes it (main.qml).
@@ -118,22 +129,32 @@ Item {
     // Shown from today: the page follows the days as they turn.
     property bool followsToday: true
 
-    // Read again every five minutes while shown, and when the app comes back:
-    // events over leave the list, what another device or the server changed comes in.
-    Timer {
-        interval: 5 * 60000
-        running: page.visible && !page.sioul.away
-        repeat: true
-        onRunningChanged: if (running) triggered()
-        onTriggered: {
-            if (page.followsToday && page.iso(page.anchor) !== page.iso(new Date()))
-                page.anchor = new Date()
-            page.load()
+    // Read again at each five minutes' turn of the window's clock while shown,
+    // when shown again, when the app comes back (the clock jumps) and when the
+    // day turns: events over leave the list, what another device or the
+    // server changed comes in, the days shown from today follow midnight.
+    property real readAt: 0
+    property string readOn: ""
+
+    function readAgain() {
+        if (page.followsToday && page.iso(page.anchor) !== page.window.today)
+            page.anchor = new Date(page.window.today + "T12:00:00")
+        page.readAt = page.window.now
+        page.readOn = page.window.today
+        page.load()
+    }
+
+    Connections {
+        target: page.window
+
+        function onNowChanged() {
+            if (page.visible && (page.window.today !== page.readOn || Math.floor(page.window.now / 300) !== Math.floor(page.readAt / 300)))
+                page.readAgain()
         }
     }
 
     function load() {
-        page.followsToday = page.iso(page.anchor) === page.iso(new Date())
+        page.followsToday = page.iso(page.anchor) === page.window.today
         // From today, the list is what comes: an event over is shown only when you go back (◂).
         const upcoming = page.mode === "agenda" && page.followsToday
         page.sioul.showDays(page.iso(page.startOf(page.anchor, page.mode)), page.length(page.mode), upcoming)
@@ -153,14 +174,16 @@ Item {
     }
 
     function title() {
+        // Today as the window's clock has it: the title turns with it at midnight.
+        const today = page.window.today
         if (page.mode === "agenda")
-            return page.iso(page.anchor) === page.iso(new Date()) ? page.sioul.text("agenda-next") : page.sioul.textWith("agenda-from-day", "day", page.anchor.toLocaleDateString(page.locale, "dddd d MMMM"))
+            return page.iso(page.anchor) === today ? page.sioul.text("agenda-next") : page.sioul.textWith("agenda-from-day", "day", page.anchor.toLocaleDateString(page.locale, "dddd d MMMM"))
         if (page.mode === "day") {
             // "Today, Saturday 3 October"; another day by its date alone.
             const named = page.anchor.toLocaleDateString(page.locale, "dddd d MMMM")
-            const tomorrow = new Date()
+            const tomorrow = new Date(today + "T12:00:00")
             tomorrow.setDate(tomorrow.getDate() + 1)
-            if (page.iso(page.anchor) === page.iso(new Date()))
+            if (page.iso(page.anchor) === today)
                 return page.sioul.text("agenda-today") + ", " + named
             if (page.iso(page.anchor) === page.iso(tomorrow))
                 return page.sioul.text("agenda-tomorrow") + ", " + named
@@ -214,7 +237,7 @@ Item {
     onModeChanged: page.load()
     Component.onCompleted: {
         page.takeShown()
-        page.load()
+        page.readAgain()
     }
 
     Shortcut {
@@ -288,7 +311,7 @@ Item {
                 Button {
                     text: page.sioul.text("agenda-today")
                     onClicked: {
-                        page.anchor = new Date()
+                        page.anchor = new Date(page.window.today + "T12:00:00")
                         page.load()
                     }
                 }
@@ -397,7 +420,7 @@ Item {
                         textFormat: Text.PlainText
                         font.weight: Font.DemiBold
                         font.pixelSize: 16
-                        color: day.modelData.date < page.iso(new Date()) ? page.theme.muted : page.theme.text
+                        color: day.modelData.date < page.window.today ? page.theme.muted : page.theme.text
                     }
                     Label {
                         visible: day.modelData.events.length === 0
@@ -434,6 +457,9 @@ Item {
                 theme: page.theme
                 days: page.mode === "week" || page.mode === "day" ? page.shown.days : []
                 locale: page.locale
+                // The window's clock: the line at now and today's column follow it.
+                now: page.window.now
+                today: page.window.today
                 opened: page.opened
                 onOpen: event => page.opened = event
                 onMenu: event => {
@@ -469,12 +495,14 @@ Item {
 
                             required property var modelData
                             readonly property bool inMonth: Number(cell.modelData.date.slice(5, 7)) === page.anchor.getMonth() + 1
+                            // Today as the window's clock has it: it moves at midnight.
+                            readonly property bool today: cell.modelData.date === page.window.today
 
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             Layout.preferredWidth: 1
                             Layout.preferredHeight: 1
-                            color: cell.modelData.today ? page.theme.surface : "transparent"
+                            color: cell.today ? page.theme.surface : "transparent"
                             radius: page.theme.radius
                             border.color: page.theme.line
                             opacity: cell.inMonth ? 1 : 0.5
@@ -491,8 +519,8 @@ Item {
                                 Label {
                                     text: Number(cell.modelData.date.slice(8, 10))
                                     textFormat: Text.PlainText
-                                    font.weight: cell.modelData.today ? Font.Bold : Font.Normal
-                                    color: cell.modelData.today ? page.theme.accent : page.theme.text
+                                    font.weight: cell.today ? Font.Bold : Font.Normal
+                                    color: cell.today ? page.theme.accent : page.theme.text
                                 }
                                 Repeater {
                                     model: cell.modelData.events.slice(0, 3)
@@ -580,6 +608,29 @@ Item {
                         text: page.opened ? page.opened.calendar + (page.opened.recurring ? "  ·  " + page.sioul.text("agenda-repeats") : "") : ""
                         textFormat: Text.PlainText
                         color: page.theme.muted
+                    }
+                }
+                // When it is reminded; changed here for every time it comes.
+                Label {
+                    visible: (page.reminder.line || "") !== ""
+                    Layout.fillWidth: true
+                    text: page.reminder.line || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: page.theme.muted
+                }
+                ComboBox {
+                    visible: page.reminds.length > 0
+                    Layout.fillWidth: page.narrow
+                    Layout.preferredWidth: page.narrow ? -1 : 260
+                    textRole: "label"
+                    model: page.reminds
+                    currentIndex: Math.max(0, page.reminds.findIndex(c => c.value === (page.reminder.remind || "")))
+                    Accessible.name: page.sioul.text("event-remind")
+                    onActivated: index => {
+                        const problem = page.sioul.setEventReminder(page.opened.key, page.reminds[index].value)
+                        if (problem === "")
+                            page.readReminder()
                     }
                 }
                 Button {

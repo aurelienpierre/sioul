@@ -328,22 +328,25 @@ impl Health {
     }
 }
 
-/// Another computer sharing with this one, as known here, for the doses
-/// (docs/health.md, "Knowing"): until when everything it wrote is read here,
-/// whether it said it closed, how late its news comes.
+/// Another device sharing with this one, as known here, for the doses
+/// (docs/health.md, "Knowing"): what it last said of itself in the sharing
+/// folder (its entry in the devices' registry, `said`), and, for an older
+/// Sioul that writes none, what its claims said (until when everything it
+/// wrote is read here, whether it said it closed, how late its news comes).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Peer {
-    /// Its name, to say where: the host's.
+    /// Its name, to say where: the host's; a phone's is said "the phone".
     pub name: String,
-    /// Everything it wrote until then (Unix seconds) is read here; 0: never sure.
+    /// From its claims (an older Sioul): everything it wrote until then (Unix
+    /// seconds) is read here; 0: never sure.
     #[serde(default)]
     pub known_until: i64,
-    /// At `known_until`, it said it closed (quit, or put away on a phone):
-    /// it marks nothing until it says otherwise.
+    /// From its claims: at `known_until`, it said it closed (quit, or put away
+    /// on a phone): it marks nothing until it says otherwise.
     #[serde(default)]
     pub closed: bool,
-    /// The longest its news took to come here in the last day, in seconds;
-    /// none measured yet.
+    /// From its claims: the longest its news took to come here lately, in
+    /// seconds; none measured yet.
     #[serde(default)]
     pub delay: Option<i64>,
     /// When a line it wrote was found unreadable here: what it said is lost.
@@ -352,48 +355,221 @@ pub struct Peer {
     /// When it was last heard at all.
     #[serde(default)]
     pub heard: i64,
+    /// Its id in the sharing; "" for a device whose claim does not read here.
+    #[serde(default)]
+    pub id: String,
+    /// What it last said of itself in the folder, as read here; none from an
+    /// older Sioul, which says nothing of the kind, or before it is read.
+    #[serde(default)]
+    pub said: Option<Said>,
+    /// Everything it wrote up to its last export (`Said::exported`) is read here.
+    #[serde(default)]
+    pub complete: bool,
+    /// When this device last saw its entry change: this device's clock (Unix seconds).
+    #[serde(default)]
+    pub seen: i64,
+    /// How far its clock is ahead of this device's, at least, in seconds:
+    /// measured here (`Said::exported` against when it was seen), 0 when not
+    /// seen ahead. A clock behind only makes Sioul wait longer.
+    #[serde(default)]
+    pub ahead: i64,
+    /// You said it is off: not counted until it shows life again.
+    #[serde(default)]
+    pub off: bool,
+}
+
+/// What a device says of itself in the sharing folder: its entry in the
+/// devices' registry (`sioul_sync::devices`), its times on its own clock (Unix seconds).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Said {
+    /// Its last start: Sioul opened; on a phone, Sioul back on the screen, or
+    /// one of its reminders handled while it was not.
+    pub started: i64,
+    /// Its last clean close, after its last export; 0 never.
+    pub closed: i64,
+    /// From its start until the last step of a clean close: a crash leaves it so.
+    pub working: bool,
+    /// When its files were last read for an export: every answer captured
+    /// there before is in its records (read here when `Peer::complete`).
+    pub exported: i64,
+    /// When it last read the others.
+    pub imported: i64,
+    /// It shares the health part: the answers it captures travel.
+    pub doses: bool,
+    /// It stopped sharing: it counts no more.
+    pub left: bool,
+    /// A phone, said "the phone"; else a computer, said by its name.
+    pub phone: bool,
+}
+
+/// A device a doubt names: its id (for "This device is off"), its name, a phone or not.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Named {
+    pub id: String,
+    pub name: String,
+    pub phone: bool,
 }
 
 /// Why a dose is not known here: whether it was taken, Sioul cannot tell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Doubt {
-    /// This computer's record of doses could not be read, or was lost, then.
+    /// This device's record of doses could not be read, or was lost, then.
     Record { since: i64 },
-    /// Another computer may have marked it: everything it wrote is known
-    /// until then (0: never), and it was open or closed then.
-    Unheard { name: String, until: i64, closed: bool },
-    /// A line another computer wrote could not be read here.
-    Broken { name: String },
+    /// An older Sioul, which writes no entry in the registry, may have marked
+    /// it: everything it wrote is known until then (0: never), and it was open
+    /// or closed then.
+    Unheard { device: Named, until: i64, closed: bool },
+    /// A line another device wrote could not be read here.
+    Broken { device: Named },
+    /// In use, and it has not shared since the dose was due, or not lately:
+    /// `shared`, when it last did (its clock); `quiet`, not seen changing for
+    /// over an hour (`QUIET`): it may have stopped without closing.
+    Working { device: Named, shared: i64, quiet: bool },
+    /// What it last shared, then (`shared`), has not all come here yet.
+    Coming { device: Named, shared: i64 },
+    /// It does not share its doses (its Health part switched off), and it was
+    /// not closed before the dose was due.
+    Apart { device: Named },
 }
 
 /// The longest a closed computer's news may take to come here for it to count
-/// as closed: had it opened again, it would be known by now.
+/// as closed, for an older Sioul known by its claims only: had it opened
+/// again, it would be known by now.
 pub const NEWS_IN: i64 = 3 * 60;
 
-/// Why a dose due at `due` (Unix seconds) is not known here now; none when it
-/// is. Known means: this computer's record reads, and every other computer
-/// sharing with it, heard in the last month, was heard after the dose was due
-/// with everything it wrote until then read here, or said it closed before
-/// and its news comes within minutes. A dose taken twice can harm: whatever
-/// is not known is said, never guessed.
-pub fn doubts(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> Vec<Doubt> {
+/// How long a device in use stays known after its last export, as of now:
+/// within it, an answer it captured is one you have just given. Beyond it,
+/// what it captured since may still be on its way.
+pub const FRESH: i64 = 5 * 60;
+
+/// How far apart two devices' clocks are taken to be, beyond what is measured
+/// here (`Peer::ahead`): a guess; devices set their clocks from the network,
+/// to within seconds.
+pub const SKEW: i64 = 2 * 60;
+
+/// A device in use not seen changing for this long may have stopped without
+/// closing (a crash): said so. Only the words change.
+pub const QUIET: i64 = 60 * 60;
+
+/// A device silent this long stops counting for the doses, and Settings ▸ Your
+/// folder and sharing offers to forget it: a guess (a computer away for a long
+/// weekend comes back within it).
+pub const SILENT_DAYS: i64 = 7;
+
+/// Whether `peer` counts for the doses at `now`: not said off by you, still
+/// sharing, and heard within `SILENT_DAYS`, by this device's clock (its entry
+/// seen changing) or its own (its last export).
+pub fn counts(peer: &Peer, now: i64) -> bool {
+    if peer.off {
+        return false;
+    }
+    let silent = SILENT_DAYS * 86_400;
+    match &peer.said {
+        Some(said) if said.left => false,
+        Some(said) => now - peer.seen <= silent || now - said.exported <= silent,
+        None => now - peer.heard < silent,
+    }
+}
+
+/// Why a dose due at `due` (Unix seconds), not answered here, may have been
+/// answered on another device, as of `now`; none when it is known not taken
+/// (docs/health.md, "Knowing"). This device's record must read, and each
+/// other device that counts (`counts`) be one of:
+/// - closed cleanly (`working` down, `closed` after `started`, both on its
+///   own clock), everything it wrote up to its last export read here: closed
+///   after the dose, or before it and not started since. Its last export holds
+///   every answer it captured, and it captures none until it starts again;
+/// - in use, having exported after the dose (its clock, allowing `SKEW` and
+///   how far ahead its clock was seen) and lately (seen changing here within
+///   `FRESH`, and dated within it), everything read: an answer captured since
+///   goes out at once and comes within the sync's time;
+/// - an older Sioul, which writes no registry: as its claims say, heard in
+///   full after the dose and within `FRESH`, or its last word, read in full,
+///   that it closed, its news quick (`NEWS_IN`). Never closed for want of a word.
+///
+/// Otherwise the doubt names it. One rule for reminders, near the dose's time,
+/// and for what stays in view hours after it (the Porch, the Health page, a
+/// phone's home screen). A dose taken twice can harm: what is not known is
+/// said, never guessed.
+pub fn doubts_now(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> Vec<Doubt> {
     let mut out = Vec::new();
     // Doses due before the record was found broken or gone, in the day before.
     if let Some(since) = record_lost.filter(|since| due <= *since && *since - due < 86_400) {
         out.push(Doubt::Record { since });
     }
-    for peer in peers.iter().filter(|p| now - p.heard < 30 * 86_400) {
-        // A line lost from around the dose's time may have been its mark.
+    for peer in peers.iter().filter(|p| counts(p, now)) {
+        let device = Named { id: peer.id.clone(), name: peer.name.clone(), phone: peer.said.as_ref().is_some_and(|s| s.phone) };
+        // A line lost from around the dose's time may have been its answer.
         if peer.broken.is_some_and(|at| at >= due - 6 * 3600) {
-            out.push(Doubt::Broken { name: peer.name.clone() });
+            out.push(Doubt::Broken { device });
             continue;
         }
-        let known = peer.known_until >= due || (peer.closed && peer.delay.is_some_and(|d| d <= NEWS_IN));
-        if !known {
-            out.push(Doubt::Unheard { name: peer.name.clone(), until: peer.known_until, closed: peer.closed });
+        let Some(said) = &peer.said else {
+            let closed = peer.closed && peer.heard <= peer.known_until;
+            let quiet = closed && peer.delay.is_some_and(|d| d <= NEWS_IN);
+            let fresh = peer.known_until >= due && now - peer.known_until <= FRESH;
+            if !quiet && !fresh {
+                out.push(Doubt::Unheard { device, until: peer.known_until, closed });
+            }
+            continue;
+        };
+        // Its entry came ahead of its records: what it last shared may hold the answer.
+        if !peer.complete {
+            out.push(Doubt::Coming { device, shared: said.exported });
+            continue;
+        }
+        let closed = !said.working && said.closed >= said.started;
+        if !said.doses {
+            // Its answers never travel: known only if it was closed before the
+            // dose was due, its clock maybe `SKEW` behind this one's.
+            if !(closed && said.closed + SKEW < due) {
+                out.push(Doubt::Apart { device });
+            }
+            continue;
+        }
+        if closed {
+            continue;
+        }
+        let margin = SKEW + peer.ahead.max(0);
+        let after = said.exported >= due + margin;
+        let fresh = now - peer.seen <= FRESH && now - said.exported <= FRESH + margin;
+        if !(after && fresh) {
+            out.push(Doubt::Working { device, shared: said.exported, quiet: now - peer.seen > QUIET });
         }
     }
     out
+}
+
+/// The same, as a dose's reminder asks it, near its time: one rule, kept by
+/// its name for its callers.
+pub fn doubts(due: i64, now: i64, record_lost: Option<i64>, peers: &[Peer]) -> Vec<Doubt> {
+    doubts_now(due, now, record_lost, peers)
+}
+
+/// Until when a dose due at `due`, known not taken at `from` (`doubts_now`),
+/// stays known while nothing new is read (a device in use goes stale after
+/// `FRESH`): the first moment it is not, else `until`; 0 when it is not known
+/// at `from`. For what is shown ahead of time (a phone's home screen card).
+pub fn known_until(due: i64, from: i64, until: i64, record_lost: Option<i64>, peers: &[Peer]) -> i64 {
+    let doubted = |at: i64| !doubts_now(due, at, record_lost, peers).is_empty();
+    if doubted(from) {
+        return 0;
+    }
+    let mut ends: Vec<i64> = Vec::new();
+    for peer in peers {
+        match &peer.said {
+            Some(said) => {
+                let margin = SKEW + peer.ahead.max(0);
+                ends.push(peer.seen + FRESH + 1);
+                ends.push(said.exported + FRESH + margin + 1);
+            }
+            None => ends.push(peer.known_until + FRESH + 1),
+        }
+    }
+    ends.retain(|t| *t > from && *t < until);
+    ends.sort_unstable();
+    ends.dedup();
+    ends.into_iter().find(|t| doubted(*t)).unwrap_or(until)
 }
 
 /// What the body's files hold is yours alone: on Unix, readable by you only
@@ -584,6 +760,20 @@ impl HealthState {
         health.doses(&start, &end).into_iter().filter(|d| !self.taken.contains_key(&d.key) && !self.reminded.contains_key(&d.key) && !self.not_taken.contains_key(&d.key)).collect()
     }
 
+    /// Today's doses from their time on, not marked yet (taken, or said not
+    /// taken), for the Porch: reminded or not, since a reminder can go unseen;
+    /// until marked, until the day ends, or `hours` after their time (as far
+    /// back as a dose is asked about). Those due while Sioul ran nowhere
+    /// (`unanswered`) are asked about apart, and left out here.
+    pub fn due_today(&self, health: &Health, now: &Zoned, hours: i64, grace: i64) -> Vec<Dose> {
+        let midnight = now.date().to_zoned(now.time_zone().clone()).unwrap_or_else(|_| now.clone());
+        let back = now.checked_sub(Span::new().hours(hours)).unwrap_or_else(|_| now.clone());
+        let start = if back > midnight { back } else { midnight };
+        let end = now.checked_add(Span::new().seconds(1)).unwrap_or_else(|_| now.clone());
+        let apart: Vec<String> = self.unanswered(health, now, hours, grace).into_iter().map(|d| d.key).collect();
+        health.doses(&start, &end).into_iter().filter(|d| !self.taken.contains_key(&d.key) && !self.not_taken.contains_key(&d.key) && !apart.contains(&d.key)).collect()
+    }
+
     /// One more minute of chats today; covered once the day's limit is reached.
     /// Returns whether chats are covered now.
     pub fn chat_minute(&mut self, limit: &ChatLimit, now: &Zoned) -> bool {
@@ -694,33 +884,179 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// An older Sioul, which writes no entry in the devices' registry, is known
+    /// as its claims say, as before: heard in full after the dose and lately,
+    /// or its last word, read in full, that it closed, its news quick. Never
+    /// closed for want of a word.
     #[test]
-    fn a_dose_is_known_or_said_unknown() {
+    fn an_older_sioul_is_known_as_its_claims_say() {
         let due = 1_800_000_000;
-        let peer = |known_until: i64, closed: bool, delay: Option<i64>| Peer { name: "laptop".into(), known_until, closed, delay, broken: None, heard: known_until.max(due - 3_600) };
+        let peer = |known_until: i64, closed: bool, delay: Option<i64>| Peer { name: "laptop".into(), id: "laptop-id".into(), known_until, closed, delay, broken: None, heard: known_until.max(due - 3_600), ..Peer::default() };
+        let laptop = Named { id: "laptop-id".into(), name: "laptop".into(), phone: false };
         // Alone, with a record that reads: known.
         assert!(doubts(due, due + 60, None, &[]).is_empty());
-        // The laptop heard after the dose was due, everything it wrote read: known.
-        assert!(doubts(due, due + 600, None, &[peer(due + 120, false, Some(30))]).is_empty());
+        // Heard in full after the dose was due, a minute ago: known.
+        assert!(doubts(due, due + 180, None, &[peer(due + 120, false, Some(30))]).is_empty());
         // Last heard before the dose, open: it may have marked it.
-        assert_eq!(doubts(due, due + 600, None, &[peer(due - 300, false, Some(30))]), vec![Doubt::Unheard { name: "laptop".into(), until: due - 300, closed: false }]);
+        assert_eq!(doubts(due, due + 600, None, &[peer(due - 300, false, Some(30))]), vec![Doubt::Unheard { device: laptop.clone(), until: due - 300, closed: false }]);
         // Closed before, and its news comes within minutes: known.
         assert!(doubts(due, due + 600, None, &[peer(due - 3_600, true, Some(60))]).is_empty());
-        // Closed before, but its news can take half an hour (a phone's sync): not known.
+        // Closed before, its news slow (a phone's sync) or never measured: not known, as before.
         assert_eq!(doubts(due, due + 600, None, &[peer(due - 3_600, true, Some(1_800))]).len(), 1);
-        // Closed, its delay never measured: not known.
         assert_eq!(doubts(due, due + 600, None, &[peer(due - 3_600, true, None)]).len(), 1);
-        // Never heard complete (an older Sioul that does not say what it wrote): not known.
+        // Never said how far it wrote: not known.
         assert_eq!(doubts(due, due + 600, None, &[Peer { name: "phone".into(), heard: due, ..Peer::default() }]).len(), 1);
         // A line of it lost around the dose's time: not known, whatever else.
         let broken = Peer { broken: Some(due - 60), ..peer(due + 120, false, Some(30)) };
-        assert_eq!(doubts(due, due + 600, None, &[broken]), vec![Doubt::Broken { name: "laptop".into() }]);
-        // Gone for over a month: no longer counted.
-        let gone = Peer { heard: due - 40 * 86_400, ..peer(0, false, None) };
+        assert_eq!(doubts(due, due + 180, None, &[broken]), vec![Doubt::Broken { device: laptop.clone() }]);
+        // Silent for over a week: no longer counted (`SILENT_DAYS`).
+        let gone = Peer { heard: due - 8 * 86_400, ..peer(0, false, None) };
         assert!(doubts(due, due + 600, None, &[gone]).is_empty());
-        // This computer's record was found broken after the dose was due: not known; doses due after are.
+        // This device's record was found broken after the dose was due: not known; doses due after are.
         assert_eq!(doubts(due, due + 600, Some(due + 300), &[]), vec![Doubt::Record { since: due + 300 }]);
         assert!(doubts(due + 900, due + 1_000, Some(due + 300), &[]).is_empty());
+        // Heard in full just after the dose, not since (its sync slow, or stopped): known then, not an hour later.
+        let then = peer(due + 60, false, Some(40));
+        assert!(doubts_now(due, due + 120, None, std::slice::from_ref(&then)).is_empty());
+        assert_eq!(doubts_now(due, due + 3_600, None, std::slice::from_ref(&then)), vec![Doubt::Unheard { device: laptop.clone(), until: due + 60, closed: false }]);
+        // Closed, then spoke again, what it wrote not read here yet: it may have marked it.
+        let back = Peer { heard: due + 3_000, ..peer(due - 600, true, Some(60)) };
+        assert_eq!(doubts_now(due, due + 3_600, None, &[back]), vec![Doubt::Unheard { device: laptop, until: due - 600, closed: false }]);
+    }
+
+    /// The dose of the scenarios below: 08:00, Unix seconds.
+    const DUE: i64 = 1_800_000_000;
+
+    /// The phone, as this device knows it: its entry in the registry (a phone
+    /// sharing its doses), seen changing here at `seen`, all it wrote read.
+    fn phone(said: Said, seen: i64) -> Peer {
+        Peer { name: "phone".into(), id: "phone-id".into(), heard: said.exported, said: Some(Said { phone: true, doses: true, ..said }), complete: true, seen, ..Peer::default() }
+    }
+
+    fn the_phone() -> Named {
+        Named { id: "phone-id".into(), name: "phone".into(), phone: true }
+    }
+
+    #[test]
+    fn the_phone_closed_cleanly_before_the_dose_is_known() {
+        // Put away at 07:00, after its last export, read here in full; not started since.
+        let p = phone(Said { started: DUE - 7_200, closed: DUE - 3_600, working: false, exported: DUE - 3_605, imported: DUE - 3_605, ..Said::default() }, DUE - 3_500);
+        // At the dose, an hour later, half a day later: known not taken, with no wait for news.
+        for now in [DUE, DUE + 3_600, DUE + 12 * 3_600] {
+            assert!(doubts_now(DUE, now, None, std::slice::from_ref(&p)).is_empty(), "{now}");
+        }
+        assert_eq!(known_until(DUE, DUE + 60, DUE + 86_400, None, &[p]), DUE + 86_400, "nothing ends it but the day");
+    }
+
+    #[test]
+    fn the_phone_closed_cleanly_after_the_dose_without_marking_is_known() {
+        // In use from 07:50, closed at 08:20 after its last export (08:19:55), nothing marked there.
+        let p = phone(Said { started: DUE - 600, closed: DUE + 1_200, working: false, exported: DUE + 1_195, ..Said::default() }, DUE + 1_260);
+        assert!(doubts_now(DUE, DUE + 1_300, None, std::slice::from_ref(&p)).is_empty());
+        // Its entry here, but its records not all read yet (a sync that brought one file first): it may hold the answer.
+        let behind = Peer { complete: false, ..p };
+        assert_eq!(doubts_now(DUE, DUE + 1_300, None, &[behind]), vec![Doubt::Coming { device: the_phone(), shared: DUE + 1_195 }]);
+    }
+
+    #[test]
+    fn the_phone_in_use_and_exported_after_the_dose_is_known() {
+        // In use since 07:50, sharing each minute: its 08:03 export seen here at 08:03:20, nothing marked.
+        let p = phone(Said { started: DUE - 600, closed: DUE - 7_200, working: true, exported: DUE + 180, ..Said::default() }, DUE + 200);
+        assert!(doubts_now(DUE, DUE + 240, None, std::slice::from_ref(&p)).is_empty());
+        // Known while that export is fresh: five minutes on with nothing newer, no longer.
+        assert_eq!(known_until(DUE, DUE + 240, DUE + 86_400, None, std::slice::from_ref(&p)), DUE + 200 + FRESH + 1);
+        assert_eq!(doubts_now(DUE, DUE + 200 + FRESH + 1, None, &[p]), vec![Doubt::Working { device: the_phone(), shared: DUE + 180, quiet: false }]);
+    }
+
+    #[test]
+    fn the_phone_in_use_not_exported_since_the_dose_is_uncertain_naming_it() {
+        // In use; its last export at 07:45, seen at 07:45:30; the dose at 08:00.
+        let p = phone(Said { started: DUE - 3_600, closed: DUE - 7_200, working: true, exported: DUE - 900, ..Said::default() }, DUE - 870);
+        assert_eq!(doubts_now(DUE, DUE + 60, None, std::slice::from_ref(&p)), vec![Doubt::Working { device: the_phone(), shared: DUE - 900, quiet: false }]);
+        let said = p.said.clone().unwrap();
+        // An export dated 08:01, within the margin for clocks: not after the dose for sure.
+        let early = phone(Said { exported: DUE + 60, ..said.clone() }, DUE + 70);
+        assert_eq!(doubts_now(DUE, DUE + 80, None, &[early]).len(), 1);
+        // Its 08:03 export comes: known; the doubt lifted by itself.
+        let later = phone(Said { exported: DUE + 180, ..said }, DUE + 190);
+        assert!(doubts_now(DUE, DUE + 200, None, &[later]).is_empty());
+    }
+
+    #[test]
+    fn the_phone_that_crashed_is_uncertain_until_it_starts_again_or_is_said_off() {
+        // In use from 07:30, last export at 07:45, then nothing: working still up, no close after its start.
+        let crashed = phone(Said { started: DUE - 1_800, closed: DUE - 86_400, working: true, exported: DUE - 900, ..Said::default() }, DUE - 880);
+        assert_eq!(doubts_now(DUE, DUE + 600, None, std::slice::from_ref(&crashed)), vec![Doubt::Working { device: the_phone(), shared: DUE - 900, quiet: false }]);
+        // Hours later, still nothing: it may have stopped without closing, said so; never known.
+        assert_eq!(doubts_now(DUE, DUE + 4 * 3_600, None, std::slice::from_ref(&crashed)), vec![Doubt::Working { device: the_phone(), shared: DUE - 900, quiet: true }]);
+        // You say it is off: not counted; the dose known not taken, never answered for you.
+        let off = Peer { off: true, ..crashed };
+        assert!(doubts_now(DUE, DUE + 4 * 3_600, None, &[off]).is_empty());
+        // It starts again, in use, exporting: counted again, and known once it exported after the dose.
+        let back = phone(Said { started: DUE + 4 * 3_600, closed: DUE - 86_400, working: true, exported: DUE + 4 * 3_600 + 60, ..Said::default() }, DUE + 4 * 3_600 + 70);
+        assert!(doubts_now(DUE, DUE + 4 * 3_600 + 90, None, &[back]).is_empty());
+    }
+
+    #[test]
+    fn clocks_a_few_minutes_apart_either_way() {
+        // The phone's clock 3 minutes ahead, as seen here (`ahead`). Its export at 07:59 real
+        // time is dated 08:02: not after the dose for sure.
+        let early = Peer { ahead: 180, ..phone(Said { started: DUE - 3_600, working: true, exported: DUE + 120, ..Said::default() }, DUE - 60) };
+        assert_eq!(doubts_now(DUE, DUE, None, &[early]).len(), 1, "its 08:02 is 07:59 here");
+        // Its export at 08:03 real time, dated 08:06: past the dose and the margin; known.
+        let later = Peer { ahead: 180, ..phone(Said { started: DUE - 3_600, working: true, exported: DUE + 360, ..Said::default() }, DUE + 190) };
+        assert!(doubts_now(DUE, DUE + 200, None, &[later]).is_empty());
+        // Its clock 3 minutes behind: the export at 08:04 real time is dated 08:01: Sioul waits longer, never less.
+        let behind = phone(Said { started: DUE - 3_600, working: true, exported: DUE + 60, ..Said::default() }, DUE + 250);
+        assert_eq!(doubts_now(DUE, DUE + 260, None, &[behind]).len(), 1);
+        let behind_later = phone(Said { started: DUE - 3_600, working: true, exported: DUE + 300, ..Said::default() }, DUE + 490);
+        assert!(doubts_now(DUE, DUE + 500, None, &[behind_later]).is_empty());
+        // Closed, whatever its clock: started and closed are both on its own clock.
+        let closed = Peer { ahead: 600, ..phone(Said { started: DUE + 900, closed: DUE + 1_500, working: false, exported: DUE + 1_490, ..Said::default() }, DUE + 300) };
+        assert!(doubts_now(DUE, DUE + 400, None, &[closed]).is_empty());
+    }
+
+    #[test]
+    fn a_device_silent_for_a_week_no_longer_counts() {
+        // Stopped without closing eight days ago, by its clock and as seen here: not counted.
+        let gone = phone(Said { started: DUE - 10 * 86_400, working: true, exported: DUE - 8 * 86_400, ..Said::default() }, DUE - 8 * 86_400 + 30);
+        assert!(doubts_now(DUE, DUE + 60, None, &[gone.clone()]).is_empty());
+        // Six days: still counted, its doubt said.
+        let six = phone(Said { started: DUE - 7 * 86_400, working: true, exported: DUE - 6 * 86_400, ..Said::default() }, DUE - 6 * 86_400 + 30);
+        assert_eq!(doubts_now(DUE, DUE + 60, None, &[six]).len(), 1);
+        // First seen here today (this device just joined), silent a month by its own date: counted a
+        // week from now, never dropped for a date on another clock.
+        let first = Peer { seen: DUE - 60, ..gone };
+        assert_eq!(doubts_now(DUE, DUE + 60, None, std::slice::from_ref(&first)).len(), 1);
+        assert!(!counts(&first, DUE + 8 * 86_400));
+        // A device that stopped sharing counts no more.
+        let left = phone(Said { started: DUE - 600, working: false, closed: DUE - 60, exported: DUE - 61, left: true, ..Said::default() }, DUE - 30);
+        assert!(!counts(&left, DUE));
+    }
+
+    #[test]
+    fn a_device_that_does_not_share_its_doses_is_known_only_closed_before() {
+        let tablet = |said: Said| Peer { name: "tablet".into(), id: "tablet-id".into(), said: Some(Said { doses: false, ..said }), complete: true, seen: DUE + 310, ..Peer::default() };
+        let named = Named { id: "tablet-id".into(), name: "tablet".into(), phone: false };
+        // Health switched off there: what it marks never comes. In use: never known.
+        let working = tablet(Said { started: DUE - 600, working: true, exported: DUE + 300, ..Said::default() });
+        assert_eq!(doubts_now(DUE, DUE + 320, None, &[working]), vec![Doubt::Apart { device: named }]);
+        // Closed before the dose: it could not have marked it.
+        assert!(doubts_now(DUE, DUE + 320, None, &[tablet(Said { started: DUE - 7_200, closed: DUE - 3_600, exported: DUE - 3_605, ..Said::default() })]).is_empty());
+        // Closed after it: it may have.
+        assert_eq!(doubts_now(DUE, DUE + 700, None, &[tablet(Said { started: DUE - 600, closed: DUE + 600, exported: DUE + 595, ..Said::default() })]).len(), 1);
+    }
+
+    #[test]
+    fn each_device_said_apart() {
+        // The desktop closed, the phone in use and behind, an older laptop never heard in full: two doubts, each named.
+        let desktop = Peer { name: "desk".into(), id: "desk-id".into(), said: Some(Said { started: DUE - 9_000, closed: DUE - 3_600, exported: DUE - 3_601, doses: true, ..Said::default() }), complete: true, seen: DUE - 3_500, ..Peer::default() };
+        let p = phone(Said { started: DUE - 3_600, working: true, exported: DUE - 900, ..Said::default() }, DUE - 880);
+        let older = Peer { name: "laptop".into(), id: "laptop-id".into(), heard: DUE - 60, ..Peer::default() };
+        let doubts = doubts_now(DUE, DUE + 60, None, &[desktop, p, older]);
+        assert_eq!(doubts.len(), 2, "{doubts:?}");
+        assert!(matches!(&doubts[0], Doubt::Working { device, .. } if device.id == "phone-id"));
+        assert!(matches!(&doubts[1], Doubt::Unheard { device, until: 0, .. } if device.id == "laptop-id"));
     }
 
     #[test]
@@ -782,6 +1118,51 @@ mod tests {
             assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The Porch's doses at a desktop: due now, Sioul running (shown, reminded
+    /// or not); due earlier today, reminded but not answered (shown, until
+    /// marked, twelve hours after, or the day's end); due while Sioul ran
+    /// nowhere (asked apart, not here); marked either way (gone).
+    #[test]
+    fn todays_doses_until_marked() {
+        let health = Health {
+            medicines: vec![
+                Medicine { id: "levo".into(), name: "Levothyroxine".into(), dose: "75 µg".into(), schedule: Schedule::Day { times: vec!["07:30".into()] }, prescription: None, until: None, paused: false },
+                Medicine { id: "iron".into(), name: "Iron".into(), dose: String::new(), schedule: Schedule::Day { times: vec!["12:00".into(), "21:00".into()] }, prescription: None, until: None, paused: false },
+                Medicine { id: "zinc".into(), name: "Zinc".into(), dose: String::new(), schedule: Schedule::Day { times: vec!["09:00".into(), "23:50".into()] }, prescription: None, until: None, paused: false },
+            ],
+            ..Health::default()
+        };
+        let key = |id: &str, when: &str| format!("{id}@{}", at(when).timestamp().as_second());
+        let keys = |doses: Vec<Dose>| doses.into_iter().map(|d| d.key).collect::<Vec<_>>();
+        let mut state = HealthState::default();
+        // 07:30 reminded while Sioul ran, never answered; 09:00 due while Sioul ran nowhere.
+        state.reminded.insert(key("levo", "2026-10-06T07:30[Europe/Paris]"), at("2026-10-06T07:31[Europe/Paris]").timestamp().as_second());
+        let noon = at("2026-10-06T12:00:30[Europe/Paris]");
+        assert_eq!(keys(state.due_today(&health, &noon, 12, 30)), [key("levo", "2026-10-06T07:30[Europe/Paris]"), key("iron", "2026-10-06T12:00[Europe/Paris]")]);
+        assert_eq!(keys(state.unanswered(&health, &noon, 12, 30)), [key("zinc", "2026-10-06T09:00[Europe/Paris]")]);
+        // Before its time, a dose is not due; at its minute, it is.
+        assert_eq!(keys(state.due_today(&health, &at("2026-10-06T11:59[Europe/Paris]"), 12, 30)), [key("levo", "2026-10-06T07:30[Europe/Paris]")]);
+        // Within its half hour and not reminded (the reminder waits for news): shown all the same.
+        let mut waiting = state.clone();
+        waiting.reminded.clear();
+        assert_eq!(keys(waiting.due_today(&health, &at("2026-10-06T07:45[Europe/Paris]"), 12, 30)), [key("levo", "2026-10-06T07:30[Europe/Paris]")]);
+        // Past its half hour without a reminder anywhere: the question on doses due while closed instead.
+        assert!(waiting.due_today(&health, &at("2026-10-06T08:10[Europe/Paris]"), 12, 30).is_empty());
+        // Marked taken, or said not taken: gone.
+        state.taken.insert(key("iron", "2026-10-06T12:00[Europe/Paris]"), noon.timestamp().as_second());
+        state.not_taken.insert(key("zinc", "2026-10-06T09:00[Europe/Paris]"), noon.timestamp().as_second());
+        assert_eq!(keys(state.due_today(&health, &noon, 12, 30)), [key("levo", "2026-10-06T07:30[Europe/Paris]")]);
+        // Twelve hours after its time: no longer shown; the evening's iron instead.
+        let evening = at("2026-10-06T21:05[Europe/Paris]");
+        state.reminded.insert(key("iron", "2026-10-06T21:00[Europe/Paris]"), evening.timestamp().as_second());
+        assert_eq!(keys(state.due_today(&health, &evening, 12, 30)), [key("iron", "2026-10-06T21:00[Europe/Paris]")]);
+        // The day ends: yesterday's are not today's, even within twelve hours.
+        let night = at("2026-10-07T00:30[Europe/Paris]");
+        assert!(state.due_today(&health, &night, 12, 30).is_empty());
+        // Yesterday's 23:50 zinc, reminded nowhere, past its half hour: the question's.
+        assert_eq!(keys(state.unanswered(&health, &night, 12, 30)), [key("zinc", "2026-10-06T23:50[Europe/Paris]")]);
     }
 
     #[test]

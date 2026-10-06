@@ -19,7 +19,7 @@ ColumnLayout {
     required property var sioul
     required property var theme
 
-    property var status: ({ on: false, folder: "", sealed: false, lines: [], problems: [], parts: [], vanished: [] })
+    property var status: ({ on: false, folder: "", sealed: false, lines: [], problems: [], parts: [], vanished: [], devices: [] })
     property string problem: ""
     // Notes or papers about to be switched on: what would travel, said first.
     property string asking: ""
@@ -257,6 +257,69 @@ ColumnLayout {
             onClicked: {
                 panel.problem = panel.sioul.stopSharing()
                 panel.reload()
+            }
+        }
+    }
+    // Your other devices, as this one knows them (docs/database.md, "Devices"):
+    // in use, closed, silent, off as you said; when each last shared, in
+    // words. Nothing red, no counts.
+    Label {
+        visible: panel.status.on && (panel.status.devices || []).length > 0
+        Layout.topMargin: 12
+        Layout.fillWidth: true
+        text: panel.sioul.text("share-devices")
+        font.weight: Font.DemiBold
+        wrapMode: Text.Wrap
+        color: panel.theme.text
+    }
+    Repeater {
+        model: panel.status.on ? (panel.status.devices || []) : []
+
+        delegate: ColumnLayout {
+            id: device
+
+            required property var modelData
+
+            Layout.fillWidth: true
+            spacing: 2
+
+            Label {
+                Layout.fillWidth: true
+                text: device.modelData.name
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                color: panel.theme.text
+            }
+            Label {
+                Layout.fillWidth: true
+                text: [device.modelData.state].concat(device.modelData.notes || []).join(" ")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
+            }
+            RowLayout {
+                visible: device.modelData.off || device.modelData.forget
+                spacing: 6
+
+                Button {
+                    visible: device.modelData.off
+                    flat: true
+                    text: panel.sioul.text("share-device-count-again")
+                    onClicked: {
+                        panel.problem = panel.sioul.deviceOff(device.modelData.id, false)
+                        panel.reload()
+                    }
+                }
+                Button {
+                    visible: device.modelData.forget
+                    flat: true
+                    text: panel.sioul.text("share-device-forget")
+                    onClicked: {
+                        panel.problem = panel.sioul.deviceForget(device.modelData.id)
+                        panel.reload()
+                    }
+                }
             }
         }
     }

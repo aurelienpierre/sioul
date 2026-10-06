@@ -43,7 +43,9 @@ static LAST: Mutex<Option<Arc<Record>>> = Mutex::new(None);
 /// tasks, corrected lengths, what a day holds, the free time kept, the gain
 /// slot (`capacity::gather`). The record is kept for the pages.
 pub(crate) fn planned(mut settings: Settings, tasks: &[Task], sessions: &[Session]) -> Settings {
-    let record = capacity::gather(tasks, sessions, &settings, &load_config().planning, &events, &Zoned::now());
+    // A task's time block is the task's time: never an event of its own to the record (`blocks`).
+    let own = |from: i64, to: i64| sioul_core::blocks::without_blocks(events(from, to), tasks);
+    let record = capacity::gather(tasks, sessions, &settings, &load_config().planning, &own, &Zoned::now());
     settings.capacity = record.planning.clone();
     *LAST.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(record));
     settings
@@ -104,7 +106,8 @@ pub(crate) fn day_balance(date: Date) -> DayBalance {
     let record = last().unwrap_or_else(|| {
         let config = load_config();
         let settings = Settings::of_hours(&config.week_hours(), sioul_core::areas::TaskAreas::usual());
-        Arc::new(capacity::gather(&tasks, &sessions, &settings, &config.planning, &events, &Zoned::now()))
+        let own = |from: i64, to: i64| sioul_core::blocks::without_blocks(events(from, to), &tasks);
+        Arc::new(capacity::gather(&tasks, &sessions, &settings, &config.planning, &own, &Zoned::now()))
     });
     // The day's outcome as said now: the review may be newer than the record.
     let mut record = (*record).clone();
@@ -112,6 +115,7 @@ pub(crate) fn day_balance(date: Date) -> DayBalance {
     record.outcomes.extend(capacity::outcomes_of(&sioul_core::reviews::Reviews::load_between(&sioul_core::reviews::Reviews::default_path(), date, date)));
     let midnight = |d: Date| d.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
     let next = date.tomorrow().map_or(midnight(date) + 86_400, midnight);
-    let events = events(midnight(date), next);
+    // A task's time block is the task's time, counted with the task (`blocks`).
+    let events = sioul_core::blocks::without_blocks(events(midnight(date), next), &tasks);
     record.day_balance(&tasks, &sessions, &events, date, &zone, tr())
 }

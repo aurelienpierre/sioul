@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Sioul's card on the home screen (HomeCard.java, docs/android.md "The card
+     on the home screen"): lines of text in Sioul's colours, light or dark as
+     the phone is, shown or left out as the card's size allows. No icon, no
+     count, no button: the card opens Sioul, the Porch's lines the Porch, the
+     step Now. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/sioul_home_card_background"
+    android:clipToOutline="true"
+    android:padding="@dimen/sioul_home_card_padding">
+
+    <!-- What now is for; how old the card is, once it is. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <TextView
+            android:id="@+id/sioul_home_card_status"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/sioul_home_card_text"
+            android:textSize="14sp" />
+        <TextView
+            android:id="@+id/sioul_home_card_age"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:maxLines="1"
+            android:textColor="@color/sioul_home_card_muted"
+            android:textSize="12sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- Under it, the do-not-disturb on every device, when switched on or for a focus session. -->
+    <TextView
+        android:id="@+id/sioul_home_card_dnd"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="@color/sioul_home_card_muted"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <!-- The Porch: a code you asked a site for, its sentence, the first messages. -->
+    <LinearLayout
+        android:id="@+id/sioul_home_card_porch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/sioul_home_card_gap"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/sioul_home_card_code"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/sioul_home_card_text"
+            android:textSize="13sp"
+            android:visibility="gone" />
+        <TextView
+            android:id="@+id/sioul_home_card_warning"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/sioul_home_card_muted"
+            android:textSize="12sp"
+            android:visibility="gone" />
+        <TextView
+            android:id="@+id/sioul_home_card_summary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/sioul_home_card_text"
+            android:textSize="14sp"
+            android:visibility="gone" />
+        <TextView
+            android:id="@+id/sioul_home_card_item_1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/sioul_home_card_muted"
+            android:textSize="13sp"
+            android:visibility="gone" />
+        <TextView
+            android:id="@+id/sioul_home_card_item_2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/sioul_home_card_muted"
+            android:textSize="13sp"
+            android:visibility="gone" />
+        <TextView
+            android:id="@+id/sioul_home_card_item_3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/sioul_home_card_muted"
+            android:textSize="13sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- The next step and why it comes now. -->
+    <LinearLayout
+        android:id="@+id/sioul_home_card_step"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/sioul_home_card_gap"
+        android:orientation="vertical"
+        android:visibility="gone">
+        <TextView
+            android:id="@+id/sioul_home_card_step_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/sioul_home_card_accent"
+            android:textSize="14sp" />
+        <TextView
+            android:id="@+id/sioul_home_card_step_why"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/sioul_home_card_muted"
+            android:textSize="13sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- A dose due, quietly. -->
+    <TextView
+        android:id="@+id/sioul_home_card_dose"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/sioul_home_card_gap"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="@color/sioul_home_card_text"
+        android:textSize="13sp"
+        android:visibility="gone" />
+</LinearLayout>

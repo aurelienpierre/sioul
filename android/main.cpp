@@ -7,8 +7,13 @@
 // language; the system's certificates; a log for what Rust writes to stderr;
 // the Java side Rust needs for the KeyStore and the DNS servers; the doses'
 // alarms (package/src/com/aurelienpierre/sioul/DoseAlarms.java); the time
-// running's notification (TimeNote.java); and the alarm at waking
-// (WakeAlarms.java).
+// running's notification (TimeNote.java); the alarm at waking
+// (WakeAlarms.java); the events' reminders and new mail's notification
+// (EventAlarms.java, MailNotes.java); the pauses' do-not-disturb (PauseMode.java); do-not-disturb
+// on every device and the phone kept in step in the background (StepService.java,
+// DndReceiver.java, DndContacts.java); and your
+// addresses offered in the share sheet (MailShortcuts.java), with what other
+// apps share to Sioul (ShareActivity.java).
 //
 // Android may start Sioul for a dose's alarm, a button of the time running,
 // or the alarm at waking, alone: DoseAlarms.java then loads this library
@@ -31,6 +36,7 @@
 #include <jni.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -51,6 +57,19 @@ extern "C" char *sioul_time_action(const char *action);
 // phone's zone, as JSON; also given back to sioul_string_free.
 extern "C" char *sioul_wake_next(const char *zone, bool fetch);
 extern "C" void sioul_string_free(char *text);
+// Something shared to Sioul, or the files copied for it (crates/sioul-app/src/outside.rs).
+extern "C" void sioul_handed();
+// At an event's reminder, and the coming ones in the phone's zone
+// (crates/sioul-app/src/eventalarms.rs): JSON, given back to sioul_string_free.
+extern "C" char *sioul_event_decide(const char *key);
+extern "C" char *sioul_event_coming(const char *zone);
+// Do-not-disturb on every device and the phone in the background
+// (crates/sioul-app/src/steps.rs, everywhere.rs): a step of the background
+// service, its process said, do-not-disturb applied in Sioul's own process;
+// JSON answers given back to sioul_string_free.
+extern "C" char *sioul_steps_step(const char *reason);
+extern "C" void sioul_steps_in_service();
+extern "C" char *sioul_dnd_apply();
 
 namespace {
 
@@ -107,6 +126,11 @@ std::atomic<jobject> appContext = nullptr;
 jclass doseAlarms = nullptr;
 jclass timeNote = nullptr;
 jclass wakeAlarms = nullptr;
+jclass pauseMode = nullptr;
+jclass mailShortcuts = nullptr;
+jclass eventAlarms = nullptr;
+jclass mailNotes = nullptr;
+jclass stepService = nullptr;
 
 // This thread's JNIEnv. A thread of Rust's is attached to Java the first time,
 // and let go when it ends.
@@ -334,6 +358,16 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *)
         timeNote = appClass(env, "com/aurelienpierre/sioul/TimeNote");
     if (!wakeAlarms)
         wakeAlarms = appClass(env, "com/aurelienpierre/sioul/WakeAlarms");
+    if (!pauseMode)
+        pauseMode = appClass(env, "com/aurelienpierre/sioul/PauseMode");
+    if (!mailShortcuts)
+        mailShortcuts = appClass(env, "com/aurelienpierre/sioul/MailShortcuts");
+    if (!eventAlarms)
+        eventAlarms = appClass(env, "com/aurelienpierre/sioul/EventAlarms");
+    if (!mailNotes)
+        mailNotes = appClass(env, "com/aurelienpierre/sioul/MailNotes");
+    if (!stepService)
+        stepService = appClass(env, "com/aurelienpierre/sioul/StepService");
     return JNI_VERSION_1_6;
 }
 
@@ -625,6 +659,57 @@ extern "C" void sioul_android_wake_settings(const char *which)
     }
 }
 
+// The pauses' do-not-disturb (crates/sioul-app/src/dnd.rs, PauseMode.java):
+// a verb ("can", "enter", "leave", "pressed", "open") and its JSON, Java's
+// answer in JSON, given back to sioul_android_dnd_free; null when Java gave
+// none. Any thread.
+extern "C" char *sioul_android_dnd(const char *verb, const char *json)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !verb || !json || !pauseMode)
+        return nullptr;
+    const LocalFrame frame(env);
+    const jmethodID call = env->GetStaticMethodID(pauseMode, "call", "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+    if (threw(env) || !call)
+        return nullptr;
+    const auto answer = static_cast<jstring>(env->CallStaticObjectMethod(pauseMode, call, context, javaText(env, verb), javaText(env, json)));
+    if (threw(env) || !answer)
+        return nullptr;
+    return strdup(utf8(env, answer).constData());
+}
+
+extern "C" void sioul_android_dnd_free(char *text)
+{
+    free(text);
+}
+
+// Your addresses that can send, offered in the share sheet and at a long
+// press on Sioul's icon (crates/sioul-app/src/outside.rs, MailShortcuts.java):
+// JSON {accounts: [{id, short, long}], gone}, the most used first; given when
+// it changes, while the window is shown. Any thread.
+extern "C" void sioul_android_mail_shortcuts(const char *json)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !json || !mailShortcuts)
+        return;
+    const LocalFrame frame(env);
+    const jmethodID set = env->GetStaticMethodID(mailShortcuts, "set", "(Landroid/content/Context;Ljava/lang/String;)V");
+    if (threw(env) || !set)
+        return;
+    env->CallStaticVoidMethod(mailShortcuts, set, context, javaText(env, json));
+    threw(env);
+}
+
+// ShareActivity.java's side: a request written in Sioul's drafts folder, or
+// the files copied for one; Rust takes it now if the window runs, else as it
+// comes up. From a thread of Java's, Qt's loader having loaded this library.
+extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_ShareActivity_nativeHanded(JNIEnv *, jclass)
+{
+    sioul_handed();
+}
+
 // Sioul away (in the back, the screen off): what the window draws with (its
 // scene graph and graphics, about 90 MB on a phone) given back to Android,
 // made again when Sioul comes back. Qt keeps it by default; here it lets go
@@ -673,6 +758,158 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_TimeNote_nati
 extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_WakeAlarms_nativeNext(JNIEnv *env, jclass, jstring zone, jboolean fetch)
 {
     return answered(env, sioul_wake_next(utf8(env, zone).constData(), fetch == JNI_TRUE));
+}
+
+// Reminders before events (crates/sioul-app/src/eventalarms.rs,
+// EventAlarms.java): the coming ones, as JSON {reminders, look, words}, given
+// to Android's alarm clock in place of those given before; the first list
+// that holds one asks for notifications from Android 13, as the doses do.
+// Any thread.
+extern "C" void sioul_android_set_event_alarms(const char *json)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !json || !eventAlarms)
+        return;
+    {
+        const LocalFrame frame(env);
+        const jmethodID set = env->GetStaticMethodID(eventAlarms, "set", "(Landroid/content/Context;Ljava/lang/String;)V");
+        if (threw(env) || !set)
+            return;
+        env->CallStaticVoidMethod(eventAlarms, set, context, javaText(env, json));
+        threw(env);
+    }
+    if (strstr(json, "\"key\""))
+        askNotifications();
+}
+
+// An event's reminder shown, "Events" (EventAlarms.show): from the window's
+// minute, or from Rust's answer at its alarm. Any thread.
+extern "C" void sioul_android_event_note(const char *json)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !json || !eventAlarms)
+        return;
+    const LocalFrame frame(env);
+    const jmethodID show = env->GetStaticMethodID(eventAlarms, "show", "(Landroid/content/Context;Ljava/lang/String;)V");
+    if (threw(env) || !show)
+        return;
+    env->CallStaticVoidMethod(eventAlarms, show, context, javaText(env, json));
+    threw(env);
+}
+
+// New mail at the times it may come, "New mail" (crates/sioul-app/src/
+// mailnote.rs, MailNotes.java): from the window's process, or from the one
+// that fetches mail while Sioul is away. The first, shown while Sioul is on
+// the screen, asks for notifications from Android 13, as the doses do. Any thread.
+extern "C" void sioul_android_mail_note(const char *json)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !json || !mailNotes)
+        return;
+    {
+        const LocalFrame frame(env);
+        const jmethodID show = env->GetStaticMethodID(mailNotes, "show", "(Landroid/content/Context;Ljava/lang/String;)V");
+        if (threw(env) || !show)
+            return;
+        env->CallStaticVoidMethod(mailNotes, show, context, javaText(env, json));
+        threw(env);
+    }
+    askNotifications();
+}
+
+// What a tapped reminder or mail notification opens, once (kept by
+// ReminderOpener.java), JSON {kind, key}: copied into `buffer`, `size` bytes
+// with the closing zero. False, and "", when there is none.
+extern "C" bool sioul_android_take_reminder_opened(char *buffer, int size)
+{
+    if (!buffer || size <= 0)
+        return false;
+    buffer[0] = '\0';
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !eventAlarms)
+        return false;
+    const LocalFrame frame(env);
+    const jmethodID take = env->GetStaticMethodID(eventAlarms, "takeOpened", "(Landroid/content/Context;)Ljava/lang/String;");
+    if (threw(env) || !take)
+        return false;
+    const auto text = static_cast<jstring>(env->CallStaticObjectMethod(eventAlarms, take, context));
+    if (threw(env))
+        return false;
+    const QByteArray opened = utf8(env, text);
+    if (opened.isEmpty() || opened.size() >= size)
+        return false;
+    memcpy(buffer, opened.constData(), size_t(opened.size()) + 1);
+    return true;
+}
+
+// EventAlarms.java's side: Rust's answer at a reminder's time, and the
+// coming list asked again (a restart, a change of time or zone, once a day),
+// once DoseAlarms loaded and started Sioul's library; on a thread of Java's
+// (Rust reads the calendars: never Android's main thread).
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_EventAlarms_nativeDecide(JNIEnv *env, jclass, jstring key)
+{
+    return answered(env, sioul_event_decide(utf8(env, key).constData()));
+}
+
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_EventAlarms_nativeComing(JNIEnv *env, jclass, jstring zone)
+{
+    return answered(env, sioul_event_coming(utf8(env, zone).constData()));
+}
+
+// Do-not-disturb on every device and the phone in the background
+// (crates/sioul-app/src/steps.rs, everywhere.rs; StepService.java): Rust's
+// questions to StepService.call (starting and stopping the service, the
+// list's people starred or not on this phone, the battery's exemption, the
+// alarm of do-not-disturb's next end), answered in JSON and given back to
+// sioul_android_dnd_free; null when Java gave none. Any thread, window or not.
+extern "C" char *sioul_android_steps(const char *verb, const char *json)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !verb || !json || !stepService)
+        return nullptr;
+    const LocalFrame frame(env);
+    const jmethodID call = env->GetStaticMethodID(stepService, "call", "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+    if (threw(env) || !call)
+        return nullptr;
+    const auto answer = static_cast<jstring>(env->CallStaticObjectMethod(stepService, call, context, javaText(env, verb), javaText(env, json)));
+    if (threw(env) || !answer)
+        return nullptr;
+    return strdup(utf8(env, answer).constData());
+}
+
+// Reading the contacts, asked from Settings ▸ Do not disturb to say who on
+// the list is starred on this phone (never written): Qt's question, which
+// needs Qt's Java side, there only with the window.
+extern "C" void sioul_android_ask_contacts()
+{
+    if (!QtAndroidPrivate::javaVM() || !qGuiApp)
+        return;
+    QtAndroidPrivate::requestPermission(QStringLiteral("android.permission.READ_CONTACTS"));
+}
+
+// The background service's side, in its own process, once DoseAlarms loaded
+// Sioul's library there: this process said to Rust, and a step on the
+// service's thread (the phone kept awake meanwhile).
+extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_StepService_nativeService(JNIEnv *, jclass)
+{
+    sioul_steps_in_service();
+}
+
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_StepService_nativeStep(JNIEnv *env, jclass, jstring reason)
+{
+    return answered(env, sioul_steps_step(utf8(env, reason).constData()));
+}
+
+// Do-not-disturb applied in Sioul's own process (DndReceiver.java), window or
+// not, on a thread of Java's.
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_DndReceiver_nativeApply(JNIEnv *env, jclass)
+{
+    return answered(env, sioul_dnd_apply());
 }
 
 int main(int, char *[])

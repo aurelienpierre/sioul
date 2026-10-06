@@ -345,6 +345,8 @@ struct Status {
     parts: Vec<Part>,
     /// Folders of notes or papers whose files went at once: held, said, to take out everywhere on a word.
     vanished: Vec<Vanished>,
+    /// Your other devices, as this one knows them: in use, closed, silent, off as you said.
+    devices: Vec<crate::health::DeviceRow>,
 }
 
 /// Files gone at once from a folder of notes or papers, held until you say.
@@ -443,7 +445,8 @@ pub(crate) fn status(folder: &str) -> String {
             Part { id, name, carries, on: shared, refused, last }
         })
         .collect();
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished })
+    let devices = if on { crate::health::device_rows() } else { Vec::new() };
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, devices })
 }
 
 fn problem_text(code: &str) -> String {
@@ -646,6 +649,8 @@ pub(crate) fn put_back_said(file: &str, stamp: &str) -> String {
 pub(crate) fn stop() -> String {
     // Between two exchanges: one running never writes its memory back after.
     between_exchanges(|| {
+        // The others count this device no more: said while its key is still known.
+        crate::devices::left();
         if let Ok(mut held) = KEY.lock() {
             *held = None;
         }
@@ -708,8 +713,13 @@ const PARTS: [&str; 3] = ["health", "notices", crate::projects::INVOICES];
 /// how far it wrote, so the others know it marks nothing until it is back
 /// (docs/health.md, "Knowing").
 pub(crate) fn closing() {
+    // Over, unless a phone's Sioul is back already (put away a moment).
+    let ended = || !cfg!(target_os = "android") || crate::backend::AWAY.load(std::sync::atomic::Ordering::SeqCst);
     let here = here();
-    let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return };
+    let (Some(folder), Some(key)) = (here.folder_path(), key()) else {
+        crate::devices::window_closed(ended);
+        return;
+    };
     let memory = memory_path();
     {
         // What was marked goes out; notes and papers wait for the next start.
@@ -718,27 +728,70 @@ pub(crate) fn closing() {
         HURRY.store(false, std::sync::atomic::Ordering::Relaxed);
         let stores = stores_here(&here);
         let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: false, hurry: None };
-        let _ = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond());
+        if let Ok(outcome) = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond()) {
+            crate::devices::exported(&outcome);
+        }
     }
-    let _claiming = CLAIMING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    // Back already (a phone put away a moment): its claims stay open.
-    if cfg!(target_os = "android") && !crate::backend::AWAY.load(std::sync::atomic::Ordering::SeqCst) {
-        return;
+    {
+        let _claiming = CLAIMING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Back already (a phone put away a moment): its claims stay open.
+        if ended() {
+            let wrote = share::written(&memory, &here.id);
+            for part in PARTS {
+                let _ = sioul_sync::lease::close(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), wrote);
+            }
+        }
     }
-    let wrote = share::written(&memory, &here.id);
-    for part in PARTS {
-        let _ = sioul_sync::lease::close(&folder, &key, part, &here.id, jiff::Timestamp::now().as_second(), wrote);
-    }
+    // The last step of the session, after its final export: down (docs/database.md, "Devices").
+    crate::devices::window_closed(ended);
 }
 
-/// The others' claims on the doses, and what was read of their records: what
-/// this computer knows of the doses they marked (`health::know`). None when
-/// sharing is off.
-pub(crate) fn others_on_health() -> Option<(String, Vec<sioul_sync::lease::Claim>, share::Heard, Vec<share::Other>)> {
+/// What this device reads of the others, for the doses (`health::know`).
+pub(crate) struct Others {
+    /// Their claims on the doses (older Sioul say no more).
+    pub claims: Vec<sioul_sync::lease::Claim>,
+    /// How far their records were read here.
+    pub heard: share::Heard,
+    /// Every device sharing through the folder, and when it last exchanged.
+    pub others: Vec<share::Other>,
+    /// What each says of itself (`sioul_sync::devices`), and the ids of those whose entry does not read.
+    pub entries: Vec<sioul_sync::devices::Entry>,
+    pub unread: Vec<String>,
+}
+
+/// The others' claims on the doses, their entries in the devices' registry,
+/// and what was read of their records: what this device knows of the doses
+/// they marked (`health::know`). None when sharing is off.
+pub(crate) fn others_on_health() -> Option<Others> {
     let here = share::Here::load(&state_dir());
     let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
     let claims = sioul_sync::lease::claims(&folder, &key, "health").into_iter().filter(|c| c.computer != here.id).collect();
-    Some((here.id.clone(), claims, share::heard(&memory_path(), &here.id), share::others(&folder, &here.id)))
+    let (mut entries, mut unread) = sioul_sync::devices::all(&folder, &key);
+    entries.retain(|e| e.id != here.id);
+    unread.retain(|id| *id != here.id);
+    Some(Others { claims, heard: share::heard(&memory_path(), &here.id), others: share::others(&folder, &here.id), entries, unread })
+}
+
+/// This device's id, and the folder and key when sharing is on: where its
+/// entry in the devices' registry goes (`devices`).
+pub(crate) fn vault() -> Option<(String, Option<(PathBuf, [u8; 32])>)> {
+    let here = share::Here::load(&state_dir());
+    if here.id.is_empty() {
+        return None;
+    }
+    let vault = here.folder_path().zip(key());
+    Some((here.id, vault))
+}
+
+/// Whether this device shares a part (`share::PARTS`), as chosen here.
+pub(crate) fn shares(part: &str) -> bool {
+    here().shares(part, &load_config())
+}
+
+/// The sync app asked to look now (`CARRIERS`), on a phone: after a reminder's
+/// session went down, so that its lowered entry goes up (`devices::receiver`).
+pub(crate) fn nudge_carriers() {
+    ask_carriers();
 }
 
 /// The doses' record read again from every computer's records at the next
@@ -751,6 +804,14 @@ pub(crate) fn rebuild_health_record() -> String {
     share::rebuild(&memory_path(), &here.id, &["state/health-state.toml"]).err().unwrap_or_default()
 }
 
+/// The same for the doses' records (`sioul_core::doses`): one lost or broken
+/// here is read again from every device's records, nothing of it taken out elsewhere.
+pub(crate) fn rebuild_dose_records() -> String {
+    let here = share::Here::load(&state_dir());
+    let _busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    share::rebuild(&memory_path(), &here.id, &["state/health-doses.toml"]).err().unwrap_or_default()
+}
+
 /// Sync apps that can be asked to look for changes now, on a phone: their
 /// package, receiver and action. The sharing never depends on it (docs/database.md,
 /// "What the sync app must do"): without one, what the other devices wrote
@@ -758,6 +819,7 @@ pub(crate) fn rebuild_health_record() -> String {
 /// Each is asked; one not installed hears nothing. Add others the same way,
 /// with the source that shows their receiver (and its package in the
 /// manifest's <queries>).
+#[cfg(target_os = "android")]
 const CARRIERS: &[(&str, &str, &str)] = &[
     // Murena's eDrive (/e/OS) looks every half hour; its "force scan" receiver
     // (receivers/DebugCmdReceiver.java, exported) looks now.
@@ -848,8 +910,10 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: false, hurry: None };
     let outcome = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond());
     if let Ok(outcome) = &outcome {
+        crate::devices::exported(outcome);
         remember(&outcome.problems, jiff::Timestamp::now().as_second());
-        if outcome.sent > 0 {
+        // Inside a reminder's own session, the sync app is asked once it is down (`devices::receiver`).
+        if outcome.sent > 0 && !crate::devices::in_receiver() {
             ask_carriers();
         }
     }
@@ -881,6 +945,8 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
         let (mut received, mut pending) = (0, 0);
         let (written, accounts, problems, sent) = match share::exchange(&sharing, &stores, now.as_millisecond()) {
             Ok(outcome) => {
+                // What it read and wrote, said in this device's entry (docs/database.md, "Devices").
+                crate::devices::exported(&outcome);
                 (received, pending) = (outcome.received, outcome.pending);
                 if !outcome.written.is_empty() {
                     let names = outcome.written.iter().cloned().collect::<Vec<_>>().join("\n");
@@ -889,6 +955,10 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
                 // The night, its mornings or a day's change come from another device: a phone's alarm at waking follows now (`wake`).
                 if outcome.written.contains("data/health.toml") || outcome.written.contains("data/health-days.toml") {
                     crate::wake::schedule();
+                }
+                // Do-not-disturb pressed, a pause, a focus session or its settings from another device: applied here now.
+                if ["state/do-not-disturb.toml", "state/quiet.toml", "data/time/running.toml", "config/config.toml"].iter().any(|f| outcome.written.contains(*f)) {
+                    std::thread::spawn(crate::everywhere::apply);
                 }
                 (!outcome.written.is_empty(), outcome.written.contains("config/config.toml"), outcome.problems, outcome.sent)
             }

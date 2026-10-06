@@ -44,9 +44,9 @@ The hour before bed is sleep's: Health keeps it free, and nothing should keep th
 
 ## The hours
 
-In [Settings ▸ Hours](settings.md#hours), two weeks: **Working hours** and **Hours for your admin**. Each day of each is on or off, with one range of hours or several (09:00–12:00 and 14:00–17:00, a lunch between). **Time off**, below them, takes holidays and sick leave. There is no free time to set: leisure is every other time, and meals and sleep come from the Health page, a button away.
+In [Settings ▸ Hours](settings.md#hours), two weeks: **Working hours** and **Hours for your admin**. Each day of each is on or off, with one range of hours or several (09:00–12:00 and 14:00–17:00, a lunch between). **Time off**, below them, takes holidays and sick leave. There is no leisure to set: it is every other time, and meals and sleep come from the Health page, a button away.
 
-Free time set as hours by an earlier Sioul is left in your settings, untouched, and no longer counts.
+Leisure set as hours by an earlier Sioul (its "free time") is left in your settings, untouched, and no longer counts. **Free time** is now a pause you take, whatever the hour: see [Pauses](pauses.md).
 
 | Now | What comes forward | What waits |
 |---|---|---|
@@ -57,7 +57,7 @@ Free time set as hours by an earlier Sioul is left in your settings, untouched, 
 | Sleep | nothing notifies; leisure, if you open Sioul | everything else, and every notification but doses |
 | No working or admin hours set at all | everything, as before any were set (meals and sleep keep their time) | nothing |
 
-The status line says what now is, and until when: "Admin time until 19:00: offices, bills, letters.", "Meal until 13:00.", "Free time until 22:00: what you enjoy.", "Winding down: nothing disturbs until 07:00."
+The status line says what now is, and until when: "Admin time until 19:00: offices, bills, letters.", "Meal until 13:00.", "Leisure until 22:00: what you enjoy.", "Winding down: nothing disturbs until 07:00."
 
 ## What follows the time
 
