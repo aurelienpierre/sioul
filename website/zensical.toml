@@ -48,6 +48,7 @@ nav = [
       { "Sharing between your devices" = "guide/sharing.md" },
       { "Using an AI agent" = "guide/ai-agent.md" },
       { "Privacy and security" = "guide/privacy-security.md" },
+      { "Works with" = "guide/compatibility.md" },
     ] },
     { "Privacy policy" = "privacy.md" },
   ] },
@@ -93,6 +94,7 @@ nav = [
       { "Papers" = "dev/papers.md" },
     ] },
     { "Elsewhere" = [
+      { "Compatibility" = "dev/compatibility.md" },
       { "Google" = "dev/google.md" },
       { "GitHub" = "dev/github.md" },
       { "Sites" = "dev/sites.md" },

@@ -63,6 +63,8 @@ Ce qui change sur un téléphone :
 
 Gmail, et d’autres fournisseurs quand la validation en deux étapes est activée, demandent un **mot de passe d’application** au lieu de votre mot de passe habituel : vous le créez dans les réglages de votre compte chez le fournisseur (pour Gmail, sur myaccount.google.com/apppasswords). Quand le fournisseur est connu, le formulaire propose **Créer un mot de passe d’application**, qui ouvre la bonne page.
 
+Les adresses Outlook.com, Hotmail et Microsoft 365 ne peuvent pas encore être ajoutées : Microsoft n’accepte plus des autres logiciels de courrier que sa propre page de connexion ([Fonctionne avec](compatibility.md#mail)).
+
 Relever le courrier ne change rien sur votre serveur de courrier. Sioul n’y écrit que lorsque vous agissez : ouvrir un message le marque comme lu, comme dans tout logiciel de courrier ; archiver, supprimer et déplacer se font dix secondes après votre demande, pour que « Annuler » puisse les arrêter.
 
 Ensuite, sur la fiche de l’adresse dans **Vos comptes**, dépliez **Réglages de cette adresse** et cochez **À quoi sert cette adresse** : travail, vos démarches, loisirs, ou plusieurs. Tant que vous ne l’avez pas dit, une adresse compte comme du travail, pour que son courrier n’atteigne jamais vos soirées. Voir [Les heures](hours.md).
@@ -119,3 +121,4 @@ Les rappels peuvent aussi venir fenêtre fermée : dans **Paramètres ▸ Rapp
 - [Le Porche](porch.md), où le nouveau courrier attend.
 - [Les tâches](tasks.md), et l’étape suivante.
 - [Les heures](hours.md), et le calme.
+- [Fonctionne avec](compatibility.md) : les serveurs, les applications et les systèmes avec lesquels Sioul fonctionne, et jusqu’où chacun a été essayé.
