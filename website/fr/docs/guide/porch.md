@@ -17,7 +17,7 @@ Le Porche est l’endroit où le nouveau courrier attend que vous regardiez : 
 - **En dehors de vos heures**, le Porche dit quand il ouvre la prochaine fois, et rien d’autre : aucun nombre, aucun nom. **L’ouvrir quand même** reste possible, discrètement. D’ici là, ce qui arrive est vérifié et trié.
 - **Sans aucune heure réglée**, le Porche est toujours ouvert.
 
-Quel courrier vient à quelles heures dépend de ce à quoi sert chaque adresse : travail, vos démarches, loisirs. Le courrier des personnes que vous avez marquées sûres vient à toute heure. Voir [Les heures](hours.md).
+Quel courrier vient quand dépend de qui écrit, liste par liste, aux moments que vous cochez pour chaque liste, et de ce à quoi sert chaque adresse : travail, vos démarches, loisirs. Voir [Qui peut vous écrire](accounts.md#senders) et [Les heures](hours.md).
 
 Pendant tout ce temps, le courrier continue d’arriver en arrière-plan. Le Porche décide seulement quand il est montré.
 
@@ -25,7 +25,7 @@ Pendant tout ce temps, le courrier continue d’arriver en arrière-plan. Le Por
 
 Les codes à usage unique, les mots de passe temporaires, les réinitialisations de mot de passe, les liens de connexion et les liens pour confirmer une adresse viennent de quelque chose que vous venez de demander à un site, et ils expirent. Sioul les montre donc tout de suite, à n’importe quelle heure, même quand ils viennent d’une adresse automatique de site (no-reply…) :
 
-- une seule notification de bureau, sans son, avec le code, un bouton pour le copier (sous Linux), et sa durée de validité ;
+- une seule notification de bureau, sans son, avec le code, un bouton pour le copier (sous Linux), et sa durée de validité ; aucune pendant le sommeil : la carte attend ici ;
 - la même carte en haut du Porche, avec **Copier**.
 
 Rien d’autre ne s’ouvre avec. Une fois expiré, le code est masqué, et le message va dans sa file. Il expire quand le message le dit, sinon quand son type expire d’habitude : un code après 30 minutes, un lien de connexion après une heure, une réinitialisation de mot de passe après deux heures, un lien pour confirmer une adresse après un jour, un mot de passe temporaire après une semaine.
@@ -56,9 +56,9 @@ Sous le titre de chaque file, une ligne dit ce qu’elle contient. Son **?** (Co
 
 Un message en attente de votre accord a **Accepter cette adresse** : les messages suivants de cette personne vont dans « De personnes que vous connaissez ».
 
-Chaque message a aussi **Son courrier**, dans son menu (⋮), avec trois choix : **Sûr** (son courrier vous parvient à toute heure, calme compris), **Neutre** (il attend les heures de travail), **Bloqué** (mis de côté pour de bon, jamais montré). Les mêmes listes, avec des motifs comme `*@example.org`, sont dans [Comptes ▸ Expéditeurs](accounts.md#senders).
+Chaque message a aussi **Son courrier**, dans son menu (⋮). D’abord, une ligne dit ce qui décide pour cet expéditeur maintenant : « Sûr, comme le dit la catégorie Amis. » Puis les choix : **Comme le disent ses catégories** (son entrée propre retirée des listes : les catégories de sa fiche décident, sinon le domaine de son adresse), ou l’une des quatre listes, chacune avec ses moments : **Sûr**, **Neutre**, **Restreint**, **Bloqué** (mis de côté pour de bon, jamais montré). Les mêmes listes, avec des motifs comme `*@example.org`, et le moment où vient le courrier de chacune, sont dans [Comptes ▸ Expéditeurs](accounts.md#senders).
 
-Le courrier falsifié est jugé à part : un message falsifié est mis de côté quoi que disent les listes, même s’il prétend venir de quelqu’un que vous avez marqué sûr.
+Le courrier falsifié est jugé à part : un message falsifié est mis de côté quoi que disent les listes, même s’il prétend venir de quelqu’un que vous avez marqué sûr, et pesé comme celui d’un inconnu.
 
 ## Lire un message {#reading-a-message}
 
@@ -96,6 +96,7 @@ Pendant le calme, **Travailler maintenant** apparaît à côté, pour montrer le
 Quand il y a quelque chose, quelques lignes viennent avant les files :
 
 - **Quand vos heures ne sont pas réglées**, une carte les demande, avec **Régler mes heures** (qui ouvre les Paramètres à cet endroit) et **Laisser ainsi** (qui arrête de demander).
+- **Quand votre nuit n’est pas réglée**, une carte dit que rien n’éloigne les notifications pendant que vous dormez, avec **Régler ma nuit** (qui ouvre la page Santé là où se règlent les repas et la nuit) et **Laisser ainsi**. Voir [Les heures](hours.md#sleep).
 - **Où vous en étiez** : la ligne que vous avez laissée quand quelque chose est venu vous interrompre, avec sa tâche, jusqu’à ce que vous appuyiez sur **C’est fait**. Voir [Les tâches](tasks.md#starting-and-stopping).
 - **Deux événements en même temps aujourd’hui**, le temps d’y aller et d’en revenir compté, avec **Ouvrir « … »** pour chacun et **Ne plus en parler**. Voir [L’agenda](agenda.md#two-events-at-once).
 - **Les prises prévues pendant que Sioul était fermé**, ni marquées ni rappelées nulle part : **Pris…** (quand vous l’avez prise) ou **Pas pris**. Quand un autre appareil peut en savoir plus, le doute est dit sous la prise. Voir [La santé](health.md#reminders).
@@ -104,7 +105,7 @@ Quand il y a quelque chose, quelques lignes viennent avant les files :
 - **Les paiements de la semaine**, en une ligne : « Cette semaine : Électricité 62 € (lun.). Le compte les tient. » Quand quelque chose demande un coup d’œil côté argent, la ligne le dit, sans nombre. Voir [Les budgets](budgets.md#the-bank-watch).
 
 <figure markdown="span">
-  [![Une carte en haut du Porche : « Vos heures ne sont pas réglées : travail, démarches et loisirs arrivent à toute heure. », une phrase sur ce qu’apporte chaque sorte d’heures, et deux boutons, « Régler mes heures » et « Laisser ainsi ».](../assets/screens/fr/porch-hours.png){ loading=lazy }](../assets/screens/fr/porch-hours.png "Ouvrir l’image en grand")
+  [![Une carte en haut du Porche : « Vos heures ne sont pas réglées : travail et démarches arrivent à toute heure. », une phrase sur ce qu’apporte chaque sorte d’heures, et deux boutons, « Régler mes heures » et « Laisser ainsi ».](../assets/screens/fr/porch-hours.png){ loading=lazy }](../assets/screens/fr/porch-hours.png "Ouvrir l’image en grand")
   <figcaption>Tant que vos heures ne sont pas réglées, le Porche demande une fois.</figcaption>
 </figure>
 
@@ -127,7 +128,7 @@ Le ⚙ en haut du Porche contient ce qui n’appartient qu’au Porche :
 - **Courrier papier ▸ Où arrivent les scans** : le dossier où arrivent vos scans.
 - **Comment le courrier est trié** : chaque file, dans l’ordre du tri, avec ses règles ; les expéditeurs que vous connaissez ; les mots qui rendent un expéditeur automatique (no-reply…).
 
-Ce qui appartient à autre chose se règle là où se trouve cette chose : le rang et la protection d’une adresse sur sa fiche dans [Comptes](accounts.md), les règles d’un projet sur sa page dans [Projets](projects.md), les expéditeurs bloqués dans [Comptes ▸ Expéditeurs](accounts.md#senders), vos heures dans [Paramètres](settings.md#hours).
+Ce qui appartient à autre chose se règle là où se trouve cette chose : le rang et la protection d’une adresse sur sa fiche dans [Comptes](accounts.md), les règles d’un projet sur sa page dans [Projets](projects.md), qui peut vous écrire et quand dans [Comptes ▸ Expéditeurs](accounts.md#senders), vos heures dans [Paramètres](settings.md#hours).
 
 ### Certaines adresses d’abord, d’autres en dernier {#some-addresses-first-others-last}
 

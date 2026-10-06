@@ -1062,9 +1062,9 @@ pub struct FolderEntry {
 
 /// The accounts and their folders, ranked as their mail is: above, average, below.
 /// Views of other folders are not listed, but Gmail's "All Mail", its archive.
-/// The mail page's accounts; `hours` what the hours now are for (None: no hours
-/// set): an address whose area does not fit them rests, and every address
-/// outside every hours set (docs/areas.md).
+/// The mail page's accounts; `hours` what now is for (None: no hours set): an
+/// address whose area does not fit it rests, and every address while you
+/// sleep (docs/areas.md).
 pub fn mail_accounts(accounts: &[(Account, Vec<Folder>)], tr: &Translator, hours: Option<(crate::areas::Time, crate::areas::Week)>) -> Vec<MailAccountView> {
     let mut ranked: Vec<&(Account, Vec<Folder>)> = accounts.iter().collect();
     ranked.sort_by_key(|(account, _)| account.priority);
@@ -1074,7 +1074,7 @@ pub fn mail_accounts(accounts: &[(Account, Vec<Folder>)], tr: &Translator, hours
             let root = account.maildir_path();
             // An address whose area is unsaid is work's.
             let area = account.area.as_deref().and_then(crate::areas::Area::parse).unwrap_or(crate::areas::Area::WORK);
-            let resting = hours.is_some_and(|(time, week)| time == crate::areas::Time::Personal || !crate::areas::in_view(area, time, week));
+            let resting = hours.is_some_and(|(time, week)| time == crate::areas::Time::Sleep || !crate::areas::in_view(area, time, week));
             // "All Mail" stands for the archive where there is none (Gmail).
             let has_archive = folders.iter().any(|f| f.role == Role::Archive);
             // Two folders for one purpose ("Archive" and "Archives") each keep their own name.
@@ -1347,7 +1347,7 @@ pub struct AgendaDay {
     /// The day's midnight, Unix seconds, to place what happens in it.
     pub start: i64,
     pub events: Vec<AgendaEvent>,
-    /// Its hours given to work, admin or free time, in minutes from midnight; -1 without (`set_hours`).
+    /// Its hours given to work or admin, in minutes from midnight; -1 without (`set_hours`).
     pub hours_from: i32,
     pub hours_to: i32,
 }
@@ -1392,7 +1392,7 @@ fn lay_out(events: &mut [AgendaEvent]) {
     }
 }
 
-/// Each day's hours given to something, work, your admin or free time, in
+/// Each day's hours given to something, work or your admin, in
 /// minutes from its midnight (docs/areas.md): the planning shows those, and
 /// the events outside them, rather than the night.
 pub fn set_hours(view: &mut AgendaView, windows: &[crate::window::AdminWindow], zone: &TimeZone) {
@@ -1492,6 +1492,11 @@ pub struct ContactsView {
     pub sentence: String,
     /// Whether a contact can be added: an address book that takes it exists.
     pub can_add: bool,
+    /// The categories the cards have, to filter by: the most used first, each
+    /// as first written, one name once (`contacts::category_key`).
+    pub categories: Vec<String>,
+    /// The category shown; empty: every contact (also when the one asked is gone).
+    pub category: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -1506,15 +1511,25 @@ pub struct ContactRow {
     pub detail: String,
     /// Its picture, as the card gives it (`Contact::photo`).
     pub photo: String,
+    /// Its categories, as the card writes them.
+    pub categories: Vec<String>,
 }
 
-/// The contacts matching `query`, by name.
-pub fn contacts(all: &[crate::contacts::Contact], query: &str, tr: &Translator) -> ContactsView {
-    let found = crate::contacts::search(all, query);
+/// The contacts matching `query`, by name; of one category when `category`
+/// names one (case and accents aside, as the sender lists compare them).
+pub fn contacts(all: &[crate::contacts::Contact], query: &str, category: &str, tr: &Translator) -> ContactsView {
+    let categories = crate::contacts::categories_in_use(all);
+    let wanted = crate::contacts::category_key(category);
+    let category = categories.iter().find(|c| !wanted.is_empty() && crate::contacts::category_key(c) == wanted).cloned().unwrap_or_default();
+    let found: Vec<&crate::contacts::Contact> = crate::contacts::search(all, query).into_iter().filter(|c| category.is_empty() || crate::contacts::in_category(c, &category)).collect();
     let sentence = if all.is_empty() && crate::vdir::collections(crate::vdir::Kind::Contacts).is_empty() {
         tr.text("contacts-no-book", None)
     } else if all.is_empty() {
         tr.text("contacts-none", None)
+    } else if found.is_empty() && query.trim().is_empty() {
+        let mut args = i18n::args();
+        args.set("category", category.clone());
+        tr.text("contacts-none-in", Some(&args))
     } else if found.is_empty() {
         let mut args = i18n::args();
         args.set("query", query.trim().to_string());
@@ -1532,10 +1547,13 @@ pub fn contacts(all: &[crate::contacts::Contact], query: &str, tr: &Translator) 
                 email: c.emails.first().map(|e| e.value.clone()).unwrap_or_default(),
                 detail: c.emails.first().map(|e| e.value.clone()).or_else(|| c.phones.first().map(|p| p.value.clone())).unwrap_or_else(|| c.org.clone()),
                 photo: c.photo.clone(),
+                categories: c.categories.clone(),
             })
             .collect(),
         sentence,
         can_add: crate::contacts::default_book().is_some(),
+        categories,
+        category,
     }
 }
 

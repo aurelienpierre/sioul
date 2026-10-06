@@ -20,12 +20,12 @@ La page Paramètres a cinq onglets.
 
 <figure markdown="span">
   [![L’onglet Heures des Paramètres : « Heures de travail », chaque jour de la semaine coché ou non, avec ses plages horaires, d’un début à une fin, et une phrase sur ce qu’elles font ; puis « Heures pour vos démarches », réglées de la même façon.](../assets/screens/fr/settings-hours.png){ loading=lazy }](../assets/screens/fr/settings-hours.png "Ouvrir l’image en grand")
-  <figcaption>Trois semaines : travail, vos démarches, temps libre. Puis les congés.</figcaption>
+  <figcaption>Deux semaines : travail, vos démarches. Puis les congés.</figcaption>
 </figure>
 
 - **Heures de travail** : ces jours et à ces heures, le travail peut vous joindre. En dehors, il se repose.
 - **Heures pour vos démarches** : vos démarches viennent alors (organismes, factures, courriers, courses de santé).
-- **Temps libre** : repos et loisirs seulement (amis, famille, discussions, ce qui vous plaît).
+- **Repas et sommeil, sur la page Santé** : une phrase, et un bouton vers eux. Les loisirs, c’est tout le reste du temps, ni travail ni démarches : il n’y a rien à régler pour eux. Les repas et le sommeil se règlent sur la page [Santé](health.md#meals-rest-and-sleep), et pendant le sommeil rien ne dérange.
 - **Congés** : vacances, arrêt maladie, calme du premier jour au dernier, comme un jour sans travail, avec un mot dessus.
 
 Chaque jour de chaque semaine est actif ou non, avec une plage horaire ou plusieurs : **+** en ajoute une, **×** en retire une. Ce que chaque type d’heures apporte, et ce qui attend : [Les heures](hours.md).
@@ -40,6 +40,7 @@ Chaque rappel vient une fois, en notification discrète, sans son, jamais répé
 - **Paiements prévus : jours travaillés avant** : au début du travail, tant de jours travaillés avant un paiement prévu (une facture, un impôt) ; 0 pour aucun. Le rappel dit si le compte le tiendra.
 - **Fenêtre de Sioul fermée** : votre session lance un petit veilleur qui dit les rappels quand la fenêtre est fermée ; rien d’autre ne tourne, aucun courrier n’est relevé. Il faut pour cela la commande `sioul` installée à côté de Sioul ([Installer](install.md#into-your-application-menu)). Pas encore sous Windows.
 - **Notifications des sites regroupées**, et **Regroupées à** : ce que vos sites notifient attend, puis vient en une seule notification à ces moments-là (09:00, 13:00 et 18:00, sauf si vous en réglez d’autres), pour les sites dont les heures sont en cours. Un site en temps réel, et un appel, viennent tout de suite.
+- **Prises pendant le sommeil** : **Rappeler** ou **Rester silencieux**. Pendant le sommeil (la nuit, du moment de se détendre au réveil ; une sieste), aucune notification ne vient ; le rappel d’une prise vient quand même, puisque c’est vous qui avez réglé son heure, sauf si vous choisissez **Rester silencieux** : il vient alors au réveil. Voir [Les heures](hours.md#sleep).
 
 Les prises de médicaments sont rappelées depuis la page [Santé](health.md), et les papiers à renouveler depuis [Papiers](papers.md). Sur un téléphone, seules les prises sont rappelées pour l’instant ([Sur un téléphone](first-steps.md#on-a-phone)).
 

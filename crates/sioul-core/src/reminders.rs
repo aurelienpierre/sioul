@@ -17,7 +17,9 @@
 //! What is created after its reminder's time is not reminded: you just saw it.
 //! A reminder still makes sense until what it is about begins; a computer
 //! asleep at the time reminds on waking, if it is not too late. Work waits
-//! while work rests; your own things, events and payments do not. Payments
+//! while work rests; your own things, events and payments do not. While you
+//! sleep nothing is told: every reminder waits for waking (docs/health.md,
+//! "Do not disturb"), and comes then if it still makes sense. Payments
 //! that leave by themselves (presets) are not reminded: the money watch tells
 //! when the account will not hold them, which a reminder alone cannot
 //! (Medina 2021).
@@ -75,10 +77,25 @@ pub struct Reminder {
     pub work: bool,
 }
 
+/// What waits now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wait {
+    Nothing,
+    /// Work rests: work's reminders wait for it.
+    Work,
+    /// You sleep: nothing disturbs, every reminder waits for waking.
+    Everything,
+}
+
 impl Reminder {
-    /// Whether to tell it now: its time has come, it is not too late, and work does not rest for it.
-    pub fn ready(&self, now: i64, resting: bool) -> bool {
-        self.at <= now && now < self.until && !(self.work && resting)
+    /// Whether to tell it now: its time has come, it is not too late, and nothing holds it.
+    pub fn ready(&self, now: i64, wait: Wait) -> bool {
+        let held = match wait {
+            Wait::Nothing => false,
+            Wait::Work => self.work,
+            Wait::Everything => true,
+        };
+        self.at <= now && now < self.until && !held
     }
 }
 
@@ -350,8 +367,8 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
 }
 
 /// Everything to remind, read from the files now: the events of the coming
-/// days, the tasks, the payments planned in the case store; and whether work rests.
-pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, bool) {
+/// days, the tasks, the payments planned in the case store; and what waits now.
+pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, Wait) {
     let stamp = now.timestamp().as_second();
     let events = crate::agenda::occurrences(stamp - 86_400, stamp + 9 * 86_400);
     let tasks = crate::tasks::all(now.time_zone());
@@ -359,12 +376,21 @@ pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, 
     let ledger = store.as_deref().and_then(|root| Ledger::load_with_bank(root).ok());
     let cases = store.as_deref().and_then(|root| crate::cases::CaseStore::load(root).ok()).map(|s| s.cases).unwrap_or_default();
     let overrides = crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path());
-    let situation = crate::quiet::Situation::now(config, &overrides, now, tr, &cases);
+    // Meals and sleep as Health keeps them: while you sleep, nothing is told.
+    let blocks = crate::quiet::Blocks::read(now, &events);
+    let situation = crate::quiet::Situation::now(config, &overrides, &blocks, now, tr, &cases);
     let papers = store.as_deref().and_then(|root| crate::papers::Wallet::load(root).ok()).map(|w| w.papers).unwrap_or_default();
     let contracts = store.as_deref().and_then(|root| crate::contracts::Contracts::load(root).ok()).map(|c| c.list).unwrap_or_default();
     let money = store.as_deref().and_then(|root| crate::bank::Bank::load(root).ok()).filter(|b| !b.movements.is_empty() || !b.accounts.is_empty()).zip(ledger.as_ref()).map(|(bank, ledger)| crate::bank::watch(&bank, ledger, now.date()));
     let reminders = all(config, tr, now, &events, &tasks, ledger.as_ref(), &papers, &contracts, money.as_ref(), |t| situation.quiet_tasks.keeps(t));
-    (reminders, situation.mode.quiet)
+    let wait = if situation.mode.sleeps() {
+        Wait::Everything
+    } else if situation.mode.quiet {
+        Wait::Work
+    } else {
+        Wait::Nothing
+    };
+    (reminders, wait)
 }
 
 /// Where reminders told are marked, one small file each.
@@ -405,8 +431,8 @@ pub fn forget_old(dir: &Path) {
 }
 
 /// What to tell now, each marked told: those ready, not told yet.
-pub fn to_tell(reminders: Vec<Reminder>, dir: &Path, now: i64, resting: bool) -> Vec<Reminder> {
-    reminders.into_iter().filter(|r| r.ready(now, resting) && claim(dir, &r.key)).collect()
+pub fn to_tell(reminders: Vec<Reminder>, dir: &Path, now: i64, wait: Wait) -> Vec<Reminder> {
+    reminders.into_iter().filter(|r| r.ready(now, wait) && claim(dir, &r.key)).collect()
 }
 
 #[cfg(test)]
@@ -508,14 +534,17 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sioul-reminded-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let tuesday = at("2026-10-06T09:05").timestamp().as_second();
-        let mut told = to_tell(all.clone(), &dir, tuesday, false);
+        // Asleep: nothing told, nothing marked; told at waking.
+        assert!(to_tell(all.clone(), &dir, tuesday, Wait::Everything).is_empty());
+        let mut told = to_tell(all.clone(), &dir, tuesday, Wait::Nothing);
         told.retain(|r| r.kind == Kind::Asked);
         assert_eq!(told.len(), 1);
-        assert!(to_tell(all.clone(), &dir, tuesday + 60, false).iter().all(|r| r.kind != Kind::Asked), "never twice");
+        assert!(to_tell(all.clone(), &dir, tuesday + 60, Wait::Nothing).iter().all(|r| r.kind != Kind::Asked), "never twice");
         let wait = find("wait:").clone();
-        assert!(!wait.ready(tuesday, true) && wait.ready(tuesday, false));
+        assert!(!wait.ready(tuesday, Wait::Work) && wait.ready(tuesday, Wait::Nothing));
+        assert!(!find("payment:").clone().ready(find("payment:").at, Wait::Everything) && find("payment:").ready(find("payment:").at, Wait::Work), "yours wait only for waking");
         // Too late: the day asked is over.
-        assert!(!find("asked:").ready(at("2026-10-09T08:00").timestamp().as_second(), false));
+        assert!(!find("asked:").ready(at("2026-10-09T08:00").timestamp().as_second(), Wait::Nothing));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -58,6 +58,9 @@ pub struct Config {
     pub agenda: AgendaSettings,
     #[serde(default)]
     pub map: MapSettings,
+    /// Contacts: the country of phone numbers written without one.
+    #[serde(default)]
+    pub contacts: ContactSettings,
     /// Reminders before dates: events, dates asked, waits, payments (docs/reminders.md).
     #[serde(default)]
     pub reminders: ReminderSettings,
@@ -103,6 +106,10 @@ pub struct Config {
     /// The Porch's own choices (docs/porch.md).
     #[serde(default)]
     pub porch: PorchSettings,
+    /// Who may reach you when: for each list, the times its mail comes
+    /// (docs/porch.md, "Who may write to you"). Shared with your settings.
+    #[serde(default)]
+    pub reach: ReachSettings,
     /// The camera, microphone and speaker calls in sites use (docs/sites.md).
     #[serde(default)]
     pub calls: CallSettings,
@@ -125,6 +132,19 @@ pub struct PorchSettings {
     /// Projects whose lane the Porch leaves out: their mail stays on their page in Projects.
     #[serde(default)]
     pub hidden_projects: Vec<String>,
+}
+
+/// When each list's mail comes: the times ticked for it ("work", "admin",
+/// "leisure", "meals", "sleep"). A list left out keeps its usual times
+/// (`quiet::Reach::default`); an empty one comes never.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct ReachSettings {
+    #[serde(default)]
+    pub safe: Option<Vec<String>>,
+    #[serde(default)]
+    pub neutral: Option<Vec<String>>,
+    #[serde(default)]
+    pub restricted: Option<Vec<String>>,
 }
 
 /// Days off, from one day to another, both included.
@@ -167,9 +187,11 @@ impl Config {
         self.windows.iter().filter(|w| w.end.is_some() && w.kind() == "work").cloned().collect()
     }
 
-    /// The week's hours, of every kind: work, admin, leisure (docs/areas.md).
+    /// The week's hours: work's and admin's (docs/areas.md). Leisure is
+    /// every other time: the free time an older Sioul set as hours is read
+    /// and left aside, kept in the file.
     pub fn week_hours(&self) -> Vec<AdminWindow> {
-        self.windows.iter().filter(|w| w.end.is_some()).cloned().collect()
+        self.windows.iter().filter(|w| w.end.is_some() && w.kind() != "leisure").cloned().collect()
     }
 
     /// When offices are open: the configuration's, else Monday to Friday 9:00–17:00.
@@ -316,6 +338,16 @@ pub struct MapSettings {
     pub geocode: bool,
 }
 
+/// How the contacts read phone numbers (docs/client.md, "Duplicates").
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct ContactSettings {
+    /// The country of numbers written without one, by its ISO code ("FR"),
+    /// to compare "06 08…" with "+33 6 08…"; unset: the system's locale's,
+    /// else Sioul's language's (`phones::chosen`).
+    #[serde(default)]
+    pub region: Option<String>,
+}
+
 /// Paper letters (docs/porch.md): the folder their scans arrive in.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct LetterSettings {
@@ -346,6 +378,11 @@ pub struct ReminderSettings {
     /// The times of the gathered notification: "09:00"; unsaid, three a day.
     #[serde(default)]
     pub gathered: Option<Vec<String>>,
+    /// Doses reminded during sleep, when nothing else disturbs (docs/health.md):
+    /// you set their times, a dose at 05:00 is meant to wake you. Off, they
+    /// wait for waking.
+    #[serde(default = "yes")]
+    pub doses_in_sleep: bool,
 }
 
 impl ReminderSettings {
@@ -358,7 +395,7 @@ impl ReminderSettings {
 
 impl Default for ReminderSettings {
     fn default() -> Self {
-        ReminderSettings { events: true, asked_days: 2, payment_days: 2, waits: true, gather: true, gathered: None }
+        ReminderSettings { events: true, asked_days: 2, payment_days: 2, waits: true, gather: true, gathered: None, doses_in_sleep: true }
     }
 }
 
@@ -786,9 +823,14 @@ impl Config {
         self.blocked_senders.as_deref().map_or_else(|| config_dir().join("blocked-senders.txt"), expand_home)
     }
 
-    /// Who is safe (their mail reaches you at any hour): `safe-senders.txt` next to the configuration.
+    /// Who is safe (by default, their mail reaches you at any time): `safe-senders.txt` next to the configuration.
     pub fn safe_senders_path(&self) -> PathBuf {
         config_dir().join("safe-senders.txt")
+    }
+
+    /// Who is restricted (by default, their mail comes in working hours only): `restricted-senders.txt` next to the configuration.
+    pub fn restricted_senders_path(&self) -> PathBuf {
+        config_dir().join("restricted-senders.txt")
     }
 
     /// Who is neutral by your word, where a broader safe or blocked entry would name them otherwise.
@@ -1300,6 +1342,30 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
         }
         return write_document(path, &doc);
     }
+    // A row of who may reach you when: written even empty, which is "never"
+    // (an empty list elsewhere takes the key out, its default back).
+    if let Some(row) = key.strip_prefix("reach.") {
+        let times: Vec<String> = match setting {
+            SettingValue::Texts(times) => times.iter().map(|t| t.trim().to_lowercase()).filter(|t| !t.is_empty()).collect(),
+            SettingValue::Ints(none) if none.is_empty() => Vec::new(),
+            _ => return Err(format!("{key}: times expected")),
+        };
+        if !matches!(row, "safe" | "neutral" | "restricted") {
+            return Err(format!("{key}: safe, neutral or restricted"));
+        }
+        if !doc.contains_key("reach") {
+            doc["reach"] = toml_edit::table();
+        }
+        let section = doc["reach"].as_table_like_mut().ok_or_else(|| format!("{}: reach is not a table", path.display()))?;
+        let item = value(times.iter().map(String::as_str).collect::<Array>());
+        match section.get_mut(row) {
+            Some(slot) => *slot = item,
+            None => {
+                section.insert(row, item);
+            }
+        }
+        return write_document(path, &doc);
+    }
     // A site's field: in `[[site]]`, where an older file's sites are moved first.
     if let Some(rest) = key.strip_prefix("site.") {
         let (id, field) = rest.rsplit_once('.').ok_or_else(|| format!("{key}: site.<id>.<field> expected"))?;
@@ -1648,6 +1714,30 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.starts_with("# mine") && text.contains("estimate = 20") && config.accounts.len() == 1, "{text}");
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn who_may_reach_you_when_written() {
+        let dir = std::env::temp_dir().join(format!("sioul-reach-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "# Mine.\n[[window]]\nday = \"saturday\"\nstart = \"10:00\"\nend = \"18:00\"\nkind = \"leisure\"\n").unwrap();
+        // A row unticked to the last box is "never", written as such: not its usual times back.
+        set_value(&path, "reach.restricted", &serde_json::from_str("[]").unwrap()).unwrap();
+        set_value(&path, "reach.neutral", &SettingValue::Texts(vec!["leisure".into(), "Meals".into()])).unwrap();
+        let config = Config::load(&path).unwrap();
+        assert_eq!((config.reach.restricted.as_deref(), config.reach.neutral.as_deref(), config.reach.safe.as_deref()), (Some(&[][..]), Some(&["leisure".to_string(), "meals".to_string()][..]), None));
+        let reach = crate::quiet::Reach::of(&config.reach);
+        assert_eq!((reach.restricted, reach.neutral.ids(), reach.safe), (crate::quiet::Times::NEVER, vec!["leisure", "meals"], crate::quiet::Times::ALL));
+        assert!(set_value(&path, "reach.blocked", &SettingValue::Texts(vec!["work".into()])).is_err(), "the blocked never come");
+        // Working hours saved: the older free time stays in the file, read and left aside.
+        set_value(&path, "window", &SettingValue::Windows(vec![WindowValue { day: "monday".into(), start: "09:00".into(), end: "17:00".into(), minutes: 0 }])).unwrap();
+        let config = Config::load(&path).unwrap();
+        assert_eq!((config.windows.len(), config.week_hours().len()), (2, 1));
+        assert!(std::fs::read_to_string(&path).unwrap().starts_with("# Mine."));
+        assert!(config.reminders.doses_in_sleep, "doses remind during sleep unless you say");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

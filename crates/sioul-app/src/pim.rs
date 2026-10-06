@@ -33,6 +33,8 @@ const DAV_PAUSE: Duration = Duration::from_secs(15 * 60);
 #[derive(Clone)]
 pub(crate) struct PimState {
     pub query: String,
+    /// The contacts of one category only; empty: all of them.
+    pub category: String,
     pub from: jiff::civil::Date,
     pub days: i64,
     /// What comes only: events over already are left out (the list opened on today).
@@ -41,7 +43,7 @@ pub(crate) struct PimState {
 
 impl Default for PimState {
     fn default() -> PimState {
-        PimState { query: String::new(), from: Zoned::now().date(), days: view::AGENDA_DAYS, upcoming: true }
+        PimState { query: String::new(), category: String::new(), from: Zoned::now().date(), days: view::AGENDA_DAYS, upcoming: true }
     }
 }
 
@@ -53,7 +55,7 @@ pub(crate) fn show_pim(qt: &QtThread, shared: &Arc<Shared>) {
         let state = shared.pim.lock().map(|s| s.clone()).unwrap_or_default();
         let (removed, skipped) = mail::hidden_pim(shared);
         let everyone: Vec<contacts::Contact> = contacts::all().into_iter().filter(|c| !removed.contains(Path::new(&c.key))).collect();
-        let contacts = json(&view::contacts(&everyone, &state.query, tr()));
+        let contacts = json(&view::contacts(&everyone, &state.query, &state.category, tr()));
         let zone = TimeZone::system();
         let from = state.from.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
         let to = from + state.days * 86_400 + 3_600;
@@ -82,21 +84,21 @@ pub(crate) fn show_pim(qt: &QtThread, shared: &Arc<Shared>) {
 }
 
 /// The account a contact or event file belongs to, from its folder.
-fn account_of(path: &Path) -> Option<String> {
+pub(crate) fn account_of(path: &Path) -> Option<String> {
     [Kind::Contacts, Kind::Calendars]
         .into_iter()
         .find_map(|kind| path.strip_prefix(kind.root()).ok().and_then(|rest| rest.components().next()).map(|c| c.as_os_str().to_string_lossy().to_string()))
 }
 
 /// The collection a file is in.
-fn collection_of(path: &Path) -> Option<Collection> {
+pub(crate) fn collection_of(path: &Path) -> Option<Collection> {
     let dir = path.parent()?;
     [Kind::Contacts, Kind::Calendars].into_iter().flat_map(vdir::collections).find(|c| c.dir == dir)
 }
 
 /// A file inside Sioul's address books and calendars, never elsewhere: no
 /// "..", which `starts_with` would let through ("contacts/../../.bashrc").
-fn ours(key: &str) -> Option<PathBuf> {
+pub(crate) fn ours(key: &str) -> Option<PathBuf> {
     let path = PathBuf::from(key);
     let climbs = path.components().any(|c| c == std::path::Component::ParentDir);
     let inside = [Kind::Contacts, Kind::Calendars].iter().any(|k| path.starts_with(k.root()));

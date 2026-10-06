@@ -119,7 +119,7 @@ Sioul never shows offers, comparisons or "better deals": only facts about your c
 
 In plain files at the root of your notes folder: `sioul-budgets.toml` (budgets, reserves, lines, rules, bank accounts), `sioul-bank.toml` (the bank's movements), `sioul-contracts.toml`. Readable, editable by hand, versioned with git if you like. They travel with your notes folder, or through Sioul's sharing once you switch **Projects and money** on in it ([Sharing](sharing.md)); nothing is sent anywhere else.
 
-In free time, only the budgets for leisure are in view. See [Hours](hours.md).
+In leisure, during a meal and while you sleep, only the budgets for leisure are in view. See [Hours](hours.md).
 
 ## Why it works this way
 

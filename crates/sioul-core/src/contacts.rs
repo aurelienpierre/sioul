@@ -43,7 +43,12 @@ pub struct Contact {
     /// The address book it is in.
     pub book: String,
     pub read_only: bool,
-    /// Its CATEGORIES: "family", "friends"… Family and friends reach you in quiet time.
+    /// Its CATEGORIES ("Famille", "Amis"…), what Nextcloud Contacts shows as
+    /// groups: every CATEGORIES line of the card, each name once
+    /// (`category_key`), as the card writes it. The page shows them and
+    /// filters by them, and the sender lists can name them
+    /// (`category:Amis`, porch.rs's `Senders`): their mail then stands as
+    /// their category says, unless an address of theirs has its own entry.
     pub categories: Vec<String>,
     /// Its picture to show: an embedded one as a file in the cache ("file://…"),
     /// else the web address the card gives; empty without one.
@@ -70,6 +75,10 @@ pub struct ContactEdit {
     pub notes: String,
     #[serde(default)]
     pub urls: Vec<String>,
+    /// Its categories, all of them; none (left out: an import, a sender added)
+    /// leaves the card's as they are.
+    #[serde(default)]
+    pub categories: Option<Vec<String>>,
 }
 
 /// Reads one card with calcard, to tell whether it is valid vCard.
@@ -85,14 +94,14 @@ pub fn read(path: &Path, book: &Collection) -> Option<Contact> {
 }
 
 /// A content line taken apart: its group, name and parameters; the value stays in the line.
-struct Line<'a> {
-    name: String,
+pub(crate) struct Line<'a> {
+    pub(crate) name: String,
     /// Upper-case parameter names with their values; vCard 2.1's bare values ("TEL;CELL") as TYPE.
-    params: Vec<(String, String)>,
-    value: &'a str,
+    pub(crate) params: Vec<(String, String)>,
+    pub(crate) value: &'a str,
 }
 
-fn split_line(line: &str) -> Line<'_> {
+pub(crate) fn split_line(line: &str) -> Line<'_> {
     let value = lines::value(line);
     // Before the colon; a line without one (a broken card) is all head, never cut inside a character.
     let head = line.len().checked_sub(value.len() + 1).filter(|&at| line.as_bytes().get(at) == Some(&b':')).map_or(line, |at| &line[..at]);
@@ -121,12 +130,12 @@ fn split_line(line: &str) -> Line<'_> {
 }
 
 /// Every TYPE value of a line, lower case: "TYPE=HOME,PREF" and "TYPE=home;TYPE=pref" alike.
-fn types_of(line: &Line) -> Vec<String> {
+pub(crate) fn types_of(line: &Line) -> Vec<String> {
     line.params.iter().filter(|(n, _)| n == "TYPE").flat_map(|(_, v)| v.split(',').map(|t| t.trim().to_lowercase())).filter(|t| !t.is_empty()).collect()
 }
 
 /// "work", "home", "cell"…; "internet", "voice" and "pref" say nothing.
-fn label_of(line: &Line) -> String {
+pub(crate) fn label_of(line: &Line) -> String {
     let mut labels: Vec<String> = Vec::new();
     for kind in types_of(line) {
         if !matches!(kind.as_str(), "internet" | "voice" | "pref" | "x400") && !kind.starts_with("x-") && !labels.contains(&kind) {
@@ -137,12 +146,17 @@ fn label_of(line: &Line) -> String {
 }
 
 /// Whether the card marks this value as the one to use first (TYPE=PREF, PREF=1).
-fn is_preferred(line: &Line) -> bool {
+pub(crate) fn is_preferred(line: &Line) -> bool {
     types_of(line).iter().any(|t| t == "pref") || line.params.iter().any(|(n, _)| n == "PREF")
 }
 
 /// The parts of a structured value (N, ADR, ORG), split at unescaped semicolons, unescaped.
 fn components(value: &str) -> Vec<String> {
+    split_unescaped(value, ';')
+}
+
+/// A value split at the separators that are not escaped (`A\,B` stays one), each part unescaped.
+fn split_unescaped(value: &str, separator: char) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
     let mut escaped = false;
@@ -153,7 +167,7 @@ fn components(value: &str) -> Vec<String> {
             escaped = false;
         } else if c == '\\' {
             escaped = true;
-        } else if c == ';' {
+        } else if c == separator {
             parts.push(lines::unescape(&current));
             current.clear();
         } else {
@@ -164,8 +178,35 @@ fn components(value: &str) -> Vec<String> {
     parts
 }
 
+/// What two category names are compared by: trimmed, case and accents folded
+/// (`text::fold`), so "Amis", " amis" and "AMIS" are one category. The sender
+/// lists match categories the same way (porch.rs).
+pub fn category_key(name: &str) -> String {
+    crate::text::fold(name.trim()).into_iter().collect()
+}
+
+/// A card's categories: every CATEGORIES line, its names split at unescaped
+/// commas, each name once (`category_key`), as first written.
+pub(crate) fn categories_of(card: &[String]) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for line in card.iter().filter(|l| lines::name(l) == "CATEGORIES") {
+        for name in split_unescaped(lines::value(line), ',') {
+            let name = name.trim();
+            if !name.is_empty() && !names.iter().any(|n| category_key(n) == category_key(name)) {
+                names.push(name.to_string());
+            }
+        }
+    }
+    names
+}
+
+/// The one CATEGORIES line of these names, each escaped (`A\,B`).
+pub(crate) fn categories_line(names: &[String]) -> String {
+    format!("CATEGORIES:{}", names.iter().map(|n| lines::escape(n.trim())).collect::<Vec<_>>().join(","))
+}
+
 /// What the window shows of a line, by property: the same reading for showing and for editing.
-fn shown(line: &str) -> String {
+pub(crate) fn shown(line: &str) -> String {
     let parsed = split_line(line);
     match parsed.name.as_str() {
         "ADR" => address_lines(&components(parsed.value)),
@@ -175,15 +216,11 @@ fn shown(line: &str) -> String {
     }
 }
 
-/// The contact a card's lines stand for.
-fn contact(card: &[String], path: &Path, book: &Collection) -> Contact {
+/// The name a card is shown by: its FN, else its structured name, else its
+/// organisation, else its first e-mail address.
+pub(crate) fn display_name(card: &[String]) -> String {
     let all = |property: &'static str| card.iter().filter(move |l| lines::name(l) == property);
-    let first = |property: &'static str| all(property).next().map(|l| shown(l)).unwrap_or_default();
-    let labeled = |property: &'static str| {
-        all(property).map(|l| Labeled { label: label_of(&split_line(l)), value: shown(l) }).filter(|l| !l.value.is_empty()).collect::<Vec<_>>()
-    };
-    let emails = labeled("EMAIL");
-    let org = first("ORG");
+    let first = |property: &'static str| all(property).map(|l| shown(l)).find(|v| !v.is_empty()).unwrap_or_default();
     let structured_name = all("N")
         .next()
         .map(|l| {
@@ -193,14 +230,25 @@ fn contact(card: &[String], path: &Path, book: &Collection) -> Contact {
             [pick(3), pick(1), pick(2), pick(0), pick(4)].into_iter().map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect::<Vec<_>>().join(" ")
         })
         .unwrap_or_default();
-    let name = [first("FN"), structured_name, org.clone(), emails.first().map(|e| e.value.clone()).unwrap_or_default()]
+    [all("FN").next().map(|l| shown(l)).unwrap_or_default(), structured_name, all("ORG").next().map(|l| shown(l)).unwrap_or_default(), first("EMAIL")]
         .into_iter()
         .find(|n| !n.trim().is_empty())
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
+
+/// The contact a card's lines stand for.
+pub(crate) fn contact(card: &[String], path: &Path, book: &Collection) -> Contact {
+    let all = |property: &'static str| card.iter().filter(move |l| lines::name(l) == property);
+    let first = |property: &'static str| all(property).next().map(|l| shown(l)).unwrap_or_default();
+    let labeled = |property: &'static str| {
+        all(property).map(|l| Labeled { label: label_of(&split_line(l)), value: shown(l) }).filter(|l| !l.value.is_empty()).collect::<Vec<_>>()
+    };
+    let emails = labeled("EMAIL");
+    let org = first("ORG");
     Contact {
         key: path.display().to_string(),
         uid: first("UID"),
-        name,
+        name: display_name(card),
         emails,
         phones: labeled("TEL"),
         org,
@@ -209,7 +257,7 @@ fn contact(card: &[String], path: &Path, book: &Collection) -> Contact {
         birthday: first("BDAY"),
         notes: all("NOTE").map(|l| shown(l)).filter(|n| !n.is_empty()).collect::<Vec<_>>().join("\n"),
         urls: all("URL").map(|l| shown(l)).filter(|u| !u.is_empty()).collect(),
-        categories: all("CATEGORIES").flat_map(|l| lines::unescape(lines::value(l)).split(',').map(|c| c.trim().to_string()).filter(|c| !c.is_empty()).collect::<Vec<_>>()).collect(),
+        categories: categories_of(card),
         book: book.name.clone(),
         read_only: book.read_only,
         photo: photo_of(card),
@@ -363,6 +411,10 @@ pub fn apply(text: &str, edit: &ContactEdit) -> String {
     for (property, wanted) in [("EMAIL", emails), ("TEL", phones), ("ADR", addresses), ("URL", urls)] {
         changed |= merge(&original, &mut out, &mut added, property, &wanted);
     }
+    // Categories: as they are, unless the form gives others; then one line.
+    if let Some(wanted) = &edit.categories {
+        changed |= set_categories(&original, &mut out, &mut added, wanted);
+    }
     if !changed {
         return text.to_string();
     }
@@ -372,6 +424,33 @@ pub fn apply(text: &str, edit: &ContactEdit) -> String {
     let end = kept.iter().rposition(|l| lines::name(l) == "END").unwrap_or(kept.len());
     kept.splice(end..end, added);
     lines::fold(&kept)
+}
+
+/// The card's categories made these (`category_key` once each): its CATEGORIES
+/// lines untouched when they say the same, else one line where the first was.
+/// Returns whether anything changed.
+fn set_categories(original: &[String], out: &mut [Option<String>], added: &mut Vec<String>, wanted: &[String]) -> bool {
+    let mut names: Vec<String> = Vec::new();
+    for name in wanted.iter().map(|n| n.trim()).filter(|n| !n.is_empty()) {
+        if !names.iter().any(|n| category_key(n) == category_key(name)) {
+            names.push(name.to_string());
+        }
+    }
+    if categories_of(original) == names {
+        return false;
+    }
+    let present: Vec<usize> = original.iter().enumerate().filter(|(_, l)| lines::name(l) == "CATEGORIES").map(|(i, _)| i).collect();
+    for &i in &present {
+        out[i] = None;
+    }
+    if !names.is_empty() {
+        let line = categories_line(&names);
+        match present.first() {
+            Some(&i) => out[i] = Some(line),
+            None => added.push(line),
+        }
+    }
+    true
 }
 
 /// One property of several values: an unchanged value keeps its line; a new
@@ -467,7 +546,7 @@ fn structured_name(name: &str) -> Vec<String> {
 }
 
 /// "20261003T120000Z", for REV.
-fn now_stamp() -> String {
+pub(crate) fn now_stamp() -> String {
     jiff::Timestamp::now().strftime("%Y%m%dT%H%M%SZ").to_string()
 }
 
@@ -565,6 +644,27 @@ pub fn search<'a>(contacts: &'a [Contact], query: &str) -> Vec<&'a Contact> {
                 .any(|field| folded(field).contains(&query))
         })
         .collect()
+}
+
+/// The categories the cards have, to filter by: the most used first, then by
+/// name; each name once (`category_key`), as first written.
+pub fn categories_in_use(contacts: &[Contact]) -> Vec<String> {
+    let mut used: Vec<(usize, String, String)> = Vec::new();
+    for name in contacts.iter().flat_map(|c| c.categories.iter()) {
+        let key = category_key(name);
+        match used.iter_mut().find(|(_, k, _)| *k == key) {
+            Some((count, _, _)) => *count += 1,
+            None => used.push((1, key, name.clone())),
+        }
+    }
+    used.sort_by(|(a, x, _), (b, y, _)| b.cmp(a).then_with(|| x.cmp(y)));
+    used.into_iter().map(|(_, _, name)| name).collect()
+}
+
+/// Whether a contact has this category, case and accents aside.
+pub fn in_category(contact: &Contact, category: &str) -> bool {
+    let wanted = category_key(category);
+    contact.categories.iter().any(|c| category_key(c) == wanted)
 }
 
 /// The contact with this e-mail address.
@@ -699,6 +799,7 @@ mod tests {
             birthday: c.birthday.clone(),
             notes: c.notes.clone(),
             urls: c.urls.clone(),
+            categories: Some(c.categories.clone()),
         };
         assert_eq!(apply(MIXED, &same), MIXED);
         let compact = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:A\r\nBDAY;VALUE=DATE:19840512\r\nEND:VCARD\r\n";
@@ -743,5 +844,53 @@ mod tests {
         assert_eq!(completions(&contacts, "exe", 5).len(), 3);
         assert_eq!(search(&contacts, "SARL").len(), 1);
         assert_eq!(by_address(&contacts, "JANE@example.net").map(|c| c.name.as_str()), Some("Jane Exemple"));
+    }
+
+    /// The form's values for a contact, nothing changed.
+    fn edit_of(c: &Contact) -> ContactEdit {
+        ContactEdit {
+            name: c.name.clone(),
+            emails: c.emails.clone(),
+            phones: c.phones.clone(),
+            org: c.org.clone(),
+            title: c.title.clone(),
+            addresses: c.addresses.clone(),
+            birthday: c.birthday.clone(),
+            notes: c.notes.clone(),
+            urls: c.urls.clone(),
+            categories: Some(c.categories.clone()),
+        }
+    }
+
+    #[test]
+    fn categories_as_nextcloud_writes_them() {
+        // Two lines, an escaped comma, one name twice in another case: one list.
+        let card = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:c-1\r\nFN:Lou Exemple\r\nCATEGORIES:Amis,Famille\r\nX-OTHER:keep\r\nCATEGORIES:amis,Club\\, échecs\r\nEND:VCARD\r\n";
+        let c = contact(&lines::unfold(card), Path::new("/tmp/c.vcf"), &book());
+        assert_eq!(c.categories, ["Amis", "Famille", "Club, échecs"]);
+        // Saved as they are: the card untouched, both lines kept; left out: untouched too.
+        let mut edit = edit_of(&c);
+        assert_eq!(apply(card, &edit), card);
+        edit.categories = None;
+        assert_eq!(apply(card, &edit), card);
+        // One taken off, one added: one line where the first was, its comma escaped, the rest kept.
+        edit.categories = Some(vec!["Famille".into(), "Club, échecs".into(), "Voisins".into(), " famille ".into()]);
+        let text = apply(card, &edit);
+        assert!(text.contains("\r\nCATEGORIES:Famille,Club\\, échecs,Voisins\r\nX-OTHER:keep\r\n") && text.matches("CATEGORIES").count() == 1, "{text}");
+        assert_eq!(contact(&lines::unfold(&text), Path::new("/tmp/c.vcf"), &book()).categories, ["Famille", "Club, échecs", "Voisins"]);
+        // All taken off: no line. A new card: one line, each name once.
+        edit.categories = Some(Vec::new());
+        assert!(!apply(card, &edit).contains("CATEGORIES"));
+        let new = new_card(&ContactEdit { name: "Paul".into(), categories: Some(vec!["Amis".into(), " amis ".into()]), ..ContactEdit::default() });
+        assert!(new.contains("\r\nCATEGORIES:Amis\r\n"), "{new}");
+        // Compared folded, as the sender lists compare them.
+        assert_eq!(category_key(" AMIS "), category_key("amis"));
+        assert_eq!(category_key("Équipe"), "equipe");
+        // The list filters by them: the most used first, each name once, as first written.
+        let with = |file: &str, names: &str| contact(&lines::unfold(&format!("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:{file}\r\nCATEGORIES:{names}\r\nEND:VCARD\r\n")), Path::new(file), &book());
+        let everyone = [with("a", "Famille,Club"), with("b", "famille"), with("c", "Équipe"), with("d", "equipe,FAMILLE")];
+        assert_eq!(categories_in_use(&everyone), ["Famille", "Équipe", "Club"]);
+        assert_eq!(everyone.iter().filter(|c| in_category(c, "FAMILLE")).count(), 3);
+        assert!(in_category(&everyone[3], "Équipe") && !in_category(&everyone[1], "Club"));
     }
 }

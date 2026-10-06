@@ -100,7 +100,7 @@ Dans **Paramètres ▸ Votre dossier et le partage**, choisissez **Le dossier de
 
 ## Régler vos heures {#set-your-hours}
 
-Dans **Paramètres ▸ Heures** : vos heures de travail, vos heures pour vos démarches, et votre temps libre. Sans elles, tout arrive à toute heure, comme dans les autres logiciels de courrier. Tant qu’elles ne sont pas réglées, le Porche demande une fois, avec **Régler mes heures** et **Laisser ainsi**. Voir [Les heures](hours.md).
+Dans **Paramètres ▸ Heures** : vos heures de travail et vos heures pour vos démarches ; tout le reste du temps, ce sont vos loisirs, et les repas et le sommeil viennent de la page Santé. Sans heures, tout arrive à toute heure, comme dans les autres logiciels de courrier. Tant qu’elles ne sont pas réglées, le Porche demande une fois, avec **Régler mes heures** et **Laisser ainsi**. Voir [Les heures](hours.md).
 
 ## Épingler les sites que vous consultez {#pin-the-websites-you-check}
 

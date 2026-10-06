@@ -363,34 +363,42 @@ Panel {
                 }
             }
             MenuSeparator {}
-            // Who the sender is to you: safe (any hour), neutral (working hours), blocked.
+            // Who the sender is to you: as their categories say, or one of the
+            // four lists, each with its times (docs/porch.md); why, first.
             SioulMenu {
                 id: standingMenu
 
-                property string current: "neutral"
+                // Where they stand and why, read as the menu opens (`standingOf`).
+                property var shown: ({ choice: "", said: "", choices: [] })
 
-                onAboutToShow: standingMenu.current = reader.reading && reader.reading.from_address ? reader.sioul.standing(reader.reading.from_address) : "neutral"
+                onAboutToShow: standingMenu.shown = reader.reading && reader.reading.from_address ? JSON.parse(reader.sioul.standingOf(reader.reading.from_address)) : ({ choice: "", said: "", choices: [] })
                 enabled: reader.reading !== null && !!reader.reading.block_address && reader.reading.sender_judgeable
                 title: reader.reading && !reader.reading.sender_judgeable ? reader.sioul.text("sender-standing") + " · " + reader.sioul.text("sender-unverified-short") : reader.sioul.text("sender-standing")
 
+                MenuItem {
+                    visible: standingMenu.shown.said !== ""
+                    height: visible ? implicitHeight : 0
+                    enabled: false
+                    text: standingMenu.shown.said
+                }
                 Repeater {
-                    model: ["safe", "neutral", "blocked"]
+                    model: standingMenu.shown.choices
 
                     delegate: MenuItem {
                         id: standingItem
 
-                        required property string modelData
+                        required property var modelData
 
-                        text: reader.sioul.text("sender-" + modelData)
+                        text: standingItem.modelData.label
                         checkable: true
-                        checked: standingMenu.current === modelData
+                        checked: standingMenu.shown.choice === standingItem.modelData.value
                         onTriggered: {
-                            if (modelData === "blocked")
+                            if (standingItem.modelData.value === "blocked")
                                 blockDialog.now().open()
                             else
-                                reader.sioul.setStanding(reader.reading.from_address, modelData)
-                            // The click ticked or unticked it: the tick says the standing again.
-                            standingItem.checked = Qt.binding(() => standingMenu.current === standingItem.modelData)
+                                reader.sioul.setStanding(reader.reading.from_address, standingItem.modelData.value)
+                            // The click ticked or unticked it: the tick says the choice again.
+                            standingItem.checked = Qt.binding(() => standingMenu.shown.choice === standingItem.modelData.value)
                         }
                     }
                 }

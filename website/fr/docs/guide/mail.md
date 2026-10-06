@@ -38,7 +38,7 @@ Au-dessus du message, toujours au même endroit :
 
 Archiver, supprimer et mettre aux indésirables se font tout de suite, avec **Annuler** dans la ligne d’état pendant dix secondes ; le serveur n’est prévenu qu’après. Il n’y a pas de « Voulez-vous vraiment ? ». Dans la corbeille, **Supprimer définitivement** supprime pour de bon, avec les mêmes dix secondes.
 
-Un clic droit sur un message (ou son ⋮, ou la touche Menu) donne le reste : marquer comme lu ou non lu, suivre, **Déplacer vers…**, **Voir la source**, bloquer l’expéditeur, **Son courrier** (sûr, neutre, bloqué), **Garder comme contrat…**.
+Un clic droit sur un message (ou son ⋮, ou la touche Menu) donne le reste : marquer comme lu ou non lu, suivre, **Déplacer vers…**, **Voir la source**, bloquer l’expéditeur, **Son courrier** (comme le disent ses catégories, sûr, neutre, restreint, bloqué), **Garder comme contrat…**.
 
 Ouvrir un message le marque comme lu, comme le fait tout logiciel de courrier.
 
@@ -89,7 +89,7 @@ Les réglages propres à chaque adresse (à quoi elle sert, jusqu’où elle rem
 
 ## Pendant le calme {#in-quiet-time}
 
-En dehors des heures de travail, les adresses du travail se replient, sans leurs points : « Le courrier du travail se repose jusqu’au retour du travail. Il est là si vous le cherchez. » Au repos, hors de toutes les heures que vous avez réglées, toutes les adresses se replient : « À cette heure, le courrier se repose : ce qu’écrivent les personnes marquées sûres vient au Porche. Le reste est là si vous le cherchez. » Voir [Heures](hours.md).
+En dehors des heures de travail, les adresses du travail se replient, sans leurs points : « Le courrier du travail se repose jusqu’au retour du travail. Il est là si vous le cherchez. » Pendant le sommeil, toutes les adresses se replient : « Pendant le sommeil, le courrier se repose : rien ne notifie, et le Porche ne montre que ce que vos listes laissent passer maintenant. Le reste est là si vous le cherchez. » Voir [Heures](hours.md).
 
 ## Pas encore là {#not-there-yet}
 

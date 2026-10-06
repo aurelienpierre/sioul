@@ -57,6 +57,8 @@ pub mod qobject {
         #[qproperty(QString, drafts)]
         #[qproperty(QString, undo_line)]
         #[qproperty(QString, contacts)]
+        // The Contacts page's duplicates (`duplicates::find`), looked for off the window's thread when asked.
+        #[qproperty(QString, duplicates)]
         #[qproperty(QString, agenda)]
         // Two events at once in the next two weeks (`pim::overlaps`), made with the agenda, off the window's thread.
         #[qproperty(QString, overlaps)]
@@ -155,17 +157,29 @@ pub mod qobject {
         #[qinvokable]
         fn block(self: Pin<&mut Sioul>, entry: &QString);
 
+        /// Out of the blocked list; written neutral when a category or a domain would still block it.
         #[qinvokable]
         fn unblock(self: Pin<&mut Sioul>, entry: &QString);
 
-        /// An address or a pattern marked "safe" (any hour), "neutral" (working
-        /// hours, the default) or "blocked"; out of the two other lists.
+        /// An address or a pattern marked "safe", "neutral", "restricted" or
+        /// "blocked", out of the three other lists; "": out of every list, its
+        /// categories, else its domain, deciding (docs/porch.md).
         #[qinvokable]
         fn set_standing(self: Pin<&mut Sioul>, entry: &QString, standing: &QString);
 
-        /// Where an address stands: "safe", "neutral" or "blocked".
+        /// Where an address stands: "safe", "neutral", "restricted" or "blocked".
         #[qinvokable]
         fn standing(self: &Sioul, address: &QString) -> QString;
+
+        /// "Their mail" for a person (`addresses`: a JSON array of theirs, or
+        /// one): where they stand and why, the choices with their times (`senders`).
+        #[qinvokable]
+        fn standing_of(self: &Sioul, addresses: &QString) -> QString;
+
+        /// "Their mail" chosen for every address given (a JSON array, or one):
+        /// a list's name, or "" for "As their categories say".
+        #[qinvokable]
+        fn set_standing_of(self: Pin<&mut Sioul>, addresses: &QString, standing: &QString);
 
         /// Writes the line a message about money stands for into a budget.
         #[qinvokable]
@@ -314,6 +328,31 @@ pub mod qobject {
         #[qinvokable]
         fn delete_contact(self: Pin<&mut Sioul>, key: &QString);
 
+        /// Shows the contacts of one category only; empty: all of them.
+        #[qinvokable]
+        fn show_contacts_category(self: Pin<&mut Sioul>, category: &QString);
+
+        /// Looks for duplicates in the contacts, off the window's thread: they come in `duplicates`.
+        #[qinvokable]
+        fn find_duplicates(self: Pin<&mut Sioul>);
+
+        /// Takes the duplicates off these cards (a JSON list of their files), one
+        /// write each; returns what went wrong, else "".
+        #[qinvokable]
+        fn clean_contacts(self: Pin<&mut Sioul>, keys: &QString) -> QString;
+
+        /// Merges two cards, `lead` keeping its name, the other deleted; returns {"key"} or {"error"}.
+        #[qinvokable]
+        fn merge_contacts(self: Pin<&mut Sioul>, lead: &QString, other: &QString) -> QString;
+
+        /// Two cards are not one person: never offered again; returns what went wrong, else "".
+        #[qinvokable]
+        fn not_same_contacts(self: Pin<&mut Sioul>, first: &QString, second: &QString) -> QString;
+
+        /// Puts the cards back as they were before what was done (`duplicates`' "done"); returns what went wrong, else "".
+        #[qinvokable]
+        fn undo_contacts(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
         /// Shows `days` days of the agenda from `from` ("2026-10-05"; empty: today).
         #[qinvokable]
         fn show_days(self: Pin<&mut Sioul>, from: &QString, days: i32, upcoming: bool);
@@ -412,7 +451,7 @@ pub mod qobject {
         #[qinvokable]
         fn filter_tasks(self: Pin<&mut Sioul>, kind: &QString, category: &QString);
 
-        /// At rest, the tasks all the same ("Show anyway"), until the page is left.
+        /// Asleep, the tasks all the same ("Show anyway"), until the page is left.
         #[qinvokable]
         fn show_tasks_anyway(self: Pin<&mut Sioul>, on: bool);
 
@@ -648,6 +687,20 @@ pub mod qobject {
         /// The health views made again, off the window's thread (`healthView`, `missedView`, `needsView`).
         #[qinvokable]
         fn refresh_health(self: Pin<&mut Sioul>);
+
+        /// The Health page shows the week of `day` ("2026-10-07"): made again
+        /// off the window's thread, into `healthView`.
+        #[qinvokable]
+        fn show_health_week(self: Pin<&mut Sioul>, day: &QString);
+
+        /// A day's meal, nap or night changed, that day only (JSON: date, key,
+        /// action…; `health::change_need`); returns what went wrong, else "".
+        #[qinvokable]
+        fn change_need(self: Pin<&mut Sioul>, edit: &QString) -> QString;
+
+        /// The Health page's settings (⚙): medicines, prescriptions, pauses, the watch, as JSON.
+        #[qinvokable]
+        fn health_settings(self: &Sioul) -> QString;
 
         /// An overlap set aside for good; returns what went wrong, else "".
         #[qinvokable]
@@ -1298,6 +1351,7 @@ pub struct SioulRust {
     drafts: QString,
     undo_line: QString,
     contacts: QString,
+    duplicates: QString,
     agenda: QString,
     overlaps: QString,
     health_view: QString,
@@ -1728,11 +1782,9 @@ pub(crate) fn quiet_now() -> bool {
     mode_now().quiet
 }
 
-/// The time now: what the hours are for, and until when (docs/areas.md).
+/// The time now: what it is for, and until when (docs/areas.md; `hours`).
 pub(crate) fn mode_now() -> sioul_core::quiet::Mode {
-    let config = load_config();
-    let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-    sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &Zoned::now())
+    crate::hours::mode_now()
 }
 
 /// Whether something for `area` comes forward now.
@@ -1757,31 +1809,47 @@ pub(crate) fn mode_json() -> String {
     let config = load_config();
     let now = Zoned::now();
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-    let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &now);
+    let mode = crate::hours::mode_at(&now);
     let until = mode.until.as_ref().map(|z| sioul_core::quiet::until_text(tr(), z, &now)).unwrap_or_default();
     let mut args = sioul_core::i18n::args();
     args.set("until", until.clone());
     args.set("label", if mode.label.trim().is_empty() { "none".to_string() } else { mode.label.clone() });
     let reason = serde_json::to_value(&mode.reason).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+    use sioul_core::quiet::Reason;
     let line = match mode.reason {
-        sioul_core::quiet::Reason::NoHours | sioul_core::quiet::Reason::Working => String::new(),
-        sioul_core::quiet::Reason::TimeOff => tr().text("mode-time-off", Some(&args)),
-        sioul_core::quiet::Reason::WorkingLate => tr().text("mode-working-late", Some(&args)),
-        sioul_core::quiet::Reason::WorkNow => tr().text("mode-work-now-line", Some(&args)),
-        // Admin hours within free time: both said.
-        sioul_core::quiet::Reason::AdminTime if matches!(mode.time, sioul_core::areas::Time::Several(open) if open.leisure) => tr().text("mode-admin-leisure", Some(&args)),
-        sioul_core::quiet::Reason::AdminTime => tr().text("mode-admin", Some(&args)),
-        sioul_core::quiet::Reason::LeisureTime => tr().text("mode-leisure", Some(&args)),
-        // Evening, night, a day without hours: rest, until the next hours of any kind.
-        _ if mode.rests() => tr().text("mode-rest", Some(&args)),
-        // A day closed early.
-        _ => tr().text("mode-quiet", Some(&args)),
+        Reason::NoHours | Reason::Working => String::new(),
+        Reason::TimeOff => tr().text("mode-time-off", Some(&args)),
+        Reason::WorkingLate => tr().text("mode-working-late", Some(&args)),
+        Reason::WorkNow => tr().text("mode-work-now-line", Some(&args)),
+        Reason::AdminTime => tr().text("mode-admin", Some(&args)),
+        // A day closed early: when work comes back.
+        Reason::DoneForTheDay => tr().text("mode-quiet", Some(&args)),
+        // Evenings, days without hours: leisure, until the next change.
+        Reason::Evening | Reason::DayOff => tr().text("mode-leisure", Some(&args)),
+        Reason::Meal => tr().text("mode-meal", Some(&args)),
+        Reason::WindingDown => tr().text("mode-wind-down", Some(&args)),
+        Reason::Nap => tr().text("mode-nap", Some(&args)),
+        Reason::Sleep => tr().text("mode-sleep", Some(&args)),
     };
     // The day closed today can be taken back, that day only.
     let today = overrides.closed_today(&now);
-    // Which hours are set: the Porch asks for them while none are.
+    // Which hours are set, and the night: the Porch asks for them while they are not.
     let set = |kind: &str| config.windows.iter().any(|w| w.kind() == kind);
-    serde_json::json!({ "quiet": mode.quiet, "rest": mode.rests(), "time": mode.time.id(), "reason": reason, "until": until, "line": line, "hours": !config.week_hours().is_empty(), "work_hours": set("work"), "admin_hours": set("admin"), "leisure_hours": set("leisure"), "work_now": mode.reason == sioul_core::quiet::Reason::WorkNow, "today": today }).to_string()
+    serde_json::json!({
+        "quiet": mode.quiet,
+        "sleep": mode.sleeps(),
+        "time": mode.time.id(),
+        "reason": reason,
+        "until": until,
+        "line": line,
+        "hours": !config.week_hours().is_empty(),
+        "work_hours": set("work"),
+        "admin_hours": set("admin"),
+        "night": crate::hours::night_set(),
+        "work_now": mode.reason == Reason::WorkNow,
+        "today": today
+    })
+    .to_string()
 }
 
 fn compute(shared: &Shared) -> Views {
@@ -1792,14 +1860,15 @@ fn compute(shared: &Shared) -> Views {
     items.retain(|t| t.card.path.as_ref().is_none_or(|p| !hidden.contains(p)));
     // What the hours are for: codes and the senders you marked safe always; the
     // rest as its address is for (an address you did not say: work's).
-    let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-    let mode = sioul_core::quiet::mode(&world.config.week_hours(), &world.config.time_off, &overrides, &now);
+    let mode = crate::hours::mode_at(&now);
     if mode.time != sioul_core::areas::Time::Any {
         let area_of = |t: &sioul_core::porch::Triaged| t.card.account.as_deref().and_then(|id| world.config.account(id)).and_then(|a| a.area.as_deref()).and_then(sioul_core::areas::Area::parse).unwrap_or(sioul_core::areas::Area::WORK);
-        items.retain(|t| sioul_core::quiet::mail_in_view(t, &world.senders, area_of(t), mode.time, mode.week));
+        // Who may write to you when: the matrix of Accounts ▸ Senders.
+        let reach = sioul_core::quiet::Reach::of(&world.config.reach);
+        items.retain(|t| sioul_core::quiet::mail_in_view(t, &world.senders, &reach, area_of(t), mode.time, mode.week));
     }
-    // At rest no project shows: what your safe senders wrote about one comes among the people you know.
-    if mode.rests() {
+    // Asleep no project shows: what your senders wrote about one comes among the people you know.
+    if mode.sleeps() {
         for t in &mut items {
             if matches!(t.lane, sioul_core::porch::Lane::Case(_)) {
                 t.lane = sioul_core::porch::Lane::People;
@@ -2202,6 +2271,10 @@ fn learn(qt: &QtThread, shared: &Shared, id: &str) {
 
 /// One quiet notification per verified code among new mail, with a copy button.
 fn notify_codes(qt: &QtThread, files: &[PathBuf]) {
+    // While you sleep nothing notifies: the code waits on the Porch (docs/health.md).
+    if !crate::hours::may_notify() {
+        return;
+    }
     let config = load_config();
     let now = Zoned::now().timestamp().as_second();
     let senders = porch::Senders::load(&config);
@@ -2606,25 +2679,37 @@ impl qobject::Sioul {
         self.set_standing(entry, &QString::from("blocked"));
     }
 
-    fn unblock(self: Pin<&mut Self>, entry: &QString) {
-        self.set_standing(entry, &QString::from("neutral"));
-    }
-
-    fn set_standing(mut self: Pin<&mut Self>, entry: &QString, standing: &QString) {
-        let entry = entry.to_string().trim().to_ascii_lowercase();
-        let Some(standing) = porch::Standing::read(&standing.to_string()) else { return };
-        let line = match porch::set_standing(&load_config(), &entry, standing) {
-            Ok(()) => say(&format!("sender-now-{}", standing.as_str()), &[("entry", porch::normalize(&entry).unwrap_or(entry.clone()).trim_start_matches("*@").to_string())]),
-            Err(e) => e,
-        };
+    fn unblock(mut self: Pin<&mut Self>, entry: &QString) {
+        let line = crate::senders::unblock(&entry.to_string());
         self.as_mut().set_status(QString::from(&line));
         let (qt, shared) = (self.qt_thread(), self.shared());
         show(&qt, &shared);
         pim::show_pim(&qt, &shared);
     }
 
+    fn set_standing(self: Pin<&mut Self>, entry: &QString, standing: &QString) {
+        let entry = entry.to_string().trim().to_ascii_lowercase();
+        // One address or pattern: never read as a list.
+        self.set_standing_of(&QString::from(&serde_json::json!([entry]).to_string()), standing);
+    }
+
     fn standing(&self, address: &QString) -> QString {
         QString::from(porch::Senders::load(&load_config()).standing(&address.to_string()).as_str())
+    }
+
+    fn standing_of(&self, addresses: &QString) -> QString {
+        QString::from(&crate::senders::standing_json(&addresses.to_string()))
+    }
+
+    fn set_standing_of(mut self: Pin<&mut Self>, addresses: &QString, standing: &QString) {
+        let line = crate::senders::set_standing_of(&addresses.to_string(), &standing.to_string());
+        if line.is_empty() {
+            return;
+        }
+        self.as_mut().set_status(QString::from(&line));
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        show(&qt, &shared);
+        pim::show_pim(&qt, &shared);
     }
 
     fn add_mail_line(mut self: Pin<&mut Self>, key: &QString, budget: &QString) {
@@ -2979,6 +3064,34 @@ impl qobject::Sioul {
 
     fn delete_contact(self: Pin<&mut Self>, key: &QString) {
         pim::delete_contact(&self.qt_thread(), &self.shared(), &key.to_string());
+    }
+
+    fn show_contacts_category(self: Pin<&mut Self>, category: &QString) {
+        let shared = self.shared();
+        if let Ok(mut state) = shared.pim.lock() {
+            state.category = category.to_string();
+        }
+        pim::show_pim(&self.qt_thread(), &shared);
+    }
+
+    fn find_duplicates(self: Pin<&mut Self>) {
+        crate::duplicates::find(&self.qt_thread(), &self.shared());
+    }
+
+    fn clean_contacts(self: Pin<&mut Self>, keys: &QString) -> QString {
+        QString::from(&crate::duplicates::clean(&self.qt_thread(), &self.shared(), &keys.to_string()))
+    }
+
+    fn merge_contacts(self: Pin<&mut Self>, lead: &QString, other: &QString) -> QString {
+        QString::from(&crate::duplicates::merge(&self.qt_thread(), &self.shared(), &lead.to_string(), &other.to_string()))
+    }
+
+    fn not_same_contacts(self: Pin<&mut Self>, first: &QString, second: &QString) -> QString {
+        QString::from(&crate::duplicates::not_same(&self.qt_thread(), &self.shared(), &first.to_string(), &second.to_string()))
+    }
+
+    fn undo_contacts(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::duplicates::undo(&self.qt_thread(), &self.shared(), &id.to_string()))
     }
 
     fn show_days(self: Pin<&mut Self>, from: &QString, days: i32, upcoming: bool) {
@@ -3671,6 +3784,23 @@ impl qobject::Sioul {
 
     fn refresh_health(self: Pin<&mut Self>) {
         crate::health::show_health(&self.qt_thread(), &self.shared());
+    }
+
+    fn show_health_week(self: Pin<&mut Self>, day: &QString) {
+        crate::health::show_week(&day.to_string());
+        crate::health::show_health(&self.qt_thread(), &self.shared());
+    }
+
+    fn change_need(self: Pin<&mut Self>, edit: &QString) -> QString {
+        let problem = crate::health::change_need(&edit.to_string());
+        // The plan goes around it as that day has it now; the page shows it.
+        crate::work::show_work(&self.qt_thread(), &self.shared());
+        crate::health::show_health(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn health_settings(&self) -> QString {
+        QString::from(&crate::health::settings_view())
     }
 
     fn set_overlap_aside(self: Pin<&mut Self>, key: &QString) -> QString {

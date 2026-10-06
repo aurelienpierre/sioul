@@ -232,8 +232,11 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         file("senders", "config/blocked-senders.txt", senders(&config.blocked_senders, "blocked-senders.txt"), Shape::Lines),
         file("senders", "config/safe-senders.txt", c.join("safe-senders.txt"), Shape::Lines),
         file("senders", "config/neutral-senders.txt", c.join("neutral-senders.txt"), Shape::Lines),
+        file("senders", "config/restricted-senders.txt", c.join("restricted-senders.txt"), Shape::Lines),
         file("settings", "data/links.toml", d.join("links.toml"), Shape::Toml(&LINKS_RULES)),
         file("health", "data/health.toml", d.join("health.toml"), Shape::Toml(&HEALTH_RULES)),
+        // Each day's own meals, naps and nights: one entry per field of a block of a day.
+        file("health", "data/health-days.toml", d.join("health-days.toml"), Shape::Toml(&PLAIN_RULES)),
         file("time", "data/time/running.toml", d.join("time").join("running.toml"), Shape::Whole),
         folder("time", "data/time/", d.join("time"), Shape::Toml(&TIME_RULES), &["running.toml"]),
         folder("drafts", "data/drafts/", d.join("drafts"), Shape::Whole, &[]),

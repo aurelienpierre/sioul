@@ -54,4 +54,4 @@ In one file, `sioul-cases.toml`, at the root of your notes folder: readable, and
 
 ## In quiet time
 
-Projects for clients rest outside working hours: "Work projects rest until work comes back." **Show anyway** shows them all the same. At rest, outside every hours you set, the whole page waits behind one sentence and **Show anyway**. See [Hours](hours.md).
+Projects for clients rest outside working hours: "Work projects rest until work comes back." **Show anyway** shows them all the same. While you sleep, the whole page waits behind one sentence and **Show anyway**. See [Hours](hours.md).

@@ -32,7 +32,9 @@ ColumnLayout {
         Layout.topMargin: panel.part === "data" ? 8 : 0
         text: panel.sioul.text("watch-title")
         font.weight: Font.DemiBold
-        color: panel.theme.text
+        color: panel.part === "settings" ? panel.theme.accent : panel.theme.text
+        // In the settings, as large as their other groups' names.
+        Component.onCompleted: if (panel.part === "settings") font.pixelSize = 16
     }
     Label {
         visible: panel.part === "settings" && (panel.watch === null || !panel.watch.any)

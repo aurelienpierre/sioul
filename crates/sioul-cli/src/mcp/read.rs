@@ -482,7 +482,7 @@ impl Desk {
         let spent = timelog::spent(&sessions, 0, i64::MAX);
         let stopped = sessions.iter().filter(|x| !x.note.is_empty()).map(|x| (x.task.clone(), x.note.clone())).collect();
         let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-        let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &now, &s.tr, &loaded.cases);
+        let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.cases);
         let settings = crate::tasks::settings(s, today.weather, &situation, &loaded.cases);
         let plan = plan::plan(&loaded.tasks, now.date(), &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
@@ -662,7 +662,7 @@ pub fn search_contacts(s: &Session, args: &Args) -> Result<Answer, String> {
     let all = contacts::all();
     let found = contacts::search(&all, &query);
     if found.is_empty() {
-        return Ok(Answer { text: one_line(&view::contacts(&all, &query, &s.tr).sentence), data: json!({ "contacts": [] }) });
+        return Ok(Answer { text: one_line(&view::contacts(&all, &query, "", &s.tr).sentence), data: json!({ "contacts": [] }) });
     }
     let mut lines = Vec::new();
     let mut rows = Vec::new();

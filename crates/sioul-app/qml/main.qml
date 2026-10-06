@@ -114,7 +114,7 @@ SioulWindow {
     readonly property var shownPage: pages.children[window.page] ? pages.children[window.page].item : null
     readonly property bool canGoBack: window.compact && window.shownPage !== null && window.shownPage.canGoBack === true
     // Work time or quiet time: {quiet, reason, until, line, hours}.
-    readonly property var moment: sioul.mode ? JSON.parse(sioul.mode) : ({ quiet: false, reason: "", until: "", line: "", hours: false })
+    readonly property var moment: sioul.mode ? JSON.parse(sioul.mode) : ({ quiet: false, sleep: false, reason: "", until: "", line: "", hours: false, night: true })
 
     // The start timed (on Android, and with SIOUL_TIMING): the first frame drawn.
     property bool drawn: false
@@ -370,6 +370,12 @@ SioulWindow {
             window.openProject(decodeURIComponent(item.uri.slice("sioul:case/".length)))
         else if (item.kind === "health")
             window.page = 10
+        // Meals, naps and the night, where Health sets them (the Porch's card, Settings ▸ Hours).
+        else if (item.kind === "needs") {
+            window.page = 10
+            if (window.healthPage)
+                window.healthPage.showNeeds()
+        }
         else if (item.kind === "porch")
             window.page = 0
         else if (item.kind === "dose")
@@ -541,7 +547,7 @@ SioulWindow {
             property int step: 0
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -664,6 +670,15 @@ SioulWindow {
                 () => window.page = 10,
                 () => {},
                 () => grabber.save("health"),
+                // Its week, and its settings (the usual meals and night, the medicines).
+                () => healthPage.showWeek(),
+                () => {},
+                () => grabber.save("health-week"),
+                () => healthPage.showDay(),
+                () => healthPage.showNeeds(),
+                () => {},
+                () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
+                () => healthPage.closeSettings(),
                 // Sites: those for these hours, then the others unfolded.
                 () => {
                     window.page = 3
@@ -737,6 +752,44 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.save("map-contact"),
+                () => window.close()
+            ]
+            // The contacts' duplicates and categories (SIOUL_GRAB_STEPS=duplicates), on
+            // invented cards in a test profile: the view, cards cleaned, a pair merged,
+            // both undone; a card with its categories, its form, the list of one category.
+            readonly property var duplicates: [
+                () => window.page = 5,
+                () => grabber.save("contacts-list"),
+                () => contactsPage.showDuplicates(),
+                () => {},
+                () => {},
+                () => grabber.save("duplicates"),
+                () => contactsPage.duplicatesNow().clean(),
+                () => {},
+                () => {},
+                () => grabber.save("duplicates-cleaned"),
+                () => contactsPage.duplicatesNow().merge(),
+                () => {},
+                () => {},
+                () => grabber.save("duplicates-merged"),
+                () => contactsPage.duplicatesNow().undoLast(),
+                () => {},
+                () => contactsPage.duplicatesNow().undoLast(),
+                () => {},
+                () => {},
+                () => grabber.save("duplicates-undone"),
+                () => contactsPage.open((contactsPage.shown.contacts.find(c => c.name.startsWith("Jean")) || contactsPage.shown.contacts[0]).key),
+                () => grabber.save("contact-categories"),
+                () => {
+                    contactsPage.formNow().load(contactsPage.person)
+                    contactsPage.editing = true
+                },
+                () => grabber.save("contact-form"),
+                () => contactsPage.back(),
+                () => contactsPage.back(),
+                () => sioul.showContactsCategory("amis"),
+                () => {},
+                () => grabber.save("contacts-category"),
                 () => window.close()
             ]
             // Projects, time and invoices, on invented data: a project's page, its invoice made, the Time page.
@@ -1039,7 +1092,7 @@ SioulWindow {
                 () => sitesPage.loginChooser.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/choose-last-first.png")),
                 () => window.close()
             ]
-            // Areas and hours (docs/areas.md), on a test week whose Sunday is free time: the
+            // Areas and hours (docs/areas.md), on a test week whose Sunday is leisure: the
             // sites of these hours and the others folded, by kind; the presets to add one;
             // doses due while Sioul was closed; the week's three kinds of hours; a call
             // to an office with its own opening hours.
@@ -1412,6 +1465,23 @@ SioulWindow {
                 () => window.page = 10,
                 () => {},
                 () => grabber.save("health"),
+                () => healthPage.showWeek(),
+                () => {},
+                () => grabber.save("health-week"),
+                () => healthPage.showDay(),
+                () => healthPage.showNeeds(),
+                () => {},
+                () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
+                () => healthPage.closeSettings(),
+                // Dinner's menu, then its times for today only.
+                () => healthPage.showMenu("meal:2"),
+                () => {},
+                () => grabber.savePopup(healthPage.openPopup(), "health-menu"),
+                () => healthPage.closePopups(),
+                () => healthPage.showChange("meal:2", "times"),
+                () => {},
+                () => grabber.savePopup(healthPage.openPopup(), "health-change"),
+                () => healthPage.closePopups(),
                 () => {},
                 () => {},
                 () => weatherApplet.openForecast(),
@@ -1615,7 +1685,7 @@ SioulWindow {
                 () => porchPage.openFirst(),
                 () => grabber.save("message"),
                 () => window.page = 1,
-                // At rest the tasks are hidden: shown anyway, as the page's button does.
+                // Asleep the tasks are hidden: shown anyway, as the page's button does.
                 () => {
                     tasksPage.anyway = true
                     sioul.showTasksAnyway(true)
@@ -1681,9 +1751,24 @@ SioulWindow {
                 () => window.page = 10,
                 () => {},
                 () => grabber.save("health"),
+                // The week, then the settings (the usual meals and night, the medicines).
+                () => healthPage.showWeek(),
+                () => {},
+                () => grabber.save("health-week"),
+                () => healthPage.showDay(),
                 () => healthPage.showNeeds(),
                 () => {},
-                () => grabber.save("health-needs"),
+                () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
+                () => healthPage.closeSettings(),
+                // Dinner's menu, then its times for today only.
+                () => healthPage.showMenu("meal:2"),
+                () => {},
+                () => grabber.savePopup(healthPage.openPopup(), "health-menu"),
+                () => healthPage.closePopups(),
+                () => healthPage.showChange("meal:2", "times"),
+                () => {},
+                () => grabber.savePopup(healthPage.openPopup(), "health-change"),
+                () => healthPage.closePopups(),
                 // Lunch's question: later, at another time, not today, where you stopped.
                 () => window.askNeed("meal:1"),
                 () => {
@@ -2240,6 +2325,9 @@ SioulWindow {
                             ToolTip.text: window.moment.line
                             ToolTip.delay: 800
                             onClicked: {
+                                // A meal or sleep offers no way back to work: they come first.
+                                if ((window.moment.time === "meals" || window.moment.time === "sleep") && window.moment.work_now !== true)
+                                    return
                                 modeMenu.active = true
                                 modeMenu.item.popup()
                             }
@@ -2269,11 +2357,12 @@ SioulWindow {
                                         text: sioul.text("mode-usual-hours")
                                         onTriggered: sioul.usualHours()
                                     }
-                                    // Work shown whatever the hours, as on the Porch.
+                                    // Work shown whatever the hours, as on the Porch; not
+                                    // during a meal or sleep, which come first.
                                     MenuItem {
                                         id: workNowItem
 
-                                        visible: window.moment.quiet || window.moment.work_now === true
+                                        visible: (window.moment.quiet && window.moment.time !== "meals" && window.moment.time !== "sleep") || window.moment.work_now === true
                                         height: visible ? implicitHeight : 0
                                         text: sioul.text("mode-work-now")
                                         checkable: true
@@ -2284,7 +2373,7 @@ SioulWindow {
                                         }
                                     }
                                     Repeater {
-                                        model: window.moment.quiet && !(window.moment.reason === "done-for-the-day" && window.moment.today) ? [30, 60, 120, 240] : []
+                                        model: window.moment.quiet && window.moment.time !== "meals" && window.moment.time !== "sleep" && !(window.moment.reason === "done-for-the-day" && window.moment.today) ? [30, 60, 120, 240] : []
 
                                         delegate: MenuItem {
                                             required property int modelData

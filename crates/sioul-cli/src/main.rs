@@ -647,7 +647,8 @@ fn verify_command(s: &Session, again: bool) -> Result<(), String> {
 }
 
 fn unblock_command(s: &Session, entry: &str) -> Result<(), String> {
-    porch::set_standing(&s.config, entry, porch::Standing::Neutral)?;
+    // Out of the blocked list; neutral when a category or a domain would still block it.
+    porch::unblock(&s.config, entry)?;
     println!("{}", s.say("ui-unblocked", &[("entry", entry.trim().to_ascii_lowercase())]));
     Ok(())
 }

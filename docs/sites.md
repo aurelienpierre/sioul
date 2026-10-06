@@ -54,7 +54,7 @@ Every site's notifications are accepted, then caught by Sioul, never shown by th
 - **a call** ("incoming call", "vous appelle"…): at once, unless the site is silenced; a missed call waits like the rest;
 - else it waits, under "<site> has news" in the Porch, in `$XDG_STATE_HOME/sioul/site-notices.toml` (a notification told twice is kept once; the newest two hundred). Opening the site clears its news.
 - **Gathered**: at set times (Settings ▸ Reminders, 9:00, 13:00 and 18:00 unless you set others; three a day helped most in a field trial, Fitz et al. 2019), one notification says which sites have news, "WhatsApp (3) · Discord (1)", with Open the Porch. Only the sites of those hours, on the computer you are at (`sioul_sync::lease`, as the medicines).
-- A site whose area does not fit the hours ([areas.md](areas.md)) keeps its notifications, real time and calls included, until its hours come.
+- A site whose area does not fit the hours ([areas.md](areas.md)) keeps its notifications, real time and calls included, until its hours come. While you sleep, every site keeps them: no gathered notification, no real time, no call ([health.md](health.md), "Do not disturb").
 
 ## Mail that announces a site
 A message whose sender belongs to a site's `announced_by` ("you have a new message in your secure space") gets a button above its headers: "Open <site>".

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Contacts, names first: the list is names with one line under each; a
-// contact opens on the right with its addresses and numbers, "Write" and
-// "Call" next to each; the rest (postal addresses, birthday, notes, web sites)
-// folded under "More". Editing happens in place; deleting waits ten seconds
-// with "Undo". Right click on a name for what is not in view.
+// Contacts, names first: the list is names with one line under each, of one
+// category when chosen; a contact opens on the right with its categories, its
+// addresses and numbers, "Write" and "Call" next to each; the rest (postal
+// addresses, birthday, notes, web sites) folded under "More". Editing happens
+// in place; deleting waits ten seconds with "Undo". "Duplicates" opens in the
+// place of a card. Right click on a name for what is not in view.
 
 pragma ComponentBehavior: Bound
 
@@ -23,7 +24,7 @@ Item {
     // Read while shown: a page out of sight keeps what it showed, and reads
     // again when it comes back; results landing meanwhile cost nothing.
     property string contactsText: ""
-    readonly property var shown: page.contactsText ? JSON.parse(page.contactsText) : ({ contacts: [], sentence: "", can_add: false })
+    readonly property var shown: page.contactsText ? JSON.parse(page.contactsText) : ({ contacts: [], sentence: "", can_add: false, categories: [], category: "" })
 
     function takeShown() {
         if (page.visible)
@@ -44,11 +45,16 @@ Item {
     // The contact open, as what new things are tied to.
     readonly property var source: page.person && page.person.uid ? { uri: "sioul:contact/" + encodeURIComponent(page.person.uid), kind: "contact", key: page.person.key || "", title: page.person.name, name: page.person.name, address: page.person.emails.length > 0 ? page.person.emails[0].value : "" } : null
     property bool editing: false
-    // On a phone, the contact open (or its form) takes the page; Back leaves
-    // the form as Cancel does, then closes the contact (main.qml).
-    readonly property bool canGoBack: page.person !== null || page.editing
+    // The duplicates, in the place of a card: made the first time they are looked at.
+    property bool duplicatesShown: false
+    property bool duplicatesMade: false
+    // On a phone, the contact open (or its form, or the duplicates) takes the
+    // page; Back leaves the form as Cancel does, then closes what is open (main.qml).
+    readonly property bool canGoBack: page.person !== null || page.editing || page.duplicatesShown
     function back() {
-        if (page.editing) {
+        if (page.duplicatesShown) {
+            page.duplicatesShown = false
+        } else if (page.editing) {
             page.editing = false
             if (!page.openKey)
                 page.person = null
@@ -58,8 +64,10 @@ Item {
     }
     property bool moreShown: false
     property string problem: ""
-    // Their mail: "safe" (any hour), "neutral" (working hours) or "blocked".
-    property string standing: "neutral"
+    // Their mail, where they stand and why (`standingOf`): {standing, from, name,
+    // own, choice ("" when their categories decide), said, choices [{value, label}]}.
+    readonly property var noMail: ({ standing: "neutral", choice: "", said: "", choices: [] })
+    property var mail: page.noMail
 
     // Into another address book: asked first when it would not keep everything.
     function moveTo(book, confirmed) {
@@ -78,12 +86,23 @@ Item {
     }
 
     function open(key) {
+        if (key)
+            page.duplicatesShown = false
         page.openKey = key
         page.editing = false
         page.moreShown = false
         page.problem = ""
         page.person = key ? JSON.parse(page.sioul.contact(key) || "null") : null
-        page.standing = page.person && page.person.emails.length > 0 ? page.sioul.standing(page.person.emails[0].value) : "neutral"
+        page.readMail()
+    }
+
+    // The open contact's addresses, as the sender lists take them.
+    function addresses() {
+        return JSON.stringify(page.person ? page.person.emails.map(e => e.value) : [])
+    }
+
+    function readMail() {
+        page.mail = page.person && page.person.emails.length > 0 ? JSON.parse(page.sioul.standingOf(page.addresses())) : page.noMail
     }
 
     // What an address or a number is for ("work", "cell"), in your language; a
@@ -114,11 +133,11 @@ Item {
         return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
     }
 
-    // Who they are to you, for every address of theirs.
-    function setStanding(standing) {
-        for (const email of page.person.emails)
-            page.sioul.setStanding(email.value, standing)
-        page.standing = standing
+    // Their mail, for every address of theirs: a list of their own, or ("")
+    // what their categories (else their domain) say.
+    function setStanding(choice) {
+        page.sioul.setStandingOf(page.addresses(), choice)
+        page.readMail()
     }
 
     // For the window's tests: the open contact gets another number, and is saved.
@@ -137,9 +156,23 @@ Item {
             page.open(page.shown.contacts[0].key)
     }
 
+    // The duplicates in the place of a card, the card closed.
+    function showDuplicates() {
+        page.open("")
+        page.duplicatesMade = true
+        page.duplicatesShown = true
+    }
+
+    // The duplicates' view, made now if it was not (the window's tests).
+    function duplicatesNow() {
+        page.duplicatesMade = true
+        return duplicatesLoader.item
+    }
+
     function startNew() {
+        page.duplicatesShown = false
         page.openKey = ""
-        page.person = { name: "", emails: [{ label: "", value: "" }], phones: [{ label: "", value: "" }], org: "", title: "", addresses: [], birthday: "", notes: "", urls: [], book: "", read_only: false }
+        page.person = { name: "", emails: [{ label: "", value: "" }], phones: [{ label: "", value: "" }], org: "", title: "", addresses: [], birthday: "", notes: "", urls: [], categories: [], book: "", read_only: false }
         page.problem = ""
         page.editing = true
         page.formNow().load(page.person)
@@ -173,8 +206,10 @@ Item {
         target: page.sioul
 
         function onContactsChanged() {
-            if (page.openKey && !page.editing)
+            if (page.openKey && !page.editing) {
                 page.person = JSON.parse(page.sioul.contact(page.openKey) || "null")
+                page.readMail()
+            }
         }
 
         function onPlacesChanged() {
@@ -186,9 +221,10 @@ Item {
 
     Shortcut {
         sequence: "Escape"
-        enabled: page.visible && (page.person !== null)
+        enabled: page.visible && (page.person !== null || page.duplicatesShown)
         onActivated: {
             page.editing = false
+            page.duplicatesShown = false
             page.open("")
         }
     }
@@ -201,11 +237,14 @@ Item {
         spacing: page.theme.gap
 
         ColumnLayout {
-            visible: !(page.window.compact && (page.person !== null || page.editing))
+            // Alone, the list takes the page; beside a card or the duplicates, its left part.
+            readonly property bool alone: page.person === null && !page.duplicatesShown
+
+            visible: !(page.window.compact && (page.person !== null || page.editing || page.duplicatesShown))
             Layout.fillHeight: true
-            Layout.fillWidth: page.person === null
+            Layout.fillWidth: alone
             Layout.minimumWidth: 0
-            Layout.preferredWidth: page.person === null ? columns.width : Math.round((columns.width - columns.spacing) * 0.38)
+            Layout.preferredWidth: alone ? columns.width : Math.round((columns.width - columns.spacing) * 0.38)
             spacing: 8
 
             RowLayout {
@@ -234,7 +273,7 @@ Item {
                     icon.name: "contact-new"
                     icon.color: page.theme.text
                     // Narrow beside an open card, or on a phone: the icon alone, its name on hover.
-                    display: page.person === null && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    display: page.person === null && !page.duplicatesShown && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
                     ToolTip.text: text
                     Accessible.name: text
@@ -246,17 +285,48 @@ Item {
                     text: page.mapShown ? page.sioul.text("map-list") : page.sioul.text("map-show")
                     icon.name: page.mapShown ? "view-list-text" : "mark-location"
                     icon.color: page.theme.text
-                    display: page.person === null && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    display: page.person === null && !page.duplicatesShown && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     Accessible.name: text
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
                     ToolTip.text: text
                     onClicked: page.mapShown = !page.mapShown
+                }
+                // Duplicates, in the place of a card.
+                Button {
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    text: page.sioul.text("dup-open")
+                    icon.name: "edit-copy"
+                    icon.color: page.theme.text
+                    highlighted: page.duplicatesShown
+                    display: page.person === null && !page.duplicatesShown && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    Accessible.name: text
+                    ToolTip.visible: hovered && display === AbstractButton.IconOnly
+                    ToolTip.text: text
+                    onClicked: {
+                        if (page.duplicatesShown)
+                            page.duplicatesShown = false
+                        else
+                            page.showDuplicates()
+                    }
                 }
                 SettingsButton {
                     sioul: page.sioul
                     theme: page.theme
                     view: "contacts"
                 }
+            }
+
+            // One category only, or all of them: what Nextcloud Contacts shows as groups.
+            ComboBox {
+                readonly property var names: page.shown.categories || []
+
+                visible: names.length > 0 && !page.mapShown
+                Layout.fillWidth: true
+                Layout.maximumWidth: 320
+                model: [page.sioul.text("contacts-category-all")].concat(names)
+                currentIndex: page.shown.category ? Math.max(0, names.indexOf(page.shown.category) + 1) : 0
+                Accessible.name: page.sioul.text("contact-categories")
+                onActivated: index => page.sioul.showContactsCategory(index === 0 ? "" : names[index - 1])
             }
 
             Label {
@@ -473,6 +543,46 @@ Item {
                                             wrapMode: Text.Wrap
                                             color: page.theme.muted
                                         }
+                                        // Its categories, quiet; one shows the list of that category.
+                                        Flow {
+                                            visible: page.person !== null && (page.person.categories || []).length > 0
+                                            Layout.fillWidth: true
+                                            spacing: 6
+
+                                            Repeater {
+                                                model: page.person ? (page.person.categories || []) : []
+
+                                                delegate: Rectangle {
+                                                    id: chip
+
+                                                    required property string modelData
+
+                                                    implicitWidth: chipText.implicitWidth + 14
+                                                    implicitHeight: chipText.implicitHeight + 4
+                                                    radius: height / 2
+                                                    color: "transparent"
+                                                    border.color: page.theme.line
+
+                                                    Label {
+                                                        id: chipText
+
+                                                        anchors.centerIn: parent
+                                                        text: chip.modelData
+                                                        textFormat: Text.PlainText
+                                                        font.pixelSize: 12
+                                                        color: page.theme.muted
+                                                    }
+                                                    TapHandler {
+                                                        onTapped: {
+                                                            page.sioul.showContactsCategory(chip.modelData)
+                                                            // On a phone the list is out of sight behind the card.
+                                                            if (page.window.compact)
+                                                                page.open("")
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 
@@ -539,29 +649,45 @@ Item {
                                     }
                                 }
 
-                                // Who they are to you: their mail at any hour, in working hours, or never.
-                                RowLayout {
+                                // Their mail: their own choice, else what their categories (or their
+                                // domain) say, and why; the choices as the sender lists give them.
+                                // On a phone, the choice under its name: its words are long.
+                                GridLayout {
                                     visible: page.person !== null && page.person.emails.length > 0
                                     Layout.fillWidth: true
-                                    spacing: 8
+                                    columns: page.window.compact ? 2 : 3
+                                    columnSpacing: 8
+                                    rowSpacing: 4
 
                                     // Names that are bundled (tools/bundle-icons.py): Windows and macOS have no theme.
                                     Icon {
-                                        iconName: page.standing === "safe" ? "security-high" : page.standing === "blocked" ? "dialog-cancel" : "view-calendar-day"
+                                        iconName: page.mail.standing === "safe" ? "security-high" : page.mail.standing === "blocked" ? "dialog-cancel" : "view-calendar-day"
                                         size: 16
                                     }
                                     Label {
+                                        Layout.fillWidth: page.window.compact
                                         text: page.sioul.text("sender-standing")
                                         color: page.theme.muted
                                     }
                                     ComboBox {
-                                        readonly property var choices: ["safe", "neutral", "blocked"]
-
+                                        Layout.columnSpan: page.window.compact ? 2 : 1
                                         Layout.fillWidth: true
-                                        model: choices.map(c => page.sioul.text("sender-" + c))
-                                        currentIndex: Math.max(0, choices.indexOf(page.standing))
-                                        onActivated: index => page.setStanding(choices[index])
+                                        Layout.minimumWidth: 0
+                                        model: page.mail.choices.map(c => c.label)
+                                        currentIndex: Math.max(0, page.mail.choices.findIndex(c => c.value === page.mail.choice))
+                                        Accessible.name: page.sioul.text("sender-standing")
+                                        onActivated: index => page.setStanding(page.mail.choices[index].value)
                                     }
+                                }
+                                Label {
+                                    visible: page.person !== null && page.person.emails.length > 0 && page.mail.said !== ""
+                                    Layout.fillWidth: true
+                                    Layout.leftMargin: 24
+                                    text: page.mail.said
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 13
+                                    color: page.theme.muted
                                 }
 
                                 // Where they live, when the address is placed.
@@ -761,6 +887,7 @@ Item {
                                 width: formScroll.availableWidth
                                 sioul: page.sioul
                                 theme: page.theme
+                                known: page.shown.categories || []
                             }
                         }
                         Label {
@@ -800,6 +927,28 @@ Item {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // The duplicates, in the place of a card: made the first time they are looked at.
+        Loader {
+            id: duplicatesLoader
+
+            active: page.duplicatesMade
+            visible: page.duplicatesShown
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: Math.round((columns.width - columns.spacing) * 0.62)
+
+            sourceComponent: Component {
+                ContactDuplicates {
+                    sioul: page.sioul
+                    theme: page.theme
+                    compact: duplicatesLoader.width < 560
+                    onOpenContact: key => page.open(key)
+                    onCloseAsked: page.duplicatesShown = false
                 }
             }
         }

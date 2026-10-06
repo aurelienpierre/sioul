@@ -3,7 +3,7 @@
 
 //! The day, seen (docs/tasks.md, "The day"): today's events at their times,
 //! and the steps the plan gives today laid into your hours, each into hours
-//! of its own kind (work, admin, free time), a pause between them and around
+//! of its own kind (work, admin), a pause between them and around
 //! the events; a line where now is. A step up to an hour is never cut; a
 //! longer one goes on after a break. Visual supports cut transition time
 //! (Dettmer et al. 2000); the current step is shown inside the whole day,
@@ -159,9 +159,10 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         let length = i64::from(task.estimate.clamp(15, 60)) * 60;
         view.blocks.push(Block { start: (done - length).max(midnight), end: done.max(midnight + 15 * 60), kind: "done", title: task.title.clone(), key: task.uid.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0 });
     }
-    // Meals and naps, kept free (`needs`): shown, a step never laid over them.
-    // The night is kept free too, but not drawn: the day would run from midnight.
-    for kept in settings.needs.kept_on(today, &zone, &|key: &str| settings.shifts.get(key).copied().unwrap_or(0)).into_iter().filter(|k| k.kind != "sleep") {
+    // Meals and naps, kept free (`needs`), as today has them (its own changes):
+    // shown, a step never laid over them. The night is kept free too, but not
+    // drawn: the day would run from midnight.
+    for kept in settings.needs.kept_with(today, &zone, &settings.needs_days, &|key: &str| settings.shifts.get(key).copied().unwrap_or(0)).into_iter().filter(|k| k.kind != "sleep") {
         let (start, end) = (kept.start.max(midnight), kept.end.min(day_end));
         if end > start {
             view.blocks.push(Block { start, end, kind: kept.kind, title: kept.name.clone(), key: kept.key.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0 });
@@ -360,11 +361,12 @@ mod tests {
         let hours = vec![window("monday", "09:00", "12:00", "work"), window("monday", "17:00", "18:30", "admin"), window("monday", "18:30", "21:00", "leisure")];
         let tasks = vec![task("tax", 30, "admin"), task("report", 60, "work"), task("friends", 60, "friends")];
         let view = laid_out(&now, &hours, &[], &tasks);
-        // The tax form in admin hours, the report in work hours, friends in free time.
+        // The tax form in admin hours, the report in work hours; leisure has no
+        // hours (an older Sioul's free time is left aside): friends take none.
         let mut seen = laid(&view);
         seen.sort();
-        assert_eq!(seen, vec![("friends", 18 * 60 + 30), ("report", 9 * 60), ("tax", 17 * 60)]);
-        assert_eq!(view.hours.iter().map(|h| h.kind.as_str()).collect::<Vec<_>>(), vec!["work", "admin", "leisure"]);
+        assert_eq!(seen, vec![("report", 9 * 60), ("tax", 17 * 60)]);
+        assert_eq!(view.hours.iter().map(|h| h.kind.as_str()).collect::<Vec<_>>(), vec!["work", "admin"]);
     }
 
     #[test]

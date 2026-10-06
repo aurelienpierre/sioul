@@ -75,7 +75,7 @@ Under **What travels from this device**, each part has its switch, says what it 
 | Part | What it carries |
 |---|---|
 | Settings and accounts | your settings and accounts (never their passwords), the ties between things, where the Porch was closed, mail you said is no payment |
-| Senders | who may write to you (known, blocked, safe, neutral), what the shield read, others' public keys |
+| Senders | who may write to you (known, blocked, safe, neutral, restricted), what the shield read, others' public keys |
 | Health | medicines, prescriptions and the doses taken |
 | Time | time noted, the session running, the day's choices, where you stopped, working late or done for the day |
 | Drafts and invoices | mail being written, invoices made |

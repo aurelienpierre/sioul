@@ -205,10 +205,11 @@ Item {
                         }
                     }
                     // Work shown whatever the hours: while work rests, or once ticked.
+                    // Not during a meal or sleep: they come first, whatever is ticked.
                     CheckBox {
                         id: workNow
 
-                        visible: page.window.moment.quiet || page.window.moment.work_now === true
+                        visible: (page.window.moment.quiet && page.window.moment.time !== "meals" && page.window.moment.time !== "sleep") || page.window.moment.work_now === true
                         text: page.sioul.text("mode-work-now")
                         checked: page.window.moment.work_now === true
                         ToolTip.visible: hovered
@@ -240,12 +241,13 @@ Item {
                     color: page.theme.text
                 }
 
-                // The hours not set yet: work, your admin, free time (docs/areas.md).
-                // Asked here until they are, or until you leave them as they are.
+                // The hours not set yet: work, your admin (docs/areas.md); every
+                // other time is leisure. Asked here until they are, or until you
+                // leave them as they are.
                 Panel {
                     id: hoursCard
 
-                    readonly property var missing: [["window", "work_hours", "set-windows"], ["window.admin", "admin_hours", "set-windows-admin"], ["window.leisure", "leisure_hours", "set-windows-leisure"]].filter(k => page.window.moment[k[1]] === false)
+                    readonly property var missing: [["window", "work_hours", "set-windows"], ["window.admin", "admin_hours", "set-windows-admin"]].filter(k => page.window.moment[k[1]] === false)
                     property bool leftAsIs: page.sioul.viewFlag("porch-hours-left")
 
                     visible: hoursCard.missing.length > 0 && !hoursCard.leftAsIs
@@ -258,7 +260,7 @@ Item {
 
                         Label {
                             Layout.fillWidth: true
-                            text: hoursCard.missing.length === 3 ? page.sioul.text("porch-hours-none") : page.sioul.textWith("porch-hours-some", "which", hoursCard.missing.map(k => page.sioul.text(k[2])).join(", "))
+                            text: hoursCard.missing.length === 2 ? page.sioul.text("porch-hours-none") : page.sioul.textWith("porch-hours-some", "which", hoursCard.missing.map(k => page.sioul.text(k[2])).join(", "))
                             wrapMode: Text.Wrap
                             color: page.theme.text
                         }
@@ -284,6 +286,55 @@ Item {
                                 onClicked: {
                                     page.sioul.setViewFlag("porch-hours-left", true)
                                     hoursCard.leftAsIs = true
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // The night not set (Health): nothing keeps notifications away while
+                // you sleep (docs/health.md). Asked until it is, or left as it is.
+                Panel {
+                    id: nightCard
+
+                    property bool leftAsIs: page.sioul.viewFlag("porch-night-left")
+
+                    visible: page.window.moment.night === false && !nightCard.leftAsIs
+                    Layout.fillWidth: true
+                    theme: page.theme
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 6
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: page.sioul.text("porch-night-none")
+                            wrapMode: Text.Wrap
+                            color: page.theme.text
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: page.sioul.text("porch-night-why")
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 13
+                            color: page.theme.muted
+                        }
+                        RowLayout {
+                            spacing: 8
+
+                            Button {
+                                text: page.sioul.text("porch-night-set")
+                                icon.name: "chronometer"
+                                icon.color: page.theme.text
+                                onClicked: page.window.openThing({ kind: "needs", uri: "", key: "" })
+                            }
+                            Button {
+                                flat: true
+                                text: page.sioul.text("porch-hours-leave")
+                                onClicked: {
+                                    page.sioul.setViewFlag("porch-night-left", true)
+                                    nightCard.leftAsIs = true
                                 }
                             }
                         }
@@ -445,8 +496,8 @@ Item {
 
                     property var bank: null
 
-                    // At rest (outside every hours set), none: only your safe senders.
-                    visible: page.view.open && page.window.moment.rest !== true && money.bank !== null && (money.bank.week !== "" || money.bank.attention > 0)
+                    // Asleep, none: no money at night.
+                    visible: page.view.open && page.window.moment.sleep !== true && money.bank !== null && (money.bank.week !== "" || money.bank.attention > 0)
                     Layout.fillWidth: true
                     spacing: 8
 
@@ -478,7 +529,7 @@ Item {
                 LettersSection {
                     id: letters
 
-                    visible: page.view.open && page.window.moment.rest !== true && (letters.shown.letters.length > 0 || letters.shown.missing !== "")
+                    visible: page.view.open && page.window.moment.sleep !== true && (letters.shown.letters.length > 0 || letters.shown.missing !== "")
                     Layout.fillWidth: true
                     sioul: page.sioul
                     theme: page.theme

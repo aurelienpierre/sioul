@@ -1956,6 +1956,40 @@ minutes = 45
 enabled = true
 minutes = 45
 locked_minutes = 60
+
+[needs]
+meals_on = true
+naps_on = true
+sleep_on = true
+
+[[needs.naps]]
+at = "14:00"
+minutes = 20
+after = 15
+days = [false, false, false, false, false, true, true]
+
+[needs.sleep]
+bed = "23:00"
+wake = "07:00"
+wind_down = 60
+""")
+    # Days that differ from the usual one (the Health page's week): lunch later
+    # tomorrow, dinner without notices the day after, a snack added the next.
+    p.write(p.data / "health-days.toml", f"""# Meals, naps and nights changed for one day only (Sioul's Health page).
+
+[{c.day(1)}."meal:1"]
+at = "13:15"
+
+[{c.day(2)}."meal:2"]
+quiet = true
+
+[{c.day(3)}.added-1]
+kind = "meal"
+name = {toml_string(t("Snack", "En-cas"))}
+at = "16:00"
+minutes = 15
+before = 0
+after = 0
 """)
     taken = []
     reminded = []
@@ -2017,12 +2051,12 @@ WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", 
 
 def write_config(p: Profile):
     # Admin on Tuesday and Thursday evenings, and on the day the profile is made
-    # for, so that its day shows the three kinds of hours.
+    # for, so that its day shows both kinds of hours.
     admin_days = [d for d in WEEKDAYS[:5] if d in ("tuesday", "thursday") or (WEEKDAYS.index(d) == p.clock.today.weekday())]
     hours = """
-# The week's hours (docs/areas.md): work, then your own admin, then free time.
-# Hours set for none of them are personal time. With no hours at all, the Porch
-# is always open and asks for them.
+# The week's hours (docs/areas.md): work, then your own admin. Every other
+# time is leisure; meals and sleep come from Health. With no hours at all, the
+# Porch is always open and asks for them.
 """ + "".join(f"""
 [[window]]
 day = "{day}"
@@ -2034,13 +2068,7 @@ day = "{day}"
 start = "17:00"
 end = "18:30"
 kind = "admin"
-""" for day in admin_days) + "".join(f"""
-[[window]]
-day = "{day}"
-start = "{start}"
-end = "{end}"
-kind = "leisure"
-""" for day, start, end in [(d, "18:30", "21:00") for d in WEEKDAYS[:5]] + [("saturday", "10:00", "18:00")])
+""" for day in admin_days)
     sites = [
         # Named as you would name them; short enough for the column of sites.
         ("bank", t(W.bank_name, "Ma banque"), f"https://secure.{W.bank}/", "mailbox", [t("Bank", "Banque")], "admin", W.bank, None),
@@ -2161,7 +2189,7 @@ url = "{DAV_URL}"
 @{W.choir}
 sophie.marchand@{W.bank}
 """)
-    p.write(p.config / "safe-senders.txt", f"""# Safe: their mail reaches you at any hour.
+    p.write(p.config / "safe-senders.txt", f"""# Safe: by default, their mail reaches you at any time.
 maud.ferrand@example.org
 camille.ferrand@example.org
 hugo.ferrand@example.org
@@ -2169,6 +2197,9 @@ hugo.ferrand@example.org
 """)
     p.write(p.config / "neutral-senders.txt", f"""# Neutral within a safe domain: the choir's automatic mail waits for its hours.
 noreply@{W.choir}
+""")
+    p.write(p.config / "restricted-senders.txt", f"""# Restricted: by default, their mail comes in working hours only.
+*@{W.gadgets}
 """)
     p.write(p.config / "blocked-senders.txt", f"""# Blocked: set aside for good, never shown.
 *@{W.deals}

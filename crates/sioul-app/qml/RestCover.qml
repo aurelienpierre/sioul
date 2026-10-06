@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// A page at rest (quiet time, or outside every hours set): one line over it,
+// A page that waits (quiet time, or while you sleep): one line over it,
 // what may still be done then (a thought noted for later), and the page
 // itself if you ask (docs/areas.md).
 

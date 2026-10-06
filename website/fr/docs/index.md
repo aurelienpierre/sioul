@@ -110,7 +110,7 @@ Une seule épreuve pour tout ce qu’on ajoute à Sioul : est-ce que cela enl�
 
     ---
 
-    Heures de travail, heures pour vos démarches, temps libre. Chaque adresse, chaque site, chaque budget et chaque tâche appartient à une ou plusieurs d’entre elles ; le reste attend, hors de vue.
+    Heures de travail et heures pour vos démarches ; les loisirs tout le reste du temps ; les repas et le sommeil depuis vos réglages de santé. Chaque adresse, chaque site, chaque budget et chaque tâche appartient à une ou plusieurs d’entre elles ; le reste attend, hors de vue. Pendant le sommeil, rien ne dérange.
 
     [Les heures](guide/hours.md)
 
@@ -193,7 +193,7 @@ Pas d’outil de suivi du temps, de feuille d’heures ni de service de facturat
 
 <figure markdown="span">
   [![L’onglet Heures de la page Paramètres : les heures de travail, puis les heures pour vos démarches, chaque jour de la semaine coché ou non, d’un début à une fin.](assets/screens/fr/settings-hours.png){ loading=lazy }](assets/screens/fr/settings-hours.png "Ouvrir l’image en grand")
-  <figcaption>Heures : travail, démarches, temps libre.</figcaption>
+  <figcaption>Heures : travail, démarches.</figcaption>
 </figure>
 
 </div>

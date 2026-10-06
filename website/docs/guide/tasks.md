@@ -133,7 +133,7 @@ A task tagged `joy` is offered under **If you want**, never proposed as the next
 
 - **The order**: a task never comes before what it waits for. Tasks that wait for each other in a loop are said, calmly: "These wait for each other: … One of them has to go first."
 - **The next step**, among the tasks free to start: the one you started; then the one whose date comes soonest, counting the work behind it; then your own order; then the one that frees the most others; then the smaller one.
-- **The days**: each task goes into the first days with room. The room is your hours, each kind for its own tasks: working hours for work, hours for your admin for your admin, free time for leisure ([Hours](hours.md)). Events are taken out of it, with their **Before** and **After**, and five minutes before and after each; each step leaves five minutes after it. A task's own **Before** and **After** take room with it. Your meals, naps and night are kept free too ([Health](health.md#meals-rest-and-sleep)). A step of up to an hour is never cut; a longer one is cut into parts of a quarter of an hour at least. Without any hours set, the room is Monday to Friday, 9:00 to 17:00. Today's room starts now, and haze or fog make it smaller. Days off, and today once closed, have none.
+- **The days**: each task goes into the first days with room. The room is your hours, each kind for its own tasks: working hours for work, hours for your admin for your admin; leisure has no hours, so what is only for leisure takes no room and waits for none ([Hours](hours.md)). Events are taken out of it, with their **Before** and **After**, and five minutes before and after each; each step leaves five minutes after it. A task's own **Before** and **After** take room with it. Your meals, naps and night are kept free too ([Health](health.md#meals-rest-and-sleep)). A step of up to an hour is never cut; a longer one is cut into parts of a quarter of an hour at least. Without any hours set, the room is Monday to Friday, 9:00 to 17:00. Today's room starts now, and haze or fog make it smaller. Days off, and today once closed, have none.
 - **Your dates stay yours.** The days the plan gives are worked out again each time, and never written into your tasks. Only what you set is kept: a day to start, a date asked, an order.
 - **When a date will not hold**, the task says so once: "At this pace, the plan ends after 30 October. Doing it sooner, making it smaller or handing it over would keep the date." Near a date asked, Now says how much fits: "Until Wednesday 7 October: about 30 min of steps, 3 h of room."
 
@@ -150,7 +150,7 @@ A short screen, read in ten seconds, says:
 - that everything else has its place;
 - the first step when work comes back, which you can say your own way ("After breakfast, open the form");
 - a date asked before then, if there is one, with **Ask for more time**, or leave it;
-- and what still gets through: one-time codes, and the people you marked safe.
+- and what still gets through: one-time codes, and the senders your lists let through then.
 
 There is no count of what was not done. The next working day opens on that first step. Until then, work rests ([quiet time](hours.md#quiet-time)). A thought that comes in the evening can be noted in one line; it waits, out of sight, for work to come back.
 
@@ -187,11 +187,11 @@ The ⚙ at the top of the page:
 - **What is work** and **What is yours**: the categories that say what a task is for ([Hours](hours.md)).
 - **Code**, last: **GitHub issues and pull requests as tasks**, off unless you turn it on. Yours come into a "GitHub" list on this computer, every thirty minutes; nothing is written to GitHub.
 
-## In quiet time, and at rest
+## In quiet time, and while you sleep
 
-In quiet time ([Hours](hours.md#quiet-time)), the task pages keep only what is yours: work waits for work to come back.
+In quiet time ([Hours](hours.md#quiet-time)), the task pages keep only what fits now: in leisure and during a meal, what is yours; work waits for work to come back.
 
-At rest, outside every hours you set (the night, mostly), the page waits behind one sentence, "Rest until 09:00: only the people you marked safe reach you.", and **Show anyway**. A field there notes a thought for later, in one line, out of sight until work comes back. Task reminders wait too.
+While you sleep ([Hours](hours.md#sleep): the night from winding down to waking, a nap), the page waits behind one sentence, "Sleep: nothing disturbs until 07:00.", and **Show anyway**. A field there notes a thought for later, in one line, out of sight until work comes back. Task reminders wait too, for waking.
 
 ## Where tasks live
 

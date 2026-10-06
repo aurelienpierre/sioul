@@ -38,7 +38,7 @@ Above the message, always in the same place:
 
 Archiving, deleting and junking happen at once, with **Undo** in the status line for ten seconds; the server is told only after that. There is no "are you sure?". In the trash, **Delete for good** deletes it for good, with the same ten seconds.
 
-A right click on a message (or its ⋮, or the Menu key) gives the rest: mark as read or unread, flag, **Move to…**, **Show the source**, block the sender, **Their mail** (safe, neutral, blocked), **Keep as a contract…**.
+A right click on a message (or its ⋮, or the Menu key) gives the rest: mark as read or unread, flag, **Move to…**, **Show the source**, block the sender, **Their mail** (as their categories say, safe, neutral, restricted, blocked), **Keep as a contract…**.
 
 Opening a message marks it read, as any mail program does.
 
@@ -89,7 +89,7 @@ Each address's own settings (what it is for, how far back, how often, its protec
 
 ## In quiet time
 
-Outside working hours, work addresses fold, without their dots: "Work mail rests until work comes back. It is all here if you look for it." At rest, outside every hours you set, every address folds: "At this hour mail rests: what the people you marked safe write comes to the Porch. The rest is all here if you look for it." See [Hours](hours.md).
+Outside working hours, work addresses fold, without their dots: "Work mail rests until work comes back. It is all here if you look for it." While you sleep, every address folds: "While you sleep, mail rests: nothing notifies, and the Porch shows only what your lists let through now. The rest is all here if you look for it." See [Hours](hours.md).
 
 ## Not there yet
 

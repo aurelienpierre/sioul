@@ -133,7 +133,7 @@ Une tâche étiquetée `joy` (ce mot anglais, tel quel) est offerte sous **Si vo
 
 - **L’ordre** : une tâche ne passe jamais avant ce qu’elle attend. Des tâches qui s’attendent en boucle sont signalées, calmement : « Ces étapes s’attendent l’une l’autre : … L’une d’elles doit passer d’abord. »
 - **L’étape suivante**, parmi les tâches libres de commencer : celle que vous avez commencée ; puis celle dont la date vient le plus tôt, en comptant le travail qui attend derrière elle ; puis votre propre ordre ; puis celle qui en libère le plus ; puis la plus petite.
-- **Les jours** : chaque tâche va dans les premiers jours qui ont de la place. La place, ce sont vos heures, chaque sorte pour ses propres tâches : les heures de travail au travail, les heures pour vos démarches à vos démarches, le temps libre aux loisirs ([Heures](hours.md)). Les événements en sont retirés, avec leur **Avant** et leur **Après**, et cinq minutes avant et après chacun ; chaque étape laisse cinq minutes après elle. L’**Avant** et l’**Après** d’une tâche prennent de la place avec elle. Vos repas, vos siestes et votre nuit sont gardés libres aussi ([Santé](health.md#meals-rest-and-sleep)). Une étape d’une heure au plus n’est jamais coupée ; une plus longue est coupée en morceaux d’au moins un quart d’heure. Sans aucune heure réglée, la place va du lundi au vendredi, de 09:00 à 17:00. La place d’aujourd’hui commence maintenant, et la brume ou le brouillard la réduisent. Les jours de repos, et aujourd’hui une fois la journée close, n’en ont pas.
+- **Les jours** : chaque tâche va dans les premiers jours qui ont de la place. La place, ce sont vos heures, chaque sorte pour ses propres tâches : les heures de travail au travail, les heures pour vos démarches à vos démarches ; les loisirs n’ont pas d’heures : ce qui n’est que pour eux ne prend pas de place et n’attend rien ([Heures](hours.md)). Les événements en sont retirés, avec leur **Avant** et leur **Après**, et cinq minutes avant et après chacun ; chaque étape laisse cinq minutes après elle. L’**Avant** et l’**Après** d’une tâche prennent de la place avec elle. Vos repas, vos siestes et votre nuit sont gardés libres aussi ([Santé](health.md#meals-rest-and-sleep)). Une étape d’une heure au plus n’est jamais coupée ; une plus longue est coupée en morceaux d’au moins un quart d’heure. Sans aucune heure réglée, la place va du lundi au vendredi, de 09:00 à 17:00. La place d’aujourd’hui commence maintenant, et la brume ou le brouillard la réduisent. Les jours de repos, et aujourd’hui une fois la journée close, n’en ont pas.
 - **Vos dates restent les vôtres.** Les jours que donne le plan sont recalculés à chaque fois, et jamais écrits dans vos tâches. Seul ce que vous réglez est gardé : un jour de début, une date demandée, un ordre.
 - **Quand une date ne tiendra pas**, la tâche le dit une fois : « À ce rythme, le plan finit après le 30 octobre. La faire plus tôt, la réduire ou la confier garderait la date. » Près d’une date demandée, Maintenant dit ce qui tient : « Jusqu’au mercredi 7 octobre : environ 30 min d’étapes, 3 h de place. »
 
@@ -150,7 +150,7 @@ Un écran court, lu en dix secondes, dit :
 - que tout le reste a sa place ;
 - la première étape au retour du travail, que vous pouvez dire à votre façon (« Après le petit-déjeuner, ouvrir le formulaire ») ;
 - une date demandée d’ici là, s’il y en a une, avec **Demander un délai**, ou la laisser ;
-- et ce qui passe encore : les codes à usage unique, et les personnes que vous avez marquées comme sûres.
+- et ce qui passe encore : les codes à usage unique, et les expéditeurs que vos listes laissent alors passer.
 
 Ce qui n’a pas été fait n’est pas compté. Le jour travaillé suivant s’ouvre sur cette première étape. D’ici là, le travail se repose ([le calme](hours.md#quiet-time)). Une pensée qui vient le soir peut se noter en une ligne ; elle attend, hors de vue, le retour du travail.
 
@@ -187,11 +187,11 @@ Le ⚙ en haut de la page :
 - **Ce qui est du travail** et **Ce qui est à vous** : les catégories qui disent à quoi sert une tâche ([Heures](hours.md)).
 - **Code**, en dernier : **Tickets et pull requests GitHub en tâches**, désactivé sauf si vous l’activez. Les vôtres arrivent dans une liste « GitHub » sur cet ordinateur, toutes les trente minutes ; rien n’est écrit sur GitHub.
 
-## Pendant le calme, et au repos {#in-quiet-time-and-at-rest}
+## Pendant le calme, et pendant le sommeil {#in-quiet-time-and-while-you-sleep}
 
-Pendant le calme ([Les heures](hours.md#quiet-time)), les pages de tâches ne gardent que ce qui est à vous : le travail attend son retour.
+Pendant le calme ([Les heures](hours.md#quiet-time)), les pages de tâches ne gardent que ce qui convient au moment présent : pendant les loisirs et un repas, ce qui est à vous ; le travail attend son retour.
 
-Au repos, hors de toutes les heures que vous avez réglées (la nuit, surtout), la page attend derrière une phrase, « Repos jusqu’à 09:00 : seules les personnes marquées sûres vous joignent. », et **Montrer quand même**. Un champ y note une pensée pour plus tard, en une ligne, hors de vue jusqu’au retour du travail. Les rappels des tâches attendent aussi.
+Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se détendre au réveil ; une sieste), la page attend derrière une phrase, « Sommeil : rien ne dérange jusqu’à 07:00. », et **Montrer quand même**. Un champ y note une pensée pour plus tard, en une ligne, hors de vue jusqu’au retour du travail. Les rappels des tâches attendent aussi, jusqu’au réveil.
 
 ## Où vivent les tâches {#where-tasks-live}
 

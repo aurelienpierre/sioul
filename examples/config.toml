@@ -13,9 +13,10 @@ case_store = "~/Notes"
 known_senders = "~/.config/sioul/known-senders.txt"
 
 # Working hours: the Porch opens then, and work can reach you. Outside them,
-# on days without them and during time off, work rests: only family, friends,
-# codes from verified senders and what you enjoy (docs/porch.md). A day left
-# out is a day without work.
+# on days without them and during time off, work rests (docs/areas.md): your
+# admin comes in its own hours (`kind = "admin"`), every other time is
+# leisure; meals and sleep come from the Health page. A day left out is a day
+# without work.
 [[window]]
 day = "monday"
 start = "09:00"
@@ -37,10 +38,22 @@ from = "2026-12-24"
 until = "2027-01-03"
 label = "Holidays"
 
-# What stays in view in quiet time: tasks of these categories, and the mail of
-# contacts in them. This is the default.
+# What stays in view in quiet time: tasks of these categories. This is the default.
 # [quiet]
 # personal = ["joy", "personal", "family", "friends", "leisure"]
+
+# Who may reach you when (docs/porch.md): for each list of senders, the times
+# its mail comes: "work", "admin", "leisure", "meals", "sleep". This is the
+# default; an empty list is never. Accounts ▸ Senders ticks them.
+# [reach]
+# safe = ["work", "admin", "leisure", "meals", "sleep"]
+# neutral = ["work", "admin"]
+# restricted = ["work"]
+
+# While you sleep (Health: the night, naps), nothing notifies but doses; false:
+# doses too wait for waking (Settings ▸ Reminders and notifications).
+# [reminders]
+# doses_in_sleep = true
 
 # When offices are open, for tasks that need one. Unset: Monday to Friday, 9:00 to 17:00.
 # [[office_hours]]

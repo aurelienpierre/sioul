@@ -10,8 +10,8 @@ Built: sharing through a folder your sync carries (Nextcloud, Dropbox, Syncthing
 | Part | Files | Shared as |
 |---|---|---|
 | settings and accounts (`settings`) | `config.toml`, `links.toml`, `porch.toml`, `money.toml` (mail said to be no payment) | one entry per setting, tie, mark, word; accounts one entry each (by id); each account's Porch mark whole |
-| senders (`senders`) | `known-`, `blocked-`, `safe-`, `neutral-senders.txt`; `shield/`; `pgp/others/` | one entry per line; one per file |
-| health (`health`) | `health.toml`, `health-state.toml` | one entry per setting, mark, dose; prescriptions and medicines one each (by id) |
+| senders (`senders`) | `known-`, `blocked-`, `safe-`, `neutral-`, `restricted-senders.txt`; `shield/`; `pgp/others/` | one entry per line; one per file |
+| health (`health`) | `health.toml`, `health-days.toml` (each day's own meals, naps and nights), `health-state.toml` | one entry per setting, mark, dose, field of a day's block; prescriptions and medicines one each (by id) |
 | time (`time`) | `time/<month>.toml`, `time/running.toml`, `today.toml`, `stopped.toml` (where you stopped), `quiet.toml` | one entry per session (start, task, project), setting, word; the session running now whole |
 | drafts and invoices (`drafts`) | `drafts/`, `invoices/` | one entry per file |
 | projects and money (`projects`) | from the notes folder: `sioul-cases.toml`, `sioul-budgets.toml`, `sioul-bank.toml`, `sioul-contracts.toml` | projects, budgets, presets, reserves, bank accounts and contracts one each (by id); a choice for one movement by its account and movement; lines, covers, mail rules and splits one each, as themselves; the bank's accounts by id, its movements by account and the bank's own id |

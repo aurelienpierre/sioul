@@ -103,6 +103,7 @@ fn check() -> Result<(), String> {
                 birthday: contact.birthday.clone(),
                 notes: contact.notes.clone(),
                 urls: contact.urls.clone(),
+                categories: Some(contact.categories.clone()),
             };
             let before: std::collections::BTreeSet<String> = lines::unfold(&text).into_iter().filter(|l| lines::name(l) != "REV").collect();
             let after: std::collections::BTreeSet<String> = lines::unfold(&contacts::apply(&text, &edit)).into_iter().filter(|l| lines::name(l) != "REV").collect();
@@ -247,7 +248,7 @@ pub(crate) fn sync_one(s: &Session, account: &Account) -> Result<(), String> {
 /// The contacts matching `query`, one per line: name, then address or number.
 pub(crate) fn list_contacts(s: &Session, query: &str) -> Result<(), String> {
     let all = contacts::all();
-    let shown = view::contacts(&all, query, &s.tr);
+    let shown = view::contacts(&all, query, "", &s.tr);
     if !shown.sentence.is_empty() {
         println!("{}", crate::one_line(&shown.sentence));
     }

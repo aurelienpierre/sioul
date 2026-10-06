@@ -20,12 +20,12 @@ The Settings page has five tabs.
 
 <figure markdown="span">
   [![The Hours tab of Settings: "Working hours", each day of the week ticked or not, with its ranges of hours (two on weekdays: 09:00–12:00 and 14:00–17:00) and + to add one, with a sentence on what they do; then "Hours for your admin", set the same way.](../assets/screens/settings-hours.png){ loading=lazy }](../assets/screens/settings-hours.png "Open the picture at full size")
-  <figcaption>Three weeks: work, your admin, free time. Then time off.</figcaption>
+  <figcaption>Two weeks: work, your admin. Then time off.</figcaption>
 </figure>
 
 - **Working hours**: on these days and hours, work can reach you. Outside them, work rests.
 - **Hours for your admin**: your own admin comes forward then: offices, bills, letters, health errands.
-- **Free time**: rest and leisure only: friends, family, chats, what you enjoy.
+- **Meals and sleep, on the Health page**: one sentence, and a button to them. Leisure is every other time, neither work nor admin: there is nothing to set for it. Meals and sleep are set on the [Health](health.md#meals-rest-and-sleep) page, and while you sleep nothing disturbs.
 - **Time off**: holidays, sick leave, quiet from the first day to the last, as on a day off, with a word on them.
 
 Each day of each week is on or off, with one range of hours or several: **+** adds a range, **×** takes one away. What each kind of hours brings, and what waits: [Hours](hours.md).
@@ -40,6 +40,7 @@ Each reminder comes once, as a quiet notification, without sound, never repeated
 - **Payments planned: working days before**: when work starts, so many working days before a planned payment (a bill, a tax); 0 for none. The reminder says whether the account will hold it.
 - **With Sioul's window closed**: your session starts a small watcher that tells reminders when the window is closed; nothing else runs, no mail is fetched. It needs the `sioul` command installed next to Sioul ([Install](install.md#into-your-application-menu)). Not on Windows yet.
 - **Sites' notifications gathered**, and **Gathered at**: what your sites notify waits, then comes in one notification at these times, for the sites of those hours: 09:00, 13:00 and 18:00 unless you set others. A site in real time, and a call, come at once.
+- **Doses during sleep**: **Remind** or **Stay silent**. While you sleep (the night from winding down to waking, a nap), no notification comes; a dose's reminder comes all the same, since you set its time, unless you choose **Stay silent**: then it comes when you wake. See [Hours](hours.md#sleep).
 
 Doses of medicine are reminded from the [Health](health.md) page, and papers to renew from [Papers](papers.md). On a phone, only the doses are reminded for now ([On a phone](first-steps.md#on-a-phone)).
 

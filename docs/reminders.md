@@ -17,6 +17,7 @@ Code: `crates/sioul-core/src/reminders.rs` (what to remind, when), `crates/sioul
 - **Once**: each reminder is marked when told (`$XDG_STATE_HOME/sioul/reminded/`, a small file each, forgotten after two months). Never repeated, no count of what was missed, no red.
 - **Not for what you just made**: a task made after its reminder's time, an event changed after it, is not reminded: you just saw it.
 - **Late, but not too late**: a computer asleep at the time reminds on waking, while it still makes sense: before the event begins, before the day asked ends, within a week of a wait's end.
+- **Nothing while you sleep**: from winding down to waking, and during a nap ([areas.md](areas.md), "Sleep"), no reminder is told, yours included: each waits for waking, and comes then if it still makes sense (`reminders::Wait::Everything`). Doses are Health's, and come all the same unless you asked them to stay silent ([health.md](health.md), "Do not disturb").
 - **Not reminded**: tasks done or cancelled; events cancelled; the day before for calendars you only read (holidays, subscriptions), their alarms still told; debits that leave by themselves (presets). A payment reminder that ignores the balance can push an account into overdraft (Medina 2021): the money watch says when the account will not hold a debit, which a reminder alone cannot.
 
 ## With the window closed

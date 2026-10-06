@@ -75,7 +75,7 @@ Sous **Ce qui voyage depuis cet appareil**, chaque partie a son interrupteur, di
 | Partie | Ce qu’elle transporte |
 |---|---|
 | Réglages et comptes | vos réglages et vos comptes (jamais leurs mots de passe), les liens entre les choses, l’endroit où le Porche a été fermé, les courriels dont vous avez dit qu’ils ne sont pas des paiements |
-| Expéditeurs | qui peut vous écrire (connus, bloqués, sûrs, neutres), ce que le bouclier a lu, les clés publiques des autres |
+| Expéditeurs | qui peut vous écrire (connus, bloqués, sûrs, neutres, restreints), ce que le bouclier a lu, les clés publiques des autres |
 | Santé | les médicaments, les ordonnances et les prises |
 | Temps | le temps noté, la séance en cours, les choix du jour, où vous vous êtes arrêté, travailler tard ou fini pour aujourd’hui |
 | Brouillons et factures | les courriels en cours d’écriture, les factures faites |

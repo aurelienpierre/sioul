@@ -119,7 +119,7 @@ Sioul ne montre jamais d’offres, de comparatifs ni de « meilleures affaires
 
 Dans des fichiers texte simples, à la racine de votre dossier de notes : `sioul-budgets.toml` (budgets, réserves, lignes, règles, comptes bancaires), `sioul-bank.toml` (les mouvements de la banque), `sioul-contracts.toml`. Lisibles, modifiables à la main, versionnés avec git si vous voulez. Ils voyagent avec votre dossier de notes, ou par le partage de Sioul une fois **Projets et argent** activé dans le partage ([Le partage](sharing.md)) ; rien n’est envoyé nulle part ailleurs.
 
-Pendant le temps libre, seuls les budgets de loisirs sont en vue. Voir [Les heures](hours.md).
+Pendant les loisirs, un repas et le sommeil, seuls les budgets de loisirs sont en vue. Voir [Les heures](hours.md).
 
 ## Pourquoi cela marche ainsi {#why-it-works-this-way}
 

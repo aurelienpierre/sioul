@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Health and well-being, for the window: the page (today's doses, the
-//! medicines, the prescriptions), its forms, and the minute tick that reminds
-//! a dose once, quietly, and turns refills and renewals into tasks in a list
-//! your phone has. The rest goes to no server, except sealed to your other
-//! computers when you share with them (docs/database.md).
+//! Health and well-being, for the window: the page (a day, or its week, at a
+//! glance: meals, naps, the night and the doses, each day's own changes), its
+//! settings (the medicines, the prescriptions, the usual meals and nights, the
+//! watch, the pauses), and the minute tick that reminds a dose once, quietly,
+//! and turns refills and renewals into tasks in a list your phone has. The
+//! rest goes to no server, except sealed to your other computers when you
+//! share with them (docs/database.md).
 
 use crate::backend::{QtThread, Shared, json, say, tell, tr};
 use crate::work;
 use cxx_qt_lib::QString;
 use jiff::civil::Date;
+use jiff::tz::TimeZone;
 use jiff::{Span, Timestamp, Zoned};
 use serde::{Deserialize, Serialize};
 use sioul_core::health::{ChatLimit, Doubt, ErrandKind, Health, HealthState, Medicine, Movement, Peer, Prescription, Problem, Schedule};
+use sioul_core::needs::{DayEdit, DayProblem, Days, Kept, Needs};
 use sioul_core::tasks::TaskEdit;
 use std::sync::Arc;
 
@@ -95,11 +99,11 @@ struct PrescriptionRow {
     next: Vec<String>,
 }
 
+/// The page: a week of days, the day shown one of them (`week`), and what
+/// only today says.
 #[derive(Serialize)]
-struct HealthPage {
-    /// The watch: what it says of today and the week, and where its files come from.
-    watch: WatchView,
-    today: Vec<DoseRow>,
+struct PageView {
+    week: WeekView,
     /// Doses due while Sioul ran nowhere, neither marked nor reminded: a question on the past.
     missed: Vec<DoseRow>,
     /// Why a dose marked elsewhere may not show here: this computer alone, or
@@ -107,6 +111,18 @@ struct HealthPage {
     shared_note: String,
     /// Reminders come on another computer, the one you are at: said, by its name.
     reminded_there: String,
+    /// The watch: what it says of today and the week.
+    watch: WatchView,
+    /// The minutes "Later" moves a block by.
+    later: u32,
+    /// Anything set at all (meals, naps, the night, a medicine): else the page says where to set them.
+    any: bool,
+}
+
+/// The page's settings (⚙): the medicines, the prescriptions, the pauses,
+/// where the errands go, the watch's folder and offers.
+#[derive(Serialize)]
+struct SettingsView {
     medicines: Vec<MedicineRow>,
     prescriptions: Vec<PrescriptionRow>,
     movement: Movement,
@@ -114,6 +130,112 @@ struct HealthPage {
     /// Where the errands go, and the lists they can go to: {id, name}.
     errands_list: String,
     lists: Vec<serde_json::Value>,
+    watch: WatchView,
+}
+
+/// Monday to Sunday, the hours the timeline shows (minutes from midnight,
+/// whole hours, the same for every day: the lines stay put from day to day).
+#[derive(Serialize)]
+struct WeekView {
+    monday: String,
+    today: String,
+    from_minute: i64,
+    to_minute: i64,
+    days: Vec<DayView>,
+}
+
+/// One day: its list and what its column of the timeline draws.
+#[derive(Serialize)]
+struct DayView {
+    /// "2026-10-07".
+    date: String,
+    /// "Today, Wednesday 7 October", "Tomorrow, …", "Thursday 8 October".
+    title: String,
+    /// "Wed", and its number: a week's column.
+    weekday: String,
+    number: i8,
+    today: bool,
+    /// Before today: shown, never changed.
+    past: bool,
+    /// The list, in time order: the day's meals, naps and night (those taken
+    /// out that day too, to put back), those added that day, its doses.
+    items: Vec<DayItem>,
+    /// What the timeline draws in this day's column, in minutes from its midnight.
+    segments: Vec<Segment>,
+    /// Its events and today's planned steps, faded, for context.
+    context: Vec<ContextItem>,
+    /// Events of the whole day; refills and renewals falling on it.
+    lines: Vec<String>,
+}
+
+/// A row of a day's list: a meal, a nap, the night, or a dose.
+#[derive(Serialize)]
+struct DayItem {
+    /// "meal:1", "nap:0", "sleep", "added-…", or a dose's key.
+    key: String,
+    /// "meal", "nap", "sleep", "dose".
+    kind: &'static str,
+    name: String,
+    /// A dose's amount ("75 µg").
+    dose: String,
+    /// Kept from, to ("12:10", "13:00"): getting it ready, winding down,
+    /// coming back included, as the notices say; a dose: its time.
+    from: String,
+    to: String,
+    /// When it starts proper: eating, the nap, bed.
+    at: String,
+    /// Said under it: "eating from 12:30", "winding down, bed at 23:00".
+    detail: String,
+    /// How that day differs: "changed for this day", "this day only", "moved
+    /// after an event", "no notice that day…", "removed from this day"; "" as usual.
+    note: String,
+    /// Changed that day (its times), added that day, quiet, taken out that day.
+    changed: bool,
+    added: bool,
+    quiet: bool,
+    off: bool,
+    /// Over (or on a past day): shown, never changed.
+    past: bool,
+    /// Its lengths that day, for its form: minutes, getting ready (winding down), coming back.
+    minutes: u32,
+    before: u32,
+    after: u32,
+    /// A dose of today: "12:04" when marked taken; late past half an hour;
+    /// the doubt when another device may know (never "not taken").
+    taken: String,
+    late: bool,
+    doubt: String,
+}
+
+/// A part of the timeline's column: from, to, in minutes from the column's
+/// midnight (a night split at midnight, its morning part the day before's).
+#[derive(Serialize)]
+struct Segment {
+    /// The day it belongs to, and its key: what the list's row is.
+    date: String,
+    key: String,
+    /// "meal", "nap", "sleep", "dose".
+    kind: &'static str,
+    name: String,
+    from_minute: i64,
+    to_minute: i64,
+    /// Where it starts and ends proper: before and after, lighter (getting ready, winding down, coming back).
+    at_minute: i64,
+    until_minute: i64,
+    quiet: bool,
+    past: bool,
+    /// A dose of today: "taken", "due", "check" (another device may know); "" another day.
+    state: &'static str,
+}
+
+/// An event or a planned step, for context only.
+#[derive(Serialize)]
+struct ContextItem {
+    title: String,
+    /// "event", "task".
+    kind: &'static str,
+    from_minute: i64,
+    to_minute: i64,
 }
 
 /// The watch, as the page shows it: words ready, curves for today.
@@ -270,52 +392,45 @@ fn errands_list(health: &Health) -> Option<String> {
         .or_else(|| lists.first().map(id))
 }
 
-/// The health page, as JSON.
+/// The day the page shows (`show_week`): its week is made. None: today.
+static SHOWN: std::sync::Mutex<Option<Date>> = std::sync::Mutex::new(None);
+
+/// The page shows the week of `day` ("2026-10-07"); one that does not read: today's.
+pub(crate) fn show_week(day: &str) {
+    if let Ok(mut shown) = SHOWN.lock() {
+        *shown = day.trim().parse().ok();
+    }
+}
+
+/// `at` (Unix seconds) on the clock in `zone`: "12:30".
+fn clock(at: i64, zone: &TimeZone) -> String {
+    Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default()
+}
+
+/// Midnight of `date` in `zone`, Unix seconds.
+fn midnight(date: Date, zone: &TimeZone) -> i64 {
+    date.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second())
+}
+
+/// "Wednesday": a word's first letter in capitals, as a title starts.
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
+}
+
+/// The health page, as JSON: the week of the day it shows, and what only today says.
 pub(crate) fn page() -> String {
     let health = load();
     let state = record();
     let knowledge = know();
     let now = Zoned::now();
-    let morning = now.date().to_zoned(now.time_zone().clone()).unwrap_or_else(|_| now.clone());
-    let night = morning.checked_add(Span::new().days(1)).unwrap_or_else(|_| now.clone());
-    let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
-    let mut today: Vec<DoseRow> = health
-        .doses(&morning, &night)
-        .into_iter()
-        .map(|d| {
-            let (due, stamp) = (d.at.timestamp().as_second(), now.timestamp().as_second());
-            let marked = state.taken.contains_key(&d.key);
-            DoseRow {
-                taken: state.taken.get(&d.key).map(|t| hm(*t)).unwrap_or_default(),
-                past: d.at <= now,
-                late: !marked && stamp - due > GRACE_MINUTES * 60,
-                // Due, not marked here: whether it was taken elsewhere, said when not known.
-                doubt: if marked || due > stamp { String::new() } else { doubt_of(&knowledge, due, stamp) },
-                time: d.at.strftime("%H:%M").to_string(),
-                key: d.key,
-                name: d.name,
-                dose: d.dose,
-            }
-        })
-        .collect();
-    // Taken today, at a time the schedule no longer has: a dose taken late or
-    // early moved the next ones (a medicine counted from its last dose).
-    let (from, to) = (morning.timestamp().as_second(), night.timestamp().as_second());
-    for (key, at) in &state.taken {
-        let Some((id, due)) = key.rsplit_once('@') else { continue };
-        let (Some(medicine), Ok(due)) = (health.medicines.iter().find(|m| m.id == id), due.parse::<i64>()) else { continue };
-        if due < from || due >= to || today.iter().any(|d| &d.key == key) {
-            continue;
-        }
-        today.push(DoseRow { key: key.clone(), time: hm(due), name: medicine.name.clone(), dose: medicine.dose.clone(), taken: hm(*at), past: true, late: false, doubt: String::new() });
-    }
-    today.sort_by(|a, b| a.time.cmp(&b.time).then(a.name.cmp(&b.name)));
-    let title_of = |id: &Option<String>| id.as_ref().and_then(|id| health.prescriptions.iter().find(|p| &p.id == id)).map(|p| p.title.clone()).unwrap_or_default();
-    let errands = health.errands();
-    let missed = missed_rows(&health, &state, &knowledge, &now);
-    json(&HealthPage {
-        today,
-        missed,
+    let shown = SHOWN.lock().ok().and_then(|s| *s).unwrap_or(now.date());
+    let week = week_view(&health, &state, &knowledge, shown, &now);
+    let needs = &health.needs;
+    json(&PageView {
+        any: needs.meals_on || needs.naps_on || needs.sleep_on || !health.medicines.is_empty() || week.days.iter().any(|d| !d.items.is_empty()),
+        week,
+        missed: missed_rows(&health, &state, &knowledge, &now),
         shared_note: if health.medicines.is_empty() { String::new() } else { shared_note(&knowledge) },
         reminded_there: [
             REMINDED_THERE.lock().map(|r| r.clone()).unwrap_or_default(),
@@ -326,6 +441,19 @@ pub(crate) fn page() -> String {
         .filter(|t| !t.is_empty())
         .collect::<Vec<_>>()
         .join(" "),
+        watch: watch_view(&health),
+        later: needs.later,
+    })
+}
+
+/// The page's settings (⚙), as JSON.
+pub(crate) fn settings_view() -> String {
+    let health = load();
+    let now = Zoned::now();
+    let title_of = |id: &Option<String>| id.as_ref().and_then(|id| health.prescriptions.iter().find(|p| &p.id == id)).map(|p| p.title.clone()).unwrap_or_default();
+    let errands = health.errands();
+    let config = crate::backend::load_config();
+    json(&SettingsView {
         medicines: health.medicines.iter().map(|m| MedicineRow { when: words(&m.schedule), prescription_title: title_of(&m.prescription), medicine: m.clone() }).collect(),
         prescriptions: health
             .prescriptions
@@ -342,9 +470,267 @@ pub(crate) fn page() -> String {
         movement: health.movement.clone(),
         chats: health.chats.clone(),
         errands_list: errands_list(&health).unwrap_or_default(),
+        lists: sioul_core::tasks::lists().into_iter().filter(|c| !c.read_only).map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()), "local": c.account == sioul_core::vdir::LOCAL })).collect(),
         watch: watch_view(&health),
-        lists: { let config = crate::backend::load_config(); sioul_core::tasks::lists().into_iter().filter(|c| !c.read_only).map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()), "local": c.account == sioul_core::vdir::LOCAL })).collect() },
     })
+}
+
+/// The events of the week from `monday`, read again five minutes after at most:
+/// the page is made again each minute while it is open.
+fn week_events(monday: Date, zone: &TimeZone) -> Arc<Vec<sioul_core::agenda::Occurrence>> {
+    type Cached = Option<(i64, Date, Arc<Vec<sioul_core::agenda::Occurrence>>)>;
+    static CACHE: std::sync::Mutex<Cached> = std::sync::Mutex::new(None);
+    let stamp = Timestamp::now().as_second();
+    let mut cache = CACHE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some((at, day, events)) = cache.as_ref()
+        && *day == monday
+        && (0..300).contains(&(stamp - at))
+    {
+        return Arc::clone(events);
+    }
+    let from = midnight(monday, zone);
+    let to = monday.checked_add(Span::new().days(7)).map_or(from + 7 * 86_400, |d| midnight(d, zone));
+    let events = Arc::new(sioul_core::agenda::occurrences(from, to));
+    *cache = Some((stamp, monday, Arc::clone(&events)));
+    events
+}
+
+/// Which day a night is: the evening it starts, or, its bedtime after
+/// midnight, the evening before (`Needs::kept_with`'s rule).
+fn night_of(kept: &Kept, zone: &TimeZone) -> Option<Date> {
+    let bed = Timestamp::from_second(kept.at).ok()?.to_zoned(zone.clone());
+    if bed.hour() < 12 { bed.date().yesterday().ok() } else { Some(bed.date()) }
+}
+
+/// The week of `day`, Monday to Sunday: each day's list and timeline, and
+/// the hours the timeline shows (the same each day).
+fn week_view(health: &Health, state: &HealthState, knowledge: &Knowledge, day: Date, now: &Zoned) -> WeekView {
+    let zone = now.time_zone().clone();
+    let monday = day.checked_sub(Span::new().days(i64::from(day.weekday().to_monday_zero_offset()))).unwrap_or(day);
+    let days = days();
+    let events = week_events(monday, &zone);
+    // Meals move past the events with their margins, as the plan has them.
+    let held = sioul_core::plan::event_spans(&events, 0);
+    let steps = crate::work::day_steps();
+    let days: Vec<DayView> = (0..7).filter_map(|n| monday.checked_add(Span::new().days(n)).ok()).map(|date| day_view(health, state, knowledge, &days, &Around { events: &events, held: &held, steps: &steps }, date, now)).collect();
+    // From half an hour before the first thing (waking, the first block or
+    // event), to half an hour after the last (bedtime, the last one), whole hours.
+    let (mut first, mut last) = (i64::MAX, i64::MIN);
+    for day in &days {
+        for s in &day.segments {
+            match s.kind {
+                "sleep" if s.from_minute <= 0 => first = first.min(s.to_minute),
+                "sleep" => last = last.max(s.at_minute.min(24 * 60)),
+                _ => {
+                    first = first.min(s.from_minute);
+                    last = last.max(s.to_minute);
+                }
+            }
+        }
+        for c in &day.context {
+            first = first.min(c.from_minute);
+            last = last.max(c.to_minute);
+        }
+    }
+    let first = if first == i64::MAX { 7 * 60 } else { first };
+    let last = if last == i64::MIN { 22 * 60 } else { last };
+    let from = (first - 30).clamp(0, 23 * 60) / 60 * 60;
+    let to = ((last + 30 + 59) / 60 * 60).clamp(from + 6 * 60, 24 * 60);
+    WeekView { monday: monday.to_string(), today: now.date().to_string(), from_minute: from.min(to - 60), to_minute: to, days }
+}
+
+/// What lies around the days: the week's events, their times with margins, today's planned steps.
+struct Around<'a> {
+    events: &'a [sioul_core::agenda::Occurrence],
+    held: &'a [(i64, i64)],
+    steps: &'a [(i64, i64, String)],
+}
+
+/// One day: its list (blocks, those taken out that day, its doses) and what its column draws.
+fn day_view(health: &Health, state: &HealthState, knowledge: &Knowledge, days: &Days, around: &Around, date: Date, now: &Zoned) -> DayView {
+    let zone = now.time_zone().clone();
+    let today = now.date();
+    let stamp = now.timestamp().as_second();
+    let start = midnight(date, &zone);
+    let next = date.tomorrow().map_or(start + 86_400, |d| midnight(d, &zone));
+    // Minutes from this day's midnight on the clock (a time the next day: past 1440).
+    let minute = |at: i64| -> i64 {
+        let Ok(t) = Timestamp::from_second(at) else { return 0 };
+        let z = t.to_zoned(zone.clone());
+        let after = date.until(z.date()).map_or(0, |s| i64::from(s.get_days()));
+        after * 24 * 60 + i64::from(z.hour()) * 60 + i64::from(z.minute())
+    };
+    let needs = &health.needs;
+    let pushed = needs.past_events_on(date, &zone, days, around.held);
+    let shift = |key: &str| pushed.get(key).copied().unwrap_or(0);
+    let past_day = date < today;
+    let mut items: Vec<(i64, DayItem)> = Vec::new();
+    let mut segments: Vec<Segment> = Vec::new();
+    let block_item = |k: &Kept, off: bool| -> DayItem {
+        let change = days.get(date, &k.key);
+        let added = sioul_core::needs::is_added(&k.key);
+        let (minutes, before, after) = needs.lengths(date, &k.key, days).unwrap_or((0, 0, 0));
+        let detail = match k.kind {
+            "meal" if before > 0 => say("need-meal-detail", &[("at", clock(k.at, &zone))]),
+            "nap" if after > 0 => say("need-nap-detail", &[("minutes", after.to_string())]),
+            "sleep" => say("need-night-detail", &[("bed", clock(k.at, &zone))]),
+            _ => String::new(),
+        };
+        let changed = !added && change.is_some_and(|c| !c.at.is_empty() || !c.wake.is_empty() || c.minutes.is_some() || c.before.is_some() || c.after.is_some());
+        let quiet = change.is_some_and(|c| c.quiet);
+        let note = if off {
+            tr().text("need-off", None)
+        } else if added {
+            tr().text("need-added", None)
+        } else if changed {
+            tr().text("need-changed", None)
+        } else if shift(&k.key) > 0 {
+            tr().text("need-pushed", None)
+        } else {
+            String::new()
+        };
+        let note = if quiet && !off { [note, tr().text("need-quiet", None)].into_iter().filter(|n| !n.is_empty()).collect::<Vec<_>>().join(" · ") } else { note };
+        DayItem {
+            key: k.key.clone(),
+            kind: k.kind,
+            name: if k.kind == "sleep" { tr().text("needs-sleep", None) } else { block_name(k.kind, &k.key, &k.name) },
+            dose: String::new(),
+            from: clock(k.start, &zone),
+            to: clock(k.end, &zone),
+            at: clock(k.at, &zone),
+            detail,
+            note,
+            changed,
+            added,
+            quiet,
+            off,
+            past: past_day || k.end <= stamp,
+            minutes,
+            before,
+            after,
+            taken: String::new(),
+            late: false,
+            doubt: String::new(),
+        }
+    };
+    for k in needs.blocks_of(date, &zone, days, &shift) {
+        let item = block_item(&k, false);
+        // Before and after it proper, lighter: getting it ready, winding down, coming back.
+        let until = if k.kind == "sleep" { k.end } else { k.at + i64::from(item.minutes) * 60 };
+        if minute(k.start) < 24 * 60 {
+            segments.push(Segment { date: date.to_string(), key: k.key.clone(), kind: k.kind, name: item.name.clone(), from_minute: minute(k.start).max(0), to_minute: minute(k.end).min(24 * 60), at_minute: minute(k.at), until_minute: minute(until), quiet: item.quiet, past: item.past, state: "" });
+        }
+        items.push((minute(k.start), item));
+    }
+    // Taken out that day: in the list still, to put back; its time is free.
+    let usual = needs.blocks_of(date, &zone, &Days::default(), &|_| 0);
+    for k in usual.iter().filter(|k| days.get(date, &k.key).is_some_and(|c| c.off)) {
+        items.push((minute(k.start), block_item(k, true)));
+    }
+    // The night ending this morning is the day before's: its morning part.
+    for k in needs.kept_with(date, &zone, days, &shift).iter().filter(|k| k.kind == "sleep") {
+        let Some(night) = night_of(k, &zone).filter(|night| *night != date) else { continue };
+        segments.push(Segment {
+            date: night.to_string(),
+            key: k.key.clone(),
+            kind: "sleep",
+            name: tr().text("needs-sleep", None),
+            from_minute: minute(k.start).max(0),
+            to_minute: minute(k.end).min(24 * 60),
+            at_minute: minute(k.at),
+            until_minute: minute(k.end),
+            quiet: days.get(night, "sleep").is_some_and(|c| c.quiet),
+            past: night < today || k.end <= stamp,
+            state: "",
+        });
+    }
+    // The doses: on today with whether they are marked, and the doubt when
+    // another device may know; another day, plainly (no record of the past here).
+    let (from_z, to_z) = (Timestamp::from_second(start).map(|t| t.to_zoned(zone.clone())), Timestamp::from_second(next).map(|t| t.to_zoned(zone.clone())));
+    if let (Ok(from_z), Ok(to_z)) = (from_z, to_z) {
+        let mut doses: Vec<(String, i64, String, String)> = health.doses(&from_z, &to_z).into_iter().map(|d| (d.key, d.at.timestamp().as_second(), d.name, d.dose)).collect();
+        // Taken today, at a time the schedule no longer has: a dose taken late
+        // or early moved the next ones (a medicine counted from its last dose).
+        if date == today {
+            for key in state.taken.keys() {
+                let Some((id, due)) = key.rsplit_once('@') else { continue };
+                let (Some(medicine), Ok(due)) = (health.medicines.iter().find(|m| m.id == id), due.parse::<i64>()) else { continue };
+                if due >= start && due < next && !doses.iter().any(|d| &d.0 == key) {
+                    doses.push((key.clone(), due, medicine.name.clone(), medicine.dose.clone()));
+                }
+            }
+        }
+        for (key, due, name, dose) in doses {
+            let marked = date == today && state.taken.contains_key(&key);
+            let doubt = if date != today || marked || due > stamp { String::new() } else { doubt_of(knowledge, due, stamp) };
+            let item = DayItem {
+                taken: if date == today { state.taken.get(&key).map(|t| clock(*t, &zone)).unwrap_or_default() } else { String::new() },
+                late: date == today && !marked && stamp - due > GRACE_MINUTES * 60,
+                key: key.clone(),
+                kind: "dose",
+                name: name.clone(),
+                dose,
+                from: clock(due, &zone),
+                to: String::new(),
+                at: clock(due, &zone),
+                detail: String::new(),
+                note: String::new(),
+                changed: false,
+                added: false,
+                quiet: false,
+                off: false,
+                past: past_day || due <= stamp,
+                minutes: 0,
+                before: 0,
+                after: 0,
+                doubt,
+            };
+            let state = if date != today { "" } else if marked { "taken" } else if item.doubt.is_empty() { "due" } else { "check" };
+            segments.push(Segment { date: date.to_string(), key, kind: "dose", name, from_minute: minute(due), to_minute: minute(due), at_minute: minute(due), until_minute: minute(due), quiet: false, past: item.past, state });
+            items.push((minute(due), item));
+        }
+    }
+    items.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| (a.1.kind == "dose").cmp(&(b.1.kind == "dose"))));
+    // The day's events, and today's planned steps, for context; whole days and errands in words.
+    let mut context = Vec::new();
+    let mut lines = Vec::new();
+    for event in around.events.iter().filter(|e| !e.cancelled && e.end > start && e.start < next) {
+        if event.all_day {
+            lines.push(say("day-all-day", &[("what", event.summary.clone())]));
+        } else {
+            context.push(ContextItem { title: event.summary.clone(), kind: "event", from_minute: minute(event.start).max(0), to_minute: minute(event.end.max(event.start + 15 * 60)).min(24 * 60) });
+        }
+    }
+    if date == today {
+        for (from, to, title) in around.steps.iter().filter(|(from, to, _)| *to > start && *from < next) {
+            context.push(ContextItem { title: title.clone(), kind: "task", from_minute: minute(*from).max(0), to_minute: minute(*to).min(24 * 60) });
+        }
+    }
+    context.sort_by_key(|c| c.from_minute);
+    for errand in health.errands().into_iter().filter(|e| e.day == date) {
+        let what = say(if errand.kind == ErrandKind::Refill { "health-errand-refill" } else { "health-errand-renew" }, &[("title", errand.title.clone())]);
+        lines.push(say("health-errand-day", &[("what", what)]));
+    }
+    let named = tr().day(date);
+    let title = if date == today {
+        format!("{}, {named}", tr().text("agenda-today", None))
+    } else if today.tomorrow().is_ok_and(|t| t == date) {
+        format!("{}, {named}", tr().text("agenda-tomorrow", None))
+    } else {
+        capitalized(&named)
+    };
+    DayView {
+        date: date.to_string(),
+        title,
+        weekday: tr().weekday_short(date),
+        number: date.day(),
+        today: date == today,
+        past: past_day,
+        items: items.into_iter().map(|(_, item)| item).collect(),
+        segments,
+        context,
+        lines,
+    }
 }
 
 /// Doses due while Sioul ran nowhere, neither marked nor reminded: a question
@@ -524,7 +910,8 @@ fn movement_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zon
     use std::sync::atomic::Ordering;
     let stamp = now.timestamp().as_second();
     let last = MOVED.load(Ordering::Relaxed);
-    if last == 0 || !health.movement.enabled || sioul_core::timelog::running().is_some() {
+    // Asleep too: the pause is counted again from waking.
+    if last == 0 || !health.movement.enabled || sioul_core::timelog::running().is_some() || !crate::hours::may_notify() {
         MOVED.store(stamp, Ordering::Relaxed);
         return;
     }
@@ -659,6 +1046,12 @@ pub(crate) fn alarm_decide(key: &str) -> String {
     // Too early (moved later): at its time.
     if due > stamp + 60 {
         return answer(false, "", "", due);
+    }
+    // Asleep, "Doses during sleep: stay silent" chosen: asked again at waking.
+    if crate::hours::doses_silent()
+        && let Some(waking) = crate::hours::waking()
+    {
+        return answer(false, "", "", waking);
     }
     let waiting = stamp < due + WAIT_FOR_NEWS;
     let keeper = crate::share::looked("health", sioul_sync::lease::Rule::FollowsYou);
@@ -1078,12 +1471,56 @@ pub(crate) fn usual_name(kind: &str, index: usize) -> String {
     }
 }
 
-fn name_of(kept: &sioul_core::needs::Kept) -> String {
-    if kept.name.trim().is_empty() { usual_name(kept.kind, kept.index) } else { kept.name.clone() }
+/// A block's name: its own, else its usual one by its key ("meal:1": lunch);
+/// one added for a day without a name of its own: "Meal", "Rest".
+pub(crate) fn block_name(kind: &str, key: &str, name: &str) -> String {
+    if !name.trim().is_empty() {
+        return name.to_string();
+    }
+    if sioul_core::needs::is_added(key) {
+        return tr().text(if kind == "nap" { "need-added-nap" } else { "need-added-meal" }, None);
+    }
+    usual_name(kind, key.rsplit_once(':').and_then(|(_, i)| i.parse().ok()).unwrap_or(0))
 }
 
-/// Each minute, from the computer you are at: a block's heads-up about the
-/// work, `heads_up` minutes before it ("No new big task"), with "Later";
+fn name_of(kept: &Kept) -> String {
+    block_name(kept.kind, &kept.key, &kept.name)
+}
+
+/// Each day's own meals, naps and nights (`sioul_core::needs::Days`). The
+/// moves and skips of today an older Sioul kept on this device
+/// (`needs-today.toml`) are moved into them once, as times.
+pub(crate) fn days() -> Days {
+    let path = Days::default_path();
+    let mut days = Days::load(&path);
+    let now = Zoned::now();
+    let today_path = sioul_core::needs::Today::default_path();
+    let mut today = sioul_core::needs::Today::load(&today_path, now.date());
+    if today.shifts.is_empty() && today.skipped.is_empty() {
+        return days;
+    }
+    let zone = now.time_zone().clone();
+    for k in load().needs.blocks_of(now.date(), &zone, &Days::default(), &|_| 0) {
+        let shift = today.shifts.get(&k.key).copied().unwrap_or(0) * 60;
+        let skipped = today.skipped.contains(&k.key);
+        days.change(now.date(), &k.key, |b| {
+            if shift != 0 && b.at.is_empty() {
+                b.at = clock(k.at + shift, &zone);
+                if k.kind == "sleep" {
+                    b.wake = clock(k.end + shift, &zone);
+                }
+            }
+            b.quiet |= skipped;
+        });
+    }
+    today.shifts.clear();
+    today.skipped.clear();
+    if days.save(&path, now.date()).is_ok() {
+        let _ = today.save(&today_path);
+    }
+    days
+}
+
 /// Today's events' held times (their margins counted), read again five
 /// minutes after at most: the needs' tick runs every minute.
 fn held_today(now: &Zoned) -> Vec<(i64, i64)> {
@@ -1102,24 +1539,37 @@ fn held_today(now: &Zoned) -> Vec<(i64, i64)> {
     held
 }
 
-/// Today's moves: yours, and each meal pushed past the events it would fall in.
-pub(crate) fn moves_today(needs: &sioul_core::needs::Needs, moved: &std::collections::BTreeMap<String, i64>, now: &Zoned) -> std::collections::BTreeMap<String, i64> {
-    needs.past_events(now.date(), now.time_zone(), moved, &held_today(now))
+/// `date`'s events' held times: today's from the minute's cache, another day's read now.
+fn held_on(date: Date, now: &Zoned) -> Vec<(i64, i64)> {
+    if date == now.date() {
+        return held_today(now);
+    }
+    let start = midnight(date, now.time_zone());
+    sioul_core::plan::event_spans(&sioul_core::agenda::occurrences(start, start + 26 * 3600), 0)
 }
 
+/// A day's own blocks as they are: its changes, its meals pushed past its events.
+fn blocks_now(needs: &Needs, days: &Days, date: Date, now: &Zoned) -> Vec<Kept> {
+    let pushed = needs.past_events_on(date, now.time_zone(), days, &held_on(date, now));
+    needs.blocks_of(date, now.time_zone(), days, &|key: &str| pushed.get(key).copied().unwrap_or(0))
+}
+
+/// Each minute, from the computer you are at: a block's heads-up about the
+/// work, `heads_up` minutes before it ("No new big task"), with "Later";
 /// then one at its time. Two at most, each once, only near its time; none
-/// while an event goes on, none for a block skipped today. Its name and time
-/// only: safe to be read by someone else (docs/health.md).
+/// while an event goes on, none for a block quiet or taken out that day. Its
+/// name and time only: safe to be read by someone else (docs/health.md).
 fn needs_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned) {
     let needs = &health.needs;
-    if !(needs.meals_on || needs.naps_on || needs.sleep_on) {
+    let days = days();
+    if !(needs.meals_on || needs.naps_on || needs.sleep_on) && !days.0.contains_key(&now.date()) {
         return;
     }
     let path = sioul_core::needs::Today::default_path();
     let mut today = sioul_core::needs::Today::load(&path, now.date());
     let stamp = now.timestamp().as_second();
-    let moved = moves_today(needs, &today.shifts, now);
-    let kept = needs.kept_on(now.date(), now.time_zone(), &|key: &str| moved.get(key).copied().unwrap_or(0));
+    let pushed = needs.past_events_on(now.date(), now.time_zone(), &days, &held_today(now));
+    let kept = needs.kept_with(now.date(), now.time_zone(), &days, &|key: &str| pushed.get(key).copied().unwrap_or(0));
     let due = today.due(&kept, needs.heads_up, stamp);
     if due.is_empty() {
         return;
@@ -1130,8 +1580,14 @@ fn needs_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned)
     if meeting {
         return;
     }
-    let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    let hm = |at: i64| clock(at, now.time_zone());
+    let may = crate::hours::may_notify();
     for (block, heads_up) in due {
+        // Asleep (the night from winding down, a nap): nothing is said, but the
+        // night's or the nap's own notice as it starts (docs/health.md).
+        if !may && (heads_up || !(block.kind == "sleep" || block.kind == "nap") || block.start > stamp) {
+            continue;
+        }
         let name = name_of(block);
         // One button: the window's question (later, at another time, not
         // today; a line on where you stopped).
@@ -1151,41 +1607,59 @@ fn needs_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned)
     }
 }
 
-/// A block moved today only: by `minutes` more ("Later": by the minutes
-/// set, again and again), or to start at `time` ("13:30"). Its notices are
-/// not given again for it: moving it never brings a nag. Returns what went wrong, else "".
-pub(crate) fn move_today(key: &str, minutes: i64, time: &str) -> String {
-    let path = sioul_core::needs::Today::default_path();
+/// A day's block changed, that day only, as the page asks (JSON: its `date`,
+/// "2026-10-07", today when none, and `sioul_core::needs::DayEdit`: key,
+/// action, from, to…; `Needs::change_day`). The plan and the page follow;
+/// a block moved is not said again: moving it never brings a nag. Returns
+/// what went wrong, else "".
+pub(crate) fn change_need(edit: &str) -> String {
+    #[derive(Deserialize)]
+    struct Asked {
+        #[serde(default)]
+        date: String,
+        #[serde(flatten)]
+        edit: DayEdit,
+    }
+    match serde_json::from_str::<Asked>(edit) {
+        Ok(asked) => change_day(&asked.date, &asked.edit),
+        Err(e) => e.to_string(),
+    }
+}
+
+fn change_day(date: &str, edit: &DayEdit) -> String {
     let now = Zoned::now();
-    let mut today = sioul_core::needs::Today::load(&path, now.date());
-    let shift = if time.is_empty() {
-        today.shifts.get(key).copied().unwrap_or(0) + if minutes == 0 { i64::from(load().needs.later) } else { minutes }
-    } else {
-        // To start at that time: from where it starts without any move.
-        let Some(clock) = time.split_once(':').and_then(|(h, m)| jiff::civil::Time::new(h.trim().parse().ok()?, m.trim().parse().ok()?, 0, 0).ok()) else { return tr().text("dose-time-wrong", None) };
-        let target = now.date().to_datetime(clock).to_zoned(now.time_zone().clone()).map(|z| z.timestamp().as_second()).unwrap_or(0);
-        let Some(base) = load().needs.kept_on(now.date(), now.time_zone(), &|_| 0).into_iter().find(|k| k.key == key) else { return String::new() };
-        (target - base.start) / 60
-    };
-    today.shifts.insert(key.to_string(), shift);
-    today.save(&path).err().unwrap_or_default()
+    let date = if date.trim().is_empty() { Some(now.date()) } else { date.trim().parse::<Date>().ok() };
+    let Some(date) = date else { return tr().text("need-times-wrong", None) };
+    let mut days = days();
+    match load().needs.change_day(&mut days, date, edit, &now, &held_on(date, &now)) {
+        Ok(()) => days.save(&Days::default_path(), now.date()).err().unwrap_or_default(),
+        Err(DayProblem::Past) => tr().text("need-past", None),
+        Err(DayProblem::Times) => tr().text("need-times-wrong", None),
+        Err(DayProblem::TooShort) => tr().text("need-too-short", None),
+        Err(DayProblem::OtherDay) => tr().text("need-other-day", None),
+        Err(DayProblem::Unknown) => say("setting-unknown-key", &[("key", edit.action.clone())]),
+    }
+}
+
+/// A block moved today only (the question, a notice's "Later"): by `minutes`
+/// more ("Later": by the minutes set, again and again), or to start at `time`
+/// ("13:30"). Returns what went wrong, else "".
+pub(crate) fn move_today(key: &str, minutes: i64, time: &str) -> String {
+    let action = if time.is_empty() { "later" } else { "move" };
+    change_day("", &DayEdit { key: key.to_string(), action: action.to_string(), minutes, from: time.to_string(), ..DayEdit::default() })
 }
 
 /// Today's meals, naps and night as they are now, as JSON: [{key, kind,
-/// name, from, to, moved, skipped, past}], for the Health page and the question.
+/// name, from, to, skipped, past}], for the question (`Interruption.qml`).
 pub(crate) fn needs_today() -> String {
     let needs = load().needs;
     let now = Zoned::now();
-    let today = sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), now.date());
-    let moved = moves_today(&needs, &today.shifts, &now);
-    let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string()).unwrap_or_default();
+    let days = days();
+    let zone = now.time_zone().clone();
     let stamp = now.timestamp().as_second();
-    let rows: Vec<serde_json::Value> = needs
-        .kept_on(now.date(), now.time_zone(), &|key: &str| moved.get(key).copied().unwrap_or(0))
+    let rows: Vec<serde_json::Value> = blocks_now(&needs, &days, now.date(), &now)
         .iter()
-        // The night ending this morning is yesterday's.
-        .filter(|k| !(k.kind == "sleep" && k.start < stamp - 12 * 3600))
-        .map(|k| serde_json::json!({ "key": k.key, "kind": k.kind, "name": name_of(k), "from": hm(k.start), "to": hm(k.end), "moved": moved.get(&k.key).copied().unwrap_or(0), "skipped": today.skipped.contains(&k.key), "past": k.end <= stamp }))
+        .map(|k| serde_json::json!({ "key": k.key, "kind": k.kind, "name": name_of(k), "from": clock(k.start, &zone), "to": clock(k.end, &zone), "skipped": days.get(now.date(), &k.key).is_some_and(|c| c.quiet), "past": k.end <= stamp }))
         .collect();
     json(&rows)
 }
@@ -1195,23 +1669,15 @@ pub(crate) fn later_minutes() -> u32 {
     load().needs.later
 }
 
-/// A block skipped today, or not: no notice, kept free all the same.
+/// A block without notices today, or with them again: kept free all the same.
 pub(crate) fn skip_today(key: &str, skip: bool) -> String {
-    let path = sioul_core::needs::Today::default_path();
-    let mut today = sioul_core::needs::Today::load(&path, Zoned::now().date());
-    if skip {
-        today.skipped.insert(key.to_string());
-    } else {
-        today.skipped.remove(key);
-    }
-    today.save(&path).err().unwrap_or_default()
+    change_day("", &DayEdit { key: key.to_string(), action: if skip { "quiet" } else { "loud" }.to_string(), ..DayEdit::default() })
 }
 
-/// Meals, naps and the night as the page sets them, as JSON: the settings,
-/// the usual names, the long gaps between meals, today's moves and skips.
+/// The usual meals, naps and night as the page's settings set them, as
+/// JSON: the settings, the usual names, the long gaps between meals.
 pub(crate) fn needs_page() -> String {
     let needs = load().needs;
-    let today = sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), Zoned::now().date());
     serde_json::json!({
         "needs": needs,
         "usual": {
@@ -1220,21 +1686,46 @@ pub(crate) fn needs_page() -> String {
             "sleep": usual_name("sleep", 0),
         },
         "gaps": needs.long_gaps().into_iter().map(|(from, to)| say("need-gap", &[("from", from), ("to", to)])).collect::<Vec<_>>(),
-        "skipped": today.skipped,
-        "moved": today.shifts,
     })
     .to_string()
 }
 
-/// Meals, naps and the night saved as the page gives them; returns what went wrong, else "".
+/// Where a list lost one block: the place taken out, when the rest is the same.
+fn removed_at(old: &[sioul_core::needs::Block], new: &[sioul_core::needs::Block]) -> Option<usize> {
+    if new.len() + 1 != old.len() {
+        return None;
+    }
+    let at = (0..old.len()).find(|&i| i == new.len() || old[i] != new[i])?;
+    (old[at + 1..] == new[at..]).then_some(at)
+}
+
+/// The usual meals, naps and night saved as the settings give them; a meal
+/// or a nap taken out, the days' changes of those after it follow them to
+/// their new place. Returns what went wrong, else "".
 pub(crate) fn save_needs(edit: &str) -> String {
-    let needs: sioul_core::needs::Needs = match serde_json::from_str(edit) {
+    let needs: Needs = match serde_json::from_str(edit) {
         Ok(needs) => needs,
         Err(e) => return e.to_string(),
     };
     let mut health = load();
+    let mut days = days();
+    let mut moved = false;
+    if let Some(at) = removed_at(&health.needs.meals, &needs.meals) {
+        days.removed_usual("meal", at);
+        moved = true;
+    }
+    if let Some(at) = removed_at(&health.needs.naps, &needs.naps) {
+        days.removed_usual("nap", at);
+        moved = true;
+    }
     health.needs = needs;
-    save(&health).err().unwrap_or_default()
+    if let Err(e) = save(&health) {
+        return e;
+    }
+    if moved {
+        return days.save(&Days::default_path(), Zoned::now().date()).err().unwrap_or_default();
+    }
+    String::new()
 }
 
 /// Each minute: a dose due is reminded once, quietly, with "Taken"; a refill
@@ -1273,8 +1764,12 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     let mut reminded: Vec<String> = Vec::new();
     // On a phone, Android's alarm clock reminds, Sioul shown or not (`alarms`).
     crate::alarms::schedule();
-    if keeper.mine && keeper.settled && !cfg!(target_os = "android") {
-        for dose in state.to_remind(&health, &now, GRACE_MINUTES) {
+    // Asleep with "Doses during sleep: stay silent" (Settings ▸ Reminders and
+    // notifications), they wait for waking; by default they come, asleep or not.
+    if keeper.mine && keeper.settled && !cfg!(target_os = "android") && !crate::hours::doses_silent() {
+        // Those that waited come at waking, once (more than half an hour late, Taken asks when).
+        let window = crate::hours::woke_from().map_or(GRACE_MINUTES, |since| GRACE_MINUTES.max((stamp - since) / 60 + 1));
+        for dose in state.to_remind(&health, &now, window) {
             if SENT.lock().is_ok_and(|sent| sent.contains(&dose.key)) {
                 continue;
             }
@@ -1322,7 +1817,8 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     // there comes first), and only where you are; what is not known, said.
     let heard = !crate::share::on() || crate::share::last_exchange().is_some();
     // On a phone, without notifications, the Porch asks it (`missed`).
-    if heard && keeper.mine && !cfg!(target_os = "android") && !ASKED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+    // Asleep with doses staying silent, it waits for waking too.
+    if heard && keeper.mine && !cfg!(target_os = "android") && !crate::hours::doses_silent() && !ASKED.swap(true, std::sync::atomic::Ordering::Relaxed) {
         let missed = state.unanswered(&health, &now, MISSED_HOURS, GRACE_MINUTES);
         if !missed.is_empty() {
             let names: Vec<String> = missed.iter().map(|d| format!("{} {}", d.name, d.at.strftime("%H:%M"))).collect();

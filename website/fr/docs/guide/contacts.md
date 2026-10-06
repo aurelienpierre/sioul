@@ -1,5 +1,5 @@
 ---
-description: Les contacts dans Sioul – les noms d’abord, les détails repliés, Écrire et Appeler à côté de chaque adresse, et la carte de tout le monde, placée seulement si vous le permettez.
+description: Les contacts dans Sioul – les noms d’abord, les détails repliés, Écrire et Appeler à côté de chaque adresse, les catégories comme les groupes de Nextcloud, les doublons trouvés et fusionnés sur votre clic, et la carte de tout le monde, placée seulement si vous le permettez.
 ---
 
 # Les contacts et la carte {#contacts-and-the-map}
@@ -15,14 +15,17 @@ Les contacts, ce sont d’abord des noms. Les détails restent repliés jusqu’
 
 Des noms, avec une ligne sous chacun, et un champ de recherche en haut : quelques lettres d’un nom, d’une organisation, d’une adresse ou d’un numéro suffisent à les trouver.
 
+Quand vos fiches ont des catégories, un choix sous le champ de recherche montre les contacts d’une seule catégorie, ou **Toutes les catégories**.
+
 ## Un contact {#a-contact}
 
 Un contact s’ouvre à droite :
 
+- ses **catégories**, de petites étiquettes sous son nom : l’une d’elles montre la liste de cette catégorie ;
 - ses **Adresses électroniques**, chacune avec **Écrire** ;
 - ses **Numéros de téléphone**, chacun avec **Appeler** ;
 - replié sous **Plus** : adresses postales, organisation et fonction, anniversaire, notes, sites web ;
-- **Son courrier** : sûr, neutre ou bloqué, pour chaque adresse de la fiche (voir [le Porche](porch.md#letting-someone-in)) ;
+- **Son courrier** : quand il vous parvient, pour chaque adresse de la fiche (voir [le Porche](porch.md#letting-someone-in)). Ses catégories peuvent en décider, quand une liste d’expéditeurs en nomme une ; votre choix pour cette personne passe avant : sûr, neutre, restreint ou bloqué, ou de nouveau **Comme le disent ses catégories** ;
 - une petite carte avec une épingle à son adresse, une fois celle-ci placée (plus bas) ;
 - **Lié à cela** : le courrier échangé, les tâches, les événements, les notes, les projets.
 
@@ -33,6 +36,24 @@ Un contact s’ouvre à droite :
 **Pour en déplacer un** vers un autre carnet d’adresses, y compris d’un compte à l’autre, choisissez ce carnet sous **Carnet d’adresses**, sur sa fiche. Quand l’autre endroit ne garderait pas quelque chose (Google garde moins qu’un serveur ouvert), Sioul dit quoi, et demande avant de le déplacer.
 
 Quand vous écrivez un message, les adresses se complètent depuis vos contacts.
+
+## Les catégories {#categories}
+
+Les catégories sont les groupes que montre Nextcloud Contacts : « Famille », « Amis », « Voisins » ; une fiche peut en avoir plusieurs. Dans le formulaire, sous **Catégories**, × en retire une, et le champ qui les suit en ajoute une, choisie parmi celles qu’ont déjà vos fiches ou tapée. « amis » et « Amis » sont une seule catégorie, écrite comme vos fiches l’ont écrite d’abord.
+
+Elles sont enregistrées dans la fiche elle-même (le `CATEGORIES` du vCard) : Nextcloud, votre téléphone et les autres programmes les voient, et une fiche enregistrée dans Sioul garde celles qu’elle avait. Une liste d’expéditeurs peut nommer une catégorie ([Comptes ▸ Expéditeurs](accounts.md#senders), « Les catégories de vos contacts ») : leur courrier vous parvient alors comme le dit cette liste, sauf si vous avez choisi autre chose pour eux sur leur fiche. Rien ne va sur une liste tout seul, famille et amis compris.
+
+## Les doublons {#duplicates}
+
+**Doublons**, au-dessus de la liste, cherche deux choses, et ne change rien avant votre clic :
+
+- **Un numéro ou une adresse écrits deux fois sur une même fiche.** « 06 08 12 34 56 » et « +33 6 08 12 34 56 » sont un seul numéro : les espaces, les points et l’indicatif du pays n’y changent rien. Chaque fiche concernée est listée avec ce qui partirait, cochée ; **Retirer les doublons** garde un exemplaire de chaque, celui qui est écrit avec son pays, avec ce que les autres en disaient (mobile, travail).
+- **Deux fiches qui pourraient être une seule personne** : le même nom (dans n’importe quel ordre, sans tenir compte des majuscules ni des accents), le même numéro, ou la même adresse. Elles viennent une paire à la fois, côte à côte, avec ce qu’elles ont en commun. Choisissez le nom gardé, puis **Fusionner** : une fiche garde tout des deux (numéros, adresses, sites web, catégories, notes, et la photo, l’organisation et l’anniversaire du nom gardé quand elle en a), et l’autre est supprimée, ici et sur le serveur. **Pas la même personne** les garde à part et ne le redemande jamais ; **Plus tard** montre la paire suivante.
+
+**Fait récemment** liste ce qui a été nettoyé et fusionné, chacun avec **Annuler**, pendant trente jours : les fiches reviennent comme elles étaient, ici et sur le serveur. Les contacts gardés sur cet ordinateur seulement sont traités de la même façon.
+
+!!! note "Les numéros écrits sans leur pays"
+    « 06 08 12 34 56 » n’a pas de pays : Sioul le lit comme un numéro du pays choisi dans les réglages des contacts, par défaut celui de votre système (la France en français). Cela ne sert qu’à comparer les numéros : vos fiches les gardent tels qu’ils sont écrits.
 
 ## La carte {#the-map}
 
@@ -52,6 +73,7 @@ Le ⚙ en haut de la page :
 - **Carnets d’adresses** : renommés ici, et sur le serveur à la prochaine synchronisation. Un carnet vide peut être supprimé ; un carnet qui contient des contacts reste.
 - **Placer les contacts sur la carte** : activé ou désactivé.
 - **Tuiles de carte** : d’où viennent les images de la carte, en `https://…/{z}/{x}/{y}.png`. Vide : celles d’OpenStreetMap.
+- **Pays des numéros de téléphone écrits sans indicatif** : le pays auquel appartient « 06 08 12 34 56 », pour retrouver le même numéro écrit « +33 6 08 12 34 56 ». Par défaut, celui de votre système.
 
 ## Où vivent les contacts {#where-contacts-live}
 
@@ -61,4 +83,4 @@ Les contacts Google marchent de la même façon, en gardant moins : Sioul les 
 
 ## Pas encore là {#not-there-yet}
 
-Les groupes de contacts, les photos, ainsi que la recherche et la fusion des doublons sont prévus.
+Changer la photo d’un contact dans Sioul est prévu.
