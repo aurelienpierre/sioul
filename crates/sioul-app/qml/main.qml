@@ -40,8 +40,9 @@ SioulWindow {
     // A phone's screen is the window, whatever its size.
     minimumWidth: Qt.platform.os === "android" || window.phoneGrab ? 0 : 680
     minimumHeight: Qt.platform.os === "android" || window.phoneGrab ? 0 : 480
-    // A desktop's window opens maximized; a phone's is its screen; the pictures' keep their size.
-    visibility: Qt.platform.os === "android" ? Window.AutomaticVisibility : sioul.grabFolder() !== "" ? Window.Windowed : Window.Maximized
+    // Shown as Sioul starts; a desktop's then maximized (Component.onCompleted). A
+    // `visibility` set here instead left a phone's window unshown: a black screen.
+    visible: true
     title: "Sioul"
     theme: theme
 
@@ -641,9 +642,12 @@ SioulWindow {
         sioul.start()
         // The places beside the pages, made before the first frame.
         window.placesMade = window.placesMade || window.railShown
-        // The system tray, on a desktop; never while taking the documentation's pictures.
+        // A desktop's window maximized; a phone's is its screen; the pictures' keep their size.
         if (Qt.platform.os !== "android" && sioul.grabFolder() === "")
-            trayLoader.setSource(Qt.resolvedUrl("../qml-desktop/Tray.qml"), { window: window, sioul: sioul })
+            window.showMaximized()
+        // The system tray (qml-desktop/Tray.qml) waits: Plasma's tray menu is made of
+        // widgets, which an application without Qt Widgets cannot make (it aborted at
+        // start). Loaded again once Sioul runs as a widgets application.
         sioul.mark("Sioul started")
     }
 
