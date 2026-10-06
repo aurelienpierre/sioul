@@ -16,7 +16,9 @@
 //!    it (`DndReceiver`), where Android's modes of Sioul's are kept;
 //! 3. mail at its rhythm, the inbox only, handed to the new-mail
 //!    notifications (`mailnote`);
-//! 4. when to look next: two minutes while another device is in use, five
+//! 4. the calls' table (`calls::step`): made again when what it is made of
+//!    changed, and the notification's "Let every call through";
+//! 5. when to look next: two minutes while another device is in use, five
 //!    otherwise, fifteen while you sleep.
 //!
 //! On a computer nothing here runs: the window does all of it each minute.
@@ -222,10 +224,16 @@ fn step(reason: &str) -> serde_json::Value {
     let (asleep, paused) = crate::everywhere::rest_now();
     let asleep = asleep && !paused;
     let in_use = crate::devices::others_in_use();
-    let fetch_first = reason != "folder" && (in_use || !asleep);
+    // "Let every call through" pressed on the notification: carried into the switch
+    // and the calls' table first, and sent at once, the sync app not waited for.
+    let pressed = reason == "calls";
+    let calls = if pressed { Some(crate::calls::step(true)) } else { None };
+    let fetch_first = reason != "folder" && !pressed && (in_use || !asleep);
     if let Some(Err(e)) = crate::share::exchange_here(fetch_first) {
         eprintln!("sioul: steps: {e}");
     }
+    // The calls' table as your devices' news left it, and the notification's words for them.
+    let calls = calls.unwrap_or_else(|| crate::calls::step(false));
     // 2. Do-not-disturb: Sioul's own process asked when what it should ask changed.
     let (signature, line) = crate::everywhere::wanted();
     if let Ok(mut poked) = POKED.lock()
@@ -254,6 +262,7 @@ fn step(reason: &str) -> serde_json::Value {
         "line": line,
         "title": words["title"],
         "channel": words["channel"],
+        "calls": calls,
         "stop": false,
     })
 }

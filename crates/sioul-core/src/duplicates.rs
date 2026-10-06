@@ -7,7 +7,7 @@
 //! the cards as they were, to put them back.
 //!
 //! - **On one card**: numbers are compared by their international form
-//!   (`phones::key`: "06 08 12 34 56" is "+33 6 08 12 34 56"), e-mail
+//!   (`phones::key`: "04 65 71 12 34" is "+33 4 65 71 12 34"), e-mail
 //!   addresses case aside. Of the same value written twice, the line kept is
 //!   the one written internationally, else the one that says most of what it
 //!   is for; it takes what the others said ("mobile", "work", to use first),
@@ -756,22 +756,22 @@ mod tests {
 
     #[test]
     fn one_number_written_twice_on_a_card() {
-        let text = card(&["UID:a", "FN:Lou Exemple", "TEL;TYPE=CELL:06 08 12 34 56", "TEL:+33 6 08 12 34 56", "TEL;TYPE=HOME:04 72 00 00 00", "TEL;TYPE=WORK,PREF:0608123456", "X-OTHER:kept"]);
+        let text = card(&["UID:a", "FN:Lou Exemple", "TEL;TYPE=CELL:04 65 71 12 34", "TEL:+33 4 65 71 12 34", "TEL;TYPE=HOME:05 36 49 00 00", "TEL;TYPE=WORK,PREF:0465711234", "X-OTHER:kept"]);
         let (cleaned, removed) = clean(&text, france()).unwrap();
         // The international writing stays, with what the others said: mobile, work, first.
-        assert_eq!(without_rev(&cleaned), ["BEGIN:VCARD", "VERSION:3.0", "UID:a", "FN:Lou Exemple", "TEL;TYPE=CELL,WORK,PREF:+33 6 08 12 34 56", "TEL;TYPE=HOME:04 72 00 00 00", "X-OTHER:kept", "END:VCARD"]);
+        assert_eq!(without_rev(&cleaned), ["BEGIN:VCARD", "VERSION:3.0", "UID:a", "FN:Lou Exemple", "TEL;TYPE=CELL,WORK,PREF:+33 4 65 71 12 34", "TEL;TYPE=HOME:05 36 49 00 00", "X-OTHER:kept", "END:VCARD"]);
         assert!(cleaned.contains("\r\nREV:"), "{cleaned}");
         assert_eq!(
             removed,
             [
-                Removed { kind: "phone".into(), value: "06 08 12 34 56".into(), kept: "+33 6 08 12 34 56".into() },
-                Removed { kind: "phone".into(), value: "0608123456".into(), kept: "+33 6 08 12 34 56".into() }
+                Removed { kind: "phone".into(), value: "04 65 71 12 34".into(), kept: "+33 4 65 71 12 34".into() },
+                Removed { kind: "phone".into(), value: "0465711234".into(), kept: "+33 4 65 71 12 34".into() }
             ]
         );
         // Cleaned once, nothing is left twice.
         assert_eq!(clean(&cleaned, france()), None);
         // Without the region, the national and the international writings are not the same number.
-        let two = card(&["FN:A", "TEL:06 08 12 34 56", "TEL:+33 6 08 12 34 56"]);
+        let two = card(&["FN:A", "TEL:04 65 71 12 34", "TEL:+33 4 65 71 12 34"]);
         assert_eq!(clean(&two, None), None);
         assert_eq!(clean(&two, france()).map(|(_, r)| r.len()), Some(1));
     }
@@ -787,11 +787,11 @@ mod tests {
         assert!(lines.contains(&"item1.X-ABLabel:club".to_string()), "the label stays with a line: {lines:?}");
         assert_eq!(lines.iter().filter(|l| lines::name(l) == "EMAIL").count(), 2, "{lines:?}");
         // A grouped duplicate that goes takes its label with it when the kept line has a group of its own.
-        let grouped = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Lou\r\nitem1.TEL:+33 6 08 12 34 56\r\nitem1.X-ABLabel:atelier\r\nitem2.TEL:06 08 12 34 56\r\nitem2.X-ABLabel:vieux\r\nEND:VCARD\r\n";
+        let grouped = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Lou\r\nitem1.TEL:+33 4 65 71 12 34\r\nitem1.X-ABLabel:atelier\r\nitem2.TEL:04 65 71 12 34\r\nitem2.X-ABLabel:vieux\r\nEND:VCARD\r\n";
         let (cleaned, _) = clean(grouped, france()).unwrap();
-        assert_eq!(without_rev(&cleaned), ["BEGIN:VCARD", "VERSION:3.0", "FN:Lou", "item1.TEL:+33 6 08 12 34 56", "item1.X-ABLabel:atelier", "END:VCARD"]);
+        assert_eq!(without_rev(&cleaned), ["BEGIN:VCARD", "VERSION:3.0", "FN:Lou", "item1.TEL:+33 4 65 71 12 34", "item1.X-ABLabel:atelier", "END:VCARD"]);
         // Nothing twice: nothing to do.
-        assert_eq!(clean(&card(&["FN:A", "EMAIL:a@example.org", "TEL:+33 6 08 12 34 56"]), france()), None);
+        assert_eq!(clean(&card(&["FN:A", "EMAIL:a@example.org", "TEL:+33 4 65 71 12 34"]), france()), None);
     }
 
     #[test]
@@ -815,8 +815,8 @@ mod tests {
     #[test]
     fn pairs_by_number_address_and_name() {
         let people = [
-            contact_of(&card(&["UID:a", "FN:Jean Dupont", "TEL:06 08 12 34 56", "EMAIL:jean@example.org"]), "/tmp/a.vcf"),
-            contact_of(&card(&["UID:b", "FN:DUPONT Jean", "TEL:+33 6 08 12 34 56"]), "/tmp/b.vcf"),
+            contact_of(&card(&["UID:a", "FN:Jean Dupont", "TEL:04 65 71 12 34", "EMAIL:jean@example.org"]), "/tmp/a.vcf"),
+            contact_of(&card(&["UID:b", "FN:DUPONT Jean", "TEL:+33 4 65 71 12 34"]), "/tmp/b.vcf"),
             contact_of(&card(&["UID:c", "FN:J. D.", "EMAIL:JEAN@example.org"]), "/tmp/c.vcf"),
             contact_of(&card(&["UID:d", "FN:Marie Exemple", "TEL:3631"]), "/tmp/d.vcf"),
             contact_of(&card(&["UID:e", "FN:Paul Exemple", "TEL:36 31"]), "/tmp/e.vcf"),
@@ -825,7 +825,7 @@ mod tests {
         // The name and the number first, then the address; a short code shared says nothing.
         assert_eq!(found.len(), 2, "{found:?}");
         assert_eq!((found[0].first.as_str(), found[0].second.as_str(), found[0].same_name), ("/tmp/a.vcf", "/tmp/b.vcf", true));
-        assert_eq!(found[0].phones, ["06 08 12 34 56"]);
+        assert_eq!(found[0].phones, ["04 65 71 12 34"]);
         assert_eq!((found[1].first.as_str(), found[1].second.as_str(), found[1].emails.clone()), ("/tmp/a.vcf", "/tmp/c.vcf", vec!["jean@example.org".to_string()]));
         // "Not the same" is never asked again, whichever way round.
         let mut apart = NotTheSame::default();
@@ -838,7 +838,7 @@ mod tests {
         read_only[2].read_only = true;
         assert!(pairs(&read_only, france(), &apart).is_empty());
         // A switchboard five cards share says nothing.
-        let office: Vec<Contact> = (0..5).map(|n| contact_of(&card(&[&format!("UID:o{n}"), &format!("FN:Person {n}"), "TEL:+33 1 23 45 67 89"]), &format!("/tmp/o{n}.vcf"))).collect();
+        let office: Vec<Contact> = (0..5).map(|n| contact_of(&card(&[&format!("UID:o{n}"), &format!("FN:Person {n}"), "TEL:+33 1 99 00 67 89"]), &format!("/tmp/o{n}.vcf"))).collect();
         assert!(pairs(&office, france(), &NotTheSame::default()).is_empty());
     }
 
@@ -868,7 +868,7 @@ mod tests {
             "UID:lead",
             "FN:Jean Dupont",
             "N:Dupont;Jean;;;",
-            "TEL;TYPE=CELL:06 08 12 34 56",
+            "TEL;TYPE=CELL:04 65 71 12 34",
             "EMAIL:jean@example.org",
             "item1.URL:https://example.org/",
             "item1.X-ABLabel:site",
@@ -881,8 +881,8 @@ mod tests {
             "FN:J. Dupont",
             "ORG:Exemple SARL",
             "BDAY:1984-05-12",
-            "TEL;TYPE=WORK:+33 6 08 12 34 56",
-            "TEL:04 72 00 00 00",
+            "TEL;TYPE=WORK:+33 4 65 71 12 34",
+            "TEL:05 36 49 00 00",
             "EMAIL:JEAN@example.org",
             "EMAIL:jd@example.net",
             "item1.ADR:;;1 rue de l'Exemple;Lyon;;69000;France",
@@ -899,7 +899,7 @@ mod tests {
         // Its own name and lines stay.
         assert!(has("FN:Jean Dupont") && has("N:Dupont;Jean;;;") && has("UID:lead") && has("X-LEAD:kept") && has("item1.URL:https://example.org/") && has("item1.X-ABLabel:site"), "{lines:#?}");
         // One number, written internationally, with both kinds; the other number added.
-        assert!(has("TEL;TYPE=WORK,CELL:+33 6 08 12 34 56") && has("TEL:04 72 00 00 00"), "{lines:#?}");
+        assert!(has("TEL;TYPE=WORK,CELL:+33 4 65 71 12 34") && has("TEL:05 36 49 00 00"), "{lines:#?}");
         assert_eq!(lines.iter().filter(|l| lines::name(l) == "TEL").count(), 2, "{lines:#?}");
         // One address of each, the same one once.
         assert!(has("EMAIL:jean@example.org") && has("EMAIL:jd@example.net"), "{lines:#?}");
@@ -933,7 +933,7 @@ mod tests {
         let (books, dir) = (base.join("contacts/local/book"), base.join("undo"));
         std::fs::create_dir_all(&books).unwrap();
         let (a, b, c) = (books.join("a.vcf"), books.join("b.vcf"), books.join("c.vcf"));
-        let text_a = card(&["UID:a", "FN:Jean Dupont", "TEL:06 08 12 34 56", "TEL:+33 6 08 12 34 56"]);
+        let text_a = card(&["UID:a", "FN:Jean Dupont", "TEL:04 65 71 12 34", "TEL:+33 4 65 71 12 34"]);
         let text_b = card(&["UID:b", "FN:J. Dupont", "EMAIL:jean@example.org"]);
         let text_c = card(&["UID:c", "FN:Marie", "EMAIL:m@example.org", "EMAIL:M@example.org"]);
         for (path, text) in [(&a, &text_a), (&b, &text_b), (&c, &text_c)] {
@@ -944,7 +944,7 @@ mod tests {
         let cleaned = clean_files(&[a.clone(), c.clone()], france(), &dir, now).unwrap().unwrap();
         assert_eq!((cleaned.kind.as_str(), cleaned.names.clone(), cleaned.changes.len()), ("clean", vec!["Jean Dupont".to_string(), "Marie".to_string()], 2));
         assert_eq!(cleaned.changes[0].before.as_deref(), Some(text_a.as_str()));
-        assert!(!std::fs::read_to_string(&a).unwrap().contains("06 08 12 34 56"));
+        assert!(!std::fs::read_to_string(&a).unwrap().contains("04 65 71 12 34"));
         // Merging: the other card's file goes.
         let merged = merge_files(&a, &b, france(), &dir, now + 60).unwrap();
         assert!(!b.exists() && std::fs::read_to_string(&a).unwrap().contains("jean@example.org"));
@@ -956,7 +956,7 @@ mod tests {
         let (touched, aside) = undo(&dir, &listed[0].id, &base.join("contacts")).unwrap();
         assert_eq!((touched.len(), aside), (2, 1));
         assert_eq!(std::fs::read_to_string(&b).unwrap(), text_b);
-        assert!(std::fs::read_to_string(&a).unwrap().contains("TEL:+33 6 08 12 34 56") && !std::fs::read_to_string(&a).unwrap().contains("jean@"));
+        assert!(std::fs::read_to_string(&a).unwrap().contains("TEL:+33 4 65 71 12 34") && !std::fs::read_to_string(&a).unwrap().contains("jean@"));
         assert!(std::fs::read_to_string(dir.join(format!("{}.1.vcf", listed[0].id))).is_ok_and(|t| t.contains("changed since")) || std::fs::read_to_string(dir.join(format!("{}.0.vcf", listed[0].id))).is_ok_and(|t| t.contains("changed since")));
         // Then the cleaning: the cards as they were at first.
         undo(&dir, &listed[1].id, &base.join("contacts")).unwrap();

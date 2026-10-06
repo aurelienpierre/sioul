@@ -336,5 +336,52 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <!-- Calls screened (docs/android.md, "Calls"; CallScreen.java): Android
+             asks Sioul, as its "Caller ID & spam app" (Android 10 and later,
+             once you say yes), about each call, and Sioul answers from the
+             table it wrote ahead, in a process of its own that never loads
+             Qt: the call rings, or is refused and goes to your voicemail.
+             Bound by Android's phone service alone (its permission). -->
+        <service
+            android:name="com.aurelienpierre.sioul.CallScreen"
+            android:process=":calls"
+            android:permission="android.permission.BIND_SCREENING_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+        <!-- Android's question "Set Sioul as your caller ID & spam app?",
+             asked from Settings ▸ Calls (CallsSetup.java): never shown itself. -->
+        <activity
+            android:name="com.aurelienpierre.sioul.CallsSetup"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:exported="false" />
+        <!-- Other apps' notifications held until their time (docs/android.md,
+             "Notifications from other apps"; AppNotes.java): Android's
+             notification listener, bound by the system alone (its
+             permission) once you give Sioul "Notification access" in
+             Android's settings (this line alone gives nothing). In a process
+             of its own, with Sioul's library and without Qt: Qt's window ends
+             its process as it closes, which would unbind it, and the
+             background service's process may be off. Never sent ongoing
+             notifications (a call, music, a download): they are never held. -->
+        <service
+            android:name="com.aurelienpierre.sioul.AppNotes"
+            android:process=":listener"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.notification.default_filter_types"
+                android:value="conversations|alerting|silent" />
+            <meta-data
+                android:name="android.service.notification.disabled_filter_types"
+                android:value="ongoing" />
+        </service>
     </application>
 </manifest>

@@ -17,7 +17,7 @@ Le Porche est l’endroit où le nouveau courrier attend que vous regardiez : 
 - **En dehors de vos heures**, le Porche dit quand il ouvre la prochaine fois, et rien d’autre de votre courrier : aucun nombre, aucun nom. Vos prises du jour s’affichent quand même (plus bas). **L’ouvrir quand même** reste possible, discrètement. D’ici là, ce qui arrive est vérifié et trié.
 - **Sans aucune heure réglée**, le Porche est toujours ouvert.
 
-Quel courrier vient quand dépend de qui écrit, liste par liste, aux moments que vous cochez pour chaque liste, et de ce à quoi sert chaque adresse : travail, vos démarches, loisirs. Voir [Qui peut vous écrire](accounts.md#senders) et [Les heures](hours.md).
+Quel courrier vient quand dépend de qui écrit, aux moments que vous cochez pour chacun des cinq états (sûrs, neutres, restreints, inconnus ; les bloqués jamais), et de ce à quoi sert chaque adresse : travail, vos démarches, loisirs. Voir [Qui peut vous joindre](accounts.md#senders) et [Les heures](hours.md).
 
 Pendant tout ce temps, le courrier continue d’arriver en arrière-plan. Le Porche décide seulement quand il est montré, et quand il est dit ([plus bas](#new-mail-told-at-its-times)).
 
@@ -57,8 +57,8 @@ Chaque message va dans la première file qui le prend, dans cet ordre :
 | **Votre adresse publique** | Le courrier envoyé à une adresse que vous protégez, par des personnes que vous n’avez pas laissées entrer, lu d’abord et trié par sujet : le travail en premier. |
 | **Comptes moins importants** | Le courrier des adresses que vous avez classées sous les autres : réseaux sociaux, notifications que vous lisez de temps en temps. Repliée en bas. |
 | **Rangé : lettres d’information et notifications** | Listes de diffusion, lettres d’information et expéditeurs automatiques (no-reply…). Repliée. |
-| **Nouveaux expéditeurs, en attente de votre accord** | Une personne que vous ne connaissez pas encore. Vous la laissez entrer, ou non. |
-| **De personnes que vous connaissez** | Les personnes que vous avez laissées entrer. |
+| **Nouveaux expéditeurs, en attente de votre accord** | Un inconnu : dans aucun de vos carnets d’adresses, sur aucune liste. Vous le laissez entrer, ou non. |
+| **De personnes que vous connaissez** | Les personnes de vos carnets d’adresses, celles que vous avez laissées entrer, et celles qui sont sur une liste par leur propre adresse. |
 
 Le courrier que vous vous envoyez vous-même, d’une de vos adresses à une autre (un fichier envoyé depuis votre téléphone), vient avec les personnes que vous connaissez, à toute heure, sans jamais passer par le filtre d’accueil, quand il est vérifié : falsifier votre propre adresse est une ruse classique.
 
@@ -68,7 +68,7 @@ Sous le titre de chaque file, une ligne dit ce qu’elle contient. Son **?** (Co
 
 Un message en attente de votre accord a **Accepter cette adresse** : les messages suivants de cette personne vont dans « De personnes que vous connaissez ».
 
-Chaque message a aussi **Son courrier**, dans son menu (⋮). D’abord, une ligne dit ce qui décide pour cet expéditeur maintenant : « Sûr, comme le dit la catégorie Amis. » Puis les choix : **Comme le disent ses catégories** (son entrée propre retirée des listes : les catégories de sa fiche décident, sinon le domaine de son adresse), ou l’une des quatre listes, chacune avec ses moments : **Sûr**, **Neutre**, **Restreint**, **Bloqué** (mis de côté pour de bon, jamais montré). Les mêmes listes, avec des motifs comme `*@example.org`, et le moment où vient le courrier de chacune, sont dans [Comptes ▸ Expéditeurs](accounts.md#senders).
+Chaque message a aussi **Son courrier**, dans son menu (⋮). D’abord, une ligne dit ce qui décide pour cet expéditeur maintenant : « Sûr, comme le dit la catégorie Amis. » Puis les choix : **Comme le disent ses catégories** (son entrée propre retirée des listes : les catégories de sa fiche décident, sinon le domaine de son adresse), ou l’une des quatre listes, chacune avec les moments de son courrier : **Sûr**, **Neutre**, **Restreint**, **Bloqué** (mis de côté pour de bon, jamais montré). Un expéditeur qui n’est dans aucun de vos carnets d’adresses ni sur aucune liste est un inconnu, avec ses propres moments. Les mêmes listes, avec des motifs comme `*@example.org` et des numéros, et le moment où vient chacun, sont dans [Comptes ▸ Qui peut vous joindre](accounts.md#senders).
 
 Le courrier falsifié est jugé à part : un message falsifié est mis de côté quoi que disent les listes, même s’il prétend venir de quelqu’un que vous avez marqué sûr, et pesé comme celui d’un inconnu.
 
@@ -113,6 +113,7 @@ Quand il y a quelque chose, quelques lignes viennent avant les files :
 - **Deux événements en même temps aujourd’hui**, le temps d’y aller et d’en revenir compté, avec **Ouvrir « … »** pour chacun et **Ne plus en parler**. Voir [L’agenda](agenda.md#two-events-at-once).
 - **Les prises du jour pas encore marquées**, à partir de leur heure, qu’une notification vous les ait rappelées ou non : chacune avec son heure, son nom et **Pris** (plus d’une demi-heure en retard, **Pris…** demande quand vous l’avez prise). Quelles que soient vos heures : une prise n’est pas du courrier. Chacune reste jusqu’à ce que vous la marquiez, que la journée finisse ou que douze heures soient passées ; pendant votre sommeil, si les prises restent silencieuses, elles attendent votre réveil. Quand un autre appareil peut en savoir plus, le doute est dit sous la prise : vérifiez avant de la prendre. Voir [La santé](health.md#reminders).
 - **Les prises prévues pendant que Sioul était fermé**, ni marquées ni rappelées nulle part : **Pris…** (quand vous l’avez prise) ou **Pas pris**. Quand un autre appareil peut en savoir plus, le doute est dit sous la prise. Voir [La santé](health.md#reminders).
+- **Les appels refusés par Sioul**, sur un téléphone qui filtre les appels, chacun à un moment où son auteur peut vous joindre : « Pendant votre sommeil : un numéro absent de vos contacts a appelé à 09:30. », avec **Répondre par SMS**, **Rappeler**, **Écouter** quand Free a envoyé le message vocal par courriel. Voir [Les appels](calls.md#afterwards-on-the-porch).
 - **« Du nouveau sur &lt;site&gt; »** : ce que les sites que vous gardez dans Sioul ont notifié, et qui vous attend. Ouvrir le site efface ses nouvelles. Voir [Les sites](sites.md).
 - **Le courrier papier** que vous avez scanné, chaque lettre en carte : qui, quoi, combien, pour quand. Voir [Les papiers et les lettres](papers.md#paper-letters).
 - **Les paiements de la semaine**, en une ligne : « Cette semaine : Électricité 62 € (lun.). Le compte les tient. » Quand quelque chose demande un coup d’œil côté argent, la ligne le dit, sans nombre. Voir [Les budgets](budgets.md#the-bank-watch).

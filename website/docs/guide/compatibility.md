@@ -127,7 +127,7 @@ Sharing needs only a folder that a sync app keeps in step between your devices: 
 
 ### Where to get a Nextcloud {#where-to-get-a-nextcloud}
 
-Nextcloud is the sync backend Sioul is tested with, and the only one Sioul reads itself when a phone's sync app is late: over WebDAV, as a backup ([why](sharing.md#when-the-sync-app-is-late)). Any Nextcloud account does; the same account can also hold your calendars, tasks and contacts. Sioul's own files are small: a few megabytes, more if you share your notes and papers.
+Nextcloud is the sync backend Sioul is tested with, and the only one Sioul reaches itself, over WebDAV: as a backup when a phone's sync app is late, or with no sync app at all, Sioul keeping the folder in step itself ([why](sharing.md#when-the-sync-app-is-late)). Any Nextcloud account does; the same account can also hold your calendars, tasks and contacts. Sioul's own files are small: a few megabytes, more if you share your notes and papers.
 
 | Where | Free | Paid | Notes |
 |---|---|---|---|

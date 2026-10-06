@@ -122,6 +122,14 @@ fn main() {
         "qml/PauseSetup.qml",
         "qml/DndApplet.qml",
         "qml/DndSetup.qml",
+        "qml/AppNotesSetup.qml",
+        "qml/CallsSection.qml",
+        "qml/CallsApplet.qml",
+        "qml/CallsSetup.qml",
+        "qml/LineButton.qml",
+        "qml/StatusLine.qml",
+        "qml/TitleBar.qml",
+        "qml/WindowEdges.qml",
     ];
     let desktop_only = ["qml/SitesPage.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml"];
     // The system tray (qml-desktop/Tray.qml), on desktops only, in a folder of its own: the
@@ -139,11 +147,17 @@ fn main() {
         cpp.push("cpp/webengine.cpp");
         // SIGTERM and its kin end Sioul as its window's close does.
         cpp.push("cpp/signals.cpp");
+        // A widgets application, for the system tray's menu.
+        cpp.push("cpp/application.cpp");
     }
-    CxxQtBuilder::new_qml_module(QmlModule::new("com.aurelienpierre.sioul").depend("QtQuick").qml_files(pages))
+    let builder = CxxQtBuilder::new_qml_module(QmlModule::new("com.aurelienpierre.sioul").depend("QtQuick").qml_files(pages))
         .files(["src/backend.rs", "src/desktop.rs"])
         .cpp_files(cpp)
-        .qt_module("Quick")
+        .qt_module("Quick");
+    // Qt Widgets on computers only: Plasma's system tray makes its menu of widgets
+    // (cpp/application.cpp). A phone has no tray, and its build never carries them.
+    let builder = if android { builder } else { builder.qt_module("Widgets") };
+    builder
         // The Breeze icons Sioul uses, for systems without them (tools/bundle-icons.py).
         .qrc("icons/icons.qrc")
         // Sioul's own icon, for its windows (tools/make-icons.py).

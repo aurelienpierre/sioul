@@ -232,6 +232,8 @@ pub unsafe extern "C" fn sioul_event_coming(zone: *const c_char) -> *mut c_char 
         json
     })
     .unwrap_or_default();
+    // The calls' table too, at this daily look: its frames never run out while Sioul stays closed.
+    let _ = std::panic::catch_unwind(|| crate::calls::refresh(false));
     crate::alarms::handed(answer)
 }
 

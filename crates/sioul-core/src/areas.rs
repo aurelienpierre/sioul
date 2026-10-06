@@ -3,8 +3,10 @@
 
 //! What things are for, and which time is for what (docs/areas.md).
 //!
-//! Two axes. The senders' lists (safe, neutral, restricted, blocked:
-//! `porch.rs`) say who may reach you, and the matrix of `quiet::Reach` when.
+//! Two axes. Who someone is (a stranger, blocked, or safe, neutral,
+//! restricted: `reach::Who`, from the lists and your address books,
+//! `porch::Senders`) says who may reach you, and a matrix per channel
+//! (`reach::Reach`) when.
 //! Areas say what a source (an address, a site, a chat) or a task is for:
 //! work, your own admin, or leisure; and the time says what now is for. Five
 //! times: work and admin (the hours you set), meals and sleep (from Health),

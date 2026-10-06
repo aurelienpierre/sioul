@@ -393,7 +393,7 @@ fn entry_of(key: &str) -> &str {
     key.get(file_of(key).len() + 1..).unwrap_or("")
 }
 
-fn modified_ns(meta: &std::fs::Metadata) -> u64 {
+pub(crate) fn modified_ns(meta: &std::fs::Metadata) -> u64 {
     meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos() as u64)
 }
 
@@ -4830,7 +4830,7 @@ mod tests {
         })
         .unwrap();
         change_people(&people(&phone), |p| {
-            p.add(Person { name: "Alice".into(), phones: vec!["+33612345678".into()], ..Person::default() }, None);
+            p.add(Person { name: "Alice".into(), phones: vec!["+33639981234".into()], ..Person::default() }, None);
         })
         .unwrap();
         change_people(&people(&desk), |p| {

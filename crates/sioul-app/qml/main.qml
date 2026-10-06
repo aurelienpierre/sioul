@@ -4,18 +4,20 @@
 // Sioul's window: on the left, a narrow column of icons (RailButton.qml):
 // "New" for anything, the places where your things live, then, apart at the
 // bottom, the accounts, the settings and one button that refreshes
-// everything; their names beside them when Settings ▸ Display says so, else
-// said when the pointer rests on one; the whole column hidden by the button
-// at its foot or F9, on this device. One quiet status line at the bottom,
-// where "Undo" waits ten seconds after anything is moved, deleted or sent. No
+// everything; their names beside them when Settings ▸ Display says so or the
+// button at the title bar's left end (F9), else said when the pointer rests
+// on one. One quiet status line (StatusLine.qml), where "Undo" waits ten
+// seconds after anything is moved, deleted or sent: on a computer, it is the
+// window's own title bar, at the top, with the window's buttons where the
+// system puts them (TitleBar.qml); on a phone, it is at the bottom. No
 // badges, no counts in the title, no red; the system's dark mode is
 // followed. Everything works from the keyboard: Tab, Enter, Escape, Ctrl+1 to
 // Ctrl+9 and Ctrl+0 (the places by the list), Ctrl+N (new), Ctrl+Z, F5
-// (refresh), F9 (the places hidden or shown). Whatever links lead to (a task,
-// a message, a note, an event, a contact) opens where it lives. On a phone,
-// or in a window as narrow, the places are pulled over the pages from the
-// left (☰) with their names, the pages take the whole width, and Android's
-// Back puts the places away, then goes back to the Porch.
+// (refresh), F9 (the places' names or their icons only). Whatever links lead
+// to (a task, a message, a note, an event, a contact) opens where it lives.
+// On a phone, or in a window as narrow, the places are pulled over the pages
+// from the left (☰) with their names, the pages take the whole width, and
+// Android's Back puts the places away, then goes back to the Porch.
 
 pragma ComponentBehavior: Bound
 
@@ -43,8 +45,14 @@ SioulWindow {
     // Shown as Sioul starts; a desktop's then maximized (Component.onCompleted). A
     // `visibility` set here instead left a phone's window unshown: a black screen.
     visible: true
+    // The taskbar's name; no title bar shows it (TitleBar.qml).
     title: "Sioul"
     theme: theme
+    // On a computer, Sioul draws its own title bar (TitleBar.qml): the status
+    // line at the top, the window's buttons where the system puts them; the
+    // system draws none. A phone's screen has none, nor have a phone's pictures.
+    readonly property bool ownTitleBar: Qt.platform.os !== "android" && !window.phoneGrab
+    flags: window.ownTitleBar ? Qt.Window | Qt.FramelessWindowHint : Qt.Window
 
     // How the window was shown before it went to the tray: shown again so.
     property int shownAs: Window.Maximized
@@ -100,6 +108,23 @@ SioulWindow {
         window.visibility = Window.FullScreen
     }
 
+    // The title bar's double click and its button (TitleBar.qml): maximized,
+    // or back to its size; from full screen, back to how it was.
+    function toggleMaximized() {
+        if (window.visibility === Window.FullScreen)
+            window.toggleFullScreen()
+        else if (window.visibility === Window.Maximized)
+            window.showNormal()
+        else
+            window.showMaximized()
+    }
+
+    // The status line (StatusLine.qml): in the title bar on a computer, at the bottom on a phone.
+    readonly property var statusLine: window.ownTitleBar ? (titleBar.item ? (titleBar.item as TitleBar).statusLine : null) : bottomLine.item
+    // The button that shows the places' names or keeps their icons only: at the
+    // title bar's left end on a computer, else at the places' foot.
+    readonly property var namesButton: window.ownTitleBar ? (titleBar.item ? (titleBar.item as TitleBar).namesButton : null) : (places.shown ? places.shown.namesButton : null)
+
     // The writing windows open, one per draft.
     property var drafts: []
     // Month and day names in Sioul's language, not the system's.
@@ -118,8 +143,9 @@ SioulWindow {
         if (window.railShown)
             window.placesMade = true
     }
-    // Their names beside their icons, or their icons only: the button at their
-    // foot, F9, or Settings ▸ Display, one setting; wherever they are beside the pages.
+    // Their names beside their icons, or their icons only: the button at the
+    // title bar's left end (at their foot where the status line is at the
+    // bottom), F9, or Settings ▸ Display, one setting; wherever they are beside the pages.
     readonly property bool placesNamed: sioul.reading ? JSON.parse(sioul.reading).places_named === true : false
     // The places beside the pages: a window wide enough; never hidden.
     readonly property bool railShown: !window.compact
@@ -198,6 +224,7 @@ SioulWindow {
             window.drawn = true
             sioul.firstFrame()
             sitesWarm.start()
+            window.loadTray()
         }
     }
     // Sites kept open (their notifications) live in the Sites page: made a
@@ -427,21 +454,23 @@ SioulWindow {
     }
 
     // The places' names shown beside their icons, or their icons only (the
-    // button at their foot, F9; the setting of Settings ▸ Display). On a phone,
-    // or in a window as narrow, the drawer pulled out or put away instead. The
-    // keyboard's focus on the places stays on the button, with a ring when it
-    // came by the keyboard (`byKeys`).
+    // button at the title bar's left end, or at their foot where the status
+    // line is at the bottom; F9; the setting of Settings ▸ Display). On a
+    // phone, or in a window as narrow, the drawer pulled out or put away
+    // instead. The keyboard's focus on the places or on the button stays on
+    // the button, with a ring when it came by the keyboard (`byKeys`).
     function togglePlaces(byKeys) {
         if (window.compact) {
             window.placesOpen = !window.placesOpen
             return
         }
-        let inPlaces = false
+        const button = window.namesButton
+        let onThem = false
         for (let item = window.activeFocusItem; item !== null; item = item.parent)
-            inPlaces = inPlaces || item === places
+            onThem = onThem || item === places || (button !== null && item === button)
         sioul.setSetting("places_named", window.placesNamed ? "false" : "true")
-        if (inPlaces && places.shown !== null)
-            places.shown.namesButton.forceActiveFocus(byKeys ? Qt.TabFocusReason : Qt.MouseFocusReason)
+        if (onThem && button !== null)
+            button.forceActiveFocus(byKeys ? Qt.TabFocusReason : Qt.MouseFocusReason)
     }
 
     // The places' names and keys, at the right of the button under the pointer,
@@ -533,6 +562,12 @@ SioulWindow {
             window.page = 10
             if (window.healthPage)
                 window.healthPage.showNeeds()
+        }
+        // Who may reach you, at one channel's matrix (Accounts): "reach-mail", "reach-calls", "reach-messages".
+        else if (item.kind === "reach-mail" || item.kind === "reach-calls" || item.kind === "reach-messages") {
+            window.page = 11
+            if (window.accountsPage)
+                window.accountsPage.showReach(item.kind === "reach-mail" ? "reach" : item.kind.replace("reach-", "reach."))
         }
         else if (item.kind === "porch")
             window.page = 0
@@ -645,9 +680,6 @@ SioulWindow {
         // A desktop's window maximized; a phone's is its screen; the pictures' keep their size.
         if (Qt.platform.os !== "android" && sioul.grabFolder() === "")
             window.showMaximized()
-        // The system tray (qml-desktop/Tray.qml) waits: Plasma's tray menu is made of
-        // widgets, which an application without Qt Widgets cannot make (it aborted at
-        // start). Loaded again once Sioul runs as a widgets application.
         sioul.mark("Sioul started")
     }
 
@@ -656,10 +688,20 @@ SioulWindow {
         id: trayLoader
     }
 
+    // The system tray, on a computer, once the window shows (onFrameSwapped);
+    // never while taking the documentation's pictures. Plasma's tray menu is
+    // made of widgets: Sioul runs as a widgets application there (cpp/application.cpp).
+    function loadTray() {
+        if (Qt.platform.os !== "android" && sioul.grabFolder() === "" && trayLoader.status === Loader.Null)
+            trayLoader.setSource(Qt.resolvedUrl("../qml-desktop/Tray.qml"), { window: window, sioul: sioul })
+    }
+
     // Closed while the tray holds Sioul: the window hides there, and Sioul goes
     // on behind it (reminders, medicines, mail, the sharing); quitting is the
     // tray's menu or Ctrl+Q. Else, what waits for "Undo" is done before the
-    // window goes, not lost.
+    // window goes, not lost, and Sioul quits: on a computer, the other windows
+    // closing (a draft, the focus window, all of them while this one is in the
+    // tray) never quit it (cpp/application.cpp).
     onClosing: close => {
         if (window.trayHolds && !window.quitting) {
             close.accepted = false
@@ -673,6 +715,8 @@ SioulWindow {
             window.focusWindow.close()
         }
         sioul.flush()
+        if (Qt.platform.os !== "android")
+            Qt.quit()
     }
 
     // The window to write in (ComposeWindow.qml): read the first time a draft opens.
@@ -754,13 +798,10 @@ SioulWindow {
     }
 
     // Free time's menu, a right click or a long press on its button: back,
-    // the usual end kept, nothing at all; nothing opens when none applies.
+    // the usual end kept, nothing at all; nothing opens when none applies (StatusLine.qml).
     function freeMenu() {
-        if (window.moment.reason !== "free-time" && !window.pauses.can_keep)
-            return
-        modeMenu.active = true
-        const menu = modeMenu.item as SioulMenu
-        menu.popup()
+        if (window.statusLine)
+            window.statusLine.freeMenu()
     }
 
     // The pause's screen tried from its setup (PauseSetup.qml): nothing held.
@@ -805,7 +846,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "reach": grabber.reachSteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -845,6 +886,38 @@ SioulWindow {
                 () => grabber.save("unsubscribe-none"),
                 () => window.close()
             ]
+            // The status line (SIOUL_GRAB_STEPS=line; SIOUL_GRAB_PHONE for a phone's), on
+            // a demo profile after its working hours: the work day offered to close;
+            // then Undo beside it, with the pauses; Free time on; do-not-disturb on; a
+            // sentence too long for the line, said whole; on a computer, the title bar
+            // of a narrow window. It deletes a new empty draft, then takes it back.
+            readonly property var lineSteps: [
+                () => window.page = 1,
+                () => {},
+                () => grabber.save("line-offer"),
+                () => sioul.discard(sioul.compose("new", "", "")),
+                () => {},
+                () => grabber.save("line-undo"),
+                () => sioul.undo(),
+                () => window.setFreeTime(true),
+                () => {},
+                () => grabber.save("line-free"),
+                () => window.setFreeTime(false),
+                () => sioul.dndToggle(true, 0),
+                () => {},
+                () => grabber.save("line-dnd"),
+                () => sioul.dndToggle(false, 0),
+                () => sioul.status = sioul.text("tray-said"),
+                () => window.statusLine.sayWhole(),
+                () => grabber.saveWindow("line-whole"),
+                () => {
+                    if (!window.phoneGrab)
+                        window.width = 700
+                },
+                () => {},
+                () => grabber.save("line-narrow"),
+                () => window.close()
+            ]
             // The places (SIOUL_GRAB_STEPS=rail): the column of icons, a tip, the
             // keyboard's focus, the names asked for, hidden (New's menu then at the
             // page's corner), a short window scrolled. On a demo profile: it changes
@@ -867,7 +940,7 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("rail-named"),
-                // The button at its foot: the icons only again.
+                // The button at the title bar's left end: the icons only again.
                 () => window.togglePlaces(false),
                 () => {},
                 () => grabber.save("rail-icons"),
@@ -1785,6 +1858,37 @@ SioulWindow {
                 () => grabber.save("account-tabs-keys"),
                 () => window.close()
             ]
+            // Who may reach you (SIOUL_GRAB_STEPS=reach; SIOUL_GRAB_PHONE for a
+            // phone's): each channel's matrix, the lists under them, the people
+            // and the categories; a contact's list, a card with a number only and one
+            // whose address has a list of its own.
+            readonly property var reachSteps: [
+                () => window.page = 11,
+                () => accountsPage.showReach("reach"),
+                () => {},
+                () => grabber.save("reach-mail"),
+                () => accountsPage.showReach("reach.calls"),
+                () => {},
+                () => grabber.save("reach-calls"),
+                () => accountsPage.showReach("reach.messages"),
+                () => {},
+                () => grabber.save("reach-messages"),
+                () => accountsPage.scrollSenders(0.5),
+                () => {},
+                () => grabber.save("reach-lists"),
+                () => accountsPage.scrollSenders(1),
+                () => {},
+                () => grabber.save("reach-people"),
+                () => window.page = 5,
+                () => {},
+                () => contactsPage.open((contactsPage.shown.contacts.find(c => c.name.indexOf("Varga") >= 0) || contactsPage.shown.contacts[0]).key),
+                () => {},
+                () => grabber.save("reach-card-doctor"),
+                () => contactsPage.open((contactsPage.shown.contacts.find(c => c.name.indexOf("Maud") >= 0) || contactsPage.shown.contacts[0]).key),
+                () => {},
+                () => grabber.save("reach-card-mum"),
+                () => window.close()
+            ]
             // Settings in tabs; the Health page in its order; a site's menu by a right
             // click, and the devices of calls.
             readonly property var batch11: [
@@ -1906,8 +2010,8 @@ SioulWindow {
                 () => grabber.save("pauses-free"),
                 () => window.freeMenu(),
                 () => {},
-                () => grabber.savePopup(modeMenu.item, "pauses-free-menu"),
-                () => modeMenu.item.dismiss(),
+                () => grabber.savePopup(window.statusLine.modeMenu.item, "pauses-free-menu"),
+                () => window.statusLine.modeMenu.item.dismiss(),
                 () => window.setFreeTime(false),
                 () => {},
                 () => grabber.save("pauses-free-back"),
@@ -2068,6 +2172,29 @@ SioulWindow {
                 () => grabber.save("share-on"),
                 () => window.close()
             ]
+            // Settings ▸ Your folder and sharing before sharing, pictures only
+            // (SIOUL_GRAB_STEPS=share-panel, a phone's with SIOUL_GRAB_PHONE): how
+            // a device reaches the folder, then the form for a Nextcloud Sioul
+            // keeps in step itself (showing it asks nothing of the server).
+            readonly property var sharePanel: [
+                () => {
+                    window.page = 12
+                    parametersPage.section = "files"
+                },
+                () => {},
+                () => {},
+                () => grabber.save("share-panel"),
+                () => {
+                    if (parametersPage.share)
+                        parametersPage.share.byServer = true
+                },
+                () => {},
+                () => grabber.save("share-panel-server"),
+                () => parametersPage.scrollBy(0.25),
+                () => {},
+                () => grabber.save("share-panel-server-down"),
+                () => window.close()
+            ]
             // A second computer: the folder already sealed (one passphrase), then joined.
             readonly property var shareJoin: [
                 () => window.page = 12,
@@ -2157,9 +2284,9 @@ SioulWindow {
                 () => healthPage.closePopups(),
                 () => {},
                 () => {},
-                () => weatherApplet.openForecast(),
+                () => window.statusLine.weatherApplet.openForecast(),
                 () => {},
-                () => weatherApplet.grab(grabber.folder + "/weather.png"),
+                () => window.statusLine.weatherApplet.grab(grabber.folder + "/weather.png"),
                 () => grabber.save("weather-bar"),
                 () => window.close()
             ]
@@ -2773,13 +2900,15 @@ SioulWindow {
         anchors.fill: parent
         color: theme.background
 
+        // The places and the pages; on a computer, under the title bar.
         Item {
             anchors.fill: parent
+            anchors.topMargin: titleBar.height
 
             // The places: a narrow column of icons beside the pages, their names
-            // beside them or not by the button at its foot or F9 (Places.qml; the
-            // same setting as Settings ▸ Display); on a phone, or in a window as
-            // narrow, pulled over the pages from the left, with their names.
+            // beside them or not by the button at the title bar's left end or F9
+            // (Places.qml; the same setting as Settings ▸ Display); on a phone, or
+            // in a window as narrow, pulled over the pages from the left, with their names.
             Rectangle {
                 id: places
 
@@ -2950,8 +3079,10 @@ SioulWindow {
                     }
                 }
 
-                // One sentence about what happened last, and the keys.
+                // On a phone, the status line at the bottom (StatusLine.qml); a
+                // computer's is its title bar, at the top.
                 Rectangle {
+                    visible: !window.ownTitleBar
                     Layout.fillWidth: true
                     Layout.preferredHeight: 36
                     color: theme.surface
@@ -2962,280 +3093,38 @@ SioulWindow {
                         color: theme.line
                     }
 
-                    RowLayout {
+                    Loader {
+                        id: bottomLine
+
                         anchors.fill: parent
-                        anchors.leftMargin: theme.gap
-                        // The pauses' place at the end is kept; what does not fit is cut, never over it.
-                        anchors.rightMargin: pausesRow.width + 2 * theme.gap
-                        spacing: theme.gap
-                        clip: true
-
-                        Label {
-                            Layout.fillWidth: true
-                            Layout.minimumWidth: 40
-                            text: sioul.undoLine !== "" ? sioul.undoLine : sioul.status
-
-                            // When nothing else is said, what can be closed now (DayReview.qml):
-                            // whole or not at all, and out of the layout, which it never widens.
-                            Label {
-                                anchors.fill: parent
-                                visible: parent.text === "" && window.offer.line !== "" && parent.width >= implicitWidth
-                                text: window.offer.line
-                                textFormat: Text.PlainText
-                                verticalAlignment: Text.AlignVCenter
-                                color: theme.muted
-                            }
-                            // Server answers and file names: never read as rich text.
-                            textFormat: Text.PlainText
-                            color: sioul.undoLine !== "" ? theme.text : theme.muted
-                            elide: Text.ElideRight
-                            // Never over the line beside it, however little room is left.
-                            clip: true
-                        }
-                        // Quiet time, or work kept late: the line, and behind it the
-                        // way back, never suggested.
-                        Button {
-                            id: modeButton
-
-                            // On a phone, the end of the day offered takes its place (DayReview.qml).
-                            visible: window.moment.line !== "" && sioul.undoLine === "" && !(window.compact && window.offer.kind !== "")
-                            // Room shared with what just happened, when something did; narrower
-                            // when the row is full (the pauses' buttons stay whole at its end).
-                            Layout.fillWidth: true
-                            Layout.maximumWidth: Math.round(window.width * (sioul.status !== "" ? 0.3 : 0.55))
-                            Layout.preferredHeight: 28
-                            flat: true
-                            text: window.moment.line
-                            ToolTip.visible: hovered
-                            ToolTip.text: window.moment.line
-                            ToolTip.delay: 800
-                            onClicked: {
-                                // A meal or sleep offers no way back to work: they come first.
-                                if ((window.moment.time === "meals" || window.moment.time === "sleep") && window.moment.work_now !== true)
-                                    return
-                                modeMenu.active = true
-                                modeMenu.item.popup()
-                            }
-
-                            contentItem: Label {
-                                text: modeButton.text
-                                color: theme.muted
-                                elide: Text.ElideRight
-                            }
-
-                            // Made the first time it is opened.
-                            Loader {
-                                id: modeMenu
-
-                                active: false
-                                sourceComponent: SioulMenu {
-                                    // Free time (docs/pauses.md): back from it, the usual end kept, nothing at all.
-                                    MenuItem {
-                                        visible: window.moment.reason === "free-time"
-                                        height: visible ? implicitHeight : 0
-                                        text: sioul.text("free-time-back")
-                                        onTriggered: window.setFreeTime(false)
-                                    }
-                                    MenuItem {
-                                        visible: window.pauses.can_keep
-                                        height: visible ? implicitHeight : 0
-                                        text: sioul.textWith("free-menu-keep", "time", window.pauses.usual_end)
-                                        onTriggered: sioul.keepUsualEnd()
-                                    }
-                                    MenuItem {
-                                        id: nothingItem
-
-                                        visible: window.moment.reason === "free-time"
-                                        height: visible ? implicitHeight : 0
-                                        text: sioul.text("free-menu-nothing")
-                                        checkable: true
-                                        checked: window.pauses.nothing
-                                        onTriggered: {
-                                            sioul.setFreeNothing(!window.pauses.nothing)
-                                            nothingItem.checked = Qt.binding(() => window.pauses.nothing)
-                                        }
-                                    }
-                                    // The day closed today can be taken back, that day.
-                                    MenuItem {
-                                        visible: window.moment.reason === "done-for-the-day" && window.moment.today
-                                        height: visible ? implicitHeight : 0
-                                        text: sioul.text("mode-back-to-plan")
-                                        onTriggered: sioul.usualHours()
-                                    }
-                                    MenuItem {
-                                        visible: window.moment.reason === "working-late"
-                                        height: visible ? implicitHeight : 0
-                                        text: sioul.text("mode-usual-hours")
-                                        onTriggered: sioul.usualHours()
-                                    }
-                                    // Work shown whatever the hours, as on the Porch; not
-                                    // during a meal or sleep, which come first.
-                                    MenuItem {
-                                        id: workNowItem
-
-                                        visible: (window.moment.quiet && window.moment.time !== "meals" && window.moment.time !== "sleep" && window.moment.reason !== "free-time") || window.moment.work_now === true
-                                        height: visible ? implicitHeight : 0
-                                        text: sioul.text("mode-work-now")
-                                        checkable: true
-                                        checked: window.moment.work_now === true
-                                        onTriggered: {
-                                            sioul.setWorkNow(!(window.moment.work_now === true))
-                                            workNowItem.checked = Qt.binding(() => window.moment.work_now === true)
-                                        }
-                                    }
-                                    Repeater {
-                                        model: window.moment.quiet && window.moment.time !== "meals" && window.moment.time !== "sleep" && window.moment.reason !== "free-time" && !(window.moment.reason === "done-for-the-day" && window.moment.today) ? [30, 60, 120, 240] : []
-
-                                        delegate: MenuItem {
-                                            required property int modelData
-
-                                            text: sioul.text("mode-work-" + modelData)
-                                            onTriggered: sioul.workAWhile(modelData)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // A task just done: how it was, if you want to say; never asked again.
-                        Button {
-                            id: howButton
-
-                            visible: window.lastDone !== "" && sioul.undoLine === "" && sioul.status !== "" && sioul.status === window.lastDoneSaid
-                            Layout.preferredHeight: 28
-                            flat: true
-                            text: sioul.text("felt-ask")
-                            onClicked: window.howWasIt(window.lastDone)
-                        }
-                        // Back from free time, the end of work said once: one key keeps the usual end, no reason asked.
-                        Button {
-                            visible: window.freeSaid !== "" && sioul.undoLine === "" && sioul.status === window.freeSaid && window.pauses.can_keep
-                            Layout.preferredHeight: 28
-                            flat: true
-                            text: sioul.text("free-keep-end")
-                            onClicked: sioul.keepUsualEnd()
-                        }
-                        // The work day, or the day, can be closed (DayReview.qml): offered,
-                        // never pressed for you; nothing at work or while you sleep.
-                        Button {
-                            visible: window.offer.kind !== "" && sioul.undoLine === ""
-                            Layout.preferredHeight: 28
-                            flat: true
-                            text: window.offer.button
-                            ToolTip.visible: hovered
-                            ToolTip.text: window.offer.line
-                            ToolTip.delay: 800
-                            Accessible.description: window.offer.line
-                            onClicked: window.reviewDay(window.offer.kind)
-                        }
-                        // Ten seconds to change your mind.
-                        Button {
-                            visible: sioul.undoLine !== ""
-                            Layout.preferredHeight: 28
-                            text: sioul.text("ui-undo")
-                            icon.name: "edit-undo"
-                            icon.color: theme.text
-                            onClicked: sioul.undo()
-                        }
-                        // The keys, when nothing else needs the room.
-                        Label {
-                            visible: window.moment.line === "" && !window.compact && !howButton.visible
-                            text: sioul.text("ui-keys")
-                            color: theme.muted
-                            font.pixelSize: 12
-                        }
-                        // Do-not-disturb on every device (DndApplet.qml): its switch, apart
-                        // from the pauses' buttons at the line's end.
-                        DndApplet {
+                        active: !window.ownTitleBar
+                        sourceComponent: StatusLine {
+                            window: window
                             sioul: sioul
                             theme: theme
-                            moment: window.moment
-                            compact: window.compact
-                        }
-                        // Sounds to focus or to rest by, never on by themselves.
-                        SoundsApplet {
-                            sioul: sioul
-                            theme: theme
-                        }
-                        // The weather, in one colour, at the place you chose.
-                        WeatherApplet {
-                            id: weatherApplet
-
-                            sioul: sioul
-                            theme: theme
-                        }
-                    }
-                    // The two pauses (docs/pauses.md): a place of their own at the line's end,
-                    // the same every time, never pushed out by what the line holds.
-                    RowLayout {
-                        id: pausesRow
-
-                        anchors.right: parent.right
-                        anchors.rightMargin: theme.gap
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 4
-
-                        // Free time (docs/pauses.md): leisure whatever the hour, a switch
-                        // showing its state; its menu at a right click or a long press.
-                        ToolButton {
-                            id: freeButton
-
-                            readonly property bool on: window.moment.reason === "free-time"
-
-                            // Never squeezed by a long status line: always reachable.
-                            Layout.minimumWidth: implicitWidth
-                            Layout.preferredHeight: 28
-                            checkable: true
-                            checked: freeButton.on
-                            icon.name: "flower-shape"
-                            icon.color: freeButton.on ? theme.accent : theme.text
-                            text: sioul.text("free-time")
-                            display: window.compact ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                            Accessible.name: freeButton.on ? sioul.text("free-time-back") : sioul.text("free-time")
-                            ToolTip.visible: hovered
-                            ToolTip.text: freeButton.on ? sioul.text("free-time-back") : sioul.text("free-time-tip")
-                            ToolTip.delay: 600
-                            onClicked: {
-                                window.setFreeTime(!freeButton.on)
-                                freeButton.checked = Qt.binding(() => freeButton.on)
-                            }
-
-                            TapHandler {
-                                acceptedButtons: Qt.RightButton
-                                // A touch has no buttons: on a touch screen, the long press below.
-                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                                onTapped: window.freeMenu()
-                            }
-                            TapHandler {
-                                id: freeHold
-
-                                acceptedDevices: PointerDevice.TouchScreen
-                                onLongPressed: {
-                                    window.menuAt = freeHold.point.scenePosition
-                                    window.freeMenu()
-                                }
-                            }
-                        }
-                        // Pause (docs/pauses.md): apart from the rest, at the row's end, the
-                        // same place every time; it asks nothing.
-                        ToolButton {
-                            id: pauseButton
-
-                            Layout.leftMargin: window.compact ? 2 : theme.gap
-                            Layout.minimumWidth: implicitWidth
-                            Layout.preferredHeight: 28
-                            icon.name: "media-playback-pause"
-                            icon.color: theme.text
-                            text: sioul.text("pause-button")
-                            display: window.compact ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                            Accessible.name: sioul.text("pause-button")
-                            Accessible.description: sioul.text("pause-tip")
-                            ToolTip.visible: hovered
-                            ToolTip.text: sioul.text("pause-tip")
-                            ToolTip.delay: 600
-                            onClicked: sioul.pauseNow()
                         }
                     }
                 }
+            }
+        }
+
+        // On a computer, the window's own title bar (TitleBar.qml): the status
+        // line across the top, the window's buttons; after the pages, so that
+        // Tab reaches it after them, as it reached the status line at the bottom.
+        Loader {
+            id: titleBar
+
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: window.ownTitleBar ? 36 : 0
+            active: window.ownTitleBar
+            sourceComponent: TitleBar {
+                window: window
+                sioul: sioul
+                theme: theme
+                covered: pauseCover.active
+                placesWidth: places.width
             }
         }
 
@@ -3249,6 +3138,8 @@ SioulWindow {
             property bool returning: false
 
             anchors.fill: parent
+            // On a computer, under the title bar: the window's buttons, and the bar to move it.
+            anchors.topMargin: titleBar.height
             z: 10
             active: window.moment.reason === "paused" || pauseCover.trial || pauseCover.returning
             visible: active
@@ -3265,6 +3156,27 @@ SioulWindow {
                     }
                 }
             }
+        }
+
+        // On a computer, the window's edges resize it (WindowEdges.qml), and a
+        // line in the theme's colour shows them: the system draws no border
+        // around a window with its own title bar. Neither while maximized or
+        // full screen, nor in the documentation's pictures.
+        Loader {
+            anchors.fill: parent
+            z: 20
+            active: window.ownTitleBar && sioul.grabFolder() === "" && window.visibility === Window.Windowed
+            sourceComponent: WindowEdges {
+                window: window
+            }
+        }
+        Rectangle {
+            anchors.fill: parent
+            z: 20
+            visible: window.ownTitleBar && sioul.grabFolder() === "" && window.visibility === Window.Windowed
+            color: "transparent"
+            border.width: 1
+            border.color: theme.line
         }
     }
 }

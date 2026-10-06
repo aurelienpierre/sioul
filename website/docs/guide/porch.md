@@ -17,7 +17,7 @@ The Porch is where new mail waits until you look: from every address, checked (g
 - **Outside your hours**, the Porch says when it opens next, and nothing else of your mail: no counts, no names. Your doses of the day still show (below). **Open it anyway** stays possible, quietly. Meanwhile, what comes is checked and sorted.
 - **Without any hours set**, the Porch is always open.
 
-Which mail comes when follows who wrote, list by list, at the times you tick for each list, and what each address is for: work, your admin, leisure. See [Who may write to you](accounts.md#senders) and [Hours](hours.md).
+Which mail comes when follows who wrote, at the times you tick for each of the five states (safe, neutral, restricted, strangers; the blocked never), and what each address is for: work, your admin, leisure. See [Who may reach you](accounts.md#senders) and [Hours](hours.md).
 
 Mail keeps arriving in the background all the while. The Porch only decides when it is shown, and when it is told ([below](#new-mail-told-at-its-times)).
 
@@ -57,8 +57,8 @@ Each message goes to the first lane that takes it, in this order:
 | **Your public address** | Mail to an address you protect, from someone you have not let in, read first and sorted by topic: work first. |
 | **Less important accounts** | Mail of the addresses you ranked below the others: social networks, notifications you read now and then. Folded at the bottom. |
 | **Filed: newsletters and notifications** | Mailing lists, newsletters and automatic senders (no-reply…). Folded. |
-| **Someone new, in the screener** | A sender you do not know yet. You let them in, or not. |
-| **From people you know** | Senders you let in. |
+| **Someone new, in the screener** | A stranger: in none of your address books and on no list. You let them in, or not. |
+| **From people you know** | People in your address books, those you let in, and those on a list by their own address. |
 
 Mail you send yourself, from one of your addresses to another (a file sent from your phone), comes with the people you know, at any hour, never screened, when it is verified: a forged own address is a classic trick.
 
@@ -68,7 +68,7 @@ Under each lane's title, one line says what it holds. Its **?** (How mail lands 
 
 A message in the screener has **Let this address in**: their next messages go to "From people you know".
 
-Every message also has **Their mail**, in its menu (⋮). First, one line says what decides for this sender now: "Safe, as the category Friends says." Then the choices: **As their categories say** (their own entry taken out of the lists: the categories on their contact card decide, else their address's domain), or one of the four lists, each with its times: **Safe**, **Neutral**, **Restricted**, **Blocked** (set aside for good, never shown). The same lists, with patterns such as `*@example.org`, and when each list's mail comes, are in [Accounts ▸ Senders](accounts.md#senders).
+Every message also has **Their mail**, in its menu (⋮). First, one line says what decides for this sender now: "Safe, as the category Friends says." Then the choices: **As their categories say** (their own entry taken out of the lists: the categories on their contact card decide, else their address's domain), or one of the four lists, each with its mail's times: **Safe**, **Neutral**, **Restricted**, **Blocked** (set aside for good, never shown). A sender in none of your address books and on no list is a stranger, with times of their own. The same lists, with patterns such as `*@example.org` and numbers, and when each comes, are in [Accounts ▸ Who may reach you](accounts.md#senders).
 
 Forged mail is judged apart: a forged message is set aside whatever the lists say, even if it claims to come from someone you marked safe, and it is weighed as a stranger's.
 
@@ -113,6 +113,7 @@ When there is something, a few lines come before the lanes:
 - **Two events at once today**, the time to get there and back counted, with **Open "…"** for each and **Don't mention it again**. See [Agenda](agenda.md#two-events-at-once).
 - **Today's doses not marked yet**, from their time on, whether a notification reminded you or not: each with its time, its name and **Taken** (more than half an hour late, **Taken…** asks when you took it). Whatever your hours: a dose is not mail. Each stays until you mark it, the day ends or twelve hours have passed; while you sleep with doses kept silent, they wait for your waking. When another device may know more, the doubt is said under the dose: check before taking it. See [Health](health.md#reminders).
 - **Doses due while Sioul was closed**, neither marked nor reminded anywhere: **Taken…** (when you took it) or **Not taken**. When another device may know more, the doubt is said under the dose. See [Health](health.md#reminders).
+- **Calls Sioul declined**, on a phone that screens calls, each at a time its caller may reach you: "While you slept: a number not in your contacts called at 09:30.", with **Text back**, **Call back**, **Listen** when Free mailed the voicemail. See [Calls](calls.md#afterwards-on-the-porch).
 - **"*The site* has news"**: what the websites you keep in Sioul notified, waiting for you. Opening the site clears its news. See [Sites](sites.md).
 - **Paper letters** you scanned, each as a card: who, what, how much, by when. See [Papers and letters](papers.md#paper-letters).
 - **This week's payments**, in one line: "This week: Electricity €62 (Mon). The account holds them." When something about money needs a look, it says so, without a count. See [Budgets](budgets.md#the-bank-watch).

@@ -11,7 +11,8 @@
 // (WakeAlarms.java); the events' reminders and new mail's notification
 // (EventAlarms.java, MailNotes.java); the pauses' do-not-disturb (PauseMode.java); do-not-disturb
 // on every device and the phone kept in step in the background (StepService.java,
-// DndReceiver.java, DndContacts.java); and your
+// DndReceiver.java, DndContacts.java); other apps' notifications held until
+// their time (AppNotes.java, in a process of its own); and your
 // addresses offered in the share sheet (MailShortcuts.java), with what other
 // apps share to Sioul (ShareActivity.java).
 //
@@ -70,6 +71,10 @@ extern "C" char *sioul_event_coming(const char *zone);
 extern "C" char *sioul_steps_step(const char *reason);
 extern "C" void sioul_steps_in_service();
 extern "C" char *sioul_dnd_apply();
+// Other apps' notifications (crates/sioul-app/src/appnotes.rs): one decided,
+// and what is held worked out again; JSON, given back to sioul_string_free.
+extern "C" char *sioul_appnotes_decide(const char *json);
+extern "C" char *sioul_appnotes_review(const char *json);
 
 namespace {
 
@@ -131,6 +136,7 @@ jclass mailShortcuts = nullptr;
 jclass eventAlarms = nullptr;
 jclass mailNotes = nullptr;
 jclass stepService = nullptr;
+jclass appNotes = nullptr;
 
 // This thread's JNIEnv. A thread of Rust's is attached to Java the first time,
 // and let go when it ends.
@@ -368,6 +374,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *)
         mailNotes = appClass(env, "com/aurelienpierre/sioul/MailNotes");
     if (!stepService)
         stepService = appClass(env, "com/aurelienpierre/sioul/StepService");
+    if (!appNotes)
+        appNotes = appClass(env, "com/aurelienpierre/sioul/AppNotes");
     return JNI_VERSION_1_6;
 }
 
@@ -910,6 +918,41 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_StepService_n
 extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_DndReceiver_nativeApply(JNIEnv *env, jclass)
 {
     return answered(env, sioul_dnd_apply());
+}
+
+// Other apps' notifications (crates/sioul-app/src/appnotes.rs, AppNotes.java):
+// Rust's questions to AppNotes.call (the access and Android's pages for it, an
+// app's or a channel's notification settings, the contacts' permission),
+// answered in JSON and given back to sioul_android_dnd_free; null when Java
+// gave none. From the window's process, any thread.
+extern "C" char *sioul_android_appnotes(const char *verb, const char *json)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !verb || !json || !appNotes)
+        return nullptr;
+    const LocalFrame frame(env);
+    const jmethodID call = env->GetStaticMethodID(appNotes, "call", "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
+    if (threw(env) || !call)
+        return nullptr;
+    const auto answer = static_cast<jstring>(env->CallStaticObjectMethod(appNotes, call, context, javaText(env, verb), javaText(env, json)));
+    if (threw(env) || !answer)
+        return nullptr;
+    return strdup(utf8(env, answer).constData());
+}
+
+// AppNotes.java's side, in the listener's own process once DoseAlarms loaded
+// Sioul's library there: a notification decided, and what is held worked out
+// again, on the listener's thread (never Android's main thread). What a
+// notification says passes here in memory, to Rust, and nowhere else.
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_AppNotes_nativeDecide(JNIEnv *env, jclass, jstring json)
+{
+    return answered(env, sioul_appnotes_decide(utf8(env, json).constData()));
+}
+
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_AppNotes_nativeReview(JNIEnv *env, jclass, jstring json)
+{
+    return answered(env, sioul_appnotes_review(utf8(env, json).constData()));
 }
 
 int main(int, char *[])

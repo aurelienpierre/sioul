@@ -403,16 +403,21 @@ pub enum Follows {
     Silenced,
     /// It holds there, but its system could not be silenced: its own words.
     Cannot(String),
-    /// Not there yet: its sharing is behind, or it runs a Sioul that does not know it.
+    /// Its news has not come since do-not-disturb began: on its way, at the
+    /// sharing's pace (about a minute with a Nextcloud server).
     Behind,
+    /// It runs a Sioul that does not know do-not-disturb: no entry in the
+    /// devices' registry, no table: it cannot follow until it is updated.
+    Older,
 }
 
 /// Each other device that counts (heard from in the last `LIVE_DAYS` days, by
 /// the sharing: `heard`, its id and when, Unix seconds), and how it follows
 /// while do-not-disturb holds here, since `since` (milliseconds): a table
 /// written before that (by more than `MARGIN_MS`, for clocks that disagree)
-/// says what held there before, not now.
-pub fn others(switch: &Switch, here: &str, heard: &[(String, i64)], now: i64, since: i64) -> Vec<(String, Follows)> {
+/// says what held there before, not now. `registered` says whether a device
+/// has its entry in the devices' registry (a Sioul that knows do-not-disturb).
+pub fn others(switch: &Switch, here: &str, heard: &[(String, i64)], now: i64, since: i64, registered: &dyn Fn(&str) -> bool) -> Vec<(String, Follows)> {
     let live = |at: i64| now - at <= LIVE_DAYS * 86_400;
     let mut ids: Vec<String> = heard.iter().filter(|(id, at)| id != here && live(*at)).map(|(id, _)| id.clone()).collect();
     // A device whose table here is recent counts too, even if the sharing's notes lag.
@@ -425,6 +430,7 @@ pub fn others(switch: &Switch, here: &str, heard: &[(String, i64)], now: i64, si
                 Some(d) if d.why.is_empty() || d.at.saturating_add(MARGIN_MS) < since => Follows::Behind,
                 Some(d) if d.silenced => Follows::Silenced,
                 Some(d) => Follows::Cannot(d.line.clone()),
+                None if !registered(&id) => Follows::Older,
                 None => Follows::Behind,
             };
             (id, follows)
@@ -459,16 +465,24 @@ pub fn said(now_: &Now, here_silenced: bool, here_line: &str, others: &[(String,
     let with_until = |key: &str| if until.is_empty() { tr.text(key, None) } else { tr.text(&format!("{key}-until"), Some(&args)) };
     let following = others.iter().filter(|(_, f)| *f == Follows::Silenced).count();
     let everywhere = here_silenced && following == others.len();
+    // Every device not silenced yet is one whose news has not come: on its way,
+    // not left out. One that cannot be silenced, or an older Sioul, is said as such.
+    let not_following: Vec<&Follows> = others.iter().map(|(_, f)| f).filter(|f| **f != Follows::Silenced).collect();
+    let waiting = !not_following.is_empty() && not_following.iter().all(|f| **f == Follows::Behind);
     let line = if !here_silenced {
         if following > 0 { with_until("dnd-elsewhere") } else { with_until("dnd-own-only") }
-    } else if others.is_empty() || following == 0 {
+    } else if others.is_empty() {
         with_until("dnd-here-only")
     } else if everywhere {
         with_until("dnd-everywhere")
+    } else if waiting {
+        with_until("dnd-waiting")
+    } else if following == 0 {
+        with_until("dnd-here-only")
     } else {
         with_until("dnd-not-everywhere")
     };
-    // "Here: silenced.", "On your phone: not yet."
+    // "Here: silenced.", "On your phone: waiting for its news."
     let device = |key: &str, place: String, line: Option<&str>| {
         let mut args = crate::i18n::args();
         args.set("device", place);
@@ -490,6 +504,7 @@ pub fn said(now_: &Now, here_silenced: bool, here_line: &str, others: &[(String,
             Follows::Cannot(words) if !words.is_empty() => device("dnd-device-cannot", on(id), Some(words)),
             Follows::Cannot(_) => device("dnd-device-unsilenced", on(id), None),
             Follows::Behind => device("dnd-device-behind", on(id), None),
+            Follows::Older => device("dnd-device-older", on(id), None),
         });
     }
     let why_words = match why {
@@ -677,14 +692,20 @@ pub fn from_contact(contact: &crate::contacts::Contact) -> Person {
 
 /// People from the Safe list: each address, with its card's name and numbers
 /// when a card has it; everyone whose card is in a category on it
-/// ("category:Friends"). Patterns ("@example.org") name nobody: counted, left.
+/// ("category:Friends"); a card on it ("contact:<UID>"); a number on it
+/// ("tel:+33…"). Patterns ("@example.org", "*@example.org", "tel:+3319900*")
+/// name nobody: counted, left.
 pub fn from_safe(entries: &[String], contacts: &[crate::contacts::Contact]) -> (Vec<Person>, usize) {
     let (mut found, mut patterns) = (Vec::new(), 0);
     for entry in entries {
         let entry = entry.trim();
         if let Some(category) = crate::porch::category_of(entry) {
             found.extend(contacts.iter().filter(|c| crate::contacts::in_category(c, category)).map(from_contact));
-        } else if entry.starts_with('@') || !entry.contains('@') {
+        } else if let Some(uid) = crate::porch::card_of(entry) {
+            found.extend(contacts.iter().filter(|c| c.uid.trim() == uid).map(from_contact));
+        } else if let Some(number) = crate::porch::number_of(entry).filter(|n| !n.contains('*')) {
+            found.push(Person { phones: vec![number.to_string()], ..Person::default() });
+        } else if entry.starts_with('@') || !entry.contains('@') || entry.contains('*') {
             patterns += 1;
         } else {
             match crate::contacts::by_address(contacts, entry) {
@@ -841,10 +862,17 @@ mod tests {
         assert_eq!(s.details, vec!["Here: silenced.", "On your phone: silenced."]);
         let s = said(&held, true, "", &[], "", &name, &tr);
         assert_eq!(s.line, "Do not disturb, here only.");
+        // A device whose news has not come yet: on its way, never "here only".
         let behind = [("phone".to_string(), Follows::Behind), ("desk".to_string(), Follows::Silenced)];
         let s = said(&held, true, "", &behind, "", &name, &tr);
-        assert_eq!(s.line, "Do not disturb, not on every device.");
-        assert_eq!(s.details[1], "On your phone: not yet.");
+        assert_eq!(s.line, "Do not disturb here; your other devices' news is on its way.");
+        assert_eq!(s.details[1], "On your phone: waiting for its news.");
+        let s = said(&held, true, "", &[("phone".to_string(), Follows::Behind)], "15:00", &name, &tr);
+        assert_eq!(s.line, "Do not disturb here until 15:00; your other devices' news is on its way.");
+        // An older Sioul cannot follow: said as such, never waited for.
+        let s = said(&held, true, "", &[("phone".to_string(), Follows::Older)], "", &name, &tr);
+        assert_eq!(s.line, "Do not disturb, here only.");
+        assert_eq!(s.details[1], "On your phone: an older Sioul, which cannot follow until it is updated.");
         let cannot = [("phone".to_string(), Follows::Cannot("Your phone is not silenced: Sioul does not have Android's “Do Not Disturb access”.".into()))];
         let s = said(&held, true, "", &cannot, "", &name, &tr);
         assert_eq!(s.line, "Do not disturb, here only.");
@@ -871,13 +899,17 @@ mod tests {
         s.device.insert("old".into(), Device { why: "manual".into(), silenced: true, at: (now_s - 30 * 86_400) * 1000, ..Device::default() });
         s.device.insert("laptop".into(), Device { why: "manual".into(), silenced: false, line: "Windows".into(), at: now_s * 1000, ..Device::default() });
         let heard = vec![("phone".to_string(), now_s - 60), ("tablet".to_string(), now_s - 3600), ("gone".to_string(), now_s - 10 * 86_400), ("desk".to_string(), now_s)];
-        let followed = others(&s, "desk", &heard, now_s, (now_s - 60) * 1000);
+        let registered = |_: &str| true;
+        let followed = others(&s, "desk", &heard, now_s, (now_s - 60) * 1000, &registered);
         assert_eq!(followed, vec![("laptop".to_string(), Follows::Cannot("Windows".into())), ("phone".to_string(), Follows::Silenced), ("tablet".to_string(), Follows::Behind)]);
-        // Do-not-disturb begun later than their tables were written, a minute's margin aside: not yet.
-        let later = others(&s, "desk", &heard, now_s, (now_s + 120) * 1000);
+        // Do-not-disturb begun later than their tables were written, a minute's margin aside: their news is on its way.
+        let later = others(&s, "desk", &heard, now_s, (now_s + 120) * 1000, &registered);
         assert!(later.iter().all(|(_, f)| *f == Follows::Behind), "{later:?}");
-        let close = others(&s, "desk", &heard, now_s, (now_s + 30) * 1000);
+        let close = others(&s, "desk", &heard, now_s, (now_s + 30) * 1000, &registered);
         assert!(close.iter().any(|(_, f)| *f == Follows::Silenced), "{close:?}");
+        // A device with no table and no entry in the devices' registry runs an older Sioul: it cannot follow.
+        let older = others(&s, "desk", &heard, now_s, (now_s - 60) * 1000, &|id: &str| id != "tablet");
+        assert!(older.contains(&("tablet".to_string(), Follows::Older)), "{older:?}");
     }
 
     #[test]
@@ -908,20 +940,20 @@ mod tests {
     fn the_list_admits_its_people_by_address_and_number() {
         let fr = crate::phones::region_named("FR");
         let mut people = People::default();
-        let alice = people.add(Person { name: "Alice".into(), phones: vec!["06 12 34 56 78".into()], emails: vec!["Alice@Example.org".into()], ..Person::default() }, fr);
+        let alice = people.add(Person { name: "Alice".into(), phones: vec!["04 65 71 23 45".into()], emails: vec!["Alice@Example.org".into()], ..Person::default() }, fr);
         assert!(people.admits_address("alice@example.org"));
         assert!(people.admits_address("Alice Martin <ALICE@example.org>"));
         assert!(!people.admits_address("bob@example.org"));
         assert!(!people.admits_address(""));
-        assert!(people.admits_number("+33 6 12 34 56 78", fr));
-        assert!(people.admits_number("0612345678", fr));
-        assert!(!people.admits_number("0612345679", fr));
+        assert!(people.admits_number("+33 4 65 71 23 45", fr));
+        assert!(people.admits_number("0465712345", fr));
+        assert!(!people.admits_number("0465712346", fr));
         // A short code is nobody's.
         let mut short = People::default();
         short.add(Person { phones: vec!["3631".into()], ..Person::default() }, fr);
         assert!(!short.admits_number("3631", fr));
         // Added again with a new address: one person, merged.
-        let again = people.add(Person { name: "A.".into(), phones: vec!["+33612345678".into()], emails: vec!["alice@work.example".into()], ..Person::default() }, fr);
+        let again = people.add(Person { name: "A.".into(), phones: vec!["+33465712345".into()], emails: vec!["alice@work.example".into()], ..Person::default() }, fr);
         assert_eq!(again, alice);
         assert_eq!(people.people.len(), 1);
         assert_eq!(people.people[0].emails, vec!["Alice@Example.org", "alice@work.example"]);
@@ -941,7 +973,7 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("[[person]]") && text.contains("alice@example.org"), "{text}");
         // Another device's person, brought by the sharing between two edits here: kept.
-        std::fs::write(&path, format!("{text}\n[[person]]\nid = \"b\"\nname = \"Bob\"\nphones = [\"+33600000000\"]\n")).unwrap();
+        std::fs::write(&path, format!("{text}\n[[person]]\nid = \"b\"\nname = \"Bob\"\nphones = [\"+33536490002\"]\n")).unwrap();
         let people = change_people(&path, |p| {
             p.add(Person { name: "Carol".into(), emails: vec!["carol@example.org".into()], ..Person::default() }, None);
         })
@@ -966,14 +998,15 @@ mod tests {
             categories: if category.is_empty() { Vec::new() } else { vec![category.into()] },
             ..crate::contacts::Contact::default()
         };
-        let contacts = vec![card("Alice", "alice@example.org", "+33 6 12 34 56 78", ""), card("Bob", "bob@example.org", "+33 6 00 00 00 01", "Famille"), card("Eve", "eve@example.org", "", "")];
-        let safe = vec!["alice@example.org".to_string(), "category:famille".to_string(), "@example.com".to_string(), "dan@example.net".to_string()];
+        let contacts = vec![card("Alice", "alice@example.org", "+33 4 65 71 23 45", ""), card("Bob", "bob@example.org", "+33 1 99 00 00 01", "Famille"), card("Eve", "eve@example.org", "", "")];
+        let safe = ["alice@example.org", "category:famille", "@example.com", "*@example.net", "dan@example.net", "contact:uid-Eve", "tel:+33 3 53 01 00 07", "tel:+33899*"].map(String::from).to_vec();
         let (people, patterns) = from_safe(&safe, &contacts);
-        assert_eq!(patterns, 1);
-        assert_eq!(people.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["Alice", "Bob", ""]);
-        assert_eq!(people[0].phones, vec!["+33 6 12 34 56 78"]);
+        assert_eq!(patterns, 3, "a domain, a pattern, a prefix");
+        assert_eq!(people.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["Alice", "Bob", "", "Eve", ""]);
+        assert_eq!(people[0].phones, vec!["+33 4 65 71 23 45"]);
         assert_eq!(people[0].contact, "uid-Alice");
         assert_eq!(people[2].emails, vec!["dan@example.net"]);
+        assert_eq!((people[3].contact.as_str(), people[4].phones.clone()), ("uid-Eve", vec!["+33 3 53 01 00 07".to_string()]));
     }
 
     #[test]
@@ -996,8 +1029,8 @@ mod tests {
         for language in ["en", "fr"] {
             let tr = Translator::new(language);
             for key in [
-                "dnd-everywhere", "dnd-everywhere-until", "dnd-here-only", "dnd-here-only-until", "dnd-not-everywhere", "dnd-not-everywhere-until", "dnd-elsewhere", "dnd-elsewhere-until", "dnd-own-only", "dnd-own-only-until",
-                "dnd-device-silenced", "dnd-device-cannot", "dnd-device-unsilenced", "dnd-device-behind", "dnd-device-here", "dnd-device-on", "dnd-device-phone", "dnd-device-other",
+                "dnd-everywhere", "dnd-everywhere-until", "dnd-here-only", "dnd-here-only-until", "dnd-waiting", "dnd-waiting-until", "dnd-not-everywhere", "dnd-not-everywhere-until", "dnd-elsewhere", "dnd-elsewhere-until", "dnd-own-only", "dnd-own-only-until",
+                "dnd-device-silenced", "dnd-device-cannot", "dnd-device-unsilenced", "dnd-device-behind", "dnd-device-older", "dnd-device-here", "dnd-device-on", "dnd-device-phone", "dnd-device-other",
                 "dnd-why-manual", "dnd-why-manual-from", "dnd-why-focus", "dnd-why-sleep", "dnd-why-paused", "dnd-why-free-time",
             ] {
                 let mut args = crate::i18n::args();

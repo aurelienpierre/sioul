@@ -24,7 +24,7 @@ use sioul_core::links::{self, Kind, Loaded};
 use sioul_core::mailindex::{self, MailIndex, MailRef};
 use sioul_core::notes::{self, Note, NoteKind};
 use sioul_core::plan::{self, Plan};
-use sioul_core::porch::{self, KnownSenders, Lane, Standing, Triaged};
+use sioul_core::porch::{self, KnownSenders, Lane, Triaged};
 use sioul_core::state::PorchState;
 use sioul_core::taskview::{self, CardView, Context, Filter, Offices};
 use sioul_core::tasks::{Status, Task};
@@ -274,7 +274,7 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
     let mut found: Vec<(&String, &MailRef)> = index
         .iter()
         .filter(|(_, m)| m.date >= from && folder.as_ref().is_none_or(|f| m.path.starts_with(f)))
-        .filter(|(_, m)| senders.standing(&m.address) != Standing::Blocked)
+        .filter(|(_, m)| senders.who(&m.address) != sioul_core::reach::Who::Blocked)
         .filter(|(_, m)| shown_holds(m))
         .collect();
     found.sort_by_key(|(_, m)| std::cmp::Reverse(m.date));
@@ -364,7 +364,7 @@ pub(super) fn judged(s: &Session, path: &Path) -> Result<(Triaged, Option<CaseSt
     let gone = || s.tr.text("mail-message-gone", None);
     let card = maildir::read_one(path).ok_or_else(gone)?;
     let senders = porch::Senders::load(&s.config);
-    if senders.standing_of(&card) == Standing::Blocked {
+    if senders.who_of(&card) == sioul_core::reach::Who::Blocked {
         return Err(s.say("ui-blocked", &[("entry", card.from_address.clone().unwrap_or_default())]));
     }
     let sources: Vec<config::Source> = s

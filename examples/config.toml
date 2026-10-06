@@ -42,13 +42,21 @@ label = "Holidays"
 # [quiet]
 # personal = ["joy", "personal", "family", "friends", "leisure"]
 
-# Who may reach you when (docs/porch.md): for each list of senders, the times
-# its mail comes: "work", "admin", "leisure", "meals", "sleep". This is the
-# default; an empty list is never. Accounts ▸ Senders ticks them.
+# Who may reach you when (docs/porch.md): for each state, the times they come:
+# "work", "admin", "leisure", "meals", "sleep", "pause". Mail's rows here, calls'
+# and other apps' messages' below. These are the defaults; an empty list is
+# never; a messages row left out follows mail's. Accounts ▸ Who may reach you ticks them.
 # [reach]
-# safe = ["work", "admin", "leisure", "meals", "sleep"]
+# safe = ["work", "admin", "leisure", "meals", "sleep", "pause"]
 # neutral = ["work", "admin"]
 # restricted = ["work"]
+# stranger = ["work", "admin"]
+# [reach.calls]
+# safe = ["work", "admin", "leisure", "meals"]
+# neutral = ["work", "admin"]
+# restricted = ["work"]
+# stranger = []
+# hidden = ["work", "admin"]
 
 # While you sleep (Health: the night, naps), nothing notifies but doses; false:
 # doses too wait for waking (Settings ▸ Reminders and notifications).

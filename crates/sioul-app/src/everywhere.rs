@@ -201,6 +201,9 @@ fn apply_once() {
     crate::homecard::dnd_seen(moment());
     // On a phone, Android's alarm comes back at the next end, Sioul closed or not.
     crate::steps::next(look.next_change());
+    // The calls' table follows the pauses, the times and the switch at once (`calls::refresh`:
+    // written again only when what it is made of changed, or every ten minutes).
+    crate::calls::refresh(false);
 }
 
 /// What this device asks of its system now, in a few words, and the status
@@ -327,7 +330,8 @@ fn moment_of(look: &Look) -> serde_json::Value {
     let (silenced, line) = own.filter(|d| !d.why.is_empty()).map_or((false, String::new()), |d| (d.silenced, d.line.clone()));
     // Since the reason said first began: a device's table older than that says what held before.
     let since = state.holds.first().map_or(0, |h| h.since.saturating_mul(1000));
-    let others = rules::others(&look.switch, &here, &heard(&here), stamp, since);
+    // A device with its entry in the devices' registry knows do-not-disturb; one without runs an older Sioul.
+    let others = rules::others(&look.switch, &here, &heard(&here), stamp, since, &|id| crate::devices::kind_and_name(id).is_some());
     let until = state.until();
     let until_words = until.map(|u| when(u, now)).unwrap_or_default();
     let said = rules::said(state, silenced, &line, &others, &until_words, &|id| name_of(&look.switch, id), tr());
@@ -469,9 +473,17 @@ fn change_here(verb: &str, json: &str) -> String {
     let text = |key: &str| asked[key].as_str().unwrap_or_default().trim().to_string();
     let lines = |key: &str| asked[key].as_str().unwrap_or_default().lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect::<Vec<_>>();
     let said = match verb {
-        // Everyone on the Safe list: their cards' names and numbers.
+        // Everyone on the Safe list: their cards' names and numbers; the
+        // categories, cards and numbers on it too, as its lines write them.
         "add-safe" => {
-            let entries = sioul_core::porch::SenderList::load(&config.safe_senders_path()).entries();
+            let list = sioul_core::porch::SenderList::load(&config.safe_senders_path());
+            let entries: Vec<String> = list
+                .entries()
+                .into_iter()
+                .chain(list.categories().iter().map(|c| format!("{}{c}", sioul_core::porch::CATEGORY)))
+                .chain(list.cards().iter().map(|c| format!("{}{c}", sioul_core::porch::CONTACT)))
+                .chain(list.numbers().iter().map(|n| format!("{}{n}", sioul_core::porch::TEL)))
+                .collect();
             let (found, patterns) = rules::from_safe(&entries, &sioul_core::contacts::all());
             let mut added = 0;
             match rules::change_people(&path, |people| {
@@ -599,7 +611,7 @@ mod tests {
     #[test]
     fn the_phone_says_who_on_the_list_is_not_starred_there() {
         let mut people = People::default();
-        for (name, phone) in [("Alice", "+33600000001"), ("Bob", "+33600000002"), ("Carol", "+33600000003"), ("Dan", "")] {
+        for (name, phone) in [("Alice", "+33639980001"), ("Bob", "+33639980002"), ("Carol", "+33639980003"), ("Dan", "")] {
             people.add(Person { name: name.into(), phones: if phone.is_empty() { Vec::new() } else { vec![phone.into()] }, emails: vec![format!("{name}@example.org")], ..Person::default() }, None);
         }
         let id = |name: &str| people.people.iter().find(|p| p.name == name).unwrap().id.clone();

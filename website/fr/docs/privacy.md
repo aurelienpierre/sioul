@@ -94,6 +94,10 @@ Sioul lit et garde votre courrier, vos agendas, contacts, tâches, notes, budget
 - **Les sites que vous épinglez**, comme dans tout navigateur : chacun reçoit aussi une demande pour sa propre icône.
 - **Les signatures antivirus**, une fois par jour, seulement quand votre système n’en tient aucune à jour lui-même.
 
+Sur un téléphone, si vous donnez à Sioul l’accès aux notifications d’Android, il lit les notifications des applications que vous le laissez voir, sur le téléphone, pour les retenir jusqu’à leur heure ; il ne garde aucun de leurs mots et n’en envoie rien nulle part, vos autres appareils compris ([Paramètres](guide/settings.md#other-apps)).
+
+Sur un téléphone, si vous faites de Sioul l’appli numéro de l’appelant et spam d’Android, Android lui montre le numéro de chaque appel avant que le téléphone sonne ; Sioul décide là, sur le téléphone, y garde la liste des appels qu’il a refusés, et n’envoie aucun numéro nulle part : aucun serveur, aucune recherche, vos autres appareils compris. Il ne décroche jamais, n’enregistre jamais un appel et n’écoute jamais ([Les appels](guide/calls.md)).
+
 La liste complète, avec le moment où chaque chose se produit : [Vie privée et sécurité](guide/privacy-security.md#what-leaves-your-computer-and-when).
 
 Sioul n’a ni mesure d’audience, ni publicité, ni pistage, ni rapports de plantage.

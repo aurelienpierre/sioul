@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// One button of the places (Places.qml; in main.qml's status line, the one
-// that shows them again): its icon, and its name beside it where names are
-// shown (a phone's drawer; Settings ▸ Display ▸ "Show the places' names
-// beside their icons"). Its name and its key are said when the pointer rests
-// on it, when the keyboard reaches it, at a long press on a touch screen
-// (which then opens nothing), and to screen readers. The place shown is marked
-// quietly: a soft tint of the accent, its icon in the accent, a short bar on
-// its left; the keyboard's focus by a ring. Light, as it is made with the
-// window: an icon read on a thread, one line of text, empty unless names are
-// shown; the places' tip is one for the whole window (main.qml's sayRailTip).
+// One button of the places (Places.qml; at the title bar's left end,
+// TitleBar.qml, the one that shows their names): its icon, and its name
+// beside it where names are shown (a phone's drawer; Settings ▸ Display ▸
+// "Show the places' names beside their icons"). Its name and its key are
+// said when the pointer rests on it, when the keyboard reaches it, at a long
+// press on a touch screen (which then opens nothing), and to screen readers.
+// The place shown is marked quietly: a soft tint of the accent, its icon in
+// the accent, a short bar on its left; the keyboard's focus by a ring. Light,
+// as it is made with the window: an icon read on a thread, one line of text,
+// empty unless names are shown; the places' tip is one for the whole window
+// (main.qml's sayRailTip).
 
 import QtQuick
 import QtQuick.Controls.Basic

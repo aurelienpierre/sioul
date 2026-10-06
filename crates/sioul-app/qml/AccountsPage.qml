@@ -45,6 +45,9 @@ Item {
     }
     // Read when their tab is first made.
     property var senders: []
+    // The channel whose matrix the tab of who may reach you shows: its
+    // setting's key, "reach" (mail), "reach.calls" or "reach.messages".
+    property string reachShown: "reach"
 
     // For the window's images: your accounts in view, or another tab.
     function openFirstSettings() {
@@ -53,6 +56,20 @@ Item {
 
     function showTab(index) {
         tabs.currentIndex = index
+    }
+
+    // Who may reach you, at one channel's matrix ("reach", "reach.calls",
+    // "reach.messages"): from another page (main.qml, openThing).
+    function showReach(key) {
+        tabs.currentIndex = 2
+        page.reachShown = key || "reach"
+    }
+
+    // For the window's images: the tab of who may reach you scrolled, 0 its top, 1 its end.
+    function scrollSenders(to) {
+        const view = sendersLoader.item
+        if (view)
+            view.contentItem.contentY = to * Math.max(0, view.contentItem.contentHeight - view.height)
     }
 
     // The Google panel, its steps unfolded (for captures).
@@ -982,9 +999,11 @@ Item {
                 }
             }
 
-            // Who may write to you, and when.
+            // Who may reach you, and when.
             // Made the first time it is shown: its rows cost seconds on a phone.
             Loader {
+                id: sendersLoader
+
                 active: tabs.made[2] === true
                 sourceComponent: Component {
                     ScrollView {
@@ -1004,8 +1023,35 @@ Item {
                                 wrapMode: Text.Wrap
                                 color: page.theme.muted
                             }
-                            // When each list's mail comes, the four lists, then your
-                            // contacts' categories under their own heading.
+                            // The channel whose matrix is shown: mail, calls,
+                            // messages from other apps (one matrix setting each).
+                            Flow {
+                                Layout.fillWidth: true
+                                Layout.topMargin: 6
+                                spacing: 6
+
+                                Repeater {
+                                    model: page.senders.filter(s => s.kind === "matrix")
+
+                                    delegate: Button {
+                                        id: channel
+
+                                        required property var modelData
+
+                                        text: channel.modelData.label
+                                        checkable: true
+                                        checked: page.reachShown === channel.modelData.key
+                                        flat: !checked
+                                        onClicked: {
+                                            page.reachShown = channel.modelData.key
+                                            // A click on the one shown would untick it: it stays shown.
+                                            channel.checked = Qt.binding(() => page.reachShown === channel.modelData.key)
+                                        }
+                                    }
+                                }
+                            }
+                            // The chosen channel's matrix, the four lists, then the
+                            // people and your contacts' categories under their headings.
                             Repeater {
                                 model: page.senders
 
@@ -1016,6 +1062,7 @@ Item {
                                     required property int index
                                     readonly property bool newGroup: senderRow.modelData.group !== "" && (senderRow.index === 0 || page.senders[senderRow.index - 1].group !== senderRow.modelData.group)
 
+                                    visible: senderRow.modelData.kind !== "matrix" || senderRow.modelData.key === page.reachShown
                                     Layout.fillWidth: true
                                     Layout.topMargin: senderRow.newGroup ? 18 : 8
                                     spacing: 3

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Sounds, in the status line: noise for focus (white, pink, brown), nature to
-// rest by (waves, rain, wind in the trees, crickets, a distant storm), all
-// made here, and your own recordings (the notes' `sounds` folder).
-// One at a time, looping, fading in and out; never on by itself.
+// Sounds, in the status line, a button of the line (LineButton.qml): noise
+// for focus (white, pink, brown), nature to rest by (waves, rain, wind in the
+// trees, crickets, a distant storm), all made here, and your own recordings
+// (the notes' `sounds` folder). One at a time, looping, fading in and out;
+// never on by itself.
 
 pragma ComponentBehavior: Bound
 
@@ -12,11 +13,12 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-ToolButton {
+LineButton {
     id: applet
 
     required property var sioul
-    required property var theme
+    // Its pop-up under it, the line at the window's top (a computer's title bar); else above it.
+    property bool below: false
     property string playing: ""
     property string playingTitle: ""
     property var calm: []
@@ -42,16 +44,15 @@ ToolButton {
         stopping.start()
     }
 
-    implicitHeight: 28
     icon.name: applet.playing !== "" ? "audio-volume-medium" : "audio-volume-low"
-    icon.color: applet.theme.muted
-    display: applet.playing !== "" ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+    // What plays, beside its icon, where there is room.
+    display: applet.playing !== "" && !applet.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
     text: applet.playingTitle
-    Accessible.name: applet.sioul.text("sounds-title")
-    ToolTip.visible: hovered && !(popupLoader.item !== null && popupLoader.item.opened)
-    ToolTip.text: applet.sioul.text("sounds-title")
-    ToolTip.delay: 600
-    onClicked: {
+    name: applet.sioul.text("sounds-title")
+    // What plays, said in its tip: its icon alone on a narrow line.
+    tip: applet.playing !== "" ? applet.name + "\n" + applet.playingTitle : applet.name
+    menuOpen: popupLoader.item !== null && (popupLoader.item as Popup).opened
+    onChosen: {
         applet.calm = JSON.parse(applet.sioul.calmSounds() || "[]")
         popupLoader.active = true
         popupLoader.item.open()
@@ -66,7 +67,7 @@ ToolButton {
             size: 16
         }
         Label {
-            visible: applet.text !== ""
+            visible: applet.display === AbstractButton.TextBesideIcon && applet.text !== ""
             Layout.maximumWidth: 140
             text: applet.text
             textFormat: Text.PlainText
@@ -104,7 +105,7 @@ ToolButton {
         sourceComponent: Popup {
             id: popup
 
-            y: -height - 6
+            y: applet.below ? applet.height + 6 : -height - 6
             x: Math.min(0, applet.parent ? applet.parent.width - applet.x - width : 0)
             width: 300
             padding: 12

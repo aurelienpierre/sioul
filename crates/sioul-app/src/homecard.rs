@@ -31,7 +31,8 @@ use sioul_core::i18n::{self, Translator};
 use sioul_core::links::Loaded;
 use sioul_core::plan::Plan;
 use sioul_core::porch::{self, Lane, Senders, Triaged};
-use sioul_core::quiet::{self, Blocks, Mode, Overrides, Reach, Reason};
+use sioul_core::quiet::{self, Blocks, Mode, Overrides, Reason};
+use sioul_core::reach::Reach;
 use sioul_core::taskview::{self, Filter};
 use sioul_core::today::{Today, Weather};
 use sioul_core::trust::Trust;
@@ -370,7 +371,7 @@ fn porch_at(m: &Moment, input: &PorchInput, mode: &Mode, at: &Zoned) -> PorchLin
         let until = until.to_zoned(at.time_zone().clone());
         return PorchLines::said(said(m.tr, "home-card-porch-rests", &[("when", when(m.tr, &until, at))]));
     }
-    let reach = pause::reach_now(Reach::of(&m.config.reach), mode, pause::nothing_now(m.overrides, &m.config.free_time));
+    let reach = pause::reach_now(Reach::of(&m.config.reach).mail, mode, pause::nothing_now(m.overrides, &m.config.free_time));
     let area_of = |t: &Triaged| t.card.account.as_deref().and_then(|id| m.config.account(id)).and_then(|a| a.area.as_deref()).and_then(Area::parse).unwrap_or(Area::WORK);
     let mail: Vec<Triaged> = input.items.iter().filter(|t| mode.time == Time::Any || quiet::mail_in_view(t, &input.senders, &reach, area_of(t), mode.time, mode.week)).cloned().collect();
     let shown = view::porch(&mail, m.config, input.store.as_ref(), m.tr, at, mode.quiet);

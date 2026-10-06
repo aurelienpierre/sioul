@@ -247,6 +247,15 @@ Item {
                     lineHeight: 1.3
                     color: page.theme.text
                 }
+                // On a phone: other apps' notifications held until their time, and those back (docs/android.md).
+                Label {
+                    visible: page.view.open && (page.view.apps_line || "") !== ""
+                    Layout.fillWidth: true
+                    text: page.view.apps_line || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: page.theme.muted
+                }
 
                 // The hours not set yet: work, your admin (docs/areas.md); every
                 // other time is leisure. Asked here until they are, or until you
@@ -584,6 +593,15 @@ Item {
                             }
                         }
                     }
+                }
+
+                // The calls Sioul declined on this phone, each at a time its caller may
+                // reach you, whatever the Porch's own hours (CallsSection.qml, docs/porch.md).
+                CallsSection {
+                    Layout.fillWidth: true
+                    sioul: page.sioul
+                    theme: page.theme
+                    window: page.window
                 }
 
                 // Money, in the window: the week's payments, and whether the account holds them.

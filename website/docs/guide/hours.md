@@ -6,10 +6,10 @@ description: Hours in Sioul - working hours and hours for your own admin, set in
 
 Two questions decide what Sioul brings forward, and they are kept apart:
 
-- **Who may reach you, and when**: the people you put on a list (safe, neutral, restricted, blocked) and the times each list's mail comes ([Accounts ▸ Senders](accounts.md#senders)).
+- **Who may reach you, and when**: five states, strangers, the blocked (never), and for the people in your address books safe, neutral or restricted; and for mail, calls and other apps' messages, the times each comes ([Accounts ▸ Who may reach you](accounts.md#senders)).
 - **What a thing is for, and whether now is for it**: this page.
 
-They meet in one place, mail: your safe senders' mail comes at the times ticked for them, to any of your addresses; the others' mail at the times ticked for their list, to an address for what now is for. Mail you send yourself, and the codes and links you just asked a site for, always come at once.
+They meet in one place, mail: your safe senders' mail comes at the times ticked for them, to any of your addresses; the others' mail (neutral, restricted, strangers) at the times ticked for their row, to an address for what now is for. Calls and other apps' messages follow their own grid alone. Mail you send yourself, and the codes and links you just asked a site for, always come at once.
 
 This is a matter of health before it is a filter. Work that reaches the evening keeps people from recovering, and the risk is highest for those who work from home or for themselves, for whom nothing else marks the end of the day. Admin spread over every evening weighs too, even when nobody is working.
 
@@ -61,7 +61,7 @@ The status line says what now is, and until when: "Admin time until 19:00: offic
 
 ## What follows the time
 
-- **Mail**: at the times ticked for the sender's list ([Accounts ▸ Senders](accounts.md#senders)). Your safe senders' mail comes to any address; the others' only to an address for what now is for, unless the two never meet in your week: then their list's times alone decide, so that nothing waits for good.
+- **Mail**: at the times ticked for the sender's row ([Accounts ▸ Who may reach you](accounts.md#senders)). Your safe senders' mail comes to any address; the others' only to an address for what now is for, unless the two never meet in your week: then their row's times alone decide, so that nothing waits for good.
 - **Sites**: the sites for now are listed first; the others fold under "Other hours". Their notifications wait for their hours, real time and calls included, and none comes while you sleep.
 - **Tasks**: the task pages keep what fits, and the plan places each task in the hours meant for it: work in working hours, your admin in admin hours. Leisure has no hours: what is only for leisure takes no room in the plan and waits for none. The next step is never a call to an office that is closed now.
 - **Budgets**: by what each one is for.
@@ -99,7 +99,7 @@ Without a night set on the Health page, nights are leisure and nothing keeps not
 **Work now** shows work whatever the hours, as in working hours. In quiet time, it is a box beside **Real time** on the Porch, and a choice in the status line's menu on every page.
 
 <figure markdown="span">
-  [![The Porch with "Work now" ticked beside "Real time" at the top, and the status line at the bottom saying "Work shown until 17:00, by your choice."](../assets/screens/work-now.png){ loading=lazy }](../assets/screens/work-now.png "Open the picture at full size")
+  [![The Porch with "Work now" ticked beside "Real time" at the top of the page, and above it the status line, the window's title bar, saying "Work shown until 17:00, by your choice."](../assets/screens/work-now.png){ loading=lazy }](../assets/screens/work-now.png "Open the picture at full size")
   <figcaption>Work now: work shown whatever the hours, until you untick it.</figcaption>
 </figure>
 

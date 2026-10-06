@@ -2189,11 +2189,13 @@ url = "{DAV_URL}"
 @{W.choir}
 sophie.marchand@{W.bank}
 """)
-    p.write(p.config / "safe-senders.txt", f"""# Safe: by default, their mail reaches you at any time.
+    p.write(p.config / "safe-senders.txt", f"""# Safe: by default, their mail reaches you at any time; their calls, at any waking time.
 maud.ferrand@example.org
 camille.ferrand@example.org
 hugo.ferrand@example.org
 *@{W.choir}
+# The doctor's card: its number rings at any waking time.
+contact:demo-contact-varga
 """)
     p.write(p.config / "neutral-senders.txt", f"""# Neutral within a safe domain: the choir's automatic mail waits for its hours.
 noreply@{W.choir}
@@ -2201,9 +2203,11 @@ noreply@{W.choir}
     p.write(p.config / "restricted-senders.txt", f"""# Restricted: by default, their mail comes in working hours only.
 *@{W.gadgets}
 """)
-    p.write(p.config / "blocked-senders.txt", f"""# Blocked: set aside for good, never shown.
+    p.write(p.config / "blocked-senders.txt", f"""# Blocked: never, on any channel.
 *@{W.deals}
 promo@{W.gadgets}
+# Premium-rate numbers.
+tel:+33899*
 """)
 
 

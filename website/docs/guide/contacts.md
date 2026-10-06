@@ -25,7 +25,7 @@ A contact opens on the right:
 - its **e-mail addresses**, each with **Write**;
 - its **phone numbers**, each with **Call**;
 - folded under **More**: postal addresses, organisation and role, birthday, notes, web sites;
-- **Their mail**: when it reaches you, for every address on the card (see [the Porch](porch.md#letting-someone-in)). Their categories can decide, when a sender list names one of them; their own choice comes first: safe, neutral, restricted or blocked, or back to **As their categories say**;
+- **Their list**: who they are to you, for all their addresses and numbers, on any card, one with a number only too ([Accounts ▸ Who may reach you](accounts.md#senders)). Anyone in your address books is neutral until you choose; their categories can decide, when a list names one of them; their own choice comes first: safe, neutral, restricted or blocked, or back to **As their categories say**. Under it, a sentence says what decides now, and a line names any address or number of theirs with a list of its own, which comes first;
 - a small map with a pin at their address, once it is placed (below);
 - what is **tied to it**: the mail exchanged, tasks, events, notes, projects.
 
@@ -41,19 +41,19 @@ When you write a message, addresses are completed from your contacts.
 
 Categories are the groups Nextcloud Contacts shows: "Family", "Friends", "Neighbours"; a card can have several. In the form, under **Categories**, × takes one off, and the field after them adds one, chosen among those your cards already have or typed. "amis" and "Amis" are one category, written as your cards first wrote it.
 
-They are saved in the card itself (vCard's `CATEGORIES`), so Nextcloud, your phone and other programs see them, and a card saved in Sioul keeps those it had. A sender list can name a category ([Accounts ▸ Senders](accounts.md#senders), "Your contacts' categories"): their mail then reaches you as that list says, unless you chose otherwise for them on their card. Nothing goes on a list by itself, family and friends included.
+They are saved in the card itself (vCard's `CATEGORIES`), so Nextcloud, your phone and other programs see them, and a card saved in Sioul keeps those it had. A list can name a category ([Accounts ▸ Who may reach you](accounts.md#senders), "Your contacts' categories"): they then reach you as that list says, by mail, by phone and through other apps' messages, unless you chose otherwise for them on their card. Nothing goes on a list by itself, family and friends included.
 
 ## Duplicates
 
 **Duplicates**, above the list, looks for two things, and changes nothing until you click:
 
-- **A number or an address written twice on one card.** "06 08 12 34 56" and "+33 6 08 12 34 56" are one number: spaces, dots and the country's prefix aside. Each card concerned is listed with what would go, ticked; **Take the duplicates off** keeps one of each, the one written with its country, with what the others said of it (mobile, work).
+- **A number or an address written twice on one card.** "04 65 71 12 34" and "+33 4 65 71 12 34" are one number: spaces, dots and the country's prefix aside. Each card concerned is listed with what would go, ticked; **Take the duplicates off** keeps one of each, the one written with its country, with what the others said of it (mobile, work).
 - **Two cards that may be one person**: the same name (in any order, case and accents aside), the same number, or the same address. They come one pair at a time, side by side, with what they share. Choose the name kept, then **Merge**: one card keeps everything of both (numbers, addresses, web sites, categories, notes, and the photo, organisation and birthday of the name kept when it has them), and the other is deleted, here and on the server. **Not the same** keeps them apart and never asks again; **Later** shows the next pair.
 
 **Done lately** lists what was cleaned and merged, each with **Undo**, for thirty days: the cards come back as they were, here and on the server. Contacts kept on this device only are handled the same way.
 
 !!! note "Numbers written without their country"
-    "06 08 12 34 56" has no country: Sioul reads it as a number of the country set in the Contacts settings, by default your system's (France for French). This only serves to compare numbers: your cards keep them as they are written.
+    "04 65 71 12 34" has no country: Sioul reads it as a number of the country set in the Contacts settings, by default your system's (France for French). This only serves to compare numbers: your cards keep them as they are written.
 
 ## The map
 
@@ -73,7 +73,7 @@ The ⚙ at the top of the page:
 - **Address books**: renamed here and on the server at the next sync. An empty address book can be deleted; one holding contacts stays.
 - **Place contacts on the map**: on or off.
 - **Map tiles**: where map images come from, as `https://…/{z}/{x}/{y}.png`. Empty: OpenStreetMap's.
-- **Country for phone numbers written without one**: the country "06 08 12 34 56" belongs to, to find the same number written "+33 6 08 12 34 56". By default, your system's.
+- **Country for phone numbers written without one**: the country "04 65 71 12 34" belongs to, to find the same number written "+33 4 65 71 12 34". By default, your system's.
 
 ## Where contacts live
 

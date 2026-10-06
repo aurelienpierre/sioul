@@ -25,7 +25,7 @@ Un contact s’ouvre à droite :
 - ses **Adresses électroniques**, chacune avec **Écrire** ;
 - ses **Numéros de téléphone**, chacun avec **Appeler** ;
 - replié sous **Plus** : adresses postales, organisation et fonction, anniversaire, notes, sites web ;
-- **Son courrier** : quand il vous parvient, pour chaque adresse de la fiche (voir [le Porche](porch.md#letting-someone-in)). Ses catégories peuvent en décider, quand une liste d’expéditeurs en nomme une ; votre choix pour cette personne passe avant : sûr, neutre, restreint ou bloqué, ou de nouveau **Comme le disent ses catégories** ;
+- **Sa liste** : qui cette personne est pour vous, pour toutes ses adresses et tous ses numéros, sur toute fiche, même avec un numéro seul ([Comptes ▸ Qui peut vous joindre](accounts.md#senders)). Toute personne de vos carnets d’adresses est neutre tant que vous ne choisissez pas ; ses catégories peuvent en décider, quand une liste en nomme une ; votre choix pour cette personne passe avant : sûr, neutre, restreint ou bloqué, ou de nouveau **Comme le disent ses catégories**. Dessous, une phrase dit ce qui décide maintenant, et une ligne nomme chaque adresse ou numéro qui a sa propre liste, laquelle passe d’abord ;
 - une petite carte avec une épingle à son adresse, une fois celle-ci placée (plus bas) ;
 - **Lié à cela** : le courrier échangé, les tâches, les événements, les notes, les projets.
 
@@ -41,19 +41,19 @@ Quand vous écrivez un message, les adresses se complètent depuis vos contacts.
 
 Les catégories sont les groupes que montre Nextcloud Contacts : « Famille », « Amis », « Voisins » ; une fiche peut en avoir plusieurs. Dans le formulaire, sous **Catégories**, × en retire une, et le champ qui les suit en ajoute une, choisie parmi celles qu’ont déjà vos fiches ou tapée. « amis » et « Amis » sont une seule catégorie, écrite comme vos fiches l’ont écrite d’abord.
 
-Elles sont enregistrées dans la fiche elle-même (le `CATEGORIES` du vCard) : Nextcloud, votre téléphone et les autres programmes les voient, et une fiche enregistrée dans Sioul garde celles qu’elle avait. Une liste d’expéditeurs peut nommer une catégorie ([Comptes ▸ Expéditeurs](accounts.md#senders), « Les catégories de vos contacts ») : leur courrier vous parvient alors comme le dit cette liste, sauf si vous avez choisi autre chose pour eux sur leur fiche. Rien ne va sur une liste tout seul, famille et amis compris.
+Elles sont enregistrées dans la fiche elle-même (le `CATEGORIES` du vCard) : Nextcloud, votre téléphone et les autres programmes les voient, et une fiche enregistrée dans Sioul garde celles qu’elle avait. Une liste peut nommer une catégorie ([Comptes ▸ Qui peut vous joindre](accounts.md#senders), « Les catégories de vos contacts ») : ces personnes vous joignent alors comme le dit cette liste, par courrier, par téléphone et par les messages des autres applications, sauf si vous avez choisi autre chose pour elles sur leur fiche. Rien ne va sur une liste tout seul, famille et amis compris.
 
 ## Les doublons {#duplicates}
 
 **Doublons**, au-dessus de la liste, cherche deux choses, et ne change rien avant votre clic :
 
-- **Un numéro ou une adresse écrits deux fois sur une même fiche.** « 06 08 12 34 56 » et « +33 6 08 12 34 56 » sont un seul numéro : les espaces, les points et l’indicatif du pays n’y changent rien. Chaque fiche concernée est listée avec ce qui partirait, cochée ; **Retirer les doublons** garde un exemplaire de chaque, celui qui est écrit avec son pays, avec ce que les autres en disaient (mobile, travail).
+- **Un numéro ou une adresse écrits deux fois sur une même fiche.** « 04 65 71 12 34 » et « +33 4 65 71 12 34 » sont un seul numéro : les espaces, les points et l’indicatif du pays n’y changent rien. Chaque fiche concernée est listée avec ce qui partirait, cochée ; **Retirer les doublons** garde un exemplaire de chaque, celui qui est écrit avec son pays, avec ce que les autres en disaient (mobile, travail).
 - **Deux fiches qui pourraient être une seule personne** : le même nom (dans n’importe quel ordre, sans tenir compte des majuscules ni des accents), le même numéro, ou la même adresse. Elles viennent une paire à la fois, côte à côte, avec ce qu’elles ont en commun. Choisissez le nom gardé, puis **Fusionner** : une fiche garde tout des deux (numéros, adresses, sites web, catégories, notes, et la photo, l’organisation et l’anniversaire du nom gardé quand elle en a), et l’autre est supprimée, ici et sur le serveur. **Pas la même personne** les garde à part et ne le redemande jamais ; **Plus tard** montre la paire suivante.
 
 **Fait récemment** liste ce qui a été nettoyé et fusionné, chacun avec **Annuler**, pendant trente jours : les fiches reviennent comme elles étaient, ici et sur le serveur. Les contacts gardés sur cet appareil seulement sont traités de la même façon.
 
 !!! note "Les numéros écrits sans leur pays"
-    « 06 08 12 34 56 » n’a pas de pays : Sioul le lit comme un numéro du pays choisi dans les réglages des contacts, par défaut celui de votre système (la France en français). Cela ne sert qu’à comparer les numéros : vos fiches les gardent tels qu’ils sont écrits.
+    « 04 65 71 12 34 » n’a pas de pays : Sioul le lit comme un numéro du pays choisi dans les réglages des contacts, par défaut celui de votre système (la France en français). Cela ne sert qu’à comparer les numéros : vos fiches les gardent tels qu’ils sont écrits.
 
 ## La carte {#the-map}
 
@@ -73,7 +73,7 @@ Le ⚙ en haut de la page :
 - **Carnets d’adresses** : renommés ici, et sur le serveur à la prochaine synchronisation. Un carnet vide peut être supprimé ; un carnet qui contient des contacts reste.
 - **Placer les contacts sur la carte** : activé ou désactivé.
 - **Tuiles de carte** : d’où viennent les images de la carte, en `https://…/{z}/{x}/{y}.png`. Vide : celles d’OpenStreetMap.
-- **Pays des numéros de téléphone écrits sans indicatif** : le pays auquel appartient « 06 08 12 34 56 », pour retrouver le même numéro écrit « +33 6 08 12 34 56 ». Par défaut, celui de votre système.
+- **Pays des numéros de téléphone écrits sans indicatif** : le pays auquel appartient « 04 65 71 12 34 », pour retrouver le même numéro écrit « +33 4 65 71 12 34 ». Par défaut, celui de votre système.
 
 ## Où vivent les contacts {#where-contacts-live}
 

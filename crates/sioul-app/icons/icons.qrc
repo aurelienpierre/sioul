@@ -12,6 +12,7 @@
     <file>sioul/16/bookmarks-organize.svg</file>
     <file>sioul/16/call-start.svg</file>
     <file>sioul/16/camera-video.svg</file>
+    <file>sioul/16/chronometer-reset.svg</file>
     <file>sioul/16/chronometer-start.svg</file>
     <file>sioul/16/chronometer.svg</file>
     <file>sioul/16/clock.svg</file>
@@ -84,6 +85,7 @@
     <file>sioul/16/sidebar-collapse-left.svg</file>
     <file>sioul/16/sidebar-expand-left.svg</file>
     <file>sioul/16/sioul-web.svg</file>
+    <file>sioul/16/smiley-add.svg</file>
     <file>sioul/16/system-search.svg</file>
     <file>sioul/16/system-users.svg</file>
     <file>sioul/16/task-complete.svg</file>
@@ -113,7 +115,11 @@
     <file>sioul/16/view-sort.svg</file>
     <file>sioul/16/view-task.svg</file>
     <file>sioul/16/view-visible.svg</file>
+    <file>sioul/16/window-close.svg</file>
+    <file>sioul/16/window-maximize.svg</file>
+    <file>sioul/16/window-minimize.svg</file>
     <file>sioul/16/window-next.svg</file>
+    <file>sioul/16/window-restore.svg</file>
     <file>sioul/16/x-office-document.svg</file>
     <file>sioul/22/application-menu.svg</file>
     <file>sioul/22/application-pdf.svg</file>
@@ -127,6 +133,7 @@
     <file>sioul/22/bookmarks-organize.svg</file>
     <file>sioul/22/call-start.svg</file>
     <file>sioul/22/camera-video.svg</file>
+    <file>sioul/22/chronometer-reset.svg</file>
     <file>sioul/22/chronometer-start.svg</file>
     <file>sioul/22/chronometer.svg</file>
     <file>sioul/22/clock.svg</file>
@@ -201,6 +208,7 @@
     <file>sioul/22/sidebar-collapse-left.svg</file>
     <file>sioul/22/sidebar-expand-left.svg</file>
     <file>sioul/22/sioul-web.svg</file>
+    <file>sioul/22/smiley-add.svg</file>
     <file>sioul/22/system-search.svg</file>
     <file>sioul/22/system-suspend.svg</file>
     <file>sioul/22/system-users.svg</file>
@@ -232,6 +240,10 @@
     <file>sioul/22/view-task.svg</file>
     <file>sioul/22/view-visible.svg</file>
     <file>sioul/22/wallet-open.svg</file>
+    <file>sioul/22/window-close.svg</file>
+    <file>sioul/22/window-maximize.svg</file>
+    <file>sioul/22/window-minimize.svg</file>
+    <file>sioul/22/window-restore.svg</file>
     <file>sioul/22/x-office-document.svg</file>
     <file>sioul/32/application-menu.svg</file>
     <file>sioul/32/application-pdf.svg</file>
@@ -295,6 +307,7 @@
     <file>sioul/32/view-list-tree.svg</file>
     <file>sioul/32/view-refresh.svg</file>
     <file>sioul/32/view-sort.svg</file>
+    <file>sioul/32/window-close.svg</file>
     <file>sioul/32/x-office-document.svg</file>
     <file>sioul/48/internet-mail.svg</file>
     <file>sioul/48/internet-web-browser.svg</file>
@@ -335,6 +348,7 @@
     <file>sioul-dark/16/bookmarks-organize.svg</file>
     <file>sioul-dark/16/call-start.svg</file>
     <file>sioul-dark/16/camera-video.svg</file>
+    <file>sioul-dark/16/chronometer-reset.svg</file>
     <file>sioul-dark/16/chronometer-start.svg</file>
     <file>sioul-dark/16/chronometer.svg</file>
     <file>sioul-dark/16/clock.svg</file>
@@ -407,6 +421,7 @@
     <file>sioul-dark/16/sidebar-collapse-left.svg</file>
     <file>sioul-dark/16/sidebar-expand-left.svg</file>
     <file>sioul-dark/16/sioul-web.svg</file>
+    <file>sioul-dark/16/smiley-add.svg</file>
     <file>sioul-dark/16/system-search.svg</file>
     <file>sioul-dark/16/system-users.svg</file>
     <file>sioul-dark/16/task-complete.svg</file>
@@ -436,7 +451,11 @@
     <file>sioul-dark/16/view-sort.svg</file>
     <file>sioul-dark/16/view-task.svg</file>
     <file>sioul-dark/16/view-visible.svg</file>
+    <file>sioul-dark/16/window-close.svg</file>
+    <file>sioul-dark/16/window-maximize.svg</file>
+    <file>sioul-dark/16/window-minimize.svg</file>
     <file>sioul-dark/16/window-next.svg</file>
+    <file>sioul-dark/16/window-restore.svg</file>
     <file>sioul-dark/16/x-office-document.svg</file>
     <file>sioul-dark/22/application-menu.svg</file>
     <file>sioul-dark/22/application-pdf.svg</file>
@@ -450,6 +469,7 @@
     <file>sioul-dark/22/bookmarks-organize.svg</file>
     <file>sioul-dark/22/call-start.svg</file>
     <file>sioul-dark/22/camera-video.svg</file>
+    <file>sioul-dark/22/chronometer-reset.svg</file>
     <file>sioul-dark/22/chronometer-start.svg</file>
     <file>sioul-dark/22/chronometer.svg</file>
     <file>sioul-dark/22/clock.svg</file>
@@ -524,6 +544,7 @@
     <file>sioul-dark/22/sidebar-collapse-left.svg</file>
     <file>sioul-dark/22/sidebar-expand-left.svg</file>
     <file>sioul-dark/22/sioul-web.svg</file>
+    <file>sioul-dark/22/smiley-add.svg</file>
     <file>sioul-dark/22/system-search.svg</file>
     <file>sioul-dark/22/system-suspend.svg</file>
     <file>sioul-dark/22/system-users.svg</file>
@@ -555,6 +576,10 @@
     <file>sioul-dark/22/view-task.svg</file>
     <file>sioul-dark/22/view-visible.svg</file>
     <file>sioul-dark/22/wallet-open.svg</file>
+    <file>sioul-dark/22/window-close.svg</file>
+    <file>sioul-dark/22/window-maximize.svg</file>
+    <file>sioul-dark/22/window-minimize.svg</file>
+    <file>sioul-dark/22/window-restore.svg</file>
     <file>sioul-dark/22/x-office-document.svg</file>
     <file>sioul-dark/32/application-menu.svg</file>
     <file>sioul-dark/32/application-pdf.svg</file>
@@ -618,6 +643,7 @@
     <file>sioul-dark/32/view-list-tree.svg</file>
     <file>sioul-dark/32/view-refresh.svg</file>
     <file>sioul-dark/32/view-sort.svg</file>
+    <file>sioul-dark/32/window-close.svg</file>
     <file>sioul-dark/32/x-office-document.svg</file>
     <file>sioul-dark/48/internet-mail.svg</file>
     <file>sioul-dark/48/internet-web-browser.svg</file>

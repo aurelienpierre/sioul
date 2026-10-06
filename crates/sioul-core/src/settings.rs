@@ -286,30 +286,67 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 b.note(tr.text("unsubscribed-note", None), lines);
             }
         }
-        // Who may write to you, and when, in Accounts ▸ Senders: the matrix of
-        // when each list's mail comes; the four lists; your contacts' categories,
-        // each on a list or none.
+        // Who may reach you, and when, in Accounts ▸ Senders: a matrix per
+        // channel (mail, calls, messages from other apps), the window showing
+        // the one chosen; the four lists; the people placed on them; your
+        // contacts' categories, each on a list or none.
         "senders" => {
-            let reach = crate::quiet::Reach::of(&config.reach);
-            let s = b.push("reach", "reach", Kind::Matrix, SettingValue::Texts(Vec::new()));
-            s.rows = [crate::porch::Standing::Safe, crate::porch::Standing::Neutral, crate::porch::Standing::Restricted].iter().map(|l| Choice { value: SettingValue::Text(l.as_str().into()), label: tr.text(&format!("sender-list-{}", l.as_str()), None) }).collect();
-            s.choices = crate::areas::Time::STATES.iter().map(|t| Choice { value: SettingValue::Text(t.id().into()), label: tr.text(&format!("reach-{}", t.id()), None) }).collect();
-            let ticked = [("safe", reach.safe), ("neutral", reach.neutral), ("restricted", reach.restricted)].iter().flat_map(|(row, times)| times.ids().into_iter().map(move |t| format!("{row}:{t}"))).collect();
-            s.value = SettingValue::Texts(ticked);
+            use crate::reach::{Channel, Column};
+            let reach = crate::reach::Reach::of(&config.reach);
+            for channel in Channel::ALL {
+                let key = if channel == Channel::Mail { "reach".to_string() } else { format!("reach.{}", channel.id()) };
+                let matrix = reach.matrix(channel);
+                let s = b.push(&key, &format!("reach-{}", channel.id()), Kind::Matrix, SettingValue::Texts(Vec::new()));
+                // The blocked last, a row never ticked.
+                s.rows = channel.rows().iter().map(|r| r.id()).chain(std::iter::once("blocked")).map(|id| Choice { value: SettingValue::Text(id.into()), label: tr.text(&format!("sender-list-{id}"), None) }).collect();
+                s.choices = Column::ALL.iter().map(|c| Choice { value: SettingValue::Text(c.id().into()), label: tr.text(&format!("reach-{}", c.id()), None) }).collect();
+                s.value = SettingValue::Texts(channel.rows().iter().flat_map(|r| matrix.row(*r).ids().into_iter().map(move |t| format!("{}:{t}", r.id()))).collect());
+            }
             for (key, id, path) in [
                 ("safe", "safe", config.safe_senders_path()),
                 ("neutral", "neutral", config.neutral_senders_path()),
                 ("restricted", "restricted", config.restricted_senders_path()),
                 ("blocked", "blocked-all", config.blocked_senders_path()),
             ] {
-                let s = b.push(key, id, Kind::Senders, SettingValue::Texts(SenderList::load(&path).entries()));
-                // Each list's times, as the matrix ticks them.
-                if let Some(standing) = crate::porch::Standing::read(key) {
-                    s.label = crate::quiet::list_choice(tr, standing, &reach, false);
+                // Addresses and patterns, then numbers as written.
+                let list = SenderList::load(&path);
+                b.push(key, id, Kind::Senders, SettingValue::Texts(list.entries().into_iter().chain(list.numbers().iter().cloned()).collect()));
+            }
+            let senders = crate::porch::Senders::load(config);
+            let choices = |none: &str| -> Vec<Choice> {
+                std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text(none, None) })
+                    .chain(crate::porch::Standing::ALL.iter().map(|l| Choice { value: SettingValue::Text(l.as_str().into()), label: tr.text(&format!("sender-one-{}", l.as_str()), None) }))
+                    .collect()
+            };
+            // The people placed on a list themselves (their card): changed here or on their card.
+            let mut cards: Vec<String> = Vec::new();
+            for list in [&senders.safe, &senders.neutral, &senders.restricted, &senders.blocked] {
+                for uid in list.cards() {
+                    if !cards.contains(uid) {
+                        cards.push(uid.clone());
+                    }
+                }
+            }
+            if !cards.is_empty() {
+                b.group = tr.text("set-sender-people-group", None);
+                b.note(tr.text("set-sender-people-note", None), Vec::new());
+                let mut named: Vec<(String, String)> = cards
+                    .into_iter()
+                    .map(|uid| {
+                        let name = senders.contacts.find(&uid).and_then(|i| senders.contacts.card(i)).map(|c| c.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| tr.text("sender-card-elsewhere", None));
+                        (name, uid)
+                    })
+                    .collect();
+                named.sort_by_key(|(name, _)| crate::text::fold(name).into_iter().collect::<String>().to_lowercase());
+                for (name, uid) in named {
+                    let standing = senders.card_standing(&uid).map_or("", |s| s.as_str());
+                    let s = b.push(&format!("{}{uid}", crate::porch::CONTACT), "sender-person", Kind::Choice, SettingValue::Text(standing.into()));
+                    s.label = name;
+                    s.help = String::new();
+                    s.choices = choices("sender-no-choice");
                 }
             }
             // Your contacts' categories, those in use and those on a list.
-            let senders = crate::porch::Senders::load(config);
             let mut names = senders.contacts.names();
             for list in [&senders.safe, &senders.neutral, &senders.restricted, &senders.blocked] {
                 for name in list.categories() {
@@ -321,9 +358,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             if !names.is_empty() {
                 b.group = tr.text("set-sender-categories-group", None);
                 b.note(tr.text("set-sender-categories-note", None), Vec::new());
-                let choices: Vec<Choice> = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text("sender-no-list", None) })
-                    .chain(crate::porch::Standing::ALL.iter().map(|l| Choice { value: SettingValue::Text(l.as_str().into()), label: crate::quiet::list_choice(tr, *l, &reach, false) }))
-                    .collect();
+                let choices = choices("sender-no-list");
                 for name in names {
                     let standing = senders.category_standing(&name).map_or("", |s| s.as_str());
                     let s = b.push(&format!("{}{name}", crate::porch::CATEGORY), "sender-category", Kind::Choice, SettingValue::Text(standing.into()));
@@ -401,7 +436,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.collections(config, "address-books", crate::vdir::Kind::Contacts, "");
             b.push("map.geocode", "map-geocode", Kind::Bool, SettingValue::Bool(config.map.geocode));
             b.push("map.tiles", "map-tiles", Kind::Text, SettingValue::Text(config.map.tiles.clone().unwrap_or_default()));
-            // The country of numbers written without one: "06 08…" found as "+33 6 08…" (phones.rs).
+            // The country of numbers written without one: "04 65…" found as "+33 4 65…" (phones.rs).
             let s = b.push("contacts.region", "phone-region", Kind::Choice, SettingValue::Text(config.contacts.region.clone().unwrap_or_default()));
             s.choices = phone_regions(tr);
         }
@@ -607,24 +642,45 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
                 _ => return Err(format!("{key}: a list expected")),
             };
             // A category typed here ("category:Friends") goes on this list, out of the others.
-            if let Some(standing) = crate::porch::Standing::read(key) {
+            let standing = crate::porch::Standing::read(key);
+            if let Some(standing) = standing {
                 for name in wanted.iter().filter_map(|e| crate::porch::category_of(e)) {
                     crate::porch::set_category(config, name, Some(standing))?;
                 }
             }
-            let wanted: Vec<String> = wanted.iter().filter_map(|e| crate::porch::normalize(e)).collect();
-            let current = SenderList::load(&path).entries();
-            for gone in current.iter().filter(|e| !wanted.contains(e)) {
-                SenderList::remove(&path, gone)?;
+            // What the editor shows: addresses and patterns, and on the four
+            // lists numbers too; cards and categories have rows of their own.
+            use crate::porch::Entry;
+            let region = crate::reach::region(config);
+            let read = |e: &String| Entry::read(e, region).filter(|e| matches!(e, Entry::Address(_)) || (standing.is_some() && matches!(e, Entry::Number(_))));
+            let wanted: Vec<Entry> = wanted.iter().filter_map(read).collect();
+            let list = SenderList::load(&path);
+            let current: Vec<Entry> = list.entries().iter().chain(list.numbers()).filter_map(read).collect();
+            for gone in current.iter().filter(|e| !wanted.iter().any(|w| w.same(e))) {
+                SenderList::remove_entry(&path, gone, region)?;
             }
-            for new in wanted.iter().filter(|e| !current.contains(e)) {
+            for new in wanted.iter().filter(|e| !current.iter().any(|c| c.same(e))) {
                 // The four lists exclude each other: one list per entry.
-                match crate::porch::Standing::read(key) {
-                    Some(standing) => crate::porch::set_standing(config, new, standing)?,
-                    None => SenderList::let_in(&path, new)?,
+                match standing {
+                    Some(standing) => crate::porch::set_standing(config, &new.line(), standing)?,
+                    None => SenderList::add_entry(&path, new, region)?,
                 }
             }
             Ok(())
+        }
+        // A person placed on a list (their card): on another, or on none; their
+        // addresses' and numbers' own entries go, the card deciding for them.
+        _ if key.starts_with(crate::porch::CONTACT) => {
+            let uid = crate::porch::card_of(key).ok_or_else(|| format!("{key}: no card"))?;
+            let standing = match value {
+                SettingValue::Text(text) if text.is_empty() => None,
+                SettingValue::Text(text) => Some(crate::porch::Standing::read(text).ok_or_else(|| format!("{text}: safe, neutral, restricted or blocked"))?),
+                _ => return Err(format!("{key}: a list expected")),
+            };
+            let card = crate::contacts::all().into_iter().find(|c| c.uid.trim() == uid);
+            let addresses: Vec<String> = card.iter().flat_map(|c| c.emails.iter().map(|e| e.value.clone())).collect();
+            let numbers: Vec<String> = card.iter().flat_map(|c| c.phones.iter().map(|p| p.value.clone())).collect();
+            crate::porch::set_person(config, uid, &addresses, &numbers, standing)
         }
         // The projects ticked: those not ticked are written, so a new project shows.
         "porch.projects" => {
@@ -666,7 +722,7 @@ mod tests {
         // Calendars, task lists and address books share one key, each page its own kind of them,
         // and depend on what this computer holds: left out.
         // Your contacts' categories are this computer's: left out too.
-        let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY)).map(|s| s.key).collect::<Vec<_>>();
+        let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("notes"), vec!["notes_folder"]);
         // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
         assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "reading.family", "reading.size", "reading.spacing"]);
@@ -700,11 +756,15 @@ mod tests {
         let mut seen: std::collections::BTreeMap<String, &str> = std::collections::BTreeMap::new();
         let keys = |view: &str| keys(view).into_iter().filter(|k| view == "reading" || !k.starts_with("reading.")).collect::<Vec<_>>();
         assert_eq!(keys("reading"), vec!["reading.family", "reading.size", "reading.spacing"]);
-        assert_eq!(keys("senders"), vec!["reach", "safe", "neutral", "restricted", "blocked"]);
-        // The matrix: three lists down, five times across, as the configuration says or as usual.
-        let reach = for_view("senders", &config, &tr, &[], None).into_iter().find(|s| s.key == "reach").unwrap();
-        assert_eq!((reach.rows.len(), reach.choices.len()), (3, 5));
-        assert_eq!(reach.value, SettingValue::Texts(["safe:work", "safe:admin", "safe:leisure", "safe:meals", "safe:sleep", "neutral:work", "neutral:admin", "restricted:work"].map(String::from).to_vec()));
+        assert_eq!(keys("senders"), vec!["reach", "reach.calls", "reach.messages", "safe", "neutral", "restricted", "blocked"]);
+        // A matrix per channel: the states down (the blocked last, never), five times and the pause across, as the configuration says or as usual.
+        let senders = for_view("senders", &config, &tr, &[], None);
+        let reach = senders.iter().find(|s| s.key == "reach").unwrap();
+        assert_eq!((reach.rows.len(), reach.choices.len(), reach.label.as_str()), (5, 6, "Mail"));
+        assert_eq!(reach.value, SettingValue::Texts(["safe:work", "safe:admin", "safe:leisure", "safe:meals", "safe:sleep", "safe:pause", "neutral:work", "neutral:admin", "restricted:work", "stranger:work", "stranger:admin"].map(String::from).to_vec()));
+        let calls = senders.iter().find(|s| s.key == "reach.calls").unwrap();
+        assert_eq!(calls.rows.iter().map(|r| r.value.clone()).collect::<Vec<_>>(), ["safe", "neutral", "restricted", "stranger", "hidden", "blocked"].map(|r| SettingValue::Text(r.into())).to_vec());
+        assert_eq!(calls.value, SettingValue::Texts(["safe:work", "safe:admin", "safe:leisure", "safe:meals", "neutral:work", "neutral:admin", "restricted:work", "hidden:work", "hidden:admin"].map(String::from).to_vec()));
         assert_eq!(keys("contacts"), vec!["map.geocode", "map.tiles", "contacts.region"]);
         let regions = for_view("contacts", &config, &tr, &[], None).into_iter().find(|s| s.key == "contacts.region").unwrap().choices;
         assert!(regions.len() > 30 && regions.iter().all(|c| !c.label.starts_with("country-")), "{regions:?}");

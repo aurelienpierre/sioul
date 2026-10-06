@@ -13,8 +13,8 @@
 //! everything, whatever the time; Free time is leisure whatever the hour,
 //! sleep first, and may move the end of today's work later.
 //!
-//! Who may reach you when is a matrix (`Reach`): for each list of senders,
-//! the times their mail comes (`mail_in_view`).
+//! Who may reach you when is a matrix per channel (`reach::Reach`): for each
+//! state, the times they come; mail's rule is `mail_in_view`.
 //!
 //! Detachment from work in the evening is what recovery needs most
 //! (Sonnentag & Fritz 2007, 2015); work cues in off-hours keep it from
@@ -22,7 +22,7 @@
 
 use crate::areas::{Area, TaskAreas, Time, Week, in_view};
 use crate::config::TimeOff;
-use crate::porch::Standing;
+use crate::reach::{Matrix, Who};
 use crate::window::{self, AdminWindow};
 use jiff::civil::Date;
 use jiff::{Span, Zoned};
@@ -500,114 +500,14 @@ impl Situation {
     }
 }
 
-/// The times one list's mail comes: a row of the matrix of who may write to you.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
-pub struct Times {
-    pub work: bool,
-    pub admin: bool,
-    pub leisure: bool,
-    pub meals: bool,
-    pub sleep: bool,
-}
+/// A row's boxes: the columns ticked (`reach::Times`).
+pub use crate::reach::Times;
 
-impl Times {
-    /// Every time.
-    pub const ALL: Times = Times { work: true, admin: true, leisure: true, meals: true, sleep: true };
-    /// No time: never.
-    pub const NEVER: Times = Times { work: false, admin: false, leisure: false, meals: false, sleep: false };
-
-    /// From the times' words, as the configuration writes them: "work",
-    /// "admin", "leisure", "meals", "sleep"; others are left aside.
-    pub fn parse(words: &[String]) -> Times {
-        let mut times = Times::NEVER;
-        for word in words {
-            match Time::parse(word) {
-                Some(Time::Work) => times.work = true,
-                Some(Time::Admin) => times.admin = true,
-                Some(Time::Leisure) => times.leisure = true,
-                Some(Time::Meals) => times.meals = true,
-                Some(Time::Sleep) => times.sleep = true,
-                _ => {}
-            }
-        }
-        times
-    }
-
-    /// The times ticked, as the configuration writes them, in the matrix's order.
-    pub fn ids(self) -> Vec<&'static str> {
-        Time::STATES.into_iter().filter(|t| self.ticked(*t)).map(Time::id).collect()
-    }
-
-    /// Whether this one time is ticked.
-    pub fn ticked(self, time: Time) -> bool {
-        match time {
-            Time::Work => self.work,
-            Time::Admin => self.admin,
-            Time::Leisure => self.leisure,
-            Time::Meals => self.meals,
-            Time::Sleep => self.sleep,
-            Time::Any => true,
-            Time::Several(open) => (open.work && self.work) || (open.admin && self.admin),
-        }
-    }
-
-    /// Whether mail with these times comes in `time`. While admin has no
-    /// hours of its own, work time takes its ticks too; while work has none,
-    /// admin time takes work's, as `areas::in_view` lends them.
-    pub fn at(self, time: Time, week: Week) -> bool {
-        match time {
-            Time::Work => self.work || (!week.admin_hours && self.admin),
-            Time::Admin => self.admin || (!week.work_hours && self.work),
-            Time::Several(open) => (open.work && self.at(Time::Work, week)) || (open.admin && self.at(Time::Admin, week)),
-            one => self.ticked(one),
-        }
-    }
-}
-
-/// Who may reach you when (docs/porch.md, "Who may write to you"): for your
-/// safe, neutral and restricted senders, the times their mail comes, any
-/// number of times each. The blocked never; codes you ask for and what you
-/// send yourself at once (`mail_in_view`). Kept in the configuration
-/// (`[reach]`), shared with your settings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct Reach {
-    pub safe: Times,
-    pub neutral: Times,
-    pub restricted: Times,
-}
-
-impl Default for Reach {
-    /// Safe senders at any time; the neutral ones, everyone no list names, in
-    /// working and admin hours; the restricted ones in working hours.
-    fn default() -> Reach {
-        Reach { safe: Times::ALL, neutral: Times { work: true, admin: true, ..Times::NEVER }, restricted: Times { work: true, ..Times::NEVER } }
-    }
-}
-
-impl Reach {
-    /// As the configuration says; a list it leaves out keeps its usual times.
-    pub fn of(settings: &crate::config::ReachSettings) -> Reach {
-        let usual = Reach::default();
-        let row = |set: &Option<Vec<String>>, usual: Times| set.as_deref().map_or(usual, Times::parse);
-        Reach { safe: row(&settings.safe, usual.safe), neutral: row(&settings.neutral, usual.neutral), restricted: row(&settings.restricted, usual.restricted) }
-    }
-
-    /// When a list's mail comes; the blocked never.
-    pub fn times(&self, standing: Standing) -> Times {
-        match standing {
-            Standing::Safe => self.safe,
-            Standing::Neutral => self.neutral,
-            Standing::Restricted => self.restricted,
-            Standing::Blocked => Times::NEVER,
-        }
-    }
-}
-
-/// A list with its times, as the matrix ticks them: "Neutral: work, admin",
-/// "Safe: any time", "Blocked: never"; `one`: as said of one person (French
-/// says "Sûr" of a person, "Sûrs" of the list).
-pub fn list_choice(tr: &crate::i18n::Translator, standing: Standing, reach: &Reach, one: bool) -> String {
-    let times = reach.times(standing);
+/// A state with its times on a channel, as its matrix ticks them: "Neutral:
+/// work, admin", "Safe: any time", "Blocked: never"; `one`: as said of one
+/// person (French says "Sûr" of a person, "Sûrs" of the list).
+pub fn list_choice(tr: &crate::i18n::Translator, who: Who, matrix: &Matrix, one: bool) -> String {
+    let times = matrix.times(who);
     let words = if times == Times::ALL {
         tr.text("reach-any", None)
     } else if times == Times::NEVER {
@@ -616,32 +516,33 @@ pub fn list_choice(tr: &crate::i18n::Translator, standing: Standing, reach: &Rea
         times.ids().iter().map(|t| tr.text(&format!("reach-word-{t}"), None)).collect::<Vec<_>>().join(", ")
     };
     let mut args = crate::i18n::args();
-    args.set("list", tr.text(&format!("sender-{}-{}", if one { "one" } else { "list" }, standing.as_str()), None));
+    args.set("list", tr.text(&format!("sender-{}-{}", if one { "one" } else { "list" }, who.id()), None));
     args.set("times", words);
     tr.text("sender-list-times", Some(&args))
 }
 
-/// Whether mail comes forward now (docs/porch.md, "Who may write to you"):
-/// the codes and links you just asked a site for, and what you send
-/// yourself, at once; with no hours set, everything; else when the matrix
-/// ticks its sender's list now. Your safe senders' mail comes to any of your
-/// addresses; the others' only to an address for what now is for
-/// (docs/areas.md), unless the two never meet in your week: then their list
-/// alone decides, so that no mail waits for good. Forged mail, set aside
-/// before (porch.rs), is weighed as a stranger's, never as its sender's.
-pub fn mail_in_view(triaged: &crate::porch::Triaged, senders: &crate::porch::Senders, reach: &Reach, account: Area, time: Time, week: Week) -> bool {
+/// Whether mail comes forward now (docs/porch.md, "Who may reach you, and
+/// when"): the codes and links you just asked a site for, and what you send
+/// yourself, at once; with no hours set, everything; else when mail's matrix
+/// (`reach`, as `pause::reach_now` gives it for now) ticks its sender's row
+/// now. Your safe senders' mail comes to any of your addresses; the others'
+/// only to an address for what now is for (docs/areas.md), unless the two
+/// never meet in your week: then their row alone decides, so that no mail
+/// waits for good. Forged mail, set aside before (porch.rs), is weighed as a
+/// stranger's, never as its sender's.
+pub fn mail_in_view(triaged: &crate::porch::Triaged, senders: &crate::porch::Senders, reach: &Matrix, account: Area, time: Time, week: Week) -> bool {
     if triaged.lane == crate::porch::Lane::RightNow || triaged.reasons.contains(&crate::porch::Reason::FromYourself) || time == Time::Any {
         return true;
     }
-    let standing = if triaged.lane == crate::porch::Lane::SetAside { Standing::Neutral } else { senders.standing_of(&triaged.card) };
-    let times = reach.times(standing);
+    let who = if triaged.lane == crate::porch::Lane::SetAside { Who::Stranger } else { senders.who_of(&triaged.card) };
+    let times = reach.times(who);
     if !times.at(time, week) {
         return false;
     }
-    if standing == Standing::Safe || in_view(account, time, week) {
+    if who == Who::Safe || in_view(account, time, week) {
         return true;
     }
-    // The address is for other times than those of its sender: when they never meet, the list decides.
+    // The address is for other times than those of its sender: when they never meet, the row decides.
     !Time::STATES.into_iter().any(|t| week.has(t) && times.at(t, week) && in_view(account, t, week))
 }
 
@@ -945,34 +846,40 @@ mod tests {
     #[test]
     fn who_may_write_when() {
         use crate::porch::{SenderList, Senders};
-        // The usual matrix: safe at any time, neutral in work and admin, restricted in work.
-        let usual = Reach::default();
-        assert_eq!((usual.safe.ids(), usual.neutral.ids(), usual.restricted.ids()), (vec!["work", "admin", "leisure", "meals", "sleep"], vec!["work", "admin"], vec!["work"]));
-        assert_eq!(Reach::of(&crate::config::ReachSettings::default()), usual);
-        let mine = Reach::of(&crate::config::ReachSettings { neutral: Some(vec!["Leisure".into(), "repas".into()]), restricted: Some(Vec::new()), ..Default::default() });
+        use crate::reach::Reach;
+        // Mail's usual matrix: safe at any time, the pause too; neutral in work and admin; restricted in work; strangers as neutral.
+        let usual = Reach::default().mail;
+        assert_eq!((usual.safe.ids(), usual.neutral.ids(), usual.restricted.ids(), usual.stranger.ids()), (vec!["work", "admin", "leisure", "meals", "sleep", "pause"], vec!["work", "admin"], vec!["work"], vec!["work", "admin"]));
+        assert_eq!(Reach::of(&crate::config::ReachSettings::default()).mail, usual);
+        let mine = Reach::of(&crate::config::ReachSettings { neutral: Some(vec!["Leisure".into(), "repas".into()]), restricted: Some(Vec::new()), ..Default::default() }).mail;
         assert_eq!((mine.safe, mine.neutral.ids(), mine.restricted), (Times::ALL, vec!["leisure", "meals"], Times::NEVER), "a row left out keeps its usual times; an empty one is never");
+        assert_eq!(mine.stranger, mine.neutral, "written before the five states: strangers as the neutral");
         let senders = Senders { safe: SenderList::parse("jane@example.org"), restricted: SenderList::parse("*@company.example"), ..Senders::default() };
         let set = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
         let (work_address, personal, leisure_address) = (Area::WORK, Area::PERSONAL, Area::LEISURE);
-        let comes = |t: &crate::porch::Triaged, reach: &Reach, account: Area, time: Time| mail_in_view(t, &senders, reach, account, time, set);
+        let comes = |t: &crate::porch::Triaged, reach: &Matrix, account: Area, time: Time| mail_in_view(t, &senders, reach, account, time, set);
         // Safe: to any address, at every time ticked; untick sleep and it waits.
         let jane = message("Jane <jane@example.org>", "", "Hello", &senders);
         assert!(Time::STATES.into_iter().all(|time| comes(&jane, &usual, work_address, time)));
-        let no_sleep = Reach { safe: Times { sleep: false, ..Times::ALL }, ..usual };
+        let no_sleep = Matrix { safe: Times { sleep: false, ..Times::ALL }, ..usual };
         assert!(!comes(&jane, &no_sleep, work_address, Time::Sleep) && comes(&jane, &no_sleep, work_address, Time::Meals));
-        // Neutral, to the work address: work time only (the address is work's, the list says work and admin).
+        // A stranger, to the work address: work time only (the address is work's, the row says work and admin).
         let stranger = message("Someone <someone@elsewhere.example>", "", "A question", &senders);
-        let at_times = |t: &crate::porch::Triaged, reach: &Reach, account: Area| Time::STATES.into_iter().filter(|time| comes(t, reach, account, *time)).map(Time::id).collect::<Vec<_>>();
+        assert_eq!(senders.who_of(&stranger.card), Who::Stranger);
+        let at_times = |t: &crate::porch::Triaged, reach: &Matrix, account: Area| Time::STATES.into_iter().filter(|time| comes(t, reach, account, *time)).map(Time::id).collect::<Vec<_>>();
         assert_eq!(at_times(&stranger, &usual, work_address), ["work"]);
         assert_eq!(at_times(&stranger, &usual, personal), ["admin"]);
-        // The address and the list never meet: the list alone decides, so nothing waits for good.
+        // The address and the row never meet: the row alone decides, so nothing waits for good.
         assert_eq!(at_times(&stranger, &usual, leisure_address), ["work", "admin"]);
+        // Strangers on their own row: never, and they wait while the neutral come.
+        let no_strangers = Matrix { stranger: Times::NEVER, ..usual };
+        assert_eq!(at_times(&stranger, &no_strangers, work_address), Vec::<&str>::new());
         let boss = message("Boss <boss@company.example>", "", "Monday", &senders);
         assert_eq!(at_times(&boss, &usual, personal), ["work"], "restricted to work, writing to a personal address");
         assert_eq!(at_times(&boss, &usual, work_address), ["work"]);
         assert_eq!(at_times(&boss, &mine, work_address), Vec::<&str>::new(), "never");
         // Without admin hours, work time takes admin's ticks; without work hours, admin time takes work's.
-        let admin_only = Reach { neutral: Times { admin: true, ..Times::NEVER }, ..usual };
+        let admin_only = Matrix { stranger: Times { admin: true, ..Times::NEVER }, ..usual };
         let no_admin = Week { admin_hours: false, ..set };
         assert!(mail_in_view(&stranger, &senders, &admin_only, Area::MIXED, Time::Work, no_admin));
         assert!(!mail_in_view(&stranger, &senders, &admin_only, Area::MIXED, Time::Work, set));
@@ -990,6 +897,7 @@ mod tests {
         let forged = message("Jane <jane@example.org>", "Authentication-Results: mx.example.net; dmarc=fail (p=reject) header.from=example.org\r\n", "Hello", &senders);
         assert_eq!(forged.lane, crate::porch::Lane::SetAside);
         assert!(!comes(&forged, &usual, personal, Time::Leisure) && comes(&forged, &usual, personal, Time::Admin));
+        assert!(!comes(&forged, &no_strangers, personal, Time::Admin), "on the strangers' row");
     }
 
     #[test]

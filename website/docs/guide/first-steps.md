@@ -11,19 +11,22 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 ## The window
 
 <figure markdown="span">
-  [![Sioul's window: on the left, a narrow column of icons, New (a plus), then the places from Porch to Health, the one shown marked, and three icons at the bottom (Accounts, Settings, Refresh everything); on the right, the Porch; along the bottom, the status line with the keys, the sound button and the weather.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
+  [![Sioul's window: across the top, its title bar, the status line with the keys, the sound button, the weather, Free time and Pause, then the window's buttons; on the left, a narrow column of icons, New (a plus), then the places from Porch to Health, the one shown marked, and three icons at the bottom (Accounts, Settings, Refresh everything); on the right, the Porch.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
 </figure>
+
+**At the top**, across the whole window, the status line is its title bar. It says one sentence about what happened last. After anything is moved, deleted or sent, "Undo" waits there for ten seconds. In quiet time, it says when work comes back; once the day's hours are over, it offers to close the work day, and in the evening the day. Further along are the keys, [do-not-disturb](pauses.md#do-not-disturb-on-every-device), the sound button ([sounds to focus or rest by](tasks.md#sounds)), the weather at a place you choose, and at its end [**Free time** and **Pause**](pauses.md).
+
+- **Its left end**, over the places, is the button that shows the places' names beside their icons, in a wider column, or keeps their icons only (++f9++): the same choice as **Settings ▸ Display ▸ Show the places' names beside their icons**.
+- **The window's buttons**, minimize, maximize or restore, and close, are on the side your system puts them, in its order: KDE Plasma, GNOME and Xfce say where in their settings; on the left on a Mac, on the right on Windows.
+- **Drag it** where nothing else is, the sentence included, to move the window; **double-click** it to maximize the window or give it back its size. The window's edges resize it.
 
 **On the left**, a narrow column of icons, from top to bottom:
 
 - **New ▾**, the **+**, makes something of any kind: a message, a task, an event, a contact, a note, a project, time spent, a budget movement, a paper; and **Where I stopped…** leaves one line on where you were ([Tasks](tasks.md#starting-and-stopping)).
 - **The places**, one icon each: Porch (an inbox tray), Tasks (a checklist), Mail (an envelope), Sites (a globe and its meridians), Agenda (a calendar), Contacts (a person and lines), Notes (a notepad), Projects (a folder), Time (a clock), Budgets (a wallet), Papers (a card), Health (a heart). The place shown is marked by a soft tint and a short bar.
 - **Apart at the bottom**: **Close the work day** (a ticked list) and, under it, **Close the whole day** (a moon), at any hour ([the end of the day](tasks.md#the-end-of-the-day)); then three icons, side by side when the names show: Accounts (a person), Settings (sliders), and Refresh everything, which fetches mail, the agenda, tasks and contacts again at once.
-- **At its foot**, level with the status line, the button that shows the places' names beside their icons, in a wider column, or keeps their icons only (++f9++): the same choice as **Settings ▸ Display ▸ Show the places' names beside their icons**.
 
 Each icon's name, with its key, shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen.
-
-**At the bottom**, the status line says one sentence about what happened last. After anything is moved, deleted or sent, "Undo" waits there for ten seconds. In quiet time, it says when work comes back; once the day's hours are over, it offers to close the work day, and in the evening the day. At its right end are the keys, the sound button ([sounds to focus or rest by](tasks.md#sounds)) and the weather at a place you choose.
 
 **On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. How long text reads (the font, its size and the space between lines) is in the ⚙ of Mail and of the Porch, and behind "Aa" in Notes. A right click, the Menu key, or a long press on a touch screen, on anything gives what is not in view.
 
@@ -47,12 +50,14 @@ Everything works from the keyboard: Tab to move, Enter to choose, Escape to go b
 An Android version is being tried ([Install](install.md#on-android)). On a phone, or in a window under 720 pixels wide:
 
 - **The places** slide in from the left, behind ☰, with their names beside their icons; a bar on top names the page.
+- **The status line** is at the bottom of a phone's screen, each of its buttons an icon alone: a long press on one says what it is. When its sentence is cut short, a tap on it shows it whole.
 - **One pane at a time**: a page shows its list, then what you open across the whole screen; **Back**, on the bar or Android's, comes back.
 - **Menus** open at a long press on a touch screen, where a mouse would right click.
 
 What differs on a phone:
 
 - **Notifications** come for doses ([Health](health.md#reminders)), the time running ([Time](time.md#where-time-comes-from)), events ([Agenda](agenda.md#reminders)) and new mail at its times ([The Porch](porch.md#new-mail-told-at-its-times)). A code you asked for shows on the Porch; the other reminders do not come there yet.
+- **Other apps' notifications** can be held until their time, once you give Sioul Android's notification access: messages from people as who may reach you says, the rest at the gathered times ([Settings](settings.md#other-apps)).
 - **Mail** is fetched while Sioul is open: Android stops it in the background.
 - **Sharing**: Sioul is in Android's share sheet, and so is each of your addresses; mail links open in it ([Mail](mail.md#from-other-apps)).
 - **Folders**: a setting's **Choose…** opens Sioul's own list of the phone's folders, with **Allow access to files** when Android has not given Sioul that access yet.
