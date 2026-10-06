@@ -6,7 +6,7 @@
 [project]
 site_name = "Sioul"
 site_url = "https://aurelienpierre.github.io/sioul/"
-site_description = "Sioul adapts the demands of work, institutions and money to the person: mail, tasks and everyday admin planned around attention, energy, health and rest, on your own computer."
+site_description = "Sioul adapts the demands of work, institutions and money to the person: mail, tasks and everyday admin planned around attention, energy, health and rest, on your own devices."
 site_author = "Aurélien Pierre"
 copyright = "Copyright &copy; 2026 Aurélien Pierre · Sioul is free software, under the GPL-3.0-or-later licence."
 
