@@ -113,11 +113,12 @@ fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, cases: &
     let now = Zoned::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
     let events = sioul_core::agenda::occurrences(midnight, midnight + EVENTS_AHEAD);
-    // Meals, naps and the night first: the work goes around them.
+    // Meals, naps and the night first: the work goes around them, as each day has them.
     let needs = sioul_core::health::Health::load(&sioul_core::health::Health::default_path()).needs;
-    // Your moves, and each meal pushed past the events it would fall in.
-    let moved = needs.past_events(now.date(), now.time_zone(), &sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), now.date()).shifts, &sioul_core::plan::event_spans(&events, 0));
-    let mut settings = Settings::of_hours(&config.week_hours(), sioul_core::areas::TaskAreas::of_config(&config, cases)).with_needs(&needs, moved).with_events(&now, &events);
+    let days = crate::health::days();
+    // Today's meals pushed past the events they would fall in (another day's: `with_events`).
+    let pushed = needs.past_events_on(now.date(), now.time_zone(), &days, &sioul_core::plan::event_spans(&events, 0));
+    let mut settings = Settings::of_hours(&config.week_hours(), sioul_core::areas::TaskAreas::of_config(&config, cases)).with_needs(&needs, pushed).with_days(days).with_events(&now, &events);
     settings.default_estimate = config.tasks.estimate.unwrap_or(settings.default_estimate);
     settings.today_percent = weather.room();
     settings.heavy_today = weather.heavy();
@@ -127,7 +128,7 @@ fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, cases: &
     settings
 }
 
-/// At rest, the tasks all the same: the page asked ("Show anyway"), until it is left.
+/// Asleep, the tasks all the same: the page asked ("Show anyway"), until it is left.
 static SHOWN_ANYWAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub(crate) fn show_anyway(qt: &QtThread, shared: &Arc<Shared>, on: bool) {
@@ -139,7 +140,8 @@ pub(crate) fn show_anyway(qt: &QtThread, shared: &Arc<Shared>, on: bool) {
 /// The moment, for the task pages: quiet or not, offices open or not.
 pub(crate) fn situation(cases: &[sioul_core::cases::Case]) -> sioul_core::quiet::Situation {
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-    sioul_core::quiet::Situation::now(&load_config(), &overrides, &Zoned::now(), tr(), cases)
+    let now = Zoned::now();
+    sioul_core::quiet::Situation::now(&load_config(), &overrides, &crate::hours::blocks(&now), &now, tr(), cases)
 }
 
 /// The plan, and what it needs, from what was read.
@@ -167,8 +169,8 @@ impl Desk {
         let situation = situation(&loaded.cases);
         let settings = settings(today.weather, &situation, &loaded.cases);
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
-        // At rest no task shows, unless the page asked to see them all.
-        let anyway = situation.mode.rests() && SHOWN_ANYWAY.load(Ordering::Relaxed);
+        // Asleep no task shows, unless the page asked to see them all.
+        let anyway = situation.mode.sleeps() && SHOWN_ANYWAY.load(Ordering::Relaxed);
         let filter = Filter { quiet: if anyway { None } else { situation.quiet_tasks() }, ..Filter::default() };
         let quiet = situation.mode.quiet;
         Desk { loaded, filter, offices: situation.offices, plan, today, sessions, spent, stopped, settings, quiet }
@@ -278,10 +280,21 @@ fn today_laid_out(desk: &Desk, shared: &Shared) -> sioul_core::dayview::DayView 
     let mut day = sioul_core::dayview::day(&now, &events, &desk.plan, &shown, &desk.settings);
     // Meals and naps without a name of their own: their usual one, in your language.
     for block in day.blocks.iter_mut().filter(|b| (b.kind == "meal" || b.kind == "nap") && b.title.trim().is_empty()) {
-        let index = block.key.rsplit_once(':').and_then(|(_, i)| i.parse().ok()).unwrap_or(0);
-        block.title = crate::health::usual_name(block.kind, index);
+        block.title = crate::health::block_name(block.kind, &block.key, "");
+    }
+    // The steps as laid, for the Health page's day (faded, for context).
+    if let Ok(mut steps) = DAY_STEPS.lock() {
+        *steps = day.blocks.iter().filter(|b| b.kind == "task").map(|b| (b.start, b.end, b.title.clone())).collect();
     }
     day
+}
+
+/// Today's steps as the day's layout last laid them: (start, end, title).
+static DAY_STEPS: std::sync::Mutex<Vec<(i64, i64, String)>> = std::sync::Mutex::new(Vec::new());
+
+/// Today's steps as last laid out, for the Health page's day: faded, for context.
+pub(crate) fn day_steps() -> Vec<(i64, i64, String)> {
+    DAY_STEPS.lock().map(|steps| steps.clone()).unwrap_or_default()
 }
 
 /// The routines, as the page lists them: the admin window's first (made from
@@ -881,13 +894,12 @@ pub(crate) fn add(qt: &QtThread, shared: &Arc<Shared>, line: &str, parent: &str,
     edit.parent = parent.to_string();
     // In quiet time, a thought noted waits for work to come back, out of sight.
     let now = Zoned::now();
-    let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-    let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &now);
+    let mode = crate::hours::mode_at(&now);
     let mut noted = String::new();
     if edit.start.is_empty()
         && parent.is_empty()
         && mode.quiet
-        && let Some(back) = mode.until
+        && let Some(back) = mode.back
     {
         edit.start = back.date().to_string();
         noted = say("task-noted-for", &[("day", day_name(back.date(), now.date()))]);

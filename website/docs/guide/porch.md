@@ -17,7 +17,7 @@ The Porch is where new mail waits until you look: from every address, checked (g
 - **Outside your hours**, the Porch says when it opens next, and nothing else: no counts, no names. **Open it anyway** stays possible, quietly. Meanwhile, what comes is checked and sorted.
 - **Without any hours set**, the Porch is always open.
 
-Which mail comes in which hours follows what each address is for: work, your admin, leisure. Mail from the people you marked safe comes at any hour. See [Hours](hours.md).
+Which mail comes when follows who wrote, list by list, at the times you tick for each list, and what each address is for: work, your admin, leisure. See [Who may write to you](accounts.md#senders) and [Hours](hours.md).
 
 Mail keeps arriving in the background all the while. The Porch only decides when it is shown.
 
@@ -25,7 +25,7 @@ Mail keeps arriving in the background all the while. The Porch only decides when
 
 One-time codes, temporary passwords, password resets, sign-in links and links to confirm an address come from something you just asked a site for, and they expire. So Sioul shows them at once, whatever the hour, even when they come from a site's automatic address (no-reply…):
 
-- one desktop notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid;
+- one desktop notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid; none while you sleep: the card waits here;
 - the same card on top of the Porch, with **Copy**.
 
 Nothing else opens with it. Once it has expired, it is hidden, and the message goes to its lane. It expires when the message says, else when its kind usually does: a code after 30 minutes, a sign-in link after an hour, a password reset after two hours, a link to confirm an address after a day, a temporary password after a week.
@@ -56,9 +56,9 @@ Under each lane's title, one line says what it holds. Its **?** (How mail lands 
 
 A message in the screener has **Let this address in**: their next messages go to "From people you know".
 
-Every message also has **Their mail**, in its menu (⋮), with three choices: **Safe** (their mail reaches you at any hour, quiet time included), **Neutral** (it waits for working hours), **Blocked** (set aside for good, never shown). The same lists, with patterns such as `*@example.org`, are in [Accounts ▸ Senders](accounts.md#senders).
+Every message also has **Their mail**, in its menu (⋮). First, one line says what decides for this sender now: "Safe, as the category Friends says." Then the choices: **As their categories say** (their own entry taken out of the lists: the categories on their contact card decide, else their address's domain), or one of the four lists, each with its times: **Safe**, **Neutral**, **Restricted**, **Blocked** (set aside for good, never shown). The same lists, with patterns such as `*@example.org`, and when each list's mail comes, are in [Accounts ▸ Senders](accounts.md#senders).
 
-Forged mail is judged apart: a forged message is set aside whatever the lists say, even if it claims to come from someone you marked safe.
+Forged mail is judged apart: a forged message is set aside whatever the lists say, even if it claims to come from someone you marked safe, and it is weighed as a stranger's.
 
 ## Reading a message
 
@@ -96,6 +96,7 @@ In quiet time, **Work now** appears beside it, to show work whatever the hours. 
 When there is something, a few lines come before the lanes:
 
 - **When your hours are not set**, a card asks for them, with **Set my hours** (which opens Settings at them) and **Leave as is** (which stops asking).
+- **When your night is not set**, a card says that nothing keeps notifications away while you sleep, with **Set my night** (which opens the Health page where meals and the night are set) and **Leave as is**. See [Hours](hours.md#sleep).
 - **Where you stopped**: the line you left when something interrupted you, with its task, until you press **Done**. See [Tasks](tasks.md#starting-and-stopping).
 - **Two events at once today**, the time to get there and back counted, with **Open "…"** for each and **Don't mention it again**. See [Agenda](agenda.md#two-events-at-once).
 - **Doses due while Sioul was closed**, neither marked nor reminded anywhere: **Taken…** (when you took it) or **Not taken**. When another device may know more, the doubt is said under the dose. See [Health](health.md#reminders).
@@ -104,7 +105,7 @@ When there is something, a few lines come before the lanes:
 - **This week's payments**, in one line: "This week: Electricity €62 (Mon). The account holds them." When something about money needs a look, it says so, without a count. See [Budgets](budgets.md#the-bank-watch).
 
 <figure markdown="span">
-  [![A card at the top of the Porch: "Your hours are not set: work, your admin and leisure all come at any hour.", a sentence on what each kind of hours brings, and two buttons, "Set my hours" and "Leave as is".](../assets/screens/porch-hours.png){ loading=lazy }](../assets/screens/porch-hours.png "Open the picture at full size")
+  [![A card at the top of the Porch: "Your hours are not set: work and your admin come at any time.", a sentence on what each kind of hours brings, and two buttons, "Set my hours" and "Leave as is".](../assets/screens/porch-hours.png){ loading=lazy }](../assets/screens/porch-hours.png "Open the picture at full size")
   <figcaption>Until your hours are set, the Porch asks once.</figcaption>
 </figure>
 
@@ -127,7 +128,7 @@ The ⚙ at the top of the Porch holds what is the Porch's alone:
 - **Paper letters ▸ Where scans arrive**: the folder your scans come to.
 - **How mail is sorted**: every lane, in the order mail is sorted, with its rules; the senders you know; the words that make a sender automatic (no-reply…).
 
-What belongs to something else is set where that thing is: an address's rank and protection on its card in [Accounts](accounts.md), a project's routes on its page in [Projects](projects.md), blocked senders in [Accounts ▸ Senders](accounts.md#senders), your hours in [Settings](settings.md#hours).
+What belongs to something else is set where that thing is: an address's rank and protection on its card in [Accounts](accounts.md), a project's routes on its page in [Projects](projects.md), who may write to you when in [Accounts ▸ Senders](accounts.md#senders), your hours in [Settings](settings.md#hours).
 
 ### Some addresses first, others last
 

@@ -100,7 +100,7 @@ In **Settings ▸ Your folder and sharing**, choose **The notes folder**. Sioul 
 
 ## Set your hours
 
-In **Settings ▸ Hours**: your working hours, hours for your own admin, and free time. Without them, everything comes at any hour, as in other mail programs. Until they are set, the Porch asks once, with **Set my hours** and **Leave as is**. See [Hours](hours.md).
+In **Settings ▸ Hours**: your working hours and hours for your own admin; every other time is leisure, and meals and sleep come from the Health page. Without hours, everything comes at any hour, as in other mail programs. Until they are set, the Porch asks once, with **Set my hours** and **Leave as is**. See [Hours](hours.md).
 
 ## Pin the websites you check
 

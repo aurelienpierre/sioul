@@ -84,9 +84,9 @@ Item {
     readonly property string kindFilter: page.shown && page.shown.view ? page.shown.view.filter.kind : ""
     readonly property string categoryFilter: page.shown && page.shown.view ? page.shown.view.filter.category : ""
     property bool restored: false
-    // Rest (outside every hours set): no tasks, unless you ask; the next visit asks again.
+    // Asleep: no tasks, unless you ask; the next visit asks again.
     property bool anyway: false
-    readonly property bool rest: page.window.moment.rest === true && !page.anyway
+    readonly property bool rest: page.window.moment.sleep === true && !page.anyway
 
     onVisibleChanged: {
         page.takeShown()
@@ -375,7 +375,7 @@ Item {
                                     spacing: 2
 
                                     Label {
-                                        text: page.sioul.text(page.window.moment.reason === "time-off" ? "quiet-time-off-title" : "quiet-title")
+                                        text: page.sioul.text(page.window.moment.reason === "time-off" ? "quiet-time-off-title" : page.window.moment.reason === "meal" ? "quiet-meal-title" : "quiet-title")
                                         textFormat: Text.PlainText
                                         font.pixelSize: 20
                                         color: page.theme.text
@@ -1158,7 +1158,7 @@ Item {
         }
     }
 
-    // Rest: one line, a thought noted for later, and the tasks if you ask.
+    // Asleep: one line, a thought noted for later, and the tasks if you ask.
     RestCover {
         visible: page.rest
         sioul: page.sioul

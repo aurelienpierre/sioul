@@ -68,21 +68,40 @@ Step by step: [First steps](first-steps.md#add-your-mail). Passwords go to your 
 ## Senders
 
 <figure markdown="span">
-  [![The Senders tab: three lists, "Safe: at any hour", "Neutral: during working hours" and "Blocked: never", each with addresses and patterns such as *@example.org, and a field to add one.](../assets/screens/accounts-senders.png){ loading=lazy }](../assets/screens/accounts-senders.png "Open the picture at full size")
+  [![The Senders tab: a grid of boxes, the lists Safe, Neutral and Restricted down and the times Work, Admin, Leisure, Meals and Sleep across; then four lists, "Safe: any time", "Neutral: work, admin", "Restricted: work" and "Blocked: never", each with addresses and patterns such as *@example.org, and a field to add one; then your contacts' categories, each with a list or none.](../assets/screens/accounts-senders.png){ loading=lazy }](../assets/screens/accounts-senders.png "Open the picture at full size")
   <figcaption>Who may write to you, and when.</figcaption>
 </figure>
 
-Who may write to you, and when, whatever the address they write to. Three lists:
+Who may write to you, and when, whatever the address they write to.
 
-- **Safe: at any hour**: friends, chosen colleagues, chosen family. Their mail reaches you in quiet time too, and skips the screener. Only you put someone there.
-- **Neutral: during working hours**: everyone not named elsewhere, strangers included. Name someone here to keep them neutral inside a domain marked safe.
-- **Blocked: never**: spam and harassment, set aside for good, never shown, never counted. Nothing is deleted.
+**When each list's mail comes**: a grid of boxes, the lists down (Safe, Neutral, Restricted), the five times across (Work, Admin, Leisure, Meals, Sleep: see [Hours](hours.md)). Tick as many as you like on each row. Ticked, their mail comes then; unticked, it waits, never lost, for the next time ticked. On a narrow screen the grid scrolls sideways. As it comes:
 
-Each line is an address, or a pattern with `*`: `*@example.org` for everyone there, `*@*.example.org` for its subdomains. The most precise entry wins: an address marked safe stays safe in a domain blocked here. Nobody is blocked for sharing a server or a domain with someone else.
+| | Work | Admin | Leisure | Meals | Sleep |
+|---|---|---|---|---|---|
+| Safe | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Neutral | ✓ | ✓ | | | |
+| Restricted | ✓ | | | | |
 
-Forged mail is judged apart, before the lists: a forged message is set aside even when it claims a safe sender's address.
+The codes and links you just asked a site for, and what you send yourself, come at once whatever the grid says. While you sleep nothing notifies: mail ticked for sleep shows on the Porch if you open Sioul, without a sound or a notification.
 
-From a message or a contact, **Their mail** puts someone in one of the three lists. The lists themselves, with their patterns, are edited here only.
+**Four lists**, each saying its times:
+
+- **Safe**: friends, chosen colleagues, chosen family. Their mail skips the screener, and comes to any of your addresses. Only you put someone there.
+- **Neutral**: everyone no list names, strangers included. Name someone here to keep them neutral inside a domain or a category on another list.
+- **Restricted**: those you would rather hear from only at chosen times: a demanding client, someone whose mail weighs.
+- **Blocked**: spam and harassment, set aside for good, never shown, never counted, never notified. Nothing is deleted.
+
+Each line is an address, or a pattern with `*`: `*@example.org` for everyone there, `*@*.example.org` for its subdomains. Nobody is blocked for sharing a server or a domain with someone else.
+
+The mail of a neutral or restricted sender comes only to an address for what now is for (work's address in working hours, a personal address in admin hours and leisure); when the two never meet, their list's times alone decide, so that nothing waits for good.
+
+**Your contacts' categories**: one row for each category your contacts use (Friends, Family, Clients…), with a choice: **No list**, **Safe**, **Neutral**, **Restricted** or **Blocked**. Everyone whose contact card is in the category takes it, at each of their addresses. Nothing goes on a list by itself, family and friends included.
+
+**From the person to the group**: a person's own choice comes first, then the categories on their contact card, then their address's domain; everyone else is neutral. So one friend can be neutral while the category Friends is safe, and a colleague in Friends stays safe in a domain you marked restricted. When the same level gives two answers (a person in two categories on two lists), blocked wins, then restricted, then neutral, then safe.
+
+Forged mail is judged apart, before the lists: a forged message is set aside even when it claims a safe sender's address, and weighed as a stranger's.
+
+From a message or a contact, **Their mail** puts someone in one of the four lists, or back to **As their categories say**. The lists themselves, with their patterns, and the categories are edited here only.
 
 ## Encryption
 

@@ -57,7 +57,7 @@ The drawings are in `data/icons/`: `sioul.svg`, `sioul-small.svg` (drawn for 32 
 2. **Web-only mailboxes**, chats and other sites open in Sites (Ctrl+4), each logged in once in its own lasting profile ([sites.md](sites.md)); from the terminal, `sioul account portal proton https://mail.proton.me` adds one.
 3. **Keep the window open**, or run `sioul watch` in a terminal: each account's inbox stays open (IMAP IDLE), and the codes and links you ask sites for become quiet notifications within seconds.
 4. **Install an antivirus** to have attachments checked before they open (without one, Sioul asks first): `sudo dnf install clamav clamav-update`, then `sudo freshclam` for its signatures and `sudo systemctl enable --now clamav-freshclam` to keep them current.
-5. **Choose your hours** in Settings ▸ Hours: working hours, hours for your admin, free time ([areas.md](areas.md)); `[[window]]` in `~/.config/sioul/config.toml` holds them ([examples/config.toml](../examples/config.toml)). Without any, the Porch is always open.
+5. **Choose your hours** in Settings ▸ Hours: working hours, hours for your admin; every other time is leisure, meals and sleep come from the Health page ([areas.md](areas.md)); `[[window]]` in `~/.config/sioul/config.toml` holds them ([examples/config.toml](../examples/config.toml)). Without any, the Porch is always open.
 
 ## Where things are
 | What | Where |

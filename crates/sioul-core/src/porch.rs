@@ -92,13 +92,34 @@ pub struct Triaged {
 /// A list of senders: one address or pattern per line, `#` for comments. A
 /// pattern holds `*` for any run of characters: `*@example.org` (everyone
 /// there), `*@*.example.org` (its subdomains), `news*@example.org`;
-/// `@example.org` and a bare `example.org` stand for `*@example.org`.
-/// Four such lists exist: the senders you let in (the screener's), and who is
-/// safe, neutral or blocked (`Senders`).
+/// `@example.org` and a bare `example.org` stand for `*@example.org`. A line
+/// `category:Friends` names everyone your contacts put in that category.
+/// Five such lists exist: the senders you let in (the screener's), and who is
+/// safe, neutral, restricted or blocked (`Senders`).
 #[derive(Debug, Clone, Default)]
 pub struct SenderList {
     /// Patterns, lower case, as `normalize` writes them.
     patterns: Vec<String>,
+    /// Categories of your contacts, as written (`category:Friends`).
+    categories: Vec<String>,
+}
+
+/// What starts a line naming a category of your contacts: `category:Friends`.
+/// Never a pattern: a pattern has no `:`.
+pub const CATEGORY: &str = "category:";
+
+/// The category a line names ("category:Friends" → "Friends"), as written;
+/// none for an address or a pattern.
+pub fn category_of(line: &str) -> Option<&str> {
+    let line = line.trim();
+    let head = line.get(..CATEGORY.len())?;
+    head.eq_ignore_ascii_case(CATEGORY).then(|| line[CATEGORY.len()..].trim()).filter(|name| !name.is_empty())
+}
+
+/// A category's name as categories are compared: trimmed, without case or
+/// accents ("Amis", " amis " and "AMIS" are one), as contacts.rs compares them.
+pub fn category_key(name: &str) -> String {
+    crate::text::fold(name.trim()).into_iter().collect()
 }
 
 /// The senders you let in: they skip the screener.
@@ -108,7 +129,8 @@ pub type KnownSenders = SenderList;
 /// None for what cannot be an address or a pattern.
 pub fn normalize(entry: &str) -> Option<String> {
     let entry = entry.trim().to_ascii_lowercase();
-    if entry.is_empty() || entry.chars().any(|c| c.is_whitespace() || c == ',' || c == ';' || c == '<' || c == '>') {
+    // A `:` is a category's line (`category:Friends`), never an address.
+    if entry.is_empty() || entry.chars().any(|c| c.is_whitespace() || c == ',' || c == ';' || c == '<' || c == '>' || c == ':') {
         return None;
     }
     let pattern = match entry.strip_prefix('@') {
@@ -153,12 +175,34 @@ fn precision(pattern: &str) -> usize {
 impl SenderList {
     pub fn parse(text: &str) -> Self {
         let mut patterns: Vec<String> = Vec::new();
-        for pattern in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).filter_map(normalize) {
-            if !patterns.contains(&pattern) {
+        let mut categories: Vec<String> = Vec::new();
+        for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+            if let Some(name) = category_of(line) {
+                if !categories.iter().any(|c| category_key(c) == category_key(name)) {
+                    categories.push(name.to_string());
+                }
+            } else if let Some(pattern) = normalize(line)
+                && !patterns.contains(&pattern)
+            {
                 patterns.push(pattern);
             }
         }
-        SenderList { patterns }
+        SenderList { patterns, categories }
+    }
+
+    /// The categories of your contacts it names, as written.
+    pub fn categories(&self) -> &[String] {
+        &self.categories
+    }
+
+    /// The first of `keys` (categories as compared, `category_key`) it names, as written.
+    fn names_category(&self, keys: &[String]) -> Option<&str> {
+        self.categories.iter().find(|c| keys.contains(&category_key(c))).map(String::as_str)
+    }
+
+    /// Whether it holds this very address (not a pattern that fits it).
+    fn holds(&self, address: &str) -> bool {
+        self.patterns.iter().any(|p| !p.contains('*') && p == address)
     }
 
     /// How precisely the list names an address: its most precise entry that fits it.
@@ -208,6 +252,41 @@ impl SenderList {
         std::fs::write(&temporary, kept.join("\n") + "\n").and_then(|()| std::fs::rename(&temporary, path)).map_err(fail)
     }
 
+    /// Takes a category's line out of the file, the other lines and the comments kept.
+    pub fn remove_category(path: &Path, name: &str) -> Result<(), String> {
+        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+        let text = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(fail(e)),
+        };
+        let key = category_key(name);
+        let kept: Vec<&str> = text.lines().filter(|l| category_of(l).is_none_or(|c| category_key(c) != key)).collect();
+        if kept.len() == text.lines().count() {
+            return Ok(());
+        }
+        let temporary = path.with_extension("txt.new");
+        std::fs::write(&temporary, kept.join("\n") + "\n").and_then(|()| std::fs::rename(&temporary, path)).map_err(fail)
+    }
+
+    /// Adds a category's line at the end of the file, as written; nothing when it is already there.
+    pub fn add_category(path: &Path, name: &str) -> Result<(), String> {
+        use std::io::Write;
+        let name = name.trim();
+        if name.is_empty() || name.contains(['\n', '\r']) {
+            return Err(format!("{name}: not a category"));
+        }
+        if SenderList::load(path).names_category(&[category_key(name)]).is_some() {
+            return Ok(());
+        }
+        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(fail)?;
+        }
+        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).map_err(fail)?;
+        writeln!(file, "{CATEGORY}{name}").map_err(fail)
+    }
+
     /// Adds an address or a pattern at the end of the file: lets a sender in, or
     /// marks them; nothing when it is already there.
     pub fn let_in(path: &Path, entry: &str) -> Result<(), String> {
@@ -225,23 +304,30 @@ impl SenderList {
     }
 }
 
-/// Who may reach you, and when (docs/porch.md, "Who may write to you").
+/// Who may reach you (docs/porch.md, "Who may write to you"); when, the
+/// matrix of `quiet::Reach` says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Standing {
-    /// Friends, chosen colleagues, chosen family: at any hour, quiet time included.
+    /// Friends, chosen colleagues, chosen family: by default, at any time.
     Safe,
-    /// Everyone else, unless you say: during working hours only.
+    /// Everyone no list names, strangers included: by default, in working and admin hours.
     Neutral,
-    /// Spam, harassment: set aside for good.
+    /// Those you hear from only at chosen times: by default, in working hours.
+    Restricted,
+    /// Spam, harassment: set aside for good, never shown.
     Blocked,
 }
 
 impl Standing {
+    /// The four, in the order the lists are shown.
+    pub const ALL: [Standing; 4] = [Standing::Safe, Standing::Neutral, Standing::Restricted, Standing::Blocked];
+
     pub fn read(text: &str) -> Option<Standing> {
         match text {
             "safe" => Some(Standing::Safe),
             "neutral" => Some(Standing::Neutral),
+            "restricted" => Some(Standing::Restricted),
             "blocked" => Some(Standing::Blocked),
             _ => None,
         }
@@ -251,40 +337,206 @@ impl Standing {
         match self {
             Standing::Safe => "safe",
             Standing::Neutral => "neutral",
+            Standing::Restricted => "restricted",
             Standing::Blocked => "blocked",
         }
     }
 }
 
-/// The three lists of who may reach you: safe, neutral (the default for anyone
-/// they do not name) and blocked. The most precise entry decides: an address
-/// marked safe stays safe in a domain you blocked. Lists judge the sender's
-/// address only, after forged mail was set aside: a message whose sender is
-/// not verified never changes them (porch.rs, trust.rs), and nobody is judged
-/// by the server or the domain another sender shares.
+/// What decided where a sender stands, the most precise first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum By {
+    /// Their own address, on a list.
+    Address,
+    /// A category their contact is in.
+    Category,
+    /// A pattern their address fits: a domain, `news*@`.
+    Domain,
+    /// No list names them: neutral.
+    Default,
+}
+
+/// Where a sender stands, and why.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Judged {
+    pub standing: Standing,
+    pub by: By,
+    /// What decided: the address, the category as the list writes it, the pattern; "" by default.
+    pub name: String,
+}
+
+/// Your contacts' categories, by address (docs/porch.md, "Who may write to
+/// you"): every address of a card carries its categories. Read from every
+/// address book, on a server or on this computer only, read-only ones too.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ContactCategories {
+    /// Address, lower case → its categories as compared (`category_key`).
+    by_address: std::collections::HashMap<String, Vec<String>>,
+    /// Every category in use, as compared → as first written.
+    names: std::collections::BTreeMap<String, String>,
+}
+
+impl ContactCategories {
+    pub fn of(contacts: &[crate::contacts::Contact]) -> ContactCategories {
+        let mut index = ContactCategories::default();
+        for contact in contacts {
+            let mut keys: Vec<String> = Vec::new();
+            for name in contact.categories.iter().map(|c| c.trim()).filter(|c| !c.is_empty()) {
+                let key = category_key(name);
+                index.names.entry(key.clone()).or_insert_with(|| name.to_string());
+                if !keys.contains(&key) {
+                    keys.push(key);
+                }
+            }
+            if keys.is_empty() {
+                continue;
+            }
+            for email in &contact.emails {
+                let address = email.value.trim();
+                let address = address.strip_prefix("mailto:").unwrap_or(address).trim().to_ascii_lowercase();
+                if address.is_empty() {
+                    continue;
+                }
+                let slot = index.by_address.entry(address).or_default();
+                for key in &keys {
+                    if !slot.contains(key) {
+                        slot.push(key.clone());
+                    }
+                }
+            }
+        }
+        index
+    }
+
+    /// The categories of the contacts holding this address, as compared.
+    pub fn of_address(&self, address: &str) -> &[String] {
+        self.by_address.get(&address.trim().to_ascii_lowercase()).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every category in use, as first written, in order.
+    pub fn names(&self) -> Vec<String> {
+        self.names.values().cloned().collect()
+    }
+
+    /// From every address book, kept while their files do not change: read
+    /// again only when one is added, changed or taken away, never per message.
+    pub fn load() -> std::sync::Arc<ContactCategories> {
+        static KEPT: std::sync::Mutex<Option<(u64, std::sync::Arc<ContactCategories>)>> = std::sync::Mutex::new(None);
+        let books = crate::vdir::collections(crate::vdir::Kind::Contacts);
+        // Each book's place, and each card's name, size and time.
+        let mut seal: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut mix = |bytes: &[u8]| {
+            for b in bytes {
+                seal = (seal ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3);
+            }
+        };
+        for book in &books {
+            mix(book.dir.to_string_lossy().as_bytes());
+            for item in book.items() {
+                mix(item.to_string_lossy().as_bytes());
+                if let Ok(meta) = std::fs::metadata(&item) {
+                    mix(&meta.len().to_le_bytes());
+                    let time = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+                    mix(&time.to_le_bytes());
+                }
+            }
+        }
+        let mut kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((known, index)) = kept.as_ref()
+            && *known == seal
+        {
+            return std::sync::Arc::clone(index);
+        }
+        let index = std::sync::Arc::new(ContactCategories::of(&crate::contacts::all()));
+        *kept = Some((seal, std::sync::Arc::clone(&index)));
+        index
+    }
+}
+
+/// The four lists of who may reach you: safe, neutral (the default for anyone
+/// they do not name), restricted and blocked, with your contacts' categories.
+/// The most precise entry decides: the person's own address, then their
+/// contact's categories, then patterns (a domain), the more precise first;
+/// at one level, blocked before restricted before neutral before safe. An
+/// address marked safe stays safe in a domain you blocked; a friend you put
+/// on neutral stays neutral in a category you marked safe. Lists judge the
+/// sender's address only, after forged mail was set aside: a message whose
+/// sender is not verified never changes them (porch.rs, trust.rs), and
+/// nobody is judged by the server or the domain another sender shares.
 #[derive(Debug, Clone, Default)]
 pub struct Senders {
     pub safe: SenderList,
     pub neutral: SenderList,
+    pub restricted: SenderList,
     pub blocked: SenderList,
+    /// Your contacts' categories, by address.
+    pub contacts: std::sync::Arc<ContactCategories>,
+}
+
+/// Each list's file, in the order ties are decided: blocked, restricted, neutral, safe.
+fn list_paths(config: &crate::config::Config) -> [(Standing, PathBuf); 4] {
+    [
+        (Standing::Blocked, config.blocked_senders_path()),
+        (Standing::Restricted, config.restricted_senders_path()),
+        (Standing::Neutral, config.neutral_senders_path()),
+        (Standing::Safe, config.safe_senders_path()),
+    ]
 }
 
 impl Senders {
     pub fn load(config: &crate::config::Config) -> Senders {
-        Senders { safe: SenderList::load(&config.safe_senders_path()), neutral: SenderList::load(&config.neutral_senders_path()), blocked: SenderList::load(&config.blocked_senders_path()) }
+        Senders {
+            safe: SenderList::load(&config.safe_senders_path()),
+            neutral: SenderList::load(&config.neutral_senders_path()),
+            restricted: SenderList::load(&config.restricted_senders_path()),
+            blocked: SenderList::load(&config.blocked_senders_path()),
+            contacts: ContactCategories::load(),
+        }
     }
 
-    /// Where an address stands: the most precise entry of the three lists; at
-    /// equal precision, blocked before neutral before safe; neutral when none names it.
-    pub fn standing(&self, address: &str) -> Standing {
-        [(Standing::Blocked, &self.blocked), (Standing::Neutral, &self.neutral), (Standing::Safe, &self.safe)]
+    /// The lists, in the order ties are decided.
+    fn lists(&self) -> [(Standing, &SenderList); 4] {
+        [(Standing::Blocked, &self.blocked), (Standing::Restricted, &self.restricted), (Standing::Neutral, &self.neutral), (Standing::Safe, &self.safe)]
+    }
+
+    /// The list that names this category, if any (as compared, `category_key`).
+    pub fn category_standing(&self, name: &str) -> Option<Standing> {
+        let key = [category_key(name)];
+        self.lists().into_iter().find(|(_, list)| list.names_category(&key).is_some()).map(|(standing, _)| standing)
+    }
+
+    /// Where an address stands, and why: its own entry; else its contact's
+    /// categories; else the most precise pattern; at one level, blocked
+    /// before restricted before neutral before safe; neutral when none names it.
+    pub fn judge(&self, address: &str) -> Judged {
+        let address = address.trim().to_ascii_lowercase();
+        if address.is_empty() {
+            return Judged { standing: Standing::Neutral, by: By::Default, name: String::new() };
+        }
+        if let Some((standing, _)) = self.lists().into_iter().find(|(_, list)| list.holds(&address)) {
+            return Judged { standing, by: By::Address, name: address };
+        }
+        let keys = self.contacts.of_address(&address);
+        if !keys.is_empty()
+            && let Some((standing, name)) = self.lists().into_iter().find_map(|(standing, list)| list.names_category(keys).map(|name| (standing, name.to_string())))
+        {
+            return Judged { standing, by: By::Category, name };
+        }
+        self.lists()
             .into_iter()
-            .filter_map(|(standing, list)| list.names(address).map(|p| (p, standing)))
-            .fold(None, |best: Option<(usize, Standing)>, (p, standing)| match best {
-                Some((b, _)) if b >= p => best,
-                _ => Some((p, standing)),
+            .flat_map(|(standing, list)| list.patterns.iter().filter(|p| p.contains('*') && fits(p, &address)).map(move |p| (precision(p), standing, p)))
+            // The most precise; at equal precision, the first in the order ties are decided.
+            .fold(None, |best: Option<(usize, Standing, &String)>, (p, standing, pattern)| match best {
+                Some((b, _, _)) if b >= p => best,
+                _ => Some((p, standing, pattern)),
             })
-            .map_or(Standing::Neutral, |(_, standing)| standing)
+            .map_or(Judged { standing: Standing::Neutral, by: By::Default, name: String::new() }, |(_, standing, pattern)| Judged { standing, by: By::Domain, name: pattern.clone() })
+    }
+
+    /// Where an address stands.
+    pub fn standing(&self, address: &str) -> Standing {
+        self.judge(address).standing
     }
 
     pub fn standing_of(&self, card: &Card) -> Standing {
@@ -292,20 +544,48 @@ impl Senders {
     }
 }
 
-/// Puts an address or a pattern in one list and out of the two others. Neutral
-/// is written only when a broader safe or blocked entry would still name it.
+/// Puts an address or a pattern in one list and out of the three others:
+/// your own choice for it, whatever its categories or its domain say.
 pub fn set_standing(config: &crate::config::Config, entry: &str, standing: Standing) -> Result<(), String> {
     let pattern = normalize(entry).ok_or_else(|| format!("{}: not an address", entry.trim()))?;
-    let paths = [(Standing::Safe, config.safe_senders_path()), (Standing::Neutral, config.neutral_senders_path()), (Standing::Blocked, config.blocked_senders_path())];
-    for (_, path) in &paths {
+    for (_, path) in &list_paths(config) {
         SenderList::remove(path, &pattern)?;
     }
-    let after = Senders::load(config);
-    if standing == Standing::Neutral && after.standing(&pattern.replace('*', "x")) == Standing::Neutral {
-        return Ok(());
-    }
-    let path = paths.iter().find(|(s, _)| *s == standing).map(|(_, p)| p.clone()).unwrap_or_default();
+    let path = list_paths(config).into_iter().find(|(s, _)| *s == standing).map(|(_, p)| p).unwrap_or_default();
     SenderList::let_in(&path, &pattern)
+}
+
+/// Takes an address's or a pattern's own entry out of every list: its
+/// contact's categories, else its domain, decide ("As their categories say").
+pub fn clear_standing(config: &crate::config::Config, entry: &str) -> Result<(), String> {
+    let pattern = normalize(entry).ok_or_else(|| format!("{}: not an address", entry.trim()))?;
+    for (_, path) in &list_paths(config) {
+        SenderList::remove(path, &pattern)?;
+    }
+    Ok(())
+}
+
+/// Unblocks an address or a pattern: out of the blocked list; still blocked
+/// by a category or a broader pattern, it is written neutral, so that it is not.
+pub fn unblock(config: &crate::config::Config, entry: &str) -> Result<(), String> {
+    let pattern = normalize(entry).ok_or_else(|| format!("{}: not an address", entry.trim()))?;
+    SenderList::remove(&config.blocked_senders_path(), &pattern)?;
+    if Senders::load(config).standing(&pattern.replace('*', "x")) == Standing::Blocked {
+        return set_standing(config, &pattern, Standing::Neutral);
+    }
+    Ok(())
+}
+
+/// Puts a category of your contacts on one list and out of the three others;
+/// none: on no list, each person as their own entry or their domain says.
+pub fn set_category(config: &crate::config::Config, name: &str, standing: Option<Standing>) -> Result<(), String> {
+    for (_, path) in &list_paths(config) {
+        SenderList::remove_category(path, name)?;
+    }
+    match standing.and_then(|s| list_paths(config).into_iter().find(|(l, _)| *l == s)) {
+        Some((_, path)) => SenderList::add_category(&path, name),
+        None => Ok(()),
+    }
 }
 
 /// What the triage needs to know beyond the message.
@@ -603,6 +883,7 @@ mod tests {
             safe: SenderList::parse("jane@example.org\n*@family.example"),
             neutral: SenderList::parse("cousin@family.example"),
             blocked: SenderList::parse("@example.org\nnews*@shop.example"),
+            ..Senders::default()
         };
         // The most precise entry decides.
         assert_eq!(senders.standing("jane@example.org"), Standing::Safe);
@@ -627,6 +908,68 @@ mod tests {
         let trusted = ["mx.example.net".to_string()];
         let strict = Context { trusted_ids: &trusted, ..ctx };
         assert_eq!(triage(forged, &strict).lane, Lane::SetAside);
+    }
+
+    fn contact(categories: &[&str], emails: &[&str]) -> crate::contacts::Contact {
+        crate::contacts::Contact {
+            categories: categories.iter().map(|c| c.to_string()).collect(),
+            emails: emails.iter().map(|e| crate::contacts::Labeled { label: String::new(), value: e.to_string() }).collect(),
+            ..crate::contacts::Contact::default()
+        }
+    }
+
+    #[test]
+    fn from_the_person_to_the_group() {
+        // Friends and family on safe, a work domain restricted, one friend demoted to neutral.
+        let contacts = [
+            contact(&["Amis"], &["Lea@Example.org", "lea.home@mail.example"]),
+            contact(&["amis"], &["paul@company.example"]),
+            contact(&["Famille", "Pénibles"], &["oncle@family.example"]),
+            contact(&["  AMIS "], &["sam@company.example"]),
+        ];
+        let senders = Senders {
+            safe: SenderList::parse("category:Amis\ncategory:Famille"),
+            neutral: SenderList::parse("sam@company.example"),
+            restricted: SenderList::parse("*@company.example"),
+            blocked: SenderList::parse("category:penibles"),
+            contacts: std::sync::Arc::new(ContactCategories::of(&contacts)),
+        };
+        // A category beats a domain: a friend at the company is safe; a colleague no category names is restricted.
+        let judged = senders.judge("paul@company.example");
+        assert_eq!((judged.standing, judged.by, judged.name.as_str()), (Standing::Safe, By::Category, "Amis"));
+        assert_eq!(senders.judge("boss@company.example"), Judged { standing: Standing::Restricted, by: By::Domain, name: "*@company.example".into() });
+        // The person's own entry beats the category: one friend on neutral, the others safe.
+        assert_eq!(senders.judge("Sam@Company.example"), Judged { standing: Standing::Neutral, by: By::Address, name: "sam@company.example".into() });
+        // Every address of a card carries its categories, case aside.
+        assert_eq!((senders.standing("lea@example.org"), senders.standing("LEA.HOME@mail.example")), (Standing::Safe, Standing::Safe));
+        // In two categories on two lists, the blocked one wins; names compared without case or accents.
+        assert_eq!(senders.judge("oncle@family.example"), Judged { standing: Standing::Blocked, by: By::Category, name: "penibles".into() });
+        // Nobody names them: neutral.
+        assert_eq!(senders.judge("someone@elsewhere.example"), Judged { standing: Standing::Neutral, by: By::Default, name: String::new() });
+        assert_eq!(senders.category_standing("AMIS"), Some(Standing::Safe));
+        assert_eq!(senders.category_standing("Collègues"), None);
+        assert_eq!(senders.contacts.names(), vec!["Amis".to_string(), "Famille".into(), "Pénibles".into()]);
+        assert_eq!((category_key(" Équipe "), category_of("Category: Close friends"), category_of("jane@example.org")), ("equipe".to_string(), Some("Close friends"), None));
+        assert_eq!(normalize("category:friends"), None, "never a pattern");
+    }
+
+    #[test]
+    fn category_lines_kept_as_written() {
+        let dir = std::env::temp_dir().join(format!("sioul-categories-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("safe-senders.txt");
+        std::fs::write(&path, "# Mine.\ncategory:Close friends\njane@example.org\n").unwrap();
+        let list = SenderList::load(&path);
+        assert_eq!((list.categories(), list.entries()), (&["Close friends".to_string()][..], vec!["jane@example.org".to_string()]));
+        // An address taken out keeps the category's line as written; one added after it.
+        SenderList::remove(&path, "jane@example.org").unwrap();
+        SenderList::add_category(&path, "Famille").unwrap();
+        SenderList::add_category(&path, "famille").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "# Mine.\ncategory:Close friends\ncategory:Famille\n");
+        SenderList::remove_category(&path, "CLOSE FRIENDS").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "# Mine.\ncategory:Famille\n");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

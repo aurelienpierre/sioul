@@ -258,10 +258,11 @@ static GATHERED: Mutex<i64> = Mutex::new(0);
 /// What sites notified, gathered in one notification at the times you set
 /// (docs/sites.md, "Notifications"): only the sites of these hours, not
 /// silenced, on the computer you are at. A site in real time, and a call,
-/// came at once already; the rest waits for the Porch as before.
+/// came at once already; the rest waits for the Porch as before. While you
+/// sleep, none: what the sites said waits for the next time after waking.
 pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
     let config = load_config();
-    if !config.reminders.gather {
+    if !config.reminders.gather || !crate::hours::may_notify() {
         return;
     }
     let now = jiff::Zoned::now();
@@ -327,12 +328,13 @@ pub(crate) fn list() -> String {
 
 /// A site's notification: shown at once when the site is in real time (or
 /// you asked for real time everywhere), else kept for the Porch. In quiet
-/// time, a work site's waits for work to come back.
+/// time, a work site's waits for work to come back; while you sleep, every
+/// site's waits.
 pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, title: &str, text: &str) {
     let config = load_config();
     let Some(site) = sites::sites(&config).into_iter().find(|s| s.id == id) else { return };
     let everywhere = shared.realtime.load(std::sync::atomic::Ordering::Relaxed);
-    let resting = !crate::backend::in_view_now(site.area) || (site.kind == "chat" && crate::health::chats_covered());
+    let resting = !crate::backend::in_view_now(site.area) || (site.kind == "chat" && crate::health::chats_covered()) || !crate::hours::may_notify();
     // A call waits for nobody: shown at once, unless the site is silenced or resting.
     let call = sites::is_call(title, text) && !site.muted;
     if (site.realtime || everywhere || call) && !resting {

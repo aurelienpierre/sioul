@@ -1,15 +1,15 @@
 ---
-description: Les heures dans Sioul – heures de travail, heures pour vos démarches et temps libre, réglés à l’avance ; chaque adresse, site, budget et tâche y est rattaché ; le calme et « Travailler maintenant ».
+description: Les heures dans Sioul – heures de travail et heures pour vos démarches, réglées à l’avance ; les loisirs tout le reste du temps ; les repas et le sommeil depuis la Santé ; chaque adresse, site, budget et tâche y est rattaché ; le calme, ne pas déranger et « Travailler maintenant ».
 ---
 
-# Les heures : travail, démarches, temps libre {#hours-work-your-admin-free-time}
+# Les heures : travail, démarches, loisirs, repas, sommeil {#hours-work-your-admin-leisure-meals-sleep}
 
 Deux questions décident de ce que Sioul met en avant, et elles restent séparées :
 
-- **Qui peut vous joindre** : les personnes que vous avez marquées sûres, neutres ou bloquées ([Comptes ▸ Expéditeurs](accounts.md#senders)).
-- **À quoi sert une chose, et si ces heures sont faites pour elle** : cette page.
+- **Qui peut vous joindre, et quand** : les personnes que vous mettez sur une liste (sûrs, neutres, restreints, bloqués) et les moments où vient le courrier de chaque liste ([Comptes ▸ Expéditeurs](accounts.md#senders)).
+- **À quoi sert une chose, et si ce moment est fait pour elle** : cette page.
 
-Elles se rejoignent en un point. Le courrier d’une personne que vous avez marquée comme sûre, celui que vous vous envoyez, et les codes et liens que vous venez de demander à un site arrivent toujours, quelles que soient les heures. Tout le reste arrive quand ce à quoi il sert correspond aux heures.
+Elles se rejoignent en un point, le courrier : celui de vos expéditeurs sûrs vient aux moments cochés pour eux, à n’importe laquelle de vos adresses ; celui des autres aux moments cochés pour leur liste, à une adresse faite pour le moment présent. Le courrier que vous vous envoyez, et les codes et liens que vous venez de demander à un site, arrivent toujours tout de suite.
 
 C’est une question de santé avant d’être un filtre. Le travail qui atteint la soirée empêche de récupérer, et le risque est le plus fort pour les personnes qui travaillent chez elles ou à leur compte, pour qui rien d’autre ne marque la fin de la journée. Des démarches étalées sur toutes les soirées pèsent aussi, même pour qui ne travaille pas.
 
@@ -26,55 +26,71 @@ Une source ou une tâche sert au **travail**, à **vos démarches** (factures, c
 
 Les adresses électroniques sont le seul endroit où rien n’est deviné à votre place : dire à quoi sert chaque adresse, c’est ce qui sépare une adresse professionnelle d’une adresse personnelle.
 
+## Cinq moments {#five-times}
+
+Le moment présent est toujours l’un de ces cinq :
+
+| Moment | Ce que c’est | Où il se règle |
+|---|---|---|
+| **Travail** | vos heures de travail, et le travail que vous demandez en dehors (**Travailler encore une demi-heure** et les autres, **Travailler maintenant**) | [Paramètres ▸ Heures](settings.md#hours) |
+| **Démarches** | vos heures pour vos démarches | [Paramètres ▸ Heures](settings.md#hours) |
+| **Repas** | chaque repas, de sa préparation à sa fin | [Santé](health.md#meals-rest-and-sleep) |
+| **Sommeil** | la nuit, du moment de se détendre au réveil ; chaque sieste, avec ses minutes pour revenir | [Santé](health.md#meals-rest-and-sleep) |
+| **Loisirs** | tout le reste du temps : les soirées, les jours sans heures, les congés, le reste d’une journée close avec **Fini pour aujourd’hui** | rien à régler |
+
+**Quand ils se chevauchent**, le sommeil passe d’abord, puis les repas, puis les heures : un déjeuner pendant vos heures de travail est un repas tant qu’il dure ; **Travailler maintenant** qui dure par-dessus une nuit laisse la nuit au sommeil. Les heures de travail et de démarches peuvent se chevaucher : ce que chacune apporte vient alors, tout ensemble.
+
+L’heure avant le coucher appartient au sommeil : la Santé la garde libre, et rien ne devrait alors faire tourner la tête. L’avis propre à la nuit vient quand même à son début, pour dire que la nuit commence.
+
 ## Les heures {#the-hours}
 
-Dans [Paramètres ▸ Heures](settings.md#hours), trois semaines types : **Heures de travail**, **Heures pour vos démarches** et **Temps libre**. Chaque jour de chacune est activé ou non, avec une plage horaire ou plusieurs (09:00–12:00 et 14:00–17:00, avec le déjeuner entre les deux). **Congés**, en dessous, reçoit les vacances et les arrêts maladie.
+Dans [Paramètres ▸ Heures](settings.md#hours), deux semaines : **Heures de travail** et **Heures pour vos démarches**. Chaque jour de chacune est actif ou non, avec une plage horaire ou plusieurs (09:00–12:00 et 14:00–17:00, un déjeuner entre les deux). **Congés**, en dessous, prend les vacances et les arrêts maladie. Il n’y a plus de temps libre à régler : les loisirs, c’est tout le reste du temps, et les repas et le sommeil viennent de la page Santé, à un bouton de là.
 
-Les heures qui ne sont réglées pour aucune d’elles sont du **repos** : seules les personnes marquées sûres vous joignent, avec les sites de loisirs ; ni tâches, ni projets, ni temps. Les congés, et une journée close avec « Fini pour aujourd’hui », sont du temps libre.
+Le temps libre réglé en heures par un Sioul plus ancien reste dans vos paramètres, intact, et ne compte plus.
 
-| Pendant ces heures | Ce qui vient | Ce qui attend |
+| Maintenant | Ce qui vient en avant | Ce qui attend |
 |---|---|---|
-| Heures de travail | le travail ; vos démarches aussi, tant qu’elles n’ont pas d’heures à elles ; un appel à un bureau, toujours | les loisirs |
-| Heures pour vos démarches | vos démarches ; le travail aussi, tant qu’il n’a pas d’heures | les loisirs |
-| Temps libre | les loisirs, et rien d’autre | le travail et les démarches |
-| Repos (hors de toutes ces heures : les nuits, les jours sans aucune) | le courrier de vos expéditeurs sûrs, les codes que vous avez demandés ; les sites de loisirs | tout le reste : tâches, projets, temps, vos démarches, le travail |
-| Aucune heure réglée | tout, comme avant tout réglage | rien |
+| Travail | le travail ; vos démarches aussi, tant qu’elles n’ont pas d’heures à elles ; un appel à un bureau, toujours | les loisirs |
+| Démarches | vos démarches ; le travail aussi, tant qu’il n’a pas d’heures | les loisirs |
+| Loisirs | les loisirs, et rien d’autre | le travail et les démarches |
+| Un repas | les loisirs : un repas est une pause | le travail et les démarches |
+| Sommeil | rien ne notifie ; les loisirs, si vous ouvrez Sioul | tout le reste, et toute notification sauf les prises |
+| Aucune heure de travail ni de démarches | tout, comme avant d’en régler (repas et sommeil gardent leur temps) | rien |
 
-Les heures peuvent se chevaucher : des heures de démarches au milieu du temps libre un samedi après-midi, par exemple. Ce que chacune amène vient alors, tout ensemble.
+La ligne d’état dit ce qu’est le moment présent, et jusqu’à quand : « Temps des démarches jusqu’à 19:00 : organismes, factures, courriers. », « Repas jusqu’à 13:00. », « Temps libre jusqu’à 22:00 : ce qui vous plaît. », « Avant de dormir : rien ne dérange jusqu’à 07:00. »
 
-La ligne d’état dit de quelles heures il s’agit maintenant, et jusqu’à quand : « Temps des démarches jusqu’à 19:00 : organismes, factures, courriers. »
+## Ce qui suit le moment présent {#what-follows-the-time}
 
-## Ce qui suit les heures {#what-follows-the-hours}
-
-- **Le courrier** : il vient quand ce à quoi sert son adresse correspond aux heures. En temps libre, une adresse qui sert aussi aux démarches ou au travail ne montre que ce qu’écrivent vos expéditeurs sûrs : le reste peut être une facture ou un client.
-- **Les sites** : ceux de ces heures viennent en tête ; les autres se replient sous « Autres heures ». Leurs notifications attendent leurs heures, y compris en temps réel et pour les appels.
-- **Les tâches** : les pages de tâches gardent ce qui convient, et le plan place chaque tâche dans les heures prévues pour elle : le travail aux heures de travail, vos démarches aux heures de démarches, les loisirs en temps libre. L’étape suivante n’est jamais un appel à un bureau fermé à ce moment-là.
+- **Le courrier** : aux moments cochés pour la liste de l’expéditeur ([Comptes ▸ Expéditeurs](accounts.md#senders)). Le courrier de vos expéditeurs sûrs vient à n’importe quelle adresse ; celui des autres seulement à une adresse faite pour le moment présent, sauf si les deux ne se rencontrent jamais dans votre semaine : les moments de leur liste décident alors seuls, pour que rien n’attende pour toujours.
+- **Les sites** : ceux du moment présent viennent en premier ; les autres se replient sous « Autres heures ». Leurs notifications attendent leurs heures, temps réel et appels compris, et aucune ne vient pendant le sommeil.
+- **Les tâches** : les pages de tâches gardent ce qui convient, et le plan place chaque tâche dans les heures prévues pour elle : le travail aux heures de travail, vos démarches aux heures de démarches. Les loisirs n’ont pas d’heures : ce qui n’est que pour les loisirs ne prend pas de place dans le plan et n’attend rien. La prochaine étape n’est jamais un appel à un bureau fermé à ce moment.
 - **Les budgets** : selon ce à quoi chacun sert.
 
 ## Le calme {#quiet-time}
 
-Le calme, c’est le soir, les jours sans heures de travail, les congés, et le reste d’une journée que vous avez close avec **Fini pour aujourd’hui**. Le travail se repose jusqu’à son retour :
+Le calme, c’est chaque fois que ce n’est pas le moment du travail : les loisirs (la soirée, les jours sans heures de travail, les congés, le reste d’une journée close avec **Fini pour aujourd’hui**), les heures de démarches, un repas, le sommeil. Le travail se repose jusqu’à son retour :
 
-- le Porche montre les codes, le courrier de vos expéditeurs sûrs, et celui des adresses dont c’est l’heure ;
-- les adresses du travail se replient sur la page Courrier, sans leurs points ;
-- les sites du travail gardent leurs notifications pour plus tard ;
+- le Porche montre les codes, et le courrier que vos listes laissent passer à ce moment ;
+- les adresses de travail se replient sur la page du courrier, sans leurs points ;
+- les sites de travail gardent leurs notifications pour plus tard ;
 - Projets ne montre que les vôtres, et Temps attend derrière **Montrer quand même** ;
-- Tâches ne montre que les vôtres.
+- Tâches ne montre que ce qui convient au moment présent.
 
-Une phrase dans la ligne d’état dit quand le travail revient : « Le travail revient demain à 09:00. »
+Une phrase dans la ligne d’état dit jusqu’à quand : « Le travail revient demain à 09:00. »
 
-## Le repos {#rest}
+**Le chemin du retour n’est jamais suggéré.** Il est là si vous en avez besoin : la phrase de la ligne d’état ouvre un menu, avec **Travailler encore une demi-heure**, une heure, deux heures, quatre heures ; **Revenir aux heures habituelles** ; ou, le jour où vous l’avez close, **Reprendre le plan du jour**.
 
-Hors de toutes les heures que vous avez réglées (travail, démarches, temps libre), c’est le repos : la nuit, surtout. Seules les personnes marquées sûres vous joignent :
+## Le sommeil {#sleep}
 
-- le Porche montre les codes que vous avez demandés et le courrier de vos expéditeurs sûrs, rien sur l’argent ni sur les lettres papier ; un message d’un expéditeur sûr sur un projet vient parmi les personnes que vous connaissez ;
-- toutes les adresses se replient sur la page Courrier ;
-- seuls les sites de loisirs sont listés ;
-- Tâches, Projets et Temps attendent derrière une phrase et **Montrer quand même** ; dans Tâches, une pensée peut encore être notée pour plus tard.
+Du moment de se détendre au réveil, et pendant une sieste, rien ne dérange :
 
-La ligne d’état dit jusqu’à quand : « Repos jusqu’à 09:00 : seules les personnes marquées sûres vous joignent. »
+- **aucune notification** : ni code (il attend sur le Porche), ni site, ni rappel avant une date, ni pause pour bouger, ni avis de repas ou de sieste. Ce qui a encore du sens au réveil vient alors ;
+- **les prises viennent quand même** : c’est vous qui avez réglé leurs heures, et une prise à 05:00 est faite pour vous réveiller. Pour qu’elles restent silencieuses pendant le sommeil, choisissez **Rester silencieux** dans [Paramètres ▸ Rappels et notifications](settings.md#reminders-and-notifications) ▸ **Prises pendant le sommeil** : elles viennent au réveil. Sioul ne fait jamais taire une prise sans ce choix ;
+- si vous ouvrez Sioul, le Porche montre ce que vos listes laissent passer à ce moment, rien sur l’argent ni sur les lettres papier ; un message sur un projet vient parmi les personnes que vous connaissez ;
+- chaque adresse se replie sur la page du courrier ; seuls les sites de loisirs sont listés ;
+- Tâches, Projets et Temps attendent derrière une phrase et **Montrer quand même** ; dans Tâches, une idée peut encore être notée pour plus tard.
 
-**Le retour au travail n’est jamais suggéré.** Il est là si vous en avez besoin : la phrase de la ligne d’état ouvre un menu, avec **Travailler encore une demi-heure**, une heure, deux heures, quatre heures ; **Revenir aux heures habituelles** ; ou, le jour même d’un « Fini pour aujourd’hui », **Reprendre le plan du jour**.
+Sans nuit réglée sur la page Santé, les nuits sont des loisirs et rien n’éloigne les notifications : le Porche la demande dans une carte, **Régler ma nuit** ou **Laisser ainsi**.
 
 ## Travailler maintenant {#work-now}
 
@@ -85,22 +101,23 @@ La ligne d’état dit jusqu’à quand : « Repos jusqu’à 09:00 : seul
   <figcaption>Travailler maintenant : le travail montré quelles que soient les heures, jusqu’à ce que vous décochiez la case.</figcaption>
 </figure>
 
-Il prend fin quand vous décochez la case, quand Sioul se ferme, ou une fois la prochaine journée de travail finie ; sans heures de travail, à minuit. La ligne d’état dit jusqu’à quand. Sioul ne le garde pas après un redémarrage.
+Il prend fin quand vous décochez la case, quand Sioul se ferme, ou une fois la prochaine journée de travail finie ; sans heures de travail, à minuit. La ligne d’état dit jusqu’à quand. Sioul ne le garde pas après un redémarrage. Les repas et le sommeil passent quand même d’abord.
 
 ## Quand aucune heure n’est réglée {#when-no-hours-are-set}
 
-Le Porche demande, dans une carte, les heures pas encore réglées, avec **Régler mes heures**, qui ouvre les Paramètres à cet endroit, et **Laisser ainsi**, qui ne le demande plus. Rien ne change tant que vous n’en réglez pas.
+Le Porche demande, dans une carte, les heures pas encore réglées, avec **Régler mes heures**, qui ouvre les Paramètres à cet endroit, et **Laisser ainsi**, qui ne le demande plus. Rien ne change tant que vous n’en réglez pas. De même pour la nuit, avec **Régler ma nuit**.
 
 ## Ce qui n’est pas décidé à votre place {#what-is-not-decided-for-you}
 
-- **Un compte bancaire utilisé à la fois pour le travail et les démarches** vient aux heures de travail et aux heures de démarches, pas en temps libre. Sioul ne répartit pas ses mouvements entre professionnel et personnel : c’est à vous de le faire, ou à votre comptable. Garder le compte professionnel à part tient ses alertes hors de vos soirées.
+- **Un compte bancaire utilisé à la fois pour le travail et les démarches** vient aux heures de travail et aux heures de démarches, pas pendant les loisirs. Sioul ne répartit pas ses mouvements entre professionnel et personnel : c’est à vous de le faire, ou à votre comptable. Garder le compte professionnel à part tient ses alertes hors de vos soirées.
 - **Des heures de démarches le soir** laissent les appels aux bureaux pour les heures de travail, quand les bureaux répondent. Si vous préférez garder les heures de travail pour le travail, donnez aux démarches un créneau en journée, par exemple le mardi de 14:00 à 16:00.
-- **Ne régler que des heures de démarches** y garde le travail : il vient aux heures de démarches tant qu’il n’en a pas à lui. En dehors, repos.
+- **Ne régler que des heures de démarches** y garde le travail : il vient aux heures de démarches tant qu’il n’en a pas à lui. En dehors, les loisirs.
 
 ## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
 
 - Se détacher du travail en dehors des heures de travail va de pair avec moins d’épuisement (r = −0,38 sur 91 échantillons : Wendsche & Lohmann-Haislah 2017), et les personnes les plus épuisées se détachent le moins (Sonnentag et al. 2014).
 - Les messages de travail du soir coûtent la soirée par leur ton (Butts, Becker & Boswell 2015), et le simple fait de s’attendre à les consulter fait du mal, qu’on les lise ou non (Becker et al. 2021).
 - Les tâches inachevées nourrissent la rumination et le mauvais sommeil (Syrek et al. 2017) ; prévoir où, quand et comment elles seront faites a augmenté le détachement le soir (Smit 2016). Aussi, clore la journée donne une place à chaque chose, et nomme la première étape.
+- L’heure avant le coucher, gardée libre de ce qui fait tourner la tête, fait partie des programmes pour le sommeil que suit la Santé (Harvey et al. 2021).
 
 Plus de détails dans [ce que dit la recherche (en anglais)](https://aurelienpierre.github.io/sioul/dev/research.html), constats 21 à 23.

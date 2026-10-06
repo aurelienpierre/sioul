@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Quiet time. Outside working hours, on days without any and during time
-//! off, work rests: nothing administrative or professional comes forward,
-//! only family, friends and what you enjoy. Outside every hours set (work,
-//! admin, free time: the night, mostly), rest: only the people you marked
-//! safe reach you, and the sites for leisure. Two overrides, each until a time,
-//! kept in `$XDG_STATE_HOME/sioul/quiet.toml`: working late keeps work in
-//! view; done for the day brings quiet early, until work comes back.
+//! The time now, and what comes then (docs/areas.md). Five times: work and
+//! admin, the hours you set; meals and sleep, from Health; and leisure,
+//! every other time: evenings, days without hours, time off, a day closed
+//! early. Sleep first, then meals, then the hours. Two overrides, each until
+//! a time, kept in `$XDG_STATE_HOME/sioul/quiet.toml`: working late keeps
+//! work in view; done for the day brings leisure early, until work comes
+//! back. Outside work, work rests (quiet time); during sleep nothing
+//! disturbs: no notification but the doses you asked for (`may_notify`).
+//!
+//! Who may reach you when is a matrix (`Reach`): for each list of senders,
+//! the times their mail comes (`mail_in_view`).
 //!
 //! Detachment from work in the evening is what recovery needs most
 //! (Sonnentag & Fritz 2007, 2015); work cues in off-hours keep it from
@@ -15,6 +19,7 @@
 
 use crate::areas::{Area, TaskAreas, Time, Week, in_view};
 use crate::config::TimeOff;
+use crate::porch::Standing;
 use crate::window::{self, AdminWindow};
 use jiff::civil::Date;
 use jiff::{Span, Zoned};
@@ -27,7 +32,7 @@ use std::path::{Path, PathBuf};
 pub enum Reason {
     /// Within working hours.
     Working,
-    /// No working hours are set: never quiet.
+    /// No working or admin hours are set: everything comes.
     NoHours,
     /// Working past the usual hours, by choice.
     WorkingLate,
@@ -43,30 +48,40 @@ pub enum Reason {
     DoneForTheDay,
     /// Hours set for your own admin.
     AdminTime,
-    /// Hours set for rest and leisure.
-    LeisureTime,
+    /// A meal, from getting it ready to its end.
+    Meal,
+    /// The night, from bedtime to waking.
+    Sleep,
+    /// The night's first hour, winding down before bed: sleep's already.
+    WindingDown,
+    /// A nap, and the minutes to come back after it.
+    Nap,
 }
 
-/// Work time or quiet time, and until when.
+/// What now is for, and until when.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mode {
-    /// Work rests: hours are set, and these are not work's.
+    /// Work rests: these are not work's hours (leisure, meals, sleep, admin).
     pub quiet: bool,
-    /// What the hours now are for (docs/areas.md).
+    /// What now is for (docs/areas.md).
     pub time: Time,
-    /// Which kinds of hours your week sets.
+    /// Which times your week holds.
     pub week: Week,
     pub reason: Reason,
-    /// When it changes: work starts again, or quiet comes.
+    /// When this time changes: its hours end, a meal or the night begins, you wake.
     pub until: Option<Zoned>,
+    /// When work comes back, for what waits for it (a thought noted now): as
+    /// the hours stand, meals and sleep aside.
+    pub back: Option<Zoned>,
     /// The time off's word, when it is time off.
     pub label: String,
 }
 
 impl Mode {
-    /// Rest: hours are set, and none of them is open now (docs/areas.md).
-    pub fn rests(&self) -> bool {
-        self.time == Time::Personal
+    /// Asleep: the night from winding down to waking, or a nap. Nothing
+    /// disturbs (`may_notify`); tasks, projects and time wait behind a sentence.
+    pub fn sleeps(&self) -> bool {
+        self.time == Time::Sleep
     }
 }
 
@@ -191,51 +206,148 @@ pub fn until_text(tr: &crate::i18n::Translator, until: &Zoned, now: &Zoned) -> S
     }
 }
 
-/// Work time or quiet time, now; and what the hours are for: work, your
-/// own admin, leisure, or none of them (personal time). `windows` are the
-/// week's hours of every kind.
-pub fn mode(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides, now: &Zoned) -> Mode {
+/// What Health keeps free around now (docs/health.md, "Meals, rest and
+/// sleep"): the meals, naps and nights of today and tomorrow, each day's
+/// changes applied, and which of them are set at all.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Blocks {
+    /// In order: a meal from getting it ready to its end, a nap with its
+    /// minutes after, a night from winding down to waking.
+    pub kept: Vec<crate::needs::Kept>,
+    /// Some times are meals.
+    pub meals: bool,
+    /// Some times are sleep: the night or naps.
+    pub sleep: bool,
+    /// The night is set: without it, nights are leisure, and nothing keeps
+    /// notifications away while you sleep.
+    pub night: bool,
+}
+
+impl Blocks {
+    /// From Health's needs and each day's changes (`days`), the meals pushed
+    /// past `held` (events with their margins, `plan::event_spans`).
+    pub fn of(needs: &crate::needs::Needs, days: &crate::needs::Days, held: &[(i64, i64)], now: &Zoned) -> Blocks {
+        let kept = needs.kept_around(now, days, held);
+        let meals = (needs.meals_on && needs.meals.iter().any(|m| m.on)) || kept.iter().any(|k| k.kind == "meal");
+        let naps = (needs.naps_on && needs.naps.iter().any(|n| n.on)) || kept.iter().any(|k| k.kind == "nap");
+        Blocks { kept, meals, sleep: needs.sleep_on || naps, night: needs.sleep_on }
+    }
+
+    /// Read from Health's files, the meals pushed past `events`.
+    pub fn read(now: &Zoned, events: &[crate::agenda::Occurrence]) -> Blocks {
+        let needs = crate::health::Health::load(&crate::health::Health::default_path()).needs;
+        let days = crate::needs::Days::load(&crate::needs::Days::default_path());
+        Blocks::of(&needs, &days, &crate::plan::event_spans(events, 0), now)
+    }
+
+    /// The same, today's events read first.
+    pub fn read_now(now: &Zoned) -> Blocks {
+        let midnight = now.date().to_zoned(now.time_zone().clone()).map_or_else(|_| now.timestamp().as_second(), |z| z.timestamp().as_second());
+        Blocks::read(now, &crate::agenda::occurrences(midnight - 86_400, midnight + 2 * 86_400))
+    }
+
+    /// The block of one of `kinds` going on at `stamp` (Unix seconds).
+    pub fn at(&self, stamp: i64, kinds: &[&str]) -> Option<&crate::needs::Kept> {
+        self.kept.iter().find(|k| kinds.contains(&k.kind) && k.start <= stamp && stamp < k.end)
+    }
+
+    /// When the next block begins after `stamp`.
+    fn next_start(&self, stamp: i64) -> Option<i64> {
+        self.kept.iter().map(|k| k.start).filter(|start| *start > stamp).min()
+    }
+}
+
+/// What the hours alone say, meals and sleep aside.
+struct ByHours {
+    time: Time,
+    reason: Reason,
+    until: Option<Zoned>,
+    label: String,
+}
+
+/// The time by the hours, the overrides and time off: the hours of work and
+/// admin, leisure outside them. Meals and sleep come after (`mode`).
+fn by_hours(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides, now: &Zoned) -> ByHours {
     let of = |kind: &str| -> Vec<AdminWindow> { windows.iter().filter(|w| w.kind() == kind).cloned().collect() };
-    let (work, admin, leisure) = (of("work"), of("admin"), of("leisure"));
-    let week = Week { work_hours: !work.is_empty(), admin_hours: !admin.is_empty(), leisure_hours: !leisure.is_empty() };
-    let made = |time: Time, reason: Reason, until: Option<Zoned>, label: String| Mode { quiet: !(time.works() || time == Time::Any), time, week, reason, until, label };
+    let (work, admin) = (of("work"), of("admin"));
     let at = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(now.time_zone().clone()));
+    let made = |time: Time, reason: Reason, until: Option<Zoned>| ByHours { time, reason, until, label: String::new() };
     let stamp = now.timestamp().as_second();
     if let Some(rest) = overrides.rest_until.filter(|r| *r > stamp) {
-        return made(Time::Leisure, Reason::DoneForTheDay, at(rest), String::new());
+        return made(Time::Leisure, Reason::DoneForTheDay, at(rest));
     }
     if let Some(late) = overrides.work_until.filter(|w| *w > stamp) {
-        return made(Time::Work, Reason::WorkingLate, at(late), String::new());
+        return made(Time::Work, Reason::WorkingLate, at(late));
     }
     if let Some(until) = overrides.work_now.filter(|w| *w > stamp) {
-        return made(Time::Work, Reason::WorkNow, at(until), String::new());
+        return made(Time::Work, Reason::WorkNow, at(until));
     }
     if windows.is_empty() && time_off.is_empty() {
-        return made(Time::Any, Reason::NoHours, None, String::new());
+        return made(Time::Any, Reason::NoHours, None);
     }
     if let Some(off) = time_off_on(time_off, now.date()) {
-        return made(Time::Leisure, Reason::TimeOff, next_work(windows, time_off, now), off.label.clone());
+        return ByHours { time: Time::Leisure, reason: Reason::TimeOff, until: next_work(windows, time_off, now), label: off.label.clone() };
     }
     if windows.is_empty() {
-        return made(Time::Any, Reason::NoHours, None, String::new());
+        return made(Time::Any, Reason::NoHours, None);
     }
-    // Every kind of hours open now: several at once bring all they bring, until the first of them closes.
-    let (at_work, at_admin, at_leisure) = (window::current(&work, now), window::current(&admin, now), window::current(&leisure, now));
-    let open = Area { work: at_work.is_some(), admin: at_admin.is_some(), leisure: at_leisure.is_some() };
-    let closing = [&at_work, &at_admin, &at_leisure].into_iter().flatten().map(|(_, c)| c.clone()).min_by_key(Zoned::timestamp);
-    match Time::of(open) {
-        Time::Work => return made(Time::Work, Reason::Working, closing, String::new()),
-        Time::Admin => return made(Time::Admin, Reason::AdminTime, closing, String::new()),
-        Time::Leisure => return made(Time::Leisure, Reason::LeisureTime, closing, String::new()),
-        several @ Time::Several(_) => {
-            let reason = if open.work { Reason::Working } else { Reason::AdminTime };
-            return made(several, reason, closing, String::new());
+    // Working and admin hours open now; both at once bring all they bring, until the first of them closes.
+    let (at_work, at_admin) = (window::current(&work, now), window::current(&admin, now));
+    let closing = [&at_work, &at_admin].into_iter().flatten().map(|(_, c)| c.clone()).min_by_key(Zoned::timestamp);
+    match Time::of(Area { work: at_work.is_some(), admin: at_admin.is_some(), leisure: false }) {
+        Time::Admin => made(Time::Admin, Reason::AdminTime, closing),
+        Time::Leisure => {
+            let reason = if window::open_day(&work, now.date()) { Reason::Evening } else { Reason::DayOff };
+            // Until the next hours of either kind.
+            made(Time::Leisure, reason, next_work(windows, time_off, now))
         }
-        _ => {}
+        // Work, or work and admin at once.
+        open => made(open, Reason::Working, closing),
     }
-    let reason = if window::open_day(&work, now.date()) { Reason::Evening } else { Reason::DayOff };
-    // Until the next hours of any kind.
-    made(Time::Personal, reason, next_work(windows, time_off, now), String::new())
+}
+
+/// The earlier of two times.
+fn earliest(a: Option<Zoned>, b: Option<Zoned>) -> Option<Zoned> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(if b.timestamp() < a.timestamp() { b } else { a }),
+        (a, b) => a.or(b),
+    }
+}
+
+/// What now is for, and until when (docs/areas.md): sleep first (the night
+/// from winding down to waking, a nap), then meals, then the hours:
+/// "Done for today" is leisure, "A little longer" and "Work now" are work,
+/// time off is leisure, then working and admin hours; every other time is
+/// leisure. No working or admin hours at all: everything comes (`Time::Any`),
+/// meals and sleep aside. `windows` are the week's hours of work and admin
+/// (`Config::week_hours`): an older Sioul's free time is left aside.
+pub fn mode(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides, blocks: &Blocks, now: &Zoned) -> Mode {
+    let windows: Vec<AdminWindow> = windows.iter().filter(|w| w.kind() != "leisure").cloned().collect();
+    let week = Week { work_hours: windows.iter().any(|w| w.kind() == "work"), admin_hours: windows.iter().any(|w| w.kind() == "admin"), meals: blocks.meals, sleep: blocks.sleep };
+    let at = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(now.time_zone().clone()));
+    let stamp = now.timestamp().as_second();
+    let hours = by_hours(&windows, time_off, overrides, now);
+    // Work comes back when the block ends if these are work's hours; else as the hours say.
+    let back_after = |end: i64| if hours.time.works() { at(end) } else { hours.until.clone() };
+    // Health's times hold whatever the hours and the overrides say: "Work now" may span a night.
+    if let Some(block) = blocks.at(stamp, &["sleep", "nap"]) {
+        let reason = if block.kind == "nap" {
+            Reason::Nap
+        } else if stamp < block.at {
+            Reason::WindingDown
+        } else {
+            Reason::Sleep
+        };
+        return Mode { quiet: true, time: Time::Sleep, week, reason, until: at(block.end), back: back_after(block.end), label: String::new() };
+    }
+    if let Some(block) = blocks.at(stamp, &["meal"]) {
+        return Mode { quiet: true, time: Time::Meals, week, reason: Reason::Meal, until: at(block.end), back: back_after(block.end), label: String::new() };
+    }
+    // The hours' own end, or the next meal or night when it comes first; an
+    // override and time off say their own time.
+    let cut = matches!(hours.reason, Reason::Working | Reason::AdminTime | Reason::Evening | Reason::DayOff | Reason::NoHours);
+    let until = if cut { earliest(hours.until.clone(), blocks.next_start(stamp).and_then(at)) } else { hours.until.clone() };
+    Mode { quiet: !(hours.time.works() || hours.time == Time::Any), time: hours.time, week, reason: hours.reason, until, back: hours.until, label: hours.label }
 }
 
 /// What the task pages need of the moment: whether work rests, whether
@@ -251,12 +363,12 @@ pub struct Situation {
     pub quiet_tasks: QuietTasks,
 }
 
-/// What the task pages keep now (docs/areas.md): what the hours are for, by
+/// What the task pages keep now (docs/areas.md): what the time is for, by
 /// each task's area (its own, else its categories and projects). A call to an
-/// office fits work and admin hours, never free time: offices keep business
-/// hours. On holidays and once the day is closed, free time: only what is
-/// yours to enjoy, and what is yours either way (health). Outside every hours
-/// set (evenings, nights, days off), rest: no task at all.
+/// office fits work and admin hours, never leisure: offices keep business
+/// hours. In leisure (holidays, a day closed, evenings) and during a meal:
+/// only what is yours to enjoy, and what is yours either way (health).
+/// During sleep: no task at all.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct QuietTasks {
     pub time: Time,
@@ -267,7 +379,7 @@ pub struct QuietTasks {
 impl QuietTasks {
     /// Whether a task stays in view now.
     pub fn keeps(&self, task: &crate::tasks::Task) -> bool {
-        if self.time == Time::Personal {
+        if self.time == Time::Sleep {
             return false;
         }
         let area = self.areas.of(task);
@@ -279,8 +391,8 @@ impl QuietTasks {
 }
 
 impl Situation {
-    pub fn now(config: &crate::config::Config, overrides: &Overrides, now: &Zoned, tr: &crate::i18n::Translator, cases: &[crate::cases::Case]) -> Situation {
-        let mode = mode(&config.week_hours(), &config.time_off, overrides, now);
+    pub fn now(config: &crate::config::Config, overrides: &Overrides, blocks: &Blocks, now: &Zoned, tr: &crate::i18n::Translator, cases: &[crate::cases::Case]) -> Situation {
+        let mode = mode(&config.week_hours(), &config.time_off, overrides, blocks, now);
         let office = config.office_hours();
         let open = window::current(&office, now).is_some();
         let next = if open { String::new() } else { window::next_opening(&office, now).map(|z| tr.when(&z)).unwrap_or_default() };
@@ -309,38 +421,163 @@ impl Situation {
         Situation { mode, offices: crate::taskview::Offices { open, next, now: Some(now.clone()) }, closed, office_days, quiet_tasks }
     }
 
-    /// The task filter, by what the hours are for; none when no hours are set.
+    /// The task filter, by what the time is for; none when no hours are set.
     pub fn quiet_tasks(&self) -> Option<QuietTasks> {
         (self.mode.time != Time::Any).then(|| self.quiet_tasks.clone())
     }
 }
 
-/// Whether mail reaches you in quiet time: codes always, what you sent
-/// yourself, and mail from the senders you marked safe; everyone else waits
-/// for working hours. Forged mail never gets here: it was set aside before (porch.rs).
-pub fn personal_mail(triaged: &crate::porch::Triaged, senders: &crate::porch::Senders) -> bool {
-    triaged.lane == crate::porch::Lane::RightNow
-        || triaged.reasons.contains(&crate::porch::Reason::FromYourself)
-        || (triaged.lane != crate::porch::Lane::SetAside && senders.standing_of(&triaged.card) == crate::porch::Standing::Safe)
+/// The times one list's mail comes: a row of the matrix of who may write to you.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct Times {
+    pub work: bool,
+    pub admin: bool,
+    pub leisure: bool,
+    pub meals: bool,
+    pub sleep: bool,
 }
 
-/// Whether mail comes forward now (docs/areas.md): verified codes and the
-/// senders you marked safe always (who may reach you is the other axis);
-/// else as its address is for. An address for leisure and something else
-/// shows in free time only what your safe senders write: the rest may be admin
-/// or work. Outside every hours set, rest: your safe senders and codes alone.
-pub fn mail_in_view(triaged: &crate::porch::Triaged, senders: &crate::porch::Senders, account: Area, time: Time, week: Week) -> bool {
-    if personal_mail(triaged, senders) {
+impl Times {
+    /// Every time.
+    pub const ALL: Times = Times { work: true, admin: true, leisure: true, meals: true, sleep: true };
+    /// No time: never.
+    pub const NEVER: Times = Times { work: false, admin: false, leisure: false, meals: false, sleep: false };
+
+    /// From the times' words, as the configuration writes them: "work",
+    /// "admin", "leisure", "meals", "sleep"; others are left aside.
+    pub fn parse(words: &[String]) -> Times {
+        let mut times = Times::NEVER;
+        for word in words {
+            match Time::parse(word) {
+                Some(Time::Work) => times.work = true,
+                Some(Time::Admin) => times.admin = true,
+                Some(Time::Leisure) => times.leisure = true,
+                Some(Time::Meals) => times.meals = true,
+                Some(Time::Sleep) => times.sleep = true,
+                _ => {}
+            }
+        }
+        times
+    }
+
+    /// The times ticked, as the configuration writes them, in the matrix's order.
+    pub fn ids(self) -> Vec<&'static str> {
+        Time::STATES.into_iter().filter(|t| self.ticked(*t)).map(Time::id).collect()
+    }
+
+    /// Whether this one time is ticked.
+    pub fn ticked(self, time: Time) -> bool {
+        match time {
+            Time::Work => self.work,
+            Time::Admin => self.admin,
+            Time::Leisure => self.leisure,
+            Time::Meals => self.meals,
+            Time::Sleep => self.sleep,
+            Time::Any => true,
+            Time::Several(open) => (open.work && self.work) || (open.admin && self.admin),
+        }
+    }
+
+    /// Whether mail with these times comes in `time`. While admin has no
+    /// hours of its own, work time takes its ticks too; while work has none,
+    /// admin time takes work's, as `areas::in_view` lends them.
+    pub fn at(self, time: Time, week: Week) -> bool {
+        match time {
+            Time::Work => self.work || (!week.admin_hours && self.admin),
+            Time::Admin => self.admin || (!week.work_hours && self.work),
+            Time::Several(open) => (open.work && self.at(Time::Work, week)) || (open.admin && self.at(Time::Admin, week)),
+            one => self.ticked(one),
+        }
+    }
+}
+
+/// Who may reach you when (docs/porch.md, "Who may write to you"): for your
+/// safe, neutral and restricted senders, the times their mail comes, any
+/// number of times each. The blocked never; codes you ask for and what you
+/// send yourself at once (`mail_in_view`). Kept in the configuration
+/// (`[reach]`), shared with your settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Reach {
+    pub safe: Times,
+    pub neutral: Times,
+    pub restricted: Times,
+}
+
+impl Default for Reach {
+    /// Safe senders at any time; the neutral ones, everyone no list names, in
+    /// working and admin hours; the restricted ones in working hours.
+    fn default() -> Reach {
+        Reach { safe: Times::ALL, neutral: Times { work: true, admin: true, ..Times::NEVER }, restricted: Times { work: true, ..Times::NEVER } }
+    }
+}
+
+impl Reach {
+    /// As the configuration says; a list it leaves out keeps its usual times.
+    pub fn of(settings: &crate::config::ReachSettings) -> Reach {
+        let usual = Reach::default();
+        let row = |set: &Option<Vec<String>>, usual: Times| set.as_deref().map_or(usual, Times::parse);
+        Reach { safe: row(&settings.safe, usual.safe), neutral: row(&settings.neutral, usual.neutral), restricted: row(&settings.restricted, usual.restricted) }
+    }
+
+    /// When a list's mail comes; the blocked never.
+    pub fn times(&self, standing: Standing) -> Times {
+        match standing {
+            Standing::Safe => self.safe,
+            Standing::Neutral => self.neutral,
+            Standing::Restricted => self.restricted,
+            Standing::Blocked => Times::NEVER,
+        }
+    }
+}
+
+/// A list with its times, as the matrix ticks them: "Neutral: work, admin",
+/// "Safe: any time", "Blocked: never"; `one`: as said of one person (French
+/// says "Sûr" of a person, "Sûrs" of the list).
+pub fn list_choice(tr: &crate::i18n::Translator, standing: Standing, reach: &Reach, one: bool) -> String {
+    let times = reach.times(standing);
+    let words = if times == Times::ALL {
+        tr.text("reach-any", None)
+    } else if times == Times::NEVER {
+        tr.text("reach-never", None)
+    } else {
+        times.ids().iter().map(|t| tr.text(&format!("reach-word-{t}"), None)).collect::<Vec<_>>().join(", ")
+    };
+    let mut args = crate::i18n::args();
+    args.set("list", tr.text(&format!("sender-{}-{}", if one { "one" } else { "list" }, standing.as_str()), None));
+    args.set("times", words);
+    tr.text("sender-list-times", Some(&args))
+}
+
+/// Whether mail comes forward now (docs/porch.md, "Who may write to you"):
+/// the codes and links you just asked a site for, and what you send
+/// yourself, at once; with no hours set, everything; else when the matrix
+/// ticks its sender's list now. Your safe senders' mail comes to any of your
+/// addresses; the others' only to an address for what now is for
+/// (docs/areas.md), unless the two never meet in your week: then their list
+/// alone decides, so that no mail waits for good. Forged mail, set aside
+/// before (porch.rs), is weighed as a stranger's, never as its sender's.
+pub fn mail_in_view(triaged: &crate::porch::Triaged, senders: &crate::porch::Senders, reach: &Reach, account: Area, time: Time, week: Week) -> bool {
+    if triaged.lane == crate::porch::Lane::RightNow || triaged.reasons.contains(&crate::porch::Reason::FromYourself) || time == Time::Any {
         return true;
     }
-    if time == Time::Personal {
+    let standing = if triaged.lane == crate::porch::Lane::SetAside { Standing::Neutral } else { senders.standing_of(&triaged.card) };
+    let times = reach.times(standing);
+    if !times.at(time, week) {
         return false;
     }
-    // In free time alone, an address also for admin or work keeps to its safe senders.
-    if time == Time::Leisure && (account.admin || account.work) {
-        return false;
+    if standing == Standing::Safe || in_view(account, time, week) {
+        return true;
     }
-    in_view(account, time, week)
+    // The address is for other times than those of its sender: when they never meet, the list decides.
+    !Time::STATES.into_iter().any(|t| week.has(t) && times.at(t, week) && in_view(account, t, week))
+}
+
+/// Whether a notification may come now (docs/health.md, "Do not disturb"):
+/// any, but during sleep; then only a dose, unless you asked doses to stay
+/// silent while you sleep (they come at waking). What the window shows is
+/// shown when you open it.
+pub fn may_notify(mode: &Mode, dose: bool, doses_in_sleep: bool) -> bool {
+    !mode.sleeps() || (dose && doses_in_sleep)
 }
 
 /// Whether a task is yours, outside work: one of its categories is among
@@ -354,6 +591,7 @@ pub fn personal_task(task: &crate::tasks::Task, personal: &[String], personal_ca
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::needs::{Days, Needs};
 
     fn at(text: &str) -> Zoned {
         text.parse().unwrap()
@@ -363,33 +601,45 @@ mod tests {
         ["monday", "tuesday", "wednesday", "thursday", "friday"].iter().map(|d| AdminWindow { day: d.to_string(), start: "09:00".into(), end: Some("17:00".into()), minutes: 0, kind: None }).collect()
     }
 
+    fn none() -> Blocks {
+        Blocks::default()
+    }
+
+    /// Three meals, a nap and a night, as Health first sets them: breakfast
+    /// 07:50–08:20, lunch 12:10–13:00, a nap 14:00–14:35, dinner 19:00–20:00,
+    /// the night from 22:00 (bed at 23:00) to 07:00.
+    fn health() -> Needs {
+        Needs { meals_on: true, naps_on: true, sleep_on: true, ..Needs::default() }
+    }
+
     #[test]
     fn work_rests_outside_its_hours() {
         let none = Overrides::default();
         // 2 October 2026 is a Friday.
         let friday_noon = at("2026-10-02T12:00[Europe/Paris]");
-        let m = mode(&week(), &[], &none, &friday_noon);
-        assert_eq!((m.quiet, m.reason.clone()), (false, Reason::Working));
+        let m = mode(&week(), &[], &none, &self::none(), &friday_noon);
+        assert_eq!((m.quiet, m.reason.clone(), m.time), (false, Reason::Working, Time::Work));
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-02T17:00:00");
         let friday_evening = at("2026-10-02T19:00[Europe/Paris]");
-        let m = mode(&week(), &[], &none, &friday_evening);
-        assert_eq!((m.quiet, m.reason.clone()), (true, Reason::Evening));
+        let m = mode(&week(), &[], &none, &self::none(), &friday_evening);
+        assert_eq!((m.quiet, m.reason.clone(), m.time), (true, Reason::Evening, Time::Leisure), "the evening is leisure");
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-05T09:00:00", "until Monday morning");
         let saturday = at("2026-10-03T11:00[Europe/Paris]");
-        assert_eq!(mode(&week(), &[], &none, &saturday).reason, Reason::DayOff);
-        // Holidays the next week: quiet until the Monday after.
+        assert_eq!(mode(&week(), &[], &none, &self::none(), &saturday).reason, Reason::DayOff);
+        // Holidays the next week: leisure until the Monday after.
         let off = vec![TimeOff { from: "2026-10-05".parse().unwrap(), until: "2026-10-09".parse().unwrap(), label: "Holidays".into() }];
-        let m = mode(&week(), &off, &none, &saturday);
+        let m = mode(&week(), &off, &none, &self::none(), &saturday);
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-12T09:00:00");
-        let m = mode(&week(), &off, &none, &at("2026-10-06T10:00[Europe/Paris]"));
-        assert_eq!((m.quiet, m.reason, m.label.as_str()), (true, Reason::TimeOff, "Holidays"));
-        // Done for the day at noon; working late in the evening.
+        let m = mode(&week(), &off, &none, &self::none(), &at("2026-10-06T10:00[Europe/Paris]"));
+        assert_eq!((m.quiet, m.reason, m.label.as_str(), m.time), (true, Reason::TimeOff, "Holidays", Time::Leisure));
+        // Done for the day at noon: leisure; working late in the evening: work.
         let rest = Overrides { rest_until: Some(at("2026-10-05T09:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() };
-        assert_eq!(mode(&week(), &[], &rest, &friday_noon).reason, Reason::DoneForTheDay);
+        let m = mode(&week(), &[], &rest, &self::none(), &friday_noon);
+        assert_eq!((m.reason, m.time), (Reason::DoneForTheDay, Time::Leisure));
         let late = Overrides { work_until: Some(at("2026-10-02T20:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() };
-        let m = mode(&week(), &[], &late, &friday_evening);
-        assert_eq!((m.quiet, m.reason), (false, Reason::WorkingLate));
-        assert_eq!(mode(&[], &[], &none, &saturday).reason, Reason::NoHours);
+        let m = mode(&week(), &[], &late, &self::none(), &friday_evening);
+        assert_eq!((m.quiet, m.reason, m.time), (false, Reason::WorkingLate, Time::Work));
+        assert_eq!(mode(&[], &[], &none, &self::none(), &saturday).reason, Reason::NoHours);
         // Stopping on Friday at noon: work comes back on Monday; without hours, tomorrow morning.
         assert_eq!(after_today(&week(), &[], &friday_noon, 7).datetime().to_string(), "2026-10-05T09:00:00");
         assert_eq!(after_today(&[], &[], &friday_noon, 7).datetime().to_string(), "2026-10-03T07:00:00");
@@ -417,25 +667,108 @@ mod tests {
         assert_eq!(end_of_next_workday(&[], &[], &saturday).datetime().to_string(), "2026-10-04T00:00:00");
         // Ticked on Saturday: work shown, as work, until then.
         let now = Overrides { work_now: Some(end_of_next_workday(&week(), &[], &saturday).timestamp().as_second()), ..Overrides::default() };
-        let m = mode(&week(), &[], &now, &saturday);
+        let m = mode(&week(), &[], &now, &none(), &saturday);
         assert_eq!((m.time, m.reason, m.quiet), (Time::Work, Reason::WorkNow, false));
-        assert_eq!(mode(&week(), &[], &now, &at("2026-10-05T17:30[Europe/Paris]")).reason, Reason::Evening, "over with Monday");
+        assert_eq!(mode(&week(), &[], &now, &none(), &at("2026-10-05T17:30[Europe/Paris]")).reason, Reason::Evening, "over with Monday");
     }
 
     #[test]
-    fn admin_within_free_time() {
+    fn work_and_admin_at_once() {
         let none = Overrides::default();
         let mut hours = week();
-        hours.push(AdminWindow { day: "saturday".into(), start: "10:00".into(), end: Some("18:00".into()), minutes: 0, kind: Some("leisure".into()) });
-        hours.push(AdminWindow { day: "saturday".into(), start: "14:00".into(), end: Some("16:00".into()), minutes: 0, kind: Some("admin".into()) });
-        // Saturday 3 October at 15:00: both are open; until 16:00, when admin's close.
-        let m = mode(&hours, &[], &none, &at("2026-10-03T15:00[Europe/Paris]"));
-        assert_eq!(m.time, Time::Several(Area::PERSONAL));
-        assert!(m.quiet, "work still rests");
-        assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-03T16:00:00");
-        assert!(in_view(Area::ADMIN, m.time, m.week) && in_view(Area::LEISURE, m.time, m.week) && !in_view(Area::WORK, m.time, m.week));
-        // At 17:00, free time alone.
-        assert_eq!(mode(&hours, &[], &none, &at("2026-10-03T17:00[Europe/Paris]")).time, Time::Leisure);
+        hours.push(AdminWindow { day: "friday".into(), start: "16:00".into(), end: Some("18:00".into()), minutes: 0, kind: Some("admin".into()) });
+        // Friday 2 October at 16:30: both are open; until 17:00, when work's close.
+        let m = mode(&hours, &[], &none, &self::none(), &at("2026-10-02T16:30[Europe/Paris]"));
+        assert_eq!((m.time, m.quiet), (Time::Several(Area::MIXED), false));
+        assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-02T17:00:00");
+        assert!(in_view(Area::ADMIN, m.time, m.week) && in_view(Area::WORK, m.time, m.week) && !in_view(Area::LEISURE, m.time, m.week));
+        // At 17:30, admin alone.
+        let m = mode(&hours, &[], &none, &self::none(), &at("2026-10-02T17:30[Europe/Paris]"));
+        assert_eq!((m.time, m.reason, m.quiet), (Time::Admin, Reason::AdminTime, true));
+    }
+
+    #[test]
+    fn old_leisure_windows_read_and_left_aside() {
+        // An older Sioul's free time on Saturdays: read without a word, kept in the file, never a time.
+        let config: crate::config::Config = toml::from_str(
+            "[[window]]\nday = \"friday\"\nstart = \"09:00\"\nend = \"17:00\"\n\n[[window]]\nday = \"saturday\"\nstart = \"10:00\"\nend = \"18:00\"\nkind = \"leisure\"\n\n[[window]]\nday = \"friday\"\nstart = \"18:00\"\nend = \"19:00\"\nkind = \"admin\"\n",
+        )
+        .unwrap();
+        assert_eq!(config.windows.len(), 3, "kept");
+        assert_eq!(config.week_hours().iter().map(|w| w.kind()).collect::<Vec<_>>(), ["work", "admin"]);
+        let none = Overrides::default();
+        let saturday = at("2026-10-03T11:00[Europe/Paris]");
+        let m = mode(&config.week_hours(), &[], &none, &self::none(), &saturday);
+        assert_eq!((m.time, m.reason), (Time::Leisure, Reason::DayOff));
+        // Given all the same, they change nothing.
+        let m = mode(&config.windows, &[], &none, &self::none(), &saturday);
+        assert_eq!((m.time, m.reason, m.week.work_hours, m.week.admin_hours), (Time::Leisure, Reason::DayOff, true, true));
+        // Friday at 20:00, after admin's hour: leisure until Monday... none on Monday here: the next Friday.
+        let m = mode(&config.windows, &[], &none, &self::none(), &at("2026-10-02T20:00[Europe/Paris]"));
+        assert_eq!((m.time, m.reason.clone()), (Time::Leisure, Reason::Evening));
+        assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-09T09:00:00", "never Saturday's old free time");
+    }
+
+    #[test]
+    fn sleep_then_meals_then_the_hours() {
+        let none = Overrides::default();
+        let friday = |time: &str| at(&format!("2026-10-02T{time}[Europe/Paris]"));
+        let blocks = |now: &Zoned| Blocks::of(&health(), &Days::default(), &[], now);
+        let mode_at = |time: &str, overrides: &Overrides| {
+            let now = if time.starts_with("+") { at(&format!("2026-10-03T{}[Europe/Paris]", &time[1..])) } else { friday(time) };
+            mode(&week(), &[], overrides, &blocks(&now), &now)
+        };
+        // Work, until lunch is got ready.
+        let m = mode_at("10:00", &none);
+        assert_eq!((m.time, m.reason.clone(), m.quiet), (Time::Work, Reason::Working, false));
+        assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-02T12:10:00");
+        // A meal within working hours is a meal while it lasts; work comes back after it.
+        let m = mode_at("12:30", &none);
+        assert_eq!((m.time, m.reason.clone(), m.quiet), (Time::Meals, Reason::Meal, true));
+        assert_eq!((m.until.unwrap().datetime().to_string(), m.back.unwrap().datetime().to_string()), ("2026-10-02T13:00:00".into(), "2026-10-02T13:00:00".into()));
+        assert!(m.week.meals && m.week.sleep);
+        // A nap, and its minutes to come back.
+        let m = mode_at("14:10", &none);
+        assert_eq!((m.time, m.reason.clone()), (Time::Sleep, Reason::Nap));
+        assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-02T14:35:00");
+        // The evening: leisure until the night begins, winding down, then the night until waking.
+        let m = mode_at("20:30", &none);
+        assert_eq!((m.time, m.reason.clone(), m.until.unwrap().datetime().to_string()), (Time::Leisure, Reason::Evening, "2026-10-02T22:00:00".into()));
+        assert_eq!(m.back.unwrap().datetime().to_string(), "2026-10-05T09:00:00", "work comes back on Monday");
+        let m = mode_at("22:30", &none);
+        assert!(m.sleeps() && m.quiet);
+        assert_eq!((m.time, m.reason.clone(), m.until.unwrap().datetime().to_string()), (Time::Sleep, Reason::WindingDown, "2026-10-03T07:00:00".into()));
+        assert_eq!(mode_at("23:30", &none).reason, Reason::Sleep);
+        assert_eq!((mode_at("+06:00", &none).time, mode_at("+06:00", &none).reason), (Time::Sleep, Reason::Sleep), "the night ending this morning");
+        // Sleep and meals come first, whatever the overrides: "Work now" may span a night.
+        let work_now = Overrides { work_now: Some(friday("23:59").timestamp().as_second() + 86_400 * 3), ..Overrides::default() };
+        assert_eq!(mode_at("23:30", &work_now).time, Time::Sleep);
+        assert_eq!(mode_at("12:30", &work_now).time, Time::Meals);
+        assert_eq!(mode_at("10:00", &work_now).reason, Reason::WorkNow);
+        let done = Overrides { rest_until: Some(friday("23:59").timestamp().as_second()), ..Overrides::default() };
+        assert_eq!(mode_at("12:30", &done).time, Time::Meals);
+        assert_eq!(mode_at("11:00", &done).reason, Reason::DoneForTheDay);
+        // No working or admin hours at all: everything, but meals and sleep keep their time.
+        let now = friday("12:30");
+        assert_eq!(mode(&[], &[], &none, &blocks(&now), &now).time, Time::Meals);
+        let now = friday("10:00");
+        let m = mode(&[], &[], &none, &blocks(&now), &now);
+        assert_eq!((m.time, m.quiet), (Time::Any, false));
+        assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-02T12:10:00");
+        // Lunch off today: work goes on; lunch quiet today (no notice): still a meal.
+        let mut days = Days::default();
+        days.change(now.date(), "meal:1", |b| b.off = true);
+        let noon = friday("12:30");
+        assert_eq!(mode(&week(), &[], &none, &Blocks::of(&health(), &days, &[], &noon), &noon).time, Time::Work);
+        let mut days = Days::default();
+        days.change(now.date(), "meal:1", |b| b.quiet = true);
+        assert_eq!(mode(&week(), &[], &none, &Blocks::of(&health(), &days, &[], &noon), &noon).time, Time::Meals);
+        // Without a night, nights are leisure: nothing keeps notifications away.
+        let no_night = Needs { sleep_on: false, ..health() };
+        let late = friday("23:30");
+        let blocks = Blocks::of(&no_night, &Days::default(), &[], &late);
+        assert!(!blocks.night && blocks.sleep, "naps still");
+        assert_eq!(mode(&week(), &[], &none, &blocks, &late).time, Time::Leisure);
     }
 
     #[test]
@@ -457,13 +790,16 @@ mod tests {
         assert!(personal_task(&task(&[], &["garden"]), &personal, &["garden".into()]));
         assert!(!personal_task(&task(&["you"], &["taxes"]), &personal, &["garden".into()]));
         let areas = TaskAreas { work_categories: vec!["travail".into()], work_cases: vec!["client-x".into()], ..TaskAreas::usual() };
-        let week = Week { work_hours: true, admin_hours: false, leisure_hours: false };
-        // Outside every hours set (the night), rest: no task at all, yours neither.
-        let night = QuietTasks { time: Time::Personal, week, areas: areas.clone() };
+        let week = Week { work_hours: true, ..Week::default() };
+        // Asleep: no task at all, yours neither.
+        let night = QuietTasks { time: Time::Sleep, week, areas: areas.clone() };
         assert!(!night.keeps(&task(&[], &["taxes"])) && !night.keeps(&task(&["joy"], &[])) && !night.keeps(&task(&["Travail"], &[])));
-        // On holidays and once the day is closed: free time, only what is yours.
-        let holidays = QuietTasks { time: Time::Leisure, ..night.clone() };
-        assert!(!holidays.keeps(&task(&[], &["taxes"])) && holidays.keeps(&task(&["joy"], &[])) && holidays.keeps(&task(&["santé"], &[])));
+        // In leisure (holidays, a day closed, the evening) and during a meal: only what is yours.
+        for time in [Time::Leisure, Time::Meals] {
+            let free = QuietTasks { time, ..night.clone() };
+            assert!(!free.keeps(&task(&[], &["taxes"])) && free.keeps(&task(&["joy"], &[])) && free.keeps(&task(&["santé"], &[])));
+            assert!(!free.keeps(&crate::tasks::Task { office_hours: true, ..task(&[], &["taxes"]) }), "offices keep business hours");
+        }
         // Working hours without admin hours of its own: admin comes then, as it always did.
         let working = QuietTasks { time: Time::Work, ..night.clone() };
         assert!(working.keeps(&task(&[], &["taxes"])) && working.keeps(&task(&["Travail"], &[])) && !working.keeps(&task(&["joy"], &[])));
@@ -474,20 +810,91 @@ mod tests {
     }
 
     #[test]
-    fn hours_for_admin_and_for_rest() {
+    fn hours_for_admin() {
         let none = Overrides::default();
         let mut hours = week();
         hours.push(AdminWindow { day: "friday".into(), start: "18:00".into(), end: Some("19:00".into()), minutes: 0, kind: Some("admin".into()) });
-        hours.push(AdminWindow { day: "saturday".into(), start: "10:00".into(), end: Some("18:00".into()), minutes: 0, kind: Some("leisure".into()) });
-        let m = mode(&hours, &[], &none, &at("2026-10-02T18:30[Europe/Paris]"));
+        let m = mode(&hours, &[], &none, &self::none(), &at("2026-10-02T18:30[Europe/Paris]"));
         assert_eq!((m.time, m.reason.clone(), m.quiet), (Time::Admin, Reason::AdminTime, true));
         assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-02T19:00:00");
-        let m = mode(&hours, &[], &none, &at("2026-10-02T20:00[Europe/Paris]"));
-        assert_eq!((m.time, m.reason.clone()), (Time::Personal, Reason::Evening));
-        assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-03T10:00:00", "until Saturday's free time");
-        assert_eq!(mode(&hours, &[], &none, &at("2026-10-03T11:00[Europe/Paris]")).time, Time::Leisure);
-        assert_eq!(mode(&hours, &[], &none, &at("2026-10-02T10:00[Europe/Paris]")).time, Time::Work);
-        assert!(m.week.work_hours && m.week.admin_hours && m.week.leisure_hours);
-        assert_eq!(mode(&[], &[], &none, &at("2026-10-02T10:00[Europe/Paris]")).time, Time::Any);
+        // After every hours set: leisure, until the next hours of either kind.
+        let m = mode(&hours, &[], &none, &self::none(), &at("2026-10-02T20:00[Europe/Paris]"));
+        assert_eq!((m.time, m.reason.clone()), (Time::Leisure, Reason::Evening));
+        assert_eq!(m.until.unwrap().datetime().to_string(), "2026-10-05T09:00:00");
+        assert_eq!(mode(&hours, &[], &none, &self::none(), &at("2026-10-02T10:00[Europe/Paris]")).time, Time::Work);
+        assert!(m.week.work_hours && m.week.admin_hours && !m.week.meals && !m.week.sleep);
+        assert_eq!(mode(&[], &[], &none, &self::none(), &at("2026-10-02T10:00[Europe/Paris]")).time, Time::Any);
+    }
+
+    /// A message from `from` as the Porch judges it; `headers` before the subject.
+    fn message(from: &str, headers: &str, subject: &str, senders: &crate::porch::Senders) -> crate::porch::Triaged {
+        let raw = format!("From: {from}\r\n{headers}Subject: {subject}\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\n\r\n{subject}.\r\n");
+        let known = crate::porch::SenderList::default();
+        let trusted = ["mx.example.net".to_string()];
+        let own = ["me@example.net".to_string()];
+        let ctx = crate::porch::Context { cases: None, known: &known, senders, trusted_ids: &trusted, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &own };
+        crate::porch::triage(crate::card::Card::from_bytes(raw.as_bytes()).unwrap(), &ctx)
+    }
+
+    #[test]
+    fn who_may_write_when() {
+        use crate::porch::{SenderList, Senders};
+        // The usual matrix: safe at any time, neutral in work and admin, restricted in work.
+        let usual = Reach::default();
+        assert_eq!((usual.safe.ids(), usual.neutral.ids(), usual.restricted.ids()), (vec!["work", "admin", "leisure", "meals", "sleep"], vec!["work", "admin"], vec!["work"]));
+        assert_eq!(Reach::of(&crate::config::ReachSettings::default()), usual);
+        let mine = Reach::of(&crate::config::ReachSettings { neutral: Some(vec!["Leisure".into(), "repas".into()]), restricted: Some(Vec::new()), ..Default::default() });
+        assert_eq!((mine.safe, mine.neutral.ids(), mine.restricted), (Times::ALL, vec!["leisure", "meals"], Times::NEVER), "a row left out keeps its usual times; an empty one is never");
+        let senders = Senders { safe: SenderList::parse("jane@example.org"), restricted: SenderList::parse("*@company.example"), ..Senders::default() };
+        let set = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
+        let (work_address, personal, leisure_address) = (Area::WORK, Area::PERSONAL, Area::LEISURE);
+        let comes = |t: &crate::porch::Triaged, reach: &Reach, account: Area, time: Time| mail_in_view(t, &senders, reach, account, time, set);
+        // Safe: to any address, at every time ticked; untick sleep and it waits.
+        let jane = message("Jane <jane@example.org>", "", "Hello", &senders);
+        assert!(Time::STATES.into_iter().all(|time| comes(&jane, &usual, work_address, time)));
+        let no_sleep = Reach { safe: Times { sleep: false, ..Times::ALL }, ..usual };
+        assert!(!comes(&jane, &no_sleep, work_address, Time::Sleep) && comes(&jane, &no_sleep, work_address, Time::Meals));
+        // Neutral, to the work address: work time only (the address is work's, the list says work and admin).
+        let stranger = message("Someone <someone@elsewhere.example>", "", "A question", &senders);
+        let at_times = |t: &crate::porch::Triaged, reach: &Reach, account: Area| Time::STATES.into_iter().filter(|time| comes(t, reach, account, *time)).map(Time::id).collect::<Vec<_>>();
+        assert_eq!(at_times(&stranger, &usual, work_address), ["work"]);
+        assert_eq!(at_times(&stranger, &usual, personal), ["admin"]);
+        // The address and the list never meet: the list alone decides, so nothing waits for good.
+        assert_eq!(at_times(&stranger, &usual, leisure_address), ["work", "admin"]);
+        let boss = message("Boss <boss@company.example>", "", "Monday", &senders);
+        assert_eq!(at_times(&boss, &usual, personal), ["work"], "restricted to work, writing to a personal address");
+        assert_eq!(at_times(&boss, &usual, work_address), ["work"]);
+        assert_eq!(at_times(&boss, &mine, work_address), Vec::<&str>::new(), "never");
+        // Without admin hours, work time takes admin's ticks; without work hours, admin time takes work's.
+        let admin_only = Reach { neutral: Times { admin: true, ..Times::NEVER }, ..usual };
+        let no_admin = Week { admin_hours: false, ..set };
+        assert!(mail_in_view(&stranger, &senders, &admin_only, Area::MIXED, Time::Work, no_admin));
+        assert!(!mail_in_view(&stranger, &senders, &admin_only, Area::MIXED, Time::Work, set));
+        let no_work = Week { work_hours: false, ..set };
+        assert!(mail_in_view(&boss, &senders, &usual, work_address, Time::Admin, no_work));
+        // Codes asked for and what you send yourself: at once, asleep or not; no hours set: everything.
+        let code = message("Bank <codes@bank.example>", "", "Your verification code: 482913", &senders);
+        assert_eq!(code.lane, crate::porch::Lane::RightNow);
+        assert!(comes(&code, &mine, work_address, Time::Sleep));
+        let mine_own = message("Me <me@example.net>", "Authentication-Results: mx.example.net; dmarc=pass header.from=example.net\r\n", "A file", &senders);
+        assert!(mine_own.reasons.contains(&crate::porch::Reason::FromYourself), "{:?}", mine_own.reasons);
+        assert!(comes(&mine_own, &mine, work_address, Time::Sleep));
+        assert!(comes(&stranger, &usual, leisure_address, Time::Any));
+        // Forged in a safe sender's name: set aside, and weighed as a stranger's.
+        let forged = message("Jane <jane@example.org>", "Authentication-Results: mx.example.net; dmarc=fail (p=reject) header.from=example.org\r\n", "Hello", &senders);
+        assert_eq!(forged.lane, crate::porch::Lane::SetAside);
+        assert!(!comes(&forged, &usual, personal, Time::Leisure) && comes(&forged, &usual, personal, Time::Admin));
+    }
+
+    #[test]
+    fn nothing_disturbs_but_doses() {
+        let sleeping = Mode { quiet: true, time: Time::Sleep, week: Week::default(), reason: Reason::Sleep, until: None, back: None, label: String::new() };
+        let awake = Mode { time: Time::Leisure, reason: Reason::Evening, ..sleeping.clone() };
+        assert!(!may_notify(&sleeping, false, true), "no notification during sleep");
+        assert!(may_notify(&sleeping, true, true), "a dose comes: you set its time");
+        assert!(!may_notify(&sleeping, true, false), "unless doses stay silent then");
+        assert!(may_notify(&awake, false, false) && may_notify(&awake, true, false));
+        let winding = Mode { reason: Reason::WindingDown, ..sleeping };
+        assert!(winding.sleeps() && !may_notify(&winding, false, true));
     }
 }

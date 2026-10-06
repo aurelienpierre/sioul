@@ -3,16 +3,15 @@
 
 //! What things are for, and which time is for what (docs/areas.md).
 //!
-//! Two axes. The senders' lists (safe, neutral, blocked: `porch.rs`) say who
-//! may reach you. Areas say what a source (an address, a site, a chat) or a
-//! task is for: work, your own admin, or leisure; and your week says which
-//! hours are for which. Hours set for none of them are rest: only the people
-//! you marked safe reach you, and the sites for leisure; no tasks, no
-//! projects, no time noted. Time off and a day closed early are free time.
-//! So work does not reach your evenings, and admin waits for its
-//! own hours instead of spreading over your rest: recovery needs detachment
-//! from work (Sonnentag & Fritz 2007, 2015), a real risk for whoever works
-//! from home or for themselves.
+//! Two axes. The senders' lists (safe, neutral, restricted, blocked:
+//! `porch.rs`) say who may reach you, and the matrix of `quiet::Reach` when.
+//! Areas say what a source (an address, a site, a chat) or a task is for:
+//! work, your own admin, or leisure; and the time says what now is for. Five
+//! times: work and admin (the hours you set), meals and sleep (from Health),
+//! and leisure, every other time. So work does not reach your evenings, and
+//! admin waits for its own hours instead of spreading over your free time:
+//! recovery needs detachment from work (Sonnentag & Fritz 2007, 2015), a
+//! real risk for whoever works from home or for themselves.
 
 use serde::{Deserialize, Serialize};
 
@@ -95,32 +94,42 @@ impl<'de> serde::Deserialize<'de> for Area {
     }
 }
 
-/// What the hours now are for.
+/// What now is for (docs/areas.md): one of five times, or several hours at
+/// once, or no hours set at all.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Time {
+    /// Working hours, and the work you asked for outside them ("A little longer", "Work now").
     Work,
+    /// Hours for your own admin.
     Admin,
-    /// Free time: rest, leisure; time off and a day closed early too.
+    /// Every other time: evenings, days without hours, time off, a day closed
+    /// early. What you enjoy; work and admin wait.
     Leisure,
-    /// Hours set for nothing, when some are set: rest. Only your safe
-    /// senders' mail and the sites for leisure; no tasks, no projects, no time.
+    /// A meal, from getting it ready to its end (Health).
+    Meals,
+    /// The night, from winding down to waking, and naps (Health): nothing disturbs.
+    Sleep,
+    /// No working or admin hours set at all: everything comes, as before any
+    /// were set (meals and sleep still keep their time).
     #[default]
-    Personal,
-    /// No hours set at all: everything comes, as before any were set.
     Any,
-    /// Hours of several kinds at once (admin hours within free time): what
-    /// each of them brings comes, all together.
+    /// Working and admin hours at once: what each of them brings comes, all together.
     Several(Area),
 }
 
 impl Time {
+    /// The five times, in the order the matrix of who may write to you shows them.
+    pub const STATES: [Time; 5] = [Time::Work, Time::Admin, Time::Leisure, Time::Meals, Time::Sleep];
+
     pub fn parse(text: &str) -> Option<Time> {
         match text.trim().to_lowercase().as_str() {
             "work" | "travail" => Some(Time::Work),
             "admin" | "démarches" | "demarches" => Some(Time::Admin),
-            "leisure" | "loisirs" | "free" | "rest" => Some(Time::Leisure),
-            "personal" | "perso" => Some(Time::Personal),
+            // "rest" and "personal" were the words for time outside every hours set.
+            "leisure" | "loisirs" | "free" | "rest" | "personal" | "perso" => Some(Time::Leisure),
+            "meals" | "meal" | "repas" => Some(Time::Meals),
+            "sleep" | "sommeil" | "night" | "nuit" => Some(Time::Sleep),
             "any" => Some(Time::Any),
             several if several.contains('+') => Area::parse(several).map(Time::of),
             _ => None,
@@ -132,31 +141,22 @@ impl Time {
             Time::Work => "work",
             Time::Admin => "admin",
             Time::Leisure => "leisure",
-            Time::Personal => "personal",
+            Time::Meals => "meals",
+            Time::Sleep => "sleep",
             Time::Any => "any",
-            Time::Several(open) => match (open.work, open.admin, open.leisure) {
-                (true, true, true) => "work+admin+leisure",
-                (true, true, false) => "work+admin",
-                (true, false, true) => "work+leisure",
-                (false, true, true) => "admin+leisure",
-                (true, false, false) => "work",
-                (false, true, false) => "admin",
-                (false, false, true) => "leisure",
-                (false, false, false) => "personal",
-            },
+            // Only work and admin have hours: they are the ones to overlap.
+            Time::Several(_) => "work+admin",
         }
     }
-}
 
-impl Time {
-    /// The time when the hours of `open` are open: one kind, or several at once.
+    /// The time when the hours of `open` are open: work's, admin's, or both
+    /// at once; neither is leisure. Only work and admin have hours.
     pub fn of(open: Area) -> Time {
-        match (open.work, open.admin, open.leisure) {
-            (false, false, false) => Time::Personal,
-            (true, false, false) => Time::Work,
-            (false, true, false) => Time::Admin,
-            (false, false, true) => Time::Leisure,
-            _ => Time::Several(open),
+        match (open.work, open.admin) {
+            (false, false) => Time::Leisure,
+            (true, false) => Time::Work,
+            (false, true) => Time::Admin,
+            (true, true) => Time::Several(Area::MIXED),
         }
     }
 
@@ -171,30 +171,48 @@ impl Time {
     }
 }
 
-/// Which kinds of hours your week sets: until admin has hours of its own, it
-/// comes in work time as it always did; until work has some, it is never set aside.
+/// Which times your week holds: work and admin when they have hours (until
+/// admin has hours of its own, it comes in work time as it always did; until
+/// work has some, it comes in admin's), meals and sleep when Health sets them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Week {
     pub work_hours: bool,
     pub admin_hours: bool,
-    pub leisure_hours: bool,
+    /// Meals are set (Health).
+    pub meals: bool,
+    /// A night or naps are set (Health).
+    pub sleep: bool,
+}
+
+impl Week {
+    /// Whether `time` comes in this week: leisure always does.
+    pub fn has(self, time: Time) -> bool {
+        match time {
+            Time::Work => self.work_hours,
+            Time::Admin => self.admin_hours,
+            Time::Meals => self.meals,
+            Time::Sleep => self.sleep,
+            Time::Leisure | Time::Any => true,
+            Time::Several(open) => (open.work && self.work_hours) || (open.admin && self.admin_hours),
+        }
+    }
 }
 
 /// Whether something for `area` comes forward in `time`: for one of the
-/// things the hours are for. Admin without hours of its own comes in work
-/// time; work without hours comes in admin's. Outside every hours set, rest:
-/// a source for leisure (a chat with friends) still comes, nothing else; mail
-/// only from your safe senders (`quiet::mail_in_view`), no tasks (`quiet::QuietTasks`).
+/// things the time is for. Admin without hours of its own comes in work
+/// time; work without hours comes in admin's. Leisure, meals and sleep bring
+/// what is for leisure (a chat with friends), nothing else: a meal is a
+/// break, and during sleep nothing notifies anyway (`quiet::may_notify`);
+/// no task then (`quiet::QuietTasks`). Mail has its own rule, by who wrote
+/// (`quiet::mail_in_view`).
 pub fn in_view(area: Area, time: Time, week: Week) -> bool {
     match time {
         Time::Work => area.work || (!week.admin_hours && area.admin),
         Time::Admin => area.admin || (!week.work_hours && area.work),
-        // Free time is kept free, work hours or not.
-        Time::Leisure => area.leisure,
-        Time::Personal => area.leisure,
+        Time::Leisure | Time::Meals | Time::Sleep => area.leisure,
         Time::Any => true,
-        // Admin hours within free time: admin's and leisure's both.
-        Time::Several(open) => (open.work && in_view(area, Time::Work, week)) || (open.admin && in_view(area, Time::Admin, week)) || (open.leisure && in_view(area, Time::Leisure, week)),
+        // Working and admin hours at once: what each of them brings.
+        Time::Several(open) => (open.work && in_view(area, Time::Work, week)) || (open.admin && in_view(area, Time::Admin, week)),
     }
 }
 
@@ -274,31 +292,38 @@ mod tests {
 
     #[test]
     fn what_comes_when() {
-        let set = Week { work_hours: true, admin_hours: true, leisure_hours: true };
+        let set = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
         assert!(in_view(Area::WORK, Time::Work, set));
-        assert!(!in_view(Area::WORK, Time::Personal, set), "never in personal time");
-        assert!(!in_view(Area::WORK, Time::Leisure, set));
+        assert!(!in_view(Area::WORK, Time::Leisure, set), "never in leisure");
+        assert!(!in_view(Area::WORK, Time::Meals, set) && !in_view(Area::WORK, Time::Sleep, set), "nor while you eat or sleep");
         assert!(!in_view(Area::ADMIN, Time::Work, set), "admin has its own hours");
         assert!(in_view(Area::ADMIN, Time::Work, Week::default()), "until it has some");
-        assert!(in_view(Area::ADMIN, Time::Admin, set) && !in_view(Area::ADMIN, Time::Personal, set), "outside every hours, rest");
-        assert!(in_view(Area::LEISURE, Time::Personal, set), "a chat with friends");
-        assert!(!in_view(Area::ADMIN, Time::Leisure, set), "free time is free");
+        assert!(in_view(Area::ADMIN, Time::Admin, set) && !in_view(Area::ADMIN, Time::Leisure, set), "leisure is free");
+        assert!(in_view(Area::LEISURE, Time::Sleep, set) && in_view(Area::LEISURE, Time::Meals, set), "a chat with friends");
         assert!(in_view(Area::LEISURE, Time::Leisure, set) && !in_view(Area::LEISURE, Time::Admin, set) && !in_view(Area::LEISURE, Time::Work, set));
         assert!(in_view(Area::PERSONAL, Time::Leisure, set) && in_view(Area::PERSONAL, Time::Admin, set) && !in_view(Area::PERSONAL, Time::Work, set));
         assert!(in_view(Area::MIXED, Time::Work, set) && in_view(Area::MIXED, Time::Admin, set) && !in_view(Area::MIXED, Time::Leisure, set));
-        // Work and leisure together, a chat for both: in both their hours.
+        // Work and leisure together, a chat for both: in both their times.
         let both = Area::WORK.with(Area::LEISURE);
         assert!(in_view(both, Time::Work, set) && in_view(both, Time::Leisure, set) && !in_view(both, Time::Admin, set));
         let no_work = Week { admin_hours: true, ..Week::default() };
         assert!(in_view(Area::WORK, Time::Admin, no_work), "no work hours: work comes in admin's");
-        assert!(!in_view(Area::WORK, Time::Personal, no_work) && !in_view(Area::WORK, Time::Leisure, no_work), "rest and free time stay free");
-        // Admin hours within free time: both come, never work.
-        let both = Time::of(Area::parse("admin+leisure").unwrap());
-        assert_eq!(both, Time::Several(Area::PERSONAL));
-        assert!(in_view(Area::ADMIN, both, set) && in_view(Area::LEISURE, both, set) && !in_view(Area::WORK, both, set));
-        assert_eq!((both.id(), Time::parse("admin+leisure")), ("admin+leisure", Some(both)));
-        assert!(both.offices() && !both.works());
+        assert!(!in_view(Area::WORK, Time::Leisure, no_work) && !in_view(Area::WORK, Time::Sleep, no_work), "leisure and sleep stay free");
+        // Working and admin hours at once: both come.
+        let both = Time::of(Area::MIXED);
+        assert_eq!(both, Time::Several(Area::MIXED));
+        assert!(in_view(Area::ADMIN, both, set) && in_view(Area::WORK, both, set) && !in_view(Area::LEISURE, both, set));
+        assert_eq!((both.id(), Time::parse("work+admin")), ("work+admin", Some(both)));
+        assert!(both.offices() && both.works());
+        // Leisure has no hours: a window for it is none.
+        assert_eq!(Time::of(Area::LEISURE), Time::Leisure);
+        assert_eq!(Time::of(Area::PERSONAL), Time::Admin);
         assert!(in_view(Area::LEISURE, Time::Any, Week::default()) && in_view(Area::WORK, Time::Any, Week::default()));
+        // The older words read; each time says its own.
+        assert_eq!((Time::parse("rest"), Time::parse("personal"), Time::parse("repas"), Time::parse("Sommeil")), (Some(Time::Leisure), Some(Time::Leisure), Some(Time::Meals), Some(Time::Sleep)));
+        assert_eq!(Time::STATES.map(Time::id), ["work", "admin", "leisure", "meals", "sleep"]);
+        assert!(!Time::Meals.offices() && !Time::Sleep.offices() && !Time::Leisure.works());
+        assert!(set.has(Time::Sleep) && !Week::default().has(Time::Meals) && Week::default().has(Time::Leisure));
     }
 
     #[test]

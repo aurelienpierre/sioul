@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Meals, naps and the night, set first: times kept free of tasks, the work
-// planned around them (docs/health.md, "Meals, rest and sleep"). Today's
-// first, each a few minutes later, at another time or not today, without a
-// word asked; then each block, named as you like, on the weekdays you
-// choose, its notices on or off. Nothing about eating or sleeping is
-// recorded here, and nothing is said when one passes.
+// The usual meals, naps and night, set first, in the Health page's settings:
+// times kept free of tasks, the work planned around them (docs/health.md,
+// "Meals, rest and sleep"). Each block named as you like, on the weekdays
+// you choose, its notices on or off; a day that differs is changed on the
+// page itself, that day only. Nothing about eating or sleeping is recorded
+// here, and nothing is said when one passes.
 
 pragma ComponentBehavior: Bound
 
@@ -19,28 +19,17 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
-    required property var window
-    // Today's, as they are now: moved, skipped.
-    property var today: []
-    // {needs, usual, gaps, skipped, moved}, as the backend gives it.
-    property var shown: ({ needs: { meals_on: false, meals: [], naps_on: false, naps: [], sleep_on: false, sleep: { bed: "23:00", wake: "07:00", wind_down: 60, notices: true }, heads_up: 15, later: 15 }, usual: { meals: [], nap: "", sleep: "" }, gaps: [], skipped: [], moved: {} })
+    // {needs, usual, gaps}, as the backend gives it.
+    property var shown: ({ needs: { meals_on: false, meals: [], naps_on: false, naps: [], sleep_on: false, sleep: { bed: "23:00", wake: "07:00", wind_down: 60, notices: true }, heads_up: 15, later: 15 }, usual: { meals: [], nap: "", sleep: "" }, gaps: [] })
     property string problem: ""
     // A narrow screen: each block's numbers under its name.
     readonly property bool narrow: section.width < 560
 
-    // Today's rows come with the health views, off the window's thread (`needsView`).
+    // Saved: the page's days follow.
+    signal changed
+
     function reload() {
         section.shown = JSON.parse(section.sioul.needs())
-        section.today = JSON.parse(section.sioul.needsView || "[]")
-        section.sioul.refreshHealth()
-    }
-
-    Connections {
-        target: section.sioul
-
-        function onNeedsViewChanged() {
-            section.today = JSON.parse(section.sioul.needsView || "[]")
-        }
     }
 
     // The settings changed by `change` (on a copy), saved, and read again.
@@ -49,16 +38,7 @@ ColumnLayout {
         change(needs)
         section.problem = section.sioul.saveNeeds(JSON.stringify(needs))
         section.reload()
-    }
-
-    function skip(key, skip) {
-        section.problem = section.sioul.skipNeed(key, skip)
-        section.reload()
-    }
-
-    function later(key) {
-        section.problem = section.sioul.moveNeed(key, 0, "")
-        section.reload()
+        section.changed()
     }
 
     // "08:30" as typed, or nothing when it is no time.
@@ -74,8 +54,9 @@ ColumnLayout {
     Label {
         Layout.topMargin: 12
         text: section.sioul.text("needs-title")
+        font.pixelSize: 16
         font.weight: Font.DemiBold
-        color: section.theme.text
+        color: section.theme.accent
     }
     Label {
         Layout.fillWidth: true
@@ -83,65 +64,6 @@ ColumnLayout {
         wrapMode: Text.Wrap
         font.pixelSize: 13
         color: section.theme.muted
-    }
-
-    // Today's, as they are now: a few minutes later, at another time, or not today.
-    Label {
-        visible: section.today.length > 0
-        Layout.topMargin: 4
-        text: section.sioul.text("needs-today")
-        font.weight: Font.DemiBold
-        color: section.theme.text
-    }
-    Repeater {
-        model: section.today
-
-        // The buttons beside it, or under it on a phone.
-        delegate: GridLayout {
-            id: row
-
-            required property var modelData
-
-            Layout.fillWidth: true
-            columns: section.narrow ? 1 : 2
-            columnSpacing: 10
-            rowSpacing: 2
-
-            Label {
-                Layout.fillWidth: true
-                text: row.modelData.from + "–" + row.modelData.to + "   " + row.modelData.name + (row.modelData.moved !== 0 ? "   · " + section.sioul.textWith("needs-moved", "minutes", String(row.modelData.moved)) : "")
-                textFormat: Text.PlainText
-                font.strikeout: row.modelData.skipped
-                wrapMode: Text.Wrap
-                color: row.modelData.past || row.modelData.skipped ? section.theme.muted : section.theme.text
-            }
-            Flow {
-                visible: !row.modelData.past
-                Layout.alignment: Qt.AlignRight
-                spacing: 6
-
-                Button {
-                    visible: !row.modelData.skipped
-                    flat: true
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    text: section.sioul.textWith("need-later-n", "minutes", String(section.shown.needs.later))
-                    onClicked: section.later(row.modelData.key)
-                }
-                Button {
-                    visible: !row.modelData.skipped
-                    flat: true
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    text: section.sioul.text("need-move-to") + "…"
-                    onClicked: section.window.askNeed(row.modelData.key)
-                }
-                Button {
-                    flat: true
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    text: section.sioul.text(row.modelData.skipped ? "need-unskip" : "needs-not-today")
-                    onClicked: section.skip(row.modelData.key, !row.modelData.skipped)
-                }
-            }
-        }
     }
 
     // Meals.

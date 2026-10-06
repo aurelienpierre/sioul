@@ -135,10 +135,12 @@ pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::qu
     let now = Zoned::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
     let events = sioul_core::agenda::occurrences(midnight, midnight + 28 * 86_400);
-    // Meals, naps and the night first: the work goes around them.
+    // Meals, naps and the night first: the work goes around them, as each day has them,
+    // meals pushed past the events they would fall in, as the window plans.
     let needs = sioul_core::health::Health::load(&sioul_core::health::Health::default_path()).needs;
-    let moved = sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), now.date()).shifts;
-    let mut settings = Settings::of_hours(&s.config.week_hours(), sioul_core::areas::TaskAreas::of_config(&s.config, cases)).with_needs(&needs, moved).with_events(&now, &events);
+    let days = sioul_core::needs::Days::load(&sioul_core::needs::Days::default_path());
+    let pushed = needs.past_events_on(now.date(), now.time_zone(), &days, &sioul_core::plan::event_spans(&events, 0));
+    let mut settings = Settings::of_hours(&s.config.week_hours(), sioul_core::areas::TaskAreas::of_config(&s.config, cases)).with_needs(&needs, pushed).with_days(days).with_events(&now, &events);
     settings.default_estimate = s.config.tasks.estimate.unwrap_or(settings.default_estimate);
     settings.today_percent = weather.room();
     // As the window plans: how today is says how many heavy tasks it takes.
@@ -159,7 +161,8 @@ impl Desk {
         let spent = timelog::spent(&sessions, 0, i64::MAX);
         let stopped = sessions.iter().filter(|x| !x.note.is_empty()).map(|x| (x.task.clone(), x.note.clone())).collect();
         let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-        let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &Zoned::now(), &s.tr, &loaded.cases);
+        let now = Zoned::now();
+        let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.cases);
         let settings = settings(s, today.weather, &situation, &loaded.cases);
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };

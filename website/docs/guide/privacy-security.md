@@ -14,7 +14,7 @@ Everything Sioul keeps is in plain files, in your own folders, readable by other
 
 | What | Where, on Linux |
 |---|---|
-| Settings, the senders you let in, safe, neutral or blocked | `~/.config/sioul/` |
+| Settings, the senders you let in, safe, neutral, restricted or blocked | `~/.config/sioul/` |
 | Mail (one Maildir per address), calendars and contacts (one file per item), drafts, time spent, invoices, medicines, your watch's days | `~/.local/share/sioul/` |
 | Where each fetch stopped, where the Porch was closed, the sites' news, the log of an AI agent's calls | `~/.local/state/sioul/` |
 | Notes, projects, budgets, papers, scanned letters | your notes folder, wherever you chose it |

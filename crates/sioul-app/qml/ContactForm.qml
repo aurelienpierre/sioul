@@ -2,8 +2,9 @@
 // Copyright © 2026 Aurélien Pierre
 
 // A contact's form: the name, addresses and numbers in view, each with what
-// it is for; the organisation; then, folded, postal addresses, the birthday,
-// notes and web sites. `edit()` gives what the backend saves.
+// it is for; the organisation; its categories, chosen among those in use or
+// typed; then, folded, postal addresses, the birthday, notes and web sites.
+// `edit()` gives what the backend saves.
 
 pragma ComponentBehavior: Bound
 
@@ -18,6 +19,34 @@ ColumnLayout {
     required property var theme
     property bool moreShown: false
     readonly property var labels: ["", "work", "home", "cell"]
+    // The categories the cards have (the page's list), to choose from.
+    property var known: []
+    // This contact's categories, as edited.
+    property var chosen: []
+    // Those in use it does not have yet, to choose from.
+    readonly property var others: form.known.filter(k => !form.has(k))
+
+    // Categories compare as the sender lists compare them: case and accents aside.
+    function folded(name) {
+        return name.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    }
+
+    function has(name) {
+        return form.chosen.some(c => form.folded(c) === form.folded(name))
+    }
+
+    // The categories with one more: the spelling already in use when there is one.
+    function plus(list, name) {
+        const typed = name.trim()
+        if (typed === "" || list.some(c => form.folded(c) === form.folded(typed)))
+            return list
+        const used = form.known.find(k => form.folded(k) === form.folded(typed))
+        return list.concat([used !== undefined ? used : typed])
+    }
+
+    function addCategory(name) {
+        form.chosen = form.plus(form.chosen, name)
+    }
 
     function load(person) {
         name.text = person.name
@@ -26,6 +55,8 @@ ColumnLayout {
         birthday.text = person.birthday
         notes.text = person.notes
         urls.text = person.urls.join("\n")
+        form.chosen = (person.categories || []).slice()
+        newCategory.clear()
         emails.clear()
         for (const e of person.emails)
             emails.append({ label: e.label.split(",")[0].trim(), value: e.value })
@@ -61,7 +92,9 @@ ColumnLayout {
             addresses: form.rows(addresses),
             birthday: birthday.text,
             notes: notes.text,
-            urls: urls.text.split("\n").map(u => u.trim()).filter(u => u)
+            urls: urls.text.split("\n").map(u => u.trim()).filter(u => u),
+            // A category typed and not yet added counts too.
+            categories: form.plus(form.chosen, newCategory.text)
         }
     }
 
@@ -127,6 +160,112 @@ ColumnLayout {
 
             Layout.fillWidth: true
             placeholderText: form.sioul.text("contact-title")
+        }
+    }
+
+    Label {
+        text: form.sioul.text("contact-categories")
+        color: form.theme.muted
+    }
+    // Its categories: each taken off with ×, another chosen among those in use or typed.
+    Flow {
+        visible: form.chosen.length > 0
+        Layout.fillWidth: true
+        spacing: 6
+
+        Repeater {
+            model: form.chosen
+
+            delegate: Rectangle {
+                id: tag
+
+                required property string modelData
+
+                implicitWidth: tagRow.implicitWidth + 12
+                implicitHeight: tagRow.implicitHeight + 4
+                radius: height / 2
+                color: "transparent"
+                border.color: form.theme.line
+
+                Row {
+                    id: tagRow
+
+                    anchors.centerIn: parent
+                    spacing: 2
+
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        leftPadding: 4
+                        text: tag.modelData
+                        textFormat: Text.PlainText
+                        font.pixelSize: 13
+                        color: form.theme.text
+                    }
+                    ToolButton {
+                        implicitWidth: 22
+                        implicitHeight: 22
+                        text: "×"
+                        Accessible.name: form.sioul.textWith("contact-category-remove", "category", tag.modelData)
+                        onClicked: form.chosen = form.chosen.filter(c => c !== tag.modelData)
+                    }
+                }
+            }
+        }
+    }
+    // Another category: typed, or chosen among those in use (▾).
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 4
+
+        TextField {
+            id: newCategory
+
+            Layout.fillWidth: true
+            Layout.maximumWidth: 260
+            placeholderText: "+ " + form.sioul.text("contact-category-add")
+            Accessible.name: form.sioul.text("contact-category-add")
+            onAccepted: {
+                form.addCategory(newCategory.text)
+                newCategory.clear()
+            }
+        }
+        ToolButton {
+            id: usedButton
+
+            visible: form.others.length > 0
+            text: "▾"
+            Accessible.name: form.sioul.text("contact-category-used")
+            ToolTip.visible: hovered
+            ToolTip.text: form.sioul.text("contact-category-used")
+            onClicked: usedMenu.now().popup(usedButton, 0, usedButton.height)
+        }
+        Item {
+            Layout.fillWidth: true
+        }
+    }
+    Later {
+        id: usedMenu
+
+        sourceComponent: Component {
+            SioulMenu {
+                id: menu
+
+                Instantiator {
+                    model: form.others
+
+                    delegate: MenuItem {
+                        id: usedLine
+
+                        required property string modelData
+
+                        // "&" marks a shortcut in a menu: "&&" is one.
+                        text: usedLine.modelData.replace(/&/g, "&&")
+                        onTriggered: form.addCategory(usedLine.modelData)
+                    }
+                    onObjectAdded: (index, object) => menu.insertItem(index, object)
+                    onObjectRemoved: (index, object) => menu.removeItem(object)
+                }
+            }
         }
     }
 

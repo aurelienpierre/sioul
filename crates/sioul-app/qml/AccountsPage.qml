@@ -944,23 +944,43 @@ Item {
                                 wrapMode: Text.Wrap
                                 color: page.theme.muted
                             }
+                            // When each list's mail comes, the four lists, then your
+                            // contacts' categories under their own heading.
                             Repeater {
                                 model: page.senders
 
-                                delegate: SettingRow {
+                                delegate: ColumnLayout {
+                                    id: senderRow
+
                                     required property var modelData
+                                    required property int index
+                                    readonly property bool newGroup: senderRow.modelData.group !== "" && (senderRow.index === 0 || page.senders[senderRow.index - 1].group !== senderRow.modelData.group)
 
                                     Layout.fillWidth: true
-                                    Layout.topMargin: 8
-                                    setting: modelData
-                                    sioul: page.sioul
-                                    theme: page.theme
-                                    onSave: (key, value) => {
-                                        const problem = page.sioul.setSetting(key, JSON.stringify(value))
-                                        if (problem === "")
-                                            page.senders = JSON.parse(page.sioul.settings("senders") || "[]")
-                                        else
-                                            page.sioul.status = problem
+                                    Layout.topMargin: senderRow.newGroup ? 18 : 8
+                                    spacing: 3
+
+                                    Label {
+                                        visible: senderRow.newGroup
+                                        Layout.fillWidth: true
+                                        text: senderRow.modelData.group
+                                        font.pixelSize: 17
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                        color: page.theme.accent
+                                    }
+                                    SettingRow {
+                                        Layout.fillWidth: true
+                                        setting: senderRow.modelData
+                                        sioul: page.sioul
+                                        theme: page.theme
+                                        onSave: (key, value) => {
+                                            const problem = page.sioul.setSetting(key, JSON.stringify(value))
+                                            if (problem === "")
+                                                page.senders = JSON.parse(page.sioul.settings("senders") || "[]")
+                                            else
+                                                page.sioul.status = problem
+                                        }
                                     }
                                 }
                             }

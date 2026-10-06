@@ -14,7 +14,7 @@ Tout ce que Sioul garde est dans des fichiers simples, dans vos propres dossiers
 
 | Quoi | Où, sous Linux |
 |---|---|
-| Les réglages, les expéditeurs que vous laissez entrer, sûrs, neutres ou bloqués | `~/.config/sioul/` |
+| Les réglages, les expéditeurs que vous laissez entrer, sûrs, neutres, restreints ou bloqués | `~/.config/sioul/` |
 | Le courrier (un Maildir par adresse), les agendas et les contacts (un fichier par élément), les brouillons, le temps passé, les factures, les médicaments, les journées de votre montre | `~/.local/share/sioul/` |
 | Où chaque relève s’est arrêtée, où le Porche a été fermé, les nouvelles des sites, le journal des appels d’un agent d’IA | `~/.local/state/sioul/` |
 | Notes, projets, budgets, papiers, lettres scannées | votre dossier de notes, là où vous l’avez choisi |

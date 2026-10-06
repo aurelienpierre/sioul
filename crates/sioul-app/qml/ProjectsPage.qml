@@ -24,11 +24,11 @@ Item {
     // The mail that belongs to the one open: its routes, folded until asked.
     property bool routesShown: false
     property var routes: []
-    // Quiet time: only your own projects, unless you ask for the others; at
-    // rest (outside every hours set), none.
+    // Quiet time: only your own projects, unless you ask for the others;
+    // while you sleep, none.
     property bool anyway: false
     readonly property bool resting: page.window.moment.quiet && !page.anyway
-    readonly property bool rest: page.window.moment.rest === true && !page.anyway
+    readonly property bool rest: page.window.moment.sleep === true && !page.anyway
     readonly property var listed: page.resting ? page.rows.filter(r => r.personal) : page.rows
     property string openId: ""
     // On a phone, the project open takes the page; Back closes it (main.qml).
@@ -99,7 +99,7 @@ Item {
             Qt.openUrlExternally(page.theme.fileUrl(made.pdf))
     }
 
-    // Shown anyway once: the next visit in quiet time, or at rest, asks again.
+    // Shown anyway once: the next visit in quiet time, or asleep, asks again.
     onVisibleChanged: {
         if (page.visible)
             page.reload()
@@ -539,7 +539,7 @@ Item {
         }
     }
 
-    // Rest: one line, and the projects if you ask.
+    // Asleep: one line, and the projects if you ask.
     RestCover {
         visible: page.rest
         sioul: page.sioul

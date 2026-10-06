@@ -54,4 +54,4 @@ Dans un seul fichier, `sioul-cases.toml`, à la racine de votre dossier de notes
 
 ## Pendant le calme {#in-quiet-time}
 
-Les projets pour des clients se reposent en dehors des heures de travail : « Les projets de travail se reposent jusqu’au retour du travail. » **Montrer quand même** les montre malgré tout. Au repos, hors de toutes les heures que vous avez réglées, toute la page attend derrière une phrase et **Montrer quand même**. Voir [Les heures](hours.md).
+Les projets pour des clients se reposent en dehors des heures de travail : « Les projets de travail se reposent jusqu’au retour du travail. » **Montrer quand même** les montre malgré tout. Pendant le sommeil, toute la page attend derrière une phrase et **Montrer quand même**. Voir [Les heures](hours.md).

@@ -54,8 +54,8 @@ pub(crate) fn watch(s: &Session) -> Result<(), String> {
             reminders::forget_old(&dir);
             forgotten_on = Some(now.date());
         }
-        let (all, resting) = reminders::gather(&config, &s.tr, &now);
-        for reminder in reminders::to_tell(all, &dir, now.timestamp().as_second(), resting) {
+        let (all, wait) = reminders::gather(&config, &s.tr, &now);
+        for reminder in reminders::to_tell(all, &dir, now.timestamp().as_second(), wait) {
             if let Err(e) = sioul_sync::notify::remind(&reminder.title, &reminder.body, None) {
                 eprintln!("{e}");
             }

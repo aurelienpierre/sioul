@@ -35,7 +35,7 @@ ColumnLayout {
     spacing: 3
 
     Label {
-        visible: field.setting.kind !== "note"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link"
         Layout.fillWidth: true
         text: field.setting.label
         font.weight: Font.DemiBold
@@ -51,6 +51,174 @@ ColumnLayout {
         wrapMode: Text.Wrap
         lineHeight: 1.25
         color: field.theme.text
+    }
+
+    // Nothing to change here: a sentence, and a button to where it is
+    // changed (the Health page's meals and sleep, from the hours).
+    ColumnLayout {
+        visible: field.setting.kind === "link"
+        Layout.fillWidth: true
+        spacing: 2
+
+        Label {
+            Layout.fillWidth: true
+            text: field.setting.kind === "link" ? field.setting.help : ""
+            wrapMode: Text.Wrap
+            lineHeight: 1.25
+            color: field.theme.text
+        }
+        Button {
+            implicitWidth: implicitContentWidth + leftPadding + rightPadding
+            flat: true
+            text: field.setting.label
+            icon.name: "go-next"
+            icon.color: field.theme.text
+            // The window shows it, as a reminder's "Open" does (main.qml, openThing).
+            onClicked: field.sioul.reminderOpened(String(field.setting.value), "", "")
+        }
+    }
+
+    // Boxes in a grid: the lists down, the times across (who may write to
+    // you when). Made only for it; sideways on a screen too narrow for it.
+    Loader {
+        active: field.setting.kind === "matrix"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            Flickable {
+                id: grid
+
+                readonly property var rows: field.setting.rows || []
+                readonly property var columns: field.setting.choices || []
+                readonly property var ticked: field.setting.value || []
+                // Each column as wide as its heading, a box at least; the lists'
+                // names as wide as the widest: the grid fits a phone when it can.
+                readonly property var widths: {
+                    const out = []
+                    for (let i = 0; i < heads.count; i++) {
+                        const head = heads.itemAt(i)
+                        out.push(head ? Math.max(40, head.implicitWidth + 8) : 40)
+                    }
+                    return out
+                }
+                readonly property real nameWidth: {
+                    let width = 40
+                    for (let i = 0; i < names.count; i++) {
+                        const name = names.itemAt(i)
+                        if (name)
+                            width = Math.max(width, name.implicitWidth + 12)
+                    }
+                    return width
+                }
+
+                implicitHeight: table.implicitHeight + (wide.visible ? wide.height : 0)
+                contentWidth: table.implicitWidth
+                contentHeight: table.implicitHeight
+                flickableDirection: Flickable.HorizontalFlick
+                boundsBehavior: Flickable.StopAtBounds
+                clip: true
+                ScrollBar.horizontal: ScrollBar {
+                    id: wide
+
+                    visible: grid.contentWidth > grid.width
+                    policy: ScrollBar.AsNeeded
+                }
+
+                // Measured once each, for the widths above.
+                Repeater {
+                    id: names
+
+                    model: grid.rows
+
+                    delegate: Label {
+                        required property var modelData
+
+                        visible: false
+                        text: modelData.label
+                    }
+                }
+
+                ColumnLayout {
+                    id: table
+
+                    spacing: 0
+
+                    RowLayout {
+                        spacing: 0
+
+                        Item {
+                            Layout.preferredWidth: grid.nameWidth
+                            Layout.preferredHeight: 1
+                        }
+                        Repeater {
+                            id: heads
+
+                            model: grid.columns
+
+                            delegate: Label {
+                                required property var modelData
+                                required property int index
+
+                                Layout.preferredWidth: grid.widths[index] || 40
+                                text: modelData.label
+                                horizontalAlignment: Text.AlignHCenter
+                                font.pixelSize: 13
+                                color: field.theme.muted
+                            }
+                        }
+                    }
+                    Repeater {
+                        model: grid.rows
+
+                        delegate: RowLayout {
+                            id: list
+
+                            required property var modelData
+
+                            spacing: 0
+
+                            Label {
+                                Layout.preferredWidth: grid.nameWidth
+                                text: list.modelData.label
+                                color: field.theme.text
+                            }
+                            Repeater {
+                                model: grid.columns
+
+                                delegate: Item {
+                                    id: cell
+
+                                    required property var modelData
+                                    required property int index
+                                    readonly property string cellKey: list.modelData.value + ":" + cell.modelData.value
+
+                                    Layout.preferredWidth: grid.widths[cell.index] || 40
+                                    Layout.preferredHeight: box.implicitHeight
+
+                                    CheckBox {
+                                        id: box
+
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        checked: grid.ticked.indexOf(cell.cellKey) >= 0
+                                        Accessible.name: list.modelData.label + ", " + cell.modelData.label
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: list.modelData.label + " · " + cell.modelData.label
+                                        ToolTip.delay: 600
+                                        onToggled: {
+                                            // The row's times, this one as ticked now.
+                                            const times = grid.columns.map(c => c.value).filter(v => v === cell.modelData.value ? box.checked : grid.ticked.indexOf(list.modelData.value + ":" + v) >= 0)
+                                            field.save(field.setting.key + "." + list.modelData.value, times)
+                                            box.checked = Qt.binding(() => grid.ticked.indexOf(cell.cellKey) >= 0)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // On or off. Saved, the rows are read again; refused, the switch says the
@@ -817,7 +985,7 @@ ColumnLayout {
     }
 
     Label {
-        visible: text !== ""
+        visible: text !== "" && field.setting.kind !== "link"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         wrapMode: Text.Wrap

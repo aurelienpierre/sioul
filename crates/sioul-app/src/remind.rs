@@ -20,8 +20,9 @@ pub(crate) fn tick(qt: &QtThread) {
     std::thread::spawn(move || {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
         let now = jiff::Zoned::now();
-        let (all, resting) = reminders::gather(&load_config(), tr(), &now);
-        for reminder in reminders::to_tell(all, &reminders::told_dir(), now.timestamp().as_second(), resting) {
+        // Asleep, nothing is told: it waits for waking (`Wait::Everything`).
+        let (all, wait) = reminders::gather(&load_config(), tr(), &now);
+        for reminder in reminders::to_tell(all, &reminders::told_dir(), now.timestamp().as_second(), wait) {
             let (kind, uri, key) = match reminder.kind {
                 Kind::Asked | Kind::Wait => ("task", reminder.target.clone(), reminder.target.trim_start_matches("sioul:task/").to_string()),
                 Kind::Event | Kind::Alarm => ("event", String::new(), reminder.target.clone()),

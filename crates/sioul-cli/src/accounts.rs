@@ -377,6 +377,12 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                 let config = Config::load(&s.config_path).unwrap_or_default();
                 let arrived = triage_files(&config, &report.new);
                 print_right_now(s, &arrived);
+                // While you sleep nothing notifies: the code waits on the Porch (docs/health.md).
+                let now = Zoned::now();
+                let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
+                if sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now).sleeps() {
+                    continue;
+                }
                 for code in view::codes(&arrived, &s.tr) {
                     if let Err(e) = notify::code(&code.title, &code.body(), None) {
                         eprintln!("{}", crate::plain_lines(&e));

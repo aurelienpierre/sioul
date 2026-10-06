@@ -44,7 +44,7 @@ nav = [
       { "Settings" = "guide/settings.md" },
     ] },
     { "Across Sioul" = [
-      { "Hours: work, your admin, free time" = "guide/hours.md" },
+      { "Hours: work, your admin, leisure, meals, sleep" = "guide/hours.md" },
       { "Sharing between your devices" = "guide/sharing.md" },
       { "Using an AI agent" = "guide/ai-agent.md" },
       { "Privacy and security" = "guide/privacy-security.md" },

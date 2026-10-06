@@ -45,7 +45,7 @@ nav = [
       { "Les paramètres" = "guide/settings.md" },
     ] },
     { "Dans tout Sioul" = [
-      { "Les heures : travail, démarches, temps libre" = "guide/hours.md" },
+      { "Les heures : travail, démarches, loisirs, repas, sommeil" = "guide/hours.md" },
       { "Partager entre vos appareils" = "guide/sharing.md" },
       { "Avec un agent d’IA" = "guide/ai-agent.md" },
       { "Vie privée et sécurité" = "guide/privacy-security.md" },

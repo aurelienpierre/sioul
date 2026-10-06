@@ -110,7 +110,7 @@ One test for everything added to Sioul: does it take work off the person, rather
 
     ---
 
-    Working hours, hours for your own admin, free time. Each address, site, budget and task belongs to one or several; the rest waits, out of sight.
+    Working hours and hours for your own admin; leisure every other time; meals and sleep from your health settings. Each address, site, budget and task belongs to one or several; the rest waits, out of sight. While you sleep, nothing disturbs.
 
     [Hours](guide/hours.md)
 
@@ -193,7 +193,7 @@ No time tracker, timesheet or invoicing service beside it, and no subscription: 
 
 <figure markdown="span">
   [![The Hours tab of the Settings page: working hours, then hours for your admin, each day of the week ticked or not, from a start to an end.](assets/screens/settings-hours.png){ loading=lazy }](assets/screens/settings-hours.png "Open the picture at full size")
-  <figcaption>Hours: work, your admin, free time.</figcaption>
+  <figcaption>Hours: work, your admin.</figcaption>
 </figure>
 
 </div>

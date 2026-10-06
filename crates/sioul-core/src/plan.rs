@@ -17,8 +17,9 @@
 //! - **When**: each task goes into the first days with room, in that order,
 //!   after what it waits for, never before today. A date that passed moves a
 //!   task forward; it never makes it "late". Room is your hours, each kind for
-//!   its own tasks: work hours for work, admin hours for your admin, free time
-//!   for leisure (`areas::in_view` lends what has no hours of its own), less
+//!   its own tasks: work hours for work, admin hours for your admin
+//!   (`areas::in_view` lends what has no hours of its own); leisure has no
+//!   hours, so what is only for it takes no room and waits for none; less
 //!   the times kept for meals, naps and sleep (`needs`: set first, the work
 //!   planned around them), the events in them and a pause after each step. Sioul can run your work
 //!   too, so the plan may fill your hours: no second budget to keep.
@@ -70,7 +71,7 @@ pub const PAUSE: u32 = 5;
 pub const WHOLE: u32 = 60;
 
 /// A day's hours for tasks: minutes, by the kinds of hours open then
-/// (several where windows overlap: admin hours within free time).
+/// (several where windows overlap: admin hours within working hours).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Room(pub Vec<(Area, u32)>);
 
@@ -192,8 +193,10 @@ pub struct Settings {
     pub heavy_per_day: u32,
     /// Meals, naps and the night: kept free of tasks (`with_needs`).
     pub needs: crate::needs::Needs,
-    /// Blocks moved today ("Later"), by key, in minutes.
+    /// Today's meals pushed past its events, by key, in minutes (`Needs::past_events_on`).
     pub shifts: BTreeMap<String, i64>,
+    /// Each day's own meals, naps and nights: moved, changed, taken out, added (`with_days`).
+    pub needs_days: crate::needs::Days,
 }
 
 impl Default for Settings {
@@ -207,9 +210,11 @@ impl Settings {
     /// The room your week's hours give (`Config::week_hours`), each kind for
     /// its own tasks; none set: offices' usual hours, for everything.
     pub fn of_hours(windows: &[AdminWindow], areas: TaskAreas) -> Settings {
+        // Leisure is every other time: an older Sioul's free-time hours give no room.
+        let windows: Vec<AdminWindow> = windows.iter().filter(|w| w.kind() != "leisure").cloned().collect();
         let anything = windows.is_empty();
-        let windows = if anything { crate::window::default_office_hours() } else { windows.to_vec() };
-        let hours = Week { work_hours: windows.iter().any(|w| w.kind() == "work"), admin_hours: windows.iter().any(|w| w.kind() == "admin"), leisure_hours: windows.iter().any(|w| w.kind() == "leisure") };
+        let windows = if anything { crate::window::default_office_hours() } else { windows };
+        let hours = Week { work_hours: windows.iter().any(|w| w.kind() == "work"), admin_hours: windows.iter().any(|w| w.kind() == "admin"), ..Week::default() };
         // Any week will do: Monday 1 January 2024 to Sunday the 7th.
         let week = std::array::from_fn(|d| Room::of(&stretches(&windows, Date::constant(2024, 1, 1 + d as i8), &TimeZone::UTC, anything)));
         Settings {
@@ -229,6 +234,7 @@ impl Settings {
             heavy_per_day: 2,
             needs: crate::needs::Needs::default(),
             shifts: BTreeMap::new(),
+            needs_days: crate::needs::Days::default(),
         }
     }
 
@@ -239,8 +245,8 @@ impl Settings {
     }
 
     /// Meals, naps and the night kept free of tasks, every day (`shifts`:
-    /// blocks moved today, by key, in minutes). Before `with_events`, which
-    /// keeps them free on the days it lays out too.
+    /// today's moved by its events, by key, in minutes). Before `with_events`,
+    /// which keeps them free on the days it lays out too.
     pub fn with_needs(mut self, needs: &crate::needs::Needs, shifts: BTreeMap<String, i64>) -> Settings {
         let none = |_: &str| 0;
         // Any week will do, as for the hours: Monday 1 January 2024, on the clock.
@@ -253,10 +259,24 @@ impl Settings {
         self
     }
 
-    /// The times kept free on `date`, today's moved as said.
+    /// Each day's own meals, naps and nights (`needs::Days`): before
+    /// `with_events`, which lays out each day changed on its own.
+    pub fn with_days(mut self, days: crate::needs::Days) -> Settings {
+        self.needs_days = days;
+        self
+    }
+
+    /// The times kept free on `date`, as that day has them; today's meals
+    /// moved past its events as said (`shifts`).
     pub fn kept_on(&self, date: Date, zone: &TimeZone, today: Date) -> Vec<(i64, i64)> {
-        let shift = |key: &str| if date == today { self.shifts.get(key).copied().unwrap_or(0) } else { 0 };
-        self.needs.busy_on(date, zone, &shift)
+        self.kept_held(date, zone, today, &[])
+    }
+
+    /// The same, another day's meals moved past the events it holds (`held`:
+    /// their times with their margins), as today's are.
+    fn kept_held(&self, date: Date, zone: &TimeZone, today: Date, held: &[(i64, i64)]) -> Vec<(i64, i64)> {
+        let pushed = if date == today { self.shifts.clone() } else { self.needs.past_events_on(date, zone, &self.needs_days, held) };
+        self.needs.kept_with(date, zone, &self.needs_days, &|key: &str| pushed.get(key).copied().unwrap_or(0)).into_iter().map(|k| (k.start, k.end)).collect()
     }
 
     /// Today from `now` on, and the coming days with events: the events taken
@@ -279,9 +299,15 @@ impl Settings {
                 date = next;
             }
         }
+        // Each day with changes of its own, and the next (its night ends that morning).
+        for &date in self.needs_days.0.keys().filter(|d| **d >= today.yesterday().unwrap_or(today) && **d <= horizon) {
+            dates.extend([date, date.tomorrow().unwrap_or(date)].into_iter().filter(|d| *d >= today));
+        }
+        // Meals move past the events with their margins, as today's (`Needs::past_events_on`).
+        let held = event_spans(events, 0);
         for date in dates {
             let mut taken = busy.clone();
-            taken.extend(self.kept_on(date, &zone, today));
+            taken.extend(self.kept_held(date, &zone, today, &held));
             if date == today {
                 // From the next five minutes, as the day's layout starts.
                 taken.push((i64::MIN, (now.timestamp().as_second() + 299) / 300 * 300));
@@ -300,7 +326,7 @@ impl Settings {
     /// The kinds of hours a task can take: those of its area, and those
     /// `areas::in_view` lends what has no hours of its own. A call to an
     /// office, as `quiet::QuietTasks::keeps` shows it: work and admin hours,
-    /// never free time, as offices keep business hours (docs/areas.md).
+    /// never leisure, as offices keep business hours (docs/areas.md).
     pub fn usable(&self, task: &Task) -> Area {
         if self.anything {
             return Area::ALL;
@@ -1122,7 +1148,7 @@ mod tests {
 
     #[test]
     fn each_kind_in_its_own_hours() {
-        // Monday 5 October: work 9–12, admin 17–18; Saturday free time 10–12.
+        // Monday 5 October: work 9–12, admin 17–18; an older Sioul's free time on Saturday, 10–12, left aside.
         let windows = vec![window("monday", "09:00", "12:00", "work"), window("monday", "17:00", "18:00", "admin"), window("saturday", "10:00", "12:00", "leisure")];
         let settings = Settings { pause: 0, ..Settings::of_hours(&windows, TaskAreas::usual()) };
         let monday = day("2026-10-05");
@@ -1135,8 +1161,9 @@ mod tests {
         assert_eq!(days("report"), ("2026-10-05".into(), "2026-10-12".into()));
         // Admin in admin hours only: an hour on Monday, the rest the next Monday.
         assert_eq!(days("tax"), ("2026-10-05".into(), "2026-10-12".into()));
-        // Leisure on Saturday.
-        assert_eq!(days("friends"), ("2026-10-10".into(), "2026-10-10".into()));
+        // Leisure has no hours: it waits for none, and takes nothing from work.
+        assert_eq!(days("friends"), ("2026-10-05".into(), "2026-10-05".into()));
+        assert!(settings.rest_days()[5], "Saturday has no hours");
     }
 
     #[test]
@@ -1147,7 +1174,7 @@ mod tests {
         let friends = Task { categories: vec!["friends".into()], ..task("friends", 30) };
         let made = plan(&[tax, friends], day("2026-10-05"), &settings, &BTreeMap::new(), &BTreeSet::new());
         assert_eq!(made.items["tax"].start, Some(day("2026-10-05")));
-        // No free time set: leisure waits for none, and takes nothing from work.
+        // Leisure has no hours: it waits for none, and takes nothing from work.
         assert_eq!(made.items["friends"].start, Some(day("2026-10-05")));
         assert!(settings.rest_days()[1], "Tuesday has no hours");
     }
@@ -1167,6 +1194,24 @@ mod tests {
         assert_eq!(moved.room_on(now.date()).total(), 8 * 60 - 50 - 35);
         let lunch = moved.kept_on(now.date(), now.time_zone(), now.date()).into_iter().find(|(from, _)| *from > now.timestamp().as_second() + 3 * 3600).unwrap();
         assert_eq!(jiff::Timestamp::from_second(lunch.0).unwrap().to_zoned(now.time_zone().clone()).strftime("%H:%M").to_string(), "12:25");
+    }
+
+    #[test]
+    fn a_day_s_own_meals_and_naps_in_the_plan() {
+        // Work 9:00–17:00 on Tuesdays and Wednesdays; lunch kept 12:10–13:00, a nap 14:00–14:35.
+        let windows: Vec<AdminWindow> = ["tuesday", "wednesday"].iter().map(|d| AdminWindow { day: d.to_string(), start: "09:00".into(), end: Some("17:00".into()), minutes: 0, kind: None }).collect();
+        let needs = crate::needs::Needs { meals_on: true, naps_on: true, ..crate::needs::Needs::default() };
+        let now: Zoned = "2026-10-05T08:00[Europe/Paris]".parse().unwrap();
+        let (tuesday, wednesday): (Date, Date) = ("2026-10-06".parse().unwrap(), "2026-10-07".parse().unwrap());
+        // That Wednesday only: no nap, and an hour for lunch.
+        let mut days = crate::needs::Days::default();
+        days.change(wednesday, "nap:0", |b| b.off = true);
+        days.change(wednesday, "meal:1", |b| b.minutes = Some(60));
+        let settings = Settings::of_hours(&windows, TaskAreas::usual()).with_needs(&needs, BTreeMap::new()).with_days(days).with_events(&now, &[]);
+        assert_eq!(settings.room_on(tuesday).total(), 8 * 60 - 50 - 35, "Tuesday as usual");
+        assert_eq!(settings.room_on(wednesday).total(), 8 * 60 - 80, "the nap's time given back, lunch half an hour longer");
+        let next: Date = "2026-10-14".parse().unwrap();
+        assert_eq!(settings.room_on(next).total(), 8 * 60 - 50 - 35, "the Wednesday after as usual");
     }
 
     #[test]
@@ -1239,12 +1284,13 @@ mod tests {
 
     #[test]
     fn overlapping_hours_open_to_both() {
-        // Saturday free time 10–18 with admin hours 14–16 inside.
-        let windows = vec![window("saturday", "10:00", "18:00", "leisure"), window("saturday", "14:00", "16:00", "admin")];
+        // Saturday work 10–18 with admin hours 14–16 inside.
+        let windows = vec![window("saturday", "10:00", "18:00", "work"), window("saturday", "14:00", "16:00", "admin")];
         let settings = Settings::of_hours(&windows, TaskAreas::usual());
         let saturday = &settings.week[5];
-        assert_eq!(saturday.for_kinds(Area::LEISURE), 480);
+        assert_eq!(saturday.for_kinds(Area::WORK), 480);
         assert_eq!(saturday.for_kinds(Area::ADMIN), 120);
         assert_eq!(saturday.total(), 480, "the overlap counted once");
+        assert_eq!(saturday.for_kinds(Area::LEISURE), 0, "leisure has no hours");
     }
 }
