@@ -20,7 +20,7 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 - **The places**: Porch, Tasks, Mail, Sites, Agenda, Contacts, Notes, Projects, Time, Budgets, Papers, Health.
 - **Three icons**, apart at the bottom: Accounts (a person), Settings (sliders), and Refresh everything, which fetches mail, the agenda, tasks and contacts again at once.
 
-**At the bottom**, the status line says one sentence about what happened last. After anything is moved, deleted or sent, "Undo" waits there for ten seconds. In quiet time, it says when work comes back. At its right end are the keys, the sound button ([sounds to focus or rest by](tasks.md#sounds)) and the weather at a place you choose.
+**At the bottom**, the status line says one sentence about what happened last. After anything is moved, deleted or sent, "Undo" waits there for ten seconds. In quiet time, it says when work comes back; once the day's hours are over, it offers to close the work day, and in the evening the day. At its right end are the keys, the sound button ([sounds to focus or rest by](tasks.md#sounds)) and the weather at a place you choose.
 
 **On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. Where long text is read (a message, a note), "Aa" sets the font, its size and the space between lines. A right click, the Menu key, or a long press on a touch screen, on anything gives what is not in view.
 
@@ -94,7 +94,7 @@ Google's mail is added as any mail account, above, with an app password.
 
 ## Choose your notes folder
 
-Your notes are a folder of Markdown files: an Obsidian vault works as it is. Sioul also keeps your projects, budgets, papers and scanned letters in that folder, so that they travel with it to your other computers.
+Your notes are a folder of Markdown files: an Obsidian vault works as it is. Sioul also keeps your projects, budgets, papers and scanned letters in that folder, so that they travel with it to your other devices.
 
 In **Settings ▸ Your folder and sharing**, choose **The notes folder**. Sioul reads it and links to it; it never owns it. See [Notes](notes.md).
 

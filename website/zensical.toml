@@ -81,6 +81,8 @@ nav = [
     ] },
     { "Tasks and time" = [
       { "Tasks, notes, links, focus" = "dev/tasks.md" },
+      { "What a day holds" = "dev/capacity.md" },
+      { "The end of the day" = "dev/reviews.md" },
       { "Areas and hours" = "dev/areas.md" },
       { "Reminders" = "dev/reminders.md" },
       { "Projects, time, invoices" = "dev/projects.md" },
@@ -95,7 +97,7 @@ nav = [
       { "GitHub" = "dev/github.md" },
       { "Sites" = "dev/sites.md" },
       { "Health" = "dev/health.md" },
-      { "Several computers" = "dev/database.md" },
+      { "Several devices" = "dev/database.md" },
       { "AI" = "dev/ai.md" },
       { "AI agents (MCP)" = "dev/mcp.md" },
     ] },

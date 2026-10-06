@@ -100,7 +100,7 @@ One sentence about what happened last, with "Undo" for ten seconds; in quiet tim
 
 ## Keyboard and senses
 - **Everything by keyboard**: a command palette, one key per action, Escape always goes back, key hints on screen, focus always visible, an editable keymap, screen readers through Qt's accessibility layer.
-- **Passwords seen when needed**: every password, passphrase and key field has an eye at its end (reached with Tab, named for screen readers) that shows or hides what is typed; Settings ▸ "Show passwords as you type" shows them from the start, on this computer (`qml/PasswordField.qml`).
+- **Passwords seen when needed**: every password, passphrase and key field has an eye at its end (reached with Tab, named for screen readers) that shows or hides what is typed; Settings ▸ "Show passwords as you type" shows them from the start, on this device (`qml/PasswordField.qml`).
 - **Senses**:
   - a muted palette with even lightness steps (OKLab), no pure white or black;
   - no red for lateness; forged mail is marked by a shape and a word, not an alarm colour;

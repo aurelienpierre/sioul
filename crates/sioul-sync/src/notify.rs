@@ -64,6 +64,37 @@ pub fn remind(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() 
     Ok(())
 }
 
+/// A gentle reminder with several buttons, each its label and its action:
+/// the one pressed runs (the night's notice: "Close the day" and "Options…").
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+pub fn remind_choices(title: &str, body: &str, choices: Vec<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    if choices.is_empty() {
+        return remind(title, body, None);
+    }
+    let (title, body) = (title.to_string(), body.to_string());
+    std::thread::spawn(move || {
+        let mut notification = build(&title, &body, None);
+        notification.icon("appointment-soon");
+        for (index, (label, _)) in choices.iter().enumerate() {
+            notification.action(&format!("choice-{index}"), label);
+        }
+        let Ok(handle) = notification.show() else { return };
+        let mut runs: Vec<Option<Box<dyn FnOnce() + Send>>> = choices.into_iter().map(|(_, run)| Some(run)).collect();
+        let _ = handle.wait_for_action(|action: &str| {
+            if let Some(run) = action.strip_prefix("choice-").and_then(|n| n.parse::<usize>().ok()).and_then(|n| runs.get_mut(n)).and_then(Option::take) {
+                run();
+            }
+        });
+    });
+    Ok(())
+}
+
+/// Elsewhere, as a reminder without buttons (`remind`).
+#[cfg(not(all(unix, not(any(target_os = "macos", target_os = "android")))))]
+pub fn remind_choices(title: &str, body: &str, _choices: Vec<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    remind(title, body, None)
+}
+
 /// Windows and macOS: the reminder is in the text; no button here.
 #[cfg(any(windows, target_os = "macos"))]
 pub fn remind(title: &str, body: &str, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {

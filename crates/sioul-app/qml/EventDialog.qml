@@ -3,8 +3,10 @@
 
 // An event's form: the title, whole days or hours, when, where; folded
 // underneath, notes, how it repeats, the time kept before and after it
-// (getting there, getting ready, coming back), what it costs and gives back,
-// and the calendar when there are several.
+// (getting there, getting ready, coming back), what it costs and gives back
+// (four costs and a gain, sliders from 0 to 10, unsaid until said), and the
+// calendar when there are several. Opened from an event's details ("Edit"),
+// or new.
 
 pragma ComponentBehavior: Bound
 
@@ -26,10 +28,9 @@ Dialog {
     property var links: []
     readonly property var repeats: ["", "daily", "weekly", "monthly", "yearly"]
     readonly property var marginMinutes: [0, 5, 10, 15, 20, 30, 45, 60, 90, 120]
-    readonly property var ratings: [dialog.sioul.text("task-rating-unsaid"), "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-    // Minutes before and after; the three costs and the gain, 0 to 10 or unsaid (null).
+    // Minutes before and after; the four costs and the gain, 0 to 10 or unsaid (null).
     property var around: ({ before: 0, after: 0 })
-    property var demands: ({ cognitive: null, emotional: null, anxiety: null, gain: null })
+    property var demands: ({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null })
 
     signal saved
 
@@ -39,6 +40,18 @@ Dialog {
 
     function minutesText(m) {
         return m < 60 ? m + " min" : Math.floor(m / 60) + " h" + (m % 60 ? " " + dialog.pad(m % 60) : "")
+    }
+
+    // A cost or the gain, 0 to 10, or null when unsaid; kept until Save.
+    function rate(name, value) {
+        const demands = Object.assign({}, dialog.demands)
+        demands[name] = value
+        dialog.demands = demands
+    }
+
+    function rating(name) {
+        const value = dialog.demands[name]
+        return value === undefined ? null : value
     }
 
     // Opens on an event, or on a new one on `day` ("2026-10-05"), at `hour` or the next full hour.
@@ -63,8 +76,8 @@ Dialog {
             repeat.currentIndex = Math.max(0, dialog.repeats.indexOf(e.repeat))
             calendar.currentIndex = Math.max(0, dialog.calendars.findIndex(c => c.id === found.calendar))
             dialog.around = Object.assign({ before: 0, after: 0 }, e.margins)
-            dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, gain: null }, e.demands)
-            dialog.moreShown = e.notes !== "" || e.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0
+            dialog.demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, e.demands)
+            dialog.moreShown = e.notes !== "" || e.repeat !== "" || dialog.around.before > 0 || dialog.around.after > 0 || ["cognitive", "emotional", "anxiety", "body", "gain"].some(n => dialog.rating(n) !== null)
         } else {
             const now = new Date()
             hour = hour === undefined || hour < 0 ? Math.min(now.getHours() + 1, 23) : hour
@@ -79,7 +92,7 @@ Dialog {
             repeat.currentIndex = 0
             calendar.currentIndex = 0
             dialog.around = { before: 0, after: 0 }
-            dialog.demands = { cognitive: null, emotional: null, anxiety: null, gain: null }
+            dialog.demands = { cognitive: null, emotional: null, anxiety: null, body: null, gain: null }
             dialog.moreShown = false
         }
         dialog.open()
@@ -279,54 +292,59 @@ Dialog {
                     currentIndex: Math.max(0, dialog.marginMinutes.indexOf(dialog.around.after))
                     onActivated: index => dialog.around = Object.assign({}, dialog.around, { after: dialog.marginMinutes[index] })
                 }
-                // What it costs, and what it gives back: 0 to 10 each, as you feel it.
-                Label {
-                    Layout.maximumWidth: 160
-                    text: dialog.sioul.text("task-field-cognitive")
-                    wrapMode: Text.Wrap
-                    color: dialog.theme.muted
-                }
-                ComboBox {
+                // What it costs, and what it gives back: 0 to 10 each, as you feel it;
+                // unsaid until said, never 0 by default (RatingSlider.qml).
+                RatingSlider {
+                    Layout.columnSpan: 2
                     Layout.fillWidth: true
-                    model: dialog.ratings
-                    currentIndex: dialog.demands.cognitive === null || dialog.demands.cognitive === undefined ? 0 : dialog.demands.cognitive + 1
-                    onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { cognitive: index === 0 ? null : index - 1 })
+                    Layout.topMargin: 4
+                    sioul: dialog.sioul
+                    theme: dialog.theme
+                    label: dialog.sioul.text("task-field-cognitive")
+                    words: [dialog.sioul.text("rating-cognitive-0"), dialog.sioul.text("rating-cognitive-5"), dialog.sioul.text("rating-cognitive-10")]
+                    value: dialog.rating("cognitive")
+                    onEdited: given => dialog.rate("cognitive", given)
                 }
-                Label {
-                    Layout.maximumWidth: 160
-                    text: dialog.sioul.text("task-field-emotional")
-                    wrapMode: Text.Wrap
-                    color: dialog.theme.muted
-                }
-                ComboBox {
+                RatingSlider {
+                    Layout.columnSpan: 2
                     Layout.fillWidth: true
-                    model: dialog.ratings
-                    currentIndex: dialog.demands.emotional === null || dialog.demands.emotional === undefined ? 0 : dialog.demands.emotional + 1
-                    onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { emotional: index === 0 ? null : index - 1 })
+                    sioul: dialog.sioul
+                    theme: dialog.theme
+                    label: dialog.sioul.text("task-field-emotional")
+                    words: [dialog.sioul.text("rating-emotional-0"), dialog.sioul.text("rating-emotional-5"), dialog.sioul.text("rating-emotional-10")]
+                    value: dialog.rating("emotional")
+                    onEdited: given => dialog.rate("emotional", given)
                 }
-                Label {
-                    Layout.maximumWidth: 160
-                    text: dialog.sioul.text("task-field-anxiety")
-                    wrapMode: Text.Wrap
-                    color: dialog.theme.muted
-                }
-                ComboBox {
+                RatingSlider {
+                    Layout.columnSpan: 2
                     Layout.fillWidth: true
-                    model: dialog.ratings
-                    currentIndex: dialog.demands.anxiety === null || dialog.demands.anxiety === undefined ? 0 : dialog.demands.anxiety + 1
-                    onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { anxiety: index === 0 ? null : index - 1 })
+                    sioul: dialog.sioul
+                    theme: dialog.theme
+                    label: dialog.sioul.text("task-field-anxiety")
+                    words: [dialog.sioul.text("rating-anxiety-0"), dialog.sioul.text("rating-anxiety-5"), dialog.sioul.text("rating-anxiety-10")]
+                    value: dialog.rating("anxiety")
+                    onEdited: given => dialog.rate("anxiety", given)
                 }
-                Label {
-                    Layout.maximumWidth: 160
-                    text: dialog.sioul.text("task-field-gain")
-                    wrapMode: Text.Wrap
-                    color: dialog.theme.muted
-                }
-                ComboBox {
+                RatingSlider {
+                    Layout.columnSpan: 2
                     Layout.fillWidth: true
-                    model: dialog.ratings
-                    currentIndex: dialog.demands.gain === null || dialog.demands.gain === undefined ? 0 : dialog.demands.gain + 1
-                    onActivated: index => dialog.demands = Object.assign({}, dialog.demands, { gain: index === 0 ? null : index - 1 })
+                    sioul: dialog.sioul
+                    theme: dialog.theme
+                    label: dialog.sioul.text("task-field-body")
+                    words: [dialog.sioul.text("rating-body-0"), dialog.sioul.text("rating-body-5"), dialog.sioul.text("rating-body-10")]
+                    value: dialog.rating("body")
+                    onEdited: given => dialog.rate("body", given)
+                }
+                RatingSlider {
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 4
+                    sioul: dialog.sioul
+                    theme: dialog.theme
+                    label: dialog.sioul.text("task-field-gain")
+                    words: [dialog.sioul.text("rating-gain-0"), dialog.sioul.text("rating-gain-5"), dialog.sioul.text("rating-gain-10")]
+                    value: dialog.rating("gain")
+                    onEdited: given => dialog.rate("gain", given)
                 }
                 Label {
                     visible: dialog.calendars.length > 1 && dialog.key === ""

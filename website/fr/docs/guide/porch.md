@@ -73,7 +73,7 @@ Puis le texte, rendu sûr :
 - Le courrier HTML garde ses paragraphes, ses listes, son texte en gras et ses liens. Rien d’autre n’est montré : pas d’images, pas de styles, pas de scripts. Rien ne se charge depuis le réseau, rien ne s’exécute.
 - Les messages précédents qu’une réponse cite sont repliés sous **Afficher les messages précédents**. Une signature est atténuée.
 - Chaque lien montre son adresse complète sous le message tant que le pointeur est dessus, avant que vous cliquiez.
-- Les **Pièces jointes** sont repliées, une ligne chacune, avec leur type, leur nom et leur taille. En ouvrir ou en enregistrer une lance d’abord l’antivirus ; si l’ordinateur n’en a pas, Sioul le dit et demande avant d’ouvrir. Voir [Vie privée et sécurité](privacy-security.md#attachments-and-the-antivirus).
+- Les **Pièces jointes** sont repliées, une ligne chacune, avec leur type, leur nom et leur taille. En ouvrir ou en enregistrer une lance d’abord l’antivirus ; si l’appareil n’en a pas, Sioul le dit et demande avant d’ouvrir. Voir [Vie privée et sécurité](privacy-security.md#attachments-and-the-antivirus).
 
 Depuis le message : répondre, transférer, archiver, supprimer, et le reste, comme sur la page [Courrier](mail.md).
 
@@ -118,7 +118,7 @@ Une adresse que vous publiez apporte du travail, et parfois des insultes. Sur sa
 
 Le courrier hostile va dans sa propre file, repliée, qui ne montre ni le nom de l’expéditeur ni le sujet. En ouvrir un demande d’abord : il peut attendre, aller à quelqu’un de confiance (**Transférer à quelqu’un de confiance**), ou partir (bloqué, supprimé). Le lire quand même est votre choix, au moment qui vous convient. Le reste du courrier de l’adresse a sa propre file, le travail en premier, avec son sujet affiché, et une marque quand il est grossier.
 
-**Laisser l’IA le lire d’abord**, en dessous, reste désactivé tant que vous ne l’activez pas : chaque nouveau message à cette adresse est alors envoyé une fois à Claude, d’Anthropic, avec son sujet, pour en dire le ton et le sujet plus finement que des listes de mots. Le texte quitte votre ordinateur pour cela. La clé du service d’Anthropic se tape une fois dans Comptes et reste dans votre trousseau.
+**Laisser l’IA le lire d’abord**, en dessous, reste désactivé tant que vous ne l’activez pas : chaque nouveau message à cette adresse est alors envoyé une fois à Claude, d’Anthropic, avec son sujet, pour en dire le ton et le sujet plus finement que des listes de mots. Le texte quitte votre appareil pour cela. La clé du service d’Anthropic se tape une fois dans Comptes et reste dans votre trousseau.
 
 ## Les réglages du Porche {#the-porchs-settings}
 

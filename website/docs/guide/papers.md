@@ -1,5 +1,5 @@
 ---
-description: Papers and paper letters in Sioul - the papers asked again and again, with where each stands and a reminder before renewing; scanned post read on your computer and shown as a calm card.
+description: Papers and paper letters in Sioul - the papers asked again and again, with where each stands and a reminder before renewing; scanned post read on your device and shown as a calm card.
 ---
 
 # Papers and letters
@@ -60,14 +60,14 @@ Rent receipts, payslips and attestations have no end: they are said older than t
 
 ## Paper letters
 
-The envelope stays outside. A scan, a phone photo or a PDF dropped in a folder, by you, a scanner, or someone who opens the post for you, is read on this computer and waits for your hours as a card, like mail. Opening post is part of admin anxiety (Money and Mental Health 2018), and a delay written "within two months" is remembered by no one: the card says it as a date.
+The envelope stays outside. A scan, a phone photo or a PDF dropped in a folder, by you, a scanner, or someone who opens the post for you, is read by Sioul on a computer (a phone does not read them) and waits for your hours as a card, like mail. Opening post is part of admin anxiety (Money and Mental Health 2018), and a delay written "within two months" is remembered by no one: the card says it as a date.
 
 ### Setting it up
 
 1. In the Porch's ⚙, **Paper letters ▸ Where scans arrive**: the folder your scans come to. Unset, it is `letters/inbox` in your notes folder. A phone's scanner app syncing into it works too.
 2. To read scans, Sioul uses two programs of your system: Poppler, for the text a PDF already holds, and Tesseract, to read images. Without them, the scans wait, unread, and the Porch says how to install them ([Install](install.md#the-packages)).
 
-PDF, PNG, JPEG, TIFF and WebP files are read. A file still being written is read the next minute. Nothing leaves your computer.
+PDF, PNG, JPEG, TIFF and WebP files are read. A file still being written is read the next minute. Nothing leaves your device.
 
 ### The card
 

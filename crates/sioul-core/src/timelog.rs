@@ -13,11 +13,45 @@
 //! Time can also be noted by hand, for a task or for a project alone (a
 //! meeting, a call); billable time of a project carries, once billed, the
 //! number of its invoice, so it is never billed twice.
+//!
+//! Each session says how its minutes were known (`Kind`): measured by the
+//! timer, typed by hand, or measured then corrected by hand. A typed duration
+//! is a memory, with its known bias (Roy, Christenfeld & McKenzie 2005), so the
+//! estimate's correction counts it little (`capacity`, docs/capacity.md).
 
 use crate::config::data_dir;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+/// How a session's minutes were known.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    /// The timer measured them.
+    Measured,
+    /// Noted by hand.
+    Typed,
+    /// Measured, then changed by hand (a break missed, a timer left running).
+    Corrected,
+}
+
+impl Kind {
+    /// As the pages say it; a session written before the kind was kept: "unknown".
+    pub fn id(kind: Option<Kind>) -> &'static str {
+        match kind {
+            Some(Kind::Measured) => "measured",
+            Some(Kind::Typed) => "typed",
+            Some(Kind::Corrected) => "corrected",
+            None => "unknown",
+        }
+    }
+
+    /// Whether its minutes came from the timer: measured, or measured and corrected.
+    pub fn timed(kind: Option<Kind>) -> bool {
+        matches!(kind, Some(Kind::Measured | Kind::Corrected))
+    }
+}
 
 /// Time given to one task, or to a project.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +77,9 @@ pub struct Session {
     /// A word on what was done, if you left one.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub note: String,
+    /// How its minutes were known; None for a session written before this was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<Kind>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -113,6 +150,15 @@ impl Session {
     /// What tells it from the others: when it began, and for what.
     pub fn key(&self) -> String {
         format!("{}:{}:{}", self.start, if self.task.is_empty() { &self.project } else { &self.task }, self.minutes)
+    }
+
+    /// Its minutes changed by hand: a measured one becomes corrected; one
+    /// typed stays typed, one of unknown kind stays unknown.
+    pub fn set_minutes(&mut self, minutes: u32) {
+        if minutes != self.minutes && self.kind == Some(Kind::Measured) {
+            self.kind = Some(Kind::Corrected);
+        }
+        self.minutes = minutes;
     }
 }
 
@@ -216,7 +262,7 @@ impl Running {
     /// The session as recorded when it ends: whole minutes of focus, at least one.
     pub fn finished(&self, now: i64, done: bool) -> Session {
         let minutes = u32::try_from((self.elapsed(now) + 30) / 60).unwrap_or(u32::MAX).max(1);
-        Session { task: self.task.clone(), start: self.start, minutes, done, ..Session::default() }
+        Session { task: self.task.clone(), start: self.start, minutes, done, kind: Some(Kind::Measured), ..Session::default() }
     }
 }
 
@@ -267,6 +313,8 @@ pub fn finish_noted_in(dir: &Path, now: i64, done: bool, note: &str) -> Result<O
     let ceiling = if running.planned == 0 { OPEN_ENDED_CEILING } else { running.planned.saturating_mul(2).max(running.planned.saturating_add(30)) };
     if session.minutes > ceiling {
         session.minutes = if running.planned == 0 { OPEN_ENDED_CEILING } else { running.planned };
+        // Not what the timer measured any more: Sioul set it, as a hand would.
+        session.kind = Some(Kind::Corrected);
     }
     record_in(dir, &session)?;
     keep_running_in(dir, None)?;
@@ -309,6 +357,40 @@ mod tests {
         assert_eq!(all.len(), 1);
         assert!(dir.join("2026-09.toml").exists());
         assert!(!change_in(&dir, "nothing", |_| {}).unwrap(), "a stretch gone is said so");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn each_session_says_how_it_was_known() {
+        let dir = std::env::temp_dir().join(format!("sioul-timelog-kind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let start = 1_791_100_000;
+        // The timer: measured.
+        keep_running_in(&dir, Some(&Running { task: "t".into(), start, planned: 25, ..Running::default() })).unwrap();
+        let timed = finish_in(&dir, start + 20 * 60, true).unwrap().unwrap();
+        assert_eq!(timed.kind, Some(Kind::Measured));
+        // Its minutes changed by hand: corrected.
+        assert!(change_in(&dir, &timed.key(), |s| s.set_minutes(15)).unwrap());
+        let read = sessions_in(&dir);
+        assert_eq!((read[0].minutes, read[0].kind), (15, Some(Kind::Corrected)));
+        // A note changed, not the minutes: still what it was.
+        assert!(change_in(&dir, &read[0].key(), |s| s.set_minutes(15)).unwrap());
+        assert_eq!(sessions_in(&dir)[0].kind, Some(Kind::Corrected));
+        // Typed by hand stays typed when changed.
+        let mut typed = Session { task: "u".into(), start: start + 7200, minutes: 30, kind: Some(Kind::Typed), ..Session::default() };
+        typed.set_minutes(45);
+        assert_eq!(typed.kind, Some(Kind::Typed));
+        // Forgotten overnight: Sioul cut it to the time chosen, so it is no longer measured.
+        keep_running_in(&dir, Some(&Running { task: "d".into(), start: start + 9000, planned: 25, ..Running::default() })).unwrap();
+        assert_eq!(finish_in(&dir, start + 9000 + 10 * 3600, false).unwrap().unwrap().kind, Some(Kind::Corrected));
+        // A session written before kinds were kept reads as unknown, and writes nothing new.
+        let month = month_file(&dir, start);
+        let text = std::fs::read_to_string(&month).unwrap();
+        std::fs::write(&month, format!("{text}\n[[session]]\ntask = \"old\"\nstart = {}\nminutes = 10\n", start + 20_000)).unwrap();
+        let old = sessions_in(&dir).into_iter().find(|s| s.task == "old").unwrap();
+        assert_eq!((old.kind, Kind::id(old.kind), Kind::timed(old.kind)), (None, "unknown", false));
+        assert!(toml::to_string(&Month { sessions: vec![old] }).unwrap().lines().all(|l| !l.starts_with("kind")));
+        assert!(Kind::timed(Some(Kind::Corrected)) && !Kind::timed(Some(Kind::Typed)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

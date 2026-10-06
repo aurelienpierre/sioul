@@ -167,7 +167,8 @@ impl Desk {
         let spent = timelog::spent(&sessions, 0, i64::MAX);
         let stopped = sessions.iter().filter(|s| !s.note.is_empty()).map(|s| (s.task.clone(), s.note.clone())).collect();
         let situation = situation(&loaded.cases);
-        let settings = settings(today.weather, &situation, &loaded.cases);
+        // What your record says: ratings said after tasks, corrected lengths, what a day holds (docs/capacity.md).
+        let settings = crate::capacity::planned(settings(today.weather, &situation, &loaded.cases), &loaded.tasks, &sessions);
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
         // Asleep no task shows, unless the page asked to see them all.
         let anyway = situation.mode.sleeps() && SHOWN_ANYWAY.load(Ordering::Relaxed);
@@ -282,6 +283,8 @@ fn today_laid_out(desk: &Desk, shared: &Shared) -> sioul_core::dayview::DayView 
     for block in day.blocks.iter_mut().filter(|b| (b.kind == "meal" || b.kind == "nap") && b.title.trim().is_empty()) {
         block.title = crate::health::block_name(block.kind, &block.key, "");
     }
+    // Time for you, the free time kept, and why today holds what it holds, in words.
+    crate::capacity::dress(&mut day, &desk.loaded.tasks);
     // The steps as laid, for the Health page's day (faded, for context).
     if let Ok(mut steps) = DAY_STEPS.lock() {
         *steps = day.blocks.iter().filter(|b| b.kind == "task").map(|b| (b.start, b.end, b.title.clone())).collect();
@@ -420,6 +423,8 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
     let qt = qt.clone();
     crate::backend::coalesced(shared, |s| &s.work_job, move |shared| {
         let generation = shared.work_generation.fetch_add(1, Ordering::Relaxed) + 1;
+        // Today's steps as laid before: the Health page's day shows them faded.
+        let steps_before = day_steps();
         let fresh = Arc::new(read_loaded(shared));
         if let Ok(mut cache) = shared.loaded.lock() {
             *cache = Some(Arc::clone(&fresh));
@@ -466,6 +471,10 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
             day: today_laid_out(&desk, &shared),
         };
         let tasks_json = crate::backend::json(&shown);
+        // The steps laid elsewhere now (a meal moved, a step given a time): the Health page's day follows at once.
+        if day_steps() != steps_before {
+            crate::health::show_health(&qt, shared);
+        }
         let notes_json = notes_list(&desk.loaded, &state.notes_query, state.notes_tree);
         let focus_json = focus_json(&desk);
         // The time running, in the system's notifications as in the focus window.
@@ -659,13 +668,60 @@ fn write(qt: &QtThread, shared: &Arc<Shared>, path: &Path, text: &str) -> Result
     Ok(())
 }
 
-/// The list a new task goes into: the one chosen ("account/id"), else the first made for tasks.
+/// The list a new task goes into: the one chosen ("account/id"), else the
+/// usual one (Tasks ⚙, "New tasks go into"), else the first made for tasks.
 fn target_list(id: &str) -> Result<Collection, String> {
-    tasks::lists()
-        .into_iter()
-        .find(|c| !c.read_only && format!("{}/{}", c.account, c.id) == id)
-        .or_else(tasks::default_list)
-        .ok_or_else(|| tr().text("task-no-list-yet", None))
+    let lists: Vec<Collection> = tasks::lists().into_iter().filter(|c| !c.read_only).collect();
+    let usual = load_config().tasks.list.clone().unwrap_or_default();
+    let named = |wanted: &str| lists.iter().find(|c| !wanted.is_empty() && format!("{}/{}", c.account, c.id) == wanted).cloned();
+    named(id).or_else(|| named(&usual)).or_else(tasks::default_list).ok_or_else(|| tr().text("task-no-list-yet", None))
+}
+
+/// The form of a task not made yet, as `task` gives one made (no card: it is
+/// not read yet): blank, or what Add ▾ makes from `from` (`key`, `start`: which
+/// message, which occurrence). In `list`, else the usual list; what that list
+/// keeps. Nothing is written: `save` with an empty UID makes it, once it has
+/// a title. {"error"} when what it comes from is gone.
+pub(crate) fn new_form(shared: &Shared, from: &str, key: &str, start: f64, list: &str) -> String {
+    let made = if from.is_empty() { Ok(TaskEdit::default()) } else { linked_edit(shared, from, key, start) };
+    let edit = match made {
+        Ok(edit) => edit,
+        Err(error) => return answer(Err(error)),
+    };
+    let loaded = loaded(shared);
+    let config = load_config();
+    let target = target_list(list).ok();
+    let list_id = target.as_ref().map(|c| format!("{}/{}", c.account, c.id)).unwrap_or_default();
+    let limited = target
+        .as_ref()
+        .map(|c| sioul_core::capabilities::task_fields_lost(sioul_core::capabilities::provider_of_collection(config.account(&c.account), c), false))
+        .unwrap_or_default();
+    // What its tags would say it is for, as the panel shows it for a task made.
+    let shaped = Task { categories: edit.categories.clone(), cases: edit.cases.clone(), list_id: list_id.clone(), ..Task::default() };
+    let area_tags = sioul_core::areas::TaskAreas::of_config(&config, &loaded.cases).by_tags(&shaped).id();
+    let source = if from.is_empty() { String::new() } else { loaded.world().describe(&loaded.world().canonical(from)).title };
+    serde_json::json!({
+        "card": null,
+        "edit": edit,
+        "steps": [],
+        "steps_total": "",
+        "waits_for": [],
+        "frees": [],
+        "sessions": [],
+        "related": [],
+        "area_tags": area_tags,
+        "lists": writable_lists(),
+        "list": list_id,
+        "limited": limited,
+        "budget": "",
+        "source": source,
+        // As `task` gives them for a task made: nothing computed yet.
+        "level": "",
+        "estimate_first": null,
+        "ratio_line": "",
+        "felt_on": "",
+    })
+    .to_string()
 }
 
 /// Makes a task in a list; returns its UID.
@@ -834,7 +890,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     let desk = Desk::new(Arc::clone(&loaded));
     let Some(task) = desk.task(uid) else { return String::new() };
     let related = loaded.world().related(&links::task_uri(uid));
-    let detail = taskview::detail(&desk.context(), task, &desk.sessions, &related);
+    let mut detail = taskview::detail(&desk.context(), task, &desk.sessions, &related);
+    detail.ratio_line = crate::capacity::ratio_line(task);
     #[derive(Serialize)]
     struct Shown<'a> {
         #[serde(flatten)]
@@ -944,9 +1001,25 @@ pub(crate) fn set_status(qt: &QtThread, shared: &Arc<Shared>, uid: &str, status:
     let effect = taskview::done_effect(&after.context(), &before.plan, uid);
     let line = if effect.is_empty() { tr().text("task-done-said", None) } else { format!("{} {effect}", tr().text("task-done-said", None)) };
     tell(qt, shared, line.clone());
+    // "How was it?" offered on the status line, after the line that says it is done.
+    let done = uid.to_string();
+    let _ = qt.queue(move |mut sioul| sioul.as_mut().task_done(QString::from(&done)));
     // A task done is a breakpoint: the watch may have a gentle offer.
     crate::health::watch_offer(qt, 0);
     line
+}
+
+/// How a task was, felt ("How was it?"): today's rating, JSON {cognitive,
+/// emotional, anxiety, body, gain} (null: unsaid, never the forecast copied),
+/// written alone from the file as it is, whatever the window last read;
+/// every value null takes today's back. Returns what went wrong, else "".
+pub(crate) fn set_felt(qt: &QtThread, shared: &Arc<Shared>, uid: &str, felt: &str) -> String {
+    let felt: sioul_core::demands::Demands = match serde_json::from_str(felt) {
+        Ok(felt) => felt,
+        Err(e) => return e.to_string(),
+    };
+    let now = Zoned::now();
+    change(qt, shared, uid, |text| tasks::set_felt(text, &felt, now.date(), &now)).err().unwrap_or_default()
 }
 
 /// Waits for `other`, or no longer: DEPENDS-ON in the task that waits; a
@@ -961,6 +1034,38 @@ pub(crate) fn set_waits(qt: &QtThread, shared: &Arc<Shared>, uid: &str, other: &
         change(qt, shared, uid, |text| tasks::remove_lines(text, mine, &now)).and_then(|()| change(qt, shared, other, |text| tasks::remove_lines(text, theirs, &now)))
     };
     result.err().unwrap_or_default()
+}
+
+/// A step given a time today by a drag in the day view ("2026-10-06T14:30",
+/// `tasks::AT`), or left to the plan again (""): only that line of the task
+/// changes, its own dates stay as set (docs/tasks.md, "The plan proposes; your
+/// dates stay yours"); the day is laid again at once, and "Undo" offered for
+/// ten seconds, which gives back the time it had. Returns what went wrong, else "".
+pub(crate) fn set_at(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str) -> String {
+    let task = match find(shared, uid) {
+        Ok(task) => task,
+        Err(e) => return e,
+    };
+    let was = task.at.clone();
+    if was == at {
+        return String::new();
+    }
+    let given = |text: &str, at: &str| -> Result<String, String> {
+        let zone = TimeZone::system();
+        let task = tasks::task_of_text(text, &zone).ok_or_else(|| tr().text("task-gone", None))?;
+        tasks::apply(text, &TaskEdit { at: at.to_string(), ..TaskEdit::of(&task) }, &zone, &Zoned::now())
+    };
+    if let Err(e) = change(qt, shared, uid, |text| given(text, at)) {
+        return e;
+    }
+    // Said as the day will have it: its title and its time, or that the plan places it.
+    let line = match at.get(11..16) {
+        Some(time) => say("drag-done", &[("what", task.title.clone()), ("time", time.to_string())]),
+        None => say("day-let-plan-done", &[("title", task.title.clone())]),
+    };
+    let uid = uid.to_string();
+    mail::offer_back(qt, shared, line, move |qt, shared| change(qt, shared, &uid, |text| given(text, &was)).err().unwrap_or_default());
+    String::new()
 }
 
 /// Puts a task off until tomorrow.
@@ -1607,18 +1712,7 @@ pub(crate) fn make_linked(qt: &QtThread, shared: &Arc<Shared>, kind: &str, from:
         if value.is_empty() { serde_json::json!({ "error": tr().text("link-not-made", None) }).to_string() } else { serde_json::json!({ field: value }).to_string() }
     };
     match (kind, links::kind_of(&from)) {
-        ("task", LinkKind::Mail) => task_from_mail(qt, shared, key),
-        ("task", LinkKind::Event) => task_from_event(qt, shared, key, start),
-        ("task", other) => {
-            let mut edit = TaskEdit { title: source.title.clone(), ..TaskEdit::default() };
-            match other {
-                LinkKind::Contact => edit.contacts.push(ContactRef { name: source.title.clone(), uri: from.clone() }),
-                LinkKind::Case => edit.cases.push(links::id_of(&from)),
-                LinkKind::Note => edit.links.push(Link { uri: from.clone(), label: source.title.clone(), rel: "describedby".into() }),
-                _ => edit.links.push(Link { uri: from.clone(), label: source.title.clone(), rel: "related".into() }),
-            }
-            answer(create(qt, shared, &edit, ""))
-        }
+        ("task", _) => answer(linked_edit(shared, &from, key, start).and_then(|edit| create(qt, shared, &edit, ""))),
         ("note", LinkKind::Mail) => made("path", note_from_mail(qt, shared, key)),
         ("note", LinkKind::Event) => made("path", note_from_event(qt, shared, key, start)),
         ("note", _) => made("path", create_note(qt, shared, &source.title, &serde_json::json!([from]).to_string())),
@@ -1626,6 +1720,31 @@ pub(crate) fn make_linked(qt: &QtThread, shared: &Arc<Shared>, kind: &str, from:
         ("mail", LinkKind::Note) => made("draft", mail_note(qt, shared, &notes::path_of(&from).unwrap_or_default())),
         ("mail", _) => made("draft", draft_about(qt, shared, &loaded, &from)),
         _ => made("", String::new()),
+    }
+}
+
+/// What a task made from `from` starts with: a message's subject, the message
+/// linked, its sender and case; for an event, "Prepare: …", its day as the
+/// date asked, the event linked, its cases; else the thing's title and a tie
+/// to it (a contact involved, a case, a note describing it, anything related).
+fn linked_edit(shared: &Shared, from: &str, key: &str, start: f64) -> Result<TaskEdit, String> {
+    let loaded = loaded(shared);
+    let world = loaded.world();
+    let from = world.canonical(from);
+    match links::kind_of(&from) {
+        LinkKind::Mail => mail_task_edit(shared, key),
+        LinkKind::Event => event_task_edit(shared, key, start),
+        other => {
+            let source = world.describe(&from);
+            let mut edit = TaskEdit { title: source.title.clone(), ..TaskEdit::default() };
+            match other {
+                LinkKind::Contact => edit.contacts.push(ContactRef { name: source.title.clone(), uri: from.clone() }),
+                LinkKind::Case => edit.cases.push(links::id_of(&from)),
+                LinkKind::Note => edit.links.push(Link { uri: from.clone(), label: source.title.clone(), rel: "describedby".into() }),
+                _ => edit.links.push(Link { uri: from.clone(), label: source.title.clone(), rel: "related".into() }),
+            }
+            Ok(edit)
+        }
     }
 }
 
@@ -1687,7 +1806,12 @@ fn sender_contact(loaded: &Loaded, card: &Card) -> Option<ContactRef> {
 
 /// A task from a message: its subject, the message linked, its sender, its case.
 pub(crate) fn task_from_mail(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> String {
-    let Some((_, card)) = message_card(key) else { return answer(Err(tr().text("mail-message-gone", None))) };
+    answer(mail_task_edit(shared, key).and_then(|edit| create(qt, shared, &edit, "")))
+}
+
+/// A message's task, before it is made.
+fn mail_task_edit(shared: &Shared, key: &str) -> Result<TaskEdit, String> {
+    let Some((_, card)) = message_card(key) else { return Err(tr().text("mail-message-gone", None)) };
     let loaded = loaded(shared);
     let mut edit = TaskEdit { title: card.subject.trim().to_string(), ..TaskEdit::default() };
     if let Some(id) = &card.message_id {
@@ -1697,7 +1821,7 @@ pub(crate) fn task_from_mail(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> 
     if let Some(store) = load_config().case_store_path().and_then(|r| CaseStore::load(&r).ok()) {
         edit.cases.extend(store.route(&card).first().map(|r| r.case.id.clone()));
     }
-    answer(create(qt, shared, &edit, ""))
+    Ok(edit)
 }
 
 /// A note from a message: its subject as title, the message linked, its text quoted.
@@ -1753,16 +1877,20 @@ pub(crate) fn note_from_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, st
 
 /// A task to prepare an event: its date the event's day, the event linked.
 pub(crate) fn task_from_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: f64) -> String {
-    let Some(event) = event_ref(shared, key) else { return answer(Err(tr().text("agenda-gone", None))) };
+    answer(event_task_edit(shared, key, start).and_then(|edit| create(qt, shared, &edit, "")))
+}
+
+/// The task to prepare an event (the occurrence at `start`), before it is made.
+fn event_task_edit(shared: &Shared, key: &str, start: f64) -> Result<TaskEdit, String> {
+    let Some(event) = event_ref(shared, key) else { return Err(tr().text("agenda-gone", None)) };
     let day = Timestamp::from_second(start as i64).map(|t| t.to_zoned(TimeZone::system()).date().to_string()).unwrap_or_default();
-    let edit = TaskEdit {
+    Ok(TaskEdit {
         title: say("task-prepare", &[("title", event.summary.clone())]),
         due: day,
         links: vec![Link { uri: format!("uid:{}", event.uid), label: event.summary.clone(), rel: "related".into() }],
         cases: event.cases.clone(),
         ..TaskEdit::default()
-    };
-    answer(create(qt, shared, &edit, ""))
+    })
 }
 
 /// A task from a checkbox line of a note: its text, the note linked.

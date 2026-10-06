@@ -434,9 +434,11 @@ Item {
                                 elide: Text.ElideRight
                                 color: page.theme.text
                             }
+                            // Its project, its note, how its minutes were known (timed, noted by hand,
+                            // timed then corrected; quietly, docs/capacity.md), its invoice.
                             Label {
                                 Layout.fillWidth: true
-                                text: [entry.modelData.project_title, entry.modelData.note, entry.modelData.invoice !== "" ? page.sioul.textWith("time-on-invoice", "number", entry.modelData.invoice) : ""].filter(t => t !== "").join("  ·  ")
+                                text: [entry.modelData.project_title, entry.modelData.note, entry.modelData.kind_said || "", entry.modelData.invoice !== "" ? page.sioul.textWith("time-on-invoice", "number", entry.modelData.invoice) : ""].filter(t => t !== "").join("  ·  ")
                                 textFormat: Text.PlainText
                                 elide: Text.ElideRight
                                 font.pixelSize: 12

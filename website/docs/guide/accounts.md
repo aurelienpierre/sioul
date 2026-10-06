@@ -39,7 +39,7 @@ Always in view below it:
 - **Priority**: *More important*, *Normal* or *Less important*. See [the Porch](porch.md#some-addresses-first-others-last).
 - **Name and signature…**: your name, as recipients see it, and your signature, in Markdown.
 
-Then **Server and folders**, folded: the server, and where its mail is kept on this computer.
+Then **Server and folders**, folded: the server, and where its mail is kept on this device.
 
 Below the cards, **The AI shield** holds the key for Anthropic's service, used only by addresses that let the AI read them first. It is kept in your system's keyring, never in a file; **Forget the key** removes it.
 
@@ -112,4 +112,4 @@ Your OpenPGP keys, to sign and encrypt your messages ([Mail](mail.md#signing-and
 - **Save the public key**: into your downloads, to give to others.
 - **Keys of others**: those that came with their messages, or from a file, or found by **Look for their keys** in the writing window.
 
-Your own keys stay on this computer. They are not shared with your other computers: copy them by hand if you need them there.
+Your own keys stay on this device. They are not shared with your other devices: copy them by hand if you need them there.

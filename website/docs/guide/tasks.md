@@ -21,9 +21,17 @@ A plan written as a list is a wall: every line is there at once, and the next st
 
 When several steps are equal, Sioul picks one and says so; it does not hand you a choice to make. Two other choices wait behind **Other choices**. Folded below: what is started, what you might do **if you want**, and what got done this week.
 
-Four buttons: **Start**, **Done**, **Not now**, **What makes it hard?**
+Five buttons: **Start**, **Done**, **Not now**, **Details** (the task's details, nothing started) and **What makes it hard?**
 
 Finishing says what it changed, once, in the status line: "Done. This frees: Send the registered letter."
+
+## A new task
+
+**New task**, beside the line at the top of the page, opens a new task's whole form on the right (on a phone, it takes the page), its title first. **New ▾ ▸ A task** does the same from anywhere, and so does **Add ▾ ▸ A task** on a message, an event, a note, a contact or a project, its title and its tie already given.
+
+- Every field is there at once: the list, the dates, how long it takes, what it waits for, the time before and after, what it costs and what it gives back, the notes.
+- The task is made as soon as it has a title: press Enter, or go on to another field. From then on, each field is kept as you change it, as for any task.
+- Closing the form keeps what you typed: with a title, the task is made; without one, nothing is. A task made by mistake is deleted like any other, with **Undo**.
 
 ## Making a task in one line
 
@@ -43,9 +51,9 @@ At the end of the line, in English or French:
 | `{30/10}` | the date asked, from outside: a deadline |
 | `@call`, `@write`, `@online`, `@out`, `@read`, `@think`, `@make` | its kind |
 
-What Sioul understood shows as small labels before you press Enter. A first word that says it plainly also gives the kind: "Call…" is a call. "Ask…" says nothing, since it could be a call or a message.
+What Sioul understood shows as small labels before you press Enter. A first word that says it plainly also gives the kind: "Call…" is a call. "Ask…" says nothing, since it could be a call or a message. Enter makes the task and opens it on the right.
 
-Tasks live in a task list, on your calendar server or on this computer only. The first time, **Make the list** makes one in a click.
+Tasks live in a task list, on your calendar server or on this device only. The first time, **Make the list** makes one in a click.
 
 ## Nothing is overdue
 
@@ -62,7 +70,9 @@ At the top of the page: **Clear**, **Haze** or **Fog**. Only you know; nothing i
 - **Haze** keeps less for today.
 - **Fog** shows only small steps. One step is a full day.
 
-A task can also say **what it takes**, in its panel: *light*, *the usual*, *heavy*, or *it gives back* (a walk, music). A clear day takes two heavy tasks, a hazy day one, a foggy day none. What gives back takes no room in the plan and is never pushed: after a heavy step, it is offered.
+Haze and fog lower what today holds as well as its room ([What a day holds](#what-a-day-holds)). Saying how today is can only make the day lighter, never fuller.
+
+A task can also say **what it takes**, in its panel: *light*, *the usual*, *heavy*, or *it gives back* (a walk, music). A clear day takes two heavy tasks, a hazy day one, a foggy day none. What gives back takes no room in the plan and is never pushed: after a heavy step, it is offered. Once one of its costs is rated ([below](#what-it-costs-and-what-it-gives-back)), the word follows the ratings instead of being chosen.
 
 ## Starting, and stopping
 
@@ -80,15 +90,30 @@ The time is noted for the task, and for its project: to bill it, and to learn ho
 
 ### What makes it hard?
 
-Five answers: *I do not know how to start*, *It is too big*, *I dread it*, *It is boring*, *No energy today*. Each brings one help: the task's notes and messages opened, a step added, two minutes to start, or a lighter day.
+Five answers: *I do not know how to start*, *It is too big*, *I dread it*, *It is boring*, *No energy today*. Each brings one help: the task's details opened, with its notes and messages; a step added; two minutes offered (**Just two minutes**, under the card: the time starts only when you press it); or a lighter day. Only **Start** starts the time.
 
 ## The day
 
 **The day** lays out today: your hours by what they are for (work, your admin, leisure), the events at their times, your meals and naps ([Health](health.md#meals-rest-and-sleep)), and the steps the plan gives today in the hours meant for them, from now on, with a pause between them. The time kept before and after a task or an event shows apart, "Around: …". A line shows where now is; the step under way is marked, the next one outlined. What you finished today stays where it ended, ticked ✓ and dimmed.
 
-The day follows the clock: the line moves with the minutes, and the day is laid out again from now every five minutes and whenever you come back to Sioul, with what your other devices marked or noted meanwhile.
+The day follows the clock: the line moves with the minutes, and the day is laid out again from now every five minutes and whenever you come back to Sioul, with what your other devices marked or noted meanwhile, and at once after anything changes what it holds (below, "The plan").
 
-It is a layout to look at, never a schedule: nothing is written into the tasks. What does not fit before the day ends keeps its place in the plan, said in one line.
+It is a layout to look at, never a schedule: nothing is written into the tasks, except a time you give a step yourself. What does not fit before the day ends keeps its place in the plan, said in one line.
+
+**Move a step by hand**: drag it to another time today. It is given that time, today only: the day places it there and lays the other steps around it, and your plan keeps it on today. Its time shows in colour while it holds. Right click it (or hold it and let go) for **Let the plan place it**, which takes the time away. Tomorrow, a time not used simply no longer counts; nothing else of the task changes: its day to start and its date asked stay as you set them. You can also drag a meal or a nap (as on the [Health](health.md#the-day-and-the-week) page) and an event of a calendar you can write to (as in the [Agenda](agenda.md#moving-an-event-by-hand)). While you drag, the new times show, by five minutes; let go, and **Undo** waits ten seconds. With a mouse, press and drag; on a touch screen, hold until it lifts, then slide; a plain swipe scrolls.
+
+The day spreads what it asks:
+- never two heavy steps in a row;
+- after a heavy step, a light one, or a quarter of an hour's break first;
+- two steps that weigh on the same thing (thinking, feelings, anxiety, the body) are kept apart when another step can come between.
+
+It keeps two slots of **Time for you**, half an hour each:
+- one right after the day's heaviest step or appointment;
+- one in the evening, once your hours are over.
+
+They are yours to fill or to leave empty, and they are quiet: messages from sites and the pauses to move wait until they end. Doses, meals, codes you asked for, calls and an event's alarm still come. Once you have said some things gave back well ([How was it?](#how-was-it)), one of them may be suggested, a different one each day. **Time for you** can be turned off in the Tasks ⚙.
+
+After the last step, some time is **Kept free, in case steps take longer** ([How long things take](time.md#how-long-things-take)). When something changed what today holds, a line above the day says why, in words.
 
 <figure markdown="span">
   [![The day: a column of hours with a thin band marking work, admin and leisure hours, a line at the current hour, the day's steps one after the other with their times, a pause between them, and a line under the day saying one more step does not fit before it ends.](../assets/screens/tasks-day.png){ loading=lazy }](../assets/screens/tasks-day.png "Open the picture at full size")
@@ -112,14 +137,43 @@ Three choices at the top of the page, **Every project**, **All kinds** and **Any
 
 ## A task, open
 
-A task opens on the right, with **Start**, **Done** and **Not now**, then:
+A task opens on the right with its details, from any view: a click on it, **Details** in its menu (right click, or a long press on a touch screen), or **Details** on Now's card. Nothing starts until you say.
 
-- **its steps**, and one more in a line ("A step, in one line"); the steps' minutes are added up;
-- **what it waits for** ("Waits for…": another task, found by its title), and what it frees;
-- folded: **Can start from**, **Date asked**, **Takes about**, **Project**, **Tags**, **Comes back** (repeating), **What it takes**, **Before** and **After** (the time to get ready, get there and come back: kept free around it in your plan, never counted as a pause; the day never cuts such a task in parts), how much it asks from 0 to 10 (**Thinking it asks**, **Feelings it stirs**, **Anxiety it raises**) and **What it gives back**, unsaid until you say them: what you say is written into the task and shown here, and the plan does not use it yet; **For** (work, your admin, leisure: see [Hours](hours.md)), **Billed** ([Time](time.md)), **Needs an open office**, **List**, and **Notes, in Markdown**. Another **List** moves the task there; when that list would not keep everything (Google Tasks keeps less), Sioul says what, and asks first;
+- **Start**, **Done**, **Not now** and **Drop** (not to be done after all: kept, struck out, out of the plan; **Open again** brings it back), then what matters, in words: its date, its length, what it waits for, where you stopped, the time spent; and, when there is something to say, **How long things like this take**, against your first guesses;
+- its tags, **its steps** (each can be ticked here; their minutes are added up), **what it waits for** and what it frees;
+- its fields in words, those that are said: **Can start from**, **Before** and **After**, what it costs and what it gives back, **What it takes**, **Project**, **Billed**, **Kind**, **For**, **Needs an open office**, **Comes back**, **List**; its notes;
 - **Tied to it**: the mail it came from, its notes, the people, the drafts, the project. **Write an email** starts a message to the people it involves; **Make a note** starts a note tied to it; **Link to…** ties anything else.
 
+**Edit**, at the top, turns the details into its form, and **Details** turns it back. Each field is kept as you change it:
+
+- **its steps**, and one more in a line ("A step, in one line"); **what it waits for** ("Waits for…": another task, found by its title);
+- under **More**: **Can start from**, **Date asked**, **Takes about**, **Project**, **Tags**, **Comes back** (repeating), **Before** and **After** (the time to get ready, get there and come back: kept free around it in your plan, never counted as a pause; the day never cuts such a task in parts), what it costs and what it gives back, **What it takes**, **For** (work, your admin, leisure: see [Hours](hours.md)), **Billed** ([Time](time.md)), **Needs an open office**, **List**, and **Notes, in Markdown**. Another **List** moves the task there; when that list would not keep everything (Google Tasks keeps less), Sioul says what, and asks first.
+
 Anything can become a task: a message, a line of a note, an event to prepare.
+
+### What it costs, and what it gives back
+
+Five sliders, in a task's form and in an event's: **Thinking it asks**, **Feelings it stirs**, **Anxiety it raises**, **Body and senses**, and **What it gives back**, each from 0 to 10, as you feel it.
+
+- Each says **Not rated** until you touch it: tap or drag along it, or use the arrow keys (the first press gives 5; Home gives 0, End 10). 0 is a rating, not a blank. **×**, or Delete, clears it.
+- Words under each slider say what 0, 5 and 10 mean:
+
+  | | 0 | 5 | 10 |
+  |---|---|---|---|
+  | **Thinking it asks** | on autopilot | steady focus | all my focus |
+  | **Feelings it stirs** | nothing to hide or carry | feelings to hold in | a lot to hide or carry |
+  | **Anxiety it raises** | no dread | dread before or after | dread long before and after |
+  | **Body and senses** | nothing physical or sensory | some standing, noise or light that tires | exhausting: crowds, noise, long standing |
+  | **What it gives back** | gave nothing back | some rest, pleasure or pride | left me clearly restored, glad or proud |
+
+- A rating is kept when you let go, not while you drag. On a phone, a drag sideways moves the slider; a drag up or down scrolls the page.
+- Once a cost is rated, **What it takes** follows the ratings, shown rather than chosen: *light* when no cost is above 3, *the usual* up to 6, *heavy* from 7; *it gives back* when the gain is 5 or more and no cost is above 3. That is how the plan counts the heavy tasks a day can hold ([How is today?](#how-is-today)).
+
+Feelings count when you have to hide or carry them, not only when they are sad; anxiety counts the dread before and after, not only during; the body and the senses count standing, noise, light and crowds ([what the research says](../dev/research.md)).
+
+### How was it?
+
+When a task is done, the status line offers **How was it?** for a moment; a done task's details offer it too. It opens the same five sliders, what you foresaw shown as pale marks ("foreseen: 7"). Only what you move is kept, as felt, beside what you foresaw; the rest stays blank, never copied from the forecast. Ignore it and nothing changes: it is never asked again, never counted.
 
 ### Offices have hours
 
@@ -133,19 +187,47 @@ A task tagged `joy` is offered under **If you want**, never proposed as the next
 
 - **The order**: a task never comes before what it waits for. Tasks that wait for each other in a loop are said, calmly: "These wait for each other: … One of them has to go first."
 - **The next step**, among the tasks free to start: the one you started; then the one whose date comes soonest, counting the work behind it; then your own order; then the one that frees the most others; then the smaller one.
-- **The days**: each task goes into the first days with room. The room is your hours, each kind for its own tasks: working hours for work, hours for your admin for your admin; leisure has no hours, so what is only for leisure takes no room and waits for none ([Hours](hours.md)). Events are taken out of it, with their **Before** and **After**, and five minutes before and after each; each step leaves five minutes after it. A task's own **Before** and **After** take room with it. Your meals, naps and night are kept free too ([Health](health.md#meals-rest-and-sleep)). A step of up to an hour is never cut; a longer one is cut into parts of a quarter of an hour at least. Without any hours set, the room is Monday to Friday, 9:00 to 17:00. Today's room starts now, and haze or fog make it smaller. Days off, and today once closed, have none.
-- **Your dates stay yours.** The days the plan gives are worked out again each time, and never written into your tasks. Only what you set is kept: a day to start, a date asked, an order.
+- **The days**: each task goes into the first days with room. The room is your hours, each kind for its own tasks: working hours for work, hours for your admin for your admin; leisure has no hours, so what is only for leisure takes no room and waits for none ([Hours](hours.md)). Events are taken out of it, with their **Before** and **After**, and five minutes before and after each; each step leaves five minutes after it. A task's own **Before** and **After** take room with it. Your meals, naps and night are kept free too ([Health](health.md#meals-rest-and-sleep)). A step of up to an hour is never cut; a longer one is cut into parts of a quarter of an hour at least. A task with a **Before** or an **After** is never cut: it goes whole on a day whose room holds it, or gets a day of its own. Without any hours set, the room is Monday to Friday, 9:00 to 17:00. Each task takes its corrected length ([How long things take](time.md#how-long-things-take)), and each day keeps some time free for steps running long, and half an hour for you. Today's room starts now, and haze or fog make it smaller. Days off, and today once closed, have none.
+- **Your dates stay yours.** The days the plan gives are worked out again each time, and never written into your tasks. Only what you set is kept: a day to start, a date asked, an order, and a time you give a step today by hand.
+- **Always up to date**: the plan is made again at once whenever something it depends on changes (a task, its estimate or the time noted for it, an event, a meal or the night, your hours or days off, the day's weather, **Done for today**, what your other devices or a sync bring), as well as when Sioul starts, every twelve hours and at midnight.
 - **When a date will not hold**, the task says so once: "At this pace, the plan ends after 30 October. Doing it sooner, making it smaller or handing it over would keep the date." Near a date asked, Now says how much fits: "Until Wednesday 7 October: about 30 min of steps, 3 h of room."
 
 A reminder comes, once, two working days before a date asked, and when a wait is over ([Settings](settings.md#reminders-and-notifications)).
 
-## Done for today
+## What a day holds
 
-**Done for today** closes the day, early or not. One click, no question; "Undo" waits in the status line.
+The plan also learns, from your own days, how much a day holds for you: in thinking, feelings, anxiety, body and senses, and in all. It is a planning aid, nothing more: it measures nothing about your health and says nothing about you.
 
-A short screen, read in ten seconds, says:
+- **Where it starts.** Until your days say more, a day holds what it held before: your hours of usual work, and two heavy steps. **Lighter** or **Much lighter**, in the Tasks ⚙, start below that: to start again after a hard time, or with an illness that limits energy.
+- **What it learns from.** The days whose end you described ([The end of the day](#the-end-of-the-day)): too much, about right, too empty. A day you did not describe counts for nothing; it is never taken as light. What each day held is counted from the costs you gave, or from what you felt when you said **How was it?**, times the time it took, half an hour at least for anything.
+- **How it moves.**
+  - A day said **too much** after a full day lowers what a day holds at once, by a fifth, on what was full.
+  - It rises only after a week of days that went well and were full, by a tenth at most.
+  - Three days too much in a week hold it where it is for a while.
+  - No day is planned heavier than the heaviest one that went well in the last month, and a little more.
+  - Light days that went fine say only "at least this much": they never lower it.
+- **How the plan uses it.** Each day is filled to a little less than it holds, after its appointments. The days before and after a heavy appointment hold less. A step too heavy for what a day still holds goes to another day; one heavier than any day gets a day of its own.
+- **Even days**, in the Tasks ⚙: the week's load spread so that each day holds about the same, rather than full days and empty ones. Off unless you turn it on.
+- **What gives back** has a minimum too, learned from the days you said were about right. The slots of time for you stay whatever it is, and the end of the day says in words whether the day gave back.
+- **In words only.** When a rule changes today, a line over the day says why: "Today holds a little less: yesterday was too much after a full day." Never a number, a percentage, a gauge or red.
 
-- when work comes back;
+How each rule is set, which numbers come from research and which are guesses still to check: [What a day holds](../dev/capacity.md).
+
+## The end of the day
+
+**Done for today** ends the work day, early or not. It opens a short sheet first:
+
+- what you said of the morning, and what the plan did with it: "This morning: haze. The plan kept a lighter day.";
+- **The day felt:** light, usual, heavy, or gave back;
+- **The mix:** too much, about right, or too empty;
+- a note if you like, in Markdown, with **Preview**;
+- your notes on the last days, folded, in the words you used then.
+
+Every answer is optional. **Close the work day** closes it with no answer as well as with one; **Not now** changes nothing. Nothing asks whether to stop, and nothing compares what was planned with what was done. "Undo" waits in the status line.
+
+Then a short screen, read in ten seconds, says:
+
+- when work comes back, and that the rest of the day is yours;
 - what got done or worked on, if anything was;
 - that everything else has its place;
 - the first step when work comes back, which you can say your own way ("After breakfast, open the form");
@@ -153,6 +235,12 @@ A short screen, read in ten seconds, says:
 - and what still gets through: one-time codes, and the senders your lists let through then.
 
 There is no count of what was not done. The next working day opens on that first step. Until then, work rests ([quiet time](hours.md#quiet-time)). A thought that comes in the evening can be noted in one line; it waits, out of sight, for work to come back.
+
+**At the end of your hours**, the status line offers **Close the work day**, and one quiet notification says "Work hours are over", once, never while you sleep or during a meeting. A day that ends without the button closes as usual; its review stays offered until the evening.
+
+**Before sleep**, **Close the day** looks back over the whole day: work, admin and leisure ([Health](health.md#before-sleep)).
+
+Your answers stay on your devices, in plain files (`~/.local/share/sioul/reviews/`), and travel with the sharing's time. The mix is what the plan learns from: which days went fine, which were too much. Nothing is shown as a score.
 
 ## Routines
 
@@ -183,21 +271,26 @@ The ⚙ at the top of the page:
 - **Categories**: renamed on every task that has them, or taken off them all.
 - **Task lists**: renamed, here and on the server; an empty one can be deleted.
 - **A task without an estimate counts** so many minutes.
-- **New tasks go into**: the list a task typed in one line goes into.
+- **New tasks go into**: the list a new task goes into, typed in one line or in its form (where another can be chosen).
+- **What a day holds** ([above](#what-a-day-holds)):
+  - **Start from**: *As now*, *Lighter* or *Much lighter*;
+  - **Days learned from**: 28 unless you change it, from 14 to 90;
+  - **Even days**: off unless you turn it on;
+  - **Time for you**: on unless you turn it off.
 - **What is work** and **What is yours**: the categories that say what a task is for ([Hours](hours.md)).
-- **Code**, last: **GitHub issues and pull requests as tasks**, off unless you turn it on. Yours come into a "GitHub" list on this computer, every thirty minutes; nothing is written to GitHub.
+- **Code**, last: **GitHub issues and pull requests as tasks**, off unless you turn it on. Yours come into a "GitHub" list on this device, every thirty minutes; nothing is written to GitHub.
 
 ## In quiet time, and while you sleep
 
 In quiet time ([Hours](hours.md#quiet-time)), the task pages keep only what fits now: in leisure and during a meal, what is yours; work waits for work to come back.
 
-While you sleep ([Hours](hours.md#sleep): the night from winding down to waking, a nap), the page waits behind one sentence, "Sleep: nothing disturbs until 07:00.", and **Show anyway**. A field there notes a thought for later, in one line, out of sight until work comes back. Task reminders wait too, for waking.
+While you sleep ([Hours](hours.md#sleep): the night from winding down to waking, a nap), the page waits behind one sentence, "Sleep: nothing disturbs until 07:00.", and **Show anyway**. A field there notes a thought for later, in one line, out of sight until work comes back. **New ▾ ▸ A task** shows the page anyway, a new task's form open. Task reminders wait too, for waking.
 
 ## Where tasks live
 
 Tasks are standard CalDAV tasks, in task lists on your calendar server: your phone and other programs see them. What ties them together (steps, waits, links, kinds) is written into them in the standard's own terms (RFC 9253), so other programs keep it.
 
-Google Tasks keeps less: a list there greys what Google does not keep (a day to start, a length, a project, a kind, waiting for another task…), with why. A list can also live on this computer only.
+Google Tasks keeps less: a list there greys what Google does not keep (a day to start, a length, a project, a kind, waiting for another task…), with why. A list can also live on this device only.
 
 ## Why it works this way
 
@@ -207,5 +300,6 @@ Google Tasks keeps less: a list there greys what Google does not keep (a day to 
 - Time made visible, without a ticking clock: visual timers helped children with ADHD manage time (Wennberg et al. 2018).
 - A line for where you stopped frees the mind for the next thing (Leroy & Glomb 2018).
 - Capacity is lower on some days, and only you know which (Raymaker et al. 2020; Chen, Meng & Nie 2026).
+- Closing work with a place for what remains helps leave it in the evening (Smit 2016), and a list for tomorrow written at bedtime helped people fall asleep sooner (Scullin et al. 2018). One answer a day on how it went is what a plan needs to learn what a day can hold, rather than what you usually do.
 
 More in [what the research says](../dev/research.md), findings 6 to 23.

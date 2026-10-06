@@ -162,10 +162,50 @@ fn alarms_of(ical: &ICalendar, component: &ICalendarComponent, start: i64, lengt
     out
 }
 
+/// The text as calcard should expand it. calcard puts a changed occurrence
+/// (RECURRENCE-ID) in place of its time in the series only when both have the
+/// same SEQUENCE, where RFC 5545 matches them by RECURRENCE-ID alone: a series
+/// edited since, or an occurrence changed by an application that counts its own
+/// changes, would show twice, at its old time and its new one. So each changed
+/// occurrence is read with the series' SEQUENCE; the file is left as it is.
+fn for_expansion(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text.contains("RECURRENCE-ID") {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let source = lines::unfold(text);
+    let Some(master) = master_range(&source) else { return std::borrow::Cow::Borrowed(text) };
+    let own = |range: &std::ops::Range<usize>| -> Vec<usize> {
+        let mut nested = 0usize;
+        let mut out = Vec::new();
+        for i in range.start + 1..range.end.saturating_sub(1) {
+            match lines::name(&source[i]).as_str() {
+                "BEGIN" => nested += 1,
+                "END" => nested = nested.saturating_sub(1),
+                "SEQUENCE" if nested == 0 => out.push(i),
+                _ => {}
+            }
+        }
+        out
+    };
+    let series = own(&master).first().map(|&i| source[i].clone());
+    let mut out: Vec<String> = Vec::with_capacity(source.len() + 4);
+    let mut next = 0;
+    for range in event_ranges(&source).into_iter().filter(|r| *r != master) {
+        let theirs = own(&range);
+        out.extend(source[next..range.start + 1].iter().cloned());
+        out.extend(series.clone());
+        out.extend((range.start + 1..range.end).filter(|i| !theirs.contains(i)).map(|i| source[i].clone()));
+        next = range.end;
+    }
+    out.extend(source[next..].iter().cloned());
+    std::borrow::Cow::Owned(lines::fold(&out))
+}
+
 /// The occurrences of one file's events between `from` and `to` (Unix seconds);
 /// times written without a zone are taken in `zone`, yours.
 pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, zone: &TimeZone) -> Vec<Occurrence> {
-    let Some(ical) = std::fs::read_to_string(path).ok().as_deref().and_then(parse) else { return Vec::new() };
+    let Some(text) = std::fs::read_to_string(path).ok() else { return Vec::new() };
+    let Some(ical) = parse(&for_expansion(&text)) else { return Vec::new() };
     let expanded = ical.expand_dates(calcard_zone(zone), EXPANSION_LIMIT);
     let mut found = Vec::new();
     for event in expanded.events {
@@ -255,7 +295,7 @@ pub fn edit_of(path: &Path) -> Option<EventEdit> {
 
 /// An event as the form shows it, from its text, in `zone`.
 pub fn edit_of_text(text: &str, zone: &TimeZone) -> Option<EventEdit> {
-    let ical = parse(text)?;
+    let ical = parse(&for_expansion(text))?;
     let (zone, tz) = (zone.clone(), calcard_zone(zone));
     let (index, master) = ical.components.iter().enumerate().find(|(_, c)| c.component_type == ICalendarComponentType::VEvent && c.property(&ICalendarProperty::RecurrenceId).is_none())?;
     // Its first occurrence still there: the very first may have been left out (EXDATE) or changed.
@@ -544,25 +584,290 @@ pub fn apply(text: &str, edit: &EventEdit, zone: &TimeZone) -> Result<String, St
 }
 
 /// Leaves one occurrence of a repeating event out (EXDATE), in the form DTSTART is written.
+/// One changed already (RECURRENCE-ID: moved by a drag in the agenda, or by another
+/// application) goes with its change: its own VEVENT is taken out, and the time it
+/// replaced in the series is left out.
 pub fn skip_occurrence(text: &str, start: i64) -> Option<String> {
-    let at = Timestamp::from_second(start).ok()?;
+    let zone = TimeZone::system();
     let mut source = lines::unfold(text);
+    if let Some((place, true)) = occurrence_at(text, start, &zone) {
+        let range = event_ranges(&source).get(place)?.clone();
+        let id = source[range.clone()].iter().find(|l| lines::name(l) == "RECURRENCE-ID")?.clone();
+        // Its parameters but RANGE, which an EXDATE has not.
+        let params: String = lines::params(&id).into_iter().filter(|(name, _)| name != "RANGE").map(|(name, value)| format!(";{name}={}", lines::param_value(&value))).collect();
+        let value = lines::value(&id).trim().to_string();
+        source.drain(range);
+        let master = master_range(&source)?;
+        source.insert(master.end - 1, format!("EXDATE{params}:{value}"));
+        return Some(lines::fold(&source));
+    }
+    let at = Timestamp::from_second(start).ok()?;
     let master = master_range(&source)?;
     let dtstart = source[master.clone()].iter().find(|l| lines::name(l) == "DTSTART")?.clone();
-    let params = dtstart.split(':').next().unwrap_or("DTSTART").trim_start_matches("DTSTART").to_string();
-    let value = lines::value(&dtstart).trim();
-    let written = if value.len() == 8 {
-        at.to_zoned(TimeZone::system()).strftime("%Y%m%d").to_string()
-    } else if value.ends_with('Z') {
+    let end = master.end - 1;
+    source.insert(end, written_like(&dtstart, "EXDATE", at, &zone));
+    Some(lines::fold(&source))
+}
+
+/// Which occurrence of a file's event starts at `start` (Unix seconds), as the
+/// agenda shows it: the place of the VEVENT holding it among the text's
+/// VEVENTs (calcard keeps them in the text's order), and whether that one is a
+/// changed occurrence (RECURRENCE-ID). Times without a zone are in `zone`.
+fn occurrence_at(text: &str, start: i64, zone: &TimeZone) -> Option<(usize, bool)> {
+    let ical = parse(&for_expansion(text))?;
+    let events: Vec<usize> = ical.components.iter().enumerate().filter(|(_, c)| c.component_type == ICalendarComponentType::VEvent).map(|(i, _)| i).collect();
+    let found = ical.expand_dates(calcard_zone(zone), EXPANSION_LIMIT).events.into_iter().find(|e| e.start.timestamp() == start && events.contains(&(e.comp_id as usize)))?;
+    let place = events.iter().position(|&i| i == found.comp_id as usize)?;
+    Some((place, ical.components[found.comp_id as usize].property(&ICalendarProperty::RecurrenceId).is_some()))
+}
+
+/// The text's VEVENTs, BEGIN to END, in order (their alarms inside them).
+fn event_ranges(source: &[String]) -> Vec<std::ops::Range<usize>> {
+    let (mut out, mut start, mut nested) = (Vec::new(), None, 0usize);
+    for (i, line) in source.iter().enumerate() {
+        let name = lines::name(line);
+        let value = lines::value(line).trim().to_ascii_uppercase();
+        match (name.as_str(), start) {
+            ("BEGIN", None) if value == "VEVENT" => {
+                start = Some(i);
+                nested = 0;
+            }
+            ("BEGIN", Some(_)) => nested += 1,
+            ("END", Some(_)) if nested > 0 => nested -= 1,
+            ("END", Some(begin)) if value == "VEVENT" => {
+                out.push(begin..i + 1);
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// A line's name and parameters, as written: "DTSTART;TZID=Europe/Paris".
+fn head_of(line: &str) -> &str {
+    line.strip_suffix(lines::value(line)).and_then(|h| h.strip_suffix(':')).unwrap_or(line)
+}
+
+/// `at` as `like` writes its time (a DTSTART line): a date, UTC, or the clock
+/// in its TZID; a time without a zone, on the clock in `zone`.
+fn written_value(like: &str, at: Timestamp, zone: &TimeZone) -> String {
+    let value = lines::value(like).trim();
+    if value.len() == 8 {
+        at.to_zoned(zone.clone()).strftime("%Y%m%d").to_string()
+    } else if value.ends_with(['Z', 'z']) {
         at.strftime("%Y%m%dT%H%M%SZ").to_string()
     } else {
-        let tzid = params.split(';').find_map(|p| p.strip_prefix("TZID=")).map(|t| t.trim_matches('"').to_string());
-        let zone = tzid.and_then(|t| TimeZone::get(&t).ok()).unwrap_or_else(TimeZone::system);
-        at.to_zoned(zone).strftime("%Y%m%dT%H%M%S").to_string()
-    };
-    let end = master.end - 1;
-    source.insert(end, format!("EXDATE{params}:{written}"));
-    Some(lines::fold(&source))
+        let own = lines::param(like, "TZID").and_then(|t| TimeZone::get(t.trim_start_matches('/')).ok()).unwrap_or_else(|| zone.clone());
+        at.to_zoned(own).strftime("%Y%m%dT%H%M%S").to_string()
+    }
+}
+
+/// A line `name` for `at`, with `like`'s parameters, written as `like` writes its time.
+fn written_like(like: &str, name: &str, at: Timestamp, zone: &TimeZone) -> String {
+    let head = head_of(like);
+    let params = head.find(';').map_or("", |i| &head[i..]);
+    format!("{name}{params}:{}", written_value(like, at, zone))
+}
+
+/// The moment one value of `line` means (a DATE-TIME list's item): in its
+/// TZID, UTC with a Z, a date at midnight; a time without a zone, in `zone`.
+fn moment_in(line: &str, value: &str, zone: &TimeZone) -> Option<Zoned> {
+    let value = value.trim();
+    if value.len() == 8 {
+        return Date::strptime("%Y%m%d", value).ok()?.to_zoned(zone.clone()).ok();
+    }
+    if let Some(utc) = value.strip_suffix(['Z', 'z']) {
+        return DateTime::strptime("%Y%m%dT%H%M%S", utc).ok()?.to_zoned(TimeZone::UTC).ok().map(|z| z.with_time_zone(zone.clone()));
+    }
+    let own = lines::param(line, "TZID").and_then(|t| TimeZone::get(t.trim_start_matches('/')).ok()).unwrap_or_else(|| zone.clone());
+    DateTime::strptime("%Y%m%dT%H%M%S", value).ok()?.to_zoned(own).ok().map(|z| z.with_time_zone(zone.clone()))
+}
+
+/// A VEVENT's lines with its own times set: `from` to `to`, written as its
+/// DTSTART was (`like`), DURATION replaced by DTEND; its stamps written again.
+/// Its SEQUENCE goes one up (RFC 5545 §3.8.7.4), unless `recurrence` makes it a
+/// new changed occurrence of the series: then it keeps the series' own, as
+/// readers that match the two by it want (calcard). Its alarms are kept as
+/// they are; `drop` names the other lines left out (a new changed occurrence
+/// leaves the rule).
+fn retimed(block: &[String], like: &str, from: Timestamp, to: Timestamp, recurrence: Option<String>, drop: &[&str], zone: &TimeZone) -> Vec<String> {
+    let kept = recurrence.is_some();
+    let sequence = block.iter().find(|l| lines::name(l) == "SEQUENCE").and_then(|l| lines::value(l).trim().parse::<u32>().ok());
+    let last = block.len().saturating_sub(1);
+    let mut nested = 0usize;
+    let mut out: Vec<String> = Vec::with_capacity(block.len() + 6);
+    for (i, line) in block.iter().enumerate() {
+        if i == 0 || i == last {
+            out.push(line.clone());
+            continue;
+        }
+        match lines::name(line).as_str() {
+            "BEGIN" => nested += 1,
+            "END" => nested = nested.saturating_sub(1),
+            name if nested == 0 && (matches!(name, "DTSTART" | "DTEND" | "DURATION" | "DTSTAMP" | "LAST-MODIFIED") || (name == "SEQUENCE" && !kept) || drop.contains(&name)) => continue,
+            _ => {}
+        }
+        out.push(line.clone());
+    }
+    let now = utc(&Zoned::now());
+    let mut own = Vec::new();
+    own.extend(recurrence);
+    own.extend([written_like(like, "DTSTART", from, zone), written_like(like, "DTEND", to, zone), format!("DTSTAMP:{now}"), format!("LAST-MODIFIED:{now}")]);
+    if !kept {
+        own.push(format!("SEQUENCE:{}", sequence.unwrap_or(0).saturating_add(1)));
+    }
+    // Before its alarms, else before its end.
+    let at = out.iter().enumerate().skip(1).find(|(_, l)| lines::name(l) == "BEGIN").map_or(out.len().saturating_sub(1), |(i, _)| i);
+    out.splice(at..at, own);
+    out
+}
+
+/// A repeating event's rule, its occurrences moved by `span` on the clock: a
+/// weekly rule's days (BYDAY=MO,WE) move with them, and its end (UNTIL) by as
+/// much. None when the move would not keep what the rule says: days set
+/// otherwise (a day of the month, "the first Monday") moved to another day,
+/// or hours set in the rule (BYHOUR) moved to another time.
+fn rule_moved(rule: &str, span: jiff::Span, zone: &TimeZone) -> Option<String> {
+    let days = span.get_days();
+    let timed = span.get_hours() != 0 || span.get_minutes() != 0 || span.get_seconds() != 0;
+    let weekly = rule.to_ascii_uppercase().split(';').any(|p| p.trim() == "FREQ=WEEKLY");
+    const WEEK: [&str; 7] = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
+    let mut parts = Vec::new();
+    for part in rule.split(';') {
+        let (key, value) = part.split_once('=').unwrap_or((part, ""));
+        let upper = key.trim().to_ascii_uppercase();
+        let moved = match upper.as_str() {
+            "BYDAY" if days == 0 => part.to_string(),
+            "BYDAY" if weekly => {
+                let shifted: Option<Vec<&str>> = value.split(',').map(|d| WEEK.iter().position(|w| w.eq_ignore_ascii_case(d.trim())).map(|i| WEEK[(i as i64 + i64::from(days)).rem_euclid(7) as usize])).collect();
+                format!("{key}={}", shifted?.join(","))
+            }
+            "BYDAY" | "BYMONTHDAY" | "BYYEARDAY" | "BYWEEKNO" | "BYMONTH" | "BYSETPOS" if days != 0 => return None,
+            "BYHOUR" | "BYMINUTE" | "BYSECOND" if timed => return None,
+            "UNTIL" => {
+                let until = moment_in("", value, zone)?;
+                let shifted = until.datetime().checked_add(span).ok()?.to_zoned(zone.clone()).ok()?;
+                let written = if value.trim().len() == 8 { shifted.strftime("%Y%m%d").to_string() } else { shifted.timestamp().strftime("%Y%m%dT%H%M%SZ").to_string() };
+                format!("{key}={written}")
+            }
+            _ => part.to_string(),
+        };
+        parts.push(moved);
+    }
+    Some(parts.join(";"))
+}
+
+/// Why an event stayed where it was (`moved`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MoveProblem {
+    /// No occurrence starts at that time any more: changed meanwhile, here or elsewhere.
+    Gone,
+    /// Every time, to other days, for a rule that sets its days other than by
+    /// the week ("the first Monday", "the 5th"): its form says how it repeats.
+    SetDays,
+    /// The file or a time does not read.
+    Unreadable(String),
+}
+
+/// The event moved as a drag in the agenda asks: its occurrence starting at
+/// `start` (Unix seconds, as shown) now from `new_start` to `new_end`. A single
+/// event takes the new times. A repeating one moves that time alone
+/// (`only_this`: a changed occurrence, RECURRENCE-ID, RFC 5545 §3.8.4.4; one
+/// changed already is changed again), or every time by as much on the clock:
+/// its first time, the times left out (EXDATE) and added (RDATE), and the
+/// times its changed occurrences replace go together, a weekly rule's days
+/// with them; the changed occurrences keep their own times, but the one moved.
+/// What Sioul does not edit is kept (`apply`); times without a zone are in `zone`.
+pub fn moved(text: &str, start: i64, new_start: i64, new_end: i64, only_this: bool, zone: &TimeZone) -> Result<String, MoveProblem> {
+    let unreadable = |e: &dyn std::fmt::Display| MoveProblem::Unreadable(e.to_string());
+    let (place, changed) = occurrence_at(text, start, zone).ok_or(MoveProblem::Gone)?;
+    let (from, to) = (Timestamp::from_second(new_start).map_err(|e| unreadable(&e))?, Timestamp::from_second(new_end).map_err(|e| unreadable(&e))?);
+    if to <= from {
+        return Err(MoveProblem::Unreadable(format!("{new_start}–{new_end}")));
+    }
+    let mut source = lines::unfold(text);
+    let master = master_range(&source).ok_or(MoveProblem::Gone)?;
+    let repeats = source[master.clone()].iter().any(|l| matches!(lines::name(l).as_str(), "RRULE" | "RDATE"));
+    let ranges = event_ranges(&source);
+    // That time alone: its changed occurrence, made or changed again.
+    if changed && (only_this || !repeats) {
+        let range = ranges.get(place).cloned().ok_or(MoveProblem::Gone)?;
+        let like = source[range.clone()].iter().find(|l| lines::name(l) == "DTSTART").cloned().ok_or(MoveProblem::Gone)?;
+        let block = retimed(&source[range.clone()], &like, from, to, None, &[], zone);
+        source.splice(range, block);
+        return Ok(lines::fold(&source));
+    }
+    if repeats && only_this {
+        let like = source[master.clone()].iter().find(|l| lines::name(l) == "DTSTART").cloned().ok_or(MoveProblem::Gone)?;
+        let instance = Timestamp::from_second(start).map_err(|e| unreadable(&e))?;
+        let recurrence = written_like(&like, "RECURRENCE-ID", instance, zone);
+        let block = retimed(&source[master.clone()], &like, from, to, Some(recurrence), &["RRULE", "RDATE", "EXDATE", "EXRULE", "RECURRENCE-ID"], zone);
+        source.splice(master.end..master.end, block);
+        return Ok(lines::fold(&source));
+    }
+    let mut edit = edit_of_text(text, zone).ok_or(MoveProblem::Gone)?;
+    let local = |at: Timestamp| at.to_zoned(zone.clone()).strftime("%Y-%m-%dT%H:%M").to_string();
+    if !repeats {
+        edit.start = local(from);
+        edit.end = local(to);
+        return apply(text, &edit, zone).map_err(|e| unreadable(&e));
+    }
+    // Every time: by as much on the clock as the one dragged (days, then hours).
+    let was = Timestamp::from_second(start).map_err(|e| unreadable(&e))?.to_zoned(zone.clone()).datetime();
+    let span = was.until((jiff::Unit::Day, from.to_zoned(zone.clone()).datetime())).map_err(|e| unreadable(&e))?;
+    let shift = |at: &Zoned| -> Option<Timestamp> { at.datetime().checked_add(span).ok()?.to_zoned(zone.clone()).ok().map(|z| z.timestamp()) };
+    // A rule that would not keep what it says stops here: nothing is written.
+    for line in source[master.clone()].iter().filter(|l| lines::name(l) == "RRULE") {
+        rule_moved(lines::value(line).trim(), span, zone).ok_or(MoveProblem::SetDays)?;
+    }
+    let first: DateTime = edit.start.parse().map_err(|e| unreadable(&e))?;
+    let first = first.checked_add(span).map_err(|e| unreadable(&e))?;
+    let last = first.checked_add(jiff::Span::new().seconds(new_end - new_start)).map_err(|e| unreadable(&e))?;
+    edit.start = first.strftime("%Y-%m-%dT%H:%M").to_string();
+    edit.end = last.strftime("%Y-%m-%dT%H:%M").to_string();
+    // Its first time and its length, as the form writes them; then, around them,
+    // the rule's days, the times left out and added, the times changed occurrences replace.
+    let written = apply(text, &edit, zone).map_err(|e| unreadable(&e))?;
+    let mut source = lines::unfold(&written);
+    let master = master_range(&source).ok_or(MoveProblem::Gone)?;
+    for range in event_ranges(&source) {
+        let own = range.clone();
+        let mut nested = 0usize;
+        for i in own.clone() {
+            let name = lines::name(&source[i]);
+            match name.as_str() {
+                "BEGIN" if i > own.start => nested += 1,
+                "END" if i + 1 < own.end => nested = nested.saturating_sub(1),
+                _ => {}
+            }
+            if nested > 0 {
+                continue;
+            }
+            let line = source[i].clone();
+            if range == master && name == "RRULE" {
+                let rule = rule_moved(lines::value(&line).trim(), span, zone).ok_or(MoveProblem::SetDays)?;
+                source[i] = format!("{}:{rule}", head_of(&line));
+                continue;
+            }
+            let wanted = if range == master { matches!(name.as_str(), "EXDATE" | "RDATE") } else { name == "RECURRENCE-ID" };
+            if !wanted {
+                continue;
+            }
+            let values: Option<Vec<String>> = lines::value(&line).split(',').map(|v| moment_in(&line, v, zone).and_then(|z| shift(&z)).map(|at| written_value(&line, at, zone))).collect();
+            if let Some(values) = values {
+                source[i] = format!("{}:{}", head_of(&line), values.join(","));
+            }
+        }
+    }
+    // The one dragged, changed already: its own times too.
+    if changed {
+        let range = event_ranges(&source).get(place).cloned().ok_or(MoveProblem::Gone)?;
+        let like = source[range.clone()].iter().find(|l| lines::name(l) == "DTSTART").cloned().ok_or(MoveProblem::Gone)?;
+        let block = retimed(&source[range.clone()], &like, from, to, None, &[], zone);
+        source.splice(range, block);
+    }
+    Ok(lines::fold(&source))
 }
 
 /// The event with `added` lines in its main VEVENT (a LINK, a REFID), those
@@ -917,5 +1222,67 @@ mod tests {
         let text = vtimezone(&zone, "Europe/Paris", 2026).join("\n");
         assert!(text.contains("BEGIN:DAYLIGHT\nDTSTART:20260329T020000\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU\nTZOFFSETFROM:+0100\nTZOFFSETTO:+0200"), "{text}");
         assert!(text.contains("BEGIN:STANDARD\nDTSTART:20261025T030000\nRRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU\nTZOFFSETFROM:+0200\nTZOFFSETTO:+0100"), "{text}");
+    }
+
+    /// Each occurrence between 1 and 27 October as (start, end, title).
+    fn october(name: &str, text: &str) -> Vec<(i64, i64, String)> {
+        let path = write_temp(name, text);
+        file_occurrences(&path, &calendar(), at("2026-10-01T00:00"), at("2026-10-27T00:00"), &paris()).into_iter().map(|o| (o.start, o.end, o.summary)).collect()
+    }
+
+    #[test]
+    fn a_single_event_moved_or_stretched() {
+        let one = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:d-1\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20261007T070000Z\r\n\
+            DTEND:20261007T073000Z\r\nSUMMARY:Dentist\r\nX-APP-THING:keep\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        // Dragged from 9:00 to 10:15, its half hour kept; then its end to 11:00.
+        let text = moved(one, at("2026-10-07T09:00"), at("2026-10-07T10:15"), at("2026-10-07T10:45"), false, &paris()).unwrap();
+        assert!(text.contains("DTSTART:20261007T081500Z") && text.contains("DTEND:20261007T084500Z") && text.contains("SEQUENCE:1"), "{text}");
+        assert!(text.contains("X-APP-THING:keep") && text.contains("SUMMARY:Dentist"), "{text}");
+        let text = moved(&text, at("2026-10-07T10:15"), at("2026-10-07T10:15"), at("2026-10-07T11:00"), true, &paris()).unwrap();
+        assert!(text.contains("DTEND:20261007T090000Z") && !text.contains("RECURRENCE-ID"), "{text}");
+        // Changed meanwhile: no occurrence starts at 8:00 any more.
+        assert_eq!(moved(one, at("2026-10-07T08:00"), at("2026-10-07T10:00"), at("2026-10-07T11:00"), false, &paris()), Err(MoveProblem::Gone));
+    }
+
+    #[test]
+    fn one_time_of_a_repeating_event_moved() {
+        // Monday 5 October's yoga to Tuesday 6 at 19:00, still an hour and a half; the others stay.
+        let text = moved(WEEKLY, at("2026-10-05T18:00"), at("2026-10-06T19:00"), at("2026-10-06T20:30"), true, &paris()).unwrap();
+        assert!(text.contains("RECURRENCE-ID;TZID=Europe/Paris:20261005T180000") && text.contains("DTSTART;TZID=Europe/Paris:20261006T190000"), "{text}");
+        assert!(text.contains("RRULE:FREQ=WEEKLY;BYDAY=MO") && text.contains("DTSTART;TZID=Europe/Paris:20260105T180000"), "the series as it was: {text}");
+        let yoga = |at_: &str, until: &str, title: &str| (at(at_), at(until), title.to_string());
+        assert_eq!(october("moved-once.ics", &text), vec![yoga("2026-10-06T19:00", "2026-10-06T20:30", "Yoga"), yoga("2026-10-19T19:00", "2026-10-19T20:30", "Yoga (later)"), yoga("2026-10-26T18:00", "2026-10-26T19:30", "Yoga")]);
+        // Its alarm, and what Sioul does not know, go with it.
+        assert_eq!((text.matches("TRIGGER:-PT15M").count(), text.matches("X-APP-THING:keep").count()), (2, 2), "{text}");
+        assert!(parse(&text).is_some());
+        // Moved again: the same changed occurrence, not a second one.
+        let again = moved(&text, at("2026-10-06T19:00"), at("2026-10-06T20:00"), at("2026-10-06T21:00"), true, &paris()).unwrap();
+        assert_eq!(again.matches("RECURRENCE-ID").count(), 2, "the 5th's and the 19th's: {again}");
+        assert!(again.contains("DTSTART;TZID=Europe/Paris:20261006T200000") && !again.contains("20261006T190000"), "{again}");
+        // Left out: the changed occurrence goes, and the time it replaced is left out of the series.
+        let skipped = skip_occurrence(&again, at("2026-10-06T20:00")).unwrap();
+        assert!(skipped.contains("EXDATE;TZID=Europe/Paris:20261005T180000") && skipped.matches("RECURRENCE-ID").count() == 1, "{skipped}");
+        assert_eq!(october("moved-skipped.ics", &skipped).first().map(|o| o.0), Some(at("2026-10-19T19:00")));
+    }
+
+    #[test]
+    fn every_time_of_a_repeating_event_moved() {
+        // Half an hour later every time: its first time, the time left out and the time the changed one replaces go along.
+        let text = moved(WEEKLY, at("2026-10-05T18:00"), at("2026-10-05T18:30"), at("2026-10-05T20:00"), false, &paris()).unwrap();
+        assert!(text.contains("DTSTART;TZID=Europe/Paris:20260105T183000") && text.contains("EXDATE;TZID=Europe/Paris:20261012T183000"), "{text}");
+        assert!(text.contains("RECURRENCE-ID;TZID=Europe/Paris:20261019T183000") && text.contains("RRULE:FREQ=WEEKLY;BYDAY=MO"), "{text}");
+        let starts = |name: &str, text: &str| october(name, text).into_iter().map(|o| (o.0, o.2)).collect::<Vec<_>>();
+        assert_eq!(starts("moved-all.ics", &text), vec![(at("2026-10-05T18:30"), "Yoga".into()), (at("2026-10-19T19:00"), "Yoga (later)".into()), (at("2026-10-26T18:30"), "Yoga".into())]);
+        // The one changed already, dragged: every time half an hour later, and it where it was dropped.
+        let text = moved(WEEKLY, at("2026-10-19T19:00"), at("2026-10-19T19:30"), at("2026-10-19T21:00"), false, &paris()).unwrap();
+        assert_eq!(starts("moved-all-changed.ics", &text), vec![(at("2026-10-05T18:30"), "Yoga".into()), (at("2026-10-19T19:30"), "Yoga (later)".into()), (at("2026-10-26T18:30"), "Yoga".into())]);
+        // To Tuesdays: a weekly rule's day goes along.
+        let text = moved(WEEKLY, at("2026-10-05T18:00"), at("2026-10-06T18:00"), at("2026-10-06T19:30"), false, &paris()).unwrap();
+        assert!(text.contains("RRULE:FREQ=WEEKLY;BYDAY=TU") && text.contains("DTSTART;TZID=Europe/Paris:20260106T180000"), "{text}");
+        assert_eq!(starts("moved-tuesdays.ics", &text).first().map(|o| o.0), Some(at("2026-10-06T18:00")));
+        // The first Monday of the month, to another day: its form says how it repeats.
+        let monthly = WEEKLY.replace("RRULE:FREQ=WEEKLY;BYDAY=MO", "RRULE:FREQ=MONTHLY;BYDAY=1MO");
+        assert_eq!(moved(&monthly, at("2026-10-05T18:00"), at("2026-10-06T18:00"), at("2026-10-06T19:30"), false, &paris()), Err(MoveProblem::SetDays));
+        assert!(moved(&monthly, at("2026-10-05T18:00"), at("2026-10-05T19:00"), at("2026-10-05T20:30"), false, &paris()).is_ok(), "another time the same day");
     }
 }

@@ -27,14 +27,26 @@ La page suit l’horloge : la ligne de l’heure actuelle avance avec elle, au
 **Nouvel événement**, en haut de la page (ou **Nouveau ▾ ▸ Un événement**) : un titre, quand il commence et finit, où. **Toute la journée** se coche d’un clic. Repliés sous **Plus** : ses notes ; **Se répète**, tous les jours, toutes les semaines, tous les mois ou tous les ans ; **Agenda**, celui où il va, quand vous en avez plusieurs ; et, si vous le voulez :
 
 - **Avant** et **Après** : le temps de se préparer et d’y aller, et celui d’en revenir. Votre plan le garde libre, et la journée le montre autour de l’événement (« Autour : … »). Il ne compte jamais comme une pause.
-- Ce que l’événement vous demande, de 0 à 10 chacun : **Réflexion demandée**, **Émotions remuées**, **Anxiété suscitée** ; et **Ce que ça apporte**. Rien n’est dit tant que vous ne le dites pas. Ce que vous dites est écrit dans l’événement et se retrouve dans son formulaire ; le plan ne s’en sert pas encore.
+- Ce que l’événement vous demande, et ce qu’il apporte : cinq curseurs de 0 à 10, **Réflexion demandée**, **Émotions remuées**, **Anxiété suscitée**, **Corps et sens** et **Ce que ça apporte**, avec des mots sous chacun à 0, 5 et 10 (comme pour [une tâche](tasks.md#what-it-costs-and-what-it-gives-back)). Chacun dit **Non noté** tant que vous n’y touchez pas ; **×** l’efface. Ce que vous dites est écrit dans l’événement quand vous l’enregistrez, et se retrouve dans son formulaire ; le plan ne s’en sert pas encore.
 
-Un événement s’ouvre à droite avec son jour, son heure, son lieu, son agenda, et s’il se répète. Ses notes, qui l’organise et les personnes invitées sont repliés sous **Plus**.
+Un événement s’ouvre à droite avec son jour, son heure, son lieu, son agenda, et s’il se répète. Ses notes, qui l’organise et les personnes invitées sont repliés sous **Plus**. Il s’ouvre de même depuis un lien (le lien d’une tâche, la journée de la page Tâches), ses jours montrés ; son menu (clic droit, ou appui long sur un écran tactile) propose d’abord **Détails**, puis **Modifier**.
 
 - **Pour le changer** : **Modifier**.
 - **Pour le supprimer** : **Supprimer**. Il attend dix secondes, avec **Annuler**. Un événement qui se répète demande d’abord : **Cette fois seulement**, ou **Toutes les fois**.
 
 Un événement peut aussi naître d’un message, d’une tâche, ou du rendez-vous d’une lettre papier, et il lui reste lié. Depuis un événement, vous pouvez faire une note (datée, avec la liste des personnes invitées, et **Envoyer aux personnes invitées** une fois écrite) ou une tâche pour le préparer.
+
+## Déplacer un événement à la main {#moving-an-event-by-hand}
+
+Dans **Jour** et **Semaine**, faites glisser un événement vers une autre heure : il garde sa durée. Dans **Semaine**, vers un autre jour aussi. Faites glisser son bord du bas pour changer l’heure à laquelle il finit. Pendant que vous le faites glisser, sa nouvelle place s’affiche avec ses heures (« mar. 6, 11:15–12:15 »), de cinq en cinq minutes.
+
+Lâchez-le : il est enregistré et envoyé à votre serveur d’agenda ; **Annuler** attend dix secondes dans la ligne d’état. Lâché là où il était, rien ne change.
+
+- **Un événement qui se répète** demande d’abord : **Cette fois seulement**, ou **Toutes les fois**. Toutes les fois déplace tous ses jours d’autant ; un événement de chaque semaine glissé vers un autre jour vient ce jour-là chaque semaine. Un événement qui se répète à des jours fixés du mois (« le premier lundi ») ne se déplace que cette fois : changez sa répétition dans son formulaire.
+- **Un agenda que vous ne pouvez que lire**, et les événements de toute la journée, ne bougent pas.
+- **À la souris** : appuyez et faites glisser ; la molette fait défiler. **Sur un écran tactile** : gardez le doigt sur l’événement jusqu’à ce qu’il se soulève, puis faites-le glisser ; un simple balayage fait défiler. Gardé puis lâché sans bouger, il ouvre son menu.
+- Seulement dans les heures affichées ; au-delà, **Modifier**.
+- S’il en chevauche un autre, Sioul le dit au-dessus de l’agenda, comme pour deux événements en même temps. Votre plan contourne aussitôt sa nouvelle heure.
 
 ## Deux événements en même temps {#two-events-at-once}
 
@@ -67,4 +79,4 @@ Les agendas Google se créent, se renomment et se suppriment sur les pages de Go
 
 ## Pas encore là {#not-there-yet}
 
-Déplacer un événement vers un autre agenda, changer une seule occurrence d’un événement qui se répète, et choisir ici la couleur d’un agenda sont prévus.
+Déplacer un événement vers un autre agenda, changer le titre ou le lieu d’une seule occurrence (son heure se déplace à la main), et choisir ici la couleur d’un agenda sont prévus.

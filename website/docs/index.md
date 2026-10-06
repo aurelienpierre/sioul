@@ -82,7 +82,7 @@ All the findings, with their sources and the rule each one gives: [what the rese
 
 Sioul is the working counterpart of a book by the same author, *Design and Engineering, in Spite of Open-Source* ([free, in PDF and EPUB](https://editions.aurelienpierre.com/en/concevoir/)). Its conclusion uses "a word engineering never utters: to design is to care", and it states: "A tool serves its user, or it betrays them. There is no in-between." The book also describes what happens to the people least equipped for it: "First, everyone is conscripted to the computer, for tasks that got done fine without it; then the least equipped are technically set up to fail; then they are made to carry the blame." Everyday admin is where this happens most. Sioul applies the book's method there.
 
-The same reasoning decides how Sioul is built. Your data stays on your computer, in plain files and open formats, and in your own accounts. Your notes are a folder of Markdown files, fully compatible with an Obsidian vault and with Nextcloud Notes: the same folder works in all three, side by side ([Notes](guide/notes.md#the-same-folder-as-obsidian-and-nextcloud-notes)). It travels between your devices sealed, through a folder your own sync app carries. There is no server of ours, and nothing reaches the developer. The code is free software, under the GPL. A tool meant to lift the weight of administrative machinery cannot, without contradicting itself, tie you to a service you cannot leave.
+The same reasoning decides how Sioul is built. Your data stays on your device, in plain files and open formats, and in your own accounts. Your notes are a folder of Markdown files, fully compatible with an Obsidian vault and with Nextcloud Notes: the same folder works in all three, side by side ([Notes](guide/notes.md#the-same-folder-as-obsidian-and-nextcloud-notes)). It travels between your devices sealed, through a folder your own sync app carries. There is no server of ours, and nothing reaches the developer. The code is free software, under the GPL. A tool meant to lift the weight of administrative machinery cannot, without contradicting itself, tie you to a service you cannot leave.
 
 One test for everything added to Sioul: does it take work off the person, rather than move it somewhere else?
 
@@ -140,7 +140,7 @@ One test for everything added to Sioul: does it take work off the person, rather
 
 </div>
 
-Your Google calendars, contacts and tasks can come too. If you sign in with your Google account, Sioul reads and writes them, only to show them beside the rest of your admin and to save the changes you make there, and keeps a copy on your computer. Nothing goes to the developer. What it reads, where it keeps it, and how to take the access back: [privacy policy](privacy.md#google-calendars-contacts-and-tasks).
+Your Google calendars, contacts and tasks can come too. If you sign in with your Google account, Sioul reads and writes them, only to show them beside the rest of your admin and to save the changes you make there, and keeps a copy on your device. Nothing goes to the developer. What it reads, where it keeps it, and how to take the access back: [privacy policy](privacy.md#google-calendars-contacts-and-tasks).
 
 ## Meals, rest and sleep first
 
@@ -219,7 +219,7 @@ It is made by one person, in the open: no support is promised. Questions and rep
 - **Security keys and Bitwarden**: WebAuthn and FIDO2 keys (a YubiKey) work in the sites you keep. Logins are filled from Bitwarden, read by Sioul itself and never written.
 - **OpenPGP**: signing and encrypting as you send, with Autocrypt and the Web Key Directory.
 - **Sharing between your devices**, a phone included: each device keeps its own data; a folder that any sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…) passes changes between them, each device writing only its own file, sealed end to end (XChaCha20-Poly1305, the key made from your passphrase by Argon2id). Notes and papers travel file by file; earlier versions are kept on each device. No server of ours. [How it works, and what it protects](guide/sharing.md).
-- **AI agents**, only if you connect one: `sioul mcp` serves an agent what Sioul keeps on this computer, through the Model Context Protocol. It never sends, deletes or pays.
+- **AI agents**, only if you connect one: `sioul mcp` serves an agent what Sioul keeps on this device, through the Model Context Protocol. It never sends, deletes or pays.
 - **Open standards and plain files**: IMAP, SMTP, CalDAV and CardDAV, tasks linked as RFC 9253 says, Maildir, TOML, and notes in Markdown, fully compatible with Obsidian vaults (wikilinks, embeds, tags, front matter, aliases) and with Nextcloud Notes (`.txt` or `.md`, categories as folders).
 - **Free software**, under the GPL-3.0-or-later licence, written in Rust, with a Qt 6 window.
 

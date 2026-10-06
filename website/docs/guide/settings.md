@@ -14,7 +14,7 @@ The Settings page has five tabs.
 
 - **Language**: the system's, English or French. Every sentence Sioul says follows it.
 - **Colours**: light, dark, or as the system has them. The icons follow at the next start.
-- **Show passwords as you type**: every password, passphrase and key field shows what you type from the start, on this computer. Without it, the eye at the end of each field shows or hides what you typed, at any time.
+- **Show passwords as you type**: every password, passphrase and key field shows what you type from the start, on this device. Without it, the eye at the end of each field shows or hides what you typed, at any time.
 
 ## Hours
 
@@ -47,7 +47,7 @@ Doses of medicine are reminded from the [Health](health.md) page, and papers to 
 ## Your folder and sharing
 
 - **The notes folder**: your folder of Markdown files, read as a vault: your notes, and beside them your projects, budgets, papers and letters. Sioul links to it; it never owns it.
-- **Between your computers**: sharing with your other devices what Sioul keeps on this one, part by part, sealed with a passphrase; your notes and papers too, if you switch them on. See [Sharing between your devices](sharing.md).
+- **Between your devices**: sharing with your other devices what Sioul keeps on this one, part by part, sealed with a passphrase; your notes and papers too, if you switch them on. See [Sharing between your devices](sharing.md).
 
 ## Invoices
 

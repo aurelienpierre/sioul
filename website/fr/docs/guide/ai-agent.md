@@ -4,14 +4,14 @@ description: Laisser un agent d’IA comme Claude Code ou Claude Desktop lire ce
 
 # Avec un agent d’IA {#using-an-ai-agent}
 
-Un agent d’IA dont vous vous servez déjà, comme Claude Code ou Claude Desktop, peut lire ce que Sioul garde sur cet ordinateur et vous préparer du travail : tâches, événements, notes, liens entre les choses, brouillons. Il explique et prépare ; vous relisez. Il n’envoie jamais rien, ne supprime jamais rien, ne déplace jamais d’argent, et ne lit jamais un mot de passe. C’est toujours vous qui envoyez.
+Un agent d’IA dont vous vous servez déjà, comme Claude Code ou Claude Desktop, peut lire ce que Sioul garde sur cet appareil et vous préparer du travail : tâches, événements, notes, liens entre les choses, brouillons. Il explique et prépare ; vous relisez. Il n’envoie jamais rien, ne supprime jamais rien, ne déplace jamais d’argent, et ne lit jamais un mot de passe. C’est toujours vous qui envoyez.
 
 Sioul n’en connecte aucun de lui-même. Cette page est pour le jour où vous le voulez.
 
 ## Avant d’en connecter un {#before-you-connect-one}
 
 !!! warning "Ce qu’un agent voit"
-    Une fois connecté, un agent peut lire tout ce que Sioul garde sur cet ordinateur : votre courrier, vos tâches, votre agenda, vos contacts, vos budgets, vos notes et vos projets, qu’ils servent au travail, à vos démarches ou aux loisirs. Ce qu’il lit part vers le modèle derrière lui (celui d’Anthropic, pour Claude), selon votre propre contrat avec cette entreprise. Ouvrir certains projets à un agent et en garder d’autres fermés n’existe pas encore.
+    Une fois connecté, un agent peut lire tout ce que Sioul garde sur cet appareil : votre courrier, vos tâches, votre agenda, vos contacts, vos budgets, vos notes et vos projets, qu’ils servent au travail, à vos démarches ou aux loisirs. Ce qu’il lit part vers le modèle derrière lui (celui d’Anthropic, pour Claude), selon votre propre contrat avec cette entreprise. Ouvrir certains projets à un agent et en garder d’autres fermés n’existe pas encore.
 
 Certaines choses lui restent cachées quoi qu’il arrive (plus bas) : mots de passe et clés, codes à usage unique, numéros de compte bancaire et de carte.
 
@@ -56,7 +56,7 @@ Sioul sert les agents par le Model Context Protocol (MCP), avec la commande `sio
 
 ## Ce qu’un agent peut préparer {#what-an-agent-can-prepare}
 
-Sur cet ordinateur seulement :
+Sur cet appareil seulement :
 
 - **une tâche**, ou **une tâche marquée faite** : une tâche part vers votre serveur d’agenda à la prochaine synchronisation, comme une tâche créée dans la fenêtre ; une tâche marquée faite peut être rouverte depuis la fenêtre ;
 - **un événement** : personne n’est invité ;
@@ -71,7 +71,7 @@ Sur cet ordinateur seulement :
 - **Le courrier, ce sont des données.** Le texte d’un message arrive marqué comme les mots de son expéditeur, pas comme des instructions, et l’agent en est averti quand il se connecte. Le courrier falsifié est dit falsifié. Le courrier hostile envoyé à une adresse protégée, et le courrier chiffré, ne sont pas donnés.
 - **Écrire ne fait qu’ajouter.** Une note n’en remplace jamais une autre ; un lien ne se fait qu’une fois.
 - **Vos heures tiennent.** On demande à l’agent de les respecter, sauf si vous demandez autre chose.
-- **Un journal.** Chaque appel est noté sur cet ordinateur : quel agent a demandé, pour quoi, et le texte qui lui a été donné, un fichier par mois dans les dossiers de Sioul. Ce journal reste ici ; le modèle de l’agent, lui, a reçu ce texte.
+- **Un journal.** Chaque appel est noté sur cet appareil : quel agent a demandé, pour quoi, et le texte qui lui a été donné, un fichier par mois dans les dossiers de Sioul. Ce journal reste ici ; le modèle de l’agent, lui, a reçu ce texte.
 
 ## La ligne de commande {#the-command-line}
 
@@ -86,7 +86,7 @@ Une seule autre fonction se sert d’une IA, et seulement pour une adresse que v
 ## Pas encore là {#not-there-yet}
 
 - Ouvrir certains projets à un agent et en garder d’autres fermés.
-- ChatGPT, et les agents qui tournent ailleurs que sur cet ordinateur.
+- ChatGPT, et les agents qui tournent ailleurs que sur cet appareil.
 - Un compagnon dans Sioul qui explique une lettre en mots simples, ligne par ligne, et vous tient compagnie pendant un moment de démarches.
 
 La conception derrière tout cela : [fournisseurs d’IA et agents (en anglais)](https://aurelienpierre.github.io/sioul/dev/ai.html) et [le serveur MCP (en anglais)](https://aurelienpierre.github.io/sioul/dev/mcp.html).

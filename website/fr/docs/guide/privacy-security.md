@@ -1,14 +1,14 @@
 ---
-description: Vie privée et sécurité dans Sioul – ce qui reste sur votre ordinateur, ce qui en sort et quand, comment chaque message et chaque pièce jointe sont vérifiés, où vont les mots de passe.
+description: Vie privée et sécurité dans Sioul – ce qui reste sur votre appareil, ce qui en sort et quand, comment chaque message et chaque pièce jointe sont vérifiés, où vont les mots de passe.
 ---
 
 # Vie privée et sécurité {#privacy-and-security}
 
-Sioul tourne sur votre ordinateur. Il n’y a pas de serveur Sioul, pas de compte chez nous, et rien ne va au développeur. Votre courrier, vos agendas et vos contacts ne voyagent qu’entre votre ordinateur et vos propres fournisseurs.
+Sioul tourne sur votre appareil. Il n’y a pas de serveur Sioul, pas de compte chez nous, et rien ne va au développeur. Votre courrier, vos agendas et vos contacts ne voyagent qu’entre votre appareil et vos propres fournisseurs.
 
 Le texte formel, entre autres pour la connexion avec Google : [Politique de confidentialité](../privacy.md).
 
-## Ce qui reste sur votre ordinateur {#what-stays-on-your-computer}
+## Ce qui reste sur votre appareil {#what-stays-on-your-computer}
 
 Tout ce que Sioul garde est dans des fichiers simples, dans vos propres dossiers, lisibles par d’autres programmes :
 
@@ -23,7 +23,7 @@ Sous Windows, les dossiers de Sioul sont dans `%APPDATA%\Sioul` ; sous macOS, 
 
 **Les mots de passe**, l’accès à Google, les clés et les jetons des services que vous activez, et les phrases de passe vont dans le trousseau de votre système (GNOME Keyring ou KWallet sous Linux, le Gestionnaire d’identification sous Windows, le Trousseau d’accès sous macOS). Jamais dans un fichier.
 
-## Ce qui sort de votre ordinateur, et quand {#what-leaves-your-computer-and-when}
+## Ce qui sort de votre appareil, et quand {#what-leaves-your-computer-and-when}
 
 | Vers | Quoi | Quand |
 |---|---|---|
@@ -85,7 +85,7 @@ Chaque appareil garde ses propres données. Ce qui doit voyager entre vos ordina
 
 ## Le courrier chiffré {#encrypted-mail}
 
-Avec OpenPGP, Sioul signe et chiffre vos messages quand vous les envoyez, déchiffre et vérifie ceux que vous recevez, et donne votre clé publique aux personnes à qui vous écrivez (Autocrypt). Vos clés secrètes restent sur l’ordinateur où elles ont été créées. Voir [Le courrier](mail.md#signing-and-encrypting).
+Avec OpenPGP, Sioul signe et chiffre vos messages quand vous les envoyez, déchiffre et vérifie ceux que vous recevez, et donne votre clé publique aux personnes à qui vous écrivez (Autocrypt). Vos clés secrètes restent sur l’appareil où elles ont été créées. Voir [Le courrier](mail.md#signing-and-encrypting).
 
 ## Une adresse publique {#a-public-address}
 

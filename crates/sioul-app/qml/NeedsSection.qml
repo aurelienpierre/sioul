@@ -19,8 +19,8 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
-    // {needs, usual, gaps}, as the backend gives it.
-    property var shown: ({ needs: { meals_on: false, meals: [], naps_on: false, naps: [], sleep_on: false, sleep: { bed: "23:00", wake: "07:00", wind_down: 60, notices: true }, heads_up: 15, later: 15 }, usual: { meals: [], nap: "", sleep: "" }, gaps: [] })
+    // {needs, usual, gaps, wake}, as the backend gives it.
+    property var shown: ({ needs: { meals_on: false, meals: [], naps_on: false, naps: [], sleep_on: false, sleep: { bed: "23:00", wake: "07:00", wind_down: 60, notices: true, alarm: [false, false, false, false, false, false, false] }, heads_up: 15, later: 15 }, usual: { meals: [], nap: "", sleep: "" }, gaps: [], wake: { phone: false, names: [], short: [], next: "", exact: true, screen: true, notifications: true } })
     property string problem: ""
     // A narrow screen: each block's numbers under its name.
     readonly property bool narrow: section.width < 560
@@ -160,6 +160,146 @@ ColumnLayout {
             text: section.sioul.text("needs-notices")
             checked: section.shown.needs.sleep.notices
             onToggled: section.edit(needs => needs.sleep.notices = checked)
+        }
+    }
+
+    // The alarm at waking, rung by a phone: the mornings it rings on, in the
+    // locale's order (docs/health.md, "The alarm at waking"). Kept with the
+    // night, so set from any device; a desktop never rings.
+    ColumnLayout {
+        id: alarm
+
+        // The weekdays in the locale's order, as their places Monday first (0 to 6).
+        readonly property var order: {
+            const first = Qt.locale(section.sioul.text("qt-locale")).firstDayOfWeek
+            const start = (first + 6) % 7
+            return [0, 1, 2, 3, 4, 5, 6].map(i => (start + i) % 7)
+        }
+        readonly property var wake: section.shown.wake || { phone: false, names: [], short: [], next: "", exact: true, screen: true, notifications: true }
+        readonly property var mornings: section.shown.needs.sleep.alarm || [false, false, false, false, false, false, false]
+        readonly property bool ticked: alarm.mornings.some(on => on)
+
+        visible: section.shown.needs.sleep_on
+        Layout.fillWidth: true
+        spacing: 4
+
+        // Back from Android's page where it was allowed: said as it is now.
+        Connections {
+            target: section.sioul
+            enabled: alarm.wake.phone
+
+            function onAwayChanged() {
+                if (!section.sioul.away) {
+                    trial.answer = null
+                    section.reload()
+                }
+            }
+        }
+        Label {
+            text: section.sioul.text("wake-title")
+            color: section.theme.muted
+        }
+        Flow {
+            Layout.fillWidth: true
+            spacing: 4
+
+            Repeater {
+                model: alarm.order
+
+                delegate: Button {
+                    id: morning
+
+                    required property int modelData
+
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    checkable: true
+                    checked: alarm.mornings[morning.modelData]
+                    flat: !checked
+                    text: alarm.wake.short[morning.modelData] || ""
+                    Accessible.name: alarm.wake.names[morning.modelData] || ""
+                    onToggled: {
+                        const on = checked
+                        section.edit(needs => {
+                            needs.sleep.alarm = needs.sleep.alarm || [false, false, false, false, false, false, false]
+                            needs.sleep.alarm[morning.modelData] = on
+                        })
+                        // As saved, here or on another device: the binding back.
+                        morning.checked = Qt.binding(() => alarm.mornings[morning.modelData])
+                    }
+                }
+            }
+        }
+        Label {
+            Layout.fillWidth: true
+            text: section.sioul.text("wake-help") + (alarm.ticked && alarm.wake.next !== "" ? " " + alarm.wake.next : "")
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 13
+            color: section.theme.muted
+        }
+        // On a phone, what Android refuses it, and its page to allow it (once only: the try below may say it already).
+        Repeater {
+            model: alarm.wake.phone && alarm.ticked ? [["exact", "wake-exact-off", "wake-allow-exact"], ["notifications", "wake-notifications-off", "wake-allow-notifications"], ["screen", "wake-screen-off", "wake-allow-screen"]].filter(refused => !alarm.wake[refused[0]] && !(trial.answer !== null && trial.answer.fix === refused[0])) : []
+
+            delegate: ColumnLayout {
+                id: refusal
+
+                required property var modelData
+
+                Layout.fillWidth: true
+                spacing: 2
+
+                Label {
+                    Layout.fillWidth: true
+                    text: section.sioul.text(refusal.modelData[1])
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    // It would not ring, or not stop: said warm; the screen unlit, muted.
+                    color: refusal.modelData[0] === "screen" ? section.theme.muted : section.theme.warm
+                }
+                Button {
+                    flat: true
+                    text: section.sioul.text(refusal.modelData[2])
+                    onClicked: section.sioul.wakeSettings(refusal.modelData[0])
+                }
+            }
+        }
+    }
+
+    // On a phone, the alarm tried: rung ten seconds on, as a waking would be,
+    // over the lock screen; nothing written, the next waking as it is
+    // (crates/sioul-app/src/wake.rs). Under the mornings; the night off, here
+    // all the same, so that trying it changes nothing of the night.
+    ColumnLayout {
+        id: trial
+
+        // Its answer: {rings, line, fix, button}; null before.
+        property var answer: null
+
+        visible: alarm.wake.phone
+        Layout.fillWidth: true
+        spacing: 4
+
+        Button {
+            text: section.sioul.text("wake-try")
+            onClicked: trial.answer = JSON.parse(section.sioul.tryWake())
+        }
+        Label {
+            visible: trial.answer !== null
+            Layout.fillWidth: true
+            text: trial.answer === null ? "" : trial.answer.line
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 13
+            // It will ring: muted; refused, why: warm.
+            color: trial.answer !== null && !trial.answer.rings ? section.theme.warm : section.theme.muted
+        }
+        Button {
+            visible: trial.answer !== null && trial.answer.fix !== ""
+            flat: true
+            text: trial.answer === null ? "" : trial.answer.button
+            onClicked: section.sioul.wakeSettings(trial.answer.fix)
         }
     }
 

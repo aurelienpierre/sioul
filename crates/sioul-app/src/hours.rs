@@ -78,6 +78,13 @@ pub(crate) fn may_notify() -> bool {
     !asleep()
 }
 
+/// In one of today's slots of time for you (docs/capacity.md, G18b): what can
+/// wait, waits there, the messages of sites and the pauses to move; doses,
+/// meals and sleep, codes asked for, calls and an event's alarm still come.
+pub(crate) fn quiet_slot() -> bool {
+    crate::capacity::in_gain_slot(&Zoned::now())
+}
+
 /// Whether a dose's reminder waits now: asleep, and "Doses during sleep: stay
 /// silent" chosen. Never without that choice: a dose at 05:00 is meant to wake you.
 pub(crate) fn doses_silent() -> bool {

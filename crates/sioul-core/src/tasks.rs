@@ -137,10 +137,18 @@ pub struct Task {
     pub start: String,
     /// The date asked, in the same form.
     pub due: String,
+    /// A time given to it for one day, by a drag in the day view (`X-SIOUL-AT`):
+    /// "2026-10-06T14:30", in your time zone; "" for none. The day lays it then,
+    /// that day only (`at_on`); another day it says nothing.
+    pub at: String,
     /// When it was done, in Unix seconds.
     pub completed: Option<i64>,
     /// Minutes it takes, as estimated; 0 when unsaid.
     pub estimate: u32,
+    /// The first estimate it was given (`X-SIOUL-ESTIMATE-FIRST`), written
+    /// once and never changed by Sioul: what time spent is compared with
+    /// (`capacity`). None for a task estimated before it was kept.
+    pub estimate_first: Option<u32>,
     /// 1 (first) to 9 (last); 0 when unsaid (RFC 5545 §3.8.1.9).
     pub priority: u8,
     pub categories: Vec<String>,
@@ -165,6 +173,8 @@ pub struct Task {
     pub margins: crate::demands::Margins,
     /// What it costs and gives back, rated 0 to 10 (`demands`).
     pub demands: crate::demands::Demands,
+    /// How it went, said after it: one rating per day, the newest last, five at most (`demands::Felt`).
+    pub felt: Vec<crate::demands::Felt>,
     pub relations: Vec<Relation>,
     pub links: Vec<Link>,
     pub contacts: Vec<ContactRef>,
@@ -192,6 +202,16 @@ impl Task {
         day_of(&self.due)
     }
 
+    /// The time given to it for `date` in the day view (Unix seconds, in
+    /// `zone`), when it was given for that day: a time given another day says nothing.
+    pub fn at_on(&self, date: Date, zone: &TimeZone) -> Option<i64> {
+        if day_of(&self.at) != Some(date) {
+            return None;
+        }
+        let local: DateTime = self.at.parse().ok()?;
+        local.to_zoned(zone.clone()).ok().map(|z| z.timestamp().as_second())
+    }
+
     /// The task it is a step of.
     pub fn parent(&self) -> Option<&str> {
         self.relations.iter().find(|r| r.kind == "PARENT").map(|r| r.uid.as_str())
@@ -206,6 +226,16 @@ impl Task {
 fn day_of(text: &str) -> Option<Date> {
     text.get(..10)?.parse().ok()
 }
+
+/// The first estimate a task was given, written once (`Task::estimate_first`).
+pub const ESTIMATE_FIRST: &str = "X-SIOUL-ESTIMATE-FIRST";
+
+/// A time given to a task for one day by a drag in the day view (`Task::at`),
+/// in UTC. Not DTSTART: RFC 5545 wants DUE of DTSTART's value type and after
+/// it, and CalDAV servers that check (Sabre: Nextcloud) refuse a task whose
+/// start has a time while its date asked is a date, or has passed. Other
+/// applications leave the line as it is: the time stays Sioul's.
+pub const AT: &str = "X-SIOUL-AT";
 
 /// An iCalendar duration in minutes (RFC 5545 §3.3.6): "PT15M" → 15,
 /// "P1DT2H" → 1560, "-P1W" → −10080. None when it is not one.
@@ -387,6 +417,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
     let range = master_range(&source)?;
     let mut task = Task::default();
     let (mut duration, mut stamp, mut start_line, mut has_status) = (None, 0, None, false);
+    let mut felt: Vec<(String, Option<Date>, String)> = Vec::new();
     for i in own_lines(&source, &range) {
         let line = &source[i];
         let value = lines::value(line);
@@ -426,6 +457,9 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             crate::demands::AFTER => task.margins.after = crate::demands::minutes_of(value),
             crate::demands::COST => task.demands.read_cost(value),
             crate::demands::GAIN => task.demands.read_gain(value),
+            name @ (crate::demands::FELT_COST | crate::demands::FELT_GAIN) => felt.push((name.to_string(), lines::param(line, crate::demands::FELT_ON).and_then(|d| crate::demands::felt_date(&d)), value.to_string())),
+            ESTIMATE_FIRST => task.estimate_first = minutes_of(value).and_then(|m| u32::try_from(m).ok()).filter(|m| *m > 0),
+            AT => task.at = zoned(line, zone).map(|z| z.strftime("%Y-%m-%dT%H:%M").to_string()).unwrap_or_default(),
             "LINK" => task.links.push(link_of(line)),
             "CONTACT" => task.contacts.push(contact(line)),
             "REFID" => task.cases.push(lines::unescape(value.trim())),
@@ -438,6 +472,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
     if task.created == 0 {
         task.created = stamp;
     }
+    task.felt = crate::demands::felt_of(&felt);
     // DURATION with DTSTART stands for DUE (RFC 5545 §3.6.2).
     if task.due.is_empty()
         && let (Some(minutes), Some(line)) = (duration, start_line)
@@ -470,6 +505,9 @@ pub struct TaskEdit {
     pub start: String,
     #[serde(default)]
     pub due: String,
+    /// A time given for one day in the day view: "2026-10-06T14:30", or "" (`Task::at`).
+    #[serde(default)]
+    pub at: String,
     /// Minutes; 0 when unsaid.
     #[serde(default)]
     pub estimate: u32,
@@ -500,6 +538,10 @@ pub struct TaskEdit {
     /// What it costs and gives back, 0 to 10 each; none unsaid.
     #[serde(default)]
     pub demands: crate::demands::Demands,
+    /// How it went, the newest rating said after it: shown, never written by
+    /// the form (`set_felt` writes it, dated).
+    #[serde(default)]
+    pub felt: crate::demands::Demands,
     /// The task it is a step of, by UID; "" for none.
     #[serde(default)]
     pub parent: String,
@@ -527,6 +569,7 @@ impl TaskEdit {
             status: task.status,
             start: task.start.clone(),
             due: task.due.clone(),
+            at: task.at.clone(),
             estimate: task.estimate,
             priority: task.priority,
             categories: task.categories.clone(),
@@ -538,6 +581,7 @@ impl TaskEdit {
             energy: task.energy.clone(),
             margins: task.margins,
             demands: task.demands,
+            felt: task.felt.last().map(|f| f.demands).unwrap_or_default(),
             parent: task.parent().unwrap_or_default().to_string(),
             waits_for: task.depends_on().map(|r| r.uid.clone()).collect(),
             links: task.links.clone(),
@@ -564,6 +608,7 @@ impl TaskEdit {
             location: self.location.trim().to_string(),
             start: self.start.trim().to_string(),
             due: self.due.trim().to_string(),
+            at: self.at.trim().to_string(),
             priority: self.priority.min(9),
             categories: unique(self.categories.iter().map(|c| c.trim().to_string()).filter(|c| !c.is_empty())),
             kind: Some(self.kind.trim()).filter(|k| is_kind_id(k)).map(str::to_string).unwrap_or_default(),
@@ -571,7 +616,10 @@ impl TaskEdit {
             office_times: if self.office_hours { crate::window::ranges_text(&crate::window::parse_ranges(&self.office_times)) } else { String::new() },
             area: crate::areas::Area::parse(&self.area).map(|a| a.id()).unwrap_or_default(),
             margins: crate::demands::Margins { before: self.margins.before.min(24 * 60), after: self.margins.after.min(24 * 60) },
-            demands: crate::demands::Demands { cognitive: self.demands.cognitive.map(|v| v.min(10)), emotional: self.demands.emotional.map(|v| v.min(10)), anxiety: self.demands.anxiety.map(|v| v.min(10)), gain: self.demands.gain.map(|v| v.min(10)) },
+            demands: self.demands.bounded(),
+            felt: self.felt.bounded(),
+            // Heavy or light follows every cost once one is rated: its highest (docs/capacity.md).
+            energy: self.demands.level().map_or_else(|| energy_of(&self.energy), |level| level.energy().to_string()),
             parent: self.parent.trim().to_string(),
             waits_for: unique(self.waits_for.iter().map(|u| u.trim().to_string()).filter(|u| !u.is_empty())),
             links: unique(self.links.iter().filter(|l| !l.uri.trim().is_empty()).map(|l| Link { uri: l.uri.trim().to_string(), label: l.label.trim().to_string(), rel: l.rel.trim().to_string() })),
@@ -646,6 +694,7 @@ struct Changed {
     status: bool,
     start: bool,
     due: bool,
+    at: bool,
     estimate: bool,
     priority: bool,
     categories: bool,
@@ -669,6 +718,7 @@ impl Changed {
             status: old.status != new.status,
             start: old.start != new.start,
             due: old.due != new.due,
+            at: old.at != new.at,
             estimate: old.estimate != new.estimate,
             priority: old.priority != new.priority,
             categories: old.categories != new.categories,
@@ -684,7 +734,7 @@ impl Changed {
         }
     }
 
-    const ALL: Changed = Changed { title: true, notes: true, location: true, status: true, start: true, due: true, estimate: true, priority: true, categories: true, kind: true, office: true, office_times: true, area: true, billable: true, energy: true, margins: true, demands: true, repeat: true };
+    const ALL: Changed = Changed { title: true, notes: true, location: true, status: true, start: true, due: true, at: true, estimate: true, priority: true, categories: true, kind: true, office: true, office_times: true, area: true, billable: true, energy: true, margins: true, demands: true, repeat: true };
 
     /// Whether a line of this name is written again.
     fn rewrites(&self, name: &str) -> bool {
@@ -695,6 +745,7 @@ impl Changed {
             "STATUS" | "COMPLETED" | "PERCENT-COMPLETE" => self.status,
             "DTSTART" => self.start || self.due,
             "DUE" | "DURATION" => self.start || self.due,
+            AT => self.at,
             "ESTIMATED-DURATION" => self.estimate,
             "PRIORITY" => self.priority,
             "CATEGORIES" => self.categories,
@@ -730,6 +781,9 @@ fn field_lines(edit: &TaskEdit, changed: Changed, zone: &TimeZone, now: &Zoned) 
     }
     if (changed.start || changed.due) && !edit.due.is_empty() {
         out.push(date_line("DUE", &edit.due, zone)?);
+    }
+    if changed.at && edit.at.len() > 10 {
+        out.push(date_line(AT, &edit.at, zone)?);
     }
     if changed.estimate && edit.estimate > 0 {
         out.push(format!("ESTIMATED-DURATION:{}", duration_of(i64::from(edit.estimate))));
@@ -786,6 +840,9 @@ pub fn new_task(edit: &TaskEdit, uid: &str, zone: &TimeZone, now: &Zoned) -> Res
     let mut out = vec!["BEGIN:VCALENDAR".to_string(), "VERSION:2.0".to_string(), "PRODID:-//Sioul//Sioul//EN".to_string(), "BEGIN:VTODO".to_string()];
     out.extend([format!("UID:{}", one_line(uid)), format!("DTSTAMP:{}", utc(now)), format!("CREATED:{}", utc(now)), format!("LAST-MODIFIED:{}", utc(now))]);
     out.extend(field_lines(&edit, Changed::ALL, zone, now)?);
+    if edit.estimate > 0 {
+        out.push(format!("{ESTIMATE_FIRST}:{}", duration_of(i64::from(edit.estimate))));
+    }
     if !edit.parent.is_empty() {
         out.push(relation_line("PARENT", &edit.parent, 0));
     }
@@ -832,12 +889,24 @@ fn rewrite(text: &str, keep: impl Fn(&str) -> bool, added: Vec<String>, now: &Zo
 /// are written again; nothing changed, nothing is written.
 pub fn apply(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned) -> Result<String, String> {
     let before = task_of_text(text, zone).ok_or("no task")?;
-    let (old, edit) = (TaskEdit::of(&before).tidy(), edit.tidy());
+    let (mut old, mut edit) = (TaskEdit::of(&before).tidy(), edit.tidy());
+    // The word as the file has it: rated costs then write their level over a stale one.
+    old.energy = before.energy.clone();
+    // How it went is written by `set_felt` only, never by the form.
+    edit.felt = old.felt;
     if old == edit {
         return Ok(text.to_string());
     }
+    // A time given for a day gone by says nothing: written for another reason, the task leaves it.
+    if day_of(&edit.at).is_some_and(|day| day < now.date()) {
+        edit.at = String::new();
+    }
     let changed = Changed::between(&old, &edit);
     let mut added = field_lines(&edit, changed, zone, now)?;
+    // Its first estimate, the first time it has one; never changed after.
+    if changed.estimate && before.estimate == 0 && before.estimate_first.is_none() && edit.estimate > 0 {
+        added.push(format!("{ESTIMATE_FIRST}:{}", duration_of(i64::from(edit.estimate))));
+    }
     if edit.parent != old.parent && !edit.parent.is_empty() {
         added.push(relation_line("PARENT", &edit.parent, 0));
     }
@@ -885,6 +954,8 @@ pub fn set_status(text: &str, status: Status, zone: &TimeZone, now: &Zoned) -> R
         if !until.is_some_and(|until| day_of(&start).or_else(|| day_of(&due)).is_some_and(|next| next > until)) {
             edit.start = start;
             edit.due = due;
+            // A time given for one day in the day view stays with that day.
+            edit.at = String::new();
             edit.status = Status::NeedsAction;
         }
     }
@@ -917,6 +988,42 @@ fn next_turn(task: &Task, rule: &str, today: Date) -> (String, String) {
     };
     let k = (1..=10_000).find(|&k| step(k).and_then(|span| anchor.checked_add(span).ok()).is_some_and(|d| d > today)).unwrap_or(1);
     (moved(&task.start, k), moved(&task.due, k))
+}
+
+/// The felt ratings kept in a task's file: the newest five days.
+pub const FELT_KEPT: usize = 5;
+
+/// How it went, said after the task on `on`: that day's rating replaced (a
+/// rating with nothing said takes it away), the newest `FELT_KEPT` days
+/// kept, everything else left as it is.
+pub fn set_felt(text: &str, felt: &crate::demands::Demands, on: Date, now: &Zoned) -> Result<String, String> {
+    use crate::demands::{FELT_COST, FELT_GAIN, FELT_ON, felt_date};
+    let felt = felt.bounded();
+    let source = lines::unfold(text);
+    let range = master_range(&source).ok_or("no task")?;
+    let is_felt = |line: &str| matches!(lines::name(line).as_str(), FELT_COST | FELT_GAIN);
+    let date_of = |line: &str| lines::param(line, FELT_ON).and_then(|d| felt_date(&d));
+    // The days rated, other than `on`, newest first; what passes the newest kept, dropped.
+    let mut days: Vec<Option<Date>> = own_lines(&source, &range).into_iter().map(|i| &source[i]).filter(|l| is_felt(l)).map(|l| date_of(l)).filter(|d| *d != Some(on)).collect();
+    days.sort_unstable_by(|a, b| b.cmp(a));
+    days.dedup();
+    let room = if felt.is_empty() { FELT_KEPT } else { FELT_KEPT - 1 };
+    let kept: Vec<Option<Date>> = days.into_iter().take(room).collect();
+    let day = on.strftime("%Y%m%d").to_string();
+    let mut added = Vec::new();
+    if felt.has_cost() {
+        added.push(format!("{FELT_COST};{FELT_ON}={day}:{}", felt.cost_value()));
+    }
+    if let Some(gain) = felt.gain {
+        added.push(format!("{FELT_GAIN};{FELT_ON}={day}:{gain}"));
+    }
+    let drop = |line: &str| is_felt(line) && (date_of(line) == Some(on) || !kept.contains(&date_of(line)));
+    // The same rating said again, nothing past the newest kept: the text as it was.
+    let dropped: Vec<String> = own_lines(&source, &range).into_iter().map(|i| source[i].clone()).filter(|l| drop(l)).collect();
+    if dropped == added {
+        return Ok(text.to_string());
+    }
+    replace_lines(text, drop, added, now)
 }
 
 /// A task done at another time than now (an import of what was done before):
@@ -1129,6 +1236,92 @@ mod tests {
     }
 
     #[test]
+    fn the_first_estimate_is_kept() {
+        // Made with an estimate: the first one is that.
+        let made = new_task(&TaskEdit { title: "Fill the form".into(), estimate: 30, ..TaskEdit::default() }, "f", &paris(), &now()).unwrap();
+        assert!(made.contains("X-SIOUL-ESTIMATE-FIRST:PT30M"), "{made}");
+        let task = task_of_text(&made, &paris()).unwrap();
+        assert_eq!((task.estimate, task.estimate_first), (30, Some(30)));
+        // The estimate changed after an overrun: the first stays.
+        let longer = apply(&made, &TaskEdit { estimate: 90, ..TaskEdit::of(&task) }, &paris(), &now()).unwrap();
+        let task = task_of_text(&longer, &paris()).unwrap();
+        assert_eq!((task.estimate, task.estimate_first), (90, Some(30)));
+        assert_eq!(longer.matches("X-SIOUL-ESTIMATE-FIRST").count(), 1);
+        // Taken away and given again: still the first.
+        let none = apply(&longer, &TaskEdit { estimate: 0, ..TaskEdit::of(&task) }, &paris(), &now()).unwrap();
+        let again = apply(&none, &TaskEdit { estimate: 45, ..TaskEdit::of(&task_of_text(&none, &paris()).unwrap()) }, &paris(), &now()).unwrap();
+        assert_eq!(task_of_text(&again, &paris()).unwrap().estimate_first, Some(30));
+        // Made without one, estimated later: that is the first.
+        let bare = new_task(&TaskEdit { title: "Call".into(), ..TaskEdit::default() }, "c", &paris(), &now()).unwrap();
+        assert!(!bare.contains("ESTIMATE-FIRST"));
+        let later = apply(&bare, &TaskEdit { estimate: 15, ..TaskEdit::of(&task_of_text(&bare, &paris()).unwrap()) }, &paris(), &now()).unwrap();
+        assert_eq!(task_of_text(&later, &paris()).unwrap().estimate_first, Some(15));
+        // A task estimated before the first was kept: none, ever (its first guess is unknown).
+        let old = LETTER;
+        let task = task_of_text(old, &paris()).unwrap();
+        assert_eq!((task.estimate, task.estimate_first), (90, None));
+        let changed = apply(old, &TaskEdit { estimate: 120, ..TaskEdit::of(&task) }, &paris(), &now()).unwrap();
+        assert_eq!(task_of_text(&changed, &paris()).unwrap().estimate_first, None);
+    }
+
+    #[test]
+    fn heaviness_written_from_the_costs() {
+        use crate::demands::Demands;
+        let made = new_task(&TaskEdit { title: "Call the bank".into(), energy: "light".into(), demands: Demands { anxiety: Some(8), ..Demands::default() }, ..TaskEdit::default() }, "b", &paris(), &now()).unwrap();
+        assert!(made.contains("X-SIOUL-ENERGY:HEAVY") && !made.contains("LIGHT"), "the costs say heavy, whatever the word: {made}");
+        let task = task_of_text(&made, &paris()).unwrap();
+        // Body and senses written and read back.
+        let body = apply(&made, &TaskEdit { demands: Demands { anxiety: Some(2), body: Some(5), ..Demands::default() }, ..TaskEdit::of(&task) }, &paris(), &now()).unwrap();
+        assert!(body.contains("X-SIOUL-COST:ANXIETY=2;BODY=5") && !body.contains("X-SIOUL-ENERGY"), "usual: no line: {body}");
+        let task = task_of_text(&body, &paris()).unwrap();
+        assert_eq!((task.demands.body, task.energy.as_str()), (Some(5), ""));
+        // A file whose word disagrees with its costs (an older Sioul): set right at the next save.
+        let stale = body.replace("X-SIOUL-COST:ANXIETY=2;BODY=5", "X-SIOUL-COST:ANXIETY=2;BODY=5\r\nX-SIOUL-ENERGY:HEAVY");
+        let task = task_of_text(&stale, &paris()).unwrap();
+        assert_eq!(task.energy, "heavy");
+        let fixed = apply(&stale, &TaskEdit::of(&task), &paris(), &now()).unwrap();
+        assert!(!fixed.contains("X-SIOUL-ENERGY"), "{fixed}");
+        // No cost rated: the word chosen stands.
+        let word = new_task(&TaskEdit { title: "Walk".into(), energy: "rest".into(), demands: Demands { gain: Some(8), ..Demands::default() }, ..TaskEdit::default() }, "w", &paris(), &now()).unwrap();
+        assert!(word.contains("X-SIOUL-ENERGY:REST"));
+    }
+
+    #[test]
+    fn felt_ratings_dated_and_kept_five() {
+        use crate::demands::Demands;
+        let day = |d: i8| Date::constant(2026, 10, d);
+        let felt = Demands { anxiety: Some(3), body: Some(1), gain: Some(6), ..Demands::default() };
+        let rated = set_felt(LETTER, &felt, day(6), &now()).unwrap();
+        assert!(rated.contains("X-SIOUL-FELT-COST;X-SIOUL-ON=20261006:ANXIETY=3;BODY=1") && rated.contains("X-SIOUL-FELT-GAIN;X-SIOUL-ON=20261006:6"), "{rated}");
+        assert!(rated.contains("X-OTHER-APP:keep me") && rated.contains("BEGIN:VALARM"));
+        let task = task_of_text(&rated, &paris()).unwrap();
+        assert_eq!(task.felt.len(), 1);
+        assert_eq!((task.felt[0].on, task.felt[0].demands), (Some(day(6)), felt));
+        assert_eq!(TaskEdit::of(&task).felt, felt);
+        // The same day again: replaced, not added.
+        let again = set_felt(&rated, &Demands { anxiety: Some(4), ..Demands::default() }, day(6), &now()).unwrap();
+        let task = task_of_text(&again, &paris()).unwrap();
+        assert_eq!((task.felt.len(), task.felt[0].demands.anxiety, task.felt[0].demands.gain), (1, Some(4), None));
+        // The same rating again: the text as it was.
+        assert_eq!(set_felt(&again, &Demands { anxiety: Some(4), ..Demands::default() }, day(6), &now()).unwrap(), again);
+        // Seven days rated: the newest five kept, oldest first.
+        let mut text = again;
+        for d in 7..=12 {
+            text = set_felt(&text, &Demands { cognitive: Some(d as u8 - 6), ..Demands::default() }, day(d), &now()).unwrap();
+        }
+        let task = task_of_text(&text, &paris()).unwrap();
+        assert_eq!(task.felt.iter().map(|f| f.on.unwrap().day()).collect::<Vec<_>>(), vec![8, 9, 10, 11, 12]);
+        // Nothing said: that day's rating taken away.
+        let cleared = set_felt(&text, &Demands::default(), day(12), &now()).unwrap();
+        assert_eq!(task_of_text(&cleared, &paris()).unwrap().felt.len(), 4);
+        // The form never writes nor clears it.
+        let task = task_of_text(&cleared, &paris()).unwrap();
+        let form = apply(&cleared, &TaskEdit { felt: Demands::default(), title: "Send it".into(), ..TaskEdit::of(&task) }, &paris(), &now()).unwrap();
+        assert_eq!(task_of_text(&form, &paris()).unwrap().felt.len(), 4);
+        assert_eq!(apply(&cleared, &TaskEdit { felt: Demands::default(), ..TaskEdit::of(&task) }, &paris(), &now()).unwrap(), cleared, "felt alone changed in the form: nothing written");
+    }
+
+    #[test]
     fn durations() {
         assert_eq!((minutes_of("PT15M"), minutes_of("P1DT2H"), minutes_of("-P1W"), minutes_of("P"), minutes_of("15")), (Some(15), Some(1560), Some(-10080), None, None));
         assert_eq!((duration_of(15), duration_of(90), duration_of(20160), duration_of(0)), ("PT15M".to_string(), "PT1H30M".to_string(), "P14D".to_string(), "PT0M".to_string()));
@@ -1154,5 +1347,33 @@ mod tests {
         // Line breaks in what is written as it is stay out of the file.
         let link = link_line(&Link { uri: "uid:a\r\nATTENDEE:mailto:x@example.org".into(), ..Link::default() });
         assert!(!link.contains(['\r', '\n']) && relation_line("DEPENDS-ON", "b\nX", 0) == "RELATED-TO;RELTYPE=DEPENDS-ON:bX", "{link}");
+    }
+
+    #[test]
+    fn a_time_given_for_one_day() {
+        let zone = paris();
+        // A step with a date asked: the time it is given today goes in its own line, its dates as they were.
+        let made = new_task(&TaskEdit { title: "Call the bank".into(), start: "2026-10-01".into(), due: "2026-10-09".into(), ..TaskEdit::default() }, "bank", &zone, &now()).unwrap();
+        let task = task_of_text(&made, &zone).unwrap();
+        let given = apply(&made, &TaskEdit { at: "2026-10-06T14:30".into(), ..TaskEdit::of(&task) }, &zone, &now()).unwrap();
+        assert!(given.contains("X-SIOUL-AT:20261006T123000Z") && given.contains("DTSTART;VALUE=DATE:20261001") && given.contains("DUE;VALUE=DATE:20261009"), "{given}");
+        let task = task_of_text(&given, &zone).unwrap();
+        let today: Date = "2026-10-06".parse().unwrap();
+        assert_eq!(task.at, "2026-10-06T14:30");
+        assert_eq!(task.at_on(today, &zone), Some(1_791_289_800));
+        // Another day it says nothing.
+        assert_eq!(task.at_on(today.tomorrow().unwrap(), &zone), None);
+        // Left to the plan: the line goes, nothing else changes.
+        let placed = apply(&given, &TaskEdit { at: String::new(), ..TaskEdit::of(&task) }, &zone, &now()).unwrap();
+        assert!(!placed.contains("X-SIOUL-AT") && placed.contains("DTSTART;VALUE=DATE:20261001"), "{placed}");
+        // Changed another day for another reason: the time given that day goes; saved unchanged, nothing is written.
+        let next_day: Zoned = "2026-10-07T09:00:00+02:00[Europe/Paris]".parse().unwrap();
+        assert_eq!(apply(&given, &TaskEdit::of(&task), &zone, &next_day).unwrap(), given);
+        let later = apply(&given, &TaskEdit { estimate: 20, ..TaskEdit::of(&task) }, &zone, &next_day).unwrap();
+        assert!(!later.contains("X-SIOUL-AT") && later.contains("ESTIMATED-DURATION:PT20M"), "{later}");
+        // A repeating task done: its next turn comes without the time given for this one.
+        let weekly = apply(&given, &TaskEdit { repeat: "weekly".into(), ..TaskEdit::of(&task) }, &zone, &now()).unwrap();
+        let next = set_status(&weekly, Status::Completed, &zone, &now()).unwrap();
+        assert!(!next.contains("X-SIOUL-AT") && next.contains("STATUS:NEEDS-ACTION"), "{next}");
     }
 }

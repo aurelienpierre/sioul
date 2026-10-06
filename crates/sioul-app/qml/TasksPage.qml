@@ -4,8 +4,9 @@
 // Tasks. "Now" first: the one next step, picked by the plan, with why, and
 // the one after it; nothing else unless asked. The list, the board and the
 // timeline are one switch away. A line at the top takes a new task in one
-// sentence. Nothing is overdue: a date asked is time left; a day that passed
-// moves the task forward instead (docs/tasks.md).
+// sentence; "New task" beside it opens the full form, as New ▸ A task and
+// Add ▾ ▸ A task do. Nothing is overdue: a date asked is time left; a day
+// that passed moves the task forward instead (docs/tasks.md).
 
 pragma ComponentBehavior: Bound
 
@@ -46,7 +47,17 @@ Item {
     readonly property var panel: panelLoader.item
     // The task's panel, made the first time a task opens (a form of many fields), then kept.
     property bool panelMade: false
-    onOpenedChanged: if (page.opened !== "") page.panelMade = true
+    onOpenedChanged: {
+        if (page.opened !== "")
+            page.panelMade = true
+        // The panel follows, even after it went to one of its steps by itself.
+        if (page.panel && page.panel.uid !== page.opened)
+            page.panel.uid = page.opened
+    }
+    // A new task's form open in the panel, not made yet.
+    property bool making: false
+    // The panel shows: a task, or a new one's form.
+    readonly property bool panelOpen: page.opened !== "" || page.making
     property alias routines: routinesDialog
     // "now", "day", "list", "board", "timeline".
     property string mode: "now"
@@ -64,11 +75,13 @@ Item {
         page.made = made
     }
     property string opened: ""
-    // On a phone, the task open takes the page; Back closes it (main.qml).
-    readonly property bool canGoBack: page.opened !== ""
+    // On a phone, the task open (or a new one's form) takes the page; Back closes it (main.qml).
+    readonly property bool canGoBack: page.panelOpen
     function back() {
-        page.opened = ""
+        page.closePanel()
     }
+    // "I dread it", "It is boring": two minutes offered for this task, until it changes.
+    property string twoOffered: ""
     property bool othersShown: false
     property bool startedShown: false
     property bool doneShown: false
@@ -110,7 +123,42 @@ Item {
     property point dragPoint: Qt.point(0, 0)
 
     function open(uid) {
+        page.leaveForm()
         page.opened = uid
+    }
+
+    // The panel closed; a new task's form with a title typed makes the task first.
+    function closePanel() {
+        page.leaveForm()
+        page.opened = ""
+    }
+
+    // A new task: the panel's full form, its title first; from `source` (a
+    // card's Add ▾ ▸ A task), its title and its tie given. Asleep, the page
+    // shows anyway, as its own button does.
+    function startNew(source) {
+        page.leaveForm()
+        if (page.rest) {
+            page.anyway = true
+            page.sioul.showTasksAnyway(true)
+        }
+        page.panelMade = true
+        page.opened = ""
+        page.making = true
+        const problem = page.panel.startNew(source || null)
+        if (problem !== "") {
+            page.making = false
+            page.sioul.status = problem
+        }
+    }
+
+    // A new task's form left: a title typed makes the task, as leaving its field does.
+    function leaveForm() {
+        if (!page.making)
+            return
+        page.making = false
+        if (page.panel)
+            page.panel.leave()
     }
 
     // One project's tasks, from its page.
@@ -134,11 +182,17 @@ Item {
     }
 
 
-    // The day closed at once; the screen after it says where everything went.
+    // "Done for today": the end of the work day's review first (DayReview.qml,
+    // docs/reviews.md); its "Close the work day" closes the day as this button
+    // always did, then `showClosing` says where everything went.
     function stopForToday() {
-        const closing = page.sioul.doneForTheDay()
-        if (closing !== "")
-            doneDialog.now().show(JSON.parse(closing))
+        page.window.reviewDay("work")
+    }
+
+    // The day closed: the screen after it says where everything went.
+    function showClosing(closing) {
+        if (closing)
+            doneDialog.now().show(closing)
     }
 
     // For the window's tests.
@@ -160,15 +214,10 @@ Item {
         doneDialog.now().accept()
     }
 
-    // For the window's tests.
-    // A new task: the line to type it in.
-    function startNew() {
-        (page.rest ? restCapture : capture).focusLine()
-    }
-
-    // A task with its folded details shown (for captures).
+    // A task's form with its folded fields shown (for captures): a task opens on its details.
     function openDetails(uid) {
         page.opened = uid
+        panelLoader.item.editing = true
         panelLoader.item.moreShown = true
     }
 
@@ -177,15 +226,16 @@ Item {
             page.opened = page.shown.now.now.uid
     }
 
-    // For the window's pictures: the open task's folded details shown.
+    // For the window's pictures: the open task's form, its folded fields shown.
     function showPanelDetails() {
+        panelLoader.item.editing = true
         panelLoader.item.moreShown = true
     }
 
     Shortcut {
         sequence: "Escape"
-        enabled: page.visible && page.opened !== ""
-        onActivated: page.opened = ""
+        enabled: page.visible && page.panelOpen
+        onActivated: page.closePanel()
     }
 
     RowLayout {
@@ -196,11 +246,11 @@ Item {
         spacing: page.theme.gap
 
         ColumnLayout {
-            visible: !(page.window.compact && page.opened !== "")
+            visible: !(page.window.compact && page.panelOpen)
             Layout.fillHeight: true
             Layout.fillWidth: true
             Layout.minimumWidth: 0
-            Layout.preferredWidth: page.opened === "" ? columns.width : Math.round((columns.width - columns.spacing) * 0.58)
+            Layout.preferredWidth: !page.panelOpen ? columns.width : Math.round((columns.width - columns.spacing) * 0.58)
             spacing: 10
 
             // The ways to see tasks, then the filters: on a second line when the
@@ -292,18 +342,31 @@ Item {
             }
 
             // A task in one line, wherever you are on the page. In quiet time, a
-            // thought noted waits for work to come back, out of sight.
-            CaptureField {
-                id: capture
-
+            // thought noted waits for work to come back, out of sight. Beside
+            // it, the full form.
+            RowLayout {
                 Layout.fillWidth: true
                 visible: page.shown !== null && !page.shown.no_list
-                sioul: page.sioul
-                theme: page.theme
-                placeholder: page.shown !== null && page.shown.quiet ? page.sioul.text("task-note-for-later") : page.sioul.text("task-capture-hint")
-                onAdded: uid => {
-                    if (!page.shown || !page.shown.quiet)
-                        page.opened = uid
+                spacing: 8
+
+                CaptureField {
+                    id: capture
+
+                    Layout.fillWidth: true
+                    sioul: page.sioul
+                    theme: page.theme
+                    placeholder: page.shown !== null && page.shown.quiet ? page.sioul.text("task-note-for-later") : page.sioul.text("task-capture-hint")
+                    onAdded: uid => {
+                        if (!page.shown || !page.shown.quiet)
+                            page.open(uid)
+                    }
+                }
+                Button {
+                    Layout.alignment: Qt.AlignTop
+                    text: page.sioul.text("ui-new-task")
+                    icon.name: "list-add"
+                    icon.color: page.theme.text
+                    onClicked: page.startNew(null)
                 }
             }
 
@@ -426,16 +489,21 @@ Item {
                                 }
 
                                 // How today is: chosen, never guessed. Work's question, so not in quiet time.
-                                RowLayout {
+                                // Narrow (a phone): the question on its own line, the three answers under it.
+                                GridLayout {
                                     visible: page.shown !== null && !page.shown.quiet
                                     Layout.fillWidth: true
-                                    spacing: 6
+                                    columns: page.narrow ? 3 : 4
+                                    columnSpacing: 6
+                                    rowSpacing: 2
 
                                     Label {
                                         Layout.fillWidth: true
+                                        Layout.columnSpan: page.narrow ? 3 : 1
                                         text: page.sioul.text("task-weather")
                                         color: page.theme.muted
-                                        horizontalAlignment: Text.AlignRight
+                                        horizontalAlignment: page.narrow ? Text.AlignLeft : Text.AlignRight
+                                        wrapMode: Text.Wrap
                                     }
                                     Repeater {
                                         model: ["clear", "haze", "fog"]
@@ -612,6 +680,14 @@ Item {
                                                 text: page.sioul.text("task-not-now")
                                                 onClicked: page.sioul.notNow(page.shown.now.now.uid)
                                             }
+                                            // Its details, before saying yes: nothing starts.
+                                            Button {
+                                                flat: true
+                                                text: page.sioul.text("ui-details")
+                                                icon.name: "view-list-details"
+                                                icon.color: page.theme.text
+                                                onClicked: page.open(page.shown.now.now.uid)
+                                            }
                                             Button {
                                                 flat: true
                                                 text: page.sioul.text("task-hard")
@@ -633,16 +709,17 @@ Item {
                                                                 text: page.sioul.text("task-hard-big")
                                                                 onTriggered: {
                                                                     page.open(page.shown.now.now.uid)
-                                                                    Qt.callLater(() => panelLoader.item.addStep())
+                                                                    Qt.callLater(() => page.panel.addStep())
                                                                 }
                                                             }
+                                                            // Two minutes offered below the card; only Start starts the time.
                                                             MenuItem {
                                                                 text: page.sioul.text("task-hard-dread")
-                                                                onTriggered: page.focusOn(page.shown.now.now.uid, 2)
+                                                                onTriggered: page.twoOffered = page.shown.now.now.uid
                                                             }
                                                             MenuItem {
                                                                 text: page.sioul.text("task-hard-boring")
-                                                                onTriggered: page.focusOn(page.shown.now.now.uid, 2)
+                                                                onTriggered: page.twoOffered = page.shown.now.now.uid
                                                             }
                                                             MenuItem {
                                                                 text: page.sioul.text("task-hard-energy")
@@ -650,6 +727,29 @@ Item {
                                                             }
                                                         }
                                                     }
+                                                }
+                                            }
+                                        }
+                                        RowLayout {
+                                            visible: page.shown !== null && page.shown.now.now !== null && page.twoOffered === page.shown.now.now.uid
+                                            Layout.fillWidth: true
+                                            spacing: 8
+
+                                            Label {
+                                                Layout.fillWidth: true
+                                                // Its own width, not its text's: it wraps beside the button on a phone.
+                                                Layout.preferredWidth: 120
+                                                text: page.sioul.text("task-hard-two")
+                                                wrapMode: Text.Wrap
+                                                color: page.theme.muted
+                                            }
+                                            Button {
+                                                text: page.sioul.text("focus-two")
+                                                icon.name: "chronometer-start"
+                                                icon.color: page.theme.text
+                                                onClicked: {
+                                                    page.twoOffered = ""
+                                                    page.focusOn(page.shown.now.now.uid, 2)
                                                 }
                                             }
                                         }
@@ -1045,6 +1145,7 @@ Item {
                             timeline: page.shown ? page.shown.timeline : null
                             opened: page.opened
                             onOpen: uid => page.open(uid)
+                            onMenu: task => taskMenu.now().show(task)
                         }
                     }
                 }
@@ -1055,7 +1156,7 @@ Item {
             id: panelLoader
 
             active: page.panelMade
-            visible: page.opened !== ""
+            visible: page.panelOpen
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
@@ -1069,8 +1170,15 @@ Item {
                 cases: page.shown ? page.shown.cases : []
                 kinds: page.shown ? page.shown.kinds : []
                 categories: page.shown ? page.shown.categories : []
-                onClosed: page.opened = ""
+                onClosed: page.closePanel()
                 onFocusRequested: (uid, minutes) => page.focusOn(uid, minutes)
+                // The form's title given: the task made goes on in the panel, unless it was being closed.
+                onMade: uid => {
+                    if (page.making) {
+                        page.making = false
+                        page.opened = uid
+                    }
+                }
             }
         }
     }
@@ -1106,7 +1214,7 @@ Item {
                 }
 
                 MenuItem {
-                    text: page.sioul.text("ui-open")
+                    text: page.sioul.text("ui-details")
                     onTriggered: page.open(taskMenuForm.target.uid)
                 }
                 MenuSeparator {}

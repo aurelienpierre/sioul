@@ -7,7 +7,7 @@ description: Le temps passé et les factures dans Sioul – le temps du minuteur
 Le temps passé se note pendant que vous travaillez. Il est gardé pour deux usages :
 
 - **facturer** : les heures que vous travaillez pour des clients deviennent des factures ;
-- **prévoir** : mis à côté de vos estimations, il dit combien de temps les choses prennent vraiment. Le plan s’en servira ensuite : voir [Combien de temps prennent les choses](#how-long-things-take).
+- **prévoir** : mis à côté de vos estimations, il dit combien de temps les choses prennent vraiment, et le plan s’en sert : voir [Combien de temps prennent les choses](#how-long-things-take).
 
 <figure markdown="span">
   [![La page Temps sur « Semaine » : une barre par jour, empilée par projet en quelques couleurs calmes ; dessous, les heures de chaque projet et ce qui reste à facturer, puis chaque plage de temps, de la plus récente à la plus ancienne.](../assets/screens/fr/time.png){ loading=lazy }](../assets/screens/fr/time.png "Ouvrir l’image en grand")
@@ -31,25 +31,35 @@ Pendant une séance de concentration, sous Linux et sur un téléphone, une noti
 
 Cliquez sur n’importe quel moment, chronométré ou noté à la main, pour le changer : sa tâche, son projet, son jour, de quand à quand, et ce que c’était ; le temps que le minuteur a gardé après une pause manquée se corrige ainsi. Un clic droit propose aussi **Enlever ce temps**. Le temps déjà sur une facture reste tel qu’il a été facturé.
 
+Chaque moment dit discrètement comment ses minutes ont été connues :
+- *chronométré* ;
+- *noté à la main* ;
+- *chronométré, puis corrigé*, une fois que vous avez changé la durée d’un moment chronométré, ou que Sioul a coupé un minuteur resté lancé toute la nuit ;
+- *on ne sait pas comment*, pour le temps noté avant que Sioul ne le garde.
+
 ### Facturé ou non {#billed-or-not}
 
 Le travail pour un client se facture. Une tâche peut dire autre chose, sous **Facturé** dans son panneau : *Comme son projet*, *Son temps se facture*, ou *Non facturé*.
 
 ## Combien de temps prennent les choses {#how-long-things-take}
 
-Le **Prend environ** d’une tâche est une estimation. Le temps noté pour elle est ce qu’elle a pris. Les deux ensemble disent comment vos estimations se comparent au temps que les choses prennent vraiment.
+Le **Prend environ** d’une tâche est une estimation. Le temps noté pour elle est ce qu’elle a pris. Le plan met les deux côte à côte, et corrige vos estimations dans le plan seulement :
 
-**Aujourd’hui**, le relevé est là : la fenêtre de concentration, le temps de cette page, chaque ligne modifiable. Le plan ne s’en sert pas encore : il prévoit chaque tâche selon son **Prend environ**, tel que vous l’avez écrit.
-
-**Ensuite**, le plan s’en servira pour corriger vos estimations, dans le plan seulement :
-
-- il compare le temps passé au temps estimé, sur les deux dernières semaines environ, pour chaque type de tâche ;
-- il dimensionne le plan avec ce rapport : si les lettres ont pris le double de votre estimation, la prochaine lettre reçoit le double de la sienne dans le plan ;
-- la marge pour l’imprévu reste sur la journée entière, pas sur chaque tâche.
+- **Votre première estimation est gardée.** La première fois qu’une tâche reçoit une durée, Sioul la garde avec la tâche et ne la change jamais, même quand vous changez **Prend environ** ensuite. Une tâche qui avait une durée avant que cela existe n’en a pas de gardée ; sa durée actuelle sert à la place.
+- **Seules les tâches finies lui apprennent**, chacune avec son temps passé face à sa première estimation, tous ses moments additionnés.
+  - Les minutes chronométrées comptent pleinement, corrigées aussi.
+  - Les minutes notées à la main comptent pour un quart, parce que les durées dont on se souvient sont moins sûres.
+  - Les tâches abandonnées ne comptent jamais.
+- **Les tâches récentes comptent le plus** : le poids d’une tâche diminue de moitié tous les quatre ou cinq jours.
+- **Peu de tâches, peu de correction.** Tant qu’environ neuf tâches ne sont pas derrière elle, la correction penche vers « un peu plus long que prévu ».
+- **Selon ce à quoi servent les tâches** : le travail, vos démarches et les loisirs ont chacun leur correction, rapprochée de la vôtre tant qu’ils n’ont pas assez de tâches à eux.
+- **Le plan s’en sert ; vous voyez la vôtre.** Chaque tâche prend sa durée corrigée dans le plan et dans la journée, tandis que **Prend environ** reste tel que vous l’avez écrit, et le minuteur part de lui.
+- **La marge est celle de la journée, pas de chaque tâche.** Chaque jour garde un peu de temps libre après sa dernière étape pour les étapes qui débordent : à peu près de quoi couvrir une journée qui va moins bien que d’habitude, jamais plus du tiers de la journée. Une fois les premières tâches d’aujourd’hui finies, une journée qui avance plus lentement en garde davantage. L’étape suivante garde toujours une part d’aujourd’hui.
+- **Sur demande**, dans le panneau d’une tâche, une ligne comme « Les tâches de ce type prennent d’habitude environ 1,3× la première estimation ; le plan en tient déjà compte », seulement une fois que assez de tâches sont derrière elle.
 
 Il ne vous note jamais, ne montre jamais rien en retard, ne remplit jamais **Prend environ** à votre place, et ne vous compare jamais à personne.
 
-Chronométrer les loisirs, c’est à vous de voir. Les trous ne posent pas de problème : le temps non noté est laissé de côté, il ne compte contre rien.
+Chronométrer les loisirs, c’est à vous de voir. Les trous ne posent pas de problème : le temps non noté est laissé de côté, il ne compte contre rien. Le détail, avec ce qui vient de la recherche et ce qui est une supposition : [les notes de conception (en anglais)](https://aurelienpierre.github.io/sioul/dev/capacity.html).
 
 ## Un tableur du temps facturable {#a-spreadsheet-of-billable-time}
 
@@ -68,9 +78,9 @@ Sur la page d’un projet, ou à côté du projet sur la page Temps, **Faire la 
 
 Votre nom, votre adresse, vos numéros, la devise, les modalités de paiement et le taux horaire se règlent une fois, dans [Paramètres ▸ Factures](settings.md#invoices).
 
-### Sur plusieurs ordinateurs {#on-several-computers}
+### Sur plusieurs appareils {#on-several-computers}
 
-Un numéro de facture ne doit jamais être donné deux fois. Quand vous [partagez entre vos ordinateurs](sharing.md), un seul ordinateur numérote les factures : un autre dit « Les factures sont numérotées sur … », et **Faire les factures sur cet ordinateur** les reprend, après une minute et demie, une fois que vos autres ordinateurs le savent. Si votre dossier de partage ne peut pas être écrit, ou si un autre ordinateur ne s’est pas manifesté depuis quelques minutes, Sioul attend plutôt que de risquer un numéro en double.
+Un numéro de facture ne doit jamais être donné deux fois. Quand vous [partagez entre vos appareils](sharing.md), un seul appareil numérote les factures : un autre dit « Les factures sont numérotées sur … », et **Faire les factures sur cet appareil** les reprend, après une minute et demie, une fois que vos autres appareils le savent. Si votre dossier de partage ne peut pas être écrit, ou si un autre appareil ne s’est pas manifesté depuis quelques minutes, Sioul attend plutôt que de risquer un numéro en double.
 
 ## Pendant le calme {#in-quiet-time}
 

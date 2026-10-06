@@ -20,7 +20,7 @@ A few words in the notes are older than the window: a *case* is what the window 
 | Part | What it does |
 |---|---|
 | `crates/sioul-core` | The library at the centre: reading and judging mail, the Porch, projects and their routes, areas and hours, tasks and the plan, notes, links between everything, time, budgets, the bank, papers, letters, health, reminders, translations. Everything the window shows is decided and worded here, so that the command line, the window and AI agents see the same thing. |
-| `crates/sioul-sync` | What talks to the world: finding servers, the keyring, IMAP sync and the actions on messages, sending, the IDLE watchers, notifications, CalDAV and CardDAV, Google, GitHub, Bitwarden, the antivirus, reading scans, sharing between computers. |
+| `crates/sioul-sync` | What talks to the world: finding servers, the keyring, IMAP sync and the actions on messages, sending, the IDLE watchers, notifications, CalDAV and CardDAV, Google, GitHub, Bitwarden, the antivirus, reading scans, sharing between devices. |
 | `crates/sioul-cli` | `sioul`, the command line, first because agents and scripts use it too; `sioul mcp` serves agents. |
 | `crates/sioul-app` | The window: Qt Quick (QML) through CXX-Qt. Its Rust side in `src/`, its pages in `qml/`, a little C++ in `cpp/` (Qt WebEngine's set-up, the PDF writer, line spacing), the Breeze icons it bundles in `icons/`. The window holds no logic. |
 
@@ -70,9 +70,9 @@ The rules of the code ([Architecture](architecture.md#code-style)): one task per
 - **Research**: [the research notes](research/README.md), in detail: tasks, "Done for today", life admin, wearables, Google and security keys, the licences of what Sioul bundles.
 - **Building**: [building and running](building.md), [architecture](architecture.md), [languages](i18n.md).
 - **Mail**: [the Porch](porch.md), [mail, contacts and calendars](client.md), [the case store](case-store.md), [Virtual Secretary](virtual-secretary.md).
-- **Tasks and time**: [tasks, notes, links and focus](tasks.md), [areas and hours](areas.md), [reminders](reminders.md), [projects, time and invoices](projects.md), [sounds](sounds.md).
+- **Tasks and time**: [tasks, notes, links and focus](tasks.md), [what a day holds](capacity.md), [areas and hours](areas.md), [reminders](reminders.md), [projects, time and invoices](projects.md), [sounds](sounds.md).
 - **Money and papers**: [accounting](accounting.md), [papers](papers.md).
-- **Elsewhere**: [Google](google.md), [GitHub](github.md), [sites](sites.md), [health](health.md), [several computers](database.md), [AI](ai.md), [AI agents through MCP](mcp.md).
+- **Elsewhere**: [Google](google.md), [GitHub](github.md), [sites](sites.md), [health](health.md), [several devices](database.md), [AI](ai.md), [AI agents through MCP](mcp.md).
 
 ## How this website is built
 

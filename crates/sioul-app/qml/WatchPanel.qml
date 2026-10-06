@@ -149,8 +149,9 @@ ColumnLayout {
             onClicked: folderPicker.open()
         }
     }
-    CheckBox {
+    WrapCheckBox {
         visible: panel.part === "settings"
+        Layout.fillWidth: true
         text: panel.sioul.text("watch-offers")
         checked: panel.watch !== null && panel.watch.offers
         onToggled: panel.setting("watch_offers", checked)

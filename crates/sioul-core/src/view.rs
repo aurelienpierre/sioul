@@ -1358,6 +1358,8 @@ pub struct AgendaEvent {
     pub uid: String,
     /// When this occurrence starts, Unix seconds: to leave it out of a repeating event.
     pub start: i64,
+    /// When it ends, Unix seconds: a drag in the planning keeps its length.
+    pub end: i64,
     /// "09:00 – 10:30", "All day", "Until 12:00".
     pub when: String,
     pub summary: String,
@@ -1422,6 +1424,7 @@ pub fn agenda(occurrences: &[crate::agenda::Occurrence], from: jiff::civil::Date
                 key: o.key.clone(),
                 uid: o.uid.clone(),
                 start: o.start,
+                end: o.end,
                 when: when(o, start, end, tr, zone),
                 summary: if o.summary.is_empty() { tr.text("agenda-untitled", None) } else { o.summary.clone() },
                 location: o.location.clone(),
@@ -1567,6 +1570,7 @@ mod tests {
             key: String::new(),
             uid: String::new(),
             start: 0,
+            end: 0,
             when: String::new(),
             summary: String::new(),
             location: String::new(),

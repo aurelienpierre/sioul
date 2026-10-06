@@ -50,7 +50,7 @@ Elles sont enregistrées dans la fiche elle-même (le `CATEGORIES` du vCard) :
 - **Un numéro ou une adresse écrits deux fois sur une même fiche.** « 06 08 12 34 56 » et « +33 6 08 12 34 56 » sont un seul numéro : les espaces, les points et l’indicatif du pays n’y changent rien. Chaque fiche concernée est listée avec ce qui partirait, cochée ; **Retirer les doublons** garde un exemplaire de chaque, celui qui est écrit avec son pays, avec ce que les autres en disaient (mobile, travail).
 - **Deux fiches qui pourraient être une seule personne** : le même nom (dans n’importe quel ordre, sans tenir compte des majuscules ni des accents), le même numéro, ou la même adresse. Elles viennent une paire à la fois, côte à côte, avec ce qu’elles ont en commun. Choisissez le nom gardé, puis **Fusionner** : une fiche garde tout des deux (numéros, adresses, sites web, catégories, notes, et la photo, l’organisation et l’anniversaire du nom gardé quand elle en a), et l’autre est supprimée, ici et sur le serveur. **Pas la même personne** les garde à part et ne le redemande jamais ; **Plus tard** montre la paire suivante.
 
-**Fait récemment** liste ce qui a été nettoyé et fusionné, chacun avec **Annuler**, pendant trente jours : les fiches reviennent comme elles étaient, ici et sur le serveur. Les contacts gardés sur cet ordinateur seulement sont traités de la même façon.
+**Fait récemment** liste ce qui a été nettoyé et fusionné, chacun avec **Annuler**, pendant trente jours : les fiches reviennent comme elles étaient, ici et sur le serveur. Les contacts gardés sur cet appareil seulement sont traités de la même façon.
 
 !!! note "Les numéros écrits sans leur pays"
     « 06 08 12 34 56 » n’a pas de pays : Sioul le lit comme un numéro du pays choisi dans les réglages des contacts, par défaut celui de votre système (la France en français). Cela ne sert qu’à comparer les numéros : vos fiches les gardent tels qu’ils sont écrits.
@@ -62,7 +62,7 @@ Le bouton de la carte, au-dessus de la liste, montre sur une seule carte toutes 
 Pour être placée, une adresse doit être transformée en un point sur la carte. Sioul ne le fait pas de lui-même : la première fois, il demande.
 
 !!! note "Placer vos contacts"
-    **Les placer** envoie les adresses postales de vos contacts au géocodeur d’OpenStreetMap (Nominatim), une fois chacune, une par seconde. Rien d’autre ne part avec. Les lieux trouvés sont gardés sur cet ordinateur, et chaque adresse n’est demandée qu’une fois.
+    **Les placer** envoie les adresses postales de vos contacts au géocodeur d’OpenStreetMap (Nominatim), une fois chacune, une par seconde. Rien d’autre ne part avec. Les lieux trouvés sont gardés sur cet appareil, et chaque adresse n’est demandée qu’une fois.
 
 Les images de la carte viennent d’OpenStreetMap, demandées avec mesure et gardées. Vous pouvez donner une autre source dans les réglages.
 

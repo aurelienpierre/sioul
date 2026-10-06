@@ -22,7 +22,7 @@ Les notes de Sioul sont entièrement compatibles avec un coffre Obsidian et avec
 
 ## Votre dossier de notes {#your-notes-folder}
 
-Il se choisit dans **Paramètres ▸ Votre dossier et le partage ▸ Le dossier des notes**. À côté de vos notes, le même dossier garde vos projets, vos budgets, vos papiers et vos lettres scannées, pour qu’ils voyagent tous ensemble quand le dossier est synchronisé avec vos autres ordinateurs. Là où aucune synchronisation ne le transporte, le partage de Sioul peut les transporter, si vous les y activez ([Le partage](sharing.md)).
+Il se choisit dans **Paramètres ▸ Votre dossier et le partage ▸ Le dossier des notes**. À côté de vos notes, le même dossier garde vos projets, vos budgets, vos papiers et vos lettres scannées, pour qu’ils voyagent tous ensemble quand le dossier est synchronisé avec vos autres appareils. Là où aucune synchronisation ne le transporte, le partage de Sioul peut les transporter, si vous les y activez ([Le partage](sharing.md)).
 
 ## Trouver une note {#finding-a-note}
 
@@ -65,8 +65,8 @@ Un clic droit sur une note :
 - **Renommer…** : les notes qui renvoient vers elle, et les tâches qui lui sont liées, suivent le nouveau nom.
 - **Mettre à la corbeille** : la note va dans le `.trash` du dossier, comme le fait Obsidian, avec **Annuler**.
 
-## Sur plusieurs ordinateurs {#on-several-computers}
+## Sur plusieurs appareils {#on-several-computers}
 
 Vos notes voyagent avec la synchronisation de leur dossier : Nextcloud, Dropbox, Syncthing. Là où aucune synchronisation ne transporte le dossier, celui d’un téléphone par exemple, le partage de Sioul peut les transporter, fichier par fichier, une fois **Notes** activé dans le partage. Voir [Partager entre vos appareils](sharing.md).
 
-Une note liée qui n’est pas encore arrivée apparaît estompée, avec « Pas encore sur cet ordinateur : sa synchronisation est peut-être en cours ».
+Une note liée qui n’est pas encore arrivée apparaît estompée, avec « Pas encore sur cet appareil : sa synchronisation est peut-être en cours ».

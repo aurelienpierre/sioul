@@ -56,6 +56,10 @@ enum Work {
     Rest { previous: sioul_core::quiet::Overrides },
     /// A note in the vault's trash already: "Undo" puts it back.
     Untrash { trashed: String, path: String },
+    /// A change in effect already (a meal, an event or a step moved by a
+    /// drag): "Undo" runs `back`, which puts back what was there and says
+    /// what went wrong, else "".
+    Back { back: Box<dyn Fn(&QtThread, &Arc<Shared>) -> String + Send + Sync> },
 }
 
 pub(crate) struct Pending {
@@ -97,7 +101,7 @@ fn hidden(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<String>) {
                 drafts.insert(draft.clone());
             }
             Work::Many(works) => works.iter().for_each(|w| add(w, files, drafts)),
-            Work::Act { .. } | Work::Skip { .. } | Work::Rest { .. } | Work::Untrash { .. } => {}
+            Work::Act { .. } | Work::Skip { .. } | Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } => {}
         }
     }
     for pending in shared.pending.lock().map(|p| p.clone()).unwrap_or_default() {
@@ -456,6 +460,12 @@ pub(crate) fn rest(qt: &QtThread, shared: &Arc<Shared>, previous: sioul_core::qu
     schedule(qt, shared, Work::Rest { previous }, line);
 }
 
+/// A change made already (a drag): "Undo" stays offered for a moment, as for
+/// mail, and `back` puts back what was there.
+pub(crate) fn offer_back(qt: &QtThread, shared: &Arc<Shared>, line: String, back: impl Fn(&QtThread, &Arc<Shared>) -> String + Send + Sync + 'static) {
+    schedule(qt, shared, Work::Back { back: Box::new(back) }, line);
+}
+
 /// Takes a pending act off the list; the one before it, if any, can still be undone.
 fn forget(qt: &QtThread, shared: &Shared, pending: &Arc<Pending>) {
     let next = shared
@@ -506,7 +516,7 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
             }
             Err(e) => Some(format!("{}: {e}", file.display())),
         },
-        Work::Rest { .. } | Work::Untrash { .. } => None,
+        Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } => None,
         Work::Skip { account, file, start } => {
             let skipped = std::fs::read_to_string(file).ok().and_then(|text| sioul_core::agenda::skip_occurrence(&text, *start));
             match skipped.map(|text| sioul_core::vdir::write_item(file, &text)) {
@@ -574,9 +584,22 @@ pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>) -> Option<String> {
             crate::work::show_work(qt, shared);
             (tr().text("undo-done", None), None)
         }
+        Work::Back { back } => {
+            let problem = back(qt, shared);
+            (if problem.is_empty() { tr().text("undo-done", None) } else { problem }, None)
+        }
         Work::Send { draft } => (tr().text("undo-send-undone", None), Some(draft.clone())),
         Work::Discard { draft } => (tr().text("undo-done", None), Some(draft.clone())),
-        Work::Act { .. } | Work::Across { .. } | Work::Many(_) | Work::Remove { .. } | Work::Skip { .. } => (tr().text("undo-done", None), None),
+        // A task or an event deleted, an occurrence left out: back in the plan and the agenda at once.
+        Work::Remove { .. } | Work::Skip { .. } => {
+            if let Ok(mut cache) = shared.loaded.lock() {
+                *cache = None;
+            }
+            crate::work::show_work(qt, shared);
+            crate::pim::show_pim(qt, shared);
+            (tr().text("undo-done", None), None)
+        }
+        Work::Act { .. } | Work::Across { .. } | Work::Many(_) => (tr().text("undo-done", None), None),
     };
     tell(qt, shared, line);
     draft

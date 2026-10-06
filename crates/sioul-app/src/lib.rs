@@ -9,6 +9,7 @@
 mod alarms;
 mod backend;
 mod bank;
+mod capacity;
 mod contracts;
 mod crypto;
 mod desktop;
@@ -23,10 +24,12 @@ mod papers;
 mod pim;
 mod projects;
 mod remind;
+mod reviews;
 mod senders;
 mod share;
 mod sites;
 mod timenote;
+mod wake;
 mod work;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};

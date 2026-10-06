@@ -78,6 +78,8 @@ Quiet time is whenever it is not work's time: leisure (the evening, days without
 
 One sentence in the status line says until when: "Work comes back tomorrow at 09:00."
 
+**Closing is offered, never pressed.** Once your last hours of the day are over, the status line offers **Close the work day** ([Tasks](tasks.md#the-end-of-the-day)); in the evening, **Close the day** ([Health](health.md#before-sleep)). On a phone, the offer takes the place of the sentence while it stands. Nothing during sleep.
+
 **The way back is never suggested.** It is there if you need it: the sentence in the status line opens a menu, with **Work half an hour more**, an hour, two hours, four hours; **Back to the usual hours**; or, the day you closed it, **Back to today's plan**.
 
 ## Sleep

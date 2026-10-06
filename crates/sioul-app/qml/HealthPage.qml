@@ -9,9 +9,12 @@
 // times, not that day, taken out; and one can be added for that day alone.
 // The week: seven columns, the same blocks and the same taps, to fix ahead a
 // day that will differ. Today's doses say whether they are marked taken,
-// and the doubt when another device may know: never "not taken". What is
-// set once (the usual meals and night, the medicines, the prescriptions,
-// the watch, the pauses) is behind the ⚙. Nothing counts what was not done.
+// and the doubt when another device may know: never "not taken". The
+// medicines and the prescriptions are the page's content, after the day:
+// under its list, or in a column of their own on a wide window, which the
+// week keeps too (MedicinesSection.qml); their forms open from there. What
+// is set once (the usual meals and night, the watch, the pauses, where the
+// errands go) is behind the ⚙. Nothing counts what was not done.
 
 pragma ComponentBehavior: Bound
 
@@ -27,7 +30,11 @@ Item {
     required property var window
 
     // The page's view (`health::page`): the week of the day shown, and what only today says.
-    property var shown: ({ week: { monday: "", today: "", from_minute: 420, to_minute: 1380, days: [] }, missed: [], shared_note: "", reminded_there: "", watch: null, later: 15, any: true })
+    property var shown: ({ week: { monday: "", today: "", from_minute: 420, to_minute: 1380, days: [] }, missed: [], shared_note: "", reminded_there: "", watch: null, later: 15, any: true, medicines: [], prescriptions: [] })
+    // The medicines and the prescriptions, taken from the view only when they
+    // change: the view comes again each minute, and their rows stay as they are.
+    property var medicines: []
+    property var prescriptions: []
     // "day" or "week"; the week made the first time it is asked for.
     property string mode: "day"
     property bool weekMade: false
@@ -44,8 +51,30 @@ Item {
     signal revealed
     // A block's menu open (the window's pictures take it).
     property bool menuOpen: false
+    // The timeline opened readable by a long press, a block a finger can take
+    // (HealthTimeline.qml): on a phone it takes the page, the list behind it,
+    // until "Done" or Back.
+    property bool readable: false
+    readonly property bool canGoBack: page.readable
+    function back() {
+        page.readable = false
+    }
+    // For the window's pictures: opened readable, as a long press opens it.
+    function showReadable(on) {
+        page.readable = on
+    }
+    // Escape folds the readable timeline, as "Done" and Back do.
+    Shortcut {
+        sequence: "Escape"
+        enabled: page.visible && page.readable
+        onActivated: page.readable = false
+    }
     // A phone, or a window as narrow: the list under the day, the header on two lines.
     readonly property bool narrow: page.width < 760
+    // A window wide enough for a third column: the medicines and prescriptions
+    // beside the day (and the week); else under the day's list.
+    readonly property bool wide: page.width >= 1400
+    readonly property int sideWidth: Math.round(Math.max(340, Math.min(440, page.width * 0.24)))
     readonly property var locale: Qt.locale(page.sioul.text("qt-locale"))
     readonly property bool onToday: page.mode === "week" ? page.shown.week.days.some(d => d.today) : page.day !== null && page.day.today
 
@@ -77,6 +106,15 @@ Item {
         settings.close()
     }
 
+    // The medicines and the prescriptions brought into view: under the day's
+    // list, scrolled to; in their own column, already there (the window's pictures).
+    signal medicinesWanted
+
+    function showMedicines() {
+        page.setMode("day")
+        page.medicinesWanted()
+    }
+
     // A block of the day shown: its menu, or its form ("move", "times"); what is open; all closed.
     function showMenu(key) {
         const item = page.day ? page.day.items.find(i => i.key === key) : null
@@ -91,12 +129,38 @@ Item {
     }
 
     function openPopup() {
+        const opened = form => form.item && form.item.opened
+        if (opened(medicineForm))
+            return medicineForm.item
+        if (opened(prescriptionForm))
+            return prescriptionForm.item
         return page.menuOpen ? needMenu.item : dayForm.item
     }
 
     function closePopups() {
         needMenu.close()
         dayForm.close()
+        medicineForm.close()
+        prescriptionForm.close()
+    }
+
+    // A medicine or a prescription, new (null) or changed: its form, made the
+    // first time. The prescriptions it can come with as they are now: the
+    // view coming again each minute leaves an open form alone.
+    function editMedicine(medicine) {
+        medicineForm.now().edit(medicine, page.prescriptions)
+    }
+
+    function editPrescription(prescription) {
+        prescriptionForm.now().edit(prescription)
+    }
+
+    // Fetched at the pharmacy today: the next visit is counted from today.
+    function fetched(id) {
+        const problem = page.sioul.refilled(id)
+        if (problem !== "")
+            page.sioul.status = problem
+        page.reload()
     }
 
     // The week of the day asked for, made again off the window's thread (`healthView`).
@@ -108,6 +172,12 @@ Item {
         if (page.sioul.healthView === "")
             return
         page.shown = JSON.parse(page.sioul.healthView)
+        const medicines = page.shown.medicines || []
+        const prescriptions = page.shown.prescriptions || []
+        if (JSON.stringify(medicines) !== JSON.stringify(page.medicines))
+            page.medicines = medicines
+        if (JSON.stringify(prescriptions) !== JSON.stringify(page.prescriptions))
+            page.prescriptions = prescriptions
         page.pick()
     }
 
@@ -184,18 +254,25 @@ Item {
     }
 
     // What can change a block that day: under `under` (its ⋯), else where the
-    // pointer or the finger is (window.menuAt). Nothing for a past one, nor a dose.
+    // pointer or the finger is (window.menuAt). Nothing for a past one, nor a
+    // dose; but a night begun on a past day and not over (after midnight), its
+    // alarm at waking alone, which the core takes until it rings (`alarm_open`).
     function openMenu(day, item, under) {
-        if (day.past || item.past || item.kind === "dose")
+        if (item.kind === "dose")
             return
-        needMenu.now().show(day, item, under || null)
+        const alarmOnly = (day.past || item.past) && item.kind === "sleep" && item.alarm_open === true && (item.alarm || "") !== ""
+        if ((day.past || item.past) && !alarmOnly)
+            return
+        needMenu.now().show(day, item, under || null, alarmOnly)
     }
 
     // A block or a dose tapped in the timeline: chosen, its row shown; in the
     // week, a block's menu at once, a dose's day opened.
     function tapped(segment, at) {
         page.chosen = segment.date + "|" + segment.key
-        if (page.mode === "day") {
+        // The morning part of a night begun the day before is not in this day's
+        // list (its row there is tonight's): its menu instead, as in the week.
+        if (page.mode === "day" && (page.day === null || segment.date === page.day.date)) {
             page.reveal = segment.key
             page.revealed()
             return
@@ -238,7 +315,12 @@ Item {
             page.reload()
     }
 
-    onVisibleChanged: if (page.visible) page.follow()
+    onVisibleChanged: {
+        if (page.visible)
+            page.follow()
+        else
+            page.readable = false
+    }
     Component.onCompleted: {
         page.takeView()
         page.reload()
@@ -331,65 +413,104 @@ Item {
             sourceComponent: missedComponent
         }
 
-        // The day: its timeline, and its list beside it (under it on a phone).
-        Item {
-            id: body
-
-            visible: page.mode === "day"
+        // The day or the week; on a wide window, the medicines and the prescriptions beside them.
+        RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            spacing: page.theme.gap
 
-            HealthTimeline {
-                id: dayLine
+            // The day: its timeline, and its list beside it (under it on a phone).
+            Item {
+                id: body
 
-                width: page.narrow ? body.width : Math.round((body.width - page.theme.gap) * 0.55)
-                height: page.narrow ? Math.round(body.height * 0.38) : body.height
-                sioul: page.sioul
-                theme: page.theme
-                days: page.day ? [page.day] : []
-                fromMinute: page.shown.week.from_minute
-                toMinute: page.shown.week.to_minute
-                lit: page.hovered
-                chosen: page.chosen
-                onHover: ident => page.hovered = ident
-                onTapped: (segment, at) => page.tapped(segment, at)
-                onMenu: (segment, at) => page.held(segment, at)
+                visible: page.mode === "day"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                HealthTimeline {
+                    id: dayLine
+
+                    width: page.narrow ? body.width : Math.round((body.width - page.theme.gap) * 0.55)
+                    height: page.narrow && !page.readable ? Math.round(body.height * 0.38) : body.height
+                    sioul: page.sioul
+                    theme: page.theme
+                    days: page.day ? [page.day] : []
+                    fromMinute: page.shown.week.from_minute
+                    toMinute: page.shown.week.to_minute
+                    lit: page.hovered
+                    chosen: page.chosen
+                    readable: page.readable
+                    onHover: ident => page.hovered = ident
+                    onTapped: (segment, at) => page.tapped(segment, at)
+                    onMenu: (segment, at) => page.held(segment, at)
+                    onReadableAsked: page.readable = true
+                    onReadableDone: page.readable = false
+                }
+                // Made a moment after the first screen, without holding the window.
+                Loader {
+                    id: listLoader
+
+                    // On a phone, behind the timeline opened readable.
+                    visible: !(page.narrow && page.readable)
+                    x: page.narrow ? 0 : dayLine.width + page.theme.gap
+                    y: page.narrow ? dayLine.height + 8 : 0
+                    width: body.width - x
+                    height: body.height - y
+                    asynchronous: true
+                    sourceComponent: dayListComponent
+                }
             }
-            // Made a moment after the first screen, without holding the window.
+
+            // The week: seven columns, the same blocks, the same taps. Made the first time.
             Loader {
-                id: listLoader
+                visible: page.mode === "week"
+                active: page.weekMade
+                Layout.fillWidth: true
+                Layout.fillHeight: true
 
-                x: page.narrow ? 0 : dayLine.width + page.theme.gap
-                y: page.narrow ? dayLine.height + 8 : 0
-                width: body.width - x
-                height: body.height - y
-                asynchronous: true
-                sourceComponent: dayListComponent
+                sourceComponent: HealthTimeline {
+                    sioul: page.sioul
+                    theme: page.theme
+                    titles: true
+                    days: page.shown.week.days
+                    fromMinute: page.shown.week.from_minute
+                    toMinute: page.shown.week.to_minute
+                    lit: page.hovered
+                    chosen: page.chosen
+                    readable: page.readable
+                    onHover: ident => page.hovered = ident
+                    onTapped: (segment, at) => page.tapped(segment, at)
+                    onMenu: (segment, at) => page.held(segment, at)
+                    onReadableAsked: page.readable = true
+                    onReadableDone: page.readable = false
+                    onOpenDay: date => {
+                        page.setMode("day")
+                        page.goTo(date)
+                    }
+                }
             }
-        }
 
-        // The week: seven columns, the same blocks, the same taps. Made the first time.
-        Loader {
-            visible: page.mode === "week"
-            active: page.weekMade
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            // Wide: their own column, its width kept from the start (nothing
+            // moves when it comes), the same in the day and the week. Made
+            // after the first screen, without holding the window.
+            Loader {
+                visible: page.wide
+                active: page.wide
+                asynchronous: true
+                Layout.preferredWidth: page.sideWidth
+                Layout.fillHeight: true
 
-            sourceComponent: HealthTimeline {
-                sioul: page.sioul
-                theme: page.theme
-                titles: true
-                days: page.shown.week.days
-                fromMinute: page.shown.week.from_minute
-                toMinute: page.shown.week.to_minute
-                lit: page.hovered
-                chosen: page.chosen
-                onHover: ident => page.hovered = ident
-                onTapped: (segment, at) => page.tapped(segment, at)
-                onMenu: (segment, at) => page.held(segment, at)
-                onOpenDay: date => {
-                    page.setMode("day")
-                    page.goTo(date)
+                sourceComponent: Component {
+                    ScrollView {
+                        id: side
+
+                        contentWidth: availableWidth
+                        clip: true
+
+                        Medicines {
+                            width: side.availableWidth
+                        }
+                    }
                 }
             }
         }
@@ -432,6 +553,17 @@ Item {
         onClicked: settings.now().open()
     }
 
+    // The medicines and the prescriptions, as the page lists them; their forms are the page's.
+    component Medicines: MedicinesSection {
+        sioul: page.sioul
+        theme: page.theme
+        medicines: page.medicines
+        prescriptions: page.prescriptions
+        onOpenMedicine: medicine => page.editMedicine(medicine)
+        onOpenPrescription: prescription => page.editPrescription(prescription)
+        onFetched: id => page.fetched(id)
+    }
+
     // The day's list: its whole-day events and errands, then its meals, naps,
     // night and doses in time order, each with what changes it; then one to add.
     Component {
@@ -460,6 +592,12 @@ Item {
 
                 function onRevealed() {
                     scroll.showRow(page.reveal)
+                }
+
+                function onMedicinesWanted() {
+                    const flick = scroll.contentItem as Flickable
+                    if (flick && medicinesHere.visible)
+                        flick.contentY = Math.max(0, Math.min(medicinesHere.y + listColumn.y - 8, flick.contentHeight - flick.height))
                 }
             }
 
@@ -618,10 +756,11 @@ Item {
                                     text: row.modelData.off ? page.sioul.text("need-put-back") : page.sioul.textWith("need-later-n", "minutes", String(page.shown.later))
                                     onClicked: page.change(scroll.day.date, row.modelData.key, row.modelData.off ? "on" : "later")
                                 }
+                                // On a past day, a night not over (after midnight): its alarm alone.
                                 ToolButton {
                                     id: more
 
-                                    visible: row.editable && !row.modelData.off
+                                    visible: (row.editable || (row.modelData.kind === "sleep" && row.modelData.alarm_open === true)) && !row.modelData.off
                                     text: "⋯"
                                     Accessible.name: page.sioul.textWith("need-menu", "name", row.modelData.name)
                                     ToolTip.visible: hovered
@@ -668,6 +807,16 @@ Item {
                     onClicked: dayForm.now().edit("add", scroll.day, null)
                 }
 
+                // How the day went, in the words said then; today in the evening, "Close the day" (DayReviewLine.qml, docs/reviews.md).
+                DayReviewLine {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    sioul: page.sioul
+                    theme: page.theme
+                    window: page.window
+                    date: scroll.day !== null ? scroll.day.date : ""
+                }
+
                 // Today: what is not known of the doses marked elsewhere; where reminders come.
                 Label {
                     readonly property string said: [page.shown.shared_note, page.shown.reminded_there].filter(t => t !== "").join(" ")
@@ -682,9 +831,25 @@ Item {
                     color: page.shown.shared_note !== "" ? page.theme.warm : page.theme.muted
                 }
 
-                // Today: what the watch says, once one is set up; made after the rest.
+                // The medicines and the prescriptions, after the day (their own
+                // column on a wide window); below the first screen of a phone.
                 Loader {
-                    active: scroll.day !== null && scroll.day.today && page.shown.watch !== null && page.shown.watch.any
+                    id: medicinesHere
+
+                    active: !page.wide
+                    visible: active
+                    Layout.fillWidth: true
+                    Layout.topMargin: 14
+                    asynchronous: true
+                    sourceComponent: Component {
+                        Medicines {}
+                    }
+                }
+
+                // Today: what the watch says, once one is set up; made after the
+                // rest, the medicines above it first, so that it does not move.
+                Loader {
+                    active: scroll.day !== null && scroll.day.today && page.shown.watch !== null && page.shown.watch.any && (page.wide || medicinesHere.status === Loader.Ready)
                     visible: active
                     Layout.fillWidth: true
                     asynchronous: true
@@ -788,13 +953,16 @@ Item {
 
                 property var day: null
                 property var item: null
+                // A night begun on a past day, not over: its alarm alone (the rest of that day is as it was).
+                property bool alarmOnly: false
                 readonly property bool today: menu.day !== null && menu.day.today
                 readonly property bool off: menu.item !== null && menu.item.off
                 readonly property bool added: menu.item !== null && menu.item.added
 
-                function show(day, item, under) {
+                function show(day, item, under, alarmOnly) {
                     menu.day = day
                     menu.item = item
+                    menu.alarmOnly = alarmOnly === true
                     if (under)
                         menu.popup(under, 0, under.height)
                     else
@@ -809,39 +977,52 @@ Item {
                 onClosed: page.menuOpen = false
 
                 MenuItem {
-                    visible: !menu.off
+                    visible: !menu.off && !menu.alarmOnly
                     height: visible ? implicitHeight : 0
                     text: page.sioul.textWith("need-later-n", "minutes", String(page.shown.later))
                     onTriggered: menu.act("later")
                 }
                 MenuItem {
-                    visible: !menu.off
+                    visible: !menu.off && !menu.alarmOnly
                     height: visible ? implicitHeight : 0
                     text: page.sioul.text("need-move-to") + "…"
                     onTriggered: dayForm.now().edit("move", menu.day, menu.item)
                 }
                 MenuItem {
-                    visible: !menu.off
+                    visible: !menu.off && !menu.alarmOnly
                     height: visible ? implicitHeight : 0
                     text: page.sioul.text("need-change-times")
                     onTriggered: dayForm.now().edit("times", menu.day, menu.item)
                 }
                 // No notice that day, kept free all the same; or back.
                 MenuItem {
-                    visible: !menu.off
+                    visible: !menu.off && !menu.alarmOnly
                     height: visible ? implicitHeight : 0
                     text: menu.item === null ? "" : page.sioul.text(menu.item.quiet ? (menu.today ? "need-unskip" : "need-unskip-day") : (menu.today ? "needs-not-today" : "need-not-that-day"))
                     onTriggered: menu.act(menu.item.quiet ? "loud" : "quiet")
                 }
+                // The alarm at waking, the morning this night ends: none that morning, or back (docs/health.md).
+                // A night known only from the timeline (the week before's) has no alarm said: none offered.
                 MenuItem {
-                    visible: menu.item !== null && menu.item.changed && !menu.off
+                    visible: menu.item !== null && menu.item.kind === "sleep" && (menu.item.alarm || "") !== "" && !menu.off
+                    height: visible ? implicitHeight : 0
+                    text: menu.item === null ? "" : page.sioul.textWith(menu.item.alarm_skipped ? "wake-unskip" : "wake-skip", "time", menu.item.alarm || "")
+                    onTriggered: menu.act(menu.item.alarm_skipped ? "alarm" : "no-alarm")
+                }
+                MenuItem {
+                    visible: menu.item !== null && menu.item.changed && !menu.off && !menu.alarmOnly
                     height: visible ? implicitHeight : 0
                     text: page.sioul.text("need-as-usual")
                     onTriggered: menu.act("usual")
                 }
-                MenuSeparator {}
+                MenuSeparator {
+                    visible: !menu.alarmOnly
+                    height: visible ? implicitHeight : 0
+                }
                 // Taken out that day (its time free for other things), or put back; one added that day, gone.
                 MenuItem {
+                    visible: !menu.alarmOnly
+                    height: visible ? implicitHeight : 0
                     text: page.sioul.text(menu.off ? "need-put-back" : menu.added ? "needs-remove" : menu.today ? "need-remove-today" : "need-remove-day")
                     onTriggered: menu.act(menu.off ? "on" : "off")
                 }
@@ -857,6 +1038,31 @@ Item {
             NeedDayForm {
                 sioul: page.sioul
                 theme: page.theme
+            }
+        }
+    }
+
+    // A medicine, a prescription: new, changed, taken out. The page's own, so
+    // that a form open stays open when their list moves to another column.
+    Later {
+        id: medicineForm
+
+        sourceComponent: Component {
+            MedicineDialog {
+                sioul: page.sioul
+                theme: page.theme
+                onSaved: page.reload()
+            }
+        }
+    }
+    Later {
+        id: prescriptionForm
+
+        sourceComponent: Component {
+            PrescriptionDialog {
+                sioul: page.sioul
+                theme: page.theme
+                onSaved: page.reload()
             }
         }
     }

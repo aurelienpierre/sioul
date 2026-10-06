@@ -14,7 +14,7 @@ La page Paramètres a cinq onglets.
 
 - **Langue** : celle du système, English ou Français. Toutes les phrases de Sioul la suivent.
 - **Couleurs** : claires, sombres, ou celles du système. Les icônes suivent au prochain démarrage.
-- **Afficher les mots de passe pendant la saisie** : chaque champ de mot de passe, de phrase de passe ou de clé montre ce que vous tapez dès le départ, sur cet ordinateur. Sans ce réglage, l’œil au bout de chaque champ affiche ou masque ce que vous avez tapé, à tout moment.
+- **Afficher les mots de passe pendant la saisie** : chaque champ de mot de passe, de phrase de passe ou de clé montre ce que vous tapez dès le départ, sur cet appareil. Sans ce réglage, l’œil au bout de chaque champ affiche ou masque ce que vous avez tapé, à tout moment.
 
 ## Heures {#hours}
 
@@ -47,7 +47,7 @@ Les prises de médicaments sont rappelées depuis la page [Santé](health.md), e
 ## Votre dossier et le partage {#your-folder-and-sharing}
 
 - **Le dossier des notes** : votre dossier de fichiers Markdown, lu comme un coffre : vos notes, et à côté vos projets, budgets, papiers et lettres. Sioul s’y lie ; il ne le possède jamais.
-- **Entre vos ordinateurs** : partager avec vos autres appareils ce que Sioul garde sur celui-ci, partie par partie, scellé par une phrase de passe ; vos notes et vos papiers aussi, si vous les activez. Voir [Partager entre vos appareils](sharing.md).
+- **Entre vos appareils** : partager avec vos autres appareils ce que Sioul garde sur celui-ci, partie par partie, scellé par une phrase de passe ; vos notes et vos papiers aussi, si vous les activez. Voir [Partager entre vos appareils](sharing.md).
 
 ## Factures {#invoices}
 

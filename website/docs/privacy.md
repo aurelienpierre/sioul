@@ -1,6 +1,6 @@
 ---
 title: Privacy policy
-description: Sioul's privacy policy - Sioul runs on your computer and has no server; what it reads and writes in your Google account, where it is kept, what is shared and how to take the access back.
+description: Sioul's privacy policy - Sioul runs on your device and has no server; what it reads and writes in your Google account, where it is kept, what is shared and how to take the access back.
 ---
 
 # Privacy policy
@@ -11,10 +11,10 @@ Sioul is a free and open-source desktop application, published by Aurélien Pier
 
 ## In short
 
-- **Sioul runs on your computer. There is no Sioul server.**
-- Your data stays on your computer and in your own accounts: your mail provider, your calendar server, your Google account.
+- **Sioul runs on your device. There is no Sioul server.**
+- Your data stays on your device and in your own accounts: your mail provider, your calendar server, your Google account.
 - Nothing is sent to the developer of Sioul. Nothing is sold, nothing is used for advertising, nothing is used to build profiles.
-- Data leaves your computer only to the services you add, and to the few others described below, each for a feature you choose.
+- Data leaves your device only to the services you add, and to the few others described below, each for a feature you choose.
 
 Anyone can read Sioul's source code, to check what this policy says: [github.com/aurelienpierre/sioul](https://github.com/aurelienpierre/sioul).
 
@@ -24,7 +24,7 @@ Sioul is made and published by Aurélien Pierre. Since Sioul has no server, its 
 
 ## How Sioul works
 
-Sioul connects, from your computer, to the services you add to it: your mail provider (IMAP and SMTP), your calendar and contacts server (CalDAV and CardDAV), Google. It keeps a copy of what it fetches in files in your own user folders, so that it can work without waiting for the network. Passwords and access tokens go to your system's keyring (the Secret Service on Linux, the Credential Manager on Windows, the Keychain on macOS), never into a file.
+Sioul connects, from your device, to the services you add to it: your mail provider (IMAP and SMTP), your calendar and contacts server (CalDAV and CardDAV), Google. It keeps a copy of what it fetches in files in your own user folders, so that it can work without waiting for the network. Passwords and access tokens go to your system's keyring (the Secret Service on Linux, the Credential Manager on Windows, the Keychain on macOS), never into a file.
 
 ## Google calendars, contacts and tasks
 
@@ -43,13 +43,13 @@ Signing in with Google gives Sioul no access to your Gmail. If you read Gmail in
 
 ### How Google data is used
 
-Only to show your calendars, contacts and tasks in Sioul, on your computer, and to write back to your Google account the changes you make there, when you make them. Within Sioul, this data serves the features you see: the agenda, the contacts, the tasks and the plan of your days, reminders before events and dates, and the ties you make between your things.
+Only to show your calendars, contacts and tasks in Sioul, on your device, and to write back to your Google account the changes you make there, when you make them. Within Sioul, this data serves the features you see: the agenda, the contacts, the tasks and the plan of your days, reminders before events and dates, and the ties you make between your things.
 
 Google data is not used for advertising, not sold, not used to build profiles, and not used to develop, improve or train artificial intelligence or machine-learning models. Nobody working on Sioul can read it: it never reaches them.
 
 ### Where Google data is kept
 
-- **On your computer**: one file per event, task and contact, in Sioul's data folder (on Linux, `~/.local/share/sioul/calendars/` and `~/.local/share/sioul/contacts/`, in a folder named after the account).
+- **On your device**: one file per event, task and contact, in Sioul's data folder (on Linux, `~/.local/share/sioul/calendars/` and `~/.local/share/sioul/contacts/`, in a folder named after the account).
 - **In your own Google account**, where it already is.
 - **The sign-in**: the refresh token Google gives, with the client's identifier, as one entry in your system's keyring. The access token stays in memory only, for an hour at most.
 
@@ -57,13 +57,13 @@ Nothing is kept on any server of the developer: there is none.
 
 ### Sharing of Google data
 
-Sioul does not send data received from Google APIs to its developer, or to any third party. That data leaves your computer only in these cases, each chosen by you:
+Sioul does not send data received from Google APIs to its developer, or to any third party. That data leaves your device only in these cases, each chosen by you:
 
 1. **Back to Google**, when you change something in Sioul.
 2. **When you send something yourself**: an e-mail is sent only when you press Send. When you write to the guests of an event, their addresses come from the event.
 3. **To OpenStreetMap's geocoder**, only once you allow it (**Place them**, on the Contacts page's map, or **Place contacts on the map** in its settings): your contacts' postal addresses, Google contacts' included, are sent once each to OpenStreetMap's Nominatim service, to find where they are on the map. Nothing else is sent with them.
-4. **To your other devices**, only if you turn on [sharing between your devices](guide/sharing.md): what Sioul keeps on this computer about your things (for example, which note is tied to which task, or the time noted on a task) travels through a folder of your own sync service, encrypted on your computer with your passphrase; that service cannot read it. Your Google events, contacts and tasks themselves travel only by Google.
-5. **To an AI agent you connect yourself**, only if you do (see [Using an AI agent](guide/ai-agent.md)): an agent such as Claude Code or Claude Desktop, connected to Sioul on your computer, can read what Sioul keeps, Google calendars, contacts and tasks included, and the company behind its model receives what it reads, under your own agreement with that company. Sioul never connects an agent by itself.
+4. **To your other devices**, only if you turn on [sharing between your devices](guide/sharing.md): what Sioul keeps on this device about your things (for example, which note is tied to which task, or the time noted on a task) travels through a folder of your own sync service, encrypted on your device with your passphrase; that service cannot read it. Your Google events, contacts and tasks themselves travel only by Google.
+5. **To an AI agent you connect yourself**, only if you do (see [Using an AI agent](guide/ai-agent.md)): an agent such as Claude Code or Claude Desktop, connected to Sioul on your device, can read what Sioul keeps, Google calendars, contacts and tasks included, and the company behind its model receives what it reads, under your own agreement with that company. Sioul never connects an agent by itself.
 
 Sioul's use and transfer of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
 
@@ -72,18 +72,18 @@ Sioul's use and transfer of information received from Google APIs adheres to the
 - **In Sioul**: Accounts ▸ Your accounts, on the Google account's card, **Remove**. Sioul gives the access back to Google (it revokes the token) and empties its keyring entry.
 - **At Google**: [myaccount.google.com/permissions](https://myaccount.google.com/permissions), where you can remove Sioul's access at any time.
 
-Removing the account leaves your Google account itself as it is. The copies already on your computer stay in Sioul's data folder until you delete them: on Linux, the folders named after the account in `~/.local/share/sioul/calendars/` and `~/.local/share/sioul/contacts/`.
+Removing the account leaves your Google account itself as it is. The copies already on your device stay in Sioul's data folder until you delete them: on Linux, the folders named after the account in `~/.local/share/sioul/calendars/` and `~/.local/share/sioul/contacts/`.
 
-If you use a Google key of your own (your own Google Cloud project, as Sioul allows), all of the above holds the same: the data travels only between your computer and Google.
+If you use a Google key of your own (your own Google Cloud project, as Sioul allows), all of the above holds the same: the data travels only between your device and Google.
 
 ## Other data
 
-Sioul reads and keeps your mail, calendars, contacts, tasks, notes, budgets, papers and the other things you give it, on your computer, as described above. Besides your own providers, it reaches other services only for a feature you choose:
+Sioul reads and keeps your mail, calendars, contacts, tasks, notes, budgets, papers and the other things you give it, on your device, as described above. Besides your own providers, it reaches other services only for a feature you choose:
 
 - **Weather**, if you choose a place: Open-Meteo receives that place's coordinates, rounded to two decimals, at most every half hour, or the name of a town you search.
 - **The map of your contacts**, if you allow it: OpenStreetMap's geocoder receives their postal addresses, once each; map images come from OpenStreetMap, or from the source you chose.
 - **Finding someone's encryption key**, when you ask: their domain's Web Key Directory, then keys.openpgp.org, receive the address you write to.
-- **The AI shield**, only for an address you protect against harassment and only if you turn it on: each new message to that address is sent once to Anthropic, with your own key, to tell its tone and topic. The answer stays on your computer. It reads mail only, never Google data.
+- **The AI shield**, only for an address you protect against harassment and only if you turn it on: each new message to that address is sent once to Anthropic, with your own key, to tell its tone and topic. The answer stays on your device. It reads mail only, never Google data.
 - **GitHub**, if you turn it on: your issues and pull requests are read with your own token. Nothing is written to GitHub.
 - **Bitwarden**, when you fill a login from your vault: your Bitwarden server, with your account.
 - **The sites you pin**, as any browser: each is also asked for its own icon.
@@ -95,7 +95,7 @@ Sioul has no analytics, no advertising, no tracking, and no crash reports.
 
 ## Security
 
-Connections to Google use HTTPS. The sign-in follows Google's guidance for installed applications: Google's page opens in your browser, and Sioul receives the answer on your own computer only (a loopback address), checked with PKCE and a state value. Passwords and tokens are kept in your system's keyring. What you share between your computers is encrypted on your computer before it leaves it.
+Connections to Google use HTTPS. The sign-in follows Google's guidance for installed applications: Google's page opens in your browser, and Sioul receives the answer on your own device only (a loopback address), checked with PKCE and a state value. Passwords and tokens are kept in your system's keyring. What you share between your devices is encrypted on your device before it leaves it.
 
 ## This website
 
@@ -109,4 +109,4 @@ Any change is published on this page, with a new date. The history of this page 
 
 Questions about this policy, or about your data: [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 
-The developer holds none of your data, so there is nothing of yours to ask the developer for, correct or delete: everything Sioul keeps is on your computer and in your own accounts, where you can read it, change it or delete it.
+The developer holds none of your data, so there is nothing of yours to ask the developer for, correct or delete: everything Sioul keeps is on your device and in your own accounts, where you can read it, change it or delete it.

@@ -50,7 +50,7 @@ They are saved in the card itself (vCard's `CATEGORIES`), so Nextcloud, your pho
 - **A number or an address written twice on one card.** "06 08 12 34 56" and "+33 6 08 12 34 56" are one number: spaces, dots and the country's prefix aside. Each card concerned is listed with what would go, ticked; **Take the duplicates off** keeps one of each, the one written with its country, with what the others said of it (mobile, work).
 - **Two cards that may be one person**: the same name (in any order, case and accents aside), the same number, or the same address. They come one pair at a time, side by side, with what they share. Choose the name kept, then **Merge**: one card keeps everything of both (numbers, addresses, web sites, categories, notes, and the photo, organisation and birthday of the name kept when it has them), and the other is deleted, here and on the server. **Not the same** keeps them apart and never asks again; **Later** shows the next pair.
 
-**Done lately** lists what was cleaned and merged, each with **Undo**, for thirty days: the cards come back as they were, here and on the server. Contacts kept on this computer only are handled the same way.
+**Done lately** lists what was cleaned and merged, each with **Undo**, for thirty days: the cards come back as they were, here and on the server. Contacts kept on this device only are handled the same way.
 
 !!! note "Numbers written without their country"
     "06 08 12 34 56" has no country: Sioul reads it as a number of the country set in the Contacts settings, by default your system's (France for French). This only serves to compare numbers: your cards keep them as they are written.
@@ -62,7 +62,7 @@ The map button above the list shows everyone with a postal address on one map, a
 To be placed, an address has to be turned into a point on the map. Sioul does not do it by itself: the first time, it asks.
 
 !!! note "Placing your contacts"
-    **Place them** sends your contacts' postal addresses to OpenStreetMap's geocoder (Nominatim), once each, one a second. Nothing else goes with them. The places found are kept on this computer, and each address is asked only once.
+    **Place them** sends your contacts' postal addresses to OpenStreetMap's geocoder (Nominatim), once each, one a second. Nothing else goes with them. The places found are kept on this device, and each address is asked only once.
 
 The map images come from OpenStreetMap, fetched sparingly and kept. You can give another source in the settings.
 

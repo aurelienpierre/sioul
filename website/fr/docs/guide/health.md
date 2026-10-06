@@ -4,10 +4,10 @@ description: La santé dans Sioul – la journée et la semaine d’un coup d’
 
 # La santé {#health}
 
-Votre journée d’un coup d’œil : les repas, le repos, le sommeil et les prises, gardés libres dans votre plan, et changés pour un jour d’un geste quand ce jour-là sort de l’ordinaire. Les médicaments, les ordonnances, les repas et la nuit habituels, une pause pour bouger et une limite pour les discussions se règlent une fois, derrière le ⚙ de la page. Tout reste sur cet ordinateur ; rien ne compte ce qui a été manqué, rien ne devient rouge.
+Votre journée d’un coup d’œil : les repas, le repos, le sommeil et les prises, gardés libres dans votre plan, et changés pour un jour d’un geste quand ce jour-là sort de l’ordinaire. Vos médicaments et vos ordonnances y sont aussi, avec la journée : vous les ajoutez et les modifiez sur la page. Les repas et la nuit habituels, une pause pour bouger et une limite pour les discussions se règlent une fois, derrière le ⚙ de la page. Tout reste sur cet appareil ; rien ne compte ce qui a été manqué, rien ne devient rouge.
 
 <figure markdown="span">
-  [![La page Santé : « Aujourd’hui, lundi 5 octobre » entre deux flèches, Jour et Semaine, la roue des réglages. À gauche, la ligne du temps de la journée : la nuit jusqu’à 07:00, le petit déjeuner, le déjeuner et le dîner, chacun avec son temps de préparation plus clair, la nuit à partir de 22:00 ; les événements et les étapes prévues du jour estompés sur le côté ; un point par prise, plein une fois prise ; une ligne à l’heure qu’il est. À droite, la même chose en liste : chaque repas avec ses heures et « le repas à… », une prise « Pris à 07:41 », les suivantes avec Pris, le dîner et la nuit avec « 15 min plus tard » et un menu ; puis « Ajouter un repas ou un repos… ».](../assets/screens/fr/health.png){ loading=lazy }](../assets/screens/fr/health.png "Ouvrir l’image en grand")
+  [![La page Santé : « Aujourd’hui, lundi 5 octobre » entre deux flèches, Jour et Semaine, la roue des réglages. À gauche, la ligne du temps de la journée : la nuit jusqu’à 07:00, le petit déjeuner, le déjeuner et le dîner, chacun avec son temps de préparation plus clair, la nuit à partir de 22:00 ; les événements et les étapes prévues du jour estompés sur le côté ; un point par prise, plein une fois prise ; une ligne à l’heure qu’il est. À droite, la même chose en liste : chaque repas avec ses heures et « le repas à… », une prise « Pris à 07:41 », les suivantes avec Pris, le dîner et la nuit avec « 15 min plus tard » et un menu ; puis « Ajouter un repas ou un repos… ». Dessous, les médicaments, chacun avec sa dose, ses heures et Modifier, et les ordonnances.](../assets/screens/fr/health.png){ loading=lazy }](../assets/screens/fr/health.png "Ouvrir l’image en grand")
   <figcaption>La journée d’un coup d’œil : sa ligne du temps et sa liste, une seule chose.</figcaption>
 </figure>
 
@@ -15,22 +15,32 @@ Votre journée d’un coup d’œil : les repas, le repos, le sommeil et les p
 
 La page s’ouvre sur aujourd’hui : **‹ Aujourd’hui, lundi 5 octobre ›**, un jour à la fois avec les flèches (une semaine en arrière au plus : les jours passés restent tels qu’ils étaient), **Aujourd’hui** pour y revenir.
 
-- **Jour** : la ligne du temps de la journée, et à côté (dessous sur un téléphone) la même chose en liste. Sur la ligne du temps, vos repas, siestes et la nuit en blocs, le temps de préparer un repas, de se préparer à dormir ou de revenir d’une sieste un peu plus clair ; vos prises en points, pleins une fois prises ; les événements du jour et les étapes prévues aujourd’hui estompés sur le côté, pour voir ce que la journée contient autour. Dans la liste, chacun dans l’ordre des heures, avec ses heures, ce que ce jour-là en fait, et ce qui le change. Montrez une ligne, ou touchez-la, et son bloc s’éclaire ; et inversement.
-- **Semaine** : du lundi au dimanche côte à côte, les mêmes blocs. Quand un jour va sortir de l’ordinaire (un déjeuner dehors, pas de sieste, une nuit tardive), réglez-le là, à l’avance : touchez son bloc. Touchez le nom d’un jour pour l’ouvrir.
+- **Jour** : la ligne du temps de la journée, et à côté (dessous sur un téléphone) la même chose en liste. Sur la ligne du temps, vos repas, siestes et la nuit en blocs, le temps de préparer un repas, de se préparer à dormir ou de revenir d’une sieste un peu plus clair ; vos prises en points, pleins une fois prises ; les événements du jour et les étapes prévues aujourd’hui estompés sur le côté, pour voir ce que la journée contient autour. Dans la liste, chacun dans l’ordre des heures, avec ses heures, ce que ce jour-là en fait, et ce qui le change. Montrez une ligne, ou touchez-la, et son bloc s’éclaire ; et inversement. Viennent ensuite vos [médicaments](#medicines) et vos [ordonnances](#prescriptions) : sous la liste, ou dans une colonne à eux sur un écran large.
+- **Semaine** : du lundi au dimanche côte à côte, les mêmes blocs. Quand un jour va sortir de l’ordinaire (un déjeuner dehors, pas de sieste, une nuit tardive), réglez-le là, à l’avance : touchez son bloc. Touchez le nom d’un jour pour l’ouvrir. Sur un écran large, vos médicaments et vos ordonnances restent à côté.
 
 **Changer un jour**, ce jour-là seulement, sans question : **15 min plus tard** (autant de fois que vous voulez), **Déplacer à…** une autre heure, **Changer ses heures…** (de, à ; pour un repas les minutes pour le préparer, pour une sieste les minutes pour revenir, pour la nuit le coucher et le lever), **Pas aujourd’hui** (pas d’avis ce jour-là, mais son temps reste libre de tâches ; **Finalement aujourd’hui** le reprend), **Comme d’habitude**, et **Retirer d’aujourd’hui** : son temps revient à vos tâches, et la ligne reste, discrète, avec **Remettre**. **Ajouter un repas ou un repos…** en ajoute un pour ce jour-là seulement. Vos repas, siestes et nuit habituels ne changent jamais d’ici : ils sont dans le ⚙. Vos autres appareils reçoivent aussi ces changements, quand vous partagez avec eux.
+
+**Le déplacer à la main**, sur la ligne du temps : faites glisser un repas, une sieste ou la nuit vers une autre heure de son jour ; il garde sa durée. Faites glisser son bord du bas pour changer la durée d’un repas ou d’une sieste ; le bord du haut de la nuit est le coucher, son bord du bas le lever (dans la colonne du lendemain matin : celle de demain, ou la semaine). Pendant que vous le faites glisser, ses nouvelles heures s’affichent au-dessus, de cinq en cinq minutes. Lâchez-le : c’est le changement de ce jour-là, comme **Déplacer à…** le fait, et **Annuler** attend dix secondes dans la ligne d’état ; lâché là où il était, rien ne change. Les jours passés et ce qui est déjà fini restent tels quels ; dans la semaine, un bloc reste sur son jour.
+
+- **À la souris** : appuyez et faites glisser ; la molette fait défiler.
+- **Sur un écran tactile** : gardez le doigt sur le bloc jusqu’à ce qu’il se soulève, puis faites-le glisser ; un simple balayage fait défiler. Gardé puis lâché sans bouger, il ouvre son menu.
+- **Sur un téléphone**, toute la journée tient dans un tiers de l’écran, trop petit pour un doigt : gardez le doigt sur la ligne du temps et elle s’agrandit, l’heure sous votre doigt restant sous lui, et le bloc où vous étiez suit votre doigt. Quand deux blocs sont tout proches, aucun n’est pris : gardez de nouveau le doigt sur celui que vous voulez. Les bords que vous pouvez déplacer montrent une petite barre. **Terminé**, sous les heures, ou Retour, revient à la journée entière.
+
+Les menus (**Déplacer à…**, **Changer ses heures…**) font de même au clavier.
 
 Si des prises étaient prévues pendant que Sioul était fermé, la question à leur sujet vient au-dessus de la journée.
 
 ## Les médicaments {#medicines}
 
-Dans les réglages de la page (⚙), **Ajouter un médicament** : son **Nom**, sa **Dose** (« un comprimé »), et **Quand** :
+Sur la page, après la journée (sous sa liste, ou à côté sur un écran large), **Ajouter un médicament** : son **Nom**, sa **Dose** (« un comprimé »), et **Quand** :
 
 - **À heures fixes chaque jour** : « 08:00, 20:00 » ;
 - **Tous les quelques jours**, à une heure donnée, à partir d’un jour donné : « un jour sur deux à 08:00 » ;
 - **Toutes les quelques heures**, à partir d’une heure donnée : « toutes les 6 heures, à partir de 18:30 ».
 
 Puis **Jusqu’au** : un jour, ou aussi longtemps que le traitement dure ; l’**Ordonnance** d’où il vient ; **En pause pour l’instant**.
+
+Chaque médicament y est alors listé avec sa dose et ses heures (« 07:30 », « 12:30 · 20:00 »), et jusqu’à quand ; en pause, ou passé son dernier jour, un peu plus discret. **Modifier** rouvre sa fiche, où **Le retirer** l’enlève après une question. Si les prises du jour ont été prises, c’est la liste de la journée qui le dit, pas celle-ci.
 
 ### Aujourd’hui {#today}
 
@@ -48,9 +58,9 @@ Une notification sur le bureau par prise, dans la demi-heure qui suit son heure,
 
 Si Sioul était fermé à ce moment-là, une prise des douze dernières heures qui n’a été ni marquée ni rappelée est demandée sur le Porche au démarrage suivant, et sur cette page : avec **Pris…** (quand vous l’avez prise) et **Pas pris**. C’est une question sur le passé, jamais un rappel d’en prendre une maintenant.
 
-### Sur plusieurs ordinateurs {#on-several-computers}
+### Sur plusieurs appareils {#on-several-computers}
 
-Seul l’ordinateur où vous êtes vous fait le rappel. Une prise marquée sur l’un passe tout de suite aux autres. Pour cela, [partagez entre vos ordinateurs](sharing.md) ; sans cela, la page dit que les prises ne sont connues que de cet ordinateur.
+Seul l’appareil où vous êtes vous fait le rappel. Une prise marquée sur l’un passe tout de suite aux autres. Pour cela, [partagez entre vos appareils](sharing.md) ; sans cela, la page dit que les prises ne sont connues que de cet appareil.
 
 **Quand Sioul ne peut pas savoir.** Un médicament pris deux fois peut faire du mal : Sioul ne dit donc jamais qu’une prise n’a pas été prise s’il ne le sait pas. Vos appareils échangent par un dossier qu’un autre programme synchronise, parfois en retard : la synchronisation d’un téléphone peut n’apporter les fichiers que toutes les demi-heures. Quand Sioul n’a pas eu de nouvelles d’un de vos appareils depuis l’heure de la prise, qu’une partie de ce qu’il a écrit n’a pas pu être lue, ou que le registre des prises de cet appareil n’a pas pu être lu, il le dit sous la prise, sur le Porche et sur cette page : « Sioul ne peut pas savoir si elle a été prise : votre portable a été entendu pour la dernière fois le lundi 5 octobre à 07:52. Vérifiez avant de la prendre. » Un rappel attend alors des nouvelles jusqu’à dix minutes, puis vient avec le titre **À vérifier d’abord**. Regardez l’autre appareil, ou votre pilulier, avant de la prendre.
 
@@ -72,21 +82,31 @@ Un repas qui tomberait pendant un événement passe après lui de lui-même, ce 
 
 **Pendant le sommeil**, du moment de se détendre au réveil et pendant une sieste, rien ne dérange : aucune notification sauf les prises (plus haut, « Les rappels »). L’avis propre à la nuit vient quand même à son début. Sans nuit réglée, rien n’éloigne les notifications la nuit : le Porche la demande dans une carte. Voir [Les heures](hours.md#sleep).
 
+**Le réveil au lever**, sur un téléphone avec Sioul pour Android : sous la nuit, dans les réglages de la page (⚙), cochez les matins où il sonne. Il sonne à la fin de la nuit, telle que chaque nuit est sur la page : une nuit changée ce jour-là sonne à son propre lever, une nuit retirée ce jour-là ne sonne pas, et le menu de la nuit propose **Pas de réveil à 07:00** pour ce matin-là seulement, même après minuit. Il sonne avec le son d’alarme du téléphone, très bas d’abord puis de plus en plus fort pendant une demi-minute, par-dessus l’écran de verrouillage, jusqu’à **Arrêter** ou **10 min plus tard**. Le mode Ne pas déranger d’Android laisse passer les alarmes. Android doit laisser Sioul poser des alarmes exactes (« Alarmes et rappels ») : le réglage dit quand ce n’est pas le cas, avec un bouton pour l’autoriser. Réglé sur n’importe lequel de vos appareils, il ne sonne que sur le téléphone. Sur le téléphone, **Essayer le réveil** le fait sonner dix secondes plus tard, comme au lever, sans rien changer : votre nuit et votre prochain réveil restent tels quels ; quand Android refuse ce qu’il lui faut, il dit pourquoi à la place. Pas encore essayé sur un téléphone.
+
 Rien de ce que vous mangez ni de votre sommeil n’est demandé ni noté : ni comptes, ni historique. La façon de faire suit la recherche sur la manière dont les personnes qui ont du mal à manger veulent être invitées à le faire ([les notes de recherche (en anglais)](https://aurelienpierre.github.io/sioul/dev/research/meal-prompts.html)).
+
+## Avant de dormir {#before-sleep}
+
+Quand le moment de se détendre commence, l’avis de la nuit a **Clore la journée** à côté d’**Options…** (sous Linux), tant que la journée n’est pas close. Le soir, à partir de trois heures avant, la ligne d’état le propose aussi ; et sur cette page, sous aujourd’hui, **Clore la journée** le soir et pendant la nuit.
+
+Il ouvre la même feuille qu’à la fin du travail, sur toute la journée : ce que vous avez dit du matin, la fin du travail telle que vous l’avez dite alors, la première étape de demain si elle a été nommée, et ce que la journée a demandé et donné, en mots seulement (« Réflexion : charge lourde pour vous. », « Du temps vous a ressourcé. »). Puis comment la journée a été, son mélange, et une note, chacun facultatif. **Clore la journée** les garde ; **Pas maintenant** ne change rien.
+
+Aucun nombre, aucun score, aucune couleur. Sous chaque jour passé, sur cette page, les mots que vous aviez dits alors et vos notes. Dès le moment de se détendre, la ligne d’état ne propose plus rien.
 
 ## Les ordonnances {#prescriptions}
 
-Dans les réglages de la page (⚙), **Ajouter une ordonnance** : ce qu’elle prescrit, qui l’a écrite, jusqu’à quand elle est valable, combien de jours la pharmacie donne à la fois, et la date du dernier retrait.
+Sur la page, sous vos médicaments, **Ajouter une ordonnance** : ce qu’elle prescrit, qui l’a écrite, jusqu’à quand elle est valable, combien de jours la pharmacie donne à la fois, et la date du dernier retrait. Chacune est ensuite listée avec qui l’a écrite, le prochain passage à la pharmacie et le jour où la renouveler, en mots (« pharmacie à partir du mardi 27 octobre · à renouveler d’ici le jeudi 4 février 2027 »), et les médicaments qui viennent avec elle ; **Modifier** la rouvre.
 
 Sioul crée alors les démarches, une fois chacune :
 
 - deux jours avant que les médicaments ne manquent, une tâche « Pharmacie : … » ;
 - deux semaines avant la fin de l’ordonnance, une tâche « Médecin : renouveler l’ordonnance de … ».
 
-Elles vont dans la liste que vous choisissez sous **Les démarches vont dans**, pour que votre téléphone les ait. **Retiré aujourd’hui** compte le prochain passage à partir d’aujourd’hui. Le jour où l’une commence, une ligne de la page le dit.
+Elles vont dans la liste que vous choisissez sous **Les démarches vont dans**, dans les réglages de la page (⚙), pour que votre téléphone les ait. **Retiré aujourd’hui** compte le prochain passage à partir d’aujourd’hui. Le jour où l’une commence, une ligne de la page le dit.
 
 !!! note "Ces démarches sont des tâches"
-    Les titres des démarches nomment le médicament, et elles vont dans votre liste de tâches, sur votre serveur d’agenda quand la liste s’y trouve. Choisissez une liste « sur cet ordinateur seulement » si vous préférez les garder ici.
+    Les titres des démarches nomment le médicament, et elles vont dans votre liste de tâches, sur votre serveur d’agenda quand la liste s’y trouve. Choisissez une liste « sur cet appareil seulement » si vous préférez les garder ici.
 
 ## Votre montre {#your-watch}
 
@@ -110,4 +130,4 @@ Le matin, la page Tâches peut dire une ligne, jamais une notification : aprè
 
 ## Où tout est gardé {#where-it-is-kept}
 
-Sur cet ordinateur, dans trois fichiers des dossiers propres à Sioul : ce que vous saisissez, les jours qui sortent de l’ordinaire, et les prises marquées. Ils ne vont nulle part, sauf si vous partagez entre vos ordinateurs : ils voyagent alors scellés, par votre propre dossier synchronisé ([Le partage](sharing.md)).
+Sur cet appareil, dans trois fichiers des dossiers propres à Sioul : ce que vous saisissez, les jours qui sortent de l’ordinaire, et les prises marquées. Ils ne vont nulle part, sauf si vous partagez entre vos appareils : ils voyagent alors scellés, par votre propre dossier synchronisé ([Le partage](sharing.md)).

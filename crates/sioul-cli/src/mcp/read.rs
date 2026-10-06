@@ -483,7 +483,9 @@ impl Desk {
         let stopped = sessions.iter().filter(|x| !x.note.is_empty()).map(|x| (x.task.clone(), x.note.clone())).collect();
         let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
         let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.cases);
-        let settings = crate::tasks::settings(s, today.weather, &situation, &loaded.cases);
+        let mut settings = crate::tasks::settings(s, today.weather, &situation, &loaded.cases);
+        // As the window plans: what your record says of a day (docs/capacity.md).
+        settings.capacity = sioul_core::capacity::gather(&loaded.tasks, &sessions, &settings, &s.config.planning, &sioul_core::agenda::occurrences, &now).planning;
         let plan = plan::plan(&loaded.tasks, now.date(), &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
         Desk { loaded, filter, offices: situation.offices, plan, settings, today, spent, stopped }
