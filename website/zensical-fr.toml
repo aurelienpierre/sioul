@@ -49,6 +49,7 @@ nav = [
       { "Partager entre vos appareils" = "guide/sharing.md" },
       { "Avec un agent d’IA" = "guide/ai-agent.md" },
       { "Vie privée et sécurité" = "guide/privacy-security.md" },
+      { "Fonctionne avec" = "guide/compatibility.md" },
     ] },
     { "Politique de confidentialité" = "privacy.md" },
   ] },

@@ -110,7 +110,7 @@ Then the first steps with your own accounts: [First steps](https://aurelienpierr
 - **OpenPGP**: signing and encrypting as you send, with Autocrypt and the Web Key Directory.
 - **Sharing between your devices**, a phone included: each device keeps its own data; a folder that any sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…) passes changes between them, each device writing only its own file, sealed end to end (XChaCha20-Poly1305, the key made from your passphrase by Argon2id); notes and papers file by file; earlier versions kept on each device. No server of ours. [How it works, and what it protects](https://aurelienpierre.github.io/sioul/guide/sharing.html); the design: [docs/database.md](docs/database.md).
 - **AI agents**, only if you connect one: `sioul mcp` serves an agent such as Claude Code what Sioul keeps on this device, through the Model Context Protocol. It never sends, deletes or pays.
-- **Open standards and plain files**: IMAP, SMTP, CalDAV and CardDAV, tasks linked as RFC 9253 says, Maildir, TOML, and notes in Markdown, compatible with Obsidian vaults and Nextcloud Notes.
+- **Open standards and plain files**: IMAP, SMTP, CalDAV and CardDAV, tasks linked as RFC 9253 says, Maildir, TOML, and notes in Markdown, compatible with Obsidian vaults and Nextcloud Notes. What works with what, feature by feature, and how far each was tested: [Works with](https://aurelienpierre.github.io/sioul/guide/compatibility.html).
 - **Rust**, with a **Qt 6** window in QML through CXX-Qt.
 
 ## Licence

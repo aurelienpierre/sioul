@@ -204,7 +204,7 @@ It is made by one person, in the open: no support is promised. Questions and rep
 - **OpenPGP**: signing and encrypting as you send, with Autocrypt and the Web Key Directory.
 - **Sharing between your devices**, a phone included: each device keeps its own data; a folder that any sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…) passes changes between them, each device writing only its own file, sealed end to end (XChaCha20-Poly1305, the key made from your passphrase by Argon2id). Notes and papers travel file by file; earlier versions are kept on each device. No server of ours. [How it works, and what it protects](guide/sharing.md).
 - **AI agents**, only if you connect one: `sioul mcp` serves an agent what Sioul keeps on this device, through the Model Context Protocol. It never sends, deletes or pays.
-- **Open standards and plain files**: IMAP, SMTP, CalDAV and CardDAV, tasks linked as RFC 9253 says, Maildir, TOML, and notes in Markdown, fully compatible with Obsidian vaults (wikilinks, embeds, tags, front matter, aliases) and with Nextcloud Notes (`.txt` or `.md`, categories as folders).
+- **Open standards and plain files**: IMAP, SMTP, CalDAV and CardDAV, tasks linked as RFC 9253 says, Maildir, TOML, and notes in Markdown, fully compatible with Obsidian vaults (wikilinks, embeds, tags, front matter, aliases) and with Nextcloud Notes (`.txt` or `.md`, categories as folders). What works with what, feature by feature, and how far each was tested: [Works with](guide/compatibility.md).
 - **Free software**, under the GPL-3.0-or-later licence, written in Rust, with a Qt 6 window.
 
 <p class="sioul-quiet" markdown>For developers: [the design notes, the architecture, and how to build and test](dev/index.md).</p>

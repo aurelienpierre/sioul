@@ -18,6 +18,7 @@
 - **Mail**: IMAP (RFC 9051, IDLE, CONDSTORE/QRESYNC), JMAP (RFC 8620/8621), SMTP submission.
 - **Calendars and contacts**: CalDAV (RFC 4791) and CardDAV (RFC 6352) through `libdav`. Tasks are VTODO with RFC 9253 relationships.
 - **Discovery**: Mozilla ISPDB and providers' autoconfig, SRV records (RFC 6186), DAV well-known URLs (RFC 6764).
+- **What is built of these**, what each feature needs from a server or another program, and how far each was tried: [compatibility.md](compatibility.md). Not built yet: CONDSTORE and QRESYNC, JMAP, SRV records.
 
 ## Crates, and their licences
 | Use | Crate | Licence |

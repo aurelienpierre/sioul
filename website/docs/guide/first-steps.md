@@ -63,6 +63,8 @@ What differs on a phone:
 
 Gmail, and other providers when two-step verification is on, want an **app password** instead of your usual one: you make it in your account's settings at the provider (for Gmail, at myaccount.google.com/apppasswords). When the provider is known, the form offers **Make an app password**, which opens the right page.
 
+Outlook.com, Hotmail and Microsoft 365 addresses cannot be added yet: Microsoft takes only its own sign-in page from other mail programs ([Works with](compatibility.md#mail)).
+
 Fetching changes nothing on your mail server. Sioul writes there only when you act: opening a message marks it read, as any mail program does; archiving, deleting and moving happen ten seconds after you asked, so that "Undo" can stop them.
 
 Then, on the address's card in **Your accounts**, unfold **Settings for this address** and tick **What this address is for**: work, your admin, leisure, or several. Until you say, an address counts as work, so that it never reaches your evenings. See [Hours](hours.md).
@@ -119,3 +121,4 @@ Reminders can also come with the window closed: in **Settings ▸ Reminders and 
 - [The Porch](porch.md), where new mail waits.
 - [Tasks](tasks.md), and the one next step.
 - [Hours](hours.md), and quiet time.
+- [Works with](compatibility.md): the servers, apps and systems Sioul works with, and how far each was tried.
