@@ -30,7 +30,7 @@ Rien de ce qui arrive dans le dossier ne peut vous retirer vos données. Sioul t
 
 - **Scellé sur votre appareil.** Chaque changement est chiffré avant d’être écrit dans le dossier, avec XChaCha20-Poly1305, un chiffrement qui détecte aussi toute modification de ce qu’il a scellé. Les notes et les papiers sont compressés, puis scellés en morceaux de 1 Mio.
 - **Une phrase de passe.** La clé est tirée d’une phrase de passe que vous choisissez, par Argon2id, qui est volontairement lent et coûteux à essayer (64 Mio de mémoire et trois passes pour chaque essai). Vous la tapez une fois sur chaque appareil, qui la garde dans son trousseau (sur un téléphone, derrière le KeyStore d’Android). Elle n’est jamais envoyée nulle part. Une phrase fausse est signalée tout de suite. Il lui faut au moins 12 caractères : quelques mots que vous n’oublierez pas.
-- **Ce que le dossier et son serveur peuvent voir** : quel appareil a écrit (un identifiant tiré au hasard, ni votre nom ni celui de l’ordinateur), quand, et combien. Pour les notes et les papiers, la taille de chaque fichier scellé : un document très répandu, comme un formulaire public, pourrait se reconnaître à sa taille. Ils peuvent aussi voir quand un changement reprend un contenu déjà scellé là (un fichier remis tel qu’il était).
+- **Ce que le dossier et son serveur peuvent voir** : quel appareil a écrit (un identifiant tiré au hasard, ni votre nom ni celui de l’appareil), quand, et combien. Pour les notes et les papiers, la taille de chaque fichier scellé : un document très répandu, comme un formulaire public, pourrait se reconnaître à sa taille. Ils peuvent aussi voir quand un changement reprend un contenu déjà scellé là (un fichier remis tel qu’il était).
 - **Ce qu’ils ne voient jamais** : ce que sont les changements. Ni le nom des choses (adresses, noms de fichiers, réglages), ni leur contenu.
 - **Une falsification se voit.** Chaque ligne est liée à l’appareil qui l’a écrite, à sa place dans le fichier de cet appareil, et à son heure. Une ligne modifiée, déplacée dans le fichier d’un autre appareil, ou remise dans un autre ordre ne s’ouvre pas. Chaque morceau d’un fichier scellé est lié à son fichier et à sa place : on ne peut ni échanger, ni couper, ni ajouter de morceaux. Ce qui ne s’ouvre pas est mis de côté comme abîmé, et c’est dit. Cela n’efface jamais rien.
 - **Quelqu’un qui obtient le dossier mais pas la phrase de passe** (un compte cloud piraté, un hébergeur curieux) ne peut rien lire et rien falsifier. Il peut effacer ou abîmer des fichiers : Sioul le remarque, le dit, et vos appareils ne perdent rien ([plus haut](#when-something-goes-wrong-in-the-folder)).
@@ -49,13 +49,13 @@ Rien de ce qui arrive dans le dossier ne peut vous retirer vos données. Sioul t
 | Votre dossier de notes : notes, projets, budgets, papiers, lettres scannées, images et mémos vocaux | par la synchronisation du dossier lui-même ; ou, quand aucune synchronisation ne le transporte (celui d’un téléphone), par le partage, scellé, une fois que vous les allumez |
 | Ce que Sioul garde sur cet appareil seul : vos réglages et vos comptes (sans les mots de passe), qui peut vous écrire, les liens entre les choses, le temps passé, les brouillons, les factures, les médicaments et les prises, les journées de votre montre, les listes gardées sur cet appareil seulement, l’endroit où le Porche a été fermé | par le partage, scellé |
 
-**Jamais partagé** : ce que chaque appareil choisit de partager, l’endroit où sont les choses sur chaque appareil (chacun garde ses propres dossiers), la façon dont le texte se lit sur cet écran, la disposition des pages, les notifications du navigateur de cet ordinateur, les caches, et vos propres clés OpenPGP (copiez-les à la main). Les mots de passe restent dans le trousseau de chaque appareil.
+**Jamais partagé** : ce que chaque appareil choisit de partager, l’endroit où sont les choses sur chaque appareil (chacun garde ses propres dossiers), la façon dont le texte se lit sur cet écran, la disposition des pages, les notifications du navigateur de cet appareil, les caches, et vos propres clés OpenPGP (copiez-les à la main). Les mots de passe restent dans le trousseau de chaque appareil.
 
 ## La mise en place {#setting-it-up}
 
-Sur le premier ordinateur :
+Sur le premier appareil :
 
-1. Ouvrez **Paramètres ▸ Votre dossier et le partage**, et trouvez **Entre vos ordinateurs**.
+1. Ouvrez **Paramètres ▸ Votre dossier et le partage**, et trouvez **Entre vos appareils**.
 2. **Dossier** : choisissez un dossier à l’intérieur de celui que votre synchronisation transporte, par exemple un nouveau dossier `Sioul` dans votre dossier Nextcloud.
 3. **Phrase de passe**, puis **Encore une fois** : quelques mots que vous n’oublierez pas, au moins 12 caractères.
 4. **Partager**.
@@ -66,7 +66,7 @@ La première fois, une copie de ce qu’avait cet appareil est gardée de côté
 
 Ensuite, les changements s’échangent chaque minute, et quand vous choisissez **Tout actualiser** ou **Échanger maintenant**. Le panneau dit par quel dossier vous partagez, avec combien d’autres appareils, et quand ils ont donné des nouvelles pour la dernière fois. **Arrêter le partage** y met fin ; chaque appareil garde ses propres fichiers.
 
-Votre dossier de notes voyage par sa propre synchronisation, pas par Sioul, sauf si vous l’allumez plus bas. S’il ne semble pas être dans un dossier synchronisé, le panneau le dit : votre autre ordinateur ne verrait pas vos notes et vos projets. Déplacés dans un dossier synchronisé (et choisis à nouveau dans Paramètres), ils voyagent aussi ; ou allumez **Notes**, **Projets et argent** et **Papiers**, et Sioul les transporte, scellés.
+Votre dossier de notes voyage par sa propre synchronisation, pas par Sioul, sauf si vous l’allumez plus bas. S’il ne semble pas être dans un dossier synchronisé, le panneau le dit : votre autre appareil ne verrait pas vos notes et vos projets. Déplacés dans un dossier synchronisé (et choisis à nouveau dans Paramètres), ils voyagent aussi ; ou allumez **Notes**, **Projets et argent** et **Papiers**, et Sioul les transporte, scellés.
 
 ## Ce qui voyage depuis cet appareil {#what-travels-from-this-device}
 
@@ -129,8 +129,8 @@ Sioul pour Android partage de la même façon, par le dossier que l’applicatio
 ## Certaines choses, un appareil à la fois {#some-things-one-device-at-a-time}
 
 - **Les médicaments** ne sont rappelés que par l’appareil que vous utilisez, pour qu’une prise ne soit pas rappelée deux fois. Une prise notée part tout de suite vers les autres.
-- **La notification regroupée des sites** vient sur l’ordinateur devant lequel vous êtes.
-- **Les factures** sont numérotées sur un seul ordinateur, pour qu’un numéro ne soit jamais donné deux fois. Un autre ordinateur dit où elles se font, et propose **Faire les factures sur cet ordinateur**. Voir [Le temps et les factures](time.md#on-several-computers).
+- **La notification regroupée des sites** vient sur l’appareil où vous êtes.
+- **Les factures** sont numérotées sur un seul appareil, pour qu’un numéro ne soit jamais donné deux fois. Un autre appareil dit où elles se font, et propose **Faire les factures sur cet appareil**. Voir [Le temps et les factures](time.md#on-several-computers).
 
 ## Pas encore là {#not-there-yet}
 

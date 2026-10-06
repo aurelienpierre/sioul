@@ -35,7 +35,7 @@ What now is for is one of five times (`sioul_core::areas::Time`, decided by `sio
 
 **Which comes first**, when they overlap: sleep, then meals, then the hours. A meal inside working hours is a meal while it lasts. "Work now" may last over a night: the night stays sleep. "Done for today" is leisure until work comes back; "A little longer" and "Work now" are work. Time off is leisure. Work and admin hours at once bring what each of them brings, all together (`Time::Several`), until the first of them closes.
 
-**The hour before bed is sleep's.** Health keeps the wind-down free, and the programmes it comes from make that hour free of what keeps the mind going (Harvey et al. 2021): a work message or a notification is exactly that. The status line says it apart: "Winding down: nothing disturbs until 07:00." The night's own notice at its time, the start of the wind-down, still comes: it is the one that says the night begins.
+**The hour before bed is sleep's.** Health keeps the wind-down free, and the programmes it comes from make that hour free of what keeps the mind going (Harvey et al. 2021): a work message or a notification is exactly that. The status line says it apart: "Winding down: nothing disturbs until 07:00." The night's own notice at its time, the start of the wind-down, still comes: it is the one that says the night begins, and it offers to close the day ([reviews.md](reviews.md)). From the wind-down, the status line offers nothing more.
 
 **A block taken out for one day** (off that day, on the Health page) is no meal or sleep that day; one made quiet that day (no notice) still is.
 

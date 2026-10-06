@@ -27,14 +27,26 @@ The page follows the clock: the line at the current hour moves with it, today be
 **New event**, at the top of the page (or **New ▾ ▸ An event**): a title, when it starts and ends, where. **All day** is one tick. Folded under **More**: its notes; **Repeats**, every day, week, month or year; **Calendar**, which one it goes in, when you have several; and, if you want them:
 
 - **Before** and **After**: the time to get ready and get there, and to come back. Your plan keeps it free, and the day shows it around the event ("Around: …"). It is never counted as a pause.
-- How much the event asks of you, from 0 to 10 each: **Thinking it asks**, **Feelings it stirs**, **Anxiety it raises**; and **What it gives back**. Nothing is said until you say it. What you say is written into the event and shown again in its form; the plan does not use it yet.
+- How much the event asks of you, and what it gives back: five sliders from 0 to 10, **Thinking it asks**, **Feelings it stirs**, **Anxiety it raises**, **Body and senses** and **What it gives back**, with words under each at 0, 5 and 10 (as for [a task](tasks.md#what-it-costs-and-what-it-gives-back)). Each says **Not rated** until you touch it; **×** clears it. What you say is written into the event when you save it, and shown again in its form; the plan does not use it yet.
 
-An event opens on the right with its day, its time, its place, its calendar, and whether it repeats. Its notes, who organised it and its guests are folded under **More**.
+An event opens on the right with its day, its time, its place, its calendar, and whether it repeats. Its notes, who organised it and its guests are folded under **More**. It opens the same way from a link (a task's tie, the day on the Tasks page), its days shown; its menu (right click, or a long press on a touch screen) offers **Details** first, then **Edit**.
 
 - **To change it**: **Edit**.
 - **To delete it**: **Delete**. It waits ten seconds, with **Undo**. A repeating event asks first: **Only this time**, or **Every time**.
 
 An event can also be made from a message, from a task, or from a paper letter's appointment, and stays tied to it. From an event, you can make a note (dated, with its guests listed, and **Send to the guests** once written) or a task to prepare it.
+
+## Moving an event by hand
+
+In **Day** and **Week**, drag an event to another time: it keeps its length. In **Week**, drag it to another day too. Drag its bottom edge to change when it ends. While you drag, its new place shows with its times ("Tue 6, 11:15–12:15"), by five minutes.
+
+Let go, and it is saved and sent to your calendar server; **Undo** waits ten seconds in the status line. Let go where it was, and nothing changes.
+
+- **A repeating event** asks first: **Only this time**, or **Every time**. Every time moves all its days by as much; a weekly event moved to another day comes on that day each week. An event that repeats on set days of the month ("the first Monday") moves only this time: change how it repeats in its form.
+- **A calendar you can only read**, and whole-day events, do not move.
+- **With a mouse**: press and drag; the wheel scrolls. **On a touch screen**: hold the event until it lifts, then slide it; a plain swipe scrolls. Held and let go without moving, it opens its menu.
+- Only within the hours shown; further, use **Edit**.
+- If it now overlaps another event, Sioul says so above the agenda, as for any two events at once. Your plan goes around its new time at once.
 
 ## Two events at once
 
@@ -67,4 +79,4 @@ Google calendars are made, renamed and deleted on Google's own pages; Sioul grey
 
 ## Not there yet
 
-Moving an event to another calendar, changing one occurrence of a repeating event, and choosing a calendar's colour here are planned.
+Moving an event to another calendar, changing one occurrence's title or place (its time moves by hand), and choosing a calendar's colour here are planned.

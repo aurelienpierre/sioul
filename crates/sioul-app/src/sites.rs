@@ -262,7 +262,8 @@ static GATHERED: Mutex<i64> = Mutex::new(0);
 /// sleep, none: what the sites said waits for the next time after waking.
 pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
     let config = load_config();
-    if !config.reminders.gather || !crate::hours::may_notify() {
+    // While you sleep, and in a slot of time for you, what the sites said waits.
+    if !config.reminders.gather || !crate::hours::may_notify() || crate::hours::quiet_slot() {
         return;
     }
     let now = jiff::Zoned::now();
@@ -335,9 +336,10 @@ pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, title: &st
     let Some(site) = sites::sites(&config).into_iter().find(|s| s.id == id) else { return };
     let everywhere = shared.realtime.load(std::sync::atomic::Ordering::Relaxed);
     let resting = !crate::backend::in_view_now(site.area) || (site.kind == "chat" && crate::health::chats_covered()) || !crate::hours::may_notify();
-    // A call waits for nobody: shown at once, unless the site is silenced or resting.
+    // A call waits for nobody: shown at once, unless the site is silenced or resting;
+    // in a slot of time for you, only a call (docs/capacity.md).
     let call = sites::is_call(title, text) && !site.muted;
-    if (site.realtime || everywhere || call) && !resting {
+    if (site.realtime || everywhere || call) && !resting && (call || !crate::hours::quiet_slot()) {
         let heading = format!("{} · {}", site.name, title);
         if let Err(e) = sioul_sync::notify::code(&heading, text, None) {
             crate::backend::tell(qt, shared, e);

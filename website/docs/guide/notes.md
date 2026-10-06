@@ -22,7 +22,7 @@ Sioul's notes are fully compatible with an Obsidian vault and with Nextcloud Not
 
 ## Your notes folder
 
-Chosen in **Settings ▸ Your folder and sharing ▸ The notes folder**. Beside your notes, the same folder keeps your projects, budgets, papers and scanned letters, so that they all travel together when the folder is synced to your other computers. Where no sync carries it, Sioul's sharing can carry them, if you switch them on there ([Sharing](sharing.md)).
+Chosen in **Settings ▸ Your folder and sharing ▸ The notes folder**. Beside your notes, the same folder keeps your projects, budgets, papers and scanned letters, so that they all travel together when the folder is synced to your other devices. Where no sync carries it, Sioul's sharing can carry them, if you switch them on there ([Sharing](sharing.md)).
 
 ## Finding a note
 
@@ -65,8 +65,8 @@ A right click on a note:
 - **Rename…**: the notes that link to it, and the tasks tied to it, follow the new name.
 - **Move to the trash**: the note goes to the folder's `.trash`, as Obsidian does, with **Undo**.
 
-## On several computers
+## On several devices {#on-several-computers}
 
 Your notes travel with their folder's own sync: Nextcloud, Dropbox, Syncthing. Where no sync carries the folder, a phone's for one, Sioul's sharing can carry them, file by file, once you switch **Notes** on in it. See [Sharing between your devices](sharing.md).
 
-A linked note that has not arrived yet shows faded, with "Not on this computer yet: it may still be syncing".
+A linked note that has not arrived yet shows faded, with "Not on this device yet: it may still be syncing".

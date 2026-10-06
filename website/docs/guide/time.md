@@ -7,7 +7,7 @@ description: Time spent in Sioul - from the focus timer and noted by hand, kept 
 Time spent is noted as you work. It is kept for two uses:
 
 - **billing**: the hours you work for clients become invoices;
-- **planning**: set beside your guesses, it tells how long things really take. The plan will use it next: see [How long things take](#how-long-things-take).
+- **planning**: set beside your guesses, it tells how long things really take, and the plan uses it: see [How long things take](#how-long-things-take).
 
 <figure markdown="span">
   [![The Time page on "Week": a bar per day, stacked in a few calm colours by project; under it, each project's hours and what is left to bill, then each stretch of time, newest first.](../assets/screens/time.png){ loading=lazy }](../assets/screens/time.png "Open the picture at full size")
@@ -31,25 +31,35 @@ While a focus session runs, on Linux and on a phone, a notification shows it: it
 
 Click any stretch of time, timed or noted by hand, to change it: its task, its project, its day, from when to when, and what it was; the time the timer kept after a pause you missed comes back that way. A right click also offers **Take this time out**. Time already on an invoice stays as it was billed.
 
+Each stretch says quietly how its minutes were known:
+- *timed*;
+- *noted by hand*;
+- *timed, then corrected*, once you changed a timed stretch's length, or Sioul cut a timer left running all night;
+- *not known how*, for time noted before Sioul kept this.
+
 ### Billed or not
 
 Work for a client is billed. A task can say otherwise, under **Billed** in its panel: *As its project says*, *Its time is billed*, or *Not billed*.
 
 ## How long things take
 
-A task's **Takes about** is a guess. The time noted for it is what it took. The two together tell how your guesses compare with the time things really take.
+A task's **Takes about** is a guess. The time noted for it is what it took. The plan sets the two side by side, and corrects your guesses in the plan only:
 
-**Today**, the record is there: the focus window, the time on this page, each line open to change. The plan does not use it yet: it plans each task by its **Takes about**, as you wrote it.
-
-**Next**, the plan will use it to correct your guesses, in the plan only:
-
-- it compares the time spent with the time guessed, over about the past two weeks, for each kind of task;
-- it sizes the plan with that ratio: if letters took twice what you guessed, the next letter gets twice its guess in the plan;
-- the margin for the unexpected stays on the whole day, not on each task.
+- **Your first guess is kept.** The first time a task gets a length, Sioul keeps it with the task and never changes it, even when you change **Takes about** later. A task given a length before this existed has none kept; its current length is used instead.
+- **Only finished tasks teach it**, each one's time spent against its first guess, all its stretches added up.
+  - Timed minutes count fully, corrected ones too.
+  - Minutes noted by hand count a quarter, because remembered durations are less sure.
+  - Dropped tasks never count.
+- **Recent tasks count most**: a task's weight halves every four or five days.
+- **Few tasks, little correction.** Until about nine tasks stand behind it, the correction leans toward "a little longer than guessed".
+- **By what tasks are for**: work, your admin and leisure each have their own correction, pulled toward yours until they have enough tasks of their own.
+- **The plan uses it; you see your own.** Each task takes its corrected length in the plan and in the day, while **Takes about** stays as you wrote it, and the focus timer starts from it.
+- **The margin is the day's, not each task's.** Each day keeps some time free after its last step for steps running long: about enough to cover a day going worse than usual, never more than a third of the day. Once today's first tasks are done, a day going slower keeps more. The next step always keeps part of today.
+- **On request**, in a task's panel, a line such as "Tasks like this usually take about 1.3× the first guess; the plan already allows for it", only once enough tasks stand behind it.
 
 It never scores you, never shows anything as late, never fills in **Takes about** for you, and never compares you with anyone.
 
-Timing leisure is up to you. Gaps are fine: time not noted is left out, not counted against anything.
+Timing leisure is up to you. Gaps are fine: time not noted is left out, not counted against anything. The detail, with what comes from research and what is a guess: [What a day holds](../dev/capacity.md).
 
 ## A spreadsheet of billable time
 
@@ -68,9 +78,9 @@ On a project's page, or beside the project on the Time page, **Make the invoice*
 
 Your name, address, numbers, currency, payment details and hourly rate are set once, in [Settings ▸ Invoices](settings.md#invoices).
 
-### On several computers
+### On several devices {#on-several-computers}
 
-An invoice number must never be given twice. When you [share between your computers](sharing.md), one computer numbers the invoices: another says "Invoices are numbered on …", and **Make invoices on this computer** takes them over, after a minute and a half, once your other computers know. If your sharing folder cannot be written, or another computer has not been heard from for a few minutes, Sioul waits rather than risk a number twice.
+An invoice number must never be given twice. When you [share between your devices](sharing.md), one device numbers the invoices: another says "Invoices are numbered on …", and **Make invoices on this device** takes them over, after a minute and a half, once your other devices know. If your sharing folder cannot be written, or another device has not been heard from for a few minutes, Sioul waits rather than risk a number twice.
 
 ## In quiet time
 

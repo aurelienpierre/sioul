@@ -1,6 +1,6 @@
-# Your data on several computers
+# Your data on several devices
 
-Built: sharing through a folder your sync carries (Nextcloud, Dropbox, Syncthing), set up in Settings ▸ Between your computers, part by part on each device. A database server stays an option, not built (below). Code: `crates/sioul-sync/src/share.rs` (the log, the parts), `blobs.rs` (notes and papers sealed apart), `history.rs` (earlier versions), `crates/sioul-app/src/share.rs` and `qml/SharePanel.qml` (the window).
+Built: sharing through a folder your sync carries (Nextcloud, Dropbox, Syncthing), set up in Settings ▸ Between your devices, part by part on each device. A database server stays an option, not built (below). Code: `crates/sioul-sync/src/share.rs` (the log, the parts), `blobs.rs` (notes and papers sealed apart), `history.rs` (earlier versions), `crates/sioul-app/src/share.rs` and `qml/SharePanel.qml` (the window).
 
 ## What travels how
 - **By their servers**: mail (IMAP), contacts, events and tasks (CardDAV, CalDAV, Google), with what Sioul writes in each task (kinds, projects, links, steps, waits: RFC 9253).
@@ -12,7 +12,7 @@ Built: sharing through a folder your sync carries (Nextcloud, Dropbox, Syncthing
 | settings and accounts (`settings`) | `config.toml`, `links.toml`, `porch.toml`, `money.toml` (mail said to be no payment) | one entry per setting, tie, mark, word; accounts one entry each (by id); each account's Porch mark whole |
 | senders (`senders`) | `known-`, `blocked-`, `safe-`, `neutral-`, `restricted-senders.txt`; `shield/`; `pgp/others/` | one entry per line; one per file |
 | health (`health`) | `health.toml`, `health-days.toml` (each day's own meals, naps and nights), `health-state.toml` | one entry per setting, mark, dose, field of a day's block; prescriptions and medicines one each (by id) |
-| time (`time`) | `time/<month>.toml`, `time/running.toml`, `today.toml`, `stopped.toml` (where you stopped), `quiet.toml` | one entry per session (start, task, project), setting, word; the session running now whole |
+| time (`time`) | `time/<month>.toml`, `time/running.toml`, `today.toml`, `stopped.toml` (where you stopped), `quiet.toml`, `reviews/<month>.toml` (how each day went, [reviews.md](reviews.md)) | one entry per session (start, task, project), setting, word; the session running now whole; a day's review at the end of work, and before sleep, each whole |
 | drafts and invoices (`drafts`) | `drafts/`, `invoices/` | one entry per file |
 | projects and money (`projects`) | from the notes folder: `sioul-cases.toml`, `sioul-budgets.toml`, `sioul-bank.toml`, `sioul-contracts.toml` | projects, budgets, presets, reserves, bank accounts and contracts one each (by id); a choice for one movement by its account and movement; lines, covers, mail rules and splits one each, as themselves; the bank's accounts by id, its movements by account and the bank's own id |
 | the watch (`watch`) | `watch/` (a day each), `watch-offers.json` | one entry per file |
@@ -20,7 +20,7 @@ Built: sharing through a folder your sync carries (Nextcloud, Dropbox, Syncthing
 | notes (`notes`) | the notes folder, less what the other parts carry | one record per file, the file sealed apart (below) |
 | papers (`papers`) | `sioul-papers.toml`, `papers/` in the notes folder | papers one each (by id); one record per file, sealed apart (a paper's file kept outside `papers/` stays on its device) |
 
-- **Never**: which parts each device shares (its own choice), where things are on each computer (the case store, a sender list's own path, each account's mail folder, the watch's folder, how far back mail goes), how text reads on this screen (`reading`), how pages are laid out (`tasks-view.toml`), this computer's browser notices, your own PGP keys (secret keys never leave the computer they were made on: copy them by hand), sync's state, caches, the keyring. Passwords and tokens stay in each computer's keyring: an account arriving from another computer asks for its password once.
+- **Never**: which parts each device shares (its own choice), where things are on each device (the case store, a sender list's own path, each account's mail folder, the watch's folder, how far back mail goes), how text reads on this screen (`reading`), how pages are laid out (`tasks-view.toml`), this device's browser notices, your own PGP keys (secret keys never leave the device they were made on: copy them by hand), sync's state, caches, the keyring. Passwords and tokens stay in each device's keyring: an account arriving from another device asks for its password once.
 
 ## Parts
 Each device chooses what it shares, part by part (Settings ▸ Your folder and sharing ▸ What travels from this device): `[parts]` in its `$XDG_STATE_HOME/sioul/share/here.toml`, never shared. A device that never chose shares what was shared before parts had switches: everything but notes and papers, and projects and money as `share_projects` said (a setting every device followed then; the first time sharing is on with this version, what it said becomes this device's own choice, and the old key is still read until then). A part switched off takes nothing out elsewhere and sends nothing; the others' changes for it are not kept waiting (switched on again, it joins as a new device joins, below: "Stores that leave, arrive or move", and reads them then). Notes and papers are refused on a device whose notes folder a sync app already carries, with the sentence why: the two carriers would undo each other's changes. Known carriers: on a computer, a folder inside one named like a sync's (`~/Nextcloud`, `~/Dropbox`, `~/Sync`…), Nextcloud's own list of folders, Syncthing's (its `config.xml`) and Dropbox's wherever it is (its `info.json`); on a phone, a notes folder in the same top folder of its storage as the sharing folder (Documents for eDrive), whatever name the storage goes by (`/sdcard`, `/storage/emulated/0`). Other sync apps (Google Drive, Insync, rclone, MEGA) are not recognised: leave Notes off where they carry the notes folder. Before Notes or Papers is switched on, the panel says how many files and how many bytes would travel. On Android, notes and papers wait while Sioul lacks "All files access" (without it a folder lists only what Sioul made, and the rest would seem gone): said. Each part shows what it carries and when it last sent and received a change.
@@ -70,18 +70,18 @@ For the doses (docs/health.md, "Knowing"), a computer must know whether it has r
 ## Leases: one computer at a time
 Some work must happen on one computer only: reminding a dose (twice, it could be taken twice), numbering invoices (twice, one number twice), the gathered notification of sites. `sioul_sync::lease` keeps them apart through the same folder: each computer writes its own claim on a part, sealed like the records (`<folder>/leases/<part>/<computer>.lease`, one writer per file), renewed each minute while Sioul runs, alive five minutes after. Every computer reads the claims the same way:
 - **following you** (medicines, the gathered notification): the live claim of the computer used most recently keeps it;
-- **staying put** (invoices): the claim taken on purpose last ("Make invoices on this computer"), else the oldest.
+- **staying put** (invoices): the claim taken on purpose last ("Make invoices on this device"), else the oldest.
 A computer acts only once it has kept a part for a minute and a half, time for the others' claims to come through the sync. Invoices also want the other live computers heard from within three minutes: a stopped sync could hide a claim, so they wait rather than risk a number twice. Sharing off, this computer keeps everything.
 
 ## Sealed
 - Each record is encrypted on the computer with XChaCha20-Poly1305, bound to its computer, round, number and clock. The folder and its server see which computer wrote, when and how much, never what: not the entries' names (they hold addresses), not their values.
 - The key is made from a passphrase with Argon2id (64 MiB, 3 passes, a salt in `<folder>/seal.toml`), typed once on each computer (twice on the first) and kept in its keyring. `seal.toml` also holds a value sealed with the key: a wrong passphrase is told at once. At least 12 characters.
-- Lost, the passphrase cannot be found again: stop sharing everywhere, start again with a new folder; each computer keeps its own files.
+- Lost, the passphrase cannot be found again: stop sharing everywhere, start again with a new folder; each device keeps its own files.
 
 ## Notes
 - The notes travel with their folder's own sync, or, their part switched on, through the log, file by file (Notes and papers in the vault).
 - **A link keeps its file's name** (`sioul:note/admin/lease.md`, relative to the notes folder), so it holds on every computer, wherever the folder is.
-- **A linked note not on this computer yet** (its sync not done, or the file removed elsewhere) shows faded, with its name and "Not on this computer yet: it may still be syncing (Nextcloud, Dropbox)."
+- **A linked note not on this device yet** (its sync not done, or the file removed elsewhere) shows faded, with its name and "Not on this device yet: it may still be syncing (Nextcloud, Dropbox)."
 - A note renamed in Sioul updates its links (tasks' LINK lines, `links.toml`); the other computer gets the new file from the folder, the new links from CalDAV and the log.
 
 ## Tested
@@ -104,7 +104,7 @@ CREATE TABLE sioul_changes (
 ```
 
   It needs the server's port open to the Internet with TLS (`REQUIRE SSL`), a user limited to this table, and on shared hosting each computer's address let in by hand. It brings one place at once, and transactions, which only matter for invoice numbers.
-- **One series of invoice numbers per computer** ("2026-A-014"): built instead is one computer numbering them at a time, the others waiting their turn ([accounting.md](accounting.md), "Invoices on one computer"). French rules accept several series only when the way the activity runs justifies them (BOI-TVA-DECLA-30-20-20-10), your accountant's call.
+- **One series of invoice numbers per computer** ("2026-A-014"): built instead is one computer numbering them at a time, the others waiting their turn ([accounting.md](accounting.md), "Invoices on one device"). French rules accept several series only when the way the activity runs justifies them (BOI-TVA-DECLA-30-20-20-10), your accountant's call.
 - **Drafts in the server's Drafts folder** (IMAP), for other mail clients to see: drafts travel by the log for now.
 - **The Porch's marks in IMAP METADATA** (RFC 5464) where the server has it: by the log for now.
 - **Phones other than Android's**: the format is plain (JSON lines, XChaCha20-Poly1305, Argon2id, HKDF for the sealed files); Sioul for Android reads and writes it ([android.md](android.md)), no iPhone app does yet.

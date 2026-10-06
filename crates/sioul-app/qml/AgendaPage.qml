@@ -30,6 +30,37 @@ Item {
     function takeShown() {
         if (page.visible)
             page.agendaText = page.sioul.agenda
+        // An event asked for by a link, once its days are shown: its details.
+        if (page.wanted !== "" && page.showWanted())
+            page.wanted = ""
+    }
+
+    // An event asked for by a link, outside the days shown: its days are read first.
+    property string wanted: ""
+
+    // Its details, when it is in the days shown.
+    function showWanted() {
+        for (const day of page.shown.days)
+            for (const event of day.events)
+                if (event.key === page.wanted) {
+                    page.opened = event
+                    return true
+                }
+        return false
+    }
+
+    // Its days never came: its form, as before.
+    Timer {
+        id: wantedLate
+
+        interval: 3000
+        onTriggered: {
+            if (page.wanted === "")
+                return
+            const key = page.wanted
+            page.wanted = ""
+            eventDialog.now().edit(key, "")
+        }
     }
 
     Connections {
@@ -160,15 +191,24 @@ Item {
         eventDialog.now().makeFrom(text, note, link, page.iso(new Date()))
     }
 
-    // An event by its file, from a link: shown when it is in the days shown, else its form.
+    // An event by its file, from a link: its details, as from the agenda;
+    // outside the days shown, its days are shown first. Its form ("Edit")
+    // only when it cannot be found.
     function openEvent(key) {
-        for (const day of page.shown.days)
-            for (const event of day.events)
-                if (event.key === key) {
-                    page.opened = event
-                    return
-                }
-        eventDialog.now().edit(key, "")
+        page.wanted = key
+        if (page.showWanted()) {
+            page.wanted = ""
+            return
+        }
+        const found = JSON.parse(page.sioul.event(key) || "null")
+        if (!found || !found.edit || !found.edit.start) {
+            page.wanted = ""
+            eventDialog.now().edit(key, "")
+            return
+        }
+        page.anchor = new Date(found.edit.start.slice(0, 10) + "T12:00:00")
+        page.load()
+        wantedLate.restart()
     }
 
     onModeChanged: page.load()
@@ -642,6 +682,12 @@ Item {
 
                 readonly property var source: page.menuTarget && page.menuTarget.uid ? { uri: "sioul:event/" + encodeURIComponent(page.menuTarget.uid), kind: "event", key: page.menuTarget.key, title: page.menuTarget.summary, start: page.menuTarget.start } : null
 
+                // Its details first, as a click gives them; then its form.
+                MenuItem {
+                    enabled: page.menuTarget !== null
+                    text: page.sioul.text("ui-details")
+                    onTriggered: page.opened = page.menuTarget
+                }
                 MenuItem {
                     enabled: page.menuTarget !== null && !page.menuTarget.read_only
                     text: page.sioul.text("ui-edit")

@@ -372,7 +372,64 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
     }
     tell(qt, shared, tr().text("event-saved", None));
     show_pim(qt, shared);
+    crate::work::show_work(qt, shared);
     Ok(())
+}
+
+/// An event moved by a drag in the agenda: its occurrence starting at `start`
+/// now from `new_start` to `new_end` (Unix seconds), that time alone or every
+/// time (`agenda::moved`); then sent, the agenda and the plan made again, and
+/// "Undo" offered for ten seconds, which writes back what the file held, unless
+/// it changed since (a sync, another device). Returns what went wrong, else "".
+pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: i64, new_start: i64, new_end: i64, only_this: bool) -> String {
+    let Some(path) = ours(key) else { return tr().text("agenda-gone", None) };
+    if collection_of(&path).is_none_or(|c| c.read_only) {
+        return tr().text("agenda-read-only", None);
+    }
+    let Ok(before) = std::fs::read_to_string(&path) else { return tr().text("agenda-gone", None) };
+    let zone = TimeZone::system();
+    let text = match agenda::moved(&before, start, new_start, new_end, only_this, &zone) {
+        Ok(text) => text,
+        Err(agenda::MoveProblem::Gone) => return tr().text("agenda-gone", None),
+        Err(agenda::MoveProblem::SetDays) => return tr().text("agenda-move-set-days", None),
+        Err(agenda::MoveProblem::Unreadable(e)) => return e,
+    };
+    if text == before {
+        return String::new();
+    }
+    if let Err(e) = vdir::write_item(&path, &text) {
+        return e;
+    }
+    let account = account_of(&path);
+    if let Some(account) = &account {
+        nudge(shared, account);
+    }
+    // Said as it is now: its title, its day, its times.
+    let at = |seconds: i64| Timestamp::from_second(seconds).map(|t| t.to_zoned(zone.clone())).ok();
+    let time = match (at(new_start), at(new_end)) {
+        (Some(from), Some(to)) => format!("{}, {}–{}", tr().day(from.date()), from.strftime("%H:%M"), to.strftime("%H:%M")),
+        _ => String::new(),
+    };
+    let title = agenda::edit_of_text(&text, &zone).map(|e| e.title).filter(|t| !t.trim().is_empty()).unwrap_or_else(|| tr().text("agenda-untitled", None));
+    let line = say("drag-done", &[("what", title), ("time", time)]);
+    mail::offer_back(qt, shared, line, move |qt, shared| {
+        // Only what this drag wrote is put back: a change since stays.
+        if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+            return tr().text("undo-too-late", None);
+        }
+        if let Err(e) = vdir::write_item(&path, &before) {
+            return e;
+        }
+        if let Some(account) = &account {
+            nudge(shared, account);
+        }
+        show_pim(qt, shared);
+        crate::work::show_work(qt, shared);
+        String::new()
+    });
+    show_pim(qt, shared);
+    crate::work::show_work(qt, shared);
+    String::new()
 }
 
 /// Deletes an event, or only this occurrence of a repeating one, after ten seconds to undo.
@@ -479,6 +536,8 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
     }
     tell(qt, shared, tr().text(&format!("invitation-{answer}"), None));
     show_pim(qt, shared);
+    // Accepted or added, it takes its time in the plan at once, not after the sync.
+    crate::work::show_work(qt, shared);
     Ok(())
 }
 

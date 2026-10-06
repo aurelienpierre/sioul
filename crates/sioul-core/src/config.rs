@@ -54,6 +54,9 @@ pub struct Config {
     pub mail: MailSettings,
     #[serde(default)]
     pub tasks: TaskSettings,
+    /// What a day holds, as the plan learns it (`[planning]`, docs/capacity.md).
+    #[serde(default)]
+    pub planning: PlanningSettings,
     #[serde(default)]
     pub agenda: AgendaSettings,
     #[serde(default)]
@@ -247,6 +250,37 @@ pub struct TaskSettings {
     /// The kinds of task, as you named them (`[[tasks.kind]]`); Sioul's when unsaid.
     #[serde(rename = "kind", default)]
     pub kinds: Option<Vec<TaskKind>>,
+}
+
+/// What a day holds, as the plan learns it from your days (docs/capacity.md).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct PlanningSettings {
+    /// The days learned from, back from today: 28 when unsaid, 14 to 90.
+    #[serde(default)]
+    pub window_days: Option<u32>,
+    /// Days kept even: no full day then an empty one (energy-limiting illness).
+    #[serde(default)]
+    pub even_days: bool,
+    /// Where what a day holds starts: "as-now" (unsaid), "lighter", "much-lighter".
+    #[serde(default)]
+    pub start: Option<String>,
+    /// Two slots of time for you a day, silent; on when unsaid.
+    #[serde(default)]
+    pub gain_slots: Option<bool>,
+}
+
+impl PlanningSettings {
+    pub fn window(&self) -> u32 {
+        self.window_days.unwrap_or(crate::capacity::WINDOW_DEFAULT).clamp(crate::capacity::WINDOW_LEAST, crate::capacity::WINDOW_MOST)
+    }
+
+    pub fn start(&self) -> crate::capacity::Start {
+        crate::capacity::Start::parse(self.start.as_deref().unwrap_or(""))
+    }
+
+    pub fn gain_slots(&self) -> bool {
+        self.gain_slots.unwrap_or(true)
+    }
 }
 
 /// A kind of task, as you named it.

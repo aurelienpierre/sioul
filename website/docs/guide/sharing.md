@@ -30,7 +30,7 @@ Nothing that happens in the folder can take your data away from you. Sioul treat
 
 - **Sealed on your device.** Every change is encrypted before it is written into the folder, with XChaCha20-Poly1305, a cipher that also detects any change made to what it sealed. Notes and papers are compressed, then sealed in pieces of 1 MiB.
 - **One passphrase.** The key is made from a passphrase you choose, through Argon2id, which is deliberately slow and costly to try (64 MiB of memory and three passes for each guess). You type it once on each device, which keeps it in its keyring (on a phone, behind Android's KeyStore). It is never sent anywhere. A wrong one is said at once. It needs at least 12 characters: a few words you will not forget.
-- **What the folder and its server can see**: which device wrote (an identifier drawn at random, not your name nor the computer's), when, and how much. For notes and papers, how big each sealed file is: a well-known document, such as a public form, might be recognised by its size. They can also tell when a change reuses a content already sealed there (a file put back as it was).
+- **What the folder and its server can see**: which device wrote (an identifier drawn at random, not your name nor the device's), when, and how much. For notes and papers, how big each sealed file is: a well-known document, such as a public form, might be recognised by its size. They can also tell when a change reuses a content already sealed there (a file put back as it was).
 - **What they never see**: what the changes are. Not the names of things (addresses, file names, settings), not their content.
 - **Tampering shows.** Each line is bound to the device that wrote it, its place in that device's file, and its time. A line changed, moved into another device's file, or put in another order does not open. Each piece of a sealed file is bound to its file and its place, so pieces cannot be swapped, cut or added. Whatever does not open is set aside as damaged and said. It never erases anything.
 - **Someone who gets the folder but not the passphrase** (a hacked cloud account, a curious provider) can read nothing and forge nothing. They can delete or damage files: Sioul notices, says so, and your devices lose nothing ([above](#when-something-goes-wrong-in-the-folder)).
@@ -49,13 +49,13 @@ Nothing that happens in the folder can take your data away from you. Sioul treat
 | Your notes folder: notes, projects, budgets, papers, scanned letters, pictures and memos | by the folder's own sync; or, when no sync carries it (a phone's), through the sharing, sealed, once you switch them on |
 | What Sioul keeps on this device alone: your settings and accounts (without passwords), who may write to you, the ties between things, time spent, drafts, invoices, medicines and doses, your watch's days, lists kept on this device only, where the Porch was closed | through the sharing, sealed |
 
-**Never shared**: what each device chooses to share, where things are on each device (each keeps its own folders), how text reads on this screen, how pages are laid out, this computer's browser notices, caches, and your own OpenPGP keys (copy them by hand). Passwords stay in each device's keyring.
+**Never shared**: what each device chooses to share, where things are on each device (each keeps its own folders), how text reads on this screen, how pages are laid out, this device's browser notices, caches, and your own OpenPGP keys (copy them by hand). Passwords stay in each device's keyring.
 
 ## Setting it up
 
-On the first computer:
+On the first device:
 
-1. Open **Settings ▸ Your folder and sharing**, and find **Between your computers**.
+1. Open **Settings ▸ Your folder and sharing**, and find **Between your devices**.
 2. **Folder**: choose a folder inside the one your sync carries, such as a new folder `Sioul` in your Nextcloud folder.
 3. **Passphrase**, then **Once more**: a few words you will not forget, at least 12 characters.
 4. **Share**.
@@ -66,7 +66,7 @@ The first time, a copy of what this device had is kept aside, in case. Then the 
 
 From then on, changes are exchanged each minute, and when you choose **Refresh everything** or **Exchange now**. The panel says through which folder you share, with how many other devices, and when they were last heard from. **Stop sharing** ends it; each device keeps its own files.
 
-Your notes folder travels by its own sync, not by Sioul, unless you switch it on below. If it does not seem to be inside a synced folder, the panel says so: your other computer would not see your notes and projects. Moved into one (and chosen again in Settings), they travel too; or switch **Notes**, **Projects and money** and **Papers** on, and Sioul carries them, sealed.
+Your notes folder travels by its own sync, not by Sioul, unless you switch it on below. If it does not seem to be inside a synced folder, the panel says so: your other device would not see your notes and projects. Moved into one (and chosen again in Settings), they travel too; or switch **Notes**, **Projects and money** and **Papers** on, and Sioul carries them, sealed.
 
 ## What travels from this device
 
@@ -129,8 +129,8 @@ Sioul for Android shares the same way, through the folder your phone's sync app 
 ## Some things, one device at a time
 
 - **Medicines** are reminded by the device you are using only, so that a dose is not reminded twice. A dose marked taken goes to the others at once.
-- **The sites' gathered notification** comes on the computer you are at.
-- **Invoices** are numbered on one computer only, so that a number is never given twice. Another computer says where they are made, and offers **Make invoices on this computer**. See [Time and invoices](time.md#on-several-computers).
+- **The sites' gathered notification** comes on the device you are using.
+- **Invoices** are numbered on one device only, so that a number is never given twice. Another device says where they are made, and offers **Make invoices on this device**. See [Time and invoices](time.md#on-several-computers).
 
 ## Not there yet
 

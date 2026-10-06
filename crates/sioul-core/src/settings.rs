@@ -330,6 +330,15 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text("set-task-list-first", None) })
                 .chain(lists.iter().map(|(id, name)| Choice { value: SettingValue::Text(id.clone()), label: name.clone() }))
                 .collect();
+            // What a day holds, as the plan learns it from your days (docs/capacity.md).
+            b.group = tr.text("set-planning-group", None);
+            let s = b.push("planning.start", "planning-start", Kind::Choice, SettingValue::Text(config.planning.start.clone().unwrap_or_default()));
+            s.choices = [("", "set-planning-start-as-now"), ("lighter", "set-planning-start-lighter"), ("much-lighter", "set-planning-start-much-lighter")].iter().map(|(v, l)| Choice { value: SettingValue::Text(v.to_string()), label: tr.text(l, None) }).collect();
+            let s = b.push("planning.window_days", "planning-window", Kind::Int, SettingValue::Int(i64::from(config.planning.window())));
+            Builder::range(s, f64::from(crate::capacity::WINDOW_LEAST), f64::from(crate::capacity::WINDOW_MOST), 1.0, "");
+            s.unit = tr.text("set-planning-window-unit", None);
+            b.push("planning.even_days", "planning-even", Kind::Bool, SettingValue::Bool(config.planning.even_days));
+            b.push("planning.gain_slots", "planning-gain-slots", Kind::Bool, SettingValue::Bool(config.planning.gain_slots()));
             // What a task is for, by its categories (docs/areas.md): the hours it comes in.
             b.group = tr.text("set-task-areas-group", None);
             b.push("quiet.work", "quiet-work", Kind::Words, SettingValue::Texts(config.quiet.work_categories()));
@@ -577,7 +586,7 @@ mod tests {
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);
-        assert_eq!(keys("tasks"), vec!["office_hours", "tasks.kind", "tasks.estimate", "tasks.list", "quiet.work", "quiet.personal", "github.enabled"]);
+        assert_eq!(keys("tasks"), vec!["office_hours", "tasks.kind", "tasks.estimate", "tasks.list", "planning.start", "planning.window_days", "planning.even_days", "planning.gain_slots", "quiet.work", "quiet.personal", "github.enabled"]);
         assert_eq!(for_view("tasks", &config, &tr, &[("acct/plan".into(), "Plan".into())], None).iter().find(|s| s.key == "tasks.list").unwrap().choices.len(), 2);
         assert_eq!(for_view("lane:filed", &config, &tr, &[], None)[0].kind, Kind::Words);
         // The Porch: its letters and its own sorting; every lane said once, none with another page's settings.

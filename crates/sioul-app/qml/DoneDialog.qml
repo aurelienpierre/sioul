@@ -49,7 +49,25 @@ Dialog {
     anchors.centerIn: parent
     modal: true
     width: Math.min(540, (parent ? parent.width : 540) - 2 * dialog.theme.gap)
-    title: dialog.closing ? dialog.theme.plain(dialog.closing.put_away) : ""
+    // "Work is put away until tomorrow at 09:00. The rest of the day is yours." (docs/reviews.md)
+    title: dialog.closing ? dialog.theme.plain(dialog.closing.put_away + " " + dialog.sioul.text("closing-yours")) : ""
+
+    // The title runs long on a phone: it wraps rather than ends in "…".
+    header: Label {
+        text: dialog.title
+        visible: dialog.title !== ""
+        wrapMode: Text.Wrap
+        textFormat: Text.PlainText
+        font.bold: true
+        padding: 12
+        background: Rectangle {
+            x: 1
+            y: 1
+            width: parent.width - 2
+            height: parent.height - 1
+            color: dialog.palette.window
+        }
+    }
 
     contentItem: ColumnLayout {
         spacing: 10

@@ -63,11 +63,14 @@ pub(crate) fn exact() -> bool {
 }
 
 /// The coming doses given to Android's alarm clock, when they changed: at
-/// each minute of the window, when it is put away, and after a dose is marked.
+/// each minute of the window, when it is put away, and after a dose is marked
+/// or Health's settings saved; the alarm at waking with them (`wake`), which
+/// keeps its own list, codes and receiver.
 pub(crate) fn schedule() {
     if !cfg!(target_os = "android") {
         return;
     }
+    crate::wake::schedule();
     // The reminders of doses marked since (here, or come from another device) taken away.
     let gone: Vec<String> = crate::health::marked_lately().into_iter().filter(|key| REMOVED.lock().is_ok_and(|removed| !removed.contains(key))).collect();
     for key in gone {
@@ -145,8 +148,8 @@ pub unsafe extern "C" fn sioul_alarm_taken(key: *const c_char) -> *mut c_char {
     handed(answer)
 }
 
-/// A text handed by `sioul_alarm_decide`, `sioul_alarm_taken` or
-/// `sioul_time_action` (timenote.rs), given back.
+/// A text handed by `sioul_alarm_decide`, `sioul_alarm_taken`,
+/// `sioul_time_action` (timenote.rs) or `sioul_wake_next` (wake.rs), given back.
 ///
 /// # Safety
 /// `text` is null, or came from one of them and is given back once.

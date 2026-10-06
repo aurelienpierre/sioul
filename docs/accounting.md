@@ -145,8 +145,8 @@ What you are bound to (rent, energy, phone and internet, insurances, health cove
 - **Stopping one**: "Stop it…" opens its own cancel page (online, a three-click cancel button is required in France since 1 June 2023, loi 2022-1158), or writes the letter: a draft, formal, to its address when it is a mail address, with your number with them, asking for a written confirmation and its date; you read it, sign it and send it. "It has ended" keeps it, faded, as a record.
 - **Never**: offers, comparisons, "better deals", switching suggestions. Facts about your contracts only.
 
-## Invoices on one computer
-Invoice numbers must never repeat. With sharing on, one computer numbers them (`sioul_sync::lease`, "staying put"): the first that made invoices keeps them; another says "Invoices are numbered on <computer>" and offers "Make invoices on this computer", which takes them over once the others had time to know (a minute and a half). A computer whose sharing folder cannot be written, or whose other computers went silent for a few minutes, waits rather than risk a number twice.
+## Invoices on one device
+Invoice numbers must never repeat. With sharing on, one device numbers them (`sioul_sync::lease`, "staying put"): the first that made invoices keeps them; another says "Invoices are numbered on <computer>" and offers "Make invoices on this device", which takes them over once the others had time to know (a minute and a half). A device whose sharing folder cannot be written, or whose other devices went silent for a few minutes, waits rather than risk a number twice.
 
 ## Storage
 - **The budget file**, `sioul-budgets.toml`, sits at the root of the case store: readable, written by hand or by Sioul, versioned with git. It holds the budgets, presets, lines, reserves, covers and mail rules, and the bank accounts, their rules (`[[split]]`) and your choices for single movements (`[[assign]]`).

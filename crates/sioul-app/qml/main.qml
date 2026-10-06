@@ -188,8 +188,14 @@ SioulWindow {
     }
 
     // Something new tied to `source` ({uri, kind, key, title, start, name,
-    // address}): made, then opened where it lives.
+    // address}): made, then opened where it lives. A task opens as a new
+    // task's full form, its title and its tie given: made once its title is.
     function addLinked(kind, source) {
+        if (kind === "task") {
+            window.page = 1
+            tasksPage.startNew(source)
+            return
+        }
         if (kind === "event") {
             window.makeEvent(source.kind === "contact" ? "" : source.title, "", source.uri)
             return
@@ -289,7 +295,25 @@ SioulWindow {
             window.page = 13
             papersPage.startFrom(file, title, kind)
         }
+
+        // A task done: "How was it?" beside the line that says so, gone with it.
+        function onTaskDone(uid) {
+            window.lastDone = uid
+            window.lastDoneSaid = sioul.status
+        }
     }
+
+    // The task just done, and the status line that said so.
+    property string lastDone: ""
+    property string lastDoneSaid: ""
+
+    // How a task just done was: its ratings as felt, if you want to say (HowWasIt.qml, made the first time).
+    function howWasIt(uid) {
+        if (howWasItForm.item === null)
+            howWasItForm.setSource("HowWasIt.qml", { sioul: sioul, theme: theme })
+        window.howWasItPopup.ask(uid)
+    }
+    readonly property var howWasItPopup: howWasItForm.item
 
     // A mail kept as a contract: the Budgets page, the form started from it.
     function contractFromMail(subject, from) {
@@ -384,6 +408,8 @@ SioulWindow {
             window.askNeed(item.key)
         else if (item.kind === "stopped")
             window.askNeed("")
+        else if (item.kind === "review")
+            window.reviewDay(item.key || "work")
         else if (item.kind === "site") {
             window.page = 3
             sitesPage.open(item.key || decodeURIComponent(item.uri.slice("sioul:site/".length)))
@@ -534,6 +560,39 @@ SioulWindow {
     }
     readonly property var focusWindow: focusWindowLoader.item
 
+    // The end of the work day ("Done for today") or of the day before sleep
+    // (DayReview.qml, docs/reviews.md): made the first time it is asked for.
+    Later {
+        id: dayReview
+
+        sourceComponent: Component {
+            DayReview {
+                sioul: sioul
+                theme: theme
+                window: window
+            }
+        }
+    }
+    // What the status line offers now: {kind, date, line, button}, kind "" for nothing.
+    readonly property var offer: window.moment.review || ({ kind: "", date: "", line: "", button: "" })
+
+    // "work" or "night": the review's sheet.
+    function reviewDay(kind) {
+        dayReview.now().show(kind)
+    }
+
+    // The work day closed from the sheet: the Tasks page's screen says where
+    // everything went, over the page shown (the Tasks page made if it was not).
+    function showClosing(closing) {
+        if (window.made[1] !== true) {
+            const made = Object.assign({}, window.made)
+            made[1] = true
+            window.made = made
+        }
+        if (window.tasksPage)
+            window.tasksPage.showClosing(closing)
+    }
+
     // SIOUL_GRAB=<folder>: each page saved as an image, a message opened on the
     // Porch included, then the window quits. For development and documentation.
     // Made only when asked for (SIOUL_GRAB): a thousand lines of steps, never read otherwise.
@@ -545,9 +604,11 @@ SioulWindow {
 
             readonly property string folder: sioul.grabFolder()
             property int step: 0
+            // A task the steps marked done (taskform).
+            property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -555,6 +616,24 @@ SioulWindow {
             // In French (make-demo.py --language fr), the same places, under its names.
             readonly property bool demoFrench: sioul.text("qt-locale") === "fr_FR"
             // Each page in a phone's layout (SIOUL_GRAB_STEPS=phone), Settings scrolled too.
+            // The Health page's timeline opened readable, as a finger's long press
+            // opens it on a thin day (SIOUL_GRAB_STEPS=drag; SIOUL_GRAB_PHONE for a phone's).
+            readonly property var dragSteps: [
+                () => window.page = 10,
+                () => {},
+                () => grabber.save("health-day"),
+                () => healthPage.showReadable(true),
+                () => {},
+                () => grabber.save("health-readable"),
+                () => healthPage.showReadable(false),
+                () => healthPage.showWeek(),
+                () => {},
+                () => grabber.save("health-week"),
+                () => healthPage.showReadable(true),
+                () => {},
+                () => grabber.save("health-week-readable"),
+                () => window.close()
+            ]
             readonly property var phone: [
                 () => window.page = 0,
                 () => grabber.save("phone-porch"),
@@ -670,7 +749,11 @@ SioulWindow {
                 () => window.page = 10,
                 () => {},
                 () => grabber.save("health"),
-                // Its week, and its settings (the usual meals and night, the medicines).
+                // Its medicines and prescriptions, after the day (on a phone, below its first screen).
+                () => healthPage.showMedicines(),
+                () => {},
+                () => grabber.save("health-medicines"),
+                // Its week, and its settings (the usual meals and night).
                 () => healthPage.showWeek(),
                 () => {},
                 () => grabber.save("health-week"),
@@ -834,6 +917,8 @@ SioulWindow {
                 () => {},
                 () => grabber.save("links-note-unlinked"),
                 () => window.addLinked("task", { uri: "sioul:note/admin/lease.md", kind: "note", key: "admin/lease.md", title: "Lease" }),
+                () => grabber.save("links-form"),
+                () => tasksPage.panel.confirmTitle(""),
                 () => {},
                 () => grabber.save("links-made"),
                 () => window.close()
@@ -871,6 +956,114 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.save("move-bob"),
+                () => window.close()
+            ]
+            // A new task's full form (New ▸ A task, then Add ▾ ▸ A task from a
+            // note), made once its title is given; the costs and the gain as
+            // sliders in its panel, then in an event's form. With SIOUL_GRAB_PHONE,
+            // a phone's. On a scratch profile: it makes tasks and saves ratings.
+            readonly property var taskForm: [
+                () => window.page = 1,
+                () => {},
+                () => window.newThing("task"),
+                () => {},
+                () => grabber.save("taskform-new"),
+                () => tasksPage.panel.confirmTitle(grabber.demoFrench ? "Appeler la banque" : "Call the bank"),
+                () => {},
+                () => {},
+                () => grabber.save("taskform-made"),
+                () => tasksPage.panel.showRatings(),
+                () => {},
+                () => grabber.save("taskform-unrated"),
+                () => {
+                    tasksPage.panel.rate("anxiety", 7)
+                    tasksPage.panel.rate("gain", 0)
+                },
+                () => {},
+                () => {},
+                () => tasksPage.panel.showRatings(),
+                () => grabber.save("taskform-rated"),
+                () => tasksPage.closePanel(),
+                // From the client's message of this morning (its subject, sender and link), else a note.
+                () => {
+                    const found = JSON.parse(sioul.searchThings(grabber.demoFrench ? "deux petites modifications" : "two small changes", "mail", "") || "[]").concat(JSON.parse(sioul.searchThings("", "note", "") || "[]"))
+                    console.warn("taskform: from " + (found.length > 0 ? found[0].kind + " " + found[0].title : "nothing"))
+                    if (found.length > 0)
+                        window.addLinked("task", { uri: found[0].uri, kind: found[0].kind, key: found[0].key || "", title: found[0].title || "" })
+                    else
+                        window.newThing("task")
+                },
+                () => {},
+                () => grabber.save("taskform-linked"),
+                () => tasksPage.panel.showRatings(),
+                () => {},
+                () => grabber.save("taskform-linked-down"),
+                // Closed with its title as given: made. Then a form closed empty: nothing made.
+                () => tasksPage.closePanel(),
+                () => window.newThing("task"),
+                () => tasksPage.closePanel(),
+                () => tasksPage.mode = "list",
+                () => {},
+                () => {},
+                () => grabber.save("taskform-list"),
+                () => {
+                    tasksPage.mode = "now"
+                    window.page = 4
+                    agendaPage.newEvent(agendaPage.today())
+                },
+                () => agendaPage.fillEvent(grabber.demoFrench ? "Rendez-vous à la mairie" : "Town hall appointment", "10:00", "11:00", ""),
+                () => {},
+                // The form over the window: the overlay's one child narrower than it (not its dimmer).
+                () => {
+                    const over = frame.Overlay.overlay
+                    for (const item of over.children)
+                        if (item.visible && item.width < over.width)
+                            item.grabToImage(result => result.saveToFile(grabber.folder + "/taskform-event.png"))
+                },
+                () => agendaPage.saveEvent(),
+                // A task's details first, then "Edit": its form.
+                () => {
+                    window.page = 1
+                    tasksPage.mode = "now"
+                },
+                () => tasksPage.openFirst(),
+                () => {},
+                () => grabber.save("taskdetails"),
+                () => {
+                    tasksPage.panel.editing = true
+                    tasksPage.panel.moreShown = true
+                },
+                () => {},
+                () => grabber.save("taskdetails-edit"),
+                // "I dread it": two minutes offered on Now's card, nothing started.
+                () => {
+                    tasksPage.closePanel()
+                    tasksPage.twoOffered = tasksPage.shown.now.now ? tasksPage.shown.now.now.uid : ""
+                },
+                () => {},
+                () => grabber.save("taskdetails-hard"),
+                () => console.warn("taskform: a focus session after the answer: " + (sioul.focusSession !== "" ? "yes" : "no")),
+                // Done: "How was it?" on the status line; its five sliders; a felt rating kept.
+                () => {
+                    const found = JSON.parse(sioul.searchTasks(grabber.demoFrench ? "Appeler la banque" : "Call the bank", "") || "[]")
+                    grabber.doneUid = found.length > 0 ? found[0].uid : ""
+                    console.warn("taskform: marking done " + grabber.doneUid)
+                    if (grabber.doneUid !== "")
+                        sioul.setTaskStatus(grabber.doneUid, "completed")
+                },
+                () => {},
+                () => grabber.save("taskdetails-done"),
+                () => window.howWasIt(window.lastDone),
+                () => {},
+                () => grabber.savePopup(howWasItForm.item, "taskdetails-felt"),
+                () => howWasItForm.item.keep({ cognitive: null, emotional: null, anxiety: 3, body: null, gain: 6 }),
+                () => {},
+                () => grabber.savePopup(howWasItForm.item, "taskdetails-felt-kept"),
+                () => howWasItForm.item.close(),
+                () => tasksPage.open(grabber.doneUid),
+                () => tasksPage.panel.feltShown = true,
+                () => {},
+                () => grabber.save("taskdetails-done-panel"),
                 () => window.close()
             ]
             // The task pages only: nothing else is opened, no message marked read.
@@ -1129,7 +1322,7 @@ SioulWindow {
                 () => grabber.save("areas-hours-2"),
                 () => window.openTask("office-call"),
                 () => {},
-                () => tasksPage.panel.moreShown = true,
+                () => tasksPage.showPanelDetails(),
                 () => {},
                 () => grabber.save("areas-task"),
                 () => window.close()
@@ -1315,6 +1508,50 @@ SioulWindow {
                 () => window.close()
             ]
             // The day seen, the routines, one played.
+            // The end of the work day and of the day (docs/reviews.md): the sheets
+            // as they open and with answers, the screen after closing, the status
+            // line, the night's sheet with the notes of the last days, the Health page.
+            readonly property var review: [
+                () => {
+                    sioul.setWeather("haze")
+                    window.page = 1
+                },
+                () => {},
+                () => grabber.save("review-offer"),
+                () => tasksPage.stopForToday(),
+                () => {},
+                () => grabber.savePopup(dayReview.item, "review-work"),
+                () => {
+                    dayReview.item.felt = "heavy"
+                    dayReview.item.mix = "about_right"
+                    dayReview.item.write("The bank called back: **done**.\n\n- the form sent\n- the rest on Thursday")
+                },
+                () => {},
+                () => grabber.savePopup(dayReview.item, "review-work-said"),
+                () => dayReview.item.previewing = true,
+                () => {},
+                () => grabber.savePopup(dayReview.item, "review-work-preview"),
+                () => dayReview.item.closeIt(),
+                () => {},
+                () => {},
+                () => tasksPage.grabStop(grabber.folder + "/review-closing.png"),
+                () => tasksPage.closeStop(),
+                () => {},
+                () => grabber.save("review-status"),
+                () => window.reviewDay("night"),
+                () => {},
+                () => grabber.savePopup(dayReview.item, "review-night"),
+                () => dayReview.item.backShown = true,
+                () => {},
+                () => grabber.savePopup(dayReview.item, "review-night-back"),
+                () => dayReview.item.close(),
+                () => window.page = 10,
+                () => {},
+                () => {},
+                () => grabber.save("review-health"),
+                () => sioul.usualHours(),
+                () => window.close()
+            ]
             readonly property var day: [
                 () => window.page = 1,
                 () => tasksPage.mode = "day",
@@ -1559,6 +1796,9 @@ SioulWindow {
                 () => grabber.save("quiet-late"),
                 () => tasksPage.stopForToday(),
                 () => {},
+                () => grabber.savePopup(dayReview.item, "quiet-review"),
+                () => dayReview.item.closeIt(),
+                () => {},
                 () => tasksPage.grabStop(grabber.folder + "/quiet-done-dialog.png"),
                 () => tasksPage.closeStop(),
                 () => {},
@@ -1751,7 +1991,7 @@ SioulWindow {
                 () => window.page = 10,
                 () => {},
                 () => grabber.save("health"),
-                // The week, then the settings (the usual meals and night, the medicines).
+                // The week, then the settings (the usual meals and night).
                 () => healthPage.showWeek(),
                 () => {},
                 () => grabber.save("health-week"),
@@ -1769,6 +2009,34 @@ SioulWindow {
                 () => {},
                 () => grabber.savePopup(healthPage.openPopup(), "health-change"),
                 () => healthPage.closePopups(),
+                // A medicine's form and a prescription's, opened from the page.
+                () => healthPage.editMedicine(healthPage.medicines[1] || null),
+                () => {},
+                () => grabber.savePopup(healthPage.openPopup(), "health-medicine"),
+                () => healthPage.closePopups(),
+                () => healthPage.editPrescription(healthPage.prescriptions[0] || null),
+                () => {},
+                () => grabber.savePopup(healthPage.openPopup(), "health-prescription"),
+                () => healthPage.closePopups(),
+                // A wide window: the medicines and prescriptions in a column of their
+                // own, the day's and the week's; then the pictures' size again.
+                () => {
+                    if (!window.phoneGrab) {
+                        window.width = 1920
+                        window.height = 1000
+                    }
+                },
+                () => {},
+                () => grabber.save("health-wide"),
+                () => healthPage.showWeek(),
+                () => {},
+                () => grabber.save("health-wide-week"),
+                () => {
+                    healthPage.showDay()
+                    window.width = window.phoneGrab ? 412 : window.demoGrab ? 1280 : 1100
+                    window.height = window.phoneGrab ? 891 : window.demoGrab ? 860 : 1500
+                },
+                () => {},
                 // Lunch's question: later, at another time, not today, where you stopped.
                 () => window.askNeed("meal:1"),
                 () => {
@@ -1802,8 +2070,10 @@ SioulWindow {
             }
 
             // A phone's pictures: what passes the window's right edge, said in the log,
-            // the deepest items only (their containers pass it with them).
-            function overflow(name) {
+            // the deepest items only (their containers pass it with them). `root`: a
+            // pop-up's own item, which the window's content leaves out.
+            function overflow(name, root) {
+                const from = root || window.contentItem
                 const limit = window.width + 1
                 const passes = item => item.visible && item.width > 0 && item.mapToItem(null, item.width, 0).x > limit
                 // A chart scrolled sideways (the tasks' timeline) is wider on purpose.
@@ -1825,7 +2095,7 @@ SioulWindow {
                     }
                     return true
                 }
-                walk(window.contentItem, 0)
+                walk(from, 0)
                 // The rows that widen their column: a row or grid wider, at its own
                 // width, than the screen (a column takes its widest row's width).
                 const words = item => {
@@ -1847,12 +2117,14 @@ SioulWindow {
                     for (let i = 0; i < item.children.length; ++i)
                         wide(item.children[i], depth + 1)
                 }
-                wide(window.contentItem, 0)
+                wide(from, 0)
             }
 
             // An open menu or pop-up, which the frame leaves out.
             function savePopup(popup, name) {
                 popup.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/" + name + ".png"))
+                if (window.phoneGrab)
+                    grabber.overflow(name, popup.contentItem.parent)
             }
 
             function saveDraft(name) {
@@ -1929,6 +2201,9 @@ SioulWindow {
     }
     Loader {
         id: newMenu
+    }
+    Loader {
+        id: howWasItForm
     }
 
     TextEdit {
@@ -2303,6 +2578,17 @@ SioulWindow {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 40
                             text: sioul.undoLine !== "" ? sioul.undoLine : sioul.status
+
+                            // When nothing else is said, what can be closed now (DayReview.qml):
+                            // whole or not at all, and out of the layout, which it never widens.
+                            Label {
+                                anchors.fill: parent
+                                visible: parent.text === "" && window.offer.line !== "" && parent.width >= implicitWidth
+                                text: window.offer.line
+                                textFormat: Text.PlainText
+                                verticalAlignment: Text.AlignVCenter
+                                color: theme.muted
+                            }
                             // Server answers and file names: never read as rich text.
                             textFormat: Text.PlainText
                             color: sioul.undoLine !== "" ? theme.text : theme.muted
@@ -2315,7 +2601,8 @@ SioulWindow {
                         Button {
                             id: modeButton
 
-                            visible: window.moment.line !== "" && sioul.undoLine === ""
+                            // On a phone, the end of the day offered takes its place (DayReview.qml).
+                            visible: window.moment.line !== "" && sioul.undoLine === "" && !(window.compact && window.offer.kind !== "")
                             // Room shared with what just happened, when something did.
                             Layout.maximumWidth: Math.round(window.width * (sioul.status !== "" ? 0.3 : 0.55))
                             Layout.preferredHeight: 28
@@ -2385,6 +2672,29 @@ SioulWindow {
                                 }
                             }
                         }
+                        // A task just done: how it was, if you want to say; never asked again.
+                        Button {
+                            id: howButton
+
+                            visible: window.lastDone !== "" && sioul.undoLine === "" && sioul.status !== "" && sioul.status === window.lastDoneSaid
+                            Layout.preferredHeight: 28
+                            flat: true
+                            text: sioul.text("felt-ask")
+                            onClicked: window.howWasIt(window.lastDone)
+                        }
+                        // The work day, or the day, can be closed (DayReview.qml): offered,
+                        // never pressed for you; nothing at work or while you sleep.
+                        Button {
+                            visible: window.offer.kind !== "" && sioul.undoLine === ""
+                            Layout.preferredHeight: 28
+                            flat: true
+                            text: window.offer.button
+                            ToolTip.visible: hovered
+                            ToolTip.text: window.offer.line
+                            ToolTip.delay: 800
+                            Accessible.description: window.offer.line
+                            onClicked: window.reviewDay(window.offer.kind)
+                        }
                         // Ten seconds to change your mind.
                         Button {
                             visible: sioul.undoLine !== ""
@@ -2394,8 +2704,9 @@ SioulWindow {
                             icon.color: theme.text
                             onClicked: sioul.undo()
                         }
+                        // The keys, when nothing else needs the room.
                         Label {
-                            visible: window.moment.line === "" && !window.compact
+                            visible: window.moment.line === "" && !window.compact && !howButton.visible
                             text: sioul.text("ui-keys")
                             color: theme.muted
                             font.pixelSize: 12

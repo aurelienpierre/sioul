@@ -886,6 +886,10 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
                     let names = outcome.written.iter().cloned().collect::<Vec<_>>().join("\n");
                     let _ = qt.queue(move |mut sioul| sioul.as_mut().shared_in(QString::from(&names)));
                 }
+                // The night, its mornings or a day's change come from another device: a phone's alarm at waking follows now (`wake`).
+                if outcome.written.contains("data/health.toml") || outcome.written.contains("data/health-days.toml") {
+                    crate::wake::schedule();
+                }
                 (!outcome.written.is_empty(), outcome.written.contains("config/config.toml"), outcome.problems, outcome.sent)
             }
             Err(e) => (false, false, vec![e], 0),

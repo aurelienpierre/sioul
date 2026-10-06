@@ -34,6 +34,18 @@
 //!   none in fog, today's weather saying for today); the next one goes to a
 //!   day that can take it, and in fog a heavy task is not the next step unless
 //!   nothing else is ready (energy accounting: fewer demands, Raymaker et al. 2020).
+//!   Heavy is the highest cost when any is rated, else the word (`capacity::level_of`);
+//!   the days before and after a heavy event take one fewer.
+//! - **What a day holds** (`capacity`, docs/capacity.md): with budgets, each day
+//!   is filled to 85 % of each cost's budget and of the total, after its events;
+//!   lighter around a heavy event, today by its weather; kept even if you
+//!   asked. Each task is laid at its corrected length (your estimate × how
+//!   long tasks like it take you), each day keeps free time for steps running
+//!   long (the 85th percentile of the total of the steps laid there, fitted
+//!   as the day fills, a third of its room at most) and half an hour for a
+//!   gain slot; the next step keeps part of today all the same.
+//!   A task with margins is never cut: laid whole on one day, or given a day
+//!   of its own. A step given a time today by hand stays today.
 
 use crate::agenda::Occurrence;
 use crate::areas::{Area, TaskAreas, Time, Week, in_view};
@@ -197,6 +209,9 @@ pub struct Settings {
     pub shifts: BTreeMap<String, i64>,
     /// Each day's own meals, naps and nights: moved, changed, taken out, added (`with_days`).
     pub needs_days: crate::needs::Days,
+    /// What your record says (`capacity`): ratings, corrected lengths, budgets,
+    /// free time, the gain slot. Its default changes nothing.
+    pub capacity: crate::capacity::Planning,
 }
 
 impl Default for Settings {
@@ -235,6 +250,7 @@ impl Settings {
             needs: crate::needs::Needs::default(),
             shifts: BTreeMap::new(),
             needs_days: crate::needs::Days::default(),
+            capacity: crate::capacity::Planning::default(),
         }
     }
 
@@ -368,8 +384,12 @@ pub struct Planned {
     pub open_steps: usize,
     /// How many bigger tasks it is a step of.
     pub depth: usize,
-    /// Minutes left: its estimate, less the time already spent.
+    /// Minutes left: its estimate, less the time already spent, its margins added.
     pub left: u32,
+    /// Minutes the plan lays for it: the same from its corrected length (`capacity::Ratios`).
+    pub laid: u32,
+    /// How heavy the plan takes it: "light", "usual", "heavy", "rest" (`capacity::Rates::level`).
+    pub level: &'static str,
     /// Minutes the plan gives it on its first day: all of it, or the part that fits.
     pub on_start: u32,
     /// Tagged `joy` or `someday`, or a step of such a task: never proposed, never scheduled.
@@ -379,9 +399,11 @@ pub struct Planned {
 /// The tags that make a task optional (`Planned::optional`).
 pub const OPTIONAL_TAGS: &[&str] = &["joy", "someday"];
 
-/// Whether a task's own tags make it optional, or it gives back rather than takes.
+/// Whether a task's own tags make it optional, or it gives back rather than
+/// takes (its word, or its costs rated light with a gain of 5 or more). A
+/// date asked makes it a duty all the same: planned, as a light step.
 pub fn is_optional(task: &Task) -> bool {
-    task.energy == "rest" || task.categories.iter().any(|c| OPTIONAL_TAGS.iter().any(|t| c.eq_ignore_ascii_case(t)))
+    (crate::capacity::level_of(task) == crate::demands::Level::Rest && task.due.is_empty()) || task.categories.iter().any(|c| OPTIONAL_TAGS.iter().any(|t| c.eq_ignore_ascii_case(t)))
 }
 
 /// The whole plan.
@@ -402,6 +424,10 @@ pub struct Plan {
     pub streams: BTreeMap<String, usize>,
     /// Tasks that wait for each other, loop by loop.
     pub loops: Vec<Vec<String>>,
+    /// What each day holds: each task's UID and its minutes there, in the plan's order.
+    pub days: BTreeMap<Date, Vec<(String, u32)>>,
+    /// Minutes each day keeps free for steps running long (`capacity::slack`).
+    pub slack: BTreeMap<Date, u32>,
 }
 
 /// The time budget until a date asked (Shovel's "cushion"): what must be done
@@ -430,7 +456,7 @@ pub fn cushion(tasks: &[Task], plan: &Plan, settings: &Settings, today: Date, da
             continue;
         }
         let Some(planned) = open(&uid) else { continue };
-        need = need.saturating_add(planned.left);
+        need = need.saturating_add(planned.laid);
         if let Some(task) = tasks.iter().find(|t| t.uid == uid) {
             kinds = kinds.with(settings.usable(task));
         }
@@ -651,21 +677,23 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
         list.retain(|to| loop_of.get(&from).is_none_or(|k| loop_of.get(to) != Some(k)));
     }
 
-    // Minutes left, and the day each can start from.
-    let left: Vec<u32> = (0..n)
-        .map(|i| {
-            if open_steps[i] > 0 {
-                return 0;
-            }
-            // Every step done: only the bigger task's own tick is left.
-            if !graph.children[i].is_empty() && tasks[i].estimate == 0 {
-                return 5;
-            }
-            let estimate = if tasks[i].estimate > 0 { tasks[i].estimate } else { settings.default_estimate };
-            // Getting there and back, getting ready: room taken too, never a pause.
-            estimate.saturating_sub(spent.get(&tasks[i].uid).copied().unwrap_or(0)).max(5) + tasks[i].margins.before + tasks[i].margins.after
-        })
-        .collect();
+    // Minutes left, and the day each can start from: as you estimated (shown,
+    // the focus timer's), and as the plan lays it (its corrected length).
+    let minutes_left = |i: usize, corrected: bool| -> u32 {
+        if open_steps[i] > 0 {
+            return 0;
+        }
+        // Every step done: only the bigger task's own tick is left.
+        if !graph.children[i].is_empty() && tasks[i].estimate == 0 {
+            return 5;
+        }
+        let own = if tasks[i].estimate > 0 { tasks[i].estimate } else { settings.default_estimate };
+        let estimate = if corrected { settings.capacity.corrected.get(&tasks[i].uid).copied().unwrap_or(own) } else { own };
+        // Getting there and back, getting ready: room taken too, never a pause.
+        estimate.saturating_sub(spent.get(&tasks[i].uid).copied().unwrap_or(0)).max(5) + tasks[i].margins.before + tasks[i].margins.after
+    };
+    let left: Vec<u32> = (0..n).map(|i| minutes_left(i, false)).collect();
+    let laid: Vec<u32> = (0..n).map(|i| minutes_left(i, true)).collect();
     let not_before: Vec<Option<Date>> = (0..n)
         .map(|i| {
             let mut day = tasks[i].start_date().filter(|d| *d > today);
@@ -701,7 +729,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
         }
         // The days its work takes at the pace of its hours; without hours for it, none
         // (not a minute a day, which made such a task the most pressing of all).
-        let days = if weekly[i] == 0 { 0 } else { i64::from(left[i]) * 7 / i64::from(weekly[i]) };
+        let days = if weekly[i] == 0 { 0 } else { i64::from(laid[i]) * 7 / i64::from(weekly[i]) };
         latest[i] = finish.map(|f| add_days(f, -days));
     }
 
@@ -728,6 +756,10 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
         .collect();
 
     let waits_for: Vec<Vec<usize>> = (0..n).map(|i| preds[i].iter().map(|&(p, _)| p).filter(|&p| open[p]).collect()).collect();
+    // How heavy each task is planned: its ratings (said after it, else forecast), else its word.
+    let capacity = &settings.capacity;
+    let rates: Vec<crate::capacity::Rates> = tasks.iter().map(|t| capacity.rates_of(t)).collect();
+    let heavy: Vec<bool> = rates.iter().map(|r| r.level() == crate::demands::Level::Heavy).collect();
     let column = |i: usize| match tasks[i].status {
         Status::Completed | Status::Cancelled => Column::Done,
         Status::InProcess => Column::Doing,
@@ -737,7 +769,7 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
     let rank = |i: usize| Rank {
         set_aside: set_aside.contains(&tasks[i].uid),
         waiting: column(i) == Column::Waiting,
-        too_heavy: tasks[i].energy == "heavy" && settings.heavy_today == 0,
+        too_heavy: heavy[i] && settings.heavy_today == 0,
         not_started: tasks[i].status != Status::InProcess,
         latest_start: latest[i].map_or(i64::MAX, day_number),
         unblocks: Reverse(unblocks[i]),
@@ -748,13 +780,35 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
         index: i,
     };
 
+    // Free to do now: nothing it waits for still open, no day ahead to wait for;
+    // a step started too soon waits like the others.
+    let free_now = |i: usize| waits_for[i].is_empty() && not_before[i].is_none();
+    let mut ready: Vec<usize> = (0..n).filter(|&i| open[i] && open_steps[i] == 0 && free_now(i) && (column(i) == Column::Doing || (column(i) == Column::Ready && !optional[i]))).collect();
+    ready.sort_by_key(|&i| rank(i));
+    // Streams: tasks tied by waiting or by being steps of one bigger task (union-find).
+    let mut root: Vec<usize> = (0..n).collect();
+    fn find(root: &mut [usize], mut i: usize) -> usize {
+        while root[i] != i {
+            root[i] = root[root[i]];
+            i = root[i];
+        }
+        i
+    }
+    for i in 0..n {
+        let tied: Vec<usize> = preds[i].iter().map(|&(p, _)| p).chain(graph.parent[i]).collect();
+        for j in tied {
+            let (a, b) = (find(&mut root, i), find(&mut root, j));
+            root[a.max(b)] = a.min(b);
+        }
+    }
+    let stream: Vec<usize> = (0..n).map(|i| find(&mut root, i)).collect();
+    let aside_streams: BTreeSet<usize> = (0..n).filter(|&i| set_aside.contains(&tasks[i].uid)).map(|i| stream[i]).collect();
+    let not_aside = |i: &&usize| !set_aside.contains(&tasks[**i].uid);
+    // The next step: it keeps part of today (below), so that Now and the day agree.
+    let next: Option<usize> = ready.iter().filter(not_aside).find(|&&i| !aside_streams.contains(&stream[i])).or_else(|| ready.iter().find(not_aside)).copied();
+
     // The plan's order, then the days: first days with room, after what each waits for.
     let order = kahn(n, &order_edges, &open, rank);
-    // Minutes taken from each day's room, kind by kind (as `Settings::room_on` lists them).
-    let mut used: BTreeMap<Date, Vec<u32>> = BTreeMap::new();
-    let mut heavy_used: BTreeMap<Date, u32> = BTreeMap::new();
-    let (mut start, mut finish): (Vec<Option<Date>>, Vec<Option<Date>>) = (vec![None; n], vec![None; n]);
-    let mut on_start: Vec<u32> = vec![0; n];
     // The days each task's office opens: its own hours, else offices' usual days.
     let office_days: Vec<[bool; 7]> = tasks
         .iter()
@@ -763,81 +817,236 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
             if own.is_empty() { settings.office_days } else { crate::window::days_open(&own) }
         })
         .collect();
-    for &i in &order {
-        let mut earliest = not_before[i].unwrap_or(today).max(today);
-        for &(p, gap) in &preds[i] {
-            if let Some(end) = finish[p] {
-                earliest = earliest.max(add_days(end, gap_days(gap)));
-            }
-        }
-        if optional[i] && tasks[i].status != Status::InProcess {
-            continue;
-        }
-        if open_steps[i] > 0 {
-            // A bigger task spans its steps.
-            let steps = || graph.children[i].iter().filter(|&&c| open[c]);
-            start[i] = steps().filter_map(|&c| start[c]).min().or(Some(earliest));
-            finish[i] = steps().filter_map(|&c| finish[c]).max().or(Some(earliest));
-            continue;
-        }
-        // The most room a day it can go on has for it: its kinds' hours, on its office's days.
-        let biggest = (0..7).filter(|&d| !tasks[i].office_hours || office_days[i][d]).map(|d| settings.week[d].for_kinds(usable[i])).max().unwrap_or(0);
-        // No hours ever for what it is for (on days its office opens): it waits for none.
-        if biggest == 0 {
-            (start[i], finish[i]) = (Some(earliest), Some(earliest));
-            continue;
-        }
-        let (mut day, mut minutes) = (earliest, left[i].max(SHORTEST));
-        let heavy = tasks[i].energy == "heavy";
-        // Done in one go when it is short and some day can hold it.
-        let whole = minutes <= WHOLE && minutes <= biggest;
-        for _ in 0..3 * 366 {
-            let weekday = day.weekday().to_monday_zero_offset() as usize;
-            // A day full of heavy tasks takes no other.
-            let heavy_limit = if day == today { settings.heavy_today } else { settings.heavy_per_day };
-            let heavy_full = heavy && settings.heavy_per_day > 0 && heavy_used.get(&day).copied().unwrap_or(0) >= heavy_limit;
-            if !(heavy_full || settings.closed.contains(&day) || (tasks[i].office_hours && !office_days[i][weekday])) {
-                let room = settings.room_on(day);
-                let percent = if day == today { settings.today_percent } else { 100 };
-                let taken = used.entry(day).or_insert_with(|| vec![0; room.0.len()]);
-                // The hours of its kinds, those open to fewer kinds first: overlaps stay for either.
-                let mut kinds: Vec<usize> = (0..room.0.len()).filter(|&k| room.0[k].0.meets(usable[i])).collect();
-                kinds.sort_by_key(|&k| room.0[k].0.count());
-                let free_in = |k: usize, taken: &[u32]| (room.0[k].1 * percent / 100).saturating_sub(taken[k]);
-                // Room for the step and the pause after it; the day's first step may fill its
-                // hours without one (a step of an hour in an hour's window is not cut).
-                let first = kinds.iter().all(|&k| taken[k] == 0);
-                let free: u32 = kinds.iter().map(|&k| free_in(k, taken)).sum::<u32>().saturating_sub(if first { 0 } else { settings.pause });
-                // A part worth starting: the whole rest; for a long step, a quarter
-                // of an hour at least, leaving at least as much for later.
-                let mut part = free.min(minutes);
-                if part < minutes && (whole || minutes - part < SHORTEST) {
-                    part = if whole { 0 } else { part.min(minutes.saturating_sub(SHORTEST)) };
-                }
-                if part > 0 && part >= minutes.min(SHORTEST) {
-                    let mut owed = part + settings.pause;
-                    for &k in &kinds {
-                        let take = free_in(k, taken).min(owed);
-                        taken[k] += take;
-                        owed -= take;
-                    }
-                    if heavy {
-                        *heavy_used.entry(day).or_insert(0) += 1;
-                    }
-                    minutes -= part;
-                    if start[i].is_none() {
-                        (start[i], on_start[i]) = (Some(day), part);
-                    }
-                    if minutes == 0 {
-                        break;
-                    }
+    // A step given a time today by hand (dragged in the day, `Task::at`): today, whatever the room.
+    let pinned: Vec<bool> = tasks.iter().map(|t| t.at_on(today, &TimeZone::system()).is_some()).collect();
+    // A day's room for tasks, in minutes: today's by its weather.
+    let room_for_tasks = |day: Date| settings.room_on(day).total() * if day == today { settings.today_percent } else { 100 } / 100;
+    // The half hour kept on a day for the slot of time for you after its costliest block.
+    let gain_kept = |day: Date| if settings.room_on(day).total() >= 120 { capacity.gain_slot } else { 0 };
+    // How a day's total spreads (`capacity::Spread`): today's as its finished tasks say it goes.
+    let spread_on = |day: Date| -> Option<(crate::capacity::Spread, f32)> {
+        let spread = capacity.spread?;
+        Some(if day == today { (crate::capacity::Spread { day: if capacity.today_sigma > 0.0 { capacity.today_sigma } else { spread.day }, ..spread }, capacity.today_effect) } else { (spread, 0.0) })
+    };
+    // Each task into the first days with room, each day keeping free time for its
+    // steps running long as it fills; `even`, the most a day holds.
+    let layout = |even: Option<&Load>| -> Layout {
+        // Minutes taken from each day's room, kind by kind (as `Settings::room_on` lists them).
+        let mut used: BTreeMap<Date, Vec<u32>> = BTreeMap::new();
+        let mut heavy_used: BTreeMap<Date, u32> = BTreeMap::new();
+        // What the tasks laid each day weigh (`capacity::Load`).
+        let mut loaded: BTreeMap<Date, Load> = BTreeMap::new();
+        // The minutes laid each day, summed and squared: what its free time grows with.
+        let mut sums: BTreeMap<Date, (f32, f32)> = BTreeMap::new();
+        let mut out = Layout { start: vec![None; n], finish: vec![None; n], on_start: vec![0; n], days: BTreeMap::new(), left: BTreeMap::new() };
+        for &i in &order {
+            let mut earliest = not_before[i].unwrap_or(today).max(today);
+            for &(p, gap) in &preds[i] {
+                if let Some(end) = out.finish[p] {
+                    earliest = earliest.max(add_days(end, gap_days(gap)));
                 }
             }
-            day = add_days(day, 1);
+            if optional[i] && tasks[i].status != Status::InProcess {
+                continue;
+            }
+            if open_steps[i] > 0 {
+                // A bigger task spans its steps.
+                let steps = || graph.children[i].iter().filter(|&&c| open[c]);
+                out.start[i] = steps().filter_map(|&c| out.start[c]).min().or(Some(earliest));
+                out.finish[i] = steps().filter_map(|&c| out.finish[c]).max().or(Some(earliest));
+                continue;
+            }
+            let minutes_all = laid[i].max(SHORTEST);
+            // Given a time today by hand: today, whole, whatever the room, the budgets or what it waits for.
+            if pinned[i] {
+                let room = settings.room_on(today);
+                let taken = used.entry(today).or_insert_with(|| vec![0; room.0.len()]);
+                let mut owed = minutes_all + settings.pause;
+                for k in (0..room.0.len()).filter(|&k| room.0[k].0.meets(usable[i])) {
+                    let take = room.0[k].1.saturating_sub(taken[k]).min(owed);
+                    taken[k] += take;
+                    owed -= take;
+                }
+                if heavy[i] {
+                    *heavy_used.entry(today).or_insert(0) += 1;
+                }
+                crate::capacity::add(loaded.entry(today).or_insert([0.0; 5]), &rates[i].load(minutes_all));
+                let sum = sums.entry(today).or_insert((0.0, 0.0));
+                (sum.0, sum.1) = (sum.0 + minutes_all as f32, sum.1 + (minutes_all as f32).powi(2));
+                out.days.entry(today).or_default().push((i, minutes_all));
+                (out.start[i], out.finish[i], out.on_start[i]) = (Some(today), Some(today), minutes_all);
+                continue;
+            }
+            // The most room a day it can go on has for it: its kinds' hours, on its office's days.
+            let biggest = (0..7).filter(|&d| !tasks[i].office_hours || office_days[i][d]).map(|d| settings.week[d].for_kinds(usable[i])).max().unwrap_or(0);
+            // No hours ever for what it is for (on days its office opens): it waits for none.
+            if biggest == 0 {
+                (out.start[i], out.finish[i]) = (Some(earliest), Some(earliest));
+                continue;
+            }
+            let (mut day, mut minutes) = (earliest, minutes_all);
+            let margins = !tasks[i].margins.is_empty();
+            // Done in one go when it is short, or has margins (going there twice is
+            // not the same step), and some day can hold it.
+            let whole = (minutes <= WHOLE || margins) && minutes <= biggest;
+            // With margins and longer than any day's room: a day of its own.
+            let alone = margins && minutes > biggest;
+            let per_hour = rates[i].per_hour();
+            for _ in 0..3 * 366 {
+                let weekday = day.weekday().to_monday_zero_offset() as usize;
+                // A day full of heavy tasks takes no other; the days around a heavy event, one fewer.
+                let lighter = u32::from(capacity.lightened.contains(&day));
+                let heavy_limit = if day == today { settings.heavy_today } else { settings.heavy_per_day }.saturating_sub(lighter);
+                let heavy_full = heavy[i] && settings.heavy_per_day > 0 && heavy_used.get(&day).copied().unwrap_or(0) >= heavy_limit;
+                if !(heavy_full || settings.closed.contains(&day) || (tasks[i].office_hours && !office_days[i][weekday])) {
+                    let room = settings.room_on(day);
+                    let percent = if day == today { settings.today_percent } else { 100 };
+                    let taken = used.entry(day).or_insert_with(|| vec![0; room.0.len()]);
+                    // The hours of its kinds, those open to fewer kinds first: overlaps stay for either.
+                    let mut kinds: Vec<usize> = (0..room.0.len()).filter(|&k| room.0[k].0.meets(usable[i])).collect();
+                    kinds.sort_by_key(|&k| room.0[k].0.count());
+                    let free_in = |k: usize, taken: &[u32]| (room.0[k].1 * percent / 100).saturating_sub(taken[k]);
+                    // Room for the step and the pause after it; the day's first step may fill its
+                    // hours without one (a step of an hour in an hour's window is not cut).
+                    let first = kinds.iter().all(|&k| taken[k] == 0);
+                    let pause = if first { 0 } else { settings.pause };
+                    let open_here: u32 = kinds.iter().map(|&k| free_in(k, taken)).sum::<u32>().saturating_sub(pause);
+                    // Kept free: the slot of time for you after the day's costliest block, and time for
+                    // steps running long: the day, this part laid, must still hold the 85th percentile
+                    // of its total (`capacity::slack_estimate`), a third of its room at most.
+                    let mut free = open_here.saturating_sub(gain_kept(day));
+                    if let Some((spread, effect)) = spread_on(day) {
+                        let total = room_for_tasks(day);
+                        let cap = crate::capacity::SLACK_SHARE * total as f32;
+                        let day_left = total.saturating_sub(taken.iter().sum::<u32>()).saturating_sub(pause).saturating_sub(gain_kept(day)) as f32;
+                        let (sum, squares) = sums.get(&day).copied().unwrap_or((0.0, 0.0));
+                        let fits = |p: u32| p as f32 + crate::capacity::slack_estimate(sum + p as f32, squares + (p as f32).powi(2), spread, effect).min(cap) <= day_left + 1e-3;
+                        let upper = free.min(minutes);
+                        free = if fits(upper) {
+                            upper
+                        } else if !fits(0) {
+                            0
+                        } else {
+                            let (mut lo, mut hi) = (0, upper);
+                            while hi - lo > 1 {
+                                let mid = (lo + hi) / 2;
+                                if fits(mid) { lo = mid } else { hi = mid }
+                            }
+                            lo
+                        };
+                    }
+                    let mut part = shaped(free, minutes, whole, alone, first);
+                    // The next step keeps part of today, as before free time was kept: what is left of
+                    // today's room is its when the time kept free would leave it none. Only a step that
+                    // cannot be cut (its margins) goes whole to the first day that holds it.
+                    if part < minutes.min(SHORTEST) && !alone && next == Some(i) && day == today {
+                        part = shaped(open_here, minutes, whole, alone, first);
+                    }
+                    // What the day's costs still hold (docs/capacity.md, "Planning").
+                    if part > 0
+                        && let Some(mut limit) = capacity.day_limit(day, percent as f32 / 100.0)
+                    {
+                        if let Some(even) = even {
+                            for s in 0..5 {
+                                limit[s] = limit[s].min(even[s]);
+                            }
+                        }
+                        let tasks_here = loaded.get(&day).copied().unwrap_or([0.0; 5]);
+                        let mut held = capacity.held.get(&day).copied().unwrap_or([0.0; 5]);
+                        crate::capacity::add(&mut held, &tasks_here);
+                        let fits_under = |m: u32, base: &Load, limit: &Load| {
+                            let load = rates[i].load(m);
+                            (0..5).all(|s| load[s] <= 0.0 || base[s] + load[s] <= limit[s] + 1e-3)
+                        };
+                        let fits = |m: u32, base: &Load| fits_under(m, base, &limit);
+                        if !fits(part, &held) {
+                            // Too heavy for an empty ordinary day (no weather, no event around it):
+                            // the first day with no other task takes it all the same.
+                            let ordinary = capacity.limit.map_or(limit, |l| l.map(|b| b * crate::capacity::FILL));
+                            let never = !fits_under(if whole || alone { minutes } else { SHORTEST }, &[0.0; 5], &ordinary);
+                            part = if never {
+                                if tasks_here[crate::capacity::TOTAL] <= 0.0 { part } else { 0 }
+                            } else if whole || alone {
+                                0
+                            } else {
+                                // The part the budgets let in, a quarter of an hour at least, a quarter left for later.
+                                let most = (0..5).filter(|&s| per_hour[s] > 0.0).map(|s| ((limit[s] - held[s]).max(0.0) / per_hour[s] * 60.0) as u32).min().unwrap_or(part);
+                                let mut fitting = most.min(part);
+                                if fitting < minutes && minutes - fitting < SHORTEST {
+                                    fitting = fitting.min(minutes.saturating_sub(SHORTEST));
+                                }
+                                if fitting >= SHORTEST && fits(fitting, &held) { fitting } else { 0 }
+                            };
+                        }
+                    }
+                    if part > 0 && (part >= minutes.min(SHORTEST) || alone) {
+                        let mut owed = part + settings.pause;
+                        for &k in &kinds {
+                            let take = free_in(k, taken).min(owed);
+                            taken[k] += take;
+                            owed -= take;
+                        }
+                        if heavy[i] {
+                            *heavy_used.entry(day).or_insert(0) += 1;
+                        }
+                        crate::capacity::add(loaded.entry(day).or_insert([0.0; 5]), &rates[i].load(part));
+                        let sum = sums.entry(day).or_insert((0.0, 0.0));
+                        (sum.0, sum.1) = (sum.0 + part as f32, sum.1 + (part as f32).powi(2));
+                        out.days.entry(day).or_default().push((i, part));
+                        minutes -= part;
+                        if out.start[i].is_none() {
+                            (out.start[i], out.on_start[i]) = (Some(day), part);
+                        }
+                        if minutes == 0 {
+                            break;
+                        }
+                    }
+                }
+                day = add_days(day, 1);
+            }
+            out.finish[i] = Some(day);
+            out.start[i] = out.start[i].or(Some(day));
         }
-        finish[i] = Some(day);
-        start[i] = start[i].or(Some(day));
+        // What each day has left once its steps and its slot for you are laid.
+        out.left = used.iter().map(|(&day, taken)| (day, room_for_tasks(day).saturating_sub(taken.iter().sum::<u32>()).saturating_sub(gain_kept(day)))).collect();
+        out
+    };
+    // Laid once, each day keeping free time for its steps running long as it
+    // fills (TE16–18); days kept even, again, each day held to the coming
+    // week's mean (criterion 35).
+    let mut placed = layout(None);
+    if capacity.even && capacity.limit.is_some() {
+        let week: Vec<Date> = (0..7).map(|k| add_days(today, k)).filter(|d| !settings.closed.contains(d) && settings.room_on(*d).total() > 0).collect();
+        let mut sum: Load = [0.0; 5];
+        for date in &week {
+            if let Some(held) = capacity.held.get(date) {
+                crate::capacity::add(&mut sum, held);
+            }
+            for &(i, m) in placed.days.get(date).into_iter().flatten() {
+                crate::capacity::add(&mut sum, &rates[i].load(m));
+            }
+        }
+        if !week.is_empty() {
+            // A cost nothing weighs on this week stays unbounded.
+            let target: Load = sum.map(|v| if v > 0.0 { v / week.len() as f32 } else { f32::INFINITY });
+            placed = layout(Some(&target));
+        }
     }
+    // The free time each day keeps: the 85th percentile of the total of the steps
+    // laid there, by the seeded simulation (`capacity::slack`), a third of its
+    // room at most, and never more than it has left.
+    let mut slack: BTreeMap<Date, u32> = BTreeMap::new();
+    for (&date, steps) in &placed.days {
+        let Some((spread, effect)) = spread_on(date) else { break };
+        let medians: Vec<u32> = steps.iter().map(|&(_, m)| m).collect();
+        let uids: Vec<&str> = steps.iter().map(|&(i, _)| tasks[i].uid.as_str()).collect();
+        let cap = (crate::capacity::SLACK_SHARE * room_for_tasks(date) as f32) as u32;
+        let kept = crate::capacity::slack(&medians, spread, effect, crate::capacity::seed(date, &uids)).min(cap).min(placed.left.get(&date).copied().unwrap_or(0));
+        if kept > 0 {
+            slack.insert(date, kept);
+        }
+    }
+    let Layout { start, finish, on_start, days: placed_days, .. } = placed;
 
     let depth = |i: usize| graph.ancestors(i).len();
     let mut items = BTreeMap::new();
@@ -859,45 +1068,52 @@ pub fn plan(tasks: &[Task], today: Date, settings: &Settings, spent: &BTreeMap<S
                 open_steps: open_steps[i],
                 depth: depth(i),
                 left: left[i],
+                laid: laid[i],
+                level: rates[i].level().id(),
                 on_start: on_start[i],
                 optional: optional[i],
             },
         );
     }
-    // Free to do now: nothing it waits for still open, no day ahead to wait for;
-    // a step started too soon waits like the others.
-    let free = |i: usize| waits_for[i].is_empty() && not_before[i].is_none();
-    let mut ready: Vec<usize> = (0..n).filter(|&i| open[i] && open_steps[i] == 0 && free(i) && (column(i) == Column::Doing || (column(i) == Column::Ready && !optional[i]))).collect();
-    ready.sort_by_key(|&i| rank(i));
-    // Streams: tasks tied by waiting or by being steps of one bigger task (union-find).
-    let mut root: Vec<usize> = (0..n).collect();
-    fn find(root: &mut [usize], mut i: usize) -> usize {
-        while root[i] != i {
-            root[i] = root[root[i]];
-            i = root[i];
-        }
-        i
-    }
-    for i in 0..n {
-        let tied: Vec<usize> = preds[i].iter().map(|&(p, _)| p).chain(graph.parent[i]).collect();
-        for j in tied {
-            let (a, b) = (find(&mut root, i), find(&mut root, j));
-            root[a.max(b)] = a.min(b);
-        }
-    }
-    let stream: Vec<usize> = (0..n).map(|i| find(&mut root, i)).collect();
-    let aside_streams: BTreeSet<usize> = (0..n).filter(|&i| set_aside.contains(&tasks[i].uid)).map(|i| stream[i]).collect();
-    let free = |i: &&usize| !set_aside.contains(&tasks[**i].uid);
-    let next = ready.iter().filter(free).find(|&&i| !aside_streams.contains(&stream[i])).or_else(|| ready.iter().find(free)).map(|&i| tasks[i].uid.clone());
     Plan {
         items,
         order: order.iter().map(|&i| tasks[i].uid.clone()).collect(),
         ready: ready.iter().map(|&i| tasks[i].uid.clone()).collect(),
-        next,
+        next: next.map(|i| tasks[i].uid.clone()),
         loops: found_loops.iter().map(|l| l.iter().map(|&i| tasks[i].uid.clone()).collect()).collect(),
         streams: (0..n).map(|i| (tasks[i].uid.clone(), stream[i])).collect(),
+        days: placed_days.into_iter().map(|(date, steps)| (date, steps.into_iter().map(|(i, m)| (tasks[i].uid.clone(), m)).collect())).collect(),
+        slack,
     }
 }
+
+/// Where the tasks went: their first and last days, the minutes of their first,
+/// what each day holds (task index, minutes), and what it has left.
+struct Layout {
+    start: Vec<Option<Date>>,
+    finish: Vec<Option<Date>>,
+    on_start: Vec<u32>,
+    days: BTreeMap<Date, Vec<(usize, u32)>>,
+    left: BTreeMap<Date, u32>,
+}
+
+/// The part of a step worth starting in `free` minutes: the whole rest; for a
+/// long step, a quarter of an hour at least, leaving at least as much for
+/// later; a step done in one go (`whole`), all or nothing; one that needs a
+/// day of its own (`alone`), all of an untouched day.
+fn shaped(free: u32, minutes: u32, whole: bool, alone: bool, first: bool) -> u32 {
+    if alone {
+        return if first { minutes } else { 0 };
+    }
+    let part = free.min(minutes);
+    if part < minutes && (whole || minutes - part < SHORTEST) {
+        return if whole { 0 } else { part.min(minutes.saturating_sub(SHORTEST)) };
+    }
+    part
+}
+
+/// Rating × hours, per cost and in total (`capacity::Load`).
+type Load = crate::capacity::Load;
 
 /// Kahn's algorithm over the open tasks, the smallest key first among those free.
 fn kahn<K: Ord>(n: usize, edges: &[Vec<usize>], open: &[bool], key: impl Fn(usize) -> K) -> Vec<usize> {
@@ -1120,6 +1336,154 @@ mod tests {
         assert_eq!(budget.room, 30 + 60 + 60);
         settings.closed.insert(Date::constant(2026, 10, 6));
         assert_eq!(cushion(&tasks, &plan, &settings, today, Date::constant(2026, 10, 7)).room, 30 + 60);
+    }
+
+    fn rated(uid: &str, minutes: u32, cognitive: u8) -> Task {
+        Task { demands: crate::demands::Demands { cognitive: Some(cognitive), ..crate::demands::Demands::default() }, ..task(uid, minutes) }
+    }
+
+    fn with_budget(limit: f32) -> Settings {
+        let mut settings = Settings::flat([480; 7]);
+        settings.capacity.limit = Some([limit; 5]);
+        settings
+    }
+
+    #[test]
+    fn each_day_filled_to_its_budget() {
+        // A budget of 10 a day: 8.5 planned. Three hours rated 8 (cognitive): one a day.
+        let today = day("2026-10-05");
+        let tasks = vec![rated("a", 60, 8), rated("b", 60, 8), rated("c", 60, 8)];
+        let made = plan(&tasks, today, &with_budget(10.0), &BTreeMap::new(), &BTreeSet::new());
+        let starts: BTreeSet<Option<Date>> = ["a", "b", "c"].iter().map(|u| made.items[*u].start).collect();
+        assert_eq!(starts.len(), 3, "one a day: {starts:?}");
+        // Without a budget, all today, as before.
+        let free = plan(&tasks, today, &Settings::flat([480; 7]), &BTreeMap::new(), &BTreeSet::new());
+        assert!(["a", "b", "c"].iter().filter(|u| free.items[**u].start == Some(today)).count() >= 2);
+        // Light ones fill around: a long light step goes on with the budget's room, cut over days.
+        let long = rated("long", 300, 2);
+        let made = plan(std::slice::from_ref(&long), today, &with_budget(4.0), &BTreeMap::new(), &BTreeSet::new());
+        assert!(made.items["long"].finish > Some(today), "2 × 5 h = 10 > 3.4: spread: {:?}", made.items["long"]);
+        // Haze holds 60 %: the hour rated 8 waits for a day that holds it.
+        let mut haze = with_budget(10.0);
+        haze.today_percent = 60;
+        let made = plan(&[rated("a", 60, 8)], today, &haze, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!(made.items["a"].start, Some(day("2026-10-06")));
+    }
+
+    #[test]
+    fn heavier_than_any_day_gets_a_day_of_its_own() {
+        let today = day("2026-10-05");
+        // A budget of 4 (3.4 planned): an hour rated 8 never fits; a small step first today.
+        let small = Task { due: "2026-10-05".into(), ..task("small", 15) };
+        let huge = Task { due: "2026-10-30".into(), ..rated("huge", 60, 8) };
+        let made = plan(&[small, huge], today, &with_budget(4.0), &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!(made.items["small"].start, Some(today));
+        assert_eq!((made.items["huge"].start, made.items["huge"].finish), (Some(day("2026-10-06")), Some(day("2026-10-06"))), "alone, whole, the next day");
+    }
+
+    #[test]
+    fn even_days_spread_the_week() {
+        let today = day("2026-10-05");
+        let tasks: Vec<Task> = (0..7).map(|k| task(&format!("t{k}"), 60)).collect();
+        let mut settings = with_budget(100.0);
+        let all_at_once = plan(&tasks, today, &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert!(tasks.iter().all(|t| all_at_once.items[&t.uid].start == Some(today)), "varied: the first day holds them all");
+        settings.capacity.even = true;
+        let even = plan(&tasks, today, &settings, &BTreeMap::new(), &BTreeSet::new());
+        let days: BTreeSet<Option<Date>> = tasks.iter().map(|t| even.items[&t.uid].start).collect();
+        assert_eq!(days.len(), 7, "one a day: {days:?}");
+        // Off by default.
+        assert!(!Settings::default().capacity.even);
+    }
+
+    #[test]
+    fn a_heavy_event_lightens_the_days_around_it() {
+        // Tomorrow is the day before a heavy appointment: one heavy task fewer.
+        let today = day("2026-10-05");
+        let heavy = |uid: &str| Task { energy: "heavy".into(), ..task(uid, 20) };
+        let tasks = vec![heavy("h1"), heavy("h2"), heavy("h3"), heavy("h4")];
+        let mut settings = Settings::default();
+        settings.capacity.lightened = BTreeSet::from([day("2026-10-06")]);
+        let made = plan(&tasks, today, &settings, &BTreeMap::new(), &BTreeSet::new());
+        let on = |d: &str| tasks.iter().filter(|t| made.items[&t.uid].start == Some(day(d))).count();
+        assert_eq!((on("2026-10-05"), on("2026-10-06"), on("2026-10-07")), (2, 1, 1));
+        // With budgets, those days hold three quarters.
+        let mut budget = with_budget(10.0);
+        budget.capacity.lightened = BTreeSet::from([today]);
+        let made = plan(&[rated("a", 60, 8)], today, &budget, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!(made.items["a"].start, Some(day("2026-10-06")), "8 > 8.5 × 0.75");
+    }
+
+    #[test]
+    fn margins_keep_a_task_whole_across_days() {
+        // An hour a day: 40 minutes and a quarter of an hour each way (70) is never cut.
+        let today = day("2026-10-05");
+        let errand = Task { margins: crate::demands::Margins { before: 15, after: 15 }, ..task("errand", 40) };
+        let made = plan(std::slice::from_ref(&errand), today, &Settings::flat([60; 7]), &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!(made.items["errand"].start, made.items["errand"].finish, "a day of its own, whole");
+        assert_eq!(made.items["errand"].on_start, 70);
+        // Without margins, the same length goes on over two days.
+        let made = plan(&[task("plain", 70)], today, &Settings::flat([60; 7]), &BTreeMap::new(), &BTreeSet::new());
+        assert!(made.items["plain"].finish > made.items["plain"].start);
+    }
+
+    #[test]
+    fn corrected_lengths_and_what_gives_back() {
+        let today = day("2026-10-05");
+        let mut settings = Settings::default();
+        settings.capacity.corrected = BTreeMap::from([("a".to_string(), 45)]);
+        let made = plan(&[task("a", 30)], today, &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!((made.items["a"].left, made.items["a"].laid, made.items["a"].on_start), (30, 45, 45), "shown as estimated, laid as corrected");
+        // Rated light with a gain: it gives back, offered rather than planned; with a date asked, planned all the same.
+        let gives = Task { demands: crate::demands::Demands { cognitive: Some(2), gain: Some(7), ..crate::demands::Demands::default() }, ..task("walk", 30) };
+        assert!(is_optional(&gives));
+        assert!(!is_optional(&Task { due: "2026-10-09".into(), ..gives.clone() }));
+        assert_eq!(plan(&[gives], today, &settings, &BTreeMap::new(), &BTreeSet::new()).items["walk"].level, "rest");
+    }
+
+    #[test]
+    fn free_time_is_the_final_placement_s() {
+        // Three half hours on a day of eight hours: the free time kept is the simulation's, on the steps laid there.
+        let today = day("2026-10-05");
+        let spread = crate::capacity::Spread::of(0.5);
+        let mut settings = Settings::flat([480; 7]);
+        settings.capacity.spread = Some(spread);
+        let tasks = vec![task("a", 30), task("b", 30), task("c", 30)];
+        let made = plan(&tasks, today, &settings, &BTreeMap::new(), &BTreeSet::new());
+        let steps = &made.days[&today];
+        let medians: Vec<u32> = steps.iter().map(|(_, m)| *m).collect();
+        let uids: Vec<&str> = steps.iter().map(|(u, _)| u.as_str()).collect();
+        assert_eq!(medians, vec![30, 30, 30]);
+        assert_eq!(made.slack[&today], crate::capacity::slack(&medians, spread, 0.0, crate::capacity::seed(today, &uids)));
+        // Days kept even move steps: each day's free time follows what ends up there.
+        settings.capacity.limit = Some([100.0; 5]);
+        settings.capacity.even = true;
+        let week: Vec<Task> = (0..7).map(|k| task(&format!("t{k}"), 60)).collect();
+        let made = plan(&week, today, &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert!(made.days.len() > 1);
+        for (date, steps) in &made.days {
+            let medians: Vec<u32> = steps.iter().map(|(_, m)| *m).collect();
+            let uids: Vec<&str> = steps.iter().map(|(u, _)| u.as_str()).collect();
+            assert_eq!(made.slack.get(date).copied().unwrap_or(0), crate::capacity::slack(&medians, spread, 0.0, crate::capacity::seed(*date, &uids)), "{date}");
+        }
+        // No spread, no free time: as before.
+        assert!(plan(&tasks, today, &Settings::flat([480; 7]), &BTreeMap::new(), &BTreeSet::new()).slack.is_empty());
+    }
+
+    #[test]
+    fn the_next_step_keeps_today_when_little_is_left() {
+        // Forty minutes left today, the widest free time: the next step still takes part of today.
+        let today = day("2026-10-05");
+        let mut settings = Settings::flat([40, 480, 480, 480, 480, 480, 480]);
+        settings.capacity.spread = Some(crate::capacity::Spread::of(0.707));
+        let started = Task { status: Status::InProcess, ..task("long", 240) };
+        let made = plan(&[started], today, &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!((made.next.as_deref(), made.items["long"].start), (Some("long"), Some(today)));
+        assert!(made.items["long"].on_start >= SHORTEST);
+        // With margins it is never cut: whole, on the first day that holds it.
+        let errand = Task { status: Status::InProcess, margins: crate::demands::Margins { before: 15, after: 15 }, ..task("errand", 60) };
+        let made = plan(&[errand], today, &settings, &BTreeMap::new(), &BTreeSet::new());
+        assert_eq!((made.items["errand"].start, made.items["errand"].finish), (Some(day("2026-10-06")), Some(day("2026-10-06"))));
     }
 
     #[test]

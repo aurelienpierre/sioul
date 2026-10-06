@@ -1,5 +1,5 @@
 ---
-description: Les papiers et le courrier papier dans Sioul – les papiers demandés encore et encore, où en est chacun et un rappel avant de le renouveler ; le courrier scanné, lu sur votre ordinateur et montré sous forme de carte calme.
+description: Les papiers et le courrier papier dans Sioul – les papiers demandés encore et encore, où en est chacun et un rappel avant de le renouveler ; le courrier scanné, lu sur votre appareil et montré sous forme de carte calme.
 ---
 
 # Les papiers et les lettres {#papers-and-letters}
@@ -60,14 +60,14 @@ Quittances de loyer, bulletins de paie et attestations n’ont pas de fin : pa
 
 ## Le courrier papier {#paper-letters}
 
-L’enveloppe reste dehors. Un scan, une photo prise au téléphone ou un PDF déposé dans un dossier, par vous, par un scanner, ou par une personne qui ouvre le courrier pour vous, est lu sur cet ordinateur et attend vos heures sous forme de carte, comme un courriel. Ouvrir le courrier fait partie de l’angoisse administrative (Money and Mental Health 2018), et un délai écrit « dans un délai de deux mois » n’est retenu par personne : la carte le dit sous forme de date.
+L’enveloppe reste dehors. Un scan, une photo prise au téléphone ou un PDF déposé dans un dossier, par vous, par un scanner, ou par une personne qui ouvre le courrier pour vous, est lu par Sioul sur un ordinateur (un téléphone ne les lit pas) et attend vos heures sous forme de carte, comme un courriel. Ouvrir le courrier fait partie de l’angoisse administrative (Money and Mental Health 2018), et un délai écrit « dans un délai de deux mois » n’est retenu par personne : la carte le dit sous forme de date.
 
 ### Mise en place {#setting-it-up}
 
 1. Dans le ⚙ du Porche, **Courrier papier ▸ Où arrivent les scans** : le dossier où arrivent vos scans. S’il n’est pas réglé, c’est `letters/inbox` dans votre dossier de notes. L’appli de scan d’un téléphone qui s’y synchronise convient aussi.
 2. Pour lire les scans, Sioul se sert de deux programmes de votre système : Poppler, pour le texte qu’un PDF contient déjà, et Tesseract, pour lire les images. Sans eux, les scans attendent, non lus, et le Porche dit comment les installer ([Installer](install.md#the-packages)).
 
-Les fichiers PDF, PNG, JPEG, TIFF et WebP sont lus. Un fichier encore en cours d’écriture est lu la minute suivante. Rien ne quitte votre ordinateur.
+Les fichiers PDF, PNG, JPEG, TIFF et WebP sont lus. Un fichier encore en cours d’écriture est lu la minute suivante. Rien ne quitte votre appareil.
 
 ### La carte {#the-card}
 

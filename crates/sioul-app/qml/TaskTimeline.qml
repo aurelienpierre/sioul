@@ -29,6 +29,8 @@ ColumnLayout {
     readonly property var rows: timeline.timeline ? timeline.timeline.rows : []
 
     signal open(string uid)
+    // Right click, or a long press on a touch screen: the task's menu (its details, Add ▾, Link to…).
+    signal menu(var task)
 
     spacing: 6
 
@@ -187,6 +189,17 @@ ColumnLayout {
                 ToolTip.delay: 400
                 TapHandler {
                     onTapped: timeline.open(bar.modelData.uid)
+                    // On a touch screen, the menu at a long press; letting go then opens nothing.
+                    onLongPressed: {
+                        bar.Window.window.menuAt = bar.mapToItem(null, point.position.x, point.position.y)
+                        timeline.menu({ uid: bar.modelData.uid, title: bar.modelData.title })
+                    }
+                }
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    // A touch has no buttons: on a touch screen, the long press above.
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onTapped: timeline.menu({ uid: bar.modelData.uid, title: bar.modelData.title })
                 }
             }
         }

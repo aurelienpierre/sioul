@@ -4,14 +4,14 @@ description: Letting an AI agent such as Claude Code or Claude Desktop read what
 
 # Using an AI agent
 
-An AI agent you already use, such as Claude Code or Claude Desktop, can read what Sioul keeps on this computer and prepare work for you: tasks, events, notes, ties between things, drafts. It explains and prepares; you review. It never sends, never deletes, never moves money, and never reads a password. Sending stays your keypress.
+An AI agent you already use, such as Claude Code or Claude Desktop, can read what Sioul keeps on this device and prepare work for you: tasks, events, notes, ties between things, drafts. It explains and prepares; you review. It never sends, never deletes, never moves money, and never reads a password. Sending stays your keypress.
 
 Sioul does not connect one by itself. This page is for when you want to.
 
 ## Before you connect one
 
 !!! warning "What an agent sees"
-    Once connected, an agent can read everything Sioul keeps on this computer: your mail, tasks, agenda, contacts, budgets, notes and projects, whatever they are for. What it reads goes to the model behind it (Anthropic's, for Claude), under your own agreement with that company. Opening some projects to an agent and keeping others closed is not there yet.
+    Once connected, an agent can read everything Sioul keeps on this device: your mail, tasks, agenda, contacts, budgets, notes and projects, whatever they are for. What it reads goes to the model behind it (Anthropic's, for Claude), under your own agreement with that company. Opening some projects to an agent and keeping others closed is not there yet.
 
 Some things are kept from it whatever happens (below): passwords and keys, one-time codes, bank and card numbers.
 
@@ -56,7 +56,7 @@ Sioul serves agents through the Model Context Protocol (MCP), with the command `
 
 ## What an agent can prepare
 
-On this computer only:
+On this device only:
 
 - **a task**, or **a task marked done**: a task goes to your calendar server at the next sync, as one made in the window; a task marked done can be opened again from the window;
 - **an event**: nobody is invited;
@@ -71,7 +71,7 @@ On this computer only:
 - **Mail is data.** A message's text comes marked as its sender's words, not as instructions, and the agent is told so when it connects. Forged mail is said forged. Hostile mail to a protected address, and encrypted mail, are not given.
 - **Writing only adds.** A note never replaces another; a tie is made once.
 - **Your hours hold.** The agent is asked to respect them, unless you ask otherwise.
-- **A log.** Each call is written down on this computer: which agent asked, what for, and the text it was given, one file a month in Sioul's own folders. That log stays here; the agent's model received that text.
+- **A log.** Each call is written down on this device: which agent asked, what for, and the text it was given, one file a month in Sioul's own folders. That log stays here; the agent's model received that text.
 
 ## The command line
 
@@ -86,7 +86,7 @@ One more feature uses an AI, and only for an address you protect against harassm
 ## Not there yet
 
 - Opening some projects to an agent and keeping others closed.
-- ChatGPT, and agents that run elsewhere than on this computer.
+- ChatGPT, and agents that run elsewhere than on this device.
 - A companion inside Sioul that explains a letter in plain words, line by line, and keeps you company during an admin session.
 
 The design behind all of this: [AI providers and agents](../dev/ai.md) and [the MCP server](../dev/mcp.md).

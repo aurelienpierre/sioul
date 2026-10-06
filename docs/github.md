@@ -12,7 +12,7 @@ The open issues and pull requests that are yours, found by GitHub's search acros
 | Opened by you | `is:open author:@me archived:false` | no |
 | Mentioning you | `is:open mentions:@me archived:false` | no |
 
-Each becomes a task in a list "GitHub" kept on this computer only (`calendars/local/github`), never sent to a server: UID `github:owner/repo#12`, its title, a link to its page, why it is yours (`X-SIOUL-GITHUB-REASON`). An issue found by two searches comes once, with the strongest reason (assigned, then review, then opened, then mentioned). Your projects' routes place it in a project as they place mail: the issue is matched as GitHub's mail about it would be, from `notifications@github.com` with the subject `[owner/repo] Title (Issue #12)`; a route on the words `[owner/repo]` takes a repository's issues.
+Each becomes a task in a list "GitHub" kept on this device only (`calendars/local/github`), never sent to a server: UID `github:owner/repo#12`, its title, a link to its page, why it is yours (`X-SIOUL-GITHUB-REASON`). An issue found by two searches comes once, with the strongest reason (assigned, then review, then opened, then mentioned). Your projects' routes place it in a project as they place mail: the issue is matched as GitHub's mail about it would be, from `notifications@github.com` with the subject `[owner/repo] Title (Issue #12)`; a route on the words `[owner/repo]` takes a repository's issues.
 
 Every thirty minutes while Sioul is open, and at "Sync now". Answers are asked with their ETag: an unchanged one costs nothing on GitHub's limits.
 

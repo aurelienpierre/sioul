@@ -374,6 +374,12 @@ pub mod qobject {
         #[qinvokable]
         fn delete_event(self: Pin<&mut Sioul>, key: &QString, start: f64, only_this: bool);
 
+        /// An event dragged: its occurrence starting at `start` now from
+        /// `new_start` to `new_end` (Unix seconds), that time alone or every
+        /// time; "Undo" offered. Returns what went wrong, else "".
+        #[qinvokable]
+        fn move_event(self: Pin<&mut Sioul>, key: &QString, start: f64, new_start: f64, new_end: f64, only_this: bool) -> QString;
+
         /// Addresses from the contacts for what is typed in an address field, as JSON.
         #[qinvokable]
         fn completions(self: &Sioul, typed: &QString) -> QString;
@@ -463,6 +469,13 @@ pub mod qobject {
         #[qinvokable]
         fn task(self: &Sioul, uid: &QString) -> QString;
 
+        /// The form of a task not made yet, as `task` gives one (without a card):
+        /// blank, or what Add ▾ makes from `from` (a message's `key`, an
+        /// occurrence's `start`); in `list`, else the usual list. Nothing is
+        /// written: `save_task` with an empty UID makes it. Or {"error"}.
+        #[qinvokable]
+        fn new_task_form(self: &Sioul, from: &QString, key: &QString, start: f64, list: &QString) -> QString;
+
         /// Saves the task form (JSON); an empty UID makes a new task in `list`.
         /// Returns {"uid": …} or {"error": …}.
         #[qinvokable]
@@ -480,6 +493,11 @@ pub mod qobject {
         #[qinvokable]
         fn set_task_status(self: Pin<&mut Sioul>, uid: &QString, status: &QString) -> QString;
 
+        /// How a task was, felt: today's rating ({cognitive, emotional, anxiety,
+        /// body, gain}, null for unsaid), written alone; returns what went wrong, else "".
+        #[qinvokable]
+        fn set_felt(self: Pin<&mut Sioul>, uid: &QString, felt: &QString) -> QString;
+
         /// The task waits for `other`, or no longer; returns what went wrong, else "".
         #[qinvokable]
         fn set_waits(self: Pin<&mut Sioul>, uid: &QString, other: &QString, wait: bool) -> QString;
@@ -495,6 +513,11 @@ pub mod qobject {
         /// Deletes a task after ten seconds to undo.
         #[qinvokable]
         fn delete_task(self: Pin<&mut Sioul>, uid: &QString);
+
+        /// A step given a time today by a drag in the day view ("2026-10-06T14:30"),
+        /// or left to the plan (""); "Undo" offered. Returns what went wrong, else "".
+        #[qinvokable]
+        fn set_task_at(self: Pin<&mut Sioul>, uid: &QString, at: &QString) -> QString;
 
         /// Open tasks whose title holds `query`, `except` left out, as JSON.
         #[qinvokable]
@@ -630,7 +653,7 @@ pub mod qobject {
         #[qinvokable]
         fn set_weather_place(self: Pin<&mut Sioul>, name: &QString, latitude: f64, longitude: f64);
 
-        /// The health page: today's doses, the medicines, the prescriptions, as JSON.
+        /// The health page: the week of the day shown, the medicines, the prescriptions, as JSON.
         #[qinvokable]
         fn health_page(self: &Sioul) -> QString;
 
@@ -698,9 +721,23 @@ pub mod qobject {
         #[qinvokable]
         fn change_need(self: Pin<&mut Sioul>, edit: &QString) -> QString;
 
-        /// The Health page's settings (⚙): medicines, prescriptions, pauses, the watch, as JSON.
+        /// The same, by a drag on the timeline: "Undo" offered (`health::drag_need`).
+        #[qinvokable]
+        fn drag_need(self: Pin<&mut Sioul>, edit: &QString) -> QString;
+
+        /// The Health page's settings (⚙): the pauses, where the errands go, the watch, as JSON.
         #[qinvokable]
         fn health_settings(self: &Sioul) -> QString;
+
+        /// On a phone, Android's page where the alarm at waking is allowed:
+        /// "exact" (Alarms & reminders), "screen" (full screen), "notifications" (`wake`).
+        #[qinvokable]
+        fn wake_settings(self: &Sioul, which: &QString);
+
+        /// On a phone, "Try the alarm": rung ten seconds on, as a waking, the
+        /// next waking left as it is; JSON {rings, line, fix, button} (`wake::try_now`).
+        #[qinvokable]
+        fn try_wake(self: &Sioul) -> QString;
 
         /// An overlap set aside for good; returns what went wrong, else "".
         #[qinvokable]
@@ -1083,6 +1120,20 @@ pub mod qobject {
         #[qinvokable]
         fn done_for_the_day(self: Pin<&mut Sioul>) -> QString;
 
+        /// The end of the work day ("work") or of the day before sleep
+        /// ("night"): the review's sheet, as JSON (`reviews::view`).
+        #[qinvokable]
+        fn day_review(self: &Sioul, kind: &QString) -> QString;
+
+        /// The review kept, each answer optional ("" for none); the work day
+        /// then closed as "Done for today": the screen after it, as JSON, else "".
+        #[qinvokable]
+        fn close_review(self: Pin<&mut Sioul>, kind: &QString, felt: &QString, mix: &QString, memo: &QString) -> QString;
+
+        /// A day's words on the Health page, and today the button to close it (`reviews::line`).
+        #[qinvokable]
+        fn day_review_line(self: &Sioul, date: &QString) -> QString;
+
         /// The first step for when work comes back, in your words.
         #[qinvokable]
         fn set_first_step(self: Pin<&mut Sioul>, text: &QString);
@@ -1232,6 +1283,11 @@ pub mod qobject {
         /// Paper letters were read: the Porch shows them again.
         #[qsignal]
         fn letters_changed(self: Pin<&mut Sioul>);
+
+        /// A task just done, whichever way (a list, its panel, the focus window):
+        /// the status line offers "How was it?", quietly.
+        #[qsignal]
+        fn task_done(self: Pin<&mut Sioul>, uid: QString);
 
         /// Your other devices' changes written here by the sharing: the stores
         /// written, one per line ("data/time/", "state/health-state.toml"…), for
@@ -1847,7 +1903,9 @@ pub(crate) fn mode_json() -> String {
         "admin_hours": set("admin"),
         "night": crate::hours::night_set(),
         "work_now": mode.reason == Reason::WorkNow,
-        "today": today
+        "today": today,
+        // The work day or the day can be closed now (docs/reviews.md); nothing at work or asleep.
+        "review": crate::reviews::offer_json(&now, &mode)
     })
     .to_string()
 }
@@ -2822,6 +2880,8 @@ impl qobject::Sioul {
         show(&qt, &shared);
         pim::show_pim(&qt, &shared);
         mail::show_mail(&qt, &shared);
+        // Its task lists and calendars come or go: the plan follows.
+        work::show_work(&qt, &shared);
         QString::default()
     }
 
@@ -2919,6 +2979,9 @@ impl qobject::Sioul {
         };
         self.as_mut().set_status(QString::from(&line));
         show(&self.qt_thread(), &shared);
+        // Its calendars and task lists gone: the agenda and the plan follow.
+        pim::show_pim(&self.qt_thread(), &shared);
+        work::show_work(&self.qt_thread(), &shared);
     }
 
     fn set_priority(mut self: Pin<&mut Self>, id: &QString, priority: &QString) {
@@ -3117,6 +3180,10 @@ impl qobject::Sioul {
         QString::from(&result.err().unwrap_or_default())
     }
 
+    fn move_event(self: Pin<&mut Self>, key: &QString, start: f64, new_start: f64, new_end: f64, only_this: bool) -> QString {
+        QString::from(&pim::move_event(&self.qt_thread(), &self.shared(), &key.to_string(), start as i64, new_start as i64, new_end as i64, only_this))
+    }
+
     fn delete_event(self: Pin<&mut Self>, key: &QString, start: f64, only_this: bool) {
         pim::delete_event(&self.qt_thread(), &self.shared(), &key.to_string(), start as i64, only_this);
     }
@@ -3263,6 +3330,10 @@ impl qobject::Sioul {
         QString::from(&work::task(&self.shared(), &uid.to_string()))
     }
 
+    fn new_task_form(&self, from: &QString, key: &QString, start: f64, list: &QString) -> QString {
+        QString::from(&work::new_form(&self.shared(), &from.to_string(), &key.to_string(), start, &list.to_string()))
+    }
+
     fn save_task(self: Pin<&mut Self>, uid: &QString, edit: &QString, list: &QString) -> QString {
         QString::from(&work::save(&self.qt_thread(), &self.shared(), &uid.to_string(), &edit.to_string(), &list.to_string()))
     }
@@ -3279,6 +3350,10 @@ impl qobject::Sioul {
         QString::from(&work::set_status(&self.qt_thread(), &self.shared(), &uid.to_string(), &status.to_string()))
     }
 
+    fn set_felt(self: Pin<&mut Self>, uid: &QString, felt: &QString) -> QString {
+        QString::from(&work::set_felt(&self.qt_thread(), &self.shared(), &uid.to_string(), &felt.to_string()))
+    }
+
     fn set_waits(self: Pin<&mut Self>, uid: &QString, other: &QString, wait: bool) -> QString {
         QString::from(&work::set_waits(&self.qt_thread(), &self.shared(), &uid.to_string(), &other.to_string(), wait))
     }
@@ -3289,6 +3364,12 @@ impl qobject::Sioul {
 
     fn set_weather(self: Pin<&mut Self>, weather: &QString) {
         work::set_weather(&self.qt_thread(), &self.shared(), &weather.to_string());
+        // The morning's weather, kept with the day's reviews.
+        crate::reviews::weather_said(sioul_core::today::Weather::parse(&weather.to_string()));
+    }
+
+    fn set_task_at(self: Pin<&mut Self>, uid: &QString, at: &QString) -> QString {
+        QString::from(&work::set_at(&self.qt_thread(), &self.shared(), &uid.to_string(), &at.to_string()))
     }
 
     fn delete_task(self: Pin<&mut Self>, uid: &QString) {
@@ -3791,6 +3872,15 @@ impl qobject::Sioul {
         crate::health::show_health(&self.qt_thread(), &self.shared());
     }
 
+    fn drag_need(self: Pin<&mut Self>, edit: &QString) -> QString {
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        let problem = crate::health::drag_need(&qt, &shared, &edit.to_string());
+        // The plan goes around it as that day has it now; the page shows it.
+        work::show_work(&qt, &shared);
+        crate::health::show_health(&qt, &shared);
+        QString::from(&problem)
+    }
+
     fn change_need(self: Pin<&mut Self>, edit: &QString) -> QString {
         let problem = crate::health::change_need(&edit.to_string());
         // The plan goes around it as that day has it now; the page shows it.
@@ -3801,6 +3891,14 @@ impl qobject::Sioul {
 
     fn health_settings(&self) -> QString {
         QString::from(&crate::health::settings_view())
+    }
+
+    fn wake_settings(&self, which: &QString) {
+        crate::wake::open_settings(&which.to_string());
+    }
+
+    fn try_wake(&self) -> QString {
+        QString::from(&crate::wake::try_now())
     }
 
     fn set_overlap_aside(self: Pin<&mut Self>, key: &QString) -> QString {
@@ -4174,6 +4272,8 @@ impl qobject::Sioul {
         crate::sites::favicon_tick(&self.qt_thread());
         // Dates coming: told once each.
         crate::remind::tick(&self.qt_thread());
+        // The end of the work day, said once (docs/reviews.md).
+        crate::reviews::tick(&self.qt_thread(), &self.shared());
         // Paper letters scanned: read, to wait for the Porch.
         crate::letters::tick(&self.qt_thread(), &self.shared());
         // The weather follows the hours; fetched again when half an hour old.
@@ -4225,6 +4325,18 @@ impl qobject::Sioul {
         show(&qt, &shared);
         work::show_work(&qt, &shared);
         QString::from(&screen)
+    }
+
+    fn day_review(&self, kind: &QString) -> QString {
+        QString::from(&crate::reviews::view(&kind.to_string()))
+    }
+
+    fn close_review(self: Pin<&mut Self>, kind: &QString, felt: &QString, mix: &QString, memo: &QString) -> QString {
+        crate::reviews::close(self, &kind.to_string(), &felt.to_string(), &mix.to_string(), &memo.to_string())
+    }
+
+    fn day_review_line(&self, date: &QString) -> QString {
+        QString::from(&crate::reviews::line(&date.to_string()))
     }
 
     fn set_first_step(self: Pin<&mut Self>, text: &QString) {
@@ -4479,8 +4591,10 @@ impl qobject::Sioul {
     fn grab_steps(&self) -> QString {
         let steps = std::env::var("SIOUL_GRAB_STEPS").unwrap_or_else(|_| "pages".into());
         // The other steps archive, delete and send mail, answer invitations:
-        // against test servers, from the test build only. "demo" and "phone" take pictures alone.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" {
+        // against test servers, from the test build only. "demo", "phone" and
+        // "drag" take pictures alone; "taskform" makes tasks and rates them, and "review"
+        // closes the day with its review (docs/reviews.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || ((steps == "taskform" || steps == "review") && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

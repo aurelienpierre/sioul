@@ -18,8 +18,10 @@ ColumnLayout {
     required property var theme
     // Made as a step of this task, when set.
     property string parentUid: ""
-    // The list new tasks go into: "account/id"; empty: the first made for tasks.
+    // The list new tasks go into: "account/id"; empty: the usual one.
     property string list: ""
+    // A line of steps: nothing is made until the task they are steps of is.
+    property bool step: false
     property string placeholder: capture.sioul.text("task-capture-hint")
     readonly property var parsed: line.text.trim() === "" ? ({ chips: [], edit: {} }) : JSON.parse(capture.sioul.capture(line.text))
 
@@ -39,7 +41,7 @@ ColumnLayout {
         Accessible.name: capture.placeholder
         Keys.onEscapePressed: line.clear()
         onAccepted: {
-            if (line.text.trim() === "")
+            if (line.text.trim() === "" || (capture.step && capture.parentUid === ""))
                 return
             const answer = JSON.parse(capture.sioul.addTask(line.text, capture.parentUid, capture.list))
             if (answer.uid) {

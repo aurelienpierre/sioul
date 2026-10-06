@@ -64,7 +64,7 @@ Chaque pièce jointe est vérifiée par l’antivirus avant de s’ouvrir ou d�
 - **Joindre**, ou déposer des fichiers sur la fenêtre. **Un papier**, à côté, joint l’un de vos [papiers](papers.md) ; un papier qui a expiré, ou plus vieux que ce qui est demandé d’habitude, le dit dans la liste.
 - **Votre signature** est placée sous le texte quand le brouillon commence, après la ligne habituelle « -- », pour que vous voyiez ce qui part. Votre nom et votre signature se règlent par adresse dans Comptes (**Nom et signature…**).
 - **En répondant**, la fenêtre dit « Sous votre texte : le message de Camille du …, cité ». La citation est ajoutée quand le message part.
-- **Les brouillons s’enregistrent pendant que vous tapez**, sur cet ordinateur. Fermer la fenêtre ne perd rien : le brouillon attend dans Brouillons, à gauche.
+- **Les brouillons s’enregistrent pendant que vous tapez**, sur cet appareil. Fermer la fenêtre ne perd rien : le brouillon attend dans Brouillons, à gauche.
 
 **Envoyer** (ou ++ctrl+"Entrée"++) attend dix secondes, avec **Annuler**, avant que le message parte. Puis une copie va dans Envoyés. Rien n’est jamais envoyé sans vous.
 

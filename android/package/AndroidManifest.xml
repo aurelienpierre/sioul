@@ -2,7 +2,8 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <!-- Sioul's Android manifest: Qt 6.11's own (qtbase, src/android/templates),
      with Sioul's name and icon, the network, the keyboard pushing the window
-     up rather than covering it, no cloud backup, and the doses' alarms.
+     up rather than covering it, no cloud backup, the doses' alarms, and the
+     alarm at waking.
      androiddeployqt fills the "INSERT" parts. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurelienpierre.sioul"
@@ -26,6 +27,15 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The alarm at waking (docs/android.md, "Waking"): Android's alarm
+         clock (exact alarms, above), its screen over the lock screen, its
+         ringer in the foreground while it rings (from Android 14, the type
+         alarms keep ringing with, allowed to apps with exact alarms), the
+         phone kept awake meanwhile. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- The sync apps asked to look for changes now rather than at their next
          round (crates/sioul-app/src/share.rs, android/main.cpp): Murena's
          eDrive, which carries the sharing folder on /e/OS, every half hour. -->
@@ -116,6 +126,42 @@
              notification, by no other app. -->
         <receiver
             android:name="com.aurelienpierre.sioul.TimeReceiver"
+            android:exported="false" />
+        <!-- The alarm at waking (package/src/com/aurelienpierre/sioul/
+             Wake*.java): its ring, the question before it, Stop and 10 min
+             later, sent by Android's alarm clock and its notification; the
+             phone started (before its first unlock too: directBootAware, the
+             list kept where the phone reads it then), Sioul updated, the time
+             or the zone changed, "Alarms & reminders" allowed again. -->
+        <receiver
+            android:name="com.aurelienpierre.sioul.WakeReceiver"
+            android:exported="false"
+            android:directBootAware="true">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <!-- The ring itself, in the foreground while it rings (WakeRinger.java). -->
+        <service
+            android:name="com.aurelienpierre.sioul.WakeRinger"
+            android:exported="false"
+            android:directBootAware="true"
+            android:foregroundServiceType="systemExempted" />
+        <!-- Over the lock screen as it rings: the time, Stop, 10 min later (WakeScreen.java). -->
+        <activity
+            android:name="com.aurelienpierre.sioul.WakeScreen"
+            android:theme="@android:style/Theme.Material.NoActionBar"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:directBootAware="true"
             android:exported="false" />
         <!-- A reminder tapped: its dose kept for Sioul, which comes up on its
              question (DoseOpener.java); never shown itself. -->

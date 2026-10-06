@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// One task, open on the right: its title, what to do with it now (start,
-// done, not now), its steps, what it waits for and frees, then, folded, its
-// dates, length, case and notes; at the bottom, everything tied to it. Each
-// change is saved as it is made: only the lines that changed are written.
+// One task, open on the right: its details first (its title, what to do
+// with it now: start, done, not now; its steps, what it waits for and frees,
+// its fields in words, its notes, everything tied to it), then "Edit" turns
+// them into its form: every field, its dates, length, costs and gain, case
+// and notes. Each change is saved as it is made: only the lines that changed
+// are written. A task done asks, quietly, "How was it?".
+//
+// A new task opens here too, every field unfolded, its title first
+// (`startNew`): the fields are kept in the form until the title is given
+// (Enter, or leaving the field: another field, Close, Escape, Back); the task
+// is made then, with all of them, and the panel goes on as any task's. Left
+// with no title, nothing is made.
 
 pragma ComponentBehavior: Bound
 
@@ -27,8 +35,25 @@ Panel {
     property var kinds: []
     // Every tag in use, to choose one again.
     property var categories: []
+    // A new task's form, not made yet: its title to give first.
+    property bool making: false
+    // A task's form, its fields open to change ("Edit" on its details).
+    property bool editing: false
+    // "How was it?" unfolded, on a task done.
+    property bool feltShown: false
+    // The task just made from the form: its form stays until it is read back.
+    property string madeUid: ""
+    // Fields changed after the making, before the reading: saved once it is read.
+    property bool unsaved: false
     readonly property var card: panel.detail ? panel.detail.card : null
-    readonly property bool canEdit: panel.card !== null && !panel.card.read_only
+    // The form of a task not read yet: new, or just made (`newTaskForm`, no card).
+    readonly property bool fresh: panel.detail !== null && !panel.detail.card
+    readonly property bool canEdit: panel.fresh || (panel.card !== null && !panel.card.read_only)
+    // The form shows (a new task, one just made, or "Edit"); else its details.
+    readonly property bool form: panel.making || panel.fresh || panel.editing
+    readonly property bool done: panel.card !== null && (panel.card.status === "completed" || panel.card.status === "cancelled")
+    // The four costs; the gain apart.
+    readonly property var costs: ["cognitive", "emotional", "anxiety", "body"]
     // What its list does not keep (Google Tasks): greyed, never hidden.
     readonly property var limited: panel.detail && panel.detail.limited ? panel.detail.limited : []
 
@@ -38,15 +63,137 @@ Panel {
 
     signal closed
     signal focusRequested(string uid, int minutes)
+    // A new task made from the form, once its title was given.
+    signal made(string uid)
 
     function reload() {
         if (panel.uid === "") {
-            panel.detail = null
+            if (!panel.making)
+                panel.detail = null
             return
         }
         const text = panel.sioul.task(panel.uid)
-        if (text !== "")
-            panel.detail = JSON.parse(text)
+        if (text === "")
+            return
+        const read = JSON.parse(text)
+        // Changed while it was being read: saved over what was read, and shown as changed.
+        if (panel.unsaved && panel.fresh) {
+            panel.unsaved = false
+            const answer = JSON.parse(panel.sioul.saveTask(panel.uid, JSON.stringify(panel.detail.edit), ""))
+            if (answer.error)
+                error.text = answer.error
+            else
+                read.edit = panel.detail.edit
+        }
+        panel.detail = read
+    }
+
+    // A new task's form: blank, or what Add ▾ makes from `source` (a card's
+    // {uri, key, start}: its title, its tie). Returns what went wrong, else "".
+    function startNew(source) {
+        const blank = JSON.parse(panel.sioul.newTaskForm(source ? source.uri || "" : "", source ? source.key || "" : "", source ? source.start || 0 : 0, ""))
+        if (blank.error)
+            return blank.error
+        if (panel.uid !== "")
+            panel.uid = ""
+        panel.madeUid = ""
+        panel.unsaved = false
+        panel.making = true
+        panel.detail = blank
+        panel.moreShown = true
+        panel.rebind()
+        error.text = ""
+        scroll.contentItem.contentY = 0
+        title.forceActiveFocus()
+        title.selectAll()
+        return ""
+    }
+
+    // The title given: the task made from the form, in the list chosen. The
+    // panel then goes on as any task's (the page opens it: `made`).
+    function make() {
+        const given = title.text.trim()
+        if (!panel.making || given === "" || !panel.detail)
+            return
+        const edit = Object.assign({}, panel.detail.edit, { title: given })
+        const answer = JSON.parse(panel.sioul.saveTask("", JSON.stringify(edit), panel.detail.list || ""))
+        if (answer.error) {
+            error.text = answer.error
+            return
+        }
+        error.text = ""
+        panel.making = false
+        panel.editing = true
+        panel.madeUid = answer.uid
+        panel.detail = Object.assign({}, panel.detail, { edit: edit })
+        panel.made(answer.uid)
+    }
+
+    // The form left (closed, another task opened): a title typed makes the
+    // task, as leaving its field does; the panel does not go on with it.
+    function leave() {
+        if (panel.making && title.text.trim() !== "") {
+            panel.make()
+            panel.madeUid = ""
+        }
+        panel.making = false
+    }
+
+    // For the window's tests: the title typed (or the one given kept), then confirmed.
+    function confirmTitle(text) {
+        if (text) {
+            title.clear()
+            title.insert(0, text)
+        }
+        panel.make()
+    }
+
+    // For the window's pictures: the costs and the gain in view.
+    function showRatings() {
+        panel.moreShown = true
+        const top = ratingsTop.mapToItem(column, 0, 0).y
+        scroll.contentItem.contentY = Math.max(0, Math.min(top - 12, column.height - scroll.height))
+    }
+
+    // For the window's tests: a rating given as by hand.
+    function rate(name, value) {
+        panel.changeRating(name, value)
+    }
+
+    // The fields whose own editing undoes their binding, bound again to the task shown.
+    function rebind() {
+        // A tag being chosen belongs to the task it was chosen for.
+        newTag.currentIndex = -1
+        newTag.editText = ""
+        title.text = Qt.binding(() => panel.detail ? panel.detail.edit.title : "")
+        startField.date = Qt.binding(() => panel.detail ? panel.detail.edit.start.slice(0, 10) : "")
+        dueField.date = Qt.binding(() => panel.detail ? panel.detail.edit.due.slice(0, 10) : "")
+    }
+
+    // The form's own copy changed: a task not made yet, or not read yet. What
+    // is typed in the title stays typed.
+    function hold(edit, more) {
+        if (panel.making)
+            edit.title = title.text
+        panel.detail = Object.assign({}, panel.detail, { edit: edit }, more || {})
+        if (panel.uid !== "")
+            panel.unsaved = true
+    }
+
+    // A new task's list, chosen before it is made: what that list keeps, greyed or not.
+    function chooseList(id) {
+        const blank = JSON.parse(panel.sioul.newTaskForm("", "", 0, id))
+        if (blank.error)
+            return
+        panel.hold(Object.assign({}, panel.detail.edit), { list: blank.list, limited: blank.limited })
+    }
+
+    // What it waits for, in the form of a task not read yet.
+    function waitFor(other, otherTitle, wait) {
+        const edit = Object.assign({}, panel.detail.edit)
+        edit.waits_for = edit.waits_for.filter(u => u !== other).concat(wait ? [other] : [])
+        const shown = panel.detail.waits_for.filter(w => w[0] !== other).concat(wait ? [[other, otherTitle]] : [])
+        panel.hold(edit, { waits_for: shown })
     }
 
     // Into another list: asked first when it would not keep everything.
@@ -63,21 +210,28 @@ Panel {
             panel.reload()
     }
 
-    // Saves the form with one field changed.
+    // Saves the form with one field changed; a task not made or not read yet keeps it in its form.
     function change(field, value) {
         if (!panel.detail || !panel.canEdit)
             return
         const edit = Object.assign({}, panel.detail.edit)
         edit[field] = value
+        if (panel.fresh) {
+            panel.hold(edit)
+            return
+        }
         const answer = JSON.parse(panel.sioul.saveTask(panel.uid, JSON.stringify(edit), ""))
-        if (answer.error)
+        if (answer.error) {
             error.text = answer.error
-        else
-            error.text = ""
+            return
+        }
+        error.text = ""
+        // Kept as saved until it is read again: a second change at once (two
+        // ratings given in a breath) goes on from this one, not from before it.
+        panel.detail = Object.assign({}, panel.detail, { edit: edit })
     }
 
     readonly property var marginMinutes: [0, 5, 10, 15, 20, 30, 45, 60, 90, 120]
-    readonly property var ratings: [panel.sioul.text("task-rating-unsaid"), "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
 
     // The time kept before or after it, saved.
     function changeMargin(side, minutes) {
@@ -86,16 +240,104 @@ Panel {
         panel.change("margins", margins)
     }
 
-    // A cost or the gain: its place in `ratings` (0: unsaid).
-    function ratingIndex(name) {
+    // A cost or the gain, 0 to 10; null when unsaid.
+    function rating(name) {
         const value = panel.detail && panel.detail.edit.demands ? panel.detail.edit.demands[name] : null
-        return value === null || value === undefined ? 0 : value + 1
+        return value === undefined ? null : value
     }
 
-    function changeRating(name, index) {
-        const demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, gain: null }, panel.detail.edit.demands)
-        demands[name] = index === 0 ? null : index - 1
+    function changeRating(name, value) {
+        const demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, panel.detail.edit.demands)
+        demands[name] = value
         panel.change("demands", demands)
+    }
+
+    // What it takes, from its ratings once a cost is said (the plan's rule,
+    // docs/tasks.md): light up to 3, the usual from 4 to 6, heavy from 7; it
+    // gives back with a gain of 5 or more and no cost above 3. "" when no cost
+    // is said: then it is chosen.
+    function level() {
+        const said = panel.costs.map(n => panel.rating(n)).filter(v => v !== null)
+        if (said.length === 0)
+            return ""
+        const top = Math.max(...said)
+        const gain = panel.rating("gain")
+        if (gain !== null && gain >= 5 && top <= 3)
+            return "rest"
+        return top <= 3 ? "light" : top <= 6 ? "usual" : "heavy"
+    }
+
+    // A day as words: "Thursday 8 October".
+    function dayText(text) {
+        const day = new Date(text.slice(0, 10) + "T12:00:00")
+        return isNaN(day.getTime()) ? text : day.toLocaleDateString(panel.window.sioulLocale, "dddd d MMMM")
+    }
+
+    // Its fields in words, for its details: only what is said; the date asked,
+    // the length and what it waits for are said above, as the plan words them.
+    function facts() {
+        if (!panel.detail || !panel.detail.edit)
+            return []
+        const e = panel.detail.edit
+        const rows = []
+        const add = (key, value) => {
+            if (value !== "" && value !== null && value !== undefined)
+                rows.push({ label: panel.sioul.text(key), value: String(value) })
+        }
+        add("task-field-start", e.start ? panel.dayText(e.start) : "")
+        if (e.margins && e.margins.before > 0)
+            add("task-field-before", panel.minutesText(e.margins.before))
+        if (e.margins && e.margins.after > 0)
+            add("task-field-after", panel.minutesText(e.margins.after))
+        const named = { cognitive: "task-field-cognitive", emotional: "task-field-emotional", anxiety: "task-field-anxiety", body: "task-field-body", gain: "task-field-gain" }
+        for (const name of panel.costs.concat(["gain"])) {
+            const value = panel.rating(name)
+            if (value !== null)
+                add(named[name], value + " / 10")
+        }
+        const level = panel.level()
+        if (level !== "")
+            add("task-field-energy", panel.sioul.textWith("task-energy-computed", "level", panel.sioul.text("task-energy-" + level)))
+        else if (e.energy)
+            add("task-field-energy", panel.sioul.text("task-energy-" + e.energy))
+        const project = e.cases && e.cases.length > 0 ? panel.cases.find(c => c.id === e.cases[0]) : null
+        add("task-field-case", project ? project.title : (e.cases && e.cases.length > 0 ? e.cases[0] : ""))
+        add("task-field-billable", e.billable === true ? panel.sioul.text("task-billable-yes") : e.billable === false ? panel.sioul.text("task-billable-no") : "")
+        const kind = e.kind ? panel.kinds.find(k => k.id === e.kind) : null
+        add("task-kind", kind ? kind.label : (e.kind || ""))
+        add("task-field-area", e.area ? e.area.split("+").map(a => panel.sioul.text("area-" + a)).join(", ") : "")
+        if (e.office_hours)
+            add("task-office-hours", e.office_times || panel.sioul.text("task-office-usual-short"))
+        add("task-field-repeat", e.repeat ? panel.sioul.text("repeat-" + e.repeat) : "")
+        const list = panel.detail.lists ? panel.detail.lists.find(l => l.id === panel.detail.list) : null
+        add("task-field-list", list ? list.name : "")
+        return rows
+    }
+
+    // Today, as the backend dates what is felt: "2026-10-06".
+    function today() {
+        const d = new Date()
+        const pad = n => n < 10 ? "0" + n : String(n)
+        return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+    }
+
+    // Today's "How was it?" as kept so far; null when none today (an older turn's stays out).
+    function feltToday() {
+        if (!panel.detail || !panel.detail.edit || !panel.detail.edit.felt)
+            return null
+        return panel.detail.felt_on === panel.today() ? panel.detail.edit.felt : null
+    }
+
+    // How it was, kept as felt (only that, read from the file itself: what
+    // else the task says is left as it is on disk).
+    function keepFelt(values) {
+        const said = panel.sioul.setFelt(panel.uid, JSON.stringify(values))
+        if (said !== "") {
+            error.text = said
+            return
+        }
+        error.text = ""
+        panel.detail = Object.assign({}, panel.detail, { edit: Object.assign({}, panel.detail.edit, { felt: values }), felt_on: panel.today() })
     }
 
     function minutesText(m) {
@@ -107,14 +349,27 @@ Panel {
     }
 
     function addStep() {
+        panel.editing = true
         panel.moreShown = false
         steps.focusLine()
     }
 
     onUidChanged: {
+        // The task just made from the form: the form stays as it is until the task is read.
+        if (panel.uid !== "" && panel.uid === panel.madeUid) {
+            panel.madeUid = ""
+            panel.reload()
+            return
+        }
+        panel.madeUid = ""
+        panel.making = false
+        panel.editing = false
+        panel.feltShown = false
+        panel.unsaved = false
         panel.detail = null
         panel.moreShown = false
         panel.reload()
+        panel.rebind()
     }
 
     Connections {
@@ -132,31 +387,78 @@ Panel {
         clip: true
 
         ColumnLayout {
+            id: column
+
             width: scroll.availableWidth
             spacing: 10
 
-            TextField {
-                id: title
-
-                // Its own width, not its wrapped text's: the column gives it the rest
-                // (the text's width would follow the width it sets, a binding loop).
-                implicitWidth: 120
+            RowLayout {
                 Layout.fillWidth: true
-                text: panel.card ? panel.card.title : ""
-                readOnly: !panel.canEdit
-                font.pixelSize: 20
-                wrapMode: TextInput.Wrap
-                // Like every field, a border: light, darker when it has the focus.
-                background: Rectangle {
-                    color: "transparent"
-                    radius: panel.theme.radius
-                    border.color: title.activeFocus ? panel.theme.focus : panel.theme.line
+                spacing: 8
+
+                TextField {
+                    id: title
+
+                    visible: panel.form
+                    // Its own width, not its wrapped text's: the column gives it the rest
+                    // (the text's width would follow the width it sets, a binding loop).
+                    implicitWidth: 120
+                    Layout.fillWidth: true
+                    // Its own title as it was given (or kept, just saved); "Untitled" when it has none.
+                    text: panel.detail ? panel.detail.edit.title : ""
+                    readOnly: !panel.canEdit
+                    placeholderText: panel.making ? panel.sioul.text("task-new-title") : panel.card ? panel.card.title : ""
+                    font.pixelSize: 20
+                    wrapMode: TextInput.Wrap
+                    // Like every field, a border: light, darker when it has the focus.
+                    background: Rectangle {
+                        color: "transparent"
+                        radius: panel.theme.radius
+                        border.color: title.activeFocus ? panel.theme.focus : panel.theme.line
+                    }
+                    Accessible.name: panel.making ? panel.sioul.text("task-new-title") : panel.sioul.text("task-title")
+                    // A new task is made as its title is given; a task's title changed is saved.
+                    onEditingFinished: {
+                        if (panel.making)
+                            panel.make()
+                        else if (panel.detail && title.text.trim() !== "" && title.text !== panel.detail.edit.title)
+                            panel.change("title", title.text.trim())
+                    }
                 }
-                Accessible.name: panel.sioul.text("task-title")
-                onEditingFinished: {
-                    if (panel.detail && title.text.trim() !== "" && title.text !== panel.detail.edit.title)
-                        panel.change("title", title.text.trim())
+                // Its details: the title, read; its own width, not its text's, as the field's.
+                Label {
+                    visible: !panel.form
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 120
+                    text: panel.card ? panel.card.title : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 20
+                    color: panel.theme.text
                 }
+                // Its details or its form, one click apart. A new task is a form.
+                Button {
+                    visible: panel.canEdit && !panel.fresh
+                    Layout.alignment: Qt.AlignTop
+                    flat: true
+                    text: panel.form ? panel.sioul.text("ui-details") : panel.sioul.text("ui-edit")
+                    icon.name: panel.form ? "view-list-details" : "document-edit"
+                    icon.color: panel.theme.text
+                    onClicked: {
+                        panel.editing = !panel.editing
+                        if (panel.editing)
+                            panel.moreShown = true
+                    }
+                }
+            }
+            // A new task: when it is made.
+            Label {
+                visible: panel.making
+                Layout.fillWidth: true
+                text: panel.sioul.text("task-new-made-when")
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
             }
 
             // What to do with it now.
@@ -206,6 +508,16 @@ Panel {
                     text: panel.sioul.text("task-not-now")
                     onClicked: panel.sioul.notNow(panel.uid)
                 }
+                // Not to be done after all: kept, struck out, out of the plan; "Open again" brings it back.
+                Button {
+                    flat: true
+                    text: panel.sioul.text("task-drop")
+                    enabled: panel.canEdit
+                    ToolTip.visible: hovered
+                    ToolTip.text: panel.sioul.text("task-drop-help")
+                    ToolTip.delay: 600
+                    onClicked: panel.sioul.setTaskStatus(panel.uid, "cancelled")
+                }
             }
             Button {
                 visible: panel.card !== null && (panel.card.status === "completed" || panel.card.status === "cancelled")
@@ -229,6 +541,25 @@ Panel {
                     color: panel.theme.muted
                 }
             }
+            // How long things like it take you, against the first guess: on request only.
+            Button {
+                id: ratioAsk
+
+                property bool shown: false
+
+                visible: !panel.form && panel.detail !== null && (panel.detail.ratio_line || "") !== ""
+                flat: true
+                text: (ratioAsk.shown ? "▾  " : "▸  ") + panel.sioul.text("task-ratio-ask")
+                onClicked: ratioAsk.shown = !ratioAsk.shown
+            }
+            Label {
+                visible: ratioAsk.visible && ratioAsk.shown
+                Layout.fillWidth: true
+                text: panel.detail ? (panel.detail.ratio_line || "") : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: panel.theme.muted
+            }
             Label {
                 visible: panel.card !== null && panel.card.tight !== ""
                 Layout.fillWidth: true
@@ -239,7 +570,7 @@ Panel {
             }
             // Its tags: each taken off with ×, one more typed or chosen among those in use.
             Flow {
-                visible: panel.detail !== null && (panel.canEdit || panel.detail.edit.categories.length > 0)
+                visible: panel.detail !== null && ((panel.form && panel.canEdit) || panel.detail.edit.categories.length > 0)
                 Layout.fillWidth: true
                 spacing: 6
                 opacity: panel.keeps("categories") ? 1 : 0.45
@@ -272,7 +603,7 @@ Panel {
                                 color: panel.theme.text
                             }
                             ToolButton {
-                                visible: panel.canEdit && panel.keeps("categories")
+                                visible: panel.form && panel.canEdit && panel.keeps("categories")
                                 implicitWidth: 22
                                 implicitHeight: 22
                                 text: "×"
@@ -287,7 +618,7 @@ Panel {
 
                     readonly property var others: panel.categories.filter(c => !panel.detail || panel.detail.edit.categories.indexOf(c) < 0)
 
-                    visible: panel.canEdit && panel.keeps("categories")
+                    visible: panel.form && panel.canEdit && panel.keeps("categories")
                     width: 170
                     editable: true
                     model: newTag.others
@@ -327,6 +658,7 @@ Panel {
 
             // Its steps, and one more.
             Label {
+                visible: panel.form || (panel.detail !== null && panel.detail.steps.length > 0)
                 text: panel.sioul.text("task-steps")
                 font.weight: Font.DemiBold
                 color: panel.theme.text
@@ -347,21 +679,25 @@ Panel {
                     onTick: uid => panel.sioul.setTaskStatus(uid, modelData.status === "completed" ? "needs-action" : "completed")
                 }
             }
+            // A step needs its task: on a new one, once its title is typed (going
+            // there gives the title, and makes the task).
             CaptureField {
                 id: steps
 
                 Layout.fillWidth: true
-                visible: panel.canEdit
-                enabled: panel.keeps("steps")
+                visible: panel.form && panel.canEdit
+                enabled: panel.keeps("steps") && (panel.uid !== "" || (panel.making && title.text.trim() !== ""))
                 opacity: panel.keeps("steps") ? 1 : 0.45
                 sioul: panel.sioul
                 theme: panel.theme
                 parentUid: panel.uid
+                step: true
                 placeholder: panel.keeps("steps") ? panel.sioul.text("task-add-step") : panel.sioul.text("google-tasks-greyed")
             }
 
             // What it waits for: removable; and one more, found by its title.
             Label {
+                visible: panel.form || (panel.detail !== null && panel.detail.waits_for.length > 0)
                 text: panel.sioul.text("task-waits-title")
                 font.weight: Font.DemiBold
                 color: panel.theme.text
@@ -390,12 +726,17 @@ Panel {
                         }
                     }
                     ToolButton {
-                        visible: panel.canEdit
+                        visible: panel.form && panel.canEdit
                         text: "×"
                         Accessible.name: panel.sioul.text("task-waits-remove")
                         ToolTip.visible: hovered
                         ToolTip.text: panel.sioul.text("task-waits-remove")
-                        onClicked: panel.sioul.setWaits(panel.uid, wait.modelData[0], false)
+                        onClicked: {
+                            if (panel.fresh)
+                                panel.waitFor(wait.modelData[0], wait.modelData[1], false)
+                            else
+                                panel.sioul.setWaits(panel.uid, wait.modelData[0], false)
+                        }
                     }
                 }
             }
@@ -405,7 +746,7 @@ Panel {
                 // The tasks found by their title, offered below.
                 property var matches: []
 
-                visible: panel.canEdit
+                visible: panel.form && panel.canEdit
                 enabled: panel.keeps("waits")
                 opacity: panel.keeps("waits") ? 1 : 0.45
                 Layout.fillWidth: true
@@ -448,7 +789,10 @@ Panel {
                                     // "&" doubled: a button reads one as a key to underline.
                                     text: panel.theme.plain(option.modelData.title).replace(/&/g, "&&")
                                     onClicked: {
-                                        panel.sioul.setWaits(panel.uid, option.modelData.uid, true)
+                                        if (panel.fresh)
+                                            panel.waitFor(option.modelData.uid, option.modelData.title, true)
+                                        else
+                                            panel.sioul.setWaits(panel.uid, option.modelData.uid, true)
                                         waitsFor.clear()
                                         foundPopupForm.close()
                                     }
@@ -478,21 +822,105 @@ Panel {
                 }
             }
 
-            // The rest, folded.
+            // Its details: its fields in words, what is said only; its notes.
+            GridLayout {
+                visible: !panel.form && facts.count > 0
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                columns: 2
+                columnSpacing: 10
+                rowSpacing: 4
+
+                Repeater {
+                    id: facts
+
+                    model: panel.form ? [] : panel.facts()
+
+                    delegate: Label {
+                        id: fact
+
+                        required property var modelData
+                        required property int index
+
+                        // A label, then its value: two cells a row.
+                        Layout.row: fact.index
+                        Layout.column: 0
+                        Layout.maximumWidth: 150
+                        Layout.alignment: Qt.AlignTop
+                        text: fact.modelData.label
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: panel.theme.muted
+                    }
+                }
+                Repeater {
+                    model: panel.form ? [] : panel.facts()
+
+                    delegate: Label {
+                        id: value
+
+                        required property var modelData
+                        required property int index
+
+                        Layout.row: value.index
+                        Layout.column: 1
+                        Layout.fillWidth: true
+                        // Its own width, not its text's: it wraps on a phone.
+                        Layout.preferredWidth: 120
+                        text: value.modelData.value
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: panel.theme.text
+                    }
+                }
+            }
+            Label {
+                visible: !panel.form && panel.detail !== null && panel.detail.edit.notes !== ""
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                // As written: a list shared with other applications may hold anything.
+                text: panel.detail ? panel.detail.edit.notes : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.family: panel.theme.readingFamily || font.family
+                font.pixelSize: panel.theme.readingSize
+                color: panel.theme.text
+            }
+
+            // Done: how it was, if you want to say. Filled in with what was
+            // foreseen; nothing is kept until one changes, or "As expected".
             Button {
+                visible: panel.done && !panel.form && panel.canEdit
+                flat: true
+                text: (panel.feltShown ? "▾  " : "▸  ") + panel.sioul.text("felt-ask")
+                onClicked: panel.feltShown = !panel.feltShown
+            }
+            FeltRatings {
+                visible: panel.feltShown && panel.done && !panel.form
+                Layout.fillWidth: true
+                sioul: panel.sioul
+                theme: panel.theme
+                forecast: panel.detail && panel.detail.edit.demands ? panel.detail.edit.demands : ({})
+                kept: panel.feltToday()
+                onGiven: values => panel.keepFelt(values)
+            }
+
+            // The rest, folded, in the form.
+            Button {
+                visible: panel.form
                 flat: true
                 text: (panel.moreShown ? "▾  " : "▸  ") + panel.sioul.text("ui-more-details")
                 onClicked: panel.moreShown = !panel.moreShown
             }
             Label {
-                visible: panel.moreShown && panel.limited.length > 0
+                visible: panel.form && panel.moreShown && panel.limited.length > 0
                 Layout.fillWidth: true
                 text: panel.sioul.text("task-limited")
                 wrapMode: Text.Wrap
                 color: panel.theme.muted
             }
             GridLayout {
-                visible: panel.moreShown && panel.detail !== null
+                visible: panel.form && panel.moreShown && panel.detail !== null
                 Layout.fillWidth: true
                 columns: 2
                 columnSpacing: 10
@@ -506,6 +934,8 @@ Panel {
                     opacity: panel.keeps("start") ? 1 : 0.45
                 }
                 DateField {
+                    id: startField
+
                     theme: panel.theme
                     locale: panel.window.sioulLocale
                     enabled: panel.canEdit && panel.keeps("start")
@@ -524,6 +954,8 @@ Panel {
                     wrapMode: Text.Wrap
                 }
                 DateField {
+                    id: dueField
+
                     theme: panel.theme
                     locale: panel.window.sioulLocale
                     enabled: panel.canEdit
@@ -582,66 +1014,71 @@ Panel {
                     currentIndex: panel.detail && panel.detail.edit.margins ? Math.max(0, panel.marginMinutes.indexOf(panel.detail.edit.margins.after)) : 0
                     onActivated: index => panel.changeMargin("after", panel.marginMinutes[index])
                 }
-                // What it costs, and what it gives back: 0 to 10 each, as you feel it; unsaid until said.
-                Label {
-                    text: panel.sioul.text("task-field-cognitive")
-                    color: panel.theme.muted
-                    Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
-                    opacity: panel.keeps("costs") ? 1 : 0.45
-                }
-                ComboBox {
+                // What it costs, and what it gives back: 0 to 10 each, as you feel it;
+                // unsaid until said, never 0 by default. Saved as the hand lets go.
+                RatingSlider {
+                    id: ratingsTop
+
+                    Layout.columnSpan: 2
                     Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    sioul: panel.sioul
+                    theme: panel.theme
                     enabled: panel.canEdit && panel.keeps("costs")
                     opacity: panel.keeps("costs") ? 1 : 0.45
-                    model: panel.ratings
-                    currentIndex: panel.ratingIndex("cognitive")
-                    onActivated: index => panel.changeRating("cognitive", index)
+                    label: panel.sioul.text("task-field-cognitive")
+                    words: [panel.sioul.text("rating-cognitive-0"), panel.sioul.text("rating-cognitive-5"), panel.sioul.text("rating-cognitive-10")]
+                    value: panel.rating("cognitive")
+                    onEdited: given => panel.changeRating("cognitive", given)
                 }
-                Label {
-                    text: panel.sioul.text("task-field-emotional")
-                    color: panel.theme.muted
-                    Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
-                    opacity: panel.keeps("costs") ? 1 : 0.45
-                }
-                ComboBox {
+                RatingSlider {
+                    Layout.columnSpan: 2
                     Layout.fillWidth: true
+                    sioul: panel.sioul
+                    theme: panel.theme
                     enabled: panel.canEdit && panel.keeps("costs")
                     opacity: panel.keeps("costs") ? 1 : 0.45
-                    model: panel.ratings
-                    currentIndex: panel.ratingIndex("emotional")
-                    onActivated: index => panel.changeRating("emotional", index)
+                    label: panel.sioul.text("task-field-emotional")
+                    words: [panel.sioul.text("rating-emotional-0"), panel.sioul.text("rating-emotional-5"), panel.sioul.text("rating-emotional-10")]
+                    value: panel.rating("emotional")
+                    onEdited: given => panel.changeRating("emotional", given)
                 }
-                Label {
-                    text: panel.sioul.text("task-field-anxiety")
-                    color: panel.theme.muted
-                    Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
-                    opacity: panel.keeps("costs") ? 1 : 0.45
-                }
-                ComboBox {
+                RatingSlider {
+                    Layout.columnSpan: 2
                     Layout.fillWidth: true
+                    sioul: panel.sioul
+                    theme: panel.theme
                     enabled: panel.canEdit && panel.keeps("costs")
                     opacity: panel.keeps("costs") ? 1 : 0.45
-                    model: panel.ratings
-                    currentIndex: panel.ratingIndex("anxiety")
-                    onActivated: index => panel.changeRating("anxiety", index)
+                    label: panel.sioul.text("task-field-anxiety")
+                    words: [panel.sioul.text("rating-anxiety-0"), panel.sioul.text("rating-anxiety-5"), panel.sioul.text("rating-anxiety-10")]
+                    value: panel.rating("anxiety")
+                    onEdited: given => panel.changeRating("anxiety", given)
                 }
-                Label {
-                    text: panel.sioul.text("task-field-gain")
-                    color: panel.theme.muted
-                    Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
-                    opacity: panel.keeps("costs") ? 1 : 0.45
-                }
-                ComboBox {
+                RatingSlider {
+                    Layout.columnSpan: 2
                     Layout.fillWidth: true
+                    sioul: panel.sioul
+                    theme: panel.theme
                     enabled: panel.canEdit && panel.keeps("costs")
                     opacity: panel.keeps("costs") ? 1 : 0.45
-                    model: panel.ratings
-                    currentIndex: panel.ratingIndex("gain")
-                    onActivated: index => panel.changeRating("gain", index)
+                    label: panel.sioul.text("task-field-body")
+                    words: [panel.sioul.text("rating-body-0"), panel.sioul.text("rating-body-5"), panel.sioul.text("rating-body-10")]
+                    value: panel.rating("body")
+                    onEdited: given => panel.changeRating("body", given)
+                }
+                RatingSlider {
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 4
+                    sioul: panel.sioul
+                    theme: panel.theme
+                    enabled: panel.canEdit && panel.keeps("costs")
+                    opacity: panel.keeps("costs") ? 1 : 0.45
+                    label: panel.sioul.text("task-field-gain")
+                    words: [panel.sioul.text("rating-gain-0"), panel.sioul.text("rating-gain-5"), panel.sioul.text("rating-gain-10")]
+                    value: panel.rating("gain")
+                    onEdited: given => panel.changeRating("gain", given)
                 }
                 Label {
                     text: panel.sioul.text("task-field-case")
@@ -687,9 +1124,19 @@ Panel {
                 }
                 // What it takes: the day's weather says how many heavy ones a day holds;
                 // what gives back is offered after a heavy one, never planned in.
+                // Once a cost is said, it follows the ratings, shown, not chosen.
+                Label {
+                    visible: panel.level() !== ""
+                    Layout.fillWidth: true
+                    text: panel.level() !== "" ? panel.sioul.textWith("task-energy-computed", "level", panel.sioul.text("task-energy-" + panel.level())) : ""
+                    wrapMode: Text.Wrap
+                    color: panel.theme.text
+                    opacity: panel.keeps("energy") ? 1 : 0.45
+                }
                 ComboBox {
                     readonly property var choices: ["", "light", "heavy", "rest"]
 
+                    visible: panel.level() === ""
                     Layout.fillWidth: true
                     enabled: panel.canEdit && panel.keeps("energy")
                     opacity: panel.keeps("energy") ? 1 : 0.45
@@ -930,7 +1377,8 @@ Panel {
                     readonly property var choices: panel.detail ? panel.detail.lists : []
 
                     Layout.fillWidth: true
-                    enabled: panel.canEdit
+                    // A task just made moves once it is read (a moment).
+                    enabled: panel.canEdit && (panel.making || !panel.fresh)
                     model: choices.map(l => panel.theme.plain(l.tasks ? l.name : l.name + "  ·  " + panel.sioul.text("task-list-greyed")))
                     currentIndex: panel.detail ? Math.max(0, choices.findIndex(l => l.id === panel.detail.list)) : 0
                     onActivated: index => {
@@ -939,7 +1387,11 @@ Panel {
                             listChoice.currentIndex = Math.max(0, listChoice.choices.findIndex(l => l.id === panel.detail.list))
                             return
                         }
-                        panel.moveTo(list, false)
+                        // A new task is made there, once it has its title.
+                        if (panel.making)
+                            panel.chooseList(list.id)
+                        else
+                            panel.moveTo(list, false)
                     }
 
                     delegate: ItemDelegate {
@@ -962,7 +1414,7 @@ Panel {
                     radius: panel.theme.radius
                     border.color: taskNotes.activeFocus ? panel.theme.focus : panel.theme.line
                 }
-                visible: panel.moreShown && panel.detail !== null
+                visible: panel.form && panel.moreShown && panel.detail !== null
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.max(90, implicitHeight)
                 enabled: panel.canEdit
@@ -982,6 +1434,16 @@ Panel {
                 }
             }
 
+            // A new task from a card (Add ▾): what it will be tied to, until it is read.
+            Label {
+                visible: panel.fresh && (panel.detail.source || "") !== ""
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                text: visible ? panel.sioul.textWith("task-new-tied", "title", panel.detail.source) : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: panel.theme.muted
+            }
             RelatedList {
                 Layout.fillWidth: true
                 Layout.topMargin: 6
@@ -995,7 +1457,7 @@ Panel {
             }
 
             Repeater {
-                model: panel.moreShown && panel.detail ? panel.detail.sessions : []
+                model: (!panel.form || panel.moreShown) && panel.detail ? panel.detail.sessions : []
 
                 delegate: Label {
                     required property string modelData
@@ -1014,14 +1476,16 @@ Panel {
                 spacing: 6
 
                 ThingActions {
+                    visible: !panel.making
                     sioul: panel.sioul
                     theme: panel.theme
                     window: panel.window
                     source: panel.uid !== "" && panel.card ? { uri: "sioul:task/" + encodeURIComponent(panel.uid), kind: "task", key: panel.uid, title: panel.card.title } : null
                 }
+                // Nothing to delete before it is made, and read.
                 Button {
                     flat: true
-                    visible: panel.canEdit
+                    visible: panel.canEdit && !panel.fresh
                     text: panel.sioul.text("ui-delete")
                     onClicked: {
                         panel.sioul.deleteTask(panel.uid)

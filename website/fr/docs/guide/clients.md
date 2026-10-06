@@ -40,7 +40,7 @@ Pour un micro-entrepreneur, la facture porte ce que la loi demande : le SIRET,
 
 ## Sur votre ordinateur de bureau et votre portable {#on-your-desktop-and-your-laptop}
 
-Le temps noté sur un ordinateur est sur les autres une minute plus tard, et les factures aussi : scellés de bout en bout, par un dossier que votre synchronisation transporte déjà (Nextcloud, Dropbox, Syncthing). Aucun serveur à nous entre les deux. Les projets voyagent avec votre dossier de notes, ou par ce même partage là où aucune synchronisation ne transporte ce dossier ; les tâches et les événements, par le serveur de votre agenda. Un seul ordinateur numérote les factures, pour qu’un numéro ne soit jamais donné deux fois. [Partager entre vos appareils](sharing.md)
+Le temps noté sur un appareil est sur les autres une minute plus tard, et les factures aussi : scellés de bout en bout, par un dossier que votre synchronisation transporte déjà (Nextcloud, Dropbox, Syncthing). Aucun serveur à nous entre les deux. Les projets voyagent avec votre dossier de notes, ou par ce même partage là où aucune synchronisation ne transporte ce dossier ; les tâches et les événements, par le serveur de votre agenda. Un seul appareil numérote les factures, pour qu’un numéro ne soit jamais donné deux fois. [Partager entre vos appareils](sharing.md)
 
 Les téléphones : une version Android est à l’essai, pas encore prête. Elle partage avec vos ordinateurs par le même dossier, quand l’application de synchronisation du téléphone le transporte ([Sur un téléphone](first-steps.md#on-a-phone)).
 
@@ -54,4 +54,4 @@ Les factures sont faites pour le travail à l’heure, sans TVA ajoutée à leur
 
 ## À vous {#yours}
 
-Votre temps, vos clients et vos factures restent sur votre ordinateur, en fichiers ordinaires : pas de compte à ouvrir, pas d’abonnement, pas de serveur à nous. Sioul est un logiciel libre (GPL-3.0 ou ultérieure). [Vie privée et sécurité](privacy-security.md)
+Votre temps, vos clients et vos factures restent sur votre appareil, en fichiers ordinaires : pas de compte à ouvrir, pas d’abonnement, pas de serveur à nous. Sioul est un logiciel libre (GPL-3.0 ou ultérieure). [Vie privée et sécurité](privacy-security.md)

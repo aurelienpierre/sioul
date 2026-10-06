@@ -422,7 +422,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "add_task",
         title: "Add a task",
-        description: "Writes one new task into a task list on this computer: a new VTODO file in the list's folder, in the first list made for tasks unless `list` names one. The next sync sends it to the list's server, as for a task made in the window; nothing is sent now, nothing else changes. `due` is the date asked from outside, `start` the day it can start; `parent` makes it a step of a bigger task, `after` makes it wait for others; `links` ties it to mail, notes, contacts or cases, `source` to what it was made from.",
+        description: "Writes one new task into a task list on this device: a new VTODO file in the list's folder, in the first list made for tasks unless `list` names one. The next sync sends it to the list's server, as for a task made in the window; nothing is sent now, nothing else changes. `due` is the date asked from outside, `start` the day it can start; `parent` makes it a step of a bigger task, `after` makes it wait for others; `links` ties it to mail, notes, contacts or cases, `source` to what it was made from.",
         writes: true,
         idempotent: false,
         schema: || {
@@ -460,7 +460,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "add_event",
         title: "Add an event",
-        description: "Writes one new event into a calendar on this computer: a new VEVENT file in the calendar's folder, in the first calendar that takes events unless `calendar` names one. The next sync sends it to the calendar's server; nothing is sent now, nobody is invited, nothing else changes.",
+        description: "Writes one new event into a calendar on this device: a new VEVENT file in the calendar's folder, in the first calendar that takes events unless `calendar` names one. The next sync sends it to the calendar's server; nothing is sent now, nobody is invited, nothing else changes.",
         writes: true,
         idempotent: false,
         schema: || {
@@ -502,7 +502,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "draft_reply",
         title: "Draft a reply",
-        description: "Saves a reply to a message as a draft in Sioul's Drafts, a file on this computer: recipients, subject and thread taken from the message, the body in Markdown, the account's signature below. It is NEVER sent: the person reads it in Sioul's window, changes it if needed, and sends it themselves, or discards it. Nothing else changes.",
+        description: "Saves a reply to a message as a draft in Sioul's Drafts, a file on this device: recipients, subject and thread taken from the message, the body in Markdown, the account's signature below. It is NEVER sent: the person reads it in Sioul's window, changes it if needed, and sends it themselves, or discards it. Nothing else changes.",
         writes: true,
         idempotent: false,
         schema: || {
@@ -521,7 +521,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "draft_message",
         title: "Draft a message",
-        description: "Saves a new message as a draft in Sioul's Drafts, a file on this computer: the account it goes from, recipients, subject, the body in Markdown, the account's signature below. It is NEVER sent: the person reads it in Sioul's window and sends it themselves, or discards it. Nothing else changes.",
+        description: "Saves a new message as a draft in Sioul's Drafts, a file on this device: the account it goes from, recipients, subject, the body in Markdown, the account's signature below. It is NEVER sent: the person reads it in Sioul's window and sends it themselves, or discards it. Nothing else changes.",
         writes: true,
         idempotent: false,
         schema: || {

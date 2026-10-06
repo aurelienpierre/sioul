@@ -73,7 +73,7 @@ Then the text, made safe:
 - HTML mail keeps its paragraphs, lists, bold text and links. Nothing else is shown: no images, no styles, no scripts. Nothing loads from the network, nothing runs.
 - Earlier messages that a reply quotes are folded under **Show the earlier messages**. A signature is dimmed.
 - Every link shows its full address under the message while the pointer is on it, before you click.
-- **Attachments** are folded, one line each with their kind, name and size. Opening or saving one runs the antivirus first; if the computer has none, Sioul says so and asks before opening. See [Privacy and security](privacy-security.md#attachments-and-the-antivirus).
+- **Attachments** are folded, one line each with their kind, name and size. Opening or saving one runs the antivirus first; if the device has none, Sioul says so and asks before opening. See [Privacy and security](privacy-security.md#attachments-and-the-antivirus).
 
 From the message: reply, forward, archive, delete, and the rest, as on the [Mail](mail.md) page.
 
@@ -118,7 +118,7 @@ An address you publish brings work, and sometimes insults. On its card in [Accou
 
 Hostile mail goes to its own folded lane, which shows neither the sender's name nor the subject. Opening one asks first: it can wait, go to someone you trust (**Forward to someone you trust**), or go away (blocked, deleted). Reading it anyway is your choice, at a time that suits you. The rest of the address's mail has its own lane, work first, its topic shown, and a mark when it is rude.
 
-**Let the AI read it first**, below it, is off unless you turn it on: then each new message to that address is sent once to Anthropic's Claude, with its subject, to say its tone and topic more finely than word lists can. The text leaves your computer for that. The key for Anthropic's service is typed once in Accounts and kept in your keyring.
+**Let the AI read it first**, below it, is off unless you turn it on: then each new message to that address is sent once to Anthropic's Claude, with its subject, to say its tone and topic more finely than word lists can. The text leaves your device for that. The key for Anthropic's service is typed once in Accounts and kept in your keyring.
 
 ## The Porch's settings
 

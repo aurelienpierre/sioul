@@ -64,7 +64,7 @@ Each attachment is checked by the antivirus before it opens or is saved. **Keep 
 - **Attach**, or drop files on the window. **A paper**, beside it, attaches one of your [papers](papers.md); one that has ended, or is older than usually asked, says so in the list.
 - **Your signature** is put below the text when the draft starts, after the usual "-- " line, so that you see what goes out. Your name and signature are set per address in Accounts (**Name and signature…**).
 - **Answering**, the window says "Below your text: Camille's message of …, quoted". The quote is added when the message leaves.
-- **Drafts are saved as you type**, on this computer. Closing the window loses nothing: the draft waits under Drafts, on the left.
+- **Drafts are saved as you type**, on this device. Closing the window loses nothing: the draft waits under Drafts, on the left.
 
 **Send** (or ++ctrl+enter++) waits ten seconds, with **Undo**, before the message leaves. Then a copy goes to Sent. Nothing is ever sent without you.
 

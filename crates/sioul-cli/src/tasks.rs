@@ -163,7 +163,9 @@ impl Desk {
         let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
         let now = Zoned::now();
         let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.cases);
-        let settings = settings(s, today.weather, &situation, &loaded.cases);
+        let mut settings = settings(s, today.weather, &situation, &loaded.cases);
+        // As the window plans: what your record says of a day (docs/capacity.md).
+        settings.capacity = sioul_core::capacity::gather(&loaded.tasks, &sessions, &settings, &s.config.planning, &sioul_core::agenda::occurrences, &now).planning;
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
         Desk { loaded, filter, offices: situation.offices, plan, today, spent, stopped, sessions, settings }
@@ -411,6 +413,9 @@ fn set_weather(s: &Session, weather: &str) -> Result<(), String> {
     let mut today = Today::load(&Today::default_path(), Zoned::now().date());
     today.weather = Weather::parse(weather);
     today.save(&Today::default_path())?;
+    // The morning's weather, kept with the day's reviews (docs/reviews.md).
+    let said = Zoned::now();
+    let _ = sioul_core::reviews::note_weather(&sioul_core::reviews::Reviews::default_path(), said.date(), today.weather, said.timestamp().as_second(), said.time_zone());
     now(s)
 }
 

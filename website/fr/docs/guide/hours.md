@@ -78,6 +78,8 @@ Le calme, c’est chaque fois que ce n’est pas le moment du travail : les lo
 
 Une phrase dans la ligne d’état dit jusqu’à quand : « Le travail revient demain à 09:00. »
 
+**Clore est proposé, jamais imposé.** Une fois vos dernières heures du jour finies, la ligne d’état propose **Clore la journée de travail** ([Tâches](tasks.md#the-end-of-the-day)) ; le soir, **Clore la journée** ([Santé](health.md#before-sleep)). Sur un téléphone, la proposition prend la place de la phrase tant qu’elle est là. Rien pendant le sommeil.
+
 **Le chemin du retour n’est jamais suggéré.** Il est là si vous en avez besoin : la phrase de la ligne d’état ouvre un menu, avec **Travailler encore une demi-heure**, une heure, deux heures, quatre heures ; **Revenir aux heures habituelles** ; ou, le jour où vous l’avez close, **Reprendre le plan du jour**.
 
 ## Le sommeil {#sleep}

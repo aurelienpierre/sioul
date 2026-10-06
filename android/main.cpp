@@ -6,15 +6,16 @@
 // a program and Android does not: the folders, named the XDG way; the
 // language; the system's certificates; a log for what Rust writes to stderr;
 // the Java side Rust needs for the KeyStore and the DNS servers; the doses'
-// alarms (package/src/com/aurelienpierre/sioul/DoseAlarms.java); and the time
-// running's notification (TimeNote.java).
+// alarms (package/src/com/aurelienpierre/sioul/DoseAlarms.java); the time
+// running's notification (TimeNote.java); and the alarm at waking
+// (WakeAlarms.java).
 //
-// Android may start Sioul for a dose's alarm, or a button of the time
-// running, alone: DoseAlarms.java then loads this library without Qt's Java
-// side, which only Qt's loader starts, when the window opens. So all they
-// reach here (the start, the sync apps' broadcasts, the alarms, the tapped
-// dose, the time running) speaks to Java directly (JNI), never through Qt's
-// (QJniObject).
+// Android may start Sioul for a dose's alarm, a button of the time running,
+// or the alarm at waking, alone: DoseAlarms.java then loads this library
+// without Qt's Java side, which only Qt's loader starts, when the window
+// opens. So all they reach here (the start, the sync apps' broadcasts, the
+// alarms, the tapped dose, the time running, the wakings) speaks to Java
+// directly (JNI), never through Qt's (QJniObject).
 
 #include <QByteArray>
 #include <QDir>
@@ -46,6 +47,9 @@ extern "C" char *sioul_alarm_taken(const char *key);
 // A button of the time running (crates/sioul-app/src/timenote.rs): the note
 // shown next, as JSON, also given back to sioul_string_free.
 extern "C" char *sioul_time_action(const char *action);
+// The alarm at waking's coming rings (crates/sioul-app/src/wake.rs), in the
+// phone's zone, as JSON; also given back to sioul_string_free.
+extern "C" char *sioul_wake_next(const char *zone, bool fetch);
 extern "C" void sioul_string_free(char *text);
 
 namespace {
@@ -102,6 +106,7 @@ JavaVM *javaVm = nullptr;
 std::atomic<jobject> appContext = nullptr;
 jclass doseAlarms = nullptr;
 jclass timeNote = nullptr;
+jclass wakeAlarms = nullptr;
 
 // This thread's JNIEnv. A thread of Rust's is attached to Java the first time,
 // and let go when it ends.
@@ -189,6 +194,15 @@ jmethodID timeMethod(JNIEnv *env, const char *name, const char *signature)
     if (!timeNote)
         return nullptr;
     const jmethodID id = env->GetStaticMethodID(timeNote, name, signature);
+    return threw(env) ? nullptr : id;
+}
+
+// A static method of WakeAlarms.java; null when it is not there.
+jmethodID wakeMethod(JNIEnv *env, const char *name, const char *signature)
+{
+    if (!wakeAlarms)
+        return nullptr;
+    const jmethodID id = env->GetStaticMethodID(wakeAlarms, name, signature);
     return threw(env) ? nullptr : id;
 }
 
@@ -318,6 +332,8 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *)
         doseAlarms = appClass(env, "com/aurelienpierre/sioul/DoseAlarms");
     if (!timeNote)
         timeNote = appClass(env, "com/aurelienpierre/sioul/TimeNote");
+    if (!wakeAlarms)
+        wakeAlarms = appClass(env, "com/aurelienpierre/sioul/WakeAlarms");
     return JNI_VERSION_1_6;
 }
 
@@ -527,6 +543,88 @@ extern "C" void sioul_android_time_note(const char *json)
         askNotifications();
 }
 
+// The alarm at waking's coming rings (crates/sioul-app/src/wake.rs): JSON
+// {rings, looks, week, zone, words}, kept by WakeAlarms.java, which gives the
+// next to Android's alarm clock. The first list that rings asks for
+// notifications from Android 13, as the doses do: the ring shows its Stop in
+// one. Any thread.
+extern "C" void sioul_android_set_wake(const char *json)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !json)
+        return;
+    {
+        const LocalFrame frame(env);
+        const jmethodID set = wakeMethod(env, "set", "(Landroid/content/Context;Ljava/lang/String;)V");
+        if (!set)
+            return;
+        env->CallStaticVoidMethod(wakeAlarms, set, context, javaText(env, json));
+        threw(env);
+    }
+    const char *rings = strstr(json, "\"rings\":[");
+    if (rings && rings[9] >= '0' && rings[9] <= '9')
+        askNotifications();
+}
+
+// What Android allows the alarm at waking: 1 exact alarms ("Alarms &
+// reminders"), 2 the screen lit over the lock screen (refusable from Android
+// 14), 4 notifications. Not known: 0.
+extern "C" int sioul_android_wake_state()
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context)
+        return 0;
+    const LocalFrame frame(env);
+    const jmethodID state = wakeMethod(env, "state", "(Landroid/content/Context;)I");
+    if (!state)
+        return 0;
+    const jint bits = env->CallStaticIntMethod(wakeAlarms, state, context);
+    return threw(env) ? 0 : int(bits);
+}
+
+// "Try the alarm" (crates/sioul-app/src/wake.rs): JSON {at (Unix ms), words},
+// rung by WakeAlarms.java as a waking is, the next waking left as it is.
+// Its answer: 0 it rings; 1 exact alarms refused, 2 notifications, 3 the full
+// screen (nothing set); -1 not asked. Notifications refused: asked for (from
+// Android 13), as for the doses. From the window.
+extern "C" int sioul_android_wake_try(const char *json)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !json)
+        return -1;
+    jint answer = -1;
+    {
+        const LocalFrame frame(env);
+        const jmethodID tried = wakeMethod(env, "tryNow", "(Landroid/content/Context;Ljava/lang/String;)I");
+        if (!tried)
+            return -1;
+        answer = env->CallStaticIntMethod(wakeAlarms, tried, context, javaText(env, json));
+        if (threw(env))
+            return -1;
+    }
+    if (answer == 2)
+        askNotifications();
+    return int(answer);
+}
+
+// Android's own page where the alarm at waking is allowed: "exact",
+// "screen", "notifications". From the window.
+extern "C" void sioul_android_wake_settings(const char *which)
+{
+    JNIEnv *env = jni();
+    const jobject context = appContext.load();
+    if (!env || !context || !which)
+        return;
+    const LocalFrame frame(env);
+    if (const jmethodID settings = wakeMethod(env, "settings", "(Landroid/content/Context;Ljava/lang/String;)V")) {
+        env->CallStaticVoidMethod(wakeAlarms, settings, context, javaText(env, which));
+        threw(env);
+    }
+}
+
 // Sioul away (in the back, the screen off): what the window draws with (its
 // scene graph and graphics, about 90 MB on a phone) given back to Android,
 // made again when Sioul comes back. Qt keeps it by default; here it lets go
@@ -566,6 +664,15 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_DoseAlarms_na
 extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_TimeNote_nativeAction(JNIEnv *env, jclass, jstring action)
 {
     return answered(env, sioul_time_action(utf8(env, action).constData()));
+}
+
+// WakeAlarms.java's side: the alarm at waking's coming rings, asked at a
+// ring, before one, after a restart or a change of time or zone, once
+// DoseAlarms loaded and started Sioul's library; Rust reads what your other
+// devices wrote first, on a thread of Java's (never Android's main thread).
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_WakeAlarms_nativeNext(JNIEnv *env, jclass, jstring zone, jboolean fetch)
+{
+    return answered(env, sioul_wake_next(utf8(env, zone).constData(), fetch == JNI_TRUE));
 }
 
 int main(int, char *[])

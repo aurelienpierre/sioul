@@ -123,7 +123,14 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
     let by_hand: std::collections::BTreeSet<String> = sessions.iter().filter(|s| s.task.is_empty() || !s.project.is_empty()).map(Session::key).collect();
     let all = timereport::entries(&sessions, &loaded.tasks, &loaded.cases, &TimeZone::system());
     let config = load_config();
-    let view = timereport::view(&all, &loaded.cases, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr());
+    let mut view = timereport::view(&all, &loaded.cases, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr());
+    // How each stretch's minutes were known, said quietly: timed, typed, corrected, or not known.
+    let kinds: std::collections::BTreeMap<String, Option<timelog::Kind>> = sessions.iter().map(|s| (s.key(), s.kind)).collect();
+    for entry in &mut view.entries {
+        let kind = kinds.get(&entry.key).copied().flatten();
+        entry.kind = timelog::Kind::id(kind).to_string();
+        entry.kind_said = tr().text(&format!("time-kind-{}", entry.kind), None);
+    }
     json(&view)
 }
 
@@ -193,7 +200,7 @@ pub(crate) fn note_time(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> Stri
         let day = edit.day.parse::<Date>().map_err(|_| tr().text("time-bad-day", None))?;
         let (hour, minute) = edit.at.split_once(':').and_then(|(h, m)| Some((h.trim().parse::<i8>().ok()?, m.trim().parse::<i8>().ok()?))).unwrap_or((12, 0));
         let start = day.at(hour.clamp(0, 23), minute.clamp(0, 59), 0, 0).to_zoned(TimeZone::system()).map_err(|e| e.to_string())?.timestamp().as_second();
-        timelog::record(&Session { task: edit.task, project: edit.project, start, minutes: edit.minutes, note: edit.note.trim().to_string(), unbilled: edit.unbilled, ..Session::default() })
+        timelog::record(&Session { task: edit.task, project: edit.project, start, minutes: edit.minutes, note: edit.note.trim().to_string(), unbilled: edit.unbilled, kind: Some(timelog::Kind::Typed), ..Session::default() })
     });
     work::refresh(qt, shared);
     result.err().unwrap_or_default()
@@ -242,7 +249,8 @@ pub(crate) fn change_time(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: 
         }
         let changed = timelog::change_in(&timelog::folder(), key, |s| {
             s.start = start;
-            s.minutes = minutes;
+            // A timed stretch whose minutes change becomes "corrected" (docs/capacity.md).
+            s.set_minutes(minutes);
             s.task = edit.task.clone();
             s.project = edit.project.clone();
             s.note = edit.note.trim().to_string();

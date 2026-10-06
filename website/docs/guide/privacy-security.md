@@ -1,14 +1,14 @@
 ---
-description: Privacy and security in Sioul - what stays on your computer, what leaves it and when, how every message and attachment is checked, where passwords go.
+description: Privacy and security in Sioul - what stays on your device, what leaves it and when, how every message and attachment is checked, where passwords go.
 ---
 
 # Privacy and security
 
-Sioul runs on your computer. There is no Sioul server, no account with us, and nothing goes to the developer. Your mail, calendars and contacts travel only between your computer and your own providers.
+Sioul runs on your device. There is no Sioul server, no account with us, and nothing goes to the developer. Your mail, calendars and contacts travel only between your device and your own providers.
 
 The formal text, for Google's sign-in among others: [Privacy policy](../privacy.md).
 
-## What stays on your computer
+## What stays on your device {#what-stays-on-your-computer}
 
 Everything Sioul keeps is in plain files, in your own folders, readable by other programs:
 
@@ -23,7 +23,7 @@ On Windows, Sioul's folders are in `%APPDATA%\Sioul`; on macOS, in `~/Library/Ap
 
 **Passwords**, Google's access, the keys and tokens of the services you turn on, and passphrases go to your system's keyring (GNOME Keyring or KWallet on Linux, the Credential Manager on Windows, the Keychain on macOS). Never in a file.
 
-## What leaves your computer, and when
+## What leaves your device, and when {#what-leaves-your-computer-and-when}
 
 | To | What | When |
 |---|---|---|
@@ -85,7 +85,7 @@ Each device keeps its own data. What must travel between your computers and your
 
 ## Encrypted mail
 
-With OpenPGP, Sioul signs and encrypts your messages as you send them, decrypts and checks those you receive, and gives your public key to those you write to (Autocrypt). Your secret keys stay on the computer they were made on. See [Mail](mail.md#signing-and-encrypting).
+With OpenPGP, Sioul signs and encrypts your messages as you send them, decrypts and checks those you receive, and gives your public key to those you write to (Autocrypt). Your secret keys stay on the device they were made on. See [Mail](mail.md#signing-and-encrypting).
 
 ## A public address
 

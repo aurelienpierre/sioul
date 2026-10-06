@@ -129,6 +129,10 @@ static PORCH_RULES: Rules = Rules { keyed: &[], whole: &["done.*"], local: &[] }
 static MONEY_RULES: Rules = Rules { keyed: &[Keyed { list: "ignored", by: &[], local: &[] }], whole: &[], local: &[] };
 static TODAY_RULES: Rules = Rules { keyed: &[Keyed { list: "aside", by: &[], local: &[] }], whole: &[], local: &[] };
 static TIME_RULES: Rules = Rules { keyed: &[Keyed { list: "session", by: &["start", "task", "project"], local: &[] }], whole: &[], local: &[] };
+/// How each day went (`sioul_core::reviews`): a date's review at the end of
+/// work and the one before sleep travel whole, so that two devices answering
+/// the same one keep the later answer, never a mix of both; the weather field by field.
+static REVIEWS_RULES: Rules = Rules { keyed: &[], whole: &["*.work", "*.night"], local: &[] };
 static PLAIN_RULES: Rules = Rules { keyed: &[], whole: &[], local: &[] };
 // Projects and budgets, at the notes folder's root, when they travel here (`share_projects`).
 static CASES_RULES: Rules = Rules { keyed: &[Keyed { list: "case", by: &["id"], local: &[] }], whole: &[], local: &[] };
@@ -239,6 +243,9 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         file("health", "data/health-days.toml", d.join("health-days.toml"), Shape::Toml(&PLAIN_RULES)),
         file("time", "data/time/running.toml", d.join("time").join("running.toml"), Shape::Whole),
         folder("time", "data/time/", d.join("time"), Shape::Toml(&TIME_RULES), &["running.toml"]),
+        // How each day went, with the plan it is the outcome of (today.toml, quiet.toml, the sessions):
+        // every device that plans learns the same (docs/reviews.md).
+        folder("time", "data/reviews/", d.join("reviews"), Shape::Toml(&REVIEWS_RULES), &[]),
         folder("drafts", "data/drafts/", d.join("drafts"), Shape::Whole, &[]),
         folder("drafts", "data/invoices/", d.join("invoices"), Shape::Whole, &[]),
         folder("senders", "data/pgp/others/", d.join("pgp").join("others"), Shape::Whole, &[]),
@@ -1098,7 +1105,7 @@ fn key_with(folder: &Path, passphrase: &str, memory_kib: u32, passes: u32) -> Re
     OsRng.fill_bytes(&mut salt);
     let key = derive(passphrase, &salt, memory_kib, passes).map_err(Refused::Other)?;
     let seal = SealFile { version: 1, salt: B64.encode(salt), memory_kib, passes, check: seal(&key, "check", CHECK) };
-    let text = format!("# Sioul: how your computers' shared records are sealed (docs/database.md).\n{}", toml::to_string(&seal).map_err(|e| Refused::Other(e.to_string()))?);
+    let text = format!("# Sioul: how your devices' shared records are sealed (docs/database.md).\n{}", toml::to_string(&seal).map_err(|e| Refused::Other(e.to_string()))?);
     std::fs::create_dir_all(folder).and_then(|()| std::fs::write(&path, text)).map_err(|e| Refused::Other(format!("{}: {e}", path.display())))?;
     Ok(key)
 }
@@ -3384,6 +3391,42 @@ mod tests {
         assert!(std::fs::read_to_string(&own).unwrap().lines().all(|l| l.ends_with('}')), "whole lines only");
         laptop.exchange(&folder, &key, NOW + 2 * MINUTE);
         assert!(laptop.read("config/safe-senders.txt").contains("b@example.org"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_days_reviews_travel_whole() {
+        use sioul_core::reviews::{Felt, Mix, Reviews};
+        let base = scratch("reviews");
+        let folder = base.join("Nextcloud").join("sioul-shared");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let at = |ms: i64| std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms as u64);
+        let month = "data/reviews/2026-10.toml";
+        // The morning's weather and the end of work, on the desk.
+        desk.write(month, "[2026-10-06]\nweather = \"haze\"\n\n[2026-10-06.work]\nat = \"2026-10-06T17:04:00+02:00\"\nfelt = \"heavy\"\nmix = \"too_much\"\n");
+        dated(&desk.path(month), at(NOW - 10 * MINUTE));
+        desk.exchange(&folder, &key, NOW);
+        phone.exchange(&folder, &key, NOW + MINUTE);
+        assert!(phone.read(month).contains("felt = \"heavy\""));
+        // The same work review answered again on both: its feeling on the desk,
+        // then its mix on the phone, with the night.
+        desk.write(month, &desk.read(month).replace("felt = \"heavy\"", "felt = \"usual\""));
+        dated(&desk.path(month), at(NOW + 90_000));
+        phone.write(month, &format!("{}\n[2026-10-06.night]\nat = \"2026-10-06T22:10:00+02:00\"\nmix = \"about_right\"\nmemo = \"\"\"\nA walk.\n\"\"\"\n", phone.read(month).replace("mix = \"too_much\"", "mix = \"about_right\"")));
+        dated(&phone.path(month), at(NOW + 100_000));
+        phone.exchange(&folder, &key, NOW + 2 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+        phone.exchange(&folder, &key, NOW + 4 * MINUTE);
+        for computer in [&desk, &phone] {
+            let text = computer.read(month);
+            let reviews = Reviews::load(&computer.path("data/reviews"));
+            let day = reviews.day("2026-10-06".parse().unwrap()).unwrap();
+            assert_eq!(day.weather, Some(sioul_core::today::Weather::Haze), "{text}");
+            // The later answer whole: never the desk's feeling with the phone's mix.
+            assert_eq!(day.work.as_ref().map(|r| (r.felt, r.mix)), Some((Some(Felt::Heavy), Some(Mix::AboutRight))), "{text}");
+            assert_eq!(day.night.as_ref().map(|r| (r.mix, r.memo.trim().to_string())), Some((Some(Mix::AboutRight), "A walk.".to_string())), "{text}");
+        }
         let _ = std::fs::remove_dir_all(&base);
     }
 

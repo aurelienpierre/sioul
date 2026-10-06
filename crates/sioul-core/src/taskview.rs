@@ -248,6 +248,9 @@ pub struct CardView {
     pub done_on: String,
     /// How many things it links to.
     pub links: usize,
+    /// How heavy, from its costs when any is rated: "light", "usual", "heavy",
+    /// "rest" (it gives back); "" when none is rated (its word stands: `energy`).
+    pub level: &'static str,
 }
 
 /// A task in words.
@@ -309,6 +312,7 @@ pub fn card(cx: &Context, task: &Task) -> CardView {
         in_loop: planned.in_loop,
         done_on,
         links: task.links.len() + task.contacts.len(),
+        level: task.demands.level().map_or("", crate::demands::Level::id),
     }
 }
 
@@ -402,6 +406,12 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
         view.tied_note = cx.tr.text("task-only-tied", None);
     }
     let free: Vec<&Task> = if others.is_empty() { not_aside } else { others };
+    // A step given a time later today (dragged in the day) waits for it: the
+    // others come first; it is still proposed when nothing else is free.
+    let stamp = cx.offices.now.as_ref().map_or_else(|| Timestamp::now().as_second(), |z| z.timestamp().as_second());
+    let zone = cx.offices.now.as_ref().map_or_else(TimeZone::system, |z| z.time_zone().clone());
+    let (later, sooner): (Vec<&Task>, Vec<&Task>) = free.into_iter().partition(|t| t.at_on(cx.today, &zone).is_some_and(|at| at > stamp + 15 * 60));
+    let free: Vec<&Task> = sooner.into_iter().chain(later).collect();
     // Fog: only small steps; if none is small, the smallest.
     let candidates: Vec<&Task> = if weather == Weather::Fog {
         let small: Vec<&Task> = free.iter().copied().filter(|t| cx.planned(&t.uid).is_some_and(|p| p.left <= FOG_MINUTES)).collect();
@@ -436,7 +446,7 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
             why.push(cx.counted("task-why-unblocks", planned.unblocks, &[]));
         }
         // Heavy on a foggy day: only because nothing else is free.
-        if first.energy == "heavy" && weather == Weather::Fog {
+        if crate::capacity::level_of(first) == crate::demands::Level::Heavy && weather == Weather::Fog {
             why.push(cx.tr.text("task-why-heavy-fog", None));
         }
         if why.is_empty() {
@@ -493,8 +503,9 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
         .collect();
     // Energy accounting: a deposit after a withdrawal (Toudal & Attwood), offered, never planned in.
     let lately = jiff::Timestamp::now().as_second() - 2 * 3600;
-    if cx.tasks.iter().any(|t| t.status == Status::Completed && t.energy == "heavy" && t.completed.is_some_and(|c| c >= lately)) {
-        view.rest = cx.tasks.iter().find(|t| t.energy == "rest" && t.status.is_open() && cx.filter.wants(t) && cx.planned(&t.uid).is_some_and(|p| p.column != Column::Waiting && p.open_steps == 0)).map(|t| card(cx, t));
+    let level = crate::capacity::level_of;
+    if cx.tasks.iter().any(|t| t.status == Status::Completed && level(t) == crate::demands::Level::Heavy && t.completed.is_some_and(|c| c >= lately)) {
+        view.rest = cx.tasks.iter().find(|t| level(t) == crate::demands::Level::Rest && crate::plan::is_optional(t) && t.status.is_open() && cx.filter.wants(t) && cx.planned(&t.uid).is_some_and(|p| p.column != Column::Waiting && p.open_steps == 0)).map(|t| card(cx, t));
     }
     view
 }
@@ -785,6 +796,15 @@ pub struct DetailView {
     pub related: Vec<RelatedView>,
     /// What its tags say it is for, its own area aside: "admin", "work+leisure".
     pub area_tags: String,
+    /// How heavy, from its costs: as `CardView::level`.
+    pub level: &'static str,
+    /// Its first estimate, in minutes; None when unknown (`Task::estimate_first`).
+    pub estimate_first: Option<u32>,
+    /// The day of the newest rating said after it ("2026-10-06"), "" when none: `edit.felt` is that one.
+    pub felt_on: String,
+    /// On request: how tasks like it usually go against the first guess, in a
+    /// sentence; "" when there is nothing worth saying (`capacity::ratio_line`).
+    pub ratio_line: String,
 }
 
 pub fn detail(cx: &Context, task: &Task, sessions: &[crate::timelog::Session], related: &[Related]) -> DetailView {
@@ -814,6 +834,10 @@ pub fn detail(cx: &Context, task: &Task, sessions: &[crate::timelog::Session], r
         sessions,
         related: related_views(cx.tr, related),
         area_tags: cx.filter.quiet.as_ref().map_or_else(|| crate::areas::TaskAreas::usual().by_tags(task), |q| q.areas.by_tags(task)).id(),
+        level: task.demands.level().map_or("", crate::demands::Level::id),
+        estimate_first: task.estimate_first,
+        felt_on: task.felt.last().and_then(|f| f.on).map(|d| d.to_string()).unwrap_or_default(),
+        ratio_line: String::new(),
     }
 }
 

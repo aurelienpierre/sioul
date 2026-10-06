@@ -2,9 +2,9 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Health and well-being, for the window: the page (a day, or its week, at a
-//! glance: meals, naps, the night and the doses, each day's own changes), its
-//! settings (the medicines, the prescriptions, the usual meals and nights, the
-//! watch, the pauses), and the minute tick that reminds a dose once, quietly,
+//! glance: meals, naps, the night and the doses, each day's own changes; the
+//! medicines and the prescriptions), its settings (the usual meals and nights,
+//! the watch, the pauses), and the minute tick that reminds a dose once, quietly,
 //! and turns refills and renewals into tasks in a list your phone has. The
 //! rest goes to no server, except sealed to your other computers when you
 //! share with them (docs/database.md).
@@ -32,7 +32,7 @@ fn save(health: &Health) -> Result<(), String> {
     Ok(())
 }
 
-/// "12:00 and 18:00", "12:00, 15:00 and 18:00".
+/// "Levothyroxine and Magnesium", "A, B and C".
 fn listed(items: &[String]) -> String {
     match items {
         [] => String::new(),
@@ -41,10 +41,25 @@ fn listed(items: &[String]) -> String {
     }
 }
 
-/// A schedule in words: "every day at 12:00 and 18:00".
+/// "8:00" → "08:00", as the day's list writes its times; what does not read stays as written.
+fn hhmm(text: &str) -> String {
+    let parsed = text.trim().split_once(':').and_then(|(h, m)| Some((h.trim().parse::<u8>().ok()?, m.trim().parse::<u8>().ok()?)));
+    match parsed {
+        Some((h, m)) if h < 24 && m < 60 => format!("{h:02}:{m:02}"),
+        _ => text.trim().to_string(),
+    }
+}
+
+/// When a medicine is taken: its times each day, "08:00 · 20:00"; every few
+/// days or hours, in words ("every other day at 08:00, from Sunday 4 October").
 fn words(schedule: &Schedule) -> String {
     match schedule {
-        Schedule::Day { times } => say("health-every-day", &[("times", listed(times))]),
+        Schedule::Day { times } => {
+            let mut times: Vec<String> = times.iter().map(|t| hhmm(t)).collect();
+            times.sort();
+            times.dedup();
+            times.join(" · ")
+        }
         Schedule::Days { days, time, from } => {
             let mut args = sioul_core::i18n::args();
             args.set("days", *days);
@@ -83,20 +98,105 @@ struct DoseRow {
     doubt: String,
 }
 
+/// A medicine as the page lists it, and as its form reads it.
 #[derive(Serialize)]
 struct MedicineRow {
     #[serde(flatten)]
     medicine: Medicine,
+    /// Its times, "08:00 · 20:00"; every few days or hours, in words.
     when: String,
-    prescription_title: String,
+    /// "until Monday 26 October"; "" for as long as it goes.
+    ends: String,
+    /// Paused, or past its last day: listed all the same, quieter.
+    quiet: bool,
 }
 
+/// A prescription as the page lists it, and as its form reads it.
 #[derive(Serialize)]
 struct PrescriptionRow {
     #[serde(flatten)]
     prescription: Prescription,
-    /// "Pharmacy from Tuesday 27 October", "Renew from Thursday 17 December": the next of each.
+    /// What comes, in words, the soonest first: "pharmacy from Tuesday 27
+    /// October", "renew by Thursday 4 February 2027" (its last valid day).
     next: Vec<String>,
+    /// The medicines that come with it, unless its title names them all:
+    /// "for Levothyroxine and Magnesium"; "" when none or named.
+    covers: String,
+    /// Fetched at the pharmacy today: its button says so.
+    fetched_today: bool,
+}
+
+/// The medicines, in the order they were added (a row keeps its place).
+fn medicine_rows(health: &Health, today: Date) -> Vec<MedicineRow> {
+    health
+        .medicines
+        .iter()
+        .map(|m| MedicineRow {
+            when: words(&m.schedule),
+            ends: m.until.map(|day| say("health-until", &[("day", tr().day_in(day, today))])).unwrap_or_default(),
+            quiet: m.paused || m.until.is_some_and(|day| day < today),
+            medicine: m.clone(),
+        })
+        .collect()
+}
+
+/// What comes for a prescription, on a day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Coming {
+    /// Its medicines fetched at the pharmacy, from that day.
+    Pharmacy,
+    /// Renewed by that day, its last valid day.
+    RenewBy,
+    /// Valid until that day, now passed: said plainly, never as late.
+    ValidUntil,
+}
+
+/// What comes for a prescription, the soonest first: the next visit to the
+/// pharmacy (a month back at most), and the day to renew it by.
+fn coming(errands: &[sioul_core::health::Errand], p: &Prescription, today: Date) -> Vec<(Coming, Date)> {
+    let month_ago = today.checked_sub(Span::new().days(30)).unwrap_or(today);
+    let mut next: Vec<(Coming, Date)> = errands.iter().filter(|e| e.prescription == p.id && e.kind == ErrandKind::Refill && e.day >= month_ago).map(|e| (Coming::Pharmacy, e.day)).collect();
+    if let Some(until) = p.until {
+        next.push((if until < today { Coming::ValidUntil } else { Coming::RenewBy }, until));
+    }
+    next.sort_by_key(|(_, day)| *day);
+    next
+}
+
+/// The medicines tied to a prescription (`Medicine::prescription`), unless its
+/// title already names them all ("Levothyroxine 75 µg" for Levothyroxine).
+fn covered(health: &Health, p: &Prescription) -> Vec<String> {
+    let named: Vec<String> = health.medicines.iter().filter(|m| m.prescription.as_deref() == Some(p.id.as_str())).map(|m| m.name.clone()).collect();
+    let title = p.title.to_lowercase();
+    if named.iter().all(|name| title.contains(&name.to_lowercase())) { Vec::new() } else { named }
+}
+
+/// The prescriptions, in the order they were added, as the page lists them.
+fn prescription_rows(health: &Health, today: Date) -> Vec<PrescriptionRow> {
+    let errands = health.errands();
+    health
+        .prescriptions
+        .iter()
+        .map(|p| {
+            let covers = covered(health, p);
+            PrescriptionRow {
+                next: coming(&errands, p, today)
+                    .into_iter()
+                    .map(|(what, day)| {
+                        let day = [("day", tr().day_in(day, today))];
+                        match what {
+                            Coming::Pharmacy => say("health-next-refill", &day),
+                            Coming::RenewBy => say("health-renew-by", &day),
+                            Coming::ValidUntil => say("health-valid-until", &day),
+                        }
+                    })
+                    .collect(),
+                covers: if covers.is_empty() { String::new() } else { say("health-covers", &[("names", listed(&covers))]) },
+                fetched_today: p.last_refill == Some(today),
+                prescription: p.clone(),
+            }
+        })
+        .collect()
 }
 
 /// The page: a week of days, the day shown one of them (`week`), and what
@@ -117,14 +217,15 @@ struct PageView {
     later: u32,
     /// Anything set at all (meals, naps, the night, a medicine): else the page says where to set them.
     any: bool,
-}
-
-/// The page's settings (⚙): the medicines, the prescriptions, the pauses,
-/// where the errands go, the watch's folder and offers.
-#[derive(Serialize)]
-struct SettingsView {
+    /// The medicines and the prescriptions: content of the page, changed there (their forms read them).
     medicines: Vec<MedicineRow>,
     prescriptions: Vec<PrescriptionRow>,
+}
+
+/// The page's settings (⚙), what is set once: the pauses, where the errands
+/// go, the watch's folder and offers (the usual meals and night: `needs_page`).
+#[derive(Serialize)]
+struct SettingsView {
     movement: Movement,
     chats: ChatLimit,
     /// Where the errands go, and the lists they can go to: {id, name}.
@@ -205,6 +306,13 @@ struct DayItem {
     taken: String,
     late: bool,
     doubt: String,
+    /// The night: when its alarm rings, the morning it ends ("07:00"; "" when
+    /// none would), and whether "No alarm" was asked for that night (`wake`).
+    alarm: String,
+    alarm_skipped: bool,
+    /// Its alarm not rung yet: "No alarm" can still be asked, even after
+    /// midnight, on the night going on (a past day's row, its menu that item only).
+    alarm_open: bool,
 }
 
 /// A part of the timeline's column: from, to, in minutes from the column's
@@ -219,6 +327,10 @@ struct Segment {
     name: String,
     from_minute: i64,
     to_minute: i64,
+    /// Its whole span as kept, not cut at the column's midnights (before 0, past
+    /// 1440): a drag knows which of its ends this column holds, and how long it is.
+    start_minute: i64,
+    end_minute: i64,
     /// Where it starts and ends proper: before and after, lighter (getting ready, winding down, coming back).
     at_minute: i64,
     until_minute: i64,
@@ -369,10 +481,9 @@ pub(crate) fn watch_offer(qt: &QtThread, focus_minutes: u32) {
     };
     let action: Option<(String, Box<dyn FnOnce() + Send>)> = (offer == sioul_core::wearable::Offer::LowReserve).then(|| {
         let qt = qt.clone();
+        // "Done for today" opens the end of the work day's review first (docs/reviews.md).
         let close: Box<dyn FnOnce() + Send> = Box::new(move || {
-            let _ = qt.queue(|mut sioul| {
-                let _ = sioul.as_mut().done_for_the_day();
-            });
+            let _ = qt.queue(|mut sioul| sioul.as_mut().reminder_opened(QString::from("review"), QString::default(), QString::from("work")));
         });
         (tr().text("watch-offer-low-reserve-action", None), close)
     });
@@ -443,30 +554,16 @@ pub(crate) fn page() -> String {
         .join(" "),
         watch: watch_view(&health),
         later: needs.later,
+        medicines: medicine_rows(&health, now.date()),
+        prescriptions: prescription_rows(&health, now.date()),
     })
 }
 
 /// The page's settings (⚙), as JSON.
 pub(crate) fn settings_view() -> String {
     let health = load();
-    let now = Zoned::now();
-    let title_of = |id: &Option<String>| id.as_ref().and_then(|id| health.prescriptions.iter().find(|p| &p.id == id)).map(|p| p.title.clone()).unwrap_or_default();
-    let errands = health.errands();
     let config = crate::backend::load_config();
     json(&SettingsView {
-        medicines: health.medicines.iter().map(|m| MedicineRow { when: words(&m.schedule), prescription_title: title_of(&m.prescription), medicine: m.clone() }).collect(),
-        prescriptions: health
-            .prescriptions
-            .iter()
-            .map(|p| PrescriptionRow {
-                next: errands
-                    .iter()
-                    .filter(|e| e.prescription == p.id && e.day >= now.date().checked_sub(Span::new().days(30)).unwrap_or(now.date()))
-                    .map(|e| say(if e.kind == ErrandKind::Refill { "health-next-refill" } else { "health-next-renew" }, &[("day", tr().day(e.day))]))
-                    .collect(),
-                prescription: p.clone(),
-            })
-            .collect(),
         movement: health.movement.clone(),
         chats: health.chats.clone(),
         errands_list: errands_list(&health).unwrap_or_default(),
@@ -576,6 +673,10 @@ fn day_view(health: &Health, state: &HealthState, knowledge: &Knowledge, days: &
             "sleep" => say("need-night-detail", &[("bed", clock(k.at, &zone))]),
             _ => String::new(),
         };
+        // The night's alarm at waking, said quietly; "No alarm" asked, said as how that day differs.
+        let (alarm, alarm_skipped) = if k.kind == "sleep" && !off { crate::wake::of_night(needs, date, &zone, days) } else { (String::new(), false) };
+        let alarm_open = !alarm.is_empty() && needs.alarm_of(date, &zone, days).is_some_and(|a| a.at > stamp);
+        let detail = if alarm.is_empty() || alarm_skipped { detail } else { format!("{detail}  ·  {}", say("wake-at", &[("time", alarm.clone())])) };
         let changed = !added && change.is_some_and(|c| !c.at.is_empty() || !c.wake.is_empty() || c.minutes.is_some() || c.before.is_some() || c.after.is_some());
         let quiet = change.is_some_and(|c| c.quiet);
         let note = if off {
@@ -590,6 +691,7 @@ fn day_view(health: &Health, state: &HealthState, knowledge: &Knowledge, days: &
             String::new()
         };
         let note = if quiet && !off { [note, tr().text("need-quiet", None)].into_iter().filter(|n| !n.is_empty()).collect::<Vec<_>>().join(" · ") } else { note };
+        let note = if alarm_skipped { [note, tr().text("wake-none", None)].into_iter().filter(|n| !n.is_empty()).collect::<Vec<_>>().join(" · ") } else { note };
         DayItem {
             key: k.key.clone(),
             kind: k.kind,
@@ -611,6 +713,9 @@ fn day_view(health: &Health, state: &HealthState, knowledge: &Knowledge, days: &
             taken: String::new(),
             late: false,
             doubt: String::new(),
+            alarm,
+            alarm_skipped,
+            alarm_open,
         }
     };
     for k in needs.blocks_of(date, &zone, days, &shift) {
@@ -618,7 +723,7 @@ fn day_view(health: &Health, state: &HealthState, knowledge: &Knowledge, days: &
         // Before and after it proper, lighter: getting it ready, winding down, coming back.
         let until = if k.kind == "sleep" { k.end } else { k.at + i64::from(item.minutes) * 60 };
         if minute(k.start) < 24 * 60 {
-            segments.push(Segment { date: date.to_string(), key: k.key.clone(), kind: k.kind, name: item.name.clone(), from_minute: minute(k.start).max(0), to_minute: minute(k.end).min(24 * 60), at_minute: minute(k.at), until_minute: minute(until), quiet: item.quiet, past: item.past, state: "" });
+            segments.push(Segment { date: date.to_string(), key: k.key.clone(), kind: k.kind, name: item.name.clone(), from_minute: minute(k.start).max(0), to_minute: minute(k.end).min(24 * 60), start_minute: minute(k.start), end_minute: minute(k.end), at_minute: minute(k.at), until_minute: minute(until), quiet: item.quiet, past: item.past, state: "" });
         }
         items.push((minute(k.start), item));
     }
@@ -637,6 +742,8 @@ fn day_view(health: &Health, state: &HealthState, knowledge: &Knowledge, days: &
             name: tr().text("needs-sleep", None),
             from_minute: minute(k.start).max(0),
             to_minute: minute(k.end).min(24 * 60),
+            start_minute: minute(k.start),
+            end_minute: minute(k.end),
             at_minute: minute(k.at),
             until_minute: minute(k.end),
             quiet: days.get(night, "sleep").is_some_and(|c| c.quiet),
@@ -684,9 +791,12 @@ fn day_view(health: &Health, state: &HealthState, knowledge: &Knowledge, days: &
                 before: 0,
                 after: 0,
                 doubt,
+                alarm: String::new(),
+                alarm_skipped: false,
+                alarm_open: false,
             };
             let state = if date != today { "" } else if marked { "taken" } else if item.doubt.is_empty() { "due" } else { "check" };
-            segments.push(Segment { date: date.to_string(), key, kind: "dose", name, from_minute: minute(due), to_minute: minute(due), at_minute: minute(due), until_minute: minute(due), quiet: false, past: item.past, state });
+            segments.push(Segment { date: date.to_string(), key, kind: "dose", name, from_minute: minute(due), to_minute: minute(due), start_minute: minute(due), end_minute: minute(due), at_minute: minute(due), until_minute: minute(due), quiet: false, past: item.past, state });
             items.push((minute(due), item));
         }
     }
@@ -911,7 +1021,7 @@ fn movement_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zon
     let stamp = now.timestamp().as_second();
     let last = MOVED.load(Ordering::Relaxed);
     // Asleep too: the pause is counted again from waking.
-    if last == 0 || !health.movement.enabled || sioul_core::timelog::running().is_some() || !crate::hours::may_notify() {
+    if last == 0 || !health.movement.enabled || sioul_core::timelog::running().is_some() || !crate::hours::may_notify() || crate::hours::quiet_slot() {
         MOVED.store(stamp, Ordering::Relaxed);
         return;
     }
@@ -1598,6 +1708,14 @@ fn needs_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned)
         let action = Some((tr().text("need-open", None), open));
         let shown = if heads_up {
             sioul_sync::notify::remind(&tr().text("need-heads-up", None), &say("need-at", &[("name", name), ("time", hm(block.start))]), action)
+        } else if block.kind == "sleep" && crate::reviews::night_open(block.at, now) {
+            // The night's own notice: closing the day is offered beside its options (docs/reviews.md).
+            let qt_review = qt.clone();
+            let review: Box<dyn FnOnce() + Send> = Box::new(move || {
+                let _ = qt_review.queue(|mut sioul| sioul.as_mut().reminder_opened(QString::from("review"), QString::default(), QString::from("night")));
+            });
+            let choices = std::iter::once((tr().text("review-close-night", None), review)).chain(action).collect();
+            sioul_sync::notify::remind_choices(&name, &hm(block.start), choices)
         } else {
             sioul_sync::notify::remind(&name, &hm(block.start), action)
         };
@@ -1632,13 +1750,71 @@ fn change_day(date: &str, edit: &DayEdit) -> String {
     let Some(date) = date else { return tr().text("need-times-wrong", None) };
     let mut days = days();
     match load().needs.change_day(&mut days, date, edit, &now, &held_on(date, &now)) {
-        Ok(()) => days.save(&Days::default_path(), now.date()).err().unwrap_or_default(),
+        Ok(()) => {
+            let problem = days.save(&Days::default_path(), now.date()).err().unwrap_or_default();
+            // A night changed, or its alarm: a phone's alarm at waking follows (`wake`).
+            crate::wake::schedule();
+            problem
+        }
         Err(DayProblem::Past) => tr().text("need-past", None),
         Err(DayProblem::Times) => tr().text("need-times-wrong", None),
         Err(DayProblem::TooShort) => tr().text("need-too-short", None),
         Err(DayProblem::OtherDay) => tr().text("need-other-day", None),
         Err(DayProblem::Unknown) => say("setting-unknown-key", &[("key", edit.action.clone())]),
     }
+}
+
+/// A day's block moved by a drag on the page's timeline (`change_need`'s
+/// JSON: "move", or "times" for one of its ends), changed as "Move to…" and
+/// "Change its times…" change it, then "Undo" offered for ten seconds, which
+/// puts that day's block back as it was. Dropped where it was: nothing
+/// changes, nothing to undo. Returns what went wrong, else "".
+pub(crate) fn drag_need(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> String {
+    #[derive(Deserialize)]
+    struct Asked {
+        #[serde(default)]
+        date: String,
+        #[serde(flatten)]
+        edit: DayEdit,
+    }
+    let asked = match serde_json::from_str::<Asked>(edit) {
+        Ok(asked) => asked,
+        Err(e) => return e.to_string(),
+    };
+    let now = Zoned::now();
+    let date = if asked.date.trim().is_empty() { Some(now.date()) } else { asked.date.trim().parse::<Date>().ok() };
+    let Some(date) = date else { return tr().text("need-times-wrong", None) };
+    let key = asked.edit.key.clone();
+    let was = days().get(date, &key).cloned();
+    let problem = change_day(&asked.date, &asked.edit);
+    if !problem.is_empty() {
+        return problem;
+    }
+    let after = days();
+    if after.get(date, &key) == was.as_ref() {
+        return String::new();
+    }
+    // Said as the day has it now: its name, its time kept.
+    let zone = now.time_zone().clone();
+    let line = blocks_now(&load().needs, &after, date, &now)
+        .iter()
+        .find(|k| k.key == key)
+        .map(|k| say("drag-done", &[("what", name_of(k)), ("time", format!("{}–{}", clock(k.start, &zone), clock(k.end, &zone)))]))
+        .unwrap_or_else(|| tr().text("drag-done-plain", None));
+    crate::mail::offer_back(qt, shared, line, move |qt, shared| {
+        let mut days = days();
+        match &was {
+            Some(block) => days.change(date, &key, |b| *b = block.clone()),
+            None => days.forget(date, &key),
+        }
+        let problem = days.save(&Days::default_path(), Zoned::now().date()).err().unwrap_or_default();
+        // A night put back: a phone's alarm at waking follows (`wake`).
+        crate::wake::schedule();
+        crate::work::show_work(qt, shared);
+        show_health(qt, shared);
+        problem
+    });
+    String::new()
 }
 
 /// A block moved today only (the question, a notice's "Later"): by `minutes`
@@ -1686,6 +1862,8 @@ pub(crate) fn needs_page() -> String {
             "sleep": usual_name("sleep", 0),
         },
         "gaps": needs.long_gaps().into_iter().map(|(from, to)| say("need-gap", &[("from", from), ("to", to)])).collect::<Vec<_>>(),
+        // The alarm at waking: its weekdays' names, the next ring, what Android refuses it.
+        "wake": crate::wake::status(&needs),
     })
     .to_string()
 }
@@ -1742,6 +1920,8 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         if keeper.mine && keeper.settled {
             needs_tick(qt, shared, &health, &Zoned::now());
         }
+        // On a phone, the alarm at waking (`wake`; with medicines, `alarms::schedule` below hands it).
+        crate::wake::schedule();
         return;
     }
     // One computer reminds: the one you are at, once it has been so long
@@ -1915,5 +2095,45 @@ mod tests {
         learn(&mut old, &[claim(9_000, None, false)], &heard_up_to(99), 9_030);
         assert_eq!(old.peers["laptop-id"].peer.known_until, 0);
         assert_eq!(sioul_core::health::doubts(9_010, 9_030, None, &[old.peers["laptop-id"].peer.clone()]).len(), 1);
+    }
+
+    /// The page's medicines and prescriptions, without their words (those
+    /// need the translator, which reads the configuration): times as the
+    /// day's list writes them, what comes for each prescription and when,
+    /// the medicines it covers when its title does not name them.
+    #[test]
+    fn medicines_and_prescriptions_on_the_page() {
+        let day = |text: &str| text.parse::<Date>().unwrap();
+        let today = day("2026-10-06");
+        assert_eq!((hhmm("8:00"), hhmm(" 18:30 "), hhmm("noon"), hhmm("25:00")), ("08:00".into(), "18:30".into(), "noon".into(), "25:00".into()));
+        assert_eq!(words(&Schedule::Day { times: vec!["20:00".into(), "8:00".into(), "08:00".into()] }), "08:00 · 20:00");
+        let medicine = |id: &str, prescription: Option<&str>| Medicine {
+            id: id.into(),
+            name: id.into(),
+            dose: String::new(),
+            schedule: Schedule::Day { times: vec!["07:30".into()] },
+            prescription: prescription.map(Into::into),
+            until: None,
+            paused: false,
+        };
+        let health = Health {
+            prescriptions: vec![
+                // Fetched today, 28 days at a time, valid until February.
+                Prescription { id: "thyroid".into(), title: "Thyroid".into(), until: Some(day("2027-02-04")), refill_days: Some(28), last_refill: Some(today), ..Default::default() },
+                // Its title names its medicine; its last valid day passed.
+                Prescription { id: "levo".into(), title: "Levothyroxine 75 µg".into(), until: Some(day("2026-10-01")), ..Default::default() },
+                // Last fetched long ago: no pharmacy visit said from three months back.
+                Prescription { id: "old".into(), title: "Old".into(), refill_days: Some(30), last_refill: Some(day("2026-06-01")), ..Default::default() },
+            ],
+            medicines: vec![medicine("Levothyroxine", Some("levo")), medicine("Magnesium", Some("thyroid")), medicine("Iron", Some("thyroid")), medicine("Zinc", None)],
+            ..Default::default()
+        };
+        let errands = health.errands();
+        // Two days before they run out (6 October + 28 days), then the renewal.
+        assert_eq!(coming(&errands, &health.prescriptions[0], today), [(Coming::Pharmacy, day("2026-11-01")), (Coming::RenewBy, day("2027-02-04"))]);
+        assert_eq!(coming(&errands, &health.prescriptions[1], today), [(Coming::ValidUntil, day("2026-10-01"))]);
+        assert!(coming(&errands, &health.prescriptions[2], today).is_empty());
+        assert_eq!(covered(&health, &health.prescriptions[0]), ["Magnesium", "Iron"]);
+        assert!(covered(&health, &health.prescriptions[1]).is_empty() && covered(&health, &health.prescriptions[2]).is_empty());
     }
 }

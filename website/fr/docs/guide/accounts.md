@@ -39,7 +39,7 @@ Toujours en vue en dessous :
 - **Priorité** : *Plus important*, *Normal* ou *Moins important*. Voir [le Porche](porch.md#some-addresses-first-others-last).
 - **Nom et signature…** : votre nom, tel que les destinataires le voient, et votre signature, en Markdown.
 
-Puis **Serveur et dossiers**, replié : le serveur, et l’endroit où son courrier est gardé sur cet ordinateur.
+Puis **Serveur et dossiers**, replié : le serveur, et l’endroit où son courrier est gardé sur cet appareil.
 
 Sous les fiches, **Le bouclier IA** garde la clé du service d’Anthropic, utilisée seulement par les adresses qui laissent l’IA les lire d’abord. Elle est gardée dans le trousseau de votre système, jamais dans un fichier ; **Oublier la clé** la retire.
 
@@ -112,4 +112,4 @@ Vos clés OpenPGP, pour signer et chiffrer vos messages ([Le courrier](mail.md#s
 - **Enregistrer la clé publique** : dans vos téléchargements, pour la donner aux autres.
 - **Clés des autres** : celles venues avec leurs messages, ou d’un fichier, ou trouvées par **Chercher leurs clés** dans la fenêtre d’écriture.
 
-Vos propres clés restent sur cet ordinateur. Elles ne sont pas partagées avec vos autres ordinateurs : copiez-les à la main si vous en avez besoin là-bas.
+Vos propres clés restent sur cet appareil. Elles ne sont pas partagées avec vos autres appareils : copiez-les à la main si vous en avez besoin là-bas.
