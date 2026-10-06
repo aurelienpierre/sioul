@@ -173,7 +173,7 @@ Code: `crates/sioul-sync/src/bitwarden.rs`; details: [sites.md](sites.md), "Bitw
 - Servers: bitwarden.com, bitwarden.eu, a self-hosted Bitwarden, Vaultwarden, over HTTPS. Sioul declares itself Bitwarden's desktop client at the server's own version (read from its config once a session; 2026.9.0 when it says none), since Bitwarden refuses clients too far behind.
 - Keys: PBKDF2-SHA256 or Argon2id as the account says; HKDF; AES-256-CBC with HMAC-SHA256; RSA for organisations; COSE (XChaCha20-Poly1305, AES-256-GCM; XAES-256-GCM not yet). Unlocking with a security key's passkey through WebAuthn PRF.
 - Second steps: a FIDO2 key, YubiKey OTP, an authenticator app, e-mail, a recovery code. **Not supported**: Duo. Read only: nothing is written to the vault. On Android, no security key (no Qt WebEngine).
-- **Tested**: Bitwarden's key-derivation test vectors, RFC 6238's codes, a changed byte refused, a COSE message; the live cloud with a made-up account, refused for its password and not for its version (`the_cloud_takes_the_version`, ignored). **Not with a real vault and key.**
+- **Tested**: Bitwarden's key-derivation test vectors, RFC 6238's codes, a changed byte refused, a COSE message; the live cloud with a made-up account, refused for its password and not for its version (`the_cloud_takes_the_version`, ignored). With the owner's own vault on Bitwarden's cloud: in daily use (6 October 2026).
 
 ## OpenPGP
 Code: `crates/sioul-core/src/pgp.rs` (Sequoia, pure-Rust cryptography), `crates/sioul-sync/src/keys.rs`; details: [client.md](client.md), "PGP".
@@ -234,7 +234,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | Google Tasks | `tools/google-tasks-stand-in.py` | [google.md](google.md), "What was tested" |
 | GitHub | `tools/github-stand-in.py` | [github.md](github.md), "What was tested" |
 | OpenPGP | GnuPG 2.4, both ways | [client.md](client.md), "As built" |
-| Bitwarden | its key-derivation vectors; the live cloud with a made-up account | [sites.md](sites.md), "Bitwarden" |
+| Bitwarden | its key-derivation vectors; the live cloud with a made-up account; the owner's own vault, in daily use | [sites.md](sites.md), "Bitwarden"; the owner, 6 October 2026 |
 | Sharing | a simulator of five sync behaviours; eDrive 1.9.2 on a phone | [database.md](database.md), "Tested"; [android.md](android.md) |
 | Notes | files as Obsidian and Nextcloud Notes write them | `notes` tests |
 | The watch | FIT files written by hand | [health.md](health.md) |
@@ -250,7 +250,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 - GitHub itself with a fine-grained token, since 098a9d5.
 - A YubiKey on GitHub, Google and Proton in Sites; a call with the microphone and the camera; sharing a screen once screen capture is turned on, on X11 and on Wayland; a PDF a site shows.
 - A site that keeps its login in its page (Discord) staying logged in after Sioul quits.
-- Bitwarden with a real vault, and its unlocking by a security key (WebAuthn PRF).
+- Bitwarden on a self-hosted server or Vaultwarden.
 - Windows and macOS run by a person: the keyring, notifications, AMSI, ClamAV from Homebrew, security keys.
 - The Flatpak: whether scanned letters can be read there at all.
 - Claude Code and Claude Desktop with `sioul mcp`.
