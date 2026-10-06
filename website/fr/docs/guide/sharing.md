@@ -74,6 +74,8 @@ La première fois, une copie de ce qu’avait cet appareil est gardée de côté
 
 Ensuite, les changements s’échangent chaque minute, et quand vous choisissez **Tout actualiser** ou **Échanger maintenant**. Le panneau dit par quel dossier vous partagez, avec combien d’autres appareils, et quand ils ont donné des nouvelles pour la dernière fois. Sous **Vos autres appareils**, il liste chacun d’eux : utilisé en ce moment, ou fermé à 22:14, et quand il a partagé pour la dernière fois ; celui que vous avez dit éteint, avec **Le compter de nouveau** ; celui qui est silencieux depuis une semaine, avec **Oublier cet appareil**. **Arrêter le partage** y met fin ; chaque appareil garde ses propres fichiers.
 
+Sur un Nextcloud (celui de Murena compris), le panneau dit aussi si Sioul lit le dossier sur le serveur lui-même, à côté de votre application de synchronisation, et quand il l’a fait pour la dernière fois : **Aller aussi les chercher sur le serveur**, allumé dès que le dossier y est trouvé sous le même sceau ([pourquoi](#when-the-sync-app-is-late)). Si Sioul ne le trouve pas, donnez sa place là-bas (comme `Documents/Sioul`) et choisissez **Chercher là**.
+
 Votre dossier de notes voyage par sa propre synchronisation, pas par Sioul, sauf si vous l’allumez plus bas. S’il ne semble pas être dans un dossier synchronisé, le panneau le dit : votre autre appareil ne verrait pas vos notes et vos projets. Déplacés dans un dossier synchronisé (et choisis à nouveau dans Paramètres), ils voyagent aussi ; ou allumez **Notes**, **Projets et argent** et **Papiers**, et Sioul les transporte, scellés.
 
 ## Ce qui voyage depuis cet appareil {#what-travels-from-this-device}

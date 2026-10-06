@@ -672,9 +672,49 @@ fn confirm(state: &mut State, memory: &Path, login: &Login, url: &str, seal: &[u
 
 // ---------------------------------------------------------------- fetching
 
+/// How a device stands, for the pace of its pulls (`due`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Pace {
+    /// A phone; else a computer, which pulls once a minute.
+    pub phone: bool,
+    /// Sioul on its screen: you are there.
+    pub shown: bool,
+    /// Another device says it is in use, as read here (what was fetched too).
+    pub in_use: bool,
+    /// A dose's alarm, a waking, the background step asking for news now.
+    pub urgent: bool,
+    /// The phone's background step's pace now (seconds): five minutes, fifteen while you sleep.
+    pub step: i64,
+}
+
+/// Whether a pull is due now. The first after the folder is found, at once,
+/// whatever the hour: until it comes, this device knows the others only from
+/// the folder the sync app left stale, so whether another one is in use
+/// cannot be told (6 October 2026, 23:30: found on the phone at night, never
+/// pulled, the desk in use taken for closed hours before). Then a computer, a
+/// phone with Sioul on its screen or another device in use, once a minute; a
+/// phone in the background otherwise at its step's pace, the night's
+/// included: a device opened at night is noticed within its fifteen minutes.
+/// Asked for news, twenty seconds after the last.
+pub fn due(state: &State, now: i64, pace: Pace) -> bool {
+    let since = now - state.tried;
+    if state.tried < state.confirmed {
+        return true;
+    }
+    if pace.urgent {
+        return since >= 20;
+    }
+    if !pace.phone || pace.shown || pace.in_use {
+        return since >= 60;
+    }
+    since >= pace.step - 30
+}
+
 /// What a pull did.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Pulled {
+    /// Files and folders the server's listings showed.
+    pub listed: usize,
     /// Files that came down and are kept.
     pub fetched: usize,
     /// Bytes that came down.
@@ -853,6 +893,7 @@ impl Puller<'_> {
             SyncError::NotFound(_) => Stop::Unconfirmed(format!("seal-gone:{}", self.state.host())),
             e => Stop::Failed(e),
         })?;
+        self.pulled.listed += root.items.len();
         // Never fetched from a folder sealed otherwise.
         self.seal(&root)?;
         if self.unchanged("", &root.etag) {
@@ -869,6 +910,7 @@ impl Puller<'_> {
             && !self.unchanged("devices/", &devices.etag)
         {
             let listing = self.server.list(&self.url("devices/"))?;
+            self.pulled.listed += listing.items.len();
             for (name, item) in listing.items.iter().filter(|(_, item)| !item.dir) {
                 let relative = format!("devices/{name}");
                 if kind_of(&relative).is_some_and(|(_, id)| id != self.own) {
@@ -882,12 +924,14 @@ impl Puller<'_> {
             && !self.unchanged("leases/", &leases.etag)
         {
             let parts = self.server.list(&self.url("leases/"))?;
+            self.pulled.listed += parts.items.len();
             for (part, item) in parts.items.iter().filter(|(_, item)| item.dir) {
                 let dir = format!("leases/{part}/");
                 if self.unchanged(&dir, &item.etag) {
                     continue;
                 }
                 let listing = self.server.list(&self.url(&dir))?;
+                self.pulled.listed += listing.items.len();
                 for (name, item) in listing.items.iter().filter(|(_, item)| !item.dir) {
                     let relative = format!("{dir}{name}");
                     if kind_of(&relative).is_some_and(|(_, id)| id != self.own) {
@@ -1837,6 +1881,57 @@ mod tests {
         // The synced folder never had them: the backup brought them.
         let synced = std::fs::read(w.phone_folder.join(w.desk_round())).map(|b| b.len()).unwrap_or(0);
         assert!(synced < std::fs::read(w.server.join(w.desk_round())).unwrap().len());
+    }
+
+    /// The owner's phone, 6 October 2026, 23:30: the folder found on the
+    /// server at night, the phone in the background, its folder telling the
+    /// desk closed hours ago (eDrive left it so) while the desk is in use.
+    /// The first pull comes at once; then the desk is known in use, and
+    /// followed once a minute, night or not; closed, at the night's pace.
+    #[test]
+    fn found_at_night_the_first_pull_comes_at_once() {
+        let w = World::new("night");
+        w.desk.press(true, DUE + 30);
+        w.desk.exchange(&w.server, DUE + 60);
+        w.up();
+        let in_use = |now: i64| crate::devices::all(&w.phone_folder, &KEY).0.iter().any(|e| e.id == w.desk.id && e.working && !e.left && now - e.exported <= sioul_core::health::FRESH + sioul_core::health::SKEW);
+        let night = |now: i64| Pace { phone: true, shown: false, in_use: in_use(now), urgent: false, step: 15 * 60 };
+        assert!(!in_use(DUE + 70), "the stale folder tells the desk not in use");
+        let state = w.find(DUE + 70);
+        assert!(state.confirmed_for(&w.phone_folder));
+        attach(&w.phone_folder, &w.phone.memory);
+        assert!(due(&State::load(&w.phone.memory), DUE + 80, night(DUE + 80)), "found: pulled at once, whatever the hour");
+        let pulled = w.pull(DUE + 80);
+        assert!(pulled.problem.is_none() && pulled.listed > 0 && pulled.fetched > 0, "{pulled:?}");
+        assert!(in_use(DUE + 90), "the desk known in use, from the server");
+        w.phone.exchange(&w.phone_folder, DUE + 90);
+        assert!(w.phone.dnd().is_some_and(|p| p.on), "its do-not-disturb too");
+        let state = State::load(&w.phone.memory);
+        assert!(!due(&state, DUE + 100, night(DUE + 100)), "not twice in a minute");
+        w.desk.exchange(&w.server, DUE + 130);
+        assert!(w.pull(DUE + 140).problem.is_none(), "once a minute while the desk is in use, at night too");
+        // The desk closes: at the night's pace again, fifteen minutes.
+        w.desk.session(&w.server, |e| e.close(DUE + 150));
+        assert!(w.pull(DUE + 200).problem.is_none());
+        let state = State::load(&w.phone.memory);
+        assert!(!in_use(DUE + 260) && !due(&state, DUE + 260, night(DUE + 260)));
+        assert!(due(&state, DUE + 200 + 15 * 60, night(DUE + 200 + 15 * 60)), "a device opened at night is noticed within the step's fifteen minutes");
+    }
+
+    #[test]
+    fn the_pace_of_pulls() {
+        let state = State { confirmed: 1_000, tried: 1_000, ..State::default() };
+        let pace = |phone, shown, in_use, urgent| Pace { phone, shown, in_use, urgent, step: 5 * 60 };
+        // A computer, a phone on its screen or another device in use: once a minute.
+        assert!(due(&state, 1_060, pace(false, false, false, false)) && !due(&state, 1_059, pace(false, false, false, false)));
+        assert!(due(&state, 1_060, pace(true, true, false, false)));
+        assert!(due(&state, 1_060, pace(true, false, true, false)));
+        // A phone in the background, nobody at another device: at its step's pace.
+        assert!(!due(&state, 1_120, pace(true, false, false, false)) && due(&state, 1_270, pace(true, false, false, false)));
+        // Asked for news: twenty seconds after the last.
+        assert!(due(&state, 1_020, pace(true, false, false, true)) && !due(&state, 1_010, pace(true, false, false, true)));
+        // Found again since the last pull: at once.
+        assert!(due(&State { confirmed: 1_005, ..state }, 1_006, pace(true, false, false, false)));
     }
 
     #[test]

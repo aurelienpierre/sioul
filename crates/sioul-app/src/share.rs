@@ -898,6 +898,12 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
         let here = here.clone();
         std::thread::spawn(move || fetch_from_server(&here, true))
     });
+    // A background step that asks the sync app nothing (you asleep and nobody
+    // at another device, a file the sync app just wrote) still reads the
+    // server at its pace: whether another device is in use is known from there.
+    if !fetch_first && crate::steps::in_service() {
+        fetch_from_server(&here, false);
+    }
     // The sync app asked to bring the others' news, and given twenty seconds;
     // asked a moment ago already (two doses due at once), only what is left of them.
     if fetch_first && cfg!(target_os = "android") {
@@ -1056,37 +1062,67 @@ fn nextcloud_configs() -> Vec<String> {
     [Some(home.join(".config/Nextcloud/nextcloud.cfg")), Some(home.join("Library/Preferences/Nextcloud/nextcloud.cfg")), windows].into_iter().flatten().filter_map(|p| std::fs::read_to_string(p).ok()).collect()
 }
 
-/// Whether to fetch from the server now: a minute after the last try at
-/// most; on a phone, that often only while another device is in use, else at
-/// the background step's pace, and never while you sleep (nothing is
-/// coming); a dose's alarm, a waking or the background step asking for news
-/// (`urgent`), twenty seconds after the last.
-fn fetch_due(phone: bool, tried: i64, now: i64, in_use: bool, asleep: bool, urgent: bool) -> bool {
-    let since = now - tried;
-    if urgent {
-        since >= 20
-    } else if !phone || in_use {
-        since >= 60
-    } else if asleep {
-        false
-    } else {
-        since >= crate::steps::STEP_AWAKE - 30
+/// The backup's words for a phone's log (`adb logcat -s sioul`): what it did
+/// or why not, and when; never a password, a name of yours, an address or a
+/// content. A line the same as the last one is not said again.
+fn log_backup(line: String) {
+    static SAID: Mutex<String> = Mutex::new(String::new());
+    if !cfg!(target_os = "android") {
+        return;
     }
+    if let Ok(mut said) = SAID.lock() {
+        if *said == line {
+            return;
+        }
+        said.clone_from(&line);
+    }
+    eprintln!("sioul: backup: {line}");
+}
+
+/// A backup's code (`State::said`) in plain words, for the log: "network:murena.io" → "murena.io: could not be reached".
+fn backup_words(said: &str) -> String {
+    let (code, about) = said.split_once(':').unwrap_or((said, ""));
+    let why = match code {
+        "network" => "could not be reached",
+        "login" => "refused the password kept for the account",
+        "tls" => "its certificate could not be checked",
+        "server" => "answered with an error",
+        "quota" => "its space is full",
+        "disk" => "could not be written here",
+        "no-password" => "no password kept on this device for the account",
+        "not-found" => "the folder is not there",
+        "seal-differs" => "a folder sealed otherwise, never read",
+        "seal-gone" => "the folder holds no seal any more",
+        "no-account" => "no account with a Nextcloud server",
+        "no-account-for" => "no account on that server",
+        "no-seal" => "no seal in the folder here",
+        "off" => "switched off here",
+        other => other,
+    };
+    if about.is_empty() { why.to_string() } else { format!("{about}: {why}") }
 }
 
 /// The other devices' files fetched from the server too (docs/database.md,
 /// "Fetched from the server too"), when the sharing folder is found on one of
-/// your accounts' servers under the same seal, and it is due (`fetch_due`).
-/// Looked for at once when asked, else every six hours. Never on the window's
-/// thread; the switch off, not a request.
+/// your accounts' servers under the same seal, and a pull is due
+/// (`sioul_sync::remote::due`: the first at once, then at the pace of how
+/// this device stands). Looked for at once when asked, else every six hours.
+/// Never on the window's thread; the switch off, not a request. Each look and
+/// each pull said in a phone's log.
 fn fetch_from_server(here: &share::Here, urgent: bool) {
     let Some(folder) = attached(here) else { return };
-    let Ok(_fetching) = FETCHING.try_lock() else { return };
+    // One at a time; one that broke (a panic) never stops the next ones.
+    let _fetching = match FETCHING.try_lock() {
+        Ok(held) => held,
+        Err(std::sync::TryLockError::Poisoned(held)) => held.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => return,
+    };
     let memory = memory_path();
     let now = jiff::Timestamp::now().as_second();
     let mut state = sioul_sync::remote::State::load(&memory);
     if !state.fetching() || here.id.is_empty() {
         sioul_sync::remote::tidy(&memory, &folder, &here.id);
+        log_backup("switched off here".into());
         return;
     }
     let config = load_config();
@@ -1094,24 +1130,40 @@ fn fetch_from_server(here: &share::Here, urgent: bool) {
     // Its account gone, or its password: looked for again.
     if state.look_due(&folder, now) || (state.confirmed_for(&folder) && login(&state.account).is_none_or(|l| l.password.is_none())) {
         let places = sioul_sync::remote::places(&folder, &nextcloud_configs());
-        state = sioul_sync::remote::find(&memory, &folder, &logins(&config), &places, now);
+        let logins = logins(&config);
+        state = sioul_sync::remote::find(&memory, &folder, &logins, &places, now);
+        log_backup(if state.confirmed_for(&folder) { format!("the folder found on {}", state.host()) } else { format!("the folder not found on {} account(s): {}", logins.len(), backup_words(&state.said)) });
     }
     if !state.confirmed_for(&folder) {
         return;
     }
     let phone = cfg!(target_os = "android");
-    let in_use = phone && crate::devices::others_in_use();
     let asleep = phone && crate::everywhere::rest_now() == (true, false);
-    if !fetch_due(phone, state.tried, now, in_use, asleep, urgent) {
+    let pace = sioul_sync::remote::Pace {
+        phone,
+        // On the phone's screen: the window's process only, the background service's never.
+        shown: !crate::steps::in_service() && SHOWN.load(std::sync::atomic::Ordering::Relaxed),
+        in_use: phone && crate::devices::others_in_use(),
+        urgent,
+        step: if asleep { crate::steps::STEP_ASLEEP } else { crate::steps::STEP_AWAKE },
+    };
+    if !sioul_sync::remote::due(&state, now, pace) {
+        let pace_said = match (pace.shown, pace.in_use, asleep) {
+            (true, _, _) => "Sioul on the screen: once a minute",
+            (_, true, _) => "another device in use: once a minute",
+            (_, false, true) => "in the background, nobody at another device, at night: every fifteen minutes",
+            _ => "in the background, nobody at another device: every five minutes",
+        };
+        log_backup(format!("next pull at its pace ({pace_said})"));
         return;
     }
     let Some(login) = login(&state.account) else { return };
     let pulled = sioul_sync::remote::pull(&memory, &folder, &here.id, &login, now);
-    // On a phone, its log (adb logcat): a count and a code, never a name nor an address.
-    if phone {
-        let code = pulled.problem.as_deref().map(|p| format!("; {}", p.split(':').next().unwrap_or_default())).unwrap_or_default();
-        eprintln!("sioul: sharing: {} fetched from the server{code}", pulled.fetched);
-    }
+    let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
+    log_backup(match &pulled.problem {
+        None => format!("{at} pulled from {}: {} listed, {} fetched, {} bytes", state.host(), pulled.listed, pulled.fetched, pulled.bytes),
+        Some(why) => format!("{at} pull from {} stopped: {}", state.host(), backup_words(why)),
+    });
 }
 
 /// Fetched from the server too, as the panel shows it.
@@ -1210,21 +1262,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_server_is_asked_at_the_pace_of_the_others_news() {
-        let now = 100_000;
-        // A computer: once a minute.
-        assert!(fetch_due(false, now - 60, now, false, false, false));
-        assert!(!fetch_due(false, now - 59, now, false, false, false));
-        // A phone: once a minute while another device is in use, asleep or not.
-        assert!(fetch_due(true, now - 60, now, true, true, false));
-        assert!(!fetch_due(true, now - 30, now, true, false, false));
-        // Else at the background step's pace, and never while you sleep.
-        assert!(!fetch_due(true, now - 120, now, false, false, false));
-        assert!(fetch_due(true, now - crate::steps::STEP_AWAKE, now, false, false, false));
-        assert!(!fetch_due(true, now - 3_600, now, false, true, false));
-        // A dose's alarm, a waking, the background step asking: twenty seconds after the last.
-        assert!(fetch_due(true, now - 20, now, false, true, true));
-        assert!(!fetch_due(true, now - 10, now, false, true, true));
+    fn the_backup_says_in_words_what_it_did() {
+        assert_eq!(backup_words("network:murena.io"), "murena.io: could not be reached");
+        assert_eq!(backup_words("no-account"), "no account with a Nextcloud server");
+        assert_eq!(backup_words("seal-differs:murena.io"), "murena.io: a folder sealed otherwise, never read");
     }
 
     #[test]
