@@ -55,13 +55,19 @@ pub struct Wanted {
 }
 
 impl Wanted {
-    /// The searches, with why what they find is yours.
+    /// The searches, with why what they find is yours. Issues and pull
+    /// requests are asked apart: with a fine-grained token or an app's user
+    /// token, GitHub refuses a search that would mix them (422, "Query must
+    /// include 'is:issue' or 'is:pull-request'").
     fn searches(self) -> Vec<(&'static str, &'static str)> {
         [
-            (self.assigned, "is:open assignee:@me archived:false", "assign"),
+            (self.assigned, "is:open is:issue assignee:@me archived:false", "assign"),
+            (self.assigned, "is:open is:pr assignee:@me archived:false", "assign"),
             (self.reviews, "is:open is:pr user-review-requested:@me archived:false", "review_requested"),
-            (self.created, "is:open author:@me archived:false", "author"),
-            (self.mentioned, "is:open mentions:@me archived:false", "mention"),
+            (self.created, "is:open is:issue author:@me archived:false", "author"),
+            (self.created, "is:open is:pr author:@me archived:false", "author"),
+            (self.mentioned, "is:open is:issue mentions:@me archived:false", "mention"),
+            (self.mentioned, "is:open is:pr mentions:@me archived:false", "mention"),
         ]
         .into_iter()
         .filter(|(on, _, _)| *on)
@@ -139,7 +145,14 @@ impl Client {
                 let until = reset.and_then(|r| r.parse::<i64>().ok()).and_then(|r| jiff::Timestamp::from_second(r).ok()).map(|t| t.to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M").to_string());
                 Err(SyncError::Server(format!("GitHub: {status}, wait until {}", until.unwrap_or_else(|| "later".into()))))
             }
-            status => Err(SyncError::Server(format!("GitHub: {status} {path}"))),
+            // What GitHub says of a refused request ("Validation Failed", the
+            // query's fault), said with it rather than the bare number.
+            status => {
+                let body: Value = serde_json::from_str(&response.body_mut().with_config().limit(64 * 1024).read_to_string().unwrap_or_default()).unwrap_or(Value::Null);
+                let said = body["errors"][0]["message"].as_str().or(body["message"].as_str()).unwrap_or("").to_string();
+                let what = path.split('?').next().unwrap_or(path);
+                Err(SyncError::Server(if said.is_empty() { format!("GitHub: {status} {what}") } else { format!("GitHub: {status} {what}: {said}") }))
+            }
         }
     }
 
@@ -213,6 +226,19 @@ mod tests {
         let issue = issue_of(&item, "review_requested").unwrap();
         assert_eq!((issue.repo.as_str(), issue.number, issue.pull, issue.state_reason.as_str()), ("someone/project", 12, true, ""));
         let wanted = Wanted { assigned: true, reviews: true, created: false, mentioned: false };
-        assert_eq!(wanted.searches().len(), 2);
+        // Assigned: issues and pull requests apart; reviews: pull requests only.
+        assert_eq!(wanted.searches().len(), 3);
+    }
+
+    #[test]
+    fn every_search_says_issues_or_pull_requests() {
+        // GitHub refuses (422) a search mixing both, with a fine-grained token.
+        let all = Wanted { assigned: true, reviews: true, created: true, mentioned: true };
+        let searches = all.searches();
+        assert_eq!(searches.len(), 7);
+        for (query, _) in &searches {
+            assert!(query.contains("is:issue") || query.contains("is:pr"), "{query}");
+            assert!(!(query.contains("is:issue") && query.contains("is:pr")), "{query}");
+        }
     }
 }

@@ -7,10 +7,12 @@ The open issues and pull requests that are yours, found by GitHub's search acros
 
 | | Search | On by default |
 |---|---|---|
-| Assigned to you | `is:open assignee:@me archived:false` | yes |
+| Assigned to you | `is:open is:issue assignee:@me archived:false`, then the same with `is:pr` | yes |
 | Your review asked | `is:open is:pr user-review-requested:@me archived:false` | yes |
-| Opened by you | `is:open author:@me archived:false` | no |
-| Mentioning you | `is:open mentions:@me archived:false` | no |
+| Opened by you | `is:open is:issue author:@me archived:false`, then `is:pr` | no |
+| Mentioning you | `is:open is:issue mentions:@me archived:false`, then `is:pr` | no |
+
+Issues and pull requests are searched apart: with a fine-grained token (or a GitHub App's user token), GitHub refuses a search that could return both, with a 422 ("Query must include 'is:issue' or 'is:pull-request'"; [GitHub's REST documentation](https://docs.github.com/en/rest/search/search#search-issues-and-pull-requests)). Until 6 October 2026 Sioul asked them together, and that refusal stopped the whole sync, so no task came. A refused request now says GitHub's own reason in the status line. When one search fails, the whole sync waits for the next round: tasks are never closed on a partial answer.
 
 Each becomes a task in a list "GitHub" kept on this device only (`calendars/local/github`), never sent to a server: UID `github:owner/repo#12`, its title, a link to its page, why it is yours (`X-SIOUL-GITHUB-REASON`). An issue found by two searches comes once, with the strongest reason (assigned, then review, then opened, then mentioned). Your projects' routes place it in a project as they place mail: the issue is matched as GitHub's mail about it would be, from `notifications@github.com` with the subject `[owner/repo] Title (Issue #12)`; a route on the words `[owner/repo]` takes a repository's issues.
 

@@ -3,8 +3,9 @@
 # Copyright © 2026 Aurélien Pierre
 """A stand-in for GitHub's REST API, for Sioul's tests only: searches of
 "assignee:@me" and "user-review-requested:@me", and issues by number, with
-ETags (an unchanged answer is a 304). Usage: github-stand-in.py PORT. The
-token asked is "test-token"."""
+ETags (an unchanged answer is a 304). Like GitHub with a fine-grained token,
+a search that does not say "is:issue" or "is:pr" is refused (422). Usage:
+github-stand-in.py PORT. The token asked is "test-token"."""
 
 import hashlib
 import json
@@ -57,11 +58,17 @@ class Handler(BaseHTTPRequestHandler):
         query = parse_qs(url.query)
         if url.path == "/search/issues":
             q = query.get("q", [""])[0]
+            words = q.split()
+            wants_issues = "is:issue" in words
+            wants_pulls = "is:pr" in words or "is:pull-request" in words
+            if wants_issues == wants_pulls:
+                return self.answer(422, {"message": "Validation Failed", "errors": [{"message": "Query must include 'is:issue' or 'is:pull-request'", "resource": "Search", "field": "q", "code": "invalid"}]})
             found = []
             if "assignee:@me" in q:
                 found = [issues[12]]
             elif "user-review-requested:@me" in q:
                 found = [issues[7]]
+            found = [item for item in found if ("pull_request" in item) == wants_pulls]
             return self.answer(200, {"total_count": len(found), "incomplete_results": False, "items": found})
         parts = url.path.strip("/").split("/")
         if len(parts) == 5 and parts[:3] == ["repos", "example", "tool"] and parts[3] == "issues":
