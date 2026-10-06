@@ -74,6 +74,8 @@ The first time, a copy of what this device had is kept aside, in case. Then the 
 
 From then on, changes are exchanged each minute, and when you choose **Refresh everything** or **Exchange now**. The panel says through which folder you share, with how many other devices, and when they were last heard from. Under **Your other devices**, it lists each one: in use now, or closed at 22:14, and when it last shared; one you said is off, with **Count it again**; one silent for a week, with **Forget this device**. **Stop sharing** ends it; each device keeps its own files.
 
+On a Nextcloud (Murena's included), the panel also says whether Sioul reads the folder on the server itself, beside your sync app, and when it last did: **Also fetch them from the server**, on once the folder is found there under the same seal ([why](#when-the-sync-app-is-late)). If Sioul does not find it, give its place there (such as `Documents/Sioul`) and choose **Look there**.
+
 Your notes folder travels by its own sync, not by Sioul, unless you switch it on below. If it does not seem to be inside a synced folder, the panel says so: your other device would not see your notes and projects. Moved into one (and chosen again in Settings), they travel too; or switch **Notes**, **Projects and money** and **Papers** on, and Sioul carries them, sealed.
 
 ## What travels from this device
