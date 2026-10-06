@@ -18,7 +18,7 @@ Nothing here goes beyond what is built. The standards behind each line, and wher
 | Area | Works with | How sure |
 |---|---|---|
 | [Mail](#mail) | any IMAP and SMTP server that takes a password over an encrypted connection; Gmail with an app password | **Tested** with a test server, and a real mailbox in daily use; **expected** elsewhere. **Not supported**: Outlook.com, Hotmail, Microsoft 365 |
-| [Calendars, tasks and contacts](#calendars-tasks-and-contacts) | any CalDAV and CardDAV server over HTTPS: Nextcloud (Murena's too), Radicale, Fastmail, Posteo, mailbox.org, iCloud, your host's | **Tested** with Radicale, and finding Murena's servers; **expected** with the others. **Limits**: iCloud's reminders; Baïkal must be set to Basic sign-in |
+| [Calendars, tasks and contacts](#calendars-tasks-and-contacts) | any CalDAV and CardDAV server over HTTPS: Nextcloud (Murena's too), Radicale, Fastmail, Posteo, mailbox.org, iCloud, your host's | **Tested** with Radicale, and in daily use with Murena (Nextcloud) since 4 October 2026; **expected** with the others. **Limits**: iCloud's reminders; Baïkal must be set to Basic sign-in |
 | [Google](#google) | calendars, contacts and Google Tasks, signed in on Google's page | **Expected**: tried only against a stand-in of Google Tasks |
 | [Other apps on the same accounts](#other-apps-on-the-same-accounts) | Thunderbird and phone mail apps; Nextcloud Tasks, Tasks.org; DAVx⁵ with OpenTasks or jtx Board | **Expected**, from their code. **Limit**: a task tied to another by a wait, changed on a phone through DAVx⁵ |
 | [Notes](#notes) | Obsidian, Nextcloud Notes, any Markdown editor | **Tested** on files written as each writes them |
@@ -36,7 +36,7 @@ Nothing here goes beyond what is built. The standards behind each line, and wher
 | Feature | What it needs | Tested with | Expected with | Limits |
 |---|---|---|---|---|
 | Finding your server | your address | Murena's, by hand | providers that publish their settings, and those in Thunderbird's list | a server found by guessing is said to be a guess, to check |
-| Receiving and keeping mail | IMAP over an encrypted connection (port 993, or 143 with STARTTLS), your password | GreenMail, a test server; a real mailbox in daily use | Murena, Fastmail, Posteo, mailbox.org, your host's, your own Dovecot; iCloud Mail and Yahoo with an app password | fetching changes nothing on the server; no unencrypted connection |
+| Receiving and keeping mail | IMAP over an encrypted connection (port 993, or 143 with STARTTLS), your password | GreenMail, a test server; Murena, in daily use since 4 October 2026 | Fastmail, Posteo, mailbox.org, your host's, your own Dovecot; iCloud Mail and Yahoo with an app password | fetching changes nothing on the server; no unencrypted connection |
 | Codes within seconds | IDLE, which most servers have | — | most servers | without it, Sioul looks every two minutes |
 | Archive, delete, junk, move | MOVE, else UIDPLUS; folders marked by their purpose | GreenMail: archive, delete | most servers | without MOVE and UIDPLUS, the original stays marked as deleted until another program clears it; unmarked folders are found by their names, and a missing Trash, Junk or Archive is made |
 | What other programs changed | — | — | any server | read, flagged, moved or deleted elsewhere: seen at each round, by asking every message's flags, which is slower on very big folders |
@@ -67,10 +67,10 @@ Thunderbird, your phone's mail app and the webmail see the same mailbox:
 | Feature | What it needs | Tested with | Expected with | Limits |
 |---|---|---|---|---|
 | Finding your account | your address; else the server's address, given once | Murena's, by hand; Radicale | servers that publish the standard's addresses; Fastmail, iCloud, Posteo, mailbox.org and cPanel hosts are known | a redirection to another domain is not followed: give the server's address |
-| Events and contacts, both ways | CalDAV and CardDAV over HTTPS, your password | Radicale, a test server | Nextcloud (Murena's too), Fastmail, Posteo, mailbox.org, SOGo, your host's; iCloud with an app-specific password | no unencrypted server. **Baïkal**: set its "WebDAV authentication type" to Basic: its default, Digest, is not supported |
+| Events and contacts, both ways | CalDAV and CardDAV over HTTPS, your password | Radicale, a test server; Murena (Nextcloud), in daily use since 4 October 2026 | Nextcloud elsewhere, Fastmail, Posteo, mailbox.org, SOGo, your host's; iCloud with an app-specific password | no unencrypted server. **Baïkal**: set its "WebDAV authentication type" to Basic: its default, Digest, is not supported |
 | Only what changed | sync tokens, else each item's tag | Radicale; a stand-in in the tests | most servers | without sync tokens, every item's tag is compared at each round, which is slower |
-| Tasks | task lists | — | servers whose calendars take tasks, Nextcloud's among them | **iCloud**: reminders upgraded since iOS 13 are not reachable by any CalDAV program. **Google**: through Google Tasks ([below](#google)) |
-| Steps, waits, links, kinds, costs | a server that keeps what it is given, lines it does not know included | — | servers that store tasks as they are sent, Nextcloud's among them | other apps may drop some of them when they save a task ([below](#other-apps-on-the-same-accounts)) |
+| Tasks | task lists | Murena (Nextcloud), in daily use since 4 October 2026 | servers whose calendars take tasks, Nextcloud's among them | **iCloud**: reminders upgraded since iOS 13 are not reachable by any CalDAV program. **Google**: through Google Tasks ([below](#google)) |
+| Steps, waits, links, kinds, costs | a server that keeps what it is given, lines it does not know included | Murena (Nextcloud), in daily use since 4 October 2026 | servers that store tasks as they are sent, Nextcloud's among them | other apps may drop some of them when they save a task ([below](#other-apps-on-the-same-accounts)) |
 | A time given to a step for one day | a line of Sioul's own in the task | — | — | other apps do not show it. It is not the task's start: servers that check (Nextcloud's) refuse a start with a time when the date asked has none. **Coming**: an event in a calendar, tied to the task, which every calendar app shows |
 | New lists, calendars and address books; renaming them | the standard's requests to make and rename them | — | Nextcloud and most servers | not at Google |
 | Contact categories | the card's own categories | cards written as Nextcloud writes them | Nextcloud Contacts (its groups); DAVx⁵ set to keep groups as categories | groups kept as cards of their own (Apple's way, and DAVx⁵'s other setting) are not read as categories: such a group shows as a card |
@@ -102,7 +102,7 @@ Your tasks, events and contacts are standard: every app on the same server shows
 | Google Tasks | one level | not kept | not kept | **limit**: greyed in Sioul, with why |
 
 !!! warning "Waits on a phone, through DAVx⁵"
-    With OpenTasks, Tasks.org or jtx Board through DAVx⁵, changing on the phone a task tied to another by a wait (either of the two), even ticking it done, turns the wait into a step, or drops it. Until that changes, change those tasks in Sioul, in Nextcloud Tasks, or in Tasks.org with its own sync.
+    With OpenTasks, Tasks.org or jtx Board through DAVx⁵, changing on the phone a task tied to another by a wait (either of the two), even ticking it done, turns the wait into a step, or drops it. Until that changes, change those tasks in Sioul, in Nextcloud Tasks, or in Tasks.org with its own sync. Only reading tasks on the phone is safe: nothing is written back.
 
 ## Notes
 
@@ -199,7 +199,7 @@ On Ubuntu 24.04 and later, the AppImage runs sites without Chromium's sandbox: p
 
 Worth trying, and welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) once tried:
 
-- A full sync of tasks with steps, waits and links on Nextcloud (Murena's too), Fastmail, iCloud, or Baïkal set to Basic.
+- A full sync of tasks with steps, waits and links on Fastmail, iCloud, or Baïkal set to Basic (Murena's Nextcloud is in daily use); contact categories and lists made or renamed, on any server.
 - Waits changed on a phone through DAVx⁵, to confirm what its code says; what Thunderbird and Apple's apps keep.
 - An invitation accepted on a server that sends invitations itself (Nextcloud, Google, iCloud).
 - Google itself, and GitHub itself since the fix of 6 October 2026.

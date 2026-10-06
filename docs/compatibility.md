@@ -229,7 +229,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | IMAP writes and SMTP sending | GreenMail 2.1.8, on the computer | [building.md](building.md), "Testing against a local mail server" |
 | Reaching IMAP servers, up to their greeting | Gmail's, Murena's (`mail.ecloud.global`), Microsoft's; no login | `imap::reaches_real_servers_up_to_the_greeting` (ignored, run by hand) |
 | Finding an account | Murena's mail and calendars, without a password | `scout::murena_scouted` (ignored, run by hand) |
-| A real mailbox, in daily use | the provider is not recorded | [building.md](building.md), "Measuring the load"; the README |
+| Daily use, mail, calendars, tasks (steps, waits, links) and contacts | Murena (Nextcloud): `mail.ecloud.global` and its CalDAV and CardDAV, on Linux and on an /e/OS phone, since 4 October 2026; Murena's DAVx⁵ fork on the phone reading tasks only | the owner, 6 October 2026 |
 | CalDAV and CardDAV both ways, an invitation answered | Radicale, on the computer; a stand-in in the tests (sync tokens, multigets, cut connections, 412) | [building.md](building.md); `dav::tests` |
 | Google Tasks | `tools/google-tasks-stand-in.py` | [google.md](google.md), "What was tested" |
 | GitHub | `tools/github-stand-in.py` | [github.md](github.md), "What was tested" |
@@ -243,7 +243,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | Android | one phone | [android.md](android.md) |
 
 ## Not checked yet, worth testing
-- A full sync with Nextcloud (Murena's included), Fastmail, iCloud, Baïkal set to Basic: tasks with steps, waits and links, categories, lists made and renamed.
+- A full sync with Fastmail, iCloud, Baïkal set to Basic: tasks with steps, waits and links. On any server, Murena's included: contact categories (new on 6 October) and lists made and renamed.
 - Waits edited on a phone through DAVx⁵ (OpenTasks, Tasks.org, jtx Board), to confirm what their code says; Thunderbird's and Apple's handling of Sioul's lines.
 - An invitation accepted on a server that schedules itself (Nextcloud, Google, iCloud): one answer reaching the organizer, the event shown answered or not elsewhere.
 - Google itself: the sign-in, CalDAV, CardDAV, Google Tasks.
