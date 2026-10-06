@@ -6,56 +6,63 @@
 
 **Most software expects people to adapt to it. Sioul adapts the demands of the world to the person.**
 
-Mail, tasks, appointments, bills, the letters institutions leave on their websites, the papers asked again and again: the administrative machinery of modern life assumes someone always available, always at full strength, who remembers how a dozen separate systems relate to each other. Sioul starts from the other end. It begins with what you can give today (your attention, your energy, your health, your rest) and fits the demands of work, institutions and money into what is left.
+The administrative machinery of modern life assumes someone always available, always at full strength, who remembers how a dozen separate systems relate to each other. Sioul starts from the other end, from what you can give today: your attention, your energy, your health, your rest. It protects those first, and fits work, institutions and money into what is left.
 
-It is a desktop application for mail, tasks and everyday admin, free software that runs on your own computer: a quiet place between you and that machinery.
+A letter from the tax office, the task it asks for, the appointment, the document, the person who sent it and the payment all belong to one case. You do not have to keep their relationships in your head: Sioul keeps them.
+
+**Sioul is a personal administrative environment.** It connects what modern life scatters across mailboxes, websites, calendars, task lists, folders and banks, and decides what belongs in your attention from what you have said you can give: your hours, and how today is. It is free software, a quiet place between you and that machinery, on your own devices.
 
 **Website and user guide: [aurelienpierre.github.io/sioul](https://aurelienpierre.github.io/sioul/)**
 
 ![Sioul's window: the list of places on the left (Porch, Tasks, Mail, Sites, Agenda, Contacts, Notes, Projects, Time, Budgets, Papers, Health); on the right, the Porch, with a one-time code and its Copy button on top, a chat's news, then the new mail sorted into lanes.](website/docs/assets/screens/porch.png)
 
+## Why Sioul exists
+
+Sioul is the working counterpart of a book by the same author, *Design and Engineering, in Spite of Open-Source* ([free, in PDF and EPUB](https://editions.aurelienpierre.com/en/concevoir/)), whose conclusion is that to design is to care. The book states: "A tool serves its user, or it betrays them. There is no in-between." Sioul applies its method where software most often leaves the burden on the person: everyday admin.
+
+One test for everything added to Sioul: does it take work off the person, rather than move it somewhere else?
+
 ## The other way round
 
-| Usual software | Sioul |
+| Most software | Sioul |
 |---|---|
-| starts from your obligations, fills your days with them, and leaves you what remains | starts from your needs and from what today can hold, keeps that time for you, and plans the obligations in what remains |
-| shows everything that has arrived, as soon as it arrives | shows what belongs in your attention now, in the hours you chose |
-| gives each kind of thing its own program, and leaves you to be the glue between them | ties everything together in one place, and keeps the ties for you |
-| counts what is late, overdue, missed | starts the plan again from today, and never counts what was not done |
+| Your obligations fill the day; your needs fit around them. | Your needs shape the day; the work fits around them. |
+| Everything shows the moment it arrives. | Only what belongs in your attention now is shown. |
+| Each kind of thing has its own program, and you keep the links. | Each piece is tied to the others, and Sioul keeps the links. |
+| A missed date becomes overdue work. | The plan starts again from today. Nothing becomes a debt. |
 
-- **Your needs first, then the work.** Meals, rest and sleep, your hours for work, for your own admin and for yourself, and the time to get ready, get there and come back around each event are kept first. Each day you say how it is (clear, haze or fog); nothing is guessed from what you do. The work goes in what remains, as one next step with its reason. Nothing is ever overdue.
-- **A porch between the world and your attention.** Mail, the "secure mailboxes" of banks and offices, chats: everything new waits on the Porch, checked (genuine or forged), sorted, and shown in the hours you chose. The question is not what has arrived, but what belongs in your attention now. The codes you just asked for come at once.
-- **The software keeps the links.** A letter, the task it asks for, the appointment, the PDF, the person, the payment: one case, each piece found from the others. You are no longer the glue between a mail program, a calendar, a task list, a folder and a bank's website.
-- **Nothing to be afraid of getting wrong.** No unread counts, badges, red, sounds or streaks; ten seconds to undo anything moved, deleted or sent; nothing sent, deleted or paid without you, not even by an AI agent. The words are chosen with the same care: reminders that neither call you ill nor praise you, stopping early said as the ordinary thing it is, no forced cheer, no talking down.
+**These are not four interface choices. They are the four rules from which the rest of Sioul follows.**
 
-## For whom
+- **Your needs first, then the work.** You set your meals, your rest and your sleep first; they are kept free, and so is the time to get ready, get there and come back around each event. Each day you can say how it is (clear, haze or fog), and at its end whether it was too much, about right or too empty: the plan learns how much a day holds for you, and never guesses your state from what you do. The work goes in what remains, as one next step with its reason. Nothing is ever overdue.
+- **A porch between the world and your attention.** Mail, the news from the "secure mailboxes" of banks and offices, chats: everything new waits on the Porch, sorted, and shown in the hours you chose. The question is not what has arrived, but what belongs in your attention now. Each message is checked first, genuine or forged; the codes you just asked for come at once.
+- **The software keeps the links.** Each case is a project (a tax return, a lease, a client's work): its mail comes to it by itself, and its tasks, events, notes and people are tied to it, on one line of time. You are no longer the glue between a mail program, a calendar, a task list, a folder and a bank's website.
+- **Nothing to be afraid of getting wrong.** No unread counts, badges, red or streaks; new mail makes no sound; ten seconds to undo anything moved, deleted or sent; nothing sent, deleted or paid without you, not even by an AI agent. The words are chosen with the same care: reminders that neither call you ill nor praise you, stopping early said as the ordinary thing it is, no forced cheer, no talking down.
 
-For anyone whose capacity is limited or changes from day to day, and for whom admin hurts. Sioul was designed first with autistic people, people with ADHD, and people who are anxious, traumatised, burnt out, depressed or exhausted in mind. The same needs come with long COVID, ME/CFS and other conditions that limit energy, with an eating disorder or irregular eating, with caring for someone, with a bad stretch of life. No diagnosis is needed, and Sioul guesses nothing about your state: you say what you can do, and it plans around that.
+## When capacity changes
+
+Sioul was designed first for people for whom administration is especially costly: autistic people, people with ADHD, people dealing with anxiety, trauma, burnout, depression or exhaustion, and people whose energy or cognition fluctuates. The same needs come with long COVID, ME/CFS and other conditions that limit energy, with an eating disorder or irregular eating, with caring for someone, with a bad stretch of life. Sioul works from what a day can hold, which changes, not from a diagnosis: it needs none, and guesses nothing about your state. You say what you can do, and it plans around that.
 
 Many neurodivergent people work for themselves, because office life does not fit them, and working for yourself brings more admin. So Sioul also carries a small business, from a client's first mail to the paid invoice.
 
-## Research, refusals, and care
-
-Each rule in Sioul comes from a chain: what studies observed, the mechanism behind it, the rule it gives, what Sioul does, and what it refuses to do: [what the research says](docs/research.md), and [the research notes](docs/research/README.md), each study with how strong its evidence is. Sioul refuses, each time with the evidence, what other software does to people: streaks and points, "overdue" counts, repeated reminders, mood and energy journals, guessing capacity or mood from behaviour or a watch, schedules that move things without asking, an AI that sends, books or pays on its own. What is not known yet is whether Sioul itself measurably lightens admin: that is still to be tested with the people who use it.
-
-Sioul is the working counterpart of a book by the same author, *Design and Engineering, in Spite of Open-Source* ([free, in PDF and EPUB](https://editions.aurelienpierre.com/en/concevoir/)), whose conclusion is that to design is to care: "A tool serves its user, or it betrays them. There is no in-between." The same reasoning decides how Sioul is built: your data stays on your device, in plain files and your own accounts; it travels between your devices sealed, through a folder your own sync app carries; there is no server of ours; the code is free. A tool meant to lift the weight of administrative machinery cannot tie you to a service you cannot leave.
-
 ## What it does
 
-- **Mail waits on a porch.** It is checked (genuine or forged), sorted into lanes, and shown in the hours you chose. The codes and links you just asked a site for come at once, quietly.
-- **Hours set in advance**: working hours and hours for your own admin; every other time is leisure; meals and sleep come from your health settings. Each address, site, budget and task is for one or several of them; the rest waits, out of sight. Who may write to you when is yours to tick, list by list. While you sleep, nothing disturbs but the doses you asked for.
-- **One next step.** Tasks that wait for each other are ordered into the one step to take now, with its reason, placed in the hours meant for it. Nothing is ever overdue. Starting is helped; stopping counts. The time to get ready, get there and come back is kept free around events and tasks, never counted as a pause.
-- **Meals, rest and sleep first.** You set your meals (how many, when, how long, the time to get them ready), naps, bedtime, waking and the time to wind down. Their times are kept free; the work is planned in what is left. A heads-up a quarter of an hour before ("No new big task"), then one notice at the time, each once. **15 min later**, **Move to…** a time, or **Not today**, today only, without a word asked. A meal that would fall in an event moves after it. Nothing about food, portions or numbers is ever recorded or shown: no "missed", no praise. Sioul does not treat anything; it plans around the needs you set: [meals, rest and sleep](https://aurelienpierre.github.io/sioul/guide/health.html#meals-rest-and-sleep).
-- **Medicines**, reminded at their times, on the device you are using; a dose marked on one device is known on the others, and when Sioul cannot know, it says "check first" rather than "not taken".
+- **The Porch.** New mail from every address, checked (genuine or forged), sorted into lanes, and shown in the hours you chose, with the news of the sites you keep. The codes and links you just asked a site for come at once, quietly.
+- **Hours set in advance**: working hours and hours for your own admin; every other time is leisure; meals and sleep come from Health. Each address, site, budget and task is for one or several of them; the rest waits, out of sight. Who may write to you when is yours to tick, list by list. While you sleep, nothing disturbs but the doses you asked for.
+- **One next step.** Tasks that wait for each other are ordered into the one step to take now, with its reason, placed in the hours meant for it. Starting is helped; stopping counts. The day is laid out around your meals and events, a step moved by dragging it, with two half-hours kept for you.
+- **What a day holds.** What a task costs (thinking, feelings, anxiety, body and senses) and what it gives back can be rated, before or after. From the days you describe at their end, the plan learns how much a day holds for you, fills each day a little below it, and says in words why a day holds what it holds: never a number, a gauge or red. Closing the day takes a few taps, every answer optional, and nothing compares what was planned with what was done.
+- **Meals, rest, sleep and medicines.** You set your meals (how many, when, how long, the time to get them ready), naps, bedtime, waking and the time to wind down; their times are kept free, with two notices at most, each once, and each can move for one day without a word asked. Nothing about food, portions or numbers is ever recorded or shown: no "missed", no praise. Each dose is reminded once, on the device you are using; a dose marked on one device is known on the others, and when Sioul cannot know, it says "check first" rather than "not taken". Sioul does not treat anything; it plans around the needs you set: [health](https://aurelienpierre.github.io/sioul/guide/health.html#meals-rest-and-sleep).
 - **Working for yourself, from the client's first mail to the paid invoice.** A project per client, whose mail comes to it by itself; time counted while you work (the focus timer, with its own notification to pause or stop, or `1h30` noted after a call), also kept to learn how long things really take; what is left to bill always in view; the invoice in one click, numbered without gaps, with the mentions French law asks for; the money expected in your budget until it is paid; a spreadsheet for your accountant. No time tracker, invoicing service or subscription beside it: [working for clients](https://aurelienpierre.github.io/sioul/guide/clients.html).
 - **Everything in one window, tied together**: mail, agenda, contacts, notes, projects, time and invoices, budgets and bank accounts, papers and scanned letters, medicines, and the websites you have to check (banks, offices, chats), logged in once.
-- **Nothing shouts**: no unread counters, no badges, no red, no sounds, no streaks. "Undo" waits ten seconds after anything is moved, deleted or sent.
-- **Notes that stay yours**: a folder of Markdown files, fully compatible with an Obsidian vault and with Nextcloud Notes. Use the same folder in all three, side by side: wikilinks, embeds, tags, front matter and aliases as Obsidian reads them; Nextcloud Notes' `.txt` or `.md` notes and its categories as they are; nothing imported or converted. Sioul ties notes to tasks, mail and events with plain Markdown links: [notes](https://aurelienpierre.github.io/sioul/guide/notes.html#the-same-folder-as-obsidian-and-nextcloud-notes).
-- **Yours**: it runs on your device; your data stays in plain files and in your own accounts. There is no server of ours.
+- **Notes that stay yours**: a folder of Markdown files, fully compatible with an Obsidian vault and with Nextcloud Notes: the same folder works in all three, side by side, nothing imported or converted. Sioul ties notes to tasks, mail and events with plain Markdown links: [notes](https://aurelienpierre.github.io/sioul/guide/notes.html#the-same-folder-as-obsidian-and-nextcloud-notes).
+- **Yours**: your data stays on your devices, in plain files and in your own accounts, and travels between your devices sealed, through a folder your own sync app carries. There is no server of ours, and the code is free: a tool meant to lift the weight of administrative machinery cannot tie you to a service you cannot leave.
+
+## Research and refusals
+
+Each rule in Sioul comes from a chain: what studies observed, why, the rule it gives, what Sioul does, and what it refuses: [what the research says](docs/research.md), and [the research notes](docs/research/README.md), each study with how strong its evidence is. Sioul refuses, each time with the evidence, what other software does to people: streaks and points, "overdue" counts, repeated reminders, scores, charts and calendars of mood or energy, guessing capacity or mood from behaviour or a watch, schedules that move things without asking, an AI that sends, books or pays on its own. Not known yet: whether Sioul itself lightens admin. That is still to be measured, with the people who use it.
 
 ## Where it stands
 
-Version 0.0.1: Sioul is young and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel) and Linux (AppImage and Flatpak) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest): built and tested by GitHub, used daily on Linux, little tried elsewhere yet. An Android version is being tried on a phone, with the doses reminded and the sharing working ([docs/android.md](docs/android.md)); it is not ready to install.
+Version 0.0.1: Sioul is young and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel) and Linux (AppImage and Flatpak) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest): built and tested by GitHub, used daily on Linux, little tried elsewhere yet. An Android version is being tried on a phone, with the doses reminded and the sharing working, and an alarm at waking built but not tried on the phone yet ([docs/android.md](docs/android.md)); it is not ready to install.
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 
