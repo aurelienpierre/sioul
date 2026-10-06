@@ -160,6 +160,17 @@ Panel {
         panel.changeRating(name, value)
     }
 
+    // For the window's tests: "Do at…" opened; then a time given there, as by hand
+    // ("2026-10-06T16:00", minutes): it says what went wrong, else "".
+    function askDoAt() {
+        doAt.now().ask()
+    }
+
+    function pinAt(at, minutes) {
+        doAt.close()
+        return panel.sioul.pinTask(panel.uid, at, minutes)
+    }
+
     // The fields whose own editing undoes their binding, bound again to the task shown.
     function rebind() {
         // A tag being chosen belongs to the task it was chosen for.
@@ -451,6 +462,85 @@ Panel {
                     }
                 }
             }
+            // Pinned to a time, near its title: a pin, and its block's day and
+            // time in words. A click opens the block in the agenda; its menu
+            // (right click, a long press, or ⋯) moves it or leaves it to the
+            // plan (docs/tasks.md, "Pinned to a time"). Quiet: the accent only.
+            RowLayout {
+                id: pinned
+
+                readonly property var pin: panel.detail && panel.detail.pin && !panel.done && !panel.making ? panel.detail.pin : null
+
+                visible: pinned.pin !== null
+                Layout.fillWidth: true
+                spacing: 8
+
+                Icon {
+                    Layout.alignment: Qt.AlignVCenter
+                    iconName: "pin"
+                    size: 16
+                    color: panel.theme.accent
+                }
+                Label {
+                    id: pinnedText
+
+                    Layout.fillWidth: true
+                    // Its own width, not its text's: it wraps on a phone.
+                    Layout.preferredWidth: 120
+                    Layout.alignment: Qt.AlignVCenter
+                    text: pinned.pin ? panel.sioul.textWith("task-pinned", "when", pinned.pin.when) : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: panel.theme.accent
+                    font.underline: pinnedHover.hovered
+                    Accessible.role: Accessible.Link
+                    Accessible.name: pinnedText.text
+
+                    HoverHandler {
+                        id: pinnedHover
+
+                        cursorShape: Qt.PointingHandCursor
+                    }
+                    // A click, a tap: the block, in the agenda.
+                    TapHandler {
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onTapped: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin.key })
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        // A touch has no buttons: on a touch screen, the long press below.
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onTapped: pinMenu.now().popup()
+                    }
+                    TapHandler {
+                        id: pinnedHold
+
+                        acceptedDevices: PointerDevice.TouchScreen
+                        onTapped: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin.key })
+                        onLongPressed: {
+                            panel.window.menuAt = pinnedHold.point.scenePosition
+                            pinMenu.now().popup()
+                        }
+                    }
+                }
+                ToolButton {
+                    Layout.alignment: Qt.AlignVCenter
+                    text: "⋯"
+                    Accessible.name: panel.sioul.text("task-pinned-menu")
+                    ToolTip.visible: hovered
+                    ToolTip.text: panel.sioul.text("task-pinned-menu")
+                    ToolTip.delay: 600
+                    onClicked: pinMenu.now().popup()
+                }
+            }
+            Label {
+                visible: pinned.pin !== null && pinned.pin.read_only
+                Layout.fillWidth: true
+                text: panel.sioul.text("task-pinned-read-only")
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
+            }
             // A new task: when it is made.
             Label {
                 visible: panel.making
@@ -507,6 +597,14 @@ Panel {
                     flat: true
                     text: panel.sioul.text("task-not-now")
                     onClicked: panel.sioul.notNow(panel.uid)
+                }
+                // Pinned to a time: a block in your calendar, where the plan lays it (docs/tasks.md, "Pinned to a time").
+                Button {
+                    visible: panel.detail !== null && !panel.detail.pin
+                    flat: true
+                    text: panel.sioul.text("task-do-at")
+                    enabled: panel.canEdit
+                    onClicked: doAt.now().ask()
                 }
                 // Not to be done after all: kept, struck out, out of the plan; "Open again" brings it back.
                 Button {
@@ -1508,5 +1606,179 @@ Panel {
         sioul: panel.sioul
         theme: panel.theme
         onConfirmed: panel.moveTo(moveAsk.list, true)
+    }
+
+    // A pinned task's menu, made the first time: its block in the agenda,
+    // moved, or left to the plan.
+    Later {
+        id: pinMenu
+
+        sourceComponent: Component {
+            SioulMenu {
+                MenuItem {
+                    text: panel.sioul.text("task-pinned-open")
+                    onTriggered: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin ? pinned.pin.key : "" })
+                }
+                MenuItem {
+                    enabled: pinned.pin !== null && !pinned.pin.read_only && panel.canEdit
+                    text: panel.sioul.text("task-pinned-move")
+                    onTriggered: doAt.now().ask()
+                }
+                MenuItem {
+                    enabled: pinned.pin !== null && !pinned.pin.read_only && panel.canEdit
+                    text: panel.sioul.text("day-let-plan")
+                    onTriggered: error.text = panel.sioul.setTaskAt(panel.uid, "")
+                }
+            }
+        }
+    }
+
+    // "Do at…": its day, its time and how long, made the first time it is
+    // asked for. The task's block, an event, is made there or moved there;
+    // "Undo" waits in the status line (docs/tasks.md, "Pinned to a time").
+    Later {
+        id: doAt
+
+        sourceComponent: Component {
+            Dialog {
+                id: doAtForm
+
+                readonly property var lengths: [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240]
+                // The lengths offered: the usual ones, and the block's own.
+                property var shown: doAtForm.lengths
+                property string problem: ""
+                readonly property bool ready: /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(timeField.text) && dayField.date.length === 10
+
+                function pad(n) {
+                    return n < 10 ? "0" + n : String(n)
+                }
+
+                // On its block when it has one; else the next quarter of an hour
+                // (tomorrow at 9:00 late in the evening), as long as the plan lays it.
+                function ask() {
+                    const pin = panel.detail ? panel.detail.pin : null
+                    let day = ""
+                    let time = ""
+                    let length = 30
+                    if (pin) {
+                        day = pin.at.slice(0, 10)
+                        time = pin.at.slice(11, 16)
+                        length = pin.minutes
+                    } else {
+                        const d = new Date()
+                        d.setMinutes(Math.ceil((d.getMinutes() + 1) / 15) * 15, 0, 0)
+                        if (d.getHours() >= 22) {
+                            d.setDate(d.getDate() + 1)
+                            d.setHours(9, 0, 0, 0)
+                        }
+                        day = d.getFullYear() + "-" + doAtForm.pad(d.getMonth() + 1) + "-" + doAtForm.pad(d.getDate())
+                        time = doAtForm.pad(d.getHours()) + ":" + doAtForm.pad(d.getMinutes())
+                        length = panel.detail && panel.detail.pin_minutes > 0 ? panel.detail.pin_minutes : 30
+                    }
+                    doAtForm.shown = doAtForm.lengths.indexOf(length) < 0 ? doAtForm.lengths.concat([length]).sort((a, b) => a - b) : doAtForm.lengths
+                    dayField.date = day
+                    timeField.text = time
+                    lengthField.currentIndex = doAtForm.shown.indexOf(length)
+                    doAtForm.problem = ""
+                    doAtForm.open()
+                }
+
+                function save() {
+                    if (!doAtForm.ready)
+                        return
+                    const problem = panel.sioul.pinTask(panel.uid, dayField.date + "T" + timeField.text, doAtForm.shown[Math.max(0, lengthField.currentIndex)])
+                    if (problem !== "") {
+                        doAtForm.problem = problem
+                        return
+                    }
+                    doAtForm.close()
+                }
+
+                parent: Overlay.overlay
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(440, (parent ? parent.width : 440) - 2 * panel.theme.gap)
+                title: panel.sioul.text("task-do-at")
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 8
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: panel.sioul.text("task-do-at-help")
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 13
+                        color: panel.theme.muted
+                    }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        columnSpacing: 10
+                        rowSpacing: 6
+
+                        Label {
+                            text: panel.sioul.text("task-do-at-day")
+                            color: panel.theme.muted
+                        }
+                        DateField {
+                            id: dayField
+
+                            theme: panel.theme
+                            locale: panel.window.sioulLocale
+                            pickLabel: panel.sioul.text("event-pick-day")
+                        }
+                        Label {
+                            text: panel.sioul.text("task-do-at-time")
+                            color: panel.theme.muted
+                        }
+                        TextField {
+                            id: timeField
+
+                            Layout.preferredWidth: 80
+                            inputMask: "99:99"
+                            Accessible.name: panel.sioul.text("task-do-at-time")
+                            onAccepted: doAtForm.save()
+                        }
+                        Label {
+                            text: panel.sioul.text("task-do-at-length")
+                            color: panel.theme.muted
+                        }
+                        ComboBox {
+                            id: lengthField
+
+                            Layout.fillWidth: true
+                            model: doAtForm.shown.map(m => panel.minutesText(m))
+                            Accessible.name: panel.sioul.text("task-do-at-length")
+                        }
+                    }
+                    Label {
+                        visible: doAtForm.problem !== ""
+                        Layout.fillWidth: true
+                        text: doAtForm.problem
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: panel.theme.warm
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+                        Button {
+                            text: panel.sioul.text("ui-cancel")
+                            onClicked: doAtForm.close()
+                        }
+                        Button {
+                            text: panel.sioul.text("task-do-at-save")
+                            highlighted: true
+                            enabled: doAtForm.ready
+                            onClicked: doAtForm.save()
+                        }
+                    }
+                }
+            }
+        }
     }
 }

@@ -42,6 +42,15 @@ Item {
     property string problem: ""
     // Each site's view, once made, by its id.
     property var siteViews: ({})
+    // Sioul quitting: every page closed (`closeAll`), for the program to end (cpp/webengine.cpp).
+    signal sitesClosed()
+    // How long a page may take to close: Chromium itself gives one that does
+    // not answer half a second for its beforeunload, as much for its unload.
+    readonly property int closeWait: 2000
+    // The sites taken out of Sioul whose pages are closing, by id: their views go once closed.
+    property var leaving: ({})
+    // The pop-ups open (`openPopup`): their pages are closed with the sites'.
+    property var popups: []
     // In every page, before its own scripts: Qt 6.10–6.11 never answers
     // PublicKeyCredential.getClientCapabilities(), and sites asking for a
     // security key wait for it forever (QTBUG-149575); without it they ask
@@ -159,9 +168,55 @@ Item {
     // as it was then: not the switches of the site in front at the time.
     function openPopup(request, site) {
         const window = popupWindow.createObject(page, { site: site || null }) as SitePopup
+        page.popups = page.popups.filter(p => page.popupOpen(p)).concat([window])
         request.openIn(window.view)
         window.show()
         window.raise()
+    }
+
+    // Sioul quits: every site's page closed as a browser closes its tabs,
+    // before Qt WebEngine shuts down. Its beforeunload, pagehide and unload
+    // run: some sites keep their login only in the open page and write it
+    // back to their storage then (Discord takes its token out of localStorage
+    // once loaded, and puts it back as the page goes); a page destroyed
+    // without them loses it, and the site asks to log in again. The pop-ups'
+    // pages too. Returns how many are still closing; `sitesClosed` says when
+    // none is (cpp/webengine.cpp waits for it, two seconds at most).
+    function closeAll() {
+        // How long it takes, with SIOUL_TIMING.
+        page.sioul.mark("closing the sites' pages")
+        const closing = []
+        for (let i = 0; i < views.count; i++) {
+            const holder = views.itemAt(i)
+            if (holder && holder.made)
+                closing.push(holder)
+        }
+        for (const popup of page.popups) {
+            if (page.popupOpen(popup) && !popup.pageClosed)
+                closing.push(popup)
+        }
+        let waiting = closing.length
+        const one = () => {
+            waiting -= 1
+            if (waiting === 0) {
+                page.sioul.mark("the sites' pages closed")
+                page.sitesClosed()
+            }
+        }
+        for (const item of closing) {
+            // One that cannot close is not waited for: the others still are.
+            try {
+                item.closePage(one)
+            } catch (e) {
+                console.warn("Sioul: a site's page could not be closed: " + e)
+                one()
+            }
+        }
+        return waiting
+    }
+    // A pop-up not gone yet (one gone reads as null, or as nothing).
+    function popupOpen(popup) {
+        return popup !== null && popup !== undefined && typeof popup.closePage === "function"
     }
 
     property alias presetsMenu: presetsMenu
@@ -221,7 +276,7 @@ Item {
         const ids = page.sites.map(s => s.id)
         for (let i = viewIds.count - 1; i >= 0; i--) {
             if (ids.indexOf(viewIds.get(i).siteId) < 0)
-                viewIds.remove(i)
+                page.dropView(viewIds.get(i).siteId)
         }
         const have = []
         for (let i = 0; i < viewIds.count; i++)
@@ -230,6 +285,36 @@ Item {
             if (have.indexOf(id) < 0)
                 viewIds.append({ siteId: id })
         }
+    }
+
+    // A site taken out of Sioul: its page closed first, as a browser closes a
+    // tab (its login stays in the profile, whole), then its view goes.
+    function dropView(id) {
+        if (page.leaving[id] === true)
+            return
+        let holder = null
+        for (let i = 0; i < views.count; i++) {
+            const item = views.itemAt(i)
+            if (item && item.siteId === id)
+                holder = item
+        }
+        const gone = () => {
+            delete page.leaving[id]
+            for (let i = 0; i < viewIds.count; i++) {
+                if (viewIds.get(i).siteId === id) {
+                    viewIds.remove(i)
+                    break
+                }
+            }
+            // Put back while its page closed: a new view.
+            page.keepViews()
+        }
+        if (holder === null) {
+            gone()
+            return
+        }
+        page.leaving[id] = true
+        holder.closePage(gone)
     }
 
     // Notifications granted to every site before it asks, and kept: Sioul
@@ -298,21 +383,22 @@ Item {
     }
 
     // The login Bitwarden keeps for the open site, written into its form: the
-    // only one at once; several, or none, chosen in a list (the vault searched).
+    // only one at once, unless another was chosen there last; else chosen in
+    // the chooser, found by site and by user name.
     function fillLogin() {
         const view = page.viewOf(page.openId)
         if (view === null || !page.vaultOpen("fill"))
             return
-        const logins = JSON.parse(page.sioul.bitwardenLogins(view.url.toString(), ""))
-        if (logins.error) {
-            page.problem = logins.error
+        const site = JSON.parse(page.sioul.bitwardenSite(view.url.toString()))
+        if (site.error) {
+            page.problem = site.error
             return
         }
         page.problem = ""
-        if (logins.matches.length === 1)
-            page.fillChosen(logins.matches[0].id)
+        if (site.only !== "")
+            page.fillChosen(site.only)
         else
-            chooser.begin(view.url.toString())
+            chooser.now().begin(view.url.toString())
     }
 
     // Any login of the vault, chosen in the list.
@@ -321,7 +407,7 @@ Item {
         if (view === null || !page.vaultOpen("choose"))
             return
         page.problem = ""
-        chooser.begin(view.url.toString())
+        chooser.now().begin(view.url.toString())
     }
 
     // Whether the vault is open; else its dialog, then `then` ("fill" or "choose").
@@ -874,11 +960,58 @@ Item {
                         }
                         Component.onDestruction: delete page.siteViews[holder.siteId]
 
+                        // Its view, made when first wanted (`page.alive`), stays for the
+                        // session: it goes only closed (`closePage`), as Sioul quits or
+                        // the site is taken out.
+                        readonly property bool wanted: page.profile !== null && page.alive(holder.modelData)
+                        property bool made: false
+                        onWantedChanged: {
+                            if (holder.wanted)
+                                holder.made = true
+                        }
+                        Component.onCompleted: {
+                            if (holder.wanted)
+                                holder.made = true
+                        }
+                        // Who waits for its page to close.
+                        property var whenClosed: []
+
+                        // Its page closed as a browser closes a tab: its beforeunload,
+                        // then its pagehide and unload (where Discord puts its login
+                        // back in its storage); then `done`, at most `page.closeWait`
+                        // later. A view not made has nothing to run.
+                        function closePage(done) {
+                            const view = loader.item as WebEngineView
+                            if (view === null) {
+                                done()
+                                return
+                            }
+                            holder.whenClosed = holder.whenClosed.concat([done])
+                            if (closeDeadline.running)
+                                return
+                            closeDeadline.start()
+                            view.triggerWebAction(WebEngineView.RequestClose)
+                        }
+                        function pageClosed() {
+                            closeDeadline.stop()
+                            const waiting = holder.whenClosed
+                            holder.whenClosed = []
+                            for (const done of waiting)
+                                done()
+                        }
+
+                        Timer {
+                            id: closeDeadline
+
+                            interval: page.closeWait
+                            onTriggered: holder.pageClosed()
+                        }
+
                         Loader {
                             id: loader
 
                             anchors.fill: parent
-                            active: page.profile !== null && page.alive(holder.modelData)
+                            active: holder.made
                             onItemChanged: {
                                 if (loader.item)
                                     page.siteViews[holder.siteId] = loader.item
@@ -889,7 +1022,24 @@ Item {
                             sourceComponent: WebEngineView {
                                 profile: page.profile
                                 url: holder.startUrl
+                                // Sharing the screen in a call: Qt WebEngine refuses every
+                                // capture without it, after the choice even; the site's
+                                // switch and the choice still decide (`shareScreen`).
+                                settings.screenCaptureEnabled: true
                                 Component.onCompleted: userScripts.collection = page.webFixes
+                                // Its page closed (`closePage`); a page's own window.close() changes nothing.
+                                onWindowCloseRequested: holder.pageClosed()
+                                // Called by Qt WebEngine when a page refused to close: no longer waited for.
+                                function windowCloseRejected() {
+                                    holder.pageClosed()
+                                }
+                                // While it closes, its "Leave the site?" is answered yes: you closed it.
+                                onJavaScriptDialogRequested: request => {
+                                    if (closeDeadline.running && request.type === JavaScriptDialogRequest.DialogTypeBeforeUnload) {
+                                        request.accepted = true
+                                        request.dialogAccept()
+                                    }
+                                }
                                 // A security key asked for: its account, its PIN, why it failed.
                                 onWebAuthUxRequested: request => webAuth.show(request)
                                 audioMuted: holder.modelData.muted || holder.covered
@@ -1149,6 +1299,7 @@ Item {
             theme: page.theme
             profile: page.profile
             webFixes: page.webFixes
+            closeWait: page.closeWait
             onWebAuthAsked: request => webAuth.show(request)
             onPopupAsked: request => page.openPopup(request, popupItem.site)
             onScreenAsked: request => page.shareScreen(request, popupItem.site)
@@ -1288,6 +1439,20 @@ Item {
         sharing.open()
     }
 
+    // What a call shares, chosen: a screen (`screen`) or a window, by its place in the list.
+    function shareChosen(screen, index) {
+        const request = sharing.request
+        const list = request ? (screen ? request.screensModel : request.windowsModel) : null
+        if (!list || index < 0 || index >= list.rowCount())
+            return
+        sharing.chosen = true
+        if (screen)
+            request.selectScreen(request.screensModel.index(index, 0))
+        else
+            request.selectWindow(request.windowsModel.index(index, 0))
+        sharing.close()
+    }
+
     // A call asks to share the screen: a screen, a window, or nothing.
     Dialog {
         id: sharing
@@ -1324,11 +1489,7 @@ Item {
 
                     Layout.fillWidth: true
                     text: page.theme.plain(model.display)
-                    onClicked: {
-                        sharing.chosen = true
-                        sharing.request.selectScreen(sharing.request.screensModel.index(index, 0))
-                        sharing.close()
-                    }
+                    onClicked: page.shareChosen(true, index)
                 }
             }
             Label {
@@ -1347,11 +1508,7 @@ Item {
                     Layout.fillWidth: true
                     // Other programs' window titles, a web page's among them: plain text.
                     text: page.theme.plain(model.display)
-                    onClicked: {
-                        sharing.chosen = true
-                        sharing.request.selectWindow(sharing.request.windowsModel.index(index, 0))
-                        sharing.close()
-                    }
+                    onClicked: page.shareChosen(false, index)
                 }
             }
         }
@@ -1397,13 +1554,17 @@ Item {
     }
 
     // Which login to fill: the site's own when it has several or none, or any
-    // of the vault's when you ask (⋮ ▸ Choose a login).
-    LoginChooser {
+    // of the vault's when you ask (⋮ ▸ Choose a login). Made the first time.
+    Later {
         id: chooser
 
-        sioul: page.sioul
-        theme: page.theme
-        onChosen: item => page.fillChosen(item)
+        sourceComponent: Component {
+            LoginChooser {
+                sioul: page.sioul
+                theme: page.theme
+                onChosen: item => page.fillChosen(item)
+            }
+        }
     }
 
     // A site's name, address, type and categories, changed.

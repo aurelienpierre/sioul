@@ -314,6 +314,20 @@ pub fn sync(account: &Account, password: &str) -> Result<Report, SyncError> {
     })
 }
 
+/// The inbox's arrivals alone, in one connection and without IDLE: what a
+/// phone's background service fetches at its rhythm, while Sioul is closed
+/// (crates/sioul-app/src/steps.rs). One fetch at a time per account, across
+/// processes too, as for every fetch (`fetch_folder`).
+pub fn inbox(account: &Account, password: &str) -> Result<Report, SyncError> {
+    let server = Server::of(account)?;
+    block_on(async {
+        let mut session = imap::open(&server, password).await?;
+        let report = fetch_folder(&mut session, account, &folders::folder(INBOX, None, None), false).await;
+        let _ = session.logout().await;
+        report
+    })
+}
+
 /// Lists the folders, keeps the list, and fetches every folder but the inbox;
 /// returns the files written, and whether older mail waits for room.
 async fn other_folders(session: &mut Imap, account: &Account) -> Result<(Vec<PathBuf>, bool), SyncError> {

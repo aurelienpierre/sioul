@@ -46,6 +46,7 @@ nav = [
     ] },
     { "Dans tout Sioul" = [
       { "Les heures : travail, démarches, loisirs, repas, sommeil" = "guide/hours.md" },
+      { "Les pauses : temps libre et pause" = "guide/pauses.md" },
       { "Partager entre vos appareils" = "guide/sharing.md" },
       { "Avec un agent d’IA" = "guide/ai-agent.md" },
       { "Vie privée et sécurité" = "guide/privacy-security.md" },

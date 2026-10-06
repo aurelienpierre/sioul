@@ -9,6 +9,9 @@
 //! work in view; done for the day brings leisure early, until work comes
 //! back. Outside work, work rests (quiet time); during sleep nothing
 //! disturbs: no notification but the doses you asked for (`may_notify`).
+//! Two pauses come above them (docs/pauses.md, `pause`): the pause holds
+//! everything, whatever the time; Free time is leisure whatever the hour,
+//! sleep first, and may move the end of today's work later.
 //!
 //! Who may reach you when is a matrix (`Reach`): for each list of senders,
 //! the times their mail comes (`mail_in_view`).
@@ -56,6 +59,12 @@ pub enum Reason {
     WindingDown,
     /// A nap, and the minutes to come back after it.
     Nap,
+    /// Free time ("Temps libre"): leisure whatever the hour, by choice (docs/pauses.md).
+    FreeTime,
+    /// The pause ("En pause"): everything Sioul shows held, whatever the time (docs/pauses.md).
+    Paused,
+    /// After the usual end, while today's end of work moved by free time (docs/pauses.md).
+    Extended,
 }
 
 /// What now is for, and until when.
@@ -83,6 +92,16 @@ impl Mode {
     pub fn sleeps(&self) -> bool {
         self.time == Time::Sleep
     }
+
+    /// The pause: everything Sioul shows held (docs/pauses.md).
+    pub fn paused(&self) -> bool {
+        self.reason == Reason::Paused
+    }
+
+    /// Free time: leisure whatever the hour (docs/pauses.md).
+    pub fn free(&self) -> bool {
+        self.reason == Reason::FreeTime
+    }
 }
 
 /// The overrides, each until a time (Unix seconds).
@@ -109,6 +128,38 @@ pub struct Overrides {
     /// The day it is for; it is not shown after.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub first_step_day: Option<Date>,
+    /// Free time ("Temps libre"), pressed then; on while later than
+    /// `free_ended` (docs/pauses.md). Stamps, never a key taken away: the
+    /// sharing merges key by key, and a pause is never half on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub free_since: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub free_ended: Option<i64>,
+    /// "Nothing at all" for this free time; unsaid, as set up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub free_nothing: Option<bool>,
+    /// The day free time took working time on, and how much, in minutes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub free_day: Option<Date>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub free_lost: Option<u32>,
+    /// Where the end of work moved to on `free_day` (Unix seconds).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extended_until: Option<i64>,
+    /// "Keep my usual end": the day nothing moves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keep_end_on: Option<Date>,
+    /// The pause ("En pause"), pressed then; on while later than `paused_ended`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused_since: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused_ended: Option<i64>,
+    /// Days held lighter after a pause: the bad-day level.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lighter: Vec<Date>,
+    /// After a pause, the Porch rests until then, unless opened.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub porch_rests_until: Option<i64>,
 }
 
 impl Overrides {
@@ -297,6 +348,13 @@ fn by_hours(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides
     match Time::of(Area { work: at_work.is_some(), admin: at_admin.is_some(), leisure: false }) {
         Time::Admin => made(Time::Admin, Reason::AdminTime, closing),
         Time::Leisure => {
+            // Today's end of work moved by free time (docs/pauses.md): work from
+            // the usual end until then; Sioul ends it.
+            if let Some(end) = overrides.moved_end(now.date()).filter(|end| *end > stamp)
+                && window::hours_on(&work, now.date(), now.time_zone()).is_some_and(|(_, closing)| closing.timestamp().as_second() <= stamp)
+            {
+                return made(Time::Work, Reason::Extended, at(end));
+            }
             let reason = if window::open_day(&work, now.date()) { Reason::Evening } else { Reason::DayOff };
             // Until the next hours of either kind.
             made(Time::Leisure, reason, next_work(windows, time_off, now))
@@ -327,6 +385,10 @@ pub fn mode(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides
     let at = |seconds: i64| jiff::Timestamp::from_second(seconds).ok().map(|t| t.to_zoned(now.time_zone().clone()));
     let stamp = now.timestamp().as_second();
     let hours = by_hours(&windows, time_off, overrides, now);
+    // The pause holds everything Sioul shows, whatever the time (docs/pauses.md).
+    if overrides.paused_from().is_some() {
+        return Mode { quiet: true, time: Time::Sleep, week, reason: Reason::Paused, until: None, back: hours.until.clone(), label: String::new() };
+    }
     // Work comes back when the block ends if these are work's hours; else as the hours say.
     let back_after = |end: i64| if hours.time.works() { at(end) } else { hours.until.clone() };
     // Health's times hold whatever the hours and the overrides say: "Work now" may span a night.
@@ -340,12 +402,19 @@ pub fn mode(windows: &[AdminWindow], time_off: &[TimeOff], overrides: &Overrides
         };
         return Mode { quiet: true, time: Time::Sleep, week, reason, until: at(block.end), back: back_after(block.end), label: String::new() };
     }
+    // Free time: leisure whatever the hour, sleep first; the night's start ends it (docs/pauses.md).
+    if let Some(since) = overrides.free_from().filter(|since| *since <= stamp) {
+        let end = crate::pause::free_until(since, blocks, now.time_zone());
+        if stamp < end {
+            return Mode { quiet: true, time: Time::Leisure, week, reason: Reason::FreeTime, until: at(end), back: None, label: String::new() };
+        }
+    }
     if let Some(block) = blocks.at(stamp, &["meal"]) {
         return Mode { quiet: true, time: Time::Meals, week, reason: Reason::Meal, until: at(block.end), back: back_after(block.end), label: String::new() };
     }
     // The hours' own end, or the next meal or night when it comes first; an
     // override and time off say their own time.
-    let cut = matches!(hours.reason, Reason::Working | Reason::AdminTime | Reason::Evening | Reason::DayOff | Reason::NoHours);
+    let cut = matches!(hours.reason, Reason::Working | Reason::AdminTime | Reason::Evening | Reason::DayOff | Reason::NoHours | Reason::Extended);
     let until = if cut { earliest(hours.until.clone(), blocks.next_start(stamp).and_then(at)) } else { hours.until.clone() };
     Mode { quiet: !(hours.time.works() || hours.time == Time::Any), time: hours.time, week, reason: hours.reason, until, back: hours.until, label: hours.label }
 }
@@ -374,12 +443,15 @@ pub struct QuietTasks {
     pub time: Time,
     pub week: Week,
     pub areas: TaskAreas,
+    /// In free time with movement off (energy-limiting illness): movement and
+    /// exercise are not offered (docs/pauses.md, GP8).
+    pub no_movement: bool,
 }
 
 impl QuietTasks {
     /// Whether a task stays in view now.
     pub fn keeps(&self, task: &crate::tasks::Task) -> bool {
-        if self.time == Time::Sleep {
+        if self.time == Time::Sleep || (self.no_movement && crate::pause::is_movement(task)) {
             return false;
         }
         let area = self.areas.of(task);
@@ -417,7 +489,8 @@ impl Situation {
         if mode.reason == Reason::DoneForTheDay {
             closed.insert(today);
         }
-        let quiet_tasks = QuietTasks { time: mode.time, week: mode.week, areas: TaskAreas::of_config(config, cases) };
+        let no_movement = mode.free() && !config.free_time.movement(&config.planning);
+        let quiet_tasks = QuietTasks { time: mode.time, week: mode.week, areas: TaskAreas::of_config(config, cases), no_movement };
         Situation { mode, offices: crate::taskview::Offices { open, next, now: Some(now.clone()) }, closed, office_days, quiet_tasks }
     }
 
@@ -575,9 +648,39 @@ pub fn mail_in_view(triaged: &crate::porch::Triaged, senders: &crate::porch::Sen
 /// Whether a notification may come now (docs/health.md, "Do not disturb"):
 /// any, but during sleep; then only a dose, unless you asked doses to stay
 /// silent while you sleep (they come at waking). What the window shows is
-/// shown when you open it.
+/// shown when you open it. The pauses as `may_tell` says, doses coming.
 pub fn may_notify(mode: &Mode, dose: bool, doses_in_sleep: bool) -> bool {
-    !mode.sleeps() || (dose && doses_in_sleep)
+    may_tell(mode, if dose { Notice::Dose } else { Notice::Other }, doses_in_sleep, true)
+}
+
+/// What a notification is, for whether it may come now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Notice {
+    /// A dose's reminder.
+    Dose,
+    /// A code or a link you just asked a site for.
+    Code,
+    /// The alarm an event of yours carries.
+    Alarm,
+    /// Anything else: reminders before dates, sites, meals, the pause to move.
+    Other,
+}
+
+/// Whether a notification may come now (docs/health.md, docs/pauses.md):
+/// - the pause: a dose, unless the pause's setup holds them too
+///   (`doses_in_pause`), and an event's own alarm, an alarm you set (P7;
+///   whether its event falls in the pause is `reminders`' to say);
+/// - sleep: only a dose, unless doses stay silent then (`doses_in_sleep`);
+/// - Free time: doses, codes you asked for, your events' alarms; nothing else;
+/// - else: any.
+pub fn may_tell(mode: &Mode, notice: Notice, doses_in_sleep: bool, doses_in_pause: bool) -> bool {
+    if mode.paused() {
+        return (notice == Notice::Dose && doses_in_pause) || notice == Notice::Alarm;
+    }
+    if mode.sleeps() {
+        return notice == Notice::Dose && doses_in_sleep;
+    }
+    !(mode.free() && notice == Notice::Other)
 }
 
 /// Whether a task is yours, outside work: one of its categories is among
@@ -792,7 +895,7 @@ mod tests {
         let areas = TaskAreas { work_categories: vec!["travail".into()], work_cases: vec!["client-x".into()], ..TaskAreas::usual() };
         let week = Week { work_hours: true, ..Week::default() };
         // Asleep: no task at all, yours neither.
-        let night = QuietTasks { time: Time::Sleep, week, areas: areas.clone() };
+        let night = QuietTasks { time: Time::Sleep, week, areas: areas.clone(), no_movement: false };
         assert!(!night.keeps(&task(&[], &["taxes"])) && !night.keeps(&task(&["joy"], &[])) && !night.keeps(&task(&["Travail"], &[])));
         // In leisure (holidays, a day closed, the evening) and during a meal: only what is yours.
         for time in [Time::Leisure, Time::Meals] {
@@ -804,7 +907,10 @@ mod tests {
         let working = QuietTasks { time: Time::Work, ..night.clone() };
         assert!(working.keeps(&task(&[], &["taxes"])) && working.keeps(&task(&["Travail"], &[])) && !working.keeps(&task(&["joy"], &[])));
         // Admin with hours of its own: it waits for them; a call to an office still fits the working day.
-        let set = QuietTasks { time: Time::Work, week: Week { admin_hours: true, ..week }, areas };
+        let set = QuietTasks { time: Time::Work, week: Week { admin_hours: true, ..week }, areas, no_movement: false };
+        // In free time with movement off: no exercise offered.
+        let free = QuietTasks { time: Time::Leisure, no_movement: true, ..set.clone() };
+        assert!(!free.keeps(&task(&["joy", "Yoga"], &[])) && free.keeps(&task(&["joy"], &[])));
         assert!(!set.keeps(&task(&[], &["taxes"])));
         assert!(set.keeps(&crate::tasks::Task { office_hours: true, ..task(&[], &["taxes"]) }));
     }

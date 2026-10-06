@@ -226,8 +226,9 @@ account-found = Found: { $server }, { $by }.
 account-by-provider = from your provider's own settings
 account-by-ispdb = from Thunderbird's list of providers
 account-by-guess = a guess: check it before going on
+account-by-google = Google's own servers, since Google keeps this address's mail
 account-login = Login: { $login }
-account-gmail-hint = Gmail wants an app password here, not your usual one: myaccount.google.com/apppasswords (two-step verification must be on).
+account-gmail-hint = Google refuses your account password here: make an app password for Sioul at myaccount.google.com/apppasswords (it needs 2-Step Verification), and give it instead.
 account-app-password-hint = If this account uses two-step verification, it may want an app password.
 account-password-prompt = Password for { $address } (it goes to your system keyring, nowhere else):
 account-connected = Connected: the inbox holds { $n ->
@@ -580,6 +581,24 @@ compose-below-forward = Below your text: { $name }’s message of { $date }, wit
 compose-kept = The draft is kept in Drafts.
 compose-not-a-file = { $path } is not a file.
 compose-bad-address = “{ $entry }” is not an address.
+compose-attaching = { $count ->
+    [one] Attaching the file…
+   *[other] Attaching { $count } files…
+}
+compose-wait-files = Not yet: the files shared are still being attached.
+
+## Writing from other applications: a share, a mailto: link (outside.rs).
+handed-attached = { $count ->
+    [one] The file is attached.
+   *[other] The { $count } files are attached.
+}
+handed-missing = Could not be attached: { $files }.
+handed-a-file = a file
+handed-stopped = Sioul stopped while copying it: share it again
+handed-refused = given by its place on the phone, which Sioul does not take from another app
+handed-no-account = Something was shared to Sioul, but no mail account sends yet: add one in Accounts, then share it again.
+share-write-from = Write from { $address }
+share-address-gone = This address is no longer in Sioul.
 
 ## Undo, ten seconds.
 undo-archived = Archived.
@@ -1025,6 +1044,20 @@ task-drop = Drop
 # A task's details: an office's hours not given, the usual ones.
 task-office-usual-short = offices' usual hours
 task-drop-help = Not to be done after all: kept, struck out, out of the plan. “Open again” brings it back.
+task-do-at = Do at…
+task-do-at-help = A block in your calendar: the plan lays the task there, and every calendar shows it.
+task-do-at-day = Day
+task-do-at-time = Time
+task-do-at-length = For
+task-do-at-save = Pin it
+task-pinned-move = Move…
+task-pinned-open = Open in the agenda
+task-pinned-menu = What to do with this time
+task-pinned = Pinned: { $when }
+task-pinned-today = today, { $from }–{ $to }
+task-pinned-day = { $day }, { $from }–{ $to }
+task-pinned-read-only = Its calendar can only be read here: move it in the application it comes from.
+blocks-calendar = Planned tasks
 # The time things like it take, against the first guess, shown when asked (ratio_line).
 task-ratio-ask = How long things like this take
 task-hard = What makes it hard?
@@ -1157,6 +1190,11 @@ set-planning-gain-slots-help = Two slots a day, one after the day's heaviest ste
 set-task-list = New tasks go into
 set-task-list-help = The list a task typed in one line goes into.
 set-task-list-first = The first list made for tasks
+set-task-blocks = Time blocks go into
+set-task-blocks-help = Where a task pinned to a time is written: an event, which every calendar shows, your phone's too. “Planned tasks” is made the first time it is needed, on the account of the task's list, or on this device.
+set-task-blocks-own = “Planned tasks”, with each task's list
+set-task-block-alarms = An alarm in each block
+set-task-block-alarms-help = Five minutes before it, for the calendars of your other devices; in the blocks made or moved from now on. Without it, Sioul reminds you of a block as of any event, and a phone does not remind you twice.
 set-case-store = The notes folder
 set-case-store-help = Your folder of Markdown files, read as a vault: your notes, and beside them your projects (sioul-cases.toml) and budgets (sioul-budgets.toml). Sioul links to it and never owns it.
 set-notes-folder = New notes go into
@@ -1423,6 +1461,8 @@ account-password-use = Use
 account-password-keep = Keep
 account-password-testing = Asking the server…
 account-password-kept = { $account }: password kept; it syncs again.
+account-signed-in-again = { $account }: signed in with Google again; its mail comes again.
+account-app-password-title = App password for { $account }
 bitwarden-unlock-help-password = Your master password opens the vault here, by Sioul itself; it is not kept, and the vault stays open until Sioul closes.
 site-none = No site yet. A secure mailbox (a bank's, a hospital's, the tax office's), a chat, any site you want at hand: logged in once, kept here.
 site-choose = A site, on the left.
@@ -1861,6 +1901,25 @@ google-denied = Google gave no access: nothing changed.
 google-state = An answer came that was not for Sioul: nothing changed.
 google-other = Your browser signed in as { $address }, not the address given: nothing changed, and that access went back to Google.
 google-cancelled = Stopped: nothing changed.
+# Google's mail (Gmail, Google Workspace): an app password, or Google's sign-in with a key of your own (docs/google.md, "Mail").
+ui-gmail-choice-app-password = Use an app password
+ui-gmail-choice-sign-in = Sign in with Google
+ui-gmail-app-password-guide = Google refuses your account password here. Make an app password for Sioul at myaccount.google.com/apppasswords (it needs 2-Step Verification), then paste it below.
+ui-gmail-app-password-field = App password (from Google)
+ui-gmail-sign-in-key-kept = Google's page opens in your browser, with your Google key kept on this device. Sioul keeps the access in the system keyring: no password.
+ui-gmail-sign-in-own-key = For mail, Google lets in only a key of your own: a free project in Google Cloud, made once, in about fifteen minutes. Google then says the app is not verified: it is yours.
+ui-gmail-steps-text =
+    1. On [console.cloud.google.com](https://console.cloud.google.com), make a project named Sioul, or open the one your Google calendars use.
+    2. In *APIs & Services → Library*, turn on the **Gmail API**.
+    3. In *Google Auth platform*: *Branding*, a name and your address; *Audience*, External, and yourself as a test user; *Data access*, the scope `https://mail.google.com/`.
+    4. *Clients → Create client → Desktop app*. Copy its ID and its secret now: Google shows the secret only once.
+    5. *Audience → Publish app*. Left in testing, Google ends the access every seven days. Used by you alone, it needs no review by Google.
+    6. Paste both here and sign in. Google says the app is not verified: it is yours. Choose *Advanced*, then *Go to Sioul*, and leave Gmail's access ticked.
+ui-gmail-again-app-password = App password…
+ui-google-waiting-phone = Your browser is open on Google's page. Once Google says Sioul has the access, come back to Sioul: it finishes here.
+google-mail-built-in = Google does not let Sioul's own key read mail yet: Gmail's access needs Google's review of Sioul, not done. Use an app password, or a Google key of your own.
+google-mail-no-key = No Google key of yours is kept on this device for { $address }: give its client ID and secret, or use an app password.
+google-mail-unticked = Google gave no access to your mail: on Google's page, leave Gmail's access ticked ("Read, compose, send, and permanently delete all your email from Gmail"). Nothing changed.
 sync-error-google-again = { $account }: Google asks you to sign in again.
 sync-error-google-testing = { $account }: Google ended the sign-in after seven days, as it does while your Google project is in testing. In Google Cloud: Google Auth Platform ▸ Audience ▸ Publish app; then sign in again: it lasts after that.
 google-no-collections = Google makes no calendar or address book from another program: make it on Google's pages.
@@ -1905,6 +1964,11 @@ settings-tab-files = Your folder and sharing
 settings-tab-invoices = Invoices
 ui-refresh-all = Refresh everything: mail, agenda, tasks, contacts (F5)
 ui-refreshing = Refreshing…
+# The column of the places, on the left of the window.
+ui-places = Places
+ui-places-hide = Hide the places
+ui-places-show = Show the places
+ui-refresh-short = Refresh everything
 budget-add-budget = Budget
 set-look-group = Language and appearance
 set-hours-group = Working hours and quiet time
@@ -2023,6 +2087,21 @@ share-others = { $count ->
 }
 share-alone = No other device yet: on the other one, choose the same folder and type the same passphrase.
 share-last = Last exchange here: { $when }.
+share-devices = Your other devices
+share-device-in-use = In use now; last shared { $when }.
+share-device-quiet = In use when it last shared, { $when }, and silent since: it may have stopped without closing.
+share-device-closed = Closed { $when }; last shared { $shared }.
+share-device-older = An older Sioul: last heard { $when }.
+share-device-unread = What it says does not read here yet.
+share-device-off = Counted as off, as you said, until it shares again.
+share-device-silent = Silent since { $when }: no longer counted for your doses.
+share-device-apart = It does not share its doses.
+share-device-ahead = Its clock is { $minutes ->
+    [one] a minute
+   *[other] { $minutes } minutes
+} ahead of this one's, at least.
+share-device-count-again = Count it again
+share-device-forget = Forget this device
 share-outside = Your notes and projects ({ $store }) do not seem to be in a folder your sync carries: the other device would not see them. Switch Notes, and Projects and money, on below to carry them through this folder, sealed; or move them into a synced folder (and choose it again in Settings ▸ Your folder and sharing).
 share-phones = A phone sees this folder only if its sync app carries it, and some carry only a few folders: Murena's eDrive carries Documents (with Pictures, Music…), not the rest of your cloud. To reach such a phone, share through a folder inside Documents: stop sharing, then choose one there.
 folder-not-on-device = This folder is not on this device: choose one your sync app keeps its files in (Documents, with Murena's eDrive).
@@ -2055,9 +2134,9 @@ share-files-allow = Allow access to files
 share-parts = What travels from this device
 share-parts-help = Each device chooses for itself. A part switched off here stays as it is on your other devices: nothing of it is taken out there. Switched on again, it joins as a new device would.
 share-part-settings = Settings and accounts
-share-part-settings-carries = Your settings and accounts (never their passwords), the ties between things, where the Porch was closed, mail you said is no payment.
+share-part-settings-carries = Your settings and accounts (never their passwords), the ties between things, where the Porch was closed, mail you said is no payment, do-not-disturb's switch.
 share-part-senders = Senders
-share-part-senders-carries = Who may write to you (known, blocked, safe, neutral, restricted), what the shield read, others' public keys.
+share-part-senders-carries = Who may write to you (known, blocked, safe, neutral, restricted), who may reach you during do-not-disturb, what the shield read, others' public keys.
 share-part-health = Health
 share-part-health-carries = Medicines, prescriptions and the doses taken.
 share-part-time = Time
@@ -2144,6 +2223,54 @@ remind-told = told
 remind-running = Reminders are already watched on this device.
 remind-watching = Reminders watched: each one comes once, as a quiet notification. Ctrl+C stops.
 reminder-open = Open
+# Before an event (docs/reminders.md): "14:00 · Dentist, in 15 minutes".
+reminder-before = { $time } · { $what }, { $in }
+reminder-in-minutes = in { $minutes ->
+        [one] one minute
+       *[other] { $minutes } minutes
+    }
+reminder-in-hours = in { $hours ->
+        [one] one hour
+       *[other] { $hours } hours
+    }
+reminder-in-hours-minutes = in { $hours } h { $minutes } min
+reminder-in-now = now
+reminder-margin = Getting ready, getting there: from { $time }.
+reminder-margin-now = Getting ready, getting there: now.
+remind-lead = { $minutes ->
+        [0] none
+        [one] one minute
+        [60] 1 hour
+        [120] 2 hours
+       *[other] { $minutes } minutes
+    }
+set-reminders-before = Before an event
+set-reminders-before-help = A quiet reminder this long before each event, counted before its time to get ready and get there: an event at 14:00 with 30 minutes to get there is reminded at 13:15. Each event may say its own (Remind, in its form). Not for whole days, nor for calendars you only read.
+set-reminders-before-none = None
+set-reminders-before-exact = On this phone they come on time, Sioul open or not.
+set-reminders-before-inexact = On this phone, Android does not let Sioul set exact alarms: these reminders may come up to an hour late. Settings ▸ Apps ▸ Sioul ▸ Alarms & reminders.
+event-remind = Remind
+event-remind-usual = As usual ({ $lead })
+event-remind-none = Not this one
+event-remind-before = { $lead } before
+event-reminds = Reminder: { $when }
+event-reminds-none = No reminder before it
+events-channel = Events
+# New mail, told at the times it may come (docs/porch.md, "Notifications").
+mail-note-title = { $Count } { $n ->
+        [one] letter
+       *[other] letters
+    }
+mail-note-opens = The Porch opens: { $count } { $n ->
+        [one] letter waits
+       *[other] letters wait
+    } for you.
+mail-note-letter = { $sender }, { $subject }
+mail-channel = New mail
+set-reminders-mail = New mail: notify at the times it may come
+set-reminders-mail-help = When mail your lists let through now arrives, one quiet notification for the batch: how many, and the first senders with their subjects. Mail that waited for its time is told once, when its time comes. Never while you sleep or pause; never for codes (they have their own), nor for what is set aside, blocked, sent by yourself or come to your less important accounts.
+set-reminders-mail-newsletters = Include newsletters
+set-reminders-mail-newsletters-help = Newsletters and mailing lists, filed on the Porch, are told too. Automatic senders (a bill from no-reply) are told either way.
 reminders-closed-unavailable = Not on Windows yet: reminders come while Sioul's window is open.
 reminders-closed-no-command = The “sioul” command is not installed next to Sioul: reminders come while the window is open.
 set-reminders-group = Reminders
@@ -2552,6 +2679,8 @@ password-show = Show the password
 password-hide = Hide the password
 set-passwords-shown = Show passwords as you type
 set-passwords-shown-help = Every password, passphrase and key field shows what you type from the start, on this device; the eye at the end of each field shows or hides it at any time.
+set-places-named = Show the places' names beside their icons
+set-places-named-help = The places on the left of the window show their names beside their icons, in a wider column: some people read words more easily than icons. Without it, their icons alone, and each one's name when the pointer rests on it, or at a long press on a touch screen.
 bitwarden-factor-7 = Security key (YubiKey, FIDO2)
 bitwarden-code-7 = Second step: your security key.
 bitwarden-key-use = Use the security key
@@ -2574,11 +2703,18 @@ bitwarden-key-stop = Stop
 bitwarden-key-not-allowed = The key was not used in time, or the request was cancelled.
 bitwarden-choose = Choose a login…
 bitwarden-choose-title = Which login?
-bitwarden-choose-site = For { $site }:
-bitwarden-choose-none = Bitwarden keeps no login for { $site }: search them all.
-bitwarden-choose-search = Search all your logins
-bitwarden-choose-found = In your vault:
+bitwarden-choose-by-site = Site
+bitwarden-choose-by-site-hint = A domain or a word
+bitwarden-choose-by-user = User name
+bitwarden-choose-by-user-hint = Any part of it
+bitwarden-choose-empty = Empty this field
+bitwarden-choose-ask = Type a site, a user name, or both.
 bitwarden-choose-nothing = Nothing found.
+bitwarden-choose-nothing-both = No login has both: empty one of the fields to see more.
+bitwarden-choose-more = { $count ->
+    [one] One more login: narrow the search.
+   *[other] { $count } more logins: narrow the search.
+}
 bitwarden-choose-other-site = for { $site }
 bitwarden-choose-fill = Fill
 task-office-open = Open from
@@ -2606,6 +2742,23 @@ share-other-device = another device of yours
 dose-doubt-closed = { $name } closed { $when }, and its news can be slow to come
 dose-doubt-open = { $name } was last heard { $when }
 dose-doubt-broken = part of what { $name } wrote could not be read
+dose-doubt-working = { $name } was in use and last shared { $when }
+dose-doubt-quiet = { $name } was in use when it last shared, { $when }, and has said nothing since: it may have stopped without closing
+dose-doubt-coming = what { $name } shared { $when } has not all come here yet
+dose-doubt-apart = { $name } does not share its doses (Health is switched off there)
+device-the-phone = the phone
+when-at = at { $time }
+device-off = This device is off
+device-off-named = { $name } is off
+dose-off-note = { $name } counts as off, as you said: a dose marked there would not show here until it shares again.
+dose-answers = Marked { $answers }. Check which is right before taking it.
+dose-answer-taken-here = taken here { $when }
+dose-answer-taken-on = taken on { $name } { $when }
+dose-answer-taken = taken { $when }
+dose-answer-skipped-here = skipped here { $when }
+dose-answer-skipped-on = skipped on { $name } { $when }
+dose-answer-skipped = skipped { $when }
+dose-answer-other-on = answered on { $name } { $when }, in words this Sioul does not know
 dose-check-title = Check first: { $dose }
 dose-alarm-fallback = A dose is due: open Sioul to check it.
 dose-alarm-late = Taken late: tap to say when.
@@ -2714,7 +2867,7 @@ site-by-hand = Or by hand:
 site-later = Other hours: { $count }
 link-kind-site = Sites
 mode-admin = Admin time until { $until }: offices, bills, letters.
-mode-leisure = Free time until { $until }: what you enjoy.
+mode-leisure = Leisure until { $until }: what you enjoy.
 set-windows-admin = Hours for your admin
 set-windows-admin-help = Your own admin comes forward then: offices, bills, letters, health errands. Once these are set, admin no longer comes in working hours, except calls to an office, which keep office hours.
 set-reminders-gather = Sites' notifications gathered
@@ -2814,6 +2967,7 @@ ocr-hint-packages = Tesseract and Poppler, from your system's packages
 google-page-granted = Sioul has the access. You can close this tab.
 google-page-denied = Google gave no access: nothing changed. You can close this tab.
 google-page-foreign = This answer was not for Sioul. You can close this tab.
+google-page-granted-phone = Sioul has the access. Go back to Sioul: it finishes there.
 ui-all-files = All files
 ## Forms, notes and memos: amounts that are no number, buttons, links, the microphone.
 amount-unreadable = “{ $text }” is not an amount: write it in digits, as 1200 or -650.50.
@@ -2961,3 +3115,287 @@ review-closed-night = The day is closed.
 review-kept = Your words are kept.
 # On the Health page's day.
 review-line-said = How the day went:
+
+## The two pauses: Free time and Pause (docs/pauses.md)
+# The status line: which pause is on, in its own words.
+mode-free-time = Free time: only your safe senders, doses and codes reach you. Work comes back when you do.
+mode-free-time-nothing = Free time: only doses and codes reach you. Work comes back when you do.
+mode-paused = Paused.
+# The bottom row: Free time, a switch; Pause, apart.
+free-time = Free time
+free-time-tip = Free time now: leisure whatever the hour; only your safe senders reach you.
+free-time-back = Come back from free time
+pause-button = Pause
+pause-tip = Pause: Sioul holds everything until you come back. It sends nothing.
+# Free time's menu in the status line, and coming back from it.
+free-menu-keep = Keep my usual end ({ $time })
+free-menu-nothing = Nothing at all
+free-back-moved = Today, work runs until { $time }.
+free-keep-end = Keep my usual end
+free-kept = Work ends at { $time }, as usual.
+# The Tasks page in free time: leisure offered, never a list to finish.
+free-title = Free time
+free-offers = If you want:
+free-offers-none = Nothing to do here.
+# The pause's screen: facts about Sioul, never about you (P11–P12).
+pause-title = Paused.
+pause-text = Sioul is keeping everything on hold: mail, tasks, messages. Nothing new will show here until you come back. Sioul asks nothing of you until then.
+pause-doses-come = Dose reminders still come.
+pause-helps = What helps you
+pause-breathing = Breathing guide
+pause-numbers-more = Other numbers
+pause-back = Come back
+pause-try = Try-out: nothing is held.
+pause-number-emergency = Emergency
+pause-number-crisis = To talk to someone now, day or night
+pause-number-medical = Medical emergency
+pause-number-text = In writing
+pause-number-care = Urgent care, not an emergency
+pause-number-call-or-text = call or text
+pause-number-text-word = text { $word }
+pause-number-by-text = by text
+# Coming back (P23): no question, no count.
+pause-back-title = You are back. Nothing was lost.
+pause-back-lighter = The rest of today is lighter.
+pause-back-rest = Work waits until { $back }.
+pause-back-tomorrow = Tomorrow can be lighter too.
+pause-lighten-tomorrow = Lighten tomorrow
+pause-tomorrow-lighter = Tomorrow is lighter too.
+pause-back-go = Continue
+porch-rests = After the pause, the Porch opens { $when }. Meanwhile, what comes is checked and sorted.
+# Settings ▸ Pauses: set up on a calm day (P1).
+settings-tab-pauses = Pauses
+set-free-time-group = Free time
+set-free-nothing = Nothing at all
+set-free-nothing-help = In free time, not even your safe senders reach you. Doses and the codes you asked for still come.
+set-free-moves = The end of work moves
+set-free-moves-help = Free time taken in working hours moves today's end of work later by as much, never past an hour before winding down, your latest end or the evening's time for you. Off, work keeps its usual end, and what no longer fits goes to later days.
+set-free-latest = Latest end of work
+set-free-latest-help = At most this long after your usual end.
+set-free-movement = Offer movement and exercise
+set-free-movement-help = Among the leisure free time offers. Off when an illness limits your energy: then no exercise is suggested.
+set-pause-group = Pause
+set-pause-about = Sioul is not an emergency service. It does not watch you. It acts only when you press Pause.
+set-pause-doses = Dose reminders still come
+set-pause-doses-help = During a pause, as during sleep. Off, they wait until you come back.
+set-pause-people = Starred contacts get through
+set-pause-people-help = On the phone: calls and messages from your starred contacts, and anyone calling twice within 15 minutes. Off, no one.
+set-pause-helps = What helps you
+set-pause-helps-help = In your words, one thing a line. A line with a link or a file's path opens it from the pause: a playlist, photos, a film.
+set-pause-breathing = Breathing guide
+set-pause-breathing-help = A slow shape to breathe with, shown only when you tap it, the breath out longer than the breath in.
+set-pause-pace = Breaths a minute
+set-pause-pace-help = The breathing guide's pace.
+set-pause-grounding = A line for the pause
+set-pause-grounding-help = One line in your words, shown during the pause.
+set-pause-after = Coming back
+set-pause-after-help = What the rest of today holds after a pause. Work never moves into the evening.
+set-pause-after-lighter = Lighter, as a hazy day
+set-pause-after-rest = No more work today
+set-pause-after-as-is = As planned
+set-pause-country = Numbers for
+set-pause-country-help = The emergency number and the crisis line shown during a pause.
+set-pause-country-usual = The phone numbers' country
+set-pause-country-fr = France
+set-pause-country-gb = United Kingdom
+set-pause-country-us = United States
+set-pause-country-ca = Canada
+set-pause-country-eu = Elsewhere in the European Union
+pause-setup-dnd = Do not disturb
+pause-setup-try = Try the pause screen
+pause-setup-try-help = Shows the screen as it will be. Nothing is held.
+pause-setup-forget = Forget the last pause
+pause-setup-forget-help = Sioul keeps only when the last pause began and ended, for undo.
+pause-setup-forgotten = Forgotten.
+
+## Do-not-disturb during the two pauses (crates/sioul-app/src/dnd.rs, docs/pauses.md): what Sioul
+## silenced and what it could not, said as is on the pause's line and in its settings.
+dnd-name-pause = Pause
+dnd-name-free-time = Free time
+dnd-trigger-pause = When you press Pause in Sioul
+dnd-trigger-free-time = When you take free time in Sioul
+dnd-trigger-global = When do-not-disturb is on in Sioul, on any of your devices
+dnd-name-global = Do not disturb (Sioul)
+dnd-doses-channel = Doses during a pause
+dnd-own-held = Sioul holds its own notifications.
+dnd-own-held-doses = Sioul holds its own notifications, except dose reminders.
+dnd-offer-access = Open Android's page
+dnd-offer-starred = Starred contacts
+dnd-offer-plasma = Plasma's notification settings
+dnd-phone-can = Sioul can silence this phone with do-not-disturb modes of its own.
+dnd-phone-needs-access = To silence this phone, Sioul needs Android's “Do Not Disturb access”.
+dnd-phone-no-access = Your phone is not silenced: Sioul does not have Android's “Do Not Disturb access”.
+dnd-phone-too-old = This phone's Android is too old for Sioul to silence it: it takes Android 10 or later.
+dnd-phone-callback = Emergency services may call back from a number you do not know ({ $number }): a second call within 15 minutes gets through, and you can star that number in your contacts.
+dnd-phone-callback-unknown = Emergency services may call back from a number you do not know: a second call within 15 minutes gets through.
+dnd-phone-starred = Your phone's calls and messages are silenced, except starred contacts and repeat callers.
+dnd-phone-nobody = Your phone's calls and messages are silenced, from everyone.
+dnd-phone-as-set = Your phone is silenced as its “{ $name }” mode is set in Android's settings.
+dnd-phone-set-there = That mode is set otherwise in Android's settings, which win.
+dnd-phone-alarms-doses = Alarms and dose reminders still come.
+dnd-phone-alarms = Alarms still ring.
+dnd-phone-alarms-silenced = Alarms are silenced too, as that mode is set.
+dnd-phone-doses = Dose reminders still show.
+dnd-phone-doses-shade = Dose reminders wait in the notification shade, without a sound.
+dnd-phone-doses-blocked = Dose reminders are silenced too: their channel was changed in Android's settings.
+dnd-phone-already = A do-not-disturb was already on; Sioul leaves it as it was.
+dnd-phone-failed = Your phone could not be silenced: { $why }
+dnd-phone-no-answer = Your phone could not be silenced: Android did not answer.
+dnd-phone-disabled = Your phone is not silenced: its “{ $name }” mode is turned off in Android's settings.
+dnd-phone-turned-off = Do-not-disturb was turned off on the phone meanwhile; Sioul leaves it off.
+dnd-phone-off = Your phone is no longer silenced by Sioul.
+dnd-phone-still = A do-not-disturb is still on, as it was before.
+dnd-plasma-can = Sioul can silence this desktop's notifications, with Plasma's do-not-disturb.
+dnd-plasma-on = This desktop's notifications are silenced, with Plasma's do-not-disturb.
+dnd-plasma-doses = Sioul's dose reminders still show.
+dnd-plasma-doses-hidden = Plasma is set to hide even critical notifications in do-not-disturb, so Sioul's dose reminders cannot show here while it silences this desktop, unless Sioul may “Show in do not disturb mode” in Plasma's notification settings.
+dnd-plasma-failed = This desktop's notifications could not be silenced: { $why }
+dnd-plasma-off = This desktop's notifications show again.
+dnd-gnome-can = GNOME lets Sioul silence this desktop only by switching on your own Do Not Disturb: Sioul does it only if you allow it here, and switches it off after.
+dnd-gnome-consent = Switch GNOME's Do Not Disturb on with Sioul's, and off after
+dnd-gnome-cannot = This desktop's own notifications cannot be silenced by Sioul: GNOME keeps its Do Not Disturb switch for you, under the clock in the top bar.
+dnd-gnome-on = This desktop's notification banners are hidden: Sioul switched on GNOME's Do Not Disturb, and switches it off after.
+dnd-gnome-already = GNOME's Do Not Disturb was already on; Sioul leaves it as you set it.
+dnd-gnome-sandboxed = This desktop's notifications cannot be silenced by Sioul from its Flatpak sandbox: GNOME's Do Not Disturb is under the clock in the top bar.
+dnd-gnome-failed = GNOME's Do Not Disturb could not be switched: { $why }
+dnd-gnome-off = GNOME's Do Not Disturb is off again, as it was before.
+dnd-gnome-left = GNOME's Do Not Disturb was changed meanwhile; Sioul leaves it as it is.
+dnd-desktop-cannot = This desktop's notifications cannot be silenced by Sioul: { $name } gives applications no way to do it.
+dnd-desktop-cannot-unknown = This desktop's notifications cannot be silenced by Sioul.
+dnd-mac-can = When Sioul silences this Mac, it runs your shortcut “{ $on }”, and “{ $off }” after.
+dnd-mac-cannot = This Mac's notifications cannot be silenced by Sioul unless you make a shortcut named “{ $on }” that turns on a Focus, and one named “{ $off }” that turns it off: macOS lets applications do it no other way.
+dnd-mac-on = Sioul ran your shortcut “{ $on }”.
+dnd-mac-failed = Your shortcut “{ $name }” did not run: { $why }
+dnd-mac-off = Sioul ran your shortcut “{ $off }”.
+dnd-mac-no-off = Your Mac's Focus stays as your shortcut left it: there is no shortcut “{ $off }”.
+dnd-windows-cannot = This computer's notifications cannot be silenced by Sioul: Windows keeps do-not-disturb for applications Microsoft approves. Its switch is in the notification centre (Windows key + N).
+
+## Do-not-disturb on every device: the switch, its reasons, the list of people who may reach you,
+## the phone in the background (crates/sioul-core/src/everywhere.rs, crates/sioul-app/src/everywhere.rs,
+## crates/sioul-app/src/steps.rs, docs/do-not-disturb.md).
+dnd-everywhere = Do not disturb, on every device.
+dnd-everywhere-until = Do not disturb, on every device, until { $until }.
+dnd-here-only = Do not disturb, here only.
+dnd-here-only-until = Do not disturb, here only, until { $until }.
+dnd-not-everywhere = Do not disturb, not on every device.
+dnd-not-everywhere-until = Do not disturb, not on every device, until { $until }.
+dnd-elsewhere = Do not disturb, on your other devices; this one keeps only Sioul's own notifications back.
+dnd-elsewhere-until = Do not disturb until { $until }, on your other devices; this one keeps only Sioul's own notifications back.
+dnd-own-only = Do not disturb: this device keeps only Sioul's own notifications back.
+dnd-own-only-until = Do not disturb until { $until }: this device keeps only Sioul's own notifications back.
+dnd-device-here = Here
+dnd-device-on = On { $name }
+dnd-device-phone = your phone
+dnd-device-other = another device
+dnd-device-silenced = { $device }: silenced.
+dnd-device-cannot = { $device }: { $line }
+dnd-device-unsilenced = { $device }: not silenced.
+dnd-device-behind = { $device }: not yet.
+dnd-why-manual = Turned on with the switch.
+dnd-why-manual-from = Turned on from { $device }.
+dnd-why-focus = While you focus on a task.
+dnd-why-sleep = While you sleep.
+dnd-why-paused = During the pause.
+dnd-why-free-time = During your free time.
+dnd-switch = Do not disturb
+dnd-switch-tip-off = Do not disturb, on every device: calls, messages and mail wait, except from the people on your list. A right click, or a long press, to choose until when.
+dnd-switch-tip-on = { $line } { $why } A click turns it off, on every device.
+dnd-for-30 = For 30 minutes
+dnd-for-60 = For an hour
+dnd-for-120 = For two hours
+dnd-until-time = Until { $time }
+dnd-until-off = Until I turn it off
+dnd-turn-off = Turn it off, on every device
+dnd-open-settings = Do-not-disturb settings…
+settings-tab-dnd = Do not disturb
+set-dnd-group = Do not disturb, on every device
+set-dnd-button = The switch in the status line
+set-dnd-button-help = A switch beside the sounds turns do-not-disturb on and off, on all your devices at once. Unticked, the switch is hidden; the rest below still holds.
+set-dnd-focus = While I focus on a task
+set-dnd-focus-help = Do-not-disturb holds while a focus session counts, on every device, and lifts 30 minutes past the time you chose (three hours for a session without one): a session left running never keeps you unreachable for long.
+set-dnd-pauses = During the pauses
+set-dnd-pauses-help = Free time and the pause silence your devices too, as their own settings say. Unticked, they hold Sioul's own notifications only.
+set-dnd-sleep = While I sleep
+set-dnd-sleep-help = Do-not-disturb holds from winding down to waking, and during naps, on every device. Alarms and dose reminders still come.
+set-dnd-people = The people on my list get through
+set-dnd-people-help = Their calls and messages ring on a phone where they are starred, and a second call from the same number within 15 minutes; their mail is notified. Unticked: nobody, but alarms and dose reminders.
+set-dnd-background = Keep this phone in step in the background
+set-dnd-background-help = With Sioul closed, a quiet notification stays in the shade while Sioul follows your other devices: do-not-disturb within a few minutes, mail at its times. Unticked, changes come when you open Sioul. This phone only.
+dnd-setup-here = On this device
+dnd-setup-critical = During do-not-disturb, Sioul's notifications for the people on your list go out as critical, which this desktop shows.
+dnd-setup-plasma-mail = Plasma is set to hide even critical notifications in do-not-disturb: mail from the people on your list cannot show here meanwhile, unless Sioul may “Show in do not disturb mode” in Plasma's notification settings.
+dnd-setup-list = Who may reach you during do-not-disturb
+dnd-setup-list-help = The same list on every device, kept sealed in your sharing folder. Their mail is notified during do-not-disturb; on a phone, their calls and messages ring once they are starred there.
+dnd-setup-empty = Nobody yet.
+dnd-setup-add-safe = Add your safe senders
+dnd-setup-add-contact = Add a contact…
+dnd-setup-add-person = Add someone by hand
+dnd-setup-search = Name, number or address
+dnd-setup-no-match = No contact matches.
+dnd-setup-name = Name
+dnd-setup-phones = Numbers, one per line
+dnd-setup-emails = Addresses, one per line
+dnd-setup-save = Save
+dnd-setup-cancel = Cancel
+dnd-setup-edit = Change
+dnd-setup-remove = Take off the list
+dnd-setup-added-safe = { $n ->
+    [0] Your safe senders are on the list already.
+    [one] One person added from your safe senders.
+   *[other] { $Count } people added from your safe senders.
+}
+dnd-setup-patterns = { $n ->
+    [one] One entry of the Safe list is a pattern, which names nobody: left out.
+   *[other] { $Count } entries of the Safe list are patterns, which name nobody: left out.
+}
+dnd-setup-no-number = No number: their calls and messages cannot ring through.
+dnd-setup-no-email = No address: their mail is not notified during do-not-disturb.
+dnd-setup-unreadable = The list could not be read, so nothing was changed: { $why }
+dnd-stars-title = Starred on this phone
+dnd-stars-all = Everyone on your list with a number is starred on this phone: their calls and messages ring during do-not-disturb.
+dnd-stars-missing = { $n ->
+    [one] One person on your list is not starred on this phone.
+   *[other] { $Count } people on your list are not starred on this phone.
+}
+dnd-stars-why = Android lets through only the contacts starred in your Contacts app: star them there. Sioul never changes your contacts.
+dnd-stars-starred = Starred
+dnd-stars-not-starred = Not starred
+dnd-stars-unknown = Not among this phone's contacts
+dnd-stars-no-number = No number
+dnd-stars-open = Open their contact
+dnd-stars-add = Add to contacts
+dnd-stars-permission = To say who on your list is starred on this phone, Sioul needs to read your contacts. It never changes them.
+dnd-stars-allow = Allow reading contacts
+dnd-stars-again = Look again
+dnd-stars-repeat = A second call from the same number within 15 minutes rings too, whoever calls: emergency services may call back from a number you do not know.
+dnd-steps-title = In the background
+dnd-steps-on = Sioul follows your other devices with the app closed; a quiet notification says so.
+dnd-steps-off = Sioul follows your other devices only while it is open.
+dnd-steps-battery = Android may stop Sioul in the background to save the battery: allow it to run in the background.
+dnd-steps-battery-ok = Android lets Sioul run in the background.
+dnd-steps-allow = Allow in the background
+dnd-steps-channel = Devices in step
+dnd-steps-note = Sioul keeps your devices in step
+
+## The card on a phone's home screen (docs/android.md, "The card on the home screen").
+home-card-work = Work until { $until }.
+home-card-when-at = at { $time }
+home-card-when-yesterday = yesterday at { $time }
+home-card-porch-opens = The Porch opens { $when }.
+home-card-porch-rests = After the pause, the Porch opens { $when }.
+home-card-porch-closed = The Porch is closed for now.
+home-card-many = Many letters came.
+home-card-setup = Sioul is not set up yet.
+home-card-beyond = Open Sioul to bring this card up to date.
+home-card-step-plain = Your next step
+home-card-code-plain = { $kind ->
+        [code] A code waits on the Porch.
+        [password] A password waits on the Porch.
+        [reset] A password reset waits on the Porch.
+        [link] A sign-in link waits on the Porch.
+       *[confirm] A confirmation link waits on the Porch.
+    }
+home-card-dose = { $dose }, { $time }
+home-card-dose-check = { $dose }, { $time }: check before taking it.
+set-home-card-details = Details on the home screen
+set-home-card-details-help = Sioul's card on this phone's home screen names the first letters waiting on the Porch, with their sender and subject, a code you just asked a site for, a dose due, and the next step's title. Unticked, it says only what now is for, how many letters came, and that a next step waits: for a phone whose home screen others see. This phone only.

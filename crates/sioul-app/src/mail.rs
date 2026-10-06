@@ -112,19 +112,43 @@ fn hidden(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<String>) {
 
 /// Contacts and events deleted, and occurrences left out, while "Undo" is offered.
 pub(crate) fn hidden_pim(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<(PathBuf, i64)>) {
-    let (mut files, mut skipped) = (BTreeSet::new(), BTreeSet::new());
-    for pending in shared.pending.lock().map(|p| p.clone()).unwrap_or_default() {
-        match &pending.work {
+    fn add(work: &Work, files: &mut BTreeSet<PathBuf>, skipped: &mut BTreeSet<(PathBuf, i64)>) {
+        match work {
             Work::Remove { file, .. } => {
                 files.insert(file.clone());
             }
             Work::Skip { file, start, .. } => {
                 skipped.insert((file.clone(), *start));
             }
+            // A task and its time blocks, under one "Undo".
+            Work::Many(works) => works.iter().for_each(|w| add(w, files, skipped)),
             _ => {}
         }
     }
+    let (mut files, mut skipped) = (BTreeSet::new(), BTreeSet::new());
+    for pending in shared.pending.lock().map(|p| p.clone()).unwrap_or_default() {
+        add(&pending.work, &mut files, &mut skipped);
+    }
     (files, skipped)
+}
+
+/// Whether a work deletes a contact, an event or a task, or leaves an occurrence out: the pages follow at once.
+fn touches_pim(work: &Work) -> bool {
+    match work {
+        Work::Remove { .. } | Work::Skip { .. } => true,
+        Work::Many(works) => works.iter().any(touches_pim),
+        _ => false,
+    }
+}
+
+/// Deletes several files at once after ten seconds to undo, (account, file)
+/// each: a task and its time blocks to come, or a task's blocks left to the
+/// plan. `back` runs on "Undo", for what was changed at once (a task's link to
+/// its block taken out): it says what went wrong, else "".
+pub(crate) fn schedule_removals(qt: &QtThread, shared: &Arc<Shared>, files: Vec<(String, PathBuf)>, back: Option<Box<dyn Fn(&QtThread, &Arc<Shared>) -> String + Send + Sync>>, line: String) {
+    let mut works: Vec<Work> = files.into_iter().map(|(account, file)| Work::Remove { account, file }).collect();
+    works.extend(back.map(|back| Work::Back { back }));
+    schedule(qt, shared, Work::Many(works), line);
 }
 
 /// Deletes a contact or an event after ten seconds to undo.
@@ -388,7 +412,7 @@ fn schedule(qt: &QtThread, shared: &Arc<Shared>, work: Work, line: String) {
     let _ = qt.queue(move |mut sioul| sioul.as_mut().set_undo_line(QString::from(&line)));
     show(qt, shared);
     // An event deleted or left out: gone from the day and the agenda at once.
-    let events = matches!(pending.work, Work::Remove { .. } | Work::Skip { .. });
+    let events = touches_pim(&pending.work);
     if events {
         crate::work::show_work(qt, shared);
         crate::pim::show_pim(qt, shared);
@@ -412,7 +436,7 @@ fn finish(qt: &QtThread, shared: &Arc<Shared>, pending: &Arc<Pending>) {
         tell(qt, shared, line);
     }
     show(qt, shared);
-    if matches!(pending.work, Work::Remove { .. } | Work::Skip { .. }) {
+    if touches_pim(&pending.work) {
         crate::work::show_work(qt, shared);
     }
 }
@@ -501,7 +525,7 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
             }
         }
         // Each in turn; the first problem is said, the others are still done.
-        Work::Many(works) => works.iter().filter_map(|w| perform(w, shared)).next(),
+        Work::Many(works) => works.iter().filter_map(|w| perform(w, shared)).collect::<Vec<_>>().into_iter().next(),
         Work::Send { draft } => Some(send_now(draft, shared)),
         Work::Discard { draft } => {
             if let Some(draft) = Draft::by_id(draft) {
@@ -599,6 +623,18 @@ pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>) -> Option<String> {
             crate::pim::show_pim(qt, shared);
             (tr().text("undo-done", None), None)
         }
+        // A task and its time blocks: what was changed at once put back, what waited kept.
+        Work::Many(works) if works.iter().any(|w| matches!(w, Work::Back { .. })) || touches_pim(&pending.work) => {
+            // Each put back, the first problem said.
+            let problems: Vec<String> = works.iter().filter_map(|w| if let Work::Back { back } = w { Some(back(qt, shared)) } else { None }).collect();
+            let problem = problems.into_iter().find(|p| !p.is_empty());
+            if let Ok(mut cache) = shared.loaded.lock() {
+                *cache = None;
+            }
+            crate::work::show_work(qt, shared);
+            crate::pim::show_pim(qt, shared);
+            (problem.unwrap_or_else(|| tr().text("undo-done", None)), None)
+        }
         Work::Act { .. } | Work::Across { .. } | Work::Many(_) => (tr().text("undo-done", None), None),
     };
     tell(qt, shared, line);
@@ -681,6 +717,8 @@ struct DraftView {
     sign: bool,
     encrypt: bool,
     protection: crate::crypto::DraftProtection,
+    /// "Attaching 2 files…" while files shared from another application are copied (`outside`), else "".
+    attaching: String,
 }
 
 /// A draft as the writing window shows it.
@@ -729,6 +767,7 @@ pub(crate) fn draft(id: &str) -> Option<String> {
         sign: draft.sign,
         encrypt: draft.encrypt,
         protection: crate::crypto::draft_protection(&draft),
+        attaching: crate::outside::attaching(&draft.id),
     }))
 }
 
@@ -784,7 +823,11 @@ pub(crate) fn detach(id: &str, index: usize, forwarded: bool) -> Result<(), Stri
     if forwarded {
         draft.dropped.push(u32::try_from(index).unwrap_or(u32::MAX));
     } else if index < draft.attachments.len() {
-        draft.attachments.remove(index);
+        let taken = draft.attachments.remove(index);
+        draft.save()?;
+        // A copy Sioul made of a file another application shared goes with it.
+        compose::remove_own_copy(&taken);
+        return Ok(());
     }
     draft.save().map(|_| ())
 }
@@ -793,6 +836,10 @@ pub(crate) fn detach(id: &str, index: usize, forwarded: bool) -> Result<(), Stri
 /// Returns what stops it now (no recipient), else nothing.
 pub(crate) fn send(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Option<String> {
     let Some(draft) = Draft::by_id(id) else { return Some(tr().text("mail-draft-gone", None)) };
+    // Files shared from another application still being copied: not without them.
+    if crate::outside::coming(id) {
+        return Some(tr().text("compose-wait-files", None));
+    }
     if draft.recipients().is_empty() {
         return Some(tr().text("compose-no-recipient", None));
     }
@@ -814,7 +861,7 @@ pub(crate) fn closed(qt: &QtThread, shared: &Arc<Shared>, id: &str) {
     let Some(draft) = Draft::by_id(id) else { return };
     let signature = load_config().account(&draft.account).and_then(|a| a.signature.clone());
     let pending = hidden(shared).1.contains(id);
-    if draft.is_empty(signature.as_deref()) {
+    if draft.is_empty(signature.as_deref()) && !crate::outside::coming(id) {
         draft.discard();
     } else if !pending {
         set_status(qt, tr().text("compose-kept", None));
@@ -846,6 +893,34 @@ pub(crate) fn source(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_task_and_its_blocks_go_together_or_stay_together() {
+        // A task deleted with its time block to come (`work::delete`, `blocks::with_task`): one "Undo" for both.
+        let dir = std::env::temp_dir().join(format!("sioul-removals-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (task, block, gone) = (dir.join("task.ics"), dir.join("block.ics"), dir.join("gone.ics"));
+        std::fs::write(&task, "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:t\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
+        std::fs::write(&block, "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:b\r\nX-SIOUL-TASK:t\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+        let shared = Shared::default();
+        let work = Work::Many(vec![Work::Remove { account: String::new(), file: task.clone() }, Work::Remove { account: String::new(), file: block.clone() }]);
+        let pending = Arc::new(Pending { work, line: String::new(), taken: AtomicBool::new(false) });
+        shared.pending.lock().unwrap().push(Arc::clone(&pending));
+        // While "Undo" is offered: both out of view, both still there.
+        let (hidden, _) = hidden_pim(&shared);
+        assert!(hidden.contains(&task) && hidden.contains(&block), "{hidden:?}");
+        assert!(touches_pim(&pending.work) && task.exists() && block.exists());
+        // Undone (taken off the list, never done): both back, untouched.
+        assert!(!pending.taken.swap(true, Ordering::Relaxed));
+        shared.pending.lock().unwrap().clear();
+        assert!(hidden_pim(&shared).0.is_empty() && task.exists() && block.exists());
+        // Left to its ten seconds: both deleted; one gone already is said, the other still deleted.
+        let late = Work::Many(vec![Work::Remove { account: String::new(), file: gone.clone() }, Work::Remove { account: String::new(), file: task.clone() }, Work::Remove { account: String::new(), file: block.clone() }]);
+        let said = perform(&late, &shared);
+        assert!(said.is_some_and(|line| line.contains("gone.ics")));
+        assert!(!task.exists() && !block.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn dropped_files_keep_their_names() {

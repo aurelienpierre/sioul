@@ -70,6 +70,13 @@ Each attachment is checked by the antivirus before it opens or is saved. **Keep 
 
 The message leaves as HTML for those who read HTML, and as plain text, the Markdown itself, for the others.
 
+### From other apps
+
+- **On a phone**, Sioul is in Android's share sheet: share a photo, a PDF, a link or some text to **Sioul**, and a new message opens with it, from your usual address. Your addresses are there too, each on its own (Android 10 and later): choose one, and the message goes from it. A long press on Sioul's icon shows them as well, **Write from …**.
+- **Files** are copied into Sioul as they come. The window says "Attaching 2 files…" until they are there, and **Send** waits for them. The copies go once the message is sent or deleted.
+- **Mail links** (`mailto:`), in a browser or another app, open a new message in Sioul, with its address, subject and text, when Sioul is your mail app. On a phone, Android asks which app opens them the first time. On Linux, choose Sioul as your mail program: KDE, **System Settings ▸ Default Applications**; GNOME, **Settings ▸ Apps ▸ Default Apps**. A link clicked while Sioul is open opens there.
+- **Nothing is sent** until you press **Send**. Other apps see nothing of your accounts but the addresses in the share sheet.
+
 ### Signing and encrypting
 
 When you have an OpenPGP key (made or imported in [Accounts ▸ Encryption](accounts.md#encryption)), the writing window has two small switches: **Sign** and **Encrypt**. **Encrypt** works when every recipient's key is known; otherwise it says whose key is missing, and **Look for their keys** asks their domain's Web Key Directory, then keys.openpgp.org (only when you ask, since it tells a server to whom you write).

@@ -81,7 +81,14 @@ Sioul remplit les identifiants depuis votre coffre Bitwarden, lu par Sioul lui-m
 2. Sur la page de connexion d’un site, **Remplir l’identifiant**.
 3. La première fois dans une session, ouvrez le coffre : **Ouvrir avec ma clé de sécurité** (quand Bitwarden connaît la clé comme clé d’accès utilisée pour le chiffrement), ou votre mot de passe principal, puis la deuxième étape que demande votre compte (une clé de sécurité, le code d’une application d’authentification, un code par courriel, un code de récupération).
 
-L’identifiant est écrit dans les champs de la page, seulement sur le site auquel il appartient, seulement quand vous le demandez. Quand un site a plusieurs identifiants, ou aucun, une liste s’ouvre, avec une recherche dans tout le coffre ; **Choisir un identifiant…** l’ouvre à tout moment. Un identifiant fait pour un autre domaine dit lequel, pour qu’un site qui en imite un autre se remarque.
+L’identifiant est écrit dans les champs de la page, seulement sur le site auquel il appartient, seulement quand vous le demandez. Quand un site a plusieurs identifiants, ou aucun, la liste de vos identifiants s’ouvre ; **Choisir un identifiant…** l’ouvre à tout moment. Deux champs les trouvent, chacun facultatif, les deux ensemble quand les deux sont remplis :
+
+- **Site** : le domaine du site pour commencer, sa propre adresse en premier. Changez-le pour une connexion sur un autre site (accounts.google.com, pour un site qui se connecte avec Google), ou tapez des mots : « ameli » trouve ameli.fr et assure.ameli.fr, pas camelia.com ; un identifiant sans site se trouve par son nom. Jamais par un nom d’utilisateur : « gmail » trouve les identifiants de Gmail, pas tous ceux qui ont une adresse Gmail.
+- **Nom d’utilisateur** : n’importe quelle partie, seul ou avec un site.
+
+L’identifiant choisi en dernier sur un site vient en premier la fois suivante, son domaine dans Site quand il a été fait pour un autre. Un identifiant fait pour un autre domaine dit lequel, pour qu’un site qui en imite un autre se remarque. Tab passe d’un champ à l’autre, Entrée prend le premier identifiant (ou celui où vous êtes allé avec les flèches), Échap ferme.
+
+Pour le mot de passe d’un compte de courrier (**Mot de passe…** ▸ **Depuis Bitwarden…**, dans la page Comptes), Nom d’utilisateur porte l’adresse du compte et Site reste vide : l’adresse d’un serveur de courrier (imap.gmail.com) est rarement celle où votre fournisseur garde l’identifiant (accounts.google.com).
 
 Sur une page qui demande un code à usage unique, **Remplir l’identifiant** écrit le code que donne en ce moment le secret gardé dans votre coffre.
 
@@ -90,3 +97,5 @@ Votre mot de passe principal et vos clés ne sont jamais gardés. Les identifian
 ## Où c’est gardé {#where-it-is-kept}
 
 L’adresse et les choix de chaque site sont dans les réglages de Sioul. Les cookies et les fichiers des sites vivent dans un profil de navigateur propre à Sioul, à part de votre navigateur habituel. Leurs notifications attendent dans le dossier d’état de Sioul jusqu’à ce que vous regardiez.
+
+Quand Sioul se ferme, il ferme chaque site comme un navigateur ferme ses onglets : un site qui garde votre connexion dans la page ouverte, comme Discord, la retrouve la fois suivante.

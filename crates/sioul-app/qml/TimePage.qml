@@ -108,6 +108,15 @@ Item {
                 page.reload()
         }
     }
+    // The day turned (the window's clock): today's bar is the new day's.
+    Connections {
+        target: page.window
+
+        function onTodayChanged() {
+            if (page.visible)
+                page.reload()
+        }
+    }
 
     ScrollView {
         id: scroll

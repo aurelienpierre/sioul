@@ -39,16 +39,21 @@ Item {
     property var helpShown: ({})
     // What sites notified, kept for the Porch.
     property var siteNotices: JSON.parse(page.sioul.siteNotices() || "[]")
-    // Doses due while Sioul was closed: asked about here, at the next start;
-    // made off the window's thread (`missedView`).
-    readonly property var missedDoses: JSON.parse(page.sioul.missedView || "[]")
+    // The doses (docs/health.md, "On the Porch"), made off the window's thread
+    // (`missedView`, `health::missed`): today's from their time on, not marked
+    // yet, reminded or not; and those due while Sioul was closed, asked about.
+    // Whatever the hours: doses are not mail.
+    readonly property var doses: JSON.parse(page.sioul.missedView || "{}")
+    readonly property var dueDoses: page.doses.due || []
+    readonly property var missedDoses: page.doses.closed || []
 
     function reloadDoses() {
         page.sioul.refreshHealth()
     }
 
-    // Read again when the Porch shows, when its mail is sorted again, and each
-    // minute: a dose marked on another computer comes through the sharing.
+    // Read again when the Porch shows, when its mail is sorted again, and at
+    // each minute's turn of the window's clock: a dose comes due, passes its
+    // half hour, or is marked on another computer (through the sharing).
     onVisibleChanged: {
         page.takeShown()
         if (page.visible)
@@ -60,11 +65,13 @@ Item {
         page.reloadDoses()
     }
 
-    Timer {
-        interval: 60000
-        running: page.visible && !page.sioul.away
-        repeat: true
-        onTriggered: page.reloadDoses()
+    Connections {
+        target: page.window
+
+        function onNowChanged() {
+            if (page.visible)
+                page.reloadDoses()
+        }
     }
 
     Connections {
@@ -410,6 +417,95 @@ Item {
                     }
                 }
 
+                // Today's doses from their time on, not marked yet: reminded or
+                // not, a notification can go unseen. "Taken" marks one now; more
+                // than half an hour late, when it was taken is asked (DoseTaken.qml).
+                // Under one, the doubt when another device may know: never "not taken".
+                Panel {
+                    visible: page.dueDoses.length > 0
+                    Layout.fillWidth: true
+                    theme: page.theme
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 6
+
+                        Repeater {
+                            model: page.dueDoses
+
+                            delegate: GridLayout {
+                                id: dueDose
+
+                                required property var modelData
+
+                                Layout.fillWidth: true
+                                columns: 3
+                                columnSpacing: 12
+                                rowSpacing: 2
+
+                                // As wide as the question's below: the names line up.
+                                Label {
+                                    Layout.preferredWidth: 90
+                                    text: dueDose.modelData.time
+                                    textFormat: Text.PlainText
+                                    font.features: { "tnum": 1 }
+                                    color: page.theme.text
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: dueDose.modelData.name + (dueDose.modelData.dose !== "" ? "  ·  " + dueDose.modelData.dose : "")
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    color: page.theme.text
+                                }
+                                // Answers that differ on your devices (`choose`): both said
+                                // under it, you choose; "Taken" then keeps the time it was taken.
+                                RowLayout {
+                                    Layout.alignment: Qt.AlignRight
+                                    spacing: 6
+
+                                    Button {
+                                        text: page.sioul.text(dueDose.modelData.late && !dueDose.modelData.choose ? "health-taken-when" : "health-taken")
+                                        onClicked: {
+                                            if (dueDose.modelData.choose) {
+                                                page.sioul.doseChoose(dueDose.modelData.key, true)
+                                                page.reloadDoses()
+                                                return
+                                            }
+                                            if (dueDose.modelData.late) {
+                                                page.window.askDose(dueDose.modelData.key)
+                                                return
+                                            }
+                                            page.sioul.setDoseTaken(dueDose.modelData.key, true)
+                                            page.reloadDoses()
+                                        }
+                                    }
+                                    Button {
+                                        visible: dueDose.modelData.choose === true
+                                        flat: true
+                                        text: page.sioul.text("health-not-taken")
+                                        onClicked: {
+                                            page.sioul.doseChoose(dueDose.modelData.key, false)
+                                            page.reloadDoses()
+                                        }
+                                    }
+                                }
+                                // Whether it was taken on another device is not known here: said, never
+                                // guessed; "This device is off" for each device it names.
+                                DoubtLine {
+                                    Layout.columnSpan: 3
+                                    Layout.fillWidth: true
+                                    sioul: page.sioul
+                                    theme: page.theme
+                                    doubt: dueDose.modelData.doubt
+                                    offs: dueDose.modelData.doubt_off || []
+                                    onSaidOff: page.reloadDoses()
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Doses due while Sioul was closed on all your computers: a question on the
                 // past, answered once (when it was taken, in DoseTaken.qml); never a reminder.
                 Panel {
@@ -474,16 +570,16 @@ Item {
                                         }
                                     }
                                 }
-                                // Whether it was taken on another device is not known here: said, never guessed.
-                                Label {
-                                    visible: missedDose.modelData.doubt !== ""
+                                // Whether it was taken on another device is not known here: said, never
+                                // guessed; "This device is off" for each device it names.
+                                DoubtLine {
                                     Layout.columnSpan: missedDose.columns
                                     Layout.fillWidth: true
-                                    text: missedDose.modelData.doubt
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    font.pixelSize: 13
-                                    color: page.theme.warm
+                                    sioul: page.sioul
+                                    theme: page.theme
+                                    doubt: missedDose.modelData.doubt
+                                    offs: missedDose.modelData.doubt_off || []
+                                    onSaidOff: page.reloadDoses()
                                 }
                             }
                         }

@@ -197,7 +197,9 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
     // The next midnight on the clock: the day of a change of hour lasts 23 or 25 hours.
     let next_midnight = today.tomorrow().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(midnight + 86_400, |z| z.timestamp().as_second());
     let at = |hour: i8| jiff::civil::Time::new(hour, 0, 0, 0).ok().and_then(|t| today.to_datetime(t).to_zoned(zone.clone()).ok()).map_or(midnight + i64::from(hour) * 3600, |z| z.timestamp().as_second());
-    let hours = crate::plan::stretches(&settings.windows, today, &zone, settings.anything);
+    // The day's hours, the end of work moved by free time included (light steps only there).
+    let hours = settings.hours_on(today, &zone);
+    let moved = settings.extension_on(today, &zone);
     let (opening, closing) = match (hours.first(), hours.last()) {
         (Some(first), Some(last)) => (first.0, last.1),
         _ => (at(9), at(17)),
@@ -205,6 +207,11 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
     // Today, and the end of hours that run past midnight: what lasts longer is cut there.
     let day_end = next_midnight.max(closing);
     let mut view = DayView { now: stamp, hours: hours.iter().map(|&(start, end, open)| Stretch { start, end, kind: open.id() }).collect(), ..DayView::default() };
+    // A task's time block is the task's time, laid as the task (`blocks`): never an event of its own here.
+    let own: Vec<Occurrence> = events.iter().filter(|e| e.task.is_empty() || !plan.items.contains_key(&e.task)).cloned().collect();
+    let events = own.as_slice();
+    // A task pinned to a block today: laid there, its margins around it, whatever else is.
+    let block_today = |uid: &str| plan.pins.get(uid).filter(|pin| pin.end > midnight && pin.start < next_midnight);
     let mut timed: Vec<&Occurrence> = Vec::new();
     for event in events.iter().filter(|e| !e.cancelled && e.end > midnight && e.start < next_midnight) {
         if event.all_day {
@@ -230,7 +237,12 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
     for task in tasks.iter().filter(|t| t.status == crate::tasks::Status::Completed) {
         let Some(done) = task.completed.filter(|&at| at >= midnight && at < next_midnight) else { continue };
         let length = i64::from(task.estimate.clamp(15, 60)) * 60;
-        view.blocks.push(Block { start: (done - length).max(midnight), end: done.max(midnight + 15 * 60), kind: "done", title: task.title.clone(), key: task.uid.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false });
+        // Done in the block that held its work: there, the record of when it was done.
+        let (start, end) = match settings.records.get(&task.uid) {
+            Some(&(from, to)) => (from.max(midnight), to.min(day_end).max(from.max(midnight) + 15 * 60)),
+            None => ((done - length).max(midnight), done.max(midnight + 15 * 60)),
+        };
+        view.blocks.push(Block { start, end, kind: "done", title: task.title.clone(), key: task.uid.clone(), energy: String::new(), location: String::new(), column: 0, columns: 1, part: 0, pinned: false, note: String::new(), read_only: false, recurring: false });
     }
     // Meals and naps, kept free (`needs`), as today has them (its own changes):
     // shown, a step never laid over them. The night is kept free too, but not
@@ -253,7 +265,7 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         .order
         .iter()
         .filter_map(|uid| Some((tasks.iter().find(|t| &t.uid == uid)?, plan.items.get(uid)?)))
-        .filter(|(_, planned)| !planned.optional && planned.open_steps == 0 && planned.start == Some(today) && planned.on_start > 0)
+        .filter(|(task, planned)| (block_today(&task.uid).is_some() || (!planned.optional && planned.open_steps == 0)) && planned.start == Some(today) && planned.on_start > 0)
         .map(|(task, planned)| {
             let rates = capacity.rates_of(task);
             Step { task, planned, level: rates.level(), dominant: rates.dominant() }
@@ -314,17 +326,24 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
     }
     let mut laid: BTreeMap<&str, i64> = BTreeMap::new();
     let mut heavy_laid: Vec<(i64, i64)> = Vec::new();
-    // Given a time today by hand (`Task::at`): laid there first, its margins before and after, whatever else is.
-    let (pinned, others): (Vec<Step>, Vec<Step>) = steps.into_iter().partition(|s| s.task.at_on(today, &zone).is_some());
+    // Pinned to a block today, or given a time today by a drag before blocks (`Task::at`): laid there first,
+    // its margins before and after, whatever else is.
+    let (pinned, others): (Vec<Step>, Vec<Step>) = steps.into_iter().partition(|s| block_today(&s.task.uid).is_some() || s.task.at_on(today, &zone).is_some());
     for step in &pinned {
-        let Some(at) = step.task.at_on(today, &zone) else { continue };
-        let length = i64::from(step.planned.on_start.max(step.planned.laid)) * 60;
-        let (before, after) = (i64::from(step.task.margins.before) * 60, i64::from(step.task.margins.after) * 60);
-        // The step's own start is the time given; one already past is laid from now.
-        let inner = at.max(start_at + before);
-        let (from, to) = (inner - before, inner + (length - before - after).max(5 * 60) + after);
+        let (from, to) = match block_today(&step.task.uid) {
+            // Its block, as the calendar has it: under way, it shows from its start.
+            Some(pin) => (pin.span().0.max(midnight), pin.span().1.min(day_end)),
+            None => {
+                let Some(at) = step.task.at_on(today, &zone) else { continue };
+                let length = i64::from(step.planned.on_start.max(step.planned.laid)) * 60;
+                let (before, after) = (i64::from(step.task.margins.before) * 60, i64::from(step.task.margins.after) * 60);
+                // The step's own start is the time given; one already past is laid from now.
+                let inner = at.max(start_at + before);
+                (inner - before, inner + (length - before - after).max(5 * 60) + after)
+            }
+        };
         lay(&mut view, step, from, to, 0, true);
-        busy.push((from, to + pause));
+        busy.push((from - if block_today(&step.task.uid).is_some() { pause } else { 0 }, to + pause));
         if step.level == crate::demands::Level::Heavy {
             heavy_laid.push((from, to));
         }
@@ -352,6 +371,11 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
             let open: Vec<(i64, i64)> = crate::window::spans_on(if own.is_empty() { &settings.office_hours } else { &own }, today, &zone).iter().map(|(o, c)| (o.timestamp().as_second(), c.timestamp().as_second())).collect();
             runs = runs.iter().flat_map(|&(from, to, area)| open.iter().filter(move |&&(o, c)| from.max(o) < to.min(c)).map(move |&(o, c)| (from.max(o), to.min(c), area))).collect();
         }
+        // The end of work moved by free time: light steps only, and those there first (docs/pauses.md).
+        let light = matches!(step.level, crate::demands::Level::Light | crate::demands::Level::Rest);
+        if !light && !moved.is_empty() {
+            runs = crate::plan::less(&runs, &moved);
+        }
         if runs.is_empty() {
             view.more += 1;
             continue;
@@ -366,7 +390,12 @@ pub fn day(now: &Zoned, events: &[Occurrence], plan: &Plan, tasks: &[Task], sett
         if step.level == crate::demands::Level::Heavy {
             held.extend(heavy_laid.iter().map(|&(start, _)| (start - BREAK_AFTER_HEAVY * 60, start)));
         }
-        let free: Vec<(i64, i64)> = crate::plan::less(&runs, &held).into_iter().map(|(from, to, _)| (rounded(from.max(after)), to)).filter(|(from, to)| to > from).collect();
+        let mut free: Vec<(i64, i64)> = crate::plan::less(&runs, &held).into_iter().map(|(from, to, _)| (rounded(from.max(after)), to)).filter(|(from, to)| to > from).collect();
+        if light && !moved.is_empty() {
+            let inside: Vec<(i64, i64)> = free.iter().flat_map(|&(a, b)| moved.iter().filter_map(move |&(m, n)| (a.max(m) < b.min(n)).then_some((a.max(m), b.min(n))))).collect();
+            let outside = crate::plan::less(&free.iter().map(|&(a, b)| (a, b, Area::ALL)).collect::<Vec<_>>(), &moved).into_iter().map(|(a, b, _)| (a, b));
+            free = inside.into_iter().chain(outside).collect();
+        }
         let length = i64::from(planned.on_start) * 60;
         // A step up to an hour in one go, in the first gap that holds it; a longer
         // one (or one the plan already cut) from the first gap on, in parts of a
@@ -729,6 +758,54 @@ mod tests {
         old.at = "2026-10-04T15:00".into();
         let view = laid_out(&now, &hours, &[], &[old]);
         assert!(view.blocks.iter().all(|b| !b.pinned));
+    }
+
+    /// A task's time block, as the calendar has it (an event naming its task).
+    fn block_of(task: &str, from: &str, to: &str) -> Occurrence {
+        Occurrence { key: format!("{task}-block.ics"), uid: format!("{task}-block"), summary: task.into(), start: at(from).timestamp().as_second(), end: at(to).timestamp().as_second(), task: task.into(), ..Occurrence::default() }
+    }
+
+    /// The day as the window lays it: the blocks sorted out of the events, then the plan, then the day.
+    fn with_blocks(now: &Zoned, hours: &[AdminWindow], events: &[Occurrence], tasks: &[Task]) -> DayView {
+        let blocks = crate::blocks::Blocks::of(events, tasks, now.timestamp().as_second(), now.time_zone());
+        let own = crate::blocks::without_blocks(events.to_vec(), tasks);
+        let settings = Settings::of_hours(hours, TaskAreas::usual()).with_pins(blocks).with_events(now, &own);
+        let made = plan(tasks, now.date(), &settings, &BTreeMap::new(), &BTreeSet::new());
+        // The events as read, blocks among them: the day sets them apart itself too.
+        day(now, events, &made, tasks, &settings)
+    }
+
+    #[test]
+    fn a_task_pinned_to_its_block_is_laid_there() {
+        // Work 9–12; "bank" pinned 10:00–10:45 by its block; "free", an hour and a half, placed by the plan.
+        let now = at("2026-10-05T08:00");
+        let hours = vec![window("monday", "09:00", "12:00", "work")];
+        let tasks = vec![task("bank", 30, ""), task("free", 90, "")];
+        let view = with_blocks(&now, &hours, &[block_of("bank", "2026-10-05T10:00", "2026-10-05T10:45")], &tasks);
+        // The task in its block, for the block's 45 minutes, held; never an event of its own.
+        assert!(view.blocks.iter().all(|b| b.kind != "event"), "{:?}", laid(&view));
+        let bank: Vec<&Block> = view.blocks.iter().filter(|b| b.title == "bank").collect();
+        assert_eq!(bank.len(), 1);
+        assert_eq!((bank[0].kind, bank[0].pinned, bank[0].start, (bank[0].end - bank[0].start) / 60), ("task", true, at("2026-10-05T10:00").timestamp().as_second(), 45));
+        // The rest of the day goes around it, a pause on each side: 9:00–9:55, then from 10:50.
+        let free: Vec<(i64, i64)> = steps_of(&view).into_iter().filter(|s| s.0 == "free").map(|s| (s.1, s.2)).collect();
+        assert_eq!(free, vec![(540, 595), (650, 685)]);
+    }
+
+    #[test]
+    fn a_past_block_leaves_its_task_to_the_plan() {
+        // 11:00: this morning's block, 10:00–10:45, is over and the task not done: laid again from now, nothing said.
+        let now = at("2026-10-05T11:00");
+        let hours = vec![window("monday", "09:00", "12:00", "work")];
+        let tasks = vec![task("bank", 30, "")];
+        let view = with_blocks(&now, &hours, &[block_of("bank", "2026-10-05T10:00", "2026-10-05T10:45")], &tasks);
+        let shown: Vec<(&str, &str, i64, bool)> = view.blocks.iter().map(|b| (b.kind, b.title.as_str(), (b.start - at("2026-10-05T00:00").timestamp().as_second()) / 60, b.pinned)).collect();
+        assert_eq!(shown, vec![("task", "bank", 660, false)]);
+        // Done in its block: shown done there, the record of when the work was done.
+        let done = Task { status: crate::tasks::Status::Completed, completed: Some(at("2026-10-05T10:40").timestamp().as_second()), ..task("bank", 30, "") };
+        let view = with_blocks(&now, &hours, &[block_of("bank", "2026-10-05T10:00", "2026-10-05T10:45")], &[done]);
+        let shown: Vec<(&str, i64, i64)> = view.blocks.iter().map(|b| (b.kind, (b.start - at("2026-10-05T00:00").timestamp().as_second()) / 60, (b.end - b.start) / 60)).collect();
+        assert_eq!(shown, vec![("done", 600, 45)]);
     }
 
     #[test]

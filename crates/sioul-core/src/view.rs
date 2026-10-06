@@ -803,7 +803,9 @@ pub fn accounts(config: &Config, tr: &Translator, status: &BTreeMap<String, (Str
         .filter(|a| a.kind != AccountKind::Portal)
         .map(|a| {
             let mut rows = Vec::new();
-            if a.auth.as_deref() == Some("google") {
+            // Google's calendars: no server of theirs to name. Its mail, signed in with
+            // Google too, has its IMAP server like any other.
+            if a.auth.as_deref() == Some("google") && a.kind == AccountKind::Dav {
                 rows.push(Figure { label: tr.text("account-row-server", None), value: "Google".into() });
             } else if let (Some(host), true) = (&a.host, a.kind == AccountKind::Dav) {
                 rows.push(Figure { label: tr.text("account-row-server", None), value: host.clone() });
@@ -852,7 +854,7 @@ pub fn accounts(config: &Config, tr: &Translator, status: &BTreeMap<String, (Str
                 signature: a.signature.clone().unwrap_or_default(),
                 enabled: a.enabled,
                 identity: a.address.as_deref().map(str::to_lowercase).unwrap_or_else(|| a.id.clone()),
-                service: if a.auth.as_deref() == Some("google") {
+                service: if a.auth.as_deref() == Some("google") && a.kind == AccountKind::Dav {
                     "google"
                 } else if a.kind == AccountKind::Dav {
                     "dav"
@@ -1563,6 +1565,37 @@ pub fn contacts(all: &[crate::contacts::Contact], query: &str, category: &str, t
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Mail signed in with Google is mail (its settings, its server), signed
+    /// in again rather than given a password; Google's calendars stay Google's.
+    #[test]
+    fn mail_signed_in_with_google_is_mail() {
+        let config: Config = toml::from_str(
+            r#"
+[[account]]
+id = "gmail"
+kind = "imap"
+address = "you@gmail.com"
+host = "imap.gmail.com"
+auth = "google"
+
+[[account]]
+id = "google"
+kind = "dav"
+address = "you@gmail.com"
+host = "apidata.googleusercontent.com"
+auth = "google"
+"#,
+        )
+        .unwrap();
+        let wanted: BTreeSet<String> = ["gmail".to_string()].into();
+        let views = accounts(&config, &Translator::new("en"), &BTreeMap::new(), &wanted);
+        let mail = views.iter().find(|v| v.id == "gmail").unwrap();
+        assert_eq!((mail.service, mail.google, mail.password_wanted), ("mail", true, false));
+        assert!(mail.rows[0].value.starts_with("imap.gmail.com"), "{}", mail.rows[0].value);
+        let calendars = views.iter().find(|v| v.id == "google").unwrap();
+        assert_eq!((calendars.service, calendars.rows[0].value.as_str()), ("google", "Google"));
+    }
 
     #[test]
     fn overlapping_events_sit_side_by_side() {

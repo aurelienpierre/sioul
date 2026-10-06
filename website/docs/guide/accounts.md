@@ -45,23 +45,27 @@ Below the cards, **The AI shield** holds the key for Anthropic's service, used o
 
 ### Removing one
 
-**Remove** asks first. A mail account's password leaves the keyring; its mail stays on your disk and on the server. For Google, the access is given back to Google.
+**Remove** asks first. A mail account's password leaves the keyring; its mail stays on your disk and on the server. For Google, the access is given back to Google: the mail's and the calendars' apart, so that removing one leaves the other its access.
 
 ### An account from your other device
 
-[Sharing between your devices](sharing.md) brings your accounts, never their passwords. Such an account says it has no password here yet, with **Password…** on its card: type it, or choose **From Bitwarden…**. Your vault opens (its master password, then its second step: an app's code, an e-mail's, a YubiKey's), and the logins it keeps for this address are listed; choose one. The password is tried with the server, then kept in this device's keyring. **Password…** comes back if the server ever refuses the one kept.
+[Sharing between your devices](sharing.md) brings your accounts, never their passwords. Such an account says it has no password here yet, with **Password…** on its card: type it, or choose **From Bitwarden…**. Your vault opens (its master password, then its second step: an app's code, an e-mail's, a YubiKey's), and the logins whose user name is this address are listed, the server's own first; choose one, or type a site to narrow them ([Sites](sites.md#logins-from-bitwarden)). The password is tried with the server, then kept in this device's keyring. **Password…** comes back if the server ever refuses the one kept.
 
 On a phone, a security key cannot open the vault yet: use another second step of your Bitwarden account.
+
+### Google's mail
+
+Gmail or Google Workspace mail signed in with Google says when Google ends the access (your Google password changed, your Google key deleted, a Google project left in testing). On its card, **Sign in again** opens the mail form on Google's page, with your key; **App password…** gives it an app password instead. Sioul never asks for your Google account's password. See [First steps](first-steps.md#gmail-and-google-workspace).
 
 ## Add an account
 
 Three forms, one after the other:
 
-- **Add a mail account**: your address, **Find the server**, your password, **Connect and add**.
+- **Add a mail account**: your address, **Find the server**, your password, **Connect and add**. For Gmail and Google Workspace, **Use an app password** or **Sign in with Google** instead of a password.
 - **Add contacts and calendars**: from a CalDAV and CardDAV server, such as Nextcloud, Fastmail, iCloud or your host.
 - **Google calendars, contacts and tasks**: **Sign in with Google**, on Google's own page.
 
-On a phone, **From this phone's accounts…**, above them, opens Android's own list of the accounts the phone knows. A Google address fills the Google form; any other fills the mail form, whose server Sioul then looks for, and the one for contacts and calendars. Android lends no password: Sioul asks for it once.
+On a phone, **From this phone's accounts…**, above them, opens Android's own list of the accounts the phone knows. A Google address fills the Google form and the mail form, with Google's two ways; any other fills the mail form, whose server Sioul then looks for, and the one for contacts and calendars. Android lends no password: Sioul asks for it once.
 
 Step by step: [First steps](first-steps.md#add-your-mail). Passwords go to your system's keyring, nowhere else.
 

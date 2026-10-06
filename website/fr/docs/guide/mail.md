@@ -70,6 +70,13 @@ Chaque pièce jointe est vérifiée par l’antivirus avant de s’ouvrir ou d�
 
 Le message part en HTML pour qui lit le HTML, et en texte brut, le Markdown lui-même, pour les autres.
 
+### Depuis d’autres applications {#from-other-apps}
+
+- **Sur un téléphone**, Sioul est dans le menu de partage d’Android : partagez une photo, un PDF, un lien ou un texte vers **Sioul**, et un nouveau message s’ouvre avec, depuis votre adresse habituelle. Vos adresses y sont aussi, chacune à part (Android 10 et plus récent) : choisissez-en une, et le message part d’elle. Un appui long sur l’icône de Sioul les montre aussi, **Écrire depuis …**.
+- **Les fichiers** sont copiés dans Sioul à leur arrivée. La fenêtre dit « Ajout des 2 fichiers… » jusqu’à ce qu’ils soient là, et **Envoyer** les attend. Les copies s’en vont une fois le message envoyé ou supprimé.
+- **Les liens de courrier** (`mailto:`), dans un navigateur ou une autre application, ouvrent un nouveau message dans Sioul, avec son adresse, son objet et son texte, quand Sioul est votre application de courrier. Sur un téléphone, Android demande la première fois quelle application les ouvre. Sous Linux, choisissez Sioul comme programme de courrier parmi les applications par défaut des réglages de votre bureau (KDE, GNOME), ou avec `xdg-mime default com.aurelienpierre.Sioul.desktop x-scheme-handler/mailto`. Un lien cliqué pendant que Sioul est ouvert s’ouvre dedans.
+- **Rien n’est envoyé** avant que vous appuyiez sur **Envoyer**. Les autres applications ne voient rien de vos comptes, sinon les adresses du menu de partage.
+
 ### Signer et chiffrer {#signing-and-encrypting}
 
 Quand vous avez une clé OpenPGP (créée ou importée dans [Comptes ▸ Chiffrement](accounts.md#encryption)), la fenêtre d’écriture a deux petits interrupteurs : **Signer** et **Chiffrer**. **Chiffrer** fonctionne quand la clé de chaque destinataire est connue ; sinon il dit pour qui la clé manque, et **Chercher leurs clés** interroge le Web Key Directory de leur domaine, puis keys.openpgp.org (seulement quand vous le demandez, puisque cela dit à un serveur à qui vous écrivez).

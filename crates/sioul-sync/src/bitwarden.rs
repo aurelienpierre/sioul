@@ -706,44 +706,315 @@ pub fn sync(server: &Server, unlocked: &Unlocked) -> Result<Vec<Item>, Problem> 
     Ok(items)
 }
 
-/// The logins for a site: those whose address shares its domain, the same host first.
-/// The sites of a login, as their hosts.
+/// The sites of a login, as their hosts in lower case: its addresses that are
+/// web pages, with or without "https://". An app's ("androidapp://…") is no
+/// site, nor is a pattern ("^https?://…", for Bitwarden's matching by regex).
 pub fn hosts_of(item: &Item) -> Vec<String> {
-    item.uris.iter().map(|u| sioul_core::sites::host_of(&if u.contains("://") { u.clone() } else { format!("https://{u}") })).filter(|h| !h.is_empty()).collect()
+    item.uris.iter().filter_map(|uri| web_host(uri)).collect()
 }
 
-/// The logins whose name, user name or sites hold every word of `query`,
-/// case and French accents aside; by name.
-pub fn search<'a>(items: &'a [Item], query: &str) -> Vec<&'a Item> {
-    let fold = |text: &str| -> String { text.chars().map(sioul_core::text::fold_char).collect() };
-    let words: Vec<String> = fold(query).split_whitespace().map(str::to_string).collect();
-    if words.is_empty() {
-        return Vec::new();
+fn web_host(uri: &str) -> Option<String> {
+    let uri = uri.trim();
+    let address = match uri.split_once("://") {
+        Some((scheme, _)) if !scheme.eq_ignore_ascii_case("https") && !scheme.eq_ignore_ascii_case("http") => return None,
+        Some(_) => uri.to_string(),
+        None => format!("https://{uri}"),
+    };
+    let host = sioul_core::sites::host_of(&address);
+    (!host.is_empty()).then_some(host)
+}
+
+/// The domain a host is registered under (`sites::domain_of`: "ameli.fr" for
+/// assure.ameli.fr); an address in numbers (192.168.1.1) or a computer's
+/// name (one label) is its own.
+fn domain(host: &str) -> String {
+    let numbers = host.split('.').all(|label| !label.is_empty() && label.bytes().all(|b| b.is_ascii_digit()));
+    if numbers || host.starts_with('[') || !host.contains('.') { host.to_string() } else { sioul_core::sites::domain_of(host) }
+}
+
+/// The registrable domain of an address or a host, as the search reads it:
+/// "ameli.fr" for https://assure.ameli.fr/….
+pub fn domain_of_address(address: &str) -> String {
+    domain(&sioul_core::sites::host_of(address.trim()))
+}
+
+/// Case and accents aside, as everywhere in Sioul (`text::fold_char`).
+fn folded(text: &str) -> String {
+    text.chars().map(sioul_core::text::fold_char).collect()
+}
+
+/// Whether `word` begins a label of `host`, or a part of one between hyphens:
+/// "ameli" in ameli.fr and assure.ameli.fr, not in camelia.com; "agricole" in
+/// credit-agricole.fr; "ameli.f", typed on the way to "ameli.fr", in ameli.fr.
+fn begins_label(host: &str, word: &str) -> bool {
+    host.match_indices(word).any(|(at, _)| at == 0 || matches!(host.as_bytes()[at - 1], b'.' | b'-'))
+}
+
+/// Whether `word` begins a word of `text`: "ameli" in "Mon Ameli", not in "Camelia".
+fn begins_word(text: &str, word: &str) -> bool {
+    text.match_indices(word).any(|(at, _)| !text[..at].chars().next_back().is_some_and(char::is_alphanumeric))
+}
+
+/// Whether `word` is a whole word of `text`: "google" in "Google Play", not in "Googleplex".
+fn whole_word(text: &str, word: &str) -> bool {
+    text.match_indices(word).any(|(at, _)| !text[..at].chars().next_back().is_some_and(char::is_alphanumeric) && !text[at + word.len()..].chars().next().is_some_and(char::is_alphanumeric))
+}
+
+/// What a login is searched by, folded once as the vault opens: its name, its
+/// user name, its sites and their domains. Never its password, its notes or
+/// its one-time code's secret: no search reads them.
+struct Searched {
+    name: String,
+    user: String,
+    hosts: Vec<String>,
+    domains: Vec<String>,
+    /// Its sites as shown: `hosts` before folding.
+    shown: Vec<String>,
+}
+
+impl Searched {
+    fn of(item: &Item) -> Searched {
+        let shown = hosts_of(item);
+        let hosts: Vec<String> = shown.iter().map(|h| folded(h)).collect();
+        Searched { name: folded(&item.name), user: folded(&item.username), domains: hosts.iter().map(|h| domain(h)).collect(), hosts, shown }
     }
-    let mut found: Vec<(String, &Item)> = items
-        .iter()
-        .filter_map(|item| {
-            let all = fold(&format!("{} {} {}", item.name, item.username, hosts_of(item).join(" ")));
-            words.iter().all(|w| all.contains(w.as_str())).then(|| (fold(&item.name), item))
-        })
-        .collect();
-    found.sort_by(|a, b| a.0.cmp(&b.0));
-    found.into_iter().map(|(_, item)| item).collect()
+
+    /// How near the page its sites are: 0 its host, 1 its domain, 2 neither;
+    /// and which of its sites is.
+    fn nearness(&self, page: &Page) -> (u8, Option<usize>) {
+        if page.host.is_empty() {
+            return (2, None);
+        }
+        if let Some(at) = self.hosts.iter().position(|h| *h == page.host) {
+            return (0, Some(at));
+        }
+        match self.domains.iter().position(|d| *d == page.domain) {
+            Some(at) => (1, Some(at)),
+            None => (2, None),
+        }
+    }
 }
 
-pub fn for_site<'a>(items: &'a [Item], url: &str) -> Vec<&'a Item> {
-    let host = sioul_core::sites::host_of(url);
-    let domain = sioul_core::sites::domain_of(&host);
-    let mut found: Vec<(&Item, bool)> = items
-        .iter()
-        .filter_map(|item| {
-            let hosts = hosts_of(item);
-            let same_host = hosts.iter().any(|h| *h == host);
-            (same_host || hosts.iter().any(|h| sioul_core::sites::domain_of(h) == domain)).then_some((item, same_host))
-        })
-        .collect();
-    found.sort_by_key(|(_, same)| !same);
-    found.into_iter().map(|(item, _)| item).collect()
+/// The address the logins are wanted for: a site's page, an account's server.
+struct Page {
+    host: String,
+    domain: String,
+}
+
+impl Page {
+    fn of(url: &str) -> Page {
+        let host = folded(&sioul_core::sites::host_of(url.trim()));
+        Page { domain: domain(&host), host }
+    }
+}
+
+/// How a login's site matched the site searched, the best first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum By {
+    /// The same host.
+    Host,
+    /// The same registrable domain.
+    Domain,
+    /// A host whose labels begin with the words typed.
+    Label,
+    /// The login's name.
+    Name,
+}
+
+/// The site searched, as typed: an address ("ameli.fr", a page's whole
+/// address), or words ("ameli", "credit agricole").
+enum SiteAsked {
+    Address {
+        host: String,
+        domain: String,
+        /// The domain's own name, for logins named after their site, as a
+        /// whole word: "ameli" for ameli.fr; "x" for x.com, not "Xbox".
+        name: String,
+    },
+    Words(Vec<String>),
+}
+
+impl SiteAsked {
+    fn of(text: &str) -> Option<SiteAsked> {
+        let text = folded(text.trim());
+        if text.is_empty() {
+            return None;
+        }
+        // An address: a scheme, or one word with a dot, a port or a path ("ameli.fr", "localhost:8080").
+        if text.contains("://") || (text.contains(['.', ':', '/']) && !text.contains(char::is_whitespace)) {
+            let host = sioul_core::sites::host_of(&if text.contains("://") { text.clone() } else { format!("https://{text}") });
+            if !host.is_empty() {
+                let domain = domain(&host);
+                let numbers = domain.bytes().all(|b| b.is_ascii_digit() || b == b'.');
+                let name = if numbers || domain.starts_with('[') { String::new() } else { domain.split('.').next().unwrap_or_default().to_string() };
+                return Some(SiteAsked::Address { host, domain, name });
+            }
+        }
+        Some(SiteAsked::Words(text.split_whitespace().map(str::to_string).collect()))
+    }
+
+    /// How a login matches, and which of its sites did; `None` when it does not.
+    fn matches(&self, login: &Searched, page: &Page) -> Option<(By, Option<usize>)> {
+        match self {
+            SiteAsked::Address { host, domain, name } => {
+                // A page's domain stands for the page: its own host is the same host.
+                let same = |h: &String| h == host || (*host == page.domain && *h == page.host);
+                if let Some(at) = login.hosts.iter().position(same) {
+                    return Some((By::Host, Some(at)));
+                }
+                if let Some(at) = login.domains.iter().position(|d| d == domain) {
+                    return Some((By::Domain, Some(at)));
+                }
+                if let Some(at) = login.hosts.iter().position(|h| begins_label(h, host)) {
+                    return Some((By::Label, Some(at)));
+                }
+                (!name.is_empty() && whole_word(&login.name, name)).then_some((By::Name, None))
+            }
+            SiteAsked::Words(words) => {
+                if let Some(at) = login.hosts.iter().position(|h| words.iter().all(|w| begins_label(h, w))) {
+                    return Some((By::Label, Some(at)));
+                }
+                words.iter().all(|w| begins_word(&login.name, w)).then_some((By::Name, None))
+            }
+        }
+    }
+}
+
+/// A match, before the best are kept: what it is ordered by (not the login
+/// chosen last, how its site matched, how near the page, not the user name
+/// typed whole), which login, how its site matched, which of its sites to show.
+struct Hit {
+    key: (bool, Option<By>, u8, bool),
+    login: usize,
+    by: Option<By>,
+    site: usize,
+}
+
+/// A login found by a search.
+pub struct Found<'a> {
+    pub item: &'a Item,
+    /// How its site matched: `None` when no site was searched.
+    pub by: Option<By>,
+    /// Its site to show: the one that matched, else the page's, else its first ("" without one).
+    pub site: String,
+    /// Made for the page's own domain (`find`'s `page`).
+    pub own: bool,
+}
+
+/// What the chooser opens with for a page (`Logins::opening`).
+#[derive(Debug, PartialEq, Eq)]
+pub struct Opening {
+    /// The page's registrable domain: the Site field's first text.
+    pub domain: String,
+    /// The domain of the login chosen there last, "" when none: the Site
+    /// field's first text instead, the page's own domain when that login is
+    /// made for it.
+    pub chosen: String,
+    /// The login filled at once: the page's only one, unless another was
+    /// chosen there last.
+    pub only: Option<String>,
+}
+
+/// The vault's logins, opened, with what each is searched by.
+pub struct Logins {
+    items: Vec<Item>,
+    searched: Vec<Searched>,
+}
+
+impl Logins {
+    pub fn new(items: Vec<Item>) -> Logins {
+        let searched = items.iter().map(Searched::of).collect();
+        Logins { items, searched }
+    }
+
+    pub fn items(&self) -> &[Item] {
+        &self.items
+    }
+
+    /// What the chooser opens with for a page, and what "Fill the login" fills
+    /// at once; `last` is the login chosen there last.
+    pub fn opening(&self, page: &str, last: Option<&str>) -> Opening {
+        let own = self.for_site(page);
+        let last = last.and_then(|id| self.items.iter().find(|item| item.id == id));
+        let only = match (own.as_slice(), last) {
+            ([one], None) => Some(one.id.clone()),
+            ([one], Some(last)) if last.id == one.id => Some(one.id.clone()),
+            _ => None,
+        };
+        let domain = domain_of_address(page);
+        let chosen = match last {
+            Some(last) if own.iter().any(|item| item.id == last.id) => domain.clone(),
+            Some(last) => hosts_of(last).first().map(|host| domain_of_address(host)).unwrap_or_default(),
+            None => String::new(),
+        };
+        Opening { domain, chosen, only }
+    }
+
+    /// The logins for a page: those made for its domain, its own host first.
+    pub fn for_site(&self, page: &str) -> Vec<&Item> {
+        let page = Page::of(page);
+        let mut found: Vec<(u8, &Item)> = self.items.iter().zip(&self.searched).map(|(item, s)| (s.nearness(&page).0, item)).filter(|(near, _)| *near < 2).collect();
+        found.sort_by_key(|(near, _)| *near);
+        found.into_iter().map(|(_, item)| item).collect()
+    }
+
+    /// The logins by site and by user name, each optional, both matching when
+    /// both are given; nothing when neither is.
+    /// - `site` matches the login's sites: the same host, then the same
+    ///   registrable domain, then a host whose labels begin with the words
+    ///   typed ("ameli": ameli.fr, assure.ameli.fr, not camelia.com), then the
+    ///   login's name (an address's own name, "ameli" for ameli.fr). Never its
+    ///   user name: "gmail" finds Gmail, not the logins with a Gmail address.
+    /// - `user` matches the user name only, holding every word typed.
+    ///
+    /// Case and accents aside. The best `limit` of them, the best first:
+    /// `first` (the login chosen last for the page), then by how the site
+    /// matched, the page's own (its host, then its domain), the user name
+    /// typed whole, the name; and how many matched in all. Only those kept are
+    /// sorted: a large vault, all of it matching, costs one pass.
+    pub fn find(&self, site: &str, user: &str, page: &str, first: Option<&str>, limit: usize) -> (Vec<Found<'_>>, usize) {
+        let asked = SiteAsked::of(site);
+        let user = folded(user.trim());
+        let words: Vec<&str> = user.split_whitespace().collect();
+        let whole = words.join(" ");
+        if asked.is_none() && words.is_empty() {
+            return (Vec::new(), 0);
+        }
+        let page = Page::of(page);
+        let mut hits: Vec<Hit> = Vec::new();
+        for (at, (item, login)) in self.items.iter().zip(&self.searched).enumerate() {
+            let matched = match &asked {
+                Some(asked) => match asked.matches(login, &page) {
+                    Some(matched) => Some(matched),
+                    None => continue,
+                },
+                None => None,
+            };
+            if !words.iter().all(|w| login.user.contains(w)) {
+                continue;
+            }
+            let (near, at_page) = login.nearness(&page);
+            let by = matched.map(|(by, _)| by);
+            hits.push(Hit { key: (first != Some(item.id.as_str()), by, near, words.is_empty() || login.user != whole), login: at, by, site: matched.and_then(|(_, site)| site).or(at_page).unwrap_or(0) });
+        }
+        let total = hits.len();
+        let order = |a: &Hit, b: &Hit| {
+            let (x, y) = (&self.searched[a.login], &self.searched[b.login]);
+            a.key.cmp(&b.key).then_with(|| x.name.cmp(&y.name)).then_with(|| x.user.cmp(&y.user)).then_with(|| a.login.cmp(&b.login))
+        };
+        if hits.len() > limit {
+            if limit > 0 {
+                hits.select_nth_unstable_by(limit - 1, order);
+            }
+            hits.truncate(limit);
+        }
+        hits.sort_unstable_by(order);
+        let found = hits
+            .into_iter()
+            .map(|hit| Found { item: &self.items[hit.login], by: hit.by, site: self.searched[hit.login].shown.get(hit.site).cloned().unwrap_or_default(), own: hit.key.2 < 2 })
+            .collect();
+        (found, total)
+    }
 }
 
 /// RFC 4648 base32, letters and digits 2–7, spaces and padding ignored.
@@ -916,17 +1187,7 @@ mod tests {
     }
 
     #[test]
-    fn logins_by_site() {
-        // Items wipe their secrets when dropped: built field by field.
-        let item = |name: &str, uri: &str| {
-            let mut item = Item::default();
-            item.name = name.into();
-            item.uris = vec![uri.into()];
-            item
-        };
-        let items = vec![item("Webmail", "https://account.example.net"), item("Mail", "mail.example.net"), item("Other", "https://example.org")];
-        let found: Vec<&str> = for_site(&items, "https://mail.example.net/u/0/inbox").iter().map(|i| i.name.as_str()).collect();
-        assert_eq!(found, vec!["Mail", "Webmail"]);
+    fn servers() {
         assert_eq!(Server::of("bitwarden.eu").api, "https://api.bitwarden.eu");
         assert_eq!(Server::of("Vault.Bitwarden.eu/").api, "https://api.bitwarden.eu", "the vault's address, as a browser shows it");
         assert_eq!(Server::of("vault.bitwarden.com").identity, "https://identity.bitwarden.com");
@@ -1027,22 +1288,224 @@ mod tests {
         assert_eq!(key_page(&Server::of("bitwarden.eu")), "https://vault.bitwarden.eu/webauthn-connector.html");
     }
 
-    #[test]
-    fn logins_searched() {
-        let item = |name: &str, user: &str, uri: &str| {
+    /// A made-up vault: every name, address and secret here is invented.
+    fn fixture() -> Logins {
+        // Items wipe their secrets when dropped: built field by field.
+        let login = |id: &str, name: &str, user: &str, uris: &[&str], password: &str, totp: &str| {
             let mut item = Item::default();
+            item.id = id.into();
             item.name = name.into();
             item.username = user.into();
-            item.uris = vec![uri.into()];
+            item.uris = uris.iter().map(|u| u.to_string()).collect();
+            item.password = password.into();
+            item.totp = totp.into();
             item
         };
-        let items = vec![item("Société Exemple", "moi", "https://particuliers.banque.example"), item("Webmail", "work@example.org", "https://account.example.net"), item("Webmail perso", "me@example.org", "example.net")];
-        let names = |query: &str| search(&items, query).iter().map(|i| i.name.clone()).collect::<Vec<_>>();
-        assert_eq!(names("societe"), vec!["Société Exemple"], "accents aside");
-        assert_eq!(names("WEBMAIL"), vec!["Webmail", "Webmail perso"]);
-        assert_eq!(names("webmail me@"), vec!["Webmail perso"], "every word");
-        assert_eq!(names("banque.example"), vec!["Société Exemple"], "by site");
-        assert!(names("  ").is_empty());
+        Logins::new(vec![
+            login("ameli", "Ameli", "1 85 07 75 123 456 78", &["https://ameli.fr"], "x", ""),
+            login("assure", "Compte assuré", "1 85 07 75 123 456 78", &["https://assure.ameli.fr/PortailAS/appmanager"], "x", ""),
+            login("camelia", "Camelia fleurs", "moi@exemple.test", &["camelia.com"], "x", ""),
+            login("google", "Google", "aurore.exemple@gmail.com", &["https://accounts.google.com/v3/signin"], "x", "otpauth://totp/Google?secret=JBSWY3DPEHPK3PXP"),
+            login("forum", "Forum de photo", "aurore.exemple@gmail.com", &["https://forum.photo.test"], "x", ""),
+            login("shop", "Boutique", "aurore.exemple@gmail.com", &["boutique.test"], "x", ""),
+            login("impots", "Impôts", "1234567890123", &[], "x", ""),
+            login("bank-a", "Banque, particuliers", "Élodie", &["https://particuliers.banque.test/connexion"], "x", ""),
+            login("bank-b", "Banque, pro", "elodie.pro", &["https://pro.banque.test"], "x", ""),
+            login("credit", "Crédit agricole", "12345678", &["https://www.credit-agricole.fr"], "x", ""),
+            login("router", "Box", "admin", &["http://192.168.1.1", "androidapp://com.box.admin"], "x", ""),
+            // Secrets that look like what is searched: never matched.
+            login("secret", "Coffre", "quelqu-un", &["https://coffre.test"], "gmail ameli Élodie", "GMAILAMELI234567"),
+        ])
+    }
+
+    /// Every login a search finds, best first.
+    fn search<'a>(vault: &'a Logins, site: &str, user: &str, page: &str, first: Option<&str>) -> Vec<Found<'a>> {
+        let (found, total) = vault.find(site, user, page, first, usize::MAX);
+        assert_eq!(found.len(), total);
+        found
+    }
+
+    fn ids(found: Vec<Found<'_>>) -> Vec<String> {
+        found.into_iter().map(|f| f.item.id.clone()).collect()
+    }
+
+    #[test]
+    fn by_host_then_domain() {
+        let vault = fixture();
+        // Opened for a page, the field holding its domain: the page's host first, then its domain.
+        assert_eq!(ids(search(&vault, "ameli.fr", "", "https://assure.ameli.fr/PortailAS/x", None)), ["assure", "ameli"]);
+        assert_eq!(ids(search(&vault, "ameli.fr", "", "https://ameli.fr", None)), ["ameli", "assure"]);
+        let found = search(&vault, "assure.ameli.fr", "", "", None);
+        assert_eq!(found.iter().map(|f| (f.item.id.as_str(), f.by)).collect::<Vec<_>>(), [("assure", Some(By::Host)), ("ameli", Some(By::Domain))]);
+        assert_eq!(found[0].site, "assure.ameli.fr");
+        // A whole address, pasted.
+        assert_eq!(ids(search(&vault, "https://www.credit-agricole.fr/particulier/acceder.html", "", "", None)), ["credit"]);
+        // The login chosen last for the page comes first.
+        assert_eq!(ids(search(&vault, "ameli.fr", "", "https://ameli.fr", Some("assure"))), ["assure", "ameli"]);
+        // The page's own logins, as "Fill the login" counts them.
+        let own: Vec<&str> = vault.for_site("https://pro.banque.test/espace").iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(own, ["bank-b", "bank-a"]);
+        // An address in numbers is its own domain; an app's address is no site.
+        assert_eq!(ids(search(&vault, "192.168.1.1", "", "", None)), ["router"]);
+        assert_eq!(ids(search(&vault, "192.168.1.1:8080/admin", "", "", None)), ["router"], "a port and a path");
+        assert!(search(&vault, "192.168.0.1", "", "", None).is_empty(), "not the same domain as 192.168.1.1");
+        assert!(search(&vault, "admin", "", "", None).is_empty(), "androidapp://com.box.admin is no site");
+        assert_eq!(hosts_of(&vault.items()[10]), ["192.168.1.1"]);
+    }
+
+    #[test]
+    fn what_a_page_opens_with() {
+        let vault = fixture();
+        let opening = |page: &str, last: Option<&str>| {
+            let o = vault.opening(page, last);
+            (o.domain, o.chosen, o.only)
+        };
+        let some = |id: &str| Some(id.to_string());
+        // One login for the site: filled at once.
+        assert_eq!(opening("https://www.credit-agricole.fr/particulier", None), ("credit-agricole.fr".into(), "".into(), some("credit")));
+        assert_eq!(opening("https://www.credit-agricole.fr/", Some("credit")), ("credit-agricole.fr".into(), "credit-agricole.fr".into(), some("credit")));
+        // Another login chosen there last (a sign-in with Google): the chooser opens on its domain.
+        assert_eq!(opening("https://www.credit-agricole.fr/", Some("google")), ("credit-agricole.fr".into(), "google.com".into(), None));
+        // A login gone from the vault since: as if none was chosen.
+        assert_eq!(opening("https://www.credit-agricole.fr/", Some("gone")), ("credit-agricole.fr".into(), "".into(), some("credit")));
+        // Two logins, or none: the chooser.
+        assert_eq!(opening("https://pro.banque.test/espace", None).2, None);
+        assert_eq!(opening("https://pro.banque.test/espace", Some("bank-a")), ("banque.test".into(), "banque.test".into(), None));
+        assert_eq!(opening("https://unknown.test", None), ("unknown.test".into(), "".into(), None));
+        // A mail server, the provider's login chosen for it before.
+        assert_eq!(opening("https://imap.gmail.com", Some("google")), ("gmail.com".into(), "google.com".into(), None));
+        // A login without a site chosen last: no domain to begin with.
+        assert_eq!(opening("https://www.impots.gouv.fr", Some("impots")), ("impots.gouv.fr".into(), "".into(), None));
+    }
+
+    #[test]
+    fn by_the_start_of_labels() {
+        let vault = fixture();
+        assert_eq!(ids(search(&vault, "ameli", "", "", None)), ["ameli", "assure"], "ameli.fr and assure.ameli.fr, not camelia.com");
+        let found = search(&vault, "ameli", "", "", None);
+        assert!(found.iter().all(|f| f.by == Some(By::Label)));
+        assert_eq!(ids(search(&vault, "cam", "", "", None)), ["camelia"]);
+        assert_eq!(ids(search(&vault, "agricole", "", "", None)), ["credit"], "a part between hyphens");
+        assert_eq!(ids(search(&vault, "credit agricole", "", "", None)), ["credit"], "every word");
+        // Typed on the way to an address.
+        assert_eq!(ids(search(&vault, "ameli.", "", "", None)), ["ameli", "assure"]);
+        assert_eq!(ids(search(&vault, "ameli.f", "", "", None)), ["ameli", "assure"]);
+        assert!(search(&vault, "meli", "", "", None).is_empty());
+    }
+
+    #[test]
+    fn by_name_when_no_site_matches() {
+        let vault = fixture();
+        let found = search(&vault, "impots", "", "", None);
+        assert_eq!(found.iter().map(|f| (f.item.id.as_str(), f.by, f.site.as_str())).collect::<Vec<_>>(), [("impots", Some(By::Name), "")]);
+        // An address's own name finds the logins named after it.
+        assert_eq!(ids(search(&vault, "impots.gouv.fr", "", "https://www.impots.gouv.fr/accueil", None)), ["impots"]);
+        // Sites before names: "banque" begins a label of both banks, and the name of neither matters then.
+        let found = search(&vault, "banque", "", "", None);
+        assert_eq!(found.iter().map(|f| (f.item.id.as_str(), f.by)).collect::<Vec<_>>(), [("bank-a", Some(By::Label)), ("bank-b", Some(By::Label))]);
+        assert_eq!(ids(search(&vault, "fleurs", "", "", None)), ["camelia"]);
+        assert!(search(&vault, "leurs", "", "", None).is_empty(), "words begin where the name's words begin");
+        // An address's name is a whole word of the login's: "com" for com.box, not "Compte assuré".
+        assert!(search(&vault, "com.box", "", "", None).is_empty());
+        assert_eq!(ids(search(&vault, "box.example", "", "", None)), ["router"]);
+    }
+
+    #[test]
+    fn by_user_name_alone() {
+        let vault = fixture();
+        assert_eq!(ids(search(&vault, "", "aurore.exemple@gmail.com", "", None)), ["shop", "forum", "google"], "by name: Boutique, Forum de photo, Google");
+        assert_eq!(ids(search(&vault, "", "aurore", "", None)), ["shop", "forum", "google"]);
+        assert_eq!(ids(search(&vault, "", "@gmail.com", "", None)), ["shop", "forum", "google"]);
+        assert_eq!(ids(search(&vault, "", "elodie pro", "", None)), ["bank-b"], "every word");
+        // The page's own first, then the user name typed whole: an account's server.
+        assert_eq!(ids(search(&vault, "", "aurore.exemple@gmail.com", "https://forum.photo.test", None)), ["forum", "shop", "google"]);
+        assert!(search(&vault, "", "", "https://ameli.fr", None).is_empty(), "nothing asked, nothing found");
+        assert!(search(&vault, "  ", " ", "", None).is_empty());
+    }
+
+    #[test]
+    fn both_fields_together() {
+        let vault = fixture();
+        assert_eq!(ids(search(&vault, "google", "aurore", "", None)), ["google"]);
+        assert_eq!(ids(search(&vault, "banque.test", "elodie", "", None)), ["bank-a", "bank-b"]);
+        assert_eq!(ids(search(&vault, "banque.test", "pro", "", None)), ["bank-b"]);
+        assert!(search(&vault, "ameli", "aurore", "", None).is_empty());
+        let found = search(&vault, "photo", "@gmail.com", "", None);
+        assert_eq!(found.iter().map(|f| (f.item.id.as_str(), f.site.as_str())).collect::<Vec<_>>(), [("forum", "forum.photo.test")]);
+    }
+
+    #[test]
+    fn a_site_is_not_a_user_name() {
+        let vault = fixture();
+        // "gmail" as a site: Gmail's own logins, not every login whose user name is a Gmail address.
+        assert!(search(&vault, "gmail", "", "", None).is_empty());
+        assert!(search(&vault, "gmail.com", "", "", None).is_empty());
+        assert_eq!(ids(search(&vault, "google", "", "", None)), ["google"]);
+        // A user name is no site either.
+        assert!(search(&vault, "", "ameli", "", None).is_empty());
+    }
+
+    #[test]
+    fn case_and_accents_aside() {
+        let vault = fixture();
+        assert_eq!(ids(search(&vault, "IMPÔTS", "", "", None)), ["impots"]);
+        assert_eq!(ids(search(&vault, "Crédit", "", "", None)), ["credit"]);
+        assert_eq!(ids(search(&vault, "AMELI.FR", "", "", None)), ["ameli", "assure"]);
+        assert_eq!(ids(search(&vault, "", "ELODIE", "", None)), ["bank-a", "bank-b"]);
+        assert_eq!(ids(search(&vault, "", "élodie.PRO", "", None)), ["bank-b"]);
+        assert_eq!(ids(search(&vault, "compte assure", "", "", None)), ["assure"]);
+    }
+
+    #[test]
+    fn secrets_never_match() {
+        let vault = fixture();
+        // A password reads "gmail ameli Élodie", its one-time secret "GMAILAMELI…": found by neither.
+        for (site, user) in [("gmail", ""), ("ameli", ""), ("", "gmail"), ("", "elodie"), ("", "GMAILAMELI"), ("gmailameli", ""), ("ameli.fr", "elodie")] {
+            assert!(!ids(search(&vault, site, user, "", None)).contains(&"secret".to_string()), "{site:?} {user:?}");
+        }
+        // Google's one-time secret.
+        for (site, user) in [("JBSWY3DP", ""), ("", "JBSWY3DP"), ("", "jbswy3dpehpk3pxp"), ("totp", ""), ("", "otpauth")] {
+            assert!(search(&vault, site, user, "", None).is_empty(), "{site:?} {user:?}");
+        }
+        // Every password is "x": only the user names holding an x.
+        assert_eq!(ids(search(&vault, "", "x", "", None)), ["shop", "camelia", "forum", "google"]);
+        assert_eq!(ids(search(&vault, "coffre", "", "", None)), ["secret"], "found by its site");
+    }
+
+    /// How long a search of a large vault takes (20,000 made-up logins), on the
+    /// window's thread: printed, run by hand with `--ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn a_large_vault_is_searched_quickly() {
+        let items: Vec<Item> = (0..20_000)
+            .map(|n| {
+                let mut item = Item::default();
+                item.id = n.to_string();
+                item.name = format!("Login {n} société");
+                item.username = format!("person{}@example{}.test", n % 97, n % 13);
+                item.uris = vec![format!("https://www{}.site{}.example{}.test/login", n % 3, n, n % 7), format!("app{n}.test")];
+                item
+            })
+            .collect();
+        let started = std::time::Instant::now();
+        let vault = Logins::new(items);
+        println!("index: {:?}", started.elapsed());
+        for (site, user) in [("site123", ""), ("example3.test", ""), ("", "person5"), ("site1", "example1"), ("societe", ""), ("", "@"), ("https://www1.site19999.example6.test/login", "")] {
+            let started = std::time::Instant::now();
+            let (found, total) = vault.find(site, user, "https://www1.site42.example0.test", None, 50);
+            println!("{site:?} {user:?}: {} of {total} in {:?}", found.len(), started.elapsed());
+        }
+    }
+
+    #[test]
+    fn the_best_are_kept() {
+        let vault = fixture();
+        let (found, total) = vault.find("", "@gmail.com", "", None, 2);
+        assert_eq!((ids(found), total), (vec!["shop".to_string(), "forum".to_string()], 3));
+        let (found, total) = vault.find("", "@gmail.com", "", Some("google"), 1);
+        assert_eq!((ids(found), total), (vec!["google".to_string()], 3), "the login chosen last kept first");
+        let (found, total) = vault.find("", "@gmail.com", "", None, 0);
+        assert!(found.is_empty() && total == 3);
     }
 
     #[test]

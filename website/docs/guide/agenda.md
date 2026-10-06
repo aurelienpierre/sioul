@@ -27,6 +27,7 @@ The page follows the clock: the line at the current hour moves with it, today be
 **New event**, at the top of the page (or **New ▾ ▸ An event**): a title, when it starts and ends, where. **All day** is one tick. Folded under **More**: its notes; **Repeats**, every day, week, month or year; **Calendar**, which one it goes in, when you have several; and, if you want them:
 
 - **Before** and **After**: the time to get ready and get there, and to come back. Your plan keeps it free, and the day shows it around the event ("Around: …"). It is never counted as a pause.
+- **Remind**: when Sioul reminds you of it: as usual (a quarter of an hour before it and its time to get there, unless you change it in [Settings](settings.md#reminders-and-notifications)), not this one, or 5 minutes to 2 hours before. See [Reminders](#reminders).
 - How much the event asks of you, and what it gives back: five sliders from 0 to 10, **Thinking it asks**, **Feelings it stirs**, **Anxiety it raises**, **Body and senses** and **What it gives back**, with words under each at 0, 5 and 10 (as for [a task](tasks.md#what-it-costs-and-what-it-gives-back)). Each says **Not rated** until you touch it; **×** clears it. What you say is written into the event when you save it, and shown again in its form; the plan does not use it yet.
 
 An event opens on the right with its day, its time, its place, its calendar, and whether it repeats. Its notes, who organised it and its guests are folded under **More**. It opens the same way from a link (a task's tie, the day on the Tasks page), its days shown; its menu (right click, or a long press on a touch screen) offers **Details** first, then **Edit**.
@@ -48,6 +49,10 @@ Let go, and it is saved and sent to your calendar server; **Undo** waits ten sec
 - Only within the hours shown; further, use **Edit**.
 - If it now overlaps another event, Sioul says so above the agenda, as for any two events at once. Your plan goes around its new time at once.
 
+## Tasks pinned to a time
+
+A task you pin to a time ([Tasks](tasks.md#pinned-to-a-time)) has its block in your calendar, "Planned tasks" unless you chose another: an event with the task's title, which follows the task's. Move it like any event, here or in another program, and the task moves with it; delete it, and the plan places the task again. Your plan counts it once, as the task.
+
 ## Two events at once
 
 When two events overlap, the time to get there and back counted, Sioul says so: today's on the [Porch](porch.md), with a button to open each one; today's and the next two weeks' above the agenda, whatever the view. **Don't mention it again** sets it aside for good, on this device. Move one of them and it is a new question. Once both are over, nothing more is said.
@@ -60,7 +65,9 @@ An invitation that comes by mail shows in the message: **Accept**, **Maybe**, **
 
 ## Reminders
 
-One quiet reminder, half an hour before work ends, on the last working day before an event: "Mon 12 Oct 09:00 · Town hall", and where. The alarms an event carries (set by you, your phone, or whoever invited you) come at their time too. No sound, never repeated. See [Settings](settings.md#reminders-and-notifications).
+A quiet reminder before each event, a quarter of an hour before it and its time to get ready and get there: "14:00 · Town hall, in 45 minutes", then "Getting ready, getting there: from 13:30." and where, with **Open**. How long before is yours (Settings ▸ Reminders and notifications ▸ **Before an event**), and each event can say its own: **Remind**, in its form and in its details, which also say when it reminds; for every time a repeating event comes. Not for whole days, nor for an event cancelled or declined.
+
+Another, half an hour before work ends, on the last working day before an event: "Mon 12 Oct 09:00 · Town hall", and where. The alarms an event carries (set by you, your phone, or whoever invited you) come at their time too; one within five minutes of Sioul's reminder is told once. While you sleep, a reminder waits for your waking, unless the event itself is in the night: you chose it. No sound, never repeated; on a phone too, Sioul open or not. See [Settings](settings.md#reminders-and-notifications).
 
 ## The Agenda settings
 

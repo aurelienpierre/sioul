@@ -397,9 +397,16 @@ pub(crate) fn announced_by(sender: &str) -> String {
 
 // Bitwarden, read here: no external program (sioul_sync::bitwarden).
 
-/// The vault, open for the session: its logins, in memory only (wiped when dropped).
+/// The vault, open for the session: its logins, in memory only (wiped when
+/// dropped), with what each is searched by (`bitwarden::Logins`).
 pub(crate) struct Vault {
-    items: Vec<bitwarden::Item>,
+    logins: bitwarden::Logins,
+}
+
+impl Vault {
+    fn of(items: Vec<bitwarden::Item>) -> Vault {
+        Vault { logins: bitwarden::Logins::new(items) }
+    }
 }
 
 /// This computer, as Bitwarden knows it.
@@ -433,7 +440,7 @@ pub(crate) fn bitwarden_state(shared: &Shared) -> String {
                 item
             })
             .collect();
-        *vault = Some(Vault { items });
+        *vault = Some(Vault::of(items));
     }
     if load_config().bitwarden.email.as_deref().is_none_or(|e| e.trim().is_empty()) {
         return "missing".into();
@@ -465,7 +472,7 @@ pub(crate) fn bitwarden_unlock(shared: &Shared, password: &str, provider: i32, c
                 let _ = sioul_sync::secret::save_named(&remembered(&email), token);
             }
             if let Ok(mut vault) = shared.bitwarden.lock() {
-                *vault = Some(Vault { items });
+                *vault = Some(Vault::of(items));
             }
             // The dialog proposes first what opened it last.
             crate::work::set_view_flag(shared, "bitwarden-passkey", false);
@@ -532,7 +539,7 @@ pub(crate) fn bitwarden_passkey(shared: &Shared, answer: &str) -> String {
     match opened {
         Ok(items) => {
             if let Ok(mut vault) = shared.bitwarden.lock() {
-                *vault = Some(Vault { items });
+                *vault = Some(Vault::of(items));
             }
             crate::work::set_view_flag(shared, "bitwarden-passkey", true);
             serde_json::json!({ "ok": true }).to_string()
@@ -573,36 +580,75 @@ struct Choice {
     id: String,
     name: String,
     username: String,
-    /// Its first site, to tell logins apart.
+    /// Its site: the one that matched the search, else the page's, else its first.
     site: String,
     /// Made for another domain than the page's: said, so a look-alike site shows.
     elsewhere: bool,
 }
 
 impl Choice {
-    fn of(item: &bitwarden::Item, host: &str) -> Choice {
-        let hosts = bitwarden::hosts_of(item);
-        let domain = sioul_core::sites::domain_of(host);
-        let elsewhere = !hosts.iter().any(|h| sioul_core::sites::domain_of(h) == domain);
-        Choice { id: item.id.clone(), name: item.name.clone(), username: item.username.clone(), site: hosts.into_iter().next().unwrap_or_default(), elsewhere }
+    fn of(found: bitwarden::Found<'_>) -> Choice {
+        Choice { id: found.item.id.clone(), name: found.item.name.clone(), username: found.item.username.clone(), site: found.site, elsewhere: !found.own }
     }
 }
 
-/// The logins for a site, the one chosen last for it first ("matches"), and
-/// when `query` has words, the vault's logins holding them ("found"); names,
-/// user names and sites only, never a password. {"site", "matches", "found"} or {"error"}.
-pub(crate) fn bitwarden_logins(shared: &Shared, url: &str, query: &str) -> String {
-    let Ok(vault) = shared.bitwarden.lock() else { return serde_json::json!({ "error": tr().text("bitwarden-locked", None) }).to_string() };
-    let Some(vault) = vault.as_ref() else { return serde_json::json!({ "error": tr().text("bitwarden-locked", None) }).to_string() };
-    let host = sioul_core::sites::host_of(url);
-    let mut matches = bitwarden::for_site(&vault.items, url);
-    if let Some(last) = chosen().get(&host) {
-        // Stable: the others keep their order (same host before same domain).
-        matches.sort_by_key(|item| item.id != *last);
+/// How many logins the chooser lists; the others are counted, to narrow the search.
+const LISTED: usize = 50;
+
+fn locked() -> String {
+    serde_json::json!({ "error": tr().text("bitwarden-locked", None) }).to_string()
+}
+
+/// The chooser's search: the vault's logins by site and by user name, each
+/// optional, both matching when both are given (`bitwarden::Logins::find`);
+/// the one chosen last for `url` first, then the best matches, `url`'s own
+/// before others. Names, user names and sites only, never a password.
+/// {"found": [{"id", "name", "username", "site", "elsewhere"}], "more"} or {"error"}.
+fn bitwarden_logins(shared: &Shared, url: &str, site: &str, user: &str) -> String {
+    let Ok(vault) = shared.bitwarden.lock() else { return locked() };
+    let Some(vault) = vault.as_ref() else { return locked() };
+    let last = chosen().get(&sioul_core::sites::host_of(url)).cloned();
+    let (found, total) = vault.logins.find(site, user, url, last.as_deref(), LISTED);
+    let more = total - found.len();
+    let found: Vec<Choice> = found.into_iter().map(Choice::of).collect();
+    serde_json::json!({ "found": found, "more": more }).to_string()
+}
+
+/// Above this many logins, the chooser searches off the window's thread:
+/// 20,000 made-up logins took 1 to 5.5 ms a search on a desktop computer
+/// busy with builds (`a_large_vault_is_searched_quickly`), a phone being
+/// several times slower; below, at once, so the chooser opens filled.
+const LARGE: usize = 5_000;
+
+/// The chooser's search as the window asks it: the answer at once
+/// (`bitwarden_logins`); for a large vault {"later": n}, the answer brought
+/// by `bitwarden_found(n, …)` once searched off the window's thread.
+pub(crate) fn bitwarden_search(qt: &QtThread, shared: &Arc<Shared>, url: &str, site: &str, user: &str) -> String {
+    let large = shared.bitwarden.lock().is_ok_and(|vault| vault.as_ref().is_some_and(|vault| vault.logins.items().len() > LARGE));
+    if !large {
+        return bitwarden_logins(shared, url, site, user);
     }
-    let found: Vec<Choice> = bitwarden::search(&vault.items, query).into_iter().take(40).map(|item| Choice::of(item, &host)).collect();
-    let matches: Vec<Choice> = matches.into_iter().map(|item| Choice::of(item, &host)).collect();
-    serde_json::json!({ "site": host, "matches": matches, "found": found }).to_string()
+    static ASKED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+    let ticket = ASKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    let (qt, shared, url, site, user) = (qt.clone(), Arc::clone(shared), url.to_string(), site.to_string(), user.to_string());
+    std::thread::spawn(move || {
+        let found = bitwarden_logins(&shared, &url, &site, &user);
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().bitwarden_found(ticket, cxx_qt_lib::QString::from(&found)));
+    });
+    serde_json::json!({ "later": ticket }).to_string()
+}
+
+/// What the vault holds for an address, as the chooser opens on it and as
+/// "Fill the login" begins: {"domain": the address's registrable domain;
+/// "chosen": the domain of the login chosen last for it, "" when none; "only":
+/// its only login, filled at once unless another was chosen last for it, ""
+/// when there is a choice to make} or {"error"}.
+pub(crate) fn bitwarden_site(shared: &Shared, url: &str) -> String {
+    let Ok(vault) = shared.bitwarden.lock() else { return locked() };
+    let Some(vault) = vault.as_ref() else { return locked() };
+    let last = chosen().get(&sioul_core::sites::host_of(url)).cloned();
+    let opening = vault.logins.opening(url, last.as_deref());
+    serde_json::json!({ "domain": opening.domain, "chosen": opening.chosen, "only": opening.only.unwrap_or_default() }).to_string()
 }
 
 /// One login of the vault, for a site: {"name", "username", "password",
@@ -612,7 +658,7 @@ pub(crate) fn bitwarden_login(shared: &Shared, url: &str, id: &str) -> String {
     let error = |id: &str| serde_json::json!({ "error": tr().text(id, None) }).to_string();
     let Ok(vault) = shared.bitwarden.lock() else { return error("bitwarden-locked") };
     let Some(vault) = vault.as_ref() else { return error("bitwarden-locked") };
-    let Some(item) = vault.items.iter().find(|item| item.id == id) else { return error("bitwarden-none") };
+    let Some(item) = vault.logins.items().iter().find(|item| item.id == id) else { return error("bitwarden-none") };
     let host = sioul_core::sites::host_of(url);
     if !host.is_empty() {
         let mut all = chosen();

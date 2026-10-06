@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- "Pause": two bars, for the quick-settings tile and Sioul's do-not-disturb
+     modes in Android's settings (PauseTile.java, PauseMode.java). Android
+     tints it: one colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:fillColor="#ffffff" android:pathData="M8,5h1a1,1 0,0 1,1 1v12a1,1 0,0 1,-1 1h-1a1,1 0,0 1,-1 -1v-12a1,1 0,0 1,1 -1z" />
+    <path android:fillColor="#ffffff" android:pathData="M15,5h1a1,1 0,0 1,1 1v12a1,1 0,0 1,-1 1h-1a1,1 0,0 1,-1 -1v-12a1,1 0,0 1,1 -1z" />
+</vector>

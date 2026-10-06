@@ -141,7 +141,9 @@ fn add(s: &Session, address: &str, id: Option<String>, wanted: Wanted) -> Result
     if account.username.is_some() {
         println!("{}", s.say("account-login", &[("login", crate::one_line(&login))]));
     }
-    let hint = if sioul_sync::is_gmail(&address) { "account-gmail-hint" } else { "account-app-password-hint" };
+    // Google's mail (Gmail, Google Workspace): an app password, never the account's own.
+    let google = found.by == sioul_sync::FoundBy::Google || found.host.eq_ignore_ascii_case(sioul_sync::discover::GOOGLE_IMAP);
+    let hint = if google { "account-gmail-hint" } else { "account-app-password-hint" };
     println!("{}", s.tr.text(hint, None));
     let password = sioul_sync::tidy_password(&found.host, &prompt_password(s, &address)?);
     let messages = sioul_sync::test(&account, &password).map_err(|e| e.sentence(&s.tr, &id))?;

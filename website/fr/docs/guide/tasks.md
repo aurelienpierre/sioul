@@ -98,9 +98,9 @@ Cinq réponses : *Je ne sais pas par où commencer*, *C’est trop gros*, *Cel
 
 La journée suit l’horloge : la ligne avance avec les minutes, et la journée est disposée à nouveau à partir de maintenant toutes les cinq minutes et chaque fois que vous revenez dans Sioul, avec ce que vos autres appareils ont marqué ou noté entre-temps, et aussitôt que quelque chose change ce qu’elle tient (plus bas, « Le plan »).
 
-C’est une disposition à regarder, jamais un emploi du temps : rien n’est écrit dans les tâches, sauf une heure que vous donnez vous-même à une étape. Ce qui ne tient pas avant la fin de la journée garde sa place dans le plan, et une ligne le dit.
+C’est une disposition à regarder, jamais un emploi du temps : rien n’est écrit dans les tâches ; une heure à laquelle vous fixez une étape est un événement de votre agenda ([plus bas](#pinned-to-a-time)). Ce qui ne tient pas avant la fin de la journée garde sa place dans le plan, et une ligne le dit.
 
-**Déplacer une étape à la main** : faites-la glisser vers une autre heure d’aujourd’hui. Elle reçoit cette heure, pour aujourd’hui seulement : la journée la place là et dispose les autres étapes autour, et votre plan la garde sur aujourd’hui. Son heure s’affiche en couleur tant qu’elle tient. Clic droit (ou gardez le doigt dessus puis lâchez) pour **Laisser le plan la placer**, qui retire cette heure. Demain, une heure non utilisée ne compte simplement plus ; rien d’autre de la tâche ne change : son jour de début et sa date demandée restent tels que vous les avez réglés. Vous pouvez aussi faire glisser un repas ou une sieste (comme sur la page [Santé](health.md#the-day-and-the-week)) et un événement d’un agenda où vous pouvez écrire (comme dans l’[Agenda](agenda.md#moving-an-event-by-hand)). Pendant que vous faites glisser, les nouvelles heures s’affichent, de cinq en cinq minutes ; lâchez, et **Annuler** attend dix secondes. À la souris, appuyez et faites glisser ; sur un écran tactile, gardez le doigt jusqu’à ce que le bloc se soulève, puis faites-le glisser ; un simple balayage fait défiler.
+**Déplacer une étape à la main** : faites-la glisser vers une autre heure d’aujourd’hui. Elle y est fixée ([plus bas](#pinned-to-a-time)) : son créneau va dans votre agenda, aussi long que l’étape que vous avez fait glisser, et la journée dispose les autres étapes autour. Son heure s’affiche en couleur. Clic droit (ou gardez le doigt dessus puis lâchez) pour **Laisser le plan la placer**, qui retire le créneau. Rien d’autre de la tâche ne change : son jour de début et sa date demandée restent tels que vous les avez réglés. Vous pouvez aussi faire glisser un repas ou une sieste (comme sur la page [Santé](health.md#the-day-and-the-week)) et un événement d’un agenda où vous pouvez écrire (comme dans l’[Agenda](agenda.md#moving-an-event-by-hand)). Pendant que vous faites glisser, les nouvelles heures s’affichent, de cinq en cinq minutes ; lâchez, et **Annuler** attend dix secondes. À la souris, appuyez et faites glisser ; sur un écran tactile, gardez le doigt jusqu’à ce que le bloc se soulève, puis faites-le glisser ; un simple balayage fait défiler.
 
 La journée répartit ce qu’elle demande :
 - jamais deux étapes lourdes d’affilée ;
@@ -119,6 +119,20 @@ Après la dernière étape, un peu de temps est **Gardé libre, si des étapes p
   [![La journée : une colonne d’heures avec une fine bande qui marque les heures de travail, de démarches et de loisirs, une ligne à l’heure actuelle, les étapes du jour l’une après l’autre avec leurs horaires, et un appel vidéo à 14:30.](../assets/screens/fr/tasks-day.png){ loading=lazy }](../assets/screens/fr/tasks-day.png "Ouvrir l’image en grand")
   <figcaption>La journée : les événements, et les étapes qui trouvent place autour.</figcaption>
 </figure>
+
+## Fixée à une heure {#pinned-to-a-time}
+
+**Faire à…**, dans les détails d’une tâche, la fixe à un jour et une heure : son créneau, un événement à part entière, va dans votre agenda, « Tâches planifiées », créé la première fois sur le compte de la liste de la tâche (sur cet appareil pour une liste gardée ici ; le ⚙ des tâches peut en nommer un autre). Il dure ce que le plan donne à la tâche, sauf si vous en décidez autrement. Il s’affiche dans tout agenda, celui de votre téléphone aussi, et la tâche et son créneau sont liés dans les deux sens. Ses détails montrent alors une épingle et quand, sous son titre : « Fixée : jeudi 8 octobre, 10:00–10:30 ». Un clic là ouvre le créneau dans l’agenda ; son menu (clic droit, appui long sur un écran tactile, ou **⋯**) propose **Déplacer…** et **Laisser le plan la placer**. Dans la liste et sur le tableau, sa ligne montre une petite épingle et son heure ; Maintenant montre l’épingle quand l’étape suivante est fixée, et la journée en marque son étape.
+
+- **Le plan place la tâche dans son créneau**, quoi qu’il y ait là, et autour ce qui tient encore. Le créneau compte une fois, comme la tâche : jamais comme un événement en plus.
+- **Déplacez-le** avec **Changer…**, en faisant glisser l’étape dans [la journée](#the-day), ou en faisant glisser le créneau dans l’[agenda](agenda.md#tasks-pinned-to-a-time) ou dans tout autre programme d’agenda : la tâche suit, à la synchronisation suivante pour un autre programme. Supprimez le créneau n’importe où, et le plan replace la tâche.
+- **Laisser le plan la placer** retire le créneau ; **Annuler** attend dix secondes.
+- **Le créneau passe et la tâche n’est pas faite** : le plan la replace. Le créneau reste dans votre agenda tel qu’il était ; rien n’est dit, rien n’est compté.
+- **Faite ou abandonnée** : un créneau encore à venir part, son temps libéré ; un créneau en cours finit à ce moment-là ; un créneau passé reste, la trace du moment où le travail a été fait. Une tâche supprimée emporte ses créneaux à venir, et **Annuler** ramène les deux.
+- **Une tâche qui revient** : un créneau fixe un seul de ses tours ; le tour suivant est planifié comme d’habitude.
+- **Pas d’alarme dans le créneau**, sauf si vous en demandez une dans le ⚙ des tâches : Sioul vous le rappelle comme tout événement, et un téléphone vous le rappellerait deux fois.
+- **Le créneau garde le titre de la tâche**, changé avec elle.
+- **Vos repas** se décalent après un créneau comme après tout événement.
 
 ## Liste, Tableau, Calendrier {#list-board-timeline}
 
@@ -139,7 +153,7 @@ Trois choix en haut de la page, **Tous les projets**, **Tous les types** et **To
 
 Une tâche s’ouvre à droite avec ses détails, depuis n’importe quelle vue : un clic dessus, **Détails** dans son menu (clic droit, ou appui long sur un écran tactile), ou **Détails** sur la carte de Maintenant. Rien ne démarre sans vous.
 
-- **Commencer**, **Fait**, **Pas maintenant** et **Abandonner** (plus à faire finalement : gardée, barrée, hors du plan ; **Rouvrir** la ramène), puis ce qui compte, en mots : sa date, sa durée, ce qu’elle attend, où vous en étiez, le temps passé ; et, quand il y a quelque chose à dire, **Combien de temps ça prend, d’habitude**, comparé à vos premières estimations ;
+- **Commencer**, **Fait**, **Pas maintenant**, **Faire à…** ([fixée à une heure](#pinned-to-a-time)) et **Abandonner** (plus à faire finalement : gardée, barrée, hors du plan ; **Rouvrir** la ramène), puis ce qui compte, en mots : sa date, sa durée, ce qu’elle attend, où vous en étiez, le temps passé ; et, quand il y a quelque chose à dire, **Combien de temps ça prend, d’habitude**, comparé à vos premières estimations ;
 - ses étiquettes, **ses étapes** (chacune se coche ici ; leurs minutes s’additionnent), **ce qu’elle attend** et ce qu’elle libère ;
 - ses champs en mots, ceux qui sont dits : **Peut commencer le**, **Avant** et **Après**, ce qu’elle demande et ce qu’elle apporte, **Ce que ça coûte**, **Projet**, **Facturé**, **Type**, **Pour**, **Demande un bureau ouvert**, **Revient**, **Liste** ; ses notes ;
 - **Lié à cela** : le courrier d’où elle vient, ses notes, les personnes, les brouillons, le projet. **Écrire un courriel** commence un message aux personnes qu’elle concerne ; **En faire une note** commence une note liée à elle ; **Lier à…** y lie tout le reste.
@@ -188,7 +202,7 @@ Une tâche étiquetée `joy` (ce mot anglais, tel quel) est offerte sous **Si vo
 - **L’ordre** : une tâche ne passe jamais avant ce qu’elle attend. Des tâches qui s’attendent en boucle sont signalées, calmement : « Ces étapes s’attendent l’une l’autre : … L’une d’elles doit passer d’abord. »
 - **L’étape suivante**, parmi les tâches libres de commencer : celle que vous avez commencée ; puis celle dont la date vient le plus tôt, en comptant le travail qui attend derrière elle ; puis votre propre ordre ; puis celle qui en libère le plus ; puis la plus petite.
 - **Les jours** : chaque tâche va dans les premiers jours qui ont de la place. La place, ce sont vos heures, chaque sorte pour ses propres tâches : les heures de travail au travail, les heures pour vos démarches à vos démarches ; les loisirs n’ont pas d’heures : ce qui n’est que pour eux ne prend pas de place et n’attend rien ([Heures](hours.md)). Les événements en sont retirés, avec leur **Avant** et leur **Après**, et cinq minutes avant et après chacun ; chaque étape laisse cinq minutes après elle. L’**Avant** et l’**Après** d’une tâche prennent de la place avec elle. Vos repas, vos siestes et votre nuit sont gardés libres aussi ([Santé](health.md#meals-rest-and-sleep)). Une étape d’une heure au plus n’est jamais coupée ; une plus longue est coupée en morceaux d’au moins un quart d’heure. Une tâche avec un **Avant** ou un **Après** n’est jamais coupée : elle va entière sur un jour dont la place la tient, ou a un jour à elle. Sans aucune heure réglée, la place va du lundi au vendredi, de 09:00 à 17:00. Chaque tâche prend sa durée corrigée ([Combien de temps prennent les choses](time.md#how-long-things-take)), et chaque jour garde un peu de temps libre pour les étapes qui débordent, et une demi-heure pour vous. La place d’aujourd’hui commence maintenant, et la brume ou le brouillard la réduisent. Les jours de repos, et aujourd’hui une fois la journée close, n’en ont pas.
-- **Vos dates restent les vôtres.** Les jours que donne le plan sont recalculés à chaque fois, et jamais écrits dans vos tâches. Seul ce que vous réglez est gardé : un jour de début, une date demandée, un ordre, et une heure que vous donnez à la main à une étape aujourd’hui.
+- **Vos dates restent les vôtres.** Les jours que donne le plan sont recalculés à chaque fois, et jamais écrits dans vos tâches. Seul ce que vous réglez est gardé : un jour de début, une date demandée, un ordre, et les heures auxquelles vous fixez des tâches, comme événements de votre agenda.
 - **Toujours à jour** : le plan est refait aussitôt que quelque chose dont il dépend change (une tâche, sa durée estimée ou le temps noté pour elle, un événement, un repas ou la nuit, vos heures ou vos jours de repos, la météo du jour, **Fini pour aujourd’hui**, ce qu’apportent vos autres appareils ou une synchronisation), ainsi qu’au démarrage de Sioul, toutes les douze heures et à minuit.
 - **Quand une date ne tiendra pas**, la tâche le dit une fois : « À ce rythme, le plan finit après le 30 octobre. La faire plus tôt, la réduire ou la confier garderait la date. » Près d’une date demandée, Maintenant dit ce qui tient : « Jusqu’au mercredi 7 octobre : environ 30 min d’étapes, 3 h de place. »
 
@@ -272,6 +286,8 @@ Le ⚙ en haut de la page :
 - **Listes de tâches** : renommées, ici et sur le serveur ; une liste vide peut être supprimée.
 - **Une tâche sans durée compte** tant de minutes.
 - **Les nouvelles tâches vont dans** : la liste où va une nouvelle tâche, tapée en une ligne ou dans son formulaire (où une autre peut se choisir).
+- **Les créneaux vont dans** : l’agenda des tâches que vous fixez à une heure ; sauf si vous en choisissez un, « Tâches planifiées », créé la première fois avec la liste de chaque tâche (sur cet appareil pour une liste gardée ici, ou pour un compte Google).
+- **Une alarme dans chaque créneau** : désactivée sauf si vous l’activez ; cinq minutes avant lui, dans les créneaux faits ou déplacés à partir de là.
 - **Ce que tient une journée** ([plus haut](#what-a-day-holds)) :
   - **Partir de** : *Comme maintenant*, *Plus léger* ou *Bien plus léger* ;
   - **Jours dont le plan apprend** : 28 sauf si vous changez, de 14 à 90 ;
@@ -288,7 +304,7 @@ Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se d�
 
 ## Où vivent les tâches {#where-tasks-live}
 
-Les tâches sont des tâches CalDAV standard, dans des listes de tâches sur votre serveur d’agenda : votre téléphone et les autres programmes les voient. Ce qui les relie (étapes, attentes, liens, types) y est écrit dans les termes de la norme elle-même (RFC 9253), pour que les autres programmes le gardent.
+Les tâches sont des tâches CalDAV standard, dans des listes de tâches sur votre serveur d’agenda : votre téléphone et les autres programmes les voient. Ce qui les relie (étapes, attentes, liens, types) y est écrit dans les termes de la norme elle-même (RFC 9253), pour que les autres programmes le gardent. Une tâche fixée à une heure a son créneau dans un agenda : un événement standard, lié à la tâche dans les deux sens.
 
 Google Tasks garde moins : une liste là-bas grise ce que Google ne garde pas (un jour de début, une durée, un projet, un type, l’attente d’une autre tâche…), en disant pourquoi. Une liste peut aussi vivre seulement sur cet appareil.
 

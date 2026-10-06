@@ -11,11 +11,21 @@
 //!
 //! Only HTTPS: a settings file fetched in clear could send your password to
 //! someone else's server. The ISPDB is told the domain, never the address.
+//!
+//! Google's mail is known before any of that: gmail.com and googlemail.com,
+//! and any domain whose mail Google receives (Google Workspace: its MX is
+//! smtp.google.com, or aspmx.l.google.com and its kin), asked of the system's
+//! DNS. Google takes no account password there, only an app password or its
+//! own sign-in, so the form must know it (docs/google.md, "Mail").
 
 use crate::SyncError;
 use sioul_core::config::Security;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
+
+/// Google's mail servers, for Gmail and Google Workspace alike.
+pub const GOOGLE_IMAP: &str = "imap.gmail.com";
+pub const GOOGLE_SMTP: &str = "smtp.gmail.com";
 
 /// IMAP settings found for an address, with the SMTP server when the settings name one.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +52,8 @@ pub enum FoundBy {
     Provider,
     Ispdb,
     Guess,
+    /// Google keeps this address's mail: Gmail, or a domain whose MX is Google's.
+    Google,
 }
 
 impl FoundBy {
@@ -51,6 +63,7 @@ impl FoundBy {
             FoundBy::Provider => "account-by-provider",
             FoundBy::Ispdb => "account-by-ispdb",
             FoundBy::Guess => "account-by-guess",
+            FoundBy::Google => "account-by-google",
         }
     }
 }
@@ -60,8 +73,17 @@ const PROBE: Duration = Duration::from_secs(5);
 
 /// The IMAP settings for an address.
 pub fn discover(address: &str) -> Result<Found, SyncError> {
+    discover_with(address, mx_hosts)
+}
+
+/// `discover`, the domain's MX asked of `mx` (the system's DNS, or a stand-in in tests).
+pub(crate) fn discover_with(address: &str, mx: impl Fn(&str) -> Option<Vec<String>>) -> Result<Found, SyncError> {
     let address = address.trim();
     let domain = domain_of(address).ok_or(SyncError::BadAddress)?;
+    // Gmail: known here, nothing asked of anyone.
+    if is_google_domain(&domain) {
+        return Ok(google_found(address));
+    }
     // HTTPS to the end: a redirect to a plain address is not followed.
     let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(HTTP)).https_only(true).build().into();
     let sources = [
@@ -75,7 +97,63 @@ pub fn discover(address: &str) -> Result<Found, SyncError> {
             return Ok(found);
         }
     }
+    // Google Workspace: the domain's mail goes to Google, its servers are Google's.
+    if mx(&domain).is_some_and(|hosts| hosts.iter().any(|h| is_google_mx(h))) {
+        return Ok(google_found(address));
+    }
     guess(&domain, address).ok_or(SyncError::NotFound(domain))
+}
+
+/// Google's servers for an address whose mail Google keeps: IMAP on 993 and
+/// submission on 465, both encrypted from the first byte; the address as login.
+pub fn google_found(address: &str) -> Found {
+    Found {
+        host: GOOGLE_IMAP.into(),
+        port: 993,
+        security: Security::Tls,
+        username: address.trim().to_string(),
+        by: FoundBy::Google,
+        smtp: Some(Smtp { host: GOOGLE_SMTP.into(), port: 465, security: Security::Tls }),
+    }
+}
+
+/// Gmail's own domains.
+pub fn is_google_domain(domain: &str) -> bool {
+    matches!(domain.trim().trim_end_matches('.').to_ascii_lowercase().as_str(), "gmail.com" | "googlemail.com")
+}
+
+/// Whether a mail exchanger is Google's: smtp.google.com (Workspace since
+/// 2023), aspmx.l.google.com and altN.aspmx.l.google.com, aspmxN.googlemail.com.
+/// Only Google names hosts under google.com and googlemail.com.
+pub fn is_google_mx(host: &str) -> bool {
+    let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    host.ends_with(".google.com") || host.ends_with(".googlemail.com")
+}
+
+/// Whether Google keeps an address's mail: its domain is Gmail's, or its MX
+/// (asked of the system's DNS) is Google's.
+pub fn is_google_mail(address: &str) -> bool {
+    is_google_mail_with(address, mx_hosts)
+}
+
+/// `is_google_mail`, the MX asked of `mx`.
+pub(crate) fn is_google_mail_with(address: &str, mx: impl Fn(&str) -> Option<Vec<String>>) -> bool {
+    let Some(domain) = domain_of(address.trim()) else { return false };
+    is_google_domain(&domain) || mx(&domain).is_some_and(|hosts| hosts.iter().any(|h| is_google_mx(h)))
+}
+
+/// The hosts that receive a domain's mail (its MX records), asked of the
+/// system's DNS as the sender checks do (on Android, the network's servers,
+/// which hickory reads through ConnectivityManager); None when it cannot be
+/// asked or does not answer within a few seconds.
+fn mx_hosts(domain: &str) -> Option<Vec<String>> {
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+    runtime.block_on(async {
+        let resolver = mail_auth::MessageAuthenticator::new_system_conf().ok()?;
+        let none = None::<&mail_auth::common::cache::NoCache<Box<str>, mail_auth::RecordSet<mail_auth::MX>>>;
+        let found = tokio::time::timeout(PROBE, resolver.mx_lookup(domain, none)).await.ok()?.ok()?;
+        Some(found.rrset.iter().flat_map(|mx| mx.exchanges.iter().map(|host| host.trim_end_matches('.').to_string())).collect())
+    })
 }
 
 fn fetch(agent: &ureq::Agent, url: &str) -> Option<String> {
@@ -250,6 +328,38 @@ mod tests {
         assert_eq!((found.host.as_str(), found.port, found.security), ("imap.example.net", 143, Security::Starttls));
         assert_eq!(found.username, "jane");
         assert_eq!(parse_config("<clientConfig/>", "a@example.org", FoundBy::Ispdb), None);
+    }
+
+    /// Google's mail, by its domains, else by the domain's MX (a stand-in
+    /// for the DNS here); nothing asked for Gmail's own domains.
+    #[test]
+    fn knows_google_mail() {
+        let never = |domain: &str| -> Option<Vec<String>> { panic!("{domain}: Gmail's domains need no DNS") };
+        for address in ["someone@gmail.com", " Someone@GMail.COM ", "someone@googlemail.com"] {
+            assert!(is_google_mail_with(address, never), "{address}");
+            assert_eq!(discover_with(address, never).unwrap(), google_found(address));
+        }
+        let mx = |domain: &str| -> Option<Vec<String>> {
+            match domain {
+                // Google Workspace since 2023, then before (with a trailing dot, as DNS gives it).
+                "new-workspace.example" => Some(vec!["smtp.google.com".into()]),
+                "old-workspace.example" => Some(vec!["aspmx.l.google.com.".into(), "alt1.aspmx.l.google.com.".into(), "aspmx2.googlemail.com.".into()]),
+                "elsewhere.example" => Some(vec!["mx.elsewhere.example".into()]),
+                // Names that only look like Google's.
+                "lookalike.example" => Some(vec!["google.com.lookalike.example".into(), "notgoogle.com".into(), "aspmx.l.google.com.evil.example".into()]),
+                _ => None,
+            }
+        };
+        assert!(is_google_mail_with("you@new-workspace.example", mx));
+        assert!(is_google_mail_with("you@old-workspace.example", mx));
+        assert!(!is_google_mail_with("you@elsewhere.example", mx));
+        assert!(!is_google_mail_with("you@lookalike.example", mx));
+        assert!(!is_google_mail_with("you@unanswered.example", mx), "no answer: not Google");
+        assert!(!is_google_mail_with("not an address", mx));
+        // Google's servers, encrypted from the first byte, the address as login.
+        let found = google_found("you@new-workspace.example");
+        assert_eq!((found.host.as_str(), found.port, found.security, found.username.as_str(), found.by), ("imap.gmail.com", 993, Security::Tls, "you@new-workspace.example", FoundBy::Google));
+        assert_eq!(found.smtp, Some(Smtp { host: "smtp.gmail.com".into(), port: 465, security: Security::Tls }));
     }
 
     #[test]

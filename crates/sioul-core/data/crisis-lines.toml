@@ -1,0 +1,140 @@
+# Emergency numbers and crisis lines, by country, for the pause's screen
+# (docs/pauses.md, P13). Each number with the page it was checked on and the
+# day; check them all again before each release, and change `checked`.
+# `cargo test -p sioul-core crisis_lines` checks that this file is well formed.
+#
+# kind:  emergency (police, fire, ambulance), medical (medical emergencies),
+#        crisis (someone to talk to now, day and night), text (the same in
+#        writing), care (urgent care that is not an emergency), callback (the
+#        number emergency services call back from: never shown to call)
+# how:   "call", "text", or both
+# sms:   the word that starts a conversation by text, when one is needed
+# about: who it is for, in English and in French, when not for everyone
+
+[[country]]
+code = "FR"
+
+[[country.line]]
+kind = "emergency"
+number = "112"
+how = ["call"]
+source = "https://www.service-public.gouv.fr/particuliers/actualites/A17758"
+checked = "2026-10-06"
+
+[[country.line]]
+kind = "crisis"
+number = "3114"
+how = ["call"]
+about = { en = "suicide prevention, free, 24/7", fr = "prévention du suicide, gratuit, 24 h/24" }
+source = "https://3114.fr/"
+checked = "2026-10-06"
+
+[[country.line]]
+kind = "medical"
+number = "15"
+name = "SAMU"
+how = ["call"]
+source = "https://www.service-public.gouv.fr/particuliers/actualites/A17758"
+checked = "2026-10-06"
+
+[[country.line]]
+kind = "text"
+number = "114"
+how = ["text"]
+about = { en = "for deaf, deafblind, hard-of-hearing and aphasic people; also by video, chat or the 114 app", fr = "pour les personnes sourdes, sourdaveugles, malentendantes et aphasiques ; aussi en visio, tchat ou par l’application 114" }
+source = "https://info.urgence114.fr/"
+checked = "2026-10-06"
+
+[[country.line]]
+kind = "callback"
+number = "0 800 112 112"
+how = ["call"]
+about = { en = "emergency services call back from it; it takes no calls", fr = "les services d’urgence rappellent depuis ce numéro\u202f; il ne prend pas d’appel" }
+source = "https://www.service-public.gouv.fr/particuliers/actualites/A17758"
+checked = "2026-10-06"
+
+[[country]]
+code = "EU"
+
+[[country.line]]
+kind = "emergency"
+number = "112"
+how = ["call"]
+about = { en = "free, everywhere in the European Union", fr = "gratuit, partout dans l’Union européenne" }
+source = "https://digital-strategy.ec.europa.eu/en/policies/112"
+checked = "2026-10-06"
+
+[[country]]
+code = "GB"
+
+[[country.line]]
+kind = "emergency"
+number = "999"
+how = ["call"]
+source = "https://www.nhs.uk/nhs-services/mental-health-services/where-to-get-urgent-help-for-mental-health/"
+checked = "2026-10-06"
+
+[[country.line]]
+kind = "crisis"
+number = "116 123"
+name = "Samaritans"
+how = ["call"]
+about = { en = "free, any time", fr = "gratuit, à toute heure" }
+source = "https://www.samaritans.org/how-we-can-help/contact-samaritan/"
+checked = "2026-10-06"
+
+[[country.line]]
+kind = "text"
+number = "85258"
+name = "Shout"
+how = ["text"]
+sms = "SHOUT"
+source = "https://giveusashout.org/get-help/"
+checked = "2026-10-06"
+
+[[country.line]]
+kind = "care"
+number = "111"
+name = "NHS 111"
+how = ["call"]
+about = { en = "choose the mental health option", fr = "choisir l’option santé mentale" }
+source = "https://www.nhs.uk/nhs-services/mental-health-services/where-to-get-urgent-help-for-mental-health/"
+checked = "2026-10-06"
+
+[[country]]
+code = "US"
+
+[[country.line]]
+kind = "emergency"
+number = "911"
+how = ["call"]
+source = "https://www.nimh.nih.gov/health/find-help"
+checked = "2026-10-06"
+
+[[country.line]]
+kind = "crisis"
+number = "988"
+name = "988 Lifeline"
+how = ["call", "text"]
+about = { en = "free, 24/7; chat too", fr = "gratuit, 24 h/24 ; tchat aussi" }
+source = "https://988lifeline.org/"
+checked = "2026-10-06"
+
+[[country]]
+code = "CA"
+
+[[country.line]]
+kind = "emergency"
+number = "911"
+how = ["call"]
+source = "https://988.ca/"
+checked = "2026-10-06"
+
+[[country.line]]
+kind = "crisis"
+number = "988"
+name = "9-8-8"
+how = ["call", "text"]
+about = { en = "24/7", fr = "24 h/24" }
+source = "https://988.ca/"
+checked = "2026-10-06"

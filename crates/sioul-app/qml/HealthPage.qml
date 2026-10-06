@@ -31,10 +31,12 @@ Item {
 
     // The page's view (`health::page`): the week of the day shown, and what only today says.
     property var shown: ({ week: { monday: "", today: "", from_minute: 420, to_minute: 1380, days: [] }, missed: [], shared_note: "", reminded_there: "", watch: null, later: 15, any: true, medicines: [], prescriptions: [] })
-    // The medicines and the prescriptions, taken from the view only when they
-    // change: the view comes again each minute, and their rows stay as they are.
+    // The medicines, the prescriptions and the week's days, taken from the view
+    // only when they change: the view comes again each minute, and their rows
+    // and timelines stay as they are.
     property var medicines: []
     property var prescriptions: []
+    property var weekDays: []
     // "day" or "week"; the week made the first time it is asked for.
     property string mode: "day"
     property bool weekMade: false
@@ -178,22 +180,29 @@ Item {
             page.medicines = medicines
         if (JSON.stringify(prescriptions) !== JSON.stringify(page.prescriptions))
             page.prescriptions = prescriptions
+        const days = page.shown.week.days || []
+        if (JSON.stringify(days) !== JSON.stringify(page.weekDays))
+            page.weekDays = days
         page.pick()
     }
 
-    // The day asked for, once the view has its week; until then the one shown stays.
+    // The day asked for, once the view has its week; until then the one shown
+    // stays. The same as before, it stays as it is: its timeline and its rows
+    // are not made again each minute for nothing.
     function pick() {
-        const days = page.shown.week.days
+        const days = page.weekDays
         const found = days.find(d => d.date === page.wanted)
-        if (found)
-            page.day = found
-        else if (page.day === null && days.length > 0)
+        if (found) {
+            if (JSON.stringify(found) !== JSON.stringify(page.day))
+                page.day = found
+        } else if (page.day === null && days.length > 0) {
             page.day = days.find(d => d.today) || days[0]
+        }
     }
 
     function goTo(date) {
         page.wanted = date
-        page.followsToday = date === page.iso(new Date())
+        page.followsToday = date === page.window.today
         page.chosen = ""
         page.pick()
         page.reload()
@@ -309,8 +318,8 @@ Item {
 
     // Another day when the clock turns past midnight, if the page showed today.
     function follow() {
-        if (page.followsToday && page.wanted !== page.iso(new Date()))
-            page.goTo(page.iso(new Date()))
+        if (page.followsToday && page.wanted !== page.window.today)
+            page.goTo(page.window.today)
         else
             page.reload()
     }
@@ -326,12 +335,17 @@ Item {
         page.reload()
     }
 
-    // Doses pass their time, the now line moves: made again each minute while open.
-    Timer {
-        interval: 60000
-        running: page.visible && !page.sioul.away
-        repeat: true
-        onTriggered: page.follow()
+    // Doses pass their time, and what is known of them from your other devices
+    // ages: made again at each minute's turn of the window's clock while open,
+    // and at once when the app comes back. The line at now follows the clock
+    // alone (HealthTimeline.qml).
+    Connections {
+        target: page.window
+
+        function onNowChanged() {
+            if (page.visible)
+                page.follow()
+        }
     }
 
     ColumnLayout {
@@ -377,7 +391,7 @@ Item {
                 visible: !page.narrow && !page.onToday
                 flat: true
                 text: page.sioul.text("agenda-today")
-                onClicked: page.goTo(page.iso(new Date()))
+                onClicked: page.goTo(page.window.today)
             }
             ModeSwitch {
                 visible: !page.narrow
@@ -396,7 +410,7 @@ Item {
                 visible: !page.onToday
                 flat: true
                 text: page.sioul.text("agenda-today")
-                onClicked: page.goTo(page.iso(new Date()))
+                onClicked: page.goTo(page.window.today)
             }
             Item {
                 Layout.fillWidth: true
@@ -437,6 +451,9 @@ Item {
                     days: page.day ? [page.day] : []
                     fromMinute: page.shown.week.from_minute
                     toMinute: page.shown.week.to_minute
+                    // The window's clock: the line at now and today's marks follow it.
+                    now: page.window.now
+                    today: page.window.today
                     lit: page.hovered
                     chosen: page.chosen
                     readable: page.readable
@@ -472,9 +489,11 @@ Item {
                     sioul: page.sioul
                     theme: page.theme
                     titles: true
-                    days: page.shown.week.days
+                    days: page.weekDays
                     fromMinute: page.shown.week.from_minute
                     toMinute: page.shown.week.to_minute
+                    now: page.window.now
+                    today: page.window.today
                     lit: page.hovered
                     chosen: page.chosen
                     readable: page.readable
@@ -736,15 +755,31 @@ Item {
                                     visible: row.isDose && scroll.day.today
                                     flat: row.modelData.taken !== ""
                                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                                    text: row.modelData.taken !== "" ? page.sioul.textWith("health-taken-at", "time", row.modelData.taken) : page.sioul.text(row.modelData.late ? "health-taken-when" : "health-taken")
+                                    text: row.modelData.taken !== "" ? page.sioul.textWith("health-taken-at", "time", row.modelData.taken) : page.sioul.text(row.modelData.late && !row.modelData.choose ? "health-taken-when" : "health-taken")
                                     icon.name: row.modelData.taken !== "" ? "task-complete" : ""
                                     icon.color: page.theme.text
                                     onClicked: {
+                                        // Answers that differ on your devices: you choose.
+                                        if (row.modelData.choose) {
+                                            page.sioul.doseChoose(row.modelData.key, true)
+                                            page.reload()
+                                            return
+                                        }
                                         if (row.modelData.taken === "" && row.modelData.late) {
                                             page.window.askDose(row.modelData.key)
                                             return
                                         }
                                         page.sioul.setDoseTaken(row.modelData.key, row.modelData.taken === "")
+                                        page.reload()
+                                    }
+                                }
+                                Button {
+                                    visible: row.isDose && scroll.day.today && row.modelData.choose === true
+                                    flat: true
+                                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                                    text: page.sioul.text("health-not-taken")
+                                    onClicked: {
+                                        page.sioul.doseChoose(row.modelData.key, false)
                                         page.reload()
                                     }
                                 }
@@ -780,17 +815,17 @@ Item {
                                 font.pixelSize: 12
                                 color: page.theme.muted
                             }
-                            // Not marked here, and not known whether it was taken on another device: said, never guessed.
-                            Label {
-                                visible: row.modelData.doubt !== ""
+                            // Not marked here, and not known whether it was taken on another device: said,
+                            // never guessed; "This device is off" for each device it names.
+                            DoubtLine {
                                 Layout.fillWidth: true
                                 Layout.leftMargin: timeWidth.implicitWidth + 12
                                 Layout.preferredWidth: 1
-                                text: row.modelData.doubt
-                                textFormat: Text.PlainText
-                                wrapMode: Text.Wrap
-                                font.pixelSize: 13
-                                color: page.theme.warm
+                                sioul: page.sioul
+                                theme: page.theme
+                                doubt: row.modelData.doubt
+                                offs: row.modelData.doubt_off || []
+                                onSaidOff: page.reload()
                             }
                         }
                     }
@@ -927,15 +962,15 @@ Item {
                                 }
                             }
                         }
-                        // Whether it was taken on another device is not known here: said, never guessed.
-                        Label {
-                            visible: missed.modelData.doubt !== ""
+                        // Whether it was taken on another device is not known here: said, never
+                        // guessed; "This device is off" for each device it names.
+                        DoubtLine {
                             Layout.fillWidth: true
-                            text: missed.modelData.doubt
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            font.pixelSize: 13
-                            color: page.theme.warm
+                            sioul: page.sioul
+                            theme: page.theme
+                            doubt: missed.modelData.doubt
+                            offs: missed.modelData.doubt_off || []
+                            onSaidOff: page.reload()
                         }
                     }
                 }

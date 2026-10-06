@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- An address of yours in the share sheet and at a long press on Sioul's
+     icon (MailShortcuts.java): an envelope, in the quill's colour, inside the
+     part every icon shape keeps (the middle 66 dp of 108). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M38,39h32a4,4 0,0 1,4 4v22a4,4 0,0 1,-4 4h-32a4,4 0,0 1,-4 -4v-22a4,4 0,0 1,4 -4z"
+        android:strokeColor="#fbfaf7"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M36,42l18,14l18,-14"
+        android:strokeColor="#fbfaf7"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

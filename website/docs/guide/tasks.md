@@ -98,9 +98,9 @@ Five answers: *I do not know how to start*, *It is too big*, *I dread it*, *It i
 
 The day follows the clock: the line moves with the minutes, and the day is laid out again from now every five minutes and whenever you come back to Sioul, with what your other devices marked or noted meanwhile, and at once after anything changes what it holds (below, "The plan").
 
-It is a layout to look at, never a schedule: nothing is written into the tasks, except a time you give a step yourself. What does not fit before the day ends keeps its place in the plan, said in one line.
+It is a layout to look at, never a schedule: nothing is written into the tasks; a time you pin a step to is an event in your calendar ([below](#pinned-to-a-time)). What does not fit before the day ends keeps its place in the plan, said in one line.
 
-**Move a step by hand**: drag it to another time today. It is given that time, today only: the day places it there and lays the other steps around it, and your plan keeps it on today. Its time shows in colour while it holds. Right click it (or hold it and let go) for **Let the plan place it**, which takes the time away. Tomorrow, a time not used simply no longer counts; nothing else of the task changes: its day to start and its date asked stay as you set them. You can also drag a meal or a nap (as on the [Health](health.md#the-day-and-the-week) page) and an event of a calendar you can write to (as in the [Agenda](agenda.md#moving-an-event-by-hand)). While you drag, the new times show, by five minutes; let go, and **Undo** waits ten seconds. With a mouse, press and drag; on a touch screen, hold until it lifts, then slide; a plain swipe scrolls.
+**Move a step by hand**: drag it to another time today. It is pinned there ([below](#pinned-to-a-time)): its block goes into your calendar, as long as the step you dragged, and the day lays the other steps around it. Its time shows in colour. Right click it (or hold it and let go) for **Let the plan place it**, which takes the block away. Nothing else of the task changes: its day to start and its date asked stay as you set them. You can also drag a meal or a nap (as on the [Health](health.md#the-day-and-the-week) page) and an event of a calendar you can write to (as in the [Agenda](agenda.md#moving-an-event-by-hand)). While you drag, the new times show, by five minutes; let go, and **Undo** waits ten seconds. With a mouse, press and drag; on a touch screen, hold until it lifts, then slide; a plain swipe scrolls.
 
 The day spreads what it asks:
 - never two heavy steps in a row;
@@ -119,6 +119,20 @@ After the last step, some time is **Kept free, in case steps take longer** ([How
   [![The day: a column of hours with a thin band marking work, admin and leisure hours, a line at the current hour, the day's steps one after the other with their times, a pause between them, and a line under the day saying one more step does not fit before it ends.](../assets/screens/tasks-day.png){ loading=lazy }](../assets/screens/tasks-day.png "Open the picture at full size")
   <figcaption>The day: your hours by kind, and the steps placed in them.</figcaption>
 </figure>
+
+## Pinned to a time
+
+**Do at…**, in a task's details, pins it to a day and a time: its block, an event of its own, goes into your calendar, "Planned tasks", made the first time on the account of the task's list (on this device for a list kept here; the Tasks ⚙ can name another calendar). It lasts as long as the plan lays the task, unless you say otherwise. It shows in every calendar, your phone's too, and the task and its block are tied both ways. Its details then show a pin and when, under its title: "Pinned: Thursday 8 October, 10:00–10:30". A click there opens the block in the Agenda; its menu (right click, a long press on a touch screen, or **⋯**) offers **Move…** and **Let the plan place it**. In the list and on the board, its row shows a small pin and its time; Now shows the pin when the next step is pinned, and the day marks its step with one.
+
+- **The plan lays the task in its block**, whatever else is there, and what else fits around it. The block counts once, as the task: never as an event besides.
+- **Move it** with **Change…**, by dragging the step in [the day](#the-day), or by dragging the block in the [Agenda](agenda.md#tasks-pinned-to-a-time) or in any other calendar program: the task follows, at the next sync for another program. Delete the block anywhere, and the plan places the task again.
+- **Let the plan place it** takes the block away; **Undo** waits ten seconds.
+- **The block passes and the task is not done**: the plan places it again. The block stays in your calendar as it was; nothing is said, nothing counted.
+- **Done or dropped**: a block still to come goes, its time freed; one under way ends then; one over stays, the record of when the work was done. A task deleted takes its blocks to come with it, and **Undo** brings both back.
+- **A repeating task**: a block pins one turn; the next turn is planned as usual.
+- **No alarm in the block** unless you ask for one in the Tasks ⚙: Sioul reminds you of it as of any event, and a phone would remind you twice.
+- **The block keeps the task's title**, changed with it.
+- **Your meals** move past a block as past any event.
 
 ## List, Board, Timeline
 
@@ -139,7 +153,7 @@ Three choices at the top of the page, **Every project**, **All kinds** and **Any
 
 A task opens on the right with its details, from any view: a click on it, **Details** in its menu (right click, or a long press on a touch screen), or **Details** on Now's card. Nothing starts until you say.
 
-- **Start**, **Done**, **Not now** and **Drop** (not to be done after all: kept, struck out, out of the plan; **Open again** brings it back), then what matters, in words: its date, its length, what it waits for, where you stopped, the time spent; and, when there is something to say, **How long things like this take**, against your first guesses;
+- **Start**, **Done**, **Not now**, **Do at…** ([pinned to a time](#pinned-to-a-time)) and **Drop** (not to be done after all: kept, struck out, out of the plan; **Open again** brings it back), then what matters, in words: its date, its length, what it waits for, where you stopped, the time spent; and, when there is something to say, **How long things like this take**, against your first guesses;
 - its tags, **its steps** (each can be ticked here; their minutes are added up), **what it waits for** and what it frees;
 - its fields in words, those that are said: **Can start from**, **Before** and **After**, what it costs and what it gives back, **What it takes**, **Project**, **Billed**, **Kind**, **For**, **Needs an open office**, **Comes back**, **List**; its notes;
 - **Tied to it**: the mail it came from, its notes, the people, the drafts, the project. **Write an email** starts a message to the people it involves; **Make a note** starts a note tied to it; **Link to…** ties anything else.
@@ -188,7 +202,7 @@ A task tagged `joy` is offered under **If you want**, never proposed as the next
 - **The order**: a task never comes before what it waits for. Tasks that wait for each other in a loop are said, calmly: "These wait for each other: … One of them has to go first."
 - **The next step**, among the tasks free to start: the one you started; then the one whose date comes soonest, counting the work behind it; then your own order; then the one that frees the most others; then the smaller one.
 - **The days**: each task goes into the first days with room. The room is your hours, each kind for its own tasks: working hours for work, hours for your admin for your admin; leisure has no hours, so what is only for leisure takes no room and waits for none ([Hours](hours.md)). Events are taken out of it, with their **Before** and **After**, and five minutes before and after each; each step leaves five minutes after it. A task's own **Before** and **After** take room with it. Your meals, naps and night are kept free too ([Health](health.md#meals-rest-and-sleep)). A step of up to an hour is never cut; a longer one is cut into parts of a quarter of an hour at least. A task with a **Before** or an **After** is never cut: it goes whole on a day whose room holds it, or gets a day of its own. Without any hours set, the room is Monday to Friday, 9:00 to 17:00. Each task takes its corrected length ([How long things take](time.md#how-long-things-take)), and each day keeps some time free for steps running long, and half an hour for you. Today's room starts now, and haze or fog make it smaller. Days off, and today once closed, have none.
-- **Your dates stay yours.** The days the plan gives are worked out again each time, and never written into your tasks. Only what you set is kept: a day to start, a date asked, an order, and a time you give a step today by hand.
+- **Your dates stay yours.** The days the plan gives are worked out again each time, and never written into your tasks. Only what you set is kept: a day to start, a date asked, an order, and the times you pin tasks to, as events in your calendar.
 - **Always up to date**: the plan is made again at once whenever something it depends on changes (a task, its estimate or the time noted for it, an event, a meal or the night, your hours or days off, the day's weather, **Done for today**, what your other devices or a sync bring), as well as when Sioul starts, every twelve hours and at midnight.
 - **When a date will not hold**, the task says so once: "At this pace, the plan ends after 30 October. Doing it sooner, making it smaller or handing it over would keep the date." Near a date asked, Now says how much fits: "Until Wednesday 7 October: about 30 min of steps, 3 h of room."
 
@@ -272,6 +286,8 @@ The ⚙ at the top of the page:
 - **Task lists**: renamed, here and on the server; an empty one can be deleted.
 - **A task without an estimate counts** so many minutes.
 - **New tasks go into**: the list a new task goes into, typed in one line or in its form (where another can be chosen).
+- **Time blocks go into**: the calendar of the tasks you pin to a time; unless you choose one, "Planned tasks", made the first time with each task's list (on this device for a list kept here, or for a Google account).
+- **An alarm in each block**: off unless you turn it on; five minutes before it, in the blocks made or moved from then on.
 - **What a day holds** ([above](#what-a-day-holds)):
   - **Start from**: *As now*, *Lighter* or *Much lighter*;
   - **Days learned from**: 28 unless you change it, from 14 to 90;
@@ -288,7 +304,7 @@ While you sleep ([Hours](hours.md#sleep): the night from winding down to waking,
 
 ## Where tasks live
 
-Tasks are standard CalDAV tasks, in task lists on your calendar server: your phone and other programs see them. What ties them together (steps, waits, links, kinds) is written into them in the standard's own terms (RFC 9253), so other programs keep it.
+Tasks are standard CalDAV tasks, in task lists on your calendar server: your phone and other programs see them. What ties them together (steps, waits, links, kinds) is written into them in the standard's own terms (RFC 9253), so other programs keep it. A task pinned to a time has its block in a calendar: a standard event, tied to the task both ways.
 
 Google Tasks keeps less: a list there greys what Google does not keep (a day to start, a length, a project, a kind, waiting for another task…), with why. A list can also live on this device only.
 

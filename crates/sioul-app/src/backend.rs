@@ -20,7 +20,7 @@ use sioul_core::i18n::{self, Translator};
 use sioul_core::porch::{self, KnownSenders, SenderList, Triaged};
 use sioul_core::state::{MoneyState, PorchState};
 use sioul_core::{maildir, reading, view};
-use crate::{crypto, mail, pim, work};
+use crate::{crypto, gmail, mail, pim, work};
 use sioul_sync::antivirus::{self, Verdict};
 use sioul_sync::{Control, Learned, Report, SyncError, notify, secret};
 use std::collections::{BTreeMap, BTreeSet};
@@ -62,8 +62,9 @@ pub mod qobject {
         #[qproperty(QString, agenda)]
         // Two events at once in the next two weeks (`pim::overlaps`), made with the agenda, off the window's thread.
         #[qproperty(QString, overlaps)]
-        // The Health page, the doses due while Sioul was closed, today's meals and
-        // naps (`health::show_health`), made off the window's thread: they read the
+        // The Health page, the Porch's doses (today's not marked yet, and those due
+        // while Sioul was closed: `health::missed`), today's meals and naps
+        // (`health::show_health`), made off the window's thread: they read the
         // doses' record and your other devices' claims.
         #[qproperty(QString, health_view)]
         #[qproperty(QString, missed_view)]
@@ -370,6 +371,21 @@ pub mod qobject {
         #[qinvokable]
         fn save_event(self: Pin<&mut Sioul>, key: &QString, edit: &QString, calendar: &QString) -> QString;
 
+        /// An event's reminder before it, the occurrence starting at `start`,
+        /// as its details say it: JSON {line, remind, writable} (docs/reminders.md).
+        #[qinvokable]
+        fn event_reminder(self: &Sioul, key: &QString, start: f64) -> QString;
+
+        /// The choices of an event's reminder before it, JSON [{value, label}];
+        /// `current` among them when it is another time.
+        #[qinvokable]
+        fn reminder_choices(self: &Sioul, current: &QString) -> QString;
+
+        /// An event's own reminder changed for every time it comes ("" as
+        /// usual, "none", "15"); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_event_reminder(self: Pin<&mut Sioul>, key: &QString, value: &QString) -> QString;
+
         /// Deletes an event, or only the occurrence starting at `start`, after ten seconds to undo.
         #[qinvokable]
         fn delete_event(self: Pin<&mut Sioul>, key: &QString, start: f64, only_this: bool);
@@ -424,6 +440,13 @@ pub mod qobject {
         /// Stops waiting for Google's page.
         #[qinvokable]
         fn cancel_google(self: Pin<&mut Sioul>);
+
+        /// Adds an address's Google mail signed in on Google's page, with a
+        /// key of your own (given, else kept on this device), or signs its
+        /// account in again (`again`: its id). IMAP and SMTP then take an
+        /// access token (XOAUTH2): no password (docs/google.md, "Mail").
+        #[qinvokable]
+        fn add_google_mail(self: Pin<&mut Sioul>, address: &QString, client_id: &QString, client_secret: &QString, again: &QString);
 
         /// Your OpenPGP keys and others', as JSON.
         #[qinvokable]
@@ -514,10 +537,19 @@ pub mod qobject {
         #[qinvokable]
         fn delete_task(self: Pin<&mut Sioul>, uid: &QString);
 
-        /// A step given a time today by a drag in the day view ("2026-10-06T14:30"),
-        /// or left to the plan (""); "Undo" offered. Returns what went wrong, else "".
+        /// A task pinned to a time ("2026-10-06T14:30"), its time block (an
+        /// event) made or moved there, as long as it is, else as the plan lays
+        /// it; or left to the plan (""), its blocks to come taken away; "Undo"
+        /// offered. Returns what went wrong, else "".
         #[qinvokable]
         fn set_task_at(self: Pin<&mut Sioul>, uid: &QString, at: &QString) -> QString;
+
+        /// A task pinned to a time ("2026-10-06T14:30") for `minutes` (0: as
+        /// long as its block is, else as the plan lays it): "Do at…", or a step
+        /// dragged in the day view (docs/tasks.md, "Pinned to a time"); "Undo"
+        /// offered. Returns what went wrong, else "".
+        #[qinvokable]
+        fn pin_task(self: Pin<&mut Sioul>, uid: &QString, at: &QString, minutes: i32) -> QString;
 
         /// Open tasks whose title holds `query`, `except` left out, as JSON.
         #[qinvokable]
@@ -691,6 +723,21 @@ pub mod qobject {
         #[qinvokable]
         fn dose_info(self: &Sioul, key: &QString) -> QString;
 
+        /// Answers that differ on your devices settled as you chose: taken,
+        /// or not (docs/health.md, "Doses as records"). Returns what went wrong, else "".
+        #[qinvokable]
+        fn dose_choose(self: Pin<&mut Sioul>, key: &QString, taken: bool) -> QString;
+
+        /// A device you say is off (`off`), or counted again: not counted for
+        /// the doses until it says anything newer (docs/health.md, "Knowing").
+        /// Returns what went wrong, else "".
+        #[qinvokable]
+        fn device_off(self: Pin<&mut Sioul>, id: &QString, off: bool) -> QString;
+
+        /// A device silent for a week, forgotten (Settings ▸ Your folder and sharing).
+        #[qinvokable]
+        fn device_forget(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
         /// Meals, naps and the night, for the Health page, as JSON.
         #[qinvokable]
         fn needs(self: &Sioul) -> QString;
@@ -752,7 +799,8 @@ pub mod qobject {
         #[qinvokable]
         fn needs_later(self: &Sioul) -> i32;
 
-        /// The doses due while Sioul was closed, for the Porch, as JSON: [{key, time, name, dose}].
+        /// The Porch's doses, as JSON: {due: today's not marked yet, closed: those
+        /// due while Sioul was closed}, each [{key, time, name, dose, late, doubt}].
         #[qinvokable]
         fn missed_doses(self: &Sioul) -> QString;
 
@@ -1086,9 +1134,15 @@ pub mod qobject {
         #[qinvokable]
         fn bitwarden_passkey(self: Pin<&mut Sioul>, answer: &QString) -> QString;
 
-        /// The logins for an address, and the vault's for a search: {"site", "matches", "found"} or {"error"}.
+        /// The vault's logins by site and by user name, for an address (its own
+        /// first): {"found": [{"id", "name", "username", "site", "elsewhere"}], "more"} or {"error"};
+        /// for a large vault {"later": n}, the answer coming with `bitwarden_found` (sites.rs).
         #[qinvokable]
-        fn bitwarden_logins(self: &Sioul, url: &QString, query: &QString) -> QString;
+        fn bitwarden_search(self: Pin<&mut Sioul>, url: &QString, site: &QString, user: &QString) -> QString;
+
+        /// What the vault holds for an address: {"domain", "chosen", "only"} or {"error"} (sites.rs).
+        #[qinvokable]
+        fn bitwarden_site(self: &Sioul, url: &QString) -> QString;
 
         /// One login of the vault, for an address: {"username", "password", "code"} or {"error"}.
         #[qinvokable]
@@ -1150,6 +1204,60 @@ pub mod qobject {
         /// you untick it, Sioul closes, or the next working day is over.
         #[qinvokable]
         fn set_work_now(self: Pin<&mut Sioul>, on: bool);
+
+        /// Free time on or off (docs/pauses.md, `pauses::set_free`): on, "true"
+        /// when a focus session stopped; off, the line said once on the end of work, else "".
+        #[qinvokable]
+        fn set_free_time(self: Pin<&mut Sioul>, on: bool) -> QString;
+
+        /// "Keep my usual end": today's end of work stays where it was, no reason asked.
+        #[qinvokable]
+        fn keep_usual_end(self: Pin<&mut Sioul>);
+
+        /// "Nothing at all" for this free time, or the safe list again.
+        #[qinvokable]
+        fn set_free_nothing(self: Pin<&mut Sioul>, on: bool);
+
+        /// The Pause: it asks nothing; everything held, on every device (`pauses::press`).
+        #[qinvokable]
+        fn pause_now(self: Pin<&mut Sioul>);
+
+        /// Back from the pause: the screen after it, as JSON (`pauses::come_back`).
+        #[qinvokable]
+        fn come_back(self: Pin<&mut Sioul>) -> QString;
+
+        /// Coming back's one offer: tomorrow lighter too.
+        #[qinvokable]
+        fn lighten_tomorrow(self: Pin<&mut Sioul>);
+
+        /// The last pause's times, forgotten.
+        #[qinvokable]
+        fn forget_pause(self: Pin<&mut Sioul>);
+
+        /// The pause's screen, as JSON (`pauses::screen`).
+        #[qinvokable]
+        fn pause_screen(self: &Sioul) -> QString;
+
+        /// The pauses' setup, its do-not-disturb part, as JSON (`pauses::setup`).
+        #[qinvokable]
+        fn pause_setup(self: &Sioul) -> QString;
+
+        /// A system page the pauses' setup offers ("access", "starred", "plasma": `dnd::open`).
+        #[qinvokable]
+        fn open_dnd(self: &Sioul, key: &QString);
+
+        /// Do-not-disturb's switch, on every device (`everywhere::toggle`): on for
+        /// `minutes` (0: until turned off; -1: until what now is for ends), or off.
+        #[qinvokable]
+        fn dnd_toggle(self: Pin<&mut Sioul>, on: bool, minutes: i32);
+
+        /// Settings ▸ Do not disturb, its own part, as JSON (`everywhere::setup`).
+        #[qinvokable]
+        fn dnd_setup(self: &Sioul) -> QString;
+
+        /// An action of that tab (`everywhere::change`): the tab again, as JSON.
+        #[qinvokable]
+        fn dnd_change(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
 
         /// The cases and projects, for their list, as JSON.
         #[qinvokable]
@@ -1324,8 +1432,15 @@ pub mod qobject {
         fn paper_kept(self: Pin<&mut Sioul>, file: QString, title: QString, kind: QString);
 
         /// A draft's window opens again: "Undo" after sending or discarding.
+        /// Also a new draft handed by another application (`outside`).
         #[qsignal]
         fn compose_requested(self: Pin<&mut Sioul>, id: QString);
+
+        /// Files shared from another application came for draft `id`
+        /// (`outside`): its window reads its attachments again and says `line`,
+        /// a problem when some did not come.
+        #[qsignal]
+        fn draft_files_arrived(self: Pin<&mut Sioul>, id: QString, line: QString, problem: bool);
 
         /// Keys were found or made: windows showing them read them again.
         #[qsignal]
@@ -1342,6 +1457,10 @@ pub mod qobject {
         /// A site notified something, or was seen.
         #[qsignal]
         fn sites_changed(self: Pin<&mut Sioul>);
+
+        /// A large vault's search, done off the window's thread: its ticket and its answer (`bitwarden_search`).
+        #[qsignal]
+        fn bitwarden_found(self: Pin<&mut Sioul>, ticket: i32, found: QString);
 
         /// An account chosen among the phone's: its name (an address, usually) and its kind
         /// ("com.google", "e.foundation.webdav.eelo"…); both empty when none was.
@@ -1703,11 +1822,11 @@ pub(crate) fn coalesced(shared: &Arc<Shared>, which: fn(&Shared) -> &Job, work: 
     });
 }
 
-/// How long text reads, for the window's theme.
+/// How long text reads, for the window's theme; and whether the places show their names.
 pub(crate) fn reading_json() -> String {
     let config = load_config();
     let reading = config.reading;
-    serde_json::json!({ "family": reading.family, "size": reading.size, "spacing": reading.spacing, "theme": config.theme.unwrap_or_default() }).to_string()
+    serde_json::json!({ "family": reading.family, "size": reading.size, "spacing": reading.spacing, "theme": config.theme.unwrap_or_default(), "places_named": config.places_named }).to_string()
 }
 
 /// What the Porch and the budgets read: the configuration and its lists.
@@ -1886,6 +2005,10 @@ pub(crate) fn mode_json() -> String {
         Reason::WindingDown => tr().text("mode-wind-down", Some(&args)),
         Reason::Nap => tr().text("mode-nap", Some(&args)),
         Reason::Sleep => tr().text("mode-sleep", Some(&args)),
+        // The pauses (docs/pauses.md): which one, in its own words; the moved end was said once.
+        Reason::FreeTime => tr().text(if sioul_core::pause::nothing_now(&overrides, &config.free_time) { "mode-free-time-nothing" } else { "mode-free-time" }, None),
+        Reason::Paused => tr().text("mode-paused", None),
+        Reason::Extended => String::new(),
     };
     // The day closed today can be taken back, that day only.
     let today = overrides.closed_today(&now);
@@ -1905,7 +2028,11 @@ pub(crate) fn mode_json() -> String {
         "work_now": mode.reason == Reason::WorkNow,
         "today": today,
         // The work day or the day can be closed now (docs/reviews.md); nothing at work or asleep.
-        "review": crate::reviews::offer_json(&now, &mode)
+        "review": crate::reviews::offer_json(&now, &mode),
+        // Free time's choices and today's end of work (docs/pauses.md).
+        "pauses": crate::pauses::moment(&config, &overrides, &now),
+        // Do-not-disturb on every device (docs/do-not-disturb.md): its switch and where it holds.
+        "dnd": crate::everywhere::moment()
     })
     .to_string()
 }
@@ -1916,13 +2043,17 @@ fn compute(shared: &Shared) -> Views {
     let hidden = mail::hidden_files(shared);
     let mut items = world.gather(&PorchState::load(&PorchState::default_path()));
     items.retain(|t| t.card.path.as_ref().is_none_or(|p| !hidden.contains(p)));
+    // The phone's home screen card: the Porch as each coming time will show it (homecard.rs).
+    crate::homecard::porch_seen(&items, &world.senders, world.store.as_ref());
     // What the hours are for: codes and the senders you marked safe always; the
     // rest as its address is for (an address you did not say: work's).
     let mode = crate::hours::mode_at(&now);
     if mode.time != sioul_core::areas::Time::Any {
         let area_of = |t: &sioul_core::porch::Triaged| t.card.account.as_deref().and_then(|id| world.config.account(id)).and_then(|a| a.area.as_deref()).and_then(sioul_core::areas::Area::parse).unwrap_or(sioul_core::areas::Area::WORK);
         // Who may write to you when: the matrix of Accounts ▸ Senders.
-        let reach = sioul_core::quiet::Reach::of(&world.config.reach);
+        // In free time, only your safe senders, or no one (docs/pauses.md).
+        let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
+        let reach = sioul_core::pause::reach_now(sioul_core::quiet::Reach::of(&world.config.reach), &mode, sioul_core::pause::nothing_now(&overrides, &world.config.free_time));
         items.retain(|t| sioul_core::quiet::mail_in_view(t, &world.senders, &reach, area_of(t), mode.time, mode.week));
     }
     // Asleep no project shows: what your senders wrote about one comes among the people you know.
@@ -1933,7 +2064,10 @@ fn compute(shared: &Shared) -> Views {
             }
         }
     }
-    let mut porch = view::porch(&items, &world.config, world.store.as_ref(), tr(), &now, shared.opened_anyway.load(Ordering::Relaxed) || mode.quiet);
+    let opened = shared.opened_anyway.load(Ordering::Relaxed);
+    let mut porch = view::porch(&items, &world.config, world.store.as_ref(), tr(), &now, opened || mode.quiet);
+    // After a pause, the Porch rests until the next admin hours, unless opened (docs/pauses.md).
+    crate::pauses::porch_rests(&mut porch, opened, &now);
     if mode.quiet {
         porch.status = serde_json::from_str::<serde_json::Value>(&mode_json()).ok().and_then(|v| v["line"].as_str().map(str::to_string)).unwrap_or_default();
     }
@@ -1985,6 +2119,10 @@ pub(crate) fn show(qt: &QtThread, shared: &Arc<Shared>) {
             sioul.as_mut().set_budgets(QString::from(&views.budgets));
             sioul.as_mut().set_accounts(QString::from(&views.accounts));
             sioul.as_mut().set_blocked(QString::from(&views.blocked));
+            // Accounts added, renamed or removed: Android's share sheet follows (docs/android.md, "Sharing").
+            if cfg!(target_os = "android") {
+                std::thread::spawn(|| crate::outside::publish(false));
+            }
         });
     });
 }
@@ -2040,9 +2178,15 @@ fn give_password(qt: &QtThread, shared: &Arc<Shared>, id: String, password: Stri
         let config = load_config();
         let outcome = match config.every_account().find(|a| a.id == id).cloned() {
             None => Err(say("account-unknown", &[("id", id.clone())])),
-            Some(account) => {
+            Some(mut account) => {
                 let host = account.host.clone().unwrap_or_default();
                 let password = sioul_sync::tidy_password(&host, &password);
+                // Google's mail signed in with Google, given an app password
+                // instead: tried as a password, then kept as one.
+                let switched = !account.is_dav() && account.auth.as_deref() == Some("google");
+                if switched {
+                    account.auth = None;
+                }
                 let tested = if account.is_dav() {
                     let address = account.address.clone().unwrap_or_default();
                     let login = account.login().unwrap_or(address.as_str()).to_string();
@@ -2050,7 +2194,20 @@ fn give_password(qt: &QtThread, shared: &Arc<Shared>, id: String, password: Stri
                 } else {
                     sioul_sync::test(&account, &password).map(|_| ())
                 };
-                tested.and_then(|()| secret::save(&account, &password)).map_err(|e| e.sentence(tr(), &account.id)).map(|()| account)
+                tested
+                    .and_then(|()| secret::save(&account, &password))
+                    .map_err(|e| e.sentence(tr(), &account.id))
+                    .and_then(|()| if switched { config::set_auth(&config_path(), &account.id, None) } else { Ok(()) })
+                    .map(|()| {
+                        if switched {
+                            // Its watcher signed in with Google: it goes, another starts below.
+                            if let Some(control) = shared.watchers.lock().ok().and_then(|mut w| w.remove(&account.id)) {
+                                control.stop();
+                            }
+                            let _ = sioul_sync::google::revoke_for(sioul_sync::google::Purpose::Mail, account.address.as_deref().unwrap_or(""));
+                        }
+                        account
+                    })
             }
         };
         let problem = match outcome {
@@ -2151,7 +2308,7 @@ pub(crate) fn update_paces(shared: &Shared) {
     }
 }
 
-fn start_watcher(qt: &QtThread, shared: &Arc<Shared>, account: Account) {
+pub(crate) fn start_watcher(qt: &QtThread, shared: &Arc<Shared>, account: Account) {
     let control = Arc::new(Control::default());
     control.set_pace(pace_of(&load_config(), &account));
     control.set_realtime(shared.realtime.load(Ordering::Relaxed));
@@ -2225,6 +2382,9 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
         }
         if !report.first && !report.new.is_empty() {
             notify_codes(qt, &report.new);
+            // New mail your lists let through now, once per batch (docs/porch.md, "Notifications").
+            let window = crate::mailnote::Window { qt: qt.clone(), active: shared.active.load(Ordering::Relaxed) };
+            crate::mailnote::arrived_in_window(window, &account.id, &report.new, report.first);
         }
         read_shielded(qt, &account.id);
     }
@@ -2329,8 +2489,8 @@ fn learn(qt: &QtThread, shared: &Shared, id: &str) {
 
 /// One quiet notification per verified code among new mail, with a copy button.
 fn notify_codes(qt: &QtThread, files: &[PathBuf]) {
-    // While you sleep nothing notifies: the code waits on the Porch (docs/health.md).
-    if !crate::hours::may_notify() {
+    // While you sleep or pause nothing notifies: the code waits on the Porch (docs/health.md); in free time it comes.
+    if !crate::hours::may_notify_code() {
         return;
     }
     let config = load_config();
@@ -2554,6 +2714,11 @@ struct FoundView {
     hint: String,
     /// Where to make an app password, when the provider is known for wanting one.
     help_url: Option<&'static str>,
+    /// Google keeps this address's mail (Gmail, Google Workspace): never its
+    /// account password there, an app password or Google's own sign-in.
+    google: bool,
+    /// A Google key of your own is kept on this device for this address.
+    google_key: bool,
 }
 
 impl qobject::Sioul {
@@ -2588,6 +2753,10 @@ impl qobject::Sioul {
         }
         self.as_mut().set_reading(QString::from(&reading_json()));
         self.as_mut().set_mode(QString::from(&mode_json()));
+        // What other applications handed (a share, a mailto: link), made drafts (docs/client.md).
+        crate::outside::started(self.as_mut());
+        // The pauses' do-not-disturb as they are, a "Pause" pressed on a phone's tile (docs/pauses.md).
+        crate::pauses::tick(&self.qt_thread(), &self.shared());
         // Your sites' own icons, from the start rather than at the first minute.
         crate::sites::favicon_tick(&self.qt_thread());
         update_weather(&self.qt_thread(), &self.shared());
@@ -2816,11 +2985,14 @@ impl qobject::Sioul {
                         ("security", tr().text(&format!("security-{}", found.security.as_str()), None)),
                     ],
                 );
-                let gmail = sioul_sync::is_gmail(&address);
+                // Gmail, or a domain whose mail Google keeps (its MX), or settings naming Google's server.
+                let google = found.by == sioul_sync::FoundBy::Google || found.host.eq_ignore_ascii_case(sioul_sync::discover::GOOGLE_IMAP);
                 json(&FoundView {
                     by: say("account-found", &[("server", server), ("by", tr().text(found.by.message_id(), None))]),
-                    hint: tr().text(if gmail { "account-gmail-hint" } else { "account-app-password-hint" }, None),
-                    help_url: gmail.then_some(sioul_sync::GMAIL_APP_PASSWORDS),
+                    hint: tr().text(if google { "account-gmail-hint" } else { "account-app-password-hint" }, None),
+                    help_url: google.then_some(sioul_sync::GMAIL_APP_PASSWORDS),
+                    google,
+                    google_key: google && gmail::has_own_key(&address),
                     host: found.host,
                     port: found.port,
                     security: found.security.as_str(),
@@ -2964,8 +3136,9 @@ impl qobject::Sioul {
                 // account on the same (a cPanel host's mail and calendars) keeps it.
                 let shared_password = config.every_account().any(|a| a.id != id && a.host == account.host && a.login() == account.login());
                 let forgotten = if account.auth.as_deref() == Some("google") {
-                    // Google's access goes back to it.
-                    sioul_sync::google::revoke(account.address.as_deref().unwrap_or("")).map_err(|e| e.sentence(tr(), &id))
+                    // Google's access goes back to it: the calendars' or the mail's, each its own.
+                    let purpose = if account.is_dav() { sioul_sync::google::Purpose::Pim } else { sioul_sync::google::Purpose::Mail };
+                    sioul_sync::google::revoke_for(purpose, account.address.as_deref().unwrap_or("")).map_err(|e| e.sentence(tr(), &id))
                 } else if (account.syncs() || account.is_dav()) && !shared_password {
                     secret::forget(account).map_err(|e| e.sentence(tr(), &id))
                 } else {
@@ -3180,6 +3353,19 @@ impl qobject::Sioul {
         QString::from(&result.err().unwrap_or_default())
     }
 
+    fn event_reminder(&self, key: &QString, start: f64) -> QString {
+        QString::from(&crate::remind::of_event(&key.to_string(), start as i64))
+    }
+
+    fn reminder_choices(&self, current: &QString) -> QString {
+        QString::from(&crate::remind::choices(&current.to_string()))
+    }
+
+    fn set_event_reminder(self: Pin<&mut Self>, key: &QString, value: &QString) -> QString {
+        let result = crate::remind::set_event(&self.qt_thread(), &self.shared(), &key.to_string(), &value.to_string());
+        QString::from(&result.err().unwrap_or_default())
+    }
+
     fn move_event(self: Pin<&mut Self>, key: &QString, start: f64, new_start: f64, new_end: f64, only_this: bool) -> QString {
         QString::from(&pim::move_event(&self.qt_thread(), &self.shared(), &key.to_string(), start as i64, new_start as i64, new_end as i64, only_this))
     }
@@ -3255,6 +3441,13 @@ impl qobject::Sioul {
 
     fn cancel_google(self: Pin<&mut Self>) {
         self.shared().google_stop.store(true, Ordering::Relaxed);
+    }
+
+    fn add_google_mail(mut self: Pin<&mut Self>, address: &QString, client_id: &QString, client_secret: &QString, again: &QString) {
+        self.as_mut().set_form_busy(true);
+        self.as_mut().set_form_error(QString::default());
+        let again = Some(again.to_string()).filter(|a| !a.is_empty());
+        gmail::add_google_mail(&self.qt_thread(), &self.shared(), address.to_string(), client_id.to_string(), client_secret.to_string(), again);
     }
 
     fn pgp_keys(&self) -> QString {
@@ -3369,7 +3562,11 @@ impl qobject::Sioul {
     }
 
     fn set_task_at(self: Pin<&mut Self>, uid: &QString, at: &QString) -> QString {
-        QString::from(&work::set_at(&self.qt_thread(), &self.shared(), &uid.to_string(), &at.to_string()))
+        QString::from(&work::set_at(&self.qt_thread(), &self.shared(), &uid.to_string(), &at.to_string(), 0))
+    }
+
+    fn pin_task(self: Pin<&mut Self>, uid: &QString, at: &QString, minutes: i32) -> QString {
+        QString::from(&work::set_at(&self.qt_thread(), &self.shared(), &uid.to_string(), &at.to_string(), u32::try_from(minutes).unwrap_or(0)))
     }
 
     fn delete_task(self: Pin<&mut Self>, uid: &QString) {
@@ -3842,6 +4039,24 @@ impl qobject::Sioul {
         QString::from(&crate::health::dose_info(&key.to_string()))
     }
 
+    fn dose_choose(self: Pin<&mut Self>, key: &QString, taken: bool) -> QString {
+        let problem = crate::health::choose(&key.to_string(), taken);
+        // Your other devices know at once; the pages say it.
+        crate::share::exchange(&self.qt_thread(), &self.shared());
+        crate::health::show_health(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn device_off(self: Pin<&mut Self>, id: &QString, off: bool) -> QString {
+        let problem = crate::health::device_off(&id.to_string(), off);
+        crate::health::show_health(&self.qt_thread(), &self.shared());
+        QString::from(&problem)
+    }
+
+    fn device_forget(self: Pin<&mut Self>, id: &QString) -> QString {
+        QString::from(&crate::health::device_forget(&id.to_string()))
+    }
+
     fn needs(&self) -> QString {
         QString::from(&crate::health::needs_page())
     }
@@ -3928,6 +4143,10 @@ impl qobject::Sioul {
         self.as_mut().set_away(true);
         AWAY.store(true, Ordering::SeqCst);
         std::thread::spawn(crate::alarms::schedule);
+        // The events' reminders as they are, for Android's alarm clock (`eventalarms`).
+        std::thread::spawn(crate::eventalarms::schedule);
+        // The home screen's card as Sioul leaves it, drawn at once (homecard.rs).
+        crate::homecard::now();
         crate::share::set_shown(false);
         let (qt, shared) = (self.qt_thread(), self.shared());
         std::thread::spawn(move || {
@@ -3946,6 +4165,14 @@ impl qobject::Sioul {
         if let Some(key) = crate::alarms::opened() {
             self.as_mut().reminder_opened(QString::from("dose"), QString::default(), QString::from(&key));
         }
+        // An event's reminder or new mail's notification tapped while away: the event, or the Porch.
+        if let Some((kind, key)) = crate::eventalarms::opened() {
+            self.as_mut().reminder_opened(QString::from(&kind), QString::default(), QString::from(&key));
+        }
+        // The home screen's card tapped: the Porch, or Now on its step (homecard.rs).
+        if let Some((kind, uri)) = crate::homecard::opened() {
+            self.as_mut().reminder_opened(QString::from(kind), QString::from(&uri), QString::default());
+        }
         // What was asked while away, computed once now.
         let (qt, shared) = (self.qt_thread(), self.shared());
         if shared.views_job.deferred.swap(false, Ordering::SeqCst) | shared.mail_job.deferred.swap(false, Ordering::SeqCst) {
@@ -3961,10 +4188,17 @@ impl qobject::Sioul {
             crate::health::show_health(&qt, &shared);
         }
         crate::share::set_shown(true);
+        // Something shared to Sioul, a mailto: link opened with it: its draft (docs/android.md, "Sharing").
+        crate::outside::take(self.as_mut());
+        std::thread::spawn(|| crate::outside::publish(true));
+        // A "Pause" pressed on the quick-settings tile or the home screen's shortcut (docs/pauses.md).
+        crate::pauses::tick(&self.qt_thread(), &self.shared());
         let now = jiff::Timestamp::now().as_second();
         self.shared().active.store(now, std::sync::atomic::Ordering::Relaxed);
         let (qt, shared) = (self.qt_thread(), self.shared());
         std::thread::spawn(move || {
+            // A session begins again: up, said to your other devices (docs/database.md, "Devices").
+            crate::devices::window_opened();
             let _ = crate::share::keeper("health", sioul_sync::lease::Rule::FollowsYou, now, false);
             // What the other devices marked meanwhile comes down, and is read;
             // mail and calendars fetched now, not when their pauses end.
@@ -4199,8 +4433,12 @@ impl qobject::Sioul {
         QString::from(&crate::sites::bitwarden_passkey(&self.shared(), &answer.to_string()))
     }
 
-    fn bitwarden_logins(&self, url: &QString, query: &QString) -> QString {
-        QString::from(&crate::sites::bitwarden_logins(&self.shared(), &url.to_string(), &query.to_string()))
+    fn bitwarden_search(self: Pin<&mut Self>, url: &QString, site: &QString, user: &QString) -> QString {
+        QString::from(&crate::sites::bitwarden_search(&self.qt_thread(), &self.shared(), &url.to_string(), &site.to_string(), &user.to_string()))
+    }
+
+    fn bitwarden_site(&self, url: &QString) -> QString {
+        QString::from(&crate::sites::bitwarden_site(&self.shared(), &url.to_string()))
     }
 
     fn bitwarden_login(&self, url: &QString, id: &QString) -> QString {
@@ -4233,6 +4471,8 @@ impl qobject::Sioul {
         // device, the command line), or while a phone had Sioul put away.
         let (qt_time, shared_time) = (self.qt_thread(), self.shared());
         std::thread::spawn(move || crate::timenote::follow(&qt_time, &shared_time));
+        // The pauses: free time ended by itself, the do-not-disturb as the pauses are (docs/pauses.md).
+        crate::pauses::tick(&self.qt_thread(), &self.shared());
         // Put away on a phone: the reminders only, and an exchange every five
         // minutes; the rest waits until it is back (Android stops an app that
         // works in the background, and nobody looks at its pages then).
@@ -4242,6 +4482,10 @@ impl qobject::Sioul {
             }
             return;
         }
+        // The home screen's card: written again when its first frame ended, or five minutes went by.
+        crate::homecard::tick();
+        // Something handed by another application while the window stayed shown (split screen).
+        crate::outside::take(self.as_mut());
         // The plan, made again on the clock.
         let now = Zoned::now();
         let (stamp, day) = (now.timestamp().as_second(), i64::from(now.date().year()) * 1000 + i64::from(now.date().day_of_year()));
@@ -4272,6 +4516,8 @@ impl qobject::Sioul {
         crate::sites::favicon_tick(&self.qt_thread());
         // Dates coming: told once each.
         crate::remind::tick(&self.qt_thread());
+        // Mail that waited for its time, told when the time begins (docs/porch.md, "Notifications").
+        crate::mailnote::tick_in_window(crate::mailnote::Window { qt: self.qt_thread(), active: self.shared().active.load(Ordering::Relaxed) });
         // The end of the work day, said once (docs/reviews.md).
         crate::reviews::tick(&self.qt_thread(), &self.shared());
         // Paper letters scanned: read, to wait for the Porch.
@@ -4379,6 +4625,63 @@ impl qobject::Sioul {
                 o.work_now = None;
             }
         });
+    }
+
+    fn set_free_time(self: Pin<&mut Self>, on: bool) -> QString {
+        crate::pauses::set_free(self, on)
+    }
+
+    fn keep_usual_end(self: Pin<&mut Self>) {
+        crate::pauses::keep_usual_end(self);
+    }
+
+    fn set_free_nothing(self: Pin<&mut Self>, on: bool) {
+        crate::pauses::set_free_nothing(self, on);
+    }
+
+    fn pause_now(self: Pin<&mut Self>) {
+        crate::pauses::press(self);
+    }
+
+    fn come_back(self: Pin<&mut Self>) -> QString {
+        crate::pauses::come_back(self)
+    }
+
+    fn lighten_tomorrow(self: Pin<&mut Self>) {
+        crate::pauses::lighten_tomorrow(self);
+    }
+
+    fn forget_pause(self: Pin<&mut Self>) {
+        crate::pauses::forget(self);
+    }
+
+    fn pause_screen(&self) -> QString {
+        QString::from(&crate::pauses::screen())
+    }
+
+    fn pause_setup(&self) -> QString {
+        QString::from(&crate::pauses::setup())
+    }
+
+    fn open_dnd(&self, key: &QString) {
+        crate::dnd::open(&key.to_string());
+    }
+
+    fn dnd_toggle(self: Pin<&mut Self>, on: bool, minutes: i32) {
+        crate::everywhere::toggle(self, on, minutes);
+    }
+
+    fn dnd_setup(&self) -> QString {
+        QString::from(&crate::everywhere::setup())
+    }
+
+    fn dnd_change(self: Pin<&mut Self>, verb: &QString, json: &QString) -> QString {
+        let (answer, changed) = crate::everywhere::change(&verb.to_string(), &json.to_string());
+        // The list or a shared setting changed: your other devices told at once.
+        if changed {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&answer)
     }
 
     /// The overrides changed, then every page shown again for the time it is.
@@ -4507,8 +4810,21 @@ impl qobject::Sioul {
         for row in rows.iter_mut().filter(|r| r.key == "reminders_closed") {
             row.value = config::SettingValue::Bool(crate::remind::background());
         }
+        // On a phone, whether Android lets the events' reminders come on time.
+        if cfg!(target_os = "android") {
+            for row in rows.iter_mut().filter(|r| r.key == "reminders.before_event") {
+                row.help = format!("{} {}", row.help, tr().text(if crate::alarms::exact() { "set-reminders-before-exact" } else { "set-reminders-before-inexact" }, None));
+            }
+        }
         for row in rows.iter_mut().filter(|r| r.key == "passwords_shown") {
             row.value = config::SettingValue::Bool(work::view_flag(&self.shared(), "passwords-shown"));
+        }
+        // The phone's home screen card: its details, this device's own (homecard.rs).
+        if crate::homecard::has_setting()
+            && let Some(at) = rows.iter().position(|r| r.key == "passwords_shown")
+        {
+            let row = crate::homecard::setting(&rows[at].group, &rows[at].section, !work::view_flag(&self.shared(), crate::homecard::PLAIN));
+            rows.insert(at + 1, row);
         }
         QString::from(&json(&rows))
     }
@@ -4524,6 +4840,11 @@ impl qobject::Sioul {
             ("reminders_closed", config::SettingValue::Bool(on)) => crate::remind::set_background(on),
             ("passwords_shown", config::SettingValue::Bool(on)) => {
                 work::set_view_flag(&self.shared(), "passwords-shown", on);
+                Ok(())
+            }
+            ("home_card_details", config::SettingValue::Bool(on)) => {
+                work::set_view_flag(&self.shared(), crate::homecard::PLAIN, !on);
+                crate::homecard::now();
                 Ok(())
             }
             (_, v) => sioul_core::settings::apply(&config_path(), &load_config(), &key, &v),
@@ -4542,7 +4863,7 @@ impl qobject::Sioul {
         {
             pim::nudge(&shared, &account);
         }
-        if key.starts_with("reading.") || key == "theme" {
+        if key.starts_with("reading.") || key == "theme" || key == "places_named" {
             self.as_mut().set_reading(QString::from(&reading_json()));
         }
         if key.contains("fetch_minutes") {
@@ -4592,9 +4913,14 @@ impl qobject::Sioul {
         let steps = std::env::var("SIOUL_GRAB_STEPS").unwrap_or_else(|_| "pages".into());
         // The other steps archive, delete and send mail, answer invitations:
         // against test servers, from the test build only. "demo", "phone" and
-        // "drag" take pictures alone; "taskform" makes tasks and rates them, and "review"
-        // closes the day with its review (docs/reviews.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || ((steps == "taskform" || steps == "review") && offline()) {
+        // "drag" take pictures alone; "taskform" makes tasks and rates them, "review"
+        // closes the day with its review (docs/reviews.md), "site-open", "site-quit" and
+        // "site-during" open the test site, close its pages and the window
+        // (tools/check-sites.py quit), "site-share" shares its screen (tools/check-sites.py share),
+        // "rail" shows the places hidden and with their
+        // names (main.qml), "pauses" free time and the pause (docs/pauses.md), "blocks" a task pinned to a
+        // time and left to the plan again (docs/tasks.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

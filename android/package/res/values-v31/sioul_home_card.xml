@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- From Android 12, the card rounded as the system rounds every card. -->
+<resources>
+    <dimen name="sioul_home_card_radius">@android:dimen/system_app_widget_background_radius</dimen>
+</resources>

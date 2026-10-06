@@ -13,9 +13,10 @@
 // today holds what it holds is said above, in words (docs/capacity.md).
 //
 // A step is moved by hand to another time today (docs/tasks.md, "The day,
-// seen"): dragged, it is given that time, today only (`X-SIOUL-AT`, its own
-// dates as you set them), and the day is laid again around it; "Let the plan
-// place it" (its menu) gives it back to the plan. A meal or a nap moves as on
+// seen", "Pinned to a time"): dragged, it is pinned there, its time block (an
+// event in your calendar) made or moved, its own dates as you set them, and
+// the day is laid again around it; "Let the plan place it" (its menu) takes
+// its block away and gives it back to the plan. A meal or a nap moves as on
 // the Health page, that day's change; an event, when the day knows it can be
 // written, as in the agenda. Where it would go is drawn, with its times; let
 // go, it is changed, and "Undo" waits in the status line. With a mouse,
@@ -36,7 +37,9 @@ ColumnLayout {
     // The page's `day`: {from, to, now, hours: [{start, end, kind}], blocks: [{start, end, kind, title, key, energy, location, column, columns, part, pinned, note}], all_day, more, said}.
     // Kinds: "event", "task", "meal", "nap", "margin", "done", "gain" (time for you), "slack" (kept free).
     property var day: null
-    // Now on the clock (Unix seconds): the line moves each minute while the day is shown.
+    // Now on the clock (Unix seconds): the window's clock (main.qml), moved at
+    // each minute's turn and when the app comes back. It moves the line and
+    // marks the block under way; nothing is laid again for it.
     property real now: Date.now() / 1000
     readonly property var blocks: dayView.day ? dayView.day.blocks : []
     readonly property var hours: dayView.day && dayView.day.hours ? dayView.day.hours : []
@@ -44,26 +47,29 @@ ColumnLayout {
     readonly property int current: dayView.blocks.findIndex(b => b.kind !== "margin" && b.kind !== "done" && b.kind !== "slack" && b.start <= dayView.now && dayView.now < b.end)
     readonly property int next: dayView.blocks.findIndex(b => b.kind !== "margin" && b.kind !== "done" && b.kind !== "slack" && b.start > dayView.now)
 
-    // Laid again from now every five minutes, and as soon as the app comes back:
-    // what another device marked done or noted comes in through the sharing.
+    // Laid again from now at each five minutes' turn while shown, when shown
+    // again, and as soon as the app comes back (the clock jumps): steps are
+    // laid from the next five minutes, and what another device marked done or
+    // noted comes in through the sharing.
     signal relay
+    // When it was last laid again (Unix seconds, the clock's).
+    property real relaid: 0
 
-    Timer {
-        interval: 60000
-        running: dayView.visible && !dayView.sioul.away
-        repeat: true
-        triggeredOnStart: true
-        // Shown again, or the app back: laid again at once.
-        onRunningChanged: if (running) dayView.relay()
-        onTriggered: {
-            dayView.now = Date.now() / 1000
-            dayView.showNow(false)
-            dayView.ticks = (dayView.ticks + 1) % 5
-            if (dayView.ticks === 0)
-                dayView.relay()
-        }
+    function relayNow() {
+        dayView.relaid = dayView.now
+        dayView.relay()
     }
-    property int ticks: 0
+
+    // Made with what the page had: laid again at the next five minutes' turn.
+    Component.onCompleted: dayView.relaid = dayView.now
+
+    onNowChanged: {
+        if (!dayView.visible)
+            return
+        dayView.showNow(false)
+        if (Math.floor(dayView.now / 300) !== Math.floor(dayView.relaid / 300))
+            dayView.relayNow()
+    }
 
     // Air inside a card, above and below its text.
     readonly property int padding: 8
@@ -158,7 +164,7 @@ ColumnLayout {
 
     // Midnight tonight, Unix seconds: a time given stays on today.
     function midnight() {
-        const d = new Date()
+        const d = new Date(dayView.now * 1000)
         d.setHours(24, 0, 0, 0)
         return d.getTime() / 1000
     }
@@ -243,7 +249,8 @@ ColumnLayout {
         landedLate.restart()
         let problem = ""
         if (step !== null) {
-            problem = dayView.sioul.setTaskAt(step.key, dayView.local(to.start))
+            // Pinned there, as long as the card dragged: its time block made or moved (docs/tasks.md, "Pinned to a time").
+            problem = dayView.sioul.pinTask(step.key, dayView.local(to.start), Math.round((to.end - to.start) / 60))
         } else if (was.kind === "event") {
             if (was.recurring) {
                 which.now().ask()
@@ -299,7 +306,12 @@ ColumnLayout {
         interval: 4000
         onTriggered: dayView.landed = null
     }
-    onVisibleChanged: if (visible) Qt.callLater(dayView.showNow, true)
+    onVisibleChanged: {
+        if (!visible)
+            return
+        dayView.relayNow()
+        Qt.callLater(dayView.showNow, true)
+    }
 
     FontMetrics {
         id: titleMetrics
@@ -514,6 +526,16 @@ ColumnLayout {
                     anchors.bottomMargin: dayView.padding
                     spacing: 10
 
+                    // Pinned to a time (its block in your calendar, docs/tasks.md): a small pin, quietly.
+                    Icon {
+                        visible: block.isPinned && !block.isMargin
+                        Layout.alignment: Qt.AlignTop
+                        Layout.topMargin: Math.max(0, (titleMetrics.height - 12) / 2)
+                        Layout.rightMargin: -6
+                        iconName: "pin"
+                        size: 12
+                        color: dayView.theme.accent
+                    }
                     Label {
                         Layout.alignment: Qt.AlignTop
                         text: dayView.time(block.modelData.start) + "–" + dayView.time(block.modelData.end)
@@ -660,8 +682,9 @@ ColumnLayout {
             onCanceled: dayView.grab = null
         }
 
-        // Now.
+        // Now: the clock moves it alone, nothing else is laid again.
         Rectangle {
+            objectName: "nowLine"
             visible: dayView.day !== null && dayView.now >= dayView.day.from && dayView.now <= dayView.day.to
             x: 56
             y: dayView.day ? dayView.at(dayView.now) - 1 : 0

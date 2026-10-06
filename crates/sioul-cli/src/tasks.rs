@@ -130,21 +130,34 @@ struct Desk {
 }
 
 /// The room for tasks: your hours, each kind for its own tasks, less the
-/// events of the coming four weeks; today's from now, scaled by the weather.
-pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::quiet::Situation, cases: &[sioul_core::cases::Case]) -> Settings {
+/// events of the coming four weeks and the blocks tasks are pinned to;
+/// today's from now, scaled by the weather.
+pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::quiet::Situation, cases: &[sioul_core::cases::Case], tasks: &[Task]) -> Settings {
     let now = Zoned::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
-    let events = sioul_core::agenda::occurrences(midnight, midnight + 28 * 86_400);
+    let read = sioul_core::agenda::occurrences(midnight, midnight + 28 * 86_400);
+    // As the window plans: the tasks pinned to a time, their blocks never events of their own (docs/tasks.md, "Pinned to a time").
+    let stamp = now.timestamp().as_second();
+    let mut found: Vec<sioul_core::agenda::Occurrence> = read.iter().filter(|e| !e.task.is_empty()).cloned().collect();
+    let chosen = s.config.tasks.blocks.clone().unwrap_or_default();
+    found.extend(sioul_core::blocks::read(&sioul_core::blocks::calendars(&chosen), stamp - 2 * 86_400, stamp + sioul_core::blocks::AHEAD_DAYS * 86_400, now.time_zone()));
+    let pins = sioul_core::blocks::Blocks::of(&found, tasks, stamp, now.time_zone());
+    let events = sioul_core::blocks::without_blocks(read.clone(), tasks);
     // Meals, naps and the night first: the work goes around them, as each day has them,
     // meals pushed past the events they would fall in, as the window plans.
     let needs = sioul_core::health::Health::load(&sioul_core::health::Health::default_path()).needs;
     let days = sioul_core::needs::Days::load(&sioul_core::needs::Days::default_path());
-    let pushed = needs.past_events_on(now.date(), now.time_zone(), &days, &sioul_core::plan::event_spans(&events, 0));
-    let mut settings = Settings::of_hours(&s.config.week_hours(), sioul_core::areas::TaskAreas::of_config(&s.config, cases)).with_needs(&needs, pushed).with_days(days).with_events(&now, &events);
+    // Meals move past the blocks as past any event.
+    let pushed = needs.past_events_on(now.date(), now.time_zone(), &days, &sioul_core::plan::event_spans(&read, 0));
+    // Today's end of work moved by free time, as the window plans (docs/pauses.md).
+    let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
+    let day = sioul_core::pause::Day::of(&s.config, sioul_core::quiet::Blocks::read(&now, &read), &events);
+    let extension = sioul_core::pause::moved_today(&overrides, &day.evening(), &now, s.config.free_time.moves);
+    let mut settings = Settings::of_hours(&s.config.week_hours(), sioul_core::areas::TaskAreas::of_config(&s.config, cases)).with_needs(&needs, pushed).with_days(days).with_extension(extension).with_pins(pins).with_events(&now, &events);
     settings.default_estimate = s.config.tasks.estimate.unwrap_or(settings.default_estimate);
-    settings.today_percent = weather.room();
-    // As the window plans: how today is says how many heavy tasks it takes.
-    settings.heavy_today = weather.heavy();
+    // As the window plans: how today is says how many heavy tasks it takes, no
+    // heavier than a hazy day after a pause.
+    (settings.today_percent, settings.heavy_today) = sioul_core::pause::today_level(&overrides, now.date(), weather);
     settings.closed = situation.closed.clone();
     settings.office_days = situation.office_days;
     // Calls to offices only while they are open, as the window lays them out.
@@ -163,9 +176,10 @@ impl Desk {
         let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
         let now = Zoned::now();
         let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.cases);
-        let mut settings = settings(s, today.weather, &situation, &loaded.cases);
-        // As the window plans: what your record says of a day (docs/capacity.md).
-        settings.capacity = sioul_core::capacity::gather(&loaded.tasks, &sessions, &settings, &s.config.planning, &sioul_core::agenda::occurrences, &now).planning;
+        let mut settings = settings(s, today.weather, &situation, &loaded.cases, &loaded.tasks);
+        // As the window plans: what your record says of a day (docs/capacity.md), a block counted as its task.
+        let own = |from: i64, to: i64| sioul_core::blocks::without_blocks(sioul_core::agenda::occurrences(from, to), &loaded.tasks);
+        settings.capacity = sioul_core::capacity::gather(&loaded.tasks, &sessions, &settings, &s.config.planning, &own, &now).planning;
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
         Desk { loaded, filter, offices: situation.offices, plan, today, spent, stopped, sessions, settings }

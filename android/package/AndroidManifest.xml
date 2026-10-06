@@ -2,8 +2,9 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <!-- Sioul's Android manifest: Qt 6.11's own (qtbase, src/android/templates),
      with Sioul's name and icon, the network, the keyboard pushing the window
-     up rather than covering it, no cloud backup, the doses' alarms, and the
-     alarm at waking.
+     up rather than covering it, no cloud backup, the doses' alarms, the
+     alarm at waking, the events' reminders, and the pauses' do-not-disturb,
+     tile and shortcut.
      androiddeployqt fills the "INSERT" parts. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurelienpierre.sioul"
@@ -36,6 +37,18 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- The pauses' do-not-disturb (docs/android.md, "Pauses"): Sioul's own
+         modes, which need "Do Not Disturb access", a switch you turn on in
+         Android's settings (this line alone gives nothing). -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- Do-not-disturb on every device (docs/android.md, "In the background"):
+         the service that keeps this phone in step with your other devices
+         while Sioul is closed, in the foreground with one quiet notification,
+         asked to be let run in the background; your contacts read (never
+         written) to say who on your list of people is not starred here. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- The sync apps asked to look for changes now rather than at their next
          round (crates/sioul-app/src/share.rs, android/main.cpp): Murena's
          eDrive, which carries the sharing folder on /e/OS, every half hour. -->
@@ -87,6 +100,14 @@
           <meta-data
                 android:name="android.app.arguments"
                 android:value="-- %%INSERT_APP_ARGUMENTS%% --" />
+
+          <!-- "Pause" at a long press on the icon, or on the home screen
+               (res/xml/sioul_shortcuts.xml, PauseOpener.java); your addresses
+               as the share sheet's direct targets, and at the same long
+               press (its <share-target>, MailShortcuts.java). -->
+          <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/sioul_shortcuts" />
         </activity>
 
         <!-- Measurable with Android's profiler (simpleperf) from a computer
@@ -104,6 +125,34 @@
                 android:resource="@xml/qtprovider_paths"/>
         </provider>
 
+        <!-- Sioul's card on the home screen (package/src/com/aurelienpierre/
+             sioul/HomeCard.java; docs/android.md, "The card on the home
+             screen"): drawn from what Sioul wrote, when Sioul says so (an
+             explicit broadcast of its own) and at each change of time it gave
+             ahead; again after a restart or an update. Not exported: the
+             system's widget service reaches it all the same. -->
+        <receiver
+            android:name="com.aurelienpierre.sioul.HomeCard"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/sioul_home_card_info" />
+        </receiver>
+        <!-- A line of the card tapped: the Porch, or Now on its step, kept
+             for Sioul, which comes up on it (HomeCardOpener.java); never
+             shown itself. -->
+        <activity
+            android:name="com.aurelienpierre.sioul.HomeCardOpener"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:exported="false" />
         <!-- A dose's alarm, and its reminder's "Taken" (package/src/com/
              aurelienpierre/sioul/DoseReceiver.java): sent by Android's alarm
              clock and by the reminder, by no other app. -->
@@ -172,5 +221,120 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:exported="false" />
+        <!-- "Pause" pressed on the tile or the shortcut: kept for Sioul, which
+             comes up on the pause (PauseOpener.java); never shown itself. Not
+             exported: no other app can start a pause. -->
+        <activity
+            android:name="com.aurelienpierre.sioul.PauseOpener"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:exported="false" />
+        <!-- "Pause" among the quick settings (PauseTile.java): bound by the
+             system alone (its permission). -->
+        <service
+            android:name="com.aurelienpierre.sioul.PauseTile"
+            android:label="@string/sioul_pause"
+            android:icon="@drawable/sioul_pause"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <!-- What other apps hand Sioul to write (ShareActivity.java,
+             docs/android.md, "Sharing"): files and text shared to it, or to
+             one of your addresses straight from the share sheet; mailto:
+             links, from a browser too. Each becomes a draft in Sioul, which
+             opens; nothing is sent until you press Send. Translucent, never
+             shown, and kept (no noHistory) behind Sioul's window the moment
+             the shared files take to open: Android's leave to read them goes
+             with it, so it is not made again when the screen turns. -->
+        <activity
+            android:name="com.aurelienpierre.sioul.ShareActivity"
+            android:label="Sioul"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SENDTO" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="mailto" />
+            </intent-filter>
+        </activity>
+        <!-- Reminders before events (package/src/com/aurelienpierre/sioul/
+             EventAlarms.java, EventReceiver.java; docs/android.md, "Events"):
+             a reminder's time and the daily look, sent by Android's alarm
+             clock, by no other app; the phone started (once unlocked: the
+             events are in Sioul's files), Sioul updated, the time or the zone
+             changed, "Alarms & reminders" allowed again, each giving the
+             alarms again. -->
+        <receiver
+            android:name="com.aurelienpierre.sioul.EventReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <!-- An event's reminder or new mail's notification tapped: the event,
+             or the Porch, kept for Sioul, which comes up on it
+             (ReminderOpener.java); never shown itself. -->
+        <activity
+            android:name="com.aurelienpierre.sioul.ReminderOpener"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:exported="false" />
+        <!-- Do-not-disturb on every device (docs/android.md, "In the
+             background"): the service that keeps this phone in step while
+             Sioul is closed (StepService.java), in a process of its own, since
+             Qt's window ends its whole process as it closes; its alarm, and the
+             phone's restart or Sioul's update, which start it again if it was
+             on (StepReceiver.java). By no other app. -->
+        <service
+            android:name="com.aurelienpierre.sioul.StepService"
+            android:process=":steps"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the person's do-not-disturb and the people allowed through it in step with their other devices, through the folder their own sync app carries, while the app is closed." />
+        </service>
+        <receiver
+            android:name="com.aurelienpierre.sioul.StepReceiver"
+            android:process=":steps"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <!-- Do-not-disturb applied in Sioul's own process, where its modes
+             are kept (DndReceiver.java): asked by the service, at its next
+             end, after a restart or an update. By no other app. -->
+        <receiver
+            android:name="com.aurelienpierre.sioul.DndReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

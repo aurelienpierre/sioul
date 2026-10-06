@@ -14,7 +14,9 @@ La page Paramètres a cinq onglets.
 
 - **Langue** : celle du système, English ou Français. Toutes les phrases de Sioul la suivent.
 - **Couleurs** : claires, sombres, ou celles du système. Les icônes suivent au prochain démarrage.
+- **Afficher le nom des lieux à côté de leur icône** : les lieux, à gauche de la fenêtre, montrent leur nom à côté de leur icône, dans une colonne plus large, pour qui lit plus facilement des mots que des icônes. Sans ce réglage, leurs icônes seules ; le nom de chacun s’affiche quand le pointeur s’y arrête, quand le clavier l’atteint, ou par un appui long sur un écran tactile. Il suit vos réglages sur vos autres appareils, quand vous les [partagez](sharing.md).
 - **Afficher les mots de passe pendant la saisie** : chaque champ de mot de passe, de phrase de passe ou de clé montre ce que vous tapez dès le départ, sur cet appareil. Sans ce réglage, l’œil au bout de chaque champ affiche ou masque ce que vous avez tapé, à tout moment.
+- **Détails sur l’écran d’accueil** (sur un téléphone) : la carte de Sioul sur l’écran d’accueil du téléphone nomme les premières lettres qui attendent sur le Porche, avec leur expéditeur et leur objet, un code que vous venez de demander à un site, une prise prévue, et le titre de la prochaine étape ([Premiers pas](first-steps.md#on-a-phone)). Sans ce réglage, elle ne dit que ce à quoi sert ce moment, combien de lettres sont arrivées, et qu’une prochaine étape attend : pour un téléphone dont d’autres voient l’écran d’accueil. Ce téléphone seulement.
 
 ## Heures {#hours}
 
@@ -34,15 +36,26 @@ Chaque jour de chaque semaine est actif ou non, avec une plage horaire ou plusie
 
 Chaque rappel vient une fois, en notification discrète, sans son, jamais répété. Se souvenir « le 30 » de ce qui était prévu est ce qui échoue le plus souvent, avec l’autisme et avec le TDAH (Landsiedel, Williams & Abbot-Smith 2017 ; Altgassen, Kretschmer & Kliegel 2014), et les rappels aident là où c’est la mémoire qui fait défaut (Jamieson et al. 2014).
 
-- **Évènements, le jour travaillé d’avant** : une demi-heure avant la fin du travail, le jour travaillé qui précède un événement : quoi, quand, où. Les alarmes que porte un événement sont dites à leur heure aussi.
+- **Avant un événement** : un rappel discret, tant de temps avant chaque événement : aucun, 5, 10, 15 (sauf si vous le changez) ou 30 minutes, 1 ou 2 heures. Il est compté avant le temps de se préparer et d’y aller : un événement à 14:00 avec 30 minutes pour y aller est rappelé à 13:15. Chaque événement peut dire le sien : **Rappel**, dans son formulaire et dans ses détails ([Agenda](agenda.md#reminders)). Pas pour les journées entières, ni pour les agendas que vous lisez seulement. Sur un téléphone, le réglage dit si Android laisse ces rappels venir à l’heure.
+- **Évènements, le jour travaillé d’avant** : une demi-heure avant la fin du travail, le jour travaillé qui précède un événement : quoi, quand, où. Les alarmes que porte un événement sont dites à leur heure aussi ; celle qui tombe à moins de cinq minutes du rappel de Sioul n’est dite qu’une fois.
 - **Dates demandées : jours travaillés avant** : au début du travail, tant de jours travaillés avant la date demandée d’une tâche (2, sauf si vous changez ce nombre) ; 0 pour aucun.
 - **Une attente finie** : quand une attente après une étape faite est finie (une réponse due), une fois, quand le travail est là.
 - **Paiements prévus : jours travaillés avant** : au début du travail, tant de jours travaillés avant un paiement prévu (une facture, un impôt) ; 0 pour aucun. Le rappel dit si le compte le tiendra.
 - **Fenêtre de Sioul fermée** : votre session lance un petit veilleur qui dit les rappels quand la fenêtre est fermée ; rien d’autre ne tourne, aucun courrier n’est relevé. Il faut pour cela la commande `sioul` installée à côté de Sioul ([Installer](install.md#into-your-application-menu)). Pas encore sous Windows.
+- **Nouveau courrier : notifier aux heures où il peut venir** : quand arrive du courrier que vos listes laissent passer maintenant, une seule notification discrète pour le lot : combien, et les premiers expéditeurs avec leur objet. Le courrier qui attendait son heure est dit une fois, quand elle vient : « Le Porche ouvre : trois lettres vous attendent. » Jamais pendant le sommeil ni une pause ; jamais pour les codes (ils ont la leur), ni pour ce qui est mis de côté, bloqué, envoyé par vous-même ou arrivé sur vos adresses moins importantes. Activé d’origine. Voir [Le Porche](porch.md#new-mail-told-at-its-times).
+- **Avec les lettres d’information** : les lettres d’information et les listes de diffusion, rangées sur le Porche, sont dites aussi. Les expéditeurs automatiques (une facture de no-reply) le sont de toute façon. Désactivé d’origine.
 - **Notifications des sites regroupées**, et **Regroupées à** : ce que vos sites notifient attend, puis vient en une seule notification à ces moments-là (09:00, 13:00 et 18:00, sauf si vous en réglez d’autres), pour les sites dont les heures sont en cours. Un site en temps réel, et un appel, viennent tout de suite.
 - **Prises pendant le sommeil** : **Rappeler** ou **Rester silencieux**. Pendant le sommeil (la nuit, du moment de se détendre au réveil ; une sieste), aucune notification ne vient ; le rappel d’une prise vient quand même, puisque c’est vous qui avez réglé son heure, sauf si vous choisissez **Rester silencieux** : il vient alors au réveil. Voir [Les heures](hours.md#sleep).
 
-Les prises de médicaments sont rappelées depuis la page [Santé](health.md), et les papiers à renouveler depuis [Papiers](papers.md). Sur un téléphone, seules les prises sont rappelées pour l’instant ([Sur un téléphone](first-steps.md#on-a-phone)).
+Les prises de médicaments sont rappelées depuis la page [Santé](health.md), et les papiers à renouveler depuis [Papiers](papers.md). Sur un téléphone, les prises, les événements et le nouveau courrier sont dits ; les autres rappels viennent sur un ordinateur ([Sur un téléphone](first-steps.md#on-a-phone)).
+
+## Pauses {#pauses}
+
+Le temps libre et la pause, préparés un jour calme : qui vous joint en temps libre, jusqu’où la fin du travail peut se décaler, si le mouvement est proposé ; pour la pause, les prises, vos contacts favoris, ce qui vous aide, votre ligne, le guide de respiration, ce que tient le reste de la journée ensuite, de quel pays sont les numéros, et ce que peut le mode Ne pas déranger de cet appareil ; **Essayer l’écran de pause**. Voir [Les pauses](pauses.md).
+
+## Ne pas déranger {#do-not-disturb}
+
+Un seul « Ne pas déranger » pour tous vos appareils : l’interrupteur de la ligne d’état, ce qui l’active de soi-même (les pauses, une séance de concentration, votre sommeil), qui passe, et la liste des personnes qui peuvent vous joindre pendant ce temps, la même sur tous vos appareils ; ce que le système de cet appareil laisse faire à Sioul ; sur un téléphone, qui, sur votre liste, y est en favori, et Sioul gardé à jour en arrière-plan. Voir [Ne pas déranger sur tous vos appareils](pauses.md#do-not-disturb-on-every-device).
 
 ## Votre dossier et le partage {#your-folder-and-sharing}
 

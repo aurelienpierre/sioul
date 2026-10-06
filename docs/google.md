@@ -1,6 +1,6 @@
-# Google: calendars, contacts and tasks
+# Google: calendars, contacts, tasks and mail
 
-Google keeps calendars and contacts behind CalDAV and CardDAV, like an open server, but signs you in with OAuth only, keeps less of what you write, and keeps tasks elsewhere (Google Tasks). Sioul reads and writes all three. What Google does not keep shows greyed, never hidden, with why.
+Google keeps calendars and contacts behind CalDAV and CardDAV, like an open server, but signs you in with OAuth only, keeps less of what you write, and keeps tasks elsewhere (Google Tasks). Sioul reads and writes all three. What Google does not keep shows greyed, never hidden, with why. Gmail and Google Workspace mail come over IMAP and SMTP, with an app password or a sign-in of their own ([Mail](#mail)).
 
 ## Signing in
 Google takes no password from another program, not even an app password for CalDAV or CardDAV since 14 March 2025: OAuth only. In Accounts ▸ Add an account, "Google calendars, contacts and tasks":
@@ -42,6 +42,41 @@ Without Sioul's key in the build, or if you prefer yours, you make one, free, in
 
 Google deletes a client unused for six months; Sioul uses it at every sync.
 
+## Mail
+Gmail and Google Workspace mail come over IMAP and SMTP like any other, but Google refuses the account's own password from another program. It takes an **app password** (made at Google, with 2-Step Verification on) or **OAuth 2.0** given to IMAP and SMTP with SASL XOAUTH2. Sioul offers both and never asks for the account's password at Google.
+
+### Recognising Google's mail
+When an address is added, `discover.rs` says it is Google's:
+- **gmail.com, googlemail.com**: known here, nothing asked of anyone;
+- **another domain whose mail Google receives**: its MX is a host under google.com or googlemail.com (`smtp.google.com` for Workspace domains set up since 2023, `aspmx.l.google.com`, `altN.aspmx.l.google.com` and `aspmxN.googlemail.com` before), asked of the system's DNS as the sender checks do (mail-auth's resolver; on Android, the network's DNS servers, which hickory reads through ConnectivityManager);
+- **settings found elsewhere naming imap.gmail.com** (the domain's own autoconfig).
+
+Its servers are then Google's: `imap.gmail.com:993` and `smtp.gmail.com:465`, encrypted from the first byte, the address as login. A Workspace domain whose MX is a filtering service's, and whose own settings do not name imap.gmail.com, is not recognised, and its server is not found in the window; the command line adds it (`sioul accounts add <address> --host imap.gmail.com`, with an app password). A password refused by imap.gmail.com is said as wanting an app password.
+
+### What works, with which key
+| Way | Works | What Google asks |
+|---|---|---|
+| **App password** (the default, without a key of your own) | Gmail, and Workspace where the organisation allows app passwords | 2-Step Verification on. Not offered with security keys as the only second step, with Advanced Protection, or where a work or school organisation turned them off. Google revokes them when the account's password changes. Made at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords): sixteen letters, shown in four groups (the spaces are dropped). |
+| **Sign in with Google, Sioul's own key** | no, not now | Gmail's scope, `https://mail.google.com/`, is **restricted**. A public app gets it only after Google's restricted-scope review; the yearly security assessment (CASA, by a paid assessor) is required of apps that can reach the data "from or through a third-party server", which Sioul does not (its mail stays on the device). Sioul's key is not registered yet anyway (`built_in()` is empty in every build so far). The form says so plainly and offers the two other ways. |
+| **Sign in with Google, a key of your own** | yes | Your own Google Cloud project, the Gmail API turned on, the scope `https://mail.google.com/` in *Data access*, a *Desktop app* client, the project published (*In production*) and never verified: Google shows "Google hasn't verified this app" (*Advanced → Go to Sioul*), and lets at most 100 people in. Google needs no verification for an app used by its owner alone, or by a few people they know. Left **in testing**, each sign-in ends after seven days (Google issues refresh tokens "expiring in 7 days" to projects in testing, unless they ask only for name, address and profile): Sioul says so when it happens. |
+
+The steps for a key of your own are in the form (*How to make your Google key*): the same project as the calendars can hold both scopes. A Workspace organisation can also make its project *Internal*: no unverified screen, no seven-day end, for its own people only. An organisation may also block apps it has not allowed, in its admin console's API controls, and turn app passwords off.
+
+### Signing in with Google, for mail
+1. In Accounts ▸ Add an account, the address, then **Find the server**. For Google's mail, the form shows **Use an app password** and **Sign in with Google**, never a plain password field.
+2. The key: the one typed (client ID and secret), else one of yours kept on this device for this address (the mail's own, else the calendars' when it is not Sioul's); Sioul's own key is refused for mail, said so.
+3. Google's page opens in the system's browser, as for the calendars (loopback, PKCE, state, the ID token's address), with the scopes `openid email https://mail.google.com/`. Google lets each access be unticked on its page: without the mail's, Sioul says "Google gave no access to your mail", gives the token back and keeps nothing.
+4. The server is tried (IMAP `AUTHENTICATE XOAUTH2`, the inbox opened read-only) before anything is kept. Then the account is added with `auth = "google"`, sending through `smtp.gmail.com:465`.
+5. What stays: a keyring entry of its own, `google-mail:<address>` (client ID, secret, refresh token, scopes, the day of the sign-in); the access token in memory, an hour at most. The calendars' grant (`google:<address>`) is apart: either can be removed alone. Removing the mail gives its access back to Google (`/revoke`), unless the calendars use the same key: Google ends a key's access to an account as a whole, so it is then only forgotten here.
+6. At each connection: the access token kept, while it lasts; refused (IMAP `NO`, SMTP `535`), a fresh one from the refresh token, once; refused again, or no refresh possible, "Google asks you to sign in again" (or the seven-day end of a project in testing, said as such). The address's card then offers **Sign in again** (Google's page, the key kept) and **App password…** (the account switches to an app password: tried, kept in the keyring, `auth` removed, the mail's grant given back).
+7. An account come from another device arrives without its grant (grants stay in each device's keyring): **Sign in again** with the same key (its ID and secret; Google shows a secret only once, but a client can be given a new one), or **App password…**.
+
+### On Android
+- **The same flow.** Google's page opens in the system's browser and its answer comes to `http://127.0.0.1:<port>`, Sioul's listener. Google stopped the loopback redirect for its Android, iOS and Chrome **client types** in 2022, and keeps it for **Desktop app** clients, which Sioul's key and yours are. Expected to work on a phone; not tried against Google.
+- **While the browser is in front**, Android may freeze Sioul (its cached-apps freezer). The listening socket stays with the system: the browser's connection is taken and its request waits in the system's queue, and Sioul reads it when it comes back (checked on Linux by stopping a listener: the request was read after it resumed). Sioul reads a waiting answer even past its five minutes, since a frozen app's clock jumps. On a phone, the waiting line and Google's success page say to come back to Sioul.
+- **If Android kills Sioul meanwhile** (short of memory), the browser's request is refused and nothing changes: sign in again. Not built, proposed: a short foreground service while the sign-in waits (`shortService`, Android 14 and later, up to three minutes; a notification "Waiting for Google's page"), which would keep Sioul from being frozen or killed. It needs Java and the manifest, where other work is under way.
+- **Not used: Android's AccountManager, GoogleAuthUtil, Credential Manager.** They need Google Play services or microG, and an *Android* OAuth client registered with Sioul's package name and the APK's signing certificate; Sioul's client would still need Google's review for the mail's scope. On /e/OS without Play services, the browser is the system's way. App passwords work on a phone as on a computer; the phone never asks for the Google account's password.
+
 ## Calendars (CalDAV)
 - Found from the address: the principal `https://apidata.googleusercontent.com/caldav/v2/<address>/user`, then its calendar home.
 - Which calendars come is chosen on Google's page [calendar.google.com/calendar/syncselect](https://calendar.google.com/calendar/syncselect).
@@ -67,10 +102,14 @@ Google's CalDAV refuses tasks; its task lists come over the Google Tasks API (`g
 ## What was tested
 - The sign-in's pieces: the page asked (PKCE challenge, state, scopes, login hint), the answer read on the loopback port (a favicon request first, Cancel), the ID token's address.
 - Google Tasks against a stand-in of its API (`tools/google-tasks-stand-in.py`, pages of two): first sync with a step under its task, edits both ways, a new step under its parent, deletions, a list made, renamed and deleted here, a list deleted there.
-- **Not tested against Google itself** (no Google account was used): the token exchange, Google's CalDAV and CardDAV answers (discovery, whether a PUT of a new contact is refused or relocated, its `Location`), Google Tasks' own answers. The first real sign-in is the test; what fails says so in the account's line.
+- Mail: the XOAUTH2 string against Google's own example (`sasl.rs`), IMAP `AUTHENTICATE XOAUTH2` and SMTP `AUTH XOAUTH2` against stand-ins that refuse a token as Google does (its JSON reason, the empty line awaited) then take a fresh one; the refresh token traded for an access token against a stand-in of Google's token endpoint, a refusal said as "sign in again", or as the seven-day end of a project in testing; the mail's scope asked apart from the calendars'; Google's mail recognised by its domains and by MX stand-ins (lookalike names refused); an answer waiting in the system's queue read after the time is up.
+- **Not tested against Google itself** (no Google account was used): the token exchange, Google's CalDAV and CardDAV answers (discovery, whether a PUT of a new contact is refused or relocated, its `Location`), Google Tasks' own answers, Gmail's IMAP and SMTP with a real token or a real app password, the sign-in on a phone. The first real sign-in is the test; what fails says so in the account's line.
 
 ## Files
-- `crates/sioul-sync/src/google.rs`: the sign-in, the tokens, the revocation; Sioul's own key, read at build time (`built_in`), and the seven-day end of a project in testing, told as such (`IN_TESTING`).
+- `crates/sioul-sync/src/google.rs`: the sign-in, the tokens, the revocation; Sioul's own key, read at build time (`built_in`), and the seven-day end of a project in testing, told as such (`IN_TESTING`); calendars and mail as two purposes, each its grant (`Purpose`).
+- `crates/sioul-sync/src/sasl.rs`: SASL XOAUTH2 for IMAP and SMTP, and who gives the tokens (`OAuth`).
+- `crates/sioul-sync/src/discover.rs`: Google's mail recognised (its domains, its MX), its servers.
+- `crates/sioul-app/src/gmail.rs`, `qml/GoogleMail.qml`: the mail's sign-in in the window, and its app password.
 - `crates/sioul-sync/src/dav.rs`: the bearer token, Google's discovery and its quirks.
 - `crates/sioul-sync/src/google_tasks.rs`: Google Tasks.
 - `crates/sioul-core/src/capabilities.rs`: what each kind of server keeps, for the greyed fields and the warnings before a move.

@@ -137,9 +137,11 @@ pub struct Task {
     pub start: String,
     /// The date asked, in the same form.
     pub due: String,
-    /// A time given to it for one day, by a drag in the day view (`X-SIOUL-AT`):
-    /// "2026-10-06T14:30", in your time zone; "" for none. The day lays it then,
-    /// that day only (`at_on`); another day it says nothing.
+    /// A time given to it for one day by a drag in the day view before time
+    /// blocks (`X-SIOUL-AT`, read still, never written: a task is pinned to a
+    /// time by a block now, `blocks`): "2026-10-06T14:30", in your time zone;
+    /// "" for none. The day lays it then, that day only (`at_on`); another day
+    /// it says nothing. Each one still to come becomes a block, once.
     pub at: String,
     /// When it was done, in Unix seconds.
     pub completed: Option<i64>,
@@ -231,10 +233,11 @@ fn day_of(text: &str) -> Option<Date> {
 pub const ESTIMATE_FIRST: &str = "X-SIOUL-ESTIMATE-FIRST";
 
 /// A time given to a task for one day by a drag in the day view (`Task::at`),
-/// in UTC. Not DTSTART: RFC 5545 wants DUE of DTSTART's value type and after
-/// it, and CalDAV servers that check (Sabre: Nextcloud) refuse a task whose
-/// start has a time while its date asked is a date, or has passed. Other
-/// applications leave the line as it is: the time stays Sioul's.
+/// in UTC, as Sioul wrote it before time blocks: read still, never written
+/// (a task is pinned to a time by a block, an event every calendar shows,
+/// `blocks`). Not DTSTART: RFC 5545 wants DUE of DTSTART's value type and
+/// after it, and CalDAV servers that check (Sabre: Nextcloud) refuse a task
+/// whose start has a time while its date asked is a date, or has passed.
 pub const AT: &str = "X-SIOUL-AT";
 
 /// An iCalendar duration in minutes (RFC 5545 §3.3.6): "PT15M" → 15,
@@ -505,7 +508,8 @@ pub struct TaskEdit {
     pub start: String,
     #[serde(default)]
     pub due: String,
-    /// A time given for one day in the day view: "2026-10-06T14:30", or "" (`Task::at`).
+    /// A time given for one day in the day view before blocks: "2026-10-06T14:30",
+    /// or "" (`Task::at`). Read; changed, its line goes and none is written.
     #[serde(default)]
     pub at: String,
     /// Minutes; 0 when unsaid.
@@ -782,9 +786,7 @@ fn field_lines(edit: &TaskEdit, changed: Changed, zone: &TimeZone, now: &Zoned) 
     if (changed.start || changed.due) && !edit.due.is_empty() {
         out.push(date_line("DUE", &edit.due, zone)?);
     }
-    if changed.at && edit.at.len() > 10 {
-        out.push(date_line(AT, &edit.at, zone)?);
-    }
+    // A time given by a drag before blocks (`AT`) is never written: changed, its line only goes.
     if changed.estimate && edit.estimate > 0 {
         out.push(format!("ESTIMATED-DURATION:{}", duration_of(i64::from(edit.estimate))));
     }
@@ -1350,13 +1352,14 @@ mod tests {
     }
 
     #[test]
-    fn a_time_given_for_one_day() {
+    fn a_time_given_for_one_day_is_read_never_written() {
         let zone = paris();
-        // A step with a date asked: the time it is given today goes in its own line, its dates as they were.
+        // A step with a date asked, given a time today by a Sioul of before blocks: read, its dates as they were.
         let made = new_task(&TaskEdit { title: "Call the bank".into(), start: "2026-10-01".into(), due: "2026-10-09".into(), ..TaskEdit::default() }, "bank", &zone, &now()).unwrap();
-        let task = task_of_text(&made, &zone).unwrap();
-        let given = apply(&made, &TaskEdit { at: "2026-10-06T14:30".into(), ..TaskEdit::of(&task) }, &zone, &now()).unwrap();
-        assert!(given.contains("X-SIOUL-AT:20261006T123000Z") && given.contains("DTSTART;VALUE=DATE:20261001") && given.contains("DUE;VALUE=DATE:20261009"), "{given}");
+        let given = made.replace("END:VTODO", "X-SIOUL-AT:20261006T123000Z\r\nEND:VTODO");
+        // Never written now: a time given goes into a block (`blocks`), the task's file as it was.
+        let written = apply(&made, &TaskEdit { at: "2026-10-06T14:30".into(), ..TaskEdit::of(&task_of_text(&made, &zone).unwrap()) }, &zone, &now()).unwrap();
+        assert_eq!(written, made);
         let task = task_of_text(&given, &zone).unwrap();
         let today: Date = "2026-10-06".parse().unwrap();
         assert_eq!(task.at, "2026-10-06T14:30");

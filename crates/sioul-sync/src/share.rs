@@ -117,7 +117,7 @@ static CONFIG_RULES: Rules = Rules {
     keyed: &[Keyed { list: "account", by: &["id"], local: &["maildir", "history_weeks"] }],
     whole: &[],
     // Where things are on this computer, and how text reads on its screen.
-    local: &["case_store", "known_senders", "blocked_senders", "reading", "history_weeks", "letters.inbox"],
+    local: &["case_store", "known_senders", "blocked_senders", "reading", "history_weeks", "letters.inbox", "dnd.background"],
 };
 static HEALTH_RULES: Rules = Rules {
     keyed: &[Keyed { list: "prescription", by: &["id"], local: &[] }, Keyed { list: "medicine", by: &["id"], local: &[] }],
@@ -134,6 +134,15 @@ static TIME_RULES: Rules = Rules { keyed: &[Keyed { list: "session", by: &["star
 /// the same one keep the later answer, never a mix of both; the weather field by field.
 static REVIEWS_RULES: Rules = Rules { keyed: &[], whole: &["*.work", "*.night"], local: &[] };
 static PLAIN_RULES: Rules = Rules { keyed: &[], whole: &[], local: &[] };
+/// Do-not-disturb's switch (docs/do-not-disturb.md): a table per device, each
+/// written by its own device alone, shared whole.
+static DND_RULES: Rules = Rules { keyed: &[], whole: &["device.*"], local: &[] };
+/// Who may reach you during do-not-disturb: one person each, by its id.
+static DND_PEOPLE_RULES: Rules = Rules { keyed: &[Keyed { list: "person", by: &["id"], local: &[] }], whole: &[], local: &[] };
+/// Each dose that fell due (`sioul_core::doses`): one entry per field, each
+/// device's opening apart, and each device's answer whole, so that two
+/// devices never write one entry and an answer never travels in halves.
+static DOSES_RULES: Rules = Rules { keyed: &[], whole: &["dose.*.answer.*"], local: &[] };
 // Projects and budgets, at the notes folder's root, when they travel here (`share_projects`).
 static CASES_RULES: Rules = Rules { keyed: &[Keyed { list: "case", by: &["id"], local: &[] }], whole: &[], local: &[] };
 // The bank's movements: each account by its id, each movement by its account and the bank's own id.
@@ -237,6 +246,8 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         file("senders", "config/safe-senders.txt", c.join("safe-senders.txt"), Shape::Lines),
         file("senders", "config/neutral-senders.txt", c.join("neutral-senders.txt"), Shape::Lines),
         file("senders", "config/restricted-senders.txt", c.join("restricted-senders.txt"), Shape::Lines),
+        // Who may reach you during do-not-disturb, beside the mail lists (docs/do-not-disturb.md).
+        file("senders", "config/dnd-people.toml", c.join(sioul_core::everywhere::PEOPLE_FILE), Shape::Toml(&DND_PEOPLE_RULES)),
         file("settings", "data/links.toml", d.join("links.toml"), Shape::Toml(&LINKS_RULES)),
         file("health", "data/health.toml", d.join("health.toml"), Shape::Toml(&HEALTH_RULES)),
         // Each day's own meals, naps and nights: one entry per field of a block of a day.
@@ -254,10 +265,15 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         folder("lists", "data/contacts/local/", d.join("contacts").join(local), Shape::Whole, &[]),
         file("settings", "state/porch.toml", s.join("porch.toml"), Shape::Toml(&PORCH_RULES)),
         file("settings", "state/money.toml", s.join("money.toml"), Shape::Toml(&MONEY_RULES)),
+        // Do-not-disturb's switch, pressed on any device (docs/do-not-disturb.md).
+        file("settings", "state/do-not-disturb.toml", s.join(sioul_core::everywhere::SWITCH_FILE), Shape::Toml(&DND_RULES)),
         file("time", "state/today.toml", s.join("today.toml"), Shape::Toml(&TODAY_RULES)),
         file("time", "state/quiet.toml", s.join("quiet.toml"), Shape::Toml(&PLAIN_RULES)),
         file("time", "state/stopped.toml", s.join("stopped.toml"), Shape::Toml(&PLAIN_RULES)),
         file("health", "state/health-state.toml", s.join("health-state.toml"), Shape::Toml(&PLAIN_RULES)),
+        // Each dose that fell due and the answers your devices captured (docs/health.md,
+        // "Doses as records"): a file of its own, which an older Sioul leaves alone.
+        file("health", "state/health-doses.toml", s.join(sioul_core::doses::FILE), Shape::Toml(&DOSES_RULES)),
         file("watch", "state/watch-offers.json", s.join("watch-offers.json"), Shape::Whole),
         folder("senders", "state/shield/", s.join("shield"), Shape::Whole, &[]),
         folder("lists", "state/dav/local/", s.join("dav").join(local), Shape::Whole, &[]),
@@ -1493,6 +1509,13 @@ pub struct Outcome {
     pub problems: Vec<String>,
     /// The others' changes waiting to be written here (their file unreadable, or not shared here).
     pub pending: usize,
+    /// When this computer's files were read for it (milliseconds, its clock):
+    /// everything captured here before is in its records, up to `wrote`. 0
+    /// when it did not run (`share-busy`).
+    pub looked: i64,
+    /// How far this computer's records went once it ended: round and number;
+    /// none before sharing joined.
+    pub wrote: Option<(u32, u64)>,
 }
 
 /// Before the first exchange, a copy of every shared file, in case. Not of
@@ -2096,6 +2119,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     memory.sealed.missing.retain(|key, _| memory.pending.contains_key(key));
     memory.sealed.failing.retain(|key, _| memory.pending.contains_key(key));
     write_seen(sharing, &memory, &all, now_ms);
+    // What the devices' registry says of this export (`devices`).
+    outcome.looked = clock;
+    outcome.wrote = memory.joined.then_some((memory.round.max(1), memory.seq));
     remove_old_rounds(sharing, &memory, now_ms);
     memory.save(sharing.memory)?;
     Ok(outcome)
@@ -4723,6 +4749,74 @@ mod tests {
         let money = "ignored = [\"a\", \"b\"]\n";
         let new = toml_write(money, &MONEY_RULES, &[("ignored\u{1f}\u{1e}v = \"a\"\n", None), ("ignored\u{1f}\u{1e}v = \"c\"\n", Some("v = \"c\"\n"))]).unwrap();
         assert_eq!(new, "ignored = [\"b\", \"c\"]\n");
+    }
+
+    /// Do-not-disturb on every device (docs/do-not-disturb.md): each device's
+    /// table of the switch travels whole and is never written by another; the
+    /// list of people travels a person at a time; a Sioul that knows neither
+    /// file shares the rest and takes nothing of them out.
+    #[test]
+    fn do_not_disturb_travels_each_device_its_table_and_the_list_a_person_at_a_time() {
+        use sioul_core::everywhere::{People, Person, Switch, change_own, change_people};
+        let base = scratch("dnd");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let switch = |c: &Computer| c.roots.state.join(sioul_core::everywhere::SWITCH_FILE);
+        let people = |c: &Computer| c.roots.config.join(sioul_core::everywhere::PEOPLE_FILE);
+        // The desk turns it on; each adds someone to the list, before hearing of the other.
+        change_own(&switch(&desk), &desk.id, |s| {
+            s.press(&desk.id, true, 0, NOW);
+            true
+        })
+        .unwrap();
+        change_people(&people(&phone), |p| {
+            p.add(Person { name: "Alice".into(), phones: vec!["+33612345678".into()], ..Person::default() }, None);
+        })
+        .unwrap();
+        change_people(&people(&desk), |p| {
+            p.add(Person { name: "Bob".into(), emails: vec!["bob@example.org".into()], ..Person::default() }, None);
+        })
+        .unwrap();
+        desk.exchange(&folder, &key, NOW + MINUTE);
+        phone.exchange(&folder, &key, NOW + 2 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+        let heard = Switch::read(&switch(&phone)).unwrap();
+        let latest = heard.latest().unwrap();
+        assert!(latest.on && latest.from == desk.id, "{heard:?}");
+        for c in [&desk, &phone] {
+            let names: Vec<String> = People::read(&people(c)).unwrap().people.into_iter().map(|p| p.name).collect();
+            assert!(names.contains(&"Alice".to_string()) && names.contains(&"Bob".to_string()), "{names:?}");
+        }
+        // The phone turns it off, having heard the desk: its own table only.
+        change_own(&switch(&phone), &phone.id, |s| {
+            s.press(&phone.id, false, 0, NOW + 4 * MINUTE);
+            true
+        })
+        .unwrap();
+        phone.exchange(&folder, &key, NOW + 5 * MINUTE);
+        desk.exchange(&folder, &key, NOW + 6 * MINUTE);
+        let seen = Switch::read(&switch(&desk)).unwrap();
+        assert!(!seen.latest().unwrap().on, "{seen:?}");
+        assert!(seen.device[&desk.id].on, "the desk's own table as it wrote it");
+        // Someone taken off on the desk: gone on the phone too.
+        let bob = People::read(&people(&desk)).unwrap().people.into_iter().find(|p| p.name == "Bob").unwrap().id;
+        change_people(&people(&desk), |p| {
+            p.remove(&bob);
+        })
+        .unwrap();
+        desk.exchange(&folder, &key, NOW + 7 * MINUTE);
+        phone.exchange(&folder, &key, NOW + 8 * MINUTE);
+        assert_eq!(People::read(&people(&phone)).unwrap().people.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["Alice"]);
+        // A Sioul that knows neither file (an older one): writes neither, takes nothing out.
+        let old = Computer::new(&base, "old");
+        let older: Vec<Store> = stores(&Config::default(), &old.roots).into_iter().filter(|s| !s.name.contains("do-not-disturb") && !s.name.contains("dnd-people")).collect();
+        exchange(&Sharing { folder: &folder, computer: &old.id, key: &key, memory: &old.memory, files: true, hurry: None }, &older, NOW + 9 * MINUTE).unwrap();
+        assert!(!switch(&old).exists() && !people(&old).exists());
+        desk.exchange(&folder, &key, NOW + 10 * MINUTE);
+        assert_eq!(People::read(&people(&desk)).unwrap().people.len(), 1);
+        assert_eq!(Switch::read(&switch(&desk)).unwrap().device.len(), 2);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
 

@@ -3,7 +3,7 @@
 
 //! What now is for, as the window asks it (docs/areas.md): work, admin,
 //! leisure, a meal, sleep; and do-not-disturb while you sleep
-//! (docs/health.md). One place for the pages and the notifications; the rule
+//! (docs/health.md) or pause, and in free time (docs/pauses.md). One place for the pages and the notifications; the rule
 //! itself is `sioul_core::quiet::mode`. Health's meals, naps and nights are
 //! read again when its files change, and today's events at most every five
 //! minutes: this is asked often (every list of sites, every notification).
@@ -73,9 +73,31 @@ pub(crate) fn asleep() -> bool {
     mode_now().sleeps()
 }
 
-/// Whether a notification may come now: none while you sleep (doses: `doses_silent`).
+/// Whether a notification may come now: none while you sleep or pause, nor in
+/// free time, nor while do-not-disturb holds from its switch or a focus
+/// session (docs/do-not-disturb.md) (doses: `doses_silent`; codes: `may_notify_code`).
 pub(crate) fn may_notify() -> bool {
-    !asleep()
+    quiet::may_tell(&mode_now(), quiet::Notice::Other, true, true) && !crate::everywhere::holds_others()
+}
+
+/// Whether Health's notices of a meal, a nap or the night may come now: as
+/// `may_notify`, but do-not-disturb's switch and focus sessions never drop
+/// them (the system's do-not-disturb keeps them silent, in the shade): a meal
+/// forgotten during a long focus costs more than a quiet notice.
+pub(crate) fn may_notify_need() -> bool {
+    quiet::may_tell(&mode_now(), quiet::Notice::Other, true, true)
+}
+
+/// Paused now (docs/pauses.md): nothing of Sioul's shows, the night's own
+/// notice neither; doses as the pause's setup says (`doses_silent`).
+pub(crate) fn paused() -> bool {
+    mode_now().paused()
+}
+
+/// Whether a code you asked a site for may notify now: not while you sleep or
+/// pause; in free time, yes (docs/pauses.md).
+pub(crate) fn may_notify_code() -> bool {
+    quiet::may_tell(&mode_now(), quiet::Notice::Code, true, true)
 }
 
 /// In one of today's slots of time for you (docs/capacity.md, G18b): what can
@@ -86,33 +108,46 @@ pub(crate) fn quiet_slot() -> bool {
 }
 
 /// Whether a dose's reminder waits now: asleep, and "Doses during sleep: stay
-/// silent" chosen. Never without that choice: a dose at 05:00 is meant to wake you.
+/// silent" chosen; paused, and the pause's setup holding doses too
+/// (docs/pauses.md). Never without that choice: a dose at 05:00 is meant to wake you.
 pub(crate) fn doses_silent() -> bool {
-    !load_config().reminders.doses_in_sleep && asleep()
+    let config = load_config();
+    if mode_now().paused() {
+        return !config.pause.doses;
+    }
+    !config.reminders.doses_in_sleep && asleep()
 }
 
-/// When this sleep ends (Unix seconds), while asleep: waking, or a nap's end.
+/// When this sleep ends (Unix seconds), while asleep: waking, or a nap's end;
+/// while paused, in five minutes: the pause ends when you come back.
 pub(crate) fn waking() -> Option<i64> {
     let mode = mode_now();
+    if mode.paused() {
+        return Some(Zoned::now().timestamp().as_second() + 5 * 60);
+    }
     let sleeps = mode.sleeps();
     mode.until.filter(|_| sleeps).map(|until| until.timestamp().as_second())
 }
 
 /// When the sleep that ended within the last half hour began (Unix seconds),
 /// when doses stay silent during sleep: the doses due since then waited for
-/// waking, and are reminded now. None otherwise.
+/// waking, and are reminded now; the same for a pause holding doses, at
+/// coming back (docs/pauses.md). None otherwise.
 pub(crate) fn woke_from() -> Option<i64> {
-    if load_config().reminders.doses_in_sleep {
-        return None;
-    }
+    let config = load_config();
     let now = Zoned::now();
     let stamp = now.timestamp().as_second();
+    let overrides = Overrides::load(&Overrides::default_path());
+    let paused = overrides.paused_since.zip(overrides.paused_ended).filter(|(since, ended)| !config.pause.doses && ended > since && *ended <= stamp && stamp - ended < 30 * 60).map(|(since, _)| since);
+    if config.reminders.doses_in_sleep {
+        return paused;
+    }
     let blocks = blocks(&now);
     // Not while a next one goes on (a nap right after the night).
     if blocks.at(stamp, &["sleep", "nap"]).is_some() {
         return None;
     }
-    blocks.kept.iter().filter(|k| (k.kind == "sleep" || k.kind == "nap") && k.end <= stamp && stamp - k.end < 30 * 60).map(|k| k.start).min()
+    blocks.kept.iter().filter(|k| (k.kind == "sleep" || k.kind == "nap") && k.end <= stamp && stamp - k.end < 30 * 60).map(|k| k.start).chain(paused).min()
 }
 
 /// Whether a night is set (Health): without one, nothing keeps notifications away at night.

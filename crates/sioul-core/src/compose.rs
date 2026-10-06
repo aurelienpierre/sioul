@@ -124,10 +124,15 @@ impl Draft {
         found.into_iter().map(|(_, d)| d).collect()
     }
 
-    /// Removes the draft once sent, or when you discard it, with its copy of the original.
+    /// Removes the draft once sent, or when you discard it, with its copy of
+    /// the original and the files Sioul copied for it from another
+    /// application (`handed`): yours, where they came from, stay.
     pub fn discard(&self) {
         let _ = std::fs::remove_file(self.path());
         let _ = std::fs::remove_file(self.original_copy());
+        for path in &self.attachments {
+            remove_own_copy(path);
+        }
     }
 
     fn original_copy(&self) -> PathBuf {
@@ -191,6 +196,34 @@ fn new_id() -> String {
     now.hash(&mut hasher);
     std::process::id().hash(&mut hasher);
     format!("{:x}{:08x}", now.as_secs(), hasher.finish() as u32)
+}
+
+/// Whether `path` is one of the files Sioul copied for a draft from another
+/// application (`handed`), which go with their draft.
+pub fn is_own_copy(path: &Path) -> bool {
+    own_copy_in(&crate::handed::Incoming::here().files(), path)
+}
+
+fn own_copy_in(copies: &Path, path: &Path) -> bool {
+    use std::path::Component;
+    path.starts_with(copies) && path.components().all(|c| !matches!(c, Component::ParentDir | Component::CurDir))
+}
+
+/// One of those copies removed, with its request's folder once empty;
+/// nothing for any other file.
+pub fn remove_own_copy(path: &Path) {
+    remove_own_copy_in(&crate::handed::Incoming::here().files(), path);
+}
+
+fn remove_own_copy_in(copies: &Path, path: &Path) {
+    if !own_copy_in(copies, path) {
+        return;
+    }
+    let _ = std::fs::remove_file(path);
+    if let Some(folder) = path.parent().filter(|folder| *folder != copies) {
+        // Only when empty: another of its files may still be attached.
+        let _ = std::fs::remove_dir(folder);
+    }
 }
 
 /// "Jane <jane@example.org>" or "jane@example.org" → "jane@example.org".
@@ -944,5 +977,27 @@ mod tests {
         for near in ["photo.png", "../pictures/p.png", "/notes/p.png", "file:///C:/Notes/p.png", "file://localhost/notes/p.png", "data:image/png;base64,AAAA"] {
             assert!(local_source(near), "{near}");
         }
+    }
+
+    #[test]
+    fn copies_from_other_applications_go_with_their_draft() {
+        let root = std::env::temp_dir().join(format!("sioul-own-copies-{}", std::process::id()));
+        let copies = root.join("files");
+        let shared = copies.join("r1");
+        std::fs::create_dir_all(&shared).unwrap();
+        let (photo, pdf, yours) = (shared.join("photo.jpg"), shared.join("lease.pdf"), root.join("yours.txt"));
+        for path in [&photo, &pdf, &yours] {
+            std::fs::write(path, b"x").unwrap();
+        }
+        // Yours, or a way out of the folder: never.
+        assert!(!own_copy_in(&copies, &yours) && !own_copy_in(&copies, &shared.join("..").join("..").join("yours.txt")));
+        remove_own_copy_in(&copies, &yours);
+        assert!(yours.exists());
+        // One taken off: its folder stays while another file is in it.
+        remove_own_copy_in(&copies, &photo);
+        assert!(!photo.exists() && shared.exists());
+        remove_own_copy_in(&copies, &pdf);
+        assert!(!shared.exists() && copies.exists());
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

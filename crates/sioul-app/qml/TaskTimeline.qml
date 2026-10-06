@@ -20,6 +20,15 @@ ColumnLayout {
     required property var theme
     required property var timeline
     property string opened: ""
+    // Today ("2026-10-06"): the window's clock (main.qml). The plan starts on
+    // the day it was made; past midnight, today's line moves to its own day
+    // before the plan is made again.
+    property string today: {
+        const d = new Date()
+        const pad = n => n < 10 ? "0" + n : String(n)
+        return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+    }
+    readonly property int todayIndex: timeline.days.findIndex(d => d.date === timeline.today)
     // Narrower days when that shows the whole plan, never under 20 pixels.
     readonly property int dayWidth: Math.max(20, Math.min(30, Math.floor((timeline.width - timeline.titleWidth - 12) / Math.max(1, timeline.days.length))))
     readonly property int rowHeight: 30
@@ -85,8 +94,8 @@ ColumnLayout {
                     text: day.modelData.day
                     textFormat: Text.PlainText
                     font.pixelSize: 12
-                    font.weight: day.index === 0 ? Font.Bold : Font.Normal
-                    color: day.index === 0 ? timeline.theme.accent : timeline.theme.text
+                    font.weight: day.index === timeline.todayIndex ? Font.Bold : Font.Normal
+                    color: day.index === timeline.todayIndex ? timeline.theme.accent : timeline.theme.text
                 }
                 Label {
                     y: 28
@@ -119,9 +128,10 @@ ColumnLayout {
             }
         }
 
-        // Today: a quiet line down the first day.
+        // Today: a quiet line down its day (the first, unless the day turned since the plan was made).
         Rectangle {
-            x: timeline.titleWidth + timeline.dayWidth / 2
+            visible: timeline.todayIndex >= 0
+            x: timeline.titleWidth + Math.max(0, timeline.todayIndex) * timeline.dayWidth + timeline.dayWidth / 2
             y: 44
             width: 2
             height: view.contentHeight - 44

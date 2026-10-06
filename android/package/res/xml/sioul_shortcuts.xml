@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- "Pause" at a long press on Sioul's icon, and as an icon of its own on the
+     home screen: Sioul opens on the pause (PauseOpener.java), which starts it,
+     or shows it when it is on already. Below it, the share sheet's target for
+     your addresses: each address that can send is a shortcut of this category
+     (MailShortcuts.java, published from Rust), which Android 10 and later
+     offer straight in the share sheet; chosen, Sioul writes from it
+     (ShareActivity.java). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="pause"
+        android:enabled="true"
+        android:icon="@mipmap/sioul_pause_shortcut"
+        android:shortcutShortLabel="@string/sioul_pause"
+        android:shortcutLongLabel="@string/sioul_pause">
+        <intent
+            android:action="com.aurelienpierre.sioul.action.PAUSE"
+            android:targetPackage="com.aurelienpierre.sioul"
+            android:targetClass="com.aurelienpierre.sioul.PauseOpener" />
+    </shortcut>
+    <share-target android:targetClass="com.aurelienpierre.sioul.ShareActivity">
+        <data android:mimeType="*/*" />
+        <category android:name="com.aurelienpierre.sioul.category.MAIL" />
+    </share-target>
+</shortcuts>

@@ -330,6 +330,15 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text("set-task-list-first", None) })
                 .chain(lists.iter().map(|(id, name)| Choice { value: SettingValue::Text(id.clone()), label: name.clone() }))
                 .collect();
+            // Where a task pinned to a time goes, as an event (docs/tasks.md, "Pinned to a time").
+            let calendars: Vec<Choice> = crate::vdir::collections(crate::vdir::Kind::Calendars)
+                .into_iter()
+                .filter(|c| !c.read_only && c.holds("VEVENT"))
+                .map(|c| Choice { value: SettingValue::Text(format!("{}/{}", c.account, c.id)), label: c.label(config, tr) })
+                .collect();
+            let s = b.push("tasks.blocks", "task-blocks", Kind::Choice, SettingValue::Text(config.tasks.blocks.clone().unwrap_or_default()));
+            s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text("set-task-blocks-own", None) }).chain(calendars).collect();
+            b.push("tasks.block_alarms", "task-block-alarms", Kind::Bool, SettingValue::Bool(config.tasks.block_alarms));
             // What a day holds, as the plan learns it from your days (docs/capacity.md).
             b.group = tr.text("set-planning-group", None);
             let s = b.push("planning.start", "planning-start", Kind::Choice, SettingValue::Text(config.planning.start.clone().unwrap_or_default()));
@@ -379,6 +388,8 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             s.choices = [("", "set-language-system"), ("fr", "set-language-fr"), ("en", "set-language-en")].iter().map(|(v, l)| Choice { value: SettingValue::Text(v.to_string()), label: tr.text(l, None) }).collect();
             let s = b.push("theme", "theme", Kind::Choice, SettingValue::Text(config.theme.clone().unwrap_or_default()));
             s.choices = [("", "set-theme-system"), ("light", "set-theme-light"), ("dark", "set-theme-dark")].iter().map(|(v, l)| Choice { value: SettingValue::Text(v.to_string()), label: tr.text(l, None) }).collect();
+            // The places' names beside their icons, for whoever reads words more easily (main.qml).
+            b.push("places_named", "places-named", Kind::Bool, SettingValue::Bool(config.places_named));
             // Passwords shown as they are typed, for whoever needs to see them (the window keeps it, per computer).
             b.push("passwords_shown", "passwords-shown", Kind::Bool, SettingValue::Bool(false));
             // Your folder: notes, and beside them projects, budgets, letters. How far back
@@ -400,6 +411,15 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // Reminders before dates; with the window closed, the window says (an entry started with the session).
             b.section = "reminders".into();
             b.group = tr.text("set-reminders-group", None);
+            // An event's reminder before it, counted before its margin; each event may say its own (docs/reminders.md).
+            let lead = config.reminders.before_event;
+            let mut leads = crate::reminders::LEADS.to_vec();
+            if !leads.contains(&lead) {
+                leads.push(lead);
+                leads.sort_unstable();
+            }
+            let s = b.push("reminders.before_event", "reminders-before", Kind::Choice, SettingValue::Int(i64::from(lead)));
+            s.choices = leads.iter().map(|m| Choice { value: SettingValue::Int(i64::from(*m)), label: if *m == 0 { tr.text("set-reminders-before-none", None) } else { crate::reminders::lead_text(tr, *m) } }).collect();
             b.push("reminders.events", "reminders-events", Kind::Bool, SettingValue::Bool(config.reminders.events));
             let s = b.push("reminders.asked_days", "reminders-asked", Kind::Int, SettingValue::Int(i64::from(config.reminders.asked_days)));
             Builder::range(s, 0.0, 10.0, 1.0, "");
@@ -407,12 +427,53 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let s = b.push("reminders.payment_days", "reminders-payment", Kind::Int, SettingValue::Int(i64::from(config.reminders.payment_days)));
             Builder::range(s, 0.0, 10.0, 1.0, "");
             b.push("reminders_closed", "reminders-closed", Kind::Bool, SettingValue::Bool(false));
+            // New mail told at the times it may come, once per batch (docs/porch.md, "Notifications").
+            b.push("reminders.mail", "reminders-mail", Kind::Bool, SettingValue::Bool(config.reminders.mail));
+            b.push("reminders.mail_newsletters", "reminders-mail-newsletters", Kind::Bool, SettingValue::Bool(config.reminders.mail_newsletters));
             // What sites notified, gathered at set times; real time and calls come at once.
             b.push("reminders.gather", "reminders-gather", Kind::Bool, SettingValue::Bool(config.reminders.gather));
             b.push("reminders.gathered", "reminders-gathered", Kind::Words, SettingValue::Texts(config.reminders.gathered_times()));
             // While you sleep nothing notifies; doses do, unless they stay silent then (docs/health.md).
             let s = b.push("reminders.doses_in_sleep", "doses-in-sleep", Kind::Choice, SettingValue::Bool(config.reminders.doses_in_sleep));
             s.choices = [(true, "set-doses-in-sleep-remind"), (false, "set-doses-in-sleep-silent")].iter().map(|(v, l)| Choice { value: SettingValue::Bool(*v), label: tr.text(l, None) }).collect();
+            // The two pauses, set up on a calm day (docs/pauses.md): free time, then the pause.
+            b.section = "pauses".into();
+            b.group = tr.text("set-free-time-group", None);
+            b.push("free_time.nothing", "free-nothing", Kind::Bool, SettingValue::Bool(config.free_time.nothing));
+            b.push("free_time.moves", "free-moves", Kind::Bool, SettingValue::Bool(config.free_time.moves));
+            let s = b.push("free_time.latest_after", "free-latest", Kind::Int, SettingValue::Int(i64::from(config.free_time.latest_after)));
+            Builder::range(s, 30.0, 360.0, 15.0, "min");
+            b.push("free_time.movement", "free-movement", Kind::Bool, SettingValue::Bool(config.free_time.movement(&config.planning)));
+            b.group = tr.text("set-pause-group", None);
+            // Said once, where the pause is set up (P5).
+            b.note(tr.text("set-pause-about", None), Vec::new());
+            b.push("pause.doses", "pause-doses", Kind::Bool, SettingValue::Bool(config.pause.doses));
+            b.push("pause.people", "pause-people", Kind::Bool, SettingValue::Bool(config.pause.people));
+            b.push("pause.helps", "pause-helps", Kind::Words, SettingValue::Texts(config.pause.helps.clone()));
+            b.push("pause.grounding", "pause-grounding", Kind::Text, SettingValue::Text(config.pause.grounding.clone()));
+            b.push("pause.breathing", "pause-breathing", Kind::Bool, SettingValue::Bool(config.pause.breathing));
+            let s = b.push("pause.pace", "pause-pace", Kind::Int, SettingValue::Int(i64::from(config.pause.pace())));
+            Builder::range(s, 3.0, 10.0, 1.0, "");
+            let s = b.push("pause.after", "pause-after", Kind::Choice, SettingValue::Text(config.pause.after().id().to_string()));
+            s.choices = [("lighter", "set-pause-after-lighter"), ("rest", "set-pause-after-rest"), ("as-is", "set-pause-after-as-is")].iter().map(|(v, l)| Choice { value: SettingValue::Text(v.to_string()), label: tr.text(l, None) }).collect();
+            // The emergency number and the crisis line of a country (P13): the phone numbers' country unless chosen.
+            let s = b.push("pause.country", "pause-country", Kind::Choice, SettingValue::Text(config.pause.country.clone().unwrap_or_default()));
+            let mut countries: Vec<Choice> = crate::pause::CrisisLines::built_in()
+                .country
+                .iter()
+                .map(|c| Choice { value: SettingValue::Text(c.code.clone()), label: tr.text(&format!("set-pause-country-{}", c.code.to_ascii_lowercase()), None) })
+                .collect();
+            countries.sort_by_cached_key(|c| crate::text::fold(&c.label).into_iter().collect::<String>());
+            s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text("set-pause-country-usual", None) }).chain(countries).collect();
+            // Do-not-disturb on every device (docs/do-not-disturb.md): what turns it on, who gets
+            // through; the list of people, this device's line and the phone's own are the tab's (DndSetup.qml).
+            b.section = "dnd".into();
+            b.group = tr.text("set-dnd-group", None);
+            b.push("dnd.button", "dnd-button", Kind::Bool, SettingValue::Bool(config.dnd.button));
+            b.push("dnd.focus", "dnd-focus", Kind::Bool, SettingValue::Bool(config.dnd.focus));
+            b.push("dnd.pauses", "dnd-pauses", Kind::Bool, SettingValue::Bool(config.dnd.pauses));
+            b.push("dnd.sleep", "dnd-sleep", Kind::Bool, SettingValue::Bool(config.dnd.sleep));
+            b.push("dnd.people", "dnd-people", Kind::Bool, SettingValue::Bool(config.dnd.people));
             // Invoices, made from Time and from Projects: who sends them, how they are numbered, where they go.
             b.section = "invoices".into();
             b.group = tr.text("set-invoice-group", None);
@@ -586,7 +647,7 @@ mod tests {
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);
-        assert_eq!(keys("tasks"), vec!["office_hours", "tasks.kind", "tasks.estimate", "tasks.list", "planning.start", "planning.window_days", "planning.even_days", "planning.gain_slots", "quiet.work", "quiet.personal", "github.enabled"]);
+        assert_eq!(keys("tasks"), vec!["office_hours", "tasks.kind", "tasks.estimate", "tasks.list", "tasks.blocks", "tasks.block_alarms", "planning.start", "planning.window_days", "planning.even_days", "planning.gain_slots", "quiet.work", "quiet.personal", "github.enabled"]);
         assert_eq!(for_view("tasks", &config, &tr, &[("acct/plan".into(), "Plan".into())], None).iter().find(|s| s.key == "tasks.list").unwrap().choices.len(), 2);
         assert_eq!(for_view("lane:filed", &config, &tr, &[], None)[0].kind, Kind::Words);
         // The Porch: its letters and its own sorting; every lane said once, none with another page's settings.
@@ -601,8 +662,9 @@ mod tests {
         assert_eq!(
             parameters,
             vec![
-                "language", "theme", "passwords_shown", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.events", "reminders.asked_days",
-                "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.gather", "reminders.gathered", "reminders.doses_in_sleep", "invoice.name", "invoice.address", "invoice.siret", "invoice.vat", "invoice.prefix", "invoice.currency", "invoice.payment",
+                "language", "theme", "places_named", "passwords_shown", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.before_event", "reminders.events", "reminders.asked_days",
+                "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "reminders.gathered", "reminders.doses_in_sleep", "free_time.nothing", "free_time.moves", "free_time.latest_after", "free_time.movement",
+                "pause.doses", "pause.people", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "dnd.people", "invoice.name", "invoice.address", "invoice.siret", "invoice.vat", "invoice.prefix", "invoice.currency", "invoice.payment",
                 "invoice.folder", "invoice.rate"
             ]
         );

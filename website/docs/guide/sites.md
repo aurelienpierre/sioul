@@ -81,7 +81,14 @@ Sioul fills logins from your Bitwarden vault, read by Sioul itself: nothing else
 2. On a site's login page, **Fill the login**.
 3. The first time in a session, open the vault: with **your security key** (when Bitwarden knows it as a passkey used for encryption), or with your master password, then the second step your account asks for (a security key, an authenticator app's code, a code by e-mail, a recovery code).
 
-The login is written into the page's fields, only on the site it belongs to, only when you ask. When a site has several logins, or none, a list opens, with a search over the whole vault; **Choose a login…** opens it any time. A login made for another domain says which one, so that a look-alike site shows.
+The login is written into the page's fields, only on the site it belongs to, only when you ask. When a site has several logins, or none, the list of your logins opens; **Choose a login…** opens it any time. Two fields find them, each optional, both together when both are filled:
+
+- **Site**: the site's domain to begin with, its own address first. Change it for a sign-in on another site (accounts.google.com, for a site that signs in with Google), or type words: "ameli" finds ameli.fr and assure.ameli.fr, not camelia.com; a login without a site is found by its name. Never by a user name: "gmail" finds Gmail's logins, not every login with a Gmail address.
+- **User name**: any part of it, alone or with a site.
+
+The login you chose last on a site comes first the next time, its domain in Site when it was made for another one. A login made for another domain says which one, so that a look-alike site shows. Tab goes from one field to the other, Enter takes the first login (or the one you moved to with the arrows), Escape closes.
+
+For a mail account's password (**Password…** ▸ **From Bitwarden…**, on the Accounts page), User name holds the account's address and Site stays empty: a mail server's address (imap.gmail.com) is seldom the one where your provider's login is kept (accounts.google.com).
 
 On a page asking for a one-time code, **Fill the login** writes the code your vault's secret gives now.
 
@@ -90,3 +97,5 @@ Your master password and keys are never kept. The logins stay in memory while th
 ## Where it is kept
 
 Each site's address and choices are in Sioul's settings. The sites' cookies and files live in one browser profile of Sioul's own, apart from your usual browser. Their notifications wait in Sioul's state folder until you look.
+
+When Sioul closes, it closes each site as a browser closes its tabs: a site that keeps your login in the open page, as Discord does, finds it the next time.

@@ -276,11 +276,10 @@ struct CalendarChoice {
 /// The calendars an event can go into.
 pub(crate) fn calendars() -> String {
     let config = load_config();
-    let choices: Vec<CalendarChoice> = vdir::collections(Kind::Calendars)
-        .into_iter()
-        .filter(|c| !c.read_only)
-        .map(|c| CalendarChoice { id: format!("{}/{}", c.account, c.id), name: c.label(&config, tr()), color: c.color })
-        .collect();
+    let mut writable: Vec<Collection> = vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only).collect();
+    // The one made for time blocks last: a new event goes elsewhere first (docs/tasks.md, "Pinned to a time").
+    writable.sort_by_key(|c| c.id == sioul_core::blocks::CALENDAR);
+    let choices: Vec<CalendarChoice> = writable.into_iter().map(|c| CalendarChoice { id: format!("{}/{}", c.account, c.id), name: c.label(&config, tr()), color: c.color }).collect();
     json(&choices)
 }
 
@@ -344,9 +343,17 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
         return Err(tr().text("event-no-title", None));
     }
     let zone = TimeZone::system();
+    // A task's time block renamed here: its task takes the title too, as both are kept in step (docs/tasks.md, "Pinned to a time").
+    let mut renamed: Option<String> = None;
     let (path, text) = match ours(key) {
         Some(path) => {
             let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let task = sioul_core::lines::unfold(&current).iter().find(|l| sioul_core::lines::name(l) == sioul_core::blocks::TASK).map(|l| sioul_core::lines::value(l).trim().to_string());
+            if let Some(task) = task.filter(|t| !t.is_empty())
+                && agenda::edit_of_text(&current, &zone).is_some_and(|before| before.title.trim() != edit.title.trim())
+            {
+                renamed = Some(task);
+            }
             (path, agenda::apply(&current, &edit, &zone)?)
         }
         None => {
@@ -369,6 +376,9 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
     vdir::write_item(&path, &text)?;
     if let Some(account) = account_of(&path) {
         nudge(shared, &account);
+    }
+    if let Some(task) = renamed {
+        let _ = crate::work::retitle(qt, shared, &task, edit.title.trim());
     }
     tell(qt, shared, tr().text("event-saved", None));
     show_pim(qt, shared);
@@ -634,8 +644,8 @@ pub(crate) fn add_google_account(qt: &QtThread, shared: &Arc<Shared>, address: S
     });
 }
 
-/// What went wrong while signing in with Google, in your language.
-fn google_sentence(error: &SyncError, id: &str) -> String {
+/// What went wrong while signing in with Google, in your language (its mail's sign-in too, gmail.rs).
+pub(crate) fn google_sentence(error: &SyncError, id: &str) -> String {
     match error {
         SyncError::Message(m) if m.starts_with("google-") => {
             let (key, other) = m.split_once(':').unwrap_or((m.as_str(), ""));

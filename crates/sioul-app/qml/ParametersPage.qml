@@ -29,7 +29,9 @@ Item {
     }
     // One tab at a time: how it looks, the hours, reminders and notifications,
     // your folder and sharing, invoices.
-    readonly property var sections: ["look", "hours", "reminders", "files", "invoices"]
+    readonly property var sections: ["look", "hours", "reminders", "pauses", "dnd", "files", "invoices"]
+    // The pause's screen tried from its setup (main.qml shows it, nothing held).
+    signal tryPause
     property string section: "look"
     readonly property var shown: page.rows.filter(r => r.section === page.section)
 
@@ -164,6 +166,35 @@ Item {
                         sioul: page.sioul
                         theme: page.theme
                         onSave: (key, value) => page.save(key, value)
+                    }
+                }
+            }
+
+            // The pauses' do-not-disturb, a try-out of the screen, the last pause forgotten (docs/pauses.md).
+            Loader {
+                active: page.section === "pauses"
+                visible: active
+                Layout.fillWidth: true
+
+                sourceComponent: Component {
+                    PauseSetup {
+                        sioul: page.sioul
+                        theme: page.theme
+                        onTried: page.tryPause()
+                    }
+                }
+            }
+
+            // Do-not-disturb on every device: this device's line, the list of people, the phone's own (docs/do-not-disturb.md).
+            Loader {
+                active: page.section === "dnd"
+                visible: active
+                Layout.fillWidth: true
+
+                sourceComponent: Component {
+                    DndSetup {
+                        sioul: page.sioul
+                        theme: page.theme
                     }
                 }
             }

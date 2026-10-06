@@ -21,10 +21,13 @@ fn main() {
         "qml/ComposeWindow.qml",
         "qml/BudgetsPage.qml",
         "qml/AccountsPage.qml",
+        "qml/GoogleMail.qml",
         "qml/Panel.qml",
         "qml/WrapCheckBox.qml",
         "qml/Icon.qml",
         "qml/ActionButton.qml",
+        "qml/RailButton.qml",
+        "qml/Places.qml",
         "qml/AddressField.qml",
         "qml/AgendaPage.qml",
         "qml/ContactsPage.qml",
@@ -37,6 +40,7 @@ fn main() {
         "qml/EventRow.qml",
         "qml/WeekPlanning.qml",
         "qml/TimeDrag.qml",
+        "qml/Clock.qml",
         "qml/TasksPage.qml",
         "qml/TaskRow.qml",
         "qml/TaskPanel.qml",
@@ -102,6 +106,7 @@ fn main() {
         "qml/FolderBrowser.qml",
         "qml/RestCover.qml",
         "qml/DoseTaken.qml",
+        "qml/DoubtLine.qml",
         "qml/NeedsSection.qml",
         "qml/HealthTimeline.qml",
         "qml/HealthSettings.qml",
@@ -113,6 +118,10 @@ fn main() {
         "qml/Interruption.qml",
         "qml/BankSection.qml",
         "qml/LettersSection.qml",
+        "qml/PauseCover.qml",
+        "qml/PauseSetup.qml",
+        "qml/DndApplet.qml",
+        "qml/DndSetup.qml",
     ];
     let desktop_only = ["qml/SitesPage.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml"];
     let pages: Vec<&str> = if android {
@@ -125,6 +134,8 @@ fn main() {
     let mut cpp = vec!["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/appicon.cpp", "cpp/warmup.cpp"];
     if !android {
         cpp.push("cpp/webengine.cpp");
+        // SIGTERM and its kin end Sioul as its window's close does.
+        cpp.push("cpp/signals.cpp");
     }
     CxxQtBuilder::new_qml_module(QmlModule::new("com.aurelienpierre.sioul").depend("QtQuick").qml_files(pages))
         .files(["src/backend.rs", "src/desktop.rs"])

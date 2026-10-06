@@ -14,7 +14,9 @@ The Settings page has five tabs.
 
 - **Language**: the system's, English or French. Every sentence Sioul says follows it.
 - **Colours**: light, dark, or as the system has them. The icons follow at the next start.
+- **Show the places' names beside their icons**: the places on the left of the window show their names beside their icons, in a wider column, for whoever reads words more easily than icons. Without it, their icons alone; each one's name shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen. It travels with your settings to your other devices, when you [share them](sharing.md).
 - **Show passwords as you type**: every password, passphrase and key field shows what you type from the start, on this device. Without it, the eye at the end of each field shows or hides what you typed, at any time.
+- **Details on the home screen** (on a phone): Sioul's card on the phone's home screen names the first letters waiting on the Porch, with their sender and subject, a code you just asked a site for, a dose due, and the next step's title ([First steps](first-steps.md#on-a-phone)). Turned off, it says only what now is for, how many letters came, and that a next step waits: for a phone whose home screen others see. This phone only.
 
 ## Hours
 
@@ -34,15 +36,26 @@ Each day of each week is on or off, with one range of hours or several: **+** ad
 
 Each reminder comes once, as a quiet notification, without sound, never repeated. Remembering "on the 30th" is what fails most, with autism and with ADHD (Landsiedel, Williams & Abbot-Smith 2017; Altgassen, Kretschmer & Kliegel 2014), and reminders help where memory is the bottleneck (Jamieson et al. 2014).
 
-- **Events, the working day before**: half an hour before work ends, the working day before an event: what, when, where. The alarms an event carries are told at their time too.
+- **Before an event**: a quiet reminder this long before each event: none, 5, 10, 15 (unless you change it) or 30 minutes, 1 or 2 hours. It is counted before the event's time to get ready and get there: an event at 14:00 with 30 minutes to get there is reminded at 13:15. Each event may say its own: **Remind**, in its form and in its details ([Agenda](agenda.md#reminders)). Not for whole days, nor for calendars you only read. On a phone, the setting says whether Android lets these reminders come on time.
+- **Events, the working day before**: half an hour before work ends, the working day before an event: what, when, where. The alarms an event carries are told at their time too; one within five minutes of Sioul's reminder is told once.
 - **Dates asked: working days before**: when work starts, so many working days before a task's date asked (2 unless you change it); 0 for none.
 - **A wait over**: when a wait after a step done is over (an answer due), once, when work is there.
 - **Payments planned: working days before**: when work starts, so many working days before a planned payment (a bill, a tax); 0 for none. The reminder says whether the account will hold it.
 - **With Sioul's window closed**: your session starts a small watcher that tells reminders when the window is closed; nothing else runs, no mail is fetched. It needs the `sioul` command installed next to Sioul ([Install](install.md#into-your-application-menu)). Not on Windows yet.
+- **New mail: notify at the times it may come**: when mail your lists let through now arrives, one quiet notification for the batch: how many, and the first senders with their subjects. Mail that waited for its time is told once, when its time comes: "The Porch opens: three letters wait for you." Never while you sleep or pause; never for codes (they have their own), nor for what is set aside, blocked, sent by yourself or come to your less important addresses. On by default. See [The Porch](porch.md#new-mail-told-at-its-times).
+- **Include newsletters**: newsletters and mailing lists, filed on the Porch, are told too. Automatic senders (a bill from no-reply) are told either way. Off by default.
 - **Sites' notifications gathered**, and **Gathered at**: what your sites notify waits, then comes in one notification at these times, for the sites of those hours: 09:00, 13:00 and 18:00 unless you set others. A site in real time, and a call, come at once.
 - **Doses during sleep**: **Remind** or **Stay silent**. While you sleep (the night from winding down to waking, a nap), no notification comes; a dose's reminder comes all the same, since you set its time, unless you choose **Stay silent**: then it comes when you wake. See [Hours](hours.md#sleep).
 
-Doses of medicine are reminded from the [Health](health.md) page, and papers to renew from [Papers](papers.md). On a phone, only the doses are reminded for now ([On a phone](first-steps.md#on-a-phone)).
+Doses of medicine are reminded from the [Health](health.md) page, and papers to renew from [Papers](papers.md). On a phone, the doses, the events and new mail are told; the other reminders come on a computer ([On a phone](first-steps.md#on-a-phone)).
+
+## Pauses
+
+Free time and the pause, set up on a calm day: who reaches you in free time, how far the end of work may move, whether movement is offered; for the pause, the doses, your starred contacts, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show, and what this device's do-not-disturb can do; **Try the pause screen**. See [Pauses](pauses.md).
+
+## Do not disturb
+
+One do-not-disturb for all your devices: the switch in the status line, what turns it on by itself (the pauses, a focus session, your sleep), who gets through, and the list of the people who may reach you then, the same on every device; what this device's system lets Sioul do; on a phone, who on your list is starred there, and Sioul kept in step in the background. See [Do not disturb on every device](pauses.md#do-not-disturb-on-every-device).
 
 ## Your folder and sharing
 

@@ -55,8 +55,22 @@ ColumnLayout {
     readonly property real columnWidth: Math.max(30, (timeline.width - timeline.gutter - 4) / Math.max(1, timeline.days.length))
     // A wide column: names in the blocks, the doses' names beside their dots.
     readonly property bool wide: timeline.columnWidth >= 160
-    // Now, in minutes from midnight, for its line.
-    property int now: timeline.minutesNow()
+    // Now on the clock (Unix seconds) and today ("2026-10-06"): the window's
+    // clock (main.qml), moved at each minute's turn and when the app comes
+    // back. Only the line follows it, and today's marks when the day turns.
+    property real now: Date.now() / 1000
+    property string today: {
+        const d = new Date()
+        const pad = n => n < 10 ? "0" + n : String(n)
+        return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+    }
+    // Now in minutes from midnight, for its line.
+    readonly property int minuteNow: {
+        const d = new Date(timeline.now * 1000)
+        return d.getHours() * 60 + d.getMinutes()
+    }
+    // Today's column among the days shown; -1 when today is not shown.
+    readonly property int todayIndex: timeline.days.findIndex(d => d.date === timeline.today)
     // Too thin to take a block with a finger: a long press asks for the readable scale.
     readonly property bool thin: !timeline.readable && timeline.hourHeight < 36
     // An edge's grab zone, in pixels: at least 8, more for a finger.
@@ -74,11 +88,6 @@ ColumnLayout {
     signal readableAsked
     // The readable scale closed ("Done").
     signal readableDone
-
-    function minutesNow() {
-        const d = new Date()
-        return d.getHours() * 60 + d.getMinutes()
-    }
 
     // Room above the first hour, for its label.
     readonly property int topRoom: 8
@@ -293,8 +302,7 @@ ColumnLayout {
     function showNow() {
         if (flick.contentHeight <= flick.height || timeline.readable)
             return
-        const today = timeline.days.some(d => d.today)
-        const minute = today ? Math.max(timeline.fromMinute, timeline.now - 60) : timeline.fromMinute
+        const minute = timeline.todayIndex >= 0 ? Math.max(timeline.fromMinute, timeline.minuteNow - 60) : timeline.fromMinute
         flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, timeline.yOf(minute)))
     }
 
@@ -329,13 +337,6 @@ ColumnLayout {
         onTriggered: timeline.landed = null
     }
 
-    Timer {
-        interval: 60000
-        running: timeline.visible && !timeline.sioul.away
-        repeat: true
-        onTriggered: timeline.now = timeline.minutesNow()
-    }
-
     // The week: each day's title, a tap away from that day.
     Row {
         visible: timeline.titles
@@ -355,8 +356,8 @@ ColumnLayout {
                 // Narrow days (a phone's week): the weekday above its number.
                 text: timeline.columnWidth < 64 ? title.modelData.weekday + "\n" + title.modelData.number : title.modelData.weekday + " " + title.modelData.number
                 textFormat: Text.PlainText
-                font.weight: title.modelData.today ? Font.Bold : Font.DemiBold
-                color: title.modelData.today ? timeline.theme.accent : title.modelData.past ? timeline.theme.muted : timeline.theme.text
+                font.weight: title.modelData.date === timeline.today ? Font.Bold : Font.DemiBold
+                color: title.modelData.date === timeline.today ? timeline.theme.accent : title.modelData.date < timeline.today ? timeline.theme.muted : timeline.theme.text
                 Accessible.role: Accessible.Button
                 Accessible.name: title.modelData.title
 
@@ -445,7 +446,7 @@ ColumnLayout {
                         // Today: a faint surface; between days, a line.
                         Rectangle {
                             anchors.fill: parent
-                            visible: column.modelData.today && timeline.days.length > 1
+                            visible: column.index === timeline.todayIndex && timeline.days.length > 1
                             color: timeline.theme.surface
                         }
                         Rectangle {
@@ -612,16 +613,19 @@ ColumnLayout {
                                 }
                             }
                         }
-
-                        // Now: a quiet line on today.
-                        Rectangle {
-                            visible: column.modelData.today && timeline.now >= timeline.fromMinute && timeline.now <= timeline.toMinute
-                            y: timeline.yOf(timeline.now) - 1
-                            width: parent.width
-                            height: 2
-                            color: timeline.theme.accent
-                        }
                     }
+                }
+
+                // Now: a quiet line on today, one for the timeline; the clock
+                // moves it alone, nothing else is laid again.
+                Rectangle {
+                    objectName: "nowLine"
+                    visible: timeline.todayIndex >= 0 && timeline.minuteNow >= timeline.fromMinute && timeline.minuteNow <= timeline.toMinute
+                    x: timeline.gutter + Math.max(0, timeline.todayIndex) * timeline.columnWidth
+                    y: timeline.yOf(timeline.minuteNow) - 1
+                    width: timeline.columnWidth
+                    height: 2
+                    color: timeline.theme.accent
                 }
 
                 // Where the block taken goes, and a tag with its times ("12:45–13:15"),

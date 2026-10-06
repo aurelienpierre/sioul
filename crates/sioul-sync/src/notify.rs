@@ -3,7 +3,9 @@
 
 //! The one exception to the admin windows: a quiet desktop notification for a
 //! verified code, with the code in it (docs/porch.md, "Right now"); a gentle
-//! reminder; and the time running, while a focus session runs (docs/tasks.md).
+//! reminder; new mail at the times it may come, once per batch
+//! (docs/porch.md, "Notifications"); and the time running, while a focus
+//! session runs (docs/tasks.md).
 
 #[cfg(not(target_os = "android"))]
 use notify_rust::{Notification, Timeout};
@@ -62,6 +64,42 @@ pub fn remind(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() 
         });
     });
     Ok(())
+}
+
+/// New mail at the times it may come (docs/porch.md, "Notifications"): one
+/// notification for the batch, no sound, with one button ("Open": the
+/// Porch) whose action runs when pressed. At normal urgency, unlike codes
+/// and reminders: the desktop's own do-not-disturb holds it.
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+pub fn mail(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    let Some((label, on_press)) = action else {
+        return build(title, body, None).icon("mail-unread").urgency(Urgency::Normal).show().map(drop).map_err(|e| e.to_string());
+    };
+    let (title, body) = (title.to_string(), body.to_string());
+    std::thread::spawn(move || {
+        let Ok(handle) = build(&title, &body, Some(&label)).icon("mail-unread").urgency(Urgency::Normal).show() else { return };
+        let mut on_press = Some(on_press);
+        let _ = handle.wait_for_action(|action: &str| {
+            if action == "copy"
+                && let Some(run) = on_press.take()
+            {
+                run();
+            }
+        });
+    });
+    Ok(())
+}
+
+/// Windows and macOS: the mail's words alone; their notifications carry no button here.
+#[cfg(any(windows, target_os = "macos"))]
+pub fn mail(title: &str, body: &str, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
+}
+
+/// Android: made on the window's side, through Java (sioul-app's `eventalarms`).
+#[cfg(target_os = "android")]
+pub fn mail(_title: &str, _body: &str, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    Err("notifications are made through Java on Android".to_string())
 }
 
 /// A gentle reminder with several buttons, each its label and its action:
@@ -125,6 +163,13 @@ pub fn remind(_title: &str, _body: &str, _action: Option<(String, Box<dyn FnOnce
 const SERVER: &str = "org.freedesktop.Notifications";
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 const SERVER_PATH: &str = "/org/freedesktop/Notifications";
+
+/// Sioul's desktop file, named on each notification ("desktop-entry"): the
+/// desktop knows them as Sioul's, and lists Sioul in its notification
+/// settings (Plasma's "Show in do not disturb mode", for the doses during a
+/// pause: docs/pauses.md).
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+const DESKTOP_ENTRY: &str = "com.aurelienpierre.Sioul";
 
 /// How long a lasting notification's thread listens to the server before it
 /// looks at what Sioul asked: a change shows within it.
@@ -285,6 +330,7 @@ fn show_lasting(server: &dbus::blocking::Proxy<'_, &dbus::blocking::LocalConnect
     hints.insert("resident".into(), Variant(Box::new(true) as Box<dyn RefArg>));
     hints.insert("suppress-sound".into(), Variant(Box::new(true) as Box<dyn RefArg>));
     hints.insert("urgency".into(), Variant(Box::new(1u8) as Box<dyn RefArg>));
+    hints.insert("desktop-entry".into(), Variant(Box::new(DESKTOP_ENTRY.to_string()) as Box<dyn RefArg>));
     let actions: Vec<&str> = said.actions.iter().flat_map(|(key, label)| [key.as_str(), label.as_str()]).collect();
     // Kept by the server once its popup goes, or never expiring where nothing keeps it.
     let timeout: i32 = if capabilities.iter().any(|c| c == "persistence") { -1 } else { 0 };
@@ -325,6 +371,7 @@ fn build(title: &str, body: &str, copy_label: Option<&str>) -> Notification {
         .body(&body_text(body, &notify_rust::get_capabilities().unwrap_or_default()))
         .icon("dialog-password")
         .hint(Hint::SuppressSound(true))
+        .hint(Hint::DesktopEntry(DESKTOP_ENTRY.to_string()))
         // Sioul filters its own notifications already: what it sends always gets through.
         .urgency(Urgency::Critical)
         .timeout(Timeout::Milliseconds(SHOWN));
