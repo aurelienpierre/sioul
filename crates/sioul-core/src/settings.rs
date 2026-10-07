@@ -69,6 +69,10 @@ pub enum Kind {
     /// a computer, "Train now" and what the last training found; on a phone,
     /// where its table comes from. Nothing in `value`.
     Spam,
+    /// The mail filters, the window's own block (`MailFilters.qml`): the
+    /// list, each in words, its editor, "Try it" and running them on the
+    /// inboxes; read and written whole (`config::set_filters`). Nothing in `value`.
+    Filters,
 }
 
 /// One of a setting's choices.
@@ -269,6 +273,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             Builder::range(s, 1.0, 240.0, 1.0, "min");
             // Each address's own: in Accounts, on its card.
             b.note(tr.text("set-accounts-elsewhere", None), Vec::new());
+            // The mail filters: one list for every address, their own block.
+            b.group = tr.text("set-filters-group", None);
+            b.push("mail.filter", "filters", Kind::Filters, SettingValue::Text(String::new()));
             // Sioul's own spam filter: what it does with each verdict (the
             // matrix), how sure it must be.
             b.group = tr.text("set-spam-group", None);
@@ -771,7 +778,7 @@ mod tests {
         let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("notes"), vec!["notes_folder"]);
         // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
-        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "spam.actions", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "reading.family", "reading.size", "reading.spacing"]);
+        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "mail.filter", "spam.actions", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "reading.family", "reading.size", "reading.spacing"]);
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);

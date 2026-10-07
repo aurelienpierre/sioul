@@ -35,7 +35,7 @@ ColumnLayout {
     spacing: 3
 
     Label {
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters"
         Layout.fillWidth: true
         text: field.setting.label
         font.weight: Font.DemiBold
@@ -203,6 +203,21 @@ ColumnLayout {
 
         sourceComponent: Component {
             SpamFilter {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+            }
+        }
+    }
+
+    // The mail filters: the list, each in words, its editor (MailFilters.qml); their sentence said first there.
+    Loader {
+        active: field.setting.kind === "filters"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            MailFilters {
                 sioul: field.sioul
                 theme: field.theme
                 about: field.setting.help
@@ -976,7 +991,7 @@ ColumnLayout {
     }
 
     Label {
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam"
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         wrapMode: Text.Wrap

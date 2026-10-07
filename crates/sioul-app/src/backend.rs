@@ -55,6 +55,8 @@ pub mod qobject {
         #[qproperty(QString, mail_accounts)]
         #[qproperty(QString, mail_folder)]
         #[qproperty(QString, drafts)]
+        // The Mail page's search by conditions: its sentence, what the servers said, the rows (`mailsearch`).
+        #[qproperty(QString, mail_search)]
         #[qproperty(QString, undo_line)]
         #[qproperty(QString, contacts)]
         // The Contacts page's duplicates (`duplicates::find`), looked for off the window's thread when asked.
@@ -266,6 +268,24 @@ pub mod qobject {
         /// Messages (a JSON list of keys) into a folder of an account, theirs or another.
         #[qinvokable]
         fn move_messages(self: Pin<&mut Sioul>, keys: &QString, account: &QString, folder: &QString);
+
+        /// Searches the mail by conditions (`mailsearch::Search`, as JSON): the
+        /// mail here at once, the servers after a pause in typing, or at once
+        /// (`now`); `mailSearch` follows.
+        #[qinvokable]
+        fn search_mail(self: Pin<&mut Sioul>, search: &QString, now: bool);
+
+        /// Closes the search: the page shows its folder again.
+        #[qinvokable]
+        fn clear_mail_search(self: Pin<&mut Sioul>);
+
+        /// Brings a message the search found on its server only here; `mailSearch` then names its file.
+        #[qinvokable]
+        fn bring_message(self: Pin<&mut Sioul>, key: &QString);
+
+        /// What the search's column offers (fields, comparisons, your addresses and folders), as JSON.
+        #[qinvokable]
+        fn mail_search_fields(self: &Sioul) -> QString;
 
         /// Leaves the list a message comes from (docs/client.md, "Unsubscribing"):
         /// one click or a message after ten seconds to undo; returns the web page
@@ -1074,6 +1094,40 @@ pub mod qobject {
         #[qinvokable]
         fn spam_stop(self: Pin<&mut Sioul>);
 
+        /// The mail filters as Mail ▸ ⚙ shows them (`filters::view`): each
+        /// filter in words, the addresses, their folders, the editor's words, as JSON.
+        #[qinvokable]
+        fn mail_filters(self: &Sioul) -> QString;
+
+        /// The whole list of mail filters written, in its order (JSON, as
+        /// `mail_filters` gives them); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_mail_filters(self: Pin<&mut Sioul>, filters: &QString) -> QString;
+
+        /// One filter being edited, in words: {said, problem, only}, as JSON.
+        #[qinvokable]
+        fn mail_filter_said(self: &Sioul, filter: &QString) -> QString;
+
+        /// "Try it": what one filter being edited takes in the inboxes now,
+        /// counted off the window's thread; `mail_filters_found` brings it.
+        #[qinvokable]
+        fn mail_filter_try(self: Pin<&mut Sioul>, filter: &QString);
+
+        /// What every filter would do in the inboxes now, read mail included,
+        /// found off the window's thread; `mail_filters_found` brings it.
+        #[qinvokable]
+        fn mail_filters_preview(self: Pin<&mut Sioul>);
+
+        /// What the preview said, done after ten seconds to undo; returns why not, else "".
+        #[qinvokable]
+        fn mail_filters_run(self: Pin<&mut Sioul>) -> QString;
+
+        /// A new mail filter from a search's conditions ({conditions, match},
+        /// MailSearch.qml's "Make it a filter…"), last in the list and opened
+        /// in the editor the next time Mail ▸ ⚙ shows it; returns what went wrong, else "".
+        #[qinvokable]
+        fn new_mail_filter(self: Pin<&mut Sioul>, given: &QString) -> QString;
+
         /// The other devices' files fetched from the server too, or not, on
         /// this device (docs/database.md); returns what went wrong, else "".
         #[qinvokable]
@@ -1525,6 +1579,10 @@ pub mod qobject {
         #[qsignal]
         fn spam_changed(self: Pin<&mut Sioul>, status: QString);
 
+        /// What "Try it" or the mail filters' preview found, as JSON {kind, text, lines, count}.
+        #[qsignal]
+        fn mail_filters_found(self: Pin<&mut Sioul>, found: QString);
+
         /// Sharing through a folder Sioul keeps in step with a server itself
         /// (`start_sharing_on_server`): "" when it started, else why not.
         #[qsignal]
@@ -1639,6 +1697,7 @@ pub struct SioulRust {
     mail_accounts: QString,
     mail_folder: QString,
     drafts: QString,
+    mail_search: QString,
     undo_line: QString,
     contacts: QString,
     duplicates: QString,
@@ -2491,19 +2550,15 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
         }
         if !report.first && !report.new.is_empty() {
             notify_codes(qt, &report.new);
-            // What your own spam filter moves, as you chose: into the Junk folder, on a
-            // thread of its own (it reaches the server; this is the watcher's), the Porch read again after.
-            let (moving, new, first) = (account.clone(), report.new.clone(), report.first);
-            let (qt_moved, shared_moved) = (qt.clone(), Arc::clone(shared));
-            std::thread::spawn(move || {
-                if crate::spam::after_fetch(&moving, &new, first) > 0 {
-                    show(&qt_moved, &shared_moved);
-                }
-            });
+            sort_on_server(qt, shared, account, report.new.clone());
             // New mail your lists let through now, once per batch (docs/porch.md,
-            // "Notifications"); what your filter flagged or moves is never told.
+            // "Notifications"); what your filter flagged or moves is never told; what
+            // a mail filter would take waits for it (told after, if it could not act).
             let window = crate::mailnote::Window { qt: qt.clone(), active: shared.active.load(Ordering::Relaxed) };
             crate::mailnote::arrived_in_window(window, &account.id, &report.new, report.first);
+        } else if !report.first && sioul_sync::filters::due(account) {
+            // Nothing new, but a filter's failure to try again, or another device's mark to look at again.
+            sort_on_server(qt, shared, account, Vec::new());
         }
         read_shielded(qt, &account.id);
     }
@@ -2517,6 +2572,29 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
         }
     });
     show(qt, shared);
+}
+
+/// After a fetch of `account` (`new`: its inbox's arrivals, maybe none), on a
+/// thread of its own (it reaches the server; this is the watcher's): what your
+/// own spam filter moves, as you chose, into the Junk folder; then your mail
+/// filters (docs/client.md, "Filters"), on the arrivals still unread and what
+/// waits for another look, never on what the spam filter reviews. What a filter
+/// could not act on is told as new mail, and why said in the status line; the
+/// Porch is read again when something moved.
+fn sort_on_server(qt: &QtThread, shared: &Arc<Shared>, account: &Account, new: Vec<PathBuf>) {
+    let (account, qt, shared) = (account.clone(), qt.clone(), Arc::clone(shared));
+    let window = crate::mailnote::Window { qt: qt.clone(), active: shared.active.load(Ordering::Relaxed) };
+    std::thread::spawn(move || {
+        let moved = crate::spam::after_fetch(&account, &new, false);
+        let filtered = crate::filters::after_fetch(&account, &new, false);
+        if !filtered.problem.is_empty() {
+            set_status(&qt, filtered.problem.clone());
+        }
+        crate::mailnote::unfiltered_in_window(window, &account.id, &filtered.tell);
+        if moved + filtered.acted > 0 {
+            show(&qt, &shared);
+        }
+    });
 }
 
 /// Mail just fetched that a case takes, by its routes or its conversation:
@@ -5177,8 +5255,10 @@ impl qobject::Sioul {
         // (docs/attention.md), "line" the status line with all it
         // may hold, a new draft deleted and taken back (docs/design.md), "share-panel" the
         // sharing's tab before sharing, its two ways (docs/database.md), "spam" the spam
-        // filter's settings and the words it puts beside mail (docs/spam-filter.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "spam"].contains(&steps.as_str()) && offline()) {
+        // filter's settings and the words it puts beside mail (docs/spam-filter.md), "mail-search" the
+        // search by conditions, its results, a selection held over a folder (docs/client.md), "mail-filters"
+        // the mail filters in Mail's ⚙, their editor, a run's preview, a search made a filter, on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "spam", "mail-search", "mail-filters"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -5257,6 +5337,34 @@ impl qobject::Sioul {
 
     fn spam_stop(self: Pin<&mut Self>) {
         crate::spam::stop(self.qt_thread());
+    }
+
+    fn mail_filters(&self) -> QString {
+        QString::from(&crate::filters::view())
+    }
+
+    fn set_mail_filters(self: Pin<&mut Self>, filters: &QString) -> QString {
+        QString::from(&crate::filters::save(&filters.to_string()))
+    }
+
+    fn mail_filter_said(&self, filter: &QString) -> QString {
+        QString::from(&crate::filters::said(&filter.to_string()))
+    }
+
+    fn mail_filter_try(self: Pin<&mut Self>, filter: &QString) {
+        crate::filters::try_one(self.qt_thread(), filter.to_string());
+    }
+
+    fn mail_filters_preview(self: Pin<&mut Self>) {
+        crate::filters::preview(self.qt_thread());
+    }
+
+    fn mail_filters_run(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::filters::run(&self.qt_thread(), &self.shared()))
+    }
+
+    fn new_mail_filter(self: Pin<&mut Self>, given: &QString) -> QString {
+        QString::from(&crate::filters::new_from(&given.to_string()))
     }
 
     fn set_share_backup(self: Pin<&mut Self>, on: bool) -> QString {

@@ -587,6 +587,105 @@ ui-search = Chercher
 ui-earlier = Messages plus anciens
 ui-discard = Supprimer le brouillon
 
+## Chercher dans le courrier par conditions (mailsearch.rs, MailSearch.qml) : les conditions des filtres.
+ui-search-more = Plus de critères…
+ui-search-more-tip = Chercher par conditions : qui l’a envoyé, à qui, quand, ce qu’il dit ou apporte, où il est.
+ui-select = Sélectionner
+search-title = Recherche
+search-results = Résultats
+search-help = Le courrier selon qui l’a envoyé, à qui, quand, ce qu’il dit ou apporte. Les indésirables et la corbeille restent de côté, sauf si une condition sur le dossier les nomme.
+search-add = Ajouter une condition
+search-remove = Retirer cette condition
+search-match-all = Le courrier qui les remplit toutes
+search-match-any = Le courrier qui en remplit au moins une
+search-and = et le
+search-clear = Effacer
+search-show = Voir les messages
+search-change = Modifier la recherche
+search-back = Revenir à la recherche
+search-placeholder = Mots à trouver
+search-placeholder-who = Un nom, une adresse, @domaine
+search-placeholder-size = 5 Mo, 500 Ko
+search-make-filter = En faire un filtre…
+search-sentence-empty = Dites ce qu’il faut chercher.
+search-sentence = Le courrier { $phrases }.
+search-join-all = {", "}
+search-join-any = {", ou "}
+search-phrase-anywhere-contains = avec « { $value } »
+search-phrase-anywhere-not-contains = sans « { $value } »
+search-phrase-from-contains = de …{ $value }…
+search-phrase-from-not-contains = qui ne vient pas de …{ $value }…
+search-phrase-from-is = de { $value }
+search-phrase-from-is-not = qui ne vient pas de { $value }
+search-phrase-to-contains = pour …{ $value }…
+search-phrase-to-not-contains = qui n’est pas pour …{ $value }…
+search-phrase-to-is = pour { $value }
+search-phrase-to-is-not = qui n’est pas pour { $value }
+search-phrase-cc-contains = en copie à …{ $value }…
+search-phrase-cc-not-contains = sans copie à …{ $value }…
+search-phrase-cc-is = en copie à { $value }
+search-phrase-cc-is-not = sans copie à { $value }
+search-phrase-subject-contains = dont l’objet contient « { $value } »
+search-phrase-subject-not-contains = dont l’objet ne contient pas « { $value } »
+search-phrase-subject-is = dont l’objet est « { $value } »
+search-phrase-subject-is-not = dont l’objet n’est pas « { $value } »
+search-phrase-body-contains = dont le texte contient « { $value } »
+search-phrase-body-not-contains = dont le texte ne contient pas « { $value } »
+search-phrase-attachment-exists = avec une pièce jointe
+search-phrase-attachment-missing = sans pièce jointe
+search-phrase-attachment-contains = avec une pièce jointe nommée …{ $value }…
+search-phrase-attachment-not-contains = sans pièce jointe nommée …{ $value }…
+search-phrase-attachment-type-is = avec { $kind } en pièce jointe
+search-phrase-attachment-type-is-not = sans { $kind } en pièce jointe
+search-phrase-date-before = arrivé avant le { $day }
+search-phrase-date-after = arrivé après le { $day }
+search-phrase-date-between = arrivé entre le { $day } et le { $until }
+search-phrase-size-above = de plus de { $size }
+search-phrase-size-below = de moins de { $size }
+search-phrase-sender-is = dont l’expéditeur est { $who }
+search-phrase-sender-is-not = dont l’expéditeur n’est pas { $who }
+search-phrase-list-exists = d’une lettre d’information ou d’une liste
+search-phrase-list-missing = qui ne vient d’aucune lettre ni liste
+search-phrase-list-contains = de la liste …{ $value }…
+search-phrase-list-not-contains = qui ne vient pas de la liste …{ $value }…
+search-phrase-account-is = dans { $account }
+search-phrase-account-is-not = hors de { $account }
+search-phrase-folder-is = dans { $folder }
+search-phrase-folder-is-not = hors de { $folder }
+search-phrase-mark-is-read = déjà lu
+search-phrase-mark-is-not-read = pas encore lu
+search-phrase-mark-is-flagged = suivi
+search-phrase-mark-is-not-flagged = non suivi
+search-phrase-mark-is-answered = auquel vous avez répondu
+search-phrase-mark-is-not-answered = auquel vous n’avez pas encore répondu
+search-found = { $n ->
+    [0] Rien ici ne correspond.
+    [one] Un message ici.
+   *[other] { $n } messages ici.
+}
+search-found-all = { $n ->
+    [0] Rien ne correspond.
+    [one] Un message.
+   *[other] { $n } messages.
+}
+search-found-more = Les { $shown } plus récents sur { $n } sont montrés : une autre condition les resserre.
+search-server-looking = Recherche sur les serveurs du courrier qui n’est gardé que là-bas…
+search-server-found = { $n ->
+    [one] Un de plus sur les serveurs.
+   *[other] { $n } de plus sur les serveurs.
+}
+search-server-none = Rien de plus sur les serveurs.
+search-server-more = { $n ->
+    [one] Peut-être un de plus sur les serveurs, non montré : une autre condition les resserre.
+   *[other] Jusqu’à { $n } de plus sur les serveurs, non montrés : une autre condition les resserre.
+}
+search-server-failed = { $account } : la recherche sur son serveur n’a pas abouti ({ $detail }).
+search-open-first = Ouvrez-le d’abord : Sioul n’en garde encore rien ici.
+search-on-server = sur le serveur
+search-on-server-tip = Gardé sur son serveur seulement : l’ouvrir le fait venir ici.
+search-bringing = Le message arrive du serveur…
+search-place = { $folder } · { $account }
+
 ## La fenêtre d’écriture.
 ui-to-placeholder = Adresses, séparées par des virgules
 ui-cc-bcc = Cc, Cci
@@ -1311,6 +1410,233 @@ set-spam-filter = Son apprentissage
 set-spam-filter-help = Il apprend sur un seul ordinateur, à la main : entraînez-le sur celui-ci seulement, quand vous le demandez, à partir de tout votre courrier : chaque dossier de chaque adresse, vos dossiers Indésirables, et ce que vous avez dit indésirable ou pas sur chacun de vos appareils. Le courrier qu’il lit et les mots qu’il apprend restent sur cet ordinateur ; seule sa table va vers vos autres appareils, scellée, sans aucun mot de votre courrier.
 set-spam-filter-phone = Sa table
 set-spam-filter-phone-help = Ce téléphone ne l’entraîne jamais : un seul ordinateur le fait, à la main, sur votre courrier, et sa table arrive ici scellée par votre dossier (la partie « Filtre à indésirables »), sans aucun mot de votre courrier. Ce que vous dites ici, Indésirable ou Pas indésirable, y va de la même façon.
+
+## Les filtres du courrier (crates/sioul-core/src/rules.rs, docs/client.md, « Filters »).
+filter-field-from = De
+filter-field-to = À
+filter-field-cc = Cc
+filter-field-reply-to = Répondre à
+filter-field-subject = Objet
+filter-field-body = Texte
+filter-field-attachment = Pièce jointe
+filter-field-attachment-type = Type de pièce jointe
+filter-field-sender = Expéditeur
+filter-field-list = Lettre d’information ou liste
+filter-field-date = Jour d’arrivée
+filter-field-weekday = Jour de la semaine
+filter-field-hour = Heure d’arrivée
+filter-field-size = Taille
+filter-field-anywhere = Partout
+filter-field-account = Adresse
+filter-field-folder = Dossier
+filter-field-mark = Message
+filter-mark-read = lu
+filter-mark-flagged = suivi
+filter-mark-answered = répondu
+filter-test-contains = contient
+filter-test-not-contains = ne contient pas
+filter-test-is = est
+filter-test-is-not = n’est pas
+filter-test-before = avant
+filter-test-after = après
+filter-test-between = entre
+filter-test-above = plus gros que
+filter-test-below = plus petit que
+filter-test-exists-attachment = il y en a une
+filter-test-missing-attachment = il n’y en a pas
+filter-test-exists-list = c’en est une
+filter-test-missing-list = ce n’en est pas une
+filter-if-text = { $field ->
+        [from] De
+        [to] À
+        [cc] Cc
+        [reply-to] Répondre à
+        [subject] Objet
+        [list] Liste
+        [anywhere] Partout
+        [account] Adresse
+        [folder] Dossier
+        [mark] Message
+       *[body] Texte
+    } { $test ->
+        [not-contains] ne contient pas
+        [is] est
+        [is-not] n’est pas
+       *[contains] contient
+    } « { $value } »
+filter-if-attachment = { $test ->
+        [missing] sans pièce jointe
+       *[exists] avec une pièce jointe
+    }
+filter-if-list = { $test ->
+        [missing] pas venu d’une lettre d’information ni d’une liste
+       *[exists] venu d’une lettre d’information ou d’une liste
+    }
+filter-if-kind = { $test ->
+        [is-not] aucune pièce jointe n’est { $kind }
+       *[is] une pièce jointe est { $kind }
+    }
+filter-if-sender = { $test ->
+        [is-not] l’expéditeur n’est pas { $who }
+       *[is] l’expéditeur est { $who }
+    }
+filter-if-date = { $test ->
+        [before] arrivé avant le { $value }
+        [between] arrivé entre le { $value } et le { $until }
+       *[after] arrivé après le { $value }
+    }
+filter-if-weekday = { $test ->
+        [is-not] pas arrivé un { $days }
+       *[is] arrivé un { $days }
+    }
+filter-if-hour = { $test ->
+        [before] arrivé avant { $value }
+        [between] arrivé entre { $value } et { $until }
+       *[after] arrivé à partir de { $value }
+    }
+filter-if-size = { $test ->
+        [below] plus petit que { $value }
+       *[above] plus gros que { $value }
+    }
+filter-if-none = (pas encore de condition)
+filter-if-unfinished = (une condition à compléter)
+filter-kind-pdf = un PDF
+filter-kind-image = une image
+filter-kind-document = un document (texte, tableur, présentation)
+filter-kind-archive = une archive (zip…)
+filter-kind-calendar = une invitation
+filter-kind-audio = un son
+filter-kind-video = une vidéo
+filter-kind-text = un fichier texte
+filter-who-known = quelqu’un que vous connaissez
+filter-who-safe = sûr
+filter-who-neutral = neutre
+filter-who-restricted = restreint
+filter-who-stranger = un inconnu
+filter-join-all = {" "}et{" "}
+filter-join-any = {" "}ou{" "}
+filter-act-move = Le déplacer dans un dossier
+filter-act-archive = L’archiver
+filter-act-junk = Le marquer comme indésirable
+filter-act-flag = Le suivre
+filter-act-read = Le marquer comme lu
+filter-act-trash = Le mettre à la corbeille
+filter-act-keyword = Lui ajouter un mot-clé
+filter-then-move = dans « { $name } »
+filter-then-archive = archivé
+filter-then-junk = dans les indésirables
+filter-then-flag = suivi
+filter-then-read = marqué comme lu
+filter-then-trash = à la corbeille
+filter-then-keyword = mot-clé « { $name } »
+filter-then-unknown = (une action que ce Sioul ne connaît pas)
+filter-then-unfinished = (une action à compléter)
+filter-then-stop = et aucun autre filtre
+filter-then-none = (rien à faire encore)
+filter-said = { $conditions } → { $actions }
+filter-said-empty = Un nouveau filtre : dites ce que montre un message, puis ce qui en est fait.
+filter-problem-unknown = Ce filtre contient quelque chose que ce Sioul ne connaît pas : changez-le, ou mettez Sioul à jour.
+filter-problem-value = Une condition attend sa valeur.
+filter-problem-date = Un jour s’écrit 2026-10-01, et une période va de son début à sa fin.
+filter-problem-time = Une heure s’écrit 18:00.
+filter-problem-size = Une taille s’écrit 5 Mo ou 500 Ko.
+filter-problem-no-condition = Ajoutez une condition : sans elle, ce filtre ne fait rien.
+filter-problem-no-action = Choisissez ce qu’il fait : sans action, il ne fait rien.
+filter-problem-folder = Choisissez le dossier où il déplace les messages.
+filter-problem-keyword = Un mot-clé est un seul mot : sans espace, parenthèse, accolade, crochet, guillemet, % ni *, et ni $Junk, ni $NotJunk, ni $SioulFiltered.
+set-filters-group = Filtres
+set-filters = Vos filtres
+set-filters-help = Chaque filtre dit ce que montre un message, puis ce qui en est fait sur son serveur. Ils agissent sur le courrier qui arrive non lu dans une boîte de réception, sur le premier de vos appareils à le relever ; vos autres appareils n’y touchent plus ensuite. Le courrier que le Porche met de côté, un code que vous avez demandé et ce que votre filtre à indésirables garde à revoir ne sont jamais touchés, et rien n’est supprimé pour de bon.
+filter-only = Seulement pour { $accounts }
+filter-tried = { $n ->
+        [0] Dans vos boîtes de réception, il ne prend aucun des { $total } messages.
+        [one] Dans vos boîtes de réception, il prend un des { $total } messages.
+       *[other] Dans vos boîtes de réception, il prend { $count } des { $total } messages.
+    }
+filter-tried-newest = { $n ->
+        [0] Parmi les { $total } messages les plus récents de vos boîtes de réception, il n’en prend aucun.
+        [one] Parmi les { $total } messages les plus récents de vos boîtes de réception, il en prend un.
+       *[other] Parmi les { $total } messages les plus récents de vos boîtes de réception, il en prend { $count }.
+    }
+filter-tried-one = { $who } : { $subject }
+filter-preview-line = { $Count } { $n ->
+        [one] message
+       *[other] messages
+    } : { $filter }
+filter-preview = { $n ->
+        [one] Dans vos boîtes de réception, un message changerait, lu ou non.
+       *[other] Dans vos boîtes de réception, { $count } messages changeraient, lus ou non.
+    } Les codes que vous avez demandés, le courrier mis de côté et ce que votre filtre à indésirables garde à revoir restent comme ils sont.
+filter-preview-none = Aucun message de vos boîtes de réception ne correspond à un filtre : rien ne changerait.
+filter-running = { $n ->
+        [one] Un message filtré dans dix secondes.
+       *[other] { $Count } messages filtrés dans dix secondes.
+    }
+filter-ran = { $n ->
+        [0] Aucun message filtré.
+        [one] Un message filtré.
+       *[other] { $Count } messages filtrés.
+    }
+filter-failed-folder = { $n ->
+        [one] Un message de { $account } n’a pas pu être déplacé : il n’y a pas de dossier « { $folder } » là-bas.
+       *[other] { $Count } messages de { $account } n’ont pas pu être déplacés : il n’y a pas de dossier « { $folder } » là-bas.
+    } Créez-le dans Courrier, ou changez le filtre ; Sioul réessaie au prochain courrier.
+filter-failed-server = { $n ->
+        [one] Un message de { $account } n’a pas pu être filtré : son serveur ne l’a pas pris.
+       *[other] { $Count } messages de { $account } n’ont pas pu être filtrés : son serveur ne les a pas pris.
+    } Sioul réessaie au prochain courrier.
+filter-failed-keywords = Le serveur de { $account } ne garde pas de mots-clés : un filtre qui ne fait qu’en ajouter un n’y fait rien.
+filter-failed-renumbered = Le serveur de { $account } a renuméroté sa boîte de réception : { $n ->
+        [one] un message n’a pas été filtré, et il est annoncé
+       *[other] { $count } messages n’ont pas été filtrés, et ils sont annoncés
+    } comme du nouveau courrier.
+filter-failed-claimed = { $n ->
+        [one] Un message de { $account } avait été marqué par un autre de vos appareils, qui ne l’a pas traité : il est annoncé comme du nouveau courrier.
+       *[other] { $Count } messages de { $account } avaient été marqués par un autre de vos appareils, qui ne les a pas traités : ils sont annoncés comme du nouveau courrier.
+    }
+filter-cli-acted = { $account } : { $n ->
+        [one] un message filtré.
+       *[other] { $count } messages filtrés.
+    }
+filter-ui-narrow = Montrer les filtres de
+filter-ui-all-addresses = Toutes les adresses
+filter-ui-none = Aucun filtre pour l’instant.
+filter-ui-none-here = Aucun filtre pour cette adresse.
+filter-ui-add = Ajouter un filtre
+filter-ui-switch = Actif ou non : inactif, il est gardé et ne fait rien.
+filter-ui-edit = Le modifier
+filter-ui-done = Terminé
+filter-ui-up = Le demander plus tôt
+filter-ui-down = Le demander plus tard
+filter-ui-name = Son nom, si vous en voulez un
+filter-ui-if = Si
+filter-ui-all = toutes les conditions sont vraies
+filter-ui-any = l’une d’elles est vraie
+filter-ui-field = Ce qu’il lit
+filter-ui-test = Comment il compare
+filter-ui-value = Les mots cherchés
+filter-ui-size = 5 Mo
+filter-ui-and = et
+filter-ui-remove = Retirer
+filter-ui-add-condition = Ajouter une condition
+filter-ui-then = Alors
+filter-ui-add-action = Ajouter une action
+filter-ui-folder = Choisir un dossier
+filter-ui-folder-some = Ce dossier n’existe que sur { $accounts } : depuis les autres adresses, le message ne peut pas y aller, et Sioul le dit.
+filter-ui-keyword = Un mot-clé
+filter-ui-more = Sur quelles adresses ; les filtres suivants
+filter-ui-addresses = Sur quelles adresses
+filter-ui-every-address = Toutes les adresses
+filter-ui-stop = Une fois qu’il agit, les filtres suivants ne sont pas demandés
+filter-ui-try = L’essayer sur les boîtes de réception
+filter-ui-looking = Lecture de vos boîtes de réception…
+filter-ui-delete = Supprimer ce filtre
+filter-ui-deleted = Supprimé : { $name }
+filter-ui-run-help = Les filtres agissent sur le courrier qui arrive non lu. Pour agir sur tout ce qui est dans vos boîtes de réception, le courrier lu aussi, appliquez-les : Sioul dit d’abord ce qui changerait.
+filter-ui-run = Les appliquer aux boîtes de réception…
+filter-ui-run-now = Les appliquer maintenant
+filter-ui-not-now = Pas maintenant
+filter-from-search-left = Un filtre lit le courrier qui arrive dans vos boîtes de réception : ce que la recherche disait des dossiers, et du courrier lu, suivi ou répondu, est laissé de côté.
 ui-conversation = { $n } messages : montrer ou replier la conversation
 link-made = Lié à « { $title } ».
 link-undone = Le lien est défait.
@@ -3758,6 +4084,7 @@ spam-stage-features = Le vecteur de chaque message…
 spam-stage-classifier = Le classifieur : chaque coût, puis son calibrage…
 spam-stage-evaluation = Test sur les messages les plus récents…
 spam-stage-export = La table…
+spam-stage-verify = Vérification de chaque message comme Sioul vérifie le courrier qu’il range, ses signatures et son expéditeur (chacun téléchargé entier une fois, en mémoire seulement)…
 spam-account-failed = { $account } : pas lu ({ $detail }).
 spam-fetch-added = { $n ->
     [one] Un message ajouté au corpus.
@@ -3812,6 +4139,12 @@ spam-corpus-folder = { $folder } : { $records } gardés, { $server } sur le se
 spam-corpus-last = Dernier téléchargement : { $date }.
 spam-last-training = Dernier apprentissage : { $date }.
 spam-never-trained = Pas encore d’apprentissage : « sioul spam train ».
+spam-fetch-checked = { $n ->
+    [one] Un message vérifié par Sioul, dont { $gone } absent de son serveur.
+   *[other] { $n } messages vérifiés par Sioul, dont { $gone } absents de leur serveur.
+}
+spam-fetch-offline = Aucun serveur DNS n’a répondu : les messages restants seront vérifiés au prochain téléchargement.
+spam-checks = { $account } : Sioul a vérifié { $checked } messages sur { $records } ({ $gone } absents de leur serveur). DKIM : { $dkim_pass } valides, { $dkim_fail } en échec, { $dkim_unknown } inconnus, { $dkim_none } non signés. SPF : { $spf_pass } valides, { $spf_fail } en échec, { $spf_unknown } inconnus. DMARC : { $dmarc_pass } valides, { $dmarc_fail } en échec, { $dmarc_unknown } inconnus. Expéditeur vérifié : { $verified }. Courrier ancien dont les échecs se lisent inconnus : { $late }.
 spam-verdicts = { $account } : { $with } messages sur { $records } portent le verdict d’un filtre antispam ; { $read } d’entre eux ont été écrits par votre fournisseur à l’arrivée du courrier, et ceux-là comptent ({ $flagged } disent indésirable).
 spam-why-none = Pas de verdict : { $detail }
 spam-why-score = Probabilité d’indésirable : { $p } (score { $f } ; au-dessus de 0, indésirable).
@@ -4084,7 +4417,6 @@ attention-exceptions-events = Le rappel propre à un événement
 attention-exceptions-events-help = Chaque événement peut dire son propre rappel, ou aucun : dans son formulaire, Rappel.
 attention-open-agenda = Ouvrir l’Agenda
 attention-exceptions-health = Un repas, une sieste, la nuit, un jour
-spam-stage-verify = Vérification de chaque message comme Sioul vérifie le courrier qu’il range, ses signatures et son expéditeur (chacun téléchargé entier une fois, en mémoire seulement)…
 attention-exceptions-health-help = Chacun peut se passer de ses avis, pour un jour ou pour de bon : sur la page Santé.
 attention-open-health = Ouvrir Santé
 attention-dnd-turns-on = Ce qui l’active
@@ -4139,12 +4471,6 @@ attention-sheet-line-messages-now = { $first ->
    *[other] Ils arrivent tout de suite { $during }.
 }
 attention-sheet-line-messages-later = { $first ->
-spam-fetch-checked = { $n ->
-    [one] Un message vérifié par Sioul, dont { $gone } absent de son serveur.
-   *[other] { $n } messages vérifiés par Sioul, dont { $gone } absents de leur serveur.
-}
-spam-fetch-offline = Aucun serveur DNS n’a répondu : les messages restants seront vérifiés au prochain téléchargement.
-spam-checks = { $account } : Sioul a vérifié { $checked } messages sur { $records } ({ $gone } absents de leur serveur). DKIM : { $dkim_pass } valides, { $dkim_fail } en échec, { $dkim_unknown } inconnus, { $dkim_none } non signés. SPF : { $spf_pass } valides, { $spf_fail } en échec, { $spf_unknown } inconnus. DMARC : { $dmarc_pass } valides, { $dmarc_fail } en échec, { $dmarc_unknown } inconnus. Expéditeur vérifié : { $verified }. Courrier ancien dont les échecs se lisent inconnus : { $late }.
     [yes] Ses messages sont retenus { $during }.
    *[other] Ils sont retenus { $during }.
 }

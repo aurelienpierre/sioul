@@ -617,7 +617,7 @@ fn local_uids(root: &Path, validity: u32) -> BTreeSet<u32> {
 }
 
 /// A message as the server gave it, before Sioul checks and stores it.
-struct Arrived {
+pub(crate) struct Arrived {
     uid: u32,
     flags: String,
     received: Option<i64>,
@@ -625,7 +625,7 @@ struct Arrived {
 }
 
 /// One FETCH: every message of `set`. BODY.PEEK leaves the \Seen flag alone.
-async fn fetch_batch(session: &mut Imap, set: &str) -> Result<Vec<Arrived>, SyncError> {
+pub(crate) async fn fetch_batch(session: &mut Imap, set: &str) -> Result<Vec<Arrived>, SyncError> {
     let mut stream = session.uid_fetch(set, "(UID FLAGS INTERNALDATE BODY.PEEK[])").await.map_err(imap::server)?;
     let mut arrived = Vec::new();
     while let Some(fetch) = stream.next().await {
@@ -637,7 +637,7 @@ async fn fetch_batch(session: &mut Imap, set: &str) -> Result<Vec<Arrived>, Sync
 }
 
 /// Checks each message (SPF, DKIM, DMARC…, see `verify`) and writes it into the Maildir.
-async fn store_checked(arrived: Vec<Arrived>, validity: u32, root: &Path, verifier: Option<&Verifier>) -> Result<Vec<(u32, PathBuf)>, SyncError> {
+pub(crate) async fn store_checked(arrived: Vec<Arrived>, validity: u32, root: &Path, verifier: Option<&Verifier>) -> Result<Vec<(u32, PathBuf)>, SyncError> {
     let mut written = Vec::new();
     for message in arrived {
         let raw = match verifier {
@@ -701,6 +701,26 @@ struct FolderState {
     /// Everything was fetched.
     #[serde(default)]
     everything: bool,
+}
+
+/// How much of a folder is kept here: all of it, all of it since a day (Unix
+/// seconds), or nothing known (never fetched, left on the server, or fetched
+/// before Sioul kept how far back). A search asks the server for the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kept {
+    Everything,
+    Since(i64),
+    Unknown,
+}
+
+/// How much of `folder` (its server name) this device holds, as its last sync left it.
+pub fn kept(account: &Account, folder: &str) -> Kept {
+    let state = SyncState::load(&state_dir().join("sync").join(format!("{}.toml", account.id)));
+    match state.folders.get(folder) {
+        Some(f) if f.everything => Kept::Everything,
+        Some(FolderState { since: Some(since), .. }) => Kept::Since(*since),
+        _ => Kept::Unknown,
+    }
 }
 
 /// Where a folder's sync stopped, forgotten: the next sync of it starts over.

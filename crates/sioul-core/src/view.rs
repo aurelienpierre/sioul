@@ -1178,7 +1178,7 @@ pub struct FolderView {
     pub earlier: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MailItem {
     /// The file, to open the message.
     pub key: String,
@@ -1246,6 +1246,56 @@ fn conversations(cards: &[Card], sent: &[Card], shown: &dyn Fn(&Card) -> bool, i
     out
 }
 
+/// One message as a list shows it, in a folder for `role`: who wrote (to whom,
+/// in Sent and Drafts), what, when, its marks (`flags`, Maildir's letters),
+/// and how far its sender is verified, as the Porch judges it. `own`: one of
+/// your answers from Sent, shown in a conversation. Its key is its file, when
+/// it has one (a search gives a message seen on its server only its own).
+pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &[String], tr: &Translator) -> MailItem {
+    let outgoing = matches!(role, Role::Sent | Role::Drafts);
+    let (trust_level, trust, checks) = if outgoing || own {
+        ("own", String::new(), String::new())
+    } else {
+        let results = trust::read_auth_results(&card.headers, trusted_ids);
+        // As the Porch judges it: a signature counts for the sender's own domain only,
+        // and a list excuses a DMARC failure, never for a code (`porch::triage`).
+        let failed = results.as_ref().is_some_and(|r| r.dmarc == Some(trust::Outcome::Fail));
+        let code = card.is_list && failed && crate::codes::detect_message(card).is_some();
+        let judged = trust::judge_sender(results.as_ref(), card.is_list && !code, card.sender_domain()).0;
+        let level = match judged {
+            Trust::Verified => "verified",
+            Trust::Unverified => "unverified",
+            Trust::Forged => "forged",
+        };
+        (level, tr.trust(judged), self::checks(results.as_ref(), tr))
+    };
+    let who = if outgoing || own {
+        let mut args = i18n::args();
+        args.set("names", if card.to.is_empty() { tr.text("mail-nobody", None) } else { card.to.join(", ") });
+        tr.text(if own { "mail-you-to" } else { "mail-to-whom" }, Some(&args))
+    } else {
+        card.sender().to_string()
+    };
+    MailItem {
+        key: card.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default(),
+        who,
+        address: card.from_address.clone().unwrap_or_default(),
+        subject: if card.subject.trim().is_empty() { tr.text("mail-no-subject", None) } else { card.subject.clone() },
+        date: date(tr, card.date),
+        // In Sent, Drafts, Junk and Trash, nothing waits to be read.
+        unread: !own && matches!(role, Role::Inbox | Role::Other | Role::Archive) && !flags.contains('S'),
+        flagged: flags.contains('F'),
+        answered: flags.contains('R'),
+        attachments: !card.attachments.is_empty(),
+        trust_level,
+        trust,
+        checks,
+        thread: String::new(),
+        size: 1,
+        member: false,
+    }
+}
+
 /// What a folder shows: `all` past the last two weeks; `query` searches every
 /// message kept, by sender, recipient and subject. With `sent` (the account's
 /// Sent folder), messages are shown by conversation, your answers among them.
@@ -1254,7 +1304,6 @@ pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids:
     // The account's history, two weeks unless set; everything kept when it says so.
     let all = all || account.history_days().is_none();
     let since = now - account.history_days().unwrap_or(RECENT_DAYS) * 86_400;
-    let outgoing = matches!(folder.role, Role::Sent | Role::Drafts);
     let query = query.trim().to_lowercase();
     let found = |c: &Card| {
         query.is_empty()
@@ -1268,51 +1317,7 @@ pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids:
     let recent = |c: &Card| c.date.unwrap_or(0) >= since;
     let older = cards.iter().filter(|c| !recent(c)).count();
     let shown = |c: &Card| all || !query.is_empty() || recent(c);
-    let item = |card: &Card, own: bool| {
-        let path = card.path.clone().unwrap_or_default();
-        let flags = maildir::flags_of(&path);
-        let (trust_level, trust, checks) = if outgoing || own {
-            ("own", String::new(), String::new())
-        } else {
-            let results = trust::read_auth_results(&card.headers, trusted_ids);
-            // As the Porch judges it: a signature counts for the sender's own domain only,
-            // and a list excuses a DMARC failure, never for a code (`porch::triage`).
-            let failed = results.as_ref().is_some_and(|r| r.dmarc == Some(trust::Outcome::Fail));
-            let code = card.is_list && failed && crate::codes::detect_message(card).is_some();
-            let judged = trust::judge_sender(results.as_ref(), card.is_list && !code, card.sender_domain()).0;
-            let level = match judged {
-                Trust::Verified => "verified",
-                Trust::Unverified => "unverified",
-                Trust::Forged => "forged",
-            };
-            (level, tr.trust(judged), self::checks(results.as_ref(), tr))
-        };
-        let who = if outgoing || own {
-            let mut args = i18n::args();
-            args.set("names", if card.to.is_empty() { tr.text("mail-nobody", None) } else { card.to.join(", ") });
-            tr.text(if own { "mail-you-to" } else { "mail-to-whom" }, Some(&args))
-        } else {
-            card.sender().to_string()
-        };
-        MailItem {
-            key: path.display().to_string(),
-            who,
-            address: card.from_address.clone().unwrap_or_default(),
-            subject: if card.subject.trim().is_empty() { tr.text("mail-no-subject", None) } else { card.subject.clone() },
-            date: date(tr, card.date),
-            // In Sent, Drafts, Junk and Trash, nothing waits to be read.
-            unread: !own && matches!(folder.role, Role::Inbox | Role::Other | Role::Archive) && !flags.contains('S'),
-            flagged: flags.contains('F'),
-            answered: flags.contains('R'),
-            attachments: !card.attachments.is_empty(),
-            trust_level,
-            trust,
-            checks,
-            thread: String::new(),
-            size: 1,
-            member: false,
-        }
-    };
+    let item = |card: &Card, own: bool| mail_item(card, folder.role, own, &maildir::flags_of(card.path.as_deref().unwrap_or(std::path::Path::new(""))), trusted_ids, tr);
     let items: Vec<MailItem> = match sent {
         None => cards.iter().filter(|c| shown(c)).map(|c| item(c, false)).collect(),
         Some(sent) => conversations(&cards, &sent, &shown, &item),

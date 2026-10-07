@@ -17,10 +17,11 @@ use sioul_core::card::Card;
 use sioul_core::compose::{self, Draft, DraftKind};
 use sioul_core::config::{Account, Config};
 use sioul_core::folders::{Folder, Role};
+use sioul_core::mailsearch::ServerRef;
 use sioul_core::{maildir, unsubscribe, view};
 use sioul_sync::mailbox::{self, Action};
 use sioul_sync::{SyncError, secret};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -44,6 +45,11 @@ enum Work {
     Act { account: Account, file: PathBuf, action: Action },
     /// Into a folder of another account: copied there, then taken off here.
     Across { from: Account, file: PathBuf, to: Account, folder: String },
+    /// Several messages of one account, kept here or seen on its server only
+    /// (a search's), in one connection: moves, archiving, the trash.
+    Batch { account: Account, files: Vec<PathBuf>, remote: Vec<ServerRef>, action: Action },
+    /// A message seen on its server only, into a folder of another account.
+    AcrossRemote { from: Account, place: ServerRef, to: Account, folder: String },
     /// Several messages at once, under one "Undo".
     Many(Vec<Work>),
     Send { draft: String },
@@ -62,6 +68,9 @@ enum Work {
     Back { back: Box<dyn Fn(&QtThread, &Arc<Shared>) -> String + Send + Sync> },
     /// Leaving a list, in one click or by a message from `account`; the message stays where it is.
     Unsubscribe { list: unsubscribe::List, sender: String, account: String, way: unsubscribe::Way },
+    /// Your mail filters run on the inboxes, as you asked after their preview:
+    /// each account's messages in one connection (`filters::perform`).
+    Filters { planned: Vec<(Account, Vec<sioul_sync::filters::Job>)> },
 }
 
 pub(crate) struct Pending {
@@ -99,12 +108,14 @@ fn hidden(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<String>) {
             Work::Across { file, .. } | Work::Remove { file, .. } => {
                 files.insert(file.clone());
             }
+            Work::Batch { files: batch, .. } => files.extend(batch.iter().cloned()),
+            Work::Filters { planned } => files.extend(planned.iter().flat_map(|(_, jobs)| jobs.iter().filter(|j| j.plan.leaves()).map(|j| j.file.clone()))),
             Work::Send { draft } | Work::Discard { draft } => {
                 drafts.insert(draft.clone());
             }
             Work::Many(works) => works.iter().for_each(|w| add(w, files, drafts)),
             // Leaving its list, a message stays in view where it is.
-            Work::Act { .. } | Work::Skip { .. } | Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } | Work::Unsubscribe { .. } => {}
+            Work::Act { .. } | Work::AcrossRemote { .. } | Work::Skip { .. } | Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } | Work::Unsubscribe { .. } => {}
         }
     }
     for pending in shared.pending.lock().map(|p| p.clone()).unwrap_or_default() {
@@ -159,6 +170,12 @@ pub(crate) fn schedule_removal(qt: &QtThread, shared: &Arc<Shared>, account: &st
     schedule(qt, shared, Work::Remove { account: account.to_string(), file }, line);
 }
 
+/// Runs your mail filters on the inboxes as their preview said, after ten
+/// seconds to undo; what they move leaves the lists meanwhile.
+pub(crate) fn schedule_filters(qt: &QtThread, shared: &Arc<Shared>, planned: Vec<(Account, Vec<sioul_sync::filters::Job>)>, line: String) {
+    schedule(qt, shared, Work::Filters { planned }, line);
+}
+
 /// Leaves one occurrence of a repeating event out, after ten seconds to undo.
 pub(crate) fn schedule_skip(qt: &QtThread, shared: &Arc<Shared>, account: &str, file: PathBuf, start: i64, line: String) {
     schedule(qt, shared, Work::Skip { account: account.to_string(), file, start }, line);
@@ -167,6 +184,25 @@ pub(crate) fn schedule_skip(qt: &QtThread, shared: &Arc<Shared>, account: &str, 
 /// The messages the Porch should not show either.
 pub(crate) fn hidden_files(shared: &Shared) -> BTreeSet<PathBuf> {
     hidden(shared).0
+}
+
+/// Messages seen on their server only (a search's), moved or deleted while "Undo" is offered: their keys.
+pub(crate) fn hidden_keys(shared: &Shared) -> BTreeSet<String> {
+    fn add(work: &Work, keys: &mut BTreeSet<String>) {
+        match work {
+            Work::Batch { remote, action, .. } if moves(action) => keys.extend(remote.iter().map(ServerRef::key)),
+            Work::AcrossRemote { place, .. } => {
+                keys.insert(place.key());
+            }
+            Work::Many(works) => works.iter().for_each(|w| add(w, keys)),
+            _ => {}
+        }
+    }
+    let mut keys = BTreeSet::new();
+    for pending in shared.pending.lock().map(|p| p.clone()).unwrap_or_default() {
+        add(&pending.work, &mut keys);
+    }
+    keys
 }
 
 #[derive(serde::Serialize)]
@@ -242,6 +278,7 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
 
 /// Computes the mail page on a thread and shows it, unless a newer one came first.
 pub(crate) fn show_mail(qt: &QtThread, shared: &Arc<Shared>) {
+    crate::mailsearch::changed(qt, shared);
     let qt = qt.clone();
     crate::backend::coalesced(shared, |s| &s.mail_job, move |shared| {
         let generation = shared.mail_generation.fetch_add(1, Ordering::Relaxed) + 1;
@@ -272,6 +309,9 @@ pub(crate) fn locate(key: &str) -> Option<(Account, PathBuf)> {
 /// spam" brings it back to the inbox; elsewhere, "Spam" moves it into the
 /// Junk folder, "Not spam" leaves it where it is, marked.
 pub(crate) fn act(qt: &QtThread, shared: &Arc<Shared>, key: &str, action: &str, target: &str) {
+    if let Some(place) = ServerRef::parse(key) {
+        return act_on_server(qt, shared, place, action, target);
+    }
     let Some((account, file)) = locate(key) else {
         set_status(qt, tr().text("mail-message-gone", None));
         return;
@@ -296,6 +336,31 @@ pub(crate) fn act(qt: &QtThread, shared: &Arc<Shared>, key: &str, action: &str, 
         Action::Filtered(_) => return,
     };
     schedule(qt, shared, Work::Act { account, file, action }, line);
+}
+
+/// An act on a message seen on its server only (a search's): reading and
+/// flags at once, moves, archiving and the trash with "Undo"; what teaches
+/// the spam filter needs the message here first.
+fn act_on_server(qt: &QtThread, shared: &Arc<Shared>, place: ServerRef, action: &str, target: &str) {
+    let Some(account) = load_config().account(&place.account).filter(|a| a.syncs()).cloned() else {
+        set_status(qt, say("account-unknown", &[("id", place.account.clone())]));
+        return;
+    };
+    let Some(action) = action_of(action, target, false) else { return };
+    let line = match &action {
+        Action::Read(_) | Action::Flag(_) => return act_now_many(qt, shared, Vec::new(), vec![(account, place)], action),
+        Action::Archive => tr().text("undo-archived", None),
+        Action::Trash => tr().text("undo-trashed", None),
+        Action::Move(name) => {
+            let title = mailbox::folders(&account.id).into_iter().find(|f| f.name == *name).map_or_else(|| name.clone(), |f| folder_title(&f));
+            say("undo-moved", &[("folder", title)])
+        }
+        _ => {
+            set_status(qt, tr().text("search-open-first", None));
+            return;
+        }
+    };
+    schedule(qt, shared, Work::Batch { account, files: Vec::new(), remote: vec![place], action }, line);
 }
 
 /// A sender blocked from one of their messages: the message goes into the
@@ -340,15 +405,33 @@ fn in_junk(account: &Account, file: &Path) -> bool {
 /// and "not-spam" as each message's folder asks (`act`).
 pub(crate) fn act_many(qt: &QtThread, shared: &Arc<Shared>, keys: &[String], action: &str) {
     let Some(first) = action_of(action, "", false) else { return };
-    let found: Vec<(Account, PathBuf)> = keys.iter().filter_map(|k| locate(k)).collect();
-    if found.is_empty() {
+    let config = load_config();
+    let found: Vec<(Account, PathBuf)> = keys.iter().filter(|k| !ServerRef::is_key(k)).filter_map(|k| locate(k)).collect();
+    // Seen on their server only (a search's).
+    let remote: Vec<(Account, ServerRef)> = keys.iter().filter_map(|k| ServerRef::parse(k)).filter_map(|p| Some((config.account(&p.account).filter(|a| a.syncs())?.clone(), p))).collect();
+    if found.is_empty() && remote.is_empty() {
         set_status(qt, tr().text("mail-message-gone", None));
         return;
     }
     if !moves(&first) {
-        for (account, file) in found {
-            act_now(qt, shared, account, file, first.clone());
-        }
+        act_now_many(qt, shared, found, remote, first);
+        return;
+    }
+    // Archiving and the trash: one connection per account, the messages of a folder as one set.
+    if matches!(first, Action::Archive | Action::Trash) {
+        let in_trash = !found.is_empty() && remote.is_empty() && found.iter().all(|(account, file)| mailbox::folder_of(account, file).is_some_and(|f| f.role == Role::Trash));
+        let n = found.len() + remote.len();
+        let id = match (&first, in_trash) {
+            (Action::Archive, _) => "undo-many-archived",
+            (_, true) => "undo-many-deleted",
+            _ => "undo-many-trashed",
+        };
+        let works = batches(found, remote, &first);
+        schedule(qt, shared, Work::Many(works), say(id, &[("n", n.to_string())]));
+        return;
+    }
+    if found.is_empty() {
+        set_status(qt, tr().text("search-open-first", None));
         return;
     }
     let in_trash = found.iter().all(|(account, file)| mailbox::folder_of(account, file).is_some_and(|f| f.role == Role::Trash));
@@ -373,34 +456,61 @@ pub(crate) fn act_many(qt: &QtThread, shared: &Arc<Shared>, keys: &[String], act
     schedule(qt, shared, Work::Many(works), line);
 }
 
-/// Messages dropped on a folder, of their account or of another one.
+/// Messages of several accounts, kept here or seen on their server only, as
+/// one batch per account (`Work::Batch`).
+fn batches(found: Vec<(Account, PathBuf)>, remote: Vec<(Account, ServerRef)>, action: &Action) -> Vec<Work> {
+    let mut by_account: BTreeMap<String, (Account, Vec<PathBuf>, Vec<ServerRef>)> = BTreeMap::new();
+    for (account, file) in found {
+        by_account.entry(account.id.clone()).or_insert_with(|| (account, Vec::new(), Vec::new())).1.push(file);
+    }
+    for (account, place) in remote {
+        by_account.entry(account.id.clone()).or_insert_with(|| (account, Vec::new(), Vec::new())).2.push(place);
+    }
+    by_account.into_values().map(|(account, files, remote)| Work::Batch { account, files, remote, action: action.clone() }).collect()
+}
+
+/// Messages dropped on a folder, of their account or of another one: those
+/// of its account in one connection, a folder's as one set (`UID MOVE`);
+/// those of another one copied there first, then taken off theirs.
 pub(crate) fn move_many(qt: &QtThread, shared: &Arc<Shared>, keys: &[String], account: &str, folder: &str) {
     let config = load_config();
     let Some(to) = config.account(account).filter(|a| a.syncs()).cloned() else {
         set_status(qt, say("account-unknown", &[("id", account.to_string())]));
         return;
     };
-    let works: Vec<Work> = keys
-        .iter()
-        .filter_map(|k| locate(k))
-        // Already there: nothing to do.
-        .filter(|(from, file)| from.id != to.id || mailbox::folder_of(from, file).is_none_or(|f| f.name != folder))
-        .map(|(from, file)| {
-            if from.id == to.id {
-                Work::Act { account: from, file, action: Action::Move(folder.to_string()) }
-            } else {
-                Work::Across { from, file, to: to.clone(), folder: folder.to_string() }
+    let (mut files, mut remote, mut across) = (Vec::new(), Vec::new(), Vec::new());
+    for key in keys {
+        if let Some(place) = ServerRef::parse(key) {
+            // Already there: nothing to do.
+            if place.account == to.id {
+                if place.folder != folder {
+                    remote.push(place);
+                }
+            } else if let Some(from) = config.account(&place.account).filter(|a| a.syncs()) {
+                across.push(Work::AcrossRemote { from: from.clone(), place, to: to.clone(), folder: folder.to_string() });
             }
-        })
-        .collect();
-    if works.is_empty() {
+        } else if let Some((from, file)) = locate(key) {
+            if from.id != to.id {
+                across.push(Work::Across { from, file, to: to.clone(), folder: folder.to_string() });
+            } else if mailbox::folder_of(&from, &file).is_none_or(|f| f.name != folder) {
+                files.push(file);
+            }
+        }
+    }
+    let count = files.len() + remote.len() + across.len();
+    if count == 0 {
         return;
     }
+    let crossing = !across.is_empty();
+    let mut works = across;
+    if !files.is_empty() || !remote.is_empty() {
+        works.insert(0, Work::Batch { account: to.clone(), files, remote, action: Action::Move(folder.to_string()) });
+    }
     let title = mailbox::folders(&to.id).into_iter().find(|f| f.name == folder).map_or_else(|| folder.to_string(), |f| folder_title(&f));
-    let n = works.len().to_string();
-    let line = if works.iter().any(|w| matches!(w, Work::Across { .. })) {
+    let n = count.to_string();
+    let line = if crossing {
         say("undo-moved-across", &[("n", n), ("folder", title), ("account", to.address.clone().unwrap_or_else(|| to.id.clone()))])
-    } else if works.len() > 1 {
+    } else if count > 1 {
         say("undo-many-moved", &[("n", n), ("folder", title)])
     } else {
         say("undo-moved", &[("folder", title)])
@@ -430,6 +540,47 @@ fn act_now(qt: &QtThread, shared: &Arc<Shared>, account: Account, file: PathBuf,
             show_mail(&qt, &shared);
         }
     });
+}
+
+/// Reading and flagging several messages: shown at once, then each
+/// account's server told in one connection; put back where it refuses.
+fn act_now_many(qt: &QtThread, shared: &Arc<Shared>, found: Vec<(Account, PathBuf)>, remote: Vec<(Account, ServerRef)>, action: Action) {
+    let letters = |before: &str| match &action {
+        Action::Read(true) => format!("{before}S"),
+        Action::Read(false) => before.replace('S', ""),
+        Action::Flag(true) => format!("{before}F"),
+        Action::Flag(false) => before.replace('F', ""),
+        _ => before.to_string(),
+    };
+    type Marks = (Account, Vec<(PathBuf, String)>, Vec<ServerRef>);
+    let mut by_account: BTreeMap<String, Marks> = BTreeMap::new();
+    for (account, file) in found {
+        let before = maildir::flags_of(&file);
+        let file = maildir::set_flags(&file, &letters(&before)).unwrap_or(file);
+        by_account.entry(account.id.clone()).or_insert_with(|| (account, Vec::new(), Vec::new())).1.push((file, before));
+    }
+    for (account, place) in remote {
+        by_account.entry(account.id.clone()).or_insert_with(|| (account, Vec::new(), Vec::new())).2.push(place);
+    }
+    let keys: Vec<String> = by_account.values().flat_map(|(_, _, remote)| remote.iter().map(ServerRef::key)).collect();
+    crate::mailsearch::marked(&keys, letters);
+    show_mail(qt, shared);
+    for (account, files, remote) in by_account.into_values() {
+        let (qt, shared, action) = (qt.clone(), Arc::clone(shared), action.clone());
+        std::thread::spawn(move || {
+            let paths: Vec<PathBuf> = files.iter().map(|(file, _)| file.clone()).collect();
+            let pairs: Vec<(String, sioul_core::card::ImapOrigin)> = remote.iter().map(|p| (p.folder.clone(), p.origin)).collect();
+            if let Err(e) = secret::password(&account).and_then(|p| mailbox::act_many(&account, &p, &paths, &pairs, &action)) {
+                for (file, before) in &files {
+                    if let Some(now) = maildir::locate(file) {
+                        let _ = maildir::set_flags(&now, before);
+                    }
+                }
+                tell(&qt, &shared, e.sentence(tr(), &account.id));
+                show_mail(&qt, &shared);
+            }
+        });
+    }
 }
 
 /// Opening a message marks it read, except while the window takes its own pictures.
@@ -564,6 +715,29 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
                 Err(e) => Some(e.sentence(tr(), &from.id)),
             }
         }
+        Work::Batch { account, files, remote, action } => {
+            let pairs: Vec<(String, sioul_core::card::ImapOrigin)> = remote.iter().map(|p| (p.folder.clone(), p.origin)).collect();
+            match secret::password(account).and_then(|p| mailbox::act_many(account, &p, files, &pairs, action)) {
+                Ok(()) => {
+                    nudge(shared, &account.id);
+                    crate::mailsearch::forget(&remote.iter().map(ServerRef::key).collect::<Vec<_>>());
+                    None
+                }
+                Err(e) => Some(e.sentence(tr(), &account.id)),
+            }
+        }
+        Work::AcrossRemote { from, place, to, folder } => {
+            let moved = secret::password(from).and_then(|p| secret::password(to).and_then(|q| mailbox::move_across_from_server(from, &p, &place.folder, place.origin, to, &q, folder)));
+            match moved {
+                Ok(()) => {
+                    nudge(shared, &from.id);
+                    nudge(shared, &to.id);
+                    crate::mailsearch::forget(&[place.key()]);
+                    None
+                }
+                Err(e) => Some(e.sentence(tr(), &from.id)),
+            }
+        }
         // Each in turn; the first problem is said, the others are still done.
         Work::Many(works) => works.iter().filter_map(|w| perform(w, shared)).collect::<Vec<_>>().into_iter().next(),
         Work::Send { draft } => Some(send_now(draft, shared)),
@@ -582,6 +756,13 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
         },
         Work::Rest { .. } | Work::Untrash { .. } | Work::Back { .. } => None,
         Work::Unsubscribe { list, sender, account, way } => Some(unsubscribe_now(list, sender, account, way, shared)),
+        Work::Filters { planned } => {
+            let said = crate::filters::perform(planned);
+            for (account, _) in planned {
+                nudge(shared, &account.id);
+            }
+            said
+        }
         Work::Skip { account, file, start } => {
             let skipped = std::fs::read_to_string(file).ok().and_then(|text| sioul_core::agenda::skip_occurrence(&text, *start));
             match skipped.map(|text| sioul_core::vdir::write_item(file, &text)) {
@@ -795,7 +976,7 @@ pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>) -> Option<String> {
             crate::pim::show_pim(qt, shared);
             (problem.unwrap_or_else(|| tr().text("undo-done", None)), None)
         }
-        Work::Act { .. } | Work::Across { .. } | Work::Many(_) | Work::Unsubscribe { .. } => (tr().text("undo-done", None), None),
+        Work::Act { .. } | Work::Across { .. } | Work::Batch { .. } | Work::AcrossRemote { .. } | Work::Many(_) | Work::Unsubscribe { .. } | Work::Filters { .. } => (tr().text("undo-done", None), None),
     };
     tell(qt, shared, line);
     draft
@@ -1015,6 +1196,7 @@ pub(crate) fn send(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Option<Stri
 pub(crate) fn discard(qt: &QtThread, shared: &Arc<Shared>, id: &str) {
     schedule(qt, shared, Work::Discard { draft: id.to_string() }, tr().text("undo-discarded", None));
 }
+
 
 /// The writing window closed: an untouched draft goes, a written one stays in Drafts.
 pub(crate) fn closed(qt: &QtThread, shared: &Arc<Shared>, id: &str) {

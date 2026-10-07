@@ -5,7 +5,9 @@
 // folders on the left, the main ones in view and the others folded; a folder's
 // last two weeks in the middle, without previews, a small dot for the unread;
 // a message on the right, the folders folding away while you read. No counts,
-// no badges. Right click on a message for what is not in view.
+// no badges. Right click on a message for what is not in view. "More…" beside
+// the search opens the search by conditions in the folders' place
+// (MailSearch.qml): its results in the same list, dragged onto folders as any.
 
 pragma ComponentBehavior: Bound
 
@@ -32,6 +34,8 @@ Item {
             page.mailFolderText = page.sioul.mailFolder
         if (page.visible)
             page.mailAccountsText = page.sioul.mailAccounts
+        if (page.visible)
+            page.searchText = page.sioul.mailSearch
     }
 
     Connections {
@@ -44,6 +48,9 @@ Item {
             page.takeShown()
         }
         function onMailAccountsChanged() {
+            page.takeShown()
+        }
+        function onMailSearchChanged() {
             page.takeShown()
         }
     }
@@ -72,12 +79,16 @@ Item {
     property bool foldersShown: false
     // Every account resting (quiet time) and none chosen: no list, the line saying so.
     readonly property bool allResting: page.account === "" && !page.draftsShown && page.accounts.length > 0 && page.accounts.every(a => a.resting)
-    readonly property bool canGoBack: page.openKey !== "" || page.foldersShown
+    readonly property bool canGoBack: page.openKey !== "" || page.foldersShown || page.searchOpen
     function back() {
         if (page.openKey !== "")
             page.openKey = ""
-        else
+        else if (page.foldersShown)
             page.foldersShown = false
+        else if (page.searchOpen && !page.searchFormShown)
+            page.searchFormShown = true
+        else if (page.searchOpen)
+            page.closeSearch()
     }
     readonly property var opened: findItem(page.openKey)
     // Accounts unfolded by hand; the first one is unfolded at first.
@@ -92,15 +103,37 @@ Item {
     // Messages being dragged onto a folder.
     property bool dragging: false
     property var dragKeys: []
+    // The search by conditions: open (its column in the folders' place, what
+    // it finds in the list), made once asked for; on a phone, its fields or
+    // its results, one at a time.
+    property bool searchOpen: false
+    property bool searchMade: false
+    property bool searchFormShown: false
+    property string searchText: ""
+    readonly property var found: page.searchText ? JSON.parse(page.searchText) : null
+    // The list's rows: the folder's, or what the search found.
+    readonly property var listItems: page.searchOpen ? (page.found && page.found.items ? page.found.items : []) : (page.shown ? page.shown.items : [])
+    // What the rows are in: a folder's purpose ("trash"…); none for a search's, each row its own.
+    readonly property string listRole: page.searchOpen || !page.shown ? "" : page.shown.role
+    // A message being brought from its server, opened once here.
+    property string bringing: ""
+    // A selection begun from a row's menu (on a touch screen, a long press):
+    // a tap then chooses, as Ctrl+click does.
+    property bool choosing: false
+    // Where "Move to…" leaves out: the folder its messages are in, when they share one.
+    property string moveFromAccount: ""
+    property string moveFromFolder: ""
 
     function rowShown(item) {
         return !item.member || page.threadsOpen[item.thread] === true
     }
 
-    // A click: alone, it opens the message; with Ctrl, it adds it to the
-    // selection or takes it out; with Shift, everything from the last one clicked.
+    // A click: alone, it opens the message; with Ctrl (or once a selection was
+    // begun from a row's menu), it adds it to the selection or takes it out;
+    // with Shift, everything from the last one clicked. A message the search
+    // found on its server only is brought here first.
     function clickRow(index, key, modifiers) {
-        if (modifiers & Qt.ControlModifier) {
+        if ((modifiers & Qt.ControlModifier) || (page.choosing && !(modifiers & Qt.ShiftModifier))) {
             const next = Object.assign({}, page.selected)
             if (next[key])
                 delete next[key]
@@ -108,11 +141,12 @@ Item {
                 next[key] = true
             page.selected = next
             page.anchorIndex = index
+            page.choosing = page.choosing && Object.keys(next).length > 0
             return
         }
-        if ((modifiers & Qt.ShiftModifier) && page.anchorIndex >= 0 && page.shown) {
+        if ((modifiers & Qt.ShiftModifier) && page.anchorIndex >= 0) {
             const next = {}
-            const items = page.shown.items
+            const items = page.listItems
             for (let i = Math.min(page.anchorIndex, index); i <= Math.max(page.anchorIndex, index) && i < items.length; i++)
                 if (page.rowShown(items[i]))
                     next[items[i].key] = true
@@ -120,14 +154,34 @@ Item {
             return
         }
         page.selected = ({})
+        page.choosing = false
         page.anchorIndex = index
         page.fromLink = false
+        const item = page.listItems[index]
+        if (item && item.server) {
+            page.bringing = key
+            page.sioul.bringMessage(key)
+            return
+        }
         page.openKey = key
+    }
+
+    // A row's menu, "Select": the selection begins with it; then a tap chooses.
+    function beginChoosing(key) {
+        const next = Object.assign({}, page.selected)
+        next[key] = true
+        page.selected = next
+        page.choosing = true
+    }
+
+    function clearSelection() {
+        page.selected = ({})
+        page.choosing = false
     }
 
     function selectAll() {
         const next = {}
-        for (const item of page.shown ? page.shown.items : [])
+        for (const item of page.listItems)
             if (page.rowShown(item))
                 next[item.key] = true
         page.selected = next
@@ -148,13 +202,69 @@ Item {
 
     function dropOn(account, folder) {
         page.sioul.moveMessages(JSON.stringify(page.dragKeys), account, folder)
-        page.selected = ({})
+        page.clearSelection()
+    }
+
+    // "Move to…" for `keys`: the folder they are in left out of the choices, when they share one.
+    function askMove(keys) {
+        page.dragKeys = keys
+        const items = page.listItems.filter(item => keys.indexOf(item.key) >= 0)
+        const one = items.length > 0 && items.every(item => (item.account || page.account) === (items[0].account || page.account) && (item.folder || page.folder) === (items[0].folder || page.folder))
+        page.moveFromAccount = one ? (items[0].account || page.account) : ""
+        page.moveFromFolder = one ? (items[0].folder || page.folder) : ""
+        moveDialog.now().open()
+    }
+
+    // For the window's pictures: the first `n` rows chosen, as a long press,
+    // "Select", then a tap would.
+    function chooseFirst(n) {
+        const items = page.listItems
+        if (items.length === 0)
+            return
+        page.beginChoosing(items[0].key)
+        for (let i = 1; i < Math.min(n, items.length); i++)
+            page.clickRow(i, items[i].key, 0)
+    }
+
+    // For the window's pictures: messages held over the first folder of a
+    // purpose ("archive"), as a drag holds them; never let go there.
+    function holdOver(keys, role) {
+        page.dragKeys = keys
+        page.dragging = true
+        Qt.callLater(() => {
+            const row = page.findNamed(folderColumn, "folder:" + role + ":")
+            if (row) {
+                const at = row.mapToItem(page, Math.round(row.width / 2), Math.round(row.height / 2))
+                ghost.x = at.x
+                ghost.y = at.y
+            }
+        })
+    }
+
+    // The drag held for a picture ends without a drop: nothing moves.
+    function letGo() {
+        page.dragging = false
+    }
+
+    function closeMove() {
+        moveDialog.close()
+    }
+
+    function findNamed(item, prefix) {
+        if (item.visible && item.objectName && item.objectName.indexOf(prefix) === 0)
+            return item
+        for (let i = 0; i < item.children.length; i++) {
+            const found = page.findNamed(item.children[i], prefix)
+            if (found)
+                return found
+        }
+        return null
     }
 
     // For the window's tests: messages chosen by words of their subjects, as Ctrl+click would.
     function selectBySubjects(words) {
         const next = {}
-        for (const item of page.shown ? page.shown.items : [])
+        for (const item of page.listItems)
             if (words.some(w => item.subject.indexOf(w) >= 0))
                 next[item.key] = true
         page.selected = next
@@ -167,7 +277,7 @@ Item {
 
     function unfoldConversations() {
         const next = {}
-        for (const item of page.shown ? page.shown.items : [])
+        for (const item of page.listItems)
             if (item.size > 1)
                 next[item.thread] = true
         page.threadsOpen = next
@@ -175,25 +285,74 @@ Item {
 
     function actOnSelection(action) {
         page.sioul.actMany(JSON.stringify(page.selectedKeys), action)
-        page.selected = ({})
+        page.clearSelection()
     }
 
-    // A message keeps the start of its file name when reading or flagging it renames it.
+    // A message keeps the start of its file name when reading or flagging it
+    // renames it; one seen on its server only is known by its whole key.
     function sameMessage(a, b) {
-        return a !== "" && b !== "" && a.split(/[\/\\]/).pop().split(/[:!]/)[0] === b.split(/[\/\\]/).pop().split(/[:!]/)[0]
+        if (a === "" || b === "")
+            return false
+        if (a.indexOf("imap://") === 0 || b.indexOf("imap://") === 0)
+            return a === b
+        return a.split(/[\/\\]/).pop().split(/[:!]/)[0] === b.split(/[\/\\]/).pop().split(/[:!]/)[0]
     }
 
     function findItem(key) {
-        if (!key || !page.shown)
+        if (!key)
             return null
-        for (const item of page.shown.items)
+        for (const item of page.listItems)
             if (page.sameMessage(item.key, key))
                 return item
         return null
     }
 
+    // The search opens in the folders' place, with what the quick search held.
+    function openSearch() {
+        page.searchMade = true
+        page.searchOpen = true
+        page.searchFormShown = page.window.compact
+        page.clearSelection()
+        page.openKey = ""
+        page.foldersShown = false
+        searchLoader.item.start(page.query)
+    }
+
+    // The same, its conditions given (the window's pictures): [{field, test, value, until}].
+    function searchWith(conditions, any) {
+        page.searchMade = true
+        page.searchOpen = true
+        page.searchFormShown = page.window.compact
+        page.clearSelection()
+        page.openKey = ""
+        searchLoader.item.startWith(conditions, any)
+    }
+
+    // "Clear": the folder again.
+    function closeSearch() {
+        searchWait.stop()
+        page.searchOpen = false
+        page.searchFormShown = false
+        page.clearSelection()
+        page.openKey = ""
+        page.bringing = ""
+        page.sioul.clearMailSearch()
+    }
+
+    // A condition changed: the mail here at once, after a short pause in typing.
+    function runSearch(now) {
+        if (now) {
+            searchWait.stop()
+            page.sioul.searchMail(searchLoader.item.json(), true)
+        } else {
+            searchWait.restart()
+        }
+    }
+
     function openFolder(account, folder) {
-        page.selected = ({})
+        if (page.searchOpen)
+            page.closeSearch()
+        page.clearSelection()
         page.anchorIndex = -1
         page.fromLink = false
         page.account = account
@@ -233,7 +392,7 @@ Item {
 
     // A message by its subject, for the window's tests.
     function openSubject(text) {
-        for (const item of page.shown ? page.shown.items : [])
+        for (const item of page.listItems)
             if (item.subject.indexOf(text) >= 0) {
                 page.openKey = item.key
                 return
@@ -242,8 +401,8 @@ Item {
 
     // The first message of the folder, for the window's images.
     function openFirst() {
-        if (page.shown && page.shown.items.length > 0)
-            page.openKey = page.shown.items[0].key
+        if (page.listItems.length > 0)
+            page.openKey = page.listItems[0].key
     }
 
     // The page's settings, open or not, scrolled to one of them, and their picture: for the window's images.
@@ -269,8 +428,21 @@ Item {
 
     // A message filed away leaves the folder: the reader closes with it.
     onShownChanged: {
-        if (page.openKey !== "" && !page.fromLink && page.shown !== null && page.findItem(page.openKey) === null)
+        if (!page.searchOpen && page.openKey !== "" && !page.fromLink && page.shown !== null && page.findItem(page.openKey) === null)
             page.openKey = ""
+    }
+
+    // The search's results: a message brought from its server opens; one moved away closes.
+    onFoundChanged: {
+        if (!page.searchOpen || page.found === null)
+            return
+        if (page.found.brought && page.found.brought.from === page.bringing) {
+            page.bringing = ""
+            page.fromLink = false
+            page.openKey = page.found.brought.to
+        } else if (page.openKey !== "" && !page.fromLink && page.findItem(page.openKey) === null) {
+            page.openKey = ""
+        }
     }
 
     // Searching waits for a pause in typing.
@@ -279,6 +451,14 @@ Item {
 
         interval: 300
         onTriggered: page.sioul.openFolder(page.account, page.folder, page.all, page.query)
+    }
+
+    // The search by conditions, too.
+    Timer {
+        id: searchWait
+
+        interval: 300
+        onTriggered: page.sioul.searchMail(searchLoader.item.json(), false)
     }
 
     RowLayout {
@@ -292,10 +472,11 @@ Item {
         ScrollView {
             id: folderColumn
 
-            visible: page.window.compact ? (page.foldersShown || page.allResting) && page.openKey === "" : page.openKey === "" || page.dragging
+            visible: page.window.compact ? (page.foldersShown || page.allResting) && page.openKey === "" && !page.searchOpen : (page.openKey === "" && !page.searchOpen) || page.dragging
             Layout.fillHeight: true
             Layout.fillWidth: page.window.compact
-            Layout.preferredWidth: 230
+            // As wide as the search, whose place it takes during a drag: the list does not move.
+            Layout.preferredWidth: page.searchOpen ? 290 : 230
             contentWidth: availableWidth
 
             ColumnLayout {
@@ -410,6 +591,8 @@ Item {
 
                                 required property var modelData
 
+                                // Found by the window's pictures: "folder:<purpose>:<account>:<name>".
+                                objectName: "folder:" + folderRow.modelData.role + ":" + accountBlock.modelData.id + ":" + folderRow.modelData.name
                                 Layout.fillWidth: true
                                 leftPadding: 22
                                 highlighted: !page.draftsShown && page.account === accountBlock.modelData.id && page.folder === folderRow.modelData.name
@@ -498,10 +681,34 @@ Item {
             }
         }
 
+        // The search by conditions, in the folders' place: made when first asked for.
+        Loader {
+            id: searchLoader
+
+            active: page.searchMade
+            visible: page.searchOpen && (page.window.compact ? page.searchFormShown && page.openKey === "" : page.openKey === "" && !page.dragging)
+            Layout.fillHeight: true
+            Layout.fillWidth: page.window.compact
+            Layout.preferredWidth: 290
+
+            sourceComponent: Component {
+                MailSearch {
+                    sioul: page.sioul
+                    theme: page.theme
+                    compact: page.window.compact
+                    filterOffered: typeof page.window.newFilterFrom === "function"
+                    onChanged: now => page.runSearch(now)
+                    onClearRequested: page.closeSearch()
+                    onShowRequested: page.searchFormShown = false
+                    onFilterRequested: conditions => page.window.newFilterFrom(conditions)
+                }
+            }
+        }
+
         // Quiet time, and only work addresses: nothing opens by itself.
         Label {
             // On a phone, the folders take its place: an account can still be opened.
-            visible: page.allResting && !page.window.compact
+            visible: page.allResting && !page.window.compact && !page.searchOpen
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
             Layout.topMargin: page.theme.gap
@@ -514,7 +721,7 @@ Item {
         ColumnLayout {
             id: listColumn
 
-            visible: !page.allResting && !(page.window.compact && (page.openKey !== "" || page.foldersShown))
+            visible: !(page.allResting && !page.searchOpen) && !(page.window.compact && (page.openKey !== "" || page.foldersShown || (page.searchOpen && page.searchFormShown)))
             Layout.fillHeight: true
             Layout.fillWidth: page.openKey === ""
             Layout.minimumWidth: 0
@@ -530,17 +737,22 @@ Item {
                     theme: page.theme
                     compact: true
                     iconName: "go-previous"
-                    label: page.sioul.text("ui-folders")
+                    label: page.sioul.text(page.searchOpen ? "search-back" : "ui-folders")
                     onClicked: page.openKey = ""
                 }
-                // A phone shows the folders on their own, when asked.
+                // A phone shows the folders on their own, when asked; the search's fields, while searching.
                 ActionButton {
                     visible: page.window.compact && page.openKey === ""
                     theme: page.theme
                     compact: true
-                    iconName: "folder-mail"
-                    label: page.sioul.text("ui-folders")
-                    onClicked: page.foldersShown = true
+                    iconName: page.searchOpen ? "system-search" : "folder-mail"
+                    label: page.sioul.text(page.searchOpen ? "search-change" : "ui-folders")
+                    onClicked: {
+                        if (page.searchOpen)
+                            page.searchFormShown = true
+                        else
+                            page.foldersShown = true
+                    }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -548,14 +760,15 @@ Item {
 
                     Label {
                         Layout.fillWidth: true
-                        text: page.draftsShown ? page.sioul.text("ui-drafts-here") : page.shown ? page.shown.title : ""
+                        // A search's list: "Results", the column beside it being "Search".
+                        text: page.draftsShown ? page.sioul.text("ui-drafts-here") : page.searchOpen ? page.sioul.text("search-results") : page.shown ? page.shown.title : ""
                         textFormat: Text.PlainText
                         font.pixelSize: 19
                         elide: Text.ElideRight
                         color: page.theme.text
                     }
                     Label {
-                        visible: !page.draftsShown
+                        visible: !page.draftsShown && !page.searchOpen
                         Layout.fillWidth: true
                         text: page.account
                         font.pixelSize: 12
@@ -564,13 +777,17 @@ Item {
                     }
                 }
                 SearchField {
-                    visible: !page.draftsShown && !page.window.compact
+                    visible: !page.draftsShown && !page.window.compact && !page.searchOpen
                     // Narrower when the reader takes the room: a width of its own
                     // would push the row past the column, under the reader.
                     Layout.fillWidth: true
                     Layout.preferredWidth: 200
                     Layout.maximumWidth: 200
                     Layout.minimumWidth: 90
+                }
+                // The search by conditions, when needed: in words, out of the way.
+                MoreButton {
+                    visible: !page.draftsShown && !page.window.compact && !page.searchOpen
                 }
                 CheckBox {
                     id: realtime
@@ -595,29 +812,45 @@ Item {
             }
 
             // On a phone, the search on a line of its own: the folder's name keeps the first.
-            SearchField {
-                visible: !page.draftsShown && page.window.compact
+            RowLayout {
+                visible: !page.draftsShown && page.window.compact && !page.searchOpen
                 Layout.fillWidth: true
+                spacing: 6
+
+                SearchField {
+                    Layout.fillWidth: true
+                }
+                MoreButton {}
             }
             Label {
-                visible: !page.draftsShown && page.shown !== null && page.shown.sentence !== ""
+                visible: !page.draftsShown && (page.searchOpen ? page.found !== null && page.found.sentence !== "" : page.shown !== null && page.shown.sentence !== "")
                 Layout.fillWidth: true
-                text: page.shown ? page.shown.sentence : ""
+                text: page.searchOpen ? (page.found ? page.found.sentence : "") : page.shown ? page.shown.sentence : ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: page.searchOpen ? page.theme.text : page.theme.muted
+            }
+            // What the search found, here and on the servers, in words.
+            Label {
+                visible: page.searchOpen && page.found !== null && page.found.status !== ""
+                Layout.fillWidth: true
+                text: page.found ? page.found.status : ""
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: page.theme.muted
             }
 
-            // What is chosen, and what can be done to all of it at once.
-            RowLayout {
+            // What is chosen, and what can be done to all of it at once; on a phone, over two lines.
+            Flow {
                 visible: !page.draftsShown && page.selectedKeys.length > 0
                 Layout.fillWidth: true
                 spacing: 6
 
                 Label {
-                    Layout.fillWidth: true
+                    height: archiveChosen.height
+                    verticalAlignment: Text.AlignVCenter
+                    rightPadding: 6
                     text: page.sioul.textWith("ui-selected", "n", String(page.selectedKeys.length))
-                    elide: Text.ElideRight
                     color: page.theme.text
                 }
                 Button {
@@ -625,27 +858,26 @@ Item {
                     onClicked: page.actOnSelection("read")
                 }
                 Button {
-                    visible: page.shown !== null && page.shown.role !== "archive"
+                    id: archiveChosen
+
+                    visible: page.listRole !== "archive"
                     text: page.sioul.text("ui-archive")
                     onClicked: page.actOnSelection("archive")
                 }
                 Button {
-                    text: page.shown && page.shown.role === "trash" ? page.sioul.text("ui-delete-for-good") : page.sioul.text("ui-trash")
+                    text: page.listRole === "trash" ? page.sioul.text("ui-delete-for-good") : page.sioul.text("ui-trash")
                     onClicked: page.actOnSelection("trash")
                 }
                 Button {
                     text: page.sioul.text("ui-move-to")
-                    onClicked: {
-                        page.dragKeys = page.selectedKeys
-                        moveDialog.now().open()
-                    }
+                    onClicked: page.askMove(page.selectedKeys)
                 }
                 ToolButton {
                     text: "×"
                     Accessible.name: page.sioul.text("ui-clear-selection")
                     ToolTip.visible: hovered
                     ToolTip.text: page.sioul.text("ui-clear-selection")
-                    onClicked: page.selected = ({})
+                    onClicked: page.clearSelection()
                 }
             }
 
@@ -657,14 +889,14 @@ Item {
                 Layout.fillHeight: true
                 clip: true
                 spacing: 0
-                model: page.shown ? page.shown.items : []
+                model: page.listItems
                 ScrollBar.vertical: ScrollBar {}
                 Keys.onPressed: event => {
                     if (event.matches(StandardKey.SelectAll)) {
                         page.selectAll()
                         event.accepted = true
                     } else if (event.key === Qt.Key_Escape && page.selectedKeys.length > 0) {
-                        page.selected = ({})
+                        page.clearSelection()
                         event.accepted = true
                     }
                 }
@@ -688,8 +920,19 @@ Item {
                     leftPadding: row.modelData.member ? 40 : 10
                     topInset: 1
                     bottomInset: 1
+                    ToolTip.visible: row.modelData.server === true && row.hovered
+                    ToolTip.text: page.sioul.text("search-on-server-tip")
+                    ToolTip.delay: 800
                     Keys.onReturnPressed: page.clickRow(row.index, row.modelData.key, 0)
                     Keys.onEnterPressed: page.clickRow(row.index, row.modelData.key, 0)
+                    // The keyboard's way to the row's menu ("Move to…" among it): the Menu key, Shift+F10.
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
+                            row.Window.window.menuAt = row.mapToItem(null, 24, row.height / 2)
+                            rowMenu.now().show(row.modelData, row.index)
+                            event.accepted = true
+                        }
+                    }
 
                     background: Rectangle {
                         color: row.chosen ? page.theme.hover : row.highlighted || row.hovered ? page.theme.surface : "transparent"
@@ -705,13 +948,13 @@ Item {
                     // On a touch screen, the menu comes at a long press; letting go then opens nothing.
                     onPressAndHold: {
                         row.Window.window.menuAt = row.mapToItem(null, row.pressX, row.pressY)
-                        rowMenu.now().show(row.modelData)
+                        rowMenu.now().show(row.modelData, row.index)
                     }
                     TapHandler {
                         acceptedButtons: Qt.RightButton
                         // A touch has no buttons: on a touch screen, the row's long press.
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onTapped: rowMenu.now().show(row.modelData)
+                        onTapped: rowMenu.now().show(row.modelData, row.index)
                     }
                     // Dragged sideways, towards the folders: the row, or the selection it is in.
                     // With a mouse only: on a touch screen a drag scrolls the list.
@@ -798,19 +1041,48 @@ Item {
                                 font.pixelSize: 13
                             }
                         }
-                        Label {
+                        RowLayout {
                             Layout.fillWidth: true
                             Layout.leftMargin: 15
-                            text: row.modelData.subject
+                            spacing: 8
+
+                            Label {
+                                Layout.fillWidth: true
+                                // The room left: a long subject is cut, never widens the list.
+                                Layout.preferredWidth: 0
+                                text: row.modelData.subject
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                color: page.theme.text
+                            }
+                            // A search's row: where it is ("Inbox · noa@example.com", "… · on the server").
+                            Label {
+                                visible: !!row.modelData.place && !page.window.compact
+                                Layout.maximumWidth: Math.round(row.width * 0.45)
+                                text: row.modelData.place || ""
+                                textFormat: Text.PlainText
+                                elide: Text.ElideMiddle
+                                font.pixelSize: 12
+                                color: page.theme.muted
+                            }
+                        }
+                        // On a phone, where it is goes under the subject, whole.
+                        Label {
+                            visible: !!row.modelData.place && page.window.compact
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 0
+                            Layout.leftMargin: 15
+                            text: row.modelData.place || ""
                             textFormat: Text.PlainText
-                            elide: Text.ElideRight
-                            color: page.theme.text
+                            elide: Text.ElideMiddle
+                            font.pixelSize: 12
+                            color: page.theme.muted
                         }
                     }
                 }
 
                 footer: Button {
-                    visible: page.shown !== null && page.shown.earlier
+                    visible: !page.searchOpen && page.shown !== null && page.shown.earlier
                     height: visible ? implicitHeight + 16 : 0
                     flat: true
                     text: page.sioul.text("ui-earlier")
@@ -943,8 +1215,8 @@ Item {
 
                 sioul: page.sioul
                 theme: page.theme
-                fromAccount: page.account
-                fromFolder: page.folder
+                fromAccount: page.moveFromAccount
+                fromFolder: page.moveFromFolder
                 onChosen: (account, folder) => page.dropOn(account, folder)
             }
         }
@@ -1148,18 +1420,35 @@ Item {
 
                 property var target: null
                 property var source: null
+                property int index: -1
+                // Seen on its server only: what needs it here waits until it is opened.
+                readonly property bool remote: rowMenuForm.target !== null && rowMenuForm.target.server === true
+                // Its folder's purpose: the folder's, or, for a search's row, its own.
+                readonly property string role: rowMenuForm.target && rowMenuForm.target.role ? rowMenuForm.target.role : page.listRole
 
-                function show(item) {
+                function show(item, index) {
                     rowMenuForm.target = item
-                    rowMenuForm.source = { uri: page.sioul.uriOf("mail", item.key), kind: "mail", key: item.key, title: item.subject, name: item.who, address: item.address, known: false }
+                    rowMenuForm.index = index
+                    rowMenuForm.source = item.server ? null : { uri: page.sioul.uriOf("mail", item.key), kind: "mail", key: item.key, title: item.subject, name: item.who, address: item.address, known: false }
                     rowMenuForm.popup()
                 }
 
+                // A selection begins here: then a tap chooses (on a touch screen, after a long press).
                 MenuItem {
+                    visible: rowMenuForm.target !== null && page.selected[rowMenuForm.target.key] !== true
+                    height: visible ? implicitHeight : 0
+                    text: page.sioul.text("ui-select")
+                    onTriggered: page.beginChoosing(rowMenuForm.target.key)
+                }
+                MenuItem {
+                    visible: !rowMenuForm.remote
+                    height: visible ? implicitHeight : 0
                     text: page.sioul.text("ui-reply")
                     onTriggered: page.window.compose("reply", rowMenuForm.target.key)
                 }
                 MenuItem {
+                    visible: !rowMenuForm.remote
+                    height: visible ? implicitHeight : 0
                     text: page.sioul.text("ui-forward")
                     onTriggered: page.window.compose("forward", rowMenuForm.target.key)
                 }
@@ -1174,28 +1463,28 @@ Item {
                 }
                 MenuSeparator {}
                 MenuItem {
-                    visible: page.shown !== null && page.shown.role !== "archive"
+                    visible: rowMenuForm.role !== "archive"
                     height: visible ? implicitHeight : 0
                     text: page.sioul.text("ui-archive")
                     onTriggered: page.sioul.act(rowMenuForm.target.key, "archive", "")
                 }
                 MenuItem {
-                    text: page.shown && page.shown.role === "trash" ? page.sioul.text("ui-delete-for-good") : page.sioul.text("ui-trash")
+                    text: rowMenuForm.role === "trash" ? page.sioul.text("ui-delete-for-good") : page.sioul.text("ui-trash")
                     onTriggered: page.sioul.act(rowMenuForm.target.key, "trash", "")
                 }
                 MenuItem {
-                    text: page.shown && page.shown.role === "junk" ? page.sioul.text("ui-not-junk") : page.sioul.text("ui-junk")
-                    onTriggered: page.sioul.act(rowMenuForm.target.key, page.shown && page.shown.role === "junk" ? "not-junk" : "junk", "")
+                    visible: !rowMenuForm.remote
+                    height: visible ? implicitHeight : 0
+                    text: rowMenuForm.role === "junk" ? page.sioul.text("ui-not-junk") : page.sioul.text("ui-junk")
+                    onTriggered: page.sioul.act(rowMenuForm.target.key, rowMenuForm.role === "junk" ? "not-junk" : "junk", "")
                 }
                 MenuItem {
                     text: page.sioul.text("ui-move-to")
-                    onTriggered: {
-                        page.dragKeys = page.selected[rowMenuForm.target.key] ? page.selectedKeys : [rowMenuForm.target.key]
-                        moveDialog.now().open()
-                    }
+                    onTriggered: page.askMove(page.selected[rowMenuForm.target.key] ? page.selectedKeys : [rowMenuForm.target.key])
                 }
                 MenuSeparator {}
                 AddMenu {
+                    enabled: !rowMenuForm.remote
                     sioul: page.sioul
                     window: page.window
                     source: rowMenuForm.source
@@ -1219,5 +1508,16 @@ Item {
             page.query = searchField.text
             searching.restart()
         }
+    }
+
+    // The search by conditions: a word, not an icon, its tip saying what it offers.
+    component MoreButton: Button {
+        flat: true
+        text: page.sioul.text("ui-search-more")
+        ToolTip.visible: hovered
+        ToolTip.text: page.sioul.text("ui-search-more-tip")
+        ToolTip.delay: 600
+        Accessible.description: page.sioul.text("ui-search-more-tip")
+        onClicked: page.openSearch()
     }
 }

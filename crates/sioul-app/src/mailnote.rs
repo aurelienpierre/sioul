@@ -175,8 +175,31 @@ pub(crate) fn arrived_in_window(window: Window, account: &str, new: &[PathBuf], 
     arrived_from(account, new, first, Some(window));
 }
 
-fn arrived_from(_account: &str, new: &[PathBuf], first: bool, window: Option<Window>) {
-    if first || new.is_empty() {
+/// What your mail filters could not act on (a folder missing, the server
+/// refusing), once this device's filters ran: told as any new mail is, by the
+/// same rules, the arrivals having been held back for them
+/// (`filters::untold`). Told once only: the ledger knows what was.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) fn unfiltered(account: &str, files: &[PathBuf]) {
+    told(account, files, None, false);
+}
+
+/// The same, from the window's watchers.
+pub(crate) fn unfiltered_in_window(window: Window, account: &str, files: &[PathBuf]) {
+    told(account, files, Some(window), false);
+}
+
+fn arrived_from(account: &str, new: &[PathBuf], first: bool, window: Option<Window>) {
+    if !first {
+        told(account, new, window, true);
+    }
+}
+
+/// `files` judged and told by the rules of what reaches you; `hold`: what a
+/// mail filter would move out of the inbox or mark read held back, for this
+/// device's filters to act on first (`unfiltered` tells it if they cannot).
+fn told(_account: &str, files: &[PathBuf], window: Option<Window>, hold: bool) {
+    if files.is_empty() {
         return;
     }
     let config = load_config();
@@ -187,7 +210,9 @@ fn arrived_from(_account: &str, new: &[PathBuf], first: bool, window: Option<Win
     let stamp = now.timestamp().as_second();
     let newsletters = config.reminders.mail_newsletters;
     let seen = Seen::now(config, &now);
-    let arrivals = seen.judge(new, stamp);
+    let judged = seen.judge(files, stamp);
+    // What your mail filters would move out of the inbox or mark read waits for them: told after, if they could not.
+    let arrivals = if hold { crate::filters::untold(&seen.config, judged, seen.senders()) } else { judged };
     let path = Ledger::default_path();
     // Marked at once: those never told (its sender's row says "not at all"
     // now: on the Porch only), those waiting for their time, and those of the

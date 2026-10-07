@@ -50,6 +50,7 @@
 //! ## Mail
 //!
 //! - [`mail`](mail/index.html): the mail client: folders and their messages, what you do to them, drafts and sending.
+//! - [`mailsearch`](mailsearch/index.html): searching the mail by conditions, here and on the servers.
 //! - [`gmail`](gmail/index.html): Google's mail, signed in on Google's page.
 //! - [`crypto`](crypto/index.html): OpenPGP: protected messages opened for the reader, drafts signed or encrypted, your keys.
 //! - [`senders`](senders/index.html): who someone is to you: where they stand, and why.
@@ -121,6 +122,7 @@ mod eventalarms;
 mod duplicates;
 // Do-not-disturb on every device, and the phone in the background (docs/do-not-disturb.md).
 mod everywhere;
+mod filters;
 mod github;
 // Google's mail signed in on Google's page (docs/google.md, "Mail").
 mod gmail;
@@ -128,6 +130,7 @@ mod health;
 mod homecard;
 mod hours;
 mod mail;
+mod mailsearch;
 mod mailnote;
 mod letters;
 mod map;

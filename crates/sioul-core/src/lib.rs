@@ -75,6 +75,7 @@
 //! - [`maildir`]: messages on disk: a Maildir, or a plain folder of `.eml` files.
 //! - [`headers`]: the raw header block, unfolded.
 //! - [`mailindex`]: messages by their Message-ID, to follow `mid:` links.
+//! - [`mailsearch`]: searching the mail by conditions, here and on the servers.
 //! - [`folders`]: mail folders: what each is for, its name as you read it, where it is kept.
 //! - [`threads`]: conversations, tied by Message-ID, never by subject alone.
 //! - [`reading`]: a message laid out for reading: its text, what it quotes, what it forwards.
@@ -195,6 +196,7 @@ pub mod letters;
 pub mod links;
 pub mod lookalike;
 pub mod mailindex;
+pub mod mailsearch;
 pub mod maildir;
 pub mod mailnote;
 pub mod mailto;
