@@ -5,12 +5,14 @@
 //!
 //! `fetch` downloads the training corpus, `train` trains on demand, `eval`
 //! tests the table in place, `status` says where all stands: numbers only,
-//! never a message. `why` names a message's words: it is for you, in your
+//! never a message. `import` brings outside training material (JSON lines,
+//! docs/spam-filter.md, "Outside material"), kept apart, never shared, and
+//! takes it away. `why` names a message's words: it is for you, in your
 //! terminal, and the MCP server offers none of this (docs/ai.md).
 
 use crate::Session;
 use clap::Subcommand;
-use sioul_learn::{Cancel, Dirs, LearnError, Progress, Stage, corpus, eval, train};
+use sioul_learn::{Cancel, Dirs, LearnError, Progress, Stage, corpus, eval, external, train};
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
@@ -31,8 +33,25 @@ pub(crate) enum SpamCommand {
     },
     /// Tests the table in place on the newest fifth of the corpus: numbers only.
     Eval,
-    /// What the corpus holds, the last training, the table.
+    /// What the corpus holds, the outside material, the last training, the table.
     Status,
+    /// Imports outside training material: one JSON object per line
+    /// (gzipped or not), with `label` ("spam" or "ham"), `date` (RFC 3339 or
+    /// Unix seconds), `subject` and `text`; `from`, `headers`, `html` and
+    /// `source` if known. Kept apart from your own corpus, never shared; a
+    /// source imported again replaces the one before. Or, with --remove,
+    /// takes a source away.
+    Import {
+        /// The file to import.
+        #[arg(required_unless_present = "remove", conflicts_with = "remove")]
+        file: Option<PathBuf>,
+        /// The source's name, when its lines do not say it (else the file's name).
+        #[arg(long)]
+        source: Option<String>,
+        /// Takes this source away: the next training learns without it.
+        #[arg(long, value_name = "SOURCE")]
+        remove: Option<String>,
+    },
     /// Why the filter judges a message as it does: the words and header facts
     /// that weighed (for you: it shows the message's words).
     Why { file: PathBuf },
@@ -50,6 +69,11 @@ pub(crate) fn run(s: &Session, command: SpamCommand) -> Result<(), String> {
         }
         SpamCommand::Eval => evaluate(s, &dirs),
         SpamCommand::Status => status(s, &dirs),
+        SpamCommand::Import { file, source, remove } => match (file, remove) {
+            (_, Some(source)) => remove_source(s, &dirs, &source),
+            (Some(file), None) => import(s, &dirs, &file, source.as_deref()),
+            (None, None) => Ok(()),
+        },
         SpamCommand::Why { file } => why(s, &dirs, &file),
     }
 }
@@ -168,6 +192,19 @@ fn print_summary(s: &Session, summary: &train::Summary) {
         );
     }
     print_numbers(s, &summary.test, summary.split.test_from);
+    for (source, outside) in &summary.outside {
+        let pairs = [
+            ("source", crate::one_line(source)),
+            ("trainham", outside.train_ham.to_string()),
+            ("trainspam", outside.train_spam.to_string()),
+            ("heldham", outside.held_ham.to_string()),
+            ("heldspam", outside.held_spam.to_string()),
+        ];
+        println!("{}", s.say("spam-outside-learned", &pairs));
+        if let Some(baseline) = &outside.baseline {
+            print_measured(s, baseline);
+        }
+    }
     if let Some(current) = summary.current.as_ref().filter(|c| c.ham + c.spam > 0) {
         println!("{}", s.say("spam-current", &[("n", (current.ham + current.spam).to_string())]));
         print_numbers(s, current, summary.compared.map_or(summary.split.test_from, |c| c.since));
@@ -198,10 +235,18 @@ fn print_labels(s: &Session, l: &sioul_learn::labels::Summary) {
             ]
         )
     );
+    if l.moved > 0 {
+        println!("{}", s.say("spam-labels-moved", &[("n", l.moved.to_string())]));
+    }
 }
 
 fn print_numbers(s: &Session, n: &eval::Numbers, since: i64) {
     println!("{}", s.say("spam-tested", &[("ham", n.ham.to_string()), ("spam", n.spam.to_string()), ("since", day(s, since))]));
+    print_measured(s, n);
+}
+
+/// The numbers at both thresholds, the share unsure, the AUC.
+fn print_measured(s: &Session, n: &eval::Numbers) {
     for (at, what) in [(&n.at_spam, "spam-what-set-aside"), (&n.at_unsure, "spam-what-unsure")] {
         println!(
             "{}",
@@ -236,7 +281,39 @@ fn evaluate(s: &Session, dirs: &Dirs) -> Result<(), String> {
     println!("{}", s.say("spam-table", &[("date", day(s, evaluation.table.trained_at)), ("ham", evaluation.table.ham.to_string()), ("spam", evaluation.table.spam.to_string())]));
     print_labels(s, &evaluation.labels);
     print_numbers(s, &evaluation.numbers, evaluation.split.test_from);
+    for (source, numbers) in &evaluation.outside {
+        println!("{}", s.say("spam-outside-baseline", &[("source", crate::one_line(source)), ("ham", numbers.ham.to_string()), ("spam", numbers.spam.to_string())]));
+        print_measured(s, numbers);
+    }
     Ok(())
+}
+
+/// Imports a file of outside material: counts only, never a message.
+fn import(s: &Session, dirs: &Dirs, file: &std::path::Path, source: Option<&str>) -> Result<(), String> {
+    let imported = external::import(dirs, file, source).map_err(|e| e.to_string())?;
+    println!("{}", s.say("spam-import-lines", &[("n", imported.lines.to_string())]));
+    for (source, counts) in &imported.sources {
+        println!("{}", s.say("spam-import-done", &outside_pairs(s, source, counts)));
+    }
+    for (why, n) in &imported.refused {
+        println!("{}", s.say("spam-import-refused", &[("n", n.to_string()), ("why", s.tr.text(&format!("spam-import-why-{why}"), None))]));
+    }
+    Ok(())
+}
+
+fn remove_source(s: &Session, dirs: &Dirs, source: &str) -> Result<(), String> {
+    let name = external::source_name(source);
+    if external::remove(dirs, &name).map_err(|e| e.to_string())? {
+        println!("{}", s.say("spam-import-removed", &[("source", name)]));
+        Ok(())
+    } else {
+        Err(s.say("spam-import-none", &[("source", name)]))
+    }
+}
+
+/// A source's name, counts and dates, as the strings take them.
+fn outside_pairs(s: &Session, source: &str, counts: &external::Counts) -> [(&'static str, String); 5] {
+    [("source", crate::one_line(source)), ("ham", counts.ham.to_string()), ("spam", counts.spam.to_string()), ("first", day(s, counts.first)), ("last", day(s, counts.last))]
 }
 
 fn status(s: &Session, dirs: &Dirs) -> Result<(), String> {
@@ -261,6 +338,12 @@ fn status(s: &Session, dirs: &Dirs) -> Result<(), String> {
     }
     for (account, detail) in &corpus.errors {
         println!("{}", s.say("spam-account-failed", &[("account", account.clone()), ("detail", crate::one_line(detail))]));
+    }
+    // Outside material: what each source holds, kept apart, never shared.
+    for source in external::sources(dirs) {
+        let mut pairs = outside_pairs(s, &source.name, &source.counts).to_vec();
+        pairs.push(("size", decimal(s, source.bytes as f64 / f64::from(1u32 << 20), 1)));
+        println!("{}", s.say("spam-outside", &pairs));
     }
     // Whether your providers' own spam flags still count, as Sioul reads them now: totals only.
     for (account, v) in corpus::verdicts(&dirs).map_err(|e| e.to_string())? {

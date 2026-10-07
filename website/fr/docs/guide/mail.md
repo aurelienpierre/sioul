@@ -111,7 +111,7 @@ Le ⚙ en haut de la page Courrier :
 
 ### Votre filtre à indésirables {#your-own-spam-filter}
 
-Sous **Votre filtre à indésirables** : ce qu’il fait du courrier d’un inconnu (rien, dire « peut-être indésirable » ou « probablement indésirable » à côté, ou mettre l’indésirable de côté), à quel point il doit être sûr pour chaque mot, et sur un ordinateur **Entraîner maintenant**, pour apprendre de tout votre courrier, avec ce que le dernier apprentissage a mesuré. Il trie le Porche, jamais cette page : un message reste dans son dossier ([le Porche](porch.md#spam-and-your-own-filter)). Chaque réglage, en entier : [Paramètres](settings.md#your-own-spam-filter).
+Sous **Votre filtre à indésirables** : ce qu’il fait de chacun de ses avis sur le courrier d’un inconnu (probablement indésirable, peut-être indésirable, probablement pas : le déplacer dans le dossier Indésirables sur le serveur à son arrivée, le signaler, ou rien), à quel point il doit être sûr pour chacun, et sur un ordinateur **Entraîner maintenant**, pour apprendre de tout votre courrier, avec ce que le dernier apprentissage a mesuré. Ce qu’il signale attend sur le Porche, dans sa file « À revoir », et reste dans son dossier ici ; ce qu’il déplace, vous le trouvez aussi dans le dossier Indésirables ([le Porche](porch.md#spam-and-your-own-filter)). Chaque réglage, en entier : [Paramètres](settings.md#your-own-spam-filter).
 
 Les réglages propres à chaque adresse (à quoi elle sert, jusqu’où elle remonte, à quel rythme elle est relevée, sa protection) sont sur sa fiche dans [Comptes](accounts.md#your-accounts).
 

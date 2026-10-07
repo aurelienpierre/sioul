@@ -278,14 +278,23 @@ impl Default for Reading {
     }
 }
 
-/// Sioul's own spam filter (`[spam]`, docs/porch.md): what it does with its
-/// verdicts, and how sure it must be. One filter for every account.
+/// Sioul's own spam filter (`[spam]`, docs/spam-filter.md): what it does with
+/// each verdict, and how sure it must be. One filter for every account.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct SpamSettings {
-    /// "off"; "say", its verdict and why beside the message, nothing moved;
-    /// "act", spam set aside. "say" when unsaid: nothing is said before a training.
+    /// An older Sioul's one choice, read until the matrix is first changed
+    /// (`spam::Actions::of_mode`): "off", "say", "act".
     #[serde(default)]
     pub mode: Option<String>,
+    /// What is done with probable spam, with a doubt, with probable ham:
+    /// "move" (into the Junk folder on the server), "flag" (the review
+    /// queue), "nothing". Unsaid: as `mode` said, else spam and doubts flagged.
+    #[serde(default)]
+    pub action_spam: Option<String>,
+    #[serde(default)]
+    pub action_unsure: Option<String>,
+    #[serde(default)]
+    pub action_ham: Option<String>,
     /// From this probability on, spam: 0.95 when unsaid.
     #[serde(default)]
     pub threshold_spam: Option<f32>,
@@ -295,8 +304,17 @@ pub struct SpamSettings {
 }
 
 impl SpamSettings {
-    pub fn mode(&self) -> crate::spam::Mode {
-        self.mode.as_deref().and_then(crate::spam::Mode::read).unwrap_or_default()
+    /// The matrix: each class's action as written, else as an older `mode`
+    /// meant it, else spam and doubts flagged, nothing done with the rest.
+    pub fn actions(&self) -> crate::spam::Actions {
+        use crate::spam::{Action, Actions, Class};
+        let base = self.mode.as_deref().and_then(Actions::of_mode).unwrap_or_default();
+        [(Class::Spam, &self.action_spam), (Class::Unsure, &self.action_unsure), (Class::Ham, &self.action_ham)]
+            .into_iter()
+            .fold(base, |actions, (class, written)| match written.as_deref().and_then(Action::read) {
+                Some(action) => actions.with(class, action),
+                None => actions,
+            })
     }
 
     /// The thresholds, spam then unsure: each between 0 and 1 (its default

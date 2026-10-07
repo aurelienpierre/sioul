@@ -306,6 +306,122 @@ ColumnLayout {
         }
     }
 
+    // One of a few for each row, in a grid of round buttons: what Sioul's own
+    // spam filter does with each of its verdicts (the rows) — move it into the
+    // Junk folder, flag it, or nothing (the columns). Saved a row at a time.
+    // On a screen too narrow for a row, its name stands above its buttons,
+    // which wrap.
+    Loader {
+        active: field.setting.kind === "radios"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            ColumnLayout {
+                id: radios
+
+                readonly property var rows: field.setting.rows || []
+                readonly property var columns: field.setting.choices || []
+                readonly property var chosen: field.setting.value || []
+                // The rows' names as wide as the widest, each button as wide as
+                // the widest: the buttons line up in columns when they fit.
+                readonly property real nameWidth: {
+                    let width = 40
+                    for (let i = 0; i < radioNames.count; i++) {
+                        const name = radioNames.itemAt(i)
+                        if (name)
+                            width = Math.max(width, name.implicitWidth + 12)
+                    }
+                    return width
+                }
+                readonly property real choiceWidth: {
+                    let width = 40
+                    for (let i = 0; i < radioChoices.count; i++) {
+                        const choice = radioChoices.itemAt(i)
+                        if (choice)
+                            width = Math.max(width, choice.implicitWidth + 8)
+                    }
+                    return width
+                }
+                readonly property bool narrow: radios.width > 0 && radios.nameWidth + radios.columns.length * radios.choiceWidth > radios.width
+
+                spacing: 2
+
+                // Measured once each, for the widths above.
+                Repeater {
+                    id: radioNames
+
+                    model: radios.rows
+
+                    delegate: Label {
+                        required property var modelData
+
+                        visible: false
+                        text: modelData.label
+                    }
+                }
+                Repeater {
+                    id: radioChoices
+
+                    model: radios.columns
+
+                    delegate: RadioButton {
+                        required property var modelData
+
+                        visible: false
+                        text: modelData.label
+                    }
+                }
+                Repeater {
+                    model: radios.rows
+
+                    delegate: GridLayout {
+                        id: radioRow
+
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        columns: radios.narrow ? 1 : 2
+                        columnSpacing: 8
+                        rowSpacing: 0
+
+                        Label {
+                            Layout.preferredWidth: radios.narrow ? -1 : radios.nameWidth
+                            Layout.topMargin: radios.narrow ? 6 : 0
+                            text: radioRow.modelData.label
+                            color: field.theme.text
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 0
+
+                            Repeater {
+                                model: radios.columns
+
+                                delegate: RadioButton {
+                                    id: radio
+
+                                    required property var modelData
+                                    readonly property string cell: radioRow.modelData.value + ":" + radio.modelData.value
+
+                                    width: radios.narrow ? implicitWidth : radios.choiceWidth
+                                    text: radio.modelData.label
+                                    checked: radios.chosen.indexOf(radio.cell) >= 0
+                                    Accessible.name: radioRow.modelData.label + ", " + radio.modelData.label
+                                    onClicked: {
+                                        if (radios.chosen.indexOf(radio.cell) < 0)
+                                            field.save(field.setting.key + "." + radioRow.modelData.value, radio.modelData.value)
+                                        radio.checked = Qt.binding(() => radios.chosen.indexOf(radio.cell) >= 0)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Sioul's own spam filter: its training on a computer, where its table
     // comes from on a phone (SpamFilter.qml); its sentence said first there.
     Loader {

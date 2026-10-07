@@ -67,6 +67,8 @@ pub struct LaneView {
     pub title: String,
     /// Filed and set-aside mail start folded (docs/porch.md).
     pub folded: bool,
+    /// Its count said beside its title; never for the review queue.
+    pub counted: bool,
     /// What the lane holds, in one short line, shown under its title.
     pub about: String,
     /// How mail lands here, sentence by sentence, behind the lane's "?".
@@ -95,14 +97,16 @@ pub struct ItemView {
     pub attachments: Vec<String>,
     /// From someone new: the sender can be let in.
     pub screener: bool,
-    /// Called spam: set aside as spam, or Sioul's own filter says it is, or
-    /// may be. "Not spam" puts it back in its lane, or takes the word away, for good.
+    /// Called spam: set aside as spam, or in the review queue. "Not spam"
+    /// puts it back in its lane (from a Junk folder, into the inbox), for good.
     pub spam: bool,
-    /// The quiet word Sioul's own filter puts beside a message it leaves in
-    /// its lane: "maybe spam", "probably spam" (it only says); "" otherwise.
+    /// In the review queue: "Spam" and "Not spam" beside it.
+    pub review: bool,
+    /// Your own filter moved it into a Junk folder: "Not spam" brings it back to the inbox.
+    pub moved: bool,
+    /// Your own filter's quiet word beside it in the review queue: "probably
+    /// spam", "maybe spam", "probably not spam"; "" otherwise. Never why.
     pub spam_word: String,
-    /// That word's reason, whole: how sure, and what weighed.
-    pub spam_why: String,
     /// From an account ranked above the others.
     pub important: bool,
     /// What each check said, one per line: the shield's tooltip.
@@ -142,7 +146,7 @@ pub fn porch(items: &[Triaged], config: &Config, store: Option<&CaseStore>, tr: 
     let lanes = lanes(config, store, tr)
         .into_iter()
         .filter(|l| !hidden(&l.key))
-        .map(|LaneInfo { key, title, lane, folded, about, mut rules }| {
+        .map(|LaneInfo { key, title, lane, folded, about, mut rules, counted }| {
             // Mail of the accounts ranked above first, then work for a public address, then the newest.
             let mut ranked: Vec<&Triaged> = items.iter().filter(|t| t.lane == lane).collect();
             ranked.sort_by_key(|t| (t.priority, t.assessment.as_ref().map(|a| a.topic), std::cmp::Reverse(t.card.date.unwrap_or(0))));
@@ -150,7 +154,7 @@ pub fn porch(items: &[Triaged], config: &Config, store: Option<&CaseStore>, tr: 
             let folded = folded && (lane == Lane::Hostile || !ranked.iter().any(|t| t.priority == Priority::Above));
             rules.push(order.clone());
             let settings = format!("lane:{key}");
-            LaneView { key, title, folded, about, rules, settings, items: ranked.into_iter().map(|t| item_view(t, store, tr)).collect() }
+            LaneView { key, title, folded, counted, about, rules, settings, items: ranked.into_iter().map(|t| item_view(t, store, tr)).collect() }
         })
         .filter(|l| !l.items.is_empty())
         .collect();
@@ -169,11 +173,14 @@ pub struct LaneInfo {
     pub about: String,
     /// How mail lands there, sentence by sentence.
     pub rules: Vec<String>,
+    /// Its count said beside its title: every lane's but the review queue's.
+    pub counted: bool,
 }
 
 /// Every lane mail can land in, in the order the Porch shows them: cases,
 /// public addresses, people, the screener, filed and less important mail,
-/// what is set aside, hostile mail when an address is shielded.
+/// what waits for your review, what is set aside, hostile mail when an
+/// address is shielded.
 pub fn lanes(config: &Config, store: Option<&CaseStore>, tr: &Translator) -> Vec<LaneInfo> {
     let say = |id: &str, pairs: &[(&str, String)]| {
         let mut args = i18n::args();
@@ -182,7 +189,7 @@ pub fn lanes(config: &Config, store: Option<&CaseStore>, tr: &Translator) -> Vec
         }
         tr.text(id, Some(&args))
     };
-    let lane = |key: &str, title: String, lane: Lane, folded: bool, about: String, rules: Vec<String>| LaneInfo { key: key.to_string(), title, lane, folded, about, rules };
+    let lane = |key: &str, title: String, lane: Lane, folded: bool, about: String, rules: Vec<String>| LaneInfo { key: key.to_string(), title, counted: lane != Lane::Review, lane, folded, about, rules };
     let address_of = |id: &str| config.account(id).and_then(|a| a.address.clone()).unwrap_or_else(|| id.to_string());
     let mut lanes: Vec<LaneInfo> = store
         .map_or(&[][..], |s| &s.cases[..])
@@ -210,28 +217,32 @@ pub fn lanes(config: &Config, store: Option<&CaseStore>, tr: &Translator) -> Vec
     lanes.push(lane("filed", tr.text("lane-filed", None), Lane::Filed, true, tr.text("lane-about-filed", None), vec![say("rule-filed", &[("words", words.join(", "))])]));
     let below: Vec<String> = config.accounts.iter().filter(|a| a.priority == Priority::Below).map(|a| address_of(&a.id)).collect();
     lanes.push(lane("low", tr.text("lane-low", None), Lane::Low, true, tr.text("lane-about-low", None), if below.is_empty() { vec![tr.text("rule-low-none", None)] } else { vec![say("rule-low", &[("addresses", below.join(", "))]), tr.text("rule-where-rank", None)] }));
+    // What your own spam filter flagged or moved, as you chose for each of
+    // its verdicts: folded, never counted, never notified.
+    lanes.push(lane("review", tr.text("lane-review", None), Lane::Review, true, tr.text("lane-about-review", None), {
+        let (spam, unsure) = config.spam.thresholds();
+        let actions = config.spam.actions();
+        let mut rules: Vec<String> = crate::spam::Class::ALL
+            .iter()
+            .map(|class| {
+                let p = match class {
+                    crate::spam::Class::Spam => spam,
+                    crate::spam::Class::Unsure | crate::spam::Class::Ham => unsure,
+                };
+                let named = say(&format!("rule-review-class-{}", class.as_str()), &[("p", i18n::percent(p))]);
+                say(&format!("rule-review-{}", actions.of(*class).as_str()), &[("class", named)])
+            })
+            .collect();
+        rules.extend(["rule-review-protected", "rule-review-buttons", "rule-review-where"].iter().map(|id| tr.text(id, None)));
+        rules
+    }));
     lanes.push(lane(
         "set-aside",
         tr.text("lane-set-aside", None),
         Lane::SetAside,
         true,
         tr.text("lane-about-set-aside", None),
-        {
-            let mut rules: Vec<String> = ["rule-forged", "rule-borrowed", "rule-spam"].iter().map(|id| tr.text(id, None)).collect();
-            // Sioul's own filter: what it sets aside when you let it, and the
-            // word it leaves beside a message it does not move.
-            let (spam, unsure) = config.spam.thresholds();
-            match config.spam.mode() {
-                crate::spam::Mode::Act => rules.push(say("rule-learned-spam", &[("p", i18n::percent(spam))])),
-                crate::spam::Mode::Say => rules.push(say("rule-learned-say", &[("p", i18n::percent(spam))])),
-                crate::spam::Mode::Off => {}
-            }
-            if config.spam.mode() != crate::spam::Mode::Off {
-                rules.push(say("rule-learned-unsure", &[("p", i18n::percent(unsure))]));
-            }
-            rules.extend(["rule-blocked", "rule-where-blocked"].iter().map(|id| tr.text(id, None)));
-            rules
-        },
+        ["rule-forged", "rule-borrowed", "rule-spam", "rule-blocked", "rule-where-blocked"].iter().map(|id| tr.text(id, None)).collect(),
     ));
     if config.accounts.iter().any(|a| a.shield) {
         lanes.push(lane("hostile", tr.text("lane-hostile", None), Lane::Hostile, true, tr.text("lane-about-hostile", None), vec![tr.text("rule-hostile", None), tr.text("rule-where-shield", None)]));
@@ -302,8 +313,8 @@ fn code_view(t: &Triaged, tr: &Translator) -> CodeView {
 }
 
 fn item_view(t: &Triaged, store: Option<&CaseStore>, tr: &Translator) -> ItemView {
-    // Sioul's own filter's word on it, whatever it did with it.
-    let learned = t.reasons.iter().find(|r| matches!(r, Reason::LearnedSpam { .. } | Reason::Unsure { .. }));
+    // Sioul's own filter's word on it, in the review queue.
+    let learned = t.reasons.iter().find_map(Reason::learned).filter(|_| t.lane == Lane::Review);
     let preview: String = t.card.excerpt.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(PREVIEW).collect();
     let mut view = ItemView {
         key: key(&t.card),
@@ -322,9 +333,10 @@ fn item_view(t: &Triaged, store: Option<&CaseStore>, tr: &Translator) -> ItemVie
         reasons: t.reasons.iter().map(|r| tr.reason(r, store)).collect(),
         attachments: t.card.attachments.clone(),
         screener: t.reasons.contains(&Reason::FirstMessage),
-        spam: (t.lane == Lane::SetAside && t.reasons.iter().any(Reason::is_spam)) || learned.is_some(),
-        spam_word: learned.filter(|_| t.lane != Lane::SetAside).map_or(String::new(), |r| tr.text(if matches!(r, Reason::Unsure { .. }) { "spam-chip-unsure" } else { "spam-chip-learned" }, None)),
-        spam_why: learned.filter(|_| t.lane != Lane::SetAside).map_or(String::new(), |r| tr.reason(r, store)),
+        spam: (t.lane == Lane::SetAside && t.reasons.iter().any(Reason::is_spam)) || t.lane == Lane::Review,
+        review: t.lane == Lane::Review,
+        moved: t.reasons.contains(&Reason::MovedToJunk),
+        spam_word: learned.map_or(String::new(), |(class, _)| tr.text(&format!("spam-chip-{}", class.as_str()), None)),
         important: t.priority == Priority::Above,
         checks: checks(t.checks.as_ref(), tr),
         topic: t.assessment.as_ref().map(|a| tr.topic(a.topic)).unwrap_or_default(),
@@ -1744,26 +1756,29 @@ auth = "google"
         assert_eq!(checks(None, &Translator::new("en")), "No check recorded: nothing proves who sent it.");
     }
 
-    /// Sioul's own spam filter's word, beside a message it leaves in its lane,
-    /// with its reason whole for the pointer; "Not spam" offered for it, and
-    /// for mail set aside as spam, never for the rest.
+    /// Sioul's own spam filter's word, beside a message in the review queue,
+    /// never why; "Spam" and "Not spam" there; "Not spam" for mail set aside
+    /// as spam; nothing for the rest.
     #[test]
     fn the_filters_word_and_not_spam() {
         let tr = Translator::new("en");
         let card = Card::from_bytes(b"From: Desk <desk@quick-parcels.test>\r\nSubject: Your parcel\r\n\r\nPay 1.99 EUR.\r\n").unwrap();
-        let why = crate::spam::Why { words: vec!["_PRICE_".into()], signs: vec!["reply_to_elsewhere"] };
         let triaged = |lane: Lane, reasons: Vec<Reason>| Triaged { card: card.clone(), lane, trust: Trust::Unverified, code: None, reasons, priority: Priority::Average, checks: None, assessment: None };
-        let maybe = item_view(&triaged(Lane::Screener, vec![Reason::FirstMessage, Reason::Unsure { p: 0.62, why: why.clone() }]), None, &tr);
-        assert!(maybe.spam);
+        // In the review queue: its word, Spam and Not spam; never why, nor how sure.
+        let maybe = item_view(&triaged(Lane::Review, vec![Reason::Trust(trust::Proof::NoResults), Reason::Unsure { p: 0.62 }]), None, &tr);
+        assert!(maybe.spam && maybe.review && !maybe.moved);
         assert_eq!(maybe.spam_word, "maybe spam");
-        assert_eq!(maybe.spam_why, "your own filter: maybe spam (62%), left where it is — a price; replies go to another domain");
-        let said = item_view(&triaged(Lane::Screener, vec![Reason::FirstMessage, Reason::LearnedSpam { p: 0.97, why: why.clone() }]), None, &tr);
-        assert_eq!((said.spam, said.spam_word.as_str()), (true, "probably spam"));
-        // Set aside by it: its lane says so, no word beside; "Not spam" all the same.
-        let aside = item_view(&triaged(Lane::SetAside, vec![Reason::LearnedSpam { p: 0.97, why }]), None, &tr);
-        assert_eq!((aside.spam, aside.spam_word.as_str(), aside.spam_why.as_str()), (true, "", ""));
+        assert_eq!(maybe.reasons.last().map(String::as_str), Some("your own filter: maybe spam"));
+        let moved = item_view(&triaged(Lane::Review, vec![Reason::LearnedSpam { p: 0.97 }, Reason::MovedToJunk]), None, &tr);
+        assert_eq!((moved.spam, moved.moved, moved.spam_word.as_str()), (true, true, "probably spam"));
+        assert!(moved.reasons.iter().all(|r| !r.contains('%')), "{:?}", moved.reasons);
+        let wanted = item_view(&triaged(Lane::Review, vec![Reason::LearnedHam { p: 0.1 }]), None, &tr);
+        assert_eq!(wanted.spam_word, "probably not spam");
+        // Set aside by your provider: "Not spam", no word of your filter's.
+        let aside = item_view(&triaged(Lane::SetAside, vec![Reason::Spam { source: "rspamd", score: None }]), None, &tr);
+        assert_eq!((aside.spam, aside.review, aside.spam_word.as_str()), (true, false, ""));
         // Nothing said of it: nothing offered.
         let plain = item_view(&triaged(Lane::Screener, vec![Reason::FirstMessage]), None, &tr);
-        assert_eq!((plain.spam, plain.spam_word.as_str()), (false, ""));
+        assert_eq!((plain.spam, plain.review, plain.spam_word.as_str()), (false, false, ""));
     }
 }

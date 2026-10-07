@@ -265,19 +265,26 @@ pub(crate) fn locate(key: &str) -> Option<(Account, PathBuf)> {
     Some((account, file))
 }
 
-/// "read", "unread", "flag", "unflag", "archive", "trash", "junk", "not-junk", "not-spam", "move".
+/// "read", "unread", "flag", "unflag", "archive", "trash", "junk",
+/// "not-junk", "spam", "not-spam", "move". "Spam" and "Not spam", from the
+/// review queue or the Reader, as the message's folder asks: in a Junk
+/// folder (your filter moved it there), "Spam" keeps it there marked, "Not
+/// spam" brings it back to the inbox; elsewhere, "Spam" moves it into the
+/// Junk folder, "Not spam" leaves it where it is, marked.
 pub(crate) fn act(qt: &QtThread, shared: &Arc<Shared>, key: &str, action: &str, target: &str) {
     let Some((account, file)) = locate(key) else {
         set_status(qt, tr().text("mail-message-gone", None));
         return;
     };
     let folder = mailbox::folder_of(&account, &file);
-    let Some(action) = action_of(action, target) else { return };
+    let in_junk = folder.as_ref().is_some_and(|f| f.role == Role::Junk);
+    let Some(action) = action_of(action, target, in_junk) else { return };
     let line = match &action {
         Action::Read(_) | Action::Flag(_) => return act_now(qt, shared, account, file, action),
         Action::Archive => tr().text("undo-archived", None),
         Action::Trash if folder.as_ref().is_some_and(|f| f.role == Role::Trash) => tr().text("undo-deleted", None),
         Action::Trash => tr().text("undo-trashed", None),
+        Action::Junk if in_junk => tr().text("undo-spam-kept", None),
         Action::Junk => tr().text("undo-junked", None),
         Action::NotJunk => tr().text("undo-not-junk", None),
         Action::NotSpam => tr().text("undo-not-spam", None),
@@ -285,6 +292,8 @@ pub(crate) fn act(qt: &QtThread, shared: &Arc<Shared>, key: &str, action: &str, 
             let title = mailbox::folders(&account.id).into_iter().find(|f| f.name == *name).map_or_else(|| name.clone(), |f| folder_title(&f));
             say("undo-moved", &[("folder", title)])
         }
+        // Your filter's own move is never asked from the window.
+        Action::Filtered(_) => return,
     };
     schedule(qt, shared, Work::Act { account, file, action }, line);
 }
@@ -301,8 +310,9 @@ fn folder_title(folder: &Folder) -> String {
     if folder.role == Role::Other { folder.display.clone() } else { tr().text(folder.role.message_id(), None) }
 }
 
-/// What a key names, as an act on its message; None for what is not a message here.
-fn action_of(action: &str, target: &str) -> Option<Action> {
+/// What a key names, as an act on its message (`in_junk`: it is in a Junk
+/// folder); None for what is not a message here.
+fn action_of(action: &str, target: &str, in_junk: bool) -> Option<Action> {
     Some(match action {
         "read" => Action::Read(true),
         "unread" => Action::Read(false),
@@ -310,18 +320,26 @@ fn action_of(action: &str, target: &str) -> Option<Action> {
         "unflag" => Action::Flag(false),
         "archive" => Action::Archive,
         "trash" => Action::Trash,
-        "junk" => Action::Junk,
+        "junk" | "spam" => Action::Junk,
         "not-junk" => Action::NotJunk,
+        // Your filter moved it into the Junk folder: back to the inbox.
+        "not-spam" if in_junk => Action::NotJunk,
         "not-spam" => Action::NotSpam,
         "move" if !target.is_empty() => Action::Move(target.to_string()),
         _ => return None,
     })
 }
 
-/// The same act on several messages (a selection): reading and flagging at
-/// once, the rest under one "Undo".
+/// Whether a stored message is in a Junk folder of its account.
+fn in_junk(account: &Account, file: &Path) -> bool {
+    mailbox::folder_of(account, file).is_some_and(|f| f.role == Role::Junk)
+}
+
+/// The same act on several messages (a selection, the review queue's "for
+/// all"): reading and flagging at once, the rest under one "Undo"; "spam"
+/// and "not-spam" as each message's folder asks (`act`).
 pub(crate) fn act_many(qt: &QtThread, shared: &Arc<Shared>, keys: &[String], action: &str) {
-    let Some(first) = action_of(action, "") else { return };
+    let Some(first) = action_of(action, "", false) else { return };
     let found: Vec<(Account, PathBuf)> = keys.iter().filter_map(|k| locate(k)).collect();
     if found.is_empty() {
         set_status(qt, tr().text("mail-message-gone", None));
@@ -334,16 +352,24 @@ pub(crate) fn act_many(qt: &QtThread, shared: &Arc<Shared>, keys: &[String], act
         return;
     }
     let in_trash = found.iter().all(|(account, file)| mailbox::folder_of(account, file).is_some_and(|f| f.role == Role::Trash));
-    let id = match &first {
-        Action::Archive => "undo-many-archived",
-        Action::Junk => "undo-many-junked",
-        Action::NotJunk => "undo-many-not-junk",
-        Action::NotSpam => "undo-many-not-spam",
+    let id = match (action, &first) {
+        ("spam", _) => "undo-review-all-spam",
+        ("not-spam", _) => "undo-review-all-not-spam",
+        (_, Action::Archive) => "undo-many-archived",
+        (_, Action::Junk) => "undo-many-junked",
+        (_, Action::NotJunk) => "undo-many-not-junk",
+        (_, Action::NotSpam) => "undo-many-not-spam",
         _ if in_trash => "undo-many-deleted",
         _ => "undo-many-trashed",
     };
     let line = say(id, &[("n", found.len().to_string())]);
-    let works = found.into_iter().map(|(account, file)| Work::Act { account, file, action: first.clone() }).collect();
+    let works = found
+        .into_iter()
+        .filter_map(|(account, file)| {
+            let action = action_of(action, "", in_junk(&account, &file))?;
+            Some(Work::Act { account, file, action })
+        })
+        .collect();
     schedule(qt, shared, Work::Many(works), line);
 }
 

@@ -2472,7 +2472,17 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
         }
         if !report.first && !report.new.is_empty() {
             notify_codes(qt, &report.new);
-            // New mail your lists let through now, once per batch (docs/porch.md, "Notifications").
+            // What your own spam filter moves, as you chose: into the Junk folder, on a
+            // thread of its own (it reaches the server; this is the watcher's), the Porch read again after.
+            let (moving, new, first) = (account.clone(), report.new.clone(), report.first);
+            let (qt_moved, shared_moved) = (qt.clone(), Arc::clone(shared));
+            std::thread::spawn(move || {
+                if crate::spam::after_fetch(&moving, &new, first) > 0 {
+                    show(&qt_moved, &shared_moved);
+                }
+            });
+            // New mail your lists let through now, once per batch (docs/porch.md,
+            // "Notifications"); what your filter flagged or moves is never told.
             let window = crate::mailnote::Window { qt: qt.clone(), active: shared.active.load(Ordering::Relaxed) };
             crate::mailnote::arrived_in_window(window, &account.id, &report.new, report.first);
         }

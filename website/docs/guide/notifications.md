@@ -35,6 +35,7 @@ The Porch shows what may come now, and new mail is told by the same rule. Outsid
 ### What never notifies {#what-never-notifies}
 
 - Mail in **Set aside** or **Hostile, set aside**: forged, borrowing a name, spam, from a sender you blocked, insults.
+- What your own spam filter flagged or moved, waiting in **To review: maybe spam** ([the Porch](porch.md#spam-and-your-own-filter)), on any device, nor on a phone's home screen.
 - Mail to your less important accounts; newsletters and mailing lists, unless **Include newsletters**; what you send yourself; mail already read elsewhere; the two weeks of mail an address brings when you add it.
 - A code's message, as new mail: the code has its own notification.
 - On a phone: codes, and the reminders of dates, waits, payments, papers and contracts. They come on a computer.

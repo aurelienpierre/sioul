@@ -41,6 +41,10 @@ pub enum Lane {
     Public(String),
     /// To a shielded address, and hostile: set aside, its words never shown.
     Hostile,
+    /// What your own spam filter flagged, or moved into a Junk folder, as
+    /// you chose for its verdict (`spam::Actions`): waiting for your word,
+    /// Spam or Not spam, folded, never notified.
+    Review,
 }
 
 /// Why a message is where it is.
@@ -54,10 +58,15 @@ pub enum Reason {
     Trust(Proof),
     Forged,
     Spam { source: &'static str, score: Option<f32> },
-    /// Sioul's own filter finds it spam: how likely, from 0 to 1, and what weighed.
-    LearnedSpam { p: f32, why: crate::spam::Why },
-    /// Sioul's own filter is not sure it is wanted: said beside it, its lane kept.
-    Unsure { p: f32, why: crate::spam::Why },
+    /// Sioul's own filter finds it probably spam: how likely, from 0 to 1.
+    LearnedSpam { p: f32 },
+    /// Sioul's own filter finds it maybe spam.
+    Unsure { p: f32 },
+    /// Sioul's own filter finds it probably not spam (flagged or moved only
+    /// when you chose so for such mail).
+    LearnedHam { p: f32 },
+    /// Your own filter moved it into its account's Junk folder: "Not spam" brings it back.
+    MovedToJunk,
     /// You blocked the sender: set aside for good, never shown.
     Blocked,
     /// The name shown claims a brand the address does not belong to.
@@ -86,6 +95,27 @@ impl Reason {
     /// spam" answers, for good (`spam::labels::said_ham`).
     pub fn is_spam(&self) -> bool {
         matches!(self, Reason::Spam { .. } | Reason::LearnedSpam { .. })
+    }
+
+    /// Sioul's own filter's verdict: its class and how likely spam.
+    pub fn learned(&self) -> Option<(crate::spam::Class, f32)> {
+        use crate::spam::Class;
+        match self {
+            Reason::LearnedSpam { p } => Some((Class::Spam, *p)),
+            Reason::Unsure { p } => Some((Class::Unsure, *p)),
+            Reason::LearnedHam { p } => Some((Class::Ham, *p)),
+            _ => None,
+        }
+    }
+
+    /// The reason your own filter gives for a class.
+    pub fn of_class(class: crate::spam::Class, p: f32) -> Reason {
+        use crate::spam::Class;
+        match class {
+            Class::Spam => Reason::LearnedSpam { p },
+            Class::Unsure => Reason::Unsure { p },
+            Class::Ham => Reason::LearnedHam { p },
+        }
     }
 }
 
@@ -1188,7 +1218,7 @@ pub fn triage(card: Card, ctx: &Context) -> Triaged {
     let protected = protected(&card, ctx, trust, code.as_ref(), sender);
     // Its features read your provider's results alone, as the training does (`spam::features::provider_results`).
     let learned = if protected { None } else { ctx.spam.and_then(|filter| filter.judge(&card, ctx.trusted_ids).map(|verdict| (filter, verdict))) };
-    let (lane, reason) = choose_lane(&card, ctx, trust, code.as_ref(), assessment.as_ref(), sender, protected, learned.as_ref().map(|(filter, verdict)| (*filter, verdict)));
+    let (lane, reason) = choose_lane(&card, ctx, trust, code.as_ref(), assessment.as_ref(), sender, protected, learned);
     let mut reasons = vec![Reason::Trust(proof), reason];
     // Why its sender counts as nobody you know: in place of "the first
     // message" in the screener (letting them in would change nothing), else
@@ -1205,20 +1235,6 @@ pub fn triage(card: Card, ctx: &Context) -> Triaged {
         && lane == Lane::RightNow
     {
         reasons.push(Reason::UnverifiedCode(c.kind));
-    }
-    // The filter's verdict on mail it did not set aside (it only says, or it is
-    // not sure): beside it, the lane kept. Never on mail whose words a shield
-    // hides or found rude: its "why" would show them.
-    let calm = assessment.as_ref().is_none_or(|a| a.tone == crate::shield::Tone::Calm);
-    if let Some((filter, verdict)) = learned
-        && lane != Lane::SetAside
-        && calm
-    {
-        match filter.class(verdict.p) {
-            crate::spam::Class::Spam => reasons.push(Reason::LearnedSpam { p: verdict.p, why: verdict.why }),
-            crate::spam::Class::Unsure => reasons.push(Reason::Unsure { p: verdict.p, why: verdict.why }),
-            crate::spam::Class::Ham => {}
-        }
     }
     Triaged { card, lane, trust, code, reasons, priority: ctx.priority, checks: auth, assessment }
 }
@@ -1246,13 +1262,15 @@ pub fn sent(card: &Card) -> Option<i64> {
 }
 
 /// The lanes are decided in this order: set aside; for a shielded address,
-/// hostile; codes; cases; what you sent yourself; a shielded address's own
+/// hostile; what your own spam filter flagged or would move, as you chose
+/// (`review`); codes; cases; what you sent yourself; a shielded address's own
 /// lane; addresses ranked below; newsletters and automatic senders; the
 /// screener; people you know.
 #[allow(clippy::too_many_arguments)]
-fn choose_lane(card: &Card, ctx: &Context, trust: Trust, code: Option<&OneTimeCode>, assessment: Option<&crate::shield::Assessment>, sender: Sender, protected: bool, learned: Option<(&crate::spam::Filter, &crate::spam::Verdict)>) -> (Lane, Reason) {
-    set_aside(card, ctx, trust, sender, protected, learned)
+fn choose_lane(card: &Card, ctx: &Context, trust: Trust, code: Option<&OneTimeCode>, assessment: Option<&crate::shield::Assessment>, sender: Sender, protected: bool, learned: Option<(&crate::spam::Filter, crate::spam::Verdict)>) -> (Lane, Reason) {
+    set_aside(card, ctx, trust, sender, protected)
         .or_else(|| assessment.filter(|a| a.tone == crate::shield::Tone::Hostile).map(|_| (Lane::Hostile, Reason::Hostile)))
+        .or_else(|| review(learned))
         .or_else(|| right_now(code))
         .or_else(|| in_case(card, ctx, sender.unproven))
         .or_else(|| ctx.from_yourself(card, trust).then_some((Lane::People, Reason::FromYourself)))
@@ -1281,9 +1299,10 @@ fn protected(card: &Card, ctx: &Context, trust: Trust, code: Option<&OneTimeCode
 }
 
 /// Blocked, forged, borrowing a brand's name, or spam: set aside, never deleted.
-/// A sender you let in keeps the name they use. Spam is your provider's word,
-/// else Sioul's own filter's when you let it act; neither reaches what is `protected`.
-fn set_aside(card: &Card, ctx: &Context, trust: Trust, sender: Sender, protected: bool, learned: Option<(&crate::spam::Filter, &crate::spam::Verdict)>) -> Option<(Lane, Reason)> {
+/// A sender you let in keeps the name they use. Spam here is your provider's
+/// word; it never reaches what is `protected`. Sioul's own filter's verdicts
+/// go to the review queue instead (`review`).
+fn set_aside(card: &Card, ctx: &Context, trust: Trust, sender: Sender, protected: bool) -> Option<(Lane, Reason)> {
     if sender.who == crate::reach::Who::Blocked {
         return Some((Lane::SetAside, Reason::Blocked));
     }
@@ -1302,12 +1321,17 @@ fn set_aside(card: &Card, ctx: &Context, trust: Trust, sender: Sender, protected
     if protected {
         return None;
     }
-    if let Some(spam) = trust::read_spam_verdict(&card.headers).filter(|s| s.flagged) {
-        return Some((Lane::SetAside, Reason::Spam { source: spam.source, score: spam.score }));
-    }
+    trust::read_spam_verdict(&card.headers).filter(|s| s.flagged).map(|spam| (Lane::SetAside, Reason::Spam { source: spam.source, score: spam.score }))
+}
+
+/// A stranger's message your own filter judged (`learned`: only of mail no
+/// protection covers), whose class you chose to flag or to move into the
+/// Junk folder: the review queue, where it waits for your word, never
+/// notified. A message to move stays there until it is moved, once fetched
+/// (sioul-app's `spam::after_fetch`). "Do nothing": its lane, as if unjudged.
+fn review(learned: Option<(&crate::spam::Filter, crate::spam::Verdict)>) -> Option<(Lane, Reason)> {
     let (filter, verdict) = learned?;
-    let acts = filter.mode == crate::spam::Mode::Act && filter.class(verdict.p) == crate::spam::Class::Spam;
-    acts.then(|| (Lane::SetAside, Reason::LearnedSpam { p: verdict.p, why: verdict.why.clone() }))
+    (filter.action(verdict) != crate::spam::Action::Nothing).then(|| (Lane::Review, Reason::of_class(filter.class(verdict.p), verdict.p)))
 }
 
 /// What you just asked a site for, from its automatic address too: at once.
@@ -1346,6 +1370,10 @@ pub fn gather(sources: &[Source], cases: Option<&CaseStore>, known: &SenderList,
     let own_addresses = own_addresses(sources);
     let own_domains = own.as_slice();
     let assessments = crate::shield::AiCache::load_all();
+    // What your filter moved, here or on another device, waiting for your word: read once.
+    let root = crate::spam::labels::state();
+    let moved = crate::spam::labels::read_moved_in(&root);
+    let said = if moved.is_empty() { Vec::new() } else { crate::spam::labels::read_all_in(&root) };
     let mut items: Vec<Triaged> = sources
         .iter()
         .flat_map(|src| {
@@ -1363,12 +1391,99 @@ pub fn gather(sources: &[Source], cases: Option<&CaseStore>, known: &SenderList,
                     card.account = src.account.clone();
                     triage(card, &ctx)
                 })
+                .chain(flagged_since(src, &ctx, state, senders, now))
+                .chain(account.filter(|_| !moved.is_empty()).map_or_else(Vec::new, |a| moved_items(src, &ctx, &crate::folders::saved(a), &moved, &said)))
                 .collect::<Vec<_>>()
         })
         .collect();
     follow_conversations(&mut items);
     items.sort_by_key(|t| t.card.date.unwrap_or(0));
     items
+}
+
+/// How long a message your filter flagged waits in the review queue after
+/// you closed the Porch on it: the Porch's two weeks.
+const REVIEW_DAYS: i64 = crate::config::DEFAULT_SYNC_DAYS as i64;
+
+/// When a stored message was stored here: the start of its file's name.
+fn stored_at(path: &Path) -> Option<i64> {
+    path.file_name()?.to_str()?.split('.').next()?.parse().ok()
+}
+
+/// The files of a Maildir folder, `new/` and `cur/`.
+fn files_in(dir: &Path) -> impl Iterator<Item = PathBuf> + use<> {
+    let dir = dir.to_path_buf();
+    ["new", "cur"].into_iter().flat_map(move |sub| std::fs::read_dir(dir.join(sub)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()))
+}
+
+/// What your filter flagged in `src`'s inbox, closed on since: the review
+/// queue waits for your word whatever you close, two weeks at most. Only the
+/// files stored here in that time are read.
+fn flagged_since(src: &Source, ctx: &Context, state: &PorchState, senders: &Senders, now: i64) -> Vec<Triaged> {
+    let account = src.account.as_deref();
+    // Nothing flags without a table, nor when nothing is done with any verdict.
+    if ctx.spam.is_none_or(|filter| filter.actions.idle() || !filter.table.exists()) || account.is_none_or(|a| !state.done.contains_key(a)) {
+        return Vec::new();
+    }
+    let since = now - REVIEW_DAYS * 86_400;
+    files_in(&src.folder)
+        .filter(|path| state.is_done(account, maildir::origin_of(path)) && stored_at(path).is_some_and(|at| at >= since))
+        .filter_map(|path| maildir::read_one(&path))
+        .filter(|card| senders.who_of(card) != crate::reach::Who::Blocked)
+        .map(|mut card| {
+            card.account = src.account.clone();
+            triage(card, ctx)
+        })
+        .filter(|t| t.lane == Lane::Review)
+        .collect()
+}
+
+/// Mail your own filter moved into a Junk folder of `src`'s account (among
+/// `folders`, as its server last listed them), here or on another device
+/// (`moved`, every device's log), still there and waiting for your word
+/// (`said`: no label about it since, and neither `$Junk` nor `$NotJunk` set
+/// on it in another mail client): in the review queue, as moved. Only the
+/// files fetched into the Junk folder after the move are read.
+fn moved_items(src: &Source, ctx: &Context, folders: &[crate::folders::Folder], moved: &[crate::spam::labels::Moved], said: &[crate::spam::labels::Entry]) -> Vec<Triaged> {
+    let Some(account) = src.account.as_deref() else { return Vec::new() };
+    let waiting: std::collections::HashMap<&str, &crate::spam::labels::Moved> =
+        moved.iter().filter(|m| m.account == account && crate::spam::labels::unreviewed(m, said)).filter_map(|m| Some((m.message_id.as_deref()?, m))).collect();
+    let Some(since) = waiting.values().map(|m| m.at).min() else { return Vec::new() };
+    // Stored here after the move: a day's margin for the clocks of other devices.
+    folders
+        .iter()
+        .filter(|f| f.role == crate::folders::Role::Junk && !f.local.is_empty())
+        .flat_map(|f| files_in(&src.folder.join(&f.local)))
+        .filter(|path| maildir::origin_of(path).is_some() && stored_at(path).is_some_and(|at| at >= since - 86_400))
+        .filter_map(|path| maildir::read_one(&path))
+        .filter_map(|mut card| {
+            let id = crate::mailindex::bare_id(card.message_id.as_deref()?);
+            let moved = waiting.get(id.as_str())?;
+            let keywords = card.path.as_deref().map(maildir::keywords_of).unwrap_or_default();
+            if keywords.junk || keywords.not_junk {
+                return None;
+            }
+            card.account = src.account.clone();
+            Some(moved_item(card, ctx, moved.class))
+        })
+        .collect()
+}
+
+/// A message your filter moved, as the review queue shows it: who sent it,
+/// as for any message, and that your filter moved it.
+fn moved_item(card: Card, ctx: &Context, class: crate::spam::Class) -> Triaged {
+    let auth = trust::read_auth_results(&card.headers, ctx.trusted_ids);
+    let (trust, proof) = trust::judge_sender(auth.as_ref(), card.is_list, card.sender_domain());
+    // How likely spam, judged again by the table in place; as its class says without one.
+    let p = ctx.spam.and_then(|filter| filter.judge(&card, ctx.trusted_ids)).map_or(
+        match class {
+            crate::spam::Class::Spam => 1.0,
+            crate::spam::Class::Unsure => 0.5,
+            crate::spam::Class::Ham => 0.0,
+        },
+        |verdict| verdict.p,
+    );
+    Triaged { card, lane: Lane::Review, trust, code: None, reasons: vec![Reason::Trust(proof), Reason::of_class(class, p), Reason::MovedToJunk], priority: ctx.priority, checks: auth, assessment: None }
 }
 
 /// A message in the conversation of one of a case's goes to that case, unless
@@ -1383,7 +1498,9 @@ fn follow_conversations(items: &mut [Triaged]) {
     }
     for (item, group) in items.iter_mut().zip(&groups) {
         let Some(id) = case_of.get(group) else { continue };
-        if matches!(item.lane, Lane::People | Lane::Screener | Lane::Filed | Lane::Low | Lane::Public(_)) {
+        // Flagged by your filter, yes; moved into a Junk folder, it stays there until you say.
+        let flagged = item.lane == Lane::Review && !item.reasons.contains(&Reason::MovedToJunk);
+        if flagged || matches!(item.lane, Lane::People | Lane::Screener | Lane::Filed | Lane::Low | Lane::Public(_)) {
             item.lane = Lane::Case(id.clone());
             let reason = Reason::Case { case_id: id.clone(), matched: vec![crate::cases::RouteMatch { field: crate::cases::RouteField::Thread, value: String::new() }] };
             match item.reasons.iter_mut().find(|r| !matches!(r, Reason::Trust(_) | Reason::UnverifiedCode(_) | Reason::NotAuthenticated)) {
@@ -1391,7 +1508,7 @@ fn follow_conversations(items: &mut [Triaged]) {
                 None => item.reasons.push(reason),
             }
             // A project's conversation is protected: the filter's word on it goes.
-            item.reasons.retain(|r| !matches!(r, Reason::LearnedSpam { .. } | Reason::Unsure { .. }));
+            item.reasons.retain(|r| r.learned().is_none());
         }
     }
 }
@@ -1439,6 +1556,8 @@ pub struct Summary {
     pub set_aside: usize,
     /// From accounts ranked below the others: said once, at the end, and not in the total.
     pub low: usize,
+    /// Waiting for your word in the review queue: never counted, never said.
+    pub review: usize,
 }
 
 /// Counts what came, lane by lane.
@@ -1454,7 +1573,7 @@ pub fn summarise(items: &[Triaged]) -> Summary {
         }
     }
     Summary {
-        total: items.len() - count(Lane::Low),
+        total: items.len() - count(Lane::Low) - count(Lane::Review),
         codes: count(Lane::RightNow),
         cases,
         people: count(Lane::People),
@@ -1462,6 +1581,7 @@ pub fn summarise(items: &[Triaged]) -> Summary {
         filed: count(Lane::Filed),
         set_aside: count(Lane::SetAside),
         low: count(Lane::Low),
+        review: count(Lane::Review),
     }
 }
 
@@ -1787,10 +1907,12 @@ mod tests {
         assert_eq!(triage(said, &ctx).lane, Lane::Screener);
     }
 
-    /// Sioul's own filter, with a table made by hand: the lottery's words weigh toward spam.
+    /// Sioul's own filter, with a table made by hand (the lottery's words
+    /// weigh toward spam), does with each verdict what the matrix says: flag
+    /// it or move it (the review queue, never notified), or nothing.
     #[test]
-    fn the_learned_verdict_says_or_acts() {
-        use crate::spam::{Class, Filter, Mode, features, table, tokenize};
+    fn the_matrix_decides_what_the_filter_does() {
+        use crate::spam::{Action, Actions, Class, Filter, features, table, tokenize};
         let dir = std::env::temp_dir().join(format!("sioul-porch-spam-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("table.bin");
@@ -1815,39 +1937,91 @@ mod tests {
         made.sort();
         made.write(&path).unwrap();
         let card = |from: &str, subject: &str, body: &str| Card::from_bytes(format!("From: {from}\r\nSubject: {subject}\r\n\r\n{body}\r\n").as_bytes()).unwrap();
-        let filter = |mode: Mode| Filter { mode, threshold_spam: 0.95, threshold_unsure: 0.5, table: path.clone() };
-        let (act, say, off) = (filter(Mode::Act), filter(Mode::Say), filter(Mode::Off));
+        let filter = |actions: Actions| Filter { actions, threshold_spam: 0.95, threshold_unsure: 0.5, table: path.clone() };
+        let usual = filter(Actions::default());
         let spam = card("Prize <win@lottery.test>", "You won the lottery", "Claim your lottery prize now");
         let doubt = card("Club <club@garden.test>", "Lottery", "The garden fence, the tomatoes and the lottery prize");
-        assert_eq!(act.class(crate::spam::score(&made, &spam, &[]).p), Class::Spam);
-        assert_eq!(act.class(crate::spam::score(&made, &doubt, &[]).p), Class::Unsure);
+        let calm = card("Club <club@garden.test>", "Meeting", "The garden fence and the tomatoes");
+        assert_eq!(usual.class(crate::spam::score(&made, &spam, &[]).p), Class::Spam);
+        assert_eq!(usual.class(crate::spam::score(&made, &doubt, &[]).p), Class::Unsure);
+        assert_eq!(usual.class(crate::spam::score(&made, &calm, &[]).p), Class::Ham);
         let senders = Senders { safe: SenderList::parse("jane@example.org"), ..Senders::default() };
         let none = SenderList::default();
         let ctx = |filter| Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: filter };
-        // Acting: spam set aside with its why; a doubt said, its lane kept.
-        let t = triage(spam.clone(), &ctx(Some(&act)));
-        assert_eq!(t.lane, Lane::SetAside);
-        let Some(Reason::LearnedSpam { p, why }) = t.reasons.last() else { panic!("{:?}", t.reasons) };
-        // "lottery", said twice, weighs most; the header said nothing.
-        assert!(*p >= 0.95 && why.words.first().map(String::as_str) == Some("loteri") && why.words.len() == 4 && why.signs.is_empty(), "{p} {why:?}");
-        let t = triage(doubt.clone(), &ctx(Some(&act)));
-        assert_eq!(t.lane, Lane::Screener);
-        assert!(matches!(t.reasons.last(), Some(Reason::Unsure { .. })), "{:?}", t.reasons);
-        // Saying only: nothing moves, the verdict said.
-        let t = triage(spam.clone(), &ctx(Some(&say)));
-        assert_eq!(t.lane, Lane::Screener);
-        assert!(t.reasons.last().is_some_and(Reason::is_spam));
-        // Off, or no table yet: as before.
-        assert_eq!(triage(spam.clone(), &ctx(Some(&off))).reasons.len(), 2);
-        let missing = Filter { table: dir.join("none.bin"), ..act.clone() };
+        // Until you choose: spam and doubts flagged, in the review queue, never notified; the rest in its lane.
+        let t = triage(spam.clone(), &ctx(Some(&usual)));
+        assert!(t.lane == Lane::Review && matches!(t.reasons.last(), Some(Reason::LearnedSpam { p }) if *p >= 0.95), "{:?} {:?}", t.lane, t.reasons);
+        assert!(crate::mailnote::never(&t, true), "never notified");
+        let t = triage(doubt.clone(), &ctx(Some(&usual)));
+        assert!(t.lane == Lane::Review && matches!(t.reasons.last(), Some(Reason::Unsure { .. })), "{:?}", t.reasons);
+        let t = triage(calm.clone(), &ctx(Some(&usual)));
+        assert!(t.lane == Lane::Screener && t.reasons.iter().all(|r| r.learned().is_none()), "{:?}", t.reasons);
+        // Each row as you choose it: spam to move (the review queue until it is moved), doubts left alone, ham flagged.
+        let mine = filter(Actions { spam: Action::Move, unsure: Action::Nothing, ham: Action::Flag });
+        let t = triage(spam.clone(), &ctx(Some(&mine)));
+        assert_eq!((t.lane.clone(), mine.action(crate::spam::Verdict { p: 0.99 })), (Lane::Review, Action::Move));
+        let t = triage(doubt.clone(), &ctx(Some(&mine)));
+        assert!(t.lane == Lane::Screener && t.reasons.iter().all(|r| r.learned().is_none()) && !crate::mailnote::never(&t, true), "{:?}", t.reasons);
+        let t = triage(calm.clone(), &ctx(Some(&mine)));
+        assert!(t.lane == Lane::Review && matches!(t.reasons.last(), Some(Reason::LearnedHam { .. })), "{:?}", t.reasons);
+        // Nothing done with any: not even judged; no table yet: as before.
+        let idle = filter(Actions { spam: Action::Nothing, unsure: Action::Nothing, ham: Action::Nothing });
+        assert!(idle.judge(&spam, &[]).is_none());
+        assert_eq!(triage(spam.clone(), &ctx(Some(&idle))).reasons.len(), 2);
+        let missing = Filter { table: dir.join("none.bin"), ..usual.clone() };
         assert_eq!(triage(spam.clone(), &ctx(Some(&missing))).lane, Lane::Screener);
         // Never on someone you know, nor on a code.
-        let jane = triage(card("Jane <jane@example.org>", "You won the lottery", "Claim your lottery prize now"), &ctx(Some(&act)));
+        let jane = triage(card("Jane <jane@example.org>", "You won the lottery", "Claim your lottery prize now"), &ctx(Some(&mine)));
         assert_eq!((jane.lane, jane.reasons.len()), (Lane::People, 2));
-        let code = triage(card("Prize <win@lottery.test>", "Your verification code", "Your verification code: 482913. You won the lottery, claim your lottery prize now."), &ctx(Some(&act)));
+        let code = triage(card("Prize <win@lottery.test>", "Your verification code", "Your verification code: 482913. You won the lottery, claim your lottery prize now."), &ctx(Some(&mine)));
         assert_eq!(code.lane, Lane::RightNow);
-        assert!(!code.reasons.iter().any(|r| matches!(r, Reason::LearnedSpam { .. } | Reason::Unsure { .. })), "{:?}", code.reasons);
+        assert!(code.reasons.iter().all(|r| r.learned().is_none()), "{:?}", code.reasons);
+        // The review queue is never counted; closing the Porch never closes it.
+        let items = vec![triage(spam.clone(), &ctx(Some(&usual))), triage(calm.clone(), &ctx(Some(&usual)))];
+        let summary = summarise(&items);
+        assert_eq!((summary.total, summary.review, summary.screener), (1, 1, 1));
+        let mut flagged = items[0].clone();
+        flagged.card.account = Some("home".into());
+        flagged.card.origin = Some(crate::card::ImapOrigin { validity: 7, uid: 99 });
+        assert!(PorchState::newest_shown(&[flagged]).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// What your filter moved into a Junk folder, on any device, waits in the
+    /// review queue there until you say; then, or once marked in another mail
+    /// client, it leaves it.
+    #[test]
+    fn what_was_moved_waits_in_junk_for_your_word() {
+        use crate::spam::labels::{Entry, Label, Moved, Source as Said};
+        let root = std::env::temp_dir().join(format!("sioul-porch-moved-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let junk = crate::folders::folder("Junk", Some("."), Some(crate::folders::Role::Junk));
+        let store = |uid: u32, id: &str, stored: i64, flags: &str| {
+            let folder = root.join(&junk.local).join(if flags.is_empty() { "new" } else { "cur" });
+            std::fs::create_dir_all(&folder).unwrap();
+            let name = if flags.is_empty() { format!("{stored}.U3-{uid}.sioul") } else { format!("{stored}.U3-{uid}.sioul{}2,{flags}", maildir::INFO) };
+            std::fs::write(folder.join(name), format!("From: Prize <win@lottery.test>\r\nMessage-ID: <{id}>\r\nSubject: You won\r\n\r\nClaim it.\r\n")).unwrap();
+        };
+        let at = 1_791_360_000;
+        store(1, "moved@lottery.test", at + 60, "");
+        store(2, "theirs@lottery.test", at + 60, "");
+        store(3, "marked@lottery.test", at + 60, &maildir::NOT_JUNK.to_string());
+        store(4, "old@lottery.test", at - 10 * 86_400, "");
+        let moved = |id: &str| Moved { at, account: "home".into(), folder: "INBOX".into(), uidvalidity: 1, uid: 9, message_id: Some(id.into()), class: crate::spam::Class::Spam };
+        let log = vec![moved("moved@lottery.test"), moved("marked@lottery.test"), moved("old@lottery.test")];
+        let src = Source { account: Some("home".into()), address: None, folder: root.clone(), trusted_ids: Vec::new(), priority: Priority::Average, shielded: false, filed_words: Vec::new(), spam: None };
+        let none = SenderList::default();
+        let senders = Senders::default();
+        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+        let found = moved_items(&src, &ctx, std::slice::from_ref(&junk), &log, &[]);
+        // Only the one moved and still unmarked; not another's junk, not one stored before the move.
+        assert_eq!(found.iter().map(|t| t.card.message_id.clone().unwrap_or_default()).collect::<Vec<_>>(), ["moved@lottery.test"]);
+        assert_eq!((found[0].lane.clone(), found[0].reasons.last()), (Lane::Review, Some(&Reason::MovedToJunk)));
+        assert!(found[0].reasons.contains(&Reason::LearnedSpam { p: 1.0 }) && crate::mailnote::never(&found[0], true));
+        // Said, on any device, after the move: no longer waiting.
+        let said = vec![Entry { at: at + 100, account: "home".into(), folder: "Junk".into(), uidvalidity: 3, uid: 1, message_id: Some("moved@lottery.test".into()), label: Label::Spam, source: Said::Junk }];
+        assert!(moved_items(&src, &ctx, &[junk], &log, &said).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Mail failing SPF and DKIM is not authenticated: its sender counts as

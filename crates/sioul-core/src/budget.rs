@@ -664,11 +664,12 @@ impl MailLine {
 }
 
 /// Every message about money among `items`, newest first, with what becomes of
-/// it. Mail set aside (forged, spam) is never read; a rule gives the budget and
+/// it. Mail set aside (forged, spam) and the review queue's (what your own spam
+/// filter flagged or moved) are never read; a rule gives the budget and
 /// the preset; `ignored` holds the keys you said are not payments.
 pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>) -> Vec<MailLine> {
     let recorded: BTreeSet<&str> = ledger.lines.iter().flat_map(|l| l.links.iter().map(String::as_str)).collect();
-    let mut lines: Vec<MailLine> = items.iter().filter(|t| t.lane != Lane::SetAside).filter_map(|t| mail_line(ledger, t)).collect();
+    let mut lines: Vec<MailLine> = items.iter().filter(|t| t.lane != Lane::SetAside && t.lane != Lane::Review).filter_map(|t| mail_line(ledger, t)).collect();
     lines.sort_by_key(|l| l.date);
     for line in &mut lines {
         line.state = if recorded.contains(line.key.as_str()) {

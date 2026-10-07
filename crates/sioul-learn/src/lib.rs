@@ -29,7 +29,8 @@
 //! # Modules
 //!
 //! - [`corpus`]: what training reads, downloaded from every folder of every account and kept here, junk included after your provider purges it.
-//! - [`labels`]: spam or ham for each message, from its folder, its keywords and your own actions (the label log).
+//! - [`external`]: outside training material, mail labelled elsewhere, imported once (`sioul spam import`): more words to learn, and a baseline.
+//! - [`labels`]: spam or ham for each message, from its folder, its keywords and your own actions (every device's label log).
 //! - [`train`]: training on demand: fastText on your mail, the message vectors, the SVM, its calibration, the evaluation, and the reduced table every device reads, replaced only when no worse.
 //! - [`svm`]: the linear SVM, solved as liblinear solves it.
 //! - [`platt`]: the SVM's scores turned into probabilities (Platt scaling).
@@ -39,6 +40,7 @@
 
 pub mod corpus;
 pub mod eval;
+pub mod external;
 pub mod labels;
 pub mod platt;
 pub(crate) mod spamcore;
@@ -55,9 +57,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// tests give their own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dirs {
-    /// `$XDG_DATA_HOME/sioul/spam`: the corpus, the language model, the table.
+    /// `$XDG_DATA_HOME/sioul/spam`: the corpus, outside material, the language model, the table.
     pub data: PathBuf,
-    /// `$XDG_STATE_HOME/sioul/spam`: the label log, the last training's summary.
+    /// `$XDG_STATE_HOME/sioul/spam`: every device's label log and log of
+    /// what the filter moved, the last training's summary.
     pub state: PathBuf,
     /// `$XDG_CACHE_HOME/sioul/spam`: the tokenized corpus while fastText reads it.
     pub cache: PathBuf,
@@ -79,6 +82,11 @@ impl Dirs {
         self.data.join("corpus")
     }
 
+    /// Outside training material (`external`): private, never shared, never shown to an AI agent.
+    pub fn external(&self) -> PathBuf {
+        self.data.join("external")
+    }
+
     /// The fastText model: private, never shared (it holds the vocabulary in plain text).
     pub fn language(&self) -> PathBuf {
         self.data.join("language.bin")
@@ -94,9 +102,14 @@ impl Dirs {
         self.data.join("table.prev.bin")
     }
 
-    /// The label log: your junk, not-junk, "Not spam" and blocks.
+    /// The label logs, one per device: your junk, not-junk, "Spam", "Not spam" and blocks.
     pub fn labels(&self) -> PathBuf {
-        self.state.join("labels.jsonl")
+        self.state.join(sioul_core::spam::labels::FOLDER)
+    }
+
+    /// What your own filter moved into a Junk folder, one log per device: never labels.
+    pub fn moved(&self) -> PathBuf {
+        self.state.join(sioul_core::spam::labels::MOVED)
     }
 
     /// The last training's summary, for the settings.

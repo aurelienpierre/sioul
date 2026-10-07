@@ -5,8 +5,9 @@
 // (crates/sioul-app/src/spam.rs, docs/spam-filter.md): the table in use and
 // where it comes from, with what it measured; on a computer, "Train now",
 // the training's progress with "Stop", what the last training found, and
-// what the corpus holds. A phone never trains: it says where its table
-// comes from, another device's, brought sealed by the sharing.
+// what the corpus and the outside material hold. One computer trains, by
+// hand; a phone never does: it says where its table comes from, another
+// device's, brought sealed by the sharing.
 
 pragma ComponentBehavior: Bound
 
@@ -19,8 +20,8 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
-    // spam.rs's `Status`: {trains, table, measured, refused, running, stopping, progress, fraction, ended, last, corpus}.
-    property var shown: ({ trains: false, table: "", measured: "", refused: "", running: false, stopping: false, progress: "", fraction: -1, ended: "", last: [], corpus: [] })
+    // spam.rs's `Status`: {trains, table, measured, refused, running, stopping, progress, fraction, ended, last, corpus, outside}.
+    property var shown: ({ trains: false, table: "", measured: "", refused: "", running: false, stopping: false, progress: "", fraction: -1, ended: "", last: [], corpus: [], outside: [] })
     // What it is, in a sentence: the setting's own (settings.rs), said first.
     property string about: ""
     // Why "Train now" did not start, else "".
@@ -174,7 +175,7 @@ ColumnLayout {
         }
     }
 
-    // What it learns from, on this computer only.
+    // What it learns from, on this computer only: your mail, and outside material (`sioul spam import`).
     Label {
         visible: filter.shown.trains && filter.shown.corpus.length > 0
         Layout.fillWidth: true
@@ -185,7 +186,7 @@ ColumnLayout {
         color: filter.theme.text
     }
     Repeater {
-        model: filter.shown.trains ? filter.shown.corpus : []
+        model: filter.shown.trains ? filter.shown.corpus.concat(filter.shown.outside || []) : []
 
         delegate: Label {
             required property string modelData

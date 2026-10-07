@@ -1103,10 +1103,17 @@ Panel {
                     text: reader.sioul.text("ui-let-in")
                     onClicked: reader.sioul.letIn(reader.item.address)
                 }
-                // Called spam, or maybe spam, and it is not: set aside, back in its
-                // lane; said only, the word taken away; for good, with ten seconds to
-                // undo; `$NotJunk` told to the server, the act kept in the label log
-                // that the next training learns from.
+                // In the review queue, your word on your own filter's: Spam (into
+                // the Junk folder, or kept there), or Not spam (back in its lane,
+                // from the Junk folder into the inbox); for good, with ten seconds
+                // to undo; `$Junk` or `$NotJunk` told to the server, the act kept in
+                // this device's label log, which every device and the next training read.
+                // Set aside as spam by your provider: Not spam alone.
+                Button {
+                    visible: reader.item !== null && !!reader.item.review
+                    text: reader.sioul.text("ui-spam")
+                    onClicked: reader.act("spam")
+                }
                 Button {
                     visible: reader.item !== null && !!reader.item.spam
                     text: reader.sioul.text("ui-not-spam")

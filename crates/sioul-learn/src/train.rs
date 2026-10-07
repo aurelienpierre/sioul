@@ -15,10 +15,16 @@
 //!    training messages' mean and deviation.
 //! 5. Oldest 80 % to learn, newest 20 % to test, by INTERNALDATE. The SVM's
 //!    cost is chosen among 0.01, 0.1, 1 and 10 on the newest fifth of the
-//!    learning part; ham weighs 5.
+//!    learning part; ham weighs 5. Outside material (`external`), when
+//!    imported, is split alike, source by source, by its own dates: its
+//!    oldest 80 % joins the learning part at its dates, with its header
+//!    features at the learning part's mean (0 once standardized: only its
+//!    words weigh); its newest 20 % is held out, the baseline.
 //! 6. Platt's A and B are fitted on scores each message got from an SVM
 //!    trained on older mail only (forward folds).
-//! 7. The numbers, on the newest 20 %: aggregates only (`eval`).
+//! 7. The numbers, on the newest 20 % of your own mail: aggregates only
+//!    (`eval`); the same numbers on each outside source's held-out part,
+//!    apart: the baseline.
 //! 8. The model is folded into the reduced table (one scalar per word and per
 //!    bucket, the header weights, the bias); the table must give the model's
 //!    score within 1e-4 on every test message, or nothing is exported. It
@@ -37,6 +43,7 @@
 
 use crate::corpus::{self, KEEP_FREE, Place, Record};
 use crate::eval::{self, Numbers};
+use crate::external;
 use crate::labels::{self, Copy, Label};
 use crate::platt::{self, Platt};
 use crate::spamcore::{self as spam, N, Table};
@@ -45,7 +52,7 @@ use crate::{Cancel, Dirs, LearnError, Progress, Stage, io_error, now};
 use serde::{Deserialize, Serialize};
 use sioul_core::card::Card;
 use sioul_core::config::Config;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{BufReader, BufWriter, Seek, Write};
 use std::path::{Path, PathBuf};
 
@@ -140,6 +147,23 @@ pub struct Summary {
     /// The table written, when replaced: the same model learned again from every message.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refit: Option<Refit>,
+    /// Outside material learned from, by source (`external`): what each gave, and its baseline.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub outside: BTreeMap<String, Outside>,
+}
+
+/// An outside source in a training: its oldest 80 % learned from, its
+/// newest 20 % held out, and the numbers there (the baseline).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Outside {
+    pub train_ham: u64,
+    pub train_spam: u64,
+    pub held_ham: u64,
+    pub held_spam: u64,
+    /// The numbers of the model learned from the oldest 80 % (yours and
+    /// every source's), on this source's held-out part; none when nothing is held out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline: Option<Numbers>,
 }
 
 /// The replacement's comparison: the test messages the table in place never
@@ -240,6 +264,10 @@ struct Message {
     label: Label,
     date: i64,
     account: String,
+    /// Outside material: its source (an index into the training's sources); none for your own mail.
+    source: Option<usize>,
+    /// Its header features are known (your own mail); outside material's are not: set to the mean.
+    known: bool,
     features: [f32; N],
     /// Where its words are in the tokenized corpus.
     offset: u64,
@@ -275,16 +303,34 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
             progress(&Progress { stage: Stage::Labels, done: copies.len() as u64, total: 0, detail: String::new() });
         }
     })?;
-    let log = labels::read_log(&dirs.labels());
-    let (labeled, label_summary) = labels::decide(copies, &log);
+    let log = labels::read_log(dirs);
+    let moved = labels::read_moved(dirs);
+    let (labeled, label_summary) = labels::decide(copies, &log, &moved);
+    // Outside material, by source: a message also in your own mail is learned from yours.
+    let own_keys: HashSet<String> = labeled.iter().map(|l| l.key.clone()).collect();
+    let yours = |message: &external::Message| message.message_id().is_some_and(|id| own_keys.contains(&id));
+    let mut outside: BTreeMap<String, Outside> = BTreeMap::new();
+    external::read_all(dirs, |source, message| {
+        if yours(&message) {
+            return;
+        }
+        texts += (message.subject.len() + message.text.len() + message.html.as_ref().map_or(0, String::len)) as u64;
+        let counts = outside.entry(source.to_string()).or_default();
+        match message.label {
+            Label::Ham => counts.train_ham += 1,
+            Label::Spam => counts.train_spam += 1,
+        }
+    })?;
+    let sources: Vec<String> = outside.keys().cloned().collect();
     progress(&Progress { stage: Stage::Labels, done: label_summary.records, total: label_summary.records, detail: String::new() });
-    if label_summary.ham < options.least_of_each || label_summary.spam < options.least_of_each {
-        return Err(LearnError::TooFew { ham: label_summary.ham, spam: label_summary.spam });
+    let (ham, spam) = outside.values().fold((label_summary.ham, label_summary.spam), |(h, s), o| (h + o.train_ham, s + o.train_spam));
+    if ham < options.least_of_each || spam < options.least_of_each {
+        return Err(LearnError::TooFew { ham, spam });
     }
     check()?;
 
     // Room: the tokenized corpus (at most the texts' size) and the language model.
-    let model_bytes = (u64::from(options.bucket) + 2 * label_summary.records.min(500_000)) * u64::from(options.dim) * 4;
+    let model_bytes = (u64::from(options.bucket) + 2 * (label_summary.records + ham + spam).min(500_000)) * u64::from(options.dim) * 4;
     std::fs::create_dir_all(&dirs.cache).map_err(|e| io_error(&dirs.cache, e))?;
     if let Some(free) = corpus::free_space(&dirs.cache)
         && free < KEEP_FREE + texts + model_bytes
@@ -297,6 +343,9 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
     let token_path = dirs.cache.join(format!("tokens-{}.txt", std::process::id()));
     let token_file = TokenFile(token_path.clone());
     let mut messages: Vec<Option<Message>> = (0..labeled.len()).map(|_| None).collect();
+    let mut outside_messages: Vec<Message> = Vec::new();
+    // Your own messages, then the outside material's.
+    let tokens_total = labeled.len() as u64 + (ham + spam) - (label_summary.ham + label_summary.spam);
     {
         let file = std::fs::File::create(&token_path).map_err(|e| io_error(&token_path, e))?;
         let mut out = BufWriter::new(file);
@@ -322,11 +371,34 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
                 length += text.len() as u64 + 1;
             }
             let l = &labeled[index];
-            messages[index] = Some(Message { label: l.label, date: l.date, account: l.place.account.clone(), features, offset, length, words: words.len() as u64 });
+            messages[index] = Some(Message { label: l.label, date: l.date, account: l.place.account.clone(), source: None, known: true, features, offset, length, words: words.len() as u64 });
             offset += length;
             done += 1;
             if done % 500 == 0 {
-                progress(&Progress { stage: Stage::Tokens, done, total: labeled.len() as u64, detail: String::new() });
+                progress(&Progress { stage: Stage::Tokens, done, total: tokens_total, detail: String::new() });
+            }
+        })?;
+        // Outside material after your own mail, in the same file: its words teach the language model too.
+        external::read_all(dirs, |source, message| {
+            if failure.is_some() || yours(&message) {
+                return;
+            }
+            let words = message.words();
+            let mut length = 0u64;
+            for line in words.chunks(LINE_WORDS) {
+                let text = line.join(" ");
+                if let Err(e) = out.write_all(text.as_bytes()).and_then(|()| out.write_all(b"\n")) {
+                    failure = Some(io_error(&token_path, e));
+                    return;
+                }
+                length += text.len() as u64 + 1;
+            }
+            let source = sources.iter().position(|s| s == source);
+            outside_messages.push(Message { label: message.label, date: message.date, account: String::new(), source, known: false, features: [0.0; N], offset, length, words: words.len() as u64 });
+            offset += length;
+            done += 1;
+            if done % 500 == 0 {
+                progress(&Progress { stage: Stage::Tokens, done, total: tokens_total, detail: String::new() });
             }
         })?;
         if let Some(e) = failure {
@@ -335,7 +407,8 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
         out.flush().map_err(|e| io_error(&token_path, e))?;
     }
     // A copy that could not be read again (the corpus changed meanwhile) is left out.
-    let messages: Vec<Message> = messages.into_iter().flatten().collect();
+    let mut messages: Vec<Message> = messages.into_iter().flatten().collect();
+    messages.append(&mut outside_messages);
     progress(&Progress { stage: Stage::Tokens, done: messages.len() as u64, total: messages.len() as u64, detail: String::new() });
     check()?;
 
@@ -365,12 +438,28 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
     let vectors = message_vectors(&language, &token_path, &messages, options.threads.max(1) as usize, progress, cancel)?;
     check()?;
 
-    // Oldest 80 % to learn, newest 20 % to test; the test messages' words kept for the fold's test.
+    // Your own mail: oldest 80 % to learn, newest 20 % to test; each outside
+    // source alike, by its own dates, its newest 20 % held out (the
+    // baseline). The test and held-out messages' words kept for their scores.
+    let by_date = |ids: &mut Vec<usize>| ids.sort_by_key(|&i| (messages[i].date, i));
     let mut order: Vec<usize> = (0..messages.len()).collect();
-    order.sort_by_key(|&i| (messages[i].date, i));
-    let test_count = (messages.len() as f64 * 0.2).round() as usize;
-    let (train_ids, test_ids) = order.split_at(messages.len() - test_count);
+    by_date(&mut order);
+    let newest_fifth = |source: Option<usize>| -> (Vec<usize>, Vec<usize>) {
+        let mut ids: Vec<usize> = order.iter().copied().filter(|&i| messages[i].source == source).collect();
+        let tested = ids.split_off(ids.len() - (ids.len() as f64 * 0.2).round() as usize);
+        (ids, tested)
+    };
+    let (mut train_ids, test_ids) = newest_fifth(None);
+    let mut held: Vec<Vec<usize>> = Vec::with_capacity(sources.len());
+    for s in 0..sources.len() {
+        let (learned, held_out) = newest_fifth(Some(s));
+        train_ids.extend(learned);
+        held.push(held_out);
+    }
+    by_date(&mut train_ids);
+    let (train_ids, test_ids) = (train_ids.as_slice(), test_ids.as_slice());
     let test_words = words_of(&token_path, &messages, test_ids)?;
+    let held_words = held.iter().map(|ids| words_of(&token_path, &messages, ids)).collect::<Result<Vec<_>, _>>()?;
     drop(token_file);
     let rows = Rows { vectors: &vectors, messages: &messages, dim };
     let width = rows.width();
@@ -414,6 +503,9 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
     let mut split = Split::default();
     let mut accounts: BTreeMap<String, Counts> = BTreeMap::new();
     for &i in train_ids {
+        if messages[i].source.is_some() {
+            continue;
+        }
         let counts = accounts.entry(messages[i].account.clone()).or_default();
         match messages[i].label {
             Label::Ham => (split.train_ham += 1, counts.train_ham += 1),
@@ -435,6 +527,17 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
     let new_scored: Vec<(f64, bool)> = test_ids.iter().enumerate().map(|(row, &i)| (f64::from(table.score(&test_words[row], &messages[i].features).p), messages[i].label == Label::Spam)).collect();
     drop(test_x);
     let test = eval::evaluate(&new_scored, options.threshold_spam, options.threshold_unsure);
+    // Each outside source's held-out part: the baseline, its header features at the table's means (they weigh nothing).
+    let lacking = lacking(&table);
+    for (s, name) in sources.iter().enumerate() {
+        let scored: Vec<(f64, bool)> = held[s].iter().zip(&held_words[s]).map(|(&i, words)| (f64::from(table.score(words, &lacking).p), messages[i].label == Label::Spam)).collect();
+        let counts = outside.entry(name.clone()).or_default();
+        counts.held_ham = scored.iter().filter(|(_, spam)| !spam).count() as u64;
+        counts.held_spam = scored.len() as u64 - counts.held_ham;
+        counts.train_ham -= counts.held_ham;
+        counts.train_spam -= counts.held_spam;
+        counts.baseline = (!scored.is_empty()).then(|| eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure));
+    }
     progress(&Progress { stage: Stage::Evaluation, done: test_ids.len() as u64, total: test_ids.len() as u64, detail: String::new() });
 
     // The table in place, on the same messages: those of them it never
@@ -475,7 +578,7 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
             done += 1;
             progress(&Progress { stage: Stage::Export, done, total: refits, detail: detail.to_string() });
         };
-        let (mut written, refit) = refit_all(&language, &rows, &order, test_ids, &test_words, c, options, &split, cancel, &mut step)?;
+        let (mut written, refit) = refit_all(&language, &rows, &order, test_ids, &test_words, c, options, cancel, &mut step)?;
         written.meta.metrics = metrics(&test);
         check()?;
         // Written whole or not at all; the table it replaces is kept as table.prev.bin.
@@ -522,6 +625,7 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
         current: current_numbers,
         compared,
         refit,
+        outside,
     };
     let text = toml::to_string(&summary).map_err(|e| io_error(&dirs.trained(), e))?;
     corpus::write_whole(&dirs.trained(), text.as_bytes())?;
@@ -593,14 +697,21 @@ impl Rows<'_> {
         self.vectors[i * self.dim..(i + 1) * self.dim].iter().copied().chain(self.messages[i].features.iter().map(|&x| f64::from(x)))
     }
 
-    /// The mean and the deviation of each column over some messages.
+    /// The mean and the deviation of each column over some messages; the
+    /// header features' over those that have them (your own mail).
     fn standardization(&self, ids: &[usize]) -> (Vec<f64>, Vec<f64>) {
-        standardization(|k| self.raw(ids[k]).collect(), ids.len(), self.width())
+        standardization(|k| self.raw(ids[k]).collect(), |k| self.messages[ids[k]].known, ids.len(), self.width(), self.dim)
     }
 
-    /// Some messages' rows, standardized, one after the other.
+    /// Some messages' rows, standardized, one after the other; a message's
+    /// header features it does not have (outside material) at the mean: 0.
     fn standardized(&self, ids: &[usize], mean: &[f64], deviation: &[f64]) -> Vec<f32> {
-        ids.iter().flat_map(|&i| self.raw(i).zip(mean).zip(deviation).map(|((x, m), s)| if *s > 0.0 { ((x - m) / s) as f32 } else { 0.0 }).collect::<Vec<f32>>()).collect()
+        ids.iter()
+            .flat_map(|&i| {
+                let known = self.messages[i].known;
+                self.raw(i).zip(mean).zip(deviation).enumerate().map(move |(c, ((x, m), s))| if *s > 0.0 && (known || c < self.dim) { ((x - m) / s) as f32 } else { 0.0 }).collect::<Vec<f32>>()
+            })
+            .collect()
     }
 
     fn labels(&self, ids: &[usize]) -> Vec<i8> {
@@ -610,28 +721,45 @@ impl Rows<'_> {
 
 /// The mean and the deviation (population) of `width` columns over `n` rows,
 /// in two passes, rows made one at a time; 0 for a column that never changes.
-fn standardization(row: impl Fn(usize) -> Vec<f64>, n: usize, width: usize) -> (Vec<f64>, Vec<f64>) {
-    let count = n.max(1) as f64;
+/// The columns from `dim` on (the header features) only over the rows that
+/// have them (`known`); without any, 0.
+fn standardization(row: impl Fn(usize) -> Vec<f64>, known: impl Fn(usize) -> bool, n: usize, width: usize, dim: usize) -> (Vec<f64>, Vec<f64>) {
+    let counted = |column: usize, k: usize| column < dim || known(k);
+    let counts: Vec<f64> = (0..width).map(|c| (0..n).filter(|&k| counted(c, k)).count().max(1) as f64).collect();
     let mut mean = vec![0.0; width];
     for k in 0..n {
-        for (m, x) in mean.iter_mut().zip(row(k)) {
-            *m += x;
+        for (c, (m, x)) in mean.iter_mut().zip(row(k)).enumerate() {
+            if counted(c, k) {
+                *m += x;
+            }
         }
     }
-    mean.iter_mut().for_each(|m| *m /= count);
+    mean.iter_mut().zip(&counts).for_each(|(m, n)| *m /= n);
     let mut deviation = vec![0.0; width];
     for k in 0..n {
-        for ((d, x), m) in deviation.iter_mut().zip(row(k)).zip(&mean) {
-            *d += (x - m) * (x - m);
+        for (c, ((d, x), m)) in deviation.iter_mut().zip(row(k)).zip(&mean).enumerate() {
+            if counted(c, k) {
+                *d += (x - m) * (x - m);
+            }
         }
     }
-    deviation.iter_mut().for_each(|d| {
-        *d = (*d / count).sqrt();
+    deviation.iter_mut().zip(&counts).for_each(|(d, n)| {
+        *d = (*d / n).sqrt();
         if *d < 1e-12 {
             *d = 0.0;
         }
     });
     (mean, deviation)
+}
+
+/// Header features at a table's means: what outside material, which has
+/// none, is scored with (they weigh nothing).
+fn lacking(table: &Table) -> [f32; N] {
+    let mut features = [0.0; N];
+    for (x, m) in features.iter_mut().zip(&table.means) {
+        *x = *m;
+    }
+    features
 }
 
 /// The SVM learned from the first `end` rows of `x` (time order), cost `c`.
@@ -693,7 +821,6 @@ fn refit_all(
     test_words: &[Vec<String>],
     c: f64,
     options: &Options,
-    split: &Split,
     cancel: &Cancel,
     step: &mut dyn FnMut(&str),
 ) -> Result<(Table, Refit), LearnError> {
@@ -704,7 +831,15 @@ fn refit_all(
         let y = rows.labels(order);
         fit_with_platt(&x, &y, width, c, options, cancel, step)?
     };
-    let all = Split { train_ham: split.train_ham + split.test_ham, train_spam: split.train_spam + split.test_spam, ..*split };
+    // What it learned from: every message, outside material included; tested on your newest.
+    let ham_of = |ids: &[usize]| ids.iter().filter(|&&i| rows.messages[i].label == Label::Ham).count() as u64;
+    let all = Split {
+        train_ham: ham_of(order),
+        train_spam: order.len() as u64 - ham_of(order),
+        test_ham: ham_of(test_ids),
+        test_spam: test_ids.len() as u64 - ham_of(test_ids),
+        test_from: test_ids.first().map_or(0, |&i| rows.messages[i].date),
+    };
     let table = Table::from_bytes(&fold(language, &model, &mean, &deviation, sigmoid, options, &all).to_bytes()).map_err(LearnError::Fold)?;
     let test_x = rows.standardized(test_ids, &mean, &deviation);
     let fold_error = fold_error(&table, &model, &test_x, width, test_words, test_ids, rows.messages)?;
@@ -885,6 +1020,8 @@ pub struct Evaluation {
     pub numbers: Numbers,
     /// When the table was trained (Unix seconds), and on how much.
     pub table: spam::Meta,
+    /// Each outside source's newest 20 %, the baseline, apart.
+    pub outside: BTreeMap<String, Numbers>,
 }
 
 /// Tests the table in place on the newest fifth of the corpus as it is now,
@@ -894,8 +1031,7 @@ pub fn evaluate(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &
     let table = Table::read(&dirs.table()).map_err(LearnError::NoTable)?;
     let mut copies = Vec::new();
     corpus::read_all(dirs, |record| copies.push(Copy::of(&record)))?;
-    let log = labels::read_log(&dirs.labels());
-    let (mut labeled, label_summary) = labels::decide(copies, &log);
+    let (mut labeled, label_summary) = labels::decide(copies, &labels::read_log(dirs), &labels::read_moved(dirs));
     progress(&Progress { stage: Stage::Labels, done: label_summary.records, total: label_summary.records, detail: String::new() });
     if cancel.cancelled() {
         return Err(LearnError::Cancelled);
@@ -928,7 +1064,25 @@ pub fn evaluate(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &
         test_from: tested.first().map_or(0, |l| l.date),
         ..Split::default()
     };
-    Ok(Evaluation { labels: label_summary, split, numbers: eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure), table: table.meta })
+    // Each outside source's newest fifth, as a training holds it out: the baseline.
+    let own_keys: HashSet<String> = labeled.iter().chain(&tested).map(|l| l.key.clone()).collect();
+    let mut sources: BTreeMap<String, Vec<external::Message>> = BTreeMap::new();
+    external::read_all(dirs, |source, message| {
+        if !message.message_id().is_some_and(|id| own_keys.contains(&id)) {
+            sources.entry(source.to_string()).or_default().push(message);
+        }
+    })?;
+    let lacking = lacking(&table);
+    let outside = sources
+        .into_iter()
+        .map(|(name, mut messages)| {
+            messages.sort_by_key(|m| m.date);
+            let held = messages.split_off(messages.len() - (messages.len() as f64 * 0.2).round() as usize);
+            let scored: Vec<(f64, bool)> = held.iter().map(|m| (f64::from(table.score(&m.words(), &lacking).p), m.label == Label::Spam)).collect();
+            (name, eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure))
+        })
+        .collect();
+    Ok(Evaluation { labels: label_summary, split, numbers: eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure), table: table.meta, outside })
 }
 
 /// What weighed in one message's verdict. It names words of the message: for
@@ -1111,6 +1265,72 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    /// Outside material: its words join the language model's and the
+    /// classifier's learning, its header features at the mean (0 once
+    /// standardized: no pull on the header weights); split in time source by
+    /// source, its newest fifth held out and measured apart, the baseline;
+    /// your own mail tested as before. It alone is not enough of yours to
+    /// test on, but enough to learn.
+    #[test]
+    fn outside_material_teaches_words_and_gives_a_baseline() {
+        let root = scratch("outside");
+        let dirs = Dirs::under(&root);
+        corpus::store(&dirs, &records(&synthetic::mailbox(23, 300, 150))).unwrap();
+        // Two years older than your own mail, from an older filter's dump: subject and text, no headers.
+        let mut rng = crate::Rng::new(23);
+        let lines: Vec<String> = (0..500)
+            .map(|k| {
+                let spam = k % 3 == 0;
+                let date = 1_640_995_200 + 3600 * i64::from(k);
+                let card = Card::from_bytes(&synthetic::message(&mut rng, spam, 90_000 + k, date)).unwrap();
+                serde_json::json!({ "label": if spam { "spam" } else { "ham" }, "date": date, "subject": card.subject, "text": card.excerpt }).to_string()
+            })
+            .collect();
+        let file = root.join("old-filter.jsonl");
+        std::fs::write(&file, lines.join("\n")).unwrap();
+        let imported = external::import(&dirs, &file, None).unwrap();
+        assert_eq!((imported.sources["old-filter"].ham, imported.sources["old-filter"].spam), (333, 167));
+        let summary = train(&dirs, &trusted(), &small(), &mut |_| {}, &Cancel::new()).unwrap();
+        // Your own mail tested as before, on its newest fifth.
+        assert_eq!(summary.split.test_ham + summary.split.test_spam, 90);
+        assert_eq!(summary.split.train_ham + summary.split.train_spam, 360, "your own mail's oldest 80 %");
+        // The outside source split by its own dates: 400 learned from, 100 held out and measured.
+        let outside = &summary.outside["old-filter"];
+        assert_eq!((outside.train_ham + outside.train_spam, outside.held_ham + outside.held_spam), (400, 100), "{outside:?}");
+        let baseline = outside.baseline.as_ref().expect("held out: measured");
+        assert!(baseline.auc.is_some_and(|a| a > 0.9) && baseline.ham + baseline.spam == 100, "{baseline:?}");
+        // The table in use learned from all of it.
+        assert_eq!(summary.refit.as_ref().map(|r| r.ham + r.spam), Some(450 + 500));
+        // `sioul spam eval`: the same baseline on the table in place.
+        let evaluation = evaluate(&dirs, &trusted(), &small(), &mut |_| {}, &Cancel::new()).unwrap();
+        assert_eq!(evaluation.outside["old-filter"].ham + evaluation.outside["old-filter"].spam, 100);
+        // Removed: the next training knows nothing of it.
+        external::remove(&dirs, "old-filter").unwrap();
+        let without = train(&dirs, &trusted(), &small(), &mut |_| {}, &Cancel::new()).unwrap();
+        assert!(without.outside.is_empty() && without.refit.map(|r| r.ham + r.spam) == Some(450));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// Outside material's header features, which it does not have, stand at
+    /// the mean of your own mail's: standardized, exactly 0, whatever is
+    /// written there; the mean and the deviation are your own mail's alone.
+    #[test]
+    fn what_outside_material_lacks_weighs_nothing() {
+        let message = |known: bool, x: f32| Message { label: Label::Ham, date: 0, account: String::new(), source: (!known).then_some(0), known, features: [x; N], offset: 0, length: 0, words: 0 };
+        let messages = vec![message(true, 1.0), message(true, 3.0), message(false, 1000.0)];
+        let vectors = vec![1.0, 2.0, 3.0];
+        let rows = Rows { vectors: &vectors, messages: &messages, dim: 1 };
+        let ids = [0, 1, 2];
+        let (mean, deviation) = rows.standardization(&ids);
+        assert_eq!((mean[1], deviation[1]), (2.0, 1.0), "your own mail's alone");
+        assert_eq!((mean[0], deviation[0]), (2.0, (2.0f64 / 3.0).sqrt()), "the words' over all");
+        let x = rows.standardized(&ids, &mean, &deviation);
+        let width = rows.width();
+        assert!(x[2 * width + 1..3 * width].iter().all(|v| *v == 0.0), "outside: 0 for every header feature");
+        assert_ne!(x[2 * width], 0.0, "its words count");
+        assert_eq!((x[width + 1], x[1]), (1.0, -1.0));
+    }
+
     #[test]
     fn too_few_or_stopped() {
         let root = scratch("few");
@@ -1239,8 +1459,12 @@ mod tests {
     #[test]
     fn standardization_of_columns() {
         let rows = [vec![1.0, 5.0], vec![3.0, 5.0]];
-        let (mean, deviation) = standardization(|k| rows[k].clone(), rows.len(), 2);
+        let (mean, deviation) = standardization(|k| rows[k].clone(), |_| true, rows.len(), 2, 2);
         assert_eq!(mean, vec![2.0, 5.0]);
         assert_eq!(deviation, vec![1.0, 0.0], "a column that never changes has no deviation");
+        // A header column (from 1 on) over the rows that have it: the third row's says nothing.
+        let rows = [vec![1.0, 4.0], vec![3.0, 6.0], vec![5.0, 0.0]];
+        let (mean, deviation) = standardization(|k| rows[k].clone(), |k| k < 2, rows.len(), 2, 1);
+        assert_eq!((mean, deviation), (vec![3.0, 5.0], vec![(8.0f64 / 3.0).sqrt(), 1.0]));
     }
 }

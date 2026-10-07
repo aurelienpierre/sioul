@@ -501,6 +501,7 @@ fn print_open_porch(s: &Session, triaged: &[Triaged], store: Option<&CaseStore>)
     print_lane(s, &s.tr.text("lane-screener", None), triaged, &Lane::Screener, true, store);
     print_lane(s, &s.tr.text("lane-filed", None), triaged, &Lane::Filed, false, store);
     print_lane(s, &s.tr.text("lane-low", None), triaged, &Lane::Low, false, store);
+    print_lane(s, &s.tr.text("lane-review", None), triaged, &Lane::Review, true, store);
     print_lane(s, &s.tr.text("lane-set-aside", None), triaged, &Lane::SetAside, true, store);
 }
 
