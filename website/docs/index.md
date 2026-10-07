@@ -9,32 +9,42 @@ description: Sioul is a personal administrative environment. It fits the demands
 
 **Most software expects people to adapt to it. Sioul adapts the demands of the world to the person.**
 
-The administrative machinery of modern life assumes someone always available, always at full strength, who remembers how a dozen separate systems relate to each other. Sioul starts from the other end, from what you can give today: your attention, your energy, your health, your rest. It protects those first, and fits work, institutions and money into what is left.
+Modern admin assumes someone always available and always at full strength. Sioul starts instead from what you can give today, your attention, your energy, your health and your rest, and fits work, institutions and money around it.
 
 A letter from the tax office, the task it asks for, the appointment, the document, the person who sent it and the payment all belong to one case. You do not have to keep their relationships in your head: Sioul keeps them.
 
-**Sioul is a personal administrative environment.** It connects what modern life scatters across mailboxes, websites, calendars, task lists, folders and banks, and decides what belongs in your attention from what you have said you can give: your hours, and how today is. It is a quiet place between you and that machinery, on your own devices.
+**Sioul is a personal administrative environment.** It gathers what modern life scatters across mailboxes, websites, calendars, task lists, folders and banks, and brings forward only what belongs in your attention now. It runs on your own devices.
+
+**It is not a productivity app.** It does not try to make you do more, answer faster or keep up with everything: it tries to make admin ask less of you. It is designed as [an act of care](#an-act-of-care).
+
+## You decide what gets through
+
+The world does not get direct access to your attention. Mail, calls, messages from other apps, the websites you keep, reminders and doses all pass through the same rules, and you set them. Each kind of time in your day has rules of its own: work, your admin, leisure, meals, sleep, and the free time or the pause you take at the press of a button.
+
+Some things come at once: the code you just asked a website for, a dose, a call from someone you chose. Some wait for their time: a client's mail waits for your working hours, the tax office's for your admin hours, and nobody's work reaches your evening. Some are shown where you look, on the Porch or on your phone's home screen, without a notification. Some never reach you, such as the senders you blocked.
+
+**Being shown is not being interrupted.** What waits on the Porch asks nothing of you until you look; only what you allowed may interrupt you.
+
+Most software lets each app decide when it may interrupt you. Sioul turns that around: you set the rules once, and they hold for your mail, calls, messages, sites and reminders. [What reaches you, and when](guide/notifications.md)
 
 <figure markdown="span">
   [![Sioul's window. On the left, the list of places: Porch, Tasks, Mail, Sites, Agenda, Contacts, Notes, Projects, Time, Budgets, Papers, Health. On the right, the Porch: this week's payments in one line, a one-time code with its Copy button, a chat's news, then the new mail sorted into lanes.](assets/screens/porch.png){ loading=lazy }](assets/screens/porch.png "Open the picture at full size")
   <figcaption>The Porch: what came in waits for the hours you chose; the codes you just asked for come at once.</figcaption>
 </figure>
 
-## You decide what gets through
+### Your devices follow your boundaries
 
-The world does not get straight to your attention. Mail, calls, messages from other apps, the websites you keep, reminders and doses all pass through the same rules, and you set them. Each kind of time in your day has rules of its own: work, your admin, leisure, meals, sleep, and the free time or the pause you take at the press of a button.
+Your attention does not belong to each device separately. Your computer and your phone are two ways into the same rules: what you set on one travels to the others, sealed, through a folder your own sync app carries. When your working hours end, work waits on all of them.
 
-Some things come at once: the code you just asked a website for, a dose, a call from someone you chose. Some wait for their time: a client's mail waits for your working hours, the tax office's for your admin hours, and nobody's work reaches your evening. Some are shown where you look, on the Porch or on your phone's home screen, without a notification. Some never reach you, such as the senders you blocked.
+Do-not-disturb is one switch for every device: turned on at your computer, it holds on your phone, usually within minutes, and the other way round. A pause and Free time travel the same way. Each device then silences its own system, as far as that system lets an application do it.
 
-Being shown is not being interrupted. What waits on the Porch asks nothing of you until you look; only what you allowed may interrupt you.
+Calls follow the same rules. On an Android phone, Sioul screens them: a call from someone who may not reach you now is declined plainly and goes to your voicemail, and the Porch tells you later who called. Sioul never answers a call and never listens. When you expect one, a click on any of your devices, your computer included, lets every call ring for an hour. [Do not disturb on every device](guide/notifications.md#do-not-disturb-on-every-device) · [Calls](guide/calls.md)
 
-Most software lets each app decide when it may interrupt you. Sioul turns that around: you set the rules once, and they hold for your mail, calls, messages, sites and reminders, on your computer and on your phone; do-not-disturb, switched on one of them, holds on all. [What reaches you, and when](guide/notifications.md)
+### A filter that learns what can wait
 
-## Why Sioul exists
+Most spam filters keep an inbox tidy. Sioul's protects your attention: it decides what can wait. It learns from your own mail, on your computer, when you ask: from your junk folders, and from every message you mark as spam or not spam, on any of your devices. Sioul sends your mail to no filtering service; only the small table the filter learns travels to your phone, sealed.
 
-Sioul is the working counterpart of a book by the same author, *Design and Engineering, in Spite of Open-Source* ([free, in PDF and EPUB](https://editions.aurelienpierre.com/en/concevoir/)). The book states: "A tool serves its user, or it betrays them. There is no in-between." Sioul applies its method where software most often leaves the burden on the person: everyday admin.
-
-One test for everything added to Sioul: does it take work off the person, rather than move it somewhere else?
+It judges strangers' mail only, never that of someone you know, a code you asked for or a project's mail. It does not pretend to be sure either: what looks like spam, or might be, waits in a folded queue on the Porch, without a count or a notification, until you have time to look. You choose what it does with each verdict; until you do, it moves nothing. [Spam, and your own filter](guide/porch.md#spam-and-your-own-filter)
 
 ## The other way round
 
@@ -45,17 +55,17 @@ One test for everything added to Sioul: does it take work off the person, rather
 | Each kind of thing has its own program, and you keep the links. | Each piece is tied to the others, and Sioul keeps the links. |
 | A missed date becomes overdue work. | The plan starts again from today. Nothing becomes a debt. |
 
-**These are not four interface choices. They are the four rules from which the rest of Sioul follows.** Mail, calls, the agenda, tasks, health, budgets and the phone are not separate modules side by side: they are the same four rules, each time applied to one kind of thing.
+**These are not four interface choices. They are the four rules from which the rest of Sioul follows.** Mail, calls, the agenda, tasks, health, budgets and the phone are not separate modules side by side: they are the same four rules, each time applied to one kind of thing. They belong together because each one makes demands on the same limited attention: yours.
 
 ## Day to day
 
 ### Your needs first, then the work
 
-You set your meals, your rest and your sleep first. They are kept free in the plan, and so is the time to get ready, get there and come back around each event. Each day, you can say how it is: clear, haze or fog; a hazy or foggy day holds less. At its end, you can say whether it was too much, about right or too empty, and from that the plan learns how much a day holds for you; it never guesses your state from what you do. The work goes in what remains, in the hours set for it, as one next step, with the reason it comes now. Nothing is ever overdue: a date in the plan is not a debt.
+You set your meals, your rest and your sleep first. They are kept free in the plan, and so is the time to get ready, get there and come back around each event. Each day, you can say how it is: clear, haze or fog; a hazy or foggy day holds less. At its end, you can say whether it was too much, about right or too empty, and from that the plan learns how much a day holds for you; it never guesses your state from what you do. The work goes in the hours you have given it, as one next step, with the reason it comes now. Nothing is ever overdue: a date in the plan is not a debt.
 
 ### A porch between the world and your attention
 
-Nothing new walks straight in: arriving is not entering. Mail, the news from the "secure mailboxes" of banks and offices, chats: everything waits on the Porch, sorted, and shown in the hours you chose. The question is not what has arrived, but what belongs in your attention now. Each message is checked first, genuine or forged. Even spam is dealt with before it reaches you: a filter of your own, trained on your computer from your mail, judges only strangers' messages, and what looks like spam waits in a folded queue, never announced, until you have time to look. The codes you just asked a website for come at once.
+Nothing new walks straight in: arriving is not entering. Mail, the news from the "secure mailboxes" of banks and offices, chats: everything waits on the Porch, sorted, and shown in the hours you chose. The question is not what has arrived, but what belongs in your attention now. Each message is checked first, genuine or forged. The codes you just asked a website for come at once.
 
 ### Nothing to be afraid of getting wrong
 
@@ -67,13 +77,30 @@ Most software splits a case across a mail program, a calendar, a task list, a fo
 
 In Sioul, each case is a project: a tax return, a lease, a client's work, any matter you follow. Its mail comes to it by itself, by sender or by words. Its tasks, events, notes and the people involved are tied to it, and each task, contact or note shows what it is tied to. The project lays it all on one line of time: what is coming, then what happened. Your own business too: a client's mail, the tasks, the time spent, the invoice, the money expected and the figures for your accountant form one chain.
 
+## Working for yourself
+
+Freelancers, consultants, the self-employed: the work you sell and the admin it brings live in the same window, from the client's first mail to the paid invoice.
+
+- **A project per client**, whose mail comes to it by itself: by the client's domain or addresses, by words in a subject or in an attachment's name.
+- **Time counted while you work.** The focus timer counts for the task and its project; a meeting or a call is noted in a few keys: `1h30`. The same record teaches the plan [how long things take](guide/time.md#how-long-things-take).
+- **What is left to bill**, for each project, in hours and in money, always in view.
+- **The invoice in one click**: a line per task at the project's rate, numbers that never skip or repeat, the mentions French law asks for, a PDF; then the money expected in your budget until it is paid.
+- **A spreadsheet for your accountant**, and the same time and invoices on your desktop and your laptop, sealed end to end.
+
+No time tracker, timesheet or invoicing service beside it, and no subscription: your clients and your invoices stay in your own files. [Working for clients](guide/clients.md)
+
+<figure markdown="span">
+  [![The Projects page: three projects listed on the left, with New project; one open on the right: "For a client", its rate, Board, List, Calendar, Note time and Make the invoice; its tasks open and done, the time noted and left to bill; "Mail that comes here by itself", folded; its invoices, one marked Paid; then "On one line of time", what is coming and what happened before.](assets/screens/projects.png){ loading=lazy }](assets/screens/projects.png "Open the picture at full size")
+  <figcaption>A client's project: its tasks, its time, its mail and its invoices, on one line of time.</figcaption>
+</figure>
+
 ## When capacity changes
 
 Sioul was designed first for people for whom administration is especially costly: autistic people, people with ADHD, people dealing with anxiety, trauma, burnout, depression or exhaustion, and people whose energy or cognition fluctuates. The same needs come with long COVID, ME/CFS and other conditions that limit energy, with an eating disorder or irregular eating, with caring for someone, with a bad stretch of life.
 
 Putting off a letter is not laziness: it protects your mood for now (Sirois & Pychyl 2013). And administrative burden weighs most on the people with the fewest resources left, executive function and health among them (Christensen et al. 2020). Sioul works from what a day can hold, which changes, not from a diagnosis: it needs none, and guesses nothing about your state. You say what you can do, and it plans around that.
 
-Many neurodivergent people work for themselves, because office life does not fit them, and that brings more admin of exactly the hard kind: quotes and invoices, taxes, contributions, clients, the bank. So Sioul also carries a small business, from a client's first mail to the paid invoice ([below](#working-for-yourself)).
+Many neurodivergent people work for themselves, because office life does not fit them, and that brings more admin of exactly the hard kind: quotes and invoices, taxes, contributions, clients, the bank. So Sioul also carries a small business, from a client's first mail to the paid invoice ([above](#working-for-yourself)).
 
 ## In the window
 
@@ -155,23 +182,6 @@ Many neurodivergent people work for themselves, because office life does not fit
 
 Your Google calendars, contacts and tasks can come too. If you sign in with your Google account, Sioul reads and writes them, only to show them beside the rest of your admin and to save the changes you make there, and keeps a copy on your device. Nothing goes to the developer. What it reads, where it keeps it, and how to take the access back: [privacy policy](privacy.md#google-calendars-contacts-and-tasks).
 
-## Working for yourself
-
-Freelancers, consultants, the self-employed: the work you sell and the admin it brings live in the same window, from the client's first mail to the paid invoice.
-
-- **A project per client**, whose mail comes to it by itself: by the client's domain or addresses, by words in a subject or in an attachment's name.
-- **Time counted while you work.** The focus timer counts for the task and its project; a meeting or a call is noted in a few keys: `1h30`. The same record teaches the plan [how long things take](guide/time.md#how-long-things-take).
-- **What is left to bill**, for each project, in hours and in money, always in view.
-- **The invoice in one click**: a line per task at the project's rate, numbers that never skip or repeat, the mentions French law asks for, a PDF; then the money expected in your budget until it is paid.
-- **A spreadsheet for your accountant**, and the same time and invoices on your desktop and your laptop, sealed end to end.
-
-No time tracker, timesheet or invoicing service beside it, and no subscription: your clients and your invoices stay in your own files. [Working for clients](guide/clients.md)
-
-<figure markdown="span">
-  [![The Projects page: three projects listed on the left, with New project; one open on the right: "For a client", its rate, Board, List, Calendar, Note time and Make the invoice; its tasks open and done, the time noted and left to bill; "Mail that comes here by itself", folded; its invoices, one marked Paid; then "On one line of time", what is coming and what happened before.](assets/screens/projects.png){ loading=lazy }](assets/screens/projects.png "Open the picture at full size")
-  <figcaption>A client's project: its tasks, its time, its mail and its invoices, on one line of time.</figcaption>
-</figure>
-
 ## Built on research, and on refusals
 
 Each rule in Sioul comes from a chain: what studies observed, why, the rule it gives, what Sioul does, and what it refuses. Five of them:
@@ -188,9 +198,9 @@ All the findings, with their sources and the rule each one gives: [what the rese
 
 ## An act of care
 
-The conclusion of *Design and Engineering, in Spite of Open-Source* uses "a word engineering never utters: to design is to care". It also describes what happens to the people least equipped for it: "First, everyone is conscripted to the computer, for tasks that got done fine without it; then the least equipped are technically set up to fail; then they are made to carry the blame." Everyday admin is where this happens most.
+Sioul is the working counterpart of a book by the same author, *Design and Engineering, in Spite of Open-Source* ([free, in PDF and EPUB](https://editions.aurelienpierre.com/en/concevoir/)). Its conclusion uses "a word engineering never utters: to design is to care". It also describes what happens to the people least equipped for it: "First, everyone is conscripted to the computer, for tasks that got done fine without it; then the least equipped are technically set up to fail; then they are made to carry the blame." Everyday admin is where this happens most, and where Sioul applies the book's method. One test decides everything added to it: does it take work off the person, rather than move it somewhere else?
 
-The same reasoning decides how Sioul is built. Your data stays on your devices, in plain files and open formats, and in your own accounts. Your notes are a folder of Markdown files that Obsidian and Nextcloud Notes read as their own ([Notes](guide/notes.md#the-same-folder-as-obsidian-and-nextcloud-notes)). What travels between your devices goes sealed, through a folder your own sync app carries. There is no server of ours, and nothing reaches the developer. The code is free software, under the GPL. A tool meant to lift the weight of administrative machinery cannot, without contradicting itself, tie you to a service you cannot leave.
+The same reasoning decides how Sioul is built. Your data stays on your devices, in plain files and open formats, and in your own accounts. Your notes are a folder of Markdown files that Obsidian and Nextcloud Notes read as their own ([Notes](guide/notes.md#the-same-folder-as-obsidian-and-nextcloud-notes)). What travels between your devices goes sealed, through a folder your own sync app carries. There is no server of ours, and nothing reaches the developer. The code is free software, under the GPL. A tool meant to lift the weight of administrative machinery cannot, without contradicting itself, tie you to a service you cannot leave: as the book puts it, "a tool serves its user, or it betrays them".
 
 ## Where it stands
 
