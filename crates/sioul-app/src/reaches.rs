@@ -805,10 +805,16 @@ fn addresses_of(text: &str) -> Vec<String> {
 }
 
 /// Who the sheet is about: a card (from Contacts, or a sender's card), else
-/// a sender's addresses alone.
+/// a sender's addresses alone, or a caller's number alone (`tel:…`, from a
+/// call's line on the Porch).
 struct Someone {
     card: Option<sioul_core::contacts::Contact>,
     addresses: Vec<String>,
+}
+
+/// How numbers are written here: the contacts' country, else the language's.
+fn region() -> Option<&'static sioul_core::phones::Region> {
+    sioul_core::phones::chosen(load_config().contacts.region.as_deref(), &tr().text("qt-locale", None))
 }
 
 impl Someone {
@@ -816,18 +822,35 @@ impl Someone {
         let addresses = addresses_of(addresses);
         let card = card(key).or_else(|| {
             let all = sioul_core::contacts::all();
-            addresses.iter().find_map(|a| sioul_core::contacts::by_address(&all, a).cloned())
+            addresses.iter().find_map(|a| match a.strip_prefix(sioul_core::porch::TEL) {
+                // A caller's number: the card holding it, as the number's key.
+                Some(number) => {
+                    let region = region();
+                    let wanted = sioul_core::phones::key(number, region);
+                    sioul_core::phones::is_whole(&wanted).then(|| all.iter().find(|c| c.phones.iter().any(|p| sioul_core::phones::key(&p.value, region) == wanted)).cloned()).flatten()
+                }
+                None => sioul_core::contacts::by_address(&all, a).cloned(),
+            })
         });
         Someone { card, addresses }
     }
 
     fn name(&self) -> String {
-        self.card.as_ref().map(|c| c.name.trim().to_string()).filter(|n| !n.is_empty()).or_else(|| self.addresses.first().cloned()).unwrap_or_default()
+        let first = || {
+            self.addresses.first().map(|a| match a.strip_prefix(sioul_core::porch::TEL) {
+                Some(number) => {
+                    let region = region();
+                    sioul_core::calls::shown_number(&sioul_core::phones::key(number, region), region)
+                }
+                None => a.clone(),
+            })
+        };
+        self.card.as_ref().map(|c| c.name.trim().to_string()).filter(|n| !n.is_empty()).or_else(first).unwrap_or_default()
     }
 
     fn emails(&self) -> Vec<String> {
         let mut out: Vec<String> = self.card.iter().flat_map(|c| c.emails.iter().map(|e| e.value.trim().trim_start_matches("mailto:").to_ascii_lowercase())).collect();
-        for address in &self.addresses {
+        for address in self.addresses.iter().filter(|a| !a.starts_with(sioul_core::porch::TEL)) {
             if !out.contains(address) {
                 out.push(address.clone());
             }
@@ -836,7 +859,9 @@ impl Someone {
     }
 
     fn phones(&self) -> Vec<String> {
-        self.card.iter().flat_map(|c| c.phones.iter().map(|p| p.value.clone())).collect()
+        let mut out: Vec<String> = self.card.iter().flat_map(|c| c.phones.iter().map(|p| p.value.clone())).collect();
+        out.extend(self.addresses.iter().filter_map(|a| a.strip_prefix(sioul_core::porch::TEL)).map(str::to_string));
+        out
     }
 
     /// Their entry on the Always through list, when they are on it.
@@ -876,8 +901,10 @@ impl Someone {
 
 /// A person's sheet, as JSON (PersonSheet.qml): {title, name, who, said,
 /// choice, choices [{value, label}], own \[lines\], always, lines [one per
-/// channel], note, problem}. `key`: a card's file or UID; `addresses`: a
-/// sender's, a JSON array or one (their card found when one has them).
+/// channel], note, problem, calls_title, calls [their calls of the month,
+/// newest first]}. `key`: a card's file or UID; `addresses`: a sender's, a
+/// JSON array or one, or a caller's number (`tel:…`) (their card found when
+/// one has them).
 pub(crate) fn person(key: &str, addresses: &str) -> String {
     person_with(&Someone::of(key, addresses), String::new())
 }
@@ -919,6 +946,9 @@ fn person_with(someone: &Someone, note: String) -> String {
         "always_help": text(if who == Who::Blocked { "attention-sheet-always-blocked" } else if always { "attention-sheet-always-help" } else { "attention-sheet-always-off-help" }),
         "lines": lines,
         "note": note,
+        // Their calls of the month, from every phone sharing its own, rang or declined.
+        "calls_title": text("calls-history-title"),
+        "calls": if who == Who::Blocked { Vec::new() } else { crate::calls::history(&someone.phones()) },
     })
     .to_string()
 }
@@ -964,7 +994,8 @@ pub(crate) fn person_change(key: &str, addresses: &str, verb: &str, value: &str)
             }
             let (answer, _) = match &someone.card {
                 Some(card) => crate::everywhere::change("add-contact", &json!({ "uid": card.uid }).to_string()),
-                None => crate::everywhere::change("add", &json!({ "id": "", "name": "", "phones": "", "emails": someone.addresses.join("\n") }).to_string()),
+                // A sender's addresses, or a caller's number (a call's line on the Porch).
+                None => crate::everywhere::change("add", &json!({ "id": "", "name": "", "phones": someone.phones().join("\n"), "emails": someone.emails().join("\n") }).to_string()),
             };
             said.push(say("attention-sheet-on-always", &[("name", someone.name())]));
             if was_blocked {

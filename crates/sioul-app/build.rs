@@ -106,6 +106,7 @@ fn main() {
         "qml/ContractDialog.qml",
         "qml/ContractsSection.qml",
         "qml/PasswordField.qml",
+        "qml/SecurityKeyBand.qml",
         "qml/SioulMenu.qml",
         "qml/SitePopup.qml", "qml/PresetPlaceMenu.qml", "qml/PresetGroupMenu.qml", "qml/BankAccountDialog.qml", "qml/BankRulesDialog.qml", "qml/ReserveDialog.qml",
         "qml/LoginChooser.qml",

@@ -274,10 +274,11 @@ pub enum Action {
     /// is, and the Porch puts it back in its lane.
     NotSpam,
     /// Into the account's Junk folder by your own spam filter (the matrix's
-    /// "Move to spam", for a message of this class): no keyword set, no label
-    /// written (the filter's verdicts never are labels); the move goes into
-    /// this device's log of what the filter moved (`spam::labels::Moved`),
-    /// which the review queue and the training read.
+    /// "Move to spam", for a message of this class): no keyword set, no line
+    /// in the label log, which is yours alone; the move goes into this
+    /// device's log of what the filter moved (`spam::labels::Moved`), which
+    /// the Porch's lane of its catches and the training read (in the Junk
+    /// folder, learned as spam until you say otherwise).
     Filtered(sioul_core::spam::Class),
 }
 
@@ -344,7 +345,7 @@ fn kept_with(action: &Action, flags: &str, role: Role) -> Option<String> {
 }
 
 /// This device's name in the sharing (a UUID made once, `share::Here`): its
-/// label log and its log of what the filter moved are its own files.
+/// label log and its logs of what the filter moved or flagged are its own files.
 fn device() -> String {
     crate::share::Here::load(&state_dir()).id
 }
@@ -357,8 +358,19 @@ pub fn label(account: &Account, file: &Path, source: labels::Source) -> Result<(
     labels::append_to(&labels::own_log(&labels::state(), &device()), &entry).map_err(SyncError::Disk)
 }
 
+/// Writes into this device's log of what your own filter flagged where it
+/// is (`spam::labels::Flagged`) the message stored at `file`, judged
+/// `class`, as it arrived: nothing changes on the server nor here. The
+/// training learns from it as it is until you say otherwise: a probable spam
+/// as spam, a maybe spam not at all.
+pub fn flagged(account: &Account, file: &Path, class: sioul_core::spam::Class) -> Result<(), SyncError> {
+    let folder = folder_of(account, file).ok_or_else(|| SyncError::Server("unknown folder".into()))?;
+    let flag = labels::Flagged::of_file(&account.id, &folder.name, file, class).ok_or_else(|| SyncError::Server("not a message fetched by Sioul".into()))?;
+    labels::append_to(&labels::own_flagged_log(&labels::state(), &device()), &flag).map_err(SyncError::Disk)
+}
+
 /// What an act says of a message, for the label log: none for those that
-/// say nothing of spam, nor for your own filter's move (never a label).
+/// say nothing of spam, nor for your own filter's move (its own log's).
 fn said(action: &Action) -> Option<labels::Source> {
     match action {
         Action::Junk => Some(labels::Source::Junk),

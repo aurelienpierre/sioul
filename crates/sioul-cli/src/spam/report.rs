@@ -404,13 +404,18 @@ fn label_lines(s: &Session, l: &sioul_learn::labels::Summary) -> Vec<String> {
         ("spam", l.spam.to_string()),
         ("folder", l.by_folder.to_string()),
         ("junk", l.by_junk_folder.to_string()),
+        ("filter", l.by_filter.to_string()),
         ("keyword", l.by_keyword.to_string()),
         ("log", l.by_log.to_string()),
         ("ambiguous", l.ambiguous.to_string()),
     ];
     let mut lines = vec![s.say("spam-labels", &pairs)];
-    if l.moved > 0 {
-        lines.push(s.say("spam-labels-moved", &[("n", l.moved.to_string())]));
+    // Your own filter's word, learned until you say otherwise; its doubts left out.
+    if l.filter_moved + l.by_filter > 0 {
+        lines.push(s.say("spam-labels-filtered", &[("moved", l.filter_moved.to_string()), ("flagged", l.by_filter.to_string())]));
+    }
+    if l.unsure > 0 {
+        lines.push(s.say("spam-labels-unsure", &[("n", l.unsure.to_string())]));
     }
     lines
 }

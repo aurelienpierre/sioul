@@ -1056,14 +1056,27 @@ pub struct ProtectionView {
     pub line: String,
     /// Everything checked out; else the line is said in warm colours, never red.
     pub fine: bool,
+    /// Encrypted to your security key and not opened yet: "Open with your security key" is offered.
+    pub security_key: bool,
 }
 
 fn protection_line(p: &crate::pgp::PgpView, tr: &Translator) -> ProtectionView {
     let mut parts = Vec::new();
+    let waits = p.encrypted && !p.opened && p.security_key.is_some();
     if p.encrypted {
-        parts.push(tr.text(if p.opened { "pgp-encrypted" } else { "pgp-not-opened" }, None));
+        parts.push(tr.text(
+            if p.opened {
+                "pgp-encrypted"
+            } else if waits {
+                "pgp-for-security-key"
+            } else {
+                "pgp-not-opened"
+            },
+            None,
+        ));
     }
-    let mut fine = !p.encrypted || p.opened;
+    // Waiting for your security key is nothing wrong.
+    let mut fine = !p.encrypted || p.opened || waits;
     for signature in &p.signatures {
         let mut args = i18n::args();
         if signature.good {
@@ -1076,7 +1089,7 @@ fn protection_line(p: &crate::pgp::PgpView, tr: &Translator) -> ProtectionView {
             parts.push(tr.text("pgp-signature-bad", None));
         }
     }
-    ProtectionView { encrypted: p.encrypted, line: parts.join(" · "), fine }
+    ProtectionView { encrypted: p.encrypted, line: parts.join(" · "), fine, security_key: waits }
 }
 
 /// An account in the mail page's left column.

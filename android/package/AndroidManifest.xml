@@ -358,15 +358,34 @@
         </receiver>
         <!-- Do-not-disturb applied in Sioul's own process, where its modes
              are kept (DndReceiver.java): asked by the service, at its next
-             end, after a restart or an update. By no other app. -->
+             end, after a restart or an update; the phone's own do-not-disturb
+             heard as it changes (both ways: sent by Android to an app with Do
+             Not Disturb access, and to the owner of a mode, Sioul closed or
+             not; protected broadcasts, which only the system sends); Sioul's
+             tile pressed. By no other app. -->
         <receiver
             android:name="com.aurelienpierre.sioul.DndReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.app.action.INTERRUPTION_FILTER_CHANGED" />
+                <action android:name="android.app.action.AUTOMATIC_ZEN_RULE_STATUS_CHANGED" />
             </intent-filter>
         </receiver>
+        <!-- "Do not disturb (Sioul)" among the quick settings (DndTile.java):
+             Sioul's switch, on every device, pressed without opening Sioul.
+             Bound by the system alone (its permission). -->
+        <service
+            android:name="com.aurelienpierre.sioul.DndTile"
+            android:label="@string/sioul_dnd"
+            android:icon="@drawable/sioul_dnd"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
         <!-- Calls screened (docs/android.md, "Calls"; CallScreen.java): Android
              asks Sioul, as its "Caller ID & spam app" (Android 10 and later,
              once you say yes), about each call, and Sioul answers from the

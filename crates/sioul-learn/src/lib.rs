@@ -30,7 +30,8 @@
 //!
 //! - [`corpus`]: what training reads, downloaded from every folder of every account and kept here, junk included after your provider purges it, with Sioul's own checks of each message (its signatures, its sender) made on the whole message.
 //! - [`external`]: outside training material, mail labelled elsewhere, imported once (`sioul spam import`): more words to learn, and a baseline.
-//! - [`labels`]: spam or ham for each message, from its folder, its keywords and your own actions (every device's label log).
+//! - [`labels`]: spam or ham for each message, from its folder, its keywords, your own filter's word and your own actions (every device's logs).
+//! - [`auto`]: training again by itself, once a week, on the computer that made the table in use, when it is plugged in and idle: the rule, and what it knows.
 //! - [`train`]: training on demand: fastText on your mail, the message vectors, the SVM, its calibration, the evaluation, and the reduced table every device reads, replaced only when no worse.
 //! - [`svm`]: the linear SVM, solved as liblinear solves it.
 //! - [`platt`]: the SVM's scores turned into probabilities (Platt scaling).
@@ -40,6 +41,7 @@
 //! - [`spamcore`](spamcore/index.html): the seam to sioul-core's spam module: a corpus record read as the Porch reads the message.
 //! - `synthetic`, for tests only, this crate's and the command line's (so not shown here): invented mail on reserved domains.
 
+pub mod auto;
 pub mod corpus;
 pub mod detail;
 pub mod diagnose;
@@ -113,9 +115,16 @@ impl Dirs {
         self.state.join(sioul_core::spam::labels::FOLDER)
     }
 
-    /// What your own filter moved into a Junk folder, one log per device: never labels.
+    /// What your own filter moved into a Junk folder, one log per device:
+    /// learned as all Junk mail is, until you say otherwise.
     pub fn moved(&self) -> PathBuf {
         self.state.join(sioul_core::spam::labels::MOVED)
+    }
+
+    /// What your own filter flagged where it is, one log per device: a
+    /// probable spam learned as spam, a maybe spam left out, until you say.
+    pub fn flagged(&self) -> PathBuf {
+        self.state.join(sioul_core::spam::labels::FLAGGED)
     }
 
     /// The last training's summary, for the settings.

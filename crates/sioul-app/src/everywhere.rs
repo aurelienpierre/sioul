@@ -21,9 +21,13 @@
 //!   Settings ▸ Do not disturb; its people get through as its rows of the
 //!   matrix of what reaches you say (`sioul_core::attention`), and on a phone
 //!   Sioul says who is not starred there.
+//! - **Both ways**: a change of this device's own do-not-disturb, heard as it
+//!   happens, presses the switch when it disagrees with what holds here
+//!   (`heard_from_system`); Sioul's going off here turns the system's own off too, where
+//!   Sioul can (`apply`), and says what stays.
 
 use crate::backend::qobject::Sioul;
-use crate::backend::{load_config, mode_json, say, tr};
+use crate::backend::{QtThread, Shared, load_config, mode_json, say, tr};
 use crate::dnd::{Ask, Report, Which};
 use cxx_qt::Threading;
 use cxx_qt_lib::QString;
@@ -32,8 +36,8 @@ use std::pin::Pin;
 use sioul_core::config::Config;
 use sioul_core::everywhere::{self as rules, Now, People, Person, Sources, Switch, Why};
 use sioul_core::quiet::Overrides;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 /// This device's name in the sharing (share/here.toml), made once.
@@ -116,13 +120,18 @@ impl Look {
         };
         let ask = |which: Which, moment: Moment| {
             let silence = attention.silence_at(&moment, phone);
-            Ask { which, people: silence.calls != Senders::None, doses: silence.doses, desktop: gnome, silence: Some(silence) }
+            Ask { which, people: silence.calls != Senders::None, doses: silence.doses, desktop: gnome, silence: Some(silence), stack: true }
         };
+        // The switch's mode adds nothing over this device's own do-not-disturb
+        // when that alone turned it on (docs/do-not-disturb.md, "Both ways").
+        let latest = self.switch.latest();
+        let from_system = latest.as_ref().is_some_and(|p| p.on && p.via == rules::VIA_SYSTEM);
+        let stack = !(from_system && rules::held_by_system(state, latest.as_ref(), &here_id()));
         let global = if state.has(Why::Sleep) { vec![Column::Sleep] } else { Moment::of(mode).times };
         [
             (Which::Paused, paused.then(|| ask(Which::Paused, moment(vec![Column::Pause], false, false)))),
             (Which::FreeTime, free.then(|| ask(Which::FreeTime, moment(vec![Column::Free], false, sioul_core::pause::nothing_now(&self.overrides, &config.free_time))))),
-            (Which::Global, state.global().then(|| ask(Which::Global, moment(global, state.gates(), false)))),
+            (Which::Global, state.global().then(|| Ask { stack, ..ask(Which::Global, moment(global, state.gates(), false)) })),
         ]
     }
 
@@ -134,7 +143,7 @@ impl Look {
     /// What this device asks, in a few words: the background service compares
     /// it with what was applied last, and asks the window's process only on a change.
     fn signature(&self) -> String {
-        self.asks().iter().map(|(which, ask)| format!("{which:?}:{}", ask.as_ref().map_or_else(|| "-".to_string(), |a| format!("{}{}{}{}", u8::from(a.people), u8::from(a.doses), u8::from(a.desktop), a.silence.map(|s| format!("{:?}{:?}{}{}{}", s.calls, s.messages, u8::from(s.repeat), u8::from(s.conversations), u8::from(s.events))).unwrap_or_default())))).collect::<Vec<_>>().join(",")
+        self.asks().iter().map(|(which, ask)| format!("{which:?}:{}", ask.as_ref().map_or_else(|| "-".to_string(), |a| format!("{}{}{}{}{}", u8::from(a.people), u8::from(a.doses), u8::from(a.desktop), u8::from(a.stack), a.silence.map(|s| format!("{:?}{:?}{}{}{}", s.calls, s.messages, u8::from(s.repeat), u8::from(s.conversations), u8::from(s.events))).unwrap_or_default())))).collect::<Vec<_>>().join(",")
     }
 
     /// When to look again by itself: a reason's end, the next night or nap
@@ -244,10 +253,26 @@ fn apply_once() {
     };
     let report = reports.iter().find(|(w, _)| *w == said).or(reports.first()).map(|(_, r)| r.clone()).unwrap_or_default();
     let why = look.state.why().map(Why::id).unwrap_or_default().to_string();
+    // Both ways (docs/do-not-disturb.md): Sioul's do-not-disturb gone off here
+    // turns the system's own off too, once, where Sioul can; while it is off,
+    // what the system still holds here is said.
+    let on = look.state.on();
+    crate::dnd::tell_system(on);
+    let was = crate::dnd::on_here(on);
+    let acted = was && !on && crate::dnd::system_off(look.config.pause.gnome);
+    let still = if on || acted { None } else { crate::dnd::still_on() };
     write_own(|own| {
+        // Sioul runs here (again): it follows.
+        own.closed = false;
         own.why = why.clone();
         own.silenced = report.on && !why.is_empty();
-        own.line = if why.is_empty() { String::new() } else { report.line.clone() };
+        own.turned_off = report.turned_off && !why.is_empty();
+        own.system_on = still.is_some();
+        own.line = match &still {
+            _ if !why.is_empty() => report.line.clone(),
+            Some(still) => still.line.clone(),
+            None => String::new(),
+        };
     });
     crate::homecard::dnd_seen(moment());
     // On a phone, Android's alarm comes back at the next end, Sioul closed or not.
@@ -316,16 +341,117 @@ pub(crate) fn toggle(mut sioul: Pin<&mut Sioul>, on: bool, minutes: i32) {
 /// turned off), or off; on every device once the sharing carries it. Applied
 /// by the caller (`apply`).
 pub(crate) fn press(on: bool, until: Option<i64>) -> Result<(), String> {
+    press_via(on, until, "")
+}
+
+/// A press here, saying where it came from (`rules::VIA_SYSTEM`: this
+/// device's own do-not-disturb, heard as it changed; "": the switch).
+fn press_via(on: bool, until: Option<i64>, via: &str) -> Result<(), String> {
     let here = here_id();
     let now = jiff::Timestamp::now().as_millisecond();
     rules::change_own(&Switch::default_path(), &here, |switch| {
-        switch.press(&here, on, until.map_or(0, |u| u.saturating_mul(1000)), now);
+        switch.press_via(&here, on, until.map_or(0, |u| u.saturating_mul(1000)), now, via);
         let own = switch.device.entry(here.clone()).or_default();
         own.kind = crate::devices::kind().to_string();
         own.name = if own.kind == "phone" { String::new() } else { crate::devices::name() };
         true
     })?;
     Ok(())
+}
+
+// ---------------------------------------------------------------- both ways
+
+/// One heard change at a time: two words of the same change (Android's
+/// status and its filter, two of Plasma's) press once.
+static HEARING: Mutex<()> = Mutex::new(());
+
+/// A change of this device's own do-not-disturb, heard as it happened
+/// (Android's receiver, Plasma's `Inhibited`, GNOME's switch), whatever
+/// caused it: a press of the switch here when it disagrees with what holds
+/// (`rules::heard`), applied, shown and sent at once; nothing when it agrees,
+/// which is what Sioul's own changes look like when they come back
+/// (docs/do-not-disturb.md, "Both ways"). Whether it pressed. Any thread.
+pub(crate) fn heard_from_system(system_on: bool) -> bool {
+    let _one = HEARING.lock().unwrap_or_else(PoisonError::into_inner);
+    let Some(on) = rules::heard(now().on(), system_on) else { return false };
+    if let Err(e) = press_via(on, None, rules::VIA_SYSTEM) {
+        eprintln!("sioul: do-not-disturb: {e}");
+        return false;
+    }
+    apply();
+    told();
+    true
+}
+
+/// The window, when it runs in this process: what is heard or pressed
+/// outside it shows there at once, and is sent with its exchange.
+static WINDOW: Mutex<Option<(QtThread, Arc<Shared>)>> = Mutex::new(None);
+
+/// The window runs (at the start and each minute, from the pauses' tick):
+/// kept, and this system's own do-not-disturb followed (`dnd::listen`), once.
+pub(crate) fn started(qt: &QtThread, shared: &Arc<Shared>) {
+    let mut window = WINDOW.lock().unwrap_or_else(PoisonError::into_inner);
+    if window.is_none() {
+        *window = Some((qt.clone(), Arc::clone(shared)));
+        crate::dnd::listen(Arc::new(|on| {
+            std::thread::spawn(move || heard_from_system(on));
+        }));
+    }
+}
+
+/// A press made outside the window (a system's change heard, the phone's
+/// tile): the window's status line at once and the other devices told;
+/// without the window (a phone's receiver), the background service sends it.
+fn told() {
+    let window = WINDOW.lock().ok().and_then(|window| window.clone());
+    match window {
+        Some((qt, shared)) => {
+            let _ = qt.queue(|mut sioul| sioul.as_mut().set_mode(QString::from(&mode_json())));
+            crate::share::exchange(&qt, &shared);
+        }
+        None => crate::steps::send_now(),
+    }
+}
+
+/// Sioul quits on a computer (its window closed, the tray's Quit, SIGTERM):
+/// this device's table as it then holds, for the other devices to say
+/// "On laptop: Sioul is closed." and never "silenced" by an inhibition that
+/// ended with Sioul; sent by the exchange that follows (`share::closing`).
+/// Nothing on a phone, whose modes stay while Sioul is closed.
+pub(crate) fn closing() {
+    if cfg!(target_os = "android") {
+        return;
+    }
+    let still = crate::dnd::still_after_quit();
+    write_own(|own| own.closing(still));
+}
+
+/// The switch pressed from the phone's quick settings (Sioul's tile): on
+/// until turned off, or off, as it is not now; applied and sent at once.
+pub(crate) fn toggle_here() {
+    if let Err(e) = press(!now().on(), None) {
+        eprintln!("sioul: do-not-disturb: {e}");
+        return;
+    }
+    apply();
+    told();
+}
+
+/// "Silence this device again": each of Sioul's modes that holds here left
+/// and entered afresh, the person's earlier "off" in the system set aside. A
+/// switch "on" taken from this device's own system becomes the switch's own,
+/// so that Sioul's mode silences the device whatever the system does.
+pub(crate) fn again() {
+    if Look::now().switch.latest().is_some_and(|p| p.on && p.via == rules::VIA_SYSTEM)
+        && let Err(e) = press(true, None)
+    {
+        eprintln!("sioul: do-not-disturb: {e}");
+    }
+    for ask in Look::now().asks().into_iter().filter_map(|(_, ask)| ask) {
+        crate::dnd::again(&ask);
+    }
+    apply();
+    told();
 }
 
 // ---------------------------------------------------------------- saying
@@ -370,13 +496,20 @@ fn moment_of(look: &Look) -> serde_json::Value {
         "end_time": end.map(|e| when(e, now)).unwrap_or_default(),
         "end_at": end.unwrap_or(0),
     });
+    let here = here_id();
+    let own = look.switch.device.get(&here);
     if !state.on() {
-        let mut off = serde_json::json!({ "on": false, "why": "", "global": false, "manual": false, "until": "", "until_at": 0, "line": "", "why_line": "", "details": [], "everywhere": false, "here": false });
+        // Sioul's off, this device's own still on: said, with what may be opened (both ways).
+        let system_line = own.filter(|d| d.system_on && d.why.is_empty()).map(|d| d.line.clone()).unwrap_or_default();
+        let mut off = serde_json::json!({
+            "on": false, "why": "", "global": false, "manual": false, "until": "", "until_at": 0, "line": "", "why_line": "", "details": [], "everywhere": false, "here": false,
+            "here_off": false, "here_offers": [],
+            "system_on": !system_line.is_empty(), "system_offers": system_offers(&system_line), "system_line": system_line,
+            "last_off": last_off(look),
+        });
         merge(&mut off, base);
         return off;
     }
-    let here = here_id();
-    let own = look.switch.device.get(&here);
     // What this device's system said for the reason that holds; not applied yet: as Sioul's own alone.
     let (silenced, line) = own.filter(|d| !d.why.is_empty()).map_or((false, String::new()), |d| (d.silenced, d.line.clone()));
     // Since the reason said first began: a device's table older than that says what held before.
@@ -385,7 +518,8 @@ fn moment_of(look: &Look) -> serde_json::Value {
     let others = rules::others(&look.switch, &here, &heard(&here), stamp, since, &|id| crate::devices::kind_and_name(id).is_some());
     let until = state.until();
     let until_words = until.map(|u| when(u, now)).unwrap_or_default();
-    let said = rules::said(state, silenced, &line, &others, &until_words, &|id| name_of(&look.switch, id), tr());
+    let turned_off = own.is_some_and(|d| d.turned_off && !d.why.is_empty());
+    let said = rules::said(state, rules::Here { silenced, line: &line, turned_off }, &others, &until_words, &|id| name_of(&look.switch, id), tr());
     let mut on = serde_json::json!({
         "on": true,
         "why": state.why().map(Why::id).unwrap_or_default(),
@@ -398,9 +532,35 @@ fn moment_of(look: &Look) -> serde_json::Value {
         "details": said.details,
         "everywhere": said.everywhere,
         "here": said.here,
+        "here_off": turned_off,
+        "here_offers": system_offers(if turned_off { &line } else { "" }),
+        "system_on": false, "system_line": "", "system_offers": [], "last_off": "",
     });
     merge(&mut on, base);
     on
+}
+
+/// The buttons beside a line of this device's own do-not-disturb: on a phone,
+/// Android's do-not-disturb settings, where the person turns it off or on again.
+fn system_offers(line: &str) -> serde_json::Value {
+    if line.is_empty() || !cfg!(target_os = "android") {
+        return serde_json::json!([]);
+    }
+    serde_json::json!([{ "key": "modes", "label": crate::dnd::offer_label("modes") }])
+}
+
+/// "Turned off on your phone at 14:02, outside Sioul.": the switch's latest
+/// press, when it is an "off" heard from a device's own do-not-disturb within
+/// the last twelve hours; "" otherwise.
+fn last_off(look: &Look) -> String {
+    let Some(press) = look.switch.latest().filter(|p| !p.on && p.via == rules::VIA_SYSTEM) else { return String::new() };
+    let at = press.at / 1000;
+    if look.now.timestamp().as_second() - at > 12 * 3600 {
+        return String::new();
+    }
+    let Ok(time) = jiff::Timestamp::from_second(at) else { return String::new() };
+    let time = time.to_zoned(look.now.time_zone().clone()).strftime("%H:%M").to_string();
+    say("dnd-last-off", &[("device", name_of(&look.switch, &press.from)), ("time", time)])
 }
 
 fn merge(into: &mut serde_json::Value, from: serde_json::Value) {
@@ -609,6 +769,11 @@ fn change_here(verb: &str, json: &str) -> String {
             crate::dnd::open(&text("key"));
             String::new()
         }
+        // "Silence this device again" (the switch's menu): the person's earlier "off" in the system set aside.
+        "again" => {
+            std::thread::spawn(again);
+            String::new()
+        }
         // On a phone: a person's contact (to star it), Android's form to add one, the permission.
         "open-contact" => {
             crate::steps::java("open-contact", &serde_json::json!({ "uri": text("contact") }).to_string());
@@ -670,7 +835,7 @@ mod tests {
     fn the_signature_follows_what_is_asked() {
         let look = |paused: bool, manual: bool| {
             let config = Config::default();
-            let press = manual.then(|| rules::Press { at: 1_000, on: true, until: 0, from: "x".into() });
+            let press = manual.then(|| rules::Press { at: 1_000, on: true, until: 0, from: "x".into(), via: String::new() });
             let sources = Sources { paused: paused.then_some(1), ..Sources::default() };
             let state = rules::now(&config.dnd, &sources, press.as_ref(), 100);
             let now = Zoned::now();
@@ -693,7 +858,7 @@ mod tests {
     #[test]
     fn the_phone_says_who_on_the_list_is_not_starred_there() {
         let mut people = People::default();
-        for (name, phone) in [("Alice", "+33639980001"), ("Bob", "+33639980002"), ("Carol", "+33639980003"), ("Dan", "")] {
+        for (name, phone) in [("Alice", "+262639980001"), ("Bob", "+262639980002"), ("Carol", "+262639980003"), ("Dan", "")] {
             people.add(Person { name: name.into(), phones: if phone.is_empty() { Vec::new() } else { vec![phone.into()] }, emails: vec![format!("{name}@example.org")], ..Person::default() }, None);
         }
         let id = |name: &str| people.people.iter().find(|p| p.name == name).unwrap().id.clone();

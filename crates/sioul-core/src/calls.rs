@@ -23,9 +23,18 @@
 //! Always through says "as their list"), never a blocked one: blocked beats
 //! Always through (docs/attention.md, Q3).
 //!
-//! A refused call goes to your voicemail and is written to **the list of calls
-//! held** (`calls/held.jsonl`, Java's), which the Porch shows calmly, at the
-//! next time those callers may reach you, never counted (`lines`).
+//! A refused call goes to your voicemail. Java writes **every incoming call it
+//! screened**, declined or let ring (`rang`), in a file of its own
+//! (`calls/held.jsonl`); Rust copies each into this phone's own **log**,
+//! `calls/log/<device>.jsonl` (`carry_into`), which the sharing carries,
+//! sealed, a line at a time, to your other devices (the part "Calls"). Every
+//! device reads every phone's log (`read_logs`): the Porch lists the declined
+//! calls calmly, at the next time those callers may reach you, never counted
+//! (`lines`); a person's sheet shows their calls of the month (`history`).
+//! **Seen** is each device's own log of lines (`calls/seen/<device>.jsonl`,
+//! `mark_seen`), every device's read together (`read_seen`): seen on one,
+//! gone from all. A call is kept `KEPT_DAYS`: each device takes its own lines
+//! out after that (`trim_own`), and the sharing takes them out everywhere.
 //!
 //! **Let every call through** is pressed on any device: each device's own
 //! table in do-not-disturb's switch file (`state/do-not-disturb.toml`,
@@ -48,13 +57,21 @@ use std::path::{Path, PathBuf};
 pub const FOLDER: &str = "calls";
 /// The table Java decides from.
 pub const TABLE: &str = "table.json";
-/// The calls refused, one JSON line each (Java's).
+/// The calls screened, declined or let ring, one JSON line each (Java's,
+/// this phone's alone: Rust copies them into its log, `LOG`).
 pub const HELD: &str = "held.jsonl";
+/// The folder of the phones' logs of the calls they screened, one file per
+/// phone (`<device>.jsonl`), written by that phone alone; shared.
+pub const LOG: &str = "log";
+/// The folder of the calls marked seen, one file per device, written by
+/// that device alone; shared.
+pub const SEEN_LOG: &str = "seen";
 /// This phone's press of "Let every call through" on the notification (Java's).
 pub const THROUGH_HERE: &str = "through-here.json";
 /// When this phone last called an emergency number (Java's).
 pub const EMERGENCY: &str = "emergency.json";
-/// The calls seen on the list (Rust's).
+/// The calls seen on the list, as this phone kept them before Seen was
+/// shared: read once into its own seen log, then gone (`adopt_older_seen`).
 pub const SEEN: &str = "seen.toml";
 /// The table's shape: Java reads this one only (another one: every call rings).
 pub const VERSION: u32 = 1;
@@ -67,6 +84,14 @@ pub const AFTER_EMERGENCY_HOURS: i64 = 24;
 pub const TABLE_DAYS: i64 = 4;
 /// A call refused stays on the list this long at most (days), seen or not.
 pub const LISTED_DAYS: i64 = 14;
+/// A call is kept this long (days), on every device: its phone takes it out
+/// of its log after that, and the sharing takes it out everywhere.
+pub const KEPT_DAYS: i64 = 31;
+/// Another device's line kept this long past `KEPT_DAYS` (days) is taken out
+/// by any device: its phone, gone for good, never will (`trim_others`).
+pub const LATE_DAYS: i64 = 14;
+/// A day, in milliseconds.
+const DAY_MS: i64 = 86_400_000;
 /// The key of the calls' own part in a device's table of the switch's file.
 const DEVICE_PART: &str = "calls";
 /// The French plan's overseas numbers, by the three digits after the 0 (as `phones` reads them).
@@ -689,34 +714,61 @@ pub fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
     serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
 }
 
-// ---------------------------------------------------------------- the calls held
+// ---------------------------------------------------------------- the calls screened
 
-/// A call refused, as Java wrote it (Calls.held).
+/// A call screened, as Java wrote it (Calls.held) and as a phone's log keeps
+/// it: declined (held, sent to voicemail) or let ring (`rang`). The log's line
+/// leaves out what stays on the phone (the number as the network gave it, its
+/// presentation) and every empty field (`logged`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Held {
     /// When (ms).
     pub at: i64,
-    #[serde(default)]
+    /// The number as Sioul keys it (`phones::key`); "" for a hidden number.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub key: String,
-    /// As the network gave it; "" hidden.
-    #[serde(default)]
+    /// As the network gave it; "" hidden. In Java's file only.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub number: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_false")]
     pub hidden: bool,
-    #[serde(default)]
+    /// Android's presentation of the number. In Java's file only.
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub presentation: i32,
-    /// "safe", "neutral", "restricted", "stranger", "hidden", "blocked".
-    #[serde(default)]
+    /// The row it was judged by: "safe", "neutral", "restricted", "stranger",
+    /// "hidden", "blocked", or "always-" and its own ("always-neutral"); ""
+    /// when it rang before anyone was judged (an emergency number).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub who: String,
     /// The phone's contacts' name for it, when Sioul's address books did not know it.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
-    #[serde(default)]
+    /// The time of day: a column of the matrix ("work", "sleep"…) or a layer
+    /// ("slot", "dnd"); "" when no frame held (no table).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub column: String,
-    #[serde(default)]
+    /// Why it rang or not, as Java decided (`Decision::why`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub why: String,
+    /// Let ring; false, declined and sent to voicemail (a line of Java's from
+    /// before calls that rang were logged too was declined).
     #[serde(default)]
+    pub rang: bool,
+    /// The network's verification of the number: "passed", "failed"; "" not said.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub verified: String,
+    /// The phone that screened it: its name in the sharing, its log's file's
+    /// name; "" as read from Java's file. Never written in a line.
+    #[serde(skip)]
+    pub device: String,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+fn is_zero(value: &i32) -> bool {
+    *value == 0
 }
 
 impl Held {
@@ -724,16 +776,181 @@ impl Held {
     pub fn id(&self) -> String {
         format!("{}-{}", self.at, if self.hidden { "hidden" } else { self.key.as_str() })
     }
+
+    /// The line a phone's log keeps of it: without the number as the network
+    /// gave it, nor its presentation; keyed as `region` writes numbers when
+    /// Java could not key it (it had no table then).
+    pub fn logged(&self, region: Option<&Region>) -> Held {
+        let key = if self.hidden || !self.key.is_empty() { self.key.clone() } else { phones::key(&self.number, region) };
+        Held { key, number: String::new(), presentation: 0, device: String::new(), ..self.clone() }
+    }
 }
 
-/// The calls held, oldest first; a line that does not read (half written) is passed over.
+/// The calls of one file, oldest first; a line that does not read (half written) is passed over.
 pub fn read_held(path: &Path) -> Vec<Held> {
-    let mut held: Vec<Held> = std::fs::read_to_string(path).unwrap_or_default().lines().filter(|l| !l.trim().is_empty()).filter_map(|l| serde_json::from_str(l).ok()).filter(|h: &Held| h.at > 0).collect();
+    let mut held: Vec<Held> = read_lines::<Held>(path).into_iter().filter(|h| h.at > 0).collect();
     held.sort_by_key(|h| h.at);
     held
 }
 
-/// The calls seen on the list, by id (Rust's file, this phone's).
+/// Every line of a file of JSON lines that reads; a line cut by a crash, or
+/// written by a later Sioul in a shape this one does not know, is passed over.
+fn read_lines<T: serde::de::DeserializeOwned>(path: &Path) -> Vec<T> {
+    std::fs::read_to_string(path).unwrap_or_default().lines().filter(|l| !l.trim().is_empty()).filter_map(|l| serde_json::from_str(l).ok()).collect()
+}
+
+/// A device's own file in one of the calls' shared folders (`LOG`,
+/// `SEEN_LOG`) under `root`, the calls' folder: `<folder>/<device>.jsonl`,
+/// its name in the sharing (a UUID made once).
+pub fn own_file(root: &Path, folder: &str, device: &str) -> PathBuf {
+    root.join(folder).join(format!("{}.jsonl", file_safe(device)))
+}
+
+/// A device's name as a file's: letters, digits, `-` and `_`.
+fn file_safe(device: &str) -> String {
+    let safe: String = device.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
+    if safe.is_empty() { "this-device".to_string() } else { safe }
+}
+
+/// Every device's file of a shared folder (`*.jsonl`), each with its device's name, by name.
+fn device_files(folder: &Path) -> Vec<(String, PathBuf)> {
+    let mut files: Vec<(String, PathBuf)> = std::fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "jsonl") && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')))
+        .filter_map(|p| Some((p.file_stem()?.to_string_lossy().to_string(), p)))
+        .collect();
+    files.sort();
+    files
+}
+
+/// Every phone's log under `root` (the calls' folder), each call with its
+/// phone (`device`), oldest first: never a blocked caller's (their calls never
+/// leave their phone), never one kept past `KEPT_DAYS` before `now_ms` (a
+/// phone that stopped sharing never takes its own out).
+pub fn read_logs(root: &Path, now_ms: i64) -> Vec<Held> {
+    let mut calls: Vec<Held> = device_files(&root.join(LOG))
+        .into_iter()
+        .flat_map(|(device, path)| read_held(&path).into_iter().map(move |h| Held { device: device.clone(), ..h }))
+        .filter(|h| h.who != "blocked" && now_ms - h.at <= KEPT_DAYS * DAY_MS)
+        .collect();
+    calls.sort_by(|a, b| (a.at, &a.device).cmp(&(b.at, &b.device)));
+    calls
+}
+
+/// Java's new calls copied into this phone's own log (`own`), under its lock,
+/// read again there: those whose line is not in it yet (by its id), never a
+/// blocked caller's, nor one past `KEPT_DAYS` (taken out already, it would
+/// come back). Two processes copying at once never write a line twice.
+/// Returns how many lines were written.
+pub fn carry_into(own: &Path, java: &[Held], region: Option<&Region>, now_ms: i64) -> Result<usize, String> {
+    let fresh: Vec<Held> = java.iter().filter(|h| h.at > 0 && h.who != "blocked" && now_ms - h.at <= KEPT_DAYS * DAY_MS).map(|h| h.logged(region)).collect();
+    if fresh.is_empty() {
+        return Ok(0);
+    }
+    crate::filelock::with_lock(own, || {
+        let mut known: BTreeSet<String> = read_held(own).iter().map(Held::id).collect();
+        let mut text = String::new();
+        let mut written = 0;
+        for line in fresh {
+            if known.insert(line.id()) {
+                text.push_str(&serde_json::to_string(&line).map_err(|e| e.to_string())?);
+                text.push('\n');
+                written += 1;
+            }
+        }
+        if written > 0 {
+            append_private(own, &text)?;
+        }
+        Ok(written)
+    })
+}
+
+/// Adds lines at the end of a file of this device's own, made yours alone
+/// (0600, in a 0700 folder, on Unix). The caller holds its lock.
+fn append_private(path: &Path, text: &str) -> Result<(), String> {
+    use std::io::Write;
+    let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+    if let Some(folder) = path.parent() {
+        let mut builder = std::fs::DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        builder.create(folder).map_err(fail)?;
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path).and_then(|mut file| file.write_all(text.as_bytes())).map_err(fail)
+}
+
+/// A file of the calls' kept but for the lines `drop` names: written beside
+/// under a hidden name (yours alone), then put in place, under its lock.
+/// Returns how many lines went.
+fn rewrite_lines(path: &Path, drop: impl Fn(&str) -> bool) -> Result<usize, String> {
+    crate::filelock::with_lock(path, || {
+        let Ok(text) = std::fs::read_to_string(path) else { return Ok(0) };
+        let (kept, gone): (Vec<&str>, Vec<&str>) = text.lines().filter(|l| !l.trim().is_empty()).partition(|l| !drop(l));
+        if gone.is_empty() {
+            return Ok(0);
+        }
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let fresh = path.with_file_name(format!(".{name}.{}.new", std::process::id()));
+        let _ = std::fs::remove_file(&fresh);
+        let body: String = kept.iter().map(|l| format!("{l}\n")).collect();
+        append_private(&fresh, &body).and_then(|()| {
+            std::fs::rename(&fresh, path).map_err(|e| {
+                let _ = std::fs::remove_file(&fresh);
+                format!("{}: {e}", path.display())
+            })
+        })?;
+        Ok(gone.len())
+    })
+}
+
+/// This device's own lines kept past `KEPT_DAYS` taken out of its log and of
+/// its seen log under `root` (the calls' folder): the sharing then takes them
+/// out on every device. A line that does not read stays. Returns how many went.
+pub fn trim_own(root: &Path, device: &str, now_ms: i64) -> Result<usize, String> {
+    let old = older_than(KEPT_DAYS, now_ms);
+    Ok(rewrite_lines(&own_file(root, LOG, device), &old)? + rewrite_lines(&own_file(root, SEEN_LOG, device), &old)?)
+}
+
+/// Another device's lines kept `LATE_DAYS` past their month taken out here
+/// (`here`: this device): a phone gone for good never takes its own out, and
+/// its calls must not stay on your other devices for ever. While it shares,
+/// it took them out long before (`trim_own`), and nothing differs. Returns
+/// how many went.
+pub fn trim_others(root: &Path, here: &str, now_ms: i64) -> Result<usize, String> {
+    let old = older_than(KEPT_DAYS + LATE_DAYS, now_ms);
+    let mut gone = 0;
+    for folder in [LOG, SEEN_LOG] {
+        for (device, path) in device_files(&root.join(folder)) {
+            if device != file_safe(here) {
+                gone += rewrite_lines(&path, &old)?;
+            }
+        }
+    }
+    Ok(gone)
+}
+
+/// A line older than `days` before `now_ms`, by its `at`; a line that does not read is kept.
+fn older_than(days: i64, now_ms: i64) -> impl Fn(&str) -> bool {
+    move |line: &str| serde_json::from_str::<serde_json::Value>(line).ok().and_then(|v| v["at"].as_i64()).is_some_and(|at| now_ms - at > days * DAY_MS)
+}
+
+/// One press of Seen on a device: when (ms), and the calls of its line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeenLine {
+    pub at: i64,
+    #[serde(default)]
+    pub ids: Vec<String>,
+}
+
+/// The calls seen, by id.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Seen {
     #[serde(default)]
@@ -741,6 +958,7 @@ pub struct Seen {
 }
 
 impl Seen {
+    /// This phone's file from before Seen was shared (`SEEN`).
     pub fn load(path: &Path) -> Seen {
         std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
@@ -748,13 +966,53 @@ impl Seen {
     /// Those calls marked seen; ids older than the list forgotten (`now` in ms).
     pub fn add(&mut self, ids: &[String], now: i64) {
         self.seen.extend(ids.iter().cloned());
-        let oldest = now - (LISTED_DAYS + 1) * 86_400_000;
+        let oldest = now - (LISTED_DAYS + 1) * DAY_MS;
         self.seen.retain(|id| id.split('-').next().and_then(|at| at.parse::<i64>().ok()).is_some_and(|at| at >= oldest));
     }
+}
 
-    pub fn save(&self, path: &Path) -> Result<(), String> {
-        write_whole(path, &toml::to_string(self).map_err(|e| e.to_string())?)
+/// The calls seen on any device: every device's seen log under `root` (the
+/// calls' folder), read together. Seen on one device, gone from the Porch of
+/// every device.
+pub fn read_seen(root: &Path) -> Seen {
+    let mut seen = Seen::default();
+    for (_, path) in device_files(&root.join(SEEN_LOG)) {
+        for line in read_lines::<SeenLine>(&path) {
+            seen.seen.extend(line.ids);
+        }
     }
+    seen
+}
+
+/// Calls marked seen on this device: one line in its own seen log under
+/// `root`, which the sharing carries to the others. Returns the line's time,
+/// to undo it (`unmark_seen`).
+pub fn mark_seen(root: &Path, device: &str, ids: &[String], now_ms: i64) -> Result<i64, String> {
+    let path = own_file(root, SEEN_LOG, device);
+    let text = serde_json::to_string(&SeenLine { at: now_ms, ids: ids.to_vec() }).map_err(|e| e.to_string())? + "\n";
+    crate::filelock::with_lock(&path, || append_private(&path, &text))?;
+    Ok(now_ms)
+}
+
+/// A press of Seen undone: this device's own line written at `at` taken out
+/// of its seen log, and so out of every device's once the sharing carries it.
+/// Another device's Seen of the same calls stays. Whether a line went.
+pub fn unmark_seen(root: &Path, device: &str, at: i64) -> Result<bool, String> {
+    Ok(rewrite_lines(&own_file(root, SEEN_LOG, device), |line| serde_json::from_str::<SeenLine>(line).is_ok_and(|s| s.at == at))? > 0)
+}
+
+/// This phone's calls seen before Seen was shared (`SEEN`): one line of its
+/// own seen log, then the older file goes. Nothing to do once it is gone.
+pub fn adopt_older_seen(root: &Path, device: &str, now_ms: i64) -> Result<(), String> {
+    let older = root.join(SEEN);
+    if !older.exists() {
+        return Ok(());
+    }
+    let ids: Vec<String> = Seen::load(&older).seen.into_iter().collect();
+    if !ids.is_empty() {
+        mark_seen(root, device, &ids, now_ms)?;
+    }
+    std::fs::remove_file(&older).map_err(|e| format!("{}: {e}", older.display()))
 }
 
 /// A voicemail left, as the list says it (`voicemail::Voicemail`, linked).
@@ -767,12 +1025,13 @@ pub struct Message {
     pub sound: Option<u32>,
 }
 
-/// One line of the list: a caller, in one context, one day.
+/// One line of the list: a caller, in one context, one day, on one phone.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Line {
     /// The calls it says, to mark them seen.
     pub ids: Vec<String>,
-    /// "While you slept: a number not in your contacts called at 09:30."
+    /// "While you slept, a number not in your contacts called at 09:30."; on
+    /// another device, "…called your phone at 09:30."
     pub text: String,
     /// "01 99 00 12 34"; "" for a hidden number.
     pub number: String,
@@ -786,6 +1045,9 @@ pub struct Line {
     pub message: Option<Message>,
     /// Why it went to voicemail, on request: "Numbers not in your contacts go to voicemail in your leisure time."
     pub why: String,
+    /// "The same number called again at 06:48, and that call rang.": a call
+    /// that rang from the same number after the line's last, the same day; "" none.
+    pub again: String,
 }
 
 /// What the list needs besides the calls.
@@ -797,36 +1059,67 @@ pub struct Lister<'a> {
     pub name_of: &'a dyn Fn(&str) -> Option<String>,
     /// Whether this call's caller may reach you now (by phone or in writing).
     pub shows: &'a dyn Fn(&Held) -> bool,
+    /// The phone a call came to, as this device says it (`Held::device`): ""
+    /// for this device's own ("called at"), else "your phone", "your other
+    /// phone", "your phone (GS290)" (`phone_words`).
+    pub phone: &'a dyn Fn(&str) -> String,
 }
 
-/// The list, oldest first: the calls not seen yet, of the last two weeks,
-/// whose callers may reach you now; never the blocked; one line per caller,
-/// context and day. `messages` maps a call's id to its voicemail.
-pub fn lines(held: &[Held], seen: &Seen, messages: &BTreeMap<String, Message>, l: &Lister) -> Vec<Line> {
+/// The list, oldest first: the declined calls not seen yet on any device,
+/// of the last two weeks, whose callers may reach you now; never the blocked;
+/// one line per phone, caller, context and day. A call that rang is never a
+/// line: it is said under the line of the declined calls it followed.
+/// `calls` are every phone's (`read_logs`), oldest first; `messages` maps a
+/// call's id to its voicemail.
+pub fn lines(calls: &[Held], seen: &Seen, messages: &BTreeMap<String, Message>, l: &Lister) -> Vec<Line> {
     let now_ms = l.now.timestamp().as_millisecond();
-    let mut shown: Vec<&Held> = held.iter().filter(|h| h.who != "blocked" && !seen.seen.contains(&h.id()) && now_ms - h.at <= LISTED_DAYS * 86_400_000 && h.at <= now_ms + 60_000 && (l.shows)(h)).collect();
+    let mut shown: Vec<&Held> = calls.iter().filter(|h| !h.rang && h.who != "blocked" && !seen.seen.contains(&h.id()) && now_ms - h.at <= LISTED_DAYS * DAY_MS && h.at <= now_ms + 60_000 && (l.shows)(h)).collect();
     shown.sort_by_key(|h| h.at);
-    // One line per caller, context and day, in the order of their first call.
-    let mut groups: Vec<(String, String, jiff::civil::Date, Vec<&Held>)> = Vec::new();
+    // One line per phone, caller, context and day, in the order of their first call.
+    let mut groups: Vec<(&str, String, &str, jiff::civil::Date, Vec<&Held>)> = Vec::new();
     for h in shown {
         let date = local(h.at, l.now).date();
         let caller = if h.hidden { "hidden".to_string() } else { h.key.clone() };
-        match groups.iter_mut().find(|(c, col, d, _)| *c == caller && *col == h.column && *d == date) {
-            Some((_, _, _, calls)) => calls.push(h),
-            None => groups.push((caller, h.column.clone(), date, vec![h])),
+        match groups.iter_mut().find(|(d, c, col, day, _)| *d == h.device && *c == caller && *col == h.column && *day == date) {
+            Some((_, _, _, _, group)) => group.push(h),
+            None => groups.push((h.device.as_str(), caller, h.column.as_str(), date, vec![h])),
         }
     }
-    groups.into_iter().map(|(_, column, date, calls)| line(&calls, &column, date, messages, l)).collect()
+    groups.into_iter().map(|(device, _, column, date, group)| line(&group, calls, device, column, date, messages, l)).collect()
 }
 
 fn local(at_ms: i64, now: &Zoned) -> Zoned {
     jiff::Timestamp::from_millisecond(at_ms).map_or_else(|_| now.clone(), |t| t.to_zoned(now.time_zone().clone()))
 }
 
-fn line(calls: &[&Held], column: &str, date: jiff::civil::Date, messages: &BTreeMap<String, Message>, l: &Lister) -> Line {
+/// The first call that rang from the same number after the last of `group`,
+/// the same day, on any phone: none for a hidden number (two hidden calls
+/// cannot be told apart).
+fn rang_after<'a>(calls: &'a [Held], group: &[&Held], date: jiff::civil::Date, l: &Lister) -> Option<&'a Held> {
+    let last = group.last()?;
+    if last.hidden {
+        return None;
+    }
+    let now_ms = l.now.timestamp().as_millisecond();
+    calls.iter().filter(|h| h.rang && !h.hidden && h.key == last.key && h.at > last.at && h.at <= now_ms + 60_000).min_by_key(|h| h.at).filter(|h| local(h.at, l.now).date() == date)
+}
+
+/// "Monday 5 October", "yesterday", "today": a day, as the lines say it before
+/// a capital is put to the sentence.
+fn day_words(tr: &Translator, date: jiff::civil::Date, today: jiff::civil::Date) -> String {
+    if date == today {
+        tr.text("calls-day-today", None)
+    } else if today.yesterday().is_ok_and(|y| y == date) {
+        tr.text("calls-day-yesterday", None)
+    } else {
+        format!("{} {}", tr.text(&format!("weekday-{}", date.weekday().to_monday_one_offset()), None), tr.day_month(date))
+    }
+}
+
+fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff::civil::Date, messages: &BTreeMap<String, Message>, l: &Lister) -> Line {
     let tr = l.tr;
-    let first = calls[0];
-    let name = if first.hidden { None } else { (l.name_of)(&first.key).or_else(|| calls.iter().map(|h| h.name.trim()).find(|n| !n.is_empty()).map(str::to_string)) };
+    let first = group[0];
+    let name = if first.hidden { None } else { (l.name_of)(&first.key).or_else(|| group.iter().map(|h| h.name.trim()).find(|n| !n.is_empty()).map(str::to_string)) };
     let who = if first.hidden {
         tr.text("calls-who-hidden", None)
     } else {
@@ -837,34 +1130,46 @@ fn line(calls: &[&Held], column: &str, date: jiff::civil::Date, messages: &BTree
     let context_said = if date == today {
         context_words.clone()
     } else {
-        let day = if today.yesterday().is_ok_and(|y| y == date) { tr.text("calls-day-yesterday", None) } else { format!("{} {}", tr.text(&format!("weekday-{}", date.weekday().to_monday_one_offset()), None), tr.day_month(date)) };
         let mut args = crate::i18n::args();
-        args.set("day", day);
+        args.set("day", day_words(tr, date, today));
         args.set("context", context_words.clone());
         tr.text("calls-context-day", Some(&args))
     };
     let time = |h: &Held| local(h.at, l.now).strftime("%H:%M").to_string();
+    // This phone's own calls say "called at"; another phone's, which one it was.
+    let phone = (l.phone)(device);
+    let on = if phone.is_empty() { "" } else { "-on" };
     let mut args = crate::i18n::args();
     args.set("context", context_said);
     args.set("who", who);
-    let text = match calls.len() {
+    args.set("phone", phone.clone());
+    let text = match group.len() {
         1 => {
             args.set("time", time(first));
-            tr.text("calls-line-once", Some(&args))
+            tr.text(&format!("calls-line-once{on}"), Some(&args))
         }
         2 => {
             args.set("first", time(first));
-            args.set("second", time(calls[1]));
-            tr.text("calls-line-twice", Some(&args))
+            args.set("second", time(group[1]));
+            tr.text(&format!("calls-line-twice{on}"), Some(&args))
         }
         n => {
             args.set("count", tr.count(n, false, false));
-            args.set("time", time(calls[n - 1]));
-            tr.text("calls-line-more", Some(&args))
+            args.set("time", time(group[n - 1]));
+            tr.text(&format!("calls-line-more{on}"), Some(&args))
         }
     };
-    let ids: Vec<String> = calls.iter().map(|h| h.id()).collect();
-    let message = ids.iter().find_map(|id| messages.get(id)).cloned();
+    let rang = rang_after(calls, group, date, l);
+    let again = rang
+        .map(|h| {
+            let mut args = crate::i18n::args();
+            args.set("time", time(h));
+            tr.text("calls-again-rang", Some(&args))
+        })
+        .unwrap_or_default();
+    let ids: Vec<String> = group.iter().map(|h| h.id()).collect();
+    // A message left after the declined calls, or after the call that rang next.
+    let message = ids.iter().chain(rang.map(Held::id).iter()).find_map(|id| messages.get(id)).cloned();
     // Someone Always through, declined: their own row held them ("always-neutral": as the neutral).
     let row = if first.hidden { "hidden" } else if name.is_none() { "stranger" } else { first.who.trim_start_matches("always-") };
     let mut why_args = crate::i18n::args();
@@ -883,6 +1188,7 @@ fn line(calls: &[&Held], column: &str, date: jiff::civil::Date, messages: &BTree
         doubt: if message.is_none() { tr.text("calls-may-have-left", None) } else { String::new() },
         message,
         why,
+        again,
     }
 }
 
@@ -892,6 +1198,88 @@ fn context(tr: &Translator, column: &str) -> String {
         "work" | "admin" | "leisure" | "meals" | "sleep" | "pause" | "free" | "slot" | "dnd" => tr.text(&format!("calls-context-{column}"), None),
         _ => tr.text("calls-context-any", None),
     }
+}
+
+/// The phone a call came to, said on another device: "your phone" when one
+/// phone shares its calls with this device, "your other phone" on a phone
+/// when one other does, else "your phone (GS290)" by its name among your
+/// devices (`phones`: each phone's id with its name; "" for this device's own).
+pub fn phone_words(tr: &Translator, device: &str, here: &str, phones: &[(String, String)], this_is_a_phone: bool) -> String {
+    if device == here {
+        return String::new();
+    }
+    let others: Vec<&(String, String)> = phones.iter().filter(|(id, _)| id != here).collect();
+    let name = others.iter().find(|(id, _)| id == device).map(|(_, name)| name.trim()).unwrap_or("");
+    if others.len() > 1 && !name.is_empty() {
+        let mut args = crate::i18n::args();
+        args.set("name", name.to_string());
+        return tr.text("calls-phone-named", Some(&args));
+    }
+    tr.text(if this_is_a_phone { "calls-phone-other" } else { "calls-phone-yours" }, None)
+}
+
+/// A person's calls of the last month (`keys`, their numbers as Sioul keys
+/// them), newest first, from every phone, rang or declined: one sentence each,
+/// for their sheet, never a count. Each says the phone only when several
+/// phones share their calls. A blocked caller's never come: their calls never
+/// leave their phone.
+pub fn history(calls: &[Held], keys: &BTreeSet<String>, l: &Lister) -> Vec<String> {
+    let now_ms = l.now.timestamp().as_millisecond();
+    let several = calls.iter().map(|h| h.device.as_str()).collect::<BTreeSet<_>>().len() > 1;
+    calls.iter().rev().filter(|h| !h.hidden && keys.contains(&h.key) && h.who != "blocked" && now_ms - h.at <= KEPT_DAYS * DAY_MS && h.at <= now_ms + 60_000).map(|h| history_line(h, several, l)).collect()
+}
+
+/// "Tuesday 6 October at 23:10, while you slept: declined, sent to
+/// voicemail.", "Today at 06:48, while you slept: it rang. A second call
+/// within 15 minutes rings."
+fn history_line(h: &Held, several: bool, l: &Lister) -> String {
+    let tr = l.tr;
+    let at = local(h.at, l.now);
+    let mut args = crate::i18n::args();
+    args.set("day", day_words(tr, at.date(), l.now.date()));
+    args.set("time", at.strftime("%H:%M").to_string());
+    let when = tr.text("calls-history-when", Some(&args));
+    let head = if h.column.is_empty() {
+        when
+    } else {
+        let mut args = crate::i18n::args();
+        args.set("when", when);
+        args.set("context", context(tr, &h.column));
+        tr.text("calls-history-head", Some(&args))
+    };
+    let phone = if several {
+        let said = (l.phone)(&h.device);
+        if said.is_empty() { tr.text("calls-phone-this", None) } else { said }
+    } else {
+        String::new()
+    };
+    let outcome = if h.rang { "calls-history-rang" } else { "calls-history-declined" };
+    let mut args = crate::i18n::args();
+    args.set("phone", phone.clone());
+    let outcome = tr.text(&format!("{outcome}{}", if phone.is_empty() { "" } else { "-on" }), Some(&args));
+    let mut args = crate::i18n::args();
+    args.set("head", head);
+    args.set("outcome", outcome);
+    let mut text = capitalized(&tr.text("calls-history-line", Some(&args)));
+    if let Some(reason) = h.rang.then(|| rang_reason(tr, &h.why)).flatten() {
+        text.push(' ');
+        text.push_str(&reason);
+    }
+    text
+}
+
+/// Why a call rang when its row alone would not say it: a second call, Let
+/// every call through, an emergency, nothing to decide from.
+fn rang_reason(tr: &Translator, why: &str) -> Option<String> {
+    let key = match why {
+        "repeat" => "calls-rang-repeat",
+        "through" => "calls-rang-through",
+        "emergency" => "calls-rang-emergency",
+        "after-emergency" => "calls-rang-after-emergency",
+        "no-table" | "no-frame" | "no-row" | "error" => "calls-rang-undecided",
+        _ => return None,
+    };
+    Some(tr.text(key, None))
 }
 
 /// The first letter in capital: a sentence that starts with a context's words.
@@ -963,7 +1351,7 @@ mod tests {
         // the leading 0 kept as Italy's.
         let spare = Region { code: "XX", calling: "999", trunk: "", international: "00", digits: (9, 10), french: false };
         for (region, numbers) in [
-            (phones::region_named("FR"), &["0199001234", "01 99 00 12 34", "+33199001234", "0033199001234", "+330199001234", "0639981234", "0692123456", "0590123456", "0696123456", "0594123456", "112", "15", "3114", "0800112112", "08 00 11 21 12", "+44 20 7946 0018", "0044 20 7946 0018", "+262692123456", "+33 6 39 98 12 34", "tel:+33639981234", "*#06#", "1-555-SIOUL", "639981234", "\u{202a}+33 1 99 00 12 34\u{202c}", "01\u{a0}99\u{202f}00 12 34"][..]),
+            (phones::region_named("FR"), &["0199001234", "01 99 00 12 34", "+33199001234", "0033199001234", "+330199001234", "0639981234", "0692123456", "0590123456", "0696123456", "0594123456", "112", "15", "3114", "0800112112", "08 00 11 21 12", "+44 20 7946 0018", "0044 20 7946 0018", "+262692123456", "+262 6 39 98 12 34", "tel:+262639981234", "*#06#", "1-555-SIOUL", "639981234", "\u{202a}+33 1 99 00 12 34\u{202c}", "01\u{a0}99\u{202f}00 12 34"][..]),
             (phones::region_named("GB"), &["07700 900123", "020 7946 0018", "+44 20 7946 0018", "0044 7700 900123", "999"][..]),
             (phones::region_named("US"), &["(212) 555-0100", "1 212 555 0100", "011 33 6 39 98 12 34", "911"][..]),
             (Some(&spare), &["639 98 12 34", "0639 98 12 34", "+999 0639 98 12 34", "112"][..]),
@@ -980,7 +1368,7 @@ mod tests {
         assert_eq!(incoming_key("1-555-SIOUL", None, &zero), "1-555-sioul");
         // No country known: as written, as phones does.
         assert_eq!(incoming_key("06 39 98 12 34", None, &zero), phones::key("06 39 98 12 34", None));
-        assert_eq!(incoming_key("+33 06 39 98 12 34", None, &zero), "+33639981234");
+        assert_eq!(incoming_key("+33 05 36 49 12 34", None, &zero), "+33536491234");
         // Every overseas prefix agrees with phones' own reading (Mayotte's 0639 98 is fiction's).
         let rules = RegionRules::of(fr().unwrap());
         for (prefix, calling) in FRENCH_OVERSEAS {
@@ -1192,7 +1580,7 @@ mod tests {
         let made = |at: i64| Made {
             made: at,
             region: fr(),
-            numbers: vec![("+33639980002".into(), "safe".into()), ("+33199001234".into(), "blocked".into()), ("+33199009999".into(), "stranger".into()), (String::new(), "safe".into())],
+            numbers: vec![("+262639980002".into(), "safe".into()), ("+33199001234".into(), "blocked".into()), ("+33199009999".into(), "stranger".into()), (String::new(), "safe".into())],
             prefixes: vec![("+33465711*".into(), "blocked".into()), ("+3346571*".into(), "safe".into()), ("+334657112*".into(), "neutral".into()), ("*".into(), "blocked".into())],
             always: always_numbers(&people, fr(), &|_| Who::Safe),
             through: Some(Through { pressed: 5, on: true, until: 0 }),
@@ -1293,36 +1681,37 @@ mod tests {
             held(ms("2026-10-07T06:10[Europe/Paris]"), "+33199001234", "stranger", "sleep"),
             held(ms("2026-10-07T06:21[Europe/Paris]"), "+33199001234", "stranger", "sleep"),
             held(ms("2026-10-07T07:00[Europe/Paris]"), "", "hidden", "sleep"),
-            held(ms("2026-10-06T23:10[Europe/Paris]"), "+33639980002", "neutral", "sleep"),
+            held(ms("2026-10-06T23:10[Europe/Paris]"), "+262639980002", "neutral", "sleep"),
             held(ms("2026-10-07T09:30[Europe/Paris]"), "+33199005555", "blocked", "work"),
             held(ms("2026-10-05T12:30[Europe/Paris]"), "+33199007777", "stranger", "meals"),
             held(ms("2026-10-05T12:31[Europe/Paris]"), "+33199007777", "stranger", "meals"),
             held(ms("2026-10-05T12:40[Europe/Paris]"), "+33199007777", "stranger", "meals"),
         ];
-        let names = |key: &str| (key == "+33639980002").then(|| "Dr Martin's office".to_string());
+        let names = |key: &str| (key == "+262639980002").then(|| "Dr Martin's office".to_string());
         let all = |_: &Held| true;
+        let here = |_: &str| String::new();
         for (language, expected) in [
             (
                 "en",
                 [
-                    "Monday 5 October, during a meal: a number not in your contacts called three times, the last at 12:40.",
-                    "Yesterday, while you slept: Dr Martin's office called at 23:10.",
-                    "While you slept: a number not in your contacts called twice, at 06:10 and 06:21.",
-                    "While you slept: a hidden number called at 07:00.",
+                    "Monday 5 October, during a meal, a number not in your contacts called three times, the last at 12:40.",
+                    "Yesterday, while you slept, Dr Martin's office called at 23:10.",
+                    "While you slept, a number not in your contacts called twice, at 06:10 and 06:21.",
+                    "While you slept, a hidden number called at 07:00.",
                 ],
             ),
             (
                 "fr",
                 [
-                    "Lundi 5 octobre, pendant un repas\u{202f}: un numéro absent de vos contacts a appelé trois fois, la dernière à 12:40.",
-                    "Hier, pendant votre sommeil\u{202f}: Dr Martin's office a appelé à 23:10.",
-                    "Pendant votre sommeil\u{202f}: un numéro absent de vos contacts a appelé deux fois, à 06:10 et à 06:21.",
-                    "Pendant votre sommeil\u{202f}: un numéro masqué a appelé à 07:00.",
+                    "Lundi 5 octobre, pendant un repas, un numéro absent de vos contacts a appelé trois fois, la dernière à 12:40.",
+                    "Hier, pendant votre sommeil, Dr Martin's office a appelé à 23:10.",
+                    "Pendant votre sommeil, un numéro absent de vos contacts a appelé deux fois, à 06:10 et à 06:21.",
+                    "Pendant votre sommeil, un numéro masqué a appelé à 07:00.",
                 ],
             ),
         ] {
             let tr = Translator::new(language);
-            let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &names, shows: &all };
+            let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &names, shows: &all, phone: &here };
             let lines = lines(&calls, &Seen::default(), &BTreeMap::new(), &l);
             assert_eq!(lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(), expected, "{language}");
             // Never the blocked.
@@ -1331,7 +1720,7 @@ mod tests {
             assert!(lines.iter().all(|l| !l.doubt.is_empty()));
         }
         let tr = Translator::new("en");
-        let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &names, shows: &all };
+        let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &names, shows: &all, phone: &here };
         let lines_en = lines(&calls, &Seen::default(), &BTreeMap::new(), &l);
         let stranger = &lines_en[2];
         assert_eq!((stranger.number.as_str(), stranger.dial.as_str(), stranger.known, stranger.hidden), ("01 99 00 12 34", "+33199001234", false, false));
@@ -1343,7 +1732,7 @@ mod tests {
         assert!(lines_en[1].known);
         assert_eq!(lines_en[1].why, "Calls from your neutral contacts go to voicemail while you slept.");
         // Someone Always through, declined (their row as their own, which held them then): said as their own row.
-        let always = [held(ms("2026-10-07T06:40[Europe/Paris]"), "+33639980002", "always-neutral", "sleep")];
+        let always = [held(ms("2026-10-07T06:40[Europe/Paris]"), "+262639980002", "always-neutral", "sleep")];
         assert_eq!(lines(&always, &Seen::default(), &BTreeMap::new(), &l)[0].why, "Calls from your neutral contacts go to voicemail while you slept.");
         // Seen: gone; the others stay.
         let mut seen = Seen::default();
@@ -1368,7 +1757,8 @@ mod tests {
         let tr = Translator::new("en");
         let all = |_: &Held| true;
         let none = |_: &str| None;
-        let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all };
+        let here = |_: &str| String::new();
+        let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &here };
         assert!(lines(&calls, &Seen::default(), &BTreeMap::new(), &l).is_empty(), "past two weeks");
         let mut seen = Seen::default();
         seen.add(&["1000-+33199001234".to_string(), format!("{}-x", now.timestamp().as_millisecond())], now.timestamp().as_millisecond());
@@ -1387,6 +1777,262 @@ mod tests {
         assert_eq!(held[0].id(), "1000-hidden");
         assert_eq!(held[1].id(), "2000-+33199001234");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("sioul-calls-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A call that rang, or was declined, on a phone (`device`).
+    fn call_on(device: &str, at: i64, key: &str, who: &str, column: &str, why: &str, rang: bool) -> Held {
+        Held { device: device.into(), rang, why: why.into(), ..held(at, key, who, column) }
+    }
+
+    /// The line a phone's log keeps: what Java wrote, less the number as the
+    /// network gave it and its presentation, every empty field left out; a
+    /// line of Java's from before calls that rang were logged was declined.
+    #[test]
+    fn a_logged_line_reads_back() {
+        let java: Held = serde_json::from_str(r#"{"at":1791346200000,"key":"+33199001234","number":"01 99 00 12 34","hidden":false,"presentation":1,"who":"stranger","name":"","column":"sleep","why":"matrix","verified":""}"#).unwrap();
+        assert!(!java.rang, "declined, as every line was before");
+        let logged = java.logged(fr());
+        assert_eq!(serde_json::to_string(&logged).unwrap(), r#"{"at":1791346200000,"key":"+33199001234","who":"stranger","column":"sleep","why":"matrix","rang":false}"#);
+        assert_eq!(logged.id(), java.id());
+        // Java had no table to key it with: keyed as the country writes numbers.
+        let unkeyed = Held { key: String::new(), why: "no-table".into(), rang: true, ..java.clone() };
+        assert_eq!(unkeyed.logged(fr()).key, "+33199001234");
+        // A hidden number keeps no key; a name and a verification are kept.
+        let hidden = Held { at: 5, hidden: true, who: "hidden".into(), why: "matrix".into(), ..Held::default() }.logged(fr());
+        assert_eq!(serde_json::to_string(&hidden).unwrap(), r#"{"at":5,"hidden":true,"who":"hidden","why":"matrix","rang":false}"#);
+        let named = Held { name: "Cabinet du Dr Martin".into(), verified: "passed".into(), ..java }.logged(fr());
+        let back: Held = serde_json::from_str(&serde_json::to_string(&named).unwrap()).unwrap();
+        assert_eq!((back.name.as_str(), back.verified.as_str(), back.number.as_str()), ("Cabinet du Dr Martin", "passed", ""));
+    }
+
+    /// The lines Java writes (the JVM's LogCheck, where SIOUL_CALLS_SAMPLE
+    /// says), read as Java's file is read here: declined; a second call that
+    /// rang, its time of day said; hidden; no table, keyed here. Skipped
+    /// without the sample.
+    #[test]
+    fn java_s_lines_read_here() {
+        let Some(sample) = std::env::var_os("SIOUL_CALLS_SAMPLE") else { return };
+        let calls = read_held(Path::new(&sample));
+        assert_eq!(calls.iter().map(|h| (h.rang, h.why.as_str(), h.column.as_str(), h.hidden)).collect::<Vec<_>>(), [(false, "matrix", "sleep", false), (true, "repeat", "sleep", false), (false, "matrix", "sleep", true), (true, "no-table", "", false)]);
+        assert_eq!((calls[0].key.as_str(), calls[0].who.as_str()), ("+33199001234", "stranger"));
+        assert_eq!(calls[3].logged(fr()).key, "+33465710042");
+        assert_eq!(calls[0].logged(fr()).number, "", "the number as given stays on the phone");
+    }
+
+    /// Every phone's log read together, each call with its phone, oldest
+    /// first; never a blocked caller's, never one past the month.
+    #[test]
+    fn every_phone_s_log_is_read() {
+        let root = scratch("logs");
+        let now = ms("2026-10-07T10:00[Europe/Paris]");
+        let write = |device: &str, lines: &[Held]| {
+            let text: String = lines.iter().map(|h| serde_json::to_string(&h.logged(fr())).unwrap() + "\n").collect();
+            std::fs::create_dir_all(root.join(LOG)).unwrap();
+            std::fs::write(own_file(&root, LOG, device), text).unwrap();
+        };
+        write("phone-a", &[held(ms("2026-10-07T06:10[Europe/Paris]"), "+33199001234", "stranger", "sleep"), held(ms("2026-10-07T09:00[Europe/Paris]"), "+33199005555", "blocked", "work")]);
+        write("phone-b", &[held(ms("2026-10-07T06:00[Europe/Paris]"), "+33465710042", "safe", "sleep"), held(ms("2026-09-01T09:00[Europe/Paris]"), "+33465710042", "safe", "work")]);
+        std::fs::write(root.join(LOG).join(".phone-c.jsonl.lock"), "").unwrap();
+        let calls = read_logs(&root, now);
+        assert_eq!(calls.iter().map(|h| (h.device.as_str(), h.key.as_str())).collect::<Vec<_>>(), [("phone-b", "+33465710042"), ("phone-a", "+33199001234")]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// On the phone that screened, a line says "called at"; on another
+    /// device, which phone: "your phone", "your other phone" on a phone, or
+    /// its name when several phones share their calls.
+    #[test]
+    fn the_list_names_the_phone_elsewhere() {
+        let now = at("2026-10-07T10:00[Europe/Paris]");
+        let calls = vec![call_on("phone-a", ms("2026-10-07T06:10[Europe/Paris]"), "+33199001234", "stranger", "sleep", "matrix", false)];
+        let none = |_: &str| None;
+        let all = |_: &Held| true;
+        let one = [("phone-a".to_string(), "A12".to_string())];
+        let two = [("phone-a".to_string(), "A12".to_string()), ("phone-b".to_string(), "B7".to_string())];
+        for (language, own, computer, other, named) in [
+            (
+                "en",
+                "While you slept, a number not in your contacts called at 06:10.",
+                "While you slept, a number not in your contacts called your phone at 06:10.",
+                "While you slept, a number not in your contacts called your other phone at 06:10.",
+                "While you slept, a number not in your contacts called your phone (A12) at 06:10.",
+            ),
+            (
+                "fr",
+                "Pendant votre sommeil, un numéro absent de vos contacts a appelé à 06:10.",
+                "Pendant votre sommeil, un numéro absent de vos contacts a appelé votre téléphone à 06:10.",
+                "Pendant votre sommeil, un numéro absent de vos contacts a appelé votre autre téléphone à 06:10.",
+                "Pendant votre sommeil, un numéro absent de vos contacts a appelé votre téléphone (A12) à 06:10.",
+            ),
+        ] {
+            let tr = Translator::new(language);
+            let said = |here: &str, phones: &[(String, String)], phone: bool| {
+                let words = |device: &str| phone_words(&tr, device, here, phones, phone);
+                let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &words };
+                lines(&calls, &Seen::default(), &BTreeMap::new(), &l)[0].text.clone()
+            };
+            assert_eq!(said("phone-a", &one, true), own, "{language}: on the phone that screened");
+            assert_eq!(said("desk", &one, false), computer, "{language}: on a computer");
+            assert_eq!(said("desk", &[], false), computer, "{language}: without the devices' list");
+            assert_eq!(said("phone-b", &two, true), other, "{language}: on the other phone");
+            assert_eq!(said("desk", &two, false), named, "{language}: two phones, from a computer");
+        }
+    }
+
+    /// A call that rang is never a line of its own; after declined calls of
+    /// the same number the same day, it is said under their line; never for
+    /// a hidden number. A message left after it goes with the line.
+    #[test]
+    fn a_call_that_rang_is_never_listed_but_said() {
+        let now = at("2026-10-07T10:00[Europe/Paris]");
+        let calls = vec![
+            call_on("phone-a", ms("2026-10-07T06:10[Europe/Paris]"), "+33199001234", "stranger", "sleep", "matrix", false),
+            call_on("phone-a", ms("2026-10-07T06:40[Europe/Paris]"), "+33199001234", "stranger", "sleep", "matrix", false),
+            call_on("phone-a", ms("2026-10-07T06:48[Europe/Paris]"), "+33199001234", "stranger", "sleep", "repeat", true),
+            call_on("phone-a", ms("2026-10-07T07:00[Europe/Paris]"), "", "hidden", "sleep", "matrix", false),
+            call_on("phone-a", ms("2026-10-07T07:05[Europe/Paris]"), "", "hidden", "sleep", "repeat", true),
+            call_on("phone-a", ms("2026-10-07T09:15[Europe/Paris]"), "+33465710042", "safe", "work", "matrix", true),
+        ];
+        let none = |_: &str| None;
+        let all = |_: &Held| true;
+        let here = |_: &str| String::new();
+        for (language, first, again) in [
+            ("en", "While you slept, a number not in your contacts called twice, at 06:10 and 06:40.", "The same number called again at 06:48, and that call rang."),
+            ("fr", "Pendant votre sommeil, un numéro absent de vos contacts a appelé deux fois, à 06:10 et à 06:40.", "Le même numéro a rappelé à 06:48, et cet appel a sonné."),
+        ] {
+            let tr = Translator::new(language);
+            let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &here };
+            let said = lines(&calls, &Seen::default(), &BTreeMap::new(), &l);
+            assert_eq!(said.len(), 2, "{language}: the stranger's and the hidden number's; never a call that rang");
+            assert_eq!((said[0].text.as_str(), said[0].again.as_str()), (first, again), "{language}");
+            assert_eq!(said[1].again, "", "{language}: two hidden calls cannot be told apart");
+        }
+        // The message left after the call that rang goes with the line.
+        let tr = Translator::new("en");
+        let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &here };
+        let mut messages = BTreeMap::new();
+        messages.insert(calls[2].id(), Message { text: message_words(&tr, Some(12)), path: "/mail/2".into(), sound: Some(0) });
+        let said = lines(&calls, &Seen::default(), &messages, &l);
+        assert_eq!((said[0].message.as_ref().map(|m| m.text.as_str()), said[0].doubt.as_str()), (Some("They left a message (0:12)."), ""));
+        // The next day's call that rang is no longer said under that line.
+        let later = [calls[0].clone(), call_on("phone-a", ms("2026-10-08T08:00[Europe/Paris]"), "+33199001234", "stranger", "work", "matrix", true)];
+        let tomorrow = at("2026-10-08T10:00[Europe/Paris]");
+        let l = Lister { now: &tomorrow, ..l };
+        assert_eq!(lines(&later, &Seen::default(), &BTreeMap::new(), &l)[0].again, "");
+    }
+
+    /// Seen on one device, seen on all: each device's own log, every
+    /// device's read together; Undo takes out this device's own line only.
+    /// The phone's file from before Seen was shared becomes a line of its own log.
+    #[test]
+    fn seen_anywhere_is_seen_everywhere() {
+        let root = scratch("seen");
+        let a = "1791346200000-+33199001234".to_string();
+        let b = "1791349200000-hidden".to_string();
+        let pressed = mark_seen(&root, "desk", std::slice::from_ref(&a), 1_000).unwrap();
+        mark_seen(&root, "phone-a", &[a.clone(), b.clone()], 2_000).unwrap();
+        assert_eq!(read_seen(&root).seen, [a.clone(), b.clone()].into());
+        // Undo on the desk: the phone's Seen stays.
+        assert!(unmark_seen(&root, "desk", pressed).unwrap());
+        assert!(!unmark_seen(&root, "desk", pressed).unwrap(), "once");
+        assert_eq!(read_seen(&root).seen, [a.clone(), b.clone()].into());
+        assert!(unmark_seen(&root, "phone-a", 2_000).unwrap());
+        assert!(read_seen(&root).seen.is_empty());
+        // The older file, this phone's alone: a line of its own log, then gone.
+        std::fs::write(root.join(SEEN), "seen = [\"1791346200000-+33199001234\"]\n").unwrap();
+        adopt_older_seen(&root, "phone-a", 3_000).unwrap();
+        assert!(!root.join(SEEN).exists());
+        assert_eq!(read_seen(&root).seen, [a].into());
+        adopt_older_seen(&root, "phone-a", 4_000).unwrap();
+        assert_eq!(std::fs::read_to_string(own_file(&root, SEEN_LOG, "phone-a")).unwrap().lines().count(), 1, "nothing twice");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(own_file(&root, SEEN_LOG, "phone-a")).unwrap().permissions().mode() & 0o777, 0o600, "yours alone");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A person's calls of the month on their sheet: newest first, rang or
+    /// declined, why a call rang when its row alone would not say it, the
+    /// phone named only when several share their calls; never a blocked
+    /// caller's, nothing past the month.
+    #[test]
+    fn a_person_s_calls_of_the_month() {
+        let now = at("2026-10-07T10:30[Europe/Paris]");
+        let calls = vec![
+            call_on("phone-a", ms("2026-09-01T09:00[Europe/Paris]"), "+262639980002", "neutral", "work", "matrix", true),
+            call_on("phone-a", ms("2026-10-06T23:10[Europe/Paris]"), "+262639980002", "neutral", "sleep", "matrix", false),
+            call_on("phone-a", ms("2026-10-07T06:48[Europe/Paris]"), "+262639980002", "neutral", "sleep", "repeat", true),
+            call_on("phone-a", ms("2026-10-07T08:00[Europe/Paris]"), "+33199005555", "blocked", "work", "blocked", false),
+            call_on("phone-a", ms("2026-10-07T10:05[Europe/Paris]"), "+262639980002", "neutral", "work", "matrix", true),
+        ];
+        let keys: BTreeSet<String> = ["+262639980002".to_string(), "+33199005555".to_string()].into();
+        let none = |_: &str| None;
+        let all = |_: &Held| true;
+        for (language, expected) in [
+            ("en", ["Today at 10:05, during work: it rang.", "Today at 06:48, while you slept: it rang. A second call within 15 minutes rings.", "Yesterday at 23:10, while you slept: declined, sent to voicemail."]),
+            ("fr", ["Aujourd’hui à 10:05, pendant le travail\u{202f}: l’appel a sonné.", "Aujourd’hui à 06:48, pendant votre sommeil\u{202f}: l’appel a sonné. Un deuxième appel en moins de 15 minutes sonne.", "Hier à 23:10, pendant votre sommeil\u{202f}: refusé, envoyé sur votre messagerie."]),
+        ] {
+            let tr = Translator::new(language);
+            let words = |device: &str| phone_words(&tr, device, "desk", &[("phone-a".to_string(), "A12".to_string())], false);
+            let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &words };
+            assert_eq!(history(&calls, &keys, &l), expected, "{language}");
+        }
+        // Two phones: each line names its phone.
+        let mut both = calls.clone();
+        both.push(call_on("phone-b", ms("2026-10-07T09:00[Europe/Paris]"), "+262639980002", "neutral", "work", "matrix", false));
+        both.sort_by_key(|h| h.at);
+        let tr = Translator::new("en");
+        let phones = [("phone-a".to_string(), "A12".to_string()), ("phone-b".to_string(), "B7".to_string())];
+        let words = |device: &str| phone_words(&tr, device, "desk", &phones, false);
+        let l = Lister { now: &now, tr: &tr, region: fr(), name_of: &none, shows: &all, phone: &words };
+        let said = history(&both, &keys, &l);
+        assert_eq!(&said[..2], ["Today at 10:05, during work: it rang on your phone (A12).", "Today at 09:00, during work: declined on your phone (B7), sent to voicemail."]);
+    }
+
+    /// Java's calls copied into this phone's own log once, whoever copies;
+    /// never a blocked caller's, nor one past the month; this device's own
+    /// lines taken out after the month, and never copied back.
+    #[test]
+    fn old_lines_leave_with_their_writer() {
+        let root = scratch("carry");
+        let own = own_file(&root, LOG, "phone-a");
+        let now = ms("2026-10-07T10:00[Europe/Paris]");
+        let java = vec![
+            Held { number: "01 99 00 12 34".into(), ..held(ms("2026-10-07T06:10[Europe/Paris]"), "+33199001234", "stranger", "sleep") },
+            Held { key: String::new(), number: "0465710042".into(), rang: true, why: "no-table".into(), ..held(ms("2026-10-07T09:15[Europe/Paris]"), "x", "", "") },
+            held(ms("2026-10-07T09:30[Europe/Paris]"), "+33199005555", "blocked", "work"),
+            held(ms("2026-08-20T09:30[Europe/Paris]"), "+33199007777", "stranger", "work"),
+        ];
+        assert_eq!(carry_into(&own, &java, fr(), now).unwrap(), 2);
+        assert_eq!(carry_into(&own, &java, fr(), now).unwrap(), 0, "once");
+        let logged = read_held(&own);
+        assert_eq!(logged.iter().map(|h| (h.key.as_str(), h.rang, h.number.as_str())).collect::<Vec<_>>(), [("+33199001234", false, ""), ("+33465710042", true, "")]);
+        // A month and a few days later: taken out of this device's own files, a line that does not read kept.
+        mark_seen(&root, "phone-a", &[logged[0].id()], now).unwrap();
+        std::fs::write(&own, std::fs::read_to_string(&own).unwrap() + "{\"at\":\n").unwrap();
+        let later = now + 33 * DAY_MS;
+        assert_eq!(trim_own(&root, "phone-a", later).unwrap(), 3);
+        assert_eq!(std::fs::read_to_string(&own).unwrap(), "{\"at\":\n");
+        assert!(read_seen(&root).seen.is_empty());
+        assert_eq!(carry_into(&own, &java, fr(), later).unwrap(), 0, "never copied back");
+        // Nobody else's file is touched, until a line of theirs is long past its month (its phone gone for good).
+        std::fs::write(own_file(&root, LOG, "phone-b"), serde_json::to_string(&java[0].logged(fr())).unwrap() + "\n").unwrap();
+        trim_own(&root, "phone-a", later).unwrap();
+        assert_eq!(trim_others(&root, "phone-a", later).unwrap(), 0);
+        assert_eq!(read_held(&own_file(&root, LOG, "phone-b")).len(), 1);
+        assert_eq!(trim_others(&root, "phone-a", now + (KEPT_DAYS + LATE_DAYS + 1) * DAY_MS).unwrap(), 1);
+        assert!(read_held(&own_file(&root, LOG, "phone-b")).is_empty());
+        assert_eq!(std::fs::read_to_string(&own).unwrap(), "{\"at\":\n", "its own left to trim_own");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -1412,7 +2058,9 @@ mod tests {
         for language in ["en", "fr"] {
             let tr = Translator::new(language);
             let mut keys: Vec<String> = [
-                "calls-who-hidden", "calls-who-stranger", "calls-context-day", "calls-day-yesterday", "calls-line-once", "calls-line-twice", "calls-line-more", "calls-may-have-left", "calls-left-message", "calls-left-message-plain", "calls-through-emergency", "calls-through-until", "calls-through-on", "calls-context-any",
+                "calls-who-hidden", "calls-who-stranger", "calls-context-day", "calls-day-yesterday", "calls-day-today", "calls-line-once", "calls-line-twice", "calls-line-more", "calls-line-once-on", "calls-line-twice-on", "calls-line-more-on", "calls-may-have-left", "calls-left-message", "calls-left-message-plain", "calls-through-emergency", "calls-through-until", "calls-through-on", "calls-context-any",
+                "calls-phone-yours", "calls-phone-other", "calls-phone-named", "calls-phone-this", "calls-again-rang", "calls-history-title", "calls-history-when", "calls-history-head", "calls-history-line", "calls-history-declined", "calls-history-rang", "calls-history-declined-on", "calls-history-rang-on",
+                "calls-rang-repeat", "calls-rang-through", "calls-rang-emergency", "calls-rang-after-emergency", "calls-rang-undecided",
             ]
             .iter()
             .map(|k| k.to_string())
@@ -1421,11 +2069,15 @@ mod tests {
             keys.extend(["safe", "neutral", "restricted", "stranger", "hidden"].iter().map(|r| format!("calls-why-{r}")));
             for key in keys {
                 let mut args = crate::i18n::args();
-                for name in ["context", "day", "who", "time", "first", "second", "count", "length", "until"] {
+                for name in ["context", "day", "who", "time", "first", "second", "count", "length", "until", "phone", "name", "when", "head", "outcome"] {
                     args.set(name, "X");
                 }
                 let words = tr.text(&key, Some(&args));
                 assert!(!words.is_empty() && words != key && !words.contains('{'), "{language}: {key}: {words}");
+                // French typography: a narrow no-break space before « : ; ? ! », the apostrophe ’.
+                if language == "fr" {
+                    assert!(![" :", " ;", " ?", " !", "'"].iter().any(|bad| words.contains(bad)), "{key}: {words}");
+                }
             }
         }
     }

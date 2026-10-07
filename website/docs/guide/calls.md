@@ -36,10 +36,16 @@ When you expect a call. On the phone's notification "Sioul keeps your devices in
 
 ## Afterwards, on the Porch {#afterwards-on-the-porch}
 
-"While you slept: a number not in your contacts called at 09:30." Each call waits until its caller's Calls row lets them reach you, or until your work and admin time for a row that never rings; never counted, no badge. Under it: **Text back**, **Call back**, **Add to contacts**, **Block**, **Why?**, **Seen**. Sioul cannot see your voicemail, so it says: "They may have left a message." The phone's own call history lists every declined call too, with Sioul's name.
+"While you slept, a number not in your contacts called at 09:30." Each call waits until its caller's Calls row lets them reach you, or until your work and admin time for a row that never rings; never counted, no badge, never a notification. Under it: **Text back**, **Call back** and **Seen**; its **⋮** (or a long press, a right click, the Menu key) holds **Add to contacts**, **Block**, **How they reach you…** and **Why?**. When the same number called again and that call rang, the line says so: you may have spoken already. Sioul cannot see your voicemail, so it says: "They may have left a message." The phone's own call history lists every declined call too, with Sioul's name.
 
 With Free, set your voicemail to mail you each message with its sound (your subscriber area: Messagerie vocale ▸ Notification, with the audio file): the line then says "They left a message (0:42)." with **Listen**. The mail stays in your mail.
 
+### On your computers {#on-your-computers}
+
+The calls your phone declined also wait on the Porch of your computers, at the same times, once your devices share ([Sharing between your devices](sharing.md), the part **Calls**): "While you slept, a number not in your contacts called your phone at 09:30." **Seen** on one device takes the line away on all of them, with ten seconds to undo. On a computer, **Text back** and **Call back** go through the app your system has for phone links (KDE Connect hands them to your phone), else **Copy the number**; **Add to contacts** opens a new card in Contacts, the number filled in. To keep the calls off your computers' Porch: the Porch's ⚙ ▸ Calls ▸ **Calls your phones declined**. To keep the list off one computer entirely, switch the part **Calls** off there.
+
+A person's calls of the last month, rang or declined, are on their sheet: Contacts ▸ their card ▸ **How … reaches you**, or **How they reach you…** on a call's line. Each device keeps a call a month, then takes it out.
+
 ## What Sioul never does {#what-sioul-never-does}
 
-It never answers a call, never records one, never listens, and sends no number anywhere: no server, no lookup. Texts are held as other apps' messages are, by who wrote, when Sioul has Android's notification access ([Other apps' notifications, on a phone](notifications.md#other-apps-on-a-phone)); Android's own blocked numbers stop a number's calls and texts for every app.
+It never answers a call, never records one, never listens, and sends no number anywhere: no server, no lookup. The list of calls your phone screened travels only to your own devices, sealed, while the part **Calls** of the sharing is on. Texts are held as other apps' messages are, by who wrote, when Sioul has Android's notification access ([Other apps' notifications, on a phone](notifications.md#other-apps-on-a-phone)); Android's own blocked numbers stop a number's calls and texts for every app.

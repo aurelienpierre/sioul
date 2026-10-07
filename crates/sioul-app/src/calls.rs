@@ -17,14 +17,20 @@
 //!   from the phone's notification (Java keeps that press; it is carried into
 //!   the shared switch here, `carry`); said in the status line (`moment`) and
 //!   the notification (`step`).
-//! - **The list** of calls declined, on the phone's Porch (`view`), with the
-//!   voicemail Free mails linked to its call and played on demand (`act`).
+//! - **The log**: on a phone, Java's calls copied into this phone's own log,
+//!   which the sharing carries to your other devices (`before_exchange`); on
+//!   every device, its own lines taken out after their month.
+//! - **The list** of calls declined, on the Porch of every device (`view`):
+//!   this phone's own, and every phone's while `[porch] calls` says so (the
+//!   default); with the voicemail Free mails linked to its call and played on
+//!   demand; Seen on any device, gone from all (`act`).
+//! - **A person's calls** of the month, on their sheet (`history`).
 //! - **Settings ▸ Calls** (`setup`, `setup_change`).
 
 use crate::backend::{load_config, tr};
 use jiff::Zoned;
 use serde_json::json;
-use sioul_core::calls::{self as rules, Held, Seen, Through};
+use sioul_core::calls::{self as rules, Held, Through};
 use sioul_core::config::Config;
 use sioul_core::everywhere::{self as switches, People, Switch};
 use sioul_core::porch::{Senders, Standing};
@@ -315,6 +321,60 @@ pub(crate) fn step(pressed: bool) -> serde_json::Value {
     })
 }
 
+// ---------------------------------------------------------------- the log
+
+/// When this device last took its old lines out (ms, its clock): once a day.
+static TRIMMED: Mutex<i64> = Mutex::new(0);
+/// Java's file as last copied in this process: its size and time.
+static COPIED: Mutex<Option<(u64, Option<SystemTime>)>> = Mutex::new(None);
+
+/// Before an exchange (the window's, a quick one: the background step, a
+/// dose's alarm) and before the list is read: on a phone, Java's new calls
+/// copied into its own log, which the sharing carries (`calls::carry_into`);
+/// on every device, once a day, its own lines taken out after their month,
+/// and the others' long after theirs (a phone gone for good never takes its
+/// own out), and a phone's older seen file made a line of its seen log. Cheap
+/// when nothing changed: Java's file is read again only when it changed.
+pub(crate) fn before_exchange() {
+    let here = here_id();
+    if here.is_empty() {
+        return;
+    }
+    let root = rules::folder();
+    let now = jiff::Timestamp::now().as_millisecond();
+    let due = TRIMMED.lock().map(|mut last| a_day_since(&mut last, now)).unwrap_or(false);
+    if due {
+        let done = rules::adopt_older_seen(&root, &here, now).and_then(|()| rules::trim_own(&root, &here, now)).and_then(|_| rules::trim_others(&root, &here, now));
+        if let Err(e) = done {
+            eprintln!("sioul: calls: {e}");
+        }
+    }
+    if !phone() {
+        return;
+    }
+    let java = path(rules::HELD);
+    let Some(stamp) = std::fs::metadata(&java).ok().map(|m| (m.len(), m.modified().ok())) else { return };
+    let mut copied = COPIED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if *copied == Some(stamp) {
+        return;
+    }
+    let region = sioul_core::reach::region(&load_config());
+    match rules::carry_into(&rules::own_file(&root, rules::LOG, &here), &rules::read_held(&java), region, now) {
+        Ok(_) => *copied = Some(stamp),
+        Err(e) => eprintln!("sioul: calls: {e}"),
+    }
+}
+
+/// Whether a day went by since `last` (ms); when it did, `last` becomes
+/// `now`, so that the next comes a day after this one.
+fn a_day_since(last: &mut i64, now: i64) -> bool {
+    let due = now - *last > 86_400_000;
+    if due {
+        *last = now;
+    }
+    due
+}
+
 // ---------------------------------------------------------------- the list
 
 /// Who a call's caller is now, as your lists and address books say (a number
@@ -327,19 +387,82 @@ fn who_now(senders: &Senders, held: &Held) -> Option<Who> {
     Some(if who == Who::Stranger && !held.name.trim().is_empty() { Who::Neutral } else { who })
 }
 
-/// The Porch's list of calls declined (CallsSection.qml): {lines}; each line
-/// shown at the times its caller's Calls row lets them through (a row that
-/// rings at no time at all, in work and admin time: `Attention::listed`).
-pub(crate) fn view() -> String {
-    if !phone() {
-        return json!({ "lines": [] }).to_string();
+/// The calls a device lists, every phone's of the month (`everywhere`:
+/// `[porch] calls`, the default), or this device's own alone.
+fn listed(root: &Path, here: &str, everywhere: bool, now_ms: i64) -> Vec<Held> {
+    let mut calls = rules::read_logs(root, now_ms);
+    if !everywhere {
+        calls.retain(|h| h.device == here);
     }
-    let held = rules::read_held(&path(rules::HELD));
-    if held.is_empty() {
-        return json!({ "lines": [] }).to_string();
+    calls
+}
+
+/// Your phones in the sharing, each with its name (a phone's model), for the
+/// list's words ("your phone (GS290)"); read again five minutes on at most.
+fn phone_names() -> Vec<(String, String)> {
+    type Kept = Option<(i64, Vec<(String, String)>)>;
+    static KEPT: Mutex<Kept> = Mutex::new(None);
+    let now = jiff::Timestamp::now().as_second();
+    if let Ok(kept) = KEPT.lock()
+        && let Some((at, names)) = kept.as_ref()
+        && (0..300).contains(&(now - at))
+    {
+        return names.clone();
+    }
+    let names: Vec<(String, String)> = match crate::share::vault() {
+        Some((_, Some((folder, key)))) => sioul_sync::devices::all(&folder, &key).0.into_iter().filter(|d| d.kind == sioul_sync::devices::PHONE).map(|d| (d.id, d.name)).collect(),
+        _ => Vec::new(),
+    };
+    if let Ok(mut kept) = KEPT.lock() {
+        *kept = Some((now, names.clone()));
+    }
+    names
+}
+
+/// Whether this device has apps for `tel:` and `sms:` links: a phone always;
+/// a computer when its system names one (Linux: `xdg-mime`, KDE Connect,
+/// which hands them to your phone, or a softphone). Looked up once.
+fn link_apps() -> (bool, bool) {
+    static FOUND: std::sync::OnceLock<(bool, bool)> = std::sync::OnceLock::new();
+    *FOUND.get_or_init(|| {
+        if cfg!(target_os = "android") {
+            return (true, true);
+        }
+        let has = |scheme: &str| {
+            cfg!(target_os = "linux")
+                && std::process::Command::new("xdg-mime")
+                    .args(["query", "default", &format!("x-scheme-handler/{scheme}")])
+                    .output()
+                    .ok()
+                    .filter(|out| out.status.success())
+                    .is_some_and(|out| !String::from_utf8_lossy(&out.stdout).trim().is_empty())
+        };
+        (has("tel"), has("sms"))
+    })
+}
+
+/// The Porch's list of calls declined (CallsSection.qml): {lines, phone (this
+/// device is one), links: {tel, sms}}; each line shown at the times its
+/// caller's Calls row lets them through (a row that rings at no time at all,
+/// in work and admin time: `Attention::listed`), on every device: this
+/// phone's own calls, and every phone's while `[porch] calls` says so.
+pub(crate) fn view() -> String {
+    let empty = || json!({ "lines": [] }).to_string();
+    let root = rules::folder();
+    // No phone ever shared a call with this computer: nothing to read.
+    if !phone() && !root.join(rules::LOG).is_dir() {
+        return empty();
+    }
+    if phone() {
+        before_exchange();
     }
     let config = load_config();
+    let here = here_id();
     let now = Zoned::now();
+    let held = listed(&root, &here, config.porch.calls, now.timestamp().as_millisecond());
+    if held.is_empty() {
+        return empty();
+    }
     let senders = Senders::load(&config);
     let attention = Attention::of(&config);
     let moment = crate::hours::attention_now();
@@ -357,9 +480,37 @@ pub(crate) fn view() -> String {
         .into_iter()
         .map(|(id, i)| (id, rules::Message { text: rules::message_words(tr(), mails[i].seconds), path: mails[i].path.display().to_string(), sound: mails[i].sound }))
         .collect();
-    let seen = Seen::load(&path(rules::SEEN));
-    let lister = rules::Lister { now: &now, tr: tr(), region: senders.region(), name_of: &name_of, shows: &shows };
-    json!({ "lines": rules::lines(&held, &seen, &messages, &lister) }).to_string()
+    let seen = rules::read_seen(&root);
+    let phones = phone_names();
+    let words = |device: &str| rules::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
+    let lister = rules::Lister { now: &now, tr: tr(), region: senders.region(), name_of: &name_of, shows: &shows, phone: &words };
+    let (tel, sms) = link_apps();
+    json!({ "lines": rules::lines(&held, &seen, &messages, &lister), "phone": cfg!(target_os = "android"), "links": { "tel": tel, "sms": sms } }).to_string()
+}
+
+/// A person's calls of the last month (`numbers`: theirs, as written), for
+/// their sheet (`reaches::person`): a sentence each, newest first, from every
+/// phone, rang or declined; none where no phone shares its calls, and never a
+/// blocked caller's (their calls never leave their phone).
+pub(crate) fn history(numbers: &[String]) -> Vec<String> {
+    let root = rules::folder();
+    if numbers.is_empty() || !root.join(rules::LOG).is_dir() {
+        return Vec::new();
+    }
+    let config = load_config();
+    let region = sioul_core::reach::region(&config);
+    let keys: std::collections::BTreeSet<String> = numbers.iter().map(|n| sioul_core::phones::key(n.trim().trim_start_matches(sioul_core::porch::TEL), region)).filter(|k| sioul_core::phones::is_whole(k)).collect();
+    if keys.is_empty() {
+        return Vec::new();
+    }
+    let here = here_id();
+    let now = Zoned::now();
+    let calls = rules::read_logs(&root, now.timestamp().as_millisecond());
+    let phones = phone_names();
+    let words = |device: &str| rules::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
+    let (none, all) = (|_: &str| None, |_: &Held| true);
+    let lister = rules::Lister { now: &now, tr: tr(), region, name_of: &none, shows: &all, phone: &words };
+    rules::history(&calls, &keys, &lister)
 }
 
 /// The voicemails Free mailed lately, from every account's inbox: each folder
@@ -451,20 +602,32 @@ fn listen(mail: &str, sound: u32) -> Result<String, String> {
     Ok(format!("file://{}", out.display()))
 }
 
-/// An action of the list (CallsSection.qml): "seen" {ids}, "add-contact"
-/// {number}, "block" {number}, "listen" {path, sound}, "open-blocked".
-/// Answers {said, url, shared} (`shared`: the lists changed, to share).
+/// An action of the list (CallsSection.qml): "seen" {ids}, "unseen" {at}
+/// (Seen undone, within its ten seconds), "add-contact" {number} (Android's
+/// form; a computer opens Sioul's own), "block" {number}, "listen" {path,
+/// sound}, "open-blocked". Answers {said, url, shared, at} (`shared`: what
+/// travels changed, to share now; `at`: the Seen to undo).
 pub(crate) fn act(verb: &str, json: &str) -> String {
     let asked: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
     let text = |key: &str| asked[key].as_str().unwrap_or_default().trim().to_string();
+    let mut at = 0;
     let (said, url, shared) = match verb {
+        // In this device's own seen log, which the sharing carries: gone from every device's Porch.
         "seen" => {
             let ids: Vec<String> = asked["ids"].as_array().map(|a| a.iter().filter_map(|i| i.as_str().map(str::to_string)).collect()).unwrap_or_default();
-            let file = path(rules::SEEN);
-            let mut seen = Seen::load(&file);
-            seen.add(&ids, jiff::Timestamp::now().as_millisecond());
-            (seen.save(&file).err().unwrap_or_default(), String::new(), false)
+            match rules::mark_seen(&rules::folder(), &here_id(), &ids, jiff::Timestamp::now().as_millisecond()) {
+                Ok(pressed) => {
+                    at = pressed;
+                    (tr().text("calls-seen-said", None), String::new(), true)
+                }
+                Err(e) => (e, String::new(), false),
+            }
         }
+        // This device's own Seen undone; another device's stays.
+        "unseen" => match rules::unmark_seen(&rules::folder(), &here_id(), asked["at"].as_i64().unwrap_or(0)) {
+            Ok(gone) => (String::new(), String::new(), gone),
+            Err(e) => (e, String::new(), false),
+        },
         // Android's own form for a new contact, the number filled in: saved by you, or not.
         "add-contact" => {
             crate::steps::java("add-contact", &json!({ "name": "", "phones": [text("number")], "emails": [] }).to_string());
@@ -493,7 +656,7 @@ pub(crate) fn act(verb: &str, json: &str) -> String {
         }
         _ => (String::new(), String::new(), false),
     };
-    json!({ "said": said, "url": url, "shared": shared }).to_string()
+    json!({ "said": said, "url": url, "shared": shared, "at": at }).to_string()
 }
 
 // ---------------------------------------------------------------- Settings ▸ Calls
@@ -547,17 +710,47 @@ pub(crate) fn setup_change(verb: &str, json: &str) -> String {
 mod tests {
     use super::*;
 
-    /// On a computer, without SIOUL_CALLS: nothing read or written (the
-    /// calls' folder is never looked at), nothing asked of Java.
+    /// On a computer, without SIOUL_CALLS and no phone's log here: nothing
+    /// listed, no table written, nothing asked of Java; nothing read but
+    /// whether the phones' logs are there.
     #[test]
     fn nothing_is_written_nor_asked_on_a_computer() {
-        if phone() {
+        if phone() || rules::folder().join(rules::LOG).is_dir() {
             return;
         }
         refresh(true);
         assert_eq!(view(), json!({ "lines": [] }).to_string());
+        assert!(history(&["+33199001234".to_string()]).is_empty());
         assert_eq!(step(false), json!({}));
         assert_eq!(state(), serde_json::Value::Null);
         assert!(!screens_here());
+        assert!(!path(rules::TABLE).exists());
+    }
+
+    /// A device lists every phone's calls while `[porch] calls` says so (the
+    /// default); else only its own: a phone its own, a computer none.
+    #[test]
+    fn a_device_lists_the_phones_calls_as_the_setting_says() {
+        let root = std::env::temp_dir().join(format!("sioul-app-calls-listed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let now = jiff::Timestamp::now().as_millisecond();
+        let call = |at: i64, key: &str| Held { at, key: key.into(), number: key.into(), who: "stranger".into(), column: "sleep".into(), why: "matrix".into(), ..Held::default() };
+        rules::carry_into(&rules::own_file(&root, rules::LOG, "phone-a"), &[call(now - 3_600_000, "+33199001234")], None, now).unwrap();
+        rules::carry_into(&rules::own_file(&root, rules::LOG, "phone-b"), &[call(now - 1_800_000, "+33465710042")], None, now).unwrap();
+        assert_eq!(listed(&root, "desk", true, now).iter().map(|h| h.device.as_str()).collect::<Vec<_>>(), ["phone-a", "phone-b"]);
+        assert!(listed(&root, "desk", false, now).is_empty(), "the setting off: a computer lists none");
+        assert_eq!(listed(&root, "phone-a", false, now).len(), 1, "a phone its own");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Old lines taken out once a day, whatever the exchanges in between.
+    #[test]
+    fn once_a_day() {
+        let mut last = 0;
+        let start = 1_791_346_200_000;
+        assert!(a_day_since(&mut last, start), "the first time");
+        assert!(!a_day_since(&mut last, start + 60_000) && !a_day_since(&mut last, start + 23 * 3_600_000), "not again the same day");
+        assert!(a_day_since(&mut last, start + 86_400_001), "a day after the last");
+        assert!(!a_day_since(&mut last, start + 86_400_001 + 60_000));
     }
 }

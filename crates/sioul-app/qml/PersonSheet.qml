@@ -2,9 +2,10 @@
 // Copyright © 2026 Aurélien Pierre
 
 // How someone reaches you (« Comment Camille vous joint »; docs/attention.md),
-// from a contact's card or a message's sender: their list and why ("Safe, as
-// the category Friends says"), the list chosen for them, Always through, and
-// what each channel does with them at each time, in sentences. Blocked and
+// from a contact's card, a message's sender or a call's line on the Porch:
+// their list and why ("Safe, as the category Friends says"), the list chosen
+// for them, Always through, what each channel does with them at each time,
+// in sentences, and their calls of the month (docs/porch.md). Blocked and
 // Always through exclude each other: choosing one takes them off the other,
 // and the sheet says so. No times of their own: a person has a list and
 // Always through, the rest is the lists' (What reaches you ▸ By person).
@@ -24,8 +25,8 @@ Dialog {
     property string key: ""
     // A sender's addresses, a JSON array; "" for a card.
     property string addresses: ""
-    // reaches.rs's `person`: {title, name, who, said, choice, choices, own, always, always_help, lines, note}.
-    property var shown: ({ title: "", name: "", who: "", said: "", choice: "", choices: [], own: [], always: false, always_help: "", lines: [], note: "" })
+    // reaches.rs's `person`: {title, name, who, said, choice, choices, own, always, always_help, lines, note, calls_title, calls}.
+    property var shown: ({ title: "", name: "", who: "", said: "", choice: "", choices: [], own: [], always: false, always_help: "", lines: [], note: "", calls_title: "", calls: [] })
 
     // The sheet of someone: a card ("" addresses), or a sender's addresses ("" key).
     function ask(key, addresses) {
@@ -159,6 +160,32 @@ Dialog {
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: sheet.theme.accent
+            }
+            // Their calls of the month, from every phone that shares its own,
+            // rang or declined, newest first (calls.rs's `history`); no count,
+            // and no block at all when there was none.
+            Label {
+                visible: (sheet.shown.calls || []).length > 0
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                text: sheet.shown.calls_title || ""
+                font.weight: Font.DemiBold
+                wrapMode: Text.Wrap
+                color: sheet.theme.accent
+            }
+            Repeater {
+                model: sheet.shown.calls || []
+
+                delegate: Label {
+                    required property string modelData
+
+                    Layout.fillWidth: true
+                    text: modelData
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    lineHeight: 1.2
+                    color: sheet.theme.text
+                }
             }
         }
     }

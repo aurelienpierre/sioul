@@ -19,6 +19,12 @@
 //! - **The list**, "Who may reach you during do-not-disturb"
 //!   (`config/dnd-people.toml`): names, numbers and addresses, kept in the
 //!   sharing itself, since the address books of two devices may not be in step.
+//! - **Both ways**: each device's own do-not-disturb, turned on or off by
+//!   anything there and heard as it happens, presses the switch when it
+//!   disagrees with what holds there (`heard`); the press says where it came
+//!   from (`via`). A device whose switch "on" came from its own system alone
+//!   adds no mode of Sioul's over it (`held_by_system`), so that the end of
+//!   what turned it on stays visible.
 
 use crate::config::{config_dir, state_dir};
 use serde::{Deserialize, Serialize};
@@ -40,10 +46,24 @@ pub const FOCUS_GRACE: i64 = 30 * 60;
 pub const FOCUS_OPEN: i64 = 180 * 60;
 /// Other devices heard from within this many days count for "on every device".
 pub const LIVE_DAYS: i64 = 7;
+/// A computer whose news is this old (seconds), its table saying it is
+/// silenced, is waiting for its news: its Sioul may have stopped without a
+/// word (a crash), and its system's do-not-disturb (Plasma's) ended with it. A
+/// running computer exchanges each minute and writes its news at least every
+/// fifteen minutes (sioul-sync's `write_seen`). A phone's modes stay while
+/// Sioul is closed: its table holds.
+pub const COMPUTER_QUIET: i64 = 30 * 60;
 
 fn yes() -> bool {
     true
 }
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+/// A press heard from the device's own do-not-disturb, as `Device::via` and `Press::via` say it.
+pub const VIA_SYSTEM: &str = "system";
 
 /// What turns do-not-disturb on (`[dnd]` in the configuration, shared with the settings).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -144,9 +164,40 @@ pub struct Device {
     /// When this table was written (milliseconds).
     #[serde(default)]
     pub at: i64,
+    /// Where its last press came from: "" the switch (in the window, the
+    /// tile), `VIA_SYSTEM` the device's own do-not-disturb, heard as it changed.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub via: String,
+    /// Do-not-disturb holds, but the person turned this device's own
+    /// do-not-disturb off, unheard, and Sioul leaves it off until it next turns
+    /// it on: `line` says so.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub turned_off: bool,
+    /// Do-not-disturb does not hold, but this device's system is still
+    /// silenced (Sioul could not turn it off, or it came on unheard): `line` says so.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub system_on: bool,
+    /// Sioul quit on this computer (`closing`): it follows nothing until it
+    /// starts again; `silenced` says what its system still holds without it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub closed: bool,
     /// What a later version writes here, kept as it is: written back unchanged.
     #[serde(flatten)]
     pub other: toml::Table,
+}
+
+impl Device {
+    /// Sioul quits on this computer: its table as it then holds. Its system's
+    /// do-not-disturb ended with Sioul (Plasma's) unless it outlives it
+    /// (`still`: GNOME's switch, a Mac's Focus); nothing more is followed here
+    /// until Sioul starts again.
+    pub fn closing(&mut self, still: bool) {
+        self.closed = true;
+        self.silenced = still;
+        self.turned_off = false;
+        self.system_on = false;
+        self.line = String::new();
+    }
 }
 
 /// The switch's file: a table per device.
@@ -169,6 +220,8 @@ pub struct Press {
     pub until: i64,
     /// The device it was pressed on.
     pub from: String,
+    /// Where it came from on that device: "" the switch, `VIA_SYSTEM` its own do-not-disturb.
+    pub via: String,
 }
 
 impl Switch {
@@ -205,7 +258,7 @@ impl Switch {
                 winner = (*id, *d);
             }
         }
-        Some(Press { at: winner.1.pressed, on: winner.1.on, until: winner.1.until, from: winner.0.clone() })
+        Some(Press { at: winner.1.pressed, on: winner.1.on, until: winner.1.until, from: winner.0.clone(), via: winner.1.via.clone() })
     }
 
     /// The latest press known here, of any device but `except` (milliseconds).
@@ -216,6 +269,12 @@ impl Switch {
     /// A press here, stamped after every press known (a hybrid clock): `until`
     /// in milliseconds, 0 for none. Returns its stamp.
     pub fn press(&mut self, here: &str, on: bool, until: i64, now_ms: i64) -> i64 {
+        self.press_via(here, on, until, now_ms, "")
+    }
+
+    /// A press here, as `press`, saying where it came from (`VIA_SYSTEM`: this
+    /// device's own do-not-disturb, heard as it changed; "": the switch).
+    pub fn press_via(&mut self, here: &str, on: bool, until: i64, now_ms: i64, via: &str) -> i64 {
         let stamp = now_ms.max(self.latest_known(None) + 1);
         let seen = self.latest_known(Some(here));
         let own = self.device.entry(here.to_string()).or_default();
@@ -224,6 +283,7 @@ impl Switch {
         own.until = if on { until.max(0) } else { 0 };
         own.seen = seen;
         own.at = stamp;
+        own.via = via.to_string();
         stamp
     }
 
@@ -355,6 +415,28 @@ impl Now {
     }
 }
 
+/// A change of this device's own do-not-disturb, heard as it happened, against
+/// what holds here (`holds`: do-not-disturb on, for any reason): the press it
+/// is, `Some(on)`, when the two disagree; none when they agree, which is what
+/// Sioul's own changes look like when they come back (docs/do-not-disturb.md,
+/// "Both ways"). A change found later, not heard as it happened, is never a
+/// press: its time is unknown, and another device may have pressed since.
+pub fn heard(holds: bool, system_on: bool) -> Option<bool> {
+    (holds != system_on).then_some(system_on)
+}
+
+/// Whether the switch's mode is held on this device by its own system alone:
+/// the switch's "on", taken from this device's own do-not-disturb (`here`,
+/// `VIA_SYSTEM`), is the only reason for that mode (the pause and Free time
+/// have modes of their own). Sioul then adds no mode of its own there: the
+/// system's cause silences the device already, and a mode of Sioul's would
+/// hide its end (Android shows an application only the effective state).
+pub fn held_by_system(now: &Now, press: Option<&Press>, here: &str) -> bool {
+    let mut global = now.holds.iter().filter(|h| h.why.global());
+    let only_manual = matches!((global.next(), global.next()), (Some(h), None) if h.why == Why::Manual);
+    only_manual && press.is_some_and(|p| p.on && p.from == here && p.via == VIA_SYSTEM)
+}
+
 /// Why do-not-disturb holds at `now` (Unix seconds), from the reasons'
 /// sources, the settings and the switch's latest press. A press "off" made
 /// after a reason began holds that reason off until it ends; the pause first,
@@ -410,6 +492,9 @@ pub enum Follows {
     /// It runs a Sioul that does not know do-not-disturb: no entry in the
     /// devices' registry, no table: it cannot follow until it is updated.
     Older,
+    /// Sioul is closed there (a computer, as it quit): it follows nothing
+    /// until it starts again.
+    Closed,
 }
 
 /// Each other device that counts (heard from in the last `LIVE_DAYS` days, by
@@ -418,6 +503,8 @@ pub enum Follows {
 /// written before that (by more than `MARGIN_MS`, for clocks that disagree)
 /// says what held there before, not now. `registered` says whether a device
 /// has its entry in the devices' registry (a Sioul that knows do-not-disturb).
+/// A computer as Sioul quit there is closed; a computer said silenced but not
+/// heard from for `COMPUTER_QUIET` is waiting for its news (a crash says nothing).
 pub fn others(switch: &Switch, here: &str, heard: &[(String, i64)], now: i64, since: i64, registered: &dyn Fn(&str) -> bool) -> Vec<(String, Follows)> {
     let live = |at: i64| now - at <= LIVE_DAYS * 86_400;
     let mut ids: Vec<String> = heard.iter().filter(|(id, at)| id != here && live(*at)).map(|(id, _)| id.clone()).collect();
@@ -427,8 +514,12 @@ pub fn others(switch: &Switch, here: &str, heard: &[(String, i64)], now: i64, si
     ids.dedup();
     ids.into_iter()
         .map(|id| {
+            // Its latest news: the sharing's note of it, or its table, whichever is later (seconds).
+            let news = heard.iter().filter(|(other, _)| *other == id).map(|(_, at)| *at).chain(switch.device.get(&id).map(|d| d.at / 1000)).max().unwrap_or(0);
             let follows = match switch.device.get(&id) {
+                Some(d) if d.closed => Follows::Closed,
                 Some(d) if d.why.is_empty() || d.at.saturating_add(MARGIN_MS) < since => Follows::Behind,
+                Some(d) if d.silenced && d.kind == "computer" && now - news > COMPUTER_QUIET => Follows::Behind,
                 Some(d) if d.silenced => Follows::Silenced,
                 Some(d) => Follows::Cannot(d.line.clone()),
                 None if !registered(&id) => Follows::Older,
@@ -454,12 +545,25 @@ pub struct Said {
     pub here: bool,
 }
 
-/// The words of do-not-disturb as it holds now: where (`here_silenced` and
-/// `here_line`, this device's system's answer; `others`, as `others` says),
-/// until when (`until`, already worded: "15:00", "tomorrow at 07:00"), why.
-/// `name_of` names a device by its id, inside a sentence ("your phone", a
-/// computer's name, "another device").
-pub fn said(now_: &Now, here_silenced: bool, here_line: &str, others: &[(String, Follows)], until: &str, name_of: &dyn Fn(&str) -> String, tr: &crate::i18n::Translator) -> Said {
+/// This device, as `said` words it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Here<'a> {
+    /// Its system's do-not-disturb is on for Sioul's.
+    pub silenced: bool,
+    /// Its system's answer, in its words.
+    pub line: &'a str,
+    /// The person turned its own do-not-disturb off, unheard, and Sioul leaves
+    /// it off until it next turns it on.
+    pub turned_off: bool,
+}
+
+/// The words of do-not-disturb as it holds now: where (`here`, this device
+/// and its system's answer; `others`, as `others` says), until when (`until`,
+/// already worded: "15:00", "tomorrow at 07:00"), why. `name_of` names a
+/// device by its id, inside a sentence ("your phone", a computer's name,
+/// "another device").
+pub fn said(now_: &Now, here: Here<'_>, others: &[(String, Follows)], until: &str, name_of: &dyn Fn(&str) -> String, tr: &crate::i18n::Translator) -> Said {
+    let (here_silenced, here_line) = (here.silenced, here.line);
     let Some(why) = now_.why() else { return Said::default() };
     let mut args = crate::i18n::args();
     args.set("until", until.to_string());
@@ -470,7 +574,9 @@ pub fn said(now_: &Now, here_silenced: bool, here_line: &str, others: &[(String,
     // not left out. One that cannot be silenced, or an older Sioul, is said as such.
     let not_following: Vec<&Follows> = others.iter().map(|(_, f)| f).filter(|f| **f != Follows::Silenced).collect();
     let waiting = !not_following.is_empty() && not_following.iter().all(|f| **f == Follows::Behind);
-    let line = if !here_silenced {
+    let line = if here.turned_off {
+        with_until("dnd-turned-off-here")
+    } else if !here_silenced {
         if following > 0 { with_until("dnd-elsewhere") } else { with_until("dnd-own-only") }
     } else if others.is_empty() {
         with_until("dnd-here-only")
@@ -497,8 +603,8 @@ pub fn said(now_: &Now, here_silenced: bool, here_line: &str, others: &[(String,
         args.set("name", name_of(id));
         tr.text("dnd-device-on", Some(&args))
     };
-    let here = tr.text("dnd-device-here", None);
-    let mut details = vec![if here_silenced { device("dnd-device-silenced", here, None) } else { device("dnd-device-cannot", here, Some(here_line)) }];
+    let here_name = tr.text("dnd-device-here", None);
+    let mut details = vec![if here_silenced { device("dnd-device-silenced", here_name, None) } else { device("dnd-device-cannot", here_name, Some(here_line)) }];
     for (id, follows) in others {
         details.push(match follows {
             Follows::Silenced => device("dnd-device-silenced", on(id), None),
@@ -506,6 +612,7 @@ pub fn said(now_: &Now, here_silenced: bool, here_line: &str, others: &[(String,
             Follows::Cannot(_) => device("dnd-device-unsilenced", on(id), None),
             Follows::Behind => device("dnd-device-behind", on(id), None),
             Follows::Older => device("dnd-device-older", on(id), None),
+            Follows::Closed => device("dnd-device-closed", on(id), None),
         });
     }
     let why_words = match why {
@@ -753,6 +860,11 @@ mod tests {
         Device { pressed, on, seen, ..Device::default() }
     }
 
+    /// This device as `said` reads it: silenced or not, with its system's words.
+    fn at(silenced: bool, line: &str) -> Here<'_> {
+        Here { silenced, line, turned_off: false }
+    }
+
     fn switch(devices: &[(&str, Device)]) -> Switch {
         Switch { device: devices.iter().map(|(id, d)| (id.to_string(), d.clone())).collect(), ..Switch::default() }
     }
@@ -802,7 +914,7 @@ mod tests {
     #[test]
     fn until_ends_it_by_each_devices_clock() {
         let settings = DndSettings::default();
-        let press = Press { at: 1_000_000, on: true, until: 1_600_000, from: "desk".into() };
+        let press = Press { at: 1_000_000, on: true, until: 1_600_000, from: "desk".into(), via: String::new() };
         let held = now(&settings, &Sources::default(), Some(&press), 1_500);
         assert_eq!(held.why(), Some(Why::Manual));
         assert_eq!(held.until(), Some(1_600));
@@ -834,7 +946,7 @@ mod tests {
     fn pressed_off_after_a_reason_began_holds_it_off_until_it_ends() {
         let settings = DndSettings { focus: true, sleep: true, ..DndSettings::default() };
         let focus = Sources { focus: Some((1_000, 5_000)), ..Sources::default() };
-        let off_after = Press { at: 2_000_000, on: false, until: 0, from: "phone".into() };
+        let off_after = Press { at: 2_000_000, on: false, until: 0, from: "phone".into(), via: String::new() };
         assert!(!now(&settings, &focus, Some(&off_after), 3_000).on(), "the person turned it off during the session");
         // A session begun after the press holds again.
         let later = Sources { focus: Some((2_500, 6_000)), ..Sources::default() };
@@ -850,7 +962,7 @@ mod tests {
     #[test]
     fn mail_and_sioul_s_own_notifications_are_gated_by_the_switch_and_focus_only() {
         let settings = DndSettings { focus: true, sleep: true, ..DndSettings::default() };
-        let press = Press { at: 1_000_000, on: true, until: 0, from: "desk".into() };
+        let press = Press { at: 1_000_000, on: true, until: 0, from: "desk".into(), via: String::new() };
         assert!(now(&settings, &Sources::default(), Some(&press), 2_000).gates());
         assert!(now(&settings, &Sources { focus: Some((1_000, 9_000)), ..Sources::default() }, None, 2_000).gates());
         // Sleep and the pauses keep their own rules.
@@ -878,41 +990,41 @@ mod tests {
     fn the_status_says_where_it_holds() {
         let tr = Translator::new("en");
         let settings = DndSettings::default();
-        let press = Press { at: 1_000_000, on: true, until: 0, from: "phone".into() };
+        let press = Press { at: 1_000_000, on: true, until: 0, from: "phone".into(), via: String::new() };
         let held = now(&settings, &Sources::default(), Some(&press), 2_000);
         let name = |id: &str| if id == "phone" { "your phone".to_string() } else { id.to_string() };
         let all = [("phone".to_string(), Follows::Silenced)];
-        let s = said(&held, true, "", &all, "15:00", &name, &tr);
+        let s = said(&held, at(true, ""), &all, "15:00", &name, &tr);
         assert_eq!(s.line, "Do not disturb, on every device, until 15:00.");
         assert!(s.everywhere && s.here);
         assert_eq!(s.why, "Turned on from your phone.");
         assert_eq!(s.details, vec!["Here: silenced.", "On your phone: silenced."]);
-        let s = said(&held, true, "", &[], "", &name, &tr);
+        let s = said(&held, at(true, ""), &[], "", &name, &tr);
         assert_eq!(s.line, "Do not disturb, here only.");
         // A device whose news has not come yet: on its way, never "here only".
         let behind = [("phone".to_string(), Follows::Behind), ("desk".to_string(), Follows::Silenced)];
-        let s = said(&held, true, "", &behind, "", &name, &tr);
+        let s = said(&held, at(true, ""), &behind, "", &name, &tr);
         assert_eq!(s.line, "Do not disturb here; your other devices' news is on its way.");
         assert_eq!(s.details[1], "On your phone: waiting for its news.");
-        let s = said(&held, true, "", &[("phone".to_string(), Follows::Behind)], "15:00", &name, &tr);
+        let s = said(&held, at(true, ""), &[("phone".to_string(), Follows::Behind)], "15:00", &name, &tr);
         assert_eq!(s.line, "Do not disturb here until 15:00; your other devices' news is on its way.");
         // An older Sioul cannot follow: said as such, never waited for.
-        let s = said(&held, true, "", &[("phone".to_string(), Follows::Older)], "", &name, &tr);
+        let s = said(&held, at(true, ""), &[("phone".to_string(), Follows::Older)], "", &name, &tr);
         assert_eq!(s.line, "Do not disturb, here only.");
         assert_eq!(s.details[1], "On your phone: an older Sioul, which cannot follow until it is updated.");
         let cannot = [("phone".to_string(), Follows::Cannot("Your phone is not silenced: Sioul does not have Android's “Do Not Disturb access”.".into()))];
-        let s = said(&held, true, "", &cannot, "", &name, &tr);
+        let s = said(&held, at(true, ""), &cannot, "", &name, &tr);
         assert_eq!(s.line, "Do not disturb, here only.");
         assert_eq!(s.details[1], "On your phone: Your phone is not silenced: Sioul does not have Android's “Do Not Disturb access”.");
         // This device cannot be silenced (Windows): said with its own words.
-        let s = said(&held, false, "This computer's notifications cannot be silenced by Sioul.", &all, "", &name, &tr);
+        let s = said(&held, at(false, "This computer's notifications cannot be silenced by Sioul."), &all, "", &name, &tr);
         assert_eq!(s.line, "Do not disturb, on your other devices; this one keeps only Sioul's own notifications back.");
         assert!(!s.everywhere);
         // Off: nothing said.
-        assert_eq!(said(&Now::default(), true, "", &all, "", &name, &tr), Said::default());
+        assert_eq!(said(&Now::default(), at(true, ""), &all, "", &name, &tr), Said::default());
         // In French, with its spaces.
         let fr = Translator::new("fr");
-        let s = said(&held, true, "", &all, "15:00", &name, &fr);
+        let s = said(&held, at(true, ""), &all, "15:00", &name, &fr);
         assert_eq!(s.line, "Ne pas déranger, sur tous vos appareils, jusqu’à 15:00.");
         assert_eq!(s.details[0], "Ici\u{202f}: en silence.");
         assert_eq!(s.details[1], "Sur your phone\u{202f}: en silence.");
@@ -1076,6 +1188,7 @@ mod tests {
                 "dnd-everywhere", "dnd-everywhere-until", "dnd-here-only", "dnd-here-only-until", "dnd-waiting", "dnd-waiting-until", "dnd-not-everywhere", "dnd-not-everywhere-until", "dnd-elsewhere", "dnd-elsewhere-until", "dnd-own-only", "dnd-own-only-until",
                 "dnd-device-silenced", "dnd-device-cannot", "dnd-device-unsilenced", "dnd-device-behind", "dnd-device-older", "dnd-device-here", "dnd-device-on", "dnd-device-phone", "dnd-device-other",
                 "dnd-why-manual", "dnd-why-manual-from", "dnd-why-focus", "dnd-why-sleep", "dnd-why-paused", "dnd-why-free-time",
+                "dnd-turned-off-here", "dnd-turned-off-here-until", "dnd-device-closed",
             ] {
                 let mut args = crate::i18n::args();
                 args.set("until", "15:00");
@@ -1086,5 +1199,166 @@ mod tests {
                 assert!(!words.is_empty() && words != key && !words.contains('{'), "{language}: {key}: {words}");
             }
         }
+    }
+
+    #[test]
+    fn a_change_of_the_system_presses_only_when_it_disagrees() {
+        // The person's tile, a schedule, another app: on while nothing holds, a press "on".
+        assert_eq!(heard(false, true), Some(true));
+        // Off while do-not-disturb holds: a press "off".
+        assert_eq!(heard(true, false), Some(false));
+        // Sioul's own changes coming back agree with what holds: nothing.
+        assert_eq!(heard(true, true), None);
+        assert_eq!(heard(false, false), None);
+    }
+
+    #[test]
+    fn a_press_heard_from_the_system_says_so_and_holds_like_any() {
+        let mut s = switch(&[("desk", device(1_000_000, true, 0))]);
+        let stamp = s.press_via("phone", false, 0, 900_000, VIA_SYSTEM);
+        // Stamped after every press known here, whatever the phone's clock.
+        assert_eq!(stamp, 1_000_001);
+        let latest = s.latest().unwrap();
+        assert!(!latest.on && latest.from == "phone" && latest.via == VIA_SYSTEM);
+        // The switch's own press says nothing of the kind, and clears the word.
+        s.press("phone", true, 0, 2_000_000);
+        assert_eq!(s.latest().unwrap().via, "");
+        assert!(!toml::to_string(&s).unwrap().contains("via"), "an empty word is not written");
+        // Written and read back; a file without the word reads as the switch's.
+        s.press_via("desk", true, 0, 3_000_000, VIA_SYSTEM);
+        let text = toml::to_string(&s).unwrap();
+        assert!(text.contains("via = \"system\""), "{text}");
+        let again: Switch = toml::from_str(&text).unwrap();
+        assert_eq!(again.latest().unwrap().via, VIA_SYSTEM);
+        let old: Switch = toml::from_str("[device.a]\npressed = 5\non = true\n").unwrap();
+        assert_eq!(old.latest().unwrap().via, "");
+        // A press "off" heard from the system holds off a reason begun before it, as any press.
+        let settings = DndSettings { focus: true, ..DndSettings::default() };
+        let focus = Sources { focus: Some((1_000, 9_000)), ..Sources::default() };
+        let off = Press { at: 2_000_000, on: false, until: 0, from: "phone".into(), via: VIA_SYSTEM.into() };
+        assert!(!now(&settings, &focus, Some(&off), 3_000).on());
+    }
+
+    #[test]
+    fn the_switch_held_by_the_system_alone_adds_no_mode() {
+        let settings = DndSettings { sleep: true, focus: true, ..DndSettings::default() };
+        let heard_here = Press { at: 1_000_000, on: true, until: 0, from: "phone".into(), via: VIA_SYSTEM.into() };
+        let held = now(&settings, &Sources::default(), Some(&heard_here), 2_000);
+        // The phone's own do-not-disturb turned the switch on: the phone adds no mode over it.
+        assert!(held_by_system(&held, Some(&heard_here), "phone"));
+        // The other devices silence themselves with their modes.
+        assert!(!held_by_system(&held, Some(&heard_here), "desk"));
+        // Pressed with the switch: Sioul's own mode everywhere.
+        let pressed = Press { via: String::new(), ..heard_here.clone() };
+        assert!(!held_by_system(&held, Some(&pressed), "phone"));
+        // Another reason holds too (the night): Sioul's mode, so that it outlasts the system's cause.
+        let night = now(&settings, &Sources { sleep: Some((1_500, 9_000)), ..Sources::default() }, Some(&heard_here), 2_000);
+        assert!(!held_by_system(&night, Some(&heard_here), "phone"));
+        // A pause has its own mode: the switch's alone is held by the system.
+        let paused = now(&DndSettings::default(), &Sources { paused: Some(1_500), ..Sources::default() }, Some(&heard_here), 2_000);
+        assert!(held_by_system(&paused, Some(&heard_here), "phone"));
+        // Nothing holds: nothing to hold.
+        assert!(!held_by_system(&Now::default(), Some(&heard_here), "phone"));
+    }
+
+    #[test]
+    fn a_nightly_schedule_turns_it_on_then_off_on_every_device() {
+        let settings = DndSettings::default();
+        let mut s = Switch::default();
+        // 22:00: the phone's schedule turns its do-not-disturb on; nothing held it: a press "on".
+        let night = 22 * 3_600;
+        let before = now(&settings, &Sources::default(), s.latest().as_ref(), night);
+        assert_eq!(heard(before.on(), true), Some(true));
+        s.press_via("phone", true, 0, night * 1000, VIA_SYSTEM);
+        // The computer reads the same file and holds it too, with its own mode.
+        let held = now(&settings, &Sources::default(), s.latest().as_ref(), night + 60);
+        assert!(held.on() && held.has(Why::Manual));
+        assert!(!held_by_system(&held, s.latest().as_ref(), "desk"));
+        assert!(held_by_system(&held, s.latest().as_ref(), "phone"));
+        // 07:00: the schedule ends, the phone's system turns off while it held: a press "off".
+        let morning = 31 * 3_600;
+        let still = now(&settings, &Sources::default(), s.latest().as_ref(), morning);
+        assert_eq!(heard(still.on(), false), Some(false));
+        s.press_via("phone", false, 0, morning * 1000, VIA_SYSTEM);
+        assert!(!now(&settings, &Sources::default(), s.latest().as_ref(), morning + 60).on(), "off on every device");
+        // The next night, again.
+        let next = night + 86_400;
+        assert_eq!(heard(now(&settings, &Sources::default(), s.latest().as_ref(), next).on(), true), Some(true));
+    }
+
+    #[test]
+    fn a_press_made_off_line_meets_the_latest() {
+        // The phone, off-line, hears its system turn on at 10:00 and presses; it has
+        // not seen the computer's "off" made at 10:05. Back on line: the later press wins.
+        let s = switch(&[
+            ("phone", Device { pressed: 36_000_000, on: true, seen: 0, via: VIA_SYSTEM.into(), ..Device::default() }),
+            ("desk", device(36_300_000, false, 0)),
+        ]);
+        assert!(!s.latest().unwrap().on, "the computer's later off");
+        // Within a minute of each other, neither seeing the other: on wins, as for any press.
+        let s = switch(&[
+            ("phone", Device { pressed: 36_000_000, on: true, seen: 0, via: VIA_SYSTEM.into(), ..Device::default() }),
+            ("desk", device(36_030_000, false, 0)),
+        ]);
+        let latest = s.latest().unwrap();
+        assert!(latest.on && latest.from == "phone" && latest.via == VIA_SYSTEM);
+    }
+
+    #[test]
+    fn a_computer_closed_or_quiet_is_said_so() {
+        let tr = Translator::new("en");
+        let now_s = 1_000_000;
+        let since = (now_s - 3_600) * 1000;
+        let silenced = |at_s: i64| Device { kind: "computer".into(), name: "laptop".into(), why: "manual".into(), silenced: true, at: at_s * 1000, ..Device::default() };
+        // Sioul quit on the laptop: its table as it then holds, read by another device.
+        let mut quit = silenced(now_s - 600);
+        quit.closing(false);
+        assert!(quit.closed && !quit.silenced && quit.line.is_empty());
+        let s = Switch { device: [("laptop".to_string(), quit.clone())].into(), ..Switch::default() };
+        let text = toml::to_string(&s).unwrap();
+        assert!(text.contains("closed = true"), "{text}");
+        let read: Switch = toml::from_str(&text).unwrap();
+        let heard = vec![("laptop".to_string(), now_s - 600)];
+        let followed = others(&read, "phone", &heard, now_s, since, &|_| true);
+        assert_eq!(followed, vec![("laptop".to_string(), Follows::Closed)]);
+        let press = Press { at: since + 1, on: true, until: 0, from: "phone".into(), via: String::new() };
+        let held = now(&DndSettings::default(), &Sources::default(), Some(&press), now_s);
+        let name = |id: &str| id.to_string();
+        let said_ = said(&held, at(true, ""), &followed, "", &name, &tr);
+        assert_eq!(said_.details[1], "On laptop: Sioul is closed.");
+        assert_eq!(said_.line, "Do not disturb, here only.");
+        assert_eq!(said(&held, at(true, ""), &followed, "", &name, &Translator::new("fr")).details[1], "Sur laptop\u{202f}: Sioul est fermé.");
+        // Closed before do-not-disturb began: still closed, never waited for.
+        let mut early = silenced(now_s - 10 * 3_600);
+        early.closing(false);
+        let s = Switch { device: [("laptop".to_string(), early)].into(), ..Switch::default() };
+        assert_eq!(others(&s, "phone", &heard, now_s, since, &|_| true)[0].1, Follows::Closed);
+        // A crash says nothing: a computer said silenced, unheard for half an hour, is waiting for its news.
+        let crashed = Switch { device: [("laptop".to_string(), silenced(now_s - 2_000))].into(), ..Switch::default() };
+        let quiet = vec![("laptop".to_string(), now_s - 2_000)];
+        assert_eq!(others(&crashed, "phone", &quiet, now_s, since, &|_| true)[0].1, Follows::Behind);
+        // Heard ten minutes ago (a computer writes its news every fifteen at most): silenced.
+        let lately = vec![("laptop".to_string(), now_s - 600)];
+        assert_eq!(others(&crashed, "phone", &lately, now_s, since, &|_| true)[0].1, Follows::Silenced);
+        // A phone's modes stay while Sioul is closed there: its table holds, however quiet.
+        let phone = Device { kind: "phone".into(), ..silenced(now_s - 2_000) };
+        let s = Switch { device: [("phone".to_string(), phone)].into(), ..Switch::default() };
+        let quiet_phone = vec![("phone".to_string(), now_s - 2_000)];
+        assert_eq!(others(&s, "laptop", &quiet_phone, now_s, since, &|_| true)[0].1, Follows::Silenced);
+    }
+
+    #[test]
+    fn a_device_turned_off_by_hand_says_so() {
+        let tr = Translator::new("en");
+        let press = Press { at: 1_000_000, on: true, until: 0, from: "desk".into(), via: String::new() };
+        let held = now(&DndSettings::default(), &Sources::default(), Some(&press), 2_000);
+        let name = |id: &str| id.to_string();
+        let here = Here { silenced: false, line: "You turned do-not-disturb off on this phone.", turned_off: true };
+        let s = said(&held, here, &[("desk".to_string(), Follows::Silenced)], "", &name, &tr);
+        assert_eq!(s.line, "Do not disturb on your other devices; you turned it off here.");
+        assert_eq!(s.details[0], "Here: You turned do-not-disturb off on this phone.");
+        assert!(!s.here && !s.everywhere);
+        let s = said(&held, here, &[], "15:00", &name, &Translator::new("fr"));
+        assert_eq!(s.line, "Ne pas déranger jusqu\u{2019}à 15:00 sur vos autres appareils\u{202f}; vous l\u{2019}avez désactivé ici.");
     }
 }

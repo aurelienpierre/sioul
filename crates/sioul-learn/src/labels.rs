@@ -2,32 +2,42 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Spam or ham for each message of the corpus, from what is already there
-//! (docs/spam-filter.md, "The labels": folders and tags as they are).
+//! (docs/spam-filter.md, "The labels"): what you said, your mail apps'
+//! keywords, the Junk folders, your own filter's flags, the other folders.
 //!
-//! - **Spam**: in a Junk-role folder, or carrying `$Junk` (or Thunderbird's
-//!   older `Junk`).
+//! - **Spam**: in a Junk-role folder, whoever put it there (your provider,
+//!   your own filter's "Move to spam", a mail filter's "spam", you, another
+//!   mail app); carrying `$Junk` (or Thunderbird's older `Junk`); flagged by
+//!   your own filter as probably spam (every device's log of what it
+//!   flagged), wherever it is now.
 //! - **Ham**: in any other folder kept (the corpus leaves out Trash, Drafts
 //!   and Sent; of Gmail's All Mail it keeps what no other folder has, your own
 //!   messages aside), or carrying `$NotJunk` (or `NonJunk`, `NotJunk`,
 //!   `$NonJunk`, other mail apps' words for it).
+//! - **Left out**: flagged by your own filter as maybe spam, until you say:
+//!   a doubt is no label.
 //! - **Your actions** (every device's label log: junk, not junk, "Spam",
-//!   "Not spam", block) beat folders and keywords; the newest one wins.
-//! - **What your own filter moved** into a Junk folder (the matrix's "Move
-//!   to spam") is not spam because it is there: until you say, a message
-//!   whose only word is that Junk folder is left out.
+//!   "Not spam", block) beat everything, the newest one winning: a message
+//!   you said is not spam is never learned as spam, whatever its folder,
+//!   its keywords or your filter say of it.
 //! - **One message, one label**: copies (the same Message-ID in several
 //!   folders or accounts) become one; when they disagree, the log beats the
-//!   keywords, which beat the Junk folder, which beats the other folders.
-//!   Copies that disagree at the same level are left out.
+//!   keywords, which beat the Junk folder, which beats your filter's flag,
+//!   which beats the other folders. Copies that disagree at the same level
+//!   are left out.
 //!
-//! The filter's own verdicts are never labels: nothing here reads them.
+//! Your filter's verdicts count as they are until you correct them: you are
+//! never asked to confirm one, only to say "Not spam" of one that is wrong.
+//! Trained again and again, the growing mail and your corrections outweigh
+//! its mistakes.
 
 use crate::corpus::{Place, Record};
 use serde::{Deserialize, Serialize};
 use sioul_core::folders::Role;
 /// The label logs are phase 0's (`sioul_core::spam::labels`): one reader for their lines.
-pub use sioul_core::spam::labels::{Entry, Label, Moved};
-use std::collections::{BTreeMap, HashMap};
+pub use sioul_core::spam::labels::{Entry, Flagged, Label, Moved};
+use sioul_core::spam::Class;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// What decided a label, weakest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -35,9 +45,12 @@ use std::collections::{BTreeMap, HashMap};
 pub enum Evidence {
     /// A folder of yours other than Junk.
     Folder,
-    /// The Junk folder: mostly your provider's own filing.
+    /// Your own filter's flag: probably spam, which you did not correct.
+    Filter,
+    /// The Junk folder, whoever put the message there: mostly your
+    /// provider's filing; your own filter's move; a mail filter's; yours.
     JunkFolder,
-    /// A junk or not-junk keyword, set by you or your other mail apps.
+    /// A junk or not-junk keyword, set by you, your other mail apps or a mail filter.
     Keyword,
     /// The label log: what you did in Sioul.
     Log,
@@ -112,6 +125,11 @@ pub fn read_moved(dirs: &crate::Dirs) -> Vec<Moved> {
     sioul_core::spam::labels::read_moved_in(&dirs.state)
 }
 
+/// What your own filter flagged where it is, every device's log, oldest first.
+pub fn read_flagged(dirs: &crate::Dirs) -> Vec<Flagged> {
+    sioul_core::spam::labels::read_flagged_in(&dirs.state)
+}
+
 /// One message to learn from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Labeled {
@@ -135,25 +153,58 @@ pub struct Summary {
     pub spam: u64,
     /// Messages whose copies disagreed at the same level: left out.
     pub ambiguous: u64,
-    /// Messages your own filter moved into a Junk folder, about which you
-    /// said nothing since: left out (the filter's verdicts are never labels).
+    /// Messages your own filter flagged as maybe spam, about which you said
+    /// nothing: left out until you say (a doubt is no label).
     #[serde(default)]
-    pub moved: u64,
+    pub unsure: u64,
+    /// Spam in a Junk folder because your own filter moved it there, about
+    /// which you said nothing: learned as all Junk mail is (among `by_junk_folder`).
+    #[serde(default)]
+    pub filter_moved: u64,
     /// Labels decided by each kind of evidence.
     pub by_log: u64,
     pub by_keyword: u64,
     pub by_junk_folder: u64,
+    /// By your own filter's flag: probably spam, uncorrected.
+    #[serde(default)]
+    pub by_filter: u64,
     pub by_folder: u64,
     /// Ham and spam per account (the copy learned from).
     pub accounts: BTreeMap<String, (u64, u64)>,
 }
 
-/// One label per message, from every copy read and the log; `moved`, what
-/// your own filter moved: its Junk folder alone says nothing.
-pub fn decide(copies: Vec<Copy>, log: &[Entry], moved: &[Moved]) -> (Vec<Labeled>, Summary) {
+/// One label per message, from every copy read and the logs (see the
+/// module): `log`, what you said; `moved` and `flagged`, what your own
+/// filter moved into a Junk folder and what it flagged where it is.
+pub fn decide(copies: Vec<Copy>, log: &[Entry], moved: &[Moved], flagged: &[Flagged]) -> (Vec<Labeled>, Summary) {
     let mut summary = Summary { records: copies.len() as u64, ..Summary::default() };
-    // What your filter moved, by Message-ID.
-    let filtered: std::collections::HashSet<&str> = moved.iter().filter_map(|m| m.message_id.as_deref()).collect();
+    // What your filter moved, by account and Message-ID: learned as all Junk mail is, counted apart.
+    let moved: HashSet<(&str, &str)> = moved.iter().filter_map(|m| Some((m.account.as_str(), m.message_id.as_deref()?))).collect();
+    // What your filter flagged, the newest flag of each message: by account
+    // and Message-ID, wherever its copies are now; else by its very place.
+    let mut flags_by_id: HashMap<(&str, &str), Class> = HashMap::new();
+    let mut flags_by_place: HashMap<(&str, &str, u32, u32), Class> = HashMap::new();
+    for flag in flagged {
+        match flag.message_id.as_deref().filter(|id| !id.is_empty()) {
+            Some(id) => flags_by_id.insert((&flag.account, id), flag.class),
+            None => flags_by_place.insert((&flag.account, &flag.folder, flag.uidvalidity, flag.uid), flag.class),
+        };
+    }
+    let flag_of = |c: &Copy| -> Option<Class> {
+        let account = c.place.account.as_str();
+        flags_by_id.get(&(account, c.key.as_str())).or_else(|| flags_by_place.get(&(account, c.place.folder.as_str(), c.place.uidvalidity, c.place.uid))).copied()
+    };
+    // What a copy says, your filter's flag included: flagged as probably
+    // spam, a message in a folder of yours is spam (a keyword or a Junk
+    // folder speaks louder).
+    let word = |c: &Copy| -> (Label, Evidence) {
+        match (c.says(), flag_of(c)) {
+            ((_, Evidence::Folder), Some(Class::Spam)) => (Label::Spam, Evidence::Filter),
+            (own, _) => own,
+        }
+    };
+    // Flagged as maybe spam, in a folder of yours: no say, until you say.
+    let doubted = |c: &Copy| c.says().1 == Evidence::Folder && flag_of(c) == Some(Class::Unsure);
     // The newest action for each Message-ID and each place.
     let mut by_id: HashMap<&str, &Entry> = HashMap::new();
     let mut by_place: HashMap<(&str, &str, u32, u32), &Entry> = HashMap::new();
@@ -180,11 +231,11 @@ pub fn decide(copies: Vec<Copy>, log: &[Entry], moved: &[Moved]) -> (Vec<Labeled
             .chain(copies.iter().map(|c| by_place.get(&(c.place.account.as_str(), c.place.folder.as_str(), c.place.uidvalidity, c.place.uid)).copied()))
             .flatten()
             .max_by_key(|a| a.at);
-        // Moved by your filter, and nothing said of it: its Junk folder is the filter's word, not yours.
-        if action.is_none() && filtered.contains(key.as_str()) {
-            copies.retain(|c| c.says().1 != Evidence::JunkFolder);
+        // Your filter's doubt, about which you said nothing: that copy has no say.
+        if action.is_none() && copies.iter().any(|c| doubted(c)) {
+            copies.retain(|c| !doubted(c));
             if copies.is_empty() {
-                summary.moved += 1;
+                summary.unsure += 1;
                 continue;
             }
         }
@@ -192,19 +243,19 @@ pub fn decide(copies: Vec<Copy>, log: &[Entry], moved: &[Moved]) -> (Vec<Labeled
             Some(action) => {
                 // The copy where you acted, else the one whose own word agrees, else the first.
                 let at = copies.iter().find(|c| c.place.account == action.account && c.place.folder == action.folder && c.place.uidvalidity == action.uidvalidity && c.place.uid == action.uid);
-                let agreeing = copies.iter().filter(|c| c.says().0 == action.label).max_by_key(|c| (c.says().1, std::cmp::Reverse((c.date, c.place.clone()))));
+                let agreeing = copies.iter().filter(|c| word(c).0 == action.label).max_by_key(|c| (word(c).1, std::cmp::Reverse((c.date, c.place.clone()))));
                 let copy = at.or(agreeing).unwrap_or(&copies[0]);
                 Some((copy, action.label, Evidence::Log))
             }
             None => {
-                let strongest = copies.iter().map(|c| c.says().1).max().expect("a group has copies");
-                let top: Vec<&Copy> = copies.iter().filter(|c| c.says().1 == strongest).collect();
-                if top.iter().any(|c| c.says().0 != top[0].says().0) {
+                let strongest = copies.iter().map(|c| word(c).1).max().expect("a group has copies");
+                let top: Vec<&Copy> = copies.iter().filter(|c| word(c).1 == strongest).collect();
+                if top.iter().any(|c| word(c).0 != word(top[0]).0) {
                     summary.ambiguous += 1;
                     None
                 } else {
                     let copy = top.iter().min_by_key(|c| (c.date, c.place.clone())).expect("not empty");
-                    Some((*copy, copy.says().0, strongest))
+                    Some((*copy, word(copy).0, strongest))
                 }
             }
         };
@@ -217,7 +268,12 @@ pub fn decide(copies: Vec<Copy>, log: &[Entry], moved: &[Moved]) -> (Vec<Labeled
             Evidence::Log => summary.by_log += 1,
             Evidence::Keyword => summary.by_keyword += 1,
             Evidence::JunkFolder => summary.by_junk_folder += 1,
+            Evidence::Filter => summary.by_filter += 1,
             Evidence::Folder => summary.by_folder += 1,
+        }
+        // In a Junk folder because your own filter moved it there.
+        if evidence == Evidence::JunkFolder && copies.iter().any(|c| c.says().1 == Evidence::JunkFolder && moved.contains(&(c.place.account.as_str(), key.as_str()))) {
+            summary.filter_moved += 1;
         }
         let counts = summary.accounts.entry(copy.place.account.clone()).or_default();
         match label {
@@ -261,7 +317,7 @@ mod tests {
             Copy { not_junk: true, ..copy("home", "Junk", Role::Junk, 4, "d@example.org") },
             Copy { junk: true, not_junk: true, ..copy("home", "INBOX", Role::Inbox, 5, "e@example.org") },
         ];
-        let (labeled, summary) = decide(copies, &[], &[]);
+        let (labeled, summary) = decide(copies, &[], &[], &[]);
         let says = |key| label_of(&labeled, key).map(|l| (l.label, l.evidence));
         assert_eq!(says("a@example.org"), Some((Label::Ham, Evidence::Folder)));
         assert_eq!(says("b@example.org"), Some((Label::Spam, Evidence::JunkFolder)));
@@ -301,7 +357,7 @@ mod tests {
             Copy::of(&record(6, "INBOX", Role::Inbox, &["JunkMail"])),
         ];
         assert_eq!(copies[0].key, "1@example.org");
-        let (labeled, summary) = decide(copies, &[], &[]);
+        let (labeled, summary) = decide(copies, &[], &[], &[]);
         let says = |n: u32| labeled.iter().find(|l| l.key == format!("{n}@example.org")).map(|l| (l.label, l.evidence));
         assert_eq!(says(1), Some((Label::Spam, Evidence::Keyword)));
         assert_eq!(says(2), Some((Label::Ham, Evidence::Keyword)), "NonJunk beats the Junk folder");
@@ -334,7 +390,7 @@ mod tests {
             copy("home", "Archive", Role::Archive, 21, "z@example.org"),
             copy("home", "INBOX", Role::Inbox, 20, "z@example.org"),
         ];
-        let (labeled, summary) = decide(copies, &[], &[]);
+        let (labeled, summary) = decide(copies, &[], &[], &[]);
         let x = label_of(&labeled, "x@example.org").unwrap();
         assert_eq!((x.label, x.evidence, x.place.account.as_str(), x.date), (Label::Spam, Evidence::JunkFolder, "work", 10));
         assert!(label_of(&labeled, "y@example.org").is_none());
@@ -359,7 +415,7 @@ mod tests {
             action(150, "INBOX", 2, None, Label::Spam),
             action(300, "Junk", 3, Some("q@example.org"), Label::Ham),
         ];
-        let (labeled, summary) = decide(copies, &log, &[]);
+        let (labeled, summary) = decide(copies, &log, &[], &[]);
         let says = |key| label_of(&labeled, key).map(|l| (l.label, l.evidence));
         assert_eq!(says("p@example.org"), Some((Label::Spam, Evidence::Log)), "the newest action");
         assert_eq!(says("header:0000000000000001"), Some((Label::Spam, Evidence::Log)), "by place");
@@ -388,26 +444,65 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// What your own filter moved into a Junk folder is no label: left out
-    /// until you say; what you said wins; another copy of it still speaks.
+    /// Your own filter's word counts until you say otherwise: what it moved
+    /// into a Junk folder is spam at once, as all Junk mail is; what it
+    /// flagged as probably spam is spam at once, wherever the message is now;
+    /// what it flagged as maybe spam is left out, unless another copy is in
+    /// a Junk folder. What you said wins over all of it, "Not spam" above
+    /// all; another mail app's `$NotJunk` speaks louder than a flag; a mail
+    /// filter's "spam" (`$Junk`, in the Junk folder) is spam.
     #[test]
-    fn what_the_filter_moved_is_no_label() {
-        let moved = |id: &str| Moved { at: 50, account: "home".into(), folder: "INBOX".into(), uidvalidity: 1, uid: 9, message_id: Some(id.into()), class: sioul_core::spam::Class::Spam };
+    fn the_filters_word_counts_until_you_say() {
+        let judged = |folder: &str, uid: u32, id: &str, class: Class| Moved { at: 50, account: "home".into(), folder: folder.into(), uidvalidity: 1, uid, message_id: Some(id.into()), class };
         let copies = vec![
-            copy("home", "Junk", Role::Junk, 1, "m@example.org"),
-            copy("home", "Junk", Role::Junk, 2, "said@example.org"),
-            copy("home", "Junk", Role::Junk, 3, "both@example.org"),
-            copy("work", "INBOX", Role::Inbox, 4, "both@example.org"),
-            copy("home", "Junk", Role::Junk, 5, "provider@example.org"),
+            copy("home", "Junk", Role::Junk, 1, "moved@example.org"),
+            copy("home", "INBOX", Role::Inbox, 2, "flagged@example.org"),
+            copy("home", "INBOX", Role::Inbox, 3, "doubt@example.org"),
+            copy("home", "INBOX", Role::Inbox, 4, "doubt-elsewhere@example.org"),
+            copy("home", "Junk", Role::Junk, 5, "doubt-elsewhere@example.org"),
+            copy("home", "Junk", Role::Junk, 6, "not-spam@example.org"),
+            copy("home", "INBOX", Role::Inbox, 7, "said-after-flag@example.org"),
+            Copy { not_junk: true, ..copy("home", "INBOX", Role::Inbox, 8, "kept@example.org") },
+            Copy { junk: true, ..copy("home", "Junk", Role::Junk, 9, "rule@example.org") },
+            copy("home", "Archive", Role::Archive, 10, "archived@example.org"),
+            copy("home", "INBOX", Role::Inbox, 11, "unjudged@example.org"),
+            copy("work", "INBOX", Role::Inbox, 12, "other-account@example.org"),
         ];
-        let log = vec![action(100, "Junk", 2, Some("said@example.org"), Label::Spam)];
-        let moves = [moved("m@example.org"), moved("said@example.org"), moved("both@example.org")];
-        let (labeled, summary) = decide(copies, &log, &moves);
+        let moved = [judged("INBOX", 91, "moved@example.org", Class::Spam), judged("INBOX", 96, "not-spam@example.org", Class::Unsure)];
+        let flagged = [
+            judged("INBOX", 2, "flagged@example.org", Class::Spam),
+            judged("INBOX", 3, "doubt@example.org", Class::Unsure),
+            judged("INBOX", 4, "doubt-elsewhere@example.org", Class::Unsure),
+            judged("INBOX", 7, "said-after-flag@example.org", Class::Spam),
+            judged("INBOX", 8, "kept@example.org", Class::Spam),
+            // Flagged in the inbox, then moved into the archive: still the filter's word, until you say.
+            judged("INBOX", 99, "archived@example.org", Class::Spam),
+            // Flagged in another account than the one holding the copy.
+            judged("INBOX", 12, "other-account@example.org", Class::Spam),
+        ];
+        let log = vec![action(100, "Junk", 6, Some("not-spam@example.org"), Label::Ham), action(100, "INBOX", 7, Some("said-after-flag@example.org"), Label::Ham)];
+        let (labeled, summary) = decide(copies, &log, &moved, &flagged);
         let says = |key| label_of(&labeled, key).map(|l| (l.label, l.evidence));
-        assert_eq!(says("m@example.org"), None, "the filter's own word");
-        assert_eq!(says("said@example.org"), Some((Label::Spam, Evidence::Log)), "then you said it");
-        assert_eq!(says("both@example.org"), Some((Label::Ham, Evidence::Folder)), "its other copy");
-        assert_eq!(says("provider@example.org"), Some((Label::Spam, Evidence::JunkFolder)), "your provider's filing, as before");
-        assert_eq!((summary.moved, summary.spam, summary.ham), (1, 2, 1));
+        assert_eq!(says("moved@example.org"), Some((Label::Spam, Evidence::JunkFolder)), "moved: spam at once, as all Junk mail");
+        assert_eq!(says("flagged@example.org"), Some((Label::Spam, Evidence::Filter)), "flagged as probably spam: spam at once");
+        assert_eq!(says("doubt@example.org"), None, "maybe spam: left out until you say");
+        assert_eq!(says("doubt-elsewhere@example.org"), Some((Label::Spam, Evidence::JunkFolder)), "its copy in a Junk folder speaks");
+        assert_eq!(says("not-spam@example.org"), Some((Label::Ham, Evidence::Log)), "Not spam wins over the filter's move");
+        assert_eq!(says("said-after-flag@example.org"), Some((Label::Ham, Evidence::Log)), "and over its flag");
+        assert_eq!(says("kept@example.org"), Some((Label::Ham, Evidence::Keyword)), "$NotJunk from another mail app speaks louder than a flag");
+        assert_eq!(says("rule@example.org"), Some((Label::Spam, Evidence::Keyword)), "a mail filter's spam: $Junk, in Junk");
+        assert_eq!(says("archived@example.org"), Some((Label::Spam, Evidence::Filter)), "moving it is no correction: only Spam or Not spam are");
+        assert_eq!(says("unjudged@example.org"), Some((Label::Ham, Evidence::Folder)));
+        assert_eq!(says("other-account@example.org"), Some((Label::Ham, Evidence::Folder)), "a flag is its account's");
+        assert_eq!((summary.spam, summary.ham, summary.unsure, summary.filter_moved), (5, 5, 1, 1));
+        assert_eq!((summary.by_log, summary.by_keyword, summary.by_junk_folder, summary.by_filter, summary.by_folder), (2, 2, 2, 2, 2));
+        // The newest flag wins: flagged maybe, then judged again probably spam.
+        let again = [judged("INBOX", 3, "doubt@example.org", Class::Unsure), Moved { at: 60, ..judged("INBOX", 3, "doubt@example.org", Class::Spam) }];
+        let (labeled, _) = decide(vec![copy("home", "INBOX", Role::Inbox, 3, "doubt@example.org")], &[], &[], &again);
+        assert_eq!(labeled.first().map(|l| (l.label, l.evidence)), Some((Label::Spam, Evidence::Filter)));
+        // A message without a Message-ID: by its very place.
+        let nameless = Moved { message_id: None, ..judged("INBOX", 2, "", Class::Unsure) };
+        let (labeled, summary) = decide(vec![copy("home", "INBOX", Role::Inbox, 2, "header:0000000000000002")], &[], &[], &[nameless]);
+        assert!(labeled.is_empty() && summary.unsure == 1);
     }
 }

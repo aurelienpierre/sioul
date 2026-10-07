@@ -845,7 +845,7 @@ mod tests {
     #[test]
     fn phones_and_bank_accounts() {
         // ARCEP's numbers kept for fiction, written every usual way.
-        for phone in ["01 99 00 12 34", "01.99.00.12.34", "0199001234", "+33 1 99 00 12 34", "0033 6 39 98 12 34", "+33 (0)4 65 71 12 34"] {
+        for phone in ["01 99 00 12 34", "01.99.00.12.34", "0199001234", "+33 1 99 00 12 34", "0033 5 36 49 12 34", "+33 (0)4 65 71 12 34"] {
             assert_eq!(placed(&format!("Appelez le {phone} vite")), ["_PHONE_"], "{phone}");
         }
         // The usual example of a French IBAN: its check digits hold; one digit off, it is no IBAN.

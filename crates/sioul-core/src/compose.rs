@@ -558,17 +558,19 @@ pub fn build(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64) -> R
     build_with(draft, from, tr, date, None, None)
 }
 
-/// How a message is protected with OpenPGP: signed with your key (and its
-/// passphrase), encrypted to these keys (the recipients' and yours, to read it in Sent).
+/// How a message is protected with OpenPGP: signed with your key, encrypted
+/// to these keys (the recipients' and yours, to read it in Sent).
 pub struct Protection<'a> {
-    pub sign: Option<(&'a sequoia_openpgp::Cert, &'a str)>,
+    /// Your key's signer: a key here, opened with its passphrase
+    /// (`pgp::here_signer`), or a security key's (`securitykey::CardSigner`).
+    pub sign: Option<&'a mut (dyn sequoia_openpgp::crypto::Signer + Send + Sync)>,
     pub encrypt_to: Vec<&'a sequoia_openpgp::Cert>,
 }
 
 /// The message as it goes out, protected when asked: PGP/MIME (RFC 3156),
 /// multipart/signed for a signature alone, multipart/encrypted otherwise,
 /// the signature then inside. `autocrypt` is your Autocrypt header's value.
-pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64, protection: Option<&Protection>, autocrypt: Option<&str>) -> Result<Outgoing, String> {
+pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64, protection: Option<&mut Protection>, autocrypt: Option<&str>) -> Result<Outgoing, String> {
     use mail_builder::headers::content_type::ContentType;
     use mail_builder::mime::MimePart;
     let recipients = draft.recipients();
@@ -584,9 +586,10 @@ pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64,
     let html = format!("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>{html}</body></html>");
     // Signed text must come out exactly as it went in: quoted-printable keeps
     // trailing spaces (the "-- " line) and long lines from being changed on the way.
-    let text_part = |kind: &'static str, body: String| match protection {
-        Some(_) => MimePart::new(ContentType::new(kind).attribute("charset", "utf-8"), quoted_printable(&body)).transfer_encoding("quoted-printable"),
-        None => MimePart::new(kind, body),
+    let protected = protection.is_some();
+    let text_part = |kind: &'static str, body: String| match protected {
+        true => MimePart::new(ContentType::new(kind).attribute("charset", "utf-8"), quoted_printable(&body)).transfer_encoding("quoted-printable"),
+        false => MimePart::new(kind, body),
     };
     let alternative = MimePart::new("multipart/alternative", vec![text_part("text/plain", text), text_part("text/html", html)]);
     let files = attachments(draft)?;
@@ -607,7 +610,7 @@ pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64,
                 entity.truncate(entity.len() - 2);
             }
             if !protection.encrypt_to.is_empty() {
-                let sealed = crate::pgp::encrypt(&entity, &protection.encrypt_to, protection.sign)?;
+                let sealed = crate::pgp::encrypt(&entity, &protection.encrypt_to, protection.sign.as_deref_mut())?;
                 MimePart::new(
                     ContentType::new("multipart/encrypted").attribute("protocol", "application/pgp-encrypted"),
                     vec![
@@ -616,8 +619,8 @@ pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64,
                     ],
                 )
             } else {
-                let (cert, passphrase) = protection.sign.ok_or("no key to sign with")?;
-                let (signature, micalg) = crate::pgp::sign_detached(&entity, cert, passphrase)?;
+                let signer = protection.sign.as_deref_mut().ok_or("no key to sign with")?;
+                let (signature, micalg) = crate::pgp::sign_detached(&entity, signer)?;
                 MimePart::new(
                     ContentType::new("multipart/signed").attribute("micalg", micalg).attribute("protocol", "application/pgp-signature"),
                     vec![
@@ -906,15 +909,18 @@ mod tests {
         draft.subject = "Keys".into();
         draft.body = "Hello,\nhere it is.\n\n-- \nMe".into();
         let tr = Translator::new("en");
-        let signed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&Protection { sign: Some((&me, "")), encrypt_to: vec![] }), None).unwrap();
-        let keys = crate::pgp::Keys { own: vec![], others: vec![me.clone().strip_secret_key_material()] };
-        let (_, view) = crate::pgp::open(&signed.raw, &keys, &|_| None).unwrap();
+        let mut signer = crate::pgp::here_signer(&me, "").unwrap();
+        let signed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&mut Protection { sign: Some(&mut signer), encrypt_to: vec![] }), None).unwrap();
+        let keys = crate::pgp::Keys { others: vec![me.clone().strip_secret_key_material()], ..crate::pgp::Keys::default() };
+        let none = |_: &sequoia_openpgp::Fingerprint| None;
+        let sessions = crate::pgp::SessionKeys::new();
+        let (_, view) = crate::pgp::open(&signed.raw, &keys, &crate::pgp::Unlock::new(&none, &sessions)).unwrap();
         assert!(!view.encrypted && view.signatures.len() == 1 && view.signatures[0].good, "{view:?}");
-        let sealed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&Protection { sign: Some((&me, "")), encrypt_to: vec![&jane, &me] }), Some("addr=me@example.net; keydata=AAAA")).unwrap();
+        let sealed = build_with(&draft, ("Me", "me@example.net"), &tr, 1_790_000_000, Some(&mut Protection { sign: Some(&mut signer), encrypt_to: vec![&jane, &me] }), Some("addr=me@example.net; keydata=AAAA")).unwrap();
         let text = String::from_utf8_lossy(&sealed.raw).to_string();
         assert!(text.contains("multipart/encrypted") && !text.contains("here it is") && text.contains("Autocrypt: addr=me@example.net"), "{text}");
-        let jane_keys = crate::pgp::Keys { own: vec![jane.clone()], others: vec![me.clone().strip_secret_key_material()] };
-        let (opened, view) = crate::pgp::open(&sealed.raw, &jane_keys, &|_| None).unwrap();
+        let jane_keys = crate::pgp::Keys { own: vec![jane.clone()], others: vec![me.clone().strip_secret_key_material()], ..crate::pgp::Keys::default() };
+        let (opened, view) = crate::pgp::open(&sealed.raw, &jane_keys, &crate::pgp::Unlock::new(&none, &sessions)).unwrap();
         let opened = opened.unwrap();
         let parsed = MessageParser::default().parse(&opened).unwrap();
         assert_eq!(parsed.subject(), Some("Keys"));

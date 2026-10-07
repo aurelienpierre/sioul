@@ -74,12 +74,14 @@ jobs:
 
       # What the crates need to be documented, as to be built (build.yml):
       # D-Bus for the keyring and notifications (pkg-config, libdbus-1-dev),
-      # the Vulkan and xkbcommon headers Qt's own include, lld for CXX-Qt.
+      # pcsc-lite's client for security keys (libpcsclite-dev, which pcsc-sys's
+      # build script finds even for rustdoc), the Vulkan and xkbcommon headers
+      # Qt's own include, lld for CXX-Qt.
       - name: Linux packages
         continue-on-error: true
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libvulkan-dev libxkbcommon-dev lld
+          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libpcsclite-dev libvulkan-dev libxkbcommon-dev lld
 
       # The window's crate builds its QML module and its C++ even to be
       # documented (its build script): Qt as build.yml installs it, with the

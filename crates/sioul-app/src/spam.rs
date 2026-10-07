@@ -22,7 +22,9 @@
 //!
 //! After each fetch, on every device (the window's watchers, a phone's
 //! background step), what the filter judges as you chose "Move to spam" for
-//! goes into the account's Junk folder on the server (`after_fetch`).
+//! goes into the account's Junk folder on the server, and what it judges as
+//! you chose "Flag only" for is written in this device's log of its flags,
+//! which the training reads (`after_fetch`).
 
 use crate::backend::{QtThread, Shared, say, tr};
 use serde::Serialize;
@@ -34,20 +36,23 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 /// Mail just fetched into an account's inbox (`new`; nothing on its first
-/// fetch, which brings two weeks of it, nor what was there before): what
-/// your own filter judges, of a class you chose "Move to spam" for, goes into
-/// the account's Junk folder on the server, as the Junk button does but
-/// without a keyword nor a label; each move goes into this device's log of
-/// what the filter moved (the review queue lists it there, "Not spam" brings
-/// it back). Judged as the Porch judges: protections first. It reaches the
-/// server: never on the window's thread, nor inside a watcher's own. How many moved.
+/// fetch, which brings two weeks of it, nor what was there before), judged as
+/// the Porch judges it, protections first: what your own filter judges, of a
+/// class you chose "Move to spam" for, goes into the account's Junk folder on
+/// the server, as the Junk button does but without a keyword nor a label; of
+/// a class you chose "Flag only" for, it stays where it is. Each move and
+/// each flag goes into this device's logs of what the filter did: the Porch
+/// lists them among its catches ("Not spam" brings one back), and the
+/// training learns from them until you say otherwise. It reaches the server:
+/// never on the window's thread, nor inside a watcher's own. How many moved.
 pub(crate) fn after_fetch(account: &Account, new: &[PathBuf], first: bool) -> usize {
     if first || new.is_empty() {
         return 0;
     }
     let config = crate::backend::load_config();
     let filter = sioul_core::spam::Filter::of(&config);
-    if !Class::ALL.iter().any(|c| filter.actions.of(*c) == Action::Move) {
+    // Nothing judged without a table, nor when nothing is done with any class.
+    if filter.actions.idle() || !filter.table.exists() {
         return 0;
     }
     let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
@@ -55,7 +60,13 @@ pub(crate) fn after_fetch(account: &Account, new: &[PathBuf], first: bool) -> us
     let known = porch::KnownSenders::load(&config.known_senders_path());
     let senders = porch::Senders::load(&config);
     let judged = porch::judge(new, &config.mail_sources(), store.as_ref(), &known, &senders, jiff::Timestamp::now().as_second());
-    let to_move = moves(&judged, &filter);
+    // Flagged where it is: written here only, nothing changes on the server.
+    for (file, class) in chosen(&judged, &filter, Action::Flag) {
+        if let Err(e) = sioul_sync::mailbox::flagged(account, &file, class) {
+            eprintln!("sioul: spam: {}: {e:?}", account.id);
+        }
+    }
+    let to_move = chosen(&judged, &filter, Action::Move);
     if to_move.is_empty() {
         return 0;
     }
@@ -72,15 +83,16 @@ pub(crate) fn after_fetch(account: &Account, new: &[PathBuf], first: bool) -> us
         .count()
 }
 
-/// Among messages judged, those to move into a Junk folder: in the review
-/// queue by a verdict whose class you chose "Move to spam" for, and not moved yet.
-fn moves(judged: &[porch::Triaged], filter: &sioul_core::spam::Filter) -> Vec<(PathBuf, Class)> {
+/// Among messages judged, those whose class you chose `action` for (move
+/// them into a Junk folder, or flag them where they are): among the filter's
+/// catches by its verdict, and not moved yet.
+fn chosen(judged: &[porch::Triaged], filter: &sioul_core::spam::Filter, action: Action) -> Vec<(PathBuf, Class)> {
     judged
         .iter()
         .filter(|t| t.lane == Lane::Review && !t.reasons.contains(&Reason::MovedToJunk))
         .filter_map(|t| {
             let (class, _) = t.reasons.iter().find_map(Reason::learned)?;
-            (filter.actions.of(class) == Action::Move).then_some((t.card.path.clone()?, class))
+            (filter.actions.of(class) == action).then_some((t.card.path.clone()?, class))
         })
         .collect()
 }
@@ -106,6 +118,12 @@ pub(crate) struct Status {
     fraction: f64,
     /// How the last run here ended when it made no table: stopped, too few messages, the disk.
     ended: String,
+    /// "Train again by itself" (`[spam] train_by_itself`, on unless said).
+    by_itself: bool,
+    /// This computer is the one that does it: the switch can be changed here (else greyed).
+    by_itself_here: bool,
+    /// Under the switch: which computer trains by itself, or what its last run here did; "" for nothing yet.
+    by_itself_line: String,
     /// The last training here (`trained.toml`): what it did, then its numbers.
     last: Vec<String>,
     /// The corpus: what it holds, the last download, the room left, addresses it could not read.
@@ -146,6 +164,17 @@ pub(crate) fn train(qt: QtThread, shared: Arc<Shared>) -> String {
 pub(crate) fn stop(qt: QtThread) {
     #[cfg(not(target_os = "android"))]
     training::stop(qt);
+    #[cfg(target_os = "android")]
+    drop(qt);
+}
+
+/// The window's minute, on a computer: training again by itself when
+/// everything allows it (`sioul_learn::auto`), as a job apart (`sioul spam
+/// train --by-itself`); the settings said again while one runs or just
+/// ended. Never a notification. Off the window's thread: it may ask the system.
+pub(crate) fn by_itself(qt: QtThread) {
+    #[cfg(not(target_os = "android"))]
+    training::by_itself(qt);
     #[cfg(target_os = "android")]
     drop(qt);
 }
@@ -233,8 +262,9 @@ mod training {
     use super::{Status, grouped, percent, say, tr, when};
     use crate::backend::{QtThread, Shared, load_config};
     use cxx_qt_lib::QString;
-    use sioul_learn::{Cancel, Dirs, LearnError, Progress, Stage, corpus, train};
+    use sioul_learn::{Cancel, Dirs, LearnError, Progress, Stage, auto, corpus, train};
     use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex, PoisonError};
     use std::time::{Duration, Instant};
 
@@ -299,6 +329,8 @@ mod training {
             status.ended = run.ended.clone();
         }
         let dirs = Dirs::standard();
+        status.by_itself = load_config().spam.trains_by_itself();
+        (status.by_itself_here, status.by_itself_line) = by_itself_line(&dirs, &sioul_sync::lease::host_name());
         if let Some(summary) = train::last(&dirs) {
             status.last = last_lines(&summary);
         }
@@ -315,6 +347,10 @@ mod training {
     }
 
     pub(super) fn start(qt: QtThread, shared: Arc<Shared>) -> String {
+        // A training apart (by itself, or from the command line) ends on its own: never two at once.
+        if auto::a_job_runs(&Dirs::standard()) {
+            return tr().text("spam-app-busy-job", None);
+        }
         let cancel = Cancel::new();
         {
             let mut run = RUN.lock().unwrap_or_else(PoisonError::into_inner);
@@ -327,6 +363,8 @@ mod training {
             lower_priority();
             let config = load_config();
             let dirs = Dirs::standard();
+            // Held while it trains: the minute of `sioul watch` sees a training runs (`auto::a_job_runs`).
+            let _held = window_lock(&dirs);
             let mut fetch = Fetch::new(&dirs);
             let result = train::run(&config, &dirs, &mut |p: &Progress| moved(&qt, &mut fetch, p), &cancel);
             let ended = match result {
@@ -361,6 +399,84 @@ mod training {
         }
         let status = super::status();
         let _ = qt.queue(move |mut sioul| sioul.as_mut().spam_changed(QString::from(&status)));
+    }
+
+    /// The window's minute (`super::by_itself`): what is known read, the
+    /// system asked only when nothing else holds a training back; the run
+    /// started apart when everything allows it.
+    pub(super) fn by_itself(qt: QtThread) {
+        // One look at a time: a minute's may still be asking the system when the next comes.
+        static LOOKING: AtomicBool = AtomicBool::new(false);
+        if LOOKING.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let config = load_config();
+        let (dirs, now) = (Dirs::standard(), jiff::Timestamp::now().as_second());
+        let window_trains = RUN.lock().unwrap_or_else(PoisonError::into_inner).cancel.is_some();
+        let focus = sioul_core::timelog::running().is_some();
+        let facts = auto::facts(&dirs, config.spam.trains_by_itself(), &sioul_sync::lease::host_name(), window_trains, focus, now, sioul_sync::power::read);
+        let started = match auto::decide(&facts, now) {
+            auto::Decision::Train { fetch } => start_apart(fetch),
+            auto::Decision::Wait(_) => false,
+        };
+        // While one runs, or just after it ended: the settings say it.
+        let lately = facts.last_run.as_ref().is_some_and(|run| run.ended.is_none_or(|end| now - end < 120));
+        if started || lately {
+            let status = super::status();
+            let _ = qt.queue(move |mut sioul| sioul.as_mut().spam_changed(QString::from(&status)));
+        }
+        LOOKING.store(false, Ordering::SeqCst);
+    }
+
+    /// `sioul spam train --by-itself` (`sioul`, beside this program or on
+    /// the PATH): it starts the run as a job apart and leaves at once.
+    fn start_apart(fetch: bool) -> bool {
+        let Some(sioul) = crate::remind::command() else { return false };
+        let mut command = std::process::Command::new(sioul);
+        command.arg("--config").arg(crate::backend::config_path()).arg("--language").arg(tr().language());
+        command.args(["spam", "train", "--by-itself", "--threads", &auto::threads().to_string()]);
+        if !fetch {
+            command.arg("--no-fetch");
+        }
+        command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+        command.status().is_ok_and(|status| status.success())
+    }
+
+    /// Who trains it again by itself, and what its last run here did: whether
+    /// this computer is the one (the switch can be changed here), and the
+    /// sentence under the switch.
+    fn by_itself_line(dirs: &Dirs, here: &str) -> (bool, String) {
+        match auto::trainer(dirs, here) {
+            auto::Trainer::Elsewhere(device) => (false, say("spam-app-by-itself-elsewhere", &[("device", device)])),
+            auto::Trainer::Nobody => (true, tr().text("spam-app-by-itself-first", None)),
+            auto::Trainer::Here => {
+                let Some(run) = auto::Run::load(dirs) else { return (true, String::new()) };
+                let end = run.ended.unwrap_or(run.started);
+                // Just started, its process may not hold its lock yet: running too.
+                let just = jiff::Timestamp::now().as_second() - run.started < 60;
+                let (id, at) = match run.outcome {
+                    None if just || auto::a_job_runs(dirs) => ("spam-app-by-itself-running", run.started),
+                    Some(auto::Outcome::Replaced) => ("spam-app-by-itself-replaced", end),
+                    Some(auto::Outcome::Kept) => ("spam-app-by-itself-kept", end),
+                    Some(auto::Outcome::Stopped) => ("spam-app-by-itself-stopped", end),
+                    Some(auto::Outcome::Failed) | None => ("spam-app-by-itself-failed", end),
+                };
+                (true, say(id, &[("when", when(at))]))
+            }
+        }
+    }
+
+    /// The window's own lock while it trains, beside the jobs' (`jobs/window.lock`).
+    fn window_lock(dirs: &Dirs) -> Option<std::fs::File> {
+        let jobs = dirs.state.join("jobs");
+        let mut folder = std::fs::DirBuilder::new();
+        folder.recursive(true);
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut folder, 0o700);
+        folder.create(&jobs).ok()?;
+        let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(jobs.join("window.lock")).ok()?;
+        file.lock().ok()?;
+        Some(file)
     }
 
     /// A step moved on: said, at most a few times a second, and at each new step.
@@ -537,10 +653,11 @@ mod tests {
     use sioul_core::porch::Triaged;
     use sioul_core::spam::{Actions, Filter};
 
-    /// After a fetch, what goes into the Junk folder: the review queue's,
-    /// by a verdict whose class you chose "Move to spam" for, not moved yet.
+    /// After a fetch, what goes into the Junk folder and what is flagged
+    /// where it is: among the filter's catches, by a verdict whose class you
+    /// chose "Move to spam" or "Flag only" for, not moved yet.
     #[test]
-    fn what_the_filter_moves_after_a_fetch() {
+    fn what_the_filter_moves_or_flags_after_a_fetch() {
         let triaged = |n: u32, lane: Lane, reasons: Vec<Reason>| {
             let mut card = Card::from_bytes(b"From: Prize <win@lottery.test>\r\nSubject: You won\r\n\r\nClaim it.\r\n").unwrap();
             card.path = Some(PathBuf::from(format!("/mail/home/new/1759400000.U1-{n}.sioul")));
@@ -553,8 +670,11 @@ mod tests {
             triaged(3, Lane::Review, vec![Reason::LearnedSpam { p: 0.99 }, Reason::MovedToJunk]),
             triaged(4, Lane::Screener, vec![Reason::FirstMessage]),
         ];
-        assert_eq!(moves(&judged, &filter(Action::Move, Action::Flag)), vec![(PathBuf::from("/mail/home/new/1759400000.U1-1.sioul"), Class::Spam)]);
-        assert_eq!(moves(&judged, &filter(Action::Move, Action::Move)).len(), 2, "the doubt too, never twice");
-        assert!(moves(&judged, &filter(Action::Flag, Action::Flag)).is_empty(), "flagged only: nothing moves");
+        let file = |n: u32| PathBuf::from(format!("/mail/home/new/1759400000.U1-{n}.sioul"));
+        assert_eq!(chosen(&judged, &filter(Action::Move, Action::Flag), Action::Move), vec![(file(1), Class::Spam)]);
+        assert_eq!(chosen(&judged, &filter(Action::Move, Action::Flag), Action::Flag), vec![(file(2), Class::Unsure)], "the doubt flagged");
+        assert_eq!(chosen(&judged, &filter(Action::Move, Action::Move), Action::Move).len(), 2, "the doubt too, never twice");
+        assert!(chosen(&judged, &filter(Action::Flag, Action::Flag), Action::Move).is_empty(), "flagged only: nothing moves");
+        assert_eq!(chosen(&judged, &filter(Action::Flag, Action::Flag), Action::Flag), vec![(file(1), Class::Spam), (file(2), Class::Unsure)], "each flag once: what was moved is not flagged");
     }
 }

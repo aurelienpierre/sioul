@@ -39,7 +39,7 @@ Les faux messages « votre code » sont une ruse d’hameçonnage courante. 
 Quand arrive du courrier que vos listes laissent passer maintenant, une seule notification discrète le dit, pour tout le lot : « Deux lettres », et les premiers expéditeurs avec leur objet : « Murena, Votre facture · Alice, Dîner vendredi ». **Ouvrir** montre le Porche.
 
 - **Ce qui attendait** (le courrier arrivé hors des heures de sa liste, pendant votre sommeil ou une pause) est dit une fois, quand son heure vient : « Le Porche ouvre : trois lettres vous attendent. »
-- **Jamais** pour les codes (ils ont la leur, plus haut), le courrier mis de côté, ce que votre propre filtre à indésirables a signalé ou déplacé (cela attend dans « À revoir », [plus bas](#spam-and-your-own-filter)), les expéditeurs bloqués, vos adresses moins importantes, ce que vous vous envoyez, les lettres d’information sauf si vous les incluez, ni le courrier déjà lu ailleurs. Rien pendant le sommeil ni une pause.
+- **Jamais** pour les codes (ils ont la leur, plus haut), le courrier mis de côté, ce que votre propre filtre à indésirables a signalé ou déplacé (cela attend dans « Retenu par votre filtre à indésirables », [plus bas](#spam-and-your-own-filter)), les expéditeurs bloqués, vos adresses moins importantes, ce que vous vous envoyez, les lettres d’information sauf si vous les incluez, ni le courrier déjà lu ailleurs. Rien pendant le sommeil ni une pause.
 - **Sans son.** Avec un téléphone et un ordinateur, seul celui dont vous vous êtes servi en dernier le dit.
 
 Paramètres ▸ Ce qui vous joint ▸ Par personne ▸ Courrier : **Me dire le nouveau courrier**, et **Avec les lettres d’information** ([Ce qui vous joint, et quand](notifications.md#by-person)).
@@ -52,7 +52,7 @@ Chaque message va dans la première file qui le prend, dans cet ordre :
 |---|---|
 | **Mis de côté** | Le courrier falsifié, celui qui emprunte un nom, les indésirables selon votre fournisseur ([plus bas](#spam-and-your-own-filter)), et les expéditeurs que vous avez bloqués. Montrée en bas, chaque message avec sa raison. Rien n’est supprimé. Un indésirable a **Pas indésirable** : de retour dans sa file pour de bon, sur chaque appareil. |
 | **Hostile, mis de côté** | Seulement pour une adresse que vous protégez contre le harcèlement (plus bas) : insultes, harcèlement, menaces. Leurs mots restent cachés. |
-| **À revoir : peut-être indésirable** | Ce que votre propre filtre à indésirables a signalé, ou déplacé dans le dossier Indésirables, comme vous l’avez choisi ([plus bas](#spam-and-your-own-filter)). Repliée, sans compte, jamais de notification : ouvrez-la quand vous avez le temps, et dites **Indésirable** ou **Pas indésirable**, un par un ou pour tous. |
+| **Retenu par votre filtre à indésirables** | Ce que votre propre filtre à indésirables a signalé, ou déplacé dans le dossier Indésirables, comme vous l’avez choisi ([plus bas](#spam-and-your-own-filter)). Repliée, sans compte, jamais de notification. Sioul en apprend tel quel ; si l’un n’est pas indésirable, **Pas indésirable** le remet à sa place et l’apprend au filtre. |
 | **Tout de suite** | Les codes et les liens que vous venez de demander à un site, vus plus haut. |
 | **Une file par projet** | Le courrier qui correspond aux règles du projet, ou qui appartient à une conversation du projet. Voir [Les projets](projects.md). |
 | **Votre adresse publique** | Le courrier envoyé à une adresse que vous protégez, par des personnes que vous n’avez pas laissées entrer, lu d’abord et trié par sujet : le travail en premier. |
@@ -85,21 +85,21 @@ Seul le courrier d’un inconnu est jamais jugé. Qui que ce soit qui le juge, v
 
     Tant que vous n’avez pas choisi, il signale ce qui est probablement ou peut-être indésirable, et ne fait rien du reste.
 
-Ce qu’il signale ou déplace attend dans **À revoir : peut-être indésirable**, repliée vers le bas du Porche, sans compte : jamais de notification pour cela, sur aucun appareil, ni sur l’écran d’accueil de votre téléphone. Ouvrez-la quand vous avez le temps.
+Ce qu’il signale ou déplace attend dans **Retenu par votre filtre à indésirables**, repliée vers le bas du Porche, sans compte : jamais de notification pour cela, sur aucun appareil, ni sur l’écran d’accueil de votre téléphone. Rien n’y demande votre temps : Sioul apprend de ce que le filtre a retenu tel quel (ce qu’il a déplacé ou trouvé probablement indésirable, comme indésirable ; un peut-être indésirable, pas avant que vous l’ayez dit), et vous n’intervenez que si l’un n’est pas indésirable.
 
 <figure markdown="span">
-  [![Le Porche. À gauche, « À revoir : peut-être indésirable » ouverte, sans compte : des messages d’inconnus, chacun avec son mot discret, « probablement indésirable » ou « peut-être indésirable », et Pas indésirable et Indésirable dessous ; au-dessus d’eux, Pas indésirable pour tous et Indésirable pour tous. Le premier, que le filtre a déplacé dans le dossier Indésirables, est ouvert à droite : « Pourquoi il est ici » dit « votre propre filtre : probablement indésirable » et qu’il a été mis dans votre dossier Indésirables, « Pas indésirable » le ramenant dans la boîte de réception ; sous le message, Indésirable, Pas indésirable et Fermer.](../assets/screens/fr/porch-spam.png){ loading=lazy }](../assets/screens/fr/porch-spam.png "Ouvrir l’image en grand")
-  <figcaption>Ce que votre propre filtre a signalé ou déplacé, en attendant votre avis.</figcaption>
+  [![Le Porche. À gauche, « Retenu par votre filtre à indésirables » ouverte, sans compte, avec sa phrase sous le titre : ce que votre filtre a retenu y attend, sans notification ; Sioul en apprend tel quel, et « Pas indésirable » en remet un à sa place et l’apprend au filtre. Puis des messages d’inconnus, chacun avec son mot discret, « probablement indésirable » ou « peut-être indésirable », et Pas indésirable et Indésirable dessous ; au-dessus d’eux, Pas indésirable pour tous et Indésirable pour tous. Le premier, que le filtre a déplacé dans le dossier Indésirables, est ouvert à droite : « Pourquoi il est ici » dit « votre propre filtre : probablement indésirable » et qu’il a été mis dans votre dossier Indésirables, « Pas indésirable » le ramenant dans la boîte de réception ; sous le message, Indésirable, Pas indésirable et Fermer.](../assets/screens/fr/porch-spam.png){ loading=lazy }](../assets/screens/fr/porch-spam.png "Ouvrir l’image en grand")
+  <figcaption>Ce que votre propre filtre a signalé ou déplacé.</figcaption>
 </figure>
 
 Chaque message y a son mot, discret (« probablement indésirable », « peut-être indésirable »), et deux boutons :
 
-- **Pas indésirable** : de retour dans sa file, pour de bon, sur chaque appareil ; celui que le filtre a déplacé revient dans la boîte de réception ;
+- **Pas indésirable** : de retour dans sa file, pour de bon, sur chaque appareil, et le filtre apprend qu’il ne l’est pas ; celui que le filtre a déplacé revient dans la boîte de réception ;
 - **Indésirable** : dans le dossier Indésirables, ou gardé là, pour de bon.
 
-**Pas indésirable pour tous** et **Indésirable pour tous**, au-dessus, répondent pour toute la file d’un coup. Chacun s’annule pendant dix secondes, et le filtre en tient compte à son prochain apprentissage. Ce que vous dites sur votre téléphone, votre ordinateur le sait, et inversement. Sioul dit seulement que votre propre filtre l’a jugé, jamais pourquoi. **Indésirable**, dans le Courrier, déplace un message dans le dossier des indésirables, comme toujours, et l’apprend aussi au filtre. Rien n’est supprimé.
+**Pas indésirable pour tous** et **Indésirable pour tous**, au-dessus, répondent pour tous d’un coup. Chacun s’annule pendant dix secondes ; le filtre apprend ce que vous avez dit à son prochain apprentissage, votre mot avant le sien. Ce que vous dites sur votre téléphone, votre ordinateur le sait, et inversement. Sioul dit seulement que votre propre filtre l’a jugé, jamais pourquoi. **Indésirable**, dans le Courrier, déplace un message dans le dossier des indésirables, comme toujours, et l’apprend aussi au filtre. Rien n’est supprimé.
 
-Un message que le filtre a déplacé reste dans la file tant qu’il est dans le dossier Indésirables et que vous n’en avez rien dit ; un message qu’il a signalé, deux semaines, même après que vous avez fermé le Porche avec **Terminé pour l’instant**.
+Un message que le filtre a déplacé reste ici tant qu’il est dans le dossier Indésirables et que vous n’en avez rien dit ; un message qu’il a signalé, deux semaines, même après que vous avez fermé le Porche avec **Terminé pour l’instant**.
 
 ## Lire un message {#reading-a-message}
 
@@ -142,7 +142,7 @@ Quand il y a quelque chose, quelques lignes viennent avant les files :
 - **Deux événements en même temps aujourd’hui**, le temps d’y aller et d’en revenir compté, avec **Ouvrir « … »** pour chacun et **Ne plus en parler**. Voir [L’agenda](agenda.md#two-events-at-once).
 - **Les prises du jour pas encore marquées**, à partir de leur heure, qu’une notification vous les ait rappelées ou non : chacune avec son heure, son nom et **Pris** (plus d’une demi-heure en retard, **Pris…** demande quand vous l’avez prise). Quelles que soient vos heures : une prise n’est pas du courrier. Chacune reste jusqu’à ce que vous la marquiez, que la journée finisse ou que douze heures soient passées ; pendant votre sommeil, si les prises restent silencieuses, elles attendent votre réveil. Quand un autre appareil peut en savoir plus, le doute est dit sous la prise : vérifiez avant de la prendre. Voir [La santé](health.md#reminders).
 - **Les prises prévues pendant que Sioul était fermé**, ni marquées ni rappelées nulle part : **Pris…** (quand vous l’avez prise) ou **Pas pris**. Quand un autre appareil peut en savoir plus, le doute est dit sous la prise. Voir [La santé](health.md#reminders).
-- **Les appels refusés par Sioul**, sur un téléphone qui filtre les appels, chacun à un moment où son auteur peut vous joindre : « Pendant votre sommeil : un numéro absent de vos contacts a appelé à 09:30. », avec **Répondre par SMS**, **Rappeler**, **Écouter** quand Free a envoyé le message vocal par courriel. Voir [Les appels](calls.md#afterwards-on-the-porch).
+- **Les appels refusés par Sioul**, sur votre téléphone et sur vos autres appareils, chacun à un moment où son auteur peut vous joindre : « Pendant votre sommeil, un numéro absent de vos contacts a appelé à 09:30. », avec **Répondre par SMS**, **Rappeler**, **Écouter** quand Free a envoyé le message vocal par courriel. Voir [Les appels](calls.md#afterwards-on-the-porch).
 - **« Du nouveau sur &lt;site&gt; »** : ce que les sites que vous gardez dans Sioul ont notifié, et qui vous attend. Ouvrir le site efface ses nouvelles. Voir [Les sites](sites.md).
 - **Le courrier papier** que vous avez scanné, chaque lettre en carte : qui, quoi, combien, pour quand. Voir [Les papiers et les lettres](papers.md#paper-letters).
 - **Les paiements de la semaine**, en une ligne : « Cette semaine : Électricité 62 € (lun.). Le compte les tient. » Quand quelque chose demande un coup d’œil côté argent, la ligne le dit, sans nombre. Voir [Les budgets](budgets.md#the-bank-watch).
@@ -169,6 +169,7 @@ Le ⚙ en haut du Porche contient ce qui n’appartient qu’au Porche, et la le
 
 - **Projets montrés ici** : quels projets ont une file sur le Porche. Le courrier des autres reste sur leur page dans Projets.
 - **Courrier papier ▸ Où arrivent les scans** : le dossier où arrivent vos scans.
+- **Appels ▸ Appels refusés par vos téléphones** : activé sauf si vous l’éteignez, les appels refusés par vos téléphones attendent aussi sur le Porche de cet appareil ; désactivé, chaque téléphone ne liste que les siens, et vos ordinateurs aucun ([Les appels](calls.md#on-your-computers)).
 - **Lecture du texte** : la police, sa taille et l’interligne d’un message ouvert ici, les mêmes que dans le ⚙ de la page Courrier.
 - **Comment le courrier est trié** : chaque file, dans l’ordre du tri, avec ses règles ; les expéditeurs que vous connaissez ; les mots qui rendent un expéditeur automatique (no-reply…).
 

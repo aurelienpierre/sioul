@@ -39,7 +39,7 @@ Fake "your code" messages are a common phishing trick. A forged one is set aside
 When mail your lists let through now arrives, one quiet notification says it, for the whole batch: "Two letters", and the first senders with their subjects: "Murena, Your invoice · Alice, Dinner on Friday". **Open** shows the Porch.
 
 - **What waited** (mail that came outside its list's times, while you slept or paused) is told once, when its time comes: "The Porch opens: three letters wait for you."
-- **Never** for codes (they have their own, above), mail set aside, what your own spam filter flagged or moved (it waits in "To review", [below](#spam-and-your-own-filter)), blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.
+- **Never** for codes (they have their own, above), mail set aside, what your own spam filter flagged or moved (it waits in "Caught by your own spam filter", [below](#spam-and-your-own-filter)), blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.
 - **No sound.** With a phone and a computer, only the one you used last tells.
 
 Settings ▸ What reaches you ▸ By person ▸ Mail: **Tell me of new mail**, and **Include newsletters** ([What reaches you, and when](notifications.md#by-person)).
@@ -52,7 +52,7 @@ Each message goes to the first lane that takes it, in this order:
 |---|---|
 | **Set aside** | Forged mail, mail borrowing a name, spam in your provider's word ([below](#spam-and-your-own-filter)), and senders you blocked. Shown at the bottom, each with the reason. Nothing is deleted. Spam has **Not spam**: back in its lane for good, on every device. |
 | **Hostile, set aside** | Only for an address you protect against harassment (below): insults, harassment, threats. Their words stay hidden. |
-| **To review: maybe spam** | What your own spam filter flagged, or moved into the Junk folder, as you chose ([below](#spam-and-your-own-filter)). Folded, without a count, never notified: open it when you have time, and say **Spam** or **Not spam**, one by one or for all. |
+| **Caught by your own spam filter** | What your own spam filter flagged, or moved into the Junk folder, as you chose ([below](#spam-and-your-own-filter)). Folded, without a count, never notified. Sioul learns from it as it is; if one is not spam, **Not spam** puts it back and teaches the filter. |
 | **Right now** | Codes and links you just asked a site for, above. |
 | **One lane per project** | Mail that matches the project's routes, or that belongs to a conversation of the project. See [Projects](projects.md). |
 | **Your public address** | Mail to an address you protect, from someone you have not let in, read first and sorted by topic: work first. |
@@ -85,21 +85,21 @@ Only a stranger's mail is ever judged. Whoever judges it, your provider or Sioul
 
     Until you choose, it flags what is probably spam or maybe spam, and does nothing with the rest.
 
-What it flags or moves waits in **To review: maybe spam**, folded near the bottom of the Porch, without a count: never a notification for it, on any device, nor on your phone's home screen. Open it when you have time.
+What it flags or moves waits in **Caught by your own spam filter**, folded near the bottom of the Porch, without a count: never a notification for it, on any device, nor on your phone's home screen. Nothing there asks for your time: Sioul learns from what the filter caught as it is (what it moved or found probably spam, as spam; a maybe spam, not until you say), and you step in only when one is not spam.
 
 <figure markdown="span">
-  [![The Porch. On the left, "To review: maybe spam" opened, without a count: strangers' messages, each with its quiet word, "probably spam" or "maybe spam", and Not spam and Spam under it; above them, Not spam for all and Spam for all. The first, which the filter moved into the Junk folder, is open on the right: "Why it is here" says "your own filter: probably spam" and that it was moved into your Junk folder, "Not spam" bringing it back to the inbox; under the message, Spam, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
-  <figcaption>What your own filter flagged or moved, waiting for your word.</figcaption>
+  [![The Porch. On the left, "Caught by your own spam filter" opened, without a count, with its sentence under the title: what your own filter caught waits there, never notified; Sioul learns from it as it is, and "Not spam" puts one back and teaches the filter. Then strangers' messages, each with its quiet word, "probably spam" or "maybe spam", and Not spam and Spam under it; above them, Not spam for all and Spam for all. The first, which the filter moved into the Junk folder, is open on the right: "Why it is here" says "your own filter: probably spam" and that it was moved into your Junk folder, "Not spam" bringing it back to the inbox; under the message, Spam, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
+  <figcaption>What your own filter flagged or moved.</figcaption>
 </figure>
 
 Each message there has its word, quiet ("probably spam", "maybe spam"), and two buttons:
 
-- **Not spam**: back in its lane, for good, on every device; one the filter moved goes back to the inbox;
+- **Not spam**: back in its lane, for good, on every device, and the filter learns it is not; one the filter moved goes back to the inbox;
 - **Spam**: into the Junk folder, or kept there, for good.
 
-**Not spam for all** and **Spam for all**, above them, answer the whole queue at once. Each can be undone for ten seconds, and the filter learns from it at its next training. What you say on your phone, your computer knows, and the other way round. Sioul says only that your own filter judged it, never why. **Junk** moves a message to the junk folder, as always, and teaches the filter too. Nothing is deleted.
+**Not spam for all** and **Spam for all**, above them, answer them all at once. Each can be undone for ten seconds; the filter learns what you said at its next training, your word above its own. What you say on your phone, your computer knows, and the other way round. Sioul says only that your own filter judged it, never why. **Junk** moves a message to the junk folder, as always, and teaches the filter too. Nothing is deleted.
 
-A message the filter moved stays in the queue while it is in the Junk folder and you have said nothing of it; one it flagged, for two weeks, even after you close the Porch with **Done for now**.
+A message the filter moved stays here while it is in the Junk folder and you have said nothing of it; one it flagged, for two weeks, even after you close the Porch with **Done for now**.
 
 ## Reading a message
 
@@ -142,7 +142,7 @@ When there is something, a few lines come before the lanes:
 - **Two events at once today**, the time to get there and back counted, with **Open "…"** for each and **Don't mention it again**. See [Agenda](agenda.md#two-events-at-once).
 - **Today's doses not marked yet**, from their time on, whether a notification reminded you or not: each with its time, its name and **Taken** (more than half an hour late, **Taken…** asks when you took it). Whatever your hours: a dose is not mail. Each stays until you mark it, the day ends or twelve hours have passed; while you sleep with doses kept silent, they wait for your waking. When another device may know more, the doubt is said under the dose: check before taking it. See [Health](health.md#reminders).
 - **Doses due while Sioul was closed**, neither marked nor reminded anywhere: **Taken…** (when you took it) or **Not taken**. When another device may know more, the doubt is said under the dose. See [Health](health.md#reminders).
-- **Calls Sioul declined**, on a phone that screens calls, each at a time its caller may reach you: "While you slept: a number not in your contacts called at 09:30.", with **Text back**, **Call back**, **Listen** when Free mailed the voicemail. See [Calls](calls.md#afterwards-on-the-porch).
+- **Calls Sioul declined**, on your phone and on your other devices, each at a time its caller may reach you: "While you slept, a number not in your contacts called at 09:30.", with **Text back**, **Call back**, **Listen** when Free mailed the voicemail. See [Calls](calls.md#afterwards-on-the-porch).
 - **"*The site* has news"**: what the websites you keep in Sioul notified, waiting for you. Opening the site clears its news. See [Sites](sites.md).
 - **Paper letters** you scanned, each as a card: who, what, how much, by when. See [Papers and letters](papers.md#paper-letters).
 - **This week's payments**, in one line: "This week: Electricity €62 (Mon). The account holds them." When something about money needs a look, it says so, without a count. See [Budgets](budgets.md#the-bank-watch).
@@ -169,6 +169,7 @@ The ⚙ at the top of the Porch holds what is the Porch's alone, and how a messa
 
 - **Projects shown here**: which projects have a lane on the Porch. The others' mail stays on their page in Projects.
 - **Paper letters ▸ Where scans arrive**: the folder your scans come to.
+- **Calls ▸ Calls your phones declined**: on unless you turn it off, the calls your phones declined wait on this device's Porch too; off, each phone lists only its own, and your computers none ([Calls](calls.md#on-your-computers)).
 - **How text reads**: the font, its size and the space between lines of a message opened here, the same as in the Mail page's ⚙.
 - **How mail is sorted**: every lane, in the order mail is sorted, with its rules; the senders you know; the words that make a sender automatic (no-reply…).
 

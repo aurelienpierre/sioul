@@ -127,6 +127,29 @@ Item {
         }
     }
 
+    // A security key's certificate, from `gpg --export`: imported for the key
+    // the setup read ("" ) or for a key Sioul knows (its identifier).
+    FileDialog {
+        id: certificatePicker
+
+        property string forKey: ""
+
+        title: page.sioul.text("seckey-import-file")
+        nameFilters: ["OpenPGP (*.asc *.gpg *.pgp *.key)", page.sioul.text("ui-all-files") + " (*)"]
+        onAccepted: page.sioul.importSecurityKeyCertificate(certificatePicker.forKey, certificatePicker.selectedFile.toString())
+    }
+
+    // Your security keys, read again when keys change; what the setup says now;
+    // the key a lookup is for ("" for the one the setup read).
+    property var securityKeys: ({ cards: [] })
+    property var keySetup: ({ state: "", line: "", tries: "", warm: false, action: "", fingerprint: "" })
+    property string lookingFor: ""
+
+    function lookFor(ident) {
+        page.lookingFor = ident
+        page.sioul.findSecurityKeyCertificate(ident)
+    }
+
     // Your OpenPGP keys and others', read again when they change.
     property var keys: ({ keys: [], without_key: [] })
     property bool othersShown: false
@@ -150,6 +173,13 @@ Item {
 
         function onKeysChanged() {
             page.keys = JSON.parse(page.sioul.pgpKeys() || "{\"keys\": [], \"without_key\": []}")
+            page.securityKeys = JSON.parse(page.sioul.securityKeys() || "{\"cards\": []}")
+        }
+
+        // What the security key's setup says now.
+        function onSecurityKeyChanged(context, state) {
+            if (context === "setup")
+                page.keySetup = JSON.parse(state)
         }
 
         function onFoundChanged() {
@@ -990,7 +1020,10 @@ Item {
 
                         contentWidth: availableWidth
                         clip: true
-                        Component.onCompleted: page.keys = JSON.parse(page.sioul.pgpKeys() || "{\"keys\": [], \"without_key\": []}")
+                        Component.onCompleted: {
+                            page.keys = JSON.parse(page.sioul.pgpKeys() || "{\"keys\": [], \"without_key\": []}")
+                            page.securityKeys = JSON.parse(page.sioul.securityKeys() || "{\"cards\": []}")
+                        }
 
                             Connections {
                                 target: page
@@ -1003,6 +1036,197 @@ Item {
                         ColumnLayout {
                             width: keysScroll.availableWidth
                             spacing: page.theme.gap
+
+                            // Your security key: its private keys stay on it; Sioul keeps their public part.
+                            Panel {
+                                Layout.fillWidth: true
+                                theme: page.theme
+
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    spacing: 10
+
+                                    Label {
+                                        text: page.sioul.text("seckey-section")
+                                        font.pixelSize: 18
+                                        color: page.theme.text
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: page.sioul.text("seckey-intro")
+                                        wrapMode: Text.Wrap
+                                        color: page.theme.muted
+                                    }
+                                    // The keys Sioul knows: what each signs for, its touch, its certificate.
+                                    Repeater {
+                                        model: page.securityKeys.cards
+
+                                        delegate: ColumnLayout {
+                                            id: knownKey
+
+                                            required property var modelData
+
+                                            Layout.fillWidth: true
+                                            spacing: 2
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 8
+
+                                                Icon {
+                                                    iconName: "dialog-password"
+                                                }
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    text: knownKey.modelData.title
+                                                    textFormat: Text.PlainText
+                                                    elide: Text.ElideRight
+                                                    color: page.theme.text
+                                                }
+                                            }
+                                            Repeater {
+                                                model: [knownKey.modelData.signs_for, knownKey.modelData.touch, knownKey.modelData.source]
+
+                                                delegate: Label {
+                                                    required property string modelData
+
+                                                    Layout.fillWidth: true
+                                                    text: modelData
+                                                    textFormat: Text.PlainText
+                                                    wrapMode: Text.Wrap
+                                                    color: page.theme.muted
+                                                    font.pixelSize: 13
+                                                }
+                                            }
+                                            Label {
+                                                visible: knownKey.modelData.expiry !== ""
+                                                Layout.fillWidth: true
+                                                text: knownKey.modelData.expiry
+                                                textFormat: Text.PlainText
+                                                wrapMode: Text.Wrap
+                                                color: knownKey.modelData.late ? page.theme.warm : page.theme.muted
+                                                font.pixelSize: 13
+                                            }
+                                            Flow {
+                                                Layout.fillWidth: true
+                                                Layout.topMargin: 4
+                                                spacing: 8
+
+                                                Button {
+                                                    text: page.sioul.text("seckey-newer")
+                                                    onClicked: page.lookFor(knownKey.modelData.ident)
+                                                }
+                                                Button {
+                                                    flat: true
+                                                    text: page.sioul.text("seckey-import-file")
+                                                    onClicked: {
+                                                        certificatePicker.forKey = knownKey.modelData.ident
+                                                        certificatePicker.open()
+                                                    }
+                                                }
+                                                Button {
+                                                    visible: knownKey.modelData.pin_held
+                                                    flat: true
+                                                    text: page.sioul.text("seckey-forget-pin")
+                                                    onClicked: page.sioul.forgetSecurityKeyPin()
+                                                }
+                                                Button {
+                                                    flat: true
+                                                    text: page.sioul.text("seckey-stop")
+                                                    onClicked: page.sioul.stopUsingSecurityKey(knownKey.modelData.ident)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // The setup: what the key says, then where its public part comes from.
+                                    RowLayout {
+                                        visible: page.keySetup.state !== ""
+                                        Layout.fillWidth: true
+                                        spacing: 8
+
+                                        BusyIndicator {
+                                            visible: page.keySetup.state === "working"
+                                            running: visible
+                                            implicitWidth: 18
+                                            implicitHeight: 18
+                                        }
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: page.keySetup.line || ""
+                                            textFormat: Text.PlainText
+                                            wrapMode: Text.Wrap
+                                            color: page.keySetup.warm ? page.theme.warm : page.theme.text
+                                        }
+                                    }
+                                    Label {
+                                        visible: page.keySetup.state === "found"
+                                        Layout.fillWidth: true
+                                        text: page.sioul.text("seckey-lookup-tells")
+                                        wrapMode: Text.Wrap
+                                        color: page.theme.muted
+                                        font.pixelSize: 13
+                                    }
+                                    Label {
+                                        visible: (page.keySetup.state === "found" || page.keySetup.state === "missing") && !!page.keySetup.fingerprint
+                                        Layout.fillWidth: true
+                                        text: page.sioul.textWith("seckey-export-hint", "fingerprint", page.keySetup.fingerprint || "")
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.WrapAnywhere
+                                        font.family: page.theme.mono
+                                        font.pixelSize: 12
+                                        color: page.theme.muted
+                                    }
+                                    Flow {
+                                        visible: page.keySetup.state === "found" || page.keySetup.state === "missing" || page.keySetup.state === "problem"
+                                        Layout.fillWidth: true
+                                        spacing: 8
+
+                                        Button {
+                                            visible: page.keySetup.state === "found"
+                                            highlighted: true
+                                            text: page.sioul.text("seckey-look-for-it")
+                                            onClicked: page.lookFor("")
+                                        }
+                                        Button {
+                                            visible: page.keySetup.state === "found" || page.keySetup.state === "missing"
+                                            text: page.sioul.text("seckey-import-file")
+                                            onClicked: {
+                                                certificatePicker.forKey = page.lookingFor
+                                                certificatePicker.open()
+                                            }
+                                        }
+                                        Button {
+                                            visible: page.keySetup.action === "release"
+                                            highlighted: true
+                                            text: page.sioul.text("seckey-release")
+                                            onClicked: {
+                                                const answer = JSON.parse(page.sioul.letGnupgRelease() || "{}")
+                                                page.keySetup = { state: answer.done ? "working" : "problem", line: answer.line || "", tries: "", warm: !answer.done, action: answer.done ? "" : "retry", fingerprint: "" }
+                                                if (answer.done)
+                                                    page.sioul.readSecurityKey()
+                                            }
+                                        }
+                                        Button {
+                                            visible: page.keySetup.action === "retry" || page.keySetup.action === "release" || page.keySetup.action === "lookup"
+                                            text: page.sioul.text("seckey-try-again")
+                                            onClicked: page.keySetup.action === "lookup" ? page.lookFor(page.lookingFor) : page.sioul.readSecurityKey()
+                                        }
+                                        Button {
+                                            flat: true
+                                            text: page.sioul.text("seckey-not-now")
+                                            onClicked: page.keySetup = { state: "", line: "", tries: "", warm: false, action: "", fingerprint: "" }
+                                        }
+                                    }
+                                    Button {
+                                        visible: page.keySetup.state === "" || page.keySetup.state === "done"
+                                        text: page.sioul.text("seckey-use")
+                                        onClicked: {
+                                            page.lookingFor = ""
+                                            page.sioul.readSecurityKey()
+                                        }
+                                    }
+                                }
+                            }
 
                             // Encryption: your keys, made here or imported; others' keys folded.
                             Panel {

@@ -25,11 +25,16 @@
 //! ```
 //!
 //! The newest line about a message, every device's together, wins, and the
-//! log wins over the folders and keywords it is found in. The filter's own
-//! verdicts are never written here: what it moved into a Junk folder (the
-//! matrix's "Move to spam") is kept apart, in the same way, one file per
-//! device under `moved/` (`Moved`): what the review queue lists, and what the
-//! training leaves out until you say.
+//! log wins over everything else: the folders and keywords the message is
+//! found in, and the filter's own verdicts. Those are never written here but
+//! kept apart, in the same way, one file per device: what it moved into a
+//! Junk folder (the matrix's "Move to spam") under `moved/` (`Moved`), what
+//! it flagged where it is (the matrix's "Flag only") under `flagged/`
+//! (`Flagged`). The Porch lists them among the filter's catches; the
+//! training learns from them as they are until you say otherwise: what was
+//! moved, as spam, as all mail in a Junk folder; what was flagged as
+//! probably spam, as spam; what was flagged as maybe spam, not at all, a
+//! doubt being no label, until you say.
 
 use crate::card::Card;
 use serde::{Deserialize, Serialize};
@@ -42,6 +47,8 @@ pub const FILE: &str = "labels.jsonl";
 pub const FOLDER: &str = "labels";
 /// The folder of the logs of what your own filter moved, one file per device.
 pub const MOVED: &str = "moved";
+/// The folder of the logs of what your own filter flagged where it is, one file per device.
+pub const FLAGGED: &str = "flagged";
 
 /// What you said a message is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -143,6 +150,11 @@ pub fn own_log(root: &Path, device: &str) -> PathBuf {
 /// This device's own log of what your filter moved under `root`, `moved/<device>.jsonl`.
 pub fn own_moved_log(root: &Path, device: &str) -> PathBuf {
     root.join(MOVED).join(format!("{}.jsonl", file_safe(device)))
+}
+
+/// This device's own log of what your filter flagged where it is under `root`, `flagged/<device>.jsonl`.
+pub fn own_flagged_log(root: &Path, device: &str) -> PathBuf {
+    root.join(FLAGGED).join(format!("{}.jsonl", file_safe(device)))
 }
 
 /// A device's name as a file name: letters, digits, `-` and `_`.
@@ -260,15 +272,17 @@ pub fn said_ham_in(entries: &[Entry], card: &Card) -> bool {
 }
 
 /// One message your own filter moved into its account's Junk folder (the
-/// matrix's "Move to spam"), from where it was: never a label, the filter's
-/// verdicts never are. What the review queue lists while it stays there
-/// unreviewed, and what the training leaves out until you say.
+/// matrix's "Move to spam"), from where it was; in the log of what it
+/// flagged (`Flagged`), one it flagged where it is. No word of yours: the
+/// Porch lists it among the filter's catches while it is there, and the
+/// training learns from it as the module says, until you say otherwise.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Moved {
     /// When, as Unix seconds.
     pub at: i64,
     pub account: String,
-    /// The folder it was moved from, on the server, and its place there.
+    /// The folder it was in when your filter judged it, on the server, and
+    /// its place there: moved from it, or flagged in it.
     pub folder: String,
     pub uidvalidity: u32,
     pub uid: u32,
@@ -282,22 +296,39 @@ pub struct Moved {
 
 impl Moved {
     /// Your filter moving the message stored at `file` in `folder` of
-    /// `account`, now; none for a file Sioul did not fetch.
+    /// `account`, now, or flagging it there (`Flagged`); none for a file
+    /// Sioul did not fetch.
     pub fn of_file(account: &str, folder: &str, file: &Path, class: super::Class) -> Option<Moved> {
         let origin = crate::maildir::origin_of(file)?;
         Some(Moved { at: jiff::Timestamp::now().as_second(), account: account.to_string(), folder: folder.to_string(), uidvalidity: origin.validity, uid: origin.uid, message_id: message_id_of(file), class })
     }
 }
 
+/// One message your own filter flagged where it is (the matrix's "Flag
+/// only") as it arrived: the same line as a move, in its own log
+/// (`flagged/`). The training learns a probable spam flagged so as spam, and
+/// leaves a maybe spam out, until you say.
+pub type Flagged = Moved;
+
 /// Every device's log of what your filter moved, under `root`, oldest first.
 pub fn read_moved_in(root: &Path) -> Vec<Moved> {
-    let mut moved: Vec<Moved> = logs_in(&root.join(MOVED), None).iter().flat_map(|p| read_from::<Moved>(p)).collect();
-    moved.sort_by_key(|m| m.at);
-    moved
+    read_judged(&root.join(MOVED))
 }
 
-/// Whether a message your filter moved still waits for your word: no entry
-/// of the label logs (`entries`, oldest first) about it since it was moved.
+/// Every device's log of what your filter flagged where it is, under `root`, oldest first.
+pub fn read_flagged_in(root: &Path) -> Vec<Flagged> {
+    read_judged(&root.join(FLAGGED))
+}
+
+/// Every line of the logs of `folder` (`moved/`, `flagged/`), oldest first.
+fn read_judged(folder: &Path) -> Vec<Moved> {
+    let mut lines: Vec<Moved> = logs_in(folder, None).iter().flat_map(|p| read_from::<Moved>(p)).collect();
+    lines.sort_by_key(|m| m.at);
+    lines
+}
+
+/// Whether a message your filter moved or flagged is still as it judged
+/// it: no entry of the label logs (`entries`, oldest first) about it since.
 pub fn unreviewed(moved: &Moved, entries: &[Entry]) -> bool {
     let Some(id) = moved.message_id.as_deref() else { return false };
     !entries.iter().any(|e| e.at >= moved.at && e.account == moved.account && e.message_id.as_deref() == Some(id))
@@ -398,10 +429,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
     }
 
-    /// What your filter moved is no label: kept apart, read from every
-    /// device, waiting for your word until a label about it comes.
+    /// What your filter moved or flagged is no label: kept apart, each in
+    /// its own log, read from every device, as it judged it until a label
+    /// about it comes.
     #[test]
-    fn what_the_filter_moved_waits_for_your_word() {
+    fn what_the_filter_did_is_kept_apart() {
         let root = scratch("moved").join("spam");
         let file = root.join(format!("1759400000.U7-42.sioul{}2,S", crate::maildir::INFO));
         std::fs::create_dir_all(&root).unwrap();
@@ -413,6 +445,12 @@ mod tests {
         assert!(line.contains(r#""class":"spam""#) && !line.contains("label"), "{line}");
         assert_eq!(read_moved_in(&root), vec![moved.clone()]);
         assert!(read_all_in(&root).is_empty(), "never a label");
+        // Flagged where it is, on another device: its own log, apart from the moves.
+        let flagged: Flagged = Moved { at: 1_791_360_050, uid: 43, class: super::super::Class::Unsure, ..moved.clone() };
+        append_to(&own_flagged_log(&root, "desk"), &flagged).unwrap();
+        assert_eq!(own_flagged_log(&root, "desk"), root.join(FLAGGED).join("desk.jsonl"));
+        assert_eq!((read_flagged_in(&root), read_moved_in(&root)), (vec![flagged.clone()], vec![moved.clone()]));
+        assert!(read_all_in(&root).is_empty(), "never a label either");
         // Unreviewed until a label about it, here or on another device, comes after the move.
         let before = Entry { at: 1_791_359_000, ..entry(42, Some("win-1@lottery.test"), Source::NotSpam) };
         assert!(unreviewed(&moved, &[before.clone()]));

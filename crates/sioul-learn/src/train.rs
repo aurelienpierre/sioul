@@ -418,8 +418,7 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
         }
     })?;
     let log = labels::read_log(dirs);
-    let moved = labels::read_moved(dirs);
-    let (labeled, label_summary) = labels::decide(copies, &log, &moved);
+    let (labeled, label_summary) = labels::decide(copies, &log, &labels::read_moved(dirs), &labels::read_flagged(dirs));
     // Outside material, by source: a message also in your own mail is learned from yours.
     let own_keys: HashSet<String> = labeled.iter().map(|l| l.key.clone()).collect();
     let yours = |message: &external::Message| message.message_id().is_some_and(|id| own_keys.contains(&id));
@@ -1314,7 +1313,7 @@ pub fn evaluate_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, optio
     let table = Table::read(&dirs.table()).map_err(LearnError::NoTable)?;
     let mut copies = Vec::new();
     corpus::read_all(dirs, |record| copies.push(Copy::of(&record)))?;
-    let (mut labeled, label_summary) = labels::decide(copies, &labels::read_log(dirs), &labels::read_moved(dirs));
+    let (mut labeled, label_summary) = labels::decide(copies, &labels::read_log(dirs), &labels::read_moved(dirs), &labels::read_flagged(dirs));
     progress(&Progress { stage: Stage::Labels, done: label_summary.records, total: label_summary.records, detail: String::new() });
     if cancel.cancelled() {
         return Err(LearnError::Cancelled);
@@ -1863,6 +1862,41 @@ mod tests {
         // Its server no longer had it: nothing of Sioul's, the provider's (none here).
         record.checked = Some(corpus::Checked { at: record.date + 3600, gone: true, ..corpus::Checked::default() });
         assert!(value(&read_message(&record, &trusted).1, "dkim_pass").is_nan());
+    }
+
+    /// A training on invented mail, your filter's word in its logs as your
+    /// devices write them: a message it moved into a Junk folder and one it
+    /// flagged as probably spam are learned as spam, one it flagged as maybe
+    /// spam is left out, and one it moved that you said is not spam is
+    /// learned as ham.
+    #[test]
+    fn the_filters_word_is_learned_until_you_say() {
+        use sioul_core::spam::Class;
+        use sioul_core::spam::labels::{self as logs, Entry, Moved, Source};
+        let root = scratch("filters-word");
+        let dirs = Dirs::under(&root);
+        let records = records(&synthetic::mailbox(13, 200, 120));
+        corpus::store(&dirs, &records).unwrap();
+        let id = |r: &Record| labels::message_id(&r.header_bytes()).expect("invented mail has its Message-ID");
+        let judged = |r: &Record, class: Class| Moved { at: r.date + 60, account: r.account.clone(), folder: r.folder.clone(), uidvalidity: r.uidvalidity, uid: r.uid, message_id: Some(id(r)), class };
+        // Ham in an inbox, as its folder says; spam in a Junk folder, no keyword.
+        let inbox: Vec<&Record> = records.iter().filter(|r| r.role == sioul_core::folders::Role::Inbox && !r.flags.iter().any(|f| f == "$Junk")).take(2).collect();
+        let junk: Vec<&Record> = records.iter().filter(|r| r.role == sioul_core::folders::Role::Junk && r.flags.is_empty()).take(2).collect();
+        let state = &dirs.state;
+        logs::append_to(&logs::own_flagged_log(state, "desk"), &judged(inbox[0], Class::Spam)).unwrap();
+        logs::append_to(&logs::own_flagged_log(state, "phone"), &judged(inbox[1], Class::Unsure)).unwrap();
+        for r in &junk {
+            logs::append_to(&logs::own_moved_log(state, "phone"), &Moved { folder: "INBOX".into(), uid: r.uid + 10_000, ..judged(r, Class::Spam) }).unwrap();
+        }
+        let said = Entry { at: junk[1].date + 3600, account: junk[1].account.clone(), folder: junk[1].folder.clone(), uidvalidity: 1, uid: junk[1].uid, message_id: Some(id(junk[1])), label: Label::Ham, source: Source::NotSpam };
+        logs::append_to(&logs::own_log(state, "desk"), &said).unwrap();
+        let summary = train(&dirs, &trusted(), &small(), &mut |_| {}, &Cancel::new()).unwrap();
+        let l = &summary.labels;
+        // By their folders 200 ham and 120 spam; then a ham flagged probably spam, a ham flagged maybe spam, a moved spam you said is not.
+        assert_eq!((l.ham, l.spam), (199, 120), "{l:?}");
+        assert_eq!((l.by_filter, l.unsure, l.filter_moved, l.by_log), (1, 1, 1, 1), "{l:?}");
+        assert_eq!(summary.split.train_ham + summary.split.train_spam + summary.split.test_ham + summary.split.test_spam, 319, "the doubt left out");
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

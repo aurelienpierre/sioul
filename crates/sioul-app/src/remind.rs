@@ -134,8 +134,8 @@ pub(crate) fn set_event(qt: &QtThread, shared: &std::sync::Arc<crate::backend::S
     crate::pim::save_event(qt, shared, key, &json, "")
 }
 
-/// `sioul`, next to this program, else on the PATH.
-fn command() -> Option<PathBuf> {
+/// `sioul`, next to this program, else on the PATH: the reminders' watcher, the spam filter's training by itself.
+pub(crate) fn command() -> Option<PathBuf> {
     let name = format!("sioul{}", std::env::consts::EXE_SUFFIX);
     let beside = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|dir| dir.join(&name))).filter(|p| p.is_file());
     beside.or_else(|| std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|dir| dir.join(&name)).find(|p| p.is_file())))

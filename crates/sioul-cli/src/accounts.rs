@@ -360,6 +360,8 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
     }
     let names = accounts.iter().map(|a| a.id.clone()).collect::<Vec<_>>().join(", ");
     println!("{}", s.say("watch-started", &[("accounts", names)]));
+    // The spam filter's training by itself, asked each minute as the window asks it, silently.
+    crate::spam::by_itself::every_minute(s);
     // Never stopped here: Ctrl+C ends the process, and the server keeps nothing open.
     let control = Arc::new(Control::default());
     let (sender, receiver) = mpsc::channel::<(String, Result<Report, SyncError>)>();

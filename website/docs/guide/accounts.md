@@ -83,3 +83,17 @@ Your OpenPGP keys, to sign and encrypt your messages ([Mail](mail.md#signing-and
 - **Keys of others**: those that came with their messages, or from a file, or found by **Look for their keys** in the writing window.
 
 Your own keys stay on this device. They are not shared with your other devices: copy them by hand if you need them there.
+
+### Security key
+
+Your OpenPGP keys can stay on a security key, such as a YubiKey or a Nitrokey: it signs and opens your mail itself, after its PIN, and its private keys never leave it. Sioul keeps only their public part. On a computer, Sioul reaches the key through the system's smart card service (on Linux, `pcscd`, which most systems start when a program asks); on a phone, not yet.
+
+1. Plug the key in, then choose **Use a security key**. Sioul reads it without its PIN: its name and serial number, what it signs and decrypts with.
+2. Sioul needs the public part of these keys, which the key does not hold. **Look for it** asks the address written on the key, your domain's key directory, then keys.openpgp.org; this tells those servers that someone looks for your key. Or **Import a file…**: with GnuPG, the command Sioul shows (`gpg --export --armor` followed by your key's fingerprint) writes it into a file.
+3. Sioul keeps it only when it is the key's own: the same keys, the same public parts. Your security key then signs for the addresses it names among yours, alone (a key made or imported here for the same address only opens older mail), and opens what is encrypted to it.
+
+Each key then shows what it signs for, whether it asks for a touch, where its certificate came from, and when it expires. Once it has expired, Sioul says so, with the two GnuPG commands that renew it, and says it a month ahead too: mail cannot be signed with it until it is renewed, while older mail still opens. **Look for a newer version** brings the renewed certificate, or **Import a file…** a new export. **Forget the PIN now** forgets the PIN Sioul holds. **Stop using this security key** puts its certificate aside.
+
+GnuPG keeps the key for itself once it has used it. Sioul then says that another program holds it, and offers **Let GnuPG release it**, which stops GnuPG's smart card daemon, on that click only; gpg takes the key back the next time it needs it, and asks for its PIN again then. For both to share the key, add the line `pcsc-shared` to `~/.gnupg/scdaemon.conf`.
+
+Sioul only uses the key: it never asks for its Admin PIN, never changes or unblocks a PIN, never loads or makes keys on it.

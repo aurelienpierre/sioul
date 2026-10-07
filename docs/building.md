@@ -3,12 +3,13 @@
 ## What it needs
 - **Rust** 1.89 or newer.
 - **D-Bus** development files, for the system keyring and notifications.
+- **pcsc-lite**'s development files on Linux and BSDs, for security keys (OpenPGP cards: a YubiKey): `pcsc-sys` links its client, found by pkg-config. Windows and macOS have theirs built in (WinSCard, the PCSC framework); Android needs none. To use a key, the smart card service must run: `pcscd` with its CCID driver (Fedora `pcsc-lite` and `pcsc-lite-ccid`, then `sudo systemctl enable --now pcscd.socket`; Debian and Ubuntu `pcscd`; Arch `pcsclite` and `ccid`).
 - **For the window only: Qt 6.9 or newer** (built and used with 6.11), with its development files: Qt Declarative (QML, Qt Quick, Controls, Layouts, Dialogs, Effects), Qt WebEngine with Qt WebChannel and Qt PDF, Qt Multimedia, Qt Positioning, Qt Location and Qt Image Formats. Sites keep their permissions with Qt WebEngine's permission API, long menus scroll as items of the window (both Qt 6.8), and each site's profile is made from a prototype (`WebEngineProfilePrototype`, Qt 6.9). The command line builds without Qt.
 
 | System | Packages |
 |---|---|
-| Fedora | `dbus-devel`, `qt6-qtbase-devel`, `qt6-qtdeclarative-devel`, `qt6-qtwebengine-devel`, `qt6-qtwebchannel-devel`, `qt6-qtpdf-devel`, `qt6-qtpositioning-devel`, `qt6-qtmultimedia`, `qt6-qtlocation`, `qt6-qtimageformats`; to check attachments, `clamav` and `clamav-update`; to read paper letters, `tesseract` |
-| Debian, Ubuntu, Arch | the D-Bus development files, and Qt 6.9 or newer with the modules above and their QML modules; distributions name them differently (Debian: `qt6-…-dev`, `qml6-module-…`; Arch: `qt6-…`) |
+| Fedora | `dbus-devel`, `pcsc-lite-devel`, `qt6-qtbase-devel`, `qt6-qtdeclarative-devel`, `qt6-qtwebengine-devel`, `qt6-qtwebchannel-devel`, `qt6-qtpdf-devel`, `qt6-qtpositioning-devel`, `qt6-qtmultimedia`, `qt6-qtlocation`, `qt6-qtimageformats`; to check attachments, `clamav` and `clamav-update`; to read paper letters, `tesseract` |
+| Debian, Ubuntu, Arch | the D-Bus and pcsc-lite development files (Debian, Ubuntu: `libpcsclite-dev`; Arch: `pcsclite`), and Qt 6.9 or newer with the modules above and their QML modules; distributions name them differently (Debian: `qt6-…-dev`, `qml6-module-…`; Arch: `qt6-…`) |
 
 ## The command line
 ```

@@ -31,6 +31,9 @@ public final class StepReceiver extends BroadcastReceiver
         case StepService.CALLS:
             StepService.callsPressed(app, intent.getBooleanExtra("on", false), intent.getIntExtra("minutes", 0));
             break;
+        case StepService.HEARD:
+            StepService.heard(app);
+            break;
         case Intent.ACTION_BOOT_COMPLETED:
         case Intent.ACTION_MY_PACKAGE_REPLACED:
             StepService.restart(app, "restart");

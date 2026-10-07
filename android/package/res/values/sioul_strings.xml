@@ -4,4 +4,6 @@
     <!-- The pause's button outside Sioul: the home screen's shortcut, the
          quick-settings tile. "Pause" in French too. -->
     <string name="sioul_pause">Pause</string>
+    <!-- Sioul's do-not-disturb switch among the quick settings (DndTile). -->
+    <string name="sioul_dnd">Do not disturb (Sioul)</string>
 </resources>

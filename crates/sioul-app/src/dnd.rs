@@ -25,10 +25,18 @@
 //! - **macOS**: the person's own shortcuts. **Windows**: nothing an
 //!   application may do.
 //!
-//! Never turns off a do-not-disturb the person set: only what Sioul turned on
-//! is turned off. Asked again unchanged, nothing is redone (the pauses ask
-//! each minute); what was turned on is kept in the state folder (dnd.toml), so
-//! that a crash is healed at the next start.
+//! Never turns off a do-not-disturb the person set while Sioul's holds: only
+//! what Sioul turned on is turned off then. Asked again unchanged, nothing is
+//! redone (the pauses ask each minute); what was turned on is kept in the
+//! state folder (dnd.toml), so that a crash is healed at the next start.
+//!
+//! Both ways (docs/do-not-disturb.md): each system's own do-not-disturb is
+//! read (`Platform::system_on`) and followed (`listen`: Plasma's `Inhibited`, GNOME's
+//! switch; Android's receiver in Java), and when Sioul's goes off on this
+//! device, the system's own is turned off too where Sioul can (`system_off`:
+//! Android 12 to 14, Plasma's own, GNOME's with the person's yes), or said
+//! (`still_on`). A switch "on" taken from this device's own system adds no
+//! mode of Sioul's over it (`Ask::stack`).
 
 use crate::backend::tr;
 use serde::{Deserialize, Serialize};
@@ -90,6 +98,16 @@ pub(crate) struct Ask {
     /// `people` and `doses`, which say the same as far as today's Java reads.
     #[serde(default)]
     pub silence: Option<sioul_core::attention::Silence>,
+    /// Sioul's own mode is put on the system; false when the system's own
+    /// do-not-disturb holds the device for the switch already (a switch "on"
+    /// taken from this device's own system, `everywhere::held_by_system`):
+    /// then Sioul adds nothing over it, so that its end stays visible.
+    #[serde(default = "yes")]
+    pub stack: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// What was done, in words for the screen.
@@ -109,14 +127,77 @@ pub(crate) struct Report {
     pub offers: Vec<&'static str>,
     /// The label of GNOME's consent switch; "" elsewhere.
     pub consent: String,
+    /// The person turned this device's do-not-disturb off in its system, and
+    /// Sioul leaves it off until it next turns it on (`on` false).
+    pub turned_off: bool,
 }
 
 impl Report {
-    /// For the window: {on, line, consent, offers: [{key, label}]}.
+    /// For the window: {on, line, consent, turned_off, offers: [{key, label}]}.
     pub(crate) fn json(&self) -> serde_json::Value {
         let offers: Vec<serde_json::Value> = self.offers.iter().map(|key| serde_json::json!({ "key": key, "label": offer_label(key) })).collect();
-        serde_json::json!({ "on": self.on, "line": self.line, "consent": self.consent, "offers": offers })
+        serde_json::json!({ "on": self.on, "line": self.line, "consent": self.consent, "turned_off": self.turned_off, "offers": offers })
     }
+}
+
+/// A change of a system's own do-not-disturb, heard as it happened: on or off.
+pub(crate) type Told = std::sync::Arc<dyn Fn(bool) + Send + Sync>;
+
+/// Sioul's do-not-disturb went off here: the system's own off too, once,
+/// where Sioul can (`consent`: GNOME's yes). Whether something was turned off.
+pub(crate) fn system_off(consent: bool) -> bool {
+    with(|layer| layer.platform.system_off(consent))
+}
+
+/// While Sioul's do-not-disturb is off here: the system's own still on, said
+/// ("… stays on: turn it off …"), with what may be opened; none when it is off.
+pub(crate) fn still_on() -> Option<Report> {
+    with(|layer| layer.platform.still_on().map(|done| done.report(tr())))
+}
+
+/// Sioul quits on a computer: whether its system stays silenced without it
+/// (GNOME's switch, a Mac's Focus, which outlive Sioul); Plasma's inhibitions
+/// end with Sioul's process.
+pub(crate) fn still_after_quit() -> bool {
+    with(|layer| layer.platform.outlives(&layer.kept))
+}
+
+/// "Silence this device again": `ask`'s mode left and entered afresh, the
+/// person's earlier "off" in the system set aside.
+pub(crate) fn again(ask: &Ask) -> Report {
+    with(|layer| {
+        layer.leave(ask.which, tr());
+        layer.enter(ask, tr())
+    })
+}
+
+/// This system's own do-not-disturb followed, each change heard as it happens
+/// told to `told` (Plasma's `Inhibited`, GNOME's switch); on Android, Java's
+/// receiver hears it. Once, while the window runs.
+pub(crate) fn listen(told: Told) {
+    with(|layer| layer.platform.listen(told));
+}
+
+/// Whether Sioul's do-not-disturb held on this device at the last apply; `on`,
+/// what holds now, kept for the next (in the state folder, across restarts).
+pub(crate) fn on_here(on: bool) -> bool {
+    with(|layer| {
+        let was = layer.kept.on_here;
+        if was != on {
+            layer.kept.on_here = on;
+            layer.save();
+        }
+        was
+    })
+}
+
+/// On Android, what Java keeps of Sioul's do-not-disturb here: its state (the
+/// tile, the receiver's filter); nothing elsewhere.
+pub(crate) fn tell_system(on: bool) {
+    #[cfg(target_os = "android")]
+    phone::call("flags", &serde_json::json!({ "on": on }).to_string());
+    #[cfg(not(target_os = "android"))]
+    let _ = on;
 }
 
 /// What the pause's settings can show here, with no change made.
@@ -153,18 +234,27 @@ pub(crate) fn offer_label(key: &str) -> String {
         "starred" => tr().text("dnd-offer-starred", None),
         "plasma" => tr().text("dnd-offer-plasma", None),
         "desktop" => tr().text("dnd-gnome-consent", None),
+        "modes" => tr().text("dnd-offer-modes", None),
         _ => String::new(),
     }
 }
 
-/// One of `Report::offers`, opened: "access", "starred", "plasma".
+/// One of `Report::offers`, opened: "access", "starred", "plasma", "modes".
 pub(crate) fn open(key: &str) {
     match key {
         "access" => open_access(),
         "starred" => open_starred(),
         "plasma" => open_plasma(),
+        "modes" => open_modes(),
         _ => {}
     }
+}
+
+/// Android's own do-not-disturb settings, where the person turns it off (Sioul
+/// may not, from Android 15). Nothing elsewhere.
+pub(crate) fn open_modes() {
+    #[cfg(target_os = "android")]
+    phone::call("open", "modes");
 }
 
 /// Android's page where Sioul is given "Do Not Disturb access" (Modes
@@ -224,6 +314,10 @@ enum Said {
     PhoneDisabled(String),
     /// Do-not-disturb turned off on the phone during the pause (by the person): left off.
     PhoneTurnedOff,
+    /// Silenced by the phone's own do-not-disturb, which turned Sioul's on.
+    PhoneHeld,
+    /// Sioul's do-not-disturb off, the phone's own still on (Android 15 and later, or unheard).
+    PhoneStaysOn,
     PhoneOff,
     PhoneStill,
     PlasmaCan,
@@ -232,6 +326,14 @@ enum Said {
     PlasmaDoses(bool),
     PlasmaFailed(String),
     PlasmaOff,
+    /// Plasma's do-not-disturb turned off from its applet (Sioul's inhibition dropped with it): left off.
+    PlasmaTurnedOff,
+    /// Silenced by Plasma's own do-not-disturb, which turned Sioul's on.
+    PlasmaHeld,
+    /// Sioul's do-not-disturb off, Plasma's own still on (`[DoNotDisturb] Until` ahead).
+    PlasmaOwnStaysOn,
+    /// Sioul's do-not-disturb off, Plasma holding notifications back for another application or a full-screen window.
+    PlasmaStaysOn,
     GnomeCan,
     GnomeCannot,
     GnomeOn,
@@ -240,6 +342,12 @@ enum Said {
     GnomeFailed(String),
     GnomeOff,
     GnomeLeft,
+    /// GNOME's Do Not Disturb turned off from its top bar while Sioul held it: left off.
+    GnomeTurnedOff,
+    /// Silenced by GNOME's own Do Not Disturb, which turned Sioul's on.
+    GnomeHeld,
+    /// Sioul's do-not-disturb off, GNOME's own still on (no yes to turn it off).
+    GnomeStaysOn,
     /// A desktop with no way for an application: its server's name, "" unknown.
     DesktopCannot(String),
     MacCan,
@@ -368,6 +476,8 @@ fn sentence(said: &Said, tr: &Translator) -> String {
         Said::PhoneNoAnswer => tr.text("dnd-phone-no-answer", None),
         Said::PhoneDisabled(name) => with("dnd-phone-disabled", &[("name", name.as_str())]),
         Said::PhoneTurnedOff => tr.text("dnd-phone-turned-off", None),
+        Said::PhoneHeld => tr.text("dnd-phone-held", None),
+        Said::PhoneStaysOn => tr.text("dnd-phone-stays-on", None),
         Said::PhoneOff => tr.text("dnd-phone-off", None),
         Said::PhoneStill => tr.text("dnd-phone-still", None),
         Said::PlasmaCan => tr.text("dnd-plasma-can", None),
@@ -376,6 +486,10 @@ fn sentence(said: &Said, tr: &Translator) -> String {
         Said::PlasmaDoses(false) => tr.text("dnd-plasma-doses-hidden", None),
         Said::PlasmaFailed(why) => with("dnd-plasma-failed", &[("why", why.as_str())]),
         Said::PlasmaOff => tr.text("dnd-plasma-off", None),
+        Said::PlasmaTurnedOff => tr.text("dnd-plasma-turned-off", None),
+        Said::PlasmaHeld => tr.text("dnd-plasma-held", None),
+        Said::PlasmaOwnStaysOn => tr.text("dnd-plasma-own-stays-on", None),
+        Said::PlasmaStaysOn => tr.text("dnd-plasma-stays-on", None),
         Said::GnomeCan => tr.text("dnd-gnome-can", None),
         Said::GnomeCannot => tr.text("dnd-gnome-cannot", None),
         Said::GnomeOn => tr.text("dnd-gnome-on", None),
@@ -384,6 +498,9 @@ fn sentence(said: &Said, tr: &Translator) -> String {
         Said::GnomeFailed(why) => with("dnd-gnome-failed", &[("why", why.as_str())]),
         Said::GnomeOff => tr.text("dnd-gnome-off", None),
         Said::GnomeLeft => tr.text("dnd-gnome-left", None),
+        Said::GnomeTurnedOff => tr.text("dnd-gnome-turned-off", None),
+        Said::GnomeHeld => tr.text("dnd-gnome-held", None),
+        Said::GnomeStaysOn => tr.text("dnd-gnome-stays-on", None),
         Said::DesktopCannot(name) if name.is_empty() => tr.text("dnd-desktop-cannot-unknown", None),
         Said::DesktopCannot(name) => with("dnd-desktop-cannot", &[("name", name.as_str())]),
         Said::MacCan => with("dnd-mac-can", &shortcuts),
@@ -409,6 +526,8 @@ struct Done {
     /// Asking again may change the outcome (access given meanwhile, a server
     /// that refused): the pauses' next minute tries again.
     retry: bool,
+    /// The person turned it off in the system; Sioul leaves it off.
+    turned_off: bool,
 }
 
 impl Done {
@@ -416,9 +535,14 @@ impl Done {
         Done { on, said, ..Done::default() }
     }
 
+    /// Turned off by the person in the system, said so.
+    fn turned_off(said: Vec<Said>) -> Done {
+        Done { said, turned_off: true, ..Done::default() }
+    }
+
     fn report(self, tr: &Translator) -> Report {
         let line = self.said.iter().map(|s| sentence(s, tr)).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
-        Report { on: self.on, line, offers: self.offers, consent: if self.consent { tr.text("dnd-gnome-consent", None) } else { String::new() } }
+        Report { on: self.on, line, offers: self.offers, consent: if self.consent { tr.text("dnd-gnome-consent", None) } else { String::new() }, turned_off: self.turned_off }
     }
 }
 
@@ -437,6 +561,27 @@ trait Platform {
     fn holds(&self, _which: Which) -> bool {
         true
     }
+    /// This device's own do-not-disturb, as its system says it now; none
+    /// where it cannot be read. (A computer's says it through `still_on`.)
+    #[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
+    fn system_on(&mut self) -> Option<bool> {
+        None
+    }
+    /// Sioul's do-not-disturb went off here: the system's own off too, once,
+    /// where Sioul can (`consent`: GNOME's yes). Whether something was turned off.
+    fn system_off(&mut self, _consent: bool) -> bool {
+        false
+    }
+    /// While Sioul's do-not-disturb is off here: the system's own still on, said.
+    fn still_on(&mut self) -> Option<Done> {
+        None
+    }
+    /// Follows this system's own do-not-disturb, telling each change heard.
+    fn listen(&mut self, _told: Told) {}
+    /// Whether what Sioul turned on outlives Sioul's process (`kept`, as Sioul quits).
+    fn outlives(&mut self, _kept: &Kept) -> bool {
+        false
+    }
 }
 
 /// What Sioul turned on, kept in the state folder for the next run.
@@ -451,6 +596,11 @@ struct Kept {
     #[serde(default)]
     #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     mac: bool,
+    /// Sioul's do-not-disturb held here at the last apply: its going off is
+    /// when the system's own is turned off too (`system_off`). Before
+    /// `entered`: TOML writes plain values before tables.
+    #[serde(default)]
+    on_here: bool,
     /// The pauses entered on this device, as asked.
     #[serde(default)]
     entered: Vec<Ask>,
@@ -676,11 +826,16 @@ mod answers {
         }
         let rule = &answer["rule"];
         let named = rule["name"].as_str().filter(|n| !n.is_empty()).unwrap_or(name).to_string();
+        // Turned off by the person in Android's settings: Android's page offered, where it is turned on again.
         if answer["disabled"] == true {
-            return Done::said(false, vec![Said::PhoneDisabled(named)]);
+            return Done { offers: vec!["modes"], ..Done::turned_off(vec![Said::PhoneDisabled(named)]) };
         }
         if answer["turned_off"] == true {
-            return Done::said(false, vec![Said::PhoneTurnedOff]);
+            return Done::turned_off(vec![Said::PhoneTurnedOff]);
+        }
+        // Held by the phone's own do-not-disturb, which turned Sioul's on: no mode of Sioul's over it.
+        if answer["held"] == true {
+            return Done::said(true, vec![Said::PhoneHeld]);
         }
         let asked = Lets::asked(ask);
         let mut said = match Lets::read(rule) {
@@ -791,6 +946,7 @@ mod phone {
                 "kind": ask.which.key(),
                 "name": ask.which.name(tr),
                 "trigger": trigger,
+                "stack": ask.stack,
                 "people": ask.people,
                 "doses": ask.doses,
                 "channel": tr.text("dnd-doses-channel", None),
@@ -810,6 +966,25 @@ mod phone {
         fn off(&mut self, which: Which, _others: &[Ask], _kept: &mut Kept) -> Done {
             answers::left(&call("leave", which.key()))
         }
+
+        fn holds(&self, which: Which) -> bool {
+            // Asked of Android at each look (a cheap question): a mode turned
+            // off in the system, unheard, is said at the next minute.
+            call("holds", which.key())["holds"] != false
+        }
+
+        fn system_on(&mut self) -> Option<bool> {
+            call("own", "")["on"].as_bool()
+        }
+
+        fn system_off(&mut self, _consent: bool) -> bool {
+            // Android 12 to 14 only: from 15, an application may end only a mode of its own.
+            call("quiet-off", "")["done"] == true
+        }
+
+        fn still_on(&mut self) -> Option<Done> {
+            (self.system_on() == Some(true)).then(|| Done { said: vec![Said::PhoneStaysOn], offers: vec!["modes"], ..Done::default() })
+        }
     }
 }
 
@@ -821,6 +996,7 @@ mod phone {
 #[cfg_attr(not(all(unix, not(any(target_os = "macos", target_os = "android")))), allow(dead_code))]
 mod desktop {
     use super::*;
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
 
     /// Sioul's desktop file, as Plasma and GNOME know the application.
@@ -854,6 +1030,15 @@ mod desktop {
         fn watch_banners(&self) -> Option<Box<dyn Heard>>;
         /// Sioul runs in a Flatpak: GNOME's settings out of reach.
         fn sandboxed(&self) -> bool;
+        /// The notification server's `Inhibited` now: Plasma's do-not-disturb, whatever its cause.
+        fn inhibited(&self) -> Option<bool>;
+        /// The end of Plasma's own do-not-disturb (`[DoNotDisturb] Until`, Unix seconds), when ahead.
+        fn plasma_until(&self) -> Option<i64>;
+        /// Plasma's own do-not-disturb ended: `Until` deleted, Plasma told.
+        fn clear_plasma_until(&self) -> Result<(), String>;
+        /// Follows the session's own do-not-disturb (Plasma's `Inhibited`,
+        /// GNOME's switch), telling each change once Sioul's own settled (`quiet`).
+        fn follow(&self, kind: &Kind, quiet: Arc<Mutex<Instant>>, told: Told) -> Option<Box<dyn Watching>>;
     }
 
     /// An inhibition held.
@@ -867,14 +1052,26 @@ mod desktop {
         fn since(&self, at: Instant) -> usize;
     }
 
+    /// The session's own do-not-disturb, followed.
+    pub(super) trait Watching: Send {
+        /// What was last read: on, off; none before it could be.
+        fn seen(&self) -> Option<bool>;
+    }
+
     /// A computer's desktop: Plasma's inhibitions held, by pause; GNOME's
     /// switch and what dconf says of it.
     pub(crate) struct Desktop<D: Desk> {
         pub(super) desk: D,
-        held: Vec<(Which, Box<dyn Held>)>,
+        /// Plasma's inhibitions held, by pause, and since when.
+        pub(super) held: Vec<(Which, Box<dyn Held>, Instant)>,
         /// dconf's changes of GNOME's switch while Sioul holds it, and from
         /// when they are the person's.
         heard: Option<(Box<dyn Heard>, Instant)>,
+        /// Set before each change of Sioul's own: what follows the session's
+        /// do-not-disturb waits until then, so as never to take it for the person's.
+        quiet: Arc<Mutex<Instant>>,
+        /// The session's own do-not-disturb followed, while the window runs.
+        pub(super) watch: Option<Box<dyn Watching>>,
     }
 
     impl<D: Desk + Default> Default for Desktop<D> {
@@ -885,11 +1082,26 @@ mod desktop {
 
     impl<D: Desk> Desktop<D> {
         pub(super) fn new(desk: D) -> Self {
-            Desktop { desk, held: Vec::new(), heard: None }
+            Desktop { desk, held: Vec::new(), heard: None, quiet: Arc::new(Mutex::new(Instant::now())), watch: None }
         }
 
         fn holding(&self, which: Which) -> bool {
-            self.held.iter().any(|(w, held)| *w == which && held.alive())
+            self.held.iter().any(|(w, held, _)| *w == which && held.alive())
+        }
+
+        /// Plasma's inhibition for `which` ended from its applet (the person
+        /// turned do-not-disturb off there, which drops every application's),
+        /// as the session's `Inhibited` says: off while Sioul holds one.
+        pub(super) fn revoked(&self, which: Which) -> bool {
+            let held = self.held.iter().any(|(w, held, since)| *w == which && held.alive() && since.elapsed() >= SETTLE);
+            held && self.watch.as_ref().is_some_and(|watch| watch.seen() == Some(false))
+        }
+
+        /// A change of Sioul's own comes: what follows the session waits a moment.
+        fn hush(&self) {
+            if let Ok(mut quiet) = self.quiet.lock() {
+                *quiet = Instant::now() + SETTLE;
+            }
         }
 
         /// GNOME's switch, as asked: on only from off, only with the person's yes.
@@ -905,6 +1117,10 @@ mod desktop {
                 if self.heard.is_none() {
                     self.heard = self.desk.watch_banners().map(|heard| (heard, Instant::now()));
                 }
+                // Turned off by the person meanwhile, unheard (Sioul closed): left off, said.
+                if self.desk.banners() == Ok(true) {
+                    return Done::turned_off(vec![Said::GnomeTurnedOff]);
+                }
                 return Done::said(true, vec![Said::GnomeOn]);
             }
             match self.desk.banners() {
@@ -913,6 +1129,7 @@ mod desktop {
                 Ok(true) => {
                     // Listening before the switch, so that its own word comes first.
                     let heard = self.desk.watch_banners();
+                    self.hush();
                     match self.desk.set_banners(false) {
                         Ok(()) => {
                             kept.gnome = true;
@@ -938,7 +1155,10 @@ mod desktop {
                 return vec![Said::GnomeLeft];
             }
             match self.desk.banners() {
-                Ok(false) => match self.desk.set_banners(true) {
+                Ok(false) => match {
+                    self.hush();
+                    self.desk.set_banners(true)
+                } {
                     Ok(()) => {
                         kept.gnome = false;
                         vec![Said::GnomeOff]
@@ -968,7 +1188,7 @@ mod desktop {
                     done
                 }
                 Kind::Gnome if self.desk.sandboxed() => Done::said(false, vec![Said::GnomeSandboxed]),
-                Kind::Gnome => Done { on: true, said: vec![Said::GnomeCan], offers: vec!["desktop"], consent: true, retry: false },
+                Kind::Gnome => Done { on: true, said: vec![Said::GnomeCan], offers: vec!["desktop"], consent: true, ..Done::default() },
                 Kind::Other(name) => Done::said(false, vec![Said::DesktopCannot(name)]),
             }
         }
@@ -976,10 +1196,29 @@ mod desktop {
         fn on(&mut self, ask: &Ask, kept: &mut Kept, tr: &Translator) -> Done {
             match self.desk.kind() {
                 Kind::Inhibits { kde } => {
+                    if !ask.stack {
+                        // Held by Plasma's own do-not-disturb, which turned Sioul's on:
+                        // nothing of Sioul's over it, so that its end is heard.
+                        if let Some(at) = self.held.iter().position(|(w, _, _)| *w == ask.which) {
+                            self.hush();
+                            let (_, held, _) = self.held.remove(at);
+                            let _ = held.release();
+                        }
+                        return match self.desk.inhibited() {
+                            // Its end not heard as it happened: said, as turned off here.
+                            Some(false) => Done::turned_off(vec![Said::PlasmaTurnedOff]),
+                            _ => Done::said(true, vec![Said::PlasmaHeld]),
+                        };
+                    }
+                    if self.revoked(ask.which) {
+                        // Ended from Plasma's applet, not heard as it happened: left off.
+                        return Done::turned_off(vec![Said::PlasmaTurnedOff]);
+                    }
                     if !self.holding(ask.which) {
-                        self.held.retain(|(w, _)| *w != ask.which);
+                        self.held.retain(|(w, _, _)| *w != ask.which);
+                        self.hush();
                         match self.desk.inhibit(&ask.which.name(tr)) {
-                            Ok(held) => self.held.push((ask.which, held)),
+                            Ok(held) => self.held.push((ask.which, held, Instant::now())),
                             Err(why) => return Done { said: vec![Said::PlasmaFailed(why)], retry: true, ..Done::default() },
                         }
                     }
@@ -993,6 +1232,12 @@ mod desktop {
                     }
                     done
                 }
+                // Held by GNOME's own Do Not Disturb, which turned Sioul's on: nothing of Sioul's over it.
+                Kind::Gnome if !ask.stack => match self.desk.banners() {
+                    Ok(false) => Done::said(true, vec![Said::GnomeHeld]),
+                    Ok(true) => Done::turned_off(vec![Said::GnomeTurnedOff]),
+                    Err(why) => Done { said: vec![Said::GnomeFailed(why)], retry: true, ..Done::default() },
+                },
                 Kind::Gnome if !ask.desktop && kept.gnome => {
                     // The yes taken back during the pause: switched back now,
                     // unless another pause on still has it.
@@ -1010,8 +1255,9 @@ mod desktop {
 
         fn off(&mut self, which: Which, others: &[Ask], kept: &mut Kept) -> Done {
             let mut said = Vec::new();
-            if let Some(at) = self.held.iter().position(|(w, _)| *w == which) {
-                let (_, held) = self.held.remove(at);
+            if let Some(at) = self.held.iter().position(|(w, _, _)| *w == which) {
+                let (_, held, _) = self.held.remove(at);
+                self.hush();
                 // Refused: lifted already (the person, from Plasma's applet), or the server gone.
                 let _ = held.release();
                 said.push(Said::PlasmaOff);
@@ -1020,9 +1266,59 @@ mod desktop {
             Done::said(false, said)
         }
 
+        fn system_on(&mut self) -> Option<bool> {
+            match self.desk.kind() {
+                Kind::Inhibits { .. } => self.desk.inhibited(),
+                Kind::Gnome if !self.desk.sandboxed() => self.desk.banners().ok().map(|shown| !shown),
+                _ => None,
+            }
+        }
+
+        fn system_off(&mut self, consent: bool) -> bool {
+            match self.desk.kind() {
+                // Plasma's own do-not-disturb, as its applet sets it; the other
+                // causes (an application's inhibition, a full-screen window) are not Sioul's to end.
+                Kind::Inhibits { kde: true } if self.desk.plasma_until().is_some() => {
+                    self.hush();
+                    self.desk.clear_plasma_until().map_err(|why| eprintln!("sioul: do-not-disturb: {why}")).is_ok()
+                }
+                // GNOME's switch, with the person's yes.
+                Kind::Gnome if consent && !self.desk.sandboxed() && self.desk.banners() == Ok(false) => {
+                    self.hush();
+                    self.desk.set_banners(true).map_err(|why| eprintln!("sioul: do-not-disturb: {why}")).is_ok()
+                }
+                _ => false,
+            }
+        }
+
+        fn still_on(&mut self) -> Option<Done> {
+            // What the follower last read, where it runs; else read now.
+            let seen = self.watch.as_ref().and_then(|watch| watch.seen());
+            match self.desk.kind() {
+                Kind::Inhibits { .. } if self.held.is_empty() && seen.or_else(|| self.desk.inhibited()) == Some(true) => {
+                    Some(Done::said(false, vec![if self.desk.plasma_until().is_some() { Said::PlasmaOwnStaysOn } else { Said::PlasmaStaysOn }]))
+                }
+                Kind::Gnome if !self.desk.sandboxed() && seen.or_else(|| self.desk.banners().ok().map(|shown| !shown)) == Some(true) => Some(Done::said(false, vec![Said::GnomeStaysOn])),
+                _ => None,
+            }
+        }
+
+        fn outlives(&mut self, kept: &Kept) -> bool {
+            // GNOME's switch stays as Sioul set it; Plasma's inhibitions end with Sioul.
+            matches!(self.desk.kind(), Kind::Gnome) && kept.gnome && self.desk.banners() == Ok(false)
+        }
+
+        fn listen(&mut self, told: Told) {
+            if self.watch.is_none() {
+                let kind = self.desk.kind();
+                self.watch = self.desk.follow(&kind, Arc::clone(&self.quiet), told);
+            }
+        }
+
         fn holds(&self, which: Which) -> bool {
-            // An inhibition's connection gone (the session bus lost): asked again.
-            self.held.iter().all(|(w, held)| *w != which || held.alive())
+            // An inhibition's connection gone (the session bus lost): asked again;
+            // one ended from Plasma's applet: said so.
+            self.held.iter().all(|(w, held, _)| *w != which || held.alive()) && !self.revoked(which)
         }
     }
 
@@ -1034,6 +1330,34 @@ mod desktop {
     pub(super) fn shows_doses(critical: Option<&str>, allowed: Option<&str>, popups: Option<&str>) -> bool {
         let yes = |value: Option<&str>, default: bool| value.map_or(default, |v| v.eq_ignore_ascii_case("true"));
         yes(popups, true) && (yes(critical, true) || yes(allowed, false))
+    }
+
+    /// A date and time as KConfig writes it ("2027,10,7,22,13,41.5": year,
+    /// month, day, hour, minute, seconds, in local time `zone`, or with a time
+    /// zone as a seventh part): Unix seconds; none when it does not read.
+    pub(super) fn kconfig_time(text: &str, zone: &jiff::tz::TimeZone) -> Option<i64> {
+        let parts: Vec<&str> = text.split(',').map(str::trim).collect();
+        if parts.len() < 6 {
+            return None;
+        }
+        let part = |at: usize| parts[at].parse::<i64>().ok();
+        let (year, month, day, hour, minute) = (part(0)?, part(1)?, part(2)?, part(3)?, part(4)?);
+        let seconds = parts[5].parse::<f64>().ok().filter(|s| s.is_finite() && *s >= 0.0)?;
+        let civil = jiff::civil::DateTime::new(
+            i16::try_from(year).ok()?,
+            i8::try_from(month).ok()?,
+            i8::try_from(day).ok()?,
+            i8::try_from(hour).ok()?,
+            i8::try_from(minute).ok()?,
+            i8::try_from(seconds.trunc() as i64).ok()?,
+            0,
+        )
+        .ok()?;
+        let zone = match parts.get(6).filter(|id| !id.is_empty()) {
+            Some(id) => jiff::tz::TimeZone::get(id).ok()?,
+            None => zone.clone(),
+        };
+        civil.to_zoned(zone).ok().map(|at| at.timestamp().as_second())
     }
 
     /// A key's value in a KDE settings file, in a group written as its header
@@ -1064,7 +1388,7 @@ mod desktop {
     /// The person's session: its bus, GNOME's settings through `gsettings`,
     /// Plasma's through its files.
     #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     pub(crate) struct Session {
         /// Variables for `gsettings` (tests: a settings file of their own).
         pub(super) gsettings_env: Vec<(String, String)>,
@@ -1156,6 +1480,96 @@ mod desktop {
 
         fn sandboxed(&self) -> bool {
             std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists()
+        }
+
+        fn inhibited(&self) -> Option<bool> {
+            // Tests, in a folder of their own: never the person's session.
+            if self.config_dirs.is_some() {
+                return None;
+            }
+            sioul_sync::dnd::inhibited()
+        }
+
+        fn plasma_until(&self) -> Option<i64> {
+            let until = kconfig_time(&self.plasma("[DoNotDisturb]", "Until")?, &jiff::tz::TimeZone::system())?;
+            (until > jiff::Timestamp::now().as_second()).then_some(until)
+        }
+
+        fn clear_plasma_until(&self) -> Result<(), String> {
+            // KDE's own tool, as Plasma writes its settings; `--notify` tells
+            // Plasma at once (its settings reload the group live). Tests write a
+            // folder of their own, and tell nobody.
+            let mut command = std::process::Command::new("kwriteconfig6");
+            command.args(["--file", "plasmanotifyrc", "--group", "DoNotDisturb", "--key", "Until", "--delete"]);
+            match self.config_dirs.as_ref().and_then(|dirs| dirs.first()) {
+                Some(dir) => {
+                    command.env("XDG_CONFIG_HOME", dir);
+                }
+                None => {
+                    command.arg("--notify");
+                }
+            }
+            let out = command.arg("").output().map_err(|e| format!("kwriteconfig6: {e}"))?;
+            if out.status.success() {
+                return Ok(());
+            }
+            let said = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            Err(if said.is_empty() { format!("kwriteconfig6: {}", out.status) } else { said })
+        }
+
+        fn follow(&self, kind: &Kind, quiet: Arc<Mutex<Instant>>, told: Told) -> Option<Box<dyn Watching>> {
+            // Tests write files of their own, which nothing on the bus tells of.
+            if self.config_dirs.is_some() || !self.gsettings_env.is_empty() {
+                return None;
+            }
+            match kind {
+                Kind::Inhibits { .. } => sioul_sync::dnd::watch_inhibited(quiet, Box::new(move |on| told(on))).ok().map(|watch| Box::new(watch) as Box<dyn Watching>),
+                Kind::Gnome if !self.sandboxed() => {
+                    let seen = Arc::new(Mutex::new(self.banners().ok().map(|shown| !shown)));
+                    let (session, noted, reading) = (self.clone(), Arc::clone(&seen), Arc::new(Mutex::new(())));
+                    let heard = move || {
+                        let (session, noted, reading, told, quiet) = (session.clone(), Arc::clone(&noted), Arc::clone(&reading), Arc::clone(&told), Arc::clone(&quiet));
+                        // Read once the change held a second and Sioul's own change settled.
+                        std::thread::spawn(move || {
+                            std::thread::sleep(Duration::from_secs(1));
+                            while let Some(wait) = quiet.lock().ok().map(|until| until.saturating_duration_since(Instant::now())).filter(|wait| !wait.is_zero()) {
+                                std::thread::sleep(wait);
+                            }
+                            let _one = reading.lock();
+                            let Ok(shown) = session.banners() else { return };
+                            let now = !shown;
+                            let before = noted.lock().ok().and_then(|mut seen| seen.replace(now));
+                            if before.is_some_and(|before| before != now) {
+                                told(now);
+                            }
+                        });
+                    };
+                    let changes = sioul_sync::dnd::watch_dconf_told(BANNERS_PATH, Box::new(heard)).ok()?;
+                    Some(Box::new(GnomeWatch { _changes: changes, seen }))
+                }
+                _ => None,
+            }
+        }
+    }
+
+    /// GNOME's switch followed: dconf's word of each change, and what was read then.
+    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+    struct GnomeWatch {
+        _changes: sioul_sync::dnd::Changes,
+        seen: Arc<Mutex<Option<bool>>>,
+    }
+
+    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+    impl Watching for GnomeWatch {
+        fn seen(&self) -> Option<bool> {
+            self.seen.lock().ok().and_then(|seen| *seen)
+        }
+    }
+
+    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+    impl Watching for sioul_sync::dnd::Watch {
+        fn seen(&self) -> Option<bool> {
+            sioul_sync::dnd::Watch::seen(self)
         }
     }
 
@@ -1274,6 +1688,11 @@ mod mac {
             }
         }
 
+        fn outlives(&mut self, kept: &Kept) -> bool {
+            // The Focus the person's shortcut turned on stays until "Sioul pause off" runs.
+            kept.mac
+        }
+
         fn off(&mut self, _which: Which, others: &[Ask], kept: &mut Kept) -> Done {
             if !kept.mac || !others.is_empty() {
                 return Done::default();
@@ -1336,16 +1755,16 @@ impl Platform for Nothing {
 
 #[cfg(test)]
 mod tests {
-    use super::desktop::{Desk, Desktop, Heard, Held, Kind};
+    use super::desktop::{Desk, Desktop, Heard, Held, Kind, Watching};
     use super::*;
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     use std::rc::Rc;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::time::Instant;
 
     fn ask(which: Which) -> Ask {
-        Ask { which, people: true, doses: true, desktop: true, silence: None }
+        Ask { which, people: true, doses: true, desktop: true, silence: None, stack: true }
     }
 
     /// A platform that counts its calls and answers as told.
@@ -1447,11 +1866,13 @@ mod tests {
         let mut layer = Layer::new(Counting { answer_on: true, ..Counting::default() }, Some(path.clone()));
         layer.enter(&ask(Which::Paused), &en);
         layer.kept.gnome = true;
+        layer.kept.on_here = true;
         layer.save();
         // A crash: the next run knows the pause was entered, and what Sioul turned on.
         let next = Layer::new(Counting::default(), Some(path.clone()));
         assert_eq!(next.kept.entered, vec![ask(Which::Paused)]);
         assert!(next.kept.gnome);
+        assert!(next.kept.on_here, "do-not-disturb held here, for its going off: {}", std::fs::read_to_string(&path).unwrap_or_default());
         let mut next = next;
         next.leave(Which::Paused, &en);
         assert!(read_kept(&path).entered.is_empty());
@@ -1470,6 +1891,20 @@ mod tests {
         alive: Arc<AtomicBool>,
         doses_shown: bool,
         sandboxed: bool,
+        /// What Plasma's server says of `Inhibited`; its own do-not-disturb's
+        /// end; how often Sioul ended it.
+        server: Rc<Cell<Option<bool>>>,
+        until: Rc<Cell<Option<i64>>>,
+        cleared: Rc<Cell<u32>>,
+    }
+
+    /// The session's do-not-disturb as last read, told.
+    struct FakeWatch(Option<bool>);
+
+    impl Watching for FakeWatch {
+        fn seen(&self) -> Option<bool> {
+            self.0
+        }
     }
 
     struct FakeHeld {
@@ -1527,6 +1962,24 @@ mod tests {
 
         fn sandboxed(&self) -> bool {
             self.sandboxed
+        }
+
+        fn inhibited(&self) -> Option<bool> {
+            self.server.get()
+        }
+
+        fn plasma_until(&self) -> Option<i64> {
+            self.until.get()
+        }
+
+        fn clear_plasma_until(&self) -> Result<(), String> {
+            self.cleared.set(self.cleared.get() + 1);
+            self.until.set(None);
+            Ok(())
+        }
+
+        fn follow(&self, _kind: &Kind, _quiet: Arc<Mutex<Instant>>, _told: Told) -> Option<Box<dyn Watching>> {
+            None
         }
     }
 
@@ -1818,7 +2271,15 @@ mod tests {
         assert!(!off.on && !off.retry);
         assert_eq!(off.report(&en).line, "Your phone is not silenced: its “En pause” mode is turned off in Android's settings.");
         let off = answers::entered(&ask(Which::Paused), &serde_json::json!({ "access": true, "turned_off": true }), "Pause");
-        assert_eq!(off.report(&en).line, "Do-not-disturb was turned off on the phone meanwhile; Sioul leaves it off.");
+        assert!(off.turned_off && !off.on);
+        assert_eq!(off.report(&en).line, "You turned do-not-disturb off on this phone; Sioul leaves it off until it turns it on again.");
+        // Turned off in Android's settings: said, with Android's page to turn it on again there.
+        let disabled = answers::entered(&ask(Which::Paused), &serde_json::json!({ "access": true, "disabled": true, "rule": { "name": "Pause" } }), "Pause");
+        assert!(disabled.turned_off && disabled.offers == vec!["modes"]);
+        // Held by the phone's own do-not-disturb, which turned Sioul's on: silenced, nothing of Sioul's over it.
+        let held = answers::entered(&ask(Which::Global), &serde_json::json!({ "access": true, "held": true }), "Do not disturb (Sioul)").report(&en);
+        assert!(held.on && !held.turned_off);
+        assert_eq!(held.line, "This phone is silenced by its own do-not-disturb, as set in Android's settings, which turned Sioul's on.");
         // Setup: access missing, or given.
         let can = answers::can(&serde_json::json!({ "access": false }), None).report(&en);
         assert!(!can.on && can.offers == vec!["access", "starred"], "{can:?}");
@@ -1902,6 +2363,15 @@ mod tests {
             Said::WindowsCannot,
             Said::OwnHeld { doses: true },
             Said::OwnHeld { doses: false },
+            Said::PhoneHeld,
+            Said::PhoneStaysOn,
+            Said::PlasmaTurnedOff,
+            Said::PlasmaHeld,
+            Said::PlasmaOwnStaysOn,
+            Said::PlasmaStaysOn,
+            Said::GnomeTurnedOff,
+            Said::GnomeHeld,
+            Said::GnomeStaysOn,
         ];
         for language in ["en", "fr"] {
             let tr = Translator::new(language);
@@ -1920,6 +2390,161 @@ mod tests {
         assert_eq!(Which::FreeTime.name(&fr), "Temps libre");
         assert_eq!(Which::Global.name(&fr), "Ne pas déranger (Sioul)");
         assert_eq!(Which::Global.name(&Translator::new("en")), "Do not disturb (Sioul)");
+    }
+
+    #[test]
+    fn plasma_held_by_its_own_adds_nothing_and_its_end_unheard_is_said() {
+        let en = Translator::new("en");
+        let mut layer = Layer::new(plasma(true), None);
+        layer.platform.desk.server.set(Some(true));
+        let held = Ask { stack: false, ..ask(Which::Global) };
+        let report = layer.enter(&held, &en);
+        assert!(report.on && report.line == "This computer is silenced by Plasma's own do-not-disturb, which turned Sioul's on.", "{report:?}");
+        assert_eq!(layer.platform.desk.inhibited.load(Ordering::Relaxed), 0, "nothing of Sioul's over it");
+        // Sioul's own mode first (another reason), then held: Sioul's taken away.
+        let mut layer = Layer::new(plasma(true), None);
+        layer.platform.desk.server.set(Some(true));
+        layer.enter(&ask(Which::Global), &en);
+        layer.enter(&held, &en);
+        assert_eq!(layer.platform.desk.released.load(Ordering::Relaxed), 1);
+        // Its end not heard as it happened (Sioul busy, closed): said as turned off here.
+        layer.platform.desk.server.set(Some(false));
+        let report = layer.enter(&Ask { doses: false, ..held.clone() }, &en);
+        assert!(!report.on && report.turned_off, "{report:?}");
+        assert!(report.line.starts_with("You turned Plasma's do-not-disturb off on this computer"), "{report:?}");
+    }
+
+    #[test]
+    fn plasma_inhibition_ended_from_its_applet_is_said_and_never_asked_again() {
+        let en = Translator::new("en");
+        let mut layer = Layer::new(plasma(true), None);
+        layer.enter(&ask(Which::Global), &en);
+        assert_eq!(layer.platform.desk.inhibited.load(Ordering::Relaxed), 1);
+        // A while later, the session says Plasma's do-not-disturb is off: the applet dropped it.
+        for held in &mut layer.platform.held {
+            held.2 = Instant::now().checked_sub(std::time::Duration::from_secs(5)).unwrap_or(held.2);
+        }
+        layer.platform.watch = Some(Box::new(FakeWatch(Some(false))));
+        let report = layer.enter(&ask(Which::Global), &en);
+        assert!(!report.on && report.turned_off, "{report:?}");
+        assert_eq!(layer.platform.desk.inhibited.load(Ordering::Relaxed), 1, "not asked again over the person's off");
+        // Left, then asked anew (Sioul's next "on"): inhibited again.
+        layer.leave(Which::Global, &en);
+        layer.platform.watch = Some(Box::new(FakeWatch(Some(true))));
+        assert!(layer.enter(&ask(Which::Global), &en).on);
+        assert_eq!(layer.platform.desk.inhibited.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn sioul_off_turns_the_systems_own_off_where_it_can_and_says_the_rest() {
+        let en = Translator::new("en");
+        // Plasma: its own do-not-disturb ended; another cause is not Sioul's to end.
+        let mut layer = Layer::new(plasma(true), None);
+        layer.platform.desk.until.set(Some(4_000_000_000));
+        assert!(layer.platform.system_off(false));
+        assert_eq!(layer.platform.desk.cleared.get(), 1);
+        layer.platform.desk.server.set(Some(true));
+        let still = layer.platform.still_on().map(|done| done.report(&en).line);
+        assert_eq!(still.as_deref(), Some("Plasma keeps this computer's notifications back for another application or a full-screen window; it ends with them."));
+        assert!(!layer.platform.system_off(false), "nothing more of Sioul's to end");
+        layer.platform.desk.server.set(Some(false));
+        assert_eq!(layer.platform.still_on(), None);
+        // GNOME: with the person's yes only.
+        let mut layer = Layer::new(gnome(false), None);
+        assert_eq!(layer.platform.system_on(), Some(true));
+        assert!(!layer.platform.system_off(false), "no yes, no write");
+        assert_eq!(layer.platform.still_on().map(|done| done.report(&en).line).as_deref(), Some("GNOME's Do Not Disturb stays on: turn it off in the top bar."));
+        assert!(layer.platform.system_off(true));
+        assert_eq!(*layer.platform.desk.banners.borrow(), Some(true));
+        assert_eq!(layer.platform.still_on(), None);
+        // A phone that does not answer, Windows: nothing read, nothing done.
+        let mut phone = phone::Phone;
+        assert_eq!((phone.system_on(), phone.system_off(true), phone.still_on()), (None, false, None));
+        let mut windows = WindowsPlatform;
+        assert_eq!((windows.system_on(), windows.system_off(true)), (None, false));
+    }
+
+    #[test]
+    fn gnome_held_by_its_own_and_turned_off_while_sioul_was_closed() {
+        let en = Translator::new("en");
+        // Held by GNOME's own switch: nothing written.
+        let mut layer = Layer::new(gnome(false), None);
+        let report = layer.enter(&Ask { stack: false, ..ask(Which::Global) }, &en);
+        assert!(report.on && report.line == "This computer is silenced by GNOME's own Do Not Disturb, which turned Sioul's on.", "{report:?}");
+        assert!(layer.platform.desk.writes.borrow().is_empty());
+        // Sioul turned it on, then was closed; the person turned it off meanwhile: said, left off.
+        let mut layer = Layer::new(gnome(true), None);
+        layer.kept.gnome = true;
+        let report = layer.enter(&ask(Which::Paused), &en);
+        assert!(!report.on && report.turned_off && report.line.starts_with("You turned GNOME's Do Not Disturb off"), "{report:?}");
+        assert!(layer.platform.desk.writes.borrow().is_empty(), "not turned on again over the person's off");
+    }
+
+    #[test]
+    fn what_outlives_sioul_as_it_quits() {
+        let en = Translator::new("en");
+        // Plasma's inhibition ends with Sioul's process.
+        let mut layer = Layer::new(plasma(true), None);
+        layer.enter(&ask(Which::Global), &en);
+        assert!(!layer.platform.outlives(&layer.kept));
+        // GNOME's switch, as Sioul set it, stays.
+        let mut layer = Layer::new(gnome(true), None);
+        layer.enter(&ask(Which::Global), &en);
+        assert!(layer.platform.outlives(&layer.kept));
+        // The person's own GNOME switch is not Sioul's to report.
+        let mut layer = Layer::new(gnome(false), None);
+        layer.enter(&ask(Which::Global), &en);
+        assert!(!layer.platform.outlives(&layer.kept));
+    }
+
+    #[test]
+    fn again_leaves_and_enters_afresh() {
+        let en = Translator::new("en");
+        let mut layer = Layer::new(plasma(true), None);
+        layer.enter(&ask(Which::Global), &en);
+        layer.leave(Which::Global, &en);
+        let report = layer.enter(&ask(Which::Global), &en);
+        assert!(report.on);
+        assert_eq!((layer.platform.desk.inhibited.load(Ordering::Relaxed), layer.platform.desk.released.load(Ordering::Relaxed)), (2, 1));
+    }
+
+    #[test]
+    fn plasma_dates_read_as_kconfig_writes_them() {
+        use super::desktop::kconfig_time;
+        let paris = jiff::tz::TimeZone::get("Europe/Paris").unwrap();
+        // Local time, as the applet writes "until turned off" (a year ahead).
+        assert_eq!(kconfig_time("2027,10,7,22,13,41.5", &paris), Some(jiff::civil::date(2027, 10, 7).at(22, 13, 41, 0).to_zoned(paris.clone()).unwrap().timestamp().as_second()));
+        // With a zone of its own, the seventh part.
+        assert_eq!(kconfig_time("2027,1,1,0,0,0,UTC", &paris), Some(1_798_761_600));
+        assert_eq!(kconfig_time("", &paris), None);
+        assert_eq!(kconfig_time("2027,13,1,0,0,0", &paris), None);
+        assert_eq!(kconfig_time("not,a,date,at,all,x", &paris), None);
+    }
+
+    /// Plasma's own do-not-disturb ended with `kwriteconfig6`, in a folder of
+    /// the test's own, telling nobody: the person's settings are never read nor
+    /// written. Skipped where `kwriteconfig6` is not installed.
+    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
+    #[test]
+    fn plasma_until_is_ended_with_kdes_own_tool_in_a_folder_of_the_tests_own() {
+        let dir = std::env::temp_dir().join(format!("sioul-dnd-kwrite-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join("plasmanotifyrc");
+        std::fs::write(&file, "[DoNotDisturb]\nUntil=2099,1,1,0,0,0\nWhenScreenSharing=false\n").unwrap();
+        let session = desktop::Session { gsettings_env: Vec::new(), config_dirs: Some(vec![dir.clone()]) };
+        assert!(session.plasma_until().is_some_and(|until| until > 4_000_000_000));
+        match session.clear_plasma_until() {
+            Err(why) if why.starts_with("kwriteconfig6:") && why.contains("No such file") => {
+                eprintln!("No kwriteconfig6 here: skipped.");
+                let _ = std::fs::remove_dir_all(&dir);
+                return;
+            }
+            done => done.expect("ended"),
+        }
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(!text.contains("Until") && text.contains("WhenScreenSharing=false"), "{text}");
+        assert_eq!(session.plasma_until(), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// GNOME's real switch through `gsettings`, against a settings file of the

@@ -179,7 +179,7 @@ Code: `crates/sioul-sync/src/bitwarden.rs`; details: [sites.md](sites.md), "Bitw
 ## OpenPGP
 Code: `crates/sioul-core/src/pgp.rs` (Sequoia, pure-Rust cryptography), `crates/sioul-sync/src/keys.rs`; details: [client.md](client.md), "PGP".
 - RFC 9580 messages; PGP/MIME (RFC 3156) written and read; inline PGP read. New keys: Curve25519, three years.
-- **GnuPG**: its export is imported (`gpg --export-secret-keys --armor`), public keys exported. Sioul keeps its own keys (`~/.local/share/sioul/pgp/`) and never reads or writes GnuPG's keyring or agent. **Not supported**: keys whose secret part lives on a smartcard or a security key (an OpenPGP card).
+- **GnuPG**: its export is imported (`gpg --export-secret-keys --armor`), public keys exported. Sioul keeps its own keys (`~/.local/share/sioul/pgp/`) and never reads or writes GnuPG's keyring or agent. Keys whose secret part lives on a security key (an OpenPGP card) are used by Sioul itself, through PC/SC, not through GnuPG ([client.md](client.md), "Your keys on a security key"); GnuPG and Sioul share the key when `scdaemon.conf` says `pcsc-shared`, and "Let GnuPG release it" frees it otherwise. Not yet tried with a real key.
 - Others' keys: Autocrypt headers (Level 1) of messages not forged; the Web Key Directory (draft-koch-openpgp-webkey-service, the advanced address then the direct one); keys.openpgp.org (VKS, by e-mail), on request only.
 - **Tested** both ways with GnuPG 2.4: Sioul's signed and encrypted message decrypts in GnuPG with a good signature; GnuPG's encrypted, signed and tampered messages read as such in Sioul ([building.md](building.md), "Testing against a local mail server").
 

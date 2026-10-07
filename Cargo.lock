@@ -248,7 +248,7 @@ dependencies = [
  "futures-util",
  "imap-proto",
  "log",
- "nom",
+ "nom 8.0.0",
  "pin-project",
  "pin-utils",
  "self_cell",
@@ -553,6 +553,27 @@ checksum = "3264e2574e9ef2b53ce6f536dea83a69ac0bc600b762d1523ff83fe07230ce30"
 dependencies = [
  "byteorder",
  "cipher",
+]
+
+[[package]]
+name = "card-backend"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd3ee3a298842065dc489180c34a4fe4bbbb8643bb422009d79558a099fb42e5"
+dependencies = [
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "card-backend-pcsc"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78ce74865d9359eb375834f907c25515e8f7f1d1de71b6414e9f17e66d042d80"
+dependencies = [
+ "card-backend",
+ "iso7816-tlv",
+ "log",
+ "pcsc",
 ]
 
 [[package]]
@@ -1649,7 +1670,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56a834aed7c01a500afb06ebcfde59a4dcfd1de7ce15ae501462934d59655376"
 dependencies = [
  "chrono",
- "nom",
+ "nom 8.0.0",
  "serde",
 ]
 
@@ -1941,6 +1962,12 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hex-slice"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5491a308e0214554f07a81d8944abe45f552871c12e3c3c6e7e5d354039a6c4c"
 
 [[package]]
 name = "hickory-net"
@@ -2235,7 +2262,7 @@ version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ccf963d57074747b455398a1763d174da80bcaba6f51e3671a82252b531a68b"
 dependencies = [
- "nom",
+ "nom 8.0.0",
 ]
 
 [[package]]
@@ -2313,6 +2340,15 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+
+[[package]]
+name = "iso7816-tlv"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7660d28d24a831d690228a275d544654a30f3b167a8e491cf31af5fe5058b546"
+dependencies = [
+ "untrusted",
+]
 
 [[package]]
 name = "itertools"
@@ -2764,6 +2800,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c797b9d6bb23aab2fc369c65f871be49214f5c759af65bde26ffaaa2b646b492"
 
 [[package]]
+name = "minimal-lexical"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
+
+[[package]]
 name = "miniz_oxide"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2871,6 +2913,16 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "nom"
+version = "7.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
+dependencies = [
+ "memchr",
+ "minimal-lexical",
 ]
 
 [[package]]
@@ -3064,6 +3116,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
+name = "openpgp-card"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e49c0d2302c2f052c5d081f25100bcd89f46eec726c6674cbdeadd798bfc78d"
+dependencies = [
+ "card-backend",
+ "hex-slice",
+ "log",
+ "nom 7.1.3",
+ "secrecy",
+ "sha2",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3161,6 +3228,25 @@ dependencies = [
  "base64ct",
  "rand_core 0.6.4",
  "subtle",
+]
+
+[[package]]
+name = "pcsc"
+version = "2.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dd833ecf8967e65934c49d3521a175929839bf6d0e497f3bd0d3a2ca08943da"
+dependencies = [
+ "bitflags 2.13.2",
+ "pcsc-sys",
+]
+
+[[package]]
+name = "pcsc-sys"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e14ef017e15d2e5592a9e39a346c1dbaea5120bab7ed7106b210ef58ebd97003"
+dependencies = [
+ "pkg-config",
 ]
 
 [[package]]
@@ -3880,6 +3966,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "secrecy"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e891af845473308773346dc847b2c23ee78fe442e0472ac50e22a18a93d3ae5a"
+dependencies = [
+ "zeroize",
+]
+
+[[package]]
 name = "secret-service"
 version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4305,6 +4400,8 @@ dependencies = [
  "argon2",
  "async-imap",
  "base64 0.22.1",
+ "card-backend",
+ "card-backend-pcsc",
  "cbc",
  "chacha20poly1305",
  "ciborium",
@@ -4316,15 +4413,19 @@ dependencies = [
  "icu_normalizer",
  "jiff",
  "keyring",
+ "log",
  "mail-auth",
  "mail-send",
  "ndk-context",
  "notify-rust",
+ "openpgp-card",
+ "pcsc",
  "roxmltree",
  "rsa",
  "rustix",
  "rustls",
  "rustls-native-certs",
+ "secrecy",
  "serde",
  "serde_json",
  "sha1",

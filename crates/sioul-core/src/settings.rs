@@ -247,6 +247,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.group = tr.text("set-letters-group", None);
             let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.case_store_path().map(|r| crate::letters::Letters::folder(&r).join("inbox").display().to_string()).unwrap_or_default());
             b.push("letters.inbox", "letters-inbox", Kind::Folder, SettingValue::Text(inbox));
+            // The calls your phones declined, on the Porch of every device (docs/porch.md, "Calls declined").
+            b.group = tr.text("set-calls-group", None);
+            b.push("porch.calls", "porch-calls", Kind::Bool, SettingValue::Bool(config.porch.calls));
             // How a message opened here reads: the reading panel's own, shown where messages are read.
             b.group = tr.text("ui-reading", None);
             reading(&mut b, config);
@@ -790,7 +793,7 @@ mod tests {
         let notes = porch.iter().filter(|s| s.kind == Kind::Note).count();
         // Where the hours went, the order, then public, people, screener, filed, less important, the review queue, set aside, hostile.
         assert_eq!(notes, 1 + 1 + 8, "{porch:?}");
-        assert_eq!(keys("porch"), vec!["letters.inbox", "reading.family", "reading.size", "reading.spacing", "known", "filed_words"]);
+        assert_eq!(keys("porch"), vec!["letters.inbox", "porch.calls", "reading.family", "reading.size", "reading.spacing", "known", "filed_words"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
         // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices.
         let parameters = keys("parameters");

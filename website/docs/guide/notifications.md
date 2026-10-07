@@ -139,7 +139,7 @@ Messages go as calls, but strangers' and groups' messages come at once in work a
 
 - **Tell me of new mail**: one quiet notification for each batch of mail that comes now, with how many letters and the first senders with their subjects; mail that waited is told once, when its time comes: "The Porch opens: three letters wait for you." On unless you turn it off. With a phone and a computer, the one you used last tells.
 - **Include newsletters**: newsletters and mailing lists, filed on the Porch, are told too. Off unless you turn it on.
-- What your own spam filter holds, in a sentence: maybe spam and probably spam from strangers wait in the review queue, never told ([Settings](settings.md#your-own-spam-filter)).
+- What your own spam filter holds, in a sentence: maybe spam and probably spam from strangers wait on the Porch, in “Caught by your own spam filter”, never told ([Settings](settings.md#your-own-spam-filter)).
 - What an address is for: mail to an address for another time waits for that time, but your safe senders' and your Always through people's; each address's "What this address is for" is on its card in [Accounts](accounts.md#a-mail-address).
 
 ### Who is on which list {#who-is-on-which-list}
@@ -279,7 +279,7 @@ In What reaches you ▸ **Do not disturb**:
 
 ### What each system does {#what-each-system-does}
 
-Each device turns on a do-not-disturb of its own for Sioul's three modes: the pause, Free time, and do-not-disturb from its switch, a focus session or your sleep. It does so as far as its system lets an application do it. Its line says what was silenced and what could not be: in the switch's menu, and in What reaches you ▸ Do not disturb ▸ **On this device**. Sioul turns off only what it turned on: a do-not-disturb you set yourself stays as you set it.
+Each device turns on a do-not-disturb of its own for Sioul's three modes: the pause, Free time, and do-not-disturb from its switch, a focus session or your sleep. It does so as far as its system lets an application do it. Its line says what was silenced and what could not be: in the switch's menu, and in What reaches you ▸ Do not disturb ▸ **On this device**. Turned off from Sioul, a device's own do-not-disturb goes off too, where Sioul can ([Both ways](#both-ways)).
 
 - **Android** (10 and later): a mode of Sioul's own for each, "Pause", "Free time" and "Do not disturb (Sioul)", among Android's do-not-disturb schedules (its modes, from Android 15). Each lets through what the matrix lets through then, as far as Android can say it:
     - **Calls**: while this phone screens calls ([Calls](calls.md)), your contacts' calls ring through the mode, Sioul having sent the others to your voicemail already; anyone's, when the matrix lets strangers through too. Without the screening, your starred contacts' only. Nobody, when the matrix lets no one call then (Free time's **Nothing at all**, say), but Always through.
@@ -289,13 +289,24 @@ Each device turns on a do-not-disturb of its own for Sioul's three modes: the pa
     - **Alarms**, always. **Dose reminders** and **an event's alarms**, each in a channel of its own made to pass the mode ("Doses during a pause", "An event's alarms during a pause"), when the matrix lets them come then; their usual channels never pass, so that your own do-not-disturb holds them as before. **New mail from someone Always through**, in its own channel too ("New mail from people always let through"), with a sound.
     - The rest waits in the notification shade, silent.
 
-    Sioul needs Android's "Do Not Disturb access" for this ("Modes access" from Android 15): **Open Android's page**, in Settings ▸ This phone. The line says what each mode lets through, as Android has it. From Android 15, what you change in a mode in Android's settings wins. A mode you turn off yourself stays off: Sioul says so, and turns it on again the next time only. Android 10 has no priority conversations: a conversation Always through rings there from a starred contact only, and the line says so.
+    Sioul needs Android's "Do Not Disturb access" for this ("Modes access" from Android 15): **Open Android's page**, in Settings ▸ This phone. The line says what each mode lets through, as Android has it. From Android 15, what you change in a mode in Android's settings wins. Turned off in the quick settings or in Android's settings, a mode of Sioul's turns Sioul's switch off on every device ([Both ways](#both-ways)). Android 10 has no priority conversations: a conversation Always through rings there from a starred contact only, and the line says so.
     - Emergency services may call back from a number you do not know (in France, 0 800 112 112): a second call within 15 minutes gets through, and you can star that number, or add it to your contacts while the phone screens calls.
-- **Plasma**: Plasma's own do-not-disturb, shown among its notifications as "While Sioul is active", with the mode's name ("While Sioul is active (Pause)"). Sioul's doses, codes, reminders and mail from your Always through people still show, at critical urgency, unless Plasma is set to hide even critical notifications in do-not-disturb: Sioul then says so, and **Plasma's notification settings** opens the page where Sioul may "Show in do not disturb mode". Other new mail does not show meanwhile: it goes under the bell. Quitting Sioul ends it.
-- **GNOME** keeps its Do Not Disturb for you, under the clock in the top bar. Tick **Switch GNOME's Do Not Disturb on with Sioul's, and off after**, in What reaches you ▸ Do not disturb, and Sioul does just that; on already, it stays on. Sioul's doses, codes and reminders still show; new mail waits in the list under the clock. Not from a Flatpak.
+- **Plasma**: Plasma's own do-not-disturb, shown among its notifications as "While Sioul is active", with the mode's name ("While Sioul is active (Pause)"). Sioul's doses, codes, reminders and mail from your Always through people still show, at critical urgency, unless Plasma is set to hide even critical notifications in do-not-disturb: Sioul then says so, and **Plasma's notification settings** opens the page where Sioul may "Show in do not disturb mode". Other new mail does not show meanwhile: it goes under the bell. Quitting Sioul ends it. Turned on or off in Plasma's notifications, Plasma's do-not-disturb turns Sioul's switch on or off ([Both ways](#both-ways)).
+- **GNOME** keeps its Do Not Disturb for you, under the clock in the top bar. Tick **Switch GNOME's Do Not Disturb on with Sioul's, and off after**, in What reaches you ▸ Do not disturb, and Sioul does just that; turned off from Sioul, it goes off even when you turned it on yourself. Turned on or off in the top bar, it turns Sioul's switch on or off ([Both ways](#both-ways)). Sioul's doses, codes and reminders still show; new mail waits in the list under the clock. Not from a Flatpak.
 - **Mac**: make two shortcuts in the Shortcuts app, "Sioul pause on", which turns on a Focus (Do Not Disturb, say), and "Sioul pause off", which turns it off. Sioul runs the first as one of its modes starts, and the second as the last one ends.
 - **Windows** does not let Sioul do it: its switch is in the notification centre (Windows key + N).
 - **Other desktops** (dunst, mako, Xfce…) give applications no way to do it: the line names the notification server.
+
+### Both ways {#both-ways}
+
+Do-not-disturb is yours, not a device's: each device's own do-not-disturb and Sioul's switch follow each other.
+
+- **Turned on or off in a device's own settings**, Sioul's switch follows, on every device, whatever did it: Android's quick settings, a schedule, Bedtime, a driving mode or another app; Plasma's notifications, its keyboard shortcut, or a full-screen window and mirrored screens when Plasma is set so (its default); GNOME's top bar. On a phone within seconds, Sioul closed or not; on a computer while Sioul runs.
+- **Turned off from Sioul**, on any device, each device's own do-not-disturb goes off too, where Sioul can: up to Android 14, Android's, and with it every other mode on at that moment (Bedtime, a schedule) until it ends by itself; Plasma's own; GNOME's, once you ticked **Switch GNOME's Do Not Disturb on with Sioul's, and off after**. From Android 15, Android lets Sioul turn off only its own modes: the switch says "This phone's own do-not-disturb stays on: turn it off in its quick settings.", with **Open Android's do-not-disturb settings**. On Plasma, what another application or a full-screen window holds back ends with them, and the switch says so.
+- **A schedule** that turns your phone's do-not-disturb on each night and off each morning turns Sioul's switch on and off on every device with it. While only your phone's own do-not-disturb holds it, Sioul adds no mode of its own there: "This phone is silenced by its own do-not-disturb, as set in Android's settings, which turned Sioul's on."; its dose reminders and an event's alarms still come on their channels that pass.
+- **Sioul's own changes** never count as yours: when Sioul turns a device's do-not-disturb on or off, it never takes that for a press.
+- **When Sioul could not hear it** (closed on a computer, a phone still starting), a change is only shown on that device, never sent to the others: "Do not disturb on your other devices; you turned it off here.", with **Silence this device again** in the switch's menu; or, while Sioul's is off, the "… stays on" line.
+- **Do not disturb (Sioul)**, among Android's quick settings: Sioul's switch, pressed without opening Sioul. Add it from the quick settings' editing page.
 
 ### How fast your other devices follow {#how-fast-your-other-devices-follow}
 
@@ -313,8 +324,11 @@ While do-not-disturb holds, the switch says where, and until when once every rea
 - "Do not disturb, here only.": no other device, or none that can follow.
 - "Do not disturb, not on every device.": some follow, some cannot.
 - "Do not disturb: this device keeps only Sioul's own notifications back.": this device's system cannot be silenced (Windows, a desktop without a way, a phone without the access). With "on your other devices" when others are silenced.
+- "Do not disturb on your other devices; you turned it off here.": you turned this device's own do-not-disturb off while Sioul could not hear it, or turned Sioul's mode off in Android's settings. **Silence this device again**, in its menu, silences it again.
 
-Its menu says why ("Turned on from your phone.", "While you focus on a task.") and how each device follows: "Here: silenced.", "On your phone: waiting for its news.", "On laptop: an older Sioul, which cannot follow until it is updated." A device with an older Sioul does not follow; its own pauses still silence it. On a phone, the card on the home screen shows the line too, while do-not-disturb is on from its switch or a focus session.
+Off, the switch's tip names the last "off" made in a device's own settings ("Turned off on your phone at 14:02, outside Sioul."), and says what a device's own do-not-disturb still holds there ("This phone's own do-not-disturb stays on: turn it off in its quick settings.").
+
+Its menu says why ("Turned on from your phone.", "While you focus on a task.") and how each device follows: "Here: silenced.", "On your phone: waiting for its news.", "On laptop: Sioul is closed.", "On laptop: an older Sioul, which cannot follow until it is updated." A computer where Sioul quit is closed until Sioul starts there again; one not heard from for half an hour (Sioul stopped without a word) is waiting for its news. A device with an older Sioul does not follow; its own pauses still silence it. On a phone, the card on the home screen shows the line too, while do-not-disturb is on from its switch or a focus session.
 
 ## A person's sheet {#a-persons-sheet}
 
@@ -335,7 +349,7 @@ A person has a list and Always through; no times of their own. To give one perso
 ## What never notifies {#what-never-notifies}
 
 - Mail in **Set aside** or **Hostile, set aside**: forged, borrowing a name, spam, from a sender you blocked, insults.
-- What your own spam filter flagged or moved, waiting in **To review: maybe spam** ([The Porch](porch.md#spam-and-your-own-filter)), on any device, nor on a phone's home screen.
+- What your own spam filter flagged or moved, waiting in **Caught by your own spam filter** ([The Porch](porch.md#spam-and-your-own-filter)), on any device, nor on a phone's home screen.
 - Mail to your less important accounts; newsletters and mailing lists, unless **Include newsletters**; what you send yourself; mail already read elsewhere; the two weeks of mail an address brings when you add it.
 - A code's message, as new mail: the code has its own notification.
 - On a phone: codes, and the reminders of dates, waits, payments, papers and contracts. They come on a computer.
@@ -349,7 +363,7 @@ A person has a list and Always through; no times of their own. To give one perso
 
 ## Calls {#calls}
 
-On an Android phone, call screening is apart from do-not-disturb ([Calls](calls.md)). Android asks Sioul first: a call from someone whose Calls row says later goes to your voicemail; your Always through people ring as their row says, never when blocked. Android's do-not-disturb comes after: while one of Sioul's modes is on (a pause, Free time, Sioul's own do-not-disturb), your contacts' calls ring through it, the screening having sent the others to voicemail already, and a second call within 15 minutes; without the screening, starred contacts only ([What each system does](#what-each-system-does)). A do-not-disturb of your own, in Android's settings, stays as you set it.
+On an Android phone, call screening is apart from do-not-disturb ([Calls](calls.md)). Android asks Sioul first: a call from someone whose Calls row says later goes to your voicemail; your Always through people ring as their row says, never when blocked. Android's do-not-disturb comes after: while one of Sioul's modes is on (a pause, Free time, Sioul's own do-not-disturb), your contacts' calls ring through it, the screening having sent the others to voicemail already, and a second call within 15 minutes; without the screening, starred contacts only ([What each system does](#what-each-system-does)). A do-not-disturb of your own, in Android's settings, lets through what you set there; turning it on or off turns Sioul's on or off too ([Both ways](#both-ways)).
 
 ## Where to change each thing {#where-to-change-each-thing}
 

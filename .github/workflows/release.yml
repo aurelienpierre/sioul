@@ -187,10 +187,27 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
+      # meson, ninja and flex: pcsc-lite's client, below.
       - name: Linux packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libvulkan-dev libxkbcommon-dev lld file desktop-file-utils libxcb-cursor0 libfuse2
+          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libvulkan-dev libxkbcommon-dev lld file desktop-file-utils libxcb-cursor0 libfuse2 meson ninja-build flex
+      # Security keys reach pcscd through pcsc-lite's client. Ubuntu 22.04's
+      # (1.9.5) speaks the daemon's protocol 4.4 only, which the daemons of
+      # pcsc-lite 2.3.0 to 2.4.0 refuse (Debian 13, Ubuntu 25.10); 2.5's speaks
+      # 4.4 to 4.6. Built from its source, the client alone, and linked into the
+      # programs (pcsc-sys's PCSC_LIB_DIR and PCSC_LIB_NAME): the AppImage carries
+      # no libpcsclite.so, and starts on a system without pcsc-lite too.
+      - name: pcsc-lite's client
+        run: |
+          curl -fsSLO https://pcsclite.apdu.fr/files/pcsc-lite-2.5.2.tar.xz
+          echo "60a08942d8c00a1d86a3bf4c64eddbf7a5569c7c54f6904e3f07801bb5316acd  pcsc-lite-2.5.2.tar.xz" | sha256sum -c -
+          tar xf pcsc-lite-2.5.2.tar.xz
+          meson setup pcsc-lite-2.5.2/build pcsc-lite-2.5.2 --default-library=static -Dlibsystemd=false -Dlibudev=false -Dpolkit=false -Dusb=false -Dserial=false
+          meson compile -C pcsc-lite-2.5.2/build pcsclite
+          ls -la pcsc-lite-2.5.2/build/libpcsclite.a
+          echo "PCSC_LIB_DIR=$PWD/pcsc-lite-2.5.2/build" >> "$GITHUB_ENV"
+          echo "PCSC_LIB_NAME=static=pcsclite" >> "$GITHUB_ENV"
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
@@ -224,6 +241,8 @@ jobs:
           install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml AppDir/usr/share/metainfo/com.aurelienpierre.Sioul.appdata.xml
           mkdir -p AppDir/usr/share/icons && cp -r data/icons/hicolor AppDir/usr/share/icons/
           install -Dm644 packaging/appimage/sioul-sandbox.sh AppDir/apprun-hooks/sioul-sandbox.sh
+          # pcsc-lite's client is linked in: its BSD licence travels with it.
+          install -Dm644 pcsc-lite-2.5.2/COPYING AppDir/usr/share/licenses/pcsc-lite/COPYING
           curl -fsSLO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           curl -fsSLO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
           chmod +x linuxdeploy-*.AppImage

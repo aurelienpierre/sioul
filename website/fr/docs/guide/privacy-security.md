@@ -16,7 +16,7 @@ Tout ce que Sioul garde est dans des fichiers simples, dans vos propres dossiers
 |---|---|
 | Les réglages, les expéditeurs que vous laissez entrer, sûrs, neutres, restreints ou bloqués | `~/.config/sioul/` |
 | Le courrier (un Maildir par adresse), les agendas et les contacts (un fichier par élément), les brouillons, le temps passé, les factures, les médicaments, les journées de votre montre | `~/.local/share/sioul/` |
-| Où chaque relève s’est arrêtée, où le Porche a été fermé, les nouvelles des sites, le journal des appels d’un agent d’IA | `~/.local/state/sioul/` |
+| Où chaque relève s’est arrêtée, où le Porche a été fermé, les nouvelles des sites, le journal des appels d’un agent d’IA, les appels filtrés par vos téléphones (un mois d’entre eux) | `~/.local/state/sioul/` |
 | Votre propre filtre à indésirables : ce que son apprentissage a lu de votre courrier, le modèle de langue qu’il a appris, sa table ; ce que vous avez dit indésirable ou non | `~/.local/share/sioul/spam/`, `~/.local/state/sioul/spam/` |
 | Notes, projets, budgets, papiers, lettres scannées | votre dossier de notes, là où vous l’avez choisi |
 
@@ -37,6 +37,7 @@ Sous Windows, les dossiers de Sioul sont dans `%APPDATA%\Sioul` ; sous macOS, 
 | Le géocodeur d’OpenStreetMap (Nominatim) | les adresses postales de vos contacts, une fois chacune, rien d’autre | seulement après que vous avez choisi **Les placer** |
 | Les images de carte d’OpenStreetMap, ou celles que vous avez choisies | quelle partie de la carte est montrée | tant que la carte est ouverte |
 | Le Web Key Directory du domaine des destinataires, puis keys.openpgp.org | les adresses auxquelles vous écrivez | seulement quand vous choisissez **Chercher leurs clés** |
+| L’adresse écrite sur votre clé de sécurité, l’annuaire de clés de votre domaine, puis keys.openpgp.org | l’empreinte de votre clé de sécurité, et le domaine de vos adresses | seulement quand vous choisissez **La chercher** ou **Chercher une version plus récente** |
 | Chaque site que vous épinglez | une demande de sa propre icône | environ une fois par semaine |
 | Anthropic | chaque nouveau message vers une adresse que vous protégez | seulement avec **Laisser l’IA le lire d’abord**, et votre propre clé |
 | L’agent d’IA que vous connectez, et son fournisseur | ce qu’il lit | seulement si vous en connectez un ([Avec un agent d’IA](ai-agent.md)) |
@@ -67,13 +68,14 @@ Les résultats sont gardés avec le message, sous un nom que seule votre copie d
 
 ## Votre filtre à indésirables {#your-own-spam-filter}
 
-Le propre filtre à indésirables de Sioul apprend sur votre ordinateur, quand vous appuyez sur **Entraîner maintenant**, de votre propre courrier ([les réglages du Courrier](settings.md#your-own-spam-filter)) :
+Le propre filtre à indésirables de Sioul apprend sur votre ordinateur, quand vous appuyez sur **Entraîner maintenant** et de lui-même une fois par semaine quand cet ordinateur est branché et inactif, de votre propre courrier ([les réglages du Courrier](settings.md#your-own-spam-filter)) :
 
 - **Ce que l’apprentissage lit** : de chaque dossier de chaque adresse, sauf la corbeille, les brouillons, les envoyés et « Tous les messages » de Gmail, les en-têtes et le début de chaque texte, jamais les pièces jointes, sans rien changer sur le serveur. Il les garde sur cet ordinateur (`~/.local/share/sioul/spam/corpus/`), pour que les indésirables restent connus après que votre fournisseur a vidé son dossier des indésirables.
 - **Ce qu’il apprend** : un modèle de langue des mots de votre courrier, gardé à côté (`language.bin`). Il contient les mots de votre courrier en clair : il ne quitte jamais cet ordinateur.
 - **Ce qui voyage** : sa table, le résultat, vers vos autres appareils par votre dossier, scellée comme tout ce qui s’y trouve : des nombres, les mots en empreintes, jamais en clair ; et ce que vous avez dit, plus bas. Un téléphone n’apprend jamais : il lit cette table.
-- **Ce que vous avez dit** : **Indésirable**, **Pas indésirable** et bloquer un expéditeur depuis un message ajoutent une ligne au relevé de cet appareil (`~/.local/state/sioul/spam/labels/`), et chaque message que le filtre déplace dans un dossier Indésirables une autre (`~/.local/state/sioul/spam/moved/`) : quand, où, quel message par son numéro et son Message-ID, indésirable ou non ; jamais un mot de lui. Chaque appareil garde le sien ; ils voyagent scellés vers vos autres appareils, pour qu’un message dont vous avez dit qu’il n’était pas indésirable sur l’un ne soit plus jamais signalé sur un autre.
+- **Ce que vous avez dit** : **Indésirable**, **Pas indésirable** et bloquer un expéditeur depuis un message ajoutent une ligne au relevé de cet appareil (`~/.local/state/sioul/spam/labels/`), chaque message que le filtre déplace dans un dossier Indésirables une autre (`~/.local/state/sioul/spam/moved/`), et chaque message qu’il signale là où il est une autre encore (`~/.local/state/sioul/spam/flagged/`) : quand, où, quel message par son numéro et son Message-ID, indésirable ou non ; jamais un mot de lui. Chaque appareil garde le sien ; ils voyagent scellés vers vos autres appareils, pour qu’un message dont vous avez dit qu’il n’était pas indésirable sur l’un ne soit plus jamais signalé sur un autre.
 - **L’apport extérieur**, si vous en importez (`sioul spam import`) : les objets et les textes de courrier étiqueté ailleurs, gardés sur cet ordinateur seulement, à part de votre courrier (`~/.local/share/sioul/spam/external/`), à vous seul, jamais partagés ; `sioul spam import --remove` les retire.
+- **Ce qu’il demande à votre ordinateur**, pour se réentraîner de lui-même : s’il est branché, en économie d’énergie, inactif ou verrouillé, et si votre connexion est limitée, aux services du système ; demandé sur cet ordinateur, gardé nulle part, envoyé nulle part.
 - **Rien à personne d’autre** : aucun serveur, aucune IA. Ses chiffres ne sont que des totaux ; les mots qui ont pesé dans un message sont pour vous, dans votre propre terminal (`sioul spam why`), jamais proposés à un agent d’IA.
 
 Pour tout oublier, supprimez `~/.local/share/sioul/spam/` sur cet ordinateur : sa table, partagée, quitte alors aussi vos autres appareils.
@@ -99,7 +101,7 @@ Chaque appareil garde ses propres données. Ce qui doit voyager entre vos ordina
 
 ## Le courrier chiffré {#encrypted-mail}
 
-Avec OpenPGP, Sioul signe et chiffre vos messages quand vous les envoyez, déchiffre et vérifie ceux que vous recevez, et donne votre clé publique aux personnes à qui vous écrivez (Autocrypt). Vos clés secrètes restent sur l’appareil où elles ont été créées. Voir [Le courrier](mail.md#signing-and-encrypting).
+Avec OpenPGP, Sioul signe et chiffre vos messages quand vous les envoyez, déchiffre et vérifie ceux que vous recevez, et donne votre clé publique aux personnes à qui vous écrivez (Autocrypt). Vos clés secrètes restent sur l’appareil où elles ont été créées. Une clé gardée sur une [clé de sécurité](accounts.md#security-key) ne la quitte jamais : la clé signe et ouvre elle-même, après son code PIN, que Sioul garde en mémoire quinze minutes sans usage et n’écrit jamais nulle part. Voir [Le courrier](mail.md#signing-and-encrypting).
 
 ## Une adresse publique {#a-public-address}
 

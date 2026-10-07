@@ -161,7 +161,7 @@ Sites run in Qt WebEngine, the engine of Chromium, in a profile of their own, ap
 |---|---|---|---|---|
 | Logins from Bitwarden | your Bitwarden account: bitwarden.com, bitwarden.eu, your own server or Vaultwarden, over HTTPS | the owner's own vault on Bitwarden's cloud, in daily use (6 October 2026); its decryption checked on Bitwarden's own test values | your own server or Vaultwarden | read only: nothing is written to your vault. Duo as a second step: not supported. On a phone: no security key |
 | Your accounts' passwords | your system's keyring | Linux, in daily use | Windows' Credential Manager, macOS' Keychain, Android's KeyStore | passwords never travel between your devices |
-| Encrypted mail (OpenPGP) | your key, made in Sioul or imported from GnuPG | GnuPG 2.4, both ways: signed, encrypted, tampered | Thunderbird, Proton, any program that reads PGP/MIME; the Web Key Directory of their domain, keys.openpgp.org | Sioul keeps its own keys and never reads or writes GnuPG's. Keys kept on a smartcard or a security key: not supported. Your secret keys stay on their device |
+| Encrypted mail (OpenPGP) | your key, made in Sioul or imported from GnuPG | GnuPG 2.4, both ways: signed, encrypted, tampered | Thunderbird, Proton, any program that reads PGP/MIME; the Web Key Directory of their domain, keys.openpgp.org | Sioul keeps its own keys and never reads or writes GnuPG's. Keys on a security key (an OpenPGP card: YubiKey, Nitrokey): on computers, through the system's smart card service (pcscd on Linux); not yet tried with a real key; not on phones yet. Your secret keys stay on their device |
 
 ## Your watch
 

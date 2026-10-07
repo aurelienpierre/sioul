@@ -57,6 +57,7 @@
 //! - [`verify`]: Sioul's own checks of who sent a message: SPF, DKIM, DMARC, ARC, reverse DNS.
 //! - [`unsubscribe`]: leaving a mailing list in one click, the request itself (RFC 8058).
 //! - [`keys`]: looking up someone's OpenPGP key, only when you ask.
+//! - [`securitykey`]: your security key's certificate, looked up when you ask; GnuPG asked to let the key go.
 //! - [`antivirus`]: checking a file before it opens.
 //! - [`shield_ai`]: the AI reading of a shielded address, when you allow it.
 //! - [`notify`]: the desktop's notifications: a verified code, a reminder, new mail, the time running.
@@ -92,6 +93,7 @@
 //!
 //! - [`disk`]: the room left on a disk.
 //! - [`dnd`]: the desktop's do-not-disturb during Sioul's pauses (Linux and the BSDs).
+//! - [`power`]: on mains power or not, saving power or not, idle or not, a metered connection or not: for the spam filter's training by itself.
 
 // The test feature accepts any server certificate: never in a build made for use.
 #[cfg(all(feature = "insecure-test-tls", not(debug_assertions)))]
@@ -124,6 +126,8 @@ pub mod lease;
 pub mod mailbox;
 pub mod notify;
 pub mod ocr;
+// What the computer says of itself (power, saving, idle, a metered connection): the spam filter's training by itself.
+pub mod power;
 // The sharing folder fetched from its server too, beside the sync app (docs/database.md).
 pub mod remote;
 // Signing in to IMAP and SMTP with an access token (XOAUTH2): Google's mail.
@@ -131,6 +135,7 @@ pub mod sasl;
 pub mod scout;
 pub mod search;
 pub mod secret;
+pub mod securitykey;
 pub mod send;
 pub mod share;
 pub mod shield_ai;

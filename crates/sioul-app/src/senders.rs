@@ -40,18 +40,29 @@ fn by_id(by: By) -> String {
 }
 
 /// Where a sender stands, and why, for "Their mail" (`addresses`: theirs, a
-/// JSON array, or one): {standing (one of the five states), from (what
-/// decided), name (the card, category or pattern that decided), own (their
-/// first address has its own entry), choice (that entry's list, "" when
-/// none), said (a sentence), choices [{value, label}]: "As their categories
-/// say" and the four lists with their mail's times}.
+/// JSON array, or one; or a caller's number, `tel:…`, judged as calls judge
+/// it): {standing (one of the five states), from (what decided), name (the
+/// card, category or pattern that decided), own (their first address or
+/// number has its own entry), choice (that entry's list, "" when none), said
+/// (a sentence), choices [{value, label}]: "As their categories say" and the
+/// four lists with their mail's times}.
 pub(crate) fn standing_json(text: &str) -> String {
     let config = load_config();
     let senders = porch::Senders::load(&config);
     let attention = sioul_core::attention::Attention::of(&config);
     let first = addresses(text).into_iter().next().unwrap_or_default();
-    let judged = senders.judge(&first);
-    let own = judged.by == By::Address;
+    let (judged, own) = match first.strip_prefix(porch::TEL) {
+        Some(number) => {
+            let judged = senders.judge_number(number);
+            let own = judged.by == By::Number;
+            (judged, own)
+        }
+        None => {
+            let judged = senders.judge(&first);
+            let own = judged.by == By::Address;
+            (judged, own)
+        }
+    };
     let choices: Vec<serde_json::Value> = std::iter::once(serde_json::json!({ "value": "", "label": tr().text("sender-categories", None) }))
         .chain(Standing::ALL.iter().map(|s| serde_json::json!({ "value": s.as_str(), "label": sioul_core::attention::list_choice(tr(), Who::of(*s), &attention, true) })))
         .collect();

@@ -327,7 +327,7 @@ fn host_of(origin: &str) -> String {
 
 /// A phone number as written in a notification: digits, at least seven (a
 /// short code has six at most), with spaces, dots, dashes, brackets and a
-/// leading "+" allowed ("+33 6 39 98 01 01").
+/// leading "+" allowed ("+262 6 39 98 01 01").
 pub fn number_in(text: &str) -> Option<String> {
     let text = text.trim().trim_start_matches('\u{202a}').trim_end_matches('\u{202c}').trim();
     let fine = !text.is_empty() && text.chars().enumerate().all(|(i, c)| c.is_ascii_digit() || " .-()/\u{a0}\u{202f}".contains(c) || (c == '+' && i == 0));
@@ -382,7 +382,7 @@ fn sender_of(person: &Person, book: bool) -> Sender {
     if name.is_empty() { Sender::Unknown } else { Sender::Named { name, book } }
 }
 
-/// "%2B33639980101" → "+33639980101": what a URI keeps encoded.
+/// "%2B262639980101" → "+262639980101": what a URI keeps encoded.
 fn percent_decoded(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -1383,12 +1383,12 @@ mod tests {
     }
 
     // Fixtures, as AppNotes.java hands them (invented people and numbers).
-    const SMS_NUMBER: &str = r#"{"key":"0|com.google.android.apps.messaging|1|sms|10001","package":"com.google.android.apps.messaging","app":"Messages","category":"msg","template":"android.app.Notification$MessagingStyle","title":"+33 6 39 98 01 01","text":"Tu es où ?","messages":[{"sender":{"name":"+33 6 39 98 01 01","key":"+33639980101"},"text":"Tu es où ?"}],"sms_app":true,"shortcut":"conv-41"}"#;
-    const SMS_CONTACT: &str = r#"{"key":"0|com.google.android.apps.messaging|2|sms|10001","package":"com.google.android.apps.messaging","app":"Messages","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Maman","messages":[{"sender":{"name":"Maman","uri":"tel:%2B33639980102"},"text":"Rappelle-moi"}],"sms_app":true}"#;
+    const SMS_NUMBER: &str = r#"{"key":"0|com.google.android.apps.messaging|1|sms|10001","package":"com.google.android.apps.messaging","app":"Messages","category":"msg","template":"android.app.Notification$MessagingStyle","title":"+262 6 39 98 01 01","text":"Tu es où ?","messages":[{"sender":{"name":"+262 6 39 98 01 01","key":"+262639980101"},"text":"Tu es où ?"}],"sms_app":true,"shortcut":"conv-41"}"#;
+    const SMS_CONTACT: &str = r#"{"key":"0|com.google.android.apps.messaging|2|sms|10001","package":"com.google.android.apps.messaging","app":"Messages","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Maman","messages":[{"sender":{"name":"Maman","uri":"tel:%2B262639980102"},"text":"Rappelle-moi"}],"sms_app":true}"#;
     const SMS_SENDER_ID: &str = r#"{"key":"0|foundation.e.message|3|null|10002","package":"foundation.e.message","app":"Message","title":"AMELI","text":"Votre attestation est disponible dans votre compte.","messages":[{"sender":{"name":"AMELI"},"text":"Votre attestation est disponible dans votre compte."}],"sms_app":true}"#;
     const SMS_SHORT: &str = r#"{"key":"0|foundation.e.message|4|null|10002","package":"foundation.e.message","app":"Message","title":"38015","text":"Votre colis arrive demain entre 9h et 13h.","sms_app":true}"#;
     const SMS_CODE: &str = r#"{"key":"0|foundation.e.message|5|null|10002","package":"foundation.e.message","app":"Message","title":"BANQUE","text":"Votre code de vérification : 482913. Ne le communiquez à personne.","sms_app":true}"#;
-    const WHATSAPP_PERSON: &str = r#"{"key":"0|com.whatsapp|1|33639980103@s.whatsapp.net|10100","package":"com.whatsapp","app":"WhatsApp","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Jeanne Martin","shortcut":"33639980103@s.whatsapp.net","is_conversation":true,"messages":[{"sender":{"name":"Jeanne Martin","key":"1","uri":"content://com.android.contacts/contacts/lookup/0r1-ABC/1","numbers":["+33 6 39 98 01 03"]},"text":"On se voit demain ?"}]}"#;
+    const WHATSAPP_PERSON: &str = r#"{"key":"0|com.whatsapp|1|262639980103@s.whatsapp.net|10100","package":"com.whatsapp","app":"WhatsApp","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Jeanne Martin","shortcut":"262639980103@s.whatsapp.net","is_conversation":true,"messages":[{"sender":{"name":"Jeanne Martin","key":"1","uri":"content://com.android.contacts/contacts/lookup/0r1-ABC/1","numbers":["+262 6 39 98 01 03"]},"text":"On se voit demain ?"}]}"#;
     const WHATSAPP_GROUP: &str = r#"{"key":"0|com.whatsapp|1|120363000000000001@g.us|10100","package":"com.whatsapp","app":"WhatsApp","category":"msg","template":"android.app.Notification$MessagingStyle","title":"École Jules Ferry","conversation":"École Jules Ferry","group_conversation":true,"shortcut":"120363000000000001@g.us","is_conversation":true,"messages":[{"sender":{"name":"Mme Durand"},"text":"Sortie annulée demain, les enfants restent à l'école."}]}"#;
     const DISCORD_SERVER: &str = r##"{"key":"0|com.discord|7|null|10200","package":"com.discord","app":"Discord","channel":"messages","channel_name":"Messages","category":"msg","group":"GROUP_MESSAGE_CREATE","template":"android.app.Notification$MessagingStyle","title":"Rust FR #général","conversation":"Rust FR #général","group_conversation":true,"shortcut":"110022003344556677","is_conversation":true,"messages":[{"sender":{"name":"ferris","key":"ferris"},"text":"Nouvelle version ce soir"}]}"##;
     const DISCORD_DM: &str = r#"{"key":"0|com.discord|8|null|10200","package":"com.discord","app":"Discord","channel":"dm","category":"msg","template":"android.app.Notification$MessagingStyle","title":"alice","shortcut":"110022003344556688","is_conversation":true,"messages":[{"sender":{"name":"alice","key":"alice"},"text":"tu as vu ?"}]}"#;
@@ -1411,22 +1411,22 @@ mod tests {
         // SMS: a number is someone, a contact's tel: URI too; a sender id or a short code is an automaton.
         let sms = talk(SMS_NUMBER);
         assert_eq!((sms.via, sms.sms), (Channel::Messages, true));
-        assert_eq!(sms.sender, Sender::Known { numbers: vec!["+33 6 39 98 01 01".into()], emails: vec![], contact: false });
-        assert_eq!(talk(SMS_CONTACT).sender, Sender::Known { numbers: vec!["+33639980102".into()], emails: vec![], contact: false });
+        assert_eq!(sms.sender, Sender::Known { numbers: vec!["+262 6 39 98 01 01".into()], emails: vec![], contact: false });
+        assert_eq!(talk(SMS_CONTACT).sender, Sender::Known { numbers: vec!["+262639980102".into()], emails: vec![], contact: false });
         assert_eq!(talk(SMS_SENDER_ID).sender, Sender::Named { name: "AMELI".into(), book: true });
         assert_eq!(classify(&posted(SMS_SHORT), &choices), Kind::Automaton { site: String::new() });
         assert_eq!(classify(&posted(SMS_CODE), &choices), Kind::Code);
         // WhatsApp: a person by the phone's address book; a group by its conversation.
         let jeanne = talk(WHATSAPP_PERSON);
-        assert_eq!(jeanne.sender, Sender::Known { numbers: vec!["+33 6 39 98 01 03".into()], emails: vec![], contact: true }, "the phone's contact");
+        assert_eq!(jeanne.sender, Sender::Known { numbers: vec!["+262 6 39 98 01 03".into()], emails: vec![], contact: true }, "the phone's contact");
         let school = talk(WHATSAPP_GROUP);
         let conversation = school.conversation.clone().unwrap();
         assert_eq!((conversation.title.as_str(), conversation.group), ("École Jules Ferry", true));
         assert_eq!(conversation.key, talk_key("com.whatsapp", "120363000000000001@g.us"));
         assert_eq!(school.sender, Sender::Named { name: "Mme Durand".into(), book: true });
         // A name alone, found in the phone's address book: WhatsApp's counts, Discord's does not.
-        let by_name = r#"{"key":"k","package":"com.whatsapp","app":"WhatsApp","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Paul","messages":[{"sender":{"name":"Paul","by_name":["+33 6 39 98 01 04"]},"text":"Salut"}]}"#;
-        assert_eq!(talk(by_name).sender, Sender::Known { numbers: vec!["+33 6 39 98 01 04".into()], emails: vec![], contact: true });
+        let by_name = r#"{"key":"k","package":"com.whatsapp","app":"WhatsApp","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Paul","messages":[{"sender":{"name":"Paul","by_name":["+262 6 39 98 01 04"]},"text":"Salut"}]}"#;
+        assert_eq!(talk(by_name).sender, Sender::Known { numbers: vec!["+262 6 39 98 01 04".into()], emails: vec![], contact: true });
         let discord_by_name = by_name.replace("com.whatsapp", "com.discord");
         assert_eq!(talk(discord_by_name.as_str()).sender, Sender::Named { name: "Paul".into(), book: false });
         // A bot says it is one: an automaton. A six-digit short code is no phone number.
@@ -1490,7 +1490,7 @@ mod tests {
         assert_eq!(classify(&posted(CHROME_SITE), &chosen), Kind::AtOnce);
         // An app said to carry messages between people: its plain notifications too.
         chosen.app.insert("org.example.old.sms".into(), AppChoice { kind: AppKind::People, ..AppChoice::default() });
-        let old = classify(&posted(r#"{"package":"org.example.old.sms","title":"+33 6 39 98 01 05","text":"Coucou"}"#), &chosen);
+        let old = classify(&posted(r#"{"package":"org.example.old.sms","title":"+262 6 39 98 01 05","text":"Coucou"}"#), &chosen);
         assert!(matches!(old, Kind::People(Talk { sender: Sender::Known { .. }, .. })), "{old:?}");
     }
 
@@ -1699,7 +1699,7 @@ mod tests {
         let held = decide(&proton, Some(Who::Safe), false, &choices, &ask(&night, &clock, None, None));
         assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-07T07:00:00"));
         // A missed call by the Calls row (Q23): a stranger's in work time, never at night.
-        let missed = classify(&posted(r#"{"key":"m","package":"com.android.dialer","category":"missed_call","title":"+33 6 39 98 01 07"}"#), &choices);
+        let missed = classify(&posted(r#"{"key":"m","package":"com.android.dialer","category":"missed_call","title":"+262 6 39 98 01 07"}"#), &choices);
         assert_eq!(decide(&missed, Some(Who::Stranger), false, &choices, &ask(&at("2026-10-06T10:00[Europe/Paris]"), &clock, None, None)).why, Why::Allowed);
         assert_eq!(decide(&missed, Some(Who::Stranger), false, &choices, &ask(&night, &clock, None, None)).why, Why::Waiting);
     }

@@ -324,7 +324,7 @@ The "numbers not in your contacts" row is the rule asked ("silenced to voicemail
 8. **Any other number not in the contacts**, then **hidden numbers**: their rows.
 9. Nothing decided in time, no table, a table past its last frame: Android rings the call (1.4, 7.5); past its frames, only steps 1 to 3 and 7 apply.
 
-**8.4 Where the rules live.** Shared through Sioul's sharing, as the do-not-disturb list is ([android.md](../android.md), "Pauses"; the do-not-disturb work's `config/dnd-people.toml`): the matrix's rows for calls (with the settings, as `[reach]`), numbers on the four lists (beside the addresses, as `tel:` lines: a guess), the categories (on the contact cards), the switches for automated calls and impossible numbers, "Answer every call". Per phone: whether this phone screens (the role and the permission), the 24-hour window after an emergency call, the log of calls held. People on the do-not-disturb list ring at every time, sleep and pauses included, and are starred on each phone by the person (guided), so that Android's own mode lets them through as well. Whether the log of calls held travels to the computer (to read on the Porch there) is an open question.
+**8.4 Where the rules live.** Shared through Sioul's sharing, as the do-not-disturb list is ([android.md](../android.md), "Pauses"; the do-not-disturb work's `config/dnd-people.toml`): the matrix's rows for calls (with the settings, as `[reach]`), numbers on the four lists (beside the addresses, as `tel:` lines: a guess), the categories (on the contact cards), the switches for automated calls and impossible numbers, "Answer every call". Per phone: whether this phone screens (the role and the permission), the 24-hour window after an emergency call, the log of calls held. People on the do-not-disturb list ring at every time, sleep and pauses included, and are starred on each phone by the person (guided), so that Android's own mode lets them through as well. Whether the log of calls held travels to the computer (to read on the Porch there) was an open question; the owner answered it on 7 October 2026: it does, sealed, a part of the sharing of its own ([porch.md](../porch.md), "Calls declined").
 
 **8.5 What the person sees.**
 - During: nothing for a call sent to voicemail (`setSkipNotification(true)`); a silent call shows as the phone app shows calls; the phone's own call history lists both, with Sioul's name (1.3).
@@ -372,7 +372,7 @@ CS17. Written first: the list offers a written reply before a call, and the setu
 CS18. Transcripts only from audio Sioul legitimately holds (the operator's voicemail by e-mail), made on the device, never acted on, and shown only once their accuracy on French telephone audio is tested. — 5.1–5.3, 7.6.
 
 **Sharing, texts, setup**
-CS19. Rules, lists, categories and switches travel through Sioul's sharing between the person's own devices; the role, the emergency window and the log of held calls belong to each phone; nothing ever shows one person another person's calls. — 8.4, 7.6.
+CS19. Rules, lists, categories and switches travel through Sioul's sharing between the person's own devices; the role and the emergency window belong to each phone; the log of calls screened travels sealed between the person's own devices, while its part is on (7 October 2026: the owner's request); nothing ever shows one person another person's calls. — 8.4, 7.6.
 CS20. Sioul does not filter texts: do-not-disturb keeps them silent at the times set; "Block calls and texts on this phone" opens Android's blocked-numbers page for the person to confirm. — 1.10, 1.7.
 CS21. Setup: one page on what Sioul does, never does, and what always rings; Android's role dialog; the contacts permission; the people who always get through and a "care" category; a try with a real call. — 8.6, 1.6, 7.2.
 
@@ -386,7 +386,7 @@ CS21. Setup: one page on what Sioul does, never does, and what always rings; And
 6. **Two hidden calls within 15 minutes**: the same caller or not? Letting the second ring helps a hospital and lets a spoofer through.
 7. **The matrix's defaults** (8.2), above all for numbers not in the contacts in working hours: voicemail as asked, or silent?
 8. **Numbers called or answered lately**: for how many days do they count as known?
-9. **The list on the computer**: one place to read who called, or the phone's calls shown where they do not belong?
+9. **The list on the computer**: one place to read who called, or the phone's calls shown where they do not belong? Answered (7 October 2026): on each of your devices, at the times your rows allow, behind a setting on by default ([porch.md](../porch.md), "Calls declined").
 10. **Voicemail audio**: which French operators send voicemail by e-mail, in which format; how accurate French transcription is on telephone audio; whether a wrong transcript does more harm than none.
 11. **MAN**: what `getCallerNumberVerificationStatus()` reads on Orange, SFR, Bouygues Telecom and Free (expected: not verified, every call).
 12. **Speed**: how long a cold start of the screening process takes on a 2019 phone, against Telecom's five seconds.
