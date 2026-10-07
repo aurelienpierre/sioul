@@ -942,7 +942,14 @@ pub struct Source {
 impl Config {
     /// The mail account a stored message belongs to, from where its file is.
     pub fn account_of(&self, file: &Path) -> Option<&Account> {
-        self.accounts.iter().filter(|a| a.syncs()).find(|a| file.starts_with(a.maildir_path()))
+        let syncing = || self.accounts.iter().filter(|a| a.syncs());
+        // Compared as written first; then each path as the system resolves it, where a
+        // folder sits behind a link (macOS's /var is /private/var; a mail folder linked
+        // elsewhere): a path found through the link and its account's would not match.
+        syncing().find(|a| file.starts_with(a.maildir_path())).or_else(|| {
+            let file = std::fs::canonicalize(file).ok()?;
+            syncing().find(|a| std::fs::canonicalize(a.maildir_path()).is_ok_and(|root| file.starts_with(root)))
+        })
     }
 
     /// Reads a configuration file; each account takes the general history
@@ -1820,6 +1827,26 @@ pub fn expand_home(path: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A message found by the path the system resolves (macOS's /var is
+    /// /private/var) still has its account, the account's folder named
+    /// through a link.
+    #[cfg(unix)]
+    #[test]
+    fn an_account_is_found_through_a_link() {
+        let dir = std::env::temp_dir().join(format!("sioul-account-link-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("real/mail-a/cur")).unwrap();
+        std::os::unix::fs::symlink(dir.join("real"), dir.join("link")).unwrap();
+        let file = dir.join("real/mail-a/cur/1.x:2,S");
+        std::fs::write(&file, "Subject: x\r\n\r\nx").unwrap();
+        let config: Config = toml::from_str(&format!("[[account]]\nid = \"a\"\nkind = \"imap\"\nhost = \"imap.example.org\"\nmaildir = \"{}\"\n", dir.join("link/mail-a").display())).unwrap();
+        let resolved = std::fs::canonicalize(&file).unwrap();
+        assert_eq!(config.account_of(&resolved).map(|a| a.id.as_str()), Some("a"));
+        assert_eq!(config.account_of(&dir.join("link/mail-a/cur/1.x:2,S")).map(|a| a.id.as_str()), Some("a"));
+        assert!(config.account_of(&dir.join("elsewhere/1.x")).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn settings_are_written_in_place() {
