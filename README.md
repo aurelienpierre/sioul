@@ -14,6 +14,8 @@ A letter from the tax office, the task it asks for, the appointment, the documen
 
 **It is not a productivity app.** It does not try to make you do more, answer faster or keep up with everything: it tries to make admin ask less of you. It is designed as [an act of care](#an-act-of-care).
 
+**It is made for the people who need it most, from research, not from taste.** Sioul is designed for the people for whom admin costs most: neurodivergent people, autistic or with ADHD, people living with trauma, anxiety, depression or burnout, with an eating disorder, or with an illness that limits their energy. Its design is trauma-informed: safety, predictability and choice come first, nothing surprises or blames you, and everything can be undone. Its choices are firm, and none of them is a matter of taste: each comes from published studies, cited with what they found and how strong their evidence is ([what the research says](docs/research.md)).
+
 **Website and user guide: [aurelienpierre.github.io/sioul](https://aurelienpierre.github.io/sioul/)**
 
 ![Sioul's window: the list of places on the left (Porch, Tasks, Mail, Sites, Agenda, Contacts, Notes, Projects, Time, Budgets, Papers, Health); on the right, the Porch, with a one-time code and its Copy button on top, a chat's news, then the new mail sorted into lanes.](website/docs/assets/screens/porch.png)

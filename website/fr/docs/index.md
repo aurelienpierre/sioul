@@ -1,6 +1,6 @@
 ---
 title: Des démarches qui s’adaptent à vous
-description: "Sioul est un environnement administratif personnel. Il ajuste les exigences du travail, des institutions et de l’argent à ce qu’une personne peut donner (l’attention, l’énergie, la santé et le repos d’abord), lui laisse décider de ce qui peut la joindre et quand, et garde les liens entre le courrier, les tâches, les rendez-vous, les papiers et les paiements. Un logiciel libre, sur vos propres appareils, conçu comme un acte de soin, à partir de la recherche."
+description: "Sioul est un environnement administratif personnel, sensible au trauma et conçu à partir de la recherche pour les personnes à qui l’administratif coûte le plus, dont les personnes neuroatypiques. Il ajuste les exigences du travail, des institutions et de l’argent à ce qu’une personne peut donner (l’attention, l’énergie, la santé et le repos d’abord), lui laisse décider de ce qui peut la joindre et quand, et garde les liens entre le courrier, les tâches, les rendez-vous, les papiers et les paiements. Un logiciel libre, sur vos propres appareils, conçu comme un acte de soin, à partir de la recherche."
 ---
 
 # Sioul {#sioul}
@@ -16,6 +16,8 @@ Une lettre des impôts, la tâche qu’elle demande, le rendez-vous, le document
 **Sioul est un environnement administratif personnel.** Il rassemble ce que la vie moderne éparpille entre les messageries, les sites, les agendas, les listes de tâches, les fichiers et les banques, et ne met en avant que ce qui a sa place dans votre attention maintenant. Il fonctionne sur vos propres appareils.
 
 **Ce n’est pas un logiciel de productivité.** Il ne cherche pas à vous faire faire plus, répondre plus vite ou tout tenir à jour : il cherche à ce que les démarches vous demandent moins. Il est conçu comme [un acte de soin](#an-act-of-care).
+
+**Il est fait pour les personnes qui en ont le plus besoin, à partir de la recherche, et non d’un goût.** Sioul est conçu pour les personnes à qui l’administratif coûte le plus : les personnes neuroatypiques, autistes ou avec un TDAH, les personnes qui vivent avec un traumatisme, de l’anxiété, une dépression ou un épuisement, avec un trouble des conduites alimentaires, ou avec une maladie qui limite leur énergie. Sa conception est sensible au trauma : la sécurité, la prévisibilité et le choix passent d’abord, rien ne vous surprend ni ne vous blâme, et tout peut être annulé. Ses choix sont fermes, et aucun n’est affaire de goût : chacun vient d’études publiées, citées avec ce qu’elles ont trouvé et la force de leurs preuves ([ce que dit la recherche, en anglais](https://aurelienpierre.github.io/sioul/dev/research.html)).
 
 ## Vous décidez de ce qui passe {#you-decide-what-gets-through}
 
@@ -184,13 +186,14 @@ Vos agendas, contacts et tâches Google peuvent venir aussi. Si vous vous connec
 
 ## Fondé sur la recherche, et sur des refus {#built-on-research-and-on-refusals}
 
-Chaque règle de Sioul vient d’une chaîne : ce que des études ont observé, pourquoi, la règle qui en découle, ce que fait Sioul, et ce qu’il refuse. En voici cinq :
+Chaque règle de Sioul vient d’une chaîne : ce que des études ont observé, pourquoi, la règle qui en découle, ce que fait Sioul, et ce qu’il refuse. En voici six :
 
 - **Les forces changent, et il n’y a que vous pour savoir quand.** L’épuisement autistique s’apaise quand on baisse les attentes (Raymaker et al. 2020) ; des adultes avec un TDAH aimaient une vue de leur « météo intérieure », et pas les outils qui les surveillent (Chen, Meng & Nie 2026). Vous dites donc comment est la journée, et rien n’est deviné.
 - **Regarder son courrier moins souvent, à des moments prévisibles.** Relever son courrier trois fois par jour a fait baisser le stress dans un essai randomisé ; regrouper les notifications a amélioré l’attention et l’humeur, alors que n’en recevoir aucune rendait les gens plus anxieux (Kushlev & Dunn 2015 ; Fitz et al. 2019). Le courrier attend donc les heures que vous avez choisies, et Sioul dit quand elles viennent.
 - **Le plus dur, c’est de commencer.** L’inertie autistique, une difficulté à passer de l’intention à l’action, s’atténue avec un appui extérieur (Buckle et al. 2021) ; avec un TDAH, l’aide a sa place au moment et à l’endroit où l’action se fait (Barkley 2012). Sioul choisit donc une petite étape suivante, et dit pourquoi.
 - **Les soirées servent à récupérer.** Se détacher du travail après les heures va de pair avec moins d’épuisement, et le simple fait de s’attendre à du courrier professionnel le soir fait du tort (Wendsche & Lohmann-Haislah 2017 ; Becker et al. 2021). Le travail se repose donc en dehors de vos heures de travail.
 - **Des progrès, jamais des séries.** Une série rompue fait baisser l’engagement ensuite, d’autant plus quand on s’en fait le reproche (Silverman & Barasch 2023). Sioul montre donc ce qui a été fait, et ne compte jamais ce qui ne l’a pas été.
+- **La sécurité, la confiance et le choix d’abord.** L’informatique sensible au trauma demande aux logiciels la sécurité, la confiance, la collaboration et le choix de la personne (Chen et al. 2022). Rien dans Sioul ne vous surprend donc, chaque raison est montrée, tout peut être annulé, et rien n’est supprimé ni envoyé sans vous.
 
 Sioul refuse aussi ce que d’autres logiciels font, chaque fois avec les preuves : les séries, les trophées et les points ; les comptes de ce qui est « en retard » ; les rappels répétés ; les notes, courbes et calendriers d’humeur, de symptômes ou d’énergie ; deviner vos forces ou votre humeur d’après votre comportement ou une montre ; un planning qui déplace les choses sans demander ; une IA ou un service qui envoie, réserve ou paie de lui-même.
 
