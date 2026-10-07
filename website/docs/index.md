@@ -1,6 +1,6 @@
 ---
 title: Admin that adapts to you
-description: Sioul is a personal administrative environment, trauma-informed and designed from research for the people admin costs most, neurodivergent people among them. It fits the demands of work, institutions and money around what a person can give (attention, energy, health and rest first), lets them decide what may reach them and when, and keeps the links between mail, tasks, appointments, papers and payments. Free software, on your own devices, designed as an act of care, from research.
+description: "Sioul is a personal administrative environment, trauma-informed and designed from research for the people admin costs most: neurodivergent people, people living with PTSD, ME/CFS, long COVID or an eating disorder, and anyone whose energy or thinking is limited. It fits the demands of work, institutions and money around what a person can give (attention, energy, health and rest first), lets them decide what may reach them and when, and keeps the links between mail, tasks, appointments, papers and payments. Free software, on your own devices, designed as an act of care, from research."
 ---
 
 # Sioul
@@ -17,7 +17,7 @@ A letter from the tax office, the task it asks for, the appointment, the documen
 
 **It is not a productivity app.** It does not try to make you do more, answer faster or keep up with everything: it tries to make admin ask less of you. It is designed as [an act of care](#an-act-of-care).
 
-**It is made for the people who need it most, from research, not from taste.** Sioul is designed for the people for whom admin costs most: neurodivergent people, autistic or with ADHD, people living with trauma, anxiety, depression or burnout, with an eating disorder, or with an illness that limits their energy. Its design is trauma-informed: safety, predictability and choice come first, nothing surprises or blames you, and everything can be undone. Its choices are firm, and none of them is a matter of taste: each comes from published studies, cited with what they found and how strong their evidence is ([what the research says](dev/research.md)).
+**It is made for the people who need it most, from research, not from taste.** Sioul is designed for the people for whom admin costs most, whose energy or thinking is limited or changes from day to day: neurodivergent people, autistic or with ADHD; people living with PTSD or another trauma, anxiety, depression or burnout; with ME/CFS (chronic fatigue syndrome), long COVID or another illness that limits energy or thinking; with an eating disorder. Its design is trauma-informed: safety, predictability and choice come first, nothing surprises or blames you, and everything can be undone. Its choices are firm, and none of them is a matter of taste: each comes from published studies, cited with what they found and how strong their evidence is ([what the research says](dev/research.md)).
 
 ## You decide what gets through
 
@@ -98,7 +98,7 @@ No time tracker, timesheet or invoicing service beside it, and no subscription: 
 
 ## When capacity changes
 
-Sioul was designed first for people for whom administration is especially costly: autistic people, people with ADHD, people dealing with anxiety, trauma, burnout, depression or exhaustion, and people whose energy or cognition fluctuates. The same needs come with long COVID, ME/CFS and other conditions that limit energy, with an eating disorder or irregular eating, with caring for someone, with a bad stretch of life.
+Sioul was designed first for people for whom administration is especially costly: autistic people, people with ADHD, people dealing with anxiety, PTSD or another trauma, burnout, depression or exhaustion, and people whose energy or cognition fluctuates. The same needs come with long COVID, ME/CFS and other conditions that limit energy or thinking, with an eating disorder or irregular eating, with caring for someone, with a bad stretch of life.
 
 Putting off a letter is not laziness: it protects your mood for now (Sirois & Pychyl 2013). And administrative burden weighs most on the people with the fewest resources left, executive function and health among them (Christensen et al. 2020). Sioul works from what a day can hold, which changes, not from a diagnosis: it needs none, and guesses nothing about your state. You say what you can do, and it plans around that.
 
