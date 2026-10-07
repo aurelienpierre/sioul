@@ -88,7 +88,7 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 | Page | Derrière son ⚙ |
 |---|---|
 | [Porche](porch.md#the-porchs-settings) | les projets qui y sont montrés, où arrivent les scans, la lecture d’un message, comment le courrier est trié |
-| [Courrier](mail.md#settings) | par conversation, à quel rythme les dossiers sont relevés, votre propre filtre à indésirables, la lecture d’un message, les listes quittées |
+| [Courrier](mail.md#settings) | par conversation, à quel rythme les dossiers sont relevés, vos filtres, votre propre filtre à indésirables, la lecture d’un message, les listes quittées |
 | [Tâches](tasks.md#the-tasks-settings) | heures de bureau, types, catégories, listes de tâches, où vont les nouvelles tâches, ce qui est du travail et ce qui est à vous, GitHub |
 | [Agenda](agenda.md#the-agenda-settings) | agendas, l’heure à laquelle commence la journée |
 | [Contacts](contacts.md#the-contacts-settings) | carnets d’adresses, la carte |
@@ -96,7 +96,24 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 | [Sites](sites.md#logins-from-bitwarden) | votre compte Bitwarden |
 | [Santé](health.md#your-watch) | le dossier de votre montre, les propositions douces |
 
+Le ⚙ les ouvre à droite de la page, qui reste à côté : deux cinquièmes de la fenêtre et un peu plus, de 520 à 760 pixels ; sur un téléphone, sur tout l’écran. Échap ou un clic à côté les ferme.
+
 Les réglages propres à chaque adresse sont sur sa fiche dans [Comptes](accounts.md#a-mail-address). La lecture du texte long (la police, sa taille et l’interligne) est dans le ⚙ des pages où se lisent les messages, Courrier et Porche, et derrière **Aa** dans les Notes : un seul réglage, montré là où il sert.
+
+### Vos filtres {#your-filters}
+
+Dans le ⚙ de la page Courrier, sous **Filtres** : ce qui est fait au courrier qui arrive, sur son serveur, selon des conditions (dans un dossier, archivé, en indésirable, suivi, marqué comme lu, à la corbeille, un mot-clé), une seule liste pour toutes vos adresses, chaque filtre en une phrase. Comment en faire un, et quand ils agissent : [Courrier, Filtres](mail.md#filters).
+
+<figure markdown="span">
+  [![Sous les filtres, après Les appliquer aux boîtes de réception… : « Dans vos boîtes de réception, un message changerait, lu ou non. Les codes que vous avez demandés, le courrier mis de côté et ce que votre filtre à indésirables garde à revoir restent comme ils sont. », puis chaque filtre qui agirait avec son nombre, « Un message : Banque (De contient …) », et deux boutons, Les appliquer maintenant et Pas maintenant.](../assets/screens/fr/mail-filters-run.png){ loading=lazy }](../assets/screens/fr/mail-filters-run.png "Ouvrir l’image en grand")
+  <figcaption>Les appliquer aux boîtes de réception : ce qui changerait est dit d’abord.</figcaption>
+</figure>
+
+- **Chaque filtre** : son interrupteur (inactif, il est gardé et ne fait rien), sa phrase, ▴ ▾ pour le demander plus tôt ou plus tard, et le crayon pour le modifier. Le premier filtre qui déplace un message décide où il va.
+- **Montrer les filtres de**, avec plusieurs adresses : ceux d’une adresse.
+- **Les appliquer aux boîtes de réception…** : à tout ce qui est dans vos boîtes de réception maintenant, le courrier lu aussi. Sioul dit d’abord ce qui changerait, puis **Les appliquer maintenant** le fait au bout de dix secondes, avec **Annuler**.
+
+Vos filtres vont sur vos autres appareils avec vos réglages, dans `config.toml`, en `[[mail.filter]]`. Chaque message est filtré une fois, par le premier appareil qui le relève.
 
 ### Votre filtre à indésirables {#your-own-spam-filter}
 

@@ -88,7 +88,7 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | Page | Behind its ⚙ |
 |---|---|
 | [Porch](porch.md#the-porchs-settings) | the projects shown there, where scans arrive, how a message reads, how mail is sorted |
-| [Mail](mail.md#settings) | by conversation, how often folders are fetched, your own spam filter, how a message reads, the lists you left |
+| [Mail](mail.md#settings) | by conversation, how often folders are fetched, your filters, your own spam filter, how a message reads, the lists you left |
 | [Tasks](tasks.md#the-tasks-settings) | office hours, kinds, categories, task lists, where new tasks go, what is work and what is yours, GitHub |
 | [Agenda](agenda.md#the-agenda-settings) | calendars, the hour the day opens on |
 | [Contacts](contacts.md#the-contacts-settings) | address books, the map |
@@ -96,7 +96,24 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | [Sites](sites.md#logins-from-bitwarden) | your Bitwarden account |
 | [Health](health.md#your-watch) | your watch's folder, gentle offers |
 
+The ⚙ opens them on the page's right, the page staying beside them: two fifths of the window and a little more, from 520 to 760 pixels; on a phone, over the whole screen. Escape or a click outside closes them.
+
 Each address's own settings are on its card in [Accounts](accounts.md#a-mail-address). How long text reads (the font, its size and the space between lines) is in the ⚙ of the pages where messages are read, Mail and the Porch, and behind **Aa** in Notes: one setting, shown where it is used.
+
+### Your filters
+
+In the Mail page's ⚙, under **Filters**: what is done to new mail on its server, by conditions (into a folder, archived, to spam, flagged, marked read, to the trash, a keyword), one list for all your addresses, each filter in a sentence. How to make one, and when they act: [Mail, Filters](mail.md#filters).
+
+<figure markdown="span">
+  [![Under the filters, after Run them on the inboxes…: “In your inboxes now, one message would change, read or not. Codes you asked for, mail set aside and what your spam filter keeps for review stay as they are.”, then each filter that would act with its count, “One message: Bank (From contains …)”, and two buttons, Run them now and Not now.](../assets/screens/mail-filters-run.png){ loading=lazy }](../assets/screens/mail-filters-run.png "Open the picture at full size")
+  <figcaption>Running them on the inboxes: what would change is said first.</figcaption>
+</figure>
+
+- **Each filter**: its switch (off, it is kept and does nothing), its sentence, ▴ ▾ to ask it earlier or later, and the pencil to change it. The first filter that moves a message decides where it goes.
+- **Show the filters of**, with several addresses: those of one address.
+- **Run them on the inboxes…**: on everything in your inboxes now, read mail too. Sioul says first what would change, then **Run them now** does it after ten seconds, with **Undo**.
+
+Your filters travel to your other devices with your settings, in `config.toml` as `[[mail.filter]]`. Each message is filtered once, by the first device that fetches it.
 
 ### Your own spam filter
 

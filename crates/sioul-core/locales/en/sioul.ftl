@@ -569,6 +569,105 @@ ui-search = Search
 ui-earlier = Earlier messages
 ui-discard = Delete the draft
 
+## Searching the mail by conditions (mailsearch.rs, MailSearch.qml): the mail filters' own conditions.
+ui-search-more = More…
+ui-search-more-tip = Search with conditions: who sent it, to whom, when, what it says or carries, where it is.
+ui-select = Select
+search-title = Search
+search-results = Results
+search-help = Mail by who sent it, to whom, when, what it says or carries. The junk and the trash are left out unless a folder condition names them.
+search-add = Add a condition
+search-remove = Take this condition out
+search-match-all = Mail that meets all of them
+search-match-any = Mail that meets any of them
+search-and = and
+search-clear = Clear
+search-show = Show the messages
+search-change = Change the search
+search-back = Back to the search
+search-placeholder = Words to find
+search-placeholder-who = A name, an address, @domain
+search-placeholder-size = 5 MB, 500 KB
+search-make-filter = Make it a filter…
+search-sentence-empty = Say what to look for.
+search-sentence = Mail { $phrases }.
+search-join-all = {", "}
+search-join-any = {", or "}
+search-phrase-anywhere-contains = with “{ $value }”
+search-phrase-anywhere-not-contains = without “{ $value }”
+search-phrase-from-contains = from …{ $value }…
+search-phrase-from-not-contains = not from …{ $value }…
+search-phrase-from-is = from { $value }
+search-phrase-from-is-not = not from { $value }
+search-phrase-to-contains = to …{ $value }…
+search-phrase-to-not-contains = not to …{ $value }…
+search-phrase-to-is = to { $value }
+search-phrase-to-is-not = not to { $value }
+search-phrase-cc-contains = copied to …{ $value }…
+search-phrase-cc-not-contains = not copied to …{ $value }…
+search-phrase-cc-is = copied to { $value }
+search-phrase-cc-is-not = not copied to { $value }
+search-phrase-subject-contains = whose subject contains “{ $value }”
+search-phrase-subject-not-contains = whose subject does not contain “{ $value }”
+search-phrase-subject-is = whose subject is “{ $value }”
+search-phrase-subject-is-not = whose subject is not “{ $value }”
+search-phrase-body-contains = whose text contains “{ $value }”
+search-phrase-body-not-contains = whose text does not contain “{ $value }”
+search-phrase-attachment-exists = with an attachment
+search-phrase-attachment-missing = without attachments
+search-phrase-attachment-contains = with an attachment named …{ $value }…
+search-phrase-attachment-not-contains = with no attachment named …{ $value }…
+search-phrase-attachment-type-is = with { $kind } attached
+search-phrase-attachment-type-is-not = without { $kind } attached
+search-phrase-date-before = arrived before { $day }
+search-phrase-date-after = arrived after { $day }
+search-phrase-date-between = arrived between { $day } and { $until }
+search-phrase-size-above = larger than { $size }
+search-phrase-size-below = smaller than { $size }
+search-phrase-sender-is = whose sender is { $who }
+search-phrase-sender-is-not = whose sender is not { $who }
+search-phrase-list-exists = from a newsletter or a list
+search-phrase-list-missing = from no newsletter nor list
+search-phrase-list-contains = from the list …{ $value }…
+search-phrase-list-not-contains = not from the list …{ $value }…
+search-phrase-account-is = in { $account }
+search-phrase-account-is-not = not in { $account }
+search-phrase-folder-is = in { $folder }
+search-phrase-folder-is-not = not in { $folder }
+search-phrase-mark-is-read = already read
+search-phrase-mark-is-not-read = not read yet
+search-phrase-mark-is-flagged = flagged
+search-phrase-mark-is-not-flagged = not flagged
+search-phrase-mark-is-answered = answered
+search-phrase-mark-is-not-answered = not answered yet
+search-found = { $n ->
+    [0] Nothing here matches.
+    [one] One message here.
+   *[other] { $n } messages here.
+}
+search-found-all = { $n ->
+    [0] Nothing matches.
+    [one] One message.
+   *[other] { $n } messages.
+}
+search-found-more = The newest { $shown } of { $n } are shown: another condition narrows them down.
+search-server-looking = Looking on the servers for the mail kept only there…
+search-server-found = { $n ->
+    [one] One more on the servers.
+   *[other] { $n } more on the servers.
+}
+search-server-none = Nothing more on the servers.
+search-server-more = { $n ->
+    [one] Perhaps one more on the servers, not shown: another condition narrows them down.
+   *[other] Up to { $n } more on the servers, not shown: another condition narrows them down.
+}
+search-server-failed = { $account }: its server could not be searched ({ $detail }).
+search-open-first = Open it first: Sioul keeps none of it here yet.
+search-on-server = on the server
+search-on-server-tip = Kept on its server only: opening it brings it here.
+search-bringing = Bringing it from the server…
+search-place = { $folder } · { $account }
+
 ## The writing window.
 ui-to-placeholder = Addresses, separated by commas
 ui-cc-bcc = Cc, Bcc
@@ -1293,6 +1392,233 @@ set-spam-filter = Its training
 set-spam-filter-help = It learns on one computer, by hand: train it on this one alone, when you ask, from all your mail: every folder of every address, your Junk folders, and what you said is spam or not on any of your devices. The mail it reads and the words it learns stay on this computer; only its table goes to your other devices, sealed, with no word of your mail in it.
 set-spam-filter-phone = Its table
 set-spam-filter-phone-help = This phone never trains it: one computer does, by hand, on your mail, and its table comes here sealed through your folder (the part “Spam filter”), with no word of your mail in it. What you say here, Spam or Not spam, goes there the same way.
+
+## Mail filters (crates/sioul-core/src/rules.rs; docs/client.md, "Filters").
+filter-field-from = From
+filter-field-to = To
+filter-field-cc = Cc
+filter-field-reply-to = Reply-To
+filter-field-subject = Subject
+filter-field-body = Text
+filter-field-attachment = Attachment
+filter-field-attachment-type = Kind of attachment
+filter-field-sender = Sender
+filter-field-list = Newsletter or list
+filter-field-date = Day it arrived
+filter-field-weekday = Day of the week
+filter-field-hour = Time it arrived
+filter-field-size = Size
+filter-field-anywhere = Anywhere
+filter-field-account = Address
+filter-field-folder = Folder
+filter-field-mark = Message
+filter-mark-read = read
+filter-mark-flagged = flagged
+filter-mark-answered = answered
+filter-test-contains = contains
+filter-test-not-contains = does not contain
+filter-test-is = is
+filter-test-is-not = is not
+filter-test-before = before
+filter-test-after = after
+filter-test-between = between
+filter-test-above = larger than
+filter-test-below = smaller than
+filter-test-exists-attachment = there is one
+filter-test-missing-attachment = there is none
+filter-test-exists-list = it is one
+filter-test-missing-list = it is none
+filter-if-text = { $field ->
+        [from] From
+        [to] To
+        [cc] Cc
+        [reply-to] Reply-To
+        [subject] Subject
+        [list] List
+        [anywhere] Anywhere
+        [account] Address
+        [folder] Folder
+        [mark] Message
+       *[body] Text
+    } { $test ->
+        [not-contains] does not contain
+        [is] is
+        [is-not] is not
+       *[contains] contains
+    } “{ $value }”
+filter-if-attachment = { $test ->
+        [missing] without attachments
+       *[exists] with an attachment
+    }
+filter-if-list = { $test ->
+        [missing] not sent by a newsletter nor a list
+       *[exists] sent by a newsletter or a list
+    }
+filter-if-kind = { $test ->
+        [is-not] no attachment is { $kind }
+       *[is] an attachment is { $kind }
+    }
+filter-if-sender = { $test ->
+        [is-not] the sender is not { $who }
+       *[is] the sender is { $who }
+    }
+filter-if-date = { $test ->
+        [before] arrived before { $value }
+        [between] arrived between { $value } and { $until }
+       *[after] arrived after { $value }
+    }
+filter-if-weekday = { $test ->
+        [is-not] did not arrive on a { $days }
+       *[is] arrived on a { $days }
+    }
+filter-if-hour = { $test ->
+        [before] arrived before { $value }
+        [between] arrived between { $value } and { $until }
+       *[after] arrived from { $value } on
+    }
+filter-if-size = { $test ->
+        [below] smaller than { $value }
+       *[above] larger than { $value }
+    }
+filter-if-none = (no condition yet)
+filter-if-unfinished = (a condition to finish)
+filter-kind-pdf = a PDF
+filter-kind-image = a picture
+filter-kind-document = a document (text, sheet, slides)
+filter-kind-archive = an archive (zip…)
+filter-kind-calendar = an invitation
+filter-kind-audio = a sound
+filter-kind-video = a video
+filter-kind-text = a text file
+filter-who-known = someone you know
+filter-who-safe = safe
+filter-who-neutral = neutral
+filter-who-restricted = restricted
+filter-who-stranger = a stranger
+filter-join-all = {" "}and{" "}
+filter-join-any = {" "}or{" "}
+filter-act-move = Move it to a folder
+filter-act-archive = Archive it
+filter-act-junk = Mark it as spam
+filter-act-flag = Flag it
+filter-act-read = Mark it as read
+filter-act-trash = Move it to the trash
+filter-act-keyword = Add a keyword
+filter-then-move = into “{ $name }”
+filter-then-archive = archived
+filter-then-junk = into the junk, as spam
+filter-then-flag = flagged
+filter-then-read = marked read
+filter-then-trash = into the trash
+filter-then-keyword = keyword “{ $name }”
+filter-then-unknown = (an action this Sioul does not know)
+filter-then-unfinished = (an action to finish)
+filter-then-stop = and no other filter
+filter-then-none = (nothing to do yet)
+filter-said = { $conditions } → { $actions }
+filter-said-empty = A new filter: say what a message shows, then what is done with it.
+filter-problem-unknown = This filter holds something this Sioul does not know: change it, or bring Sioul up to date.
+filter-problem-value = A condition waits for its value.
+filter-problem-date = A day reads as 2026-10-01, and a range goes from its start to its end.
+filter-problem-time = A time reads as 18:00.
+filter-problem-size = A size reads as 5 MB or 500 KB.
+filter-problem-no-condition = Add a condition: without one, this filter does nothing.
+filter-problem-no-action = Choose what it does: without an action, it does nothing.
+filter-problem-folder = Choose the folder it moves messages into.
+filter-problem-keyword = A keyword is one word: no spaces, brackets, braces, quotes, % or *, and none of $Junk, $NotJunk or $SioulFiltered.
+set-filters-group = Filters
+set-filters = Your filters
+set-filters-help = Each filter says what a message shows, then what is done with it on its server. They act on mail that arrives unread in an inbox, on the first of your devices to fetch it; your other devices then leave it alone. Mail the Porch sets aside, a code you asked for and what your spam filter keeps for review are never touched, and nothing is deleted for good.
+filter-only = Only for { $accounts }
+filter-tried = { $n ->
+        [0] In your inboxes now, it takes none of the { $total } messages.
+        [one] In your inboxes now, it takes one of the { $total } messages.
+       *[other] In your inboxes now, it takes { $count } of the { $total } messages.
+    }
+filter-tried-newest = { $n ->
+        [0] Among the { $total } newest messages of your inboxes, it takes none.
+        [one] Among the { $total } newest messages of your inboxes, it takes one.
+       *[other] Among the { $total } newest messages of your inboxes, it takes { $count }.
+    }
+filter-tried-one = { $who }: { $subject }
+filter-preview-line = { $Count } { $n ->
+        [one] message
+       *[other] messages
+    }: { $filter }
+filter-preview = { $n ->
+        [one] In your inboxes now, one message would change, read or not.
+       *[other] In your inboxes now, { $count } messages would change, read or not.
+    } Codes you asked for, mail set aside and what your spam filter keeps for review stay as they are.
+filter-preview-none = No message in your inboxes now matches a filter: nothing would change.
+filter-running = { $n ->
+        [one] Filtering one message in ten seconds.
+       *[other] Filtering { $count } messages in ten seconds.
+    }
+filter-ran = { $n ->
+        [0] No message filtered.
+        [one] One message filtered.
+       *[other] { $Count } messages filtered.
+    }
+filter-failed-folder = { $n ->
+        [one] One message of { $account } could not be moved: there is no folder “{ $folder }” there.
+       *[other] { $Count } messages of { $account } could not be moved: there is no folder “{ $folder }” there.
+    } Make it in Mail, or change the filter; Sioul tries again with the next mail.
+filter-failed-server = { $n ->
+        [one] One message of { $account } could not be filtered: its server did not take it.
+       *[other] { $Count } messages of { $account } could not be filtered: its server did not take them.
+    } Sioul tries again with the next mail.
+filter-failed-keywords = The server of { $account } keeps no keywords: a filter that only adds one does nothing there.
+filter-failed-renumbered = The server of { $account } renumbered its inbox: { $n ->
+        [one] one message was not filtered, and it is told
+       *[other] { $count } messages were not filtered, and they are told
+    } as new mail.
+filter-failed-claimed = { $n ->
+        [one] One message of { $account } was marked by another of your devices, which did not act on it: it is told as new mail.
+       *[other] { $Count } messages of { $account } were marked by another of your devices, which did not act on them: they are told as new mail.
+    }
+filter-cli-acted = { $account }: { $n ->
+        [one] one message filtered.
+       *[other] { $count } messages filtered.
+    }
+filter-ui-narrow = Show the filters of
+filter-ui-all-addresses = Every address
+filter-ui-none = No filter yet.
+filter-ui-none-here = No filter for this address.
+filter-ui-add = Add a filter
+filter-ui-switch = On or off: off, it is kept and does nothing.
+filter-ui-edit = Change it
+filter-ui-done = Done
+filter-ui-up = Ask it earlier
+filter-ui-down = Ask it later
+filter-ui-name = Its name, if you want one
+filter-ui-if = If
+filter-ui-all = every condition holds
+filter-ui-any = one of them holds
+filter-ui-field = What it reads
+filter-ui-test = How it compares
+filter-ui-value = Words to look for
+filter-ui-size = 5 MB
+filter-ui-and = and
+filter-ui-remove = Take it away
+filter-ui-add-condition = Add a condition
+filter-ui-then = Then
+filter-ui-add-action = Add an action
+filter-ui-folder = Choose a folder
+filter-ui-folder-some = This folder is only on { $accounts }: from the other addresses, the message cannot go there, and Sioul says so.
+filter-ui-keyword = A keyword
+filter-ui-more = On which addresses; the filters below
+filter-ui-addresses = On which addresses
+filter-ui-every-address = Every address
+filter-ui-stop = Once it acts, the filters below are not asked
+filter-ui-try = Try it on the inboxes
+filter-ui-looking = Looking through your inboxes…
+filter-ui-delete = Delete this filter
+filter-ui-deleted = Deleted: { $name }
+filter-ui-run-help = Filters act on mail as it arrives unread. To act on everything in your inboxes now, read mail too, run them: Sioul first says what would change.
+filter-ui-run = Run them on the inboxes…
+filter-ui-run-now = Run them now
+filter-ui-not-now = Not now
+filter-from-search-left = A filter reads the mail that arrives in your inboxes: what the search said of folders, and of read, flagged or answered mail, is left out.
 ui-conversation = { $n } messages: show or fold the conversation
 link-made = Tied to “{ $title }”.
 link-undone = The tie is undone.
@@ -3740,6 +4066,7 @@ spam-stage-features = Each message's vector…
 spam-stage-classifier = The classifier: each cost, then its calibration…
 spam-stage-evaluation = Testing on the newest messages…
 spam-stage-export = The table…
+spam-stage-verify = Checking each message as Sioul checks the mail it stores, its signatures and its sender (each fetched whole once, in memory only)…
 spam-account-failed = { $account }: not read ({ $detail }).
 spam-fetch-added = { $n ->
     [one] One message added to the corpus.
@@ -3794,6 +4121,12 @@ spam-corpus-folder = { $folder }: { $records } kept, { $server } on the server a
 spam-corpus-last = Last download: { $date }.
 spam-last-training = Last training: { $date }.
 spam-never-trained = Not trained yet: `sioul spam train`.
+spam-fetch-checked = { $n ->
+    [one] One message checked by Sioul, { $gone } of them no longer on its server.
+   *[other] { $n } messages checked by Sioul, { $gone } of them no longer on their server.
+}
+spam-fetch-offline = No DNS server answered: the messages left are checked at the next download.
+spam-checks = { $account }: Sioul checked { $checked } of { $records } messages ({ $gone } no longer on their server). DKIM: { $dkim_pass } pass, { $dkim_fail } fail, { $dkim_unknown } unknown, { $dkim_none } unsigned. SPF: { $spf_pass } pass, { $spf_fail } fail, { $spf_unknown } unknown. DMARC: { $dmarc_pass } pass, { $dmarc_fail } fail, { $dmarc_unknown } unknown. The sender verified: { $verified }. Old mail whose failures read unknown: { $late }.
 spam-verdicts = { $account }: { $with } of { $records } messages carry a spam filter's verdict; { $read } of them your provider wrote as the mail came in, and those count ({ $flagged } say spam).
 spam-why-none = No verdict: { $detail }
 spam-why-score = Probability of spam: { $p } (score { $f }; above 0, spam).
@@ -4066,7 +4399,6 @@ attention-exceptions-events = An event's own reminder
 attention-exceptions-events-help = Each event can say its own reminder, or none: in its form, Remind.
 attention-open-agenda = Open the Agenda
 attention-exceptions-health = A meal, a nap, the night, one day
-spam-stage-verify = Checking each message as Sioul checks the mail it stores, its signatures and its sender (each fetched whole once, in memory only)…
 attention-exceptions-health-help = Each can go without its notices, for one day or for good: on the Health page.
 attention-open-health = Open Health
 attention-dnd-turns-on = What turns it on
@@ -4121,12 +4453,6 @@ attention-sheet-line-messages-now = { $first ->
    *[other] They come at once { $during }.
 }
 attention-sheet-line-messages-later = { $first ->
-spam-fetch-checked = { $n ->
-    [one] One message checked by Sioul, { $gone } of them no longer on its server.
-   *[other] { $n } messages checked by Sioul, { $gone } of them no longer on their server.
-}
-spam-fetch-offline = No DNS server answered: the messages left are checked at the next download.
-spam-checks = { $account }: Sioul checked { $checked } of { $records } messages ({ $gone } no longer on their server). DKIM: { $dkim_pass } pass, { $dkim_fail } fail, { $dkim_unknown } unknown, { $dkim_none } unsigned. SPF: { $spf_pass } pass, { $spf_fail } fail, { $spf_unknown } unknown. DMARC: { $dmarc_pass } pass, { $dmarc_fail } fail, { $dmarc_unknown } unknown. The sender verified: { $verified }. Old mail whose failures read unknown: { $late }.
     [yes] Their messages are held { $during }.
    *[other] They are held { $during }.
 }

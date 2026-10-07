@@ -16,10 +16,56 @@ Le Porche est fait pour ce qui est nouveau. La page Courrier, pour quand vous ch
 - **À gauche**, chaque adresse avec ses dossiers principaux : Boîte de réception, Envoyés, Brouillons, Archives, Indésirables, Corbeille. Les autres sont repliés sous **Autres dossiers**.
 - **Un petit point** marque un dossier qui a du nouveau. Combien, c’est dit en toutes lettres quand vous l’ouvrez.
 - **Un dossier montre ses deux dernières semaines.** **Messages plus anciens** ouvre le reste, pour qu’aucune liste ne soit sans fin.
-- **Chercher**, en haut d’un dossier : par expéditeur, destinataire et objet.
+- **Chercher**, en haut d’un dossier : par expéditeur, destinataire et objet. **Plus de critères…**, à côté, cherche partout, par conditions ([plus bas](#searching)).
 - **Par conversation**, dans le ⚙ de la page Courrier : un message et ses réponses ensemble, sous le plus récent ; vos propres réponses viennent des Envoyés.
 
 Un clic droit sur un dossier propose **En garder une copie ici** ou **Ne plus en garder de copie** (le serveur garde tous les messages dans les deux cas), **Nouveau dossier…**, et **Supprimer ce dossier vide**, pour un dossier vide à vous.
+
+## Chercher {#searching}
+
+Le champ en haut d’un dossier trouve un expéditeur, un destinataire ou un objet dans ce dossier. Quand il en faut plus, **Plus de critères…**, à côté, ouvre la recherche par conditions à la place des dossiers. Rien de tout cela ne se montre avant.
+
+<figure markdown="span">
+  [![La page Courrier pendant une recherche : à gauche, à la place des dossiers, « Recherche », ce qu’elle parcourt, « Le courrier qui les remplit toutes », puis deux conditions, De contient « no-reply » et Jour d’arrivée après une date, Ajouter une condition, Effacer et En faire un filtre… ; au milieu, « Résultats », la phrase « Le courrier de …no-reply…, arrivé après le … », combien ont été trouvés, puis les messages, chacun avec l’endroit où il est, comme « Boîte de réception · noa@example.com ».](../assets/screens/fr/mail-search.png){ loading=lazy }](../assets/screens/fr/mail-search.png "Ouvrir l’image en grand")
+  <figcaption>La recherche à la place des dossiers ; les résultats dans la liste habituelle, chacun disant où il est.</figcaption>
+</figure>
+
+- **Une condition d’abord**, Partout, avec ce que vous aviez tapé dans la recherche du dossier. **Ajouter une condition** pour une autre : l’expéditeur, les destinataires, l’objet, le texte, une pièce jointe (il y en a une, aucune, une avec un nom), le type de pièce jointe (un PDF, une image…), le jour d’arrivée, la taille, qui est l’expéditeur pour vous, une lettre d’information ou une liste, l’adresse, le dossier, et s’il est lu, suivi ou répondu. Majuscules et accents n’y changent rien.
+- Avec deux conditions ou plus, choisissez **Le courrier qui les remplit toutes** ou **qui en remplit au moins une**.
+- **Les résultats** prennent la place de la liste, les plus récents d’abord, chacun disant où il est. Un message s’ouvre à côté comme dans un dossier : vous allez et venez entre les résultats et les messages. Au-dessus, une phrase dit ce qui est cherché : « Le courrier de …@banque.example…, arrivé après le 3 juin, avec une pièce jointe. »
+- **Partout** : chaque dossier de chaque adresse, sauf les indésirables et la corbeille, à moins de les nommer dans une condition Dossier.
+- **Sur les serveurs aussi** : Sioul garde ici votre courrier récent, et fait venir le plus ancien selon la place sur le disque ; les dossiers gardés sur le serveur seulement ne sont pas ici du tout. Un instant après que vous avez fini de taper (tout de suite avec ++"Entrée"++), Sioul demande le reste à vos serveurs, et le dit : « Recherche sur les serveurs… », puis « 3 de plus sur les serveurs. », ou pourquoi un serveur n’a pas pu être interrogé. Ces messages disent « sur le serveur » ; en ouvrir un le fait d’abord venir ici. Un serveur tient plus aux accents que Sioul : écrivez-les comme les messages les écrivent.
+- **Effacer** revient au dossier.
+- **En faire un filtre…**, à côté, fait de la recherche un filtre de courrier : son éditeur s’ouvre dans le ⚙ de la page Courrier, pour choisir ce qu’il fait de ce courrier à son arrivée.
+
+Les conditions sont celles des [filtres du courrier](#filters), avec les mêmes mots.
+
+## Filtres {#filters}
+
+Les filtres agissent sur le courrier qui arrive, sur son serveur : dans un dossier, archivé, en indésirable, suivi, marqué comme lu, à la corbeille, ou avec un mot-clé. Ils sont dans le ⚙ de la page Courrier, sous **Filtres** : une seule liste pour toutes vos adresses, chaque filtre en une phrase.
+
+<figure markdown="span">
+  [![La page Courrier, ses réglages ouverts à droite, sous Filtres : un court paragraphe sur ce que font les filtres, « Montrer les filtres de : Toutes les adresses », puis quatre filtres, chacun un interrupteur et une phrase : Banque, « De contient « @banquedesberges.example.org » → dans « Archive », marqué comme lu, et aucun autre filtre » ; « Venu d’une lettre d’information ou d’une liste et arrivé un samedi ou dimanche → marqué comme lu » ; « De contient « @bonnes-affaires.example.com » → dans les indésirables », seulement pour noa.ferrand@example.org ; Factures, inactif et estompé ; puis Ajouter un filtre, et Les appliquer aux boîtes de réception….](../assets/screens/fr/mail-filters.png){ loading=lazy }](../assets/screens/fr/mail-filters.png "Ouvrir l’image en grand")
+  <figcaption>Chaque filtre en une phrase, avec son interrupteur ; inactif, il est gardé et ne fait rien.</figcaption>
+</figure>
+
+- **Ajouter un filtre** l’ouvre sur place, avec une condition et une action. Choisissez ce que lit la condition (De, À, Cc, Répondre à, Objet, Texte, Partout, une pièce jointe, son type, qui est l’expéditeur pour vous, une lettre d’information ou une liste, le jour ou l’heure d’arrivée, la taille), comment elle compare (contient, ne contient pas, est, n’est pas ; avant, après, entre ; plus gros, plus petit), et ce qu’elle cherche. **Ajouter une condition** pour une autre ; à partir de deux, choisissez si **toutes les conditions sont vraies** ou si **l’une d’elles est vraie**. La casse et les accents ne comptent pas, comme dans la recherche.
+- **Alors** : le déplacer dans un dossier, l’archiver, le marquer comme indésirable, le suivre, le marquer comme lu, le mettre à la corbeille, ou lui ajouter un mot-clé. **Ajouter une action** pour une autre.
+- **Une phrase** dit le filtre à mesure que vous le composez, et ce qui manque s’il manque quelque chose : « Choisissez le dossier où il déplace les messages. » Chaque changement est gardé aussitôt.
+- Repliés sous une ligne : **Sur quelles adresses** il agit (toutes, ou certaines), et **Une fois qu’il agit, les filtres suivants ne sont pas demandés**.
+- **L’essayer sur les boîtes de réception** compte ce qu’il prend dans vos boîtes de réception maintenant, lu ou non, et en nomme quelques-uns.
+
+<figure markdown="span">
+  [![Le filtre Banque ouvert sur place sous sa phrase : son nom ; Si : De, contient, « @banquedesberges.example.org » ; Ajouter une condition ; Alors : Le déplacer dans un dossier, Archive, et Le marquer comme lu, chacun avec × ; Ajouter une action ; dépliés, Sur quelles adresses : Toutes les adresses, et Une fois qu’il agit, les filtres suivants ne sont pas demandés, cochés tous les deux ; L’essayer sur les boîtes de réception, Terminé, Supprimer ce filtre ; puis « Dans vos boîtes de réception, il prend un des 28 messages. » et le message qu’il prend.](../assets/screens/fr/mail-filter-editor.png){ loading=lazy }](../assets/screens/fr/mail-filter-editor.png "Ouvrir l’image en grand")
+  <figcaption>Un filtre ouvert : sa condition, ses actions, et ce qu’il prend dans vos boîtes de réception maintenant.</figcaption>
+</figure>
+
+- **L’ordre** compte : le premier filtre qui déplace un message décide où il va. ▴ et ▾ demandent un filtre plus tôt ou plus tard. Avec plusieurs adresses, **Montrer les filtres de** montre ceux d’une adresse.
+- **Quand ils agissent** : sur le courrier qui arrive non lu dans une boîte de réception, sur le premier de vos appareils à le relever (cet ordinateur, votre téléphone en arrière-plan, `sioul watch`). Cet appareil marque le message sur son serveur, pour que vos autres appareils n’y touchent plus. Vos filtres vont sur vos autres appareils avec vos réglages.
+- **Ce qu’ils ne touchent jamais** : le courrier que le Porche met de côté, un code que vous avez demandé, ce que votre filtre à indésirables garde à revoir. Rien n’est supprimé pour de bon : la corbeille le garde.
+- **Pas annoncé** : un message qu’un filtre sort de la boîte de réception, ou marque comme lu, n’est pas notifié, et n’attend pas sur le Porche. Quand un filtre ne peut pas agir sur un message (un dossier manquant, le serveur qui refuse), le message est notifié comme tout nouveau courrier, et la ligne d’état dit pourquoi.
+- **Les appliquer aux boîtes de réception…** les applique à tout ce qui est dans vos boîtes de réception maintenant, le courrier lu aussi. Sioul dit d’abord ce qui changerait ; **Les appliquer maintenant** le fait au bout de dix secondes, avec **Annuler**.
+- **Depuis une recherche** : **En faire un filtre…**, à côté du bouton Effacer de la recherche, fait un filtre de ses conditions et l’ouvre à la fin de la liste, pour que vous choisissiez ce qu’il fait.
 
 ## Lire {#reading}
 
@@ -47,9 +93,15 @@ Ouvrir un message le marque comme lu, comme le fait tout logiciel de courrier.
 
 ### Plusieurs à la fois {#several-at-once}
 
-- ++ctrl++ + clic ajoute un message à la sélection ou l’en retire ; ++"Maj"++ + clic prend tout depuis le dernier cliqué ; ++ctrl+a++ prend tout ; ++"Échap"++, rien.
-- Une barre les marque alors comme lus, les archive, les supprime ou les déplace, sous un seul **Annuler**.
-- Les messages peuvent être glissés sur n’importe quel dossier de n’importe quelle adresse. Vers une autre adresse, un message n’est retiré de la première qu’une fois que le second serveur l’a reçu.
+- ++ctrl++ + clic ajoute un message à la sélection ou l’en retire ; ++"Maj"++ + clic prend tout depuis le dernier cliqué ; ++ctrl+a++ prend tout ; ++"Échap"++, rien. Sur un écran tactile, un appui long ouvre le menu d’un message : **Sélectionner**, puis un toucher en choisit d’autres, ou en retire un.
+- Une barre les marque alors comme lus, les archive, les supprime ou les déplace, sous un seul **Annuler**, quel que soit leur nombre.
+- **Glissez-les** sur n’importe quel dossier de n’importe quelle adresse : le dossier sous le pointeur est entouré. Depuis les résultats d’une recherche aussi, et c’est ainsi qu’on trie une boîte chargée : les dossiers reviennent à la place de la recherche le temps du glisser. Vers une autre adresse, un message n’est retiré de la première qu’une fois que le second serveur l’a reçu.
+- **Déplacer vers…**, dans la barre ou dans le menu d’un message (clic droit, ⋮, ou la touche Menu), fait de même au clavier, et sur un téléphone.
+
+<figure markdown="span">
+  [![Les résultats d’une recherche, tous choisis, tenus au-dessus des dossiers : les dossiers sont revenus à gauche à la place de la recherche, Archives entouré sous l’étiquette « 7 messages » ; au-dessus de la liste, « 7 sélectionnés » avec Marquer comme lu, Archiver, Supprimer, Déplacer vers… et ×.](../assets/screens/fr/mail-search-drag.png){ loading=lazy }](../assets/screens/fr/mail-search-drag.png "Ouvrir l’image en grand")
+  <figcaption>Trier depuis une recherche : les messages choisis, glissés sur un dossier.</figcaption>
+</figure>
 
 ### Se désabonner {#unsubscribing}
 
@@ -108,6 +160,7 @@ Le ⚙ en haut de la page Courrier :
 - **Relever toutes les** : la fréquence à laquelle les dossiers autres que la boîte de réception sont relevés. La boîte de réception arrive dès que le serveur signale du nouveau.
 - **Police**, **Taille**, **Interligne** : la lecture des messages. Les trois mêmes sont dans le ⚙ du Porche, et derrière **Aa** dans les Notes.
 - **Listes quittées** : chaque liste quittée depuis un message, quand et comment, dès qu’il y en a une.
+- **Filtres** : ce qui est fait au courrier qui arrive, sur son serveur, selon des conditions ([plus haut](#filters)).
 
 ### Votre filtre à indésirables {#your-own-spam-filter}
 

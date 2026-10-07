@@ -341,6 +341,11 @@ pub struct MailSettings {
     /// Folders shown by conversation, your answers from Sent among them.
     #[serde(default)]
     pub threads: bool,
+    /// The mail filters, one list for every account, in their order
+    /// (`[[mail.filter]]`, `rules::Filter`): one that does not read is left
+    /// out alone (`rules::lenient`); written whole by `set_filters`.
+    #[serde(default, rename = "filter", deserialize_with = "crate::rules::lenient")]
+    pub filters: Vec<crate::rules::Filter>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
@@ -1670,6 +1675,77 @@ pub fn set_table(path: &Path, table: &str, keys: &[(String, Option<Vec<String>>)
     write_document(path, &doc)
 }
 
+/// Writes the mail filters whole, in their order, as `[[mail.filter]]`
+/// tables, each condition and each action an inline table on a line of its
+/// own (`rules::Filter`); the rest of the file and its comments stay. None:
+/// the list is taken out.
+pub fn set_filters(path: &Path, filters: &[crate::rules::Filter]) -> Result<(), String> {
+    let mut doc = read_document(path)?;
+    // A filter a newer Sioul wrote, holding what this one does not know
+    // (`Filter::unknown`), is written back as it was while nothing of it
+    // changed here: its words kept, not "unknown".
+    let before: Vec<(crate::rules::Filter, Table)> = doc
+        .get("mail")
+        .and_then(|mail| mail.get("filter"))
+        .and_then(Item::as_array_of_tables)
+        .map(|list| list.iter().filter_map(|table| toml::from_str::<crate::rules::Filter>(&table.to_string()).ok().map(|filter| (filter, table.clone()))).collect())
+        .unwrap_or_default();
+    if !doc.contains_key("mail") {
+        let mut mail = Table::new();
+        mail.set_implicit(true);
+        doc["mail"] = Item::Table(mail);
+    }
+    let mail = doc["mail"].as_table_mut().ok_or_else(|| format!("{}: mail is not a table", path.display()))?;
+    if filters.is_empty() {
+        mail.remove("filter");
+    } else {
+        let mut tables = ArrayOfTables::new();
+        for filter in filters {
+            match before.iter().find(|(was, _)| filter.unknown() && was == filter) {
+                // Its values as they were, in a table of its own (not its old place in the file).
+                Some((_, was)) => {
+                    let mut kept = Table::new();
+                    for (key, item) in was.iter() {
+                        kept.insert(key, item.clone());
+                    }
+                    tables.push(kept);
+                }
+                None => tables.push(filter_table(filter)?),
+            }
+        }
+        mail.insert("filter", Item::ArrayOfTables(tables));
+    }
+    write_document(path, &doc)
+}
+
+/// One filter as its table, through what `rules::Filter` writes (the usual
+/// values left out); its lists of conditions and actions inline.
+fn filter_table(filter: &crate::rules::Filter) -> Result<Table, String> {
+    let text = toml::to_string(filter).map_err(|e| e.to_string())?;
+    let written: DocumentMut = text.parse().map_err(|e| format!("{e}"))?;
+    let mut table = Table::new();
+    for (key, item) in written.iter() {
+        let item = match item {
+            Item::ArrayOfTables(list) => {
+                let mut array = Array::new();
+                for element in list.iter() {
+                    let mut inline = element.clone().into_inline_table();
+                    inline.fmt();
+                    let mut element = toml_edit::Value::InlineTable(inline);
+                    element.decor_mut().set_prefix("\n    ");
+                    array.push_formatted(element);
+                }
+                array.set_trailing_comma(true);
+                array.set_trailing("\n");
+                value(array)
+            }
+            other => other.clone(),
+        };
+        table.insert(key, item);
+    }
+    Ok(table)
+}
+
 fn read_document(path: &Path) -> Result<DocumentMut, String> {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
@@ -2081,5 +2157,43 @@ mod tests {
         private_dir(&link.join("sioul")).unwrap();
         assert_eq!(mode(&elsewhere), 0o755);
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn filters_are_written_whole_a_newer_one_as_it_was() {
+        use crate::rules::{Act, Condition, Field, Filter, Test};
+        let path = std::env::temp_dir().join(format!("sioul-filters-{}.toml", std::process::id()));
+        std::fs::write(
+            &path,
+            "# Mine\nfetch_minutes = 15\n\n[mail]\nthreads = true # by conversation\n\n\
+             [[mail.filter]]\nname = \"Newer\"\nif = [{ field = \"frobnicate\", test = \"contains\", value = \"x\" }]\nthen = [{ do = \"read\" }]\n\n\
+             [[mail.filter]]\nname = \"Bank\"\nif = [{ field = \"from\", test = \"contains\", value = \"@bank.example\" }]\nthen = [{ do = \"read\" }]\n",
+        )
+        .unwrap();
+        let read = |path: &Path| Config::load(path).unwrap().mail.filters;
+        let mut filters = read(&path);
+        assert_eq!(filters.len(), 2);
+        assert!(filters[0].unknown() && !filters[1].unknown());
+        // The bank's filter changed and put first, one added, the newer one untouched.
+        filters[1].actions.push(Act::Archive);
+        filters.swap(0, 1);
+        filters.push(Filter { name: "Lists".into(), conditions: vec![Condition::new(Field::List, Test::Exists, "")], actions: vec![Act::Read], ..Filter::default() });
+        set_filters(&path, &filters).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# Mine") && text.contains("# by conversation"), "comments kept: {text}");
+        assert!(text.contains("frobnicate") && !text.contains("unknown"), "a newer Sioul's words kept: {text}");
+        let again = read(&path);
+        assert_eq!(again.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["Bank", "Newer", "Lists"]);
+        assert_eq!(again[0].actions, vec![Act::Read, Act::Archive]);
+        // Changed here, it is written as this Sioul reads it.
+        let mut renamed = again.clone();
+        renamed[1].name = "Renamed".into();
+        set_filters(&path, &renamed).unwrap();
+        assert!(std::fs::read_to_string(&path).unwrap().contains("field = \"unknown\""));
+        // None: the list taken out, the rest kept.
+        set_filters(&path, &[]).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(read(&path).is_empty() && !text.contains("[[mail.filter]]") && text.contains("threads = true"), "{text}");
+        let _ = std::fs::remove_file(&path);
     }
 }

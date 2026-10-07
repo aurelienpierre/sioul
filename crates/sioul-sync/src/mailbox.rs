@@ -72,7 +72,7 @@ pub(crate) fn fetched(folder: &Folder, all: &[Folder], account: &Account) -> boo
 
 /// A folder's own directory in the account's Maildir: one name in it, never
 /// the Maildir itself nor what is above it, whatever the server named the folder.
-fn own_dir(account: &Account, folder: &Folder) -> Option<PathBuf> {
+pub(crate) fn own_dir(account: &Account, folder: &Folder) -> Option<PathBuf> {
     let mut parts = Path::new(&folder.local).components();
     match (parts.next(), parts.next()) {
         (Some(std::path::Component::Normal(_)), None) => Some(account.maildir_path().join(&folder.local)),
@@ -376,27 +376,156 @@ pub fn move_across(from: &Account, from_password: &str, file: &Path, to: &Accoun
     let raw = std::fs::read(file).map_err(|e| SyncError::Disk(format!("{}: {e}", file.display())))?;
     let origin = maildir::origin_of(file).ok_or_else(|| SyncError::Server("not a message fetched by Sioul".into()))?;
     let source = folder_of(from, file).ok_or_else(|| SyncError::Server("unknown folder".into()))?;
-    let local = maildir::flags_of(file);
-    let flags: Vec<&str> = [('S', "\\Seen"), ('F', "\\Flagged"), ('R', "\\Answered")].into_iter().filter(|(c, _)| local.contains(*c)).map(|(_, f)| f).collect();
+    append_then_remove(from, from_password, &source, origin, &raw, &maildir::flags_of(file), to, to_password, folder)?;
+    if let Some(file) = maildir::locate(file) {
+        let _ = std::fs::remove_file(&file);
+    }
+    Ok(())
+}
+
+/// The same for a message seen on its server only (a search's): read whole
+/// from its folder first, its flags with it, then copied and taken off.
+pub fn move_across_from_server(from: &Account, from_password: &str, source: &str, origin: ImapOrigin, to: &Account, to_password: &str, folder: &str) -> Result<(), SyncError> {
+    let source = folders(&from.id).into_iter().find(|f| f.name == source).unwrap_or_else(|| folders::folder(source, None, None));
+    let server = Server::of(from)?;
+    let (raw, flags) = crate::fetch::block_on(async {
+        let mut session = imap::open(&server, from_password).await?;
+        let result = read_whole(&mut session, &source, origin).await;
+        let _ = session.logout().await;
+        result
+    })?;
+    append_then_remove(from, from_password, &source, origin, &raw, &flags, to, to_password, folder)
+}
+
+/// A message of `folder`, whole, with its flags as Maildir letters.
+async fn read_whole(session: &mut Imap, folder: &Folder, origin: ImapOrigin) -> Result<(Vec<u8>, String), SyncError> {
+    let examined = imap::within(COMMAND, session.examine(&folder.name)).await?.map_err(imap::server)?;
+    if examined.uid_validity.unwrap_or(0) != origin.validity {
+        return Err(SyncError::Server("the server renumbered this folder; fetch the mail again".into()));
+    }
+    let mut fetches = imap::within(COMMAND, session.uid_fetch(origin.uid.to_string(), "(UID FLAGS BODY.PEEK[])")).await?.map_err(imap::server)?;
+    let mut found = None;
+    while let Some(fetch) = fetches.next().await {
+        let fetch = fetch.map_err(imap::server)?;
+        if fetch.uid == Some(origin.uid)
+            && let Some(body) = fetch.body()
+        {
+            found = Some((body.to_vec(), crate::fetch::maildir_flags(fetch.flags())));
+        }
+    }
+    found.ok_or_else(|| SyncError::Server("this message is no longer on the server".into()))
+}
+
+/// Copies `raw` into `folder` of `to`, its flags kept (Maildir letters), and
+/// only once that server has it takes the original off `source` of `from`.
+#[allow(clippy::too_many_arguments)]
+fn append_then_remove(from: &Account, from_password: &str, source: &Folder, origin: ImapOrigin, raw: &[u8], letters: &str, to: &Account, to_password: &str, folder: &str) -> Result<(), SyncError> {
+    let flags: Vec<&str> = [('S', "\\Seen"), ('F', "\\Flagged"), ('R', "\\Answered")].into_iter().filter(|(c, _)| letters.contains(*c)).map(|(_, f)| f).collect();
     let flags = format!("({})", flags.join(" "));
     let target = Server::of(to)?;
     crate::fetch::block_on(async {
         let mut session = imap::open(&target, to_password).await?;
-        let result = imap::within(COMMAND, session.append(folder, Some(&flags), None, &raw)).await?.map_err(imap::server);
+        let result = imap::within(COMMAND, session.append(folder, Some(&flags), None, raw)).await?.map_err(imap::server);
         let _ = session.logout().await;
         result
     })?;
     let server = Server::of(from)?;
     crate::fetch::block_on(async {
         let mut session = imap::open(&server, from_password).await?;
-        let result = remove_in(&mut session, &source, origin).await;
+        let result = remove_in(&mut session, source, origin).await;
         let _ = session.logout().await;
         result
-    })?;
-    if let Some(file) = maildir::locate(file) {
-        let _ = std::fs::remove_file(&file);
+    })
+}
+
+/// UIDs per command, at most: a long set stays well under the line servers take.
+const SET: usize = 200;
+
+/// The same act on several messages of one account, in one connection: a
+/// UID set per folder (RFC 9051 §6.4.9). `files` are kept here; `remote` are
+/// seen on the server only (a search's), by their folder's server name. For
+/// acts that say nothing of spam (reading, flags, moves, archiving, the
+/// trash); the others go one at a time through `act`, for the spam filter's
+/// logs. The local copies follow as with `act`. A folder that fails is said
+/// (the first problem), the others are still done.
+pub fn act_many(account: &Account, password: &str, files: &[PathBuf], remote: &[(String, ImapOrigin)], action: &Action) -> Result<(), SyncError> {
+    if said(action).is_some() || matches!(action, Action::Filtered(_)) {
+        let mut first = None;
+        for file in files {
+            if let Err(e) = act(account, password, file, action) {
+                first.get_or_insert(e);
+            }
+        }
+        if !remote.is_empty() {
+            first.get_or_insert(SyncError::Server("open the message first".into()));
+        }
+        return first.map_or(Ok(()), Err);
     }
-    Ok(())
+    let known = folders(&account.id);
+    // By folder, then UIDVALIDITY: the UIDs, and the files that follow.
+    let mut groups: BTreeMap<String, (Folder, BTreeMap<u32, (BTreeSet<u32>, Vec<PathBuf>)>)> = BTreeMap::new();
+    let mut add = |folder: Folder, origin: ImapOrigin, file: Option<&PathBuf>| {
+        let entry = groups.entry(folder.name.clone()).or_insert_with(|| (folder, BTreeMap::new()));
+        let (uids, files) = entry.1.entry(origin.validity).or_default();
+        uids.insert(origin.uid);
+        files.extend(file.cloned());
+    };
+    let mut first: Option<SyncError> = None;
+    for file in files {
+        match (maildir::origin_of(file), folder_of(account, file)) {
+            (Some(origin), Some(folder)) => add(folder, origin, Some(file)),
+            _ => {
+                first.get_or_insert(SyncError::Server("not a message fetched by Sioul".into()));
+            }
+        }
+    }
+    for (name, origin) in remote {
+        let folder = known.iter().find(|f| f.name == *name).cloned().unwrap_or_else(|| folders::folder(name, None, None));
+        add(folder, *origin, None);
+    }
+    // Archived already: nothing to do (as `act`).
+    groups.retain(|_, (folder, _)| !(*action == Action::Archive && matches!(folder.role, Role::Archive | Role::All)));
+    if groups.is_empty() {
+        return first.map_or(Ok(()), Err);
+    }
+    let server = Server::of(account)?;
+    let done: Vec<(Role, Vec<PathBuf>)> = crate::fetch::block_on(async {
+        let mut session = imap::open(&server, password).await?;
+        let mut done = Vec::new();
+        for (folder, by_validity) in groups.values() {
+            for (validity, (uids, files)) in by_validity {
+                let uids: Vec<u32> = uids.iter().copied().collect();
+                let mut all_done = true;
+                for chunk in uids.chunks(SET) {
+                    let set = ranges(&chunk.iter().copied().collect::<BTreeSet<u32>>());
+                    if let Err(e) = act_set(&mut session, account, folder, *validity, &set, action).await {
+                        all_done = false;
+                        first.get_or_insert(e);
+                        break;
+                    }
+                }
+                if all_done {
+                    done.push((folder.role, files.clone()));
+                }
+            }
+        }
+        let _ = session.logout().await;
+        Ok(done)
+    })?;
+    // Done on the server: the copies here follow.
+    for (role, files) in done {
+        for file in files.iter().filter_map(|f| maildir::locate(f)) {
+            match kept_with(action, &maildir::flags_of(&file), role) {
+                Some(flags) => {
+                    let _ = maildir::set_flags(&file, &flags);
+                }
+                None => {
+                    let _ = std::fs::remove_file(&file);
+                }
+            }
+        }
+    }
+    first.map_or(Ok(()), Err)
 }
 
 /// Takes a message off its folder for good: marked deleted, then expunged.
@@ -412,40 +541,45 @@ async fn remove_in(session: &mut Imap, folder: &Folder, origin: ImapOrigin) -> R
 }
 
 async fn act_in(session: &mut Imap, account: &Account, folder: &Folder, origin: ImapOrigin, action: &Action) -> Result<(), SyncError> {
+    act_set(session, account, folder, origin.validity, &origin.uid.to_string(), action).await
+}
+
+/// `action` on the messages of `uid`, a UID or a set of them ("4,7:9"), in
+/// `folder`, whose UIDVALIDITY must still be `validity`.
+async fn act_set(session: &mut Imap, account: &Account, folder: &Folder, validity: u32, uid: &str, action: &Action) -> Result<(), SyncError> {
     let selected = imap::within(COMMAND, session.select(&folder.name)).await?.map_err(imap::server)?;
-    if selected.uid_validity.unwrap_or(0) != origin.validity {
+    if selected.uid_validity.unwrap_or(0) != validity {
         return Err(SyncError::Server("the server renumbered this folder; fetch the mail again".into()));
     }
-    let uid = origin.uid.to_string();
     let capabilities = imap::within(COMMAND, session.capabilities()).await?.map_err(imap::server)?;
     let (can_move, uidplus) = (capabilities.has_str("MOVE"), capabilities.has_str("UIDPLUS"));
     match action {
-        Action::Read(read) => store(session, &uid, if *read { "+FLAGS.SILENT (\\Seen)" } else { "-FLAGS.SILENT (\\Seen)" }).await,
-        Action::Flag(flag) => store(session, &uid, if *flag { "+FLAGS.SILENT (\\Flagged)" } else { "-FLAGS.SILENT (\\Flagged)" }).await,
-        Action::Move(target) => move_to(session, &uid, target, can_move, uidplus).await,
+        Action::Read(read) => store(session, uid, if *read { "+FLAGS.SILENT (\\Seen)" } else { "-FLAGS.SILENT (\\Seen)" }).await,
+        Action::Flag(flag) => store(session, uid, if *flag { "+FLAGS.SILENT (\\Flagged)" } else { "-FLAGS.SILENT (\\Flagged)" }).await,
+        Action::Move(target) => move_to(session, uid, target, can_move, uidplus).await,
         Action::Trash if folder.role == Role::Trash => {
-            store(session, &uid, "+FLAGS.SILENT (\\Deleted)").await?;
-            expunge(session, &uid, uidplus).await
+            store(session, uid, "+FLAGS.SILENT (\\Deleted)").await?;
+            expunge(session, uid, uidplus).await
         }
         Action::Trash => {
             let target = role_folder(session, account, Role::Trash, "Trash").await?;
-            move_to(session, &uid, &target, can_move, uidplus).await
+            move_to(session, uid, &target, can_move, uidplus).await
         }
         Action::Junk => {
             // Keywords are optional: a server without them still takes the move.
-            let _ = store(session, &uid, "-FLAGS.SILENT ($NotJunk)").await;
-            let _ = store(session, &uid, "+FLAGS.SILENT ($Junk)").await;
+            let _ = store(session, uid, "-FLAGS.SILENT ($NotJunk)").await;
+            let _ = store(session, uid, "+FLAGS.SILENT ($Junk)").await;
             // Said spam in a Junk folder already (the review queue's "Spam" on what your filter moved): it stays.
             if folder.role == Role::Junk {
                 return Ok(());
             }
             let target = role_folder(session, account, Role::Junk, "Junk").await?;
-            move_to(session, &uid, &target, can_move, uidplus).await
+            move_to(session, uid, &target, can_move, uidplus).await
         }
         // Your own filter's move: no keyword, as nobody said anything yet.
         Action::Filtered(_) => {
             let target = role_folder(session, account, Role::Junk, "Junk").await?;
-            move_to(session, &uid, &target, can_move, uidplus).await
+            move_to(session, uid, &target, can_move, uidplus).await
         }
         Action::Archive => {
             let known = folders(&account.id);
@@ -453,23 +587,23 @@ async fn act_in(session: &mut Imap, account: &Account, folder: &Folder, origin: 
                 Some(f) => f.name.clone(),
                 None => role_folder(session, account, Role::Archive, "Archive").await?,
             };
-            move_to(session, &uid, &target, can_move, uidplus).await
+            move_to(session, uid, &target, can_move, uidplus).await
         }
         Action::NotJunk => {
-            let _ = store(session, &uid, "-FLAGS.SILENT ($Junk)").await;
-            let _ = store(session, &uid, "+FLAGS.SILENT ($NotJunk)").await;
-            move_to(session, &uid, "INBOX", can_move, uidplus).await
+            let _ = store(session, uid, "-FLAGS.SILENT ($Junk)").await;
+            let _ = store(session, uid, "+FLAGS.SILENT ($NotJunk)").await;
+            move_to(session, uid, "INBOX", can_move, uidplus).await
         }
         // A server without keywords keeps nothing: the label log then says it, on this device.
         Action::NotSpam => {
-            let _ = store(session, &uid, "-FLAGS.SILENT ($Junk)").await;
-            let _ = store(session, &uid, "+FLAGS.SILENT ($NotJunk)").await;
+            let _ = store(session, uid, "-FLAGS.SILENT ($Junk)").await;
+            let _ = store(session, uid, "+FLAGS.SILENT ($NotJunk)").await;
             Ok(())
         }
     }
 }
 
-async fn store(session: &mut Imap, uid: &str, query: &str) -> Result<(), SyncError> {
+pub(crate) async fn store(session: &mut Imap, uid: &str, query: &str) -> Result<(), SyncError> {
     let mut answers = imap::within(COMMAND, session.uid_store(uid, query)).await?.map_err(imap::server)?;
     while let Some(answer) = answers.next().await {
         answer.map_err(imap::server)?;
@@ -477,7 +611,7 @@ async fn store(session: &mut Imap, uid: &str, query: &str) -> Result<(), SyncErr
     Ok(())
 }
 
-async fn move_to(session: &mut Imap, uid: &str, target: &str, can_move: bool, uidplus: bool) -> Result<(), SyncError> {
+pub(crate) async fn move_to(session: &mut Imap, uid: &str, target: &str, can_move: bool, uidplus: bool) -> Result<(), SyncError> {
     if can_move {
         return imap::within(COMMAND, session.uid_mv(uid, target)).await?.map_err(imap::server);
     }

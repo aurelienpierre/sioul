@@ -435,6 +435,20 @@ SioulWindow {
         budgetsPage.startContract(JSON.parse(sioul.contractFrom(subject, from)))
     }
 
+    // The search's "Make it a filter…" (MailSearch.qml): a new mail filter with
+    // its conditions ({conditions, match}, as the filters write them), last in
+    // the list, its editor open in Mail ▸ ⚙ to choose what it does.
+    function newFilterFrom(conditions) {
+        const problem = sioul.newMailFilter(conditions)
+        if (problem !== "") {
+            sioul.status = problem
+            return
+        }
+        window.page = 2
+        if (mailPage)
+            mailPage.openSettings(true)
+    }
+
     // "Link to…": the picker, for `source`.
     function linkFrom(source, kind) {
         if (!source || !source.uri)
@@ -882,7 +896,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel, "spam": grabber.spamSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -2263,6 +2277,125 @@ SioulWindow {
                 () => parametersPage.scrollBy(0.25),
                 () => {},
                 () => grabber.save("share-panel-server-down"),
+                () => window.close()
+            ]
+            // The search by conditions (SIOUL_GRAB_STEPS=mail-search), on a demo
+            // profile: automatic mail of both addresses arrived in the last three
+            // weeks, its column in the folders' place, the results with where each
+            // is; a result read; all of them chosen; held over a folder, the
+            // folders back in the search's place (never let go); "Move to…". With
+            // SIOUL_GRAB_PHONE, a phone's: the fields alone, then the results, a
+            // selection begun from a row's menu, "Move to…". Nothing is moved.
+            readonly property string searchSince: new Date(Date.now() - 21 * 86400000).toISOString().slice(0, 10)
+            readonly property var mailSearchSteps: window.phoneGrab ? [
+                () => window.page = 2,
+                () => {},
+                () => mailPage.searchWith([{ field: "from", test: "contains", value: "no-reply" }, { field: "date", test: "after", value: grabber.searchSince }], false),
+                () => {},
+                () => grabber.save("mail-search-form"),
+                () => mailPage.searchFormShown = false,
+                () => {},
+                () => grabber.save("mail-search-results"),
+                () => mailPage.chooseFirst(2),
+                () => {},
+                () => grabber.save("mail-search-choosing"),
+                () => mailPage.askMove(mailPage.selectedKeys),
+                () => {},
+                () => grabber.saveWindow("mail-search-move"),
+                () => mailPage.closeMove(),
+                () => window.close()
+            ] : [
+                // The size of the guide's other pictures of the Mail page.
+                () => {
+                    window.width = 1280
+                    window.height = 860
+                    window.page = 2
+                },
+                () => {},
+                () => mailPage.searchWith([{ field: "from", test: "contains", value: "no-reply" }, { field: "date", test: "after", value: grabber.searchSince }], false),
+                () => {},
+                () => grabber.save("mail-search"),
+                () => mailPage.openFirst(),
+                () => {},
+                () => grabber.save("mail-search-reader"),
+                () => mailPage.openKey = "",
+                () => mailPage.selectAll(),
+                () => {},
+                () => grabber.save("mail-search-selected"),
+                () => mailPage.holdOver(mailPage.selectedKeys, "archive"),
+                () => mailPage.holdOver(mailPage.selectedKeys, "archive"),
+                () => {},
+                () => grabber.save("mail-search-drag"),
+                () => mailPage.letGo(),
+                () => mailPage.askMove(mailPage.selectedKeys),
+                () => {},
+                () => grabber.saveWindow("mail-search-move"),
+                () => mailPage.closeMove(),
+                () => window.close()
+            ]
+            // The mail filters (SIOUL_GRAB_STEPS=mail-filters; SIOUL_GRAB_PHONE for a
+            // phone's), on a demo profile: four filters as Mail ▸ ⚙ lists them, in
+            // the wider panel; the first one's editor, tried on the inboxes; what
+            // running them on the inboxes would change, said first; a search made a
+            // filter, its editor open at the list's end. Nothing is run.
+            function demoFilters() {
+                const fr = sioul.text("qt-locale").indexOf("fr") === 0
+                const condition = (field, test, value) => ({ field: field, test: test, value: value, until: "" })
+                const act = (id, name) => ({ do: id, name: name || "" })
+                return [
+                    { name: fr ? "Banque" : "Bank", enabled: true, accounts: [], any: false, stop: true,
+                      conditions: [condition("from", "contains", fr ? "@banquedesberges.example.org" : "@riversidebank.example.org")],
+                      actions: [act("move", "Archive"), act("read")] },
+                    { name: "", enabled: true, accounts: [], any: false, stop: false,
+                      conditions: [condition("list", "exists", ""), condition("weekday", "is", "sat,sun")],
+                      actions: [act("read")] },
+                    { name: "", enabled: true, accounts: [fr ? "perso" : "personal"], any: false, stop: false,
+                      conditions: [condition("from", "contains", fr ? "@bonnes-affaires.example.com" : "@deals-today.example.com")],
+                      actions: [act("junk")] },
+                    { name: fr ? "Factures" : "Invoices", enabled: false, accounts: [], any: true, stop: false,
+                      conditions: [condition("subject", "contains", fr ? "facture" : "invoice"), condition("attachment-type", "is", "pdf")],
+                      actions: [act("flag"), act("keyword", fr ? "Factures" : "Invoices")] }
+                ]
+            }
+            // An item by its objectName under `root`: what a pop-up holds (the filters in Mail's ⚙).
+            function named(root, name) {
+                if (!root)
+                    return null
+                if (root.objectName === name)
+                    return root
+                for (let i = 0; i < root.children.length; ++i) {
+                    const found = grabber.named(root.children[i], name)
+                    if (found)
+                        return found
+                }
+                return null
+            }
+            function mailFilters() {
+                return grabber.named(frame.Overlay.overlay, "mailFilters")
+            }
+            readonly property var mailFilterSteps: [
+                () => window.page = 2,
+                () => sioul.status = sioul.setMailFilters(JSON.stringify(grabber.demoFilters())),
+                () => mailPage.openSettings(true),
+                () => mailPage.scrollSettings("mail.filter"),
+                () => {},
+                () => grabber.saveWindow("mail-filters"),
+                // The first one opened and tried on the inboxes.
+                () => grabber.mailFilters().open(0),
+                () => grabber.mailFilters().tryIt(),
+                () => {},
+                () => grabber.saveWindow("mail-filter-editor"),
+                () => grabber.mailFilters().close(),
+                // Running them on the inboxes, read mail too: said first, nothing done.
+                () => grabber.mailFilters().preview(),
+                () => {},
+                () => grabber.saveWindow("mail-filters-run"),
+                () => mailPage.openSettings(false),
+                // A search made a filter: its folder condition left out, said; what it does to choose.
+                () => window.newFilterFrom(JSON.stringify({ conditions: [{ field: "anywhere", test: "contains", value: sioul.text("qt-locale").indexOf("fr") === 0 ? "facture" : "invoice", until: "" }, { field: "folder", test: "is", value: "archive", until: "" }], match: "all" })),
+                () => {},
+                () => {},
+                () => grabber.saveWindow("mail-filter-from-search"),
                 () => window.close()
             ]
             // Sioul's own spam filter (SIOUL_GRAB_STEPS=spam; SIOUL_GRAB_PHONE for a

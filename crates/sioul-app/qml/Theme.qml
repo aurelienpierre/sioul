@@ -41,6 +41,13 @@ QtObject {
     readonly property int gap: compact ? 10 : 16
     readonly property int radius: 6
 
+    // A side panel's width (a page's settings, Health's): all of a phone's; on
+    // a computer, two fifths of the window and a little more, from 520 to 760
+    // pixels, the page beside it keeping 240 at least.
+    function sideWidth(available) {
+        return available < 720 ? available : Math.round(Math.min(Math.max(520, available * 0.42), 760, available - 240))
+    }
+
     // Long text (notes, mail, a task's notes): the family, size and spacing chosen in "Aa".
     property string readingFamily: ""
     property int readingSize: 16

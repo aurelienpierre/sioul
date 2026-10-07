@@ -16,10 +16,56 @@ The Porch is for what is new. The Mail page is for when you choose to look: ever
 - **On the left**, each address with its main folders: Inbox, Sent, Drafts, Archive, Junk, Trash. The others are folded under **More folders**.
 - **A small dot** marks a folder with something new. How many is said in words when you open it.
 - **A folder shows its last two weeks.** **Earlier messages** opens the rest, so that no list is endless.
-- **Search**, at the top of a folder: by sender, recipient and subject.
+- **Search**, at the top of a folder: by sender, recipient and subject. **More…**, beside it, searches everywhere, by conditions ([below](#searching)).
 - **By conversation**, in the Mail page's ⚙: a message and its answers together, under the newest one; your own answers come from Sent.
 
 A right click on a folder offers **Keep a copy here** or **Stop keeping a copy** (the server keeps every message either way), **New folder…**, and **Delete this empty folder**, for an empty folder of yours.
+
+## Searching
+
+The field at the top of a folder finds a sender, a recipient or a subject in that folder. When you need more, **More…**, beside it, opens the search by conditions in the folders' place. Nothing of it shows until then.
+
+<figure markdown="span">
+  [![The Mail page searching: on the left, in the folders' place, "Search", what it looks through, "Mail that meets all of them", then two conditions, From contains "no-reply" and Day it arrived after a date, Add a condition, Clear and Make it a filter…; in the middle, "Results", the sentence "Mail from …no-reply…, arrived after …", how many were found, then the messages, each with where it is, such as "Inbox · noa@example.com".](../assets/screens/mail-search.png){ loading=lazy }](../assets/screens/mail-search.png "Open the picture at full size")
+  <figcaption>The search in the folders' place; the results in the usual list, each saying where it is.</figcaption>
+</figure>
+
+- **One condition at first**, Anywhere, with what you had typed in the folder's search. **Add a condition** for another: the sender, the recipients, the subject, the text, an attachment (there is one, none, one with a name), the kind of attachment (a PDF, a picture…), the day it arrived, its size, who the sender is to you, a newsletter or a list, the address, the folder, and whether it is read, flagged or answered. Case and accents do not matter.
+- With two conditions or more, choose **Mail that meets all of them** or **any of them**.
+- **The results** take the list's place, the newest first, each saying where it is. A message opens beside them as in a folder, so you go back and forth between the results and the messages. Above them, a sentence says what is searched: "Mail from …@bank.example…, arrived after 3 June, with an attachment."
+- **Everywhere**: every folder of every address, but the junk and the trash, unless you name them in a Folder condition.
+- **On the servers too**: Sioul keeps your recent mail here, and brings older mail as the disk has room; folders you keep on the server only are not here at all. A moment after you stop typing (at once with ++enter++), Sioul asks your servers for the rest, and says so: "Looking on the servers…", then "3 more on the servers.", or why a server could not be searched. Those messages say "on the server"; opening one brings it here first. A server minds accents more than Sioul does: write them as the messages do.
+- **Clear** goes back to the folder.
+- **Make it a filter…**, beside it, turns the search into a mail filter: its editor opens in the Mail page's ⚙, to choose what it does with such mail as it arrives.
+
+The conditions are the ones [mail filters](#filters) use, in the same words.
+
+## Filters
+
+Filters act on new mail as it arrives, on its server: into a folder, archived, to spam, flagged, marked read, to the trash, or with a keyword. They are in the Mail page's ⚙, under **Filters**: one list for all your addresses, each filter in a sentence.
+
+<figure markdown="span">
+  [![The Mail page with its settings open on the right, under Filters: a short paragraph on what filters do, “Show the filters of: Every address”, then four filters, each a switch and a sentence: Bank, “From contains “@riversidebank.example.org” → into “Archive”, marked read, and no other filter”; “Sent by a newsletter or a list and arrived on a Saturday or Sunday → marked read”; “From contains “@deals-today.example.com” → into the junk, as spam”, only for noa.ferrand@example.org; Invoices, switched off and dimmed; then Add a filter, and Run them on the inboxes….](../assets/screens/mail-filters.png){ loading=lazy }](../assets/screens/mail-filters.png "Open the picture at full size")
+  <figcaption>Each filter in one sentence, with its switch; switched off, it is kept and does nothing.</figcaption>
+</figure>
+
+- **Add a filter** opens it in place, with one condition and one action. Choose what the condition reads (From, To, Cc, Reply-To, Subject, Text, Anywhere, an attachment, its kind, who the sender is to you, a newsletter or a list, the day or the time it arrived, its size), how it compares (contains, does not contain, is, is not; before, after, between; larger, smaller), and what it looks for. **Add a condition** for another; with two or more, choose whether **every condition holds** or **one of them holds**. Case and accents do not matter, as in the search.
+- **Then**: move it to a folder, archive it, mark it as spam, flag it, mark it as read, move it to the trash, or add a keyword. **Add an action** for another.
+- **A sentence** says the filter as you build it, and what is missing if anything is: "Choose the folder it moves messages into." Every change is kept at once.
+- Folded under one line: **On which addresses** it acts (every address, or some), and **Once it acts, the filters below are not asked**.
+- **Try it on the inboxes** counts what it takes in your inboxes now, read or not, and names a few.
+
+<figure markdown="span">
+  [![The Bank filter open in place under its sentence: its name; If: From, contains, “@riversidebank.example.org”; Add a condition; Then: Move it to a folder, Archive, and Mark it as read, each with ×; Add an action; unfolded, On which addresses: Every address, and Once it acts, the filters below are not asked, both ticked; Try it on the inboxes, Done, Delete this filter; then “In your inboxes now, it takes one of the 28 messages.” and the message it takes.](../assets/screens/mail-filter-editor.png){ loading=lazy }](../assets/screens/mail-filter-editor.png "Open the picture at full size")
+  <figcaption>A filter open: its condition, its actions, and what it takes in your inboxes now.</figcaption>
+</figure>
+
+- **The order** matters: the first filter that moves a message decides where it goes. ▴ and ▾ ask a filter earlier or later. With several addresses, **Show the filters of** shows those of one address.
+- **When they act**: on mail that arrives unread in an inbox, on the first of your devices to fetch it (this computer, your phone in the background, `sioul watch`). That device marks the message on its server, so that your other devices leave it alone. Your filters travel to your other devices with your settings.
+- **What they never touch**: mail the Porch sets aside, a code you asked for, what your spam filter keeps for review. Nothing is deleted for good: the trash keeps it.
+- **Not told**: a message a filter moves out of the inbox, or marks read, is not notified, and does not wait on the Porch. When a filter cannot act on a message (a folder missing, the server refusing), the message is notified as any new mail, and the status line says why.
+- **Run them on the inboxes…** applies them to everything in your inboxes now, read mail too. Sioul first says what would change; **Run them now** does it after ten seconds, with **Undo**.
+- **From a search**: **Make it a filter…**, beside the search's Clear, makes a filter of its conditions and opens it at the end of the list, for you to choose what it does.
 
 ## Reading
 
@@ -47,9 +93,15 @@ Opening a message marks it read, as any mail program does.
 
 ### Several at once
 
-- ++ctrl++ + click adds a message to the selection or takes it out; ++shift++ + click takes everything since the last one clicked; ++ctrl+a++ takes all; ++escape++ none.
-- A bar then marks them read, archives, deletes or moves them, under one **Undo**.
-- Messages can be dragged onto any folder of any address. Into another address, a message is taken off the first one only once the second server has it.
+- ++ctrl++ + click adds a message to the selection or takes it out; ++shift++ + click takes everything since the last one clicked; ++ctrl+a++ takes all; ++escape++ none. On a touch screen, a long press opens a message's menu: **Select**, then a tap chooses more, or leaves one.
+- A bar then marks them read, archives, deletes or moves them, under one **Undo**, however many there are.
+- **Drag** them onto any folder of any address: the folder under the pointer is outlined. From a search's results too, which is how a busy inbox is sorted: the folders come back in the search's place while you drag. Into another address, a message is taken off the first one only once the second server has it.
+- **Move to…**, in the bar or in a message's menu (right click, ⋮, or the Menu key), does the same from the keyboard, and on a phone.
+
+<figure markdown="span">
+  [![The results of a search, all chosen, held over the folders: the folders are back on the left in the search's place, Archive outlined under the label "7 messages"; above the list, "7 selected" with Mark as read, Archive, Delete, Move to… and ×.](../assets/screens/mail-search-drag.png){ loading=lazy }](../assets/screens/mail-search-drag.png "Open the picture at full size")
+  <figcaption>Sorting from a search: the messages chosen, dragged onto a folder.</figcaption>
+</figure>
 
 ### Unsubscribing
 
@@ -108,6 +160,7 @@ The ⚙ at the top of the Mail page:
 - **Fetch every**: how often the folders other than the inbox are fetched. The inbox comes as soon as the server says something arrived.
 - **Font**, **Size**, **Line spacing**: how messages read. The same three are in the Porch's ⚙, and behind **Aa** in Notes.
 - **Lists you left**: each list you left from a message, when and how, once there is one.
+- **Filters**: what is done to new mail on its server, by conditions ([above](#filters)).
 
 ### Your own spam filter
 

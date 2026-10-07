@@ -333,6 +333,26 @@ fn triage_files(config: &Config, files: &[PathBuf]) -> Vec<Triaged> {
     porch::judge(files, &config.mail_sources(), store.as_ref(), &known, &senders, Zoned::now().timestamp().as_second())
 }
 
+/// Your mail filters on `account`'s server after a fetch (`new`: its inbox's
+/// arrivals, maybe none), as every device that fetches runs them
+/// (docs/client.md, "Filters"): what they did, and what they could not do,
+/// each in a line. Nothing `sioul watch` tells waits for them: it tells codes
+/// alone, which no filter touches.
+fn filter_on_server(s: &Session, config: &Config, account: &Account, new: &[PathBuf]) {
+    let Ok(password) = secret::password(account) else { return };
+    let done = sioul_sync::filters::after_fetch(config, account, &password, new, false);
+    let time = Zoned::now().strftime("%H:%M").to_string();
+    if !done.acted.is_empty() {
+        let mut args = s.tr.counted(done.acted.len());
+        args.set("account", account.id.clone());
+        let line = s.tr.text("filter-cli-acted", Some(&args));
+        println!("{}", s.say("watch-line", &[("time", time.clone()), ("line", line)]));
+    }
+    if let Some(why) = done.said(&s.tr, account.address.as_deref().unwrap_or(&account.id)) {
+        println!("{}", s.say("watch-line", &[("time", time), ("line", why)]));
+    }
+}
+
 pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
     let accounts: Vec<Account> = syncing(&s.config, None).into_iter().cloned().collect();
     if accounts.is_empty() {
@@ -363,7 +383,13 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
     for (id, result) in receiver {
         let time = Zoned::now().strftime("%H:%M").to_string();
         match result {
-            Ok(report) if report.new.is_empty() => {}
+            Ok(report) if report.new.is_empty() => {
+                // Nothing new, but a filter's failure to try again, or another device's mark to look at again.
+                let config = Config::load(&s.config_path).unwrap_or_default();
+                if let Some(account) = config.account(&id).filter(|a| !report.first && sioul_sync::filters::due(a)) {
+                    filter_on_server(s, &config, account, &[]);
+                }
+            }
             Ok(report) => {
                 let config = Config::load(&s.config_path).unwrap_or_default();
                 if let Some(account) = config.account(&id) {
@@ -377,6 +403,9 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                     continue;
                 }
                 let config = Config::load(&s.config_path).unwrap_or_default();
+                if let Some(account) = config.account(&id) {
+                    filter_on_server(s, &config, account, &report.new);
+                }
                 let arrived = triage_files(&config, &report.new);
                 print_right_now(s, &arrived);
                 // As the matrix of what reaches you says (as usual, at once at any

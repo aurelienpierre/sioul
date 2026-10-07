@@ -15,9 +15,11 @@
 //!    with what was asked last; changed, Sioul's own process is asked to apply
 //!    it (`DndReceiver`), where Android's modes of Sioul's are kept;
 //! 3. mail at its rhythm, the inbox only: what your own spam filter moves as
-//!    you chose, into the Junk folder (`spam::after_fetch`), the rest handed
-//!    to the new-mail notifications (`mailnote`), which never tell what the
-//!    filter flagged or moved;
+//!    you chose, into the Junk folder (`spam::after_fetch`); what your mail
+//!    filters do, on the server, to the arrivals still unread
+//!    (`filters::after_fetch`); the rest handed to the new-mail notifications
+//!    (`mailnote`), which never tell what the spam filter flagged or moved,
+//!    nor what a mail filter moves out of the inbox or marks read;
 //! 4. the calls' table (`calls::step`): made again when what it is made of
 //!    changed, and the notification's "Let every call through";
 //! 5. when to look next: two minutes while another device is in use, five
@@ -198,7 +200,8 @@ fn mail_due(config: &Config, now: i64, last: i64, asleep: bool, paused: bool) ->
     config.reminders.mail && !resting && now - last >= MAIL_EVERY - 30 && config.accounts.iter().any(sioul_core::config::Account::syncs)
 }
 
-/// The inbox of each account fetched, what your spam filter moves moved, its
+/// The inbox of each account fetched, what your spam filter moves moved, what
+/// your mail filters do done, its
 /// arrivals handed to the new-mail notifications, and to the home screen's
 /// card when any came (`homecard::mail_came`); whether any came.
 fn fetch_mail(config: &Config) -> bool {
@@ -209,7 +212,16 @@ fn fetch_mail(config: &Config) -> bool {
             Ok(report) => {
                 any |= !report.new.is_empty();
                 crate::spam::after_fetch(account, &report.new, report.first);
+                // Your mail filters, as every device that fetches runs them (docs/client.md,
+                // "Filters"): what they would take quietly is held back from the
+                // notifications, and told as new mail if they could not act on it.
+                let filtered = crate::filters::after_fetch(account, &report.new, report.first);
+                if !filtered.problem.is_empty() {
+                    eprintln!("sioul: steps: {}: {}", account.id, filtered.problem);
+                }
                 crate::mailnote::arrived(&account.id, &report.new, report.first);
+                crate::mailnote::unfiltered(&account.id, &filtered.tell);
+                any |= !filtered.tell.is_empty();
             }
             Err(e) => eprintln!("sioul: steps: {}: {e:?}", account.id),
         }

@@ -45,8 +45,8 @@ Popup {
     parent: Overlay.overlay
     x: parent ? parent.width - width : 0
     y: 0
-    // Half the window, at most 480 pixels; all of a phone's.
-    width: !parent ? 480 : parent.width < 720 ? parent.width : Math.min(480, parent.width * 0.5)
+    // Two fifths of the window and a little more, 520 to 760 pixels; all of a phone's (Theme.qml).
+    width: !parent ? 520 : panel.theme.sideWidth(parent.width)
     height: parent ? parent.height : 600
     padding: panel.theme.gap
     modal: false

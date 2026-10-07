@@ -52,6 +52,7 @@
 //! - [`sasl`]: signing in to IMAP and SMTP with an access token instead of a password (XOAUTH2).
 //! - [`fetch`]: new mail fetched read-only into the account's Maildir, once or as it arrives.
 //! - [`mailbox`]: an account's folders, and what you do to its messages on the server.
+//! - [`search`]: searching the mail a server holds and this device does not; a message found there brought here.
 //! - [`send`]: sending through SMTP submission, then a copy into Sent.
 //! - [`verify`]: Sioul's own checks of who sent a message: SPF, DKIM, DMARC, ARC, reverse DNS.
 //! - [`unsubscribe`]: leaving a mailing list in one click, the request itself (RFC 8058).
@@ -110,6 +111,7 @@ pub mod disk;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
 pub mod dnd;
 pub mod fetch;
+pub mod filters;
 pub mod geocode;
 pub mod github;
 pub mod google;
@@ -127,6 +129,7 @@ pub mod remote;
 // Signing in to IMAP and SMTP with an access token (XOAUTH2): Google's mail.
 pub mod sasl;
 pub mod scout;
+pub mod search;
 pub mod secret;
 pub mod send;
 pub mod share;
