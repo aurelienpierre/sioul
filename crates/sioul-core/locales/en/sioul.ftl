@@ -3516,7 +3516,6 @@ home-card-when-yesterday = yesterday at { $time }
 home-card-porch-opens = The Porch opens { $when }.
 home-card-porch-rests = After the pause, the Porch opens { $when }.
 home-card-porch-closed = The Porch is closed for now.
-home-card-many = Many letters came.
 home-card-setup = Sioul is not set up yet.
 home-card-beyond = Open Sioul to bring this card up to date.
 home-card-step-plain = Your next step
@@ -3529,8 +3528,20 @@ home-card-code-plain = { $kind ->
     }
 home-card-dose = { $dose }, { $time }
 home-card-dose-check = { $dose }, { $time }: check before taking it.
+# The list under the card's lines: the Porch's latest messages, then the coming events. Never a count.
+home-card-mail = Mail
+home-card-agenda = Agenda
+home-card-porch-empty = Nothing waits on the Porch.
+home-card-mail-waits = Mail waits on the Porch.
+home-card-yesterday = Yesterday
+home-card-today = Today, { $day }
+home-card-tomorrow = Tomorrow, { $day }
+home-card-time-range = { $start } – { $end }
+home-card-until-day = Until { $day }
+home-card-event-plain = An event
+home-card-agenda-empty = Nothing in your calendars for the coming month.
 set-home-card-details = Details on the home screen
-set-home-card-details-help = Sioul's card on this phone's home screen names the first letters waiting on the Porch, with their sender and subject, a code you just asked a site for, a dose due, and the next step's title. Unticked, it says only what now is for, how many letters came, and that a next step waits: for a phone whose home screen others see. This phone only.
+set-home-card-details-help = Sioul's card on this phone's home screen lists the latest messages on the Porch, with their sender, subject and first line, the coming events of your calendars with their titles, a code you just asked a site for, a dose due, and the next step's title. Unticked, it says only what now is for, that mail waits, the events' times without their titles, and that a next step waits: for a phone whose home screen others see. This phone only.
 
 # Leaving a mailing list from a message (Reader.qml, unsubscribe.rs): one click, ten seconds to undo.
 unsubscribe-label = Unsubscribe

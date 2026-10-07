@@ -199,7 +199,8 @@ fn mail_due(config: &Config, now: i64, last: i64, asleep: bool, paused: bool) ->
 }
 
 /// The inbox of each account fetched, what your spam filter moves moved, its
-/// arrivals handed to the new-mail notifications; whether any came.
+/// arrivals handed to the new-mail notifications, and to the home screen's
+/// card when any came (`homecard::mail_came`); whether any came.
 fn fetch_mail(config: &Config) -> bool {
     let mut any = false;
     for account in config.accounts.iter().filter(|a| a.syncs()) {
@@ -212,6 +213,9 @@ fn fetch_mail(config: &Config) -> bool {
             }
             Err(e) => eprintln!("sioul: steps: {}: {e:?}", account.id),
         }
+    }
+    if any {
+        crate::homecard::mail_came();
     }
     any
 }
