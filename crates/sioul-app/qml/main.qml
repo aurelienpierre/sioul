@@ -575,6 +575,13 @@ SioulWindow {
             window.page = 3
         else if (item.kind === "porch")
             window.page = 0
+        // A message of the phone's home screen card (homecard.rs): on the
+        // Porch, in its Reader; in Mail when the Porch no longer shows it.
+        else if (item.kind === "card-mail") {
+            window.page = 0
+            if (window.porchPage)
+                window.porchPage.openMessage(item.key)
+        }
         // The phone's home screen card (homecard.rs): Now; its step's details
         // when Now shows another step (the card was older than the plan).
         else if (item.kind === "now") {

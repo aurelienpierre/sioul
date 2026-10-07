@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- A day of the home-screen card's agenda (HomeCardRows.java): "Today, Wed
+     7 Oct", "Tomorrow, Thu 8 Oct", "Mon 12 Oct". -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/sioul_home_card_row"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:ellipsize="end"
+    android:maxLines="1"
+    android:paddingStart="@dimen/sioul_home_card_padding"
+    android:paddingEnd="@dimen/sioul_home_card_padding"
+    android:paddingTop="10dp"
+    android:paddingBottom="4dp"
+    android:textColor="@color/sioul_home_card_text"
+    android:textSize="13sp" />

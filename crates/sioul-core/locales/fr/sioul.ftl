@@ -3534,7 +3534,6 @@ home-card-when-yesterday = hier à { $time }
 home-card-porch-opens = Le Porche ouvre { $when }.
 home-card-porch-rests = Après la pause, le Porche ouvre { $when }.
 home-card-porch-closed = Le Porche est fermé pour le moment.
-home-card-many = Beaucoup de lettres sont arrivées.
 home-card-setup = Sioul n’est pas encore configuré.
 home-card-beyond = Ouvrez Sioul pour mettre cette carte à jour.
 home-card-step-plain = Votre prochaine étape
@@ -3547,8 +3546,20 @@ home-card-code-plain = { $kind ->
     }
 home-card-dose = { $dose }, { $time }
 home-card-dose-check = { $dose }, { $time } : vérifiez avant de la prendre.
+# La liste sous les lignes de la carte : les derniers messages du Porche, puis les prochains événements. Jamais de compte.
+home-card-mail = Courrier
+home-card-agenda = Agenda
+home-card-porch-empty = Rien n’attend sur le Porche.
+home-card-mail-waits = Du courrier attend sur le Porche.
+home-card-yesterday = hier
+home-card-today = Aujourd’hui, { $day }
+home-card-tomorrow = Demain, { $day }
+home-card-time-range = { $start } – { $end }
+home-card-until-day = Jusqu’au { $day }
+home-card-event-plain = Un événement
+home-card-agenda-empty = Rien dans vos agendas pour le mois à venir.
 set-home-card-details = Détails sur l’écran d’accueil
-set-home-card-details-help = La carte de Sioul sur l’écran d’accueil de ce téléphone nomme les premières lettres qui attendent sur le Porche, avec leur expéditeur et leur objet, un code que vous venez de demander à un site, une prise prévue, et le titre de la prochaine étape. Sans ce réglage, elle ne dit que ce à quoi sert ce moment, combien de lettres sont arrivées, et qu’une prochaine étape attend : pour un téléphone dont d’autres voient l’écran d’accueil. Ce téléphone seulement.
+set-home-card-details-help = La carte de Sioul sur l’écran d’accueil de ce téléphone liste les derniers messages du Porche, avec leur expéditeur, leur objet et leur première ligne, les prochains événements de vos agendas avec leur titre, un code que vous venez de demander à un site, une prise prévue, et le titre de la prochaine étape. Sans ce réglage, elle ne dit que ce à quoi sert ce moment, que du courrier attend, l’heure des événements sans leur titre, et qu’une prochaine étape attend : pour un téléphone dont d’autres voient l’écran d’accueil. Ce téléphone seulement.
 
 # Quitter une liste de diffusion depuis un message (Reader.qml, unsubscribe.rs) : un clic, dix secondes pour annuler.
 unsubscribe-label = Se désabonner

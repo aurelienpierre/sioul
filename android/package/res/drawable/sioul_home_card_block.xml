@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- An event on the home-screen card (HomeCardRows.java): a rounded block,
+     white here, given its calendar's colour by a colour filter as it is
+     drawn, which RemoteViews allows on any Android Sioul runs on. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#ffffff" />
+    <corners android:radius="@dimen/sioul_home_card_block_radius" />
+</shape>

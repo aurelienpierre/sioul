@@ -1,17 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<!-- Sioul's card on the home screen (HomeCard.java): Sioul's light colours
-     (crates/sioul-app/qml/Theme.qml: surface, text, muted, accent), the dark
-     ones in values-night; its size; the line the launcher's list of widgets
-     shows, in English only: Qt's Gradle template keeps the English resources
-     alone (resConfig "en"), so the card's own words are Rust's and Java's. -->
+<!-- Sioul's cards on the home screen (HomeCard.java, HomeCardRows.java):
+     Sioul's light colours (crates/sioul-app/qml/Theme.qml: surface, text,
+     muted, accent, line), the dark ones in values-night; their spacing; the
+     names and lines the launcher's list of widgets shows, in English only:
+     Qt's Gradle template keeps the English resources alone (resConfig "en"),
+     so the cards' own words are Rust's and Java's. -->
 <resources>
     <color name="sioul_home_card_surface">#fbfaf7</color>
     <color name="sioul_home_card_text">#2d2a26</color>
     <color name="sioul_home_card_muted">#6b655c</color>
     <color name="sioul_home_card_accent">#4c6b5c</color>
+    <color name="sioul_home_card_line">#e2dccf</color>
     <dimen name="sioul_home_card_radius">16dp</dimen>
-    <dimen name="sioul_home_card_padding">14dp</dimen>
+    <dimen name="sioul_home_card_padding">16dp</dimen>
     <dimen name="sioul_home_card_gap">6dp</dimen>
-    <string name="sioul_home_card_description">What now is for, the Porch and your next step.</string>
+    <dimen name="sioul_home_card_block_radius">6dp</dimen>
+    <string name="sioul_home_card_description">What now is for, your next step, the Porch\'s latest messages and your coming events.</string>
+    <string name="sioul_home_card_mail_label">Sioul — Mail</string>
+    <string name="sioul_home_card_mail_description">The Porch\'s latest messages.</string>
+    <string name="sioul_home_card_agenda_label">Sioul — Agenda</string>
+    <string name="sioul_home_card_agenda_description">Your coming events, day by day.</string>
 </resources>

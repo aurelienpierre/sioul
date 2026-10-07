@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<!-- The card's dark colours (Theme.qml's, dark): the phone's dark theme. -->
+<!-- The cards' dark colours (Theme.qml's, dark): the phone's dark theme. -->
 <resources>
     <color name="sioul_home_card_surface">#272824</color>
     <color name="sioul_home_card_text">#e6e2da</color>
     <color name="sioul_home_card_muted">#a8a297</color>
     <color name="sioul_home_card_accent">#93b5a2</color>
+    <color name="sioul_home_card_line">#3b3b36</color>
 </resources>

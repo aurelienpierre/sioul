@@ -54,6 +54,8 @@ pub(crate) fn show_pim(qt: &QtThread, shared: &Arc<Shared>) {
         let generation = shared.pim_generation.fetch_add(1, Ordering::Relaxed) + 1;
         let state = shared.pim.lock().map(|s| s.clone()).unwrap_or_default();
         let (removed, skipped) = mail::hidden_pim(shared);
+        // The phone's home-screen card reads its month of events again (homecard.rs).
+        crate::homecard::agenda_seen(&removed, &skipped);
         let everyone: Vec<contacts::Contact> = contacts::all().into_iter().filter(|c| !removed.contains(Path::new(&c.key))).collect();
         let contacts = json(&view::contacts(&everyone, &state.query, &state.category, tr()));
         let zone = TimeZone::system();

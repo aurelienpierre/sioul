@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- A sentence in the home-screen card's list (HomeCardRows.java), said
+     instead of messages or events: "Nothing waits on the Porch.", "The Porch
+     opens tomorrow at 09:00.", "Mail waits on the Porch." Never a count. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/sioul_home_card_row"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:ellipsize="end"
+    android:lineSpacingExtra="2dp"
+    android:maxLines="2"
+    android:paddingStart="@dimen/sioul_home_card_padding"
+    android:paddingEnd="@dimen/sioul_home_card_padding"
+    android:paddingTop="4dp"
+    android:paddingBottom="8dp"
+    android:textColor="@color/sioul_home_card_muted"
+    android:textSize="14sp" />

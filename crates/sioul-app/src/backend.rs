@@ -4316,9 +4316,10 @@ impl qobject::Sioul {
         if let Some((kind, key)) = crate::eventalarms::opened() {
             self.as_mut().reminder_opened(QString::from(&kind), QString::default(), QString::from(&key));
         }
-        // The home screen's card tapped: the Porch, or Now on its step (homecard.rs).
-        if let Some((kind, uri)) = crate::homecard::opened() {
-            self.as_mut().reminder_opened(QString::from(kind), QString::from(&uri), QString::default());
+        // The home screen's card tapped: the Porch or a message on it, Now on
+        // its step, the Agenda or an event in it (homecard.rs).
+        if let Some((kind, uri, key)) = crate::homecard::opened() {
+            self.as_mut().reminder_opened(QString::from(kind), QString::from(&uri), QString::from(&key));
         }
         // What was asked while away, computed once now.
         let (qt, shared) = (self.qt_thread(), self.shared());

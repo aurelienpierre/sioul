@@ -94,6 +94,27 @@ Item {
     function back() {
         page.openKey = ""
     }
+
+    // A message tapped on the phone's home screen card (homecard.rs, main.qml's
+    // "card-mail"): opened here, in the Reader, once the Porch is read; in
+    // Mail, by its file, when the Porch no longer shows it (filed, moved).
+    property string cardKey: ""
+    function openMessage(key) {
+        page.cardKey = key
+        page.openKey = key
+        page.lookForCard()
+    }
+    function lookForCard() {
+        if (page.cardKey === "" || page.porchText === "")
+            return
+        const key = page.cardKey
+        page.cardKey = ""
+        if (page.findItem(key) === null) {
+            page.openKey = ""
+            page.window.openThing({ kind: "mail", uri: "", key: key })
+        }
+    }
+    onPorchTextChanged: page.lookForCard()
     // Lanes folded or unfolded by hand, by key; the others keep their default.
     property var unfolded: ({})
 

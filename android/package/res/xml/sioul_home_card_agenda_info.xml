@@ -1,19 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<!-- Sioul's card on the home screen (HomeCard.java): its lines on top, the
-     Porch's latest messages and the coming events in a list that scrolls;
-     about four cells by four, resizable; drawn when Sioul writes it and at
-     each change of time it gave ahead, never on a timer of Android's
-     (updatePeriodMillis 0). -->
+<!-- Sioul's agenda card (HomeCardAgenda.java): the coming events alone, day by
+     day, as the full card lists them; about four cells by three, resizable;
+     drawn as the full card is (HomeCard.java). -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:description="@string/sioul_home_card_description"
+    android:description="@string/sioul_home_card_agenda_description"
     android:initialLayout="@layout/sioul_home_card"
     android:minWidth="250dp"
-    android:minHeight="250dp"
+    android:minHeight="180dp"
     android:minResizeWidth="180dp"
     android:minResizeHeight="40dp"
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="4"
-    android:targetCellHeight="4"
+    android:targetCellHeight="3"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen" />

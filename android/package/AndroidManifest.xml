@@ -143,9 +143,40 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/sioul_home_card_info" />
         </receiver>
-        <!-- A line of the card tapped: the Porch, or Now on its step, kept
-             for Sioul, which comes up on it (HomeCardOpener.java); never
-             shown itself. -->
+        <!-- The mail card and the agenda card: one part of the card's list
+             alone (HomeCardMail.java, HomeCardAgenda.java), drawn with it. -->
+        <receiver
+            android:name="com.aurelienpierre.sioul.HomeCardMail"
+            android:label="@string/sioul_home_card_mail_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/sioul_home_card_mail_info" />
+        </receiver>
+        <receiver
+            android:name="com.aurelienpierre.sioul.HomeCardAgenda"
+            android:label="@string/sioul_home_card_agenda_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/sioul_home_card_agenda_info" />
+        </receiver>
+        <!-- The rows of the cards' lists, the Porch's latest messages and the
+             coming events (HomeCardService.java, HomeCardRows.java): bound by
+             the system's widget service alone (its permission). -->
+        <service
+            android:name="com.aurelienpierre.sioul.HomeCardService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+        <!-- A line of the card tapped: the Porch or a message on it, Now on
+             its step, the Agenda or an event in it, kept for Sioul, which
+             comes up on it (HomeCardOpener.java); never shown itself. -->
         <activity
             android:name="com.aurelienpierre.sioul.HomeCardOpener"
             android:theme="@android:style/Theme.NoDisplay"
