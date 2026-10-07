@@ -37,6 +37,22 @@
 //! alone on a new one and, failing twice, set aside (`skipped`), so that it
 //! never holds back its folder.
 //!
+//! Each message is checked as Sioul checks the mail it stores (`Checked`,
+//! `sioul_sync::verify`: DKIM on the whole message, SPF from the server
+//! that handed it to your provider, DMARC, ARC, the reverse DNS), so that
+//! training reads the same checks as the sorting does: fetched whole (up to
+//! `CHECK_WHOLE`; a larger one by its header block alone), in memory only,
+//! checked, and dropped; only the checks' results are kept, in the record.
+//! Records kept before, or while the DNS did not answer, are checked later
+//! (`verify`, and every download after its new mail): each message fetched
+//! once by its UID, the results appended beside the records
+//! (`checks.jsonl.gz`), so a run stopped goes on there; a message its server
+//! no longer has stays unchecked for good (`Checked::gone`). The DNS: one
+//! resolver per run, so each answer is asked once; a few checks a second, a
+//! few at a time, each within `CHECK_LIMIT`; when no DNS server answers (not
+//! even that a name made up under the mail server's domain does not exist),
+//! the checks stop, and what is left waits, unknown, for the next run.
+//!
 //! The corpus is private: never shared, never shown to an AI agent.
 
 use crate::{Cancel, Dirs, LearnError, Progress, Stage, io_error, now};
@@ -46,11 +62,16 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sioul_core::config::Account;
 use sioul_core::folders::{Folder, Role};
+use sioul_core::spam::features;
+use sioul_core::trust::{AuthResults, Outcome};
 use sioul_sync::SyncError;
 use sioul_sync::imap::{self, COMMAND, Imap, Server};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use sioul_sync::verify::Verifier;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Seek, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 /// A text or HTML part up to this size is read whole, and cut here; a larger
@@ -77,6 +98,22 @@ const BATCH_BYTES: u64 = BATCH as u64 * (HEADER_BYTES as u64 + 4 * EXCERPT_CHARS
 /// Parts listed per message, at most.
 const MOST_PARTS: usize = 64;
 const FETCH: Duration = Duration::from_secs(180);
+/// A message up to this size is fetched whole for Sioul's checks, in memory
+/// only; a larger one is checked by its header block alone (SPF, the reverse
+/// DNS; DMARC when SPF passes it), what needs the body left unsaid.
+pub const CHECK_WHOLE: u32 = 2 * 1024 * 1024;
+/// Whole messages asked in one FETCH: at most this many bytes in all.
+const CHECK_GROUP: u64 = 8 * 1024 * 1024;
+/// One message's checks, at most; each DNS question, asked once, at most `DNS_TIMEOUT`.
+const CHECK_LIMIT: Duration = Duration::from_secs(15);
+const DNS_TIMEOUT: Duration = Duration::from_secs(4);
+/// Checks started each second, at most, and at once.
+const CHECKS_PER_SECOND: u64 = 20;
+const CHECKS_AT_ONCE: usize = 4;
+/// So many messages in a row without any DNS answer, and the network is asked whether it is there.
+const OFFLINE_STREAK: usize = 8;
+/// The account's checks kept apart from its records (`verify`).
+const CHECKS_FILE: &str = "checks.jsonl.gz";
 
 /// One message as training reads it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -109,8 +146,54 @@ pub struct Record {
     /// Its HTML part, decoded, when the Porch reads it: no text part, or a stand-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub html: Option<Text>,
+    /// Sioul's own checks of it, made on the whole message as it was fetched;
+    /// none before they were made (a record kept earlier, the DNS silent):
+    /// `verify` makes them, and `read_all` gives them with the record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked: Option<Checked>,
     /// When this record was written, in Unix seconds.
     pub fetched: i64,
+}
+
+/// Sioul's own checks of a message (SPF, DKIM, DMARC, ARC, the reverse DNS
+/// of the server that handed it to your provider: `sioul_sync::verify`),
+/// made as the Maildir fetch makes them as mail arrives, on the whole
+/// message, when the corpus fetched it (or later: `verify`). The message
+/// itself is never kept: only what the checks found.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Checked {
+    /// When they were made (Unix seconds): with the DNS of that day.
+    pub at: i64,
+    /// What they found, as Sioul writes it on top of a message it stores
+    /// ("Authentication-Results: sioul-….invalid; dkim=pass …"); empty when
+    /// nothing could be said (`gone`, a message that could not be read,
+    /// checks that did not finish in time).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub results: String,
+    /// Checked whole; false above `CHECK_WHOLE`: by its header block alone.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub whole: bool,
+    /// The server no longer had the message: nothing was checked, nor will be.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub gone: bool,
+}
+
+impl Checked {
+    /// The results as the features read them (`sioul_core::spam::features`):
+    /// Sioul's own; made long after the message came (`features::LATE`;
+    /// `date`, its INTERNALDATE, 0 when unknown: long after, then), the
+    /// failures of a message that carries a DKIM signature (`signed`:
+    /// `features::signed`) unknown, those of an unsigned one as they are
+    /// (`features::late`); none when they said nothing.
+    pub fn reading(&self, date: i64, signed: bool) -> Option<AuthResults> {
+        let results = features::stamp_results(&self.results)?;
+        Some(if self.late(date) { features::late(results, signed) } else { results })
+    }
+
+    /// Made long after the message came (`features::LATE`).
+    pub fn late(&self, date: i64) -> bool {
+        date <= 0 || self.at - date > features::LATE
+    }
 }
 
 /// A text kept, and the part it comes from.
@@ -276,6 +359,9 @@ fn file_name(folder: &Folder) -> String {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct AccountState {
+    /// Bytes of `checks.jsonl.gz` known whole (`verify`); anything after is a batch cut short.
+    #[serde(default)]
+    checks: u64,
     #[serde(default, rename = "folder")]
     folders: BTreeMap<String, FolderState>,
 }
@@ -364,9 +450,10 @@ pub(crate) fn read_ranges(text: &str) -> BTreeSet<u32> {
 
 // --- The records' files ----------------------------------------------------------
 
-/// Appends one batch to a folder's file as a gzip member, after cutting off
-/// whatever a crash left past `committed`; the file's new committed length.
-fn append(path: &Path, committed: u64, records: &[Record]) -> Result<u64, LearnError> {
+/// Appends one batch to a folder's file (or the checks' file) as a gzip
+/// member, after cutting off whatever a crash left past `committed`; the
+/// file's new committed length.
+fn append<T: Serialize>(path: &Path, committed: u64, records: &[T]) -> Result<u64, LearnError> {
     let mut lines = Vec::new();
     for record in records {
         serde_json::to_writer(&mut lines, record).map_err(|e| io_error(path, e))?;
@@ -408,7 +495,8 @@ pub fn read_file(path: &Path, committed: Option<u64>, mut each: impl FnMut(Recor
     Ok(())
 }
 
-/// Every record of the corpus, account after account, folder after folder.
+/// Every record of the corpus, account after account, folder after folder,
+/// each with Sioul's checks of it, made as it was fetched or later (`verify`).
 pub fn read_all(dirs: &Dirs, mut each: impl FnMut(Record)) -> Result<(), LearnError> {
     let root = dirs.corpus();
     let Ok(accounts) = std::fs::read_dir(&root) else { return Ok(()) };
@@ -416,6 +504,7 @@ pub fn read_all(dirs: &Dirs, mut each: impl FnMut(Record)) -> Result<(), LearnEr
     accounts.sort();
     for dir in accounts {
         let state = AccountState::load(&dir.join("state.toml"));
+        let checks = read_checks(&dir, state.checks);
         let mut files: BTreeMap<String, u64> = BTreeMap::new();
         for folder in state.folders.values() {
             files.insert(folder.file.clone(), folder.committed);
@@ -423,11 +512,45 @@ pub fn read_all(dirs: &Dirs, mut each: impl FnMut(Record)) -> Result<(), LearnEr
         for (file, committed) in files {
             let path = dir.join(&file);
             if path.exists() {
-                read_file(&path, Some(committed), &mut each)?;
+                read_file(&path, Some(committed), |mut record| {
+                    if record.checked.is_none() && !checks.is_empty() {
+                        record.checked = checks.get(&(record.folder.clone(), record.uidvalidity, record.uid)).cloned();
+                    }
+                    each(record);
+                })?;
             }
         }
     }
     Ok(())
+}
+
+/// A record's checks made after it was kept (`verify`), by its place in
+/// its account: one line of the account's `checks.jsonl.gz`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct CheckLine {
+    folder: String,
+    uidvalidity: u32,
+    uid: u32,
+    checked: Checked,
+}
+
+/// An account's checks kept apart from its records, by (folder,
+/// UIDVALIDITY, UID), up to `committed` bytes; the newest of a place wins.
+fn read_checks(dir: &Path, committed: u64) -> HashMap<(String, u32, u32), Checked> {
+    let mut checks = HashMap::new();
+    let path = dir.join(CHECKS_FILE);
+    if committed == 0 {
+        return checks;
+    }
+    let Ok(file) = std::fs::File::open(&path) else { return checks };
+    let reader = BufReader::new(flate2::read::MultiGzDecoder::new(BufReader::new(file.take(committed))));
+    for line in reader.split(b'\n') {
+        let Ok(line) = line else { break };
+        if let Ok(line) = serde_json::from_slice::<CheckLine>(&line) {
+            checks.insert((line.folder, line.uidvalidity, line.uid), line.checked);
+        }
+    }
+    checks
 }
 
 /// What the corpus's headers say of your providers' own spam filters:
@@ -462,6 +585,98 @@ pub fn verdicts(dirs: &Dirs) -> Result<BTreeMap<String, Verdicts>, LearnError> {
                 totals.read += 1;
                 totals.flagged += u64::from(verdict.flagged);
             }
+        }
+    })?;
+    Ok(accounts)
+}
+
+/// What Sioul's checks say in the corpus, per account, as the training reads
+/// them (`Checked::reading`: old signed mail's failures unknown): totals
+/// only, never a message.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct CheckCounts {
+    /// Records read (a message in two folders counts twice).
+    pub records: u64,
+    /// Not checked yet: kept before the checks were made, or while no DNS answered.
+    pub unchecked: u64,
+    /// Their server no longer had them: unknown for good.
+    pub gone: u64,
+    /// Checked, but nothing could be said (a message that could not be
+    /// read, checks that did not finish in time).
+    pub silent: u64,
+    /// Checked by their header block alone (larger than `CHECK_WHOLE`).
+    pub header_only: u64,
+    pub dkim: Tally,
+    pub spf: Tally,
+    pub dmarc: Tally,
+    /// The sender verified: DMARC passed for the From's domain, or a
+    /// signature by that domain did (`trust::judge_sender`).
+    pub verified: u64,
+    /// Checks with a failure, made long after a message that carries a
+    /// DKIM signature came: their failures read unknown (`features::late`).
+    pub late_failures: u64,
+}
+
+/// One check's results over many messages, as the training reads them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct Tally {
+    pub pass: u64,
+    pub fail: u64,
+    /// Neither: a key not found or revoked, a DNS error, an expired
+    /// signature, a body changed since it was signed; a failure of old
+    /// signed mail.
+    pub unknown: u64,
+    /// Nothing to check: no signature, no record; DKIM of a message checked by its header alone.
+    pub none: u64,
+}
+
+impl Tally {
+    /// One message's result; `erased`, a failure read unknown (`features::late`).
+    fn count(&mut self, outcome: Option<Outcome>, erased: bool) {
+        match outcome {
+            Some(Outcome::Pass) => self.pass += 1,
+            Some(Outcome::Fail | Outcome::SoftFail) if !erased => self.fail += 1,
+            None | Some(Outcome::None) => self.none += 1,
+            Some(_) => self.unknown += 1,
+        }
+    }
+}
+
+/// What Sioul's checks say in the corpus, per account (`CheckCounts`).
+pub fn checks(dirs: &Dirs) -> Result<BTreeMap<String, CheckCounts>, LearnError> {
+    let mut accounts: BTreeMap<String, CheckCounts> = BTreeMap::new();
+    read_all(dirs, |record| {
+        let counts = accounts.entry(record.account.clone()).or_default();
+        counts.records += 1;
+        let Some(checked) = &record.checked else {
+            counts.unchecked += 1;
+            return;
+        };
+        if checked.gone {
+            counts.gone += 1;
+            return;
+        }
+        let Some(results) = features::stamp_results(&checked.results) else {
+            counts.silent += 1;
+            return;
+        };
+        counts.header_only += u64::from(!checked.whole);
+        let header = record.header_bytes();
+        // Old mail's failures unknown beside a signature (`features::late`).
+        let late = checked.late(record.date);
+        let signed = features::signed(&sioul_core::headers::RawHeaders::parse(&header));
+        let erased = late && signed;
+        let failed = |o: Option<Outcome>| matches!(o, Some(Outcome::Fail | Outcome::SoftFail));
+        if erased && (failed(results.dkim) || failed(results.spf) || failed(results.dmarc)) {
+            counts.late_failures += 1;
+        }
+        counts.dkim.count(results.dkim, erased);
+        counts.spf.count(results.spf, erased);
+        counts.dmarc.count(results.dmarc, erased);
+        let sender = crate::labels::from_address(&header).and_then(|a| a.rsplit_once('@').map(|(_, d)| d.to_string()));
+        let read = if late { features::late(results, signed) } else { results };
+        if sioul_core::trust::judge_sender(Some(&read), false, sender.as_deref()).0 == sioul_core::trust::Trust::Verified {
+            counts.verified += 1;
         }
     })?;
     Ok(accounts)
@@ -604,6 +819,14 @@ fn save_status(dirs: &Dirs, status: &Status) -> Result<(), LearnError> {
 pub struct Update {
     /// Records added, every account.
     pub added: u64,
+    /// Messages checked by Sioul in this run (new ones, and those kept
+    /// before without checks), and of those, the ones their server no
+    /// longer had (`Checked::gone`).
+    pub checked: u64,
+    pub gone: u64,
+    /// The checks stopped: no DNS server answered (or none is set up). The
+    /// messages left are checked at the next run.
+    pub offline: bool,
     /// Accounts that could not be read, with why (a technical detail).
     pub failed: Vec<(String, String)>,
     /// It stopped to keep the disk's free space.
@@ -622,10 +845,15 @@ pub fn free_space(path: &Path) -> Option<u64> {
 /// password as the sync uses it (`sioul_sync::secret::password`); `room` the
 /// free space on a disk (`free_space`; tests say less).
 ///
+/// Each message added is checked as it comes (`Checked`), and then the
+/// messages kept before without checks (`verify`'s work).
+///
 /// Progress: first one `Progress { stage: Corpus, detail: "", done: 0, total }`
 /// with about how many messages are to come in all (each kept folder's
 /// MESSAGES, less those recorded); then, folder after folder, `detail`
-/// "account · folder" with that folder's `done` of `total`.
+/// "account · folder" with that folder's `done` of `total`; then, account
+/// after account with messages kept unchecked, `Verify` with `detail` the
+/// account and its `done` of `total`.
 pub fn update(
     accounts: &[Account],
     password: &dyn Fn(&Account) -> Result<String, SyncError>,
@@ -633,6 +861,30 @@ pub fn update(
     room: &dyn Fn(&Path) -> Option<u64>,
     progress: &mut dyn FnMut(&Progress),
     cancel: &Cancel,
+) -> Update {
+    run(accounts, password, dirs, room, progress, cancel, true)
+}
+
+/// Sioul's own checks of the messages kept without them (`Checked`), and
+/// nothing else: nothing new is downloaded (`sioul spam fetch --verify`).
+/// Each message is fetched once by its UID, whole (or its header block,
+/// above `CHECK_WHOLE`), in memory only; its checks are appended beside the
+/// records after each group, so a run stopped goes on there. A message its
+/// server no longer has (its folder gone or renumbered, its UID gone) is
+/// `gone`: unknown for good. Progress: `Verify`, account after account.
+pub fn verify(accounts: &[Account], password: &dyn Fn(&Account) -> Result<String, SyncError>, dirs: &Dirs, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Update {
+    run(accounts, password, dirs, &|_| None, progress, cancel, false)
+}
+
+/// `update` (`download`), or `verify`.
+fn run(
+    accounts: &[Account],
+    password: &dyn Fn(&Account) -> Result<String, SyncError>,
+    dirs: &Dirs,
+    room: &dyn Fn(&Path) -> Option<u64>,
+    progress: &mut dyn FnMut(&Progress),
+    cancel: &Cancel,
+    download: bool,
 ) -> Update {
     let mut update = Update::default();
     let mut status = status(dirs);
@@ -644,18 +896,24 @@ pub fn update(
             return update;
         }
     };
+    // One resolver for the whole run; without any (no DNS set up), nothing is checked.
+    let checker = Checker::new();
+    update.offline = checker.is_none();
     let own = own_addresses(accounts);
-    // About how much is to come, so the window can say "N of about M": best effort.
     let passwords: Vec<(&Account, Result<String, SyncError>)> = accounts.iter().filter(|a| a.syncs()).map(|a| (a, password(a))).collect();
-    let estimate: u64 = passwords.iter().filter_map(|(a, p)| p.as_ref().ok().map(|p| runtime.block_on(to_come(a, p, dirs)).unwrap_or(0))).sum();
-    progress(&Progress { stage: Stage::Corpus, done: 0, total: estimate, detail: String::new() });
+    if download {
+        // About how much is to come, so the window can say "N of about M": best effort.
+        let estimate: u64 = passwords.iter().filter_map(|(a, p)| p.as_ref().ok().map(|p| runtime.block_on(to_come(a, p, dirs)).unwrap_or(0))).sum();
+        progress(&Progress { stage: Stage::Corpus, done: 0, total: estimate, detail: String::new() });
+    }
     for (account, password) in passwords {
         if cancel.cancelled() {
             update.cancelled = true;
             break;
         }
         let result = password.map_err(|e| e.to_string()).and_then(|password| {
-            runtime.block_on(update_account(account, &password, &own, dirs, room, progress, cancel, &mut update)).map_err(|e| e.to_string())
+            let work = update_account(account, &password, &own, dirs, room, progress, cancel, checker.as_ref(), download, &mut update);
+            runtime.block_on(work).map_err(|e| e.to_string())
         });
         match result {
             Ok(()) => {
@@ -670,8 +928,11 @@ pub fn update(
             break;
         }
     }
-    status.held = update.held;
-    status.last_run = Some(now());
+    update.offline |= checker.as_ref().is_some_and(Checker::offline);
+    if download {
+        status.held = update.held;
+        status.last_run = Some(now());
+    }
     let _ = save_status(dirs, &status);
     update
 }
@@ -732,6 +993,8 @@ impl From<LearnError> for Stop {
     }
 }
 
+/// An account's download (`download`), its new messages checked as they
+/// come, then its messages kept without checks checked (`check_kept`).
 #[allow(clippy::too_many_arguments)]
 async fn update_account(
     account: &Account,
@@ -741,9 +1004,14 @@ async fn update_account(
     room: &dyn Fn(&Path) -> Option<u64>,
     progress: &mut dyn FnMut(&Progress),
     cancel: &Cancel,
+    checker: Option<&Checker>,
+    download: bool,
     update: &mut Update,
 ) -> Result<(), Stop> {
     let dir = dirs.corpus().join(&account.id);
+    if !download && !dir.join("state.toml").exists() {
+        return Ok(());
+    }
     std::fs::create_dir_all(&dir).map_err(|e| io_error(&dir, e))?;
     #[cfg(unix)]
     {
@@ -757,11 +1025,20 @@ async fn update_account(
         return Err(LearnError::Io(format!("{}: being updated by another Sioul", account.id)).into());
     }
     let server = Server::of(account)?;
+    // Whether the DNS answers at all, asked once per account: the mail server's own name.
+    let checker = match checker {
+        Some(checker) if !checker.offline() && checker.verifier.answers(&server.host).await => Some(checker),
+        Some(checker) => {
+            checker.went_offline();
+            None
+        }
+        None => None,
+    };
     let mut reconnects = 0;
-    loop {
+    while download {
         let mut session = imap::open(&server, password).await?;
         let gmail = is_gmail(&mut session).await;
-        let result = update_folders(&mut session, account, own, gmail, &dir, room, progress, cancel, update).await;
+        let result = update_folders(&mut session, account, own, gmail, &dir, room, progress, cancel, checker, update).await;
         let _ = session.logout().await;
         match result {
             Err(Stop::Batch { folder, validity, uids, .. }) if reconnects < MOST_RECONNECTS => {
@@ -769,9 +1046,18 @@ async fn update_account(
                 reconnects += isolate(&server, password, account, own, gmail, &dir, &folder, validity, &uids, update).await?;
             }
             Err(Stop::Batch { error, .. }) => return Err(Stop::Sync(error)),
-            other => return other,
+            Err(other) => return Err(other),
+            Ok(()) => break,
         }
     }
+    if update.held.is_some() || update.cancelled {
+        return Ok(());
+    }
+    let Some(checker) = checker.filter(|c| !c.offline()) else { return Ok(()) };
+    let mut session = imap::open(&server, password).await?;
+    let result = check_kept(&mut session, account, &dir, checker, &server.host, progress, cancel, update).await;
+    let _ = session.logout().await;
+    result
 }
 
 /// A broken batch's messages, one at a time, each on a working connection:
@@ -868,6 +1154,7 @@ async fn update_folders(
     room: &dyn Fn(&Path) -> Option<u64>,
     progress: &mut dyn FnMut(&Progress),
     cancel: &Cancel,
+    checker: Option<&Checker>,
     update: &mut Update,
 ) -> Result<(), Stop> {
     let state_path = dir.join("state.toml");
@@ -925,18 +1212,338 @@ async fn update_folders(
                 update.held = Some(Held { at: now(), free });
                 return Ok(());
             }
-            let (records, unreadable) = match fetch_records(session, account, folder, validity, batch, all.as_ref()).await {
+            let (mut records, unreadable) = match fetch_records(session, account, folder, validity, batch, all.as_ref()).await {
                 Ok(fetched) => fetched,
                 // Not a refusal: the connection may be gone with it; its messages one at a time.
                 Err(error) if !matches!(error, SyncError::Server(_)) => return Err(Stop::Batch { folder: folder.clone(), validity, uids: batch.to_vec(), error }),
                 Err(error) => return Err(error.into()),
             };
+            // Each checked as Sioul checks the mail it stores, before only its record is kept.
+            let checked = match checker.filter(|c| !c.offline()) {
+                Some(checker) => check_records(session, checker, &account_host(account), &mut records, update).await,
+                None => Ok(()),
+            };
             keep(&mut state, &state_path, dir, &folder.name, &records, &unreadable, update)?;
             fetched += batch.len() as u64;
             progress(&Progress { stage: Stage::Corpus, done: fetched, total, detail: detail.clone() });
+            if let Err(error) = checked {
+                // The connection went with the checks: a new one, and the download goes on
+                // (these records kept unchecked, for `check_kept`).
+                return Err(Stop::Batch { folder: folder.clone(), validity, uids: Vec::new(), error });
+            }
         }
     }
     Ok(())
+}
+
+/// The mail server's name, under which the DNS is asked whether it answers at all.
+fn account_host(account: &Account) -> String {
+    account.host.clone().unwrap_or_default()
+}
+
+/// New records checked as they come (`Checked`): each message fetched
+/// whole (or its header block, above `CHECK_WHOLE`) from the folder open in
+/// `session`, checked, the checks put in its record. Those left unchecked
+/// (the DNS silent, a group cut short) wait for `check_kept`; a connection
+/// lost is said, the checks made until then kept.
+async fn check_records(session: &mut Imap, checker: &Checker, host: &str, records: &mut [Record], update: &mut Update) -> Result<(), SyncError> {
+    let items: Vec<(u32, u32)> = records.iter().map(|r| (r.uid, r.size)).collect();
+    let mut run = Run::new(checker, host);
+    let mut failed = None;
+    for (whole, uids) in groups(&items) {
+        if checker.offline() {
+            break;
+        }
+        if let Err(error) = run.group(session, whole, &uids).await {
+            failed = Some(error);
+            break;
+        }
+    }
+    if failed.is_none() {
+        run.settle().await;
+    }
+    for (uid, checked) in run.kept.drain(..) {
+        update.checked += 1;
+        update.gone += u64::from(checked.gone);
+        if let Some(record) = records.iter_mut().find(|r| r.uid == uid) {
+            record.checked = Some(checked);
+        }
+    }
+    failed.map_or(Ok(()), Err)
+}
+
+/// Sioul's checks for a whole run: one resolver, so that each DNS answer is
+/// asked once in the run (its cache); at most `CHECKS_PER_SECOND` started
+/// each second, `CHECKS_AT_ONCE` at a time, each within `CHECK_LIMIT`.
+/// Offline (no DNS answer, not even that a name made up does not exist),
+/// it stops for the rest of the run.
+pub(crate) struct Checker {
+    verifier: Verifier,
+    /// When the next check may start.
+    next: Mutex<tokio::time::Instant>,
+    offline: AtomicBool,
+}
+
+impl Checker {
+    /// None without any DNS set up on this computer.
+    fn new() -> Option<Checker> {
+        Some(Checker { verifier: Verifier::quick(DNS_TIMEOUT)?, next: Mutex::new(tokio::time::Instant::now()), offline: AtomicBool::new(false) })
+    }
+
+    fn offline(&self) -> bool {
+        self.offline.load(Ordering::Relaxed)
+    }
+
+    fn went_offline(&self) {
+        self.offline.store(true, Ordering::Relaxed);
+    }
+
+    /// One message's checks, at its turn: the results header Sioul writes
+    /// (`Some(None)`: the message could not be read); none when they did not
+    /// finish within `CHECK_LIMIT`.
+    async fn one(&self, raw: &[u8], whole: bool) -> Option<Option<String>> {
+        let slot = {
+            let mut next = self.next.lock().unwrap_or_else(PoisonError::into_inner);
+            let slot = (*next).max(tokio::time::Instant::now());
+            *next = slot + Duration::from_millis(1000 / CHECKS_PER_SECOND);
+            slot
+        };
+        tokio::time::sleep_until(slot).await;
+        tokio::time::timeout(CHECK_LIMIT, self.verifier.results_of(raw, whole)).await.ok()
+    }
+}
+
+/// Whether a message's checks got any answer from the DNS: not when SPF
+/// failed for want of one, nor DKIM when no server was there to check SPF on.
+fn answered(results: &str) -> bool {
+    let Some(r) = features::stamp_results(results) else { return true };
+    let silent = |o: Option<Outcome>| o == Some(Outcome::TempError);
+    !(silent(r.spf) || (r.spf.is_none() && silent(r.dkim)))
+}
+
+/// Messages to fetch together, from their (UID, size): the whole ones in
+/// groups of at most `CHECK_GROUP` bytes and `BATCH` messages, then the
+/// larger ones by their header blocks.
+fn groups(items: &[(u32, u32)]) -> Vec<(bool, Vec<u32>)> {
+    let mut groups = Vec::new();
+    let (mut current, mut bytes) = (Vec::new(), 0u64);
+    for &(uid, size) in items.iter().filter(|(_, size)| *size <= CHECK_WHOLE) {
+        if !current.is_empty() && (bytes + u64::from(size) > CHECK_GROUP || current.len() >= BATCH) {
+            groups.push((true, std::mem::take(&mut current)));
+            bytes = 0;
+        }
+        current.push(uid);
+        bytes += u64::from(size);
+    }
+    if !current.is_empty() {
+        groups.push((true, current));
+    }
+    let large: Vec<u32> = items.iter().filter(|(_, size)| *size > CHECK_WHOLE).map(|(uid, _)| *uid).collect();
+    groups.extend(large.chunks(BATCH).map(|chunk| (false, chunk.to_vec())));
+    groups
+}
+
+/// One folder's checks under way: those kept, and those of the last
+/// messages that got no DNS answer at all, held until it is known whether
+/// the DNS is there (`settle`).
+struct Run<'c> {
+    checker: &'c Checker,
+    host: &'c str,
+    kept: Vec<(u32, Checked)>,
+    held: Vec<(u32, Checked)>,
+}
+
+impl<'c> Run<'c> {
+    fn new(checker: &'c Checker, host: &'c str) -> Run<'c> {
+        Run { checker, host, kept: Vec::new(), held: Vec::new() }
+    }
+
+    /// One group of messages of the folder open in `session` (`groups`):
+    /// fetched, checked a few at a time, in order; a UID the server does not
+    /// give, `gone`.
+    async fn group(&mut self, session: &mut Imap, whole: bool, uids: &[u32]) -> Result<(), SyncError> {
+        let fetched = fetch_raw(session, uids, whole).await?;
+        let (at, checker) = (now(), self.checker);
+        let checks: Vec<(u32, Checked, bool)> = futures_util::stream::iter(uids.iter().map(|&uid| {
+            let raw = fetched.get(&uid);
+            async move {
+                match raw {
+                    None => (uid, Checked { at, gone: true, ..Checked::default() }, true),
+                    // Answered without it: nothing said, and not asked again.
+                    Some(None) => (uid, Checked { at, whole, ..Checked::default() }, true),
+                    Some(Some(raw)) => {
+                        let found = checker.one(raw, whole).await;
+                        let heard = found.as_ref().is_some_and(|r| r.as_deref().is_none_or(answered));
+                        (uid, Checked { at, results: found.flatten().unwrap_or_default(), whole, gone: false }, heard)
+                    }
+                }
+            }
+        }))
+        .buffered(CHECKS_AT_ONCE)
+        .collect()
+        .await;
+        for (uid, checked, answered) in checks {
+            self.add(uid, checked, answered).await;
+        }
+        Ok(())
+    }
+
+    /// One message's checks: kept, unless they got no DNS answer at all;
+    /// then held with the others since the last answer, until `settle`.
+    async fn add(&mut self, uid: u32, checked: Checked, answered: bool) {
+        if answered {
+            self.kept.append(&mut self.held);
+            self.kept.push((uid, checked));
+        } else {
+            self.held.push((uid, checked));
+            if self.held.len() >= OFFLINE_STREAK {
+                self.settle().await;
+            }
+        }
+    }
+
+    /// The checks held: kept when the DNS answers (their domains' servers
+    /// said nothing: unknown); else dropped, unchecked, and the run is offline.
+    async fn settle(&mut self) {
+        if self.held.is_empty() {
+            return;
+        }
+        if self.checker.verifier.answers(self.host).await {
+            self.kept.append(&mut self.held);
+        } else {
+            self.held.clear();
+            self.checker.went_offline();
+        }
+    }
+}
+
+/// Messages of the folder open in `session`, by UID: whole, or their header
+/// block (BODY.PEEK: nothing changes on the server), in memory only; a UID
+/// answered without them, None; one the server does not have, absent. A
+/// FETCH refused whole is asked again one message at a time; one refused
+/// alone counts as answered without it.
+async fn fetch_raw(session: &mut Imap, uids: &[u32], whole: bool) -> Result<HashMap<u32, Option<Vec<u8>>>, SyncError> {
+    match fetch_raw_once(session, uids, whole).await {
+        Err(SyncError::Server(_)) if uids.len() > 1 => {
+            let mut all = HashMap::new();
+            for &uid in uids {
+                match fetch_raw_once(session, &[uid], whole).await {
+                    Ok(one) => all.extend(one),
+                    Err(SyncError::Server(_)) => {
+                        all.insert(uid, None);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(all)
+        }
+        Err(SyncError::Server(_)) => Ok(uids.iter().map(|&uid| (uid, None)).collect()),
+        other => other,
+    }
+}
+
+async fn fetch_raw_once(session: &mut Imap, uids: &[u32], whole: bool) -> Result<HashMap<u32, Option<Vec<u8>>>, SyncError> {
+    let set = uids.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+    let query = if whole { "(UID BODY.PEEK[])" } else { "(UID BODY.PEEK[HEADER])" };
+    let mut found = HashMap::new();
+    let mut stream = imap::within(FETCH, session.uid_fetch(&set, query)).await?.map_err(imap::server)?;
+    while let Some(fetch) = imap::within(FETCH, stream.next()).await? {
+        let fetch = fetch.map_err(imap::server)?;
+        let Some(uid) = fetch.uid else { continue };
+        let bytes = if whole { fetch.body() } else { fetch.header() };
+        found.insert(uid, bytes.map(<[u8]>::to_vec));
+    }
+    Ok(found)
+}
+
+/// The messages of an account kept without Sioul's checks (`verify`'s work,
+/// and every download's after its new mail), on a session of their own:
+/// folder after folder, the newest first, each group's checks appended to
+/// `checks.jsonl.gz` as they come, so a run stopped goes on there. Their
+/// folder gone or renumbered, they are `gone`: their UIDs name nothing any more.
+#[allow(clippy::too_many_arguments)]
+async fn check_kept(session: &mut Imap, account: &Account, dir: &Path, checker: &Checker, host: &str, progress: &mut dyn FnMut(&Progress), cancel: &Cancel, update: &mut Update) -> Result<(), Stop> {
+    let state_path = dir.join("state.toml");
+    let mut state = AccountState::load(&state_path);
+    let known = read_checks(dir, state.checks);
+    // What is not checked yet, by folder and UIDVALIDITY: (UID, size).
+    let mut wanted: BTreeMap<(String, u32), Vec<(u32, u32)>> = BTreeMap::new();
+    let files: BTreeSet<(String, u64)> = state.folders.values().map(|f| (f.file.clone(), f.committed)).collect();
+    for (file, committed) in files {
+        let path = dir.join(&file);
+        if path.exists() {
+            read_file(&path, Some(committed), |record| {
+                if record.checked.is_none() && !known.contains_key(&(record.folder.clone(), record.uidvalidity, record.uid)) {
+                    wanted.entry((record.folder, record.uidvalidity)).or_default().push((record.uid, record.size));
+                }
+            })?;
+        }
+    }
+    let total: u64 = wanted.values().map(|items| items.len() as u64).sum();
+    if total == 0 {
+        return Ok(());
+    }
+    let mut done = 0u64;
+    let detail = account.id.clone();
+    progress(&Progress { stage: Stage::Verify, done, total, detail: detail.clone() });
+    let listed: HashSet<String> = sioul_sync::mailbox::list(session).await?.into_iter().map(|f| f.name).collect();
+    for ((folder, validity), mut items) in wanted {
+        if cancel.cancelled() {
+            update.cancelled = true;
+            return Ok(());
+        }
+        if checker.offline() {
+            return Ok(());
+        }
+        items.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+        let examined = if listed.contains(&folder) { Some(imap::within(COMMAND, session.examine(&folder)).await?.ok()) } else { None };
+        let line = |uid: u32, checked: Checked| CheckLine { folder: folder.clone(), uidvalidity: validity, uid, checked };
+        match examined {
+            // Refused now: the next run asks again.
+            Some(None) => {}
+            Some(Some(open)) if open.uid_validity.unwrap_or(0) == validity => {
+                let mut run = Run::new(checker, host);
+                for (whole, uids) in groups(&items) {
+                    if cancel.cancelled() || checker.offline() {
+                        break;
+                    }
+                    run.group(session, whole, &uids).await?;
+                    let lines: Vec<CheckLine> = run.kept.drain(..).map(|(uid, checked)| line(uid, checked)).collect();
+                    keep_checks(&mut state, &state_path, dir, &lines, update)?;
+                    done += uids.len() as u64;
+                    progress(&Progress { stage: Stage::Verify, done, total, detail: detail.clone() });
+                }
+                run.settle().await;
+                let lines: Vec<CheckLine> = run.kept.drain(..).map(|(uid, checked)| line(uid, checked)).collect();
+                keep_checks(&mut state, &state_path, dir, &lines, update)?;
+                continue;
+            }
+            // The folder gone, or renumbered: its messages cannot be named any more.
+            _ => {
+                let at = now();
+                let lines: Vec<CheckLine> = items.iter().map(|&(uid, _)| line(uid, Checked { at, gone: true, ..Checked::default() })).collect();
+                keep_checks(&mut state, &state_path, dir, &lines, update)?;
+            }
+        }
+        done += items.len() as u64;
+        progress(&Progress { stage: Stage::Verify, done, total, detail: detail.clone() });
+    }
+    if cancel.cancelled() {
+        update.cancelled = true;
+    }
+    Ok(())
+}
+
+/// Checks made after their records were kept: appended to the account's
+/// `checks.jsonl.gz`, then committed in its state.
+fn keep_checks(state: &mut AccountState, state_path: &Path, dir: &Path, lines: &[CheckLine], update: &mut Update) -> Result<(), LearnError> {
+    if lines.is_empty() {
+        return Ok(());
+    }
+    state.checks = append(&dir.join(CHECKS_FILE), state.checks, lines)?;
+    update.checked += lines.len() as u64;
+    update.gone += lines.iter().filter(|l| l.checked.gone).count() as u64;
+    state.save(state_path)
 }
 
 /// One batch's records, and the UIDs not kept: left out (All Mail), or
@@ -1033,6 +1640,7 @@ async fn fetch_batch(session: &mut Imap, account: &Account, folder: &Folder, val
                 structure: head.structure,
                 plain: plains.get(&head.uid).cloned(),
                 html: htmls.get(&head.uid).cloned(),
+                checked: None,
                 fetched,
             }
         })
@@ -1302,6 +1910,7 @@ mod tests {
             structure: Some(Node::Leaf(Leaf { mime: "text/plain".into(), charset: Some("utf-8".into()), encoding: "7bit".into(), octets: 12, ..Leaf::default() })),
             plain: Some(Text { at: vec![1], text: "Hello there".into() }),
             html: None,
+            checked: None,
             fetched: 1_700_000_100,
         }
     }
@@ -1389,6 +1998,118 @@ mod tests {
         let totals = verdicts(&dirs).unwrap();
         assert_eq!(totals["home"], Verdicts { records: 3, with_header: 2, read: 1, flagged: 1 });
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn stamp(results: &str) -> String {
+        format!("Authentication-Results: sioul-0123456789ab.invalid;\r\n\t{}\r\n", results.replace("; ", ";\r\n\t"))
+    }
+
+    /// Checks made after their records were kept (`verify`) are read with
+    /// them, as those made as they were fetched; a group cut short by a
+    /// crash is never read, and cut off at the next; the counts read them as
+    /// training does, old signed mail's failures unknown, an unsigned one's
+    /// as they are.
+    #[test]
+    fn checks_kept_apart_are_read_with_their_records() {
+        let dir = scratch("checks");
+        let dirs = Dirs::under(&dir);
+        let day = 86_400;
+        let at = record(1).date + 400 * day;
+        let header = "DKIM-Signature: v=1; a=rsa-sha256; d=bank.example; s=selector1; bh=x; b=y\r\nFrom: Bank <alerts@bank.example>\r\nSubject: Statement\r\n\r\n";
+        let fresh = |uid: u32, results: &str| Record { uid, date: at - day, header: header.into(), checked: Some(Checked { at, results: stamp(results), whole: true, gone: false }), ..record(uid) };
+        // Fetched with their checks: one verified, one failing as it came.
+        let mut kept = vec![fresh(1, "dkim=pass header.d=bank.example; spf=pass smtp.mailfrom=bank.example; dmarc=pass header.from=bank.example"), fresh(2, "dkim=fail header.d=bank.example; spf=fail smtp.mailfrom=bank.example; dmarc=fail header.from=bank.example")];
+        // Kept before the checks were made: old mail (a year old), and one never checked.
+        kept.extend((3..=6).map(|uid| Record { uid, header: header.into(), ..record(uid) }));
+        store(&dirs, &kept).unwrap();
+        let account = dirs.corpus().join("home");
+        let state_path = account.join("state.toml");
+        let mut state = AccountState::load(&state_path);
+        let line = |uid: u32, checked: Checked| CheckLine { folder: "INBOX".into(), uidvalidity: 7, uid, checked };
+        let old = |results: &str| Checked { at, results: stamp(results), whole: true, gone: false };
+        let mut update = Update::default();
+        let lines = [
+            line(3, old("dkim=fail header.d=bank.example header.s=selector1; spf=fail smtp.mailfrom=bank.example; dmarc=fail header.from=bank.example")),
+            line(4, old("dkim=permerror (no key) header.d=bank.example; spf=pass smtp.mailfrom=bank.example; dmarc=pass header.from=bank.example")),
+            line(5, Checked { at, gone: true, ..Checked::default() }),
+        ];
+        keep_checks(&mut state, &state_path, &account, &lines, &mut update).unwrap();
+        assert_eq!((update.checked, update.gone), (3, 1));
+        // A crash in the middle of the next group: what was not committed is not read.
+        let committed = state.checks;
+        let longer = append(&account.join(CHECKS_FILE), committed, &[line(6, old("dkim=pass header.d=bank.example"))]).unwrap();
+        assert!(longer > committed);
+        let mut read = BTreeMap::new();
+        read_all(&dirs, |r| {
+            read.insert(r.uid, r.checked);
+        })
+        .unwrap();
+        assert_eq!(read[&1].as_ref().map(|c| c.whole), Some(true), "fetched with its checks");
+        assert_eq!(read[&3], Some(lines[0].checked.clone()), "checked afterwards, read with its record");
+        assert!(read[&5].as_ref().is_some_and(|c| c.gone && c.results.is_empty()));
+        assert_eq!(read[&6], None, "never committed: not read, checked again");
+        // As training reads them: the old one's failures unknown, its passes kept; the fresh one's failures as they are.
+        let date = |uid: u32| if uid <= 2 { at - day } else { record(uid).date };
+        let reading = |uid: u32| read[&uid].as_ref().and_then(|c| c.reading(date(uid), true)).unwrap();
+        assert_eq!((reading(2).dkim, reading(2).dmarc), (Some(Outcome::Fail), Some(Outcome::Fail)));
+        assert_eq!((reading(3).dkim, reading(3).spf, reading(3).dmarc), (None, None, None));
+        assert_eq!((reading(4).dkim, reading(4).spf, reading(4).dmarc), (None, Some(Outcome::Pass), Some(Outcome::Pass)));
+        // An unsigned message of then (a spoofed sender): its failures as they are, today too.
+        let spoofed = old("spf=softfail smtp.mailfrom=bank.example; dmarc=fail header.from=bank.example");
+        assert_eq!(spoofed.reading(date(3), false).map(|r| (r.spf, r.dmarc)), Some((Some(Outcome::SoftFail), Some(Outcome::Fail))));
+        assert_eq!(spoofed.reading(date(3), true).map(|r| (r.spf, r.dmarc)), Some((None, None)), "the same beside a signature: unknown");
+        let counts = checks(&dirs).unwrap()["home"];
+        assert_eq!((counts.records, counts.unchecked, counts.gone, counts.silent, counts.header_only), (6, 1, 1, 0, 0));
+        assert_eq!((counts.dkim.pass, counts.dkim.fail, counts.dkim.unknown), (1, 1, 2), "the old failure and the key gone: unknown");
+        assert_eq!((counts.dmarc.pass, counts.dmarc.fail, counts.dmarc.unknown), (2, 1, 1));
+        assert_eq!((counts.verified, counts.late_failures), (2, 1));
+        // The next group is appended at what was committed: the crash's leftovers cut off.
+        keep_checks(&mut state, &state_path, &account, &[line(6, Checked { at, results: stamp("dkim=none"), whole: true, gone: false })], &mut update).unwrap();
+        let mut sixth = None;
+        read_all(&dirs, |r| {
+            if r.uid == 6 {
+                sixth = r.checked;
+            }
+        })
+        .unwrap();
+        assert!(sixth.is_some_and(|c| c.results.contains("dkim=none")));
+        assert_eq!(AccountState::load(&state_path).checks, state.checks);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Which messages are fetched together for their checks: the whole ones
+    /// up to the group's size and count, then the large ones by their headers.
+    #[test]
+    fn checks_go_by_groups() {
+        let mb = 1024 * 1024;
+        let items = [(9, 3 * mb), (8, mb), (7, 4 * mb / 2), (6, 5 * mb), (5, 100), (4, 7 * mb / 4)];
+        assert_eq!(groups(&items[..4]), vec![(true, vec![8, 7]), (false, vec![9, 6])]);
+        // Each message once; a whole group within its count and its bytes.
+        let many: Vec<(u32, u32)> = (0..120).map(|uid| (uid, if uid % 7 == 0 { 3 * mb } else { (uid % 5 + 1) * mb / 2 })).collect();
+        let made = groups(&many);
+        let mut seen: Vec<u32> = made.iter().flat_map(|(_, uids)| uids.clone()).collect();
+        seen.sort_unstable();
+        assert_eq!(seen, (0..120).collect::<Vec<u32>>());
+        let size = |uid: &u32| u64::from(many[*uid as usize].1);
+        for (whole, uids) in &made {
+            assert!(uids.len() <= BATCH);
+            assert_eq!(*whole, uids.iter().all(|uid| size(uid) <= u64::from(CHECK_WHOLE)));
+            if *whole {
+                assert!(uids.iter().map(size).sum::<u64>() <= CHECK_GROUP);
+            }
+        }
+        assert_eq!(groups(&items), vec![(true, vec![8, 7, 5, 4]), (false, vec![9, 6])], "the whole ones first, then the large ones");
+    }
+
+    /// A message's checks got some DNS answer, unless SPF (or DKIM, without
+    /// a server to check SPF on) failed for want of one.
+    #[test]
+    fn checks_without_any_answer() {
+        assert!(answered(&stamp("dkim=pass header.d=a.example; spf=pass smtp.mailfrom=a.example")));
+        assert!(answered(&stamp("dkim=none; spf=permerror smtp.mailfrom=a.example")));
+        assert!(!answered(&stamp("dkim=temperror header.d=a.example; spf=temperror smtp.mailfrom=a.example")));
+        assert!(!answered(&stamp("dkim=temperror header.d=a.example")), "no server to check SPF on: DKIM said it");
+        assert!(answered("Authentication-Results: sioul-0123456789ab.invalid; none"), "nothing to ask");
     }
 
     #[test]
@@ -1683,6 +2404,51 @@ mod tests {
             let validities: BTreeSet<u32> = records_of(&dirs).iter().filter(|r| r.folder == "Clients").map(|r| r.uidvalidity).collect();
             assert_eq!(records_of(&dirs).iter().filter(|r| r.folder == "Clients").count(), 5, "the older records kept");
             assert_eq!(validities.len(), 2, "GreenMail gave the folder made again a new UIDVALIDITY: {validities:?}");
+            let _ = std::fs::remove_dir_all(root);
+        }
+
+        /// Each message checked as it comes, whole; then (`verify`) a record
+        /// kept before without checks is checked once, its message fetched
+        /// by its UID; one whose UID or folder the server no longer has is
+        /// gone; nothing checked twice. Invented mail with no signature and
+        /// no route from outside: its checks need no DNS but the probe.
+        #[test]
+        #[ignore]
+        fn greenmail_checks_each_message_once() {
+            if !ready() {
+                return;
+            }
+            let root = scratch("greenmail-checks");
+            let dirs = Dirs::under(&root);
+            let account = account("checks");
+            put(&account, &(0..3).map(|n| ("INBOX", "", plain(400 + n, "Message", "Un message ordinaire"))).collect::<Vec<_>>());
+            let first = update(std::slice::from_ref(&account), &|_| Ok("any".into()), &dirs, &|_| Some(u64::MAX), &mut |_| {}, &Cancel::new());
+            assert!(first.failed.is_empty() && !first.offline, "{first:?}");
+            assert_eq!((first.added, first.checked, first.gone), (3, 3, 0));
+            let records = records_of(&dirs);
+            assert!(records.iter().all(|r| r.checked.as_ref().is_some_and(|c| c.whole && !c.gone && c.results.starts_with("Authentication-Results: "))), "{records:?}");
+            // Kept before the checks were made: a message still there, one whose UID is gone, one whose folder is.
+            put(&account, &[("INBOX", "", plain(410, "Plus tard", "Un autre message"))]);
+            let validity = records[0].uidvalidity;
+            let later = Record { uid: records.iter().map(|r| r.uid).max().unwrap() + 1, checked: None, ..records[0].clone() };
+            let missing = Record { uid: 9_999, checked: None, ..records[0].clone() };
+            let elsewhere = Record { folder: "Gone".into(), checked: None, ..records[0].clone() };
+            store(&dirs, &[later.clone(), missing.clone(), elsewhere.clone()]).unwrap();
+            let mut steps = Vec::new();
+            let checked = verify(std::slice::from_ref(&account), &|_| Ok("any".into()), &dirs, &mut |p| steps.push(p.clone()), &Cancel::new());
+            assert!(checked.failed.is_empty() && !checked.offline, "{checked:?}");
+            assert_eq!((checked.added, checked.checked, checked.gone), (0, 3, 2), "nothing downloaded, three checked");
+            assert!(steps.iter().all(|p| p.stage == Stage::Verify && p.detail == account.id && p.total == 3));
+            let place = |r: &Record| (r.folder.clone(), r.uidvalidity, r.uid);
+            let now_kept: BTreeMap<_, _> = records_of(&dirs).into_iter().map(|r| (place(&r), r.checked)).collect();
+            assert!(now_kept[&place(&later)].as_ref().is_some_and(|c| c.whole && !c.gone && !c.results.is_empty()));
+            assert!(now_kept[&place(&missing)].as_ref().is_some_and(|c| c.gone && c.results.is_empty()));
+            assert!(now_kept[&(String::from("Gone"), validity, records[0].uid)].as_ref().is_some_and(|c| c.gone));
+            // Nothing left: nothing asked again.
+            let again = verify(std::slice::from_ref(&account), &|_| Ok("any".into()), &dirs, &mut |_| {}, &Cancel::new());
+            assert_eq!(again.checked, 0);
+            let counts = checks(&dirs).unwrap()[&account.id];
+            assert_eq!((counts.records, counts.unchecked, counts.gone, counts.dkim.none), (6, 0, 2, 4));
             let _ = std::fs::remove_dir_all(root);
         }
 

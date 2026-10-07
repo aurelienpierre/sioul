@@ -215,9 +215,10 @@ impl Filter {
 
 /// A message's verdict by a table: its words, its header features (its
 /// file's time standing for when its provider received it, as Sioul stores
-/// mail), these reading your provider's authentication results alone, as the
-/// training does (`features::provider_results`; `trusted_ids`: the account's
-/// authserv-ids, Sioul's own among them or not).
+/// mail), these reading Sioul's own checks first (its stamp, made as the
+/// message was stored), your provider's second, as the training reads the
+/// corpus's own checks (`features::auth_results`; `trusted_ids`: the
+/// account's authserv-ids, Sioul's own first).
 pub fn score(table: &Table, card: &Card, trusted_ids: &[String]) -> Verdict {
     let tokens = tokenize::tokens(&card.subject, &card.excerpt);
     let received = card
@@ -225,7 +226,7 @@ pub fn score(table: &Table, card: &Card, trusted_ids: &[String]) -> Verdict {
         .as_deref()
         .and_then(|p| std::fs::metadata(p).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok())
         .and_then(|d| i64::try_from(d.as_secs()).ok());
-    let auth = features::provider_results(&card.headers, trusted_ids);
+    let auth = features::auth_results(&card.headers, trusted_ids);
     let x = features::features(card, auth.as_ref(), received, &tokens.links);
     Verdict { p: table.score(&tokens.words, &x).p }
 }

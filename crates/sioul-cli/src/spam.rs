@@ -3,7 +3,9 @@
 
 //! `sioul spam`: the spam filter learned on this computer (crates/sioul-learn).
 //!
-//! `fetch` downloads the training corpus, `train` trains on demand (a trial
+//! `fetch` downloads the training corpus, each message checked as Sioul
+//! checks the mail it stores (`--verify`: only the checks of the messages
+//! kept without them), `train` trains on demand (a trial
 //! with `--no-replace`), `eval` tests the table in place, `status` says
 //! where all stands, `dry-run` says what the filter would do now with the
 //! mail in each inbox, `review` lists the review queue, `label` says a
@@ -33,10 +35,16 @@ use std::path::PathBuf;
 #[derive(Subcommand)]
 pub(crate) enum SpamCommand {
     /// Downloads the training corpus: every folder of every account (or one),
-    /// what is new since the last time; nothing changes on the server.
+    /// what is new since the last time, each message checked as Sioul checks
+    /// the mail it stores (its signatures, its sender), then the messages
+    /// kept before without these checks; nothing changes on the server.
     Fetch {
         #[arg(long)]
         account: Option<String>,
+        /// Only the checks of the messages kept without them (each fetched
+        /// whole once, in memory only): nothing new is downloaded.
+        #[arg(long)]
+        verify: bool,
         /// What it did, as JSON.
         #[arg(long)]
         json: bool,
@@ -256,7 +264,8 @@ pub(crate) struct MatrixArgs {
 pub(crate) fn run(s: &Session, command: SpamCommand) -> Result<(), String> {
     let dirs = Dirs::standard();
     match command {
-        SpamCommand::Fetch { account, json, job } => long(s, json, job.as_deref(), |progress, cancel| report::fetch(s, &dirs, account.as_deref(), progress, cancel)),
+        SpamCommand::Fetch { account, verify: false, json, job } => long(s, json, job.as_deref(), |progress, cancel| report::fetch(s, &dirs, account.as_deref(), progress, cancel)),
+        SpamCommand::Fetch { account, verify: true, json, job } => long(s, json, job.as_deref(), |progress, cancel| report::verify(s, &dirs, account.as_deref(), progress, cancel)),
         SpamCommand::Train { no_fetch, no_replace, errors, scores, settings, json, job } => {
             let ask = report::TrainAsk { fetch: !no_fetch, replace: !no_replace, errors: errors.map(|n| n as usize), scores, settings: settings.settings() };
             long(s, json, job.as_deref(), |progress, cancel| report::train(s, &dirs, &ask, progress, cancel))
@@ -345,7 +354,9 @@ impl Shown {
 
     fn show(&mut self, s: &Session, p: &Progress) {
         let mut err = std::io::stderr();
-        if self.stage != Some(p.stage) || self.detail != p.detail && p.stage == Stage::Corpus {
+        // The download and the checks go place by place: an account and a folder, an account.
+        let by_place = matches!(p.stage, Stage::Corpus | Stage::Verify);
+        if self.stage != Some(p.stage) || self.detail != p.detail && by_place {
             if self.terminal && self.stage.is_some() {
                 let _ = writeln!(err);
             }
@@ -362,7 +373,7 @@ impl Shown {
         if self.terminal && p.total > 0 && !(p.stage == Stage::Corpus && p.detail.is_empty()) {
             let what = if p.detail.is_empty() { String::new() } else { format!("{}: ", crate::one_line(&p.detail)) };
             let _ = write!(err, "\r{what}{} / {}   ", p.done, p.total);
-        } else if !self.terminal && p.stage == Stage::Corpus && !p.detail.is_empty() && p.total > 0 && p.done == p.total {
+        } else if !self.terminal && by_place && !p.detail.is_empty() && p.total > 0 && p.done == p.total {
             let _ = writeln!(err, "{}: {} / {}", crate::one_line(&p.detail), p.done, p.total);
         }
     }

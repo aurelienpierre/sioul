@@ -15,7 +15,7 @@
 use mail_auth::common::headers::HeaderWriter;
 use mail_auth::spf::verify::SpfParameters;
 use mail_auth::dmarc::verify::DmarcParameters;
-use mail_auth::{AuthenticatedMessage, AuthenticationResults, MessageAuthenticator};
+use mail_auth::{AuthenticatedMessage, AuthenticationResults, DmarcResult, MessageAuthenticator};
 use sioul_core::config::sioul_authserv_id;
 use sioul_core::headers::RawHeaders;
 use sioul_core::trust;
@@ -26,7 +26,7 @@ use tokio::time::timeout;
 /// The longest one message's checks may take: DNS can be slow, never blocking.
 const CHECKS: Duration = Duration::from_secs(20);
 
-pub(crate) struct Verifier {
+pub struct Verifier {
     authenticator: MessageAuthenticator,
     id: String,
 }
@@ -37,13 +37,50 @@ impl Verifier {
         Some(Verifier { authenticator, id: sioul_authserv_id() })
     }
 
+    /// For checking many messages in one run (the spam filter's training
+    /// corpus, `sioul_learn::corpus`): the system's DNS, each question asked
+    /// once and given `timeout`, each answer kept for the run (the
+    /// resolver's cache, the names that do not exist too).
+    pub fn quick(timeout: Duration) -> Option<Verifier> {
+        let (config, mut options) = mail_auth::hickory_resolver::system_conf::read_system_conf().ok()?;
+        options.timeout = timeout;
+        options.attempts = 1;
+        options.cache_size = options.cache_size.max(16_384);
+        let authenticator = MessageAuthenticator::new(config, options).ok()?;
+        Some(Verifier { authenticator, id: sioul_authserv_id() })
+    }
+
+    /// Sioul's results for a message, as `stamp` writes them on top of it
+    /// ("Authentication-Results: sioul-….invalid; dkim=pass …"); none when
+    /// it cannot be read. `whole` false: its header block alone (a message
+    /// too large to fetch whole), so what needs the body is left unsaid
+    /// (DKIM, ARC), and DMARC is said only when it passes (by SPF: a
+    /// signature left unchecked might have passed it). No time limit: the
+    /// caller's.
+    pub async fn results_of(&self, raw: &[u8], whole: bool) -> Option<String> {
+        self.results(raw, whole).await
+    }
+
+    /// Whether this verifier's DNS answers at all, asked for a name under
+    /// `domain` made up for the question, so that no cache holds it: a
+    /// server saying it does not exist answers too.
+    pub async fn answers(&self, domain: &str) -> bool {
+        let made_up = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        let name = format!("sioul-{made_up:x}.{}.", domain.trim_end_matches('.'));
+        match timeout(CHECKS, self.authenticator.resolver().lookup_ip(name.as_str())).await {
+            Ok(Ok(_)) => true,
+            Ok(Err(e)) => e.is_no_records_found(),
+            Err(_) => false,
+        }
+    }
+
     /// The message with Sioul's results on top; unchanged if it cannot be read,
     /// is already stamped, or the checks do not finish in time (a later pass retries).
     pub async fn stamp(&self, raw: &[u8]) -> Vec<u8> {
         if self.stamped(raw) {
             return raw.to_vec();
         }
-        match timeout(CHECKS, self.results(raw)).await {
+        match timeout(CHECKS, self.results(raw, true)).await {
             Ok(Some(header)) => [header.as_bytes(), raw].concat(),
             _ => raw.to_vec(),
         }
@@ -56,11 +93,12 @@ impl Verifier {
         String::from_utf8_lossy(head).contains(&needle)
     }
 
-    async fn results(&self, raw: &[u8]) -> Option<String> {
+    async fn results(&self, raw: &[u8], whole: bool) -> Option<String> {
         let message = AuthenticatedMessage::parse(raw)?;
         let headers = RawHeaders::parse(raw);
-        let dkim = self.authenticator.verify_dkim(&message).await;
-        let arc = self.authenticator.verify_arc(&message).await;
+        // Without the body, no signature can be checked: none is said.
+        let dkim = if whole { self.authenticator.verify_dkim(&message).await } else { Vec::new() };
+        let arc = if whole { Some(self.authenticator.verify_arc(&message).await) } else { None };
         let entry = trust::boundary(&headers);
         let mail_from = trust::mail_from(&headers).unwrap_or_default();
         let mail_from_domain = mail_from.rsplit_once('@').map_or(String::new(), |(_, d)| d.to_ascii_lowercase());
@@ -73,11 +111,14 @@ impl Verifier {
         let spf_domain = if mail_from_domain.is_empty() { e.helo.clone() } else { mail_from_domain };
         let dmarc = self.authenticator.verify_dmarc(DmarcParameters::new(&message, &dkim, &spf_domain, &spf)).await;
         let iprev = self.authenticator.verify_iprev(e.ip).await;
-        let results = results
-            .with_spf_mailfrom_result(&spf, e.ip, &mail_from, &e.helo)
-            .with_arc_result(&arc, e.ip)
-            .with_iprev_result(&iprev, e.ip)
-            .with_dmarc_result(&dmarc);
+        let mut results = results.with_spf_mailfrom_result(&spf, e.ip, &mail_from, &e.helo);
+        if let Some(arc) = &arc {
+            results = results.with_arc_result(arc, e.ip);
+        }
+        results = results.with_iprev_result(&iprev, e.ip);
+        if whole || dmarc.result() == DmarcResult::Pass {
+            results = results.with_dmarc_result(&dmarc);
+        }
         Some(results.to_header())
     }
 

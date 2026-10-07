@@ -289,6 +289,7 @@ mod tests {
             structure: None,
             plain: None,
             html: None,
+            checked: None,
             fetched: 0,
         };
         let copies = vec![

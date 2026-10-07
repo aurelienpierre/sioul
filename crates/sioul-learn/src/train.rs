@@ -917,17 +917,22 @@ pub(crate) fn replacement(new_ham_lost: u64, current_ham_lost: u64, compared: u6
 }
 
 /// A message's words and header features, from its corpus record, as the
-/// Porch reads the message itself.
+/// Porch reads the message itself: Sioul's own checks of it first (made on
+/// the whole message when it was fetched, as the Porch reads the stamp the
+/// sync writes on it; beside a signature, their failures unknown when made
+/// long after it came: `corpus::Checked::reading`), your provider's second.
 pub(crate) fn read_message(record: &Record, trusted: &BTreeMap<String, Vec<String>>) -> (Vec<String>, [f32; N]) {
     let Some(card) = spam::card_of(record) else { return (Vec::new(), [0.0; N]) };
-    features_of(&card, trusted.get(&record.account).map_or(&[][..], Vec::as_slice), (record.date > 0).then_some(record.date))
+    let own = record.checked.as_ref().and_then(|c| c.reading(record.date, sioul_core::spam::features::signed(&card.headers)));
+    features_of(&card, trusted.get(&record.account).map_or(&[][..], Vec::as_slice), (record.date > 0).then_some(record.date), own)
 }
 
-/// A card's words and header features.
-pub(crate) fn features_of(card: &Card, trusted: &[String], internal_date: Option<i64>) -> (Vec<String>, [f32; N]) {
+/// A card's words and header features; `own`, Sioul's checks kept apart
+/// from it (a corpus record's), else those its headers carry (Sioul's stamp
+/// first, your provider's second: `features::auth_results`).
+pub(crate) fn features_of(card: &Card, trusted: &[String], internal_date: Option<i64>, own: Option<sioul_core::trust::AuthResults>) -> (Vec<String>, [f32; N]) {
     let tokens = spam::tokens(&card.subject, &card.excerpt);
-    // Your provider's results alone, as the Porch's filter reads them: the corpus has no stamp of Sioul's.
-    let auth = sioul_core::spam::features::provider_results(&card.headers, trusted);
+    let auth = own.or_else(|| sioul_core::spam::features::auth_results(&card.headers, trusted));
     let features = spam::features(card, auth.as_ref(), internal_date, &tokens.links);
     // fastText splits on whitespace: a word never holds any.
     let words = tokens.words.into_iter().filter(|w| !w.is_empty() && !w.contains(char::is_whitespace)).collect();
@@ -1404,7 +1409,7 @@ pub struct Why {
 pub fn why(dirs: &Dirs, raw: &[u8], trusted: &[String], internal_date: Option<i64>) -> Result<Why, String> {
     let table = Table::read(&dirs.table())?;
     let card = Card::from_bytes(raw).ok_or_else(|| "not a message".to_string())?;
-    let (words, features) = features_of(&card, trusted, internal_date);
+    let (words, features) = features_of(&card, trusted, internal_date, None);
     let score = table.score(&words, &features);
     // Each word's and each feature's share of the score, the most toward spam first, as the Porch says why (`spam::Why::of`).
     let words = score.words.iter().filter(|(_, s)| *s > 0.0).take(5).map(|(w, s)| (w.clone(), f64::from(*s))).collect();
@@ -1821,6 +1826,43 @@ mod tests {
         let dirs = Dirs { data: root.join("data/sioul/spam"), state: root.join("state/sioul/spam"), cache: root.join("cache/sioul/spam") };
         corpus::store(&dirs, &records(&synthetic::mailbox(13, 3000, 1500))).unwrap();
         std::fs::write(root.join("spam.eml"), synthetic::message(&mut crate::Rng::new(77), true, 77_777, 1_790_000_000)).unwrap();
+    }
+
+    /// The same message stored by the sync with Sioul's stamp on top (as the
+    /// Porch sorts it) and kept in the corpus with the same checks beside it
+    /// (as training reads it): the same words, the same header features.
+    /// Checked long after it came, its failure reads unknown beside its
+    /// signature, its passes kept; unsigned, the failure holds.
+    #[test]
+    fn training_and_sorting_read_the_same_checks() {
+        let mut mail = synthetic::mailbox(41, 3, 3).swap_remove(0);
+        // Signed, as its checks say.
+        mail.raw = [b"DKIM-Signature: v=1; a=rsa-sha256; d=example.org; s=s1; bh=x; b=y\r\n".as_slice(), &mail.raw].concat();
+        let mut record = synthetic::record_of(&mail, 1, 1);
+        let stamp = "Authentication-Results: sioul-0123456789ab.invalid;\r\n\tdkim=pass header.d=example.org header.s=s1 header.b=AbCdEf;\r\n\tspf=fail (sioul-0123456789ab.invalid: domain of example.org does not designate 192.0.2.7 as permitted sender) smtp.mailfrom=example.org;\r\n\tdmarc=pass header.from=example.org policy.dmarc=reject\r\n";
+        record.checked = Some(corpus::Checked { at: record.date + 3600, results: stamp.into(), whole: true, gone: false });
+        let ids = vec!["sioul-0123456789ab.invalid".to_string(), "mx.example.net".to_string()];
+        let trusted: BTreeMap<String, Vec<String>> = [(record.account.clone(), ids.clone())].into();
+        let (words, trained) = read_message(&record, &trusted);
+        let stored = Card::from_bytes(&[stamp.as_bytes(), &mail.raw].concat()).unwrap();
+        let (sorted_words, sorted) = features_of(&stored, &ids, Some(record.date), None);
+        assert_eq!(words, sorted_words, "the same words");
+        assert_eq!(trained.map(f32::to_bits), sorted.map(f32::to_bits), "the same header features");
+        let value = |x: &[f32; N], name: &str| x[spam::NAMES.iter().position(|n| *n == name).unwrap()];
+        assert_eq!((value(&trained, "spf_fail"), value(&trained, "dkim_pass"), value(&trained, "dmarc_pass")), (1.0, 1.0, 1.0));
+        // Without checks of its own (none made yet): the provider's, none here: missing.
+        let unchecked = read_message(&Record { checked: None, ..record.clone() }, &trusted).1;
+        assert!(value(&unchecked, "spf_fail").is_nan() && value(&unchecked, "dkim_pass").is_nan());
+        // Checked a year after it came: the failure unknown (no word), the passes as they were.
+        record.checked.as_mut().unwrap().at = record.date + 365 * 86_400;
+        let (_, old) = read_message(&record, &trusted);
+        assert_eq!((value(&old, "spf_fail"), value(&old, "spf_pass"), value(&old, "dkim_pass"), value(&old, "dmarc_pass")), (0.0, 0.0, 1.0, 1.0));
+        // The same check of an unsigned message: nothing of its own expired, its failure holds.
+        let unsigned = Record { checked: record.checked.clone(), ..synthetic::record_of(&synthetic::mailbox(41, 3, 3)[0], 1, 1) };
+        assert_eq!(value(&read_message(&unsigned, &trusted).1, "spf_fail"), 1.0);
+        // Its server no longer had it: nothing of Sioul's, the provider's (none here).
+        record.checked = Some(corpus::Checked { at: record.date + 3600, gone: true, ..corpus::Checked::default() });
+        assert!(value(&read_message(&record, &trusted).1, "dkim_pass").is_nan());
     }
 
     #[test]
