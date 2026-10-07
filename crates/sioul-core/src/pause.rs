@@ -90,7 +90,10 @@ impl FreeTimeSettings {
 /// The pause as set up on a calm day (`[pause]`, P1).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct PauseSettings {
-    /// Dose reminders still come during the pause (P7, docs/health.md).
+    /// Dose reminders still come during the pause (P7, docs/health.md). The
+    /// notification matrix's cell now (`[notify] doses`, `notify::Notify::of`),
+    /// read from here while that row says nothing of the pause, and written
+    /// here beside it for an older Sioul.
     #[serde(default = "yes")]
     pub doses: bool,
     /// On the phone, starred contacts and repeat callers get through (P9).
@@ -674,7 +677,8 @@ mod tests {
     use crate::areas::{TaskAreas, Time};
     use crate::needs::{Days, Needs};
     use crate::plan::{Settings, plan};
-    use crate::quiet::{Notice, may_tell, mode};
+    use crate::notify::{Cell, Column, Kind, Notify, Now};
+    use crate::quiet::mode;
     use std::collections::BTreeSet;
 
     fn at(text: &str) -> Zoned {
@@ -716,10 +720,14 @@ mod tests {
             let now = at(&format!("2026-10-02T{time}"));
             let m = mode(&week(), &[], &paused, &health(&now), &now);
             assert_eq!((m.reason.clone(), m.time, m.quiet), (Reason::Paused, Time::Sleep, true), "{time}: above work, meals, naps, evenings and the night");
-            // Doses come unless the setup said otherwise, and an event's own alarm (an alarm you set); nothing else, codes neither.
-            assert!(may_tell(&m, Notice::Dose, false, true) && !may_tell(&m, Notice::Dose, true, false));
-            assert!(may_tell(&m, Notice::Alarm, true, true));
-            assert!(!may_tell(&m, Notice::Code, true, true) && !may_tell(&m, Notice::Other, true, true));
+            // As usual (`notify`): doses come unless the setup said otherwise, and an
+            // event's own alarm (an alarm you set); nothing else, codes neither.
+            let (usual, n) = (Notify::usual(), Now::of(&m, false, false));
+            let mut held = Notify::usual();
+            held.set(Kind::Doses, Column::Pause, Cell::Later).unwrap();
+            assert!(usual.comes(Kind::Doses, &n) && !held.comes(Kind::Doses, &n));
+            assert!(usual.comes(Kind::Alarms, &n));
+            assert!(!usual.comes(Kind::Codes, &n) && !usual.comes(Kind::Move, &n) && !usual.comes(Kind::Needs, &n));
         }
         // Above "Done for today", "Work now" and Free time too.
         let now = at("2026-10-02T11:00");
@@ -744,9 +752,10 @@ mod tests {
         let m = mode(&week(), &[], &free, &health(&now), &now);
         assert_eq!((m.reason.clone(), m.time, m.quiet), (Reason::FreeTime, Time::Leisure, true), "leisure in working hours");
         assert_eq!(m.until.as_ref().map(|z| z.strftime("%H:%M").to_string()), Some("22:00".into()), "until the night's start");
-        // Doses, codes and events' alarms come; nothing else.
-        assert!(may_tell(&m, Notice::Dose, false, false) && may_tell(&m, Notice::Code, false, false) && may_tell(&m, Notice::Alarm, false, false));
-        assert!(!may_tell(&m, Notice::Other, true, true));
+        // As usual (`notify`): doses, codes, and events' alarms when their event falls in it; nothing else.
+        let (usual, n) = (Notify::usual(), Now::of(&m, false, false));
+        assert!(usual.comes(Kind::Doses, &n) && usual.comes(Kind::Codes, &n) && usual.at(Kind::Alarms, &n) == Cell::Event);
+        assert!(!usual.comes(Kind::Move, &n) && !usual.comes(Kind::Mail, &n));
         // Only the safe list: neutral and restricted wait whatever their ticks; "Nothing at all", no one.
         let all_ticked = Matrix { safe: Times::ALL, neutral: Times::ALL, restricted: Times::ALL, stranger: Times::ALL, hidden: Times::ALL };
         let narrowed = reach_now(all_ticked, &m, false);

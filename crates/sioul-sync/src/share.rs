@@ -26,11 +26,13 @@
 //! folder and its server see which computer wrote, when and how much, never
 //! what.
 //!
-//! What is shared comes in parts (`PARTS`: settings, senders, health, time,
-//! drafts, projects, the watch, lists, notes, papers), each switched on or off
-//! on each device. Notes and papers travel one file at a time, each sealed
-//! apart in the folder (`blobs`), their records saying which content each file
-//! holds; two devices changing one file keep both versions. Before another
+//! What is shared comes in parts (`PARTS`: settings, senders, the spam
+//! filter's table, health, time, drafts, projects, the watch, lists, notes,
+//! papers), each switched on or off on each device. Notes and papers travel
+//! one file at a time, each sealed apart in the folder (`blobs`), their
+//! records saying which content each file holds; two devices changing one
+//! file keep both versions. The spam filter's table is sealed apart too: one
+//! file of a few megabytes, read in every exchange (`SPAM_TABLE`). Before another
 //! device's change is written into a file here, the file as it was is kept on
 //! this device (`history`), to be put back.
 
@@ -89,7 +91,8 @@ pub enum Shape {
     /// One entry per setting of a TOML file.
     Toml(&'static Rules),
     /// The file whole, sealed apart in the folder (`blobs`), its record saying
-    /// which content it holds: notes, papers, their pictures and PDFs.
+    /// which content it holds: notes, papers, their pictures and PDFs; the
+    /// spam filter's table, a single file (`SPAM_TABLE`).
     Files,
 }
 
@@ -181,13 +184,24 @@ const NOT_NOTES: &[&str] = &[
 ];
 
 /// The parts of what is shared, each switched on or off on each device
-/// (docs/database.md, "Parts"): settings and accounts, senders, health, time,
-/// drafts and invoices, projects and money, the watch, lists kept here, notes, papers.
-pub const PARTS: [&str; 10] = ["settings", "senders", "health", "time", "drafts", "projects", "watch", "lists", "notes", "papers"];
+/// (docs/database.md, "Parts"): settings and accounts, senders, the spam
+/// filter's table, health, time, drafts and invoices, projects and money, the
+/// watch, lists kept here, notes, papers.
+pub const PARTS: [&str; 11] = ["settings", "senders", "spam", "health", "time", "drafts", "projects", "watch", "lists", "notes", "papers"];
+
+/// The spam filter's table (`sioul_core::spam::table`), made by a training
+/// on a computer, read by every device. Sealed apart, as its content's hash:
+/// a new table is sent once, and the records stay small (whole in a record,
+/// its two megabytes would go again in every round its computer starts). A
+/// single file of Sioul's own, in its private folders: read in every
+/// exchange, a phone's background step's too. Never the language model nor
+/// the corpus beside it: they stay on the computer that made them.
+pub const SPAM_TABLE: &str = "files/spam/table.bin";
 
 /// Whether a device that never chose shares a part: what was shared before
 /// parts had switches, everything but notes and papers, and projects as the
-/// setting all devices followed then said (`share_projects`).
+/// setting all devices followed then said (`share_projects`); the spam
+/// filter's table, which every device reads.
 pub fn shared_by_default(part: &str, config: &Config) -> bool {
     match part {
         "projects" => config.share_projects,
@@ -277,6 +291,8 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         file("watch", "state/watch-offers.json", s.join("watch-offers.json"), Shape::Whole),
         folder("senders", "state/shield/", s.join("shield"), Shape::Whole, &[]),
         folder("lists", "state/dav/local/", s.join("dav").join(local), Shape::Whole, &[]),
+        // The spam filter's table alone: its language model and its corpus, beside it, stay here.
+        file("spam", SPAM_TABLE, d.join("spam").join("table.bin"), Shape::Files),
     ];
     // From the notes folder each device keeps where it likes: projects,
     // budgets, the bank's movements and contracts; the papers' wallet and its
@@ -466,8 +482,9 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
             }
         } else if store.path.is_file() {
             read_file(store, &store.name, &store.path, known, look, &mut found);
-        } else if !matches!(store.shape, Shape::Whole) {
-            // A settings file not there is not a file emptied.
+        } else if !matches!(store.shape, Shape::Whole | Shape::Files) {
+            // A settings file not there is not a file emptied; a file whole or
+            // sealed apart not there is none yet (the spam filter's table before a training).
             found.unknown.insert(store.name.clone());
         }
     }
@@ -1522,7 +1539,8 @@ pub struct Sharing<'a> {
     pub memory: &'a Path,
     /// Notes and papers too (`Shape::Files`): not for an exchange that must be
     /// quick (a dose's alarm, a notification's button, Sioul closing), nor
-    /// without the system's leave to read them all.
+    /// without the system's leave to read them all. A single file sealed apart
+    /// (the spam filter's table) goes in every exchange.
     pub files: bool,
     /// Set while a hurried exchange waits for this one: its work on notes and
     /// papers stops where it is, and goes on at the next.
@@ -1590,7 +1608,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // pressed, Sioul closing), and while no hurried exchange waits for this
     // one: their work stops where it is, and goes on at the next.
     let hurried = || sharing.hurry.is_some_and(|hurry| hurry.load(std::sync::atomic::Ordering::Relaxed));
-    let reads = |store: &Store| sharing.files || !matches!(store.shape, Shape::Files);
+    // A single file sealed apart (the spam filter's table), in every exchange:
+    // one file of Sioul's own, quick to read, never in a shared storage.
+    let reads = |store: &Store| sharing.files || !matches!(store.shape, Shape::Files) || !store.folder;
     // This computer's own records in the folder go further than its memory: the
     // memory was restored from a backup, lost, or started again ("Stop sharing",
     // then again). Its numbering goes on after the folder's last line (the
@@ -2393,6 +2413,10 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
         }
         let stat = match &wanted {
             Some(wanted) => {
+                // The spam filter's table it replaces, kept beside when this Sioul can use it (`table.prev.bin`).
+                if store.name == SPAM_TABLE {
+                    sioul_core::spam::table::keep_previous(path);
+                }
                 std::fs::rename(&temporary, path).map_err(local)?;
                 // Its time as where it was made, never after this computer's clock (another's may be ahead).
                 if let Ok(written) = std::fs::File::options().write(true).open(path) {
@@ -4763,7 +4787,7 @@ mod tests {
         let config = Config { case_store: Some("/notes".into()), ..Config::default() };
         let parts = |stores: &[Store]| stores.iter().map(|s| s.part).collect::<BTreeSet<_>>();
         // A device that never chose: what was shared before parts had switches.
-        assert_eq!(parts(&stores(&config, &roots)), ["drafts", "health", "lists", "senders", "settings", "time", "watch"].into());
+        assert_eq!(parts(&stores(&config, &roots)), ["drafts", "health", "lists", "senders", "settings", "spam", "time", "watch"].into());
         let old = Config { share_projects: true, ..config.clone() };
         assert!(parts(&stores(&old, &roots)).contains("projects"), "projects as the old setting said");
         // Its own choices, kept in its own file, never in a shared one.
@@ -4788,6 +4812,82 @@ mod tests {
         assert_eq!(shown("files/notes/admin/lease.md"), "admin/lease.md");
         assert_eq!(shown("files/papers/id.pdf"), "papers/id.pdf");
         assert_eq!(shown("config/config.toml"), "config.toml");
+    }
+
+    /// The spam filter's table: from the computer that trained it to the
+    /// others, sealed apart, in every exchange (a phone's background step's
+    /// too); the good one it replaces kept beside; never the language model
+    /// nor the corpus beside it.
+    #[test]
+    fn the_spam_table_travels_alone_in_every_exchange() {
+        use sioul_core::spam::features::{FEATURES, N};
+        use sioul_core::spam::table::{self, Table};
+        let base = scratch("spam-table");
+        let folder = base.join("folder");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let made = |bias: f32| {
+            let mut made = Table {
+                tokenizer: sioul_core::spam::tokenize::TOKENIZER,
+                features: FEATURES,
+                dim: 2,
+                minn: 3,
+                maxn: 6,
+                bucket: 4,
+                words: vec![(table::word_hash("lotteri"), 2.0)],
+                buckets: vec![0.0; 4],
+                weights: vec![0.0; N],
+                means: vec![0.0; N],
+                bias,
+                text_mean: 0.0,
+                platt_a: -1.0,
+                platt_b: 0.0,
+                meta: table::Meta { device: "desk".into(), ..table::Meta::default() },
+            };
+            made.sort();
+            made
+        };
+        // Each table its own time: a file is known by its size and time.
+        let trained = |bias: f32, second: u64| {
+            let path = desk.path("data/spam/table.bin");
+            made(bias).write(&path).unwrap();
+            std::fs::File::options().write(true).open(&path).unwrap().set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(second)).unwrap();
+        };
+        // What a training leaves on the desk: the table, the language model, the corpus.
+        trained(0.5, 1_789_990_000);
+        desk.write("data/spam/language.bin", "the vocabulary in plain text: Jane, the lease, the lottery");
+        desk.write("data/spam/corpus/home/INBOX.jsonl.gz", "Subject: the lease");
+        // Quick exchanges only (a dose's alarm, a phone's background step): it travels all the same.
+        let quick = |c: &Computer, now: i64| exchange(&Sharing { folder: &folder, computer: &c.id, key: &key, memory: &c.memory, files: false, hurry: None }, &stores(&Config::default(), &c.roots), now).unwrap();
+        quick(&desk, NOW);
+        let came = quick(&phone, NOW + MINUTE);
+        assert!(came.written.contains(SPAM_TABLE), "{came:?}");
+        assert_eq!(std::fs::read(phone.path("data/spam/table.bin")).unwrap(), std::fs::read(desk.path("data/spam/table.bin")).unwrap());
+        assert!(!phone.path("data/spam/language.bin").exists() && !phone.path("data/spam/corpus").exists());
+        assert!(!table::previous(&phone.path("data/spam/table.bin")).exists(), "nothing before the first");
+        // Sealed: nothing of the table, nor of what is beside it, readable in the folder.
+        let mut files = Vec::new();
+        list_files(&folder, &folder, &[], &mut files);
+        for (name, path) in &files {
+            let bytes = std::fs::read(path).unwrap();
+            for plain in [&b"SIOULSPM"[..], b"vocabulary", b"lottery"] {
+                assert!(!bytes.windows(plain.len()).any(|w| w == plain), "{name}");
+            }
+        }
+        // A new training: the phone takes it, the good one before kept beside.
+        trained(1.5, 1_789_990_600);
+        quick(&desk, NOW + 2 * MINUTE);
+        assert!(quick(&phone, NOW + 3 * MINUTE).written.contains(SPAM_TABLE));
+        let path = phone.path("data/spam/table.bin");
+        assert_eq!((Table::read(&path).unwrap().bias, Table::read(&table::previous(&path)).unwrap().bias), (1.5, 0.5));
+        // The language model and the corpus have no place in the sharing.
+        let every = stores_of(&Config::default(), &desk.roots, &|_| true);
+        for file in ["files/spam/language.bin", "files/spam/corpus/home/INBOX.jsonl.gz", "files/spam/", "data/spam/language.bin"] {
+            assert!(locate(&every, file).is_none(), "{file}");
+        }
+        assert_eq!(locate(&every, SPAM_TABLE).map(|(s, p)| (s.part, p)), Some(("spam", desk.path("data/spam/table.bin"))));
+        assert_eq!(shown(SPAM_TABLE), "spam/table.bin");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

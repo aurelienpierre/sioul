@@ -86,8 +86,8 @@ Une phrase dans la ligne d’état dit jusqu’à quand : « Le travail revi
 
 Du moment de se détendre au réveil, et pendant une sieste, rien ne dérange :
 
-- **aucune notification** : ni code (il attend sur le Porche), ni site, ni rappel avant une date, ni pause pour bouger, ni avis de repas ou de sieste. Ce qui a encore du sens au réveil vient alors ;
-- **les prises viennent quand même** : c’est vous qui avez réglé leurs heures, et une prise à 05:00 est faite pour vous réveiller. Pour qu’elles restent silencieuses pendant le sommeil, choisissez **Rester silencieux** dans [Paramètres ▸ Rappels et notifications](settings.md#reminders-and-notifications) ▸ **Prises pendant le sommeil** : elles viennent au réveil. Sioul ne fait jamais taire une prise sans ce choix ;
+- **aucune notification**, sauf si vous le changez ([Quand chacune vient](notifications.md#when-each-comes)) : ni code (il attend sur le Porche), ni site, ni rappel avant une date, ni pause pour bouger, ni avis de repas ou de sieste. Ce qui a encore du sens au réveil vient alors ;
+- **les prises viennent quand même** : c’est vous qui avez réglé leurs heures, et une prise à 05:00 est faite pour vous réveiller. Pour qu’elles restent silencieuses pendant le sommeil, choisissez **Plus tard** dans Paramètres ▸ Rappels et notifications ▸ [Quand chacune vient](notifications.md#when-each-comes), Prises ▸ Sommeil : elles viennent au réveil. Sioul ne fait jamais taire une prise sans ce choix ;
 - si vous ouvrez Sioul, le Porche montre ce que vos listes laissent passer à ce moment, rien sur l’argent ni sur les lettres papier ; un message sur un projet vient parmi les personnes que vous connaissez ;
 - chaque adresse se replie sur la page du courrier ; seuls les sites de loisirs sont listés ;
 - Tâches, Projets et Temps attendent derrière une phrase et **Montrer quand même** ; dans Tâches, une idée peut encore être notée pour plus tard.

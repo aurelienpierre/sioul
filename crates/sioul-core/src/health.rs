@@ -587,7 +587,7 @@ pub(crate) fn keep_private(path: &Path) {
 /// One dose to take.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Dose {
-    /// "<medicine>@<Unix seconds>": what marks it taken.
+    /// `<medicine>@<Unix seconds>`: what marks it taken.
     pub key: String,
     pub medicine: String,
     pub name: String,

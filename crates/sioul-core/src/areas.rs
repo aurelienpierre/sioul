@@ -204,7 +204,7 @@ impl Week {
 /// things the time is for. Admin without hours of its own comes in work
 /// time; work without hours comes in admin's. Leisure, meals and sleep bring
 /// what is for leisure (a chat with friends), nothing else: a meal is a
-/// break, and during sleep nothing notifies anyway (`quiet::may_notify`);
+/// break, and during sleep nothing notifies anyway, as usual (`notify`);
 /// no task then (`quiet::QuietTasks`). Mail has its own rule, by who wrote
 /// (`quiet::mail_in_view`).
 pub fn in_view(area: Area, time: Time, week: Week) -> bool {

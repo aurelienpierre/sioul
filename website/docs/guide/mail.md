@@ -39,6 +39,8 @@ Above the message, always in the same place:
 
 Archiving, deleting and junking happen at once, with **Undo** in the status line for ten seconds; the server is told only after that. There is no "are you sure?". In the trash, **Delete for good** deletes it for good, with the same ten seconds.
 
+What you mark **Junk**, or **Not junk** in the junk folder, teaches your own spam filter at its next training ([below](#your-own-spam-filter)).
+
 A right click on a message (or its ⋮, or the Menu key) gives the rest: mark as read or unread, flag, **Move to…**, **Show the source**, block the sender, **Their mail** (as their categories say, safe, neutral, restricted, blocked), **Keep as a contract…**.
 
 Opening a message marks it read, as any mail program does.
@@ -106,6 +108,10 @@ The ⚙ at the top of the Mail page:
 - **Fetch every**: how often the folders other than the inbox are fetched. The inbox comes as soon as the server says something arrived.
 - **Font**, **Size**, **Line spacing**: how messages read. The same three are in the Porch's ⚙, and behind **Aa** in Notes.
 - **Lists you left**: each list you left from a message, when and how, once there is one.
+
+### Your own spam filter
+
+Under **Your own spam filter**: what it does with a stranger's mail (nothing, say "maybe spam" or "probably spam" beside it, or set spam aside), how sure it must be for each word, and on a computer **Train now**, to learn from all your mail, with what the last training measured. It sorts the Porch, never this page: a message stays in its folder ([the Porch](porch.md#spam-and-your-own-filter)). Each setting, in full: [Settings](settings.md#your-own-spam-filter).
 
 Each address's own settings (what it is for, how far back, how often, its protection) are on its card in [Accounts](accounts.md#your-accounts).
 

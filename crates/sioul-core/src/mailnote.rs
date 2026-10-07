@@ -8,9 +8,10 @@
 //! notifications helped attention and mood where none at all made people more
 //! anxious (Fitz et al. 2019): what helps is predictability, not silence.
 //!
-//! Mail that comes while it may not (outside its list's times, during sleep
-//! or a pause, Free time included) waits; when a time begins in which some of
-//! it may come, one notification says the Porch opens.
+//! Mail that comes while it may not (outside its list's times, or at a time
+//! the notification matrix holds new mail: as usual, sleep, a pause, Free
+//! time, a slot of time for you; `notify`) waits; when a time begins in which
+//! some of it may come, one notification says the Porch opens.
 //!
 //! Never told: what is set aside (forged, spam, a borrowed name, blocked),
 //! hostile mail, codes (they have their own notification), what you send
@@ -91,13 +92,6 @@ pub fn never(t: &Triaged, newsletters: bool) -> bool {
         _ => {}
     }
     t.reasons.iter().any(|r| matches!(r, Reason::FromYourself | Reason::Blocked)) || read_already(t)
-}
-
-/// Whether new mail may be told now: not while you sleep, nor in a pause,
-/// Free time included (docs/pauses.md): it waits, and comes when the time
-/// allows (`waited`).
-pub fn may_tell(mode: &Mode) -> bool {
-    !(mode.sleeps() || mode.paused() || mode.free())
 }
 
 /// The moment as new mail sees it: what now is for, why, whether mail may
@@ -257,7 +251,7 @@ mod tests {
         let known = SenderList::parse("alice@example.org");
         let trusted = ["mx.example.net".to_string()];
         let own = ["me@example.net".to_string()];
-        let ctx = crate::porch::Context { cases: None, known: &known, senders, trusted_ids: &trusted, now: None, priority, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &own };
+        let ctx = crate::porch::Context { cases: None, known: &known, senders, trusted_ids: &trusted, now: None, priority, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &own, spam: None };
         let mut card = crate::card::Card::from_bytes(raw.as_bytes()).unwrap();
         card.account = Some(account.to_string());
         card.path = Some(PathBuf::from(format!("/mail/{account}/new/1759400000.U1-{}.sioul", fnv(id) % 10_000)));
@@ -365,7 +359,8 @@ mod tests {
         // A neutral sender writing to a work address: told in work time, waiting in the evening.
         assert_eq!(sort(&[stranger.clone()], &Ledger::default(), false, in_view(Time::Work)).now.len(), 1);
         assert_eq!(sort(&[stranger.clone()], &Ledger::default(), false, in_view(Time::Leisure)).later.len(), 1);
-        // Sleep, the pause and Free time hold mail; work, the evening and meals do not.
+        // As usual, sleep, the pause and Free time hold mail; work, the evening and meals do not (`notify`).
+        let may_tell = |m: &Mode| crate::notify::Notify::usual().comes(crate::notify::Kind::Mail, &crate::notify::Now::of(m, false, false));
         assert!(!may_tell(&mode(Time::Sleep, Why::Sleep)) && !may_tell(&mode(Time::Sleep, Why::Paused)) && !may_tell(&mode(Time::Leisure, Why::FreeTime)));
         assert!(may_tell(&mode(Time::Work, Why::Working)) && may_tell(&mode(Time::Leisure, Why::Evening)) && may_tell(&mode(Time::Meals, Why::Meal)));
         // A time beginning is a change of moment; the same moment twice is none.

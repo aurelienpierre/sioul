@@ -183,7 +183,7 @@ final class DoseAlarms
     }
 
     /**
-     * Whether the alarms ring on time: "Alarms & reminders" allowed, which
+     * Whether the alarms ring on time: "Alarms &amp; reminders" allowed, which
      * Android 12 lets you take back and gives from Android 13 (USE_EXACT_ALARM).
      */
     static boolean exact(Context context)
@@ -206,7 +206,7 @@ final class DoseAlarms
      * A dose's alarm, at its time even while the phone sleeps (Doze). Not
      * Android's alarm clock (setAlarmClock): it would show an alarm in the
      * status bar for good, a dose always coming within two days, and put the
-     * doses before your own alarm on the lock screen. Without "Alarms &
+     * doses before your own alarm on the lock screen. Without "Alarms &amp;
      * reminders", as close as Android allows: up to an hour late.
      */
     private static void alarm(Context context, String key, long at, String name)

@@ -290,9 +290,9 @@ fn kwinrc_files() -> Vec<PathBuf> {
 }
 
 /// The value of `key` in `[group]` of a KConfig file (kwinrc), the last one
-/// written there. A key marked immutable or to expand ("Key[$i]", "Key[$e]")
-/// counts, a translation ("Key[fr]") does not, one marked deleted
-/// ("Key[$d]") is not set. None when it is not there.
+/// written there. A key marked immutable or to expand (`Key[$i]`, `Key[$e]`)
+/// counts, a translation (`Key[fr]`) does not, one marked deleted
+/// (`Key[$d]`) is not set. None when it is not there.
 pub fn kconfig_value(text: &str, group: &str, key: &str) -> Option<String> {
     let header = format!("[{group}]");
     let mut inside = false;

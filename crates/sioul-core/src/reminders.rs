@@ -24,14 +24,16 @@
 //! sleep nothing is told: every reminder waits for waking (docs/health.md,
 //! "Do not disturb"), and comes then if it still makes sense; but an event's
 //! own reminders come when the event falls in that sleep (a choice you
-//! made), and in a pause when it falls in the pause (docs/pauses.md). Payments
-//! that leave by themselves (presets) are not reminded: the money watch tells
-//! when the account will not hold them, which a reminder alone cannot
-//! (Medina 2021).
+//! made), and in a pause when it falls in the pause (docs/pauses.md). These
+//! are the usual values of the notification matrix (`notify`), which you may
+//! change kind by kind and time by time (`Holds`). Payments that leave by
+//! themselves (presets) are not reminded: the money watch tells when the
+//! account will not hold them, which a reminder alone cannot (Medina 2021).
 
 use crate::agenda::Occurrence;
 use crate::budget::Ledger;
 use crate::config::{Config, TimeOff};
+use crate::notify::{self, Cell, Notify};
 use crate::window::AdminWindow;
 use crate::i18n::Translator;
 use crate::tasks::{Status, Task};
@@ -170,7 +172,7 @@ pub struct Reminder {
     pub until: i64,
     pub title: String,
     pub body: String,
-    /// What it is about: "sioul:task/<UID>", an event's file.
+    /// What it is about: `sioul:task/<UID>`, an event's file.
     pub target: String,
     /// Work: it waits while work rests.
     pub work: bool,
@@ -198,19 +200,81 @@ pub enum Wait {
     Free { until: i64 },
 }
 
-impl Reminder {
-    /// Whether to tell it now: its time has come, it is not too late, and nothing holds it.
-    pub fn ready(&self, now: i64, wait: Wait) -> bool {
-        let own = matches!(self.kind, Kind::Alarm | Kind::Before);
-        let falls_in = |from: i64, until: i64| own && self.starts.is_some_and(|s| from <= s && s < until);
-        let held = match wait {
-            Wait::Nothing => false,
-            Wait::Work => self.work,
-            Wait::Sleep { from, until } => !falls_in(from, until),
-            Wait::Paused => !own,
-            Wait::Free { until } => !falls_in(i64::MIN, until),
+/// What holds reminders now: the time (`Wait`), and what the notification
+/// matrix says then of each kind of reminder (`notify`): an event's alarms,
+/// Sioul's reminder before an event, the working day before, the other dates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Holds {
+    pub wait: Wait,
+    pub notify: Notify,
+    /// The time as the matrix reads it; a slot of time for you is the
+    /// window's to say (`now.slot`), the files saying the rest.
+    pub now: notify::Now,
+    /// The time now, from when to when (Unix seconds), for "if its event
+    /// falls then": a sleep's block, Free time, the hours until they change.
+    pub span: (i64, i64),
+    /// When the time now ends, when known: what it holds is asked about again then.
+    pub until: Option<i64>,
+}
+
+impl Holds {
+    /// The usual matrix, at a time: what Sioul did before the matrix.
+    pub fn usual(wait: Wait) -> Holds {
+        let all = (i64::MIN, i64::MAX);
+        let (column, span, until) = match wait {
+            Wait::Nothing => (notify::Column::Work, all, None),
+            Wait::Work => (notify::Column::Leisure, all, None),
+            Wait::Sleep { from, until } => (notify::Column::Sleep, (from, until), Some(until)),
+            Wait::Paused => (notify::Column::Pause, all, None),
+            Wait::Free { until } => (notify::Column::Free, (i64::MIN, until), Some(until)),
         };
-        self.at <= now && now < self.until && !held
+        Holds { wait, notify: Notify::usual(), now: notify::Now::time(column), span, until }
+    }
+
+    /// As the configuration says, at the time `mode` (Health's `blocks` for
+    /// sleep's span), do-not-disturb's switch and focus read from the files.
+    pub fn of(config: &Config, mode: &crate::quiet::Mode, blocks: &crate::quiet::Blocks, stamp: i64) -> Holds {
+        let wait = wait_of(mode, blocks, stamp);
+        let ends = mode.until.as_ref().map(|u| u.timestamp().as_second());
+        let (span, until) = match wait {
+            Wait::Sleep { from, until } => ((from, until), Some(until)),
+            Wait::Paused => ((i64::MIN, i64::MAX), None),
+            _ => ((i64::MIN, ends.unwrap_or(i64::MAX)), ends),
+        };
+        Holds { wait, notify: Notify::of(config), now: notify::Now::of(mode, false, notify::dnd_from_files(config, stamp)), span, until }
+    }
+
+    /// What the matrix says now of a reminder of this kind.
+    pub fn cell(&self, kind: Kind) -> Cell {
+        let row = match kind {
+            Kind::Alarm => notify::Kind::Alarms,
+            Kind::Before => notify::Kind::Before,
+            Kind::Event => notify::Kind::DayBefore,
+            _ => notify::Kind::Dates,
+        };
+        self.notify.at(row, &self.now)
+    }
+}
+
+impl Reminder {
+    /// Whether to tell it now, the matrix as usual (`Holds::usual`).
+    pub fn ready(&self, now: i64, wait: Wait) -> bool {
+        self.ready_in(now, &Holds::usual(wait))
+    }
+
+    /// Whether to tell it now: its time has come, it is not too late, the
+    /// matrix lets it come (an event's own, when its event begins within the
+    /// time now, where the cell says so), and work does not rest for it.
+    pub fn ready_in(&self, now: i64, holds: &Holds) -> bool {
+        let own = matches!(self.kind, Kind::Alarm | Kind::Before);
+        let held = match holds.cell(self.kind) {
+            Cell::Now => false,
+            Cell::Event => !(own && self.starts.is_some_and(|s| holds.span.0 <= s && s < holds.span.1)),
+            _ => true,
+        };
+        // What a thing is for, not the matrix: work's reminders wait while work rests.
+        let resting = holds.wait == Wait::Work && self.work;
+        self.at <= now && now < self.until && !held && !resting
     }
 }
 
@@ -545,8 +609,8 @@ pub fn all(config: &Config, tr: &Translator, now: &Zoned, events: &[Occurrence],
 }
 
 /// Everything to remind, read from the files now: the events of the coming
-/// days, the tasks, the payments planned in the case store; and what waits now.
-pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, Wait) {
+/// days, the tasks, the payments planned in the case store; and what holds now.
+pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, Holds) {
     let stamp = now.timestamp().as_second();
     let events = crate::agenda::occurrences(stamp - 86_400, stamp + 9 * 86_400);
     let tasks = crate::tasks::all(now.time_zone());
@@ -561,21 +625,21 @@ pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, 
     let contracts = store.as_deref().and_then(|root| crate::contracts::Contracts::load(root).ok()).map(|c| c.list).unwrap_or_default();
     let money = store.as_deref().and_then(|root| crate::bank::Bank::load(root).ok()).filter(|b| !b.movements.is_empty() || !b.accounts.is_empty()).zip(ledger.as_ref()).map(|(bank, ledger)| crate::bank::watch(&bank, ledger, now.date()));
     let reminders = all(config, tr, now, &events, &tasks, ledger.as_ref(), &papers, &contracts, money.as_ref(), |t| situation.quiet_tasks.keeps(t));
-    (reminders, wait_of(&situation.mode, &blocks, stamp))
+    (reminders, Holds::of(config, &situation.mode, &blocks, stamp))
 }
 
 /// The events' reminders alone (their alarms, Sioul's before them, the
-/// working day before), read from the files now, and what waits now: what a
+/// working day before), read from the files now, and what holds now: what a
 /// phone's alarm asks at its time (docs/android.md, "Events"), lighter than
 /// `gather`.
-pub fn gather_events(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, Wait) {
+pub fn gather_events(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, Holds) {
     let stamp = now.timestamp().as_second();
     let events = crate::agenda::occurrences(stamp - 86_400, stamp + 9 * 86_400);
     let overrides = crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path());
     let blocks = crate::quiet::Blocks::read(now, &events);
     let mode = crate::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, now);
     let reminders = all(config, tr, now, &events, &[], None, &[], &[], None, |_| true);
-    (reminders, wait_of(&mode, &blocks, stamp))
+    (reminders, Holds::of(config, &mode, &blocks, stamp))
 }
 
 /// What waits now (`Wait`), from what now is for: the pause first (its time
@@ -635,8 +699,8 @@ pub fn forget_old(dir: &Path) {
 }
 
 /// What to tell now, each marked told: those ready, not told yet.
-pub fn to_tell(reminders: Vec<Reminder>, dir: &Path, now: i64, wait: Wait) -> Vec<Reminder> {
-    reminders.into_iter().filter(|r| r.ready(now, wait) && claim(dir, &r.key)).collect()
+pub fn to_tell(reminders: Vec<Reminder>, dir: &Path, now: i64, holds: &Holds) -> Vec<Reminder> {
+    reminders.into_iter().filter(|r| r.ready_in(now, holds) && claim(dir, &r.key)).collect()
 }
 
 #[cfg(test)]
@@ -740,11 +804,11 @@ mod tests {
         let tuesday = at("2026-10-06T09:05").timestamp().as_second();
         // Asleep: nothing told, nothing marked; told at waking.
         let asleep = Wait::Sleep { from: tuesday - 8 * 3600, until: tuesday + 3600 };
-        assert!(to_tell(all.clone(), &dir, tuesday, asleep).is_empty());
-        let mut told = to_tell(all.clone(), &dir, tuesday, Wait::Nothing);
+        assert!(to_tell(all.clone(), &dir, tuesday, &Holds::usual(asleep)).is_empty());
+        let mut told = to_tell(all.clone(), &dir, tuesday, &Holds::usual(Wait::Nothing));
         told.retain(|r| r.kind == Kind::Asked);
         assert_eq!(told.len(), 1);
-        assert!(to_tell(all.clone(), &dir, tuesday + 60, Wait::Nothing).iter().all(|r| r.kind != Kind::Asked), "never twice");
+        assert!(to_tell(all.clone(), &dir, tuesday + 60, &Holds::usual(Wait::Nothing)).iter().all(|r| r.kind != Kind::Asked), "never twice");
         let wait = find("wait:").clone();
         assert!(!wait.ready(tuesday, Wait::Work) && wait.ready(tuesday, Wait::Nothing));
         let night = Wait::Sleep { from: find("payment:").at - 3600, until: find("payment:").at + 3600 };
@@ -917,5 +981,87 @@ mod tests {
         assert_eq!(wait_of(&mode(Time::Leisure, Reason::FreeTime, Some("2026-10-07T23:45")), &Blocks::default(), now), Wait::Free { until: now + 15 * 60 });
         assert_eq!(wait_of(&mode(Time::Leisure, Reason::Evening, None), &Blocks::default(), now), Wait::Work);
         assert_eq!(wait_of(&Mode { quiet: false, ..mode(Time::Work, Reason::Working, None) }, &Blocks::default(), now), Wait::Nothing);
+        // As the matrix reads it, from the configuration: the sleep's block, Free time's end, the hours' end.
+        let config = Config::default();
+        let asleep = Holds::of(&config, &mode(Time::Sleep, Reason::Sleep, Some("2026-10-08T06:30")), &blocks, now);
+        assert_eq!((asleep.now.times.clone(), asleep.span, asleep.until), (vec![notify::Column::Sleep], (now - 3600, now + 7 * 3600), Some(now + 7 * 3600)));
+        let free = Holds::of(&config, &mode(Time::Leisure, Reason::FreeTime, Some("2026-10-07T23:45")), &Blocks::default(), now);
+        assert_eq!((free.now.times.clone(), free.span.1, free.until), (vec![notify::Column::Free], now + 15 * 60, Some(now + 15 * 60)));
+        let paused = Holds::of(&config, &mode(Time::Sleep, Reason::Paused, None), &blocks, now);
+        assert_eq!((paused.now.times.clone(), paused.until), (vec![notify::Column::Pause], None));
+        let evening = Holds::of(&config, &mode(Time::Leisure, Reason::Evening, Some("2026-10-08T09:00")), &Blocks::default(), now);
+        assert_eq!((evening.wait, evening.until), (Wait::Work, Some(at("2026-10-08T09:00").timestamp().as_second())));
+    }
+
+    /// Reminders of each kind, due at `at` for an event (or a date) at `starts`.
+    fn each_kind(at: i64, starts: i64) -> Vec<Reminder> {
+        [Kind::Before, Kind::Alarm, Kind::Event, Kind::Asked, Kind::Wait, Kind::Payment, Kind::Paper, Kind::Contract, Kind::Money]
+            .into_iter()
+            .flat_map(|kind| [false, true].map(move |work| Reminder { key: format!("{kind:?}:{work}"), kind, at, until: starts + 60, title: String::new(), body: String::new(), target: String::new(), work, starts: Some(starts) }))
+            .collect()
+    }
+
+    #[test]
+    fn the_usual_matrix_holds_as_before() {
+        // The rule as it was before the matrix, word for word.
+        let before = |r: &Reminder, now: i64, wait: Wait| {
+            let own = matches!(r.kind, Kind::Alarm | Kind::Before);
+            let falls_in = |from: i64, until: i64| own && r.starts.is_some_and(|s| from <= s && s < until);
+            let held = match wait {
+                Wait::Nothing => false,
+                Wait::Work => r.work,
+                Wait::Sleep { from, until } => !falls_in(from, until),
+                Wait::Paused => !own,
+                Wait::Free { until } => !falls_in(i64::MIN, until),
+            };
+            r.at <= now && now < r.until && !held
+        };
+        let now = at("2026-10-07T23:30").timestamp().as_second();
+        let waits = [Wait::Nothing, Wait::Work, Wait::Sleep { from: now - 3600, until: now + 3600 }, Wait::Paused, Wait::Free { until: now + 1800 }];
+        for starts in [now + 600, now + 2 * 3600] {
+            for r in each_kind(now - 60, starts) {
+                for wait in waits {
+                    assert_eq!(r.ready(now, wait), before(&r, now, wait), "{:?} {wait:?} {starts}", r.key);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_matrix_changes_what_waits() {
+        let now = at("2026-10-07T23:30").timestamp().as_second();
+        let night = Wait::Sleep { from: now - 3600, until: now + 7 * 3600 };
+        let after_waking = now + 8 * 3600;
+        let train = Reminder { key: "before:train".into(), kind: Kind::Before, at: now - 60, until: after_waking, title: String::new(), body: String::new(), target: String::new(), work: false, starts: Some(after_waking) };
+        let dinner = Reminder { key: "alarm:dinner".into(), kind: Kind::Alarm, starts: Some(now + 600), until: now + 600, ..train.clone() };
+        let bill = Reminder { key: "payment:water".into(), kind: Kind::Payment, until: now + 86_400, starts: None, ..train.clone() };
+        let mut holds = Holds::usual(night);
+        assert!(!train.ready_in(now, &holds) && !bill.ready_in(now, &holds), "as usual: both wait for waking");
+        // Reminders before an event come during sleep, whenever the event; the working day's dates too.
+        holds.notify.set(notify::Kind::Before, notify::Column::Sleep, Cell::Now).unwrap();
+        holds.notify.set(notify::Kind::Dates, notify::Column::Sleep, Cell::Now).unwrap();
+        assert!(train.ready_in(now, &holds) && bill.ready_in(now, &holds));
+        // Reminders before an event wait during a pause; the alarms you set still come there.
+        let mut paused = Holds::usual(Wait::Paused);
+        paused.notify.set(notify::Kind::Before, notify::Column::Pause, Cell::Later).unwrap();
+        assert!(!train.ready_in(now, &paused) && dinner.ready_in(now, &paused));
+        // An event's alarms during sleep, waiting for waking whatever the event.
+        let mut asleep = Holds::usual(night);
+        assert!(dinner.ready_in(now, &asleep), "as usual: its event falls in the night");
+        asleep.notify.set(notify::Kind::Alarms, notify::Column::Sleep, Cell::Later).unwrap();
+        assert!(!dinner.ready_in(now, &asleep));
+        // During do-not-disturb: the working day before waits when you say so; work resting still holds work's.
+        let mut working = Holds::usual(Wait::Nothing);
+        let eve = Reminder { key: "event:board".into(), kind: Kind::Event, starts: None, ..bill.clone() };
+        working.now.dnd = true;
+        assert!(eve.ready_in(now, &working));
+        working.notify.set(notify::Kind::DayBefore, notify::Column::Dnd, Cell::Later).unwrap();
+        assert!(!eve.ready_in(now, &working) && bill.ready_in(now, &working));
+        let mut evening = Holds::usual(Wait::Work);
+        evening.notify.set(notify::Kind::Dates, notify::Column::Leisure, Cell::Later).unwrap();
+        let personal = Reminder { key: "asked:garden".into(), kind: Kind::Asked, ..bill.clone() };
+        let work = Reminder { key: "asked:report".into(), work: true, ..personal.clone() };
+        assert!(!personal.ready_in(now, &evening) && !work.ready_in(now, &evening));
+        assert!(personal.ready(now, Wait::Work) && !work.ready(now, Wait::Work), "as usual, work's waits for work");
     }
 }

@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use sioul_core::cases::CaseStore;
 use sioul_core::config::{self, AccountKind, Config};
 use sioul_core::links::{self, Kind, Loaded};
-use sioul_core::mailindex::{self, MailIndex, MailRef};
+use sioul_core::mailindex::{MailIndex, MailRef};
 use sioul_core::notes::{self, Note, NoteKind};
 use sioul_core::plan::{self, Plan};
 use sioul_core::porch::{self, KnownSenders, Lane, Triaged};
@@ -138,8 +138,7 @@ impl Shield {
             return false;
         }
         let Some(card) = maildir::read_one(&path) else { return false };
-        let by_ai = card.message_id.as_deref().and_then(|id| self.read_by_ai.get(&mailindex::bare_id(id))).cloned();
-        by_ai.unwrap_or_else(|| shield::assess(&card.subject, &card.excerpt)).tone == shield::Tone::Hostile
+        shield::reading(&card, Some(&self.read_by_ai)).tone == shield::Tone::Hostile
     }
 }
 

@@ -201,7 +201,7 @@ R: G6 (median of the last five after-ratings), CB6 (after-task ratings for learn
   - The first comes right after the day's costliest block, a task or an event (by load, section 4), within its hours when they hold it, else in the free time after it. It is looked for within two hours.
   - The second comes in the evening: the first free gap after today's hours (18:00 on a day without hours), before the night.
   - They are yours to fill or leave empty: shown "Time for you", with at most one line ("Perhaps: Walk by the river") taken from your own items said to give back well (felt gain 6 or more, no felt cost above 3), rotated by day.
-  - They are quiet: the messages of sites and the pauses to move wait (`hours::quiet_slot`). Doses, meals and sleep, codes asked for, calls and an event's alarm still come.
+  - They are quiet, a layer of the notification matrix (`hours::quiet_slot`, [reminders.md](reminders.md#what-comes-when-the-notification-matrix)); as usual, new mail, the messages of sites and the pauses to move wait. Doses, meals and sleep, codes asked for, calls and an event's alarm still come.
   - Off in Tasks ⚙.
   - R: G11 (de Bloom 2017), G15 (Fredrickson 2000), G18–18b (Howe 2022; Killingsworth & Gilbert 2010), G19 (van Roekel 2017), G21.
   - G: 30 and 15 minutes, two hours, 18:00, what stays audible, 6 and 3, the rotation.

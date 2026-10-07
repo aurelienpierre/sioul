@@ -155,6 +155,7 @@ fn part_words(part: &str) -> (String, String) {
     match part {
         "settings" => (text("share-part-settings"), text("share-part-settings-carries")),
         "senders" => (text("share-part-senders"), text("share-part-senders-carries")),
+        "spam" => (text("share-part-spam"), text("share-part-spam-carries")),
         "health" => (text("share-part-health"), text("share-part-health-carries")),
         "time" => (text("share-part-time"), text("share-part-time-carries")),
         "drafts" => (text("share-part-drafts"), text("share-part-drafts-carries")),
@@ -491,7 +492,7 @@ fn kept_a_day(code: &str) -> bool {
     code.starts_with("share-conflict") || code.starts_with("share-older-copy")
 }
 
-/// "share-vanished:<folder>:<count>", said with a button: the folder of notes or papers it is in, and the sentence.
+/// `share-vanished:<folder>:<count>`, said with a button: the folder of notes or papers it is in, and the sentence.
 fn vanished_of(code: &str) -> Option<Vanished> {
     let (folder, count) = code.strip_prefix("share-vanished:")?.rsplit_once(':')?;
     let store = if folder.starts_with("files/papers/") { "files/papers/" } else { "files/notes/" };

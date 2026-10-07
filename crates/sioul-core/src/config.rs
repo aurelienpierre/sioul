@@ -56,6 +56,9 @@ pub struct Config {
     pub reading: Reading,
     #[serde(default)]
     pub mail: MailSettings,
+    /// Sioul's own spam filter: what it does with its verdicts, how sure it must be (`[spam]`).
+    #[serde(default)]
+    pub spam: SpamSettings,
     #[serde(default)]
     pub tasks: TaskSettings,
     /// What a day holds, as the plan learns it (`[planning]`, docs/capacity.md).
@@ -71,6 +74,9 @@ pub struct Config {
     /// Reminders before dates: events, dates asked, waits, payments (docs/reminders.md).
     #[serde(default)]
     pub reminders: ReminderSettings,
+    /// What each kind of notification does at each time (`[notify]`, `notify::Notify`).
+    #[serde(default)]
+    pub notify: crate::notify::NotifySettings,
     /// Free time, the global pause (`[free_time]`, docs/pauses.md).
     #[serde(default)]
     pub free_time: crate::pause::FreeTimeSettings,
@@ -272,6 +278,37 @@ impl Default for Reading {
     }
 }
 
+/// Sioul's own spam filter (`[spam]`, docs/porch.md): what it does with its
+/// verdicts, and how sure it must be. One filter for every account.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct SpamSettings {
+    /// "off"; "say", its verdict and why beside the message, nothing moved;
+    /// "act", spam set aside. "say" when unsaid: nothing is said before a training.
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// From this probability on, spam: 0.95 when unsaid.
+    #[serde(default)]
+    pub threshold_spam: Option<f32>,
+    /// From this one on, unsure: 0.5 when unsaid, never above the other.
+    #[serde(default)]
+    pub threshold_unsure: Option<f32>,
+}
+
+impl SpamSettings {
+    pub fn mode(&self) -> crate::spam::Mode {
+        self.mode.as_deref().and_then(crate::spam::Mode::read).unwrap_or_default()
+    }
+
+    /// The thresholds, spam then unsure: each between 0 and 1 (its default
+    /// otherwise), the unsure one never above the other.
+    pub fn thresholds(&self) -> (f32, f32) {
+        let valid = |t: Option<f32>| t.filter(|t| t.is_finite() && (0.0..=1.0).contains(t));
+        let spam = valid(self.threshold_spam).unwrap_or(crate::spam::THRESHOLD_SPAM);
+        let unsure = valid(self.threshold_unsure).unwrap_or(crate::spam::THRESHOLD_UNSURE);
+        (spam, unsure.min(spam))
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct MailSettings {
     /// Folders shown by conversation, your answers from Sent among them.
@@ -462,7 +499,9 @@ pub struct ReminderSettings {
     pub gathered: Option<Vec<String>>,
     /// Doses reminded during sleep, when nothing else disturbs (docs/health.md):
     /// you set their times, a dose at 05:00 is meant to wake you. Off, they
-    /// wait for waking.
+    /// wait for waking. The notification matrix's cell now (`[notify] doses`,
+    /// `notify::Notify::of`), read from here while that row says nothing of
+    /// sleep, and written here beside it for an older Sioul.
     #[serde(default = "yes")]
     pub doses_in_sleep: bool,
     /// Minutes before an event, counted before its margin "before" (getting
@@ -853,6 +892,8 @@ pub struct Source {
     pub shielded: bool,
     /// Words that make a sender automatic: the configuration's `filed_words`.
     pub filed_words: Vec<String>,
+    /// Sioul's own spam filter, one for every account; none, no learned verdict.
+    pub spam: Option<crate::spam::Filter>,
 }
 
 impl Config {
@@ -949,6 +990,7 @@ impl Config {
     /// Sioul's own checks are trusted first, then the provider's.
     pub fn mail_sources(&self) -> Vec<Source> {
         let own = sioul_authserv_id();
+        let spam = crate::spam::Filter::of(self);
         self.accounts
             .iter()
             .filter(|a| a.kind != AccountKind::Portal)
@@ -960,6 +1002,7 @@ impl Config {
                 priority: a.priority,
                 shielded: a.shield,
                 filed_words: self.filed_words.clone().unwrap_or_default(),
+                spam: Some(spam.clone()),
             })
             .collect()
     }

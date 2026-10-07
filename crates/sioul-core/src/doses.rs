@@ -34,7 +34,7 @@ pub const KEPT_DAYS: i64 = 9;
 /// The file's name, in Sioul's state folder.
 pub const FILE: &str = "health-doses.toml";
 
-/// The doses that fell due, by key ("<medicine>@<Unix seconds>").
+/// The doses that fell due, by key (`<medicine>@<Unix seconds>`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DoseRecords {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

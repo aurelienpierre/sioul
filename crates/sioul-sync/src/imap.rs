@@ -22,14 +22,14 @@ use tokio::time::timeout;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
 
-pub(crate) type Imap = Session<TlsStream<TcpStream>>;
+pub type Imap = Session<TlsStream<TcpStream>>;
 
 pub(crate) const CONNECT: Duration = Duration::from_secs(20);
-pub(crate) const COMMAND: Duration = Duration::from_secs(60);
+pub const COMMAND: Duration = Duration::from_secs(60);
 
 /// Where to connect, and as whom.
 #[derive(Debug, Clone)]
-pub(crate) struct Server {
+pub struct Server {
     pub host: String,
     pub port: u16,
     pub security: Security,
@@ -52,7 +52,7 @@ impl Server {
 
 /// Connects, encrypts and logs in: with the password, or, for an account
 /// signed in with OAuth, with an access token (the password is then unused).
-pub(crate) async fn open(server: &Server, password: &str) -> Result<Imap, SyncError> {
+pub async fn open(server: &Server, password: &str) -> Result<Imap, SyncError> {
     if let Some(oauth) = server.oauth {
         return sign_in_with_tokens(&server.login, || connect(server), |fresh| oauth.token_async(&server.login, fresh), oauth).await;
     }
@@ -163,7 +163,7 @@ pub(crate) fn tls_config() -> Arc<rustls::ClientConfig> {
 }
 
 /// Waits at most `limit`; a server that does not answer is a network problem.
-pub(crate) async fn within<F: Future>(limit: Duration, future: F) -> Result<F::Output, SyncError> {
+pub async fn within<F: Future>(limit: Duration, future: F) -> Result<F::Output, SyncError> {
     timeout(limit, future).await.map_err(|_| SyncError::Network(format!("no answer within {} s", limit.as_secs())))
 }
 
@@ -198,7 +198,7 @@ fn login_error(e: async_imap::error::Error, host: &str) -> SyncError {
 }
 
 /// Any other IMAP error.
-pub(crate) fn server(e: async_imap::error::Error) -> SyncError {
+pub fn server(e: async_imap::error::Error) -> SyncError {
     match e {
         async_imap::error::Error::No(m) | async_imap::error::Error::Bad(m) => SyncError::Server(m.trim().to_string()),
         other => SyncError::Network(other.to_string()),

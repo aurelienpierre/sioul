@@ -4,8 +4,8 @@
 //! Passwords live in the system keyring, never in a file Sioul writes: the
 //! Secret Service on Linux (KWallet, GNOME Keyring), the Keychain on macOS,
 //! the Credential Manager on Windows (Cargo.toml chooses the backend per
-//! system). Each is filed under the service "sioul" and "<login> on
-//! <server>", so it is easy to find, check or remove there.
+//! system). Each is filed under the service `sioul` and `<login> on
+//! <server>`, so it is easy to find, check or remove there.
 
 use crate::SyncError;
 use keyring::Entry;

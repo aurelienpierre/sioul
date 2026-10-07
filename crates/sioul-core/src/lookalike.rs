@@ -73,7 +73,7 @@ pub struct Impersonation {
 
 /// Mail providers whose domain is shared by millions: an address there makes the
 /// domain nobody's own to impersonate.
-const SHARED: &[&str] = &[
+pub(crate) const SHARED: &[&str] = &[
     "gmail.com", "googlemail.com", "outlook.com", "outlook.fr", "hotmail.com", "hotmail.fr", "live.com", "live.fr", "msn.com",
     "yahoo.com", "yahoo.fr", "ymail.com", "icloud.com", "me.com", "mac.com", "proton.me", "protonmail.com", "pm.me",
     "murena.io", "e.email", "gmx.com", "gmx.fr", "gmx.de", "gmx.net", "free.fr", "orange.fr", "wanadoo.fr", "sfr.fr",

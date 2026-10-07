@@ -25,6 +25,17 @@ Popup {
         panel.rows = panel.view === "" ? [] : JSON.parse(panel.sioul.settings(panel.view))
     }
 
+    // A setting at the top of the panel, its group's title above it (the window's images).
+    function scrollTo(key) {
+        const at = panel.rows.findIndex(row => row.key === key)
+        const row = at < 0 ? null : shownRows.itemAt(at)
+        const flick = scroll.contentItem as Flickable
+        if (row === null || flick === null)
+            return
+        const top = row.mapToItem(flick.contentItem, 0, 0).y
+        flick.contentY = Math.max(0, Math.min(top - 8, flick.contentHeight - flick.height))
+    }
+
     function save(key, value) {
         panel.problem = panel.sioul.setSetting(key, JSON.stringify(value))
         if (panel.problem === "")
@@ -87,6 +98,8 @@ Popup {
             }
 
             Repeater {
+                id: shownRows
+
                 model: panel.rows
 
                 delegate: ColumnLayout {

@@ -43,15 +43,15 @@ import java.util.Set;
  * What other apps hand Sioul to write (docs/android.md, "Sharing"): files and
  * text shared to it, or to one of your addresses straight from the share
  * sheet (MailShortcuts), and mailto: links. Each becomes a request in Sioul's
- * data folder (handed/incoming/<id>.json), which Rust makes a draft of as
+ * data folder ({@code handed/incoming/<id>.json}), which Rust makes a draft of as
  * its window comes up (crates/sioul-app/src/outside.rs); Sioul's window is
  * brought up at once.
  *
  * Shared files come as content:// addresses that Sioul may read only while
  * this activity lives. They are opened on a thread of their own (a cloud's
  * app may fetch a file before it opens), then this activity ends, and the copy
- * goes on from the open files into handed/files/<id>/, under their own names,
- * while you write. When all are copied, handed/incoming/<id>.done.json says
+ * goes on from the open files into {@code handed/files/<id>/}, under their own names,
+ * while you write. When all are copied, {@code handed/incoming/<id>.done.json} says
  * where, and Rust is told (nativeHanded) to attach them. Never shown itself.
  *
  * Not taken: a file named by its place (file://), and Sioul's own files,

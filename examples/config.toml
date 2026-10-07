@@ -58,8 +58,23 @@ label = "Holidays"
 # stranger = []
 # hidden = ["work", "admin"]
 
-# While you sleep (Health: the night, naps), nothing notifies but doses; false:
-# doses too wait for waking (Settings ▸ Reminders and notifications).
+# What each kind of notification does at each time (docs/reminders.md, "What
+# comes when"; Settings ▸ Reminders and notifications ▸ When each comes): a row a
+# kind, its columns "work", "admin", "leisure", "meals", "sleep", "pause", "free"
+# (Free time), "slot" (a slot of time for you), "dnd" (do-not-disturb from its
+# switch or a focus session). A bare column: at once; "column:value" another
+# value: "later", "gathered", "event", "never", and for "dnd" on mail and
+# "app-people", "list" or "list-any". A column left out keeps its usual value;
+# some are fixed (doses, codes, an event's alarms, the alarm at waking). Kinds:
+# codes, doses, wake, alarms, before, day-before, dates, needs, move, work-over,
+# time, watch, mail, sites, sites-live, site-calls, app-people, app-automatons,
+# app-at-once. Here, your safe senders' new mail told in Free time, and your
+# do-not-disturb list's whatever who may reach you says:
+# [notify]
+# mail = ["work", "admin", "leisure", "meals", "sleep:later", "pause:later", "free", "slot:later", "dnd:list-any"]
+
+# Doses while you sleep and in a pause, as an older Sioul reads them: the doses'
+# row above says it, and Sioul writes these beside it.
 # [reminders]
 # doses_in_sleep = true
 

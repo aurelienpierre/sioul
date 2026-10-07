@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * seconds (Sioul may be frozen while another device changed the night); a
  * try ("Try the alarm"), rung the same way and nothing else; Stop and 10 min
  * later; and the phone's own moments: started (before its first
- * unlock, then after), Sioul updated, the time or the zone changed, "Alarms &
+ * unlock, then after), Sioul updated, the time or the zone changed, "Alarms &amp;
  * reminders" allowed again, each giving the alarms again. Rust is asked on a
  * thread of its own, the broadcast held open meanwhile (goAsync) and let go
  * before Android's minute. Read before the first unlock (directBootAware):

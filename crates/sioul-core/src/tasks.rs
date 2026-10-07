@@ -81,7 +81,7 @@ pub struct Relation {
 /// Something a task points at (LINK, RFC 9253 §8.2).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Link {
-    /// "mid:…", "sioul:note/…", "https://…"; "uid:<uid>" for another component by its UID.
+    /// `mid:…`, `sioul:note/…`, `https://…`; `uid:<uid>` for another component by its UID.
     pub uri: String,
     #[serde(default)]
     pub label: String,
@@ -663,7 +663,7 @@ pub fn relation_line(kind: &str, uid: &str, gap_minutes: i64) -> String {
     format!("RELATED-TO;RELTYPE={kind}{gap}:{}", one_line(uid))
 }
 
-/// `LINK;LINKREL=…;LABEL=…;VALUE=URI:<uri>`, or `VALUE=UID` for "uid:<uid>".
+/// `LINK;LINKREL=…;LABEL=…;VALUE=URI:<uri>`, or `VALUE=UID` for `uid:<uid>`.
 pub fn link_line(link: &Link) -> String {
     let rel = if link.rel.is_empty() { "related".to_string() } else { lines::param_value(&link.rel) };
     let label = if link.label.is_empty() { String::new() } else { format!(";LABEL={}", lines::param_value(&link.label)) };

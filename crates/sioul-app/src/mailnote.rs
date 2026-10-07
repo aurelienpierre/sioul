@@ -24,6 +24,7 @@ use jiff::Zoned;
 use sioul_core::areas::{Area, Time};
 use sioul_core::config::Config;
 use sioul_core::mailnote::{self, Ledger, Letter};
+use sioul_core::notify::{Cell, Kind, Notify, Now};
 use sioul_core::porch::{self, Triaged};
 use sioul_core::quiet::{Mode, Overrides};
 use sioul_core::reach::{Matrix, Reach};
@@ -83,17 +84,15 @@ fn add_to_batch(letters: Vec<Letter>, window: Option<Window>, opens: bool) {
 /// The moment last seen by `tick`, in this process: a change is a time beginning.
 static MOMENT: Mutex<Option<String>> = Mutex::new(None);
 
-/// Who may still be told while the do-not-disturb you switched on, or a
-/// focus session's, holds (`everywhere::mail_gate`): the people on its list,
-/// by their address; the others wait for its end. None when it is off: the
-/// usual rules (sleep and the pauses tell nothing).
+/// The people on do-not-disturb's list, by their address, while it holds from
+/// its switch or a focus session (`everywhere::mail_gate`); none otherwise.
 fn gate() -> Option<Box<dyn Fn(&str) -> bool>> {
     crate::everywhere::mail_gate().map(|people| Box::new(move |address: &str| people.admits_address(address)) as Box<dyn Fn(&str) -> bool>)
 }
 
 /// What decides now whether a message is told: what now is for, who your
-/// lists let through now (Free time narrowing them), whether anything may be
-/// told now, and the do-not-disturb you switched on.
+/// lists let through now (Free time narrowing them), what the notification
+/// matrix says of new mail now, and do-not-disturb's list.
 struct Seen {
     config: Config,
     mode: Mode,
@@ -101,8 +100,12 @@ struct Seen {
     /// Read when a message is judged, not for the minute's moment: the
     /// contacts' categories are looked at for it.
     senders: std::cell::OnceCell<porch::Senders>,
-    /// Nothing is told while you sleep, in a pause, Free time included, in a
-    /// slot of time for you, while the Porch rests after a pause, or with the setting off.
+    /// The matrix's cell for new mail now (as usual: at once in your hours;
+    /// later in sleep, a pause, Free time and a slot of time for you; during
+    /// do-not-disturb, its list when Who may reach you lets them through too).
+    cell: Cell,
+    /// Nothing is told while the matrix holds new mail, while the Porch rests
+    /// after a pause, or with the setting off.
     may: bool,
     gate: Option<Box<dyn Fn(&str) -> bool>>,
 }
@@ -113,26 +116,30 @@ impl Seen {
         let mode = crate::hours::mode_at(now);
         let overrides = Overrides::load(&Overrides::default_path());
         let reach = sioul_core::pause::reach_now(Reach::of(&config.reach).mail, &mode, sioul_core::pause::nothing_now(&overrides, &config.free_time));
-        let may = config.reminders.mail && mailnote::may_tell(&mode) && !crate::hours::quiet_slot() && !overrides.porch_rests(stamp);
-        Seen { config, mode, reach, senders: std::cell::OnceCell::new(), may, gate: gate() }
+        let moment = Now::of(&mode, crate::hours::quiet_slot(), crate::everywhere::holds_others());
+        let cell = Notify::of(&config).at(Kind::Mail, &moment);
+        let may = config.reminders.mail && !matches!(cell, Cell::Later | Cell::Never) && !overrides.porch_rests(stamp);
+        Seen { config, mode, reach, senders: std::cell::OnceCell::new(), cell, may, gate: gate() }
     }
 
     fn senders(&self) -> &porch::Senders {
         self.senders.get_or_init(|| porch::Senders::load(&self.config))
     }
 
-    /// Whether this message may be told now.
+    /// Whether this message may be told now: both matrices let it through
+    /// (`Cell::admits`: who may reach you, and do-not-disturb's list as the cell says).
     fn tells(&self, t: &Triaged) -> bool {
         if !self.may {
             return false;
         }
         let area = t.card.account.as_deref().and_then(|id| self.config.account(id)).and_then(|a| a.area.as_deref()).and_then(Area::parse).unwrap_or(Area::WORK);
         let in_view = self.mode.time == Time::Any || sioul_core::quiet::mail_in_view(t, self.senders(), &self.reach, area, self.mode.time, self.mode.week);
-        in_view && self.gate.as_ref().is_none_or(|admits| t.card.from_address.as_deref().is_some_and(|address| admits(address)))
+        let listed = self.gate.as_ref().is_some_and(|admits| t.card.from_address.as_deref().is_some_and(|address| admits(address)));
+        self.cell.admits(in_view, listed)
     }
 
     fn moment(&self) -> String {
-        mailnote::moment(&self.mode, self.may, self.gate.is_some())
+        format!("{}:{}", mailnote::moment(&self.mode, self.may, self.gate.is_some()), self.cell.id())
     }
 
     /// Messages judged as the Porch judges them: with the projects and their
@@ -185,14 +192,16 @@ fn arrived_from(_account: &str, new: &[PathBuf], first: bool, window: Option<Win
     let path = Ledger::default_path();
     // Marked at once: those never told, those waiting for their time, and
     // those of the batch, waiting until it is told (Sioul stopped before,
-    // they come with "The Porch opens").
+    // they come with "The Porch opens"). Come at a time the matrix says
+    // "Not at all" for new mail: never told, on the Porch only.
+    let dropped = seen.cell == Cell::Never;
     let letters = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
         let sorted = mailnote::sort(&arrivals, &ledger, newsletters, |t| seen.tells(t));
-        for key in &sorted.never {
+        for key in sorted.never.iter().chain(sorted.later.iter().filter(|_| dropped)) {
             ledger.tell(key, stamp);
         }
-        for key in sorted.later.iter().chain(sorted.now.iter().map(|l| &l.key)) {
+        for key in sorted.later.iter().filter(|_| !dropped).chain(sorted.now.iter().map(|l| &l.key)) {
             ledger.wait(key, stamp);
         }
         ledger.forget_old(stamp);

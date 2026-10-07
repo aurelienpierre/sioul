@@ -84,7 +84,7 @@ Qui peut vous joindre, et quand : par courrier, par téléphone, et par les me
 - **Sûrs** : les amis, les collègues et la famille que vous choisissez. C’est toujours vous qui y mettez quelqu’un.
 - **Neutres** : toute personne de vos carnets d’adresses, tant que vous n’en décidez pas autrement.
 - **Restreints** : ceux dont vous préférez n’avoir des nouvelles qu’à des moments choisis : un client exigeant, quelqu’un dont le courrier pèse.
-- **Bloqués** : les indésirables et le harcèlement. Jamais, sur aucun canal : leur courrier écarté pour de bon, jamais montré, jamais compté, jamais notifié ; leurs appels refusés. Rien n’est supprimé.
+- **Bloqués** : les indésirables et le harcèlement. Jamais, sur aucun canal : leur courrier mis de côté pour de bon, jamais montré, jamais compté, jamais notifié ; leurs appels refusés. Rien n’est supprimé.
 
 Les inconnus comptaient comme neutres. Ils ont maintenant leur propre ligne : leur courrier garde les moments des neutres tant que vous ne la changez pas, et leurs appels sont refusés à tout moment tant que vous ne cochez rien.
 
@@ -119,7 +119,7 @@ Le courrier d’un expéditeur neutre ou restreint, ou d’un inconnu, ne vient 
 
 **De la personne au groupe** : le choix propre à une personne passe d’abord (son adresse ou son numéro, puis sa fiche), puis les catégories de sa fiche, puis un domaine ou le début d’un numéro ; puis, neutres : toute personne de vos carnets d’adresses, et toute personne que vous avez laissée entrer depuis le filtre d’accueil ; toutes les autres sont inconnues. Un ami peut donc être neutre alors que la catégorie Amis est sûre, et un collègue dans Amis reste sûr dans un domaine marqué restreint. Quand un même niveau donne deux réponses (une personne dans deux catégories mises sur deux listes), bloqué l’emporte, puis restreint, puis neutre, puis sûr.
 
-Le courrier falsifié est jugé à part, avant les listes : un message falsifié est écarté même quand il se réclame de l’adresse d’un expéditeur sûr, et pesé comme celui d’un inconnu.
+Le courrier falsifié est jugé à part, avant les listes : un message falsifié est mis de côté même quand il se réclame de l’adresse d’un expéditeur sûr, et pesé comme celui d’un inconnu.
 
 Depuis un message, **Son courrier** met l’adresse de l’expéditeur sur l’une des quatre listes, ou la rend à **Comme le disent ses catégories**. Depuis la fiche d’un contact, **Sa liste** le fait pour la personne, toutes ses adresses et tous ses numéros.
 

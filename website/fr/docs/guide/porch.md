@@ -50,8 +50,8 @@ Chaque message va dans la première file qui le prend, dans cet ordre :
 
 | File | Ce qu’elle contient |
 |---|---|
-| **Mis de côté** | Le courrier falsifié, celui qui emprunte un nom, les indésirables, et les expéditeurs que vous avez bloqués. Montrée en bas, chaque message avec sa raison. Rien n’est supprimé. |
-| **Hostile, écarté** | Seulement pour une adresse que vous protégez contre le harcèlement (plus bas) : insultes, harcèlement, menaces. Leurs mots restent cachés. |
+| **Mis de côté** | Le courrier falsifié, celui qui emprunte un nom, les indésirables (le mot de votre fournisseur, ou celui de votre propre filtre quand vous le laissez faire : [plus bas](#spam-and-your-own-filter)), et les expéditeurs que vous avez bloqués. Montrée en bas, chaque message avec sa raison. Rien n’est supprimé. Un indésirable a **Pas indésirable** : de retour dans sa file pour de bon, sur chaque appareil. |
+| **Hostile, mis de côté** | Seulement pour une adresse que vous protégez contre le harcèlement (plus bas) : insultes, harcèlement, menaces. Leurs mots restent cachés. |
 | **Tout de suite** | Les codes et les liens que vous venez de demander à un site, vus plus haut. |
 | **Une file par projet** | Le courrier qui correspond aux règles du projet, ou qui appartient à une conversation du projet. Voir [Les projets](projects.md). |
 | **Votre adresse publique** | Le courrier envoyé à une adresse que vous protégez, par des personnes que vous n’avez pas laissées entrer, lu d’abord et trié par sujet : le travail en premier. |
@@ -71,6 +71,27 @@ Un message en attente de votre accord a **Accepter cette adresse** : les messa
 Chaque message a aussi **Son courrier**, dans son menu (⋮). D’abord, une ligne dit ce qui décide pour cet expéditeur maintenant : « Sûr, comme le dit la catégorie Amis. » Puis les choix : **Comme le disent ses catégories** (son entrée propre retirée des listes : les catégories de sa fiche décident, sinon le domaine de son adresse), ou l’une des quatre listes, chacune avec les moments de son courrier : **Sûr**, **Neutre**, **Restreint**, **Bloqué** (mis de côté pour de bon, jamais montré). Un expéditeur qui n’est dans aucun de vos carnets d’adresses ni sur aucune liste est un inconnu, avec ses propres moments. Les mêmes listes, avec des motifs comme `*@example.org` et des numéros, et le moment où vient chacun, sont dans [Comptes ▸ Qui peut vous joindre](accounts.md#senders).
 
 Le courrier falsifié est jugé à part : un message falsifié est mis de côté quoi que disent les listes, même s’il prétend venir de quelqu’un que vous avez marqué sûr, et pesé comme celui d’un inconnu.
+
+## Les indésirables, et votre propre filtre {#spam-and-your-own-filter}
+
+Seul le courrier d’un inconnu peut être dit indésirable. Qui que ce soit qui le dise, votre fournisseur ou le propre filtre de Sioul, cela ne touche jamais le courrier de quelqu’un que vous connaissez (dans vos carnets d’adresses, sur une liste, accepté), les codes et les liens que vous avez demandés, le courrier d’un projet, ce que vous vous envoyez, ni un message dont vous avez dit qu’il n’était pas indésirable. Le courrier falsifié, les noms empruntés et les expéditeurs bloqués sont mis de côté avant, comme toujours. Un message que rien n’authentifie (il a échoué à SPF et à DKIM) compte comme celui d’un inconnu, quelle que soit l’adresse qu’il montre.
+
+- **Le mot de votre fournisseur** : le message d’un inconnu que votre fournisseur marque indésirable va dans Mis de côté.
+- **Votre propre filtre**, une fois qu’il a appris de votre courrier ([les réglages du Courrier](settings.md#your-own-spam-filter)), dit à quel point le message d’un inconnu est sans doute indésirable :
+    - **probablement indésirable**, à partir de 95 % sauf si vous le changez : mis de côté, si vous le laissez faire (**Mettre l’indésirable de côté**) ; tel qu’il commence (**Montrer son avis seulement**), le message reste dans sa file, avec « probablement indésirable » à côté de son sujet ;
+    - **peut-être indésirable**, à partir de 50 % : le message reste dans sa file, avec « peut-être indésirable » à côté de son sujet ;
+    - en dessous : rien.
+
+<figure markdown="span">
+  [![Le Porche, un message ouvert. À gauche, parmi les nouveaux expéditeurs, deux messages d’inconnus, l’un avec « probablement indésirable » à côté de son sujet, l’autre avec « peut-être indésirable » ; le premier est ouvert à droite, « Pourquoi il est ici » déplié : « votre propre filtre : probablement indésirable (97 %) — un prix, un lien ; les réponses partent vers un autre domaine, son nom affiche un autre domaine, des liens vers d’autres domaines » ; sous le message, Accepter cette adresse, Pas indésirable et Fermer.](../assets/screens/fr/porch-spam.png){ loading=lazy }](../assets/screens/fr/porch-spam.png "Ouvrir l’image en grand")
+  <figcaption>Le mot discret du filtre à côté de deux messages d’inconnus ; pourquoi, une fois l’un d’eux ouvert.</figcaption>
+</figure>
+
+Ces mots sont discrets : pas de couleur, pas de compte. Le pointeur posé dessus, Sioul dit à quel point le filtre est sûr, et pourquoi : les mots, et les signes des en-têtes du message, qui ont le plus pesé (« un prix, un lien ; les réponses partent vers un autre domaine »). **Pourquoi il est ici**, dans le message, dit la même chose. Les mots sont montrés tels que le filtre les lit, raccourcis : « loteri » pour loterie.
+
+**Pas indésirable**, sous le message, répond à chacun d’eux : il retourne dans sa file, ou y reste sans le mot, pour de bon et sur chaque appareil, et le filtre en tient compte à son prochain apprentissage. **Indésirable** déplace un message dans le dossier des indésirables, comme toujours, et l’apprend aussi au filtre. Rien n’est supprimé, et le filtre ne déplace rien sur le serveur.
+
+Le courrier mis de côté n’est jamais signalé. Un message qui garde sa file, avec un mot à côté, est signalé comme le dit sa file.
 
 ## Lire un message {#reading-a-message}
 

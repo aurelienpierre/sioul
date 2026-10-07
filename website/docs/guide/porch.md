@@ -50,7 +50,7 @@ Each message goes to the first lane that takes it, in this order:
 
 | Lane | What it holds |
 |---|---|
-| **Set aside** | Forged mail, mail borrowing a name, spam, and senders you blocked. Shown at the bottom, each with the reason. Nothing is deleted. |
+| **Set aside** | Forged mail, mail borrowing a name, spam (your provider's word, or your own filter's when you let it: [below](#spam-and-your-own-filter)), and senders you blocked. Shown at the bottom, each with the reason. Nothing is deleted. Spam has **Not spam**: back in its lane for good, on every device. |
 | **Hostile, set aside** | Only for an address you protect against harassment (below): insults, harassment, threats. Their words stay hidden. |
 | **Right now** | Codes and links you just asked a site for, above. |
 | **One lane per project** | Mail that matches the project's routes, or that belongs to a conversation of the project. See [Projects](projects.md). |
@@ -71,6 +71,27 @@ A message in the screener has **Let this address in**: their next messages go to
 Every message also has **Their mail**, in its menu (⋮). First, one line says what decides for this sender now: "Safe, as the category Friends says." Then the choices: **As their categories say** (their own entry taken out of the lists: the categories on their contact card decide, else their address's domain), or one of the four lists, each with its mail's times: **Safe**, **Neutral**, **Restricted**, **Blocked** (set aside for good, never shown). A sender in none of your address books and on no list is a stranger, with times of their own. The same lists, with patterns such as `*@example.org` and numbers, and when each comes, are in [Accounts ▸ Who may reach you](accounts.md#senders).
 
 Forged mail is judged apart: a forged message is set aside whatever the lists say, even if it claims to come from someone you marked safe, and it is weighed as a stranger's.
+
+## Spam, and your own filter
+
+Only a stranger's mail is ever called spam. Whoever says it, your provider or Sioul's own filter, it never touches mail from someone you know (in your address books, on a list, let in), the codes and links you asked for, a project's mail, what you send yourself, or a message you said is not spam. Forged mail, borrowed names and blocked senders are set aside before, as always. A message nothing authenticates (it failed both SPF and DKIM) counts as a stranger's, whatever address it shows.
+
+- **Your provider's word**: a stranger's message your provider marks as spam goes to Set aside.
+- **Your own filter**, once it has learned from your mail ([Settings](settings.md#your-own-spam-filter)), says how likely a stranger's message is spam:
+    - **probably spam**, from 95% unless you change it: set aside, if you let it (**Set spam aside**); as it starts (**Show its verdict only**), the message stays in its lane, with "probably spam" beside its subject;
+    - **maybe spam**, from 50%: the message stays in its lane, with "maybe spam" beside its subject;
+    - below: nothing.
+
+<figure markdown="span">
+  [![The Porch with a message open. On the left, in the screener, two strangers' messages, one with "probably spam" beside its subject, the other with "maybe spam"; the first is open on the right, "Why it is here" unfolded: "your own filter: probably spam (97%) — a price, a link; replies go to another domain, its name shows another domain, links to other domains"; under the message, Let this address in, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
+  <figcaption>The filter's quiet word beside two strangers' messages; why, once one is open.</figcaption>
+</figure>
+
+The words are quiet: no colour, no count. With the pointer on them, Sioul says how sure the filter is and why: the words, and the signs in the message's headers, that weighed most ("a price, a link; replies go to another domain"). **Why it is here**, in the message, says the same. The words are shown as the filter reads them, shortened: "loteri" for lottery.
+
+**Not spam**, under the message, answers each of them: it goes back to its lane, or keeps it without the word, for good and on every device, and the filter learns from it at its next training. **Junk** moves a message to the junk folder, as always, and teaches the filter too. Nothing is deleted, and the filter moves nothing on the server.
+
+Mail set aside is never notified. A message that keeps its lane, with a word beside it, is notified as its lane says.
 
 ## Reading a message
 

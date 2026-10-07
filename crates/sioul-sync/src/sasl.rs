@@ -3,7 +3,7 @@
 
 //! Signing in to IMAP and SMTP with an OAuth 2.0 access token instead of a
 //! password: SASL XOAUTH2, as Google defines it
-//! (https://developers.google.com/workspace/gmail/imap/xoauth2-protocol), and
+//! (<https://developers.google.com/workspace/gmail/imap/xoauth2-protocol>), and
 //! as Microsoft takes it too. The client's first answer is
 //! `base64("user=" user "\x01auth=Bearer " token "\x01\x01")`; a refused
 //! token brings a last challenge, the reason as base64 JSON

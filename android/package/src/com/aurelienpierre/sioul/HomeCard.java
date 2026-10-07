@@ -434,7 +434,7 @@ public final class HomeCard extends AppWidgetProvider
      * The card drawn again at `at`, when its frame ends, a code expires, a dose
      * comes or goes, or its age is to be said: an alarm that wakes nothing (the
      * card is drawn when the phone is next awake), on time when Android allows
-     * Sioul exact alarms (the doses' "Alarms & reminders"), else within a few
+     * Sioul exact alarms (the doses' "Alarms &amp; reminders"), else within a few
      * minutes. Long.MAX_VALUE: none.
      */
     private static void schedule(Context context, long at)

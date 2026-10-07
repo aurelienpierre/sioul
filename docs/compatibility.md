@@ -24,7 +24,7 @@ Code: `crates/sioul-sync/src/imap.rs` (the session), `fetch.rs` (fetching, IDLE)
 | UIDPLUS (UID EXPUNGE) | RFC 4315 | removing only the message moved or deleted | without MOVE and UIDPLUS, the copy is made and the original stays marked `\Deleted`: a plain EXPUNGE could remove what another client marked. Most clients hide it |
 | SPECIAL-USE | RFC 6154 | Sent, Drafts, Junk, Trash, Archive, All | folders found by name (`folders::preferred`); a Trash, Junk, Archive or Sent missing is created, under `INBOX.` where the server keeps its folders there |
 | `\Flagged` and `\Important` views | RFC 6154, RFC 8457 | left out (Gmail's Starred and Important); Gmail's All Mail is the archive when no folder says `\Archive` | — |
-| Keywords `$Junk`, `$NotJunk` | IANA's IMAP keywords (RFC 5788) | told to the server's spam filter on Junk and Not junk | a server that refuses keywords still gets the move |
+| Keywords `$Junk`, `$NotJunk` | IANA's IMAP keywords (RFC 5788) | told to the server's spam filter on Junk, Not junk and Not spam; kept at each sync in the file name (Dovecot's letters), for the Porch and the spam filter | a server that refuses keywords still gets the move; "Not spam" is then kept in this device's label log only |
 | CREATE, DELETE, STATUS (MESSAGES) | RFC 9051 | "New folder…"; deleting a folder only when it is empty and has no purpose | — |
 | APPEND | RFC 9051 | the copy in Sent (`\Seen`); a message moved to another account, with its `\Seen`, `\Flagged` and `\Answered` | at Gmail (`imap.gmail.com`) no copy: Gmail files its own |
 | Modified UTF-7 folder names | RFC 3501 §5.1.3 | names typed with accents | — |

@@ -23,14 +23,16 @@ pub(crate) fn tick(qt: &QtThread) {
     std::thread::spawn(move || {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
         let now = jiff::Zoned::now();
-        // Asleep, nothing is told but what you chose to happen then: it waits for waking (`Wait::Sleep`).
-        let (mut all, wait) = reminders::gather(&load_config(), tr(), &now);
+        // What holds now is the notification matrix's to say (Settings ▸ Reminders and
+        // notifications): asleep, as usual, nothing but what you chose to happen then.
+        let (mut all, holds) = reminders::gather(&load_config(), tr(), &now);
+        let holds = crate::hours::with_layers(holds);
         let phone = cfg!(target_os = "android");
         if phone {
             all.retain(|r| matches!(r.kind, Kind::Event | Kind::Before | Kind::Alarm));
         }
         let events = if phone { all.clone() } else { Vec::new() };
-        for reminder in reminders::to_tell(all, &reminders::told_dir(), now.timestamp().as_second(), wait) {
+        for reminder in reminders::to_tell(all, &reminders::told_dir(), now.timestamp().as_second(), &holds) {
             if phone {
                 crate::eventalarms::show(&reminder);
                 continue;
@@ -52,7 +54,7 @@ pub(crate) fn tick(qt: &QtThread) {
         // On a phone, the coming ones (those just told left out) given to
         // Android's alarm clock when they changed: they come with Sioul away too.
         if phone {
-            crate::eventalarms::schedule_from(&events, wait, &now);
+            crate::eventalarms::schedule_from(&events, &holds, &now);
         }
     });
 }

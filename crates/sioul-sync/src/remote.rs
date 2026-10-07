@@ -890,7 +890,7 @@ pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
     }
     state.tried = now;
     let host = state.host();
-    let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Puller { server: &server, folder, into: &cache, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false }.run());
+    let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Puller { server: &server, folder, into: &cache, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false, blobs: Vec::new(), blobs_listed: None }.run());
     match outcome {
         Ok(()) => {
             state.last = now;
@@ -999,6 +999,11 @@ struct Puller<'a> {
     covered: BTreeSet<String>,
     /// Sioul keeping the folder itself, its copy lost: none of its records here.
     lost: bool,
+    /// The others' sealed files to bring (`MIRROR`), listed by `run`, fetched
+    /// last (`fetch_blobs`), once this device's own files went up.
+    blobs: Vec<(String, Item)>,
+    /// `blobs/`'s ETag as listed: kept once every file of it came.
+    blobs_listed: Option<String>,
 }
 
 impl Puller<'_> {
@@ -1090,10 +1095,10 @@ impl Puller<'_> {
             let listing = self.server.list(&self.url("blobs/"))?;
             self.pulled.listed += listing.items.len();
             self.own_listed("blobs/", &listing);
-            for (name, item) in listing.items.iter().filter(|(name, item)| !item.dir && !name.starts_with('.')) {
-                self.blob(&format!("blobs/{name}"), item)?;
-            }
-            self.looked("blobs/", &listing.etag);
+            // Brought last (`fetch_blobs`): a large one on a slow line never
+            // holds back this device's own records going up.
+            self.blobs = listing.items.iter().filter(|(name, item)| !item.dir && !name.starts_with('.')).map(|(name, item)| (format!("blobs/{name}"), item.clone())).collect();
+            self.blobs_listed = Some(listing.etag.clone());
         }
         self.forget_gone("", &root);
         self.looked("", &root.etag);
@@ -1210,6 +1215,24 @@ impl Puller<'_> {
         self.state.sent.insert(relative.to_string(), Sent { size: keep as u64, modified, etag });
         self.pulled.fetched += 1;
         self.pulled.bytes += keep as u64;
+        Ok(())
+    }
+
+    /// The others' sealed files `run` listed, brought one after the other,
+    /// last in the step. One that fails stops the rest until the next step,
+    /// which looks through the folder again rather than ten minutes later.
+    fn fetch_blobs(&mut self) -> Result<(), Stop> {
+        for (relative, item) in std::mem::take(&mut self.blobs) {
+            if let Err(stop) = self.blob(&relative, &item) {
+                self.state.folders.remove("blobs/");
+                self.state.folders.remove("");
+                self.blobs_listed = None;
+                return Err(stop);
+            }
+        }
+        if let Some(etag) = self.blobs_listed.take() {
+            self.looked("blobs/", &etag);
+        }
         Ok(())
     }
 
@@ -1531,11 +1554,14 @@ pub fn begin(memory: &Path, folder: &Path, login: &Login, opened: &Opened, now: 
 
 /// One step of Sioul keeping the folder itself (`MIRROR`): with `whole`, the
 /// server's folder looked through first and the other devices' newer files
-/// brought into the copy here, as `pull` brings them beside a synced folder
-/// (their sealed notes and papers too); then this device's own files changed
-/// since they went up, or changed there since, sent (`Puller::push`). Never
-/// another device's file written; nothing here lost when the server refuses.
-/// One step at a time on this device, whichever process runs it.
+/// brought into the copy here, as `pull` brings them beside a synced folder;
+/// then this device's own files changed since they went up, or changed there
+/// since, sent (`Puller::push`), its records first, its sealed files last;
+/// then the others' sealed notes, papers and spam filter's tables brought
+/// (`Puller::fetch_blobs`). A large sealed file on a slow line, going up or
+/// coming down, never holds back the records: the doses' answers go first.
+/// Never another device's file written; nothing here lost when the server
+/// refuses. One step at a time on this device, whichever process runs it.
 pub fn step(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64, whole: bool) -> Pulled {
     step_with(memory, folder, own, login, now, whole, LIMITS)
 }
@@ -1553,11 +1579,16 @@ pub(crate) fn step_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
             state.tried = now;
         }
         let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| {
-            let mut puller = Puller { server: &server, folder, into: folder, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false };
+            let mut puller = Puller { server: &server, folder, into: folder, own, state: &mut state, pulled: &mut pulled, now, own_there: BTreeMap::new(), covered: BTreeSet::new(), lost: false, blobs: Vec::new(), blobs_listed: None };
             if whole {
                 puller.run()?;
             }
-            puller.push()
+            // This device's own files first (its records before its sealed
+            // files), the others' sealed files last: nothing large holds back
+            // what the others wait for. Each said when it fails.
+            let pushed = puller.push();
+            let fetched = if whole { puller.fetch_blobs() } else { Ok(()) };
+            pushed.and(fetched)
         });
         match outcome {
             Ok(()) => {
@@ -1585,14 +1616,17 @@ fn dir_of(relative: &str) -> &str {
 }
 
 /// This device's own files in the folder (`MIRROR`), by their path in it, in
-/// the order they go up: the sealed files it made (in `blobs/`, not
-/// fetched), its records, its notes to the others, its claims, its entry
-/// last: it says how far its records went.
+/// the order they go up: its records, its notes to the others, its claims,
+/// its entry (it says how far its records went), then the sealed files it
+/// made (in `blobs/`, not fetched). A large sealed file on a slow line never
+/// holds back the records, the doses' answers among them; a record naming a
+/// sealed file not there yet is read as a sync app's late copy is: the
+/// others wait for it (docs/database.md, "Coming in").
 fn own_files(folder: &Path, own: &str, state: &State) -> Vec<String> {
     let names = |dir: &Path| -> Vec<String> {
         std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| !n.starts_with('.')).collect()
     };
-    let mut out: Vec<String> = names(&folder.join("blobs")).into_iter().map(|n| format!("blobs/{n}")).filter(|r| !state.files.contains_key(r)).collect();
+    let mut out: Vec<String> = Vec::new();
     let mut records: Vec<(u8, u32, String)> = names(folder)
         .into_iter()
         .filter_map(|name| match kind_of(&name) {
@@ -1610,6 +1644,7 @@ fn own_files(folder: &Path, own: &str, state: &State) -> Vec<String> {
     if folder.join(&entry).is_file() {
         out.push(entry);
     }
+    out.extend(names(&folder.join("blobs")).into_iter().map(|n| format!("blobs/{n}")).filter(|r| !state.files.contains_key(r)));
     out
 }
 
@@ -2754,6 +2789,65 @@ mod tests {
         std::fs::remove_file(p.desk_folder.join("blobs").join(&name)).unwrap();
         p.turn(true, DUE + 40);
         assert!(!p.fake.files.join("Documents/Sioul/blobs").join(&name).exists());
+    }
+
+    /// A sealed file going up slowly or not at all, or coming down slowly,
+    /// never holds back a device's records: its own records go up first, the
+    /// doses' answers among them, sealed files last (the spam filter's table
+    /// here, made by a training on the desk).
+    #[test]
+    fn a_slow_or_failing_sealed_file_never_holds_back_the_records() {
+        let p = Pair::new("sealed-last");
+        let made = |seed: u32| {
+            let mut x = seed.wrapping_mul(2_654_435_761) | 1;
+            (0..600_000)
+                .map(|_| {
+                    x ^= x << 13;
+                    x ^= x >> 17;
+                    x ^= x << 5;
+                    x as u8
+                })
+                .collect::<Vec<u8>>()
+        };
+        let table = p.desk.roots.data.join("spam").join("table.bin");
+        std::fs::create_dir_all(table.parent().unwrap()).unwrap();
+        std::fs::write(&table, made(1)).unwrap();
+        let mut taken = String::from("[taken]\n");
+        for (n, fault) in [Fault::Status(500), Fault::Drop, Fault::Late(Duration::from_secs(2))].into_iter().enumerate() {
+            p.fake.clear_faults();
+            p.fake.fault(move |r| (r.method == "PUT" && r.path.contains("/blobs/")).then_some(fault));
+            let now = DUE + 100 + n as i64 * 60;
+            // A dose marked on the desk, beside its new table that cannot go up.
+            taken.push_str(&format!("\"levo@{}\" = {}\n", 1_800_000_000 + n, 1_800_000_040 + n));
+            p.desk.write("health-state.toml", &taken);
+            let _ = p.step(true, now, true);
+            p.desk.exchange(&p.desk_folder, now);
+            let pushed = p.step(true, now, false);
+            assert!(pushed.problem.is_some(), "{fault:?}: {pushed:?}");
+            // The phone has the dose all the same; the table waits for its sealed file.
+            p.turn(false, now + 30);
+            assert!(p.phone.read("health-state.toml").contains(&format!("levo@{}", 1_800_000_000 + n)), "{fault:?}");
+        }
+        // The server takes it: it goes, and comes.
+        p.fake.clear_faults();
+        p.turn(true, DUE + 400);
+        p.turn(false, DUE + 410);
+        let phone_table = p.phone.roots.data.join("spam").join("table.bin");
+        assert_eq!(std::fs::read(&phone_table).unwrap(), std::fs::read(&table).unwrap());
+        // A new table coming down slowly to the phone: the phone's own answer went up before it.
+        std::fs::write(&table, made(2)).unwrap();
+        p.turn(true, DUE + 500);
+        p.phone.write("health-state.toml", &format!("{taken}\"two@1800000000\" = 1800000090\n"));
+        p.phone.exchange(&p.phone_folder, DUE + 505);
+        p.fake.fault(|r| (r.method == "GET" && r.path.contains("/blobs/")).then_some(Fault::Late(Duration::from_secs(2))));
+        let stepped = p.step(false, DUE + 510, true);
+        assert!(stepped.problem.is_some(), "{stepped:?}");
+        p.fake.clear_faults();
+        p.turn(true, DUE + 520);
+        assert!(p.desk.read("health-state.toml").contains("two@1800000000"));
+        // The table comes at the phone's next step: looked for again at once.
+        p.turn(false, DUE + 530);
+        assert_eq!(std::fs::read(&phone_table).unwrap(), std::fs::read(&table).unwrap());
     }
 
     /// A device beside its sync app (the desk: its folder is the server's) and

@@ -493,10 +493,10 @@ struct ImportTask {
     tags: Vec<String>,
     #[serde(default)]
     cases: Vec<String>,
-    /// The key of the bigger task, or "uid:<UID>".
+    /// The key of the bigger task, or `uid:<UID>`.
     #[serde(default)]
     parent: String,
-    /// Keys (or "uid:<UID>") it waits for.
+    /// Keys (or `uid:<UID>`) it waits for.
     #[serde(default)]
     after: Vec<String>,
     /// Keys it waits for, with the days to wait after each is done.

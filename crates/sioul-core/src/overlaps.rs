@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 /// Two events that overlap, the earlier first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Overlap {
-    /// "<uid>@<start>|<uid>@<start>": what setting it aside keeps.
+    /// `<uid>@<start>|<uid>@<start>`: what setting it aside keeps.
     pub key: String,
     pub first: Occurrence,
     pub second: Occurrence,

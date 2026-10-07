@@ -121,6 +121,33 @@ Item {
         settingsButton.grab(path)
     }
 
+    // A message Sioul's own spam filter put a word beside ("" any), opened
+    // with why it is here unfolded: for the window's images.
+    function openSpam(word) {
+        for (const lane of view.lanes)
+            for (const item of lane.items)
+                if (item.spam_word !== "" && (word === "" || item.spam_word === word)) {
+                    page.openKey = item.key
+                    return
+                }
+    }
+
+    function showReasons() {
+        if (reader.item !== null)
+            reader.item.reasonsShown = true
+    }
+
+    // A lane at the top of the list (the window's images).
+    function scrollToLane(key) {
+        const at = page.view.lanes.findIndex(lane => lane.key === key)
+        const row = at < 0 ? null : laneRows.itemAt(at)
+        const flick = list.contentItem as Flickable
+        if (row === null || flick === null)
+            return
+        const top = row.mapToItem(flick.contentItem, 0, 0).y
+        flick.contentY = Math.max(0, Math.min(top - 8, flick.contentHeight - flick.height))
+    }
+
     // The first message of the first lane, for the window's images.
     function openFirst() {
         if (view.lanes.length > 0 && view.lanes[0].items.length > 0)
@@ -806,6 +833,8 @@ Item {
 
                 // Open: the lanes, each saying what it holds.
                 Repeater {
+                    id: laneRows
+
                     model: page.view.open ? page.view.lanes : []
 
                     delegate: ColumnLayout {
@@ -1067,6 +1096,33 @@ Item {
                                                     font.pixelSize: 11
                                                     color: page.theme.muted
                                                 }
+                                            }
+                                        }
+                                        // Sioul's own filter's word on a message it leaves in its
+                                        // lane ("maybe spam"), as quiet; how sure and why on hover,
+                                        // and in the Reader's "Why it is here".
+                                        Rectangle {
+                                            visible: !!row.modelData.spam_word
+                                            implicitWidth: spamWord.implicitWidth + 12
+                                            implicitHeight: spamWord.implicitHeight + 4
+                                            radius: height / 2
+                                            color: "transparent"
+                                            border.color: page.theme.line
+                                            ToolTip.visible: spamHover.hovered && !!row.modelData.spam_why
+                                            ToolTip.text: row.modelData.spam_why || ""
+                                            ToolTip.delay: 400
+
+                                            HoverHandler {
+                                                id: spamHover
+                                            }
+                                            Label {
+                                                id: spamWord
+
+                                                anchors.centerIn: parent
+                                                text: row.modelData.spam_word || ""
+                                                textFormat: Text.PlainText
+                                                font.pixelSize: 11
+                                                color: page.theme.muted
                                             }
                                         }
                                     }

@@ -17,6 +17,7 @@ Everything Sioul keeps is in plain files, in your own folders, readable by other
 | Settings, the senders you let in, safe, neutral, restricted or blocked | `~/.config/sioul/` |
 | Mail (one Maildir per address), calendars and contacts (one file per item), drafts, time spent, invoices, medicines, your watch's days | `~/.local/share/sioul/` |
 | Where each fetch stopped, where the Porch was closed, the sites' news, the log of an AI agent's calls | `~/.local/state/sioul/` |
+| Your own spam filter: what its training read of your mail, the language model it learned, its table; what you said is spam or not | `~/.local/share/sioul/spam/`, `~/.local/state/sioul/spam/` |
 | Notes, projects, budgets, papers, scanned letters | your notes folder, wherever you chose it |
 
 On Windows, Sioul's folders are in `%APPDATA%\Sioul`; on macOS, in `~/Library/Application Support/Sioul`.
@@ -58,11 +59,23 @@ When a message arrives, Sioul checks it itself, through your system's DNS:
 - **DMARC**, with the domain's own policy;
 - **ARC**, for forwarded mail, and the sending server's **reverse DNS**.
 
-The results are kept with the message, under a name only your copy of Sioul uses, so that no sender can write results that pass for Sioul's. A message is then **verified**, **not verified** (with the reason), or **forged**. Forged mail is set aside, with the reason; nothing is deleted. Your provider's spam verdicts count too.
+The results are kept with the message, under a name only your copy of Sioul uses, so that no sender can write results that pass for Sioul's. A message is then **verified**, **not verified** (with the reason), or **forged**. Forged mail is set aside, with the reason; nothing is deleted. Your provider's spam verdicts count too, for strangers' mail only ([below](#your-own-spam-filter)).
 
 **Borrowed names** are caught: a sender calling itself after a bank, a public service, or your own domain, from an address that is not theirs, is set aside. Look-alike letters (a lowercase l for a capital I, a 0 for an O, Cyrillic letters) do not hide the name.
 
 **HTML mail** is shown with its paragraphs, lists, bold text and links only: no images, no styles, no scripts, nothing that loads from the network, so no tracking image learns that you opened a message. Every link shows its full address before you click it.
+
+## Your own spam filter
+
+Sioul's own spam filter learns on your computer, when you press **Train now**, from your own mail ([Settings](settings.md#your-own-spam-filter)):
+
+- **What training reads**: from every folder of every address but the trash, drafts, sent mail and Gmail's All Mail, the headers and the start of each text, never attachments, without changing anything on the server. It keeps them on this computer (`~/.local/share/sioul/spam/corpus/`), so that junk stays known after your provider empties its junk folder.
+- **What it learns**: a language model of your mail's words, kept beside it (`language.bin`). It holds the words of your mail in plain text: it never leaves this computer.
+- **What travels**: only its table, the result, to your other devices through your folder, sealed like everything there: numbers, the words as hashes, never in plain text. A phone never trains: it reads that table.
+- **What you said**: **Junk**, **Not junk**, **Not spam** and blocking a sender from a message add a line to this device's record (`~/.local/state/sioul/spam/labels.jsonl`): when, where, which message by its number, spam or not; never a word of it.
+- **Nothing to anyone else**: no server, no AI. Its numbers are totals only; the words that weighed in one message are for you, in your own terminal (`sioul spam why`), never offered to an AI agent.
+
+To forget it all, delete `~/.local/share/sioul/spam/` on that computer: its table, shared, then leaves your other devices too.
 
 ## Attachments and the antivirus
 

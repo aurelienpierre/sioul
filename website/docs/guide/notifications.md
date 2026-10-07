@@ -1,14 +1,14 @@
 ---
-description: When Sioul tells you something, and when it holds a notification for later - codes at once, new mail at its times, reminders and doses, your sites and other apps at gathered times; and do-not-disturb, one switch for all your devices, with one list of the people who may reach you then.
+description: When Sioul tells you something, and when it holds a notification for later, each kind at each time as you set it in one grid - codes at once, new mail at its times, reminders and doses, your sites and other apps at gathered times; and do-not-disturb, one switch for all your devices, with one list of the people who may reach you then.
 ---
 
 # Notifications and do-not-disturb {#notifications-and-do-not-disturb}
 
-Sioul tells you few things, each once, at the times you set. What may come now comes; the rest waits for its time. Do-not-disturb is one switch for all your devices, with one list of the people who may reach you during it.
+Sioul tells you few things, each once, at the times you set. What may come now comes; the rest waits for its time. What each kind does at each time is yours to change, in one grid ([When each comes](#when-each-comes)). Do-not-disturb is one switch for all your devices, with one list of the people who may reach you during it.
 
 ## What Sioul tells you, and when {#what-sioul-tells-you-and-when}
 
-Each notification comes once, never repeated.
+Each notification comes once, never repeated. Below, what each one does unless you change it ([When each comes](#when-each-comes)).
 
 - **Codes and links you just asked a site for**: at once, whatever the hour, even from a site's automatic address: the code, with **Copy the code** on Linux, and how long it stays valid. Not while you sleep or pause: the card waits on top of the Porch. On a phone, the card alone, on the Porch and on the home screen. See [The Porch](porch.md#codes-and-links-come-at-once).
 - **New mail**: when mail that may reach you now arrives, one notification for the batch: how many letters, and the first senders with their subjects. **Open** shows the Porch. Mail that waited for its time is told once, when its time comes: "The Porch opens: three letters wait for you." With a phone and a computer, only the one you used last tells. See [The Porch](porch.md#new-mail-told-at-its-times).
@@ -28,8 +28,9 @@ New mail, calls and other apps' messages follow who wrote, whatever the address 
 - **Five states**: safe, neutral, restricted, strangers, and the blocked, who never reach you.
 - **A grid per channel**: **Mail**, **Calls** and **Messages** (texts and chats from other apps, on a phone), the states down, the times across: Work, Admin, Leisure, Meals, Sleep, Pause. Ticked, they come then. Unticked, mail and messages wait for the next time ticked, and calls go to your voicemail.
 - **The address it came to**: your safe senders' mail comes to any of your addresses; the others' only to an address for what now is for ([Hours](hours.md)).
+- **And the time**: for new mail and other apps' messages, [When each comes](#when-each-comes) says whether they may come now at all, and these grids from whom: both must let them through. Calls are no notification: the **Calls** grid decides them, with your do-not-disturb list.
 
-The Porch shows what may come now, and new mail is told by the same rule. Outside your hours, the Porch says when it opens, and what came meanwhile is told then, in one notification. While you sleep nothing is told, even mail ticked for sleep: it shows on the Porch if you open Sioul.
+The Porch shows what may come now, and new mail is told by the same rule. Outside your hours, the Porch says when it opens, and what came meanwhile is told then, in one notification. While you sleep nothing is told unless you change it, even mail ticked for sleep: it shows on the Porch if you open Sioul.
 
 ### What never notifies {#what-never-notifies}
 
@@ -38,27 +39,57 @@ The Porch shows what may come now, and new mail is told by the same rule. Outsid
 - A code's message, as new mail: the code has its own notification.
 - On a phone: codes, and the reminders of dates, waits, payments, papers and contracts. They come on a computer.
 
-## Notifications held for later {#held-for-later}
+## What Sioul does unless you change it {#held-for-later}
 
-Sioul's own notifications wait while now is not their time, on every device. What waited comes when its time does, if it still makes sense then: new mail in one notification ("The Porch opens: …"), reminders, your sites' and other apps' notifications at the next gathered time. Mail is never lost; a meal's notice that fell meanwhile is not said.
+Unless you change it in Settings ▸ Reminders and notifications ▸ **When each comes** ([below](#when-each-comes)), Sioul's own notifications wait while now is not their time, on every device. What waited comes when its time does, if it still makes sense then: new mail in one notification ("The Porch opens: …"), reminders, your sites' and other apps' notifications at the next gathered time. Mail is never lost; a meal's notice that fell meanwhile is not said.
 
 | Now | What still comes | What waits |
 |---|---|---|
 | **Your hours** ([Hours](hours.md)) | what is for now | what is for other times: a work site's notifications in the evening, a chat site's in working hours, reminders of dates and waits on work tasks while work rests |
-| **Sleep**, from winding down to waking, and naps | doses, unless you chose **Stay silent**; the night's or the nap's own notice, at its start; an event's own reminders when the event itself falls in the night | everything else; codes wait on the Porch |
-| **A pause** ([Pauses](pauses.md#pause)) | doses, unless the pause's settings hold them; your events' own reminders and alarms | everything else, until you come back; new mail until the Porch opens again, at your next admin hours |
+| **Sleep**, from winding down to waking, and naps | doses, unless you hold them there; the night's or the nap's own notice, at its start; an event's own reminders when the event itself falls in the night | everything else; codes wait on the Porch |
+| **A pause** ([Pauses](pauses.md#pause)) | doses, unless you hold them there; your events' own reminders and alarms | everything else, until you come back; new mail until the Porch opens again, at your next admin hours |
 | **Free time** ([Pauses](pauses.md#free-time)) | doses; the codes you asked for; your events' own reminders and alarms when the event falls in it | everything else until it ends, new mail included: your safe senders' shows on the Porch, untold |
 | **A slot of time for you** ([Tasks](tasks.md#the-day)) | doses, meals, codes you asked for, calls, an event's alarm, reminders | new mail, your sites' notifications, the pause to move; on a phone, other apps' notifications, but messages from people |
 | **Do-not-disturb**, from its switch or a focus session ([below](#do-not-disturb-on-every-device)) | doses, codes you asked for, reminders, the notices of meals, naps and the night; new mail from the people on your list | your sites' notifications, calls included; the pause to move; the rest of new mail; on a phone, other apps' notifications, but from the people on your list |
 
 When do-not-disturb holds for your sleep or a pause, their own rows apply.
 
+### When each comes {#when-each-comes}
+
+In **Settings ▸ Reminders and notifications ▸ When each comes**, a grid: each kind of notification down, in five groups (what you set or asked for, reminders, your day, mail and sites, other apps on a phone), and across what now is: **Work**, **Admin**, **Leisure**, **Meals**, **Sleep**, **Pause**, **Free time**, **Time for you** (a slot of the plan's, [Tasks](tasks.md#the-day)) and **Do not disturb** (from its switch or a focus session). A mark in each cell; press it to choose, in words:
+
+- ● **At once**; mail and messages, from those [Who may reach you](#who-may-reach-you-and-when) lets through then.
+- ○ **Later**: it waits for a time it may come in, and comes then if it still makes sense. New mail: "The Porch opens…"; your sites and other apps' automatons: the next gathered time.
+- ◎ **At the gathered times**: your sites' notifications, other apps' automatons.
+- ◐ **When its event falls in that time**: an event's alarms and Sioul's reminder before it; else later.
+- – **Not at all**: a meal's notice, the pause to move, the time running are dropped; a code stays on the Porch; new mail is never told, the Porch shows it.
+- ☆ and ★ **Your do-not-disturb list**, for mail and messages during do-not-disturb: ☆ when Who may reach you lets them through too, ★ whatever it says, as for calls.
+
+What now is, the grid reads as [Hours](hours.md) says: the pause first, then sleep, Free time, a meal, the hours. Without any hours set, Work and Admin together, the more open of their two cells. A slot of time for you and do-not-disturb come on top of the time: the stricter cell wins. Do-not-disturb held for your sleep or a pause changes nothing; their own columns say it.
+
+**Fixed**, greyed, for your safety; press one to read why:
+
+- **Doses**: at once, but in sleep and a pause, where you may hold them until you wake or come back. Never "not at all".
+- **The codes you asked for**: at once, but in sleep and a pause. You just asked, and a code lasts minutes.
+- **An event's alarms**: at once during a pause and do-not-disturb, as both promise.
+- **The alarm at waking**: always.
+
+**What the grid leaves alone**: what a thing is for, and whether now is for it (a work site in the evening, a work task's date while work rests, [Hours](hours.md)); nothing during a meeting for a meal's notice and the end of work; the Porch resting after a pause; the switches that say whether a kind is told at all (**New mail: notify at the times it may come**, **Sites' notifications gathered**…); each site's **Real time**, and each app's and conversation's choice ([below](#other-apps-on-a-phone)).
+
+Some of what it can say:
+
+- **Your safe senders' mail during Free time**: New mail ▸ Free time ▸ At once. Free time still lets only your safe senders through, or nobody with **Nothing at all**.
+- **The mail and messages of your do-not-disturb list whatever Who may reach you says**, as their calls: New mail, and Messages from people ▸ Do not disturb ▸ ★.
+- **No reminder before an event during a pause**: Reminders before an event ▸ Pause ▸ Later. An event's own alarms still come.
+- **A meal's or a nap's notice during sleep or Free time**: Meals, naps and the night ▸ Sleep, or Free time ▸ At once.
+
+The grid travels with your settings to your other devices ([Sharing](sharing.md)): one grid for all of them. An older Sioul keeps doing what it did.
+
 ### Doses {#doses}
 
-From winding down to waking, and during a nap, nothing notifies but doses: you set their times, and a dose at 05:00 is meant to wake you.
+From winding down to waking, and during a nap, nothing notifies but doses, unless you change it: you set their times, and a dose at 05:00 is meant to wake you.
 
-- **Doses during sleep**, in Settings ▸ Reminders and notifications: **Remind** (unless you change it) or **Stay silent**. Silent, each dose's reminder comes when you wake, and so does the question on doses due while Sioul was closed. Sioul never silences a dose without that choice.
-- **Dose reminders still come**, in Settings ▸ Pauses: on unless you turn it off. Off, they wait until you come back from a pause, and come once then.
+- **During sleep and a pause**: [When each comes](#when-each-comes), the **Doses** row: **At once** (unless you change it) or **Later**. Later, each dose's reminder comes when you wake or come back, once, and so does the question on doses due while Sioul was closed. Every other cell is fixed at once: Sioul never holds a dose without that choice.
 - **Without a night set** on the Health page, nothing keeps notifications away at night: the Porch asks for it in a card ([Hours](hours.md#sleep)).
 
 ### The gathered times {#the-gathered-times}
@@ -67,7 +98,7 @@ Settings ▸ Reminders and notifications ▸ **Gathered at**: 09:00, 13:00 and 1
 
 - **On a computer**, one notification then says which of your sites have news, for the sites of those hours, on the computer you are at, with **Open the Porch**. With **Sites' notifications gathered** unticked, their news waits on the Porch only.
 - **On a phone**, other apps' notifications from automatons come back then.
-- **A gathered time** that falls while you sleep, pause, take Free time, are in a slot of time for you or have do-not-disturb on is skipped: what waits comes at the next one.
+- **A gathered time** that falls while you sleep, pause, take Free time, are in a slot of time for you or have do-not-disturb on is skipped, unless you change it ([When each comes](#when-each-comes)): what waits comes at the next one.
 
 ### What comes through anyway {#what-comes-through-anyway}
 
@@ -139,7 +170,7 @@ One list for all your devices, in **Settings ▸ Do not disturb**, kept sealed i
 
 Someone added again by one of their addresses, numbers or their card stays one person. Under each name, Sioul says what is missing: "No number: their calls and messages cannot ring through."; "No address: their mail is not notified during do-not-disturb."
 
-**The people on my list get through** (on): their mail is told, at the times your lists let it through; the others' mail waits, and is told when do-not-disturb ends. On a phone, their calls and messages ring where they are starred, and a second call from the same number within 15 minutes. Unticked: nobody, but alarms and dose reminders.
+**The people on my list get through** (on): their mail is told, at the times your lists let it through, or whatever they say with ★ in [When each comes](#when-each-comes); the others' mail waits, and is told when do-not-disturb ends. On a phone, their calls and messages ring where they are starred, and a second call from the same number within 15 minutes. Unticked: nobody, but alarms and dose reminders.
 
 - **On a phone**, Android lets through the contacts starred in your Contacts app: it has no list of its own, and every starred contact gets through, on your list or not. Under **Starred on this phone**, Sioul says who on your list is not starred there ("Two people on your list are not starred on this phone."), with **Open their contact**, to star it, or **Add to contacts**, Android's own form, filled in, for you to save. It reads your contacts for that (**Allow reading contacts**), and never changes them.
 - **On a computer** there are no calls: the list's mail comes as new mail does ([below](#what-each-system-does)).
@@ -181,9 +212,9 @@ On an Android phone, call screening is apart from do-not-disturb ([Calls](calls.
 
 ## Where to change each thing {#where-to-change-each-thing}
 
-- **Settings ▸ Reminders and notifications**: **Before an event**, **Events, the working day before**, **Dates asked: working days before**, **A wait over**, **Payments planned: working days before**, **With Sioul's window closed**, **New mail: notify at the times it may come**, **Include newsletters**, **Sites' notifications gathered**, **Gathered at**, **Doses during sleep** ([Settings](settings.md#reminders-and-notifications)).
+- **Settings ▸ Reminders and notifications**: **Before an event**, **Events, the working day before**, **Dates asked: working days before**, **A wait over**, **Payments planned: working days before**, **With Sioul's window closed**, **New mail: notify at the times it may come**, **Include newsletters**, **Sites' notifications gathered**, **Gathered at**, **When each comes** ([Settings](settings.md#reminders-and-notifications)).
 - **Settings ▸ Do not disturb**: **The switch in the status line**, **While I focus on a task**, **During the pauses**, **While I sleep**, **The people on my list get through**; the list; what this device's system lets Sioul do; on a phone, who is starred there, and **Keep this phone in step in the background**.
-- **Settings ▸ Pauses**: Free time's **Nothing at all**; the pause's **Dose reminders still come** and **Starred contacts get through** ([Pauses](pauses.md)).
+- **Settings ▸ Pauses**: Free time's **Nothing at all**; the pause's **Starred contacts get through** ([Pauses](pauses.md)). Doses during a pause: **When each comes**.
 - **Settings ▸ Other apps** and **Settings ▸ Calls**, on a phone.
 - **Accounts ▸ Who may reach you**: the grids and the lists ([Accounts](accounts.md#senders)).
 - **An event**: **Remind**, in its form and its details ([Agenda](agenda.md#reminders)).

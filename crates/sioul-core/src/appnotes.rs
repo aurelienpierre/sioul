@@ -22,6 +22,10 @@
 //!   sites' notifications on a computer), never while you sleep, pause or
 //!   take free time.
 //!
+//! When each kind may come is the notification matrix's to say (`notify`:
+//! its rows for messages between people, automatons and the apps you set to
+//! come at once); the times above are its usual values.
+//!
 //! Never held: calls, alarms, what runs (music, a call in progress, a
 //! download), the reminders you set, Sioul's own; codes and sign-ins or
 //! payments to approve (`codes::detect` on the notification's words, the
@@ -36,7 +40,8 @@
 
 use crate::areas::{Area, in_view};
 use crate::i18n::Translator;
-use crate::quiet::{Mode, Notice, may_tell};
+use crate::notify::{self, Cell, Notify};
+use crate::quiet::Mode;
 use crate::reach::{Channel, Who};
 use jiff::Zoned;
 use serde::{Deserialize, Serialize};
@@ -142,7 +147,7 @@ pub struct Posted {
     pub sub: String,
     pub big: String,
     pub lines: Vec<String>,
-    /// The conversation's title (a group's name, "<server> #<channel>").
+    /// The conversation's title (a group's name, `<server> #<channel>`).
     pub conversation: String,
     pub group_conversation: bool,
     /// Android counts it as a conversation (`Ranking.isConversation`).
@@ -187,7 +192,7 @@ pub enum Sender {
 pub struct Conversation {
     /// Hashed, the app's own id within (its shortcut, else its title): `talk_key`.
     pub key: String,
-    /// As the app titles it: a group's name, "<server> #<channel>", a person's name.
+    /// As the app titles it: a group's name, `<server> #<channel>`, a person's name.
     pub title: String,
     pub group: bool,
 }
@@ -309,7 +314,7 @@ pub fn site_of(p: &Posted) -> Option<String> {
     [tagged, channel, grouped, firefox].into_iter().flatten().map(host_of).find(|h| !h.is_empty())
 }
 
-/// "https://Mail.Example.org:443/inbox" → "mail.example.org"; "" when it is no host.
+/// `https://Mail.Example.org:443/inbox` → `mail.example.org`; `""` when it is no host.
 fn host_of(origin: &str) -> String {
     let rest = origin.trim().split_once("://").map_or(origin.trim(), |(_, rest)| rest);
     let host = rest.split(['/', '?', '#']).next().unwrap_or("");
@@ -722,8 +727,8 @@ impl WhoMayReach for Live {
     }
 }
 
-/// Do-not-disturb's switch or a focus session, holding now: only its list's
-/// people come (docs/do-not-disturb.md).
+/// Do-not-disturb's switch or a focus session, holding now: as usual, only
+/// its list's people come (docs/do-not-disturb.md; the matrix's column).
 pub struct Gate {
     /// When it ends, when known (Unix seconds); else asked again in half an hour.
     pub until: Option<i64>,
@@ -734,12 +739,14 @@ pub struct Ask<'a> {
     pub now: &'a Zoned,
     pub clock: &'a dyn TimeSource,
     pub reach: &'a dyn WhoMayReach,
+    /// What each kind does at each time (`notify`, `[notify]`).
+    pub notify: &'a Notify,
     /// The gathered times, "09:00" (`[reminders] gathered`).
     pub gathered: &'a [String],
     /// What the app (or the address a mail came to) is for, when said.
     pub area: Option<Area>,
     pub gate: Option<Gate>,
-    /// One of today's slots of time for you then (docs/capacity.md): what can wait waits.
+    /// One of today's slots of time for you then (docs/capacity.md): a layer of the matrix.
     pub slot_at: &'a dyn Fn(&Zoned) -> bool,
     /// Where things change that the clock does not know (Unix seconds): the
     /// end of a slot of time for you, of do-not-disturb's switch.
@@ -774,11 +781,15 @@ impl Ask<'_> {
         moments
     }
 
-    /// When nothing of Sioul's own would come (sleep, a pause, free time, a
-    /// slot of time for you, do-not-disturb), nor what is not for that time
-    /// (the app's area).
-    fn free(&self, at: &Zoned, mode: &Mode) -> bool {
-        may_tell(mode, Notice::Other, true, true) && self.area.is_none_or(|a| in_view(a, mode.time, mode.week)) && !self.gated(at) && !(self.slot_at)(at)
+    /// What the notification matrix says of `kind` at `at` (what time it is
+    /// then, a slot of time for you, do-not-disturb).
+    fn cell(&self, kind: notify::Kind, at: &Zoned, mode: &Mode) -> Cell {
+        self.notify.at(kind, &notify::Now::of(mode, (self.slot_at)(at), self.gated(at)))
+    }
+
+    /// Whether the app is for that time (its area), or says nothing of it.
+    fn area_fits(&self, mode: &Mode) -> bool {
+        self.area.is_none_or(|a| in_view(a, mode.time, mode.week))
     }
 }
 
@@ -870,9 +881,10 @@ pub fn times_of(gathered: &[String]) -> Vec<jiff::civil::Time> {
 }
 
 /// The next gathering from now in which an automaton's notification may
-/// come: not while you sleep, pause or take free time, nor in a slot of
-/// time for you or under do-not-disturb, and within its app's area. One that
-/// began less than a minute ago counts. None within the coming days.
+/// come: one the notification matrix gathers at (as usual, not while you
+/// sleep, pause or take free time, nor in a slot of time for you or under
+/// do-not-disturb), within its app's area. One that began less than a minute
+/// ago counts. None within the coming days.
 pub fn next_gathering(ask: &Ask) -> Option<Zoned> {
     let times = times_of(ask.gathered);
     let zone = ask.now.time_zone().clone();
@@ -884,7 +896,8 @@ pub fn next_gathering(ask: &Ask) -> Option<Zoned> {
             if at.timestamp().as_second() + GRACE <= stamp {
                 continue;
             }
-            if ask.free(&at, &ask.clock.mode(&at)) {
+            let mode = ask.clock.mode(&at);
+            if ask.cell(notify::Kind::AppAutomatons, &at, &mode) == Cell::Gathered && ask.area_fits(&mode) {
                 return Some(at);
             }
         }
@@ -901,25 +914,27 @@ fn gathered(ask: &Ask) -> Decision {
     }
 }
 
-/// At once, as Sioul's own notifications come: else when they may.
+/// At once, at the times the matrix lets these apps come (as usual, as
+/// Sioul's own notifications come): else when it does.
 fn at_once(ask: &Ask) -> Decision {
-    match first_moment(ask, &|at, mode| ask.free(at, mode)) {
+    match first_moment(ask, &|at, mode| ask.cell(notify::Kind::AppAtOnce, at, mode) == Cell::Now && ask.area_fits(mode)) {
         Some(at) if at.timestamp().as_second() <= ask.stamp() => Decision::through(Why::AtOnce),
         Some(at) => Decision::held(at.timestamp().as_second(), Why::AtOnce),
         None => Decision::held(ask.stamp() + RECHECK, Why::AtOnce),
     }
 }
 
-/// Someone's message: now when the matrix lets them through, the
-/// notification's area fitting now for all but your safe people (as mail
-/// to an address for another time, docs/areas.md); else at their next time.
-/// Do-not-disturb's switch or focus lets through its list's people only.
+/// Someone's message: now when both matrices let them through (who may
+/// reach you; what comes when, with do-not-disturb's list during it:
+/// `Cell::admits`), the notification's area fitting now for all but your
+/// safe people (as mail to an address for another time, docs/areas.md);
+/// else at their next time.
 fn person(talk: &Talk, who: Who, admitted: bool, ask: &Ask) -> Decision {
     if who == Who::Blocked {
         return Decision::held(ask.stamp() + FOR_GOOD, Why::Never);
     }
-    let area_fits = |mode: &Mode| who == Who::Safe || ask.area.is_none_or(|a| in_view(a, mode.time, mode.week));
-    let open = |at: &Zoned, mode: &Mode| ask.reach.allows(talk.via, who, at, mode) && (admitted || !ask.gated(at));
+    let area_fits = |mode: &Mode| who == Who::Safe || ask.area_fits(mode);
+    let open = |at: &Zoned, mode: &Mode| ask.cell(notify::Kind::AppPeople, at, mode).admits(ask.reach.allows(talk.via, who, at, mode), admitted);
     // Its area and its times never meeting in the coming days, the matrix alone decides: nothing waits for good.
     let next = first_moment(ask, &|at, mode| open(at, mode) && area_fits(mode)).or_else(|| first_moment(ask, &open));
     match next {
@@ -1343,10 +1358,16 @@ mod tests {
         false
     }
 
+    /// The notification matrix as usual.
+    fn usual() -> &'static Notify {
+        static USUAL: std::sync::OnceLock<Notify> = std::sync::OnceLock::new();
+        USUAL.get_or_init(Notify::usual)
+    }
+
     fn ask<'a>(now: &'a Zoned, clock: &'a TestClock, area: Option<Area>, gate: Option<Gate>) -> Ask<'a> {
         static GATHERED: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
         let gathered = GATHERED.get_or_init(|| vec!["09:00".into(), "13:00".into(), "18:00".into()]);
-        Ask { now, clock, reach: &TestReach, gathered, area, gate, slot_at: &never_slot, also: &[] }
+        Ask { now, clock, reach: &TestReach, notify: usual(), gathered, area, gate, slot_at: &never_slot, also: &[] }
     }
 
     fn posted(json: &str) -> Posted {
@@ -1576,7 +1597,7 @@ mod tests {
         let late = vec!["06:30".to_string(), "13:00".into(), "22:30".into()];
         let ask_late = |now: &'static str| {
             let now = Box::leak(Box::new(at(now)));
-            Ask { now, clock: &clock, reach: &TestReach, gathered: &late, area: None, gate: None, slot_at: &never_slot, also: &[] }
+            Ask { now, clock: &clock, reach: &TestReach, notify: usual(), gathered: &late, area: None, gate: None, slot_at: &never_slot, also: &[] }
         };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &ask_late("2026-10-06T20:00[Europe/Paris]"))), "2026-10-07T13:00:00", "22:30 and 06:30 are asleep");
         // A pause: nothing gathered until it ends; asked again six hours on, brought back when it ends (`again`).
@@ -1596,7 +1617,7 @@ mod tests {
         let slot = |z: &Zoned| z.date() == at("2026-10-06T00:00[Europe/Paris]").date() && z.hour() == 13;
         let now = at("2026-10-06T10:00[Europe/Paris]");
         let usual = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
-        let with_slot = Ask { now: &now, clock: &clock, reach: &TestReach, gathered: &usual, area: None, gate: None, slot_at: &slot, also: &[] };
+        let with_slot = Ask { now: &now, clock: &clock, reach: &TestReach, notify: self::usual(), gathered: &usual, area: None, gate: None, slot_at: &slot, also: &[] };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &with_slot)), "2026-10-06T18:00:00");
         // No time that reads: three a day.
         assert_eq!(times_of(&["later".into()]).len(), 3);
@@ -1618,6 +1639,38 @@ mod tests {
         let open = Some(Gate { until: None });
         let held = decide(&sms, Some(Who::Neutral), false, &choices, &ask(&morning, &clock, None, open));
         assert_eq!(until_of(held), "2026-10-06T10:30:00");
+    }
+
+    #[test]
+    fn the_notification_matrix_changes_when() {
+        let clock = TestClock::new();
+        let choices = Choices::default();
+        let sms = classify(&posted(SMS_CONTACT), &choices);
+        let shop = classify(&posted(SHOP), &choices);
+        let gathered = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
+        let decided = |kind: &Kind, who: Option<Who>, admitted: bool, notify: &Notify, now: &Zoned, clock: &TestClock, gate: Option<Gate>| {
+            decide(kind, who, admitted, &choices, &Ask { now, clock, reach: &TestReach, notify, gathered: &gathered, area: None, gate, slot_at: &never_slot, also: &[] })
+        };
+        let mut notify = Notify::usual();
+        // Do-not-disturb's list whatever Who may reach you says: a stranger on it comes in the evening.
+        let evening = at("2026-10-06T19:30[Europe/Paris]");
+        let gate = || Some(Gate { until: Some(at("2026-10-06T21:00[Europe/Paris]").timestamp().as_second()) });
+        assert_eq!(decided(&sms, Some(Who::Stranger), true, &notify, &evening, &clock, gate()).why, Why::Waiting, "as usual, both must let them through");
+        notify.set(notify::Kind::AppPeople, notify::Column::Dnd, Cell::ListAny).unwrap();
+        assert_eq!(decided(&sms, Some(Who::Stranger), true, &notify, &evening, &clock, gate()).why, Why::Allowed);
+        assert_eq!(decided(&sms, Some(Who::Safe), false, &notify, &evening, &clock, gate()).why, Why::Waiting, "only the list's");
+        // Messages from people wait in Free time, even your safe people's, until it ends at the night.
+        let free = TestClock { overrides: Overrides { free_since: Some(at("2026-10-06T15:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() } };
+        let afternoon = at("2026-10-06T16:00[Europe/Paris]");
+        assert_eq!(decided(&sms, Some(Who::Safe), false, &notify, &afternoon, &free, None).why, Why::Allowed, "as usual");
+        notify.set(notify::Kind::AppPeople, notify::Column::Free, Cell::Later).unwrap();
+        let held = decided(&sms, Some(Who::Safe), false, &notify, &afternoon, &free, None);
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-06T22:00:00"));
+        // Automatons not gathered in working hours: Tuesday's 09:00 and 13:00 skipped, 18:00 kept.
+        let morning = at("2026-10-06T08:00[Europe/Paris]");
+        assert_eq!(until_of(decided(&shop, None, false, &notify, &morning, &clock, None)), "2026-10-06T09:00:00", "as usual");
+        notify.set(notify::Kind::AppAutomatons, notify::Column::Work, Cell::Later).unwrap();
+        assert_eq!(until_of(decided(&shop, None, false, &notify, &morning, &clock, None)), "2026-10-06T18:00:00");
     }
 
     #[test]

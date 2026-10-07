@@ -45,17 +45,17 @@ Each reminder comes once, as a quiet notification, without sound, never repeated
 - **New mail: notify at the times it may come**: one quiet notification for each batch of mail that may reach you now, and one when mail that waited may come: "The Porch opens: three letters wait for you." On by default. See [What Sioul tells you](notifications.md#what-sioul-tells-you-and-when).
 - **Include newsletters**: newsletters and mailing lists, filed on the Porch, are told too. Automatic senders (a bill from no-reply) are told either way. Off by default.
 - **Sites' notifications gathered**, and **Gathered at**: what your sites notify waits, then comes in one notification at these times: 09:00, 13:00 and 18:00 unless you set others. On a phone, other apps' notifications from automatons come back then. See [The gathered times](notifications.md#the-gathered-times).
-- **Doses during sleep**: **Remind** or **Stay silent**. While you sleep nothing notifies but doses; silent, a dose's reminder comes when you wake. See [Doses](notifications.md#doses).
+- **When each comes**: a grid of what each kind of notification does at each time, the kinds down, the times across (your hours, sleep, the pauses, a slot of time for you, do-not-disturb): at once, later, at the gathered times, when its event falls then, not at all; during do-not-disturb, your list. Doses during sleep and a pause are its cells. Some cells are fixed, for your safety. See [When each comes](notifications.md#when-each-comes).
 
 Doses of medicine are reminded from the [Health](health.md) page, and papers to renew from [Papers](papers.md). On a phone, the doses, the events and new mail are told; the other reminders come on a computer ([On a phone](first-steps.md#on-a-phone)). What comes when, and what waits: [Notifications and do-not-disturb](notifications.md).
 
 ## Pauses
 
-Free time and the pause, set up on a calm day: who reaches you in free time, how far the end of work may move, whether movement is offered; for the pause, the doses, your starred contacts, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show, and what this device's do-not-disturb can do ([What each system does](notifications.md#what-each-system-does)); **Try the pause screen**. See [Pauses](pauses.md).
+Free time and the pause, set up on a calm day: who reaches you in free time, how far the end of work may move, whether movement is offered; for the pause, your starred contacts, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show, and what this device's do-not-disturb can do ([What each system does](notifications.md#what-each-system-does)); **Try the pause screen**. See [Pauses](pauses.md).
 
 ## Do not disturb
 
-One do-not-disturb for all your devices: **The switch in the status line**; what turns it on by itself, **While I focus on a task**, **During the pauses**, **While I sleep**; **The people on my list get through**, and the list, the same on every device; what this device's system lets Sioul do; on a phone, who on your list is starred there, and **Keep this phone in step in the background**. See [Do not disturb on every device](notifications.md#do-not-disturb-on-every-device).
+One do-not-disturb for all your devices: **The switch in the status line**; what turns it on by itself, **While I focus on a task**, **During the pauses**, **While I sleep**; **The people on my list get through**, and the list, the same on every device; what this device's system lets Sioul do; on a phone, who on your list is starred there, and **Keep this phone in step in the background**. What comes during it, kind by kind: **When each comes**, in Reminders and notifications. See [Do not disturb on every device](notifications.md#do-not-disturb-on-every-device).
 
 ## Calls
 
@@ -90,7 +90,7 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | Page | Behind its ⚙ |
 |---|---|
 | [Porch](porch.md#the-porchs-settings) | the projects shown there, where scans arrive, how a message reads, how mail is sorted |
-| [Mail](mail.md#settings) | by conversation, how often folders are fetched, how a message reads, the lists you left |
+| [Mail](mail.md#settings) | by conversation, how often folders are fetched, your own spam filter, how a message reads, the lists you left |
 | [Tasks](tasks.md#the-tasks-settings) | office hours, kinds, categories, task lists, where new tasks go, what is work and what is yours, GitHub |
 | [Agenda](agenda.md#the-agenda-settings) | calendars, the hour the day opens on |
 | [Contacts](contacts.md#the-contacts-settings) | address books, the map |
@@ -99,6 +99,23 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | [Health](health.md#your-watch) | your watch's folder, gentle offers |
 
 Each address's own settings are on its card in [Accounts](accounts.md#a-mail-address). How long text reads (the font, its size and the space between lines) is in the ⚙ of the pages where messages are read, Mail and the Porch, and behind **Aa** in Notes: one setting, shown where it is used.
+
+### Your own spam filter
+
+In the Mail page's ⚙, under **Your own spam filter**. What it does on the Porch: [Spam, and your own filter](porch.md#spam-and-your-own-filter).
+
+<figure markdown="span">
+  [![The Mail page's settings, "Your own spam filter": What it does, "Show its verdict only"; Spam from, a slider at 95%; Maybe spam from, at 50%; Its training: "In use: trained by noa-desk on Tuesday 6 October, from 4,210 wanted messages and 655 spam", what it measured then, Train now and what it does, then what it learns from and the room left on the disk.](../assets/screens/settings-spam.png){ loading=lazy }](../assets/screens/settings-spam.png "Open the picture at full size")
+  <figcaption>What it does, its two thresholds, and on a computer its training.</figcaption>
+</figure>
+
+- **What it does**: **Off**; **Show its verdict only**, where it starts: "maybe spam" or "probably spam" beside a stranger's message, nothing moved; **Set spam aside**: what it is sure of goes to Set aside, where **Not spam** brings it back.
+- **Spam from**: how sure it must be to call a stranger's message spam, 95% unless you change it. Higher: fewer of your messages taken for spam, more spam let through.
+- **Maybe spam from**: from here up to the other, a message keeps its lane with "maybe spam" beside it; 50% unless you change it. Each slider stops short of the other: "maybe" stays below "spam".
+- **Its training**, on a computer. **Train now** downloads what training needs from every folder of every address (the headers and the start of each text, never attachments), then learns from your mail: your junk folders, and what you marked junk or not spam, teach it most. The first time takes long. While it runs, it says where it is ("Messages fetched: 1,200 of about 15,000", then each step), and Sioul stays usable; **Stop** keeps what came, and the next time goes on from there. Its new table replaces the one in use only if it takes no more of your messages for spam. Below, the last training: when, whether its table replaced the one in use and why, from how many messages, and on your newest mail how much of it was taken for spam and how much spam was caught, each with its margin; then what it learns from, and the room left on the disk.
+- **Its table**, on a phone, which never trains it: the computer that trained it, and when, with what it measured then. It comes through your folder, sealed (the part **Spam filter**, in [Sharing](sharing.md#what-travels-from-this-device)).
+
+The mode and the thresholds travel to your other devices with your settings. What training reads, and what it keeps: [Privacy and security](privacy-security.md#your-own-spam-filter).
 
 ## Where settings are kept
 

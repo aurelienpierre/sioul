@@ -77,6 +77,8 @@ pub(crate) enum ActionArg {
     Junk,
     Archive,
     NotJunk,
+    /// Not spam: marked `$NotJunk`, it stays where it is (mail set aside as spam goes back to its lane).
+    NotSpam,
     Move,
 }
 
@@ -137,7 +139,10 @@ fn list(s: &Session, account: &str, folder: Option<&str>) -> Result<(), String> 
     cards.reverse();
     for card in cards {
         let path = card.path.clone().unwrap_or_default();
-        let flags = maildir::flags_of(&path);
+        let letters = maildir::flags_of(&path);
+        // The flags' letters, then the keywords kept, by their names: "S $NotJunk".
+        let keywords = maildir::KEYWORDS.iter().filter(|(letter, _)| letters.contains(*letter)).map(|(_, name)| name.to_string());
+        let flags = std::iter::once(letters.chars().filter(char::is_ascii_uppercase).collect::<String>()).chain(keywords).filter(|f| !f.is_empty()).collect::<Vec<_>>().join(" ");
         // Sender and subject as the mail wrote them, never a terminal's escape sequences.
         println!("{} · {} · {} · [{flags}] · {}", crate::date(s, card.date), crate::one_line(card.sender()), crate::one_line(&card.subject), crate::one_line(&path.display().to_string()));
     }
@@ -155,6 +160,7 @@ fn act(s: &Session, file: &std::path::Path, action: ActionArg, to: Option<String
         ActionArg::Junk => Action::Junk,
         ActionArg::Archive => Action::Archive,
         ActionArg::NotJunk => Action::NotJunk,
+        ActionArg::NotSpam => Action::NotSpam,
         ActionArg::Move => Action::Move(to.ok_or_else(|| s.tr.text("mail-move-needs-to", None))?),
     };
     let password = secret::password(account).map_err(|e| e.sentence(&s.tr, &account.id))?;

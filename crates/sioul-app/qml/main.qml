@@ -569,6 +569,9 @@ SioulWindow {
             if (window.accountsPage)
                 window.accountsPage.showReach(item.kind === "reach-mail" ? "reach" : item.kind.replace("reach-", "reach."))
         }
+        // A setting, from another tab's link: "settings:notify", the notification matrix.
+        else if (item.kind.startsWith("settings:"))
+            window.showParameters(item.kind.slice("settings:".length))
         else if (item.kind === "porch")
             window.page = 0
         // The phone's home screen card (homecard.rs): Now; its step's details
@@ -662,6 +665,23 @@ SioulWindow {
 
     Sioul {
         id: sioul
+    }
+
+    // The notification matrix's grid in Settings, once made (NotifyGrid.qml): for the pictures' steps.
+    function notifyGrid(): var {
+        const find = item => {
+            if (!item)
+                return null
+            if (item.objectName === "notifyGrid")
+                return item
+            for (let i = 0; i < item.children.length; i++) {
+                const found = find(item.children[i])
+                if (found)
+                    return found
+            }
+            return null
+        }
+        return find(parametersPage)
     }
 
     // Settings, at one of them: the hours, from the Porch.
@@ -846,7 +866,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "reach": grabber.reachSteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "reach": grabber.reachSteps, "notify": grabber.notifySteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel, "spam": grabber.spamSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -1862,6 +1882,35 @@ SioulWindow {
             // phone's): each channel's matrix, the lists under them, the people
             // and the categories; a contact's list, a card with a number only and one
             // whose address has a list of its own.
+            // The notification matrix (SIOUL_GRAB_STEPS=notify; SIOUL_GRAB_PHONE for a phone's):
+            // Settings ▸ Reminders and notifications at its grid, a cell's choices, a fixed cell's why.
+            readonly property var notifySteps: [
+                () => {
+                    window.page = 12
+                    parametersPage.section = "reminders"
+                },
+                () => {},
+                () => parametersPage.showSetting("notify"),
+                () => {},
+                () => {},
+                () => grabber.save("notify-grid"),
+                () => parametersPage.scrollBy(0.45),
+                () => {},
+                () => grabber.save("notify-grid-down"),
+                // New mail during Free time: its choices.
+                () => parametersPage.showSetting("notify"),
+                () => {},
+                () => window.notifyGrid().openAt("mail", "free"),
+                () => {},
+                () => grabber.saveWindow("notify-choices"),
+                () => window.notifyGrid().closeChoices(),
+                // A dose during do-not-disturb: fixed, and why.
+                () => window.notifyGrid().openAt("doses", "dnd"),
+                () => {},
+                () => grabber.saveWindow("notify-fixed"),
+                () => window.notifyGrid().closeChoices(),
+                () => window.close()
+            ]
             readonly property var reachSteps: [
                 () => window.page = 11,
                 () => accountsPage.showReach("reach"),
@@ -2035,7 +2084,7 @@ SioulWindow {
                 () => {},
                 () => grabber.save("pauses-back"),
                 () => pauseCover.item.done(),
-                () => window.showParameters("pause.doses"),
+                () => window.showParameters("link.notify.pauses"),
                 () => {},
                 () => {},
                 () => grabber.save("pauses-setup"),
@@ -2193,6 +2242,34 @@ SioulWindow {
                 () => parametersPage.scrollBy(0.25),
                 () => {},
                 () => grabber.save("share-panel-server-down"),
+                () => window.close()
+            ]
+            // Sioul's own spam filter (SIOUL_GRAB_STEPS=spam; SIOUL_GRAB_PHONE for a
+            // phone's), on a demo profile made with its table and two strangers'
+            // messages it has a word for (make-demo.py --spam, or SIOUL_DEMO_SPAM=1):
+            // its settings in Mail's ⚙, then its training's block; on the Porch the
+            // quiet words beside the two, and one opened with why it is here.
+            readonly property var spamSteps: [
+                () => window.page = 2,
+                () => {},
+                () => mailPage.openSettings(true),
+                () => mailPage.scrollSettings("spam.mode"),
+                () => {},
+                () => grabber.saveWindow("spam-settings"),
+                () => mailPage.scrollSettings("spam.filter"),
+                () => {},
+                () => grabber.saveWindow("spam-training"),
+                () => mailPage.openSettings(false),
+                () => window.page = 0,
+                () => {},
+                () => porchPage.scrollToLane("screener"),
+                () => {},
+                () => grabber.save("spam-porch"),
+                () => porchPage.openSpam(""),
+                () => {},
+                () => porchPage.showReasons(),
+                () => {},
+                () => grabber.save("spam-reader"),
                 () => window.close()
             ]
             // A second computer: the folder already sealed (one passphrase), then joined.

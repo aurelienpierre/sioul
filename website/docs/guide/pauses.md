@@ -37,7 +37,7 @@ When Free time takes some of your working hours, the end of today's work moves l
 
 In [Settings ▸ Pauses](settings.md#pauses), take your time:
 
-- **Dose reminders still come**: on unless you turn it off; then they wait until you come back, and are reminded once then.
+- **Dose reminders still come**, unless you change it in Settings ▸ Reminders and notifications ▸ [When each comes](notifications.md#when-each-comes) (Doses ▸ Pause ▸ Later): then they wait until you come back, and are reminded once then.
 - **Starred contacts get through**, on the phone: calls and messages from your starred contacts, and anyone calling twice within 15 minutes. Off, no one.
 - **What helps you**: in your own words, one thing a line. A line with a link or a file's path opens it from the pause: a playlist, a folder of photos, an app's page.
 - **A line for the pause**: one line of yours, shown on the screen.

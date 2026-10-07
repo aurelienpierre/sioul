@@ -10,7 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// One step: what, for how long, and what it opens ("porch", "sioul:task/<UID>").
+/// One step: what, for how long, and what it opens (`porch`, `sioul:task/<UID>`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Step {
     pub title: String,

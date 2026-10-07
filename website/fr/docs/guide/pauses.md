@@ -37,7 +37,7 @@ Quand le temps libre prend une part de vos heures de travail, la fin du travail 
 
 Dans [Paramètres ▸ Pauses](settings.md#pauses), prenez votre temps :
 
-- **Les rappels de prises viennent toujours** : activé, sauf si vous le désactivez ; ils attendent alors votre retour, et sont rappelés une fois à ce moment-là.
+- **Les rappels de prises viennent toujours**, sauf si vous le changez dans Paramètres ▸ Rappels et notifications ▸ [Quand chacune vient](notifications.md#when-each-comes) (Prises ▸ En pause ▸ Plus tard) : ils attendent alors votre retour, et sont rappelés une fois à ce moment-là.
 - **Les contacts favoris passent**, sur le téléphone : appels et messages de vos contacts favoris, et de quiconque appelle deux fois en 15 minutes. Désactivé, personne.
 - **Ce qui vous aide** : avec vos mots, une chose par ligne. Une ligne avec un lien ou le chemin d’un fichier l’ouvre depuis la pause : une playlist, un dossier de photos, la page d’une application.
 - **Une ligne pour la pause** : une ligne à vous, montrée à l’écran.

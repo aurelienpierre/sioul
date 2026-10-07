@@ -1037,7 +1037,7 @@ pub struct Movement {
     pub planned: bool,
     /// A recurring movement (a preset's occurrence).
     pub recurring: bool,
-    /// Its line in the file, when it is one: "sioul:budget/<budget>/<position>".
+    /// Its line in the file, when it is one: `sioul:budget/<budget>/<position>`.
     pub line: Option<usize>,
 }
 
@@ -1433,7 +1433,7 @@ mod tests {
         use crate::porch::{self, Context, KnownSenders};
         let raw = format!("From: {from}\r\nSubject: {subject}\r\nDate: {date}\r\nMessage-ID: <{id}>\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n{body}\r\n");
         let known = KnownSenders::default();
-        porch::triage(crate::card::Card::from_bytes(raw.as_bytes()).unwrap(), &Context { cases: None, known: &known, senders: &crate::porch::Senders::default(), trusted_ids: &[], now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[] })
+        porch::triage(crate::card::Card::from_bytes(raw.as_bytes()).unwrap(), &Context { cases: None, known: &known, senders: &crate::porch::Senders::default(), trusted_ids: &[], now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None })
     }
 
     const PAY: &str = "Pay Exemple <service@pay.example>";

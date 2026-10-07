@@ -3,12 +3,55 @@
 
 //! Messages on disk: a Maildir (`new/` and `cur/`), or a plain folder of `.eml` files.
 //!
-//! Sioul writes what it fetches as a Maildir (https://cr.yp.to/proto/maildir.html),
+//! Sioul writes what it fetches as a Maildir (<https://cr.yp.to/proto/maildir.html>),
 //! so notmuch, mutt or any other reader can open the same folders. Each file
 //! name carries where the message sits on the server, `U<uidvalidity>-<uid>`,
 //! so the Porch knows what you have seen without opening the files.
+//!
+//! After the flags, two IMAP keywords (RFC 9051 §2.3.2) are kept as Dovecot
+//! keeps them: a lowercase letter each, named in the folder's
+//! `dovecot-keywords` file. They say what you, or a mail client, said of a
+//! message: junk (`$Junk`), or not junk (`$NotJunk`).
 
 use crate::card::{Card, ImapOrigin};
+
+/// `$Junk`'s letter.
+pub const JUNK: char = 'a';
+/// `$NotJunk`'s letter.
+pub const NOT_JUNK: char = 'b';
+/// The keywords kept, by letter, as the folder's `dovecot-keywords` file numbers them (a is 0, b is 1).
+pub const KEYWORDS: [(char, &str); 2] = [(JUNK, "$Junk"), (NOT_JUNK, "$NotJunk")];
+
+/// The letter of an IMAP keyword Sioul keeps; none for the others. Case
+/// does not matter: `$junk` is `$Junk` to IMAP servers.
+pub fn keyword_letter(keyword: &str) -> Option<char> {
+    KEYWORDS.iter().find(|(_, name)| name.eq_ignore_ascii_case(keyword)).map(|(letter, _)| *letter)
+}
+
+/// What a stored message's file name says of it, junk or not.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Keywords {
+    /// `$Junk`.
+    pub junk: bool,
+    /// `$NotJunk`.
+    pub not_junk: bool,
+}
+
+/// The keywords in a stored message's file name.
+pub fn keywords_of(path: &Path) -> Keywords {
+    let flags = flags_of(path);
+    Keywords { junk: flags.contains(JUNK), not_junk: flags.contains(NOT_JUNK) }
+}
+
+/// The folder's `dovecot-keywords` file, which names the letters, written
+/// once, when a letter is first kept there: Dovecot reads the same folder alike.
+fn name_keywords(folder: &Path, flags: &str) {
+    let file = folder.join("dovecot-keywords");
+    if KEYWORDS.iter().any(|(letter, _)| flags.contains(*letter)) && !file.exists() {
+        let names: String = KEYWORDS.iter().enumerate().map(|(n, (_, name))| format!("{n} {name}\n")).collect();
+        let _ = std::fs::write(file, names);
+    }
+}
 
 /// What separates a message's unique name from its flags: ":" by the Maildir
 /// convention, "!" on Windows, where ":" cannot be in a file name (mbsync does
@@ -88,8 +131,9 @@ pub struct Fetched<'a> {
 }
 
 /// Writes one message into a Maildir: first in `tmp/`, then moved, so a reader
-/// never sees half a message. Unread mail goes to `new/`, read mail to `cur/`
-/// with its flags, as the Maildir convention says.
+/// never sees half a message. Mail without any flag goes to `new/`; mail with
+/// some (read, flagged, a keyword kept) to `cur/` with its letters, as the
+/// Maildir convention says, so that none is lost until the next sync.
 pub fn store(root: &Path, message: &Fetched) -> std::io::Result<PathBuf> {
     for sub in ["tmp", "new", "cur"] {
         std::fs::create_dir_all(root.join(sub))?;
@@ -114,13 +158,14 @@ pub fn store(root: &Path, message: &Fetched) -> std::io::Result<PathBuf> {
         file.set_modified(UNIX_EPOCH + Duration::from_secs(seconds))?;
     }
     drop(file);
-    let seen = message.flags.contains('S');
-    let target = if seen { root.join("cur").join(format!("{unique}{INFO}2,{}", sorted(&message.flags))) } else { root.join("new").join(unique) };
+    let target = if message.flags.is_empty() { root.join("new").join(unique) } else { root.join("cur").join(format!("{unique}{INFO}2,{}", sorted(&message.flags))) };
+    name_keywords(root, &message.flags);
     std::fs::rename(&temporary, &target)?;
     Ok(target)
 }
 
-/// The Maildir flags of a stored message, from its name: "FS"; none in `new/`.
+/// The Maildir flags of a stored message, from its name, with the keywords'
+/// letters: "FS", "Sb"; none in `new/`.
 pub fn flags_of(path: &Path) -> String {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     flags_part(name).map_or_else(String::new, str::to_string)
@@ -135,6 +180,7 @@ pub fn set_flags(path: &Path, flags: &str) -> std::io::Result<PathBuf> {
     let target = folder.join("cur").join(format!("{unique}{INFO}2,{}", sorted(flags)));
     if target != path {
         std::fs::create_dir_all(folder.join("cur"))?;
+        name_keywords(folder, flags);
         std::fs::rename(path, &target)?;
     }
     Ok(target)
@@ -219,6 +265,27 @@ mod tests {
         // The old name still finds the message.
         assert_eq!(locate(&unread), Some(unflagged.clone()));
         assert_eq!(locate(&read), Some(unflagged));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// `$Junk` and `$NotJunk` are kept in the file name, as Dovecot keeps
+    /// keywords, from the first store: unread mail with one goes to `cur/`.
+    #[test]
+    fn junk_keywords_are_kept() {
+        let root = std::env::temp_dir().join(format!("sioul-keywords-{}", std::process::id()));
+        let raw = b"Subject: x\r\n\r\nx\r\n";
+        assert_eq!((keyword_letter("$NotJunk"), keyword_letter("$junk"), keyword_letter("NonJunk")), (Some(NOT_JUNK), Some(JUNK), None));
+        let plain = store(&root, &Fetched { origin: ImapOrigin { validity: 3, uid: 1 }, flags: String::new(), received: None, raw }).unwrap();
+        assert!(plain.starts_with(root.join("new")) && !root.join("dovecot-keywords").exists());
+        let said = store(&root, &Fetched { origin: ImapOrigin { validity: 3, uid: 2 }, flags: NOT_JUNK.to_string(), received: None, raw }).unwrap();
+        assert!(said.starts_with(root.join("cur")), "unread, with its keyword: {}", said.display());
+        assert_eq!(keywords_of(&said), Keywords { junk: false, not_junk: true });
+        assert_eq!(std::fs::read_to_string(root.join("dovecot-keywords")).unwrap(), "0 $Junk\n1 $NotJunk\n");
+        // Read, then said junk: the letters follow the flags, in ASCII order.
+        let junked = set_flags(&said, &format!("S{JUNK}")).unwrap();
+        assert_eq!(flags_of(&junked), format!("S{JUNK}"));
+        assert_eq!(keywords_of(&junked), Keywords { junk: true, not_junk: false });
+        assert_eq!(keywords_of(&plain), Keywords::default());
         std::fs::remove_dir_all(&root).unwrap();
     }
 

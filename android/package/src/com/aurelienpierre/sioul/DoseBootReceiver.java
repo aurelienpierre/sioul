@@ -10,7 +10,7 @@ import android.content.Intent;
 /**
  * The doses' alarms given again from the list kept (DoseAlarms): Android
  * forgets them when it restarts; an update keeps them, given again all the
- * same; allowed "Alarms & reminders" again, they ring on time again. After a
+ * same; allowed "Alarms &amp; reminders" again, they ring on time again. After a
  * restart the phone is unlocked once first (Sioul's files cannot be read
  * before): a dose due meanwhile rings then.
  */

@@ -90,8 +90,10 @@ impl Look {
         let gnome = config.pause.gnome;
         let paused = state.has(Why::Paused);
         let free = state.has(Why::FreeTime) && !paused;
+        // Doses in the pause as the notification matrix says (Settings ▸ Reminders and notifications).
+        let pause_doses = sioul_core::notify::Notify::of(config).cell(sioul_core::notify::Kind::Doses, sioul_core::notify::Column::Pause) == sioul_core::notify::Cell::Now;
         [
-            (Which::Paused, paused.then(|| Ask { which: Which::Paused, people: config.pause.people, doses: config.pause.doses, desktop: gnome })),
+            (Which::Paused, paused.then(|| Ask { which: Which::Paused, people: config.pause.people, doses: pause_doses, desktop: gnome })),
             (Which::FreeTime, free.then(|| Ask { which: Which::FreeTime, people: !sioul_core::pause::nothing_now(&self.overrides, &config.free_time), doses: true, desktop: gnome })),
             (Which::Global, state.global().then(|| Ask { which: Which::Global, people: config.dnd.people, doses: true, desktop: gnome })),
         ]
@@ -117,11 +119,12 @@ pub(crate) fn now() -> Now {
     Look::now().state
 }
 
-/// Whether the switch or a focus session holds do-not-disturb now: the
-/// sites' notifications and the suggestions to move wait (`hours::may_notify`;
-/// doses, codes asked for, events' reminders and Health's notices come);
-/// mail comes from the people on the list only (`mail_gate`). Read again at
-/// most every five seconds: asked at every notification.
+/// Whether the switch or a focus session holds do-not-disturb now: a layer
+/// of the notification matrix (`hours::notify_now`), which says what waits
+/// then (as usual, the sites' notifications and the suggestions to move;
+/// doses, codes asked for, events' reminders and Health's notices come, and
+/// mail from the people on the list, `mail_gate`). Read again at most every
+/// five seconds: asked at every notification.
 pub(crate) fn holds_others() -> bool {
     static KEPT: Mutex<Option<(Instant, bool)>> = Mutex::new(None);
     if let Ok(kept) = KEPT.lock()

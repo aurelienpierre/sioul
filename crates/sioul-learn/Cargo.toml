@@ -1,0 +1,33 @@
+[package]
+name = "sioul-learn"
+description = "Sioul's spam filter, learned on the desktop from your own mail: the training corpus, fastText, the linear SVM, calibration, evaluation and the reduced table the phone reads."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Desktops only: sioul-cli and sioul-app list it under
+# cfg(not(target_os = "android")), so the phone's build never compiles it.
+[dependencies]
+sioul-core = { path = "../sioul-core" }
+sioul-sync = { path = "../sioul-sync" }
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+jiff.workspace = true
+mail-parser.workspace = true
+async-imap.workspace = true
+tokio.workspace = true
+futures-util.workspace = true
+# The corpus compressed as it is appended (gzip, pure Rust: already built for sharing).
+flate2 = "1"
+# fastText, pure Rust (MIT): the language model, trained here on your mail.
+# Pinned: its n-gram hashing must stay the one the phone's table reproduces.
+fasttext = "=0.8.0"
+
+[features]
+# For tests against a local mail server only (see sioul-sync's feature of the same name).
+insecure-test-tls = ["sioul-sync/insecure-test-tls"]

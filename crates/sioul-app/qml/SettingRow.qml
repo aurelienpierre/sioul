@@ -306,6 +306,39 @@ ColumnLayout {
         }
     }
 
+    // Sioul's own spam filter: its training on a computer, where its table
+    // comes from on a phone (SpamFilter.qml); its sentence said first there.
+    Loader {
+        active: field.setting.kind === "spam"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            SpamFilter {
+                sioul: field.sioul
+                theme: field.theme
+                about: field.setting.help
+            }
+        }
+    }
+
+    // What each kind of notification does at each time: a mark in each cell,
+    // its choices on a press (NotifyGrid.qml), saved a row at a time.
+    Loader {
+        active: field.setting.kind === "notify"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            NotifyGrid {
+                setting: field.setting
+                sioul: field.sioul
+                theme: field.theme
+                onSave: (key, value) => field.save(key, value)
+            }
+        }
+    }
+
     // On or off. Saved, the rows are read again; refused, the switch says the
     // setting as it stayed (a click leaves its own tick otherwise).
     Switch {
@@ -362,8 +395,9 @@ ColumnLayout {
             }
             Keys.onReleased: field.save(field.setting.key, Math.round(value * 100) / 100)
         }
+        // A share as a percentage ("95%", "95 %"), else the number and its unit.
         Label {
-            text: slider.value.toLocaleString(Qt.locale(field.sioul.text("qt-locale")), "f", field.setting.step < 1 ? 1 : 0) + " " + field.setting.unit
+            text: field.setting.unit === "%" ? field.sioul.textWith("spam-percent", "n", String(Math.round(slider.value * 100))) : slider.value.toLocaleString(Qt.locale(field.sioul.text("qt-locale")), "f", field.setting.step < 1 ? 1 : 0) + " " + field.setting.unit
             color: field.theme.text
         }
     }
@@ -1071,7 +1105,7 @@ ColumnLayout {
     }
 
     Label {
-        visible: text !== "" && field.setting.kind !== "link"
+        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         wrapMode: Text.Wrap

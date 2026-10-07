@@ -18,13 +18,14 @@ use sioul_core::card::ImapOrigin;
 use sioul_core::config::{Account, state_dir};
 use sioul_core::folders::{self, Folder, Role};
 use sioul_core::maildir;
+use sioul_core::spam::labels;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// The folders the server lists, with what each is for. Gmail's "All Mail",
 /// "Starred" and "Important" are views of the same messages: the first is kept
 /// to archive into, the other two are left out (RFC 6154, RFC 8457).
-pub(crate) async fn list(session: &mut Imap) -> Result<Vec<Folder>, SyncError> {
+pub async fn list(session: &mut Imap) -> Result<Vec<Folder>, SyncError> {
     let mut found = Vec::new();
     let mut names = imap::within(COMMAND, session.list(Some(""), Some("*"))).await?.map_err(imap::server)?;
     while let Some(name) = names.next().await {
@@ -262,9 +263,14 @@ pub enum Action {
     Archive,
     /// Out of the junk folder, back into the inbox, marked `$NotJunk`.
     NotJunk,
+    /// Not spam, said of mail set aside as spam: marked `$NotJunk` (and no
+    /// longer `$Junk`), it stays where it is, and the Porch puts it back in its lane.
+    NotSpam,
 }
 
 /// Does `action` to the message stored at `file`, on the server, then here.
+/// What it says of the message, junk or not, goes into the spam filter's
+/// label log (`spam::labels`) once the server has taken it.
 pub fn act(account: &Account, password: &str, file: &Path, action: &Action) -> Result<(), SyncError> {
     let server = Server::of(account)?;
     let origin = maildir::origin_of(file).ok_or_else(|| SyncError::Server("not a message fetched by Sioul".into()))?;
@@ -272,28 +278,57 @@ pub fn act(account: &Account, password: &str, file: &Path, action: &Action) -> R
     if *action == Action::Archive && matches!(folder.role, Role::Archive | Role::All) {
         return Ok(());
     }
+    // Read here before the message leaves this folder; written once the server took the act.
+    let label = said(action).and_then(|source| labels::Entry::of_file(&account.id, &folder.name, file, source));
     crate::fetch::block_on(async {
         let mut session = imap::open(&server, password).await?;
         let result = act_in(&mut session, account, &folder, origin, action).await;
         let _ = session.logout().await;
         result
     })?;
+    // Done on the server: a log that cannot be written is said, after the rest is done here.
+    let logged = label.as_ref().map_or(Ok(()), labels::append).map_err(SyncError::Disk);
     // A sync may have renamed the file meanwhile; gone, there is nothing left to do here.
-    let Some(file) = maildir::locate(file) else { return Ok(()) };
-    let flags = maildir::flags_of(&file);
-    let renamed = match action {
+    let Some(file) = maildir::locate(file) else { return logged };
+    match kept_with(action, &maildir::flags_of(&file)) {
+        Some(flags) => {
+            maildir::set_flags(&file, &flags).map_err(|e| SyncError::Disk(e.to_string()))?;
+        }
+        None => {
+            let _ = std::fs::remove_file(&file);
+        }
+    }
+    logged
+}
+
+/// What becomes of the local copy once the server took `action`: its letters
+/// now, or none when it left this folder (the next sync brings the copy into
+/// the other). Said not spam, it keeps its keyword here as on the server.
+fn kept_with(action: &Action, flags: &str) -> Option<String> {
+    match action {
         Action::Read(read) => Some(if *read { format!("{flags}S") } else { flags.replace('S', "") }),
         Action::Flag(flag) => Some(if *flag { format!("{flags}F") } else { flags.replace('F', "") }),
-        // Moved: it leaves this folder; the next sync brings the copy into the other.
-        _ => {
-            let _ = std::fs::remove_file(&file);
-            None
-        }
-    };
-    if let Some(flags) = renamed {
-        maildir::set_flags(&file, &flags).map_err(|e| SyncError::Disk(e.to_string()))?;
+        Action::NotSpam => Some(format!("{}{}", flags.replace(maildir::JUNK, ""), maildir::NOT_JUNK)),
+        Action::Move(_) | Action::Trash | Action::Junk | Action::Archive | Action::NotJunk => None,
     }
-    Ok(())
+}
+
+/// Writes into the spam filter's label log what you said of the message
+/// stored at `file`, without acting on it there: a sender blocked from it.
+pub fn label(account: &Account, file: &Path, source: labels::Source) -> Result<(), SyncError> {
+    let folder = folder_of(account, file).ok_or_else(|| SyncError::Server("unknown folder".into()))?;
+    let entry = labels::Entry::of_file(&account.id, &folder.name, file, source).ok_or_else(|| SyncError::Server("not a message fetched by Sioul".into()))?;
+    labels::append(&entry).map_err(SyncError::Disk)
+}
+
+/// What an act says of a message, for the label log: none for those that say nothing of spam.
+fn said(action: &Action) -> Option<labels::Source> {
+    match action {
+        Action::Junk => Some(labels::Source::Junk),
+        Action::NotJunk => Some(labels::Source::NotJunk),
+        Action::NotSpam => Some(labels::Source::NotSpam),
+        Action::Read(_) | Action::Flag(_) | Action::Move(_) | Action::Trash | Action::Archive => None,
+    }
 }
 
 /// Moves the message stored at `file` into `folder` of another account: a
@@ -361,6 +396,7 @@ async fn act_in(session: &mut Imap, account: &Account, folder: &Folder, origin: 
         }
         Action::Junk => {
             // Keywords are optional: a server without them still takes the move.
+            let _ = store(session, &uid, "-FLAGS.SILENT ($NotJunk)").await;
             let _ = store(session, &uid, "+FLAGS.SILENT ($Junk)").await;
             let target = role_folder(session, account, Role::Junk, "Junk").await?;
             move_to(session, &uid, &target, can_move, uidplus).await
@@ -377,6 +413,12 @@ async fn act_in(session: &mut Imap, account: &Account, folder: &Folder, origin: 
             let _ = store(session, &uid, "-FLAGS.SILENT ($Junk)").await;
             let _ = store(session, &uid, "+FLAGS.SILENT ($NotJunk)").await;
             move_to(session, &uid, "INBOX", can_move, uidplus).await
+        }
+        // A server without keywords keeps nothing: the label log then says it, on this device.
+        Action::NotSpam => {
+            let _ = store(session, &uid, "-FLAGS.SILENT ($Junk)").await;
+            let _ = store(session, &uid, "+FLAGS.SILENT ($NotJunk)").await;
+            Ok(())
         }
     }
 }
@@ -436,6 +478,21 @@ pub(crate) async fn role_folder(session: &mut Imap, account: &Account, role: Rol
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_an_act_leaves_here_and_says() {
+        // Said not spam: it stays, its `$Junk` letter traded for `$NotJunk`'s.
+        assert_eq!(kept_with(&Action::NotSpam, &format!("S{}", maildir::JUNK)), Some(format!("S{}", maildir::NOT_JUNK)));
+        assert_eq!(kept_with(&Action::NotSpam, ""), Some(maildir::NOT_JUNK.to_string()));
+        // Read, flagged: the keywords stay beside the flags.
+        assert_eq!(kept_with(&Action::Read(false), &format!("S{}", maildir::NOT_JUNK)), Some(maildir::NOT_JUNK.to_string()));
+        // Moved: it leaves this folder.
+        assert_eq!(kept_with(&Action::Junk, "S"), None);
+        assert_eq!(kept_with(&Action::NotJunk, "S"), None);
+        // What goes into the label log, and what does not.
+        assert_eq!([&Action::Junk, &Action::NotJunk, &Action::NotSpam].map(said), [Some(labels::Source::Junk), Some(labels::Source::NotJunk), Some(labels::Source::NotSpam)]);
+        assert_eq!([&Action::Read(true), &Action::Trash, &Action::Archive].map(said), [None, None, None]);
+    }
 
     #[test]
     fn uid_sets_are_short() {

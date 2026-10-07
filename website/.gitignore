@@ -2,7 +2,9 @@
 /site/
 /.cache/
 # The design notes, copied from ../docs by build.sh at each build: edit them there.
+# And qml.md, written from the QML files' comments by ../tools/qml-docs.py.
 /docs/dev/*
 !/docs/dev/index.md
+!/docs/dev/api.md
 # The French guide's pictures and styles, copied from docs/assets by build.sh.
 /fr/docs/assets/

@@ -130,7 +130,7 @@ fn way(card: &Card, headers: &RawHeaders, values: &[&str], first: &str, trusted_
     if reasons.iter().any(|r| matches!(r, Reason::Impersonation { .. })) {
         return Err(Refusal::Borrowed);
     }
-    if reasons.iter().any(|r| matches!(r, Reason::Spam { .. })) || *lane == Lane::SetAside {
+    if reasons.iter().any(Reason::is_spam) || *lane == Lane::SetAside {
         return Err(Refusal::Spam);
     }
     if values.len() > 1 || headers.all("List-Unsubscribe-Post").count() > 1 {

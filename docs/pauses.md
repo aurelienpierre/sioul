@@ -9,7 +9,7 @@ The research behind them: [research/global-pause.md](research/global-pause.md) (
 
 Code:
 - `crates/sioul-core/src/pause.rs`: the settings, the state, the end of work moved, the return, the screen, the numbers;
-- `crates/sioul-core/src/quiet.rs`: the two pauses among the times (`Reason::FreeTime`, `Reason::Paused`, `Reason::Extended`), what may notify (`may_tell`);
+- `crates/sioul-core/src/quiet.rs`: the two pauses among the times (`Reason::FreeTime`, `Reason::Paused`, `Reason::Extended`), what may notify (the notification matrix's pause and Free time columns, `notify`);
 - `crates/sioul-core/data/crisis-lines.toml`: the emergency numbers and crisis lines;
 - `crates/sioul-app/src/pauses.rs`: the window's side; `crates/sioul-app/src/dnd.rs`: the system's do-not-disturb;
 - `qml/PauseCover.qml` (the pause's screen), `qml/PauseSetup.qml` (its setup), the buttons in `qml/main.qml`, the offers in `qml/TasksPage.qml`.
@@ -60,7 +60,7 @@ The pause, then sleep, then Free time, then meals, then the hours' own overrides
 ### Who reaches you
 - **Your safe senders only**, quietly, at the times you ticked for them; neutral and restricted senders wait whatever their ticks (GP5; `pause::reach_now`). Codes and links you just asked for, and what you send yourself, come at once, as in every quiet time. (R)
 - **"Nothing at all"** (GP6): a setting, and a switch in the status line's menu for this free time: not even your safe senders; doses and codes still come. (R)
-- **Notifications**: doses, codes you asked for and your events' own alarms; reminders before dates, sites, meal notices, the pause to move, the watch's offers and the work day's notice wait (`quiet::may_tell`, `reminders::Wait::AllButAlarms`). (R: GP5; which notices wait is G)
+- **Notifications**: doses, codes you asked for and your events' own alarms; reminders before dates, sites, meal notices, the pause to move, the watch's offers and the work day's notice wait, as usual (`notify`, its Free time column; `reminders::Holds`). (R: GP5; which notices wait is G)
 - **The phone** lets your starred contacts through, unless "Nothing at all" (do-not-disturb, below). (O)
 - **One sentence says it**, the status line's: "Free time: only your safe senders, doses and codes reach you. Work comes back when you do." (GP5, GP16) (R)
 
@@ -91,7 +91,7 @@ The pause, then sleep, then Free time, then meals, then the hours' own overrides
 
 ### Set up on a calm day (P1), Settings ▸ Pauses
 - **Said once** (P5, O): "Sioul is not an emergency service. It does not watch you. It acts only when you press Pause."
-- **What is held**: everything Sioul shows; **Dose reminders still come** (on unless set off: P7, health.md); **Starred contacts get through** on the phone (P9).
+- **What is held**: everything Sioul shows; **Dose reminders still come** (unless held: the doses' pause cell of the notification matrix, P7, health.md); **Starred contacts get through** on the phone (P9).
 - **What helps you** (P2, P15): in your words, one thing a line; a line with a link or a file's path opens it from the pause (a playlist, photos, an app's page). Nothing generic is added, no library to browse.
 - **A line for the pause** (P17): one line of yours, shown on the screen; never a counted exercise.
 - **Breathing guide** (P16): off unless switched on; its pace, breaths a minute (6 unless set: G).
@@ -132,7 +132,7 @@ The pause, then sleep, then Free time, then meals, then the hours' own overrides
 - **One offer, default no** (P23): "Tomorrow can be lighter too." with **Lighten tomorrow**, shown when tomorrow is a working day; taken, tomorrow is held as today is (it takes effect when tomorrow comes: looking ahead from today, the plan still shows tomorrow's usual room). (R)
 - **Held things come back slowly** (P24): the Porch rests until your next admin hours (else your next working hours, else tomorrow morning), saying when it opens; "Open anyway" opens it. Codes you asked for still show. (R)
 - **Undo**, ten seconds in the status line: as if the pause had not been pressed (pressed on this device in this run: as before the press; else the pause's stamps taken away, its return undone). An accidental press costs nothing. (G)
-- **Doses held during the pause** (the setup's choice) are reminded once on coming back, as sleep's "Stay silent" reminds at waking (`hours::woke_from`). (R: P7, health.md)
+- **Doses held during the pause** (the setup's choice) are reminded once on coming back, as doses held in sleep are reminded at waking (`hours::woke_from`). (R: P7, health.md)
 - No reflection prompt, no rating, no count; the evening review does not mention it (P25). (R)
 
 ### What is kept (P26)

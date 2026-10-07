@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Contacts and calendars from the terminal: `sioul dav add|sync`,
-//! `sioul contacts`, `sioul contact new`, `sioul agenda`, `sioul event new`.
+//! `sioul contacts`, `sioul contact`, `sioul agenda`, `sioul event`.
 
 use crate::Session;
 use crate::accounts::prompt_password;
@@ -203,7 +203,7 @@ pub(crate) fn dav_id(config: &sioul_core::config::Config, address: &str) -> Stri
     std::iter::once(base.clone()).chain((2..).map(|n| format!("{base}-{n}"))).find(|id| config.every_account().all(|a| &a.id != id)).unwrap_or(base)
 }
 
-/// "https://dav.example.org/remote.php/dav/" → "dav.example.org"; the port is kept apart.
+/// `https://dav.example.org/remote.php/dav/` → `dav.example.org`; the port is kept apart.
 fn host_of(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
     rest.split(['/', ':']).next().unwrap_or(rest).to_string()

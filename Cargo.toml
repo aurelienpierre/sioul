@@ -1,8 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["crates/sioul-core", "crates/sioul-cli", "crates/sioul-sync", "crates/sioul-app"]
+members = ["crates/sioul-core", "crates/sioul-cli", "crates/sioul-sync", "crates/sioul-app", "crates/sioul-learn"]
 # The window needs Qt's development files (docs/building.md); everything else builds without them.
-default-members = ["crates/sioul-core", "crates/sioul-cli", "crates/sioul-sync"]
+# sioul-learn (the spam filter's training) is for desktops: the phone never builds it.
+default-members = ["crates/sioul-core", "crates/sioul-cli", "crates/sioul-sync", "crates/sioul-learn"]
 
 [workspace.package]
 version = "0.0.2"

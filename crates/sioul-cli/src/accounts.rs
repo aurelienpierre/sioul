@@ -379,10 +379,13 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                 let config = Config::load(&s.config_path).unwrap_or_default();
                 let arrived = triage_files(&config, &report.new);
                 print_right_now(s, &arrived);
-                // While you sleep nothing notifies: the code waits on the Porch (docs/health.md).
+                // As the notification matrix says (as usual, nothing while you sleep or
+                // pause): a code not told waits on the Porch (docs/health.md).
                 let now = Zoned::now();
                 let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-                if sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now).sleeps() {
+                let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now);
+                let moment = sioul_core::notify::Now::of(&mode, false, sioul_core::notify::dnd_from_files(&config, now.timestamp().as_second()));
+                if !sioul_core::notify::Notify::of(&config).comes(sioul_core::notify::Kind::Codes, &moment) {
                     continue;
                 }
                 for code in view::codes(&arrived, &s.tr) {

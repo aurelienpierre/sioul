@@ -15,7 +15,7 @@
 //! short code ("3631", "112") is never given a country. Values with letters
 //! ("1-555-SIOUL"), stars and hashes ("*#06#") are compared as written.
 //! The rules are those of each country's numbering plan, as the ITU publishes
-//! them (https://www.itu.int/oth/T0202); libphonenumber knows every country
+//! them (<https://www.itu.int/oth/T0202>); libphonenumber knows every country
 //! but weighs megabytes, for what this table does for the usual ones.
 
 /// How a country writes its numbers at home.

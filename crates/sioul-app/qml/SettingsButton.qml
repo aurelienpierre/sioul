@@ -37,6 +37,13 @@ ToolButton {
         }
     }
 
+    // For the window's images: the panel scrolled to one of its settings.
+    function scrollTo(key) {
+        const shown = panel.item as SettingsPanel
+        if (shown !== null)
+            shown.scrollTo(key)
+    }
+
     // For the window's images: the panel floats over the page, out of its picture.
     function grab(path) {
         if (panel.item !== null)

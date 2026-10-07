@@ -880,7 +880,7 @@ mod desktop {
     }
 
     /// A key's value in a KDE settings file, in a group written as its header
-    /// ("[Notifications]", "[Applications][com.aurelienpierre.Sioul]").
+    /// (`[Notifications]`, `[Applications][com.aurelienpierre.Sioul]`).
     pub(super) fn kconfig<'a>(text: &'a str, group: &str, key: &str) -> Option<&'a str> {
         let mut inside = false;
         let mut found = None;

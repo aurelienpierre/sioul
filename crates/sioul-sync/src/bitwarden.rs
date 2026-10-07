@@ -733,7 +733,7 @@ fn domain(host: &str) -> String {
 }
 
 /// The registrable domain of an address or a host, as the search reads it:
-/// "ameli.fr" for https://assure.ameli.fr/….
+/// `ameli.fr` for `https://assure.ameli.fr/…`.
 pub fn domain_of_address(address: &str) -> String {
     domain(&sioul_core::sites::host_of(address.trim()))
 }
@@ -1305,9 +1305,9 @@ mod tests {
             login("ameli", "Ameli", "1 85 07 75 123 456 78", &["https://ameli.fr"], "x", ""),
             login("assure", "Compte assuré", "1 85 07 75 123 456 78", &["https://assure.ameli.fr/PortailAS/appmanager"], "x", ""),
             login("camelia", "Camelia fleurs", "moi@exemple.test", &["camelia.com"], "x", ""),
-            login("google", "Google", "aurore.exemple@gmail.com", &["https://accounts.google.com/v3/signin"], "x", "otpauth://totp/Google?secret=JBSWY3DPEHPK3PXP"),
-            login("forum", "Forum de photo", "aurore.exemple@gmail.com", &["https://forum.photo.test"], "x", ""),
-            login("shop", "Boutique", "aurore.exemple@gmail.com", &["boutique.test"], "x", ""),
+            login("google", "Google", "aurore.exemple@gmail.example", &["https://accounts.google.com/v3/signin"], "x", "otpauth://totp/Google?secret=JBSWY3DPEHPK3PXP"),
+            login("forum", "Forum de photo", "aurore.exemple@gmail.example", &["https://forum.photo.test"], "x", ""),
+            login("shop", "Boutique", "aurore.exemple@gmail.example", &["boutique.test"], "x", ""),
             login("impots", "Impôts", "1234567890123", &[], "x", ""),
             login("bank-a", "Banque, particuliers", "Élodie", &["https://particuliers.banque.test/connexion"], "x", ""),
             login("bank-b", "Banque, pro", "elodie.pro", &["https://pro.banque.test"], "x", ""),
@@ -1413,12 +1413,12 @@ mod tests {
     #[test]
     fn by_user_name_alone() {
         let vault = fixture();
-        assert_eq!(ids(search(&vault, "", "aurore.exemple@gmail.com", "", None)), ["shop", "forum", "google"], "by name: Boutique, Forum de photo, Google");
+        assert_eq!(ids(search(&vault, "", "aurore.exemple@gmail.example", "", None)), ["shop", "forum", "google"], "by name: Boutique, Forum de photo, Google");
         assert_eq!(ids(search(&vault, "", "aurore", "", None)), ["shop", "forum", "google"]);
-        assert_eq!(ids(search(&vault, "", "@gmail.com", "", None)), ["shop", "forum", "google"]);
+        assert_eq!(ids(search(&vault, "", "@gmail.example", "", None)), ["shop", "forum", "google"]);
         assert_eq!(ids(search(&vault, "", "elodie pro", "", None)), ["bank-b"], "every word");
         // The page's own first, then the user name typed whole: an account's server.
-        assert_eq!(ids(search(&vault, "", "aurore.exemple@gmail.com", "https://forum.photo.test", None)), ["forum", "shop", "google"]);
+        assert_eq!(ids(search(&vault, "", "aurore.exemple@gmail.example", "https://forum.photo.test", None)), ["forum", "shop", "google"]);
         assert!(search(&vault, "", "", "https://ameli.fr", None).is_empty(), "nothing asked, nothing found");
         assert!(search(&vault, "  ", " ", "", None).is_empty());
     }
@@ -1430,7 +1430,7 @@ mod tests {
         assert_eq!(ids(search(&vault, "banque.test", "elodie", "", None)), ["bank-a", "bank-b"]);
         assert_eq!(ids(search(&vault, "banque.test", "pro", "", None)), ["bank-b"]);
         assert!(search(&vault, "ameli", "aurore", "", None).is_empty());
-        let found = search(&vault, "photo", "@gmail.com", "", None);
+        let found = search(&vault, "photo", "@gmail.example", "", None);
         assert_eq!(found.iter().map(|f| (f.item.id.as_str(), f.site.as_str())).collect::<Vec<_>>(), [("forum", "forum.photo.test")]);
     }
 
@@ -1439,7 +1439,7 @@ mod tests {
         let vault = fixture();
         // "gmail" as a site: Gmail's own logins, not every login whose user name is a Gmail address.
         assert!(search(&vault, "gmail", "", "", None).is_empty());
-        assert!(search(&vault, "gmail.com", "", "", None).is_empty());
+        assert!(search(&vault, "gmail.example", "", "", None).is_empty());
         assert_eq!(ids(search(&vault, "google", "", "", None)), ["google"]);
         // A user name is no site either.
         assert!(search(&vault, "", "ameli", "", None).is_empty());
@@ -1500,11 +1500,11 @@ mod tests {
     #[test]
     fn the_best_are_kept() {
         let vault = fixture();
-        let (found, total) = vault.find("", "@gmail.com", "", None, 2);
+        let (found, total) = vault.find("", "@gmail.example", "", None, 2);
         assert_eq!((ids(found), total), (vec!["shop".to_string(), "forum".to_string()], 3));
-        let (found, total) = vault.find("", "@gmail.com", "", Some("google"), 1);
+        let (found, total) = vault.find("", "@gmail.example", "", Some("google"), 1);
         assert_eq!((ids(found), total), (vec!["google".to_string()], 3), "the login chosen last kept first");
-        let (found, total) = vault.find("", "@gmail.com", "", None, 0);
+        let (found, total) = vault.find("", "@gmail.example", "", None, 0);
         assert!(found.is_empty() && total == 3);
     }
 
