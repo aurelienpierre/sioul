@@ -28,8 +28,9 @@ toml.workspace = true
 [target.'cfg(not(target_os = "android"))'.dependencies]
 sioul-learn = { path = "../sioul-learn" }
 
-# A training runs below the other programs' priority (setpriority), as the window's does.
-[target.'cfg(target_os = "linux")'.dependencies]
+# A training runs below the other programs' priority (setpriority on every Unix,
+# Linux's I/O class too), as the window's does.
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [features]
