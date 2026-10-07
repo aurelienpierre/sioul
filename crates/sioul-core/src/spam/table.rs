@@ -1,39 +1,55 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! The reduced table: the spam filter as every device runs it, about two
-//! megabytes, with no word of your mail in it.
+//! The reduced table: the spam filter as every device runs it, a megabyte or
+//! two, with no word of your mail in it: each word under a 64-bit hash of it
+//! (`word_hash`), never the word itself, and only words seen five times or
+//! more.
 //!
-//! On the desktop, fastText learns a vector for each word of your mail (the
-//! language model, private, never shared), and a linear SVM weighs the mean of
-//! a message's word vectors with its header features (`features.rs`). Both are
-//! linear in the word vectors, so they fold (docs/spam-filter.md, "The model,
-//! and how it folds"): with `u = w / σ` the SVM's embedding weights over the
-//! standardization's deviations, a word scores `s_w = u · v_w`, an n-gram
-//! bucket `s_b = u · row_b`, and the mean of a message's word scores is the
-//! SVM's score of the mean of its vectors. The table keeps those scores, each
-//! word under a 64-bit hash of it (`word_hash`), never the word itself.
+//! Two kinds (`Kind`), both linear, so that they fold (docs/spam-filter.md,
+//! "The model, and how it folds"):
 //!
-//! A message's score, its decision value: `f = bias + (mean of its words'
-//! scores, or 0 without words) − text_mean + Σ weightₕ·(xₕ − meanₕ)`, where a
-//! word missing from the table scores the mean of its character n-grams'
-//! buckets, as fastText builds the vector of a word it never saw. Its
-//! probability of being spam: Platt's `p = 1 / (1 + exp(A·f + B))`. The
-//! standardization's mean terms stay beside the weights rather than folded
-//! into the bias, so that the explanation can say what departs from the usual;
-//! the score is the same.
+//! - **The classifier's** (`Kind::Rows`, what a training makes): fastText's
+//!   supervised model, two labels, reads a message as its words, then its
+//!   header facts as words (`features::header_words`), then the end of the
+//!   line. Each word brings its input rows (its own, when fastText knows it,
+//!   and those of its character n-grams' buckets), and the model's score is
+//!   the mean of every row's scalar `s_r = (w_spam − w_ham) · row_r`, the
+//!   softmax of two labels being the sigmoid of that. The table keeps, for
+//!   each word fastText knows, the sum of its rows' scalars; for each bucket,
+//!   its scalar; for the end of the line (`bias`), its own. A message's
+//!   score: `f = (bias + Σ its words' sums) / (1 + Σ their rows)`, a word
+//!   having `1 + ` its n-grams' count of rows when the table knows it, else
+//!   its n-grams' (`ngram_buckets`), each counted as often as it comes. No
+//!   header weights: the facts are words.
+//! - **The centroid's** (`Kind::Centroid`, format 1's only kind, still made
+//!   on request): fastText learns a vector for each word (the language
+//!   model, private, never shared), and a linear SVM weighs the mean of a
+//!   message's word vectors with its header features (`features.rs`). With
+//!   `u = w / σ` the SVM's embedding weights over the standardization's
+//!   deviations, a word scores `s_w = u · v_w`, an n-gram bucket `s_b = u ·
+//!   row_b`, and the mean of a message's word scores is the SVM's score of the
+//!   mean of its vectors. `f = bias + (mean of its words' scores, or 0
+//!   without words) − text_mean + Σ weightₕ·(xₕ − meanₕ)`, where a word
+//!   missing from the table scores the mean of its character n-grams'
+//!   buckets, as fastText builds the vector of a word it never saw. The
+//!   standardization's mean terms stay beside the weights rather than folded
+//!   into the bias, so that the explanation can say what departs from the
+//!   usual; the score is the same.
+//!
+//! Its probability of being spam, either kind: Platt's `p = 1 / (1 + exp(A·f + B))`.
 //!
 //! The file (little-endian), `$XDG_DATA_HOME/sioul/spam/table.bin`:
 //!
 //! | bytes | what |
 //! |---|---|
 //! | 8 | magic `SIOULSPM` |
-//! | 4 × 12 | format version, tokenizer version, features version, embedding dimension, minn, maxn, bucket count B, word count W, header feature count H, metadata length L, two zeros (so that the hashes start on 8 bytes) |
-//! | 4 × 4 | bias, text_mean, Platt A, Platt B (f32) |
+//! | 4 × 12 | format version (2), tokenizer version, features version, embedding dimension, minn, maxn, bucket count B, word count W, header feature count H (0: the classifier's kind; `features::N`: the centroid's), metadata length L, two zeros (so that the hashes start on 8 bytes) |
+//! | 4 × 4 | bias (the classifier's: the end of the line's scalar), text_mean (the classifier's: 0), Platt A, Platt B (f32) |
 //! | 8 × W | the words' hashes, ascending (u64) |
-//! | 4 × W | their scores (f32) |
+//! | 4 × W | their scores (f32): the classifier's, the sum of each word's rows' scalars |
 //! | 4 × B | the buckets' scores (f32) |
-//! | 4 × H, 4 × H | the header features' weights, then their means (f32) |
+//! | 4 × H, 4 × H | the header features' weights, then their means (f32), the centroid's alone |
 //! | L | metadata, JSON (`Meta`) |
 //! | 8 | FNV-1a 64 of every byte before it |
 
@@ -46,8 +62,9 @@ use std::sync::{Arc, Mutex};
 
 /// The file's first bytes.
 pub const MAGIC: [u8; 8] = *b"SIOULSPM";
-/// The file format's version.
-pub const VERSION: u32 = 1;
+/// The file format's version: 2 since the classifier's kind (`Kind`); a
+/// Sioul that reads 1 refuses it, rather than reading its sums as scores.
+pub const VERSION: u32 = 2;
 /// Bytes before the words: the magic, twelve counts, four numbers.
 const HEADER: usize = 8 + 12 * 4 + 4 * 4;
 
@@ -75,6 +92,15 @@ pub struct Meta {
     pub device: String,
 }
 
+/// How a table scores a message (see the module's documentation).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// fastText's classifier: the mean of every input row's scalar, the header facts as words.
+    Rows,
+    /// The language model's centroid, weighed by an SVM with the header features.
+    Centroid,
+}
+
 /// The spam filter, folded (see the module's documentation).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Table {
@@ -94,12 +120,14 @@ pub struct Table {
     pub words: Vec<(u64, f32)>,
     /// Each n-gram bucket's score, `bucket` of them.
     pub buckets: Vec<f32>,
-    /// Each header feature's weight, over its deviation, and its mean (`features::NAMES`' order).
+    /// Each header feature's weight, over its deviation, and its mean
+    /// (`features::NAMES`' order); none in the classifier's table, which
+    /// reads the header facts as words: that is how its kind is told (`kind`).
     pub weights: Vec<f32>,
     pub means: Vec<f32>,
-    /// The SVM's intercept.
+    /// The SVM's intercept; the classifier's: the end of the line's scalar.
     pub bias: f32,
-    /// The score of the mean message's text (`u · μ`).
+    /// The score of the mean message's text (`u · μ`); the classifier's: 0.
     pub text_mean: f32,
     /// Platt's A and B.
     pub platt_a: f32,
@@ -201,12 +229,29 @@ fn sorted(mut words: Vec<(u64, f32)>) -> Vec<(u64, f32)> {
 }
 
 impl Table {
+    /// Its kind: no header weights, the classifier's, which reads the header
+    /// facts as words; else the centroid's.
+    pub fn kind(&self) -> Kind {
+        if self.weights.is_empty() && self.means.is_empty() { Kind::Rows } else { Kind::Centroid }
+    }
+
     /// Sorts the words by their hash, as scoring needs them (`words`).
     pub fn sort(&mut self) {
         self.words = sorted(std::mem::take(&mut self.words));
     }
 
-    /// A word's score: its own, else the mean of its n-grams' buckets; 0 when it has none.
+    /// A word's rows in the classifier's table: the sum of their scalars and
+    /// how many they are. Known: its own row and its n-grams'; else its
+    /// n-grams' alone (none without n-grams: nothing).
+    fn rows_of(&self, word: &str) -> (f64, usize) {
+        let buckets = ngram_buckets(word, self.minn, self.maxn, self.bucket);
+        match self.words.binary_search_by_key(&word_hash(word), |(h, _)| *h) {
+            Ok(at) => (f64::from(self.words[at].1), 1 + buckets.len()),
+            Err(_) => (buckets.iter().map(|b| f64::from(self.buckets.get(*b as usize).copied().unwrap_or(0.0))).sum(), buckets.len()),
+        }
+    }
+
+    /// A word's score in the centroid's table: its own, else the mean of its n-grams' buckets; 0 when it has none.
     pub fn word_score(&self, word: &str) -> f32 {
         if let Ok(at) = self.words.binary_search_by_key(&word_hash(word), |(h, _)| *h) {
             return self.words[at].1;
@@ -222,9 +267,51 @@ impl Table {
     /// A message's score from its words (`tokenize::tokens`) and its header
     /// features (`features::features`), with what made it. The table's words
     /// must be sorted (`sort`): one read from its file is. A header feature
-    /// that is missing (`f32::NAN`) stands at the training's mean, which is
-    /// over the messages that had it: it weighs nothing.
+    /// that is missing (`f32::NAN`) weighs nothing: the classifier reads no
+    /// word for it; the centroid stands it at the training's mean, which is
+    /// over the messages that had it.
     pub fn score(&self, words: &[String], features: &[f32]) -> Score {
+        match self.kind() {
+            Kind::Rows => self.score_rows(words, features),
+            Kind::Centroid => self.score_centroid(words, features),
+        }
+    }
+
+    /// The classifier's score: the mean of the rows' scalars of its words,
+    /// its header facts' words and the end of the line. Each word's share is
+    /// its rows' sum over every row; a header fact's, its word's.
+    fn score_rows(&self, words: &[String], features: &[f32]) -> Score {
+        // Each word once, with how often it comes, its rows' sum and their count.
+        let mut seen: BTreeMap<&str, (usize, f64, usize)> = BTreeMap::new();
+        for word in words {
+            seen.entry(word.as_str()).or_insert_with(|| {
+                let (sum, rows) = self.rows_of(word);
+                (0, sum, rows)
+            }).0 += 1;
+        }
+        let facts: Vec<(usize, f64, usize)> = features::header_words(features).iter().map(|(word, h)| {
+            let (sum, rows) = self.rows_of(word);
+            (*h, sum, rows)
+        }).collect();
+        let rows = 1 + seen.values().map(|(count, _, rows)| count * rows).sum::<usize>() + facts.iter().map(|(_, _, rows)| rows).sum::<usize>();
+        let rows = rows as f64;
+        let sum = f64::from(self.bias) + seen.values().map(|(count, sum, _)| *count as f64 * sum).sum::<f64>() + facts.iter().map(|(_, sum, _)| sum).sum::<f64>();
+        let f = (sum / rows) as f32;
+        let mut shares: Vec<(String, f32)> = seen.iter().map(|(word, (count, sum, _))| (word.to_string(), (*count as f64 * sum / rows) as f32)).collect();
+        let mut signs: Vec<(usize, f32)> = (0..features.len().min(features::N)).map(|h| (h, 0.0)).collect();
+        for (h, sum, _) in &facts {
+            if let Some(sign) = signs.get_mut(*h) {
+                sign.1 += (sum / rows) as f32;
+            }
+        }
+        let by_share = |a: &f32, b: &f32| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal);
+        shares.sort_by(|a, b| by_share(&a.1, &b.1).then_with(|| a.0.cmp(&b.0)));
+        signs.sort_by(|a, b| by_share(&a.1, &b.1).then_with(|| a.0.cmp(&b.0)));
+        Score { f, p: platt(f, self.platt_a, self.platt_b), words: shares, signs }
+    }
+
+    /// The centroid's score (see the module's documentation).
+    fn score_centroid(&self, words: &[String], features: &[f32]) -> Score {
         // Each word once, with how often it comes and its score.
         let mut seen: BTreeMap<&str, (usize, f32)> = BTreeMap::new();
         for word in words {
@@ -294,7 +381,8 @@ impl Table {
         if tokenizer != TOKENIZER {
             return Err(format!("made with tokenizer {tokenizer}, this Sioul has {TOKENIZER}: train again"));
         }
-        if features != features::FEATURES || header as usize != features::N {
+        // No header weights: the classifier's kind; all of them: the centroid's.
+        if features != features::FEATURES || !(header == 0 || header as usize == features::N) {
             return Err(format!("made with header features {features} ({header}), this Sioul has {} ({}): train again", features::FEATURES, features::N));
         }
         if minn > maxn || maxn > 64 {
@@ -498,6 +586,60 @@ mod tests {
         assert_eq!(unknown.signs[0].1, 0.0);
     }
 
+    /// The classifier's table, small enough to score by hand: two words, a
+    /// header fact's word, eight buckets, the end of the line's scalar.
+    fn small_rows() -> Table {
+        let mut table = Table {
+            weights: Vec::new(),
+            means: Vec::new(),
+            words: vec![(word_hash("gratuit"), 6.0), (word_hash("reunion"), -4.0), (word_hash("H:DKIM_SIGNED_BY_SENDER"), -20.0)],
+            bias: 0.5,
+            text_mean: 0.0,
+            ..small()
+        };
+        table.sort();
+        table
+    }
+
+    #[test]
+    fn the_classifier_scored_by_hand() {
+        let table = small_rows();
+        assert_eq!((table.kind(), small().kind()), (Kind::Rows, Kind::Centroid));
+        let rows = |word: &str| ngram_buckets(word, 3, 4, 8);
+        // A word it knows: its sum, over its own row and its n-grams'; one it does not: its n-grams' alone.
+        let offre: f64 = rows("offre").iter().map(|b| f64::from(table.buckets[*b as usize])).sum();
+        let words: Vec<String> = ["gratuit", "gratuit", "reunion", "offre"].iter().map(|w| w.to_string()).collect();
+        let none = [f32::NAN; N];
+        let score = table.score(&words, &none);
+        let count = 1 + 2 * (1 + rows("gratuit").len()) + (1 + rows("reunion").len()) + rows("offre").len();
+        let f = (0.5 + 2.0 * 6.0 - 4.0 + offre) / count as f64;
+        assert!((f64::from(score.f) - f).abs() < 1e-6, "{} {f}", score.f);
+        assert!((score.p - 1.0 / (1.0 + (-2.0 * f as f32).exp())).abs() < 1e-6);
+        // "gratuit" pushes most, twice its sum over every row; nothing known of the headers: no fact weighs.
+        assert_eq!(score.words[0].0, "gratuit");
+        assert!((f64::from(score.words[0].1) - 12.0 / count as f64).abs() < 1e-6);
+        assert!(score.signs.iter().all(|(_, s)| *s == 0.0) && score.signs.len() == N);
+        // A fact that holds: its word read after the text's, its rows counted; its share its feature's.
+        let mut signed = [f32::NAN; N];
+        let by_sender = features::index("dkim_signed_by_sender").unwrap();
+        signed[by_sender] = 1.0;
+        let vouched = table.score(&words, &signed);
+        let fact = 1 + rows("H:DKIM_SIGNED_BY_SENDER").len();
+        let g = (0.5 + 2.0 * 6.0 - 4.0 + offre - 20.0) / (count + fact) as f64;
+        assert!((f64::from(vouched.f) - g).abs() < 1e-6 && vouched.f < score.f, "{} {g}", vouched.f);
+        let last = vouched.signs.last().unwrap();
+        assert_eq!(last.0, by_sender);
+        assert!((f64::from(last.1) - (-20.0 / (count + fact) as f64)).abs() < 1e-6);
+        // The shares add up to the score, the end of the line's aside.
+        let shares: f64 = vouched.words.iter().map(|(_, s)| f64::from(*s)).sum::<f64>() + vouched.signs.iter().map(|(_, s)| f64::from(*s)).sum::<f64>();
+        assert!((f64::from(vouched.f) - (shares + 0.5 / (count + fact) as f64)).abs() < 1e-5);
+        // No word at all and nothing known: the end of the line alone.
+        assert!((table.score(&[], &none).f - 0.5).abs() < 1e-6);
+        // Written and read back: the same, the same kind.
+        let back = Table::from_bytes(&table.to_bytes()).unwrap();
+        assert_eq!((back.kind(), &back), (Kind::Rows, &table));
+    }
+
     #[test]
     fn written_and_read_back() {
         let table = small();
@@ -578,5 +720,12 @@ mod tests {
         assert!(Table::from_bytes(&fewer.to_bytes()).unwrap_err().contains("header features"));
         let broken = Table { buckets: vec![f32::NAN; 8], ..small() };
         assert!(Table::from_bytes(&broken.to_bytes()).is_err());
+        // Format 1 (made before the classifier's kind): refused, its checksum made good again.
+        let mut first = bytes.clone();
+        first[8..12].copy_from_slice(&1u32.to_le_bytes());
+        let body = first.len() - 8;
+        let sum = fnv64(&first[..body]);
+        first[body..].copy_from_slice(&sum.to_le_bytes());
+        assert!(Table::from_bytes(&first).unwrap_err().contains("format 1"));
     }
 }

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! The header features, version 2: what a message's headers and shape say,
-//! as named numbers the SVM weighs beside its words, so that each can be
-//! explained by its name (docs/spam-filter.md, "The header features").
+//! The header features, version 3: what a message's headers and shape say,
+//! as named numbers, read by the classifier as words of their own beside the
+//! message's words (`header_words`), so that each can be explained by its
+//! name (docs/spam-filter.md, "The header features").
 //!
 //! They are read from the raw header block (`RawHeaders`), from your
 //! provider's authentication results (`provider_results`), from the
@@ -30,6 +31,10 @@
 //! rule), and adds what the message carries wherever it is received: a DKIM
 //! signature, one by the sender's own domain, a bounce address at it.
 //!
+//! Version 3 (the same day): the same facts, read by fastText's classifier
+//! as words (`header_words`: a fact that holds, its name; a number, its bin)
+//! rather than weighed by an SVM beside the mean of the words' vectors.
+//!
 //! The same function runs on the desktop when training and on every device
 //! when sorting: a change of a feature, of its order or of its scale raises
 //! `FEATURES`, and a table made with others is refused.
@@ -40,7 +45,7 @@ use crate::headers::RawHeaders;
 use crate::trust::{self, AuthResults, Outcome, Trust};
 
 /// The header features' version, stamped in every table.
-pub const FEATURES: u32 = 2;
+pub const FEATURES: u32 = 3;
 
 /// How many header features there are.
 pub const N: usize = 35;
@@ -91,6 +96,60 @@ pub fn provider_results(headers: &RawHeaders, trusted_ids: &[String]) -> Option<
 /// A feature's place, by its name.
 pub fn index(name: &str) -> Option<usize> {
     NAMES.iter().position(|n| *n == name)
+}
+
+/// The header facts as words, as the classifier reads them after the
+/// message's own (`table::Kind::Rows`), each with its feature's place in
+/// `NAMES`: a fact that holds, `H:` and its name in capitals; a number in a
+/// few bins (the Date an hour or more ahead; an hour or a day or more
+/// behind; no link, 1 to 3, 4 to 10, 11 or more; links elsewhere, half of
+/// them or more); a fact that does not hold, or is missing, none. No word of
+/// a message can be one of them: the tokenizer lowercases every word and
+/// splits on punctuation, and its own placeholders read `_URL_`; so no
+/// sender writes a header fact into a text.
+pub fn header_words(x: &[f32]) -> Vec<(String, usize)> {
+    let mut out = Vec::new();
+    for (h, (name, &value)) in NAMES.iter().zip(x).enumerate() {
+        if value.is_nan() {
+            continue;
+        }
+        let word = match *name {
+            "date_ahead_hours" => (value >= 1.0).then_some("DATE_AHEAD"),
+            "date_behind_hours" if value >= 24.0 => Some("DATE_BEHIND_DAY"),
+            "date_behind_hours" => (value >= 1.0).then_some("DATE_BEHIND"),
+            "links" => Some(match value as u32 {
+                0 => "LINKS_0",
+                1..=3 => "LINKS_1_3",
+                4..=10 => "LINKS_4_10",
+                _ => "LINKS_11",
+            }),
+            _ => (value >= 0.5).then_some(""),
+        };
+        match word {
+            Some("") => out.push((format!("H:{}", name.to_ascii_uppercase()), h)),
+            Some(word) => out.push((format!("H:{word}"), h)),
+            None => {}
+        }
+    }
+    out
+}
+
+/// Every word `header_words` can give, each with its feature's place: what
+/// the classifier may have learned of the header facts.
+pub fn all_header_words() -> Vec<(String, usize)> {
+    NAMES
+        .iter()
+        .enumerate()
+        .flat_map(|(h, name)| {
+            let words: Vec<String> = match *name {
+                "date_ahead_hours" => vec!["DATE_AHEAD".into()],
+                "date_behind_hours" => vec!["DATE_BEHIND".into(), "DATE_BEHIND_DAY".into()],
+                "links" => ["LINKS_0", "LINKS_1_3", "LINKS_4_10", "LINKS_11"].map(String::from).to_vec(),
+                name => vec![name.to_ascii_uppercase()],
+            };
+            words.into_iter().map(move |w| (format!("H:{w}"), h))
+        })
+        .collect()
 }
 
 /// The header features of a message: its card (headers, parts, text),
@@ -362,6 +421,36 @@ mod tests {
         assert_eq!((value(&plain, "spf_pass"), value(&plain, "dkim_pass"), value(&plain, "aligned")), (1.0, 1.0, 1.0));
         // What the lanes read differs: Sioul's own checks come first there.
         assert_eq!(sioul_first.map(|r| r.authserv_id).as_deref(), Some("sioul-0123456789ab.invalid"));
+    }
+
+    /// The header facts as words: those that hold, numbers in bins, nothing for a missing one.
+    #[test]
+    fn header_facts_as_words() {
+        let mut x = [0.0f32; N];
+        x[index("dkim_signed").unwrap()] = 1.0;
+        x[index("aligned").unwrap()] = f32::NAN;
+        x[index("links").unwrap()] = 5.0;
+        x[index("links_elsewhere").unwrap()] = 0.6;
+        x[index("date_behind_hours").unwrap()] = 30.0;
+        let words: Vec<String> = header_words(&x).into_iter().map(|(w, _)| w).collect();
+        assert_eq!(words, ["H:DKIM_SIGNED", "H:DATE_BEHIND_DAY", "H:LINKS_4_10", "H:LINKS_ELSEWHERE"]);
+        x[index("date_behind_hours").unwrap()] = 2.0;
+        x[index("date_ahead_hours").unwrap()] = 0.5;
+        x[index("links").unwrap()] = 0.0;
+        let words = header_words(&x);
+        assert!(words.iter().any(|(w, h)| w == "H:DATE_BEHIND" && NAMES[*h] == "date_behind_hours"));
+        assert!(words.iter().any(|(w, h)| w == "H:LINKS_0" && NAMES[*h] == "links"));
+        assert!(!words.iter().any(|(w, _)| w == "H:DATE_AHEAD"), "half an hour ahead is no fact");
+        // Nothing known: no word at all, not even a bin.
+        assert!(header_words(&[f32::NAN; N]).is_empty());
+        // Every word it gives is one of all those it can give; each fact once.
+        let all = all_header_words();
+        let full = header_words(&[1.0; N]);
+        assert!(full.iter().chain(&words).all(|w| all.contains(w)), "{full:?}");
+        assert_eq!(full.len(), N, "every fact once, a number in one bin: {full:?}");
+        // No word of a text can be one: the tokenizer's words are lowercase, split on punctuation.
+        let text = super::super::tokenize::tokens("H:DKIM_SIGNED", "h:dkim_signed H:LINKS_0 __dkim_signed");
+        assert!(text.words.iter().all(|w| !w.starts_with("H:")), "{:?}", text.words);
     }
 
     #[test]

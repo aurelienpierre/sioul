@@ -48,6 +48,7 @@ pub mod external;
 pub mod labels;
 pub mod platt;
 pub(crate) mod spamcore;
+pub(crate) mod supervised;
 pub mod svm;
 /// Invented mail on reserved domains, for the tests of this crate and of the command line.
 #[doc(hidden)]

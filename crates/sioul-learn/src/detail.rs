@@ -138,6 +138,8 @@ pub struct OutsideDetail {
     pub confusion: Confusion,
     /// Its held-out part at each threshold of `GRID`.
     pub grid: Vec<AtThreshold>,
+    /// Each held-out message's probability, and whether it is spam.
+    pub scores: Vec<(f64, bool)>,
     pub errors: Errors,
 }
 
@@ -152,6 +154,9 @@ pub struct Detail {
     pub grid: Vec<AtThreshold>,
     /// The same, unsettled ham left out (`Tested::unsettled`).
     pub grid_settled: Vec<AtThreshold>,
+    /// Each test message's probability, whether it is spam, whether its
+    /// label is unsettled: numbers only, for a curve or another threshold.
+    pub scores: Vec<(f64, bool, bool)>,
     pub errors: Errors,
     /// Each outside source's held-out part.
     pub outside: BTreeMap<String, OutsideDetail>,
@@ -193,6 +198,7 @@ pub fn of(dirs: &Dirs, tested: &[Tested], threshold_spam: f64, threshold_unsure:
                 detail.by_account.entry(place.account.clone()).or_default().add(t.label, class(t.p));
                 detail.by_folder.entry(place.account.clone()).or_default().entry(place.folder.clone()).or_default().add(t.label, class(t.p));
                 own.push((t.p, t.label == Label::Spam));
+                detail.scores.push((t.p, t.label == Label::Spam, t.unsettled));
                 if !t.unsettled {
                     settled.push((t.p, t.label == Label::Spam));
                 }
@@ -206,7 +212,9 @@ pub fn of(dirs: &Dirs, tested: &[Tested], threshold_spam: f64, threshold_unsure:
     detail.grid = eval::grid(&own, &GRID);
     detail.grid_settled = eval::grid(&settled, &GRID);
     for (source, scored) in outside {
-        detail.outside.entry(source.to_string()).or_default().grid = eval::grid(&scored, &GRID);
+        let part = detail.outside.entry(source.to_string()).or_default();
+        part.grid = eval::grid(&scored, &GRID);
+        part.scores = scored;
     }
     let errors = errors.min(MOST_ERRORS);
     if errors == 0 {

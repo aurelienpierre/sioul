@@ -58,6 +58,11 @@ pub(crate) enum SpamCommand {
         /// the counts by account and folder and the numbers at other thresholds.
         #[arg(long, value_parser = clap::value_parser!(u64).range(0..=500))]
         errors: Option<u64>,
+        /// Each test message's probability of spam, its label and whether
+        /// that label is settled, in the JSON: numbers only, for a curve or
+        /// another threshold.
+        #[arg(long)]
+        scores: bool,
         #[command(flatten)]
         settings: SettingsArgs,
         /// What it did, as JSON.
@@ -168,13 +173,18 @@ pub(crate) enum SpamCommand {
 /// defaults; recorded in what the training says (`trained.toml` when it replaces the table).
 #[derive(clap::Args, Debug, Clone, Default)]
 pub(crate) struct SettingsArgs {
+    /// The model: fastText's classifier ("supervised", the filter's), or the
+    /// language model's centroid weighed by an SVM ("centroid", the filter's
+    /// before features version 3).
+    #[arg(long, value_parser = ["supervised", "centroid"])]
+    model: Option<String>,
     /// fastText's threads (the computer's cores).
     #[arg(long)]
     threads: Option<u32>,
     /// The word vectors' dimension (100).
     #[arg(long)]
     dim: Option<u32>,
-    /// fastText's passes over the corpus (5).
+    /// fastText's passes over the corpus (the classifier 25, the centroid's language model 5).
     #[arg(long)]
     epochs: Option<u32>,
     /// The character n-grams' hash buckets (200000).
@@ -186,17 +196,40 @@ pub(crate) struct SettingsArgs {
     /// The longest character n-grams (6; 0: none).
     #[arg(long)]
     maxn: Option<u32>,
-    /// The SVM's cost, fixed (else chosen among 0.01, 0.1, 1 and 10).
+    /// Words seen fewer times are left out of the vocabulary, and of the table (5).
+    #[arg(long)]
+    min_count: Option<u32>,
+    /// The classifier's learning rate (0.1).
+    #[arg(long)]
+    lr: Option<f64>,
+    /// The classifier's word pairs: words read together, up to this many (1:
+    /// each alone). Above 1, a trial: the table reads no word pairs.
+    #[arg(long, hide = true)]
+    word_ngrams: Option<u32>,
+    /// The centroid's SVM: its cost, fixed (else chosen among 0.01, 0.1, 1 and 10).
     #[arg(long)]
     c: Option<f64>,
-    /// How much more calling ham spam costs the SVM than missing spam (5).
+    /// The centroid's SVM: how much more calling ham spam costs than missing spam (5).
     #[arg(long)]
     ham_weight: Option<f64>,
 }
 
 impl SettingsArgs {
     fn settings(&self) -> report::Settings {
-        report::Settings { threads: self.threads, dim: self.dim, epochs: self.epochs, bucket: self.bucket, minn: self.minn, maxn: self.maxn, c: self.c, ham_weight: self.ham_weight }
+        report::Settings {
+            threads: self.threads,
+            dim: self.dim,
+            epochs: self.epochs,
+            bucket: self.bucket,
+            minn: self.minn,
+            maxn: self.maxn,
+            c: self.c,
+            ham_weight: self.ham_weight,
+            model: self.model.clone(),
+            word_ngrams: self.word_ngrams,
+            lr: self.lr,
+            min_count: self.min_count,
+        }
     }
 }
 
@@ -224,8 +257,8 @@ pub(crate) fn run(s: &Session, command: SpamCommand) -> Result<(), String> {
     let dirs = Dirs::standard();
     match command {
         SpamCommand::Fetch { account, json, job } => long(s, json, job.as_deref(), |progress, cancel| report::fetch(s, &dirs, account.as_deref(), progress, cancel)),
-        SpamCommand::Train { no_fetch, no_replace, errors, settings, json, job } => {
-            let ask = report::TrainAsk { fetch: !no_fetch, replace: !no_replace, errors: errors.map(|n| n as usize), settings: settings.settings() };
+        SpamCommand::Train { no_fetch, no_replace, errors, scores, settings, json, job } => {
+            let ask = report::TrainAsk { fetch: !no_fetch, replace: !no_replace, errors: errors.map(|n| n as usize), scores, settings: settings.settings() };
             long(s, json, job.as_deref(), |progress, cancel| report::train(s, &dirs, &ask, progress, cancel))
         }
         SpamCommand::Eval { errors, json } => long(s, json, None, |progress, cancel| report::eval(s, &dirs, errors as usize, progress, cancel)),
