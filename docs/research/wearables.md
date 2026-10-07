@@ -128,7 +128,7 @@ From Garmin's public FIT profile 21.217 (https://github.com/garmin/fit-javascrip
 - **Do not make offers sticky**: "Not now" is always one click, nothing follows up, and declining is never logged as failure.
 
 ### 7.3 The rules, and where they stand
-Shared: each rule is an **offer**, made at a **breakpoint** (a task done or switched, a focus session ended), falling back on Sioul's own signals when the watch's data is missing or older than an hour. Thresholds are starting points.
+The column "In Sioul" says where Sioul stood on 4 October 2026; [health.md](../health.md), "Your watch", says how it is now. Shared: each rule is an **offer**, made at a **breakpoint** (a task done or switched, a focus session ended), falling back on Sioul's own signals when the watch's data is missing or older than an hour. Thresholds are starting points.
 
 | Rule | Trigger | Offer | Evidence | How sure | In Sioul |
 |---|---|---|---|---|---|

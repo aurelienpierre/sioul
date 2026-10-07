@@ -1,8 +1,8 @@
 # AI providers and agents
 
-Sioul works with remote AI models, **Claude (Anthropic) and ChatGPT (OpenAI) at least**, through their APIs and your own keys, kept in the system keyring. Local models can be added later; they are heavier and less accurate today. The AI explains, sorts and drafts. **It never sends and never deletes.**
+Sioul works with AI in two ways today: the agents you connect yourself, through `sioul mcp` and the command line (below), and one reading of its own, the shield's, which asks Anthropic's API, with your key, for the tone of the mail that reaches a shielded address ([porch.md](porch.md)). The companion this page describes next, with remote models (Claude, from Anthropic, and ChatGPT, from OpenAI) through your own keys kept in the system keyring, is not built yet; local models may come later, heavier and less accurate today. Whatever the AI does, **it never sends and never deletes.**
 
-## What the AI does
+## What the companion is to do (not built)
 - **"Open with the companion"**: explains a letter in plain language (what it is, what it asks, by when, what happens if nothing is done), line by line if needed.
 - **Proposes**: a triage, a case, a deadline found in the text, a task and its first small steps.
 - **Drafts replies and letters as Markdown files in the Outbox**, with recipients and attachments named, waiting for your review.
@@ -24,9 +24,10 @@ Sioul works with remote AI models, **Claude (Anthropic) and ChatGPT (OpenAI) at 
 - **Least data**: a request carries the message and the case's summary, not the store.
 - **Masking**: IBANs, card numbers, one-time codes and identifiers are masked unless you allow them for that request.
 - **A log** shows each request: for `sioul mcp`, what was asked and the addresses of what was handed over, never their words (`$XDG_STATE_HOME/sioul/mcp/`, yours alone); what the agent's provider then does with it is between you and that provider.
-- **Everything an AI proposed is marked as such**, until you accept it.
+- **Everything an AI proposed is marked as such**, until you accept it: planned with the companion. What an agent adds through `sioul mcp` (tasks, events, notes, ties, drafts) carries no such mark yet; its drafts wait in Drafts, and nothing is sent.
 
-## Configuration
+## Configuration, planned
+Not read yet: the companion's settings would look like this. Today the only key Sioul uses is the shield's, for Anthropic's API, typed in the settings and kept in the keyring.
 ```toml
 [ai]
 default = "claude"        # or "chatgpt"
