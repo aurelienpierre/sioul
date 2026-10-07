@@ -15,12 +15,75 @@
 //!
 //! Numbers only, never a message: the window shows what `sioul spam status`
 //! prints, in your language.
+//!
+//! One computer trains, by hand: two computers training tables of their own
+//! is not supported (the later one's table would win everywhere; the other,
+//! kept by the sharing as a conflict copy beside it, is read by nothing).
+//!
+//! After each fetch, on every device (the window's watchers, a phone's
+//! background step), what the filter judges as you chose "Move to spam" for
+//! goes into the account's Junk folder on the server (`after_fetch`).
 
 use crate::backend::{QtThread, Shared, say, tr};
 use serde::Serialize;
+use sioul_core::config::Account;
+use sioul_core::porch::{self, Lane, Reason};
 use sioul_core::spam::table::{self, Table};
-use std::path::Path;
+use sioul_core::spam::{Action, Class};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+
+/// Mail just fetched into an account's inbox (`new`; nothing on its first
+/// fetch, which brings two weeks of it, nor what was there before): what
+/// your own filter judges, of a class you chose "Move to spam" for, goes into
+/// the account's Junk folder on the server, as the Junk button does but
+/// without a keyword nor a label; each move goes into this device's log of
+/// what the filter moved (the review queue lists it there, "Not spam" brings
+/// it back). Judged as the Porch judges: protections first. It reaches the
+/// server: never on the window's thread, nor inside a watcher's own. How many moved.
+pub(crate) fn after_fetch(account: &Account, new: &[PathBuf], first: bool) -> usize {
+    if first || new.is_empty() {
+        return 0;
+    }
+    let config = crate::backend::load_config();
+    let filter = sioul_core::spam::Filter::of(&config);
+    if !Class::ALL.iter().any(|c| filter.actions.of(*c) == Action::Move) {
+        return 0;
+    }
+    let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
+    let store = config.case_store_path().and_then(|root| sioul_core::cases::CaseStore::load(&root).ok()).map(|s| s.with_ties(&ties));
+    let known = porch::KnownSenders::load(&config.known_senders_path());
+    let senders = porch::Senders::load(&config);
+    let judged = porch::judge(new, &config.mail_sources(), store.as_ref(), &known, &senders, jiff::Timestamp::now().as_second());
+    let to_move = moves(&judged, &filter);
+    if to_move.is_empty() {
+        return 0;
+    }
+    let Ok(password) = sioul_sync::secret::password(account) else { return 0 };
+    to_move
+        .into_iter()
+        .filter(|(file, class)| match sioul_sync::mailbox::act(account, &password, file, &sioul_sync::mailbox::Action::Filtered(*class)) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("sioul: spam: {}: {e:?}", account.id);
+                false
+            }
+        })
+        .count()
+}
+
+/// Among messages judged, those to move into a Junk folder: in the review
+/// queue by a verdict whose class you chose "Move to spam" for, and not moved yet.
+fn moves(judged: &[porch::Triaged], filter: &sioul_core::spam::Filter) -> Vec<(PathBuf, Class)> {
+    judged
+        .iter()
+        .filter(|t| t.lane == Lane::Review && !t.reasons.contains(&Reason::MovedToJunk))
+        .filter_map(|t| {
+            let (class, _) = t.reasons.iter().find_map(Reason::learned)?;
+            (filter.actions.of(class) == Action::Move).then_some((t.card.path.clone()?, class))
+        })
+        .collect()
+}
 
 /// What the settings show of the filter, every line said already (`SpamFilter.qml`).
 #[derive(Debug, Clone, Default, Serialize)]
@@ -47,6 +110,8 @@ pub(crate) struct Status {
     last: Vec<String>,
     /// The corpus: what it holds, the last download, the room left, addresses it could not read.
     corpus: Vec<String>,
+    /// Outside training material: what each source holds (`sioul spam import`).
+    outside: Vec<String>,
 }
 
 /// The filter's state for the settings, as JSON.
@@ -238,6 +303,15 @@ mod training {
             status.last = last_lines(&summary);
         }
         status.corpus = corpus_lines(&dirs);
+        status.outside = sioul_learn::external::sources(&dirs)
+            .iter()
+            .map(|source| say("spam-app-outside", &[("source", source.name.clone()), ("ham", grouped(source.counts.ham)), ("spam", grouped(source.counts.spam)), ("first", day(source.counts.first)), ("last", day(source.counts.last))]))
+            .collect();
+    }
+
+    /// A day, in your language: "20 June 2023".
+    fn day(seconds: i64) -> String {
+        jiff::Timestamp::from_second(seconds).ok().map(|t| tr().day(t.to_zoned(jiff::tz::TimeZone::system()).date())).unwrap_or_default()
     }
 
     pub(super) fn start(qt: QtThread, shared: Arc<Shared>) -> String {
@@ -371,6 +445,20 @@ mod training {
             ));
         }
         lines.push(tr().text("spam-intervals", None));
+        // Outside material: what it gave, and its baseline on its held-out newest fifth.
+        for (source, outside) in &summary.outside {
+            lines.push(say(
+                "spam-app-outside-learned",
+                &[("source", source.clone()), ("trainham", grouped(outside.train_ham)), ("trainspam", grouped(outside.train_spam)), ("heldham", grouped(outside.held_ham)), ("heldspam", grouped(outside.held_spam))],
+            ));
+            if let Some(baseline) = &outside.baseline {
+                let at = &baseline.at_spam;
+                lines.push(say(
+                    "spam-app-outside-baseline",
+                    &[("threshold", percent(at.threshold, 0)), ("ham", percent(at.ham_called_spam.fraction(), 1)), ("spam", percent(at.spam_caught.fraction(), 1)), ("auc", baseline.auc.map_or_else(String::new, |a| format!("{a:.3}").replace('.', &tr().text("decimal-separator", None))))],
+                ));
+            }
+        }
         // Measured at other thresholds than yours now: said, the numbers would differ.
         let (spam, unsure) = load_config().spam.thresholds();
         let moved = |then: f64, now: f32| (then - f64::from(now)).abs() > 0.005;
@@ -439,5 +527,34 @@ mod training {
             assert_eq!(fetch.note(&place("home · INBOX", 120, 300)), (120, 400));
             assert_eq!(fetch.note(&place("home · Junk", 300, 300)), (420, 420), "never fewer than what came");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sioul_core::card::Card;
+    use sioul_core::porch::Triaged;
+    use sioul_core::spam::{Actions, Filter};
+
+    /// After a fetch, what goes into the Junk folder: the review queue's,
+    /// by a verdict whose class you chose "Move to spam" for, not moved yet.
+    #[test]
+    fn what_the_filter_moves_after_a_fetch() {
+        let triaged = |n: u32, lane: Lane, reasons: Vec<Reason>| {
+            let mut card = Card::from_bytes(b"From: Prize <win@lottery.test>\r\nSubject: You won\r\n\r\nClaim it.\r\n").unwrap();
+            card.path = Some(PathBuf::from(format!("/mail/home/new/1759400000.U1-{n}.sioul")));
+            Triaged { card, lane, trust: sioul_core::trust::Trust::Unverified, code: None, reasons, priority: Default::default(), checks: None, assessment: None }
+        };
+        let filter = |spam: Action, unsure: Action| Filter { actions: Actions { spam, unsure, ham: Action::Nothing }, threshold_spam: 0.95, threshold_unsure: 0.5, table: PathBuf::new() };
+        let judged = vec![
+            triaged(1, Lane::Review, vec![Reason::LearnedSpam { p: 0.99 }]),
+            triaged(2, Lane::Review, vec![Reason::Unsure { p: 0.6 }]),
+            triaged(3, Lane::Review, vec![Reason::LearnedSpam { p: 0.99 }, Reason::MovedToJunk]),
+            triaged(4, Lane::Screener, vec![Reason::FirstMessage]),
+        ];
+        assert_eq!(moves(&judged, &filter(Action::Move, Action::Flag)), vec![(PathBuf::from("/mail/home/new/1759400000.U1-1.sioul"), Class::Spam)]);
+        assert_eq!(moves(&judged, &filter(Action::Move, Action::Move)).len(), 2, "the doubt too, never twice");
+        assert!(moves(&judged, &filter(Action::Flag, Action::Flag)).is_empty(), "flagged only: nothing moves");
     }
 }

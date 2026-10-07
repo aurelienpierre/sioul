@@ -14,9 +14,10 @@
 //! some of it may come, one notification says the Porch opens.
 //!
 //! Never told: what is set aside (forged, spam, a borrowed name, blocked),
-//! hostile mail, codes (they have their own notification), what you send
-//! yourself, the less important accounts, newsletters unless asked, and mail
-//! read elsewhere before it came here. Each message once, by its account and
+//! what your own spam filter flagged or moved (the review queue: it waits
+//! for your word, on every device), hostile mail, codes (they have their own
+//! notification), what you send yourself, the less important accounts,
+//! newsletters unless asked, and mail read elsewhere before it came here. Each message once, by its account and
 //! Message-ID, told or waiting (`Ledger`), on this device.
 
 use crate::i18n::Translator;
@@ -81,13 +82,14 @@ fn read_already(t: &Triaged) -> bool {
 }
 
 /// Whether a message is never told, whatever the time: set aside (forged,
-/// spam, a borrowed name, blocked), hostile, a code (it has its own
-/// notification), from yourself, in the less important accounts' lane, a
+/// spam, a borrowed name, blocked), in the review queue (your own filter
+/// flagged it, or moved it into a Junk folder), hostile, a code (it has its
+/// own notification), from yourself, in the less important accounts' lane, a
 /// newsletter in the Filed lane unless `newsletters` (an automatic sender
 /// there, a bill from no-reply, is told), or read already.
 pub fn never(t: &Triaged, newsletters: bool) -> bool {
     match &t.lane {
-        Lane::SetAside | Lane::Hostile | Lane::RightNow | Lane::Low => return true,
+        Lane::SetAside | Lane::Review | Lane::Hostile | Lane::RightNow | Lane::Low => return true,
         Lane::Filed if !newsletters && t.reasons.contains(&Reason::Newsletter) => return true,
         _ => {}
     }

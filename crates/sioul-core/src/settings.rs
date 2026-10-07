@@ -63,6 +63,10 @@ pub enum Kind {
     Link,
     /// Boxes in a grid: `rows` down, `choices` across; `value` lists those ticked as "row:column".
     Matrix,
+    /// Round buttons in a grid: `rows` down, `choices` across, one per row;
+    /// `value` lists each row's as "row:column"; saved a row at a time
+    /// (`<key>.<row>`): what Sioul's own spam filter does with each verdict.
+    Radios,
     /// Sioul's own spam filter, the window's own block (`SpamFilter.qml`): on
     /// a computer, "Train now" and what the last training found; on a phone,
     /// where its table comes from. Nothing in `value`.
@@ -273,10 +277,14 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             Builder::range(s, 1.0, 240.0, 1.0, "min");
             // Each address's own: in Accounts, on its card.
             b.note(tr.text("set-accounts-elsewhere", None), Vec::new());
-            // Sioul's own spam filter: what it does with its verdicts, how sure it must be.
+            // Sioul's own spam filter: what it does with each verdict (the
+            // matrix), how sure it must be.
             b.group = tr.text("set-spam-group", None);
-            let s = b.push("spam.mode", "spam-mode", Kind::Choice, SettingValue::Text(config.spam.mode().as_str().into()));
-            s.choices = crate::spam::Mode::ALL.iter().map(|m| Choice { value: SettingValue::Text(m.as_str().into()), label: tr.text(&format!("set-spam-mode-{}", m.as_str()), None) }).collect();
+            let actions = config.spam.actions();
+            let cells = crate::spam::Class::ALL.iter().map(|c| format!("{}:{}", c.as_str(), actions.of(*c).as_str())).collect();
+            let s = b.push("spam.actions", "spam-actions", Kind::Radios, SettingValue::Texts(cells));
+            s.rows = crate::spam::Class::ALL.iter().map(|c| Choice { value: SettingValue::Text(c.as_str().into()), label: tr.text(&format!("set-spam-class-{}", c.as_str()), None) }).collect();
+            s.choices = crate::spam::Action::ALL.iter().map(|a| Choice { value: SettingValue::Text(a.as_str().into()), label: tr.text(&format!("set-spam-action-{}", a.as_str()), None) }).collect();
             let (spam, unsure) = config.spam.thresholds();
             let hundredths = |t: f32| (f64::from(t) * 100.0).round() / 100.0;
             // Shown as percentages ("%"); each stops a point short of the other: unsure stays below spam.
@@ -736,11 +744,23 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
         }
         // A row of the notification matrix, its words: read, checked, written whole.
         _ if key.starts_with("notify.") => crate::notify::apply(config_path, config, key, value),
-        // Sioul's own spam filter: a mode it knows; thresholds between 0 and 1, the doubt below the spam.
-        "spam.mode" => match value {
-            SettingValue::Text(mode) if crate::spam::Mode::read(mode).is_some() => set_value(config_path, key, value),
-            _ => Err(format!("{key}: off, say or act")),
-        },
+        // Sioul's own spam filter: one row of the matrix, an action it knows;
+        // the three written (an older `mode` read no more, taken out), so that
+        // each row keeps what it meant. Thresholds between 0 and 1, the doubt below the spam.
+        _ if key.starts_with("spam.actions.") => {
+            use crate::spam::{Action, Class};
+            let class = Class::read(&key["spam.actions.".len()..]).ok_or_else(|| format!("{key}: spam, unsure or ham"))?;
+            let action = match value {
+                SettingValue::Text(action) => Action::read(action),
+                _ => None,
+            }
+            .ok_or_else(|| format!("{key}: move, flag or nothing"))?;
+            let actions = config.spam.actions().with(class, action);
+            for class in Class::ALL {
+                set_value(config_path, &format!("spam.action_{}", class.as_str()), &SettingValue::Text(actions.of(class).as_str().into()))?;
+            }
+            set_value(config_path, "spam.mode", &SettingValue::Text(String::new()))
+        }
         "spam.threshold_spam" | "spam.threshold_unsure" => {
             let wanted = match value {
                 SettingValue::Float(f) => *f,
@@ -778,7 +798,7 @@ mod tests {
         let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("notes"), vec!["notes_folder"]);
         // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
-        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "spam.mode", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "reading.family", "reading.size", "reading.spacing"]);
+        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "spam.actions", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "reading.family", "reading.size", "reading.spacing"]);
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);
@@ -788,8 +808,8 @@ mod tests {
         // The Porch: its letters and its own sorting; every lane said once, none with another page's settings.
         let porch = for_view("porch", &config, &tr, &[], None);
         let notes = porch.iter().filter(|s| s.kind == Kind::Note).count();
-        // Where the hours went, the order, then public, people, screener, filed, less important, set aside, hostile.
-        assert_eq!(notes, 1 + 1 + 7, "{porch:?}");
+        // Where the hours went, the order, then public, people, screener, filed, less important, the review queue, set aside, hostile.
+        assert_eq!(notes, 1 + 1 + 8, "{porch:?}");
         assert_eq!(keys("porch"), vec!["letters.inbox", "reading.family", "reading.size", "reading.spacing", "known", "filed_words"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
         // Sioul as a whole: language and looks, your folder, who may write, hours, reminders, invoices.
@@ -855,11 +875,20 @@ mod tests {
         // The spam filter's thresholds: the doubt stays below the spam, each between 0 and 1.
         assert!(apply(&path, &config, "spam.threshold_unsure", &SettingValue::Float(0.97)).is_err());
         assert!(apply(&path, &config, "spam.threshold_spam", &SettingValue::Float(1.5)).is_err());
-        assert!(apply(&path, &config, "spam.mode", &SettingValue::Text("acts".into())).is_err());
+        assert!(apply(&path, &config, "spam.actions.spam", &SettingValue::Text("delete".into())).is_err());
+        assert!(apply(&path, &config, "spam.actions.maybe", &SettingValue::Text("move".into())).is_err());
         apply(&path, &config, "spam.threshold_spam", &SettingValue::Float(0.9)).unwrap();
-        apply(&path, &config, "spam.mode", &SettingValue::Text("act".into())).unwrap();
+        // An older Sioul's mode, "act": spam moved, doubts flagged; a row changed keeps the others as they read.
+        set_value(&path, "spam.mode", &SettingValue::Text("act".into())).unwrap();
         let config = Config::load(&path).unwrap();
-        assert_eq!((config.spam.mode(), config.spam.thresholds()), (crate::spam::Mode::Act, (0.9, 0.5)));
+        use crate::spam::{Action, Actions};
+        assert_eq!(config.spam.actions(), Actions { spam: Action::Move, unsure: Action::Flag, ham: Action::Nothing });
+        apply(&path, &config, "spam.actions.ham", &SettingValue::Text("flag".into())).unwrap();
+        let config = Config::load(&path).unwrap();
+        assert_eq!((config.spam.actions(), config.spam.thresholds(), config.spam.mode.as_deref()), (Actions { spam: Action::Move, unsure: Action::Flag, ham: Action::Flag }, (0.9, 0.5), None));
+        let matrix = for_view("mail", &config, &Translator::new("en"), &[], None).into_iter().find(|s| s.key == "spam.actions").unwrap();
+        assert_eq!((matrix.kind, matrix.rows.len(), matrix.choices.len()), (Kind::Radios, 3, 3));
+        assert_eq!(matrix.value, SettingValue::Texts(vec!["spam:move".into(), "unsure:flag".into(), "ham:flag".into()]));
         assert!(apply(&path, &config, "spam.threshold_unsure", &SettingValue::Float(0.9)).is_err());
         // Shown as percentages, each slider stopping a point short of the other.
         let rows = for_view("mail", &config, &Translator::new("en"), &[], None);

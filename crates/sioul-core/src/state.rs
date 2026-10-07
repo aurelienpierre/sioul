@@ -54,10 +54,12 @@ impl PorchState {
         }
     }
 
-    /// The newest message of each account among those shown.
+    /// The newest message of each account among those shown; never one of
+    /// the review queue's, which waits for your word whatever you close (a
+    /// message your filter moved is in another folder, numbered apart).
     pub fn newest_shown(shown: &[Triaged]) -> BTreeMap<String, ImapOrigin> {
         let mut newest: BTreeMap<String, ImapOrigin> = BTreeMap::new();
-        for t in shown {
+        for t in shown.iter().filter(|t| t.lane != crate::porch::Lane::Review) {
             let (Some(account), Some(origin)) = (&t.card.account, t.card.origin) else { continue };
             let mark = newest.entry(account.clone()).or_insert(origin);
             *mark = (*mark).max(origin);

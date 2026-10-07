@@ -146,7 +146,7 @@ pub fn forget_folder(account: &Account, name: &str) -> Result<(), SyncError> {
 }
 
 fn folders_path(account: &str) -> PathBuf {
-    state_dir().join("sync").join(format!("{account}.folders.toml"))
+    folders::saved_path(account)
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
@@ -168,8 +168,8 @@ pub(crate) fn save(account: &str, list: &[Folder]) -> Result<(), SyncError> {
 
 /// The account's folders as last listed: the inbox alone before the first sync.
 pub fn folders(account: &str) -> Vec<Folder> {
-    let saved: Saved = std::fs::read_to_string(folders_path(account)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
-    if saved.folders.is_empty() { vec![folders::folder("INBOX", None, None)] } else { saved.folders }
+    let saved = folders::saved(account);
+    if saved.is_empty() { vec![folders::folder("INBOX", None, None)] } else { saved }
 }
 
 /// The folder a stored message belongs to, from where its file is.
@@ -263,14 +263,22 @@ pub enum Action {
     Archive,
     /// Out of the junk folder, back into the inbox, marked `$NotJunk`.
     NotJunk,
-    /// Not spam, said of mail set aside as spam: marked `$NotJunk` (and no
-    /// longer `$Junk`), it stays where it is, and the Porch puts it back in its lane.
+    /// Not spam, said of mail set aside as spam or flagged by your own
+    /// filter: marked `$NotJunk` (and no longer `$Junk`), it stays where it
+    /// is, and the Porch puts it back in its lane.
     NotSpam,
+    /// Into the account's Junk folder by your own spam filter (the matrix's
+    /// "Move to spam", for a message of this class): no keyword set, no label
+    /// written (the filter's verdicts never are labels); the move goes into
+    /// this device's log of what the filter moved (`spam::labels::Moved`),
+    /// which the review queue and the training read.
+    Filtered(sioul_core::spam::Class),
 }
 
 /// Does `action` to the message stored at `file`, on the server, then here.
-/// What it says of the message, junk or not, goes into the spam filter's
-/// label log (`spam::labels`) once the server has taken it.
+/// What it says of the message, junk or not, goes into this device's label
+/// log (`spam::labels`) once the server has taken it; what your own filter
+/// moved, into this device's log of its moves.
 pub fn act(account: &Account, password: &str, file: &Path, action: &Action) -> Result<(), SyncError> {
     let server = Server::of(account)?;
     let origin = maildir::origin_of(file).ok_or_else(|| SyncError::Server("not a message fetched by Sioul".into()))?;
@@ -278,8 +286,16 @@ pub fn act(account: &Account, password: &str, file: &Path, action: &Action) -> R
     if *action == Action::Archive && matches!(folder.role, Role::Archive | Role::All) {
         return Ok(());
     }
+    // Already in a Junk folder: nothing for the filter to move.
+    if matches!(action, Action::Filtered(_)) && folder.role == Role::Junk {
+        return Ok(());
+    }
     // Read here before the message leaves this folder; written once the server took the act.
     let label = said(action).and_then(|source| labels::Entry::of_file(&account.id, &folder.name, file, source));
+    let moved = match action {
+        Action::Filtered(class) => labels::Moved::of_file(&account.id, &folder.name, file, *class),
+        _ => None,
+    };
     crate::fetch::block_on(async {
         let mut session = imap::open(&server, password).await?;
         let result = act_in(&mut session, account, &folder, origin, action).await;
@@ -287,10 +303,16 @@ pub fn act(account: &Account, password: &str, file: &Path, action: &Action) -> R
         result
     })?;
     // Done on the server: a log that cannot be written is said, after the rest is done here.
-    let logged = label.as_ref().map_or(Ok(()), labels::append).map_err(SyncError::Disk);
+    let root = labels::state();
+    let logged = match (&label, &moved) {
+        (Some(label), _) => labels::append_to(&labels::own_log(&root, &device()), label),
+        (_, Some(moved)) => labels::append_to(&labels::own_moved_log(&root, &device()), moved),
+        _ => Ok(()),
+    }
+    .map_err(SyncError::Disk);
     // A sync may have renamed the file meanwhile; gone, there is nothing left to do here.
     let Some(file) = maildir::locate(file) else { return logged };
-    match kept_with(action, &maildir::flags_of(&file)) {
+    match kept_with(action, &maildir::flags_of(&file), folder.role) {
         Some(flags) => {
             maildir::set_flags(&file, &flags).map_err(|e| SyncError::Disk(e.to_string()))?;
         }
@@ -301,16 +323,24 @@ pub fn act(account: &Account, password: &str, file: &Path, action: &Action) -> R
     logged
 }
 
-/// What becomes of the local copy once the server took `action`: its letters
-/// now, or none when it left this folder (the next sync brings the copy into
-/// the other). Said not spam, it keeps its keyword here as on the server.
-fn kept_with(action: &Action, flags: &str) -> Option<String> {
+/// What becomes of the local copy once the server took `action` on it in a
+/// folder of `role`: its letters now, or none when it left this folder (the
+/// next sync brings the copy into the other). Said not spam, it keeps its
+/// keyword here as on the server; said spam in a Junk folder, it stays there.
+fn kept_with(action: &Action, flags: &str, role: Role) -> Option<String> {
     match action {
         Action::Read(read) => Some(if *read { format!("{flags}S") } else { flags.replace('S', "") }),
         Action::Flag(flag) => Some(if *flag { format!("{flags}F") } else { flags.replace('F', "") }),
         Action::NotSpam => Some(format!("{}{}", flags.replace(maildir::JUNK, ""), maildir::NOT_JUNK)),
-        Action::Move(_) | Action::Trash | Action::Junk | Action::Archive | Action::NotJunk => None,
+        Action::Junk if role == Role::Junk => Some(format!("{}{}", flags.replace(maildir::NOT_JUNK, "").replace(maildir::JUNK, ""), maildir::JUNK)),
+        Action::Move(_) | Action::Trash | Action::Junk | Action::Archive | Action::NotJunk | Action::Filtered(_) => None,
     }
+}
+
+/// This device's name in the sharing (a UUID made once, `share::Here`): its
+/// label log and its log of what the filter moved are its own files.
+fn device() -> String {
+    crate::share::Here::load(&state_dir()).id
 }
 
 /// Writes into the spam filter's label log what you said of the message
@@ -318,16 +348,17 @@ fn kept_with(action: &Action, flags: &str) -> Option<String> {
 pub fn label(account: &Account, file: &Path, source: labels::Source) -> Result<(), SyncError> {
     let folder = folder_of(account, file).ok_or_else(|| SyncError::Server("unknown folder".into()))?;
     let entry = labels::Entry::of_file(&account.id, &folder.name, file, source).ok_or_else(|| SyncError::Server("not a message fetched by Sioul".into()))?;
-    labels::append(&entry).map_err(SyncError::Disk)
+    labels::append_to(&labels::own_log(&labels::state(), &device()), &entry).map_err(SyncError::Disk)
 }
 
-/// What an act says of a message, for the label log: none for those that say nothing of spam.
+/// What an act says of a message, for the label log: none for those that
+/// say nothing of spam, nor for your own filter's move (never a label).
 fn said(action: &Action) -> Option<labels::Source> {
     match action {
         Action::Junk => Some(labels::Source::Junk),
         Action::NotJunk => Some(labels::Source::NotJunk),
         Action::NotSpam => Some(labels::Source::NotSpam),
-        Action::Read(_) | Action::Flag(_) | Action::Move(_) | Action::Trash | Action::Archive => None,
+        Action::Read(_) | Action::Flag(_) | Action::Move(_) | Action::Trash | Action::Archive | Action::Filtered(_) => None,
     }
 }
 
@@ -398,6 +429,15 @@ async fn act_in(session: &mut Imap, account: &Account, folder: &Folder, origin: 
             // Keywords are optional: a server without them still takes the move.
             let _ = store(session, &uid, "-FLAGS.SILENT ($NotJunk)").await;
             let _ = store(session, &uid, "+FLAGS.SILENT ($Junk)").await;
+            // Said spam in a Junk folder already (the review queue's "Spam" on what your filter moved): it stays.
+            if folder.role == Role::Junk {
+                return Ok(());
+            }
+            let target = role_folder(session, account, Role::Junk, "Junk").await?;
+            move_to(session, &uid, &target, can_move, uidplus).await
+        }
+        // Your own filter's move: no keyword, as nobody said anything yet.
+        Action::Filtered(_) => {
             let target = role_folder(session, account, Role::Junk, "Junk").await?;
             move_to(session, &uid, &target, can_move, uidplus).await
         }
@@ -482,16 +522,19 @@ mod tests {
     #[test]
     fn what_an_act_leaves_here_and_says() {
         // Said not spam: it stays, its `$Junk` letter traded for `$NotJunk`'s.
-        assert_eq!(kept_with(&Action::NotSpam, &format!("S{}", maildir::JUNK)), Some(format!("S{}", maildir::NOT_JUNK)));
-        assert_eq!(kept_with(&Action::NotSpam, ""), Some(maildir::NOT_JUNK.to_string()));
+        assert_eq!(kept_with(&Action::NotSpam, &format!("S{}", maildir::JUNK), Role::Inbox), Some(format!("S{}", maildir::NOT_JUNK)));
+        assert_eq!(kept_with(&Action::NotSpam, "", Role::Inbox), Some(maildir::NOT_JUNK.to_string()));
         // Read, flagged: the keywords stay beside the flags.
-        assert_eq!(kept_with(&Action::Read(false), &format!("S{}", maildir::NOT_JUNK)), Some(maildir::NOT_JUNK.to_string()));
-        // Moved: it leaves this folder.
-        assert_eq!(kept_with(&Action::Junk, "S"), None);
-        assert_eq!(kept_with(&Action::NotJunk, "S"), None);
-        // What goes into the label log, and what does not.
+        assert_eq!(kept_with(&Action::Read(false), &format!("S{}", maildir::NOT_JUNK), Role::Inbox), Some(maildir::NOT_JUNK.to_string()));
+        // Moved: it leaves this folder; your filter's move too.
+        assert_eq!(kept_with(&Action::Junk, "S", Role::Inbox), None);
+        assert_eq!(kept_with(&Action::NotJunk, "S", Role::Junk), None);
+        assert_eq!(kept_with(&Action::Filtered(sioul_core::spam::Class::Spam), "", Role::Inbox), None);
+        // Said spam where your filter moved it: it stays, `$Junk` now.
+        assert_eq!(kept_with(&Action::Junk, &format!("S{}", maildir::NOT_JUNK), Role::Junk), Some(format!("S{}", maildir::JUNK)));
+        // What goes into the label log, and what does not: your filter's move is never a label.
         assert_eq!([&Action::Junk, &Action::NotJunk, &Action::NotSpam].map(said), [Some(labels::Source::Junk), Some(labels::Source::NotJunk), Some(labels::Source::NotSpam)]);
-        assert_eq!([&Action::Read(true), &Action::Trash, &Action::Archive].map(said), [None, None, None]);
+        assert_eq!([&Action::Read(true), &Action::Trash, &Action::Archive, &Action::Filtered(sioul_core::spam::Class::Spam)].map(said), [None, None, None, None]);
     }
 
     #[test]

@@ -148,8 +148,11 @@ impl Translator {
             Reason::Trust(proof) => self.text(proof_id(*proof), None),
             Reason::Forged => self.text("reason-forged", None),
             Reason::Spam { source, score } => self.spam_reason(source, *score),
-            Reason::LearnedSpam { p, why } => self.learned("reason-learned-spam", *p, why),
-            Reason::Unsure { p, why } => self.learned("reason-unsure", *p, why),
+            // Your own filter's word, never why nor how sure (the owner's decision: no "why").
+            Reason::LearnedSpam { .. } => self.text("reason-learned-spam", None),
+            Reason::Unsure { .. } => self.text("reason-unsure", None),
+            Reason::LearnedHam { .. } => self.text("reason-learned-ham", None),
+            Reason::MovedToJunk => self.text("reason-moved-to-junk", None),
             Reason::Blocked => self.text("reason-blocked", None),
             Reason::Impersonation { brand, domain } => {
                 let mut args = FluentArgs::new();
@@ -189,39 +192,6 @@ impl Translator {
             "reason-spam-score"
         });
         self.text(id, Some(&args))
-    }
-
-    /// Sioul's own filter's verdict: "probably spam (96%): “gratuit”, a price;
-    /// SPF failed", with the words and the header's signs that weighed.
-    fn learned(&self, id: &str, p: f32, why: &crate::spam::Why) -> String {
-        let mut args = FluentArgs::new();
-        args.set("p", percent(p));
-        let words: Vec<String> = why.words.iter().map(|w| self.spam_word(w)).collect();
-        let signs: Vec<String> = why.signs.iter().map(|s| self.text(&format!("spam-sign-{}", s.replace('_', "-")), None)).collect();
-        let why = match (words.is_empty(), signs.is_empty()) {
-            (true, true) => return self.text(&format!("{id}-bare"), Some(&args)),
-            (false, true) => words.join(", "),
-            (true, false) => signs.join(", "),
-            (false, false) => {
-                let mut both = FluentArgs::new();
-                both.set("words", words.join(", "));
-                both.set("signs", signs.join(", "));
-                self.text("spam-why-both", Some(&both))
-            }
-        };
-        args.set("why", why);
-        self.text(id, Some(&args))
-    }
-
-    /// A word Sioul's spam filter weighed, quoted; a placeholder by what it
-    /// stands for ("_PRICE_": "a price").
-    pub fn spam_word(&self, word: &str) -> String {
-        if let Some(kind) = word.strip_prefix('_').and_then(|w| w.strip_suffix('_')).filter(|k| !k.is_empty()) {
-            return self.text(&format!("spam-token-{}", kind.to_ascii_lowercase()), None);
-        }
-        let mut args = FluentArgs::new();
-        args.set("word", word.to_string());
-        self.text("spam-word", Some(&args))
     }
 
     /// A decimal with this language's separator: "9.1", "9,1".

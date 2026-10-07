@@ -78,6 +78,18 @@ label = "Holidays"
 # [reminders]
 # doses_in_sleep = true
 
+# Sioul's own spam filter (docs/spam-filter.md; Mail ⚙ sets it): what it does
+# with a stranger's message it finds probably spam, maybe spam, probably not
+# spam: "move" (into the address's Junk folder, on the server, as it arrives),
+# "flag" (it stays where it is, in the Porch's review queue), "nothing". Unset:
+# spam and doubts flagged, nothing done with the rest. The thresholds: 0.95, 0.5.
+# [spam]
+# action_spam = "move"
+# action_unsure = "flag"
+# action_ham = "nothing"
+# threshold_spam = 0.95
+# threshold_unsure = 0.5
+
 # When offices are open, for tasks that need one. Unset: Monday to Friday, 9:00 to 17:00.
 # [[office_hours]]
 # day = "monday"

@@ -25,8 +25,8 @@ tasks, notes and money), with Sioul in French.
 --notes-at says where Sioul will find DIR/notes when it runs in a sandbox that
 mounts it elsewhere (tools/demo/screenshots.sh mounts it at /home/demo/Notes).
 --spam (or SIOUL_DEMO_SPAM=1 in the environment) adds Sioul's own spam filter:
-a table made by hand, and two strangers' messages it has a word for
-(docs/spam-filter.md).
+a table made by hand, two strangers' messages it flags and one it moved into
+the Junk folder, waiting in the Porch's review queue (docs/spam-filter.md).
 
 DIR must be new, empty, or a demo profile made by this script: it is then
 emptied first."""
@@ -933,12 +933,19 @@ Noa"""), to=[marc], folder=".Sent", flags="S", key="sent-marc"),
 
 
 def spam_mail(clock: Clock) -> list[Mail]:
-    """Two strangers' messages Sioul's own spam filter has a word for, with the
+    """Strangers' messages Sioul's own spam filter has a word for, with the
     demo's table (`spam_table`): one it is sure of ("probably spam"), one it
-    doubts ("maybe spam"). Their headers do it: replies going elsewhere, links
-    elsewhere, a name that names another domain."""
+    doubts ("maybe spam"), both flagged, waiting in the review queue; and one
+    it moved into the Junk folder (`moved_log`), listed there too. Their
+    headers do it: replies going elsewhere, links elsewhere, a name that names
+    another domain."""
     c = clock
     return [
+        Mail("work", c.ago(hours=1), (t("Prize draws at winners.example", "Tirages au sort winners.example"), "draw@prize-draws.test"),
+             t("You are this month's winner", "Vous êtes le gagnant du mois"), t(
+            """Congratulations: your address was drawn. Claim your 500 EUR voucher today: https://claim.prize-draws.example/v/2210""",
+            """Félicitations : votre adresse a été tirée au sort. Réclamez votre bon de 500 EUR aujourd'hui : https://claim.prize-draws.example/v/2210"""),
+             auth="none", extra=["Reply-To: claims@claims-office.example"], key="moved", folder=".Junk"),
         Mail("work", c.ago(hours=2), (t("Parcel desk at deliveries.example", "Service colis livraisons.example"), "desk@quick-parcels.test"),
              t("Your parcel is waiting", "Votre colis vous attend"), t(
             """Hello,
@@ -1005,6 +1012,17 @@ def spam_table(clock: Clock) -> bytes:
     return out + struct.pack("<Q", fnv64(out))
 
 
+def moved_log(p: Profile, mails: list[Mail]):
+    """What the demo's filter moved into the Junk folder, as a device's log of
+    its moves keeps it (crates/sioul-core/src/spam/labels.rs, `Moved`): a
+    line each, never a label; the review queue lists them while unreviewed."""
+    lines = "".join(json.dumps({
+        "at": unix(m.when) + 60, "account": account_id(m.account), "folder": "INBOX", "uidvalidity": VALIDITY[m.account], "uid": 1,
+        "message_id": m.message_id.strip("<>"), "class": "spam",
+    }, separators=(",", ":")) + "\n" for m in mails)
+    p.write(p.state / "spam" / "moved" / "demo-device.jsonl", lines)
+
+
 def account_id(key: str) -> str:
     """The id of the work or the personal address, as the configuration names it (and the Mail page shows it)."""
     return {"work": t("work", "travail"), "personal": t("personal", "perso")}[key]
@@ -1019,7 +1037,7 @@ def write_mail(p: Profile, mails: list[Mail]):
         folder_key = (m.account, m.folder)
         uid = counters.get(folder_key, 3100 if m.account == "work" else 5200) + 1
         counters[folder_key] = uid
-        validity = VALIDITY[m.account] + {"": 0, ".Sent": 1, ".Archive": 2}[m.folder]
+        validity = VALIDITY[m.account] + {"": 0, ".Sent": 1, ".Archive": 2, ".Junk": 3}[m.folder]
         raw = raw_message(m, number + 1)
         unique = f"{unix(m.when)}.U{validity}-{uid}.sioul"
         root = p.data / "mail" / account_id(m.account) / m.folder if m.folder else p.data / "mail" / account_id(m.account)
@@ -2312,7 +2330,7 @@ def main():
     parser.add_argument("--no-hours", action="store_true", help="leave the week's hours out: the Porch asks for them")
     parser.add_argument("--notes-at", help="where Sioul finds DIR/notes when it runs (default: DIR/notes)")
     parser.add_argument("--spam", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_SPAM")),
-                        help="Sioul's own spam filter: a table made by hand, and two strangers' messages it has a word for (SIOUL_DEMO_SPAM=1 too)")
+                        help="Sioul's own spam filter: a table made by hand, strangers' messages in its review queue (SIOUL_DEMO_SPAM=1 too)")
     args = parser.parse_args()
     LANG = args.language
     W = World()
@@ -2328,6 +2346,7 @@ def main():
     write_mail(profile, mails)
     if args.spam:
         profile.write(profile.data / "spam" / "table.bin", spam_table(clock), clock.ago(hours=26))
+        moved_log(profile, [m for m in mails if m.key == "moved"])
     write_contacts(profile)
     write_calendars(profile, mails)
     write_notes(profile, mails)

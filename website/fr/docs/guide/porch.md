@@ -39,7 +39,7 @@ Les faux messages « votre code » sont une ruse d’hameçonnage courante. 
 Quand arrive du courrier que vos listes laissent passer maintenant, une seule notification discrète le dit, pour tout le lot : « Deux lettres », et les premiers expéditeurs avec leur objet : « Murena, Votre facture · Alice, Dîner vendredi ». **Ouvrir** montre le Porche.
 
 - **Ce qui attendait** (le courrier arrivé hors des heures de sa liste, pendant votre sommeil ou une pause) est dit une fois, quand son heure vient : « Le Porche ouvre : trois lettres vous attendent. »
-- **Jamais** pour les codes (ils ont la leur, plus haut), le courrier mis de côté, les expéditeurs bloqués, vos adresses moins importantes, ce que vous vous envoyez, les lettres d’information sauf si vous les incluez, ni le courrier déjà lu ailleurs. Rien pendant le sommeil ni une pause.
+- **Jamais** pour les codes (ils ont la leur, plus haut), le courrier mis de côté, ce que votre propre filtre à indésirables a signalé ou déplacé (cela attend dans « À revoir », [plus bas](#spam-and-your-own-filter)), les expéditeurs bloqués, vos adresses moins importantes, ce que vous vous envoyez, les lettres d’information sauf si vous les incluez, ni le courrier déjà lu ailleurs. Rien pendant le sommeil ni une pause.
 - **Sans son.** Avec un téléphone et un ordinateur, seul celui dont vous vous êtes servi en dernier le dit.
 
 Paramètres ▸ Rappels et notifications ▸ **Nouveau courrier : notifier aux heures où il peut venir**, et **Avec les lettres d’information** ([Paramètres](settings.md#reminders-and-notifications)).
@@ -50,8 +50,9 @@ Chaque message va dans la première file qui le prend, dans cet ordre :
 
 | File | Ce qu’elle contient |
 |---|---|
-| **Mis de côté** | Le courrier falsifié, celui qui emprunte un nom, les indésirables (le mot de votre fournisseur, ou celui de votre propre filtre quand vous le laissez faire : [plus bas](#spam-and-your-own-filter)), et les expéditeurs que vous avez bloqués. Montrée en bas, chaque message avec sa raison. Rien n’est supprimé. Un indésirable a **Pas indésirable** : de retour dans sa file pour de bon, sur chaque appareil. |
+| **Mis de côté** | Le courrier falsifié, celui qui emprunte un nom, les indésirables selon votre fournisseur ([plus bas](#spam-and-your-own-filter)), et les expéditeurs que vous avez bloqués. Montrée en bas, chaque message avec sa raison. Rien n’est supprimé. Un indésirable a **Pas indésirable** : de retour dans sa file pour de bon, sur chaque appareil. |
 | **Hostile, mis de côté** | Seulement pour une adresse que vous protégez contre le harcèlement (plus bas) : insultes, harcèlement, menaces. Leurs mots restent cachés. |
+| **À revoir : peut-être indésirable** | Ce que votre propre filtre à indésirables a signalé, ou déplacé dans le dossier Indésirables, comme vous l’avez choisi ([plus bas](#spam-and-your-own-filter)). Repliée, sans compte, jamais de notification : ouvrez-la quand vous avez le temps, et dites **Indésirable** ou **Pas indésirable**, un par un ou pour tous. |
 | **Tout de suite** | Les codes et les liens que vous venez de demander à un site, vus plus haut. |
 | **Une file par projet** | Le courrier qui correspond aux règles du projet, ou qui appartient à une conversation du projet. Voir [Les projets](projects.md). |
 | **Votre adresse publique** | Le courrier envoyé à une adresse que vous protégez, par des personnes que vous n’avez pas laissées entrer, lu d’abord et trié par sujet : le travail en premier. |
@@ -74,24 +75,31 @@ Le courrier falsifié est jugé à part : un message falsifié est mis de côt
 
 ## Les indésirables, et votre propre filtre {#spam-and-your-own-filter}
 
-Seul le courrier d’un inconnu peut être dit indésirable. Qui que ce soit qui le dise, votre fournisseur ou le propre filtre de Sioul, cela ne touche jamais le courrier de quelqu’un que vous connaissez (dans vos carnets d’adresses, sur une liste, accepté), les codes et les liens que vous avez demandés, le courrier d’un projet, ce que vous vous envoyez, ni un message dont vous avez dit qu’il n’était pas indésirable. Le courrier falsifié, les noms empruntés et les expéditeurs bloqués sont mis de côté avant, comme toujours. Un message que rien n’authentifie (il a échoué à SPF et à DKIM) compte comme celui d’un inconnu, quelle que soit l’adresse qu’il montre.
+Seul le courrier d’un inconnu est jamais jugé. Qui que ce soit qui le juge, votre fournisseur ou le propre filtre de Sioul, cela ne touche jamais le courrier de quelqu’un que vous connaissez (dans vos carnets d’adresses, sur une liste, accepté), les codes et les liens que vous avez demandés, le courrier d’un projet, ce que vous vous envoyez, ni un message dont vous avez dit qu’il n’était pas indésirable, sur aucun de vos appareils. Le courrier falsifié, les noms empruntés et les expéditeurs bloqués sont mis de côté avant, comme toujours. Un message que rien n’authentifie (il a échoué à SPF et à DKIM) compte comme celui d’un inconnu, quelle que soit l’adresse qu’il montre.
 
 - **Le mot de votre fournisseur** : le message d’un inconnu que votre fournisseur marque indésirable va dans Mis de côté.
-- **Votre propre filtre**, une fois qu’il a appris de votre courrier ([les réglages du Courrier](settings.md#your-own-spam-filter)), dit à quel point le message d’un inconnu est sans doute indésirable :
-    - **probablement indésirable**, à partir de 95 % sauf si vous le changez : mis de côté, si vous le laissez faire (**Mettre l’indésirable de côté**) ; tel qu’il commence (**Montrer son avis seulement**), le message reste dans sa file, avec « probablement indésirable » à côté de son sujet ;
-    - **peut-être indésirable**, à partir de 50 % : le message reste dans sa file, avec « peut-être indésirable » à côté de son sujet ;
-    - en dessous : rien.
+- **Votre propre filtre**, une fois qu’il a appris de votre courrier ([les réglages du Courrier](settings.md#your-own-spam-filter)), trouve le message d’un inconnu **probablement indésirable** (à partir de 95 % sauf si vous le changez), **peut-être indésirable** (à partir de 50 %), ou **probablement pas indésirable**. Ce qu’il fait de chacun, c’est vous qui le choisissez, dans ses réglages :
+    - **Déplacer dans les indésirables** : à son arrivée, le message va dans le dossier Indésirables de son adresse, sur le serveur ;
+    - **Signaler seulement** : il reste où il est, signalé ;
+    - **Ne rien faire** : il va dans sa file, comme tout message.
+
+    Tant que vous n’avez pas choisi, il signale ce qui est probablement ou peut-être indésirable, et ne fait rien du reste.
+
+Ce qu’il signale ou déplace attend dans **À revoir : peut-être indésirable**, repliée vers le bas du Porche, sans compte : jamais de notification pour cela, sur aucun appareil, ni sur l’écran d’accueil de votre téléphone. Ouvrez-la quand vous avez le temps.
 
 <figure markdown="span">
-  [![Le Porche, un message ouvert. À gauche, parmi les nouveaux expéditeurs, deux messages d’inconnus, l’un avec « probablement indésirable » à côté de son sujet, l’autre avec « peut-être indésirable » ; le premier est ouvert à droite, « Pourquoi il est ici » déplié : « votre propre filtre : probablement indésirable (97 %) — un prix, un lien ; les réponses partent vers un autre domaine, son nom affiche un autre domaine, des liens vers d’autres domaines » ; sous le message, Accepter cette adresse, Pas indésirable et Fermer.](../assets/screens/fr/porch-spam.png){ loading=lazy }](../assets/screens/fr/porch-spam.png "Ouvrir l’image en grand")
-  <figcaption>Le mot discret du filtre à côté de deux messages d’inconnus ; pourquoi, une fois l’un d’eux ouvert.</figcaption>
+  [![Le Porche. À gauche, « À revoir : peut-être indésirable » ouverte, sans compte : des messages d’inconnus, chacun avec son mot discret, « probablement indésirable » ou « peut-être indésirable », et Pas indésirable et Indésirable dessous ; au-dessus d’eux, Pas indésirable pour tous et Indésirable pour tous. Le premier, que le filtre a déplacé dans le dossier Indésirables, est ouvert à droite : « Pourquoi il est ici » dit « votre propre filtre : probablement indésirable » et qu’il a été mis dans votre dossier Indésirables, « Pas indésirable » le ramenant dans la boîte de réception ; sous le message, Indésirable, Pas indésirable et Fermer.](../assets/screens/fr/porch-spam.png){ loading=lazy }](../assets/screens/fr/porch-spam.png "Ouvrir l’image en grand")
+  <figcaption>Ce que votre propre filtre a signalé ou déplacé, en attendant votre avis.</figcaption>
 </figure>
 
-Ces mots sont discrets : pas de couleur, pas de compte. Le pointeur posé dessus, Sioul dit à quel point le filtre est sûr, et pourquoi : les mots, et les signes des en-têtes du message, qui ont le plus pesé (« un prix, un lien ; les réponses partent vers un autre domaine »). **Pourquoi il est ici**, dans le message, dit la même chose. Les mots sont montrés tels que le filtre les lit, raccourcis : « loteri » pour loterie.
+Chaque message y a son mot, discret (« probablement indésirable », « peut-être indésirable »), et deux boutons :
 
-**Pas indésirable**, sous le message, répond à chacun d’eux : il retourne dans sa file, ou y reste sans le mot, pour de bon et sur chaque appareil, et le filtre en tient compte à son prochain apprentissage. **Indésirable** déplace un message dans le dossier des indésirables, comme toujours, et l’apprend aussi au filtre. Rien n’est supprimé, et le filtre ne déplace rien sur le serveur.
+- **Pas indésirable** : de retour dans sa file, pour de bon, sur chaque appareil ; celui que le filtre a déplacé revient dans la boîte de réception ;
+- **Indésirable** : dans le dossier Indésirables, ou gardé là, pour de bon.
 
-Le courrier mis de côté n’est jamais signalé. Un message qui garde sa file, avec un mot à côté, est signalé comme le dit sa file.
+**Pas indésirable pour tous** et **Indésirable pour tous**, au-dessus, répondent pour toute la file d’un coup. Chacun s’annule pendant dix secondes, et le filtre en tient compte à son prochain apprentissage. Ce que vous dites sur votre téléphone, votre ordinateur le sait, et inversement. Sioul dit seulement que votre propre filtre l’a jugé, jamais pourquoi. **Indésirable**, dans le Courrier, déplace un message dans le dossier des indésirables, comme toujours, et l’apprend aussi au filtre. Rien n’est supprimé.
+
+Un message que le filtre a déplacé reste dans la file tant qu’il est dans le dossier Indésirables et que vous n’en avez rien dit ; un message qu’il a signalé, deux semaines, même après que vous avez fermé le Porche avec **Terminé pour l’instant**.
 
 ## Lire un message {#reading-a-message}
 

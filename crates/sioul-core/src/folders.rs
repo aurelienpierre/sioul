@@ -72,6 +72,22 @@ pub struct Folder {
     pub special: bool,
 }
 
+/// Where an account's folders, as its server last listed them, are kept:
+/// `$XDG_STATE_HOME/sioul/sync/<account>.folders.toml` (sioul-sync writes it at each sync).
+pub fn saved_path(account: &str) -> std::path::PathBuf {
+    crate::config::state_dir().join("sync").join(format!("{account}.folders.toml"))
+}
+
+/// An account's folders as its server last listed them; none before its first sync.
+pub fn saved(account: &str) -> Vec<Folder> {
+    #[derive(Deserialize)]
+    struct Saved {
+        #[serde(default, rename = "folder")]
+        folders: Vec<Folder>,
+    }
+    std::fs::read_to_string(saved_path(account)).ok().and_then(|t| toml::from_str::<Saved>(&t).ok()).map(|s| s.folders).unwrap_or_default()
+}
+
 /// The folder for a role when several have it ("Junk" and "spam" on cPanel
 /// hosts): the one the server marks, else the first.
 pub fn preferred(folders: &[Folder], role: Role) -> Option<&Folder> {

@@ -1721,7 +1721,7 @@ mod tests {
             assert_eq!((entry.done.as_str(), entry.skipped.as_str()), ("4", "1:3"));
             let mut copies = Vec::new();
             read_all(&dirs, |r| copies.push(crate::labels::Copy::of(&r))).unwrap();
-            let (labeled, _) = crate::labels::decide(copies, &[]);
+            let (labeled, _) = crate::labels::decide(copies, &[], &[]);
             assert_eq!(labeled.len(), 3, "messages 1, 2 and 4, once each");
             assert!(labeled.iter().any(|l| l.key == "4.all@example.org" && l.label == crate::labels::Label::Ham));
             let _ = std::fs::remove_dir_all(root);

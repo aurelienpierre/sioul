@@ -35,6 +35,7 @@ Le Porche montre ce qui peut venir maintenant, et le nouveau courrier est dit se
 ### Ce qui ne notifie jamais {#what-never-notifies}
 
 - Le courrier de **Mis de côté** ou de **Hostile, mis de côté** : falsifié, empruntant un nom, indésirable, d’un expéditeur que vous avez bloqué, des insultes.
+- Ce que votre propre filtre à indésirables a signalé ou déplacé, qui attend dans **À revoir : peut-être indésirable** ([le Porche](porch.md#spam-and-your-own-filter)), sur aucun appareil, ni sur l’écran d’accueil d’un téléphone.
 - Le courrier de vos comptes moins importants ; les lettres d’information et les listes de diffusion, sauf **Avec les lettres d’information** ; ce que vous vous envoyez ; le courrier déjà lu ailleurs ; les deux semaines de courrier qu’une adresse apporte quand vous l’ajoutez.
 - Le message d’un code, comme nouveau courrier : le code a sa propre notification.
 - Sur un téléphone : les codes, et les rappels des dates, des attentes, des paiements, des papiers et des contrats. Ils viennent sur un ordinateur.

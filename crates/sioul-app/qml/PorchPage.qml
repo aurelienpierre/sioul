@@ -154,6 +154,13 @@ Item {
             page.openKey = view.lanes[0].items[0].key
     }
 
+    // A lane opened, as its title opens it (the window's images).
+    function openLane(key) {
+        const next = Object.assign({}, page.unfolded)
+        next[key] = true
+        page.unfolded = next
+    }
+
     function isFolded(lane) {
         return page.unfolded[lane.key] === undefined ? lane.folded : !page.unfolded[lane.key]
     }
@@ -187,7 +194,7 @@ Item {
             return "folder-documents"
         if (key.startsWith("public:"))
             return "mail-message"
-        return { "people": "user-identity", "screener": "contact-new", "filed": "folder-mail", "low": "go-bottom", "set-aside": "mail-mark-junk", "hostile": "dialog-cancel" }[key] || "mail-message"
+        return { "people": "user-identity", "screener": "contact-new", "filed": "folder-mail", "low": "go-bottom", "review": "view-filter", "set-aside": "mail-mark-junk", "hostile": "dialog-cancel" }[key] || "mail-message"
     }
 
     RowLayout {
@@ -891,8 +898,9 @@ Item {
                                         elide: Text.ElideRight
                                         color: page.theme.text
                                     }
-                                    // How many, in words while few.
+                                    // How many, in words while few; never for the review queue: no badge to clear.
                                     Label {
+                                        visible: lane.modelData.counted !== false
                                         text: page.countWords(lane.modelData.items.length)
                                         color: page.theme.muted
                                     }
@@ -984,6 +992,25 @@ Item {
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        // The review queue, opened: your word on all of it at once, ten seconds to undo.
+                        Flow {
+                            visible: lane.modelData.key === "review" && !lane.folded
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 16 + 8
+                            spacing: 6
+
+                            Button {
+                                flat: true
+                                text: page.sioul.text("ui-not-spam-all")
+                                onClicked: page.sioul.actMany(JSON.stringify(lane.modelData.items.map(item => item.key)), "not-spam")
+                            }
+                            Button {
+                                flat: true
+                                text: page.sioul.text("ui-spam-all")
+                                onClicked: page.sioul.actMany(JSON.stringify(lane.modelData.items.map(item => item.key)), "spam")
                             }
                         }
 
@@ -1098,9 +1125,8 @@ Item {
                                                 }
                                             }
                                         }
-                                        // Sioul's own filter's word on a message it leaves in its
-                                        // lane ("maybe spam"), as quiet; how sure and why on hover,
-                                        // and in the Reader's "Why it is here".
+                                        // Your own filter's word on a message in the review queue
+                                        // ("maybe spam"), as quiet; never why.
                                         Rectangle {
                                             visible: !!row.modelData.spam_word
                                             implicitWidth: spamWord.implicitWidth + 12
@@ -1108,13 +1134,7 @@ Item {
                                             radius: height / 2
                                             color: "transparent"
                                             border.color: page.theme.line
-                                            ToolTip.visible: spamHover.hovered && !!row.modelData.spam_why
-                                            ToolTip.text: row.modelData.spam_why || ""
-                                            ToolTip.delay: 400
 
-                                            HoverHandler {
-                                                id: spamHover
-                                            }
                                             Label {
                                                 id: spamWord
 
@@ -1135,6 +1155,28 @@ Item {
                                         elide: Text.ElideRight
                                         font.pixelSize: 13
                                         color: page.theme.muted
+                                    }
+                                    // In the review queue: your word, Spam or Not spam, ten seconds to undo.
+                                    Flow {
+                                        visible: !!row.modelData.review
+                                        Layout.fillWidth: true
+                                        Layout.leftMargin: 16 + 8
+                                        spacing: 4
+
+                                        Button {
+                                            flat: true
+                                            font.pixelSize: 13
+                                            text: page.sioul.text("ui-not-spam")
+                                            Accessible.name: row.modelData.subject + ", " + text
+                                            onClicked: page.sioul.act(row.modelData.key, "not-spam", "")
+                                        }
+                                        Button {
+                                            flat: true
+                                            font.pixelSize: 13
+                                            text: page.sioul.text("ui-spam")
+                                            Accessible.name: row.modelData.subject + ", " + text
+                                            onClicked: page.sioul.act(row.modelData.key, "spam", "")
+                                        }
                                     }
                                 }
                             }

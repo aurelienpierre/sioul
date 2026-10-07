@@ -14,8 +14,10 @@
 //! 2. do-not-disturb: what this device should ask of its system, compared
 //!    with what was asked last; changed, Sioul's own process is asked to apply
 //!    it (`DndReceiver`), where Android's modes of Sioul's are kept;
-//! 3. mail at its rhythm, the inbox only, handed to the new-mail
-//!    notifications (`mailnote`);
+//! 3. mail at its rhythm, the inbox only: what your own spam filter moves as
+//!    you chose, into the Junk folder (`spam::after_fetch`), the rest handed
+//!    to the new-mail notifications (`mailnote`), which never tell what the
+//!    filter flagged or moved;
 //! 4. the calls' table (`calls::step`): made again when what it is made of
 //!    changed, and the notification's "Let every call through";
 //! 5. when to look next: two minutes while another device is in use, five
@@ -194,8 +196,8 @@ fn mail_due(config: &Config, now: i64, last: i64, asleep: bool, paused: bool) ->
     config.reminders.mail && !resting && now - last >= MAIL_EVERY - 30 && config.accounts.iter().any(sioul_core::config::Account::syncs)
 }
 
-/// The inbox of each account fetched, its arrivals handed to the new-mail
-/// notifications; whether any came.
+/// The inbox of each account fetched, what your spam filter moves moved, its
+/// arrivals handed to the new-mail notifications; whether any came.
 fn fetch_mail(config: &Config) -> bool {
     let mut any = false;
     for account in config.accounts.iter().filter(|a| a.syncs()) {
@@ -203,6 +205,7 @@ fn fetch_mail(config: &Config) -> bool {
         match sioul_sync::inbox(account, &password) {
             Ok(report) => {
                 any |= !report.new.is_empty();
+                crate::spam::after_fetch(account, &report.new, report.first);
                 crate::mailnote::arrived(&account.id, &report.new, report.first);
             }
             Err(e) => eprintln!("sioul: steps: {}: {e:?}", account.id),

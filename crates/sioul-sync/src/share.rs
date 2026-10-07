@@ -27,8 +27,8 @@
 //! what.
 //!
 //! What is shared comes in parts (`PARTS`: settings, senders, the spam
-//! filter's table, health, time, drafts, projects, the watch, lists, notes,
-//! papers), each switched on or off on each device. Notes and papers travel
+//! filter's table and label logs, health, time, drafts, projects, the watch,
+//! lists, notes, papers), each switched on or off on each device. Notes and papers travel
 //! one file at a time, each sealed apart in the folder (`blobs`), their
 //! records saying which content each file holds; two devices changing one
 //! file keep both versions. The spam filter's table is sealed apart too: one
@@ -185,8 +185,8 @@ const NOT_NOTES: &[&str] = &[
 
 /// The parts of what is shared, each switched on or off on each device
 /// (docs/database.md, "Parts"): settings and accounts, senders, the spam
-/// filter's table, health, time, drafts and invoices, projects and money, the
-/// watch, lists kept here, notes, papers.
+/// filter's table and label logs, health, time, drafts and invoices, projects
+/// and money, the watch, lists kept here, notes, papers.
 pub const PARTS: [&str; 11] = ["settings", "senders", "spam", "health", "time", "drafts", "projects", "watch", "lists", "notes", "papers"];
 
 /// The spam filter's table (`sioul_core::spam::table`), made by a training
@@ -197,6 +197,16 @@ pub const PARTS: [&str; 11] = ["settings", "senders", "spam", "health", "time", 
 /// exchange, a phone's background step's too. Never the language model nor
 /// the corpus beside it: they stay on the computer that made them.
 pub const SPAM_TABLE: &str = "files/spam/table.bin";
+
+/// The spam filter's label logs (`sioul_core::spam::labels`): each device
+/// writes its own file, a line per act, never rewritten; every device reads
+/// them all, so that a message you said is not spam on one is never flagged
+/// again on another, and the training on your computer learns from what you
+/// said on your phone. Small, read in every exchange.
+pub const SPAM_LABELS: &str = "state/spam/labels/";
+/// What your own spam filter moved into a Junk folder, each device's own
+/// file: never labels; the review queue's and the training's.
+pub const SPAM_MOVED: &str = "state/spam/moved/";
 
 /// Whether a device that never chose shares a part: what was shared before
 /// parts had switches, everything but notes and papers, and projects as the
@@ -293,6 +303,10 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         folder("lists", "state/dav/local/", s.join("dav").join(local), Shape::Whole, &[]),
         // The spam filter's table alone: its language model and its corpus, beside it, stay here.
         file("spam", SPAM_TABLE, d.join("spam").join("table.bin"), Shape::Files),
+        // What you said is spam or not, and what your own filter moved: each
+        // device's own log (`<device>.jsonl`), a line each, every device's read.
+        folder("spam", SPAM_LABELS, s.join("spam").join(sioul_core::spam::labels::FOLDER), Shape::Lines, &[]),
+        folder("spam", SPAM_MOVED, s.join("spam").join(sioul_core::spam::labels::MOVED), Shape::Lines, &[]),
     ];
     // From the notes folder each device keeps where it likes: projects,
     // budgets, the bank's movements and contracts; the papers' wallet and its
@@ -2504,7 +2518,9 @@ fn conflict_copy(path: &Path, here: &str, known: Option<&Known>, now_ms: i64) ->
 /// Whether a file may be written where a record says: never through a link
 /// below its store's folder (a link to elsewhere would carry the write out of
 /// it), nor over a link, nor inside the sharing folder (it would travel in
-/// plain) or Sioul's own state.
+/// plain) or Sioul's own state, but for the stores of that state itself
+/// (`state/…`: the shield's answers, local lists' state, the spam filter's
+/// label logs), which live there by design, each in its own folder.
 fn writable(store: &Store, path: &Path, sharing: &Sharing) -> bool {
     writable_in(store, path, Some(sharing.folder), sharing.memory)
 }
@@ -2523,7 +2539,11 @@ fn writable_in(store: &Store, path: &Path, folder: Option<&Path>, memory: &Path)
     // Where it would land: the deepest of its folders that is there.
     let Some(there) = path.ancestors().skip(1).find(|p| p.exists()).and_then(|p| p.canonicalize().ok()) else { return true };
     let inside = |root: &Path| root.canonicalize().is_ok_and(|root| there.starts_with(root));
-    !folder.is_some_and(inside) && !memory.parent().and_then(Path::parent).is_some_and(inside)
+    let state = memory.parent().and_then(Path::parent);
+    // A store of Sioul's own state writes in its own folder there (the path was
+    // checked above: no link, nothing outside it); every other store, never in that state.
+    let own_state = store.name.starts_with("state/") && state.is_some_and(|state| store.path.starts_with(state));
+    !folder.is_some_and(inside) && (own_state || !state.is_some_and(inside))
 }
 
 /// Names Windows keeps for its devices ("aux.md", "COM1.txt"), and names
@@ -4887,6 +4907,63 @@ mod tests {
         }
         assert_eq!(locate(&every, SPAM_TABLE).map(|(s, p)| (s.part, p)), Some(("spam", desk.path("data/spam/table.bin"))));
         assert_eq!(shown(SPAM_TABLE), "spam/table.bin");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Each device writes its own label log; every device reads them all: a
+    /// message said not spam on the phone is not spam on the desk (its
+    /// `said_ham`), and what the phone's filter moved is known there, quick
+    /// exchanges only. Sealed: no Message-ID readable in the folder.
+    #[test]
+    fn a_label_on_one_device_reaches_the_others() {
+        use sioul_core::spam::labels::{self, Entry, Label, Moved, Source};
+        let base = scratch("spam-labels");
+        let folder = base.join("folder");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let quick = |c: &Computer, now: i64| exchange(&Sharing { folder: &folder, computer: &c.id, key: &key, memory: &c.memory, files: false, hurry: None }, &stores(&Config::default(), &c.roots), now).unwrap();
+        let spam_state = |c: &Computer| c.roots.state.join("spam");
+        // A message the desk's filter flagged, as the desk's Porch reads it.
+        let mut card = sioul_core::card::Card::from_bytes(b"From: Prize <win@lottery.test>\r\nMessage-ID: <win-1@lottery.test>\r\nSubject: You won\r\n\r\nClaim it.\r\n").unwrap();
+        card.account = Some("home".into());
+        card.origin = Some(sioul_core::card::ImapOrigin { validity: 7, uid: 42 });
+        assert!(!labels::said_ham_in(&labels::read_all_in(&spam_state(&desk)), &card));
+        // "Not spam" on the phone; the phone's filter moved another message.
+        let said = Entry { at: 1_791_360_000, account: "home".into(), folder: "INBOX".into(), uidvalidity: 7, uid: 42, message_id: Some("win-1@lottery.test".into()), label: Label::Ham, source: Source::NotSpam };
+        labels::append_to(&labels::own_log(&spam_state(&phone), &phone.id), &said).unwrap();
+        let moved = Moved { at: 1_791_360_100, account: "home".into(), folder: "INBOX".into(), uidvalidity: 7, uid: 43, message_id: Some("deal-2@shop.test".into()), class: sioul_core::spam::Class::Spam };
+        labels::append_to(&labels::own_moved_log(&spam_state(&phone), &phone.id), &moved).unwrap();
+        quick(&phone, NOW);
+        let came = quick(&desk, NOW + MINUTE);
+        let theirs = format!("{SPAM_LABELS}{}.jsonl", phone.id);
+        assert!(came.written.contains(SPAM_LABELS) && came.written.contains(SPAM_MOVED) && came.received == 2, "{came:?}");
+        assert!(desk.roots.state.join("spam/labels").join(format!("{}.jsonl", phone.id)).exists(), "the phone's own file, beside the desk's");
+        // On the desk: the phone's own file, read with the desk's own; the message not spam there too.
+        assert!(labels::said_ham_in(&labels::read_all_in(&spam_state(&desk)), &card));
+        assert_eq!(labels::read_moved_in(&spam_state(&desk)), vec![moved]);
+        // The desk says spam later, on its own log: the newest word wins on both devices.
+        let later = Entry { at: 1_791_360_500, label: Label::Spam, source: Source::Junk, ..said.clone() };
+        labels::append_to(&labels::own_log(&spam_state(&desk), &desk.id), &later).unwrap();
+        quick(&desk, NOW + 2 * MINUTE);
+        quick(&phone, NOW + 3 * MINUTE);
+        for device in [&desk, &phone] {
+            let all = labels::read_all_in(&spam_state(device));
+            assert_eq!(all.len(), 2);
+            assert!(!labels::said_ham_in(&all, &card));
+        }
+        // Each file has one writer: the phone's own log unchanged on the phone but for its own line.
+        assert_eq!(labels::read_from::<Entry>(&labels::own_log(&spam_state(&phone), &phone.id)), vec![said]);
+        // Sealed: nothing of them readable in the folder.
+        let mut files = Vec::new();
+        list_files(&folder, &folder, &[], &mut files);
+        for (name, path) in &files {
+            let bytes = std::fs::read(path).unwrap();
+            for plain in [&b"win-1@lottery.test"[..], b"not-spam", b"deal-2"] {
+                assert!(!bytes.windows(plain.len()).any(|w| w == plain), "{name}");
+            }
+        }
+        let every = stores_of(&Config::default(), &desk.roots, &|_| true);
+        assert_eq!(locate(&every, &theirs).map(|(s, _)| s.part), Some("spam"));
         let _ = std::fs::remove_dir_all(&base);
     }
 

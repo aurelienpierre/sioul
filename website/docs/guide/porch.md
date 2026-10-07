@@ -39,7 +39,7 @@ Fake "your code" messages are a common phishing trick. A forged one is set aside
 When mail your lists let through now arrives, one quiet notification says it, for the whole batch: "Two letters", and the first senders with their subjects: "Murena, Your invoice · Alice, Dinner on Friday". **Open** shows the Porch.
 
 - **What waited** (mail that came outside its list's times, while you slept or paused) is told once, when its time comes: "The Porch opens: three letters wait for you."
-- **Never** for codes (they have their own, above), mail set aside, blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.
+- **Never** for codes (they have their own, above), mail set aside, what your own spam filter flagged or moved (it waits in "To review", [below](#spam-and-your-own-filter)), blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.
 - **No sound.** With a phone and a computer, only the one you used last tells.
 
 Settings ▸ Reminders and notifications ▸ **New mail: notify at the times it may come**, and **Include newsletters** ([Settings](settings.md#reminders-and-notifications)).
@@ -50,8 +50,9 @@ Each message goes to the first lane that takes it, in this order:
 
 | Lane | What it holds |
 |---|---|
-| **Set aside** | Forged mail, mail borrowing a name, spam (your provider's word, or your own filter's when you let it: [below](#spam-and-your-own-filter)), and senders you blocked. Shown at the bottom, each with the reason. Nothing is deleted. Spam has **Not spam**: back in its lane for good, on every device. |
+| **Set aside** | Forged mail, mail borrowing a name, spam in your provider's word ([below](#spam-and-your-own-filter)), and senders you blocked. Shown at the bottom, each with the reason. Nothing is deleted. Spam has **Not spam**: back in its lane for good, on every device. |
 | **Hostile, set aside** | Only for an address you protect against harassment (below): insults, harassment, threats. Their words stay hidden. |
+| **To review: maybe spam** | What your own spam filter flagged, or moved into the Junk folder, as you chose ([below](#spam-and-your-own-filter)). Folded, without a count, never notified: open it when you have time, and say **Spam** or **Not spam**, one by one or for all. |
 | **Right now** | Codes and links you just asked a site for, above. |
 | **One lane per project** | Mail that matches the project's routes, or that belongs to a conversation of the project. See [Projects](projects.md). |
 | **Your public address** | Mail to an address you protect, from someone you have not let in, read first and sorted by topic: work first. |
@@ -74,24 +75,31 @@ Forged mail is judged apart: a forged message is set aside whatever the lists sa
 
 ## Spam, and your own filter
 
-Only a stranger's mail is ever called spam. Whoever says it, your provider or Sioul's own filter, it never touches mail from someone you know (in your address books, on a list, let in), the codes and links you asked for, a project's mail, what you send yourself, or a message you said is not spam. Forged mail, borrowed names and blocked senders are set aside before, as always. A message nothing authenticates (it failed both SPF and DKIM) counts as a stranger's, whatever address it shows.
+Only a stranger's mail is ever judged. Whoever judges it, your provider or Sioul's own filter, it never touches mail from someone you know (in your address books, on a list, let in), the codes and links you asked for, a project's mail, what you send yourself, or a message you said is not spam, on any of your devices. Forged mail, borrowed names and blocked senders are set aside before, as always. A message nothing authenticates (it failed both SPF and DKIM) counts as a stranger's, whatever address it shows.
 
 - **Your provider's word**: a stranger's message your provider marks as spam goes to Set aside.
-- **Your own filter**, once it has learned from your mail ([Settings](settings.md#your-own-spam-filter)), says how likely a stranger's message is spam:
-    - **probably spam**, from 95% unless you change it: set aside, if you let it (**Set spam aside**); as it starts (**Show its verdict only**), the message stays in its lane, with "probably spam" beside its subject;
-    - **maybe spam**, from 50%: the message stays in its lane, with "maybe spam" beside its subject;
-    - below: nothing.
+- **Your own filter**, once it has learned from your mail ([Settings](settings.md#your-own-spam-filter)), finds a stranger's message **probably spam** (from 95% unless you change it), **maybe spam** (from 50%), or **probably not spam**. What it does with each is yours to choose, in its settings:
+    - **Move to spam**: as it arrives, the message goes into its address's Junk folder, on the server;
+    - **Flag only**: it stays where it is, marked;
+    - **Do nothing**: it goes to its lane, as any message.
+
+    Until you choose, it flags what is probably spam or maybe spam, and does nothing with the rest.
+
+What it flags or moves waits in **To review: maybe spam**, folded near the bottom of the Porch, without a count: never a notification for it, on any device, nor on your phone's home screen. Open it when you have time.
 
 <figure markdown="span">
-  [![The Porch with a message open. On the left, in the screener, two strangers' messages, one with "probably spam" beside its subject, the other with "maybe spam"; the first is open on the right, "Why it is here" unfolded: "your own filter: probably spam (97%) — a price, a link; replies go to another domain, its name shows another domain, links to other domains"; under the message, Let this address in, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
-  <figcaption>The filter's quiet word beside two strangers' messages; why, once one is open.</figcaption>
+  [![The Porch. On the left, "To review: maybe spam" opened, without a count: strangers' messages, each with its quiet word, "probably spam" or "maybe spam", and Not spam and Spam under it; above them, Not spam for all and Spam for all. The first, which the filter moved into the Junk folder, is open on the right: "Why it is here" says "your own filter: probably spam" and that it was moved into your Junk folder, "Not spam" bringing it back to the inbox; under the message, Spam, Not spam and Close.](../assets/screens/porch-spam.png){ loading=lazy }](../assets/screens/porch-spam.png "Open the picture at full size")
+  <figcaption>What your own filter flagged or moved, waiting for your word.</figcaption>
 </figure>
 
-The words are quiet: no colour, no count. With the pointer on them, Sioul says how sure the filter is and why: the words, and the signs in the message's headers, that weighed most ("a price, a link; replies go to another domain"). **Why it is here**, in the message, says the same. The words are shown as the filter reads them, shortened: "loteri" for lottery.
+Each message there has its word, quiet ("probably spam", "maybe spam"), and two buttons:
 
-**Not spam**, under the message, answers each of them: it goes back to its lane, or keeps it without the word, for good and on every device, and the filter learns from it at its next training. **Junk** moves a message to the junk folder, as always, and teaches the filter too. Nothing is deleted, and the filter moves nothing on the server.
+- **Not spam**: back in its lane, for good, on every device; one the filter moved goes back to the inbox;
+- **Spam**: into the Junk folder, or kept there, for good.
 
-Mail set aside is never notified. A message that keeps its lane, with a word beside it, is notified as its lane says.
+**Not spam for all** and **Spam for all**, above them, answer the whole queue at once. Each can be undone for ten seconds, and the filter learns from it at its next training. What you say on your phone, your computer knows, and the other way round. Sioul says only that your own filter judged it, never why. **Junk** moves a message to the junk folder, as always, and teaches the filter too. Nothing is deleted.
+
+A message the filter moved stays in the queue while it is in the Junk folder and you have said nothing of it; one it flagged, for two weeks, even after you close the Porch with **Done for now**.
 
 ## Reading a message
 

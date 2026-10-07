@@ -10,8 +10,11 @@
 //!   and Sent; of Gmail's All Mail it keeps what no other folder has, your own
 //!   messages aside), or carrying `$NotJunk` (or `NonJunk`, `NotJunk`,
 //!   `$NonJunk`, other mail apps' words for it).
-//! - **Your actions** (the label log: junk, not junk, "Not spam", block)
-//!   beat folders and keywords; the newest one wins.
+//! - **Your actions** (every device's label log: junk, not junk, "Spam",
+//!   "Not spam", block) beat folders and keywords; the newest one wins.
+//! - **What your own filter moved** into a Junk folder (the matrix's "Move
+//!   to spam") is not spam because it is there: until you say, a message
+//!   whose only word is that Junk folder is left out.
 //! - **One message, one label**: copies (the same Message-ID in several
 //!   folders or accounts) become one; when they disagree, the log beats the
 //!   keywords, which beat the Junk folder, which beats the other folders.
@@ -22,8 +25,8 @@
 use crate::corpus::{Place, Record};
 use serde::{Deserialize, Serialize};
 use sioul_core::folders::Role;
-/// The label log is phase 0's (`sioul_core::spam::labels`): one reader for its lines.
-pub use sioul_core::spam::labels::{Entry, Label};
+/// The label logs are phase 0's (`sioul_core::spam::labels`): one reader for their lines.
+pub use sioul_core::spam::labels::{Entry, Label, Moved};
 use std::collections::{BTreeMap, HashMap};
 
 /// What decided a label, weakest first.
@@ -99,9 +102,14 @@ pub(crate) fn from_address(header: &[u8]) -> Option<String> {
     (!address.is_empty()).then_some(address)
 }
 
-/// Your actions, as the label log keeps them (`$XDG_STATE_HOME/sioul/spam/labels.jsonl`).
-pub fn read_log(path: &std::path::Path) -> Vec<Entry> {
-    sioul_core::spam::labels::read_from(path)
+/// Your actions, as every device's label log keeps them (`$XDG_STATE_HOME/sioul/spam/labels/`), oldest first.
+pub fn read_log(dirs: &crate::Dirs) -> Vec<Entry> {
+    sioul_core::spam::labels::read_all_in(&dirs.state)
+}
+
+/// What your own filter moved, every device's log, oldest first.
+pub fn read_moved(dirs: &crate::Dirs) -> Vec<Moved> {
+    sioul_core::spam::labels::read_moved_in(&dirs.state)
 }
 
 /// One message to learn from.
@@ -125,6 +133,10 @@ pub struct Summary {
     pub spam: u64,
     /// Messages whose copies disagreed at the same level: left out.
     pub ambiguous: u64,
+    /// Messages your own filter moved into a Junk folder, about which you
+    /// said nothing since: left out (the filter's verdicts are never labels).
+    #[serde(default)]
+    pub moved: u64,
     /// Labels decided by each kind of evidence.
     pub by_log: u64,
     pub by_keyword: u64,
@@ -134,9 +146,12 @@ pub struct Summary {
     pub accounts: BTreeMap<String, (u64, u64)>,
 }
 
-/// One label per message, from every copy read and the log.
-pub fn decide(copies: Vec<Copy>, log: &[Entry]) -> (Vec<Labeled>, Summary) {
+/// One label per message, from every copy read and the log; `moved`, what
+/// your own filter moved: its Junk folder alone says nothing.
+pub fn decide(copies: Vec<Copy>, log: &[Entry], moved: &[Moved]) -> (Vec<Labeled>, Summary) {
     let mut summary = Summary { records: copies.len() as u64, ..Summary::default() };
+    // What your filter moved, by Message-ID.
+    let filtered: std::collections::HashSet<&str> = moved.iter().filter_map(|m| m.message_id.as_deref()).collect();
     // The newest action for each Message-ID and each place.
     let mut by_id: HashMap<&str, &Entry> = HashMap::new();
     let mut by_place: HashMap<(&str, &str, u32, u32), &Entry> = HashMap::new();
@@ -157,12 +172,20 @@ pub fn decide(copies: Vec<Copy>, log: &[Entry]) -> (Vec<Labeled>, Summary) {
         groups.entry(copy.key.clone()).or_default().push(copy);
     }
     let mut labeled = Vec::with_capacity(groups.len());
-    for (key, copies) in groups {
+    for (key, mut copies) in groups {
         let date = copies.iter().map(|c| c.date).filter(|d| *d > 0).min().unwrap_or(0);
         let action = std::iter::once(by_id.get(key.as_str()).copied())
             .chain(copies.iter().map(|c| by_place.get(&(c.place.account.as_str(), c.place.folder.as_str(), c.place.uidvalidity, c.place.uid)).copied()))
             .flatten()
             .max_by_key(|a| a.at);
+        // Moved by your filter, and nothing said of it: its Junk folder is the filter's word, not yours.
+        if action.is_none() && filtered.contains(key.as_str()) {
+            copies.retain(|c| c.says().1 != Evidence::JunkFolder);
+            if copies.is_empty() {
+                summary.moved += 1;
+                continue;
+            }
+        }
         let decided = match action {
             Some(action) => {
                 // The copy where you acted, else the one whose own word agrees, else the first.
@@ -236,7 +259,7 @@ mod tests {
             Copy { not_junk: true, ..copy("home", "Junk", Role::Junk, 4, "d@example.org") },
             Copy { junk: true, not_junk: true, ..copy("home", "INBOX", Role::Inbox, 5, "e@example.org") },
         ];
-        let (labeled, summary) = decide(copies, &[]);
+        let (labeled, summary) = decide(copies, &[], &[]);
         let says = |key| label_of(&labeled, key).map(|l| (l.label, l.evidence));
         assert_eq!(says("a@example.org"), Some((Label::Ham, Evidence::Folder)));
         assert_eq!(says("b@example.org"), Some((Label::Spam, Evidence::JunkFolder)));
@@ -275,7 +298,7 @@ mod tests {
             Copy::of(&record(6, "INBOX", Role::Inbox, &["JunkMail"])),
         ];
         assert_eq!(copies[0].key, "1@example.org");
-        let (labeled, summary) = decide(copies, &[]);
+        let (labeled, summary) = decide(copies, &[], &[]);
         let says = |n: u32| labeled.iter().find(|l| l.key == format!("{n}@example.org")).map(|l| (l.label, l.evidence));
         assert_eq!(says(1), Some((Label::Spam, Evidence::Keyword)));
         assert_eq!(says(2), Some((Label::Ham, Evidence::Keyword)), "NonJunk beats the Junk folder");
@@ -308,7 +331,7 @@ mod tests {
             copy("home", "Archive", Role::Archive, 21, "z@example.org"),
             copy("home", "INBOX", Role::Inbox, 20, "z@example.org"),
         ];
-        let (labeled, summary) = decide(copies, &[]);
+        let (labeled, summary) = decide(copies, &[], &[]);
         let x = label_of(&labeled, "x@example.org").unwrap();
         assert_eq!((x.label, x.evidence, x.place.account.as_str(), x.date), (Label::Spam, Evidence::JunkFolder, "work", 10));
         assert!(label_of(&labeled, "y@example.org").is_none());
@@ -333,7 +356,7 @@ mod tests {
             action(150, "INBOX", 2, None, Label::Spam),
             action(300, "Junk", 3, Some("q@example.org"), Label::Ham),
         ];
-        let (labeled, summary) = decide(copies, &log);
+        let (labeled, summary) = decide(copies, &log, &[]);
         let says = |key| label_of(&labeled, key).map(|l| (l.label, l.evidence));
         assert_eq!(says("p@example.org"), Some((Label::Spam, Evidence::Log)), "the newest action");
         assert_eq!(says("header:0000000000000001"), Some((Label::Spam, Evidence::Log)), "by place");
@@ -344,17 +367,44 @@ mod tests {
     #[test]
     fn the_log_reads_phase_zeros_lines() {
         let dir = std::env::temp_dir().join(format!("sioul-learn-labels-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("labels.jsonl");
+        let dirs = crate::Dirs::under(&dir);
+        std::fs::create_dir_all(&dirs.state).unwrap();
+        // The older single log, before the logs were shared; then another device's own.
         std::fs::write(
-            &path,
+            dirs.state.join(sioul_core::spam::labels::FILE),
             "{\"at\":1791360000,\"account\":\"home\",\"folder\":\"INBOX\",\"uidvalidity\":1700000000,\"uid\":4521,\"message_id\":\"abc@example.org\",\"label\":\"ham\",\"source\":\"not-spam\"}\nnot json\n{\"at\":1,\"account\":\"home\",\"folder\":\"INBOX\",\"uidvalidity\":1,\"uid\":2,\"message_id\":null,\"label\":\"spam\",\"source\":\"block\"}\n",
         )
         .unwrap();
-        let log = read_log(&path);
-        assert_eq!(log.len(), 2);
-        assert_eq!((log[0].label, log[0].message_id.as_deref(), log[0].source), (Label::Ham, Some("abc@example.org"), sioul_core::spam::labels::Source::NotSpam));
-        assert_eq!((log[1].label, log[1].message_id.as_deref()), (Label::Spam, None));
+        std::fs::create_dir_all(dirs.labels()).unwrap();
+        std::fs::write(dirs.labels().join("phone.jsonl"), "{\"at\":1791360500,\"account\":\"home\",\"folder\":\"Junk\",\"uidvalidity\":3,\"uid\":7,\"message_id\":\"def@example.org\",\"label\":\"spam\",\"source\":\"junk\"}\n").unwrap();
+        let log = read_log(&dirs);
+        assert_eq!(log.len(), 3, "every device's, oldest first");
+        assert_eq!((log[0].label, log[0].message_id.as_deref()), (Label::Spam, None));
+        assert_eq!((log[1].label, log[1].message_id.as_deref(), log[1].source), (Label::Ham, Some("abc@example.org"), sioul_core::spam::labels::Source::NotSpam));
+        assert_eq!(log[2].message_id.as_deref(), Some("def@example.org"));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// What your own filter moved into a Junk folder is no label: left out
+    /// until you say; what you said wins; another copy of it still speaks.
+    #[test]
+    fn what_the_filter_moved_is_no_label() {
+        let moved = |id: &str| Moved { at: 50, account: "home".into(), folder: "INBOX".into(), uidvalidity: 1, uid: 9, message_id: Some(id.into()), class: sioul_core::spam::Class::Spam };
+        let copies = vec![
+            copy("home", "Junk", Role::Junk, 1, "m@example.org"),
+            copy("home", "Junk", Role::Junk, 2, "said@example.org"),
+            copy("home", "Junk", Role::Junk, 3, "both@example.org"),
+            copy("work", "INBOX", Role::Inbox, 4, "both@example.org"),
+            copy("home", "Junk", Role::Junk, 5, "provider@example.org"),
+        ];
+        let log = vec![action(100, "Junk", 2, Some("said@example.org"), Label::Spam)];
+        let moves = [moved("m@example.org"), moved("said@example.org"), moved("both@example.org")];
+        let (labeled, summary) = decide(copies, &log, &moves);
+        let says = |key| label_of(&labeled, key).map(|l| (l.label, l.evidence));
+        assert_eq!(says("m@example.org"), None, "the filter's own word");
+        assert_eq!(says("said@example.org"), Some((Label::Spam, Evidence::Log)), "then you said it");
+        assert_eq!(says("both@example.org"), Some((Label::Ham, Evidence::Folder)), "its other copy");
+        assert_eq!(says("provider@example.org"), Some((Label::Spam, Evidence::JunkFolder)), "your provider's filing, as before");
+        assert_eq!((summary.moved, summary.spam, summary.ham), (1, 2, 1));
     }
 }
