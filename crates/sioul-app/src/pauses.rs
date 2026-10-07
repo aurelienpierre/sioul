@@ -97,7 +97,9 @@ fn settle(now: &Zoned) {
 /// Each minute, at the start, and when the window comes back: Free time
 /// that ended by itself, the do-not-disturb, and on a phone the "Pause"
 /// pressed on the quick-settings tile or the home screen's shortcut.
-pub(crate) fn tick(qt: &QtThread, _shared: &Arc<Shared>) {
+pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
+    // Do-not-disturb both ways: the window kept, the system's own followed (once).
+    crate::everywhere::started(qt, shared);
     let qt = qt.clone();
     std::thread::spawn(move || {
         settle(&Zoned::now());

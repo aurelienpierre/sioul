@@ -286,7 +286,7 @@ pub(crate) fn create(s: &Session, kind: &str, args: Vec<String>) -> Result<Job, 
 }
 
 /// The job's process, started apart; the job said failed when it cannot start.
-fn spawn(s: &Session, job: Job) -> Result<Job, String> {
+pub(crate) fn spawn(s: &Session, job: Job) -> Result<Job, String> {
     let started = (|| -> Result<std::process::Child, String> {
         let program = std::env::current_exe().map_err(|e| e.to_string())?;
         let mut command = std::process::Command::new(program);

@@ -166,6 +166,7 @@ pub struct Detail {
 pub fn evidence_name(evidence: Evidence) -> &'static str {
     match evidence {
         Evidence::Folder => "folder",
+        Evidence::Filter => "filter",
         Evidence::JunkFolder => "junk-folder",
         Evidence::Keyword => "keyword",
         Evidence::Log => "log",

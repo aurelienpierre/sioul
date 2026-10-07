@@ -15,8 +15,10 @@ import android.util.Log;
  * hears back (five seconds at most), waits milliseconds. A call is let ring,
  * or refused plainly: declined as by hand, so the network sends it to your
  * voicemail; no missed-call notification for it; still in the phone's call
- * history, with Sioul's name; listed for Sioul. Sioul never answers a call,
- * never records one, never listens.
+ * history, with Sioul's name. Every incoming call, declined or let ring, is
+ * then listed for Sioul (Calls.held), once Android has its answer: the Porch
+ * of each of your devices lists the declined ones. Sioul never answers a
+ * call, never records one, never listens.
  *
  * Outgoing calls come here too (to name who is called, which Sioul does
  * not): one to an emergency number lets every call ring for a day.
@@ -48,12 +50,11 @@ public final class CallScreen extends CallScreeningService
         }
         if (!"outgoing".equals(decision.why))
             Log.i(Calls.TAG, "Calls: " + (decision.refuse ? "refused" : "rings") + " (" + decision.why + (decision.who.isEmpty() ? "" : ", " + decision.who) + (decision.column.isEmpty() ? "" : ", " + decision.column) + ").");
-        if (decision.refuse) {
-            try {
-                Calls.held(this, decision);
-            } catch (RuntimeException e) {
-                Log.w(Calls.TAG, "Calls: a call held not listed: " + e);
-            }
+        // Declined or let ring, listed (never an outgoing call, nor one Sioul could not decide).
+        try {
+            Calls.held(this, decision);
+        } catch (RuntimeException e) {
+            Log.w(Calls.TAG, "Calls: a call screened not listed: " + e);
         }
     }
 }

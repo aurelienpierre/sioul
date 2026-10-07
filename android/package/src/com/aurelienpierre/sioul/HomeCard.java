@@ -61,7 +61,7 @@ public class HomeCard extends AppWidgetProvider
     private static final String FOLDER = "state/sioul";
     private static final String FILE = "home-card.json";
     private static final String OPENED = "home-card-opened";
-    /** A tap's address: "sioul-card:porch", "sioul-card:mail/<its file>"… */
+    /** A tap's address: {@code "sioul-card:porch"}, {@code "sioul-card:mail/<its file>"}… */
     static final String SCHEME = "sioul-card";
     /** The lines on top (where each shows is the layout's). */
     private static final int STATUS = 0, DND = 1, CODE = 2, WARNING = 3, DOSE = 4, STEP = 5;

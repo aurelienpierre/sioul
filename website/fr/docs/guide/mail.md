@@ -62,7 +62,7 @@ Les filtres agissent sur le courrier qui arrive, sur son serveur : dans un dos
 
 - **L’ordre** compte : le premier filtre qui déplace un message décide où il va. ▴ et ▾ demandent un filtre plus tôt ou plus tard. Avec plusieurs adresses, **Montrer les filtres de** montre ceux d’une adresse.
 - **Quand ils agissent** : sur le courrier qui arrive non lu dans une boîte de réception, sur le premier de vos appareils à le relever (cet ordinateur, votre téléphone en arrière-plan, `sioul watch`). Cet appareil marque le message sur son serveur, pour que vos autres appareils n’y touchent plus. Vos filtres vont sur vos autres appareils avec vos réglages.
-- **Ce qu’ils ne touchent jamais** : le courrier que le Porche met de côté, un code que vous avez demandé, ce que votre filtre à indésirables garde à revoir. Rien n’est supprimé pour de bon : la corbeille le garde.
+- **Ce qu’ils ne touchent jamais** : le courrier que le Porche met de côté, un code que vous avez demandé, ce que votre filtre à indésirables a retenu. Rien n’est supprimé pour de bon : la corbeille le garde.
 - **Pas annoncé** : un message qu’un filtre sort de la boîte de réception, ou marque comme lu, n’est pas notifié, et n’attend pas sur le Porche. Quand un filtre ne peut pas agir sur un message (un dossier manquant, le serveur qui refuse), le message est notifié comme tout nouveau courrier, et la ligne d’état dit pourquoi.
 - **Les appliquer aux boîtes de réception…** les applique à tout ce qui est dans vos boîtes de réception maintenant, le courrier lu aussi. Sioul dit d’abord ce qui changerait ; **Les appliquer maintenant** le fait au bout de dix secondes, avec **Annuler**.
 - **Depuis une recherche** : **En faire un filtre…**, à côté du bouton Effacer de la recherche, fait un filtre de ses conditions et l’ouvre à la fin de la liste, pour que vous choisissiez ce qu’il fait.
@@ -152,6 +152,10 @@ Quand vous avez une clé OpenPGP (créée ou importée dans [Comptes ▸ Chiffre
 
 Un message chiffré est déchiffré quand vous l’ouvrez ; une signature est vérifiée et dite sous l’expéditeur : « Chiffré · Signé par … », ou « La signature ne correspond pas au texte », en couleurs chaudes, jamais en rouge. Vos messages portent votre clé publique (Autocrypt), pour que les personnes qui vous répondent puissent chiffrer.
 
+
+Un message que votre [clé de sécurité](accounts.md#security-key) signe est signé quand vous appuyez sur **Envoyer**, avant les dix secondes d’**Annuler** : un bandeau en bas de la fenêtre d’écriture demande le code PIN de la clé, et dit combien d’essais il reste quand certains ont été perdus ; puis, quand la clé demande un toucher, il dit **Touchez votre clé de sécurité** pendant qu’elle clignote. Non branchée, il le dit, et reprend dès qu’elle arrive. **Envoyer sans signature** et **Pas maintenant** restent là tout du long, et **Annuler** jette le message signé et rouvre le brouillon. Le code PIN reste en mémoire quinze minutes après son dernier usage, jamais écrit nulle part ; il est oublié quand vous retirez la clé, fermez Sioul, ou choisissez **Oublier le code PIN maintenant** dans Comptes.
+
+Un message chiffré pour votre clé de sécurité n’est jamais ouvert parce qu’il est affiché : la ligne sous l’expéditeur dit « Chiffré pour votre clé de sécurité », avec **Ouvrir avec votre clé de sécurité**. Une fois ouvert, il s’ouvre de nouveau sans la clé, ses pièces jointes aussi, jusqu’à la fermeture de Sioul.
 ## Les réglages {#settings}
 
 Le ⚙ en haut de la page Courrier :
@@ -164,7 +168,7 @@ Le ⚙ en haut de la page Courrier :
 
 ### Votre filtre à indésirables {#your-own-spam-filter}
 
-Sous **Votre filtre à indésirables** : ce qu’il fait de chacun de ses avis sur le courrier d’un inconnu (probablement indésirable, peut-être indésirable, probablement pas : le déplacer dans le dossier Indésirables sur le serveur à son arrivée, le signaler, ou rien), à quel point il doit être sûr pour chacun, et sur un ordinateur **Entraîner maintenant**, pour apprendre de tout votre courrier, avec ce que le dernier apprentissage a mesuré. Ce qu’il signale attend sur le Porche, dans sa file « À revoir », et reste dans son dossier ici ; ce qu’il déplace, vous le trouvez aussi dans le dossier Indésirables ([le Porche](porch.md#spam-and-your-own-filter)). Chaque réglage, en entier : [Paramètres](settings.md#your-own-spam-filter).
+Sous **Votre filtre à indésirables** : ce qu’il fait de chacun de ses avis sur le courrier d’un inconnu (probablement indésirable, peut-être indésirable, probablement pas : le déplacer dans le dossier Indésirables sur le serveur à son arrivée, le signaler, ou rien), à quel point il doit être sûr pour chacun, et sur un ordinateur **Entraîner maintenant**, pour apprendre de tout votre courrier, avec ce que le dernier apprentissage a mesuré. Ce qu’il signale attend sur le Porche, dans **Retenu par votre filtre à indésirables**, et reste dans son dossier ici ; ce qu’il déplace, vous le trouvez aussi dans le dossier Indésirables ([le Porche](porch.md#spam-and-your-own-filter)). Chaque réglage, en entier : [Paramètres](settings.md#your-own-spam-filter).
 
 Les réglages propres à chaque adresse (à quoi elle sert, jusqu’où elle remonte, à quel rythme elle est relevée, sa protection) sont sur sa fiche dans [Comptes](accounts.md#your-accounts).
 

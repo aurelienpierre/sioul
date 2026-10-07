@@ -47,7 +47,10 @@ import java.util.Set;
  * folder), read here in milliseconds, without Sioul's library or Qt. A call
  * is let ring, or refused plainly: the network sends it to the operator's
  * voicemail, as a call declined by hand; it stays in the phone's own call
- * history, and in Sioul's list of calls held (`held.jsonl`), which Rust reads.
+ * history. Every incoming call screened, declined or let ring, is written in
+ * Sioul's list (`held.jsonl`, `held`), which Rust reads and copies into this
+ * phone's log, for the Porch of each of your devices (docs/porch.md, "Calls
+ * declined").
  *
  * The order (research 8.3): the floors first, which always ring (an
  * emergency number or the emergency services' callback number; any call for
@@ -80,7 +83,7 @@ final class Calls
     private static final String EMERGENCY = "emergency.json";
     /** The table's shape this code reads; another one is not read (the calls ring). */
     private static final int VERSION = 1;
-    /** Calls held are kept this long in the list's file. */
+    /** Calls screened are kept this long in the list's file. */
     private static final long KEPT_MS = 30L * 24 * 3600 * 1000;
     /** Past this size the list's file is rewritten without its old lines. */
     private static final long TRIM_BYTES = 128 * 1024;
@@ -675,9 +678,37 @@ final class Calls
         return at == null ? 0 : at.optLong("at", 0);
     }
 
-    /** A call refused, in the list Rust reads (one JSON line each); lines older than a month dropped now and then. */
+    /**
+     * An incoming call screened, declined or let ring, in the list Rust reads
+     * and copies into this phone's log for your other devices (one JSON line
+     * each; lines older than a month dropped now and then). Never an outgoing
+     * call; written after Android has its answer, so the ringing never waits.
+     */
     static synchronized void held(Context context, Decision decision)
     {
+        if ("outgoing".equals(decision.why) || decision.at <= 0)
+            return;
+        String line = line(decision, table(context));
+        if (line != null)
+            append(folder(context), line, decision.at);
+    }
+
+    /**
+     * A call's line (crates/sioul-core/src/calls.rs, `Held`): when, its
+     * number's key and the number as the network gave it, hidden or not, who
+     * it was by your lists, the phone's contacts' name when the table did not
+     * know it, the time of day (the table's frame then, even for a call
+     * decided before it: a second call, Let every call through), why, whether
+     * it rang, the network's verification. Null when it cannot be made.
+     */
+    static String line(Decision decision, Table table)
+    {
+        String column = decision.column;
+        if (column.isEmpty() && table != null) {
+            Frame frame = table.frameAt(decision.at);
+            if (frame != null)
+                column = frame.column;
+        }
         JSONObject line = new JSONObject();
         try {
             line.put("at", decision.at);
@@ -687,20 +718,27 @@ final class Calls
             line.put("presentation", decision.presentation);
             line.put("who", decision.who);
             line.put("name", decision.name);
-            line.put("column", decision.column);
+            line.put("column", column);
             line.put("why", decision.why);
+            line.put("rang", !decision.refuse);
             line.put("verified", decision.verified);
         } catch (JSONException e) {
-            return;
+            return null;
         }
-        File file = new File(folder(context), HELD);
-        folder(context).mkdirs();
+        return line.toString();
+    }
+
+    /** A line added at the end of the list's file in `folder`; past its size, its lines older than a month dropped first. */
+    static synchronized void append(File folder, String line, long now)
+    {
+        File file = new File(folder, HELD);
+        folder.mkdirs();
         if (file.length() > TRIM_BYTES)
-            trim(file, decision.at);
+            trim(file, now);
         try (OutputStream out = new FileOutputStream(file, true)) {
-            out.write((line.toString() + "\n").getBytes(StandardCharsets.UTF_8));
+            out.write((line + "\n").getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
-            Log.w(TAG, "Calls: a call held not written to its list: " + e);
+            Log.w(TAG, "Calls: a call screened not written to its list: " + e);
         }
     }
 

@@ -71,6 +71,8 @@ extern "C" char *sioul_event_coming(const char *zone);
 extern "C" char *sioul_steps_step(const char *reason);
 extern "C" void sioul_steps_in_service();
 extern "C" char *sioul_dnd_apply();
+extern "C" char *sioul_dnd_heard(const char *json);
+extern "C" char *sioul_dnd_toggle();
 // Other apps' notifications (crates/sioul-app/src/appnotes.rs): one decided,
 // and what is held worked out again; JSON, given back to sioul_string_free.
 extern "C" char *sioul_appnotes_decide(const char *json);
@@ -918,6 +920,18 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_StepService_n
 extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_DndReceiver_nativeApply(JNIEnv *env, jclass)
 {
     return answered(env, sioul_dnd_apply());
+}
+
+// The phone's own do-not-disturb heard as it changed ({on}), and Sioul's tile
+// pressed (DndReceiver.java, both ways): in Sioul's own process, window or not.
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_DndReceiver_nativeHeard(JNIEnv *env, jclass, jstring json)
+{
+    return answered(env, sioul_dnd_heard(utf8(env, json).constData()));
+}
+
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_DndReceiver_nativeToggle(JNIEnv *env, jclass)
+{
+    return answered(env, sioul_dnd_toggle());
 }
 
 // Other apps' notifications (crates/sioul-app/src/appnotes.rs, AppNotes.java):

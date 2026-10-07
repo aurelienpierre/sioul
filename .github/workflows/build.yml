@@ -86,13 +86,15 @@ jobs:
           targets: ${{ (runner.os == 'macOS' && inputs.universal_mac) && 'x86_64-apple-darwin' || '' }}
 
       # D-Bus for the keyring (Secret Service) and notifications (libdbus-sys,
-      # through pkg-config); Vulkan and xkbcommon headers, which Qt's own Linux
-      # binaries include; lld, which CXX-Qt picks over GNU ld (it cannot link Qt).
+      # through pkg-config); pcsc-lite's client library for security keys
+      # (pcsc-sys, through pkg-config); Vulkan and xkbcommon headers, which Qt's
+      # own Linux binaries include; lld, which CXX-Qt picks over GNU ld (it
+      # cannot link Qt).
       - name: Linux packages
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libvulkan-dev libxkbcommon-dev lld
+          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev libpcsclite-dev libvulkan-dev libxkbcommon-dev lld
 
       # Modules: the window links WebEngineQuick (build.rs); the pages import
       # QtWebEngine (with its QtWebChannel and QtPositioning), QtMultimedia,

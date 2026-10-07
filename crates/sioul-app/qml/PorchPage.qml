@@ -875,7 +875,8 @@ Item {
                         spacing: 2
 
                         // The lane's title folds and unfolds it; its "?" says how mail lands
-                        // here and holds what changes it. The title fills the row and elides.
+                        // here and holds what changes it. The title fills the row, and wraps
+                        // onto a second line rather than lose words (French titles run long).
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 2
@@ -916,6 +917,8 @@ Item {
                                         textFormat: Text.PlainText
                                         font.pixelSize: 17
                                         font.weight: Font.DemiBold
+                                        wrapMode: Text.WordWrap
+                                        maximumLineCount: 2
                                         elide: Text.ElideRight
                                         color: page.theme.text
                                     }

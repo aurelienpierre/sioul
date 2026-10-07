@@ -82,7 +82,7 @@ One scale for every row, from the least strict to the strictest (`attention::Lev
 Each cell offers some levels only (`attention::choices`): mail ● ◑ ○ –; calls and messages ● ○; Always through ● ◑ (mail) and =, with ☆ on a layer; each kind its own (codes ● or –, doses ● or ○, sites ◎ or ○…).
 
 ### 1.6 Outputs
-- **Shown in Sioul**: the Porch (its lanes; above them codes, doses, calls declined, sites' news, the line of held apps, letters, payments), Health, the Agenda, the pages, the status line, the phone's home card, the pause's screen. Showing is never a notification.
+- **Shown in Sioul**: the Porch (its lanes; above them codes, doses, calls declined (on every device, the phones' logs shared: [porch.md](porch.md), "Calls declined"), sites' news, the line of held apps, letters, payments), Health, the Agenda, the pages, the status line, the phone's home card, the pause's screen. Showing is never a notification.
 - **Told**: a notification Sioul sends. On a computer, critical urgency without sound for codes, reminders, doses and notices, and for new mail from someone Always through; normal urgency for other new mail; an ongoing one for the time running. On a phone, a channel each: "Doses", "Doses during a pause", "Waking", "Events", "An event's alarms during a pause", "New mail", "New mail from people always let through", "Focus timer", "Devices in step".
 - **Held or let through**: another app's notification is snoozed until a time, never cancelled (`AppNotes.java`); a call is let ring, or declined plainly, the network sending it to voicemail and the Porch listing it later (`Calls.java`).
 - **Silenced**: the system's do-not-disturb, through Sioul's three modes ([§6](#6-what-the-system-lets-through)).

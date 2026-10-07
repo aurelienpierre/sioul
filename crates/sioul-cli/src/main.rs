@@ -317,6 +317,8 @@ fn system_locale() -> Option<String> {
 }
 
 fn main() -> ExitCode {
+    // Before anything else: no crate logs above "info", a security key's PIN never.
+    sioul_sync::securitykey::cap_logging();
     let cli = Cli::parse();
     // Mail, keys, drafts and caches are kept in folders that are yours alone.
     config::make_private_dirs();

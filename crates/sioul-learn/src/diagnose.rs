@@ -39,7 +39,7 @@ pub fn names() -> &'static [&'static str] {
 pub fn feature_means(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, domain: Option<&str>) -> Result<Vec<Group>, LearnError> {
     let mut copies = Vec::new();
     corpus::read_all(dirs, |record| copies.push(Copy::of(&record)))?;
-    let (labeled, _) = labels::decide(copies, &labels::read_log(dirs), &labels::read_moved(dirs));
+    let (labeled, _) = labels::decide(copies, &labels::read_log(dirs), &labels::read_moved(dirs), &labels::read_flagged(dirs));
     let chosen: HashMap<corpus::Place, Label> = labeled.into_iter().map(|l| (l.place, l.label)).collect();
     let domain = domain.map(|d| d.trim().trim_start_matches('@').to_ascii_lowercase());
     // By account and label (spam: true), in order.

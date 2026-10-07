@@ -130,6 +130,7 @@ Panel {
     }
 
     onKeyChanged: {
+        keyBand.reset()
         reader.revealed = false
         reader.reasonsShown = false
         reader.attachmentsShown = false
@@ -529,6 +530,27 @@ Panel {
                                 textFormat: Text.PlainText
                                 wrapMode: Text.Wrap
                                 color: reader.reading && reader.reading.protection && reader.reading.protection.fine ? reader.theme.accent : reader.theme.warm
+                            }
+                            // Encrypted to your security key: opened only when you ask, never because it is shown.
+                            Button {
+                                visible: reader.reading !== null && !!reader.reading.protection && reader.reading.protection.security_key && !keyBand.active
+                                text: reader.sioul.text("seckey-open-with")
+                                onClicked: keyBand.start()
+                            }
+                        }
+                        SecurityKeyBand {
+                            id: keyBand
+
+                            Layout.fillWidth: true
+                            sioul: reader.sioul
+                            theme: reader.theme
+                            context: reader.key
+                            purpose: "open"
+                            onGo: pin => reader.sioul.openWithSecurityKey(reader.key, pin)
+                            // Opened: its session key stays in memory, the message reads as any other.
+                            onDone: {
+                                reader.reading = JSON.parse(reader.sioul.message(reader.key) || "null")
+                                keyBand.reset()
                             }
                         }
                         GridLayout {

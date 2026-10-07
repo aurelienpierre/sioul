@@ -5,8 +5,10 @@
 // (crates/sioul-app/src/spam.rs, docs/spam-filter.md): the table in use and
 // where it comes from, with what it measured; on a computer, "Train now",
 // the training's progress with "Stop", what the last training found, and
-// what the corpus and the outside material hold. One computer trains, by
-// hand; a phone never does: it says where its table comes from, another
+// what the corpus and the outside material hold, and whether it trains
+// again by itself, once a week, plugged in and idle (only on the computer
+// that made the table in use: greyed on the others, which say which one
+// does). A phone never trains: it says where its table comes from, another
 // device's, brought sealed by the sharing.
 
 pragma ComponentBehavior: Bound
@@ -20,8 +22,8 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
-    // spam.rs's `Status`: {trains, table, measured, refused, running, stopping, progress, fraction, ended, last, corpus, outside}.
-    property var shown: ({ trains: false, table: "", measured: "", refused: "", running: false, stopping: false, progress: "", fraction: -1, ended: "", last: [], corpus: [], outside: [] })
+    // spam.rs's `Status`: {trains, table, measured, refused, running, stopping, progress, fraction, ended, by_itself, by_itself_here, by_itself_line, last, corpus, outside}.
+    property var shown: ({ trains: false, table: "", measured: "", refused: "", running: false, stopping: false, progress: "", fraction: -1, ended: "", by_itself: true, by_itself_here: false, by_itself_line: "", last: [], corpus: [], outside: [] })
     // What it is, in a sentence: the setting's own (settings.rs), said first.
     property string about: ""
     // Why "Train now" did not start, else "".
@@ -146,6 +148,48 @@ ColumnLayout {
         wrapMode: Text.Wrap
         lineHeight: 1.2
         color: filter.theme.text
+    }
+
+    // Training again by itself, once a week, plugged in and idle: the switch
+    // where this computer is the one that does it, greyed elsewhere; under
+    // it, which computer trains, or what its last run by itself did.
+    RowLayout {
+        visible: filter.shown.trains
+        Layout.fillWidth: true
+        Layout.topMargin: 4
+        spacing: 8
+
+        Switch {
+            id: byItself
+
+            checked: filter.shown.by_itself
+            enabled: filter.shown.by_itself_here
+            Accessible.name: byItselfLabel.text
+            onToggled: {
+                filter.problem = filter.sioul.setSetting("spam.train_by_itself", JSON.stringify(checked))
+                filter.read(filter.sioul.spamStatus())
+                byItself.checked = Qt.binding(() => filter.shown.by_itself)
+            }
+        }
+        Label {
+            id: byItselfLabel
+
+            Layout.fillWidth: true
+            text: filter.sioul.text("spam-app-by-itself")
+            wrapMode: Text.Wrap
+            lineHeight: 1.2
+            color: byItself.enabled ? filter.theme.text : filter.theme.muted
+        }
+    }
+    Label {
+        visible: filter.shown.trains && filter.shown.by_itself_line !== ""
+        Layout.fillWidth: true
+        text: filter.shown.by_itself_line
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        lineHeight: 1.2
+        color: filter.theme.muted
     }
 
     // The last training here: what it did with the table, then its numbers.

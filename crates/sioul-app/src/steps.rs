@@ -254,7 +254,8 @@ fn step(reason: &str) -> serde_json::Value {
     // and the calls' table first, and sent at once, the sync app not waited for.
     let pressed = reason == "calls";
     let calls = if pressed { Some(crate::calls::step(true)) } else { None };
-    let fetch_first = reason != "folder" && !pressed && (in_use || !asleep);
+    // A press heard from this phone's own do-not-disturb (DndReceiver): sent at once too.
+    let fetch_first = reason != "folder" && reason != "heard" && !pressed && (in_use || !asleep);
     if let Some(Err(e)) = crate::share::exchange_here(fetch_first) {
         eprintln!("sioul: steps: {e}");
     }
@@ -321,6 +322,53 @@ pub extern "C" fn sioul_dnd_apply() -> *mut std::ffi::c_char {
     })
     .unwrap_or_default();
     crate::alarms::handed(answer)
+}
+
+/// A change of this phone's own do-not-disturb, heard as it happened
+/// (DndReceiver, in Sioul's own process): {on}, the system's state. A press of
+/// the switch when it disagrees with what holds (`everywhere::heard_from_system`).
+///
+/// # Safety
+/// `json` is null or a zero-terminated text valid for the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sioul_dnd_heard(json: *const std::ffi::c_char) -> *mut std::ffi::c_char {
+    let json = if json.is_null() { String::new() } else { unsafe { std::ffi::CStr::from_ptr(json) }.to_string_lossy().to_string() };
+    let answer = std::panic::catch_unwind(|| {
+        let asked: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+        if let Some(on) = asked["on"].as_bool() {
+            crate::everywhere::heard_from_system(on);
+        }
+        crate::everywhere::moment().to_string()
+    })
+    .unwrap_or_default();
+    crate::alarms::handed(answer)
+}
+
+/// Sioul's switch pressed on the phone's quick-settings tile (DndTile, through
+/// DndReceiver, in Sioul's own process).
+#[unsafe(no_mangle)]
+pub extern "C" fn sioul_dnd_toggle() -> *mut std::ffi::c_char {
+    let answer = std::panic::catch_unwind(|| {
+        crate::everywhere::toggle_here();
+        crate::everywhere::moment().to_string()
+    })
+    .unwrap_or_default();
+    crate::alarms::handed(answer)
+}
+
+/// A press made on this phone outside the window (a system's change heard,
+/// the tile): sent at once by the background service, or, while it does not
+/// run, by this process itself (one exchange, the sync app not asked first).
+/// Nothing on a computer: the window sends its own.
+pub(crate) fn send_now() {
+    if !cfg!(target_os = "android") {
+        return;
+    }
+    if java("heard", "{}")["stepped"] != true
+        && let Some(Err(e)) = crate::share::exchange_here(false)
+    {
+        eprintln!("sioul: do-not-disturb: {e}");
+    }
 }
 
 #[cfg(test)]

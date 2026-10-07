@@ -158,10 +158,11 @@ Item {
         return duplicatesLoader.item
     }
 
-    function startNew() {
+    // A new card; `number` filled in when given (a call's line on the Porch, on a computer).
+    function startNew(number) {
         page.duplicatesShown = false
         page.openKey = ""
-        page.person = { name: "", emails: [{ label: "", value: "" }], phones: [{ label: "", value: "" }], org: "", title: "", addresses: [], birthday: "", notes: "", urls: [], categories: [], book: "", read_only: false }
+        page.person = { name: "", emails: [{ label: "", value: "" }], phones: [{ label: "", value: number || "" }], org: "", title: "", addresses: [], birthday: "", notes: "", urls: [], categories: [], book: "", read_only: false }
         page.problem = ""
         page.editing = true
         page.formNow().load(page.person)

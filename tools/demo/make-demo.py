@@ -4,7 +4,7 @@
 """A demo profile for Sioul: an invented, calm and lived-in life, in English
 or in French, for trying Sioul and for the documentation's screenshots.
 
-    make-demo.py --into DIR [--now 2026-10-05T14:00+02:00] [--language en|fr] [--no-hours] [--notes-at PATH] [--spam]
+    make-demo.py --into DIR [--now 2026-10-05T14:00+02:00] [--language en|fr] [--no-hours] [--notes-at PATH] [--spam] [--calls]
 
 Writes DIR/config, DIR/data, DIR/state and DIR/cache (the four XDG folders:
 run Sioul with XDG_CONFIG_HOME=DIR/config, XDG_DATA_HOME=DIR/data,
@@ -13,7 +13,8 @@ keeps it off the network), and DIR/notes, the folder of notes (the case store).
 
 Everything is invented: the people, the companies, the messages. Addresses are
 on example.org, example.com, .example, .test and .invalid hosts (RFC 2606), phone numbers in the
-ranges the French regulator keeps for fiction (04 65 71, 06 39 98). Nothing is
+ranges the French regulator keeps for fiction (04 65 71, and 06 39 98,
+which is Mayotte's: +262 6 39 98). Nothing is
 random: the same --now gives the same files. Dates are laid around --now (by
 default, now): mail of the last two weeks, a one-time code from two minutes
 ago, this week's events, two months of bank movements.
@@ -27,6 +28,9 @@ mounts it elsewhere (tools/demo/screenshots.sh mounts it at /home/demo/Notes).
 --spam (or SIOUL_DEMO_SPAM=1 in the environment) adds Sioul's own spam filter:
 a table made by hand, two strangers' messages it flags and one it moved into
 the Junk folder, waiting in the Porch's review queue (docs/spam-filter.md).
+--calls (or SIOUL_DEMO_CALLS=1) adds the calls a phone of yours screened, as
+the sharing brings its log to a computer: the Porch lists those it declined,
+and the doctor's sheet her calls of the month (docs/porch.md, "Calls declined").
 
 DIR must be new, empty, or a demo profile made by this script: it is then
 emptied first."""
@@ -329,16 +333,16 @@ def contacts() -> dict:
         "oskar": dict(name=W.oskar[0], first=W.oskar[0].split()[0], last=W.oskar[0].split()[1], email=[("work", W.oskar[1])], phone=[("work", "+33 4 65 71 20 15")],
                       org=W.library_name, title=t("IT and digital services", "Informatique et services numériques"), adr=(street("2 Rue de l'Exemple"), "69006", "Lyon"),
                       place=(45.7765, 4.8540), cats=["clients"]),
-        "tom": dict(name=W.tom[0], first="Tom", last=W.tom[0].split()[1], email=[("work", W.tom[1])], phone=[("cell", "+33 6 39 98 41 07")],
+        "tom": dict(name=W.tom[0], first="Tom", last=W.tom[0].split()[1], email=[("work", W.tom[1])], phone=[("cell", "+262 6 39 98 41 07")],
                     org=t("Inkwell Studio", "Atelier L'Encrier"), title=t("Illustrator", "Illustrateur"), adr=(street("9 Quai des Exemples"), "69001", "Lyon"), place=(45.7675, 4.8337),
                     cats=[t("colleagues", "collègues")], note=t("Shares the stand at the December craft fair.", "Partage le stand du salon des créateurs en décembre.")),
-        "maud": dict(name="Maud Ferrand", first="Maud", last="Ferrand", email=[("home", "maud.ferrand@example.org")], phone=[("cell", "+33 6 39 98 12 30")],
+        "maud": dict(name="Maud Ferrand", first="Maud", last="Ferrand", email=[("home", "maud.ferrand@example.org")], phone=[("cell", "+262 6 39 98 12 30")],
                      adr=(street("14 Allée Fictive"), "69100", "Villeurbanne"), place=(45.7676, 4.8800), bday="--03-21", cats=[t("family", "famille")], note=t("Mum.", "Maman.")),
-        "camille": dict(name="Camille Ferrand", first="Camille", last="Ferrand", email=[("home", "camille.ferrand@example.org")], phone=[("cell", "+33 6 39 98 55 02")],
+        "camille": dict(name="Camille Ferrand", first="Camille", last="Ferrand", email=[("home", "camille.ferrand@example.org")], phone=[("cell", "+262 6 39 98 55 02")],
                         adr=(street("31 Rue Imaginaire"), "38000", "Grenoble"), place=(45.1916, 5.7281), bday="--07-02", cats=[t("family", "famille")]),
-        "hugo": dict(name="Hugo Ferrand", first="Hugo", last="Ferrand", email=[("home", "hugo.ferrand@example.org")], phone=[("cell", "+33 6 39 98 70 19")],
+        "hugo": dict(name="Hugo Ferrand", first="Hugo", last="Ferrand", email=[("home", "hugo.ferrand@example.org")], phone=[("cell", "+262 6 39 98 70 19")],
                      adr=(street("6 Passage Inventé"), "42000", "Saint-Étienne"), place=(45.4397, 4.3872), bday="--10-14", cats=[t("family", "famille")]),
-        "jonas": dict(name=W.jonas[0], first="Jonas", last=W.jonas[0].split()[1], email=[("home", W.jonas[1])], phone=[("cell", "+33 6 39 98 33 84")],
+        "jonas": dict(name=W.jonas[0], first="Jonas", last=W.jonas[0].split()[1], email=[("home", W.jonas[1])], phone=[("cell", "+262 6 39 98 33 84")],
                       adr=(street("18 Rue de l'Exemple"), "69007", "Lyon"), place=(45.7457, 4.8423), cats=[t("friends", "amis")],
                       note=t("Climbing on Saturdays.", "Escalade le samedi.")),
         "varga": dict(name="Dr Elena Varga", first="Elena", last="Varga", email=[], phone=[("work", "+33 4 65 71 47 70")],
@@ -348,7 +352,7 @@ def contacts() -> dict:
         "marc": dict(name="Marc Duval", first="Marc", last="Duval", email=[("work", W.marc[1])], phone=[("work", "+33 4 65 71 63 25")],
                      org=t("Duval Accounts", "Cabinet Duval"), title=t("Accountant", "Expert-comptable"), adr=(street("11 Place des Exemples"), "69400", "Villefranche-sur-Saône"),
                      place=(45.9900, 4.7180)),
-        "priya": dict(name="Priya Nair", first="Priya", last="Nair", email=[("home", f"priya@{W.choir}")], phone=[("cell", "+33 6 39 98 90 46")],
+        "priya": dict(name="Priya Nair", first="Priya", last="Nair", email=[("home", f"priya@{W.choir}")], phone=[("cell", "+262 6 39 98 90 46")],
                       org=t("Two Rivers Voices choir", "Chœur des Deux Rivières"), title=t("Choir director", "Cheffe de chœur"), adr=(street("3 Impasse Fictive"), "69004", "Lyon"),
                       place=(45.7745, 4.8320), cats=[t("friends", "amis")]),
         "healthcover": dict(name=W.health_name, email=[("work", f"members@{W.health}")], phone=[("work", "+33 4 65 71 80 00")],
@@ -981,18 +985,19 @@ def spam_table(clock: Clock) -> bytes:
     anyone's mail. Three header features weigh (replies going elsewhere, a name
     naming another domain, links elsewhere) and two placeholders (a price, a
     link), so that only `spam_mail`'s two messages get a word. Made for the
-    tokenizer's and the header features' versions Sioul reads now (1 and 1):
-    with another, Sioul refuses it, and says so."""
+    format, the tokenizer and the header features Sioul reads now (format 2,
+    tokenizer 2, header features 4, 35 of them: the centroid's kind, its
+    header weights beside its words): with others, Sioul refuses it, and says so."""
     def fnv64(data: bytes) -> int:
         h = 0xCBF29CE484222325
         for byte in data:
             h = ((h ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
         return h
 
-    features = 41  # spam::features::N
+    features = 35  # spam::features::N
     weights = [0.0] * features
     # reply_to_elsewhere, name_names_domain, links_elsewhere: their places in features.rs's NAMES.
-    for at, weight in ((12, 2.5), (15, 2.0), (34, 1.5)):
+    for at, weight in ((10, 2.5), (13, 2.0), (31, 1.5)):
         weights[at] = weight
     words = sorted((fnv64(word.encode()), score) for word, score in (("_PRICE_", 2.0), ("_URL_", 1.0)))
     buckets = [0.0] * 8
@@ -1003,7 +1008,7 @@ def spam_table(clock: Clock) -> bytes:
         "device": t("noa-desk", "noa-bureau"),
     }, separators=(",", ":")).encode()
     # The format, the tokenizer's and the features' versions, the dimension, n-grams of 3 to 6, then the counts.
-    out = b"SIOULSPM" + struct.pack("<12I", 1, 1, 1, 2, 3, 6, len(buckets), len(words), features, len(meta), 0, 0)
+    out = b"SIOULSPM" + struct.pack("<12I", 2, 2, 4, 2, 3, 6, len(buckets), len(words), features, len(meta), 0, 0)
     # The bias, the mean message's text, Platt's A and B: p = 1 / (1 + exp(-f)).
     out += struct.pack("<4f", -2.5, 0.0, -1.0, 0.0)
     out += b"".join(struct.pack("<Q", h) for h, _ in words) + b"".join(struct.pack("<f", score) for _, score in words)
@@ -1021,6 +1026,37 @@ def moved_log(p: Profile, mails: list[Mail]):
         "message_id": m.message_id.strip("<>"), "class": "spam",
     }, separators=(",", ":")) + "\n" for m in mails)
     p.write(p.state / "spam" / "moved" / "demo-device.jsonl", lines)
+
+
+def write_calls(p: Profile):
+    """The calls a phone of yours screened, as its log reaches a computer
+    through the sharing (crates/sioul-core/src/calls.rs, `Held`; the phone's
+    name in the sharing invented): what that computer's Porch lists of those it
+    declined, at the times their callers may reach you, and the doctor's calls
+    of the month on her sheet. Fiction numbers: ARCEP's 01 99 00 and 04 65 71."""
+    c = p.clock
+
+    def call(moment: datetime, key: str, who: str, column: str, why: str = "matrix", rang: bool = False) -> str:
+        line = {"at": unix(moment) * 1000}
+        if key:
+            line["key"] = key
+        else:
+            line["hidden"] = True
+        line.update({"who": who, "column": column, "why": why, "rang": rang})
+        return json.dumps(line, separators=(",", ":")) + "\n"
+
+    doctor = "+33465714770"
+    stranger = "+33199001234"
+    lines = [
+        call(c.at(c.day(-12), "18:40"), doctor, "safe", "leisure", rang=True),
+        call(c.at(c.weekday_before(-3), "10:05"), doctor, "safe", "work", rang=True),
+        call(c.at(c.day(-1), "23:10"), doctor, "safe", "sleep"),
+        call(c.at(c.today, "06:50"), stranger, "stranger", "sleep"),
+        call(c.at(c.today, "07:25"), stranger, "stranger", "sleep"),
+        call(c.at(c.today, "07:31"), stranger, "stranger", "sleep", why="repeat", rang=True),
+        call(c.at(c.today, "12:40"), "", "hidden", "meals"),
+    ]
+    p.write(p.state / "calls" / "log" / "demo-phone.jsonl", "".join(lines))
 
 
 def account_id(key: str) -> str:
@@ -2331,6 +2367,8 @@ def main():
     parser.add_argument("--notes-at", help="where Sioul finds DIR/notes when it runs (default: DIR/notes)")
     parser.add_argument("--spam", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_SPAM")),
                         help="Sioul's own spam filter: a table made by hand, strangers' messages in its review queue (SIOUL_DEMO_SPAM=1 too)")
+    parser.add_argument("--calls", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_CALLS")),
+                        help="the calls a phone of yours screened, as the sharing brings them: the Porch lists those it declined (SIOUL_DEMO_CALLS=1 too)")
     args = parser.parse_args()
     LANG = args.language
     W = World()
@@ -2348,6 +2386,8 @@ def main():
         profile.write(profile.data / "spam" / "table.bin", spam_table(clock), clock.ago(hours=26))
         moved_log(profile, [m for m in mails if m.key == "moved"])
     write_contacts(profile)
+    if args.calls:
+        write_calls(profile)
     write_calendars(profile, mails)
     write_notes(profile, mails)
     sessions = write_time(profile)

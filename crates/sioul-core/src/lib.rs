@@ -83,6 +83,7 @@
 //! - [`mailto`]: `mailto:` addresses: the message a link asks to write.
 //! - [`handed`]: files, text and `mailto:` links other applications hand Sioul: each a draft.
 //! - [`pgp`]: OpenPGP for mail, with Sequoia.
+//! - [`securitykey`]: your OpenPGP keys on a security key (a YubiKey): signing and opening there, its certificate checked.
 //! - [`unsubscribe`]: leaving a mailing list in one click: when it may be done.
 //!
 //! ## Tasks, projects, notes and links
@@ -221,6 +222,7 @@ pub mod reminders;
 pub mod project;
 pub mod reading;
 pub mod rules;
+pub mod securitykey;
 pub mod settings;
 pub mod shield;
 pub mod sounds;

@@ -64,6 +64,8 @@ public final class StepService extends Service
     static final String STEP = "com.aurelienpierre.sioul.action.STEP";
     /** "Let every call through" pressed on the notification (StepReceiver): extras "on", "minutes". */
     static final String CALLS = "com.aurelienpierre.sioul.action.CALLS";
+    /** A press of the switch heard in Sioul's own process (DndReceiver, the tile): sent at once (StepReceiver). */
+    static final String HEARD = "com.aurelienpierre.sioul.action.HEARD";
     private static final String CHANNEL = "steps";
     private static final int NOTE = 0x5137;
     private static final String KEPT = "sioul-steps";
@@ -123,6 +125,12 @@ public final class StepService extends Service
             case "poke":
                 DndReceiver.poke(context);
                 return "true";
+            case "heard":
+                // A press made in Sioul's own process: sent at once by the service when it runs; else Rust sends it.
+                if (!runningHere(context))
+                    return "{\"stepped\":false}";
+                context.sendBroadcast(new Intent(context, StepReceiver.class).setAction(HEARD));
+                return "{\"stepped\":true}";
             case "next":
                 DndReceiver.schedule(context, asked.optLong("at", 0));
                 return "true";
@@ -383,6 +391,14 @@ public final class StepService extends Service
         Intent press = new Intent(context, StepReceiver.class).setAction(CALLS).putExtra("on", on).putExtra("minutes", minutes);
         PendingIntent pending = PendingIntent.getBroadcast(context, code, press, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         return new Notification.Action.Builder(null, title, pending).build();
+    }
+
+    /** A press of the switch made in Sioul's own process (StepReceiver): a step at once, which sends it. */
+    static void heard(Context context)
+    {
+        StepService service = running;
+        if (service != null)
+            service.step("heard", 0);
     }
 
     /**

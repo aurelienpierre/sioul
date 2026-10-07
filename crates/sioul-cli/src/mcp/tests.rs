@@ -974,6 +974,61 @@ fn the_spam_tools_can_be_kept_from_agents() {
     assert!(ask(&mut self::server(), "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == "spam_label"));
 }
 
+/// A run by itself, as its job (`spam::by_itself`), its power asked of a
+/// fake supply: plugged in, then unplugged; the watch writes the job's own
+/// stop file, the job sees it and stops at its next step, and its end is
+/// kept as stopped (`auto::Run`). Nothing trains, nothing starts apart.
+#[test]
+fn a_run_by_itself_stops_when_unplugged() {
+    let _home = home();
+    let _spam = spam_lock();
+    let s = session();
+    use crate::spam::jobs::{self, State};
+    use sioul_learn::auto::{self, Outcome, Run};
+    use sioul_sync::power::Power;
+    let dirs = sioul_learn::Dirs::standard();
+    let job = jobs::create(&s, "train", vec!["--by-itself".into(), "--no-fetch".into()]).unwrap();
+    Run { started: job.created, job: job.id.clone(), fetched: false, ended: None, outcome: None }.save(&dirs).unwrap();
+    let running = jobs::Running::open(&job.id).unwrap();
+    let cancel = running.cancel();
+    let plugged = Power { on_mains: Some(true), power_saver: Some(false), ..Power::default() };
+    let readings = std::cell::RefCell::new(vec![plugged, plugged, Power { on_mains: Some(false), ..plugged }]);
+    auto::watch_supply(
+        || readings.borrow_mut().remove(0),
+        || {
+            let _ = jobs::stop(&job.id);
+        },
+        || cancel.cancelled(),
+        std::time::Duration::from_millis(5),
+    );
+    assert!(readings.borrow().is_empty(), "stopped at the reading unplugged");
+    let asked = std::time::Instant::now();
+    while !cancel.cancelled() && asked.elapsed() < std::time::Duration::from_secs(5) {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(cancel.cancelled(), "the job sees its stop file");
+    let result: Result<(), String> = Err("Stopped.".into());
+    running.finish(Err("Stopped.".into())).unwrap();
+    let stopped = jobs::look(&job.id).unwrap().state == State::Stopped;
+    Run::finish(&dirs, &job.id, crate::spam::by_itself::outcome(&result, None, stopped), 1_791_360_000).unwrap();
+    assert_eq!(Run::load(&dirs).map(|r| (r.ended, r.outcome)), Some((Some(1_791_360_000), Some(Outcome::Stopped))));
+    // Saving power stops it too, at once; on mains power and not saving, never.
+    for (on_mains, power_saver, stops) in [(Some(true), Some(true), true), (Some(true), Some(false), false)] {
+        let calls = std::cell::Cell::new(0);
+        let stop = std::cell::Cell::new(false);
+        auto::watch_supply(
+            || {
+                calls.set(calls.get() + 1);
+                Power { on_mains, power_saver, ..Power::default() }
+            },
+            || stop.set(true),
+            || calls.get() >= 3,
+            std::time::Duration::from_millis(1),
+        );
+        assert_eq!(stop.get(), stops, "{on_mains:?} {power_saver:?}");
+    }
+}
+
 /// A job's file from start to end, as its process writes it: starting,
 /// running (its process holds the lock), its step, asked to stop, stopped;
 /// one that ends without a word is said to have died; one of each kind at

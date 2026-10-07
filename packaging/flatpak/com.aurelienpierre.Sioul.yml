@@ -33,6 +33,10 @@ finish-args:
   # Security keys (YubiKey…) in sites are /dev/hidraw*: only "all" reaches them
   # (--device=usb and input do not); it also covers the GPU (dri).
   - --device=all
+  # Your OpenPGP keys on a security key: the system's smart card service
+  # (pcscd), whose socket this binds into the sandbox; pcscd owns the reader,
+  # so --device=all does not reach it. The runtime brings pcsc-lite's client.
+  - --socket=pcsc
   # The system keyring (Secret Service) and notifications.
   - --talk-name=org.freedesktop.secrets
   - --talk-name=org.freedesktop.Notifications

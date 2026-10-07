@@ -53,6 +53,9 @@ enum Work {
     /// Several messages at once, under one "Undo".
     Many(Vec<Work>),
     Send { draft: String },
+    /// A message built at Send, signed with your security key: sent as built
+    /// once its ten seconds are gone; "Undo" throws the signed copy away.
+    SendSigned { draft: String, account: Account, outgoing: compose::Outgoing },
     Discard { draft: String },
     /// A contact or an event deleted here; the account's sync deletes it there.
     Remove { account: String, file: PathBuf },
@@ -110,7 +113,7 @@ fn hidden(shared: &Shared) -> (BTreeSet<PathBuf>, BTreeSet<String>) {
             }
             Work::Batch { files: batch, .. } => files.extend(batch.iter().cloned()),
             Work::Filters { planned } => files.extend(planned.iter().flat_map(|(_, jobs)| jobs.iter().filter(|j| j.plan.leaves()).map(|j| j.file.clone()))),
-            Work::Send { draft } | Work::Discard { draft } => {
+            Work::Send { draft } | Work::Discard { draft } | Work::SendSigned { draft, .. } => {
                 drafts.insert(draft.clone());
             }
             Work::Many(works) => works.iter().for_each(|w| add(w, files, drafts)),
@@ -741,6 +744,7 @@ fn perform(work: &Work, shared: &Shared) -> Option<String> {
         // Each in turn; the first problem is said, the others are still done.
         Work::Many(works) => works.iter().filter_map(|w| perform(w, shared)).collect::<Vec<_>>().into_iter().next(),
         Work::Send { draft } => Some(send_now(draft, shared)),
+        Work::SendSigned { draft, account, outgoing } => Some(send_signed_now(draft, account, outgoing, shared)),
         Work::Discard { draft } => {
             if let Some(draft) = Draft::by_id(draft) {
                 draft.discard();
@@ -800,6 +804,28 @@ fn send_now(id: &str, shared: &Shared) -> String {
         }
         Err(e @ SyncError::NotFiled(_)) => {
             draft.discard();
+            e.sentence(tr(), &account.id)
+        }
+        Err(e) => say("mail-not-sent", &[("detail", e.sentence(tr(), &account.id))]),
+    }
+}
+
+/// Sends what was built and signed at Send, as built; then the draft goes.
+fn send_signed_now(id: &str, account: &Account, outgoing: &compose::Outgoing, shared: &Shared) -> String {
+    let sent = secret::password(account).and_then(|p| sioul_sync::send::send_built(&config_path(), account, &p, outgoing));
+    let discard = || {
+        if let Some(draft) = Draft::by_id(id) {
+            draft.discard();
+        }
+    };
+    match sent {
+        Ok(()) => {
+            discard();
+            nudge(shared, &account.id);
+            tr().text("mail-sent", None)
+        }
+        Err(e @ SyncError::NotFiled(_)) => {
+            discard();
             e.sentence(tr(), &account.id)
         }
         Err(e) => say("mail-not-sent", &[("detail", e.sentence(tr(), &account.id))]),
@@ -953,7 +979,7 @@ pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>) -> Option<String> {
             let problem = back(qt, shared);
             (if problem.is_empty() { tr().text("undo-done", None) } else { problem }, None)
         }
-        Work::Send { draft } => (tr().text("undo-send-undone", None), Some(draft.clone())),
+        Work::Send { draft } | Work::SendSigned { draft, .. } => (tr().text("undo-send-undone", None), Some(draft.clone())),
         Work::Discard { draft } => (tr().text("undo-done", None), Some(draft.clone())),
         // A task or an event deleted, an occurrence left out: back in the plan and the agenda at once.
         Work::Remove { .. } | Work::Skip { .. } => {
@@ -1197,6 +1223,11 @@ pub(crate) fn discard(qt: &QtThread, shared: &Arc<Shared>, id: &str) {
     schedule(qt, shared, Work::Discard { draft: id.to_string() }, tr().text("undo-discarded", None));
 }
 
+/// Sends after ten seconds a message built and signed at Send with your
+/// security key; "Undo" throws it away and opens the draft again.
+pub(crate) fn send_signed(qt: &QtThread, shared: &Arc<Shared>, id: &str, account: Account, outgoing: compose::Outgoing) {
+    schedule(qt, shared, Work::SendSigned { draft: id.to_string(), account, outgoing }, tr().text("undo-sending", None));
+}
 
 /// The writing window closed: an untouched draft goes, a written one stays in Drafts.
 pub(crate) fn closed(qt: &QtThread, shared: &Arc<Shared>, id: &str) {

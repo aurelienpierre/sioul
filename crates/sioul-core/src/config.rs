@@ -158,11 +158,22 @@ pub struct CallSettings {
 }
 
 /// What the Porch shows of what Sioul knows.
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct PorchSettings {
     /// Projects whose lane the Porch leaves out: their mail stays on their page in Projects.
     #[serde(default)]
     pub hidden_projects: Vec<String>,
+    /// The calls your phones declined, listed on the Porch of every device
+    /// (docs/porch.md, "Calls declined"); off, each phone lists its own only,
+    /// and the computers none. On unless said.
+    #[serde(default = "yes")]
+    pub calls: bool,
+}
+
+impl Default for PorchSettings {
+    fn default() -> PorchSettings {
+        PorchSettings { hidden_projects: Vec::new(), calls: true }
+    }
 }
 
 /// Who may reach you when, channel by channel, as an older Sioul wrote it
@@ -310,9 +321,19 @@ pub struct SpamSettings {
     /// From this one on, unsure: 0.5 when unsaid, never above the other.
     #[serde(default)]
     pub threshold_unsure: Option<f32>,
+    /// Trained again by itself, once a week, on the computer that made the
+    /// table in use, when it is plugged in and idle (`sioul_learn::auto`):
+    /// on when unsaid.
+    #[serde(default)]
+    pub train_by_itself: Option<bool>,
 }
 
 impl SpamSettings {
+    /// Whether the filter trains again by itself (on unless said otherwise).
+    pub fn trains_by_itself(&self) -> bool {
+        self.train_by_itself.unwrap_or(true)
+    }
+
     /// The matrix: each class's action as written, else as an older `mode`
     /// meant it, else spam and doubts flagged, nothing done with the rest.
     pub fn actions(&self) -> crate::spam::Actions {

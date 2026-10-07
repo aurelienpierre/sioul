@@ -5,7 +5,9 @@
 // "Attach" and "Send". Cc and Bcc are folded, the sending account shows only
 // when you have several. Everything is saved as you type, so closing the
 // window loses nothing: the draft waits in Drafts. "Send" waits ten seconds
-// with "Undo" in the main window before the message leaves.
+// with "Undo" in the main window before the message leaves. A message your
+// security key signs is signed here first, at Send, with its PIN and maybe a
+// touch (SecurityKeyBand.qml); the ten seconds come after.
 
 pragma ComponentBehavior: Bound
 
@@ -30,6 +32,8 @@ SioulWindow {
     property bool leaving: false
     // What OpenPGP allows: signing with your key, encrypting to every recipient's.
     property var protection: compose.draft ? compose.draft.protection : ({ can_sign: false, can_encrypt: false, missing: [] })
+    // The security key that signs for this address has an expired certificate.
+    readonly property bool expired: compose.protection.expired !== undefined && compose.protection.expired !== ""
     // "Attaching 2 files…" while files shared from another application are copied (outside.rs).
     property string attaching: compose.draft && compose.draft.attaching ? compose.draft.attaching : ""
 
@@ -102,7 +106,20 @@ SioulWindow {
     }
 
     function send() {
+        // Signing already: once is enough.
+        if (keyBand.said.state === "working" || keyBand.said.state === "touch")
+            return
         compose.save()
+        // Signed with your security key: the key is asked here, before the ten seconds of "Undo".
+        const key = JSON.parse(compose.sioul.securityKeyForDraft(compose.draftId) || "null")
+        if (key && key.expired) {
+            keyBand.say(key.expired)
+            return
+        }
+        if (key) {
+            keyBand.start()
+            return
+        }
         const problem = compose.sioul.send(compose.draftId)
         if (problem) {
             compose.note = problem
@@ -130,6 +147,12 @@ SioulWindow {
         to.text = recipients
         compose.save()
         subject.forceActiveFocus()
+    }
+
+    // For the window's pictures: as if "Sign" were ticked.
+    function setSigned(on) {
+        sign.checked = on
+        compose.save()
     }
 
     // For the window's tests: as if typed.
@@ -161,6 +184,8 @@ SioulWindow {
 
     onClosing: {
         if (!compose.leaving) {
+            // A key plugged in later sends nothing for a window that is gone.
+            compose.sioul.securityKeyNotNow(compose.draftId)
             compose.save()
             compose.sioul.draftClosed(compose.draftId)
         }
@@ -430,15 +455,16 @@ SioulWindow {
 
             // Signing and encrypting: there once you or they have a key, never in the way before.
             RowLayout {
-                visible: compose.protection.can_sign || compose.protection.can_encrypt || encrypt.checked
+                visible: compose.protection.can_sign || compose.protection.can_encrypt || encrypt.checked || compose.expired
                 Layout.fillWidth: true
                 spacing: 8
 
+                // A security key whose certificate expired still offers "Sign": ticked, it says why it cannot.
                 CheckBox {
                     id: sign
 
                     text: compose.sioul.text("ui-sign")
-                    enabled: compose.protection.can_sign
+                    enabled: compose.protection.can_sign || compose.expired
                     checked: compose.draft !== null && compose.draft.sign
                     onToggled: autosave.restart()
                 }
@@ -467,6 +493,38 @@ SioulWindow {
                         compose.save()
                         compose.sioul.pgpLookup(compose.draftId)
                     }
+                }
+            }
+            // The security key that signs for this address has expired: when, and how to renew it,
+            // said once you ask to sign, not in every message.
+            Label {
+                visible: sign.checked && compose.expired
+                Layout.fillWidth: true
+                text: compose.protection.expired || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: compose.theme.warm
+                font.pixelSize: 13
+            }
+
+            // Your security key, asked at Send.
+            SecurityKeyBand {
+                id: keyBand
+
+                Layout.fillWidth: true
+                sioul: compose.sioul
+                theme: compose.theme
+                context: compose.draftId
+                purpose: "sign"
+                onGo: pin => compose.sioul.signAndSend(compose.draftId, pin)
+                onUnsigned: {
+                    sign.checked = false
+                    compose.send()
+                }
+                // Signed: the main window says "Sending…" with "Undo".
+                onDone: {
+                    compose.leaving = true
+                    compose.close()
                 }
             }
 
@@ -548,6 +606,7 @@ SioulWindow {
                     icon.name: "mail-send"
                     icon.color: compose.theme.accentText
                     highlighted: true
+                    enabled: keyBand.said.state !== "working" && keyBand.said.state !== "touch"
                     onClicked: compose.send()
                 }
             }

@@ -10,11 +10,16 @@
 //! each one is held by a thread of its own, which keeps that connection open
 //! until it is released or Sioul ends (a crash never leaves the desktop
 //! silenced), and asks again if Plasma's notification server starts again.
+//!
+//! Both ways (docs/do-not-disturb.md): the server's `Inhibited` followed
+//! (`watch_inhibited`), each change told once it held a second and Sioul's
+//! own change settled; dconf's changes of a key told as they come
+//! (`watch_dconf_told`), for GNOME's switch.
 
 use dbus::arg::PropMap;
 use dbus::blocking::LocalConnection;
 use dbus::message::MatchRule;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
@@ -36,6 +41,10 @@ const CALL_WAIT: Duration = Duration::from_secs(3);
 const LISTENED: Duration = Duration::from_millis(250);
 /// How long a holding thread may take to start.
 const START_WAIT: Duration = Duration::from_secs(5);
+/// How long a change of `Inhibited` must hold before it is read again and told.
+const HELD: Duration = Duration::from_secs(1);
+/// D-Bus's properties, whose `PropertiesChanged` says a change of `Inhibited`.
+const PROPERTIES: &str = "org.freedesktop.DBus.Properties";
 
 /// Who serves the session's notifications, as it says.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -73,6 +82,139 @@ pub fn server() -> Option<Server> {
 /// Whether a name has an owner on the bus, without starting one.
 fn has_owner(bus: &LocalConnection, name: &str) -> bool {
     bus.with_proxy(BUS, BUS_PATH, CALL_WAIT).method_call(BUS, "NameHasOwner", (name,)).is_ok_and(|(owned,): (bool,)| owned)
+}
+
+/// The connection that owns a name now (":1.42"); none when nobody does.
+fn owner_of(bus: &LocalConnection, name: &str) -> Option<String> {
+    bus.with_proxy(BUS, BUS_PATH, CALL_WAIT).method_call(BUS, "GetNameOwner", (name,)).ok().map(|(owner,): (String,)| owner)
+}
+
+/// What the notification server says of `Inhibited` now: Plasma's do-not-disturb
+/// as its notifications applet works it out (the person's own, any
+/// application's inhibition, a full-screen window, mirrored screens). None
+/// without a server, or one that does not say it.
+pub fn inhibited() -> Option<bool> {
+    let bus = LocalConnection::new_session().ok()?;
+    if !has_owner(&bus, SERVER) {
+        return None;
+    }
+    read_inhibited(&bus)
+}
+
+fn read_inhibited(bus: &LocalConnection) -> Option<bool> {
+    use dbus::blocking::stdintf::org_freedesktop_dbus::Properties;
+    bus.with_proxy(SERVER, SERVER_PATH, CALL_WAIT).get::<bool>(SERVER, "Inhibited").ok()
+}
+
+/// The session's do-not-disturb followed, as the notification server says it
+/// (`Inhibited`): each change that held a second, read again then, is told
+/// once Sioul's own change settled (`quiet`: a time Sioul sets before each of
+/// its own changes). A new server (plasmashell started again) is read without
+/// telling: what it says then is nobody's act. Dropped, it stops.
+pub struct Watch {
+    stop: Sender<()>,
+    seen: Arc<Mutex<Option<bool>>>,
+    alive: Arc<AtomicBool>,
+}
+
+impl Watch {
+    /// The state last read; none before a server answered.
+    pub fn seen(&self) -> Option<bool> {
+        self.seen.lock().ok().and_then(|seen| *seen)
+    }
+
+    /// Whether it still follows.
+    pub fn alive(&self) -> bool {
+        self.alive.load(Ordering::Relaxed)
+    }
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        let _ = self.stop.send(());
+    }
+}
+
+/// Follows the server's `Inhibited`, on a thread of its own: `told(on)` hears
+/// each change, on that thread (it should hand any long work on).
+pub fn watch_inhibited(quiet: Arc<Mutex<Instant>>, told: Box<dyn Fn(bool) + Send>) -> Result<Watch, String> {
+    let (stop, stopped) = std::sync::mpsc::channel::<()>();
+    let (ready, started) = std::sync::mpsc::channel();
+    let seen: Arc<Mutex<Option<bool>>> = Arc::default();
+    let alive = Arc::new(AtomicBool::new(true));
+    let (noted, living) = (Arc::clone(&seen), Arc::clone(&alive));
+    std::thread::spawn(move || {
+        follow_inhibited(&noted, &quiet, &*told, &stopped, &ready);
+        living.store(false, Ordering::Relaxed);
+    });
+    match started.recv_timeout(START_WAIT) {
+        Ok(Ok(())) => Ok(Watch { stop, seen, alive }),
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err("the session bus did not answer".to_string()),
+    }
+}
+
+fn follow_inhibited(seen: &Mutex<Option<bool>>, quiet: &Mutex<Instant>, told: &dyn Fn(bool), stopped: &Receiver<()>, ready: &Sender<Result<(), String>>) {
+    let bus = match LocalConnection::new_session() {
+        Ok(bus) => bus,
+        Err(e) => {
+            let _ = ready.send(Err(said(&e)));
+            return;
+        }
+    };
+    // When a change was heard, to read it again once it held; and whether it
+    // came with a new server, read then without telling.
+    let heard: Rc<Cell<Option<(Instant, bool)>>> = Rc::default();
+    let owner = Rc::new(RefCell::new(owner_of(&bus, SERVER).unwrap_or_default()));
+    let (new_owner, server_changed) = (Rc::clone(&owner), Rc::clone(&heard));
+    let owners = bus.add_match(MatchRule::new_signal(BUS, "NameOwnerChanged").with_sender(BUS), move |(name, _old, new): (String, String, String), _: &LocalConnection, _: &dbus::Message| {
+        if name == SERVER {
+            *new_owner.borrow_mut() = new;
+            server_changed.set(Some((Instant::now(), true)));
+        }
+        true
+    });
+    let (from, property_changed) = (Rc::clone(&owner), Rc::clone(&heard));
+    let changes = bus.add_match(MatchRule::new_signal(PROPERTIES, "PropertiesChanged").with_path(SERVER_PATH), move |(interface, changed, _gone): (String, PropMap, Vec<String>), _: &LocalConnection, message: &dbus::Message| {
+        let ours = message.sender().is_some_and(|sender| *from.borrow() == sender.to_string());
+        if ours && interface == SERVER && changed.contains_key("Inhibited") {
+            let fresh = property_changed.get().is_some_and(|(_, fresh)| fresh);
+            property_changed.set(Some((Instant::now(), fresh)));
+        }
+        true
+    });
+    if let Err(e) = owners.and(changes) {
+        let _ = ready.send(Err(said(&e)));
+        return;
+    }
+    // The state now, read without telling: found, not heard.
+    if let Ok(mut noted) = seen.lock() {
+        *noted = read_inhibited(&bus);
+    }
+    let _ = ready.send(Ok(()));
+    loop {
+        match stopped.try_recv() {
+            Ok(()) | Err(TryRecvError::Disconnected) => return,
+            Err(TryRecvError::Empty) => {}
+        }
+        if let Some((at, fresh)) = heard.get() {
+            let settled = quiet.lock().map_or(true, |quiet| Instant::now() >= *quiet);
+            if at.elapsed() >= HELD && settled {
+                heard.set(None);
+                let now = read_inhibited(&bus);
+                let before = seen.lock().ok().and_then(|mut noted| std::mem::replace(&mut *noted, now));
+                if !fresh
+                    && let (Some(before), Some(now)) = (before, now)
+                    && before != now
+                {
+                    told(now);
+                }
+            }
+        }
+        if bus.process(LISTENED).is_err() {
+            return;
+        }
+    }
 }
 
 /// An inhibition of the desktop's notifications (Plasma's do-not-disturb,
@@ -220,13 +362,23 @@ impl Drop for Changes {
 
 /// Listens to dconf's changes of `key` ("/org/gnome/desktop/notifications/show-banners").
 pub fn watch_dconf(key: &str) -> Result<Changes, String> {
+    watch(key, None)
+}
+
+/// Listens to dconf's changes of `key`, and calls `told` at each, on the
+/// listening thread (it should hand any long work on).
+pub fn watch_dconf_told(key: &str, told: Box<dyn Fn() + Send>) -> Result<Changes, String> {
+    watch(key, Some(told))
+}
+
+fn watch(key: &str, told: Option<Box<dyn Fn() + Send>>) -> Result<Changes, String> {
     let (stop, stopped) = std::sync::mpsc::channel::<()>();
     let (ready, started) = std::sync::mpsc::channel();
     let heard: Arc<Mutex<Vec<Instant>>> = Arc::default();
     let alive = Arc::new(AtomicBool::new(true));
     let (key, noted, living) = (key.to_string(), Arc::clone(&heard), Arc::clone(&alive));
     std::thread::spawn(move || {
-        listen(&key, &noted, &stopped, &ready);
+        listen(&key, &noted, told, &stopped, &ready);
         living.store(false, Ordering::Relaxed);
     });
     match started.recv_timeout(START_WAIT) {
@@ -236,7 +388,7 @@ pub fn watch_dconf(key: &str) -> Result<Changes, String> {
     }
 }
 
-fn listen(key: &str, heard: &Arc<Mutex<Vec<Instant>>>, stopped: &Receiver<()>, ready: &Sender<Result<(), String>>) {
+fn listen(key: &str, heard: &Arc<Mutex<Vec<Instant>>>, told: Option<Box<dyn Fn() + Send>>, stopped: &Receiver<()>, ready: &Sender<Result<(), String>>) {
     let bus = match LocalConnection::new_session() {
         Ok(bus) => bus,
         Err(e) => {
@@ -246,10 +398,13 @@ fn listen(key: &str, heard: &Arc<Mutex<Vec<Instant>>>, stopped: &Receiver<()>, r
     };
     let (key, noted) = (key.to_string(), Arc::clone(heard));
     let matched = bus.add_match(MatchRule::new_signal(DCONF_WRITER, "Notify"), move |(prefix, changes, _tag): (String, Vec<String>, String), _: &LocalConnection, _: &dbus::Message| {
-        if touches(&key, &prefix, &changes)
-            && let Ok(mut noted) = noted.lock()
-        {
-            noted.push(Instant::now());
+        if touches(&key, &prefix, &changes) {
+            if let Ok(mut noted) = noted.lock() {
+                noted.push(Instant::now());
+            }
+            if let Some(told) = &told {
+                told();
+            }
         }
         true
     });
@@ -316,6 +471,18 @@ mod tests {
     /// server): nothing here may reach it. It ends when `stop` is set, or
     /// after `life`, and gives up the name then.
     fn stand_in(first: u32, told: Sender<Asked>, stop: Arc<AtomicBool>, life: Duration) -> Option<()> {
+        stand_in_saying(first, told, stop, life, None)
+    }
+
+    /// What a stand-in says of `Inhibited`, and the values it is given to
+    /// announce (`PropertiesChanged`, as Plasma's server does).
+    struct Says {
+        value: Arc<AtomicBool>,
+        set: Receiver<bool>,
+    }
+
+    /// `stand_in`, answering `Inhibited` too when `says` is given.
+    fn stand_in_saying(first: u32, told: Sender<Asked>, stop: Arc<AtomicBool>, life: Duration, says: Option<Says>) -> Option<()> {
         let (ready, started) = channel::<bool>();
         std::thread::spawn(move || {
             // Never in a server's place: no replacing it, no waiting in line;
@@ -333,6 +500,7 @@ mod tests {
                 return;
             };
             let next = Rc::new(Cell::new(first));
+            let value = says.as_ref().map(|says| Arc::clone(&says.value));
             bus.start_receive(
                 MatchRule::new_method_call(),
                 Box::new(move |call: dbus::Message, bus: &LocalConnection| {
@@ -352,6 +520,13 @@ mod tests {
                             let _ = told.send(Asked::UnInhibit(cookie));
                             call.method_return()
                         }
+                        Some("Get") if call.interface().as_deref() == Some(PROPERTIES) => {
+                            let (_interface, name): (String, String) = call.read2().unwrap();
+                            match &value {
+                                Some(value) if name == "Inhibited" => call.method_return().append1(dbus::arg::Variant(value.load(Ordering::Relaxed))),
+                                _ => return true,
+                            }
+                        }
                         _ => return true,
                     };
                     let _ = bus.send(reply);
@@ -361,6 +536,16 @@ mod tests {
             let _ = ready.send(true);
             let until = Instant::now() + life;
             while !stop.load(Ordering::Relaxed) && Instant::now() < until {
+                // Each value given, announced as Plasma's server does.
+                while let Some(on) = says.as_ref().and_then(|says| says.set.try_recv().ok()) {
+                    if let Some(says) = &says {
+                        says.value.store(on, Ordering::Relaxed);
+                    }
+                    let mut changed = PropMap::new();
+                    changed.insert("Inhibited".to_string(), dbus::arg::Variant(Box::new(on) as Box<dyn dbus::arg::RefArg>));
+                    let signal = dbus::Message::new_signal(SERVER_PATH, PROPERTIES, "PropertiesChanged").unwrap().append3(SERVER, changed, Vec::<String>::new());
+                    let _ = bus.send(signal);
+                }
                 let _ = bus.process(Duration::from_millis(50));
             }
             let _ = bus.release_name(SERVER);
@@ -438,6 +623,102 @@ mod tests {
         held.release(wait).expect("lifted");
         assert_eq!(asked.recv_timeout(wait).unwrap(), Asked::UnInhibit(100));
         second_stop.store(true, Ordering::Relaxed);
+    }
+
+    /// The session's do-not-disturb followed (Plasma's `Inhibited`), against a
+    /// stand-in server on a bus of the test's own: a change that holds a second
+    /// is told; a flicker is not; nothing before Sioul's own change settled; a
+    /// new server is read without telling.
+    #[test]
+    fn the_session_s_do_not_disturb_is_followed() {
+        let _alone = ON_THE_BUS.lock().unwrap_or_else(|e| e.into_inner());
+        let (told, _asked) = channel();
+        let stop = Arc::new(AtomicBool::new(false));
+        let (set, announced) = channel();
+        let says = Says { value: Arc::new(AtomicBool::new(false)), set: announced };
+        if stand_in_saying(1, told.clone(), Arc::clone(&stop), Duration::from_secs(40), Some(says)).is_none() {
+            eprintln!("No bus of the test's own (dbus-run-session), or a notification server on it already: skipped.");
+            return;
+        }
+        assert_eq!(inhibited(), Some(false));
+        let quiet = Arc::new(Mutex::new(Instant::now()));
+        let (heard, hears) = channel();
+        let watch = watch_inhibited(Arc::clone(&quiet), Box::new(move |on| {
+            let _ = heard.send(on);
+        }))
+        .expect("following");
+        assert_eq!(watch.seen(), Some(false), "read at the start, not told");
+        // Turned on (the applet, a full-screen window…): told once it held.
+        set.send(true).unwrap();
+        assert_eq!(hears.recv_timeout(Duration::from_secs(5)), Ok(true));
+        assert_eq!(watch.seen(), Some(true));
+        // A flicker within the second: read again after, unchanged, not told.
+        set.send(false).unwrap();
+        set.send(true).unwrap();
+        assert!(hears.recv_timeout(Duration::from_millis(2_500)).is_err(), "a flicker is no change");
+        // Sioul's own change: nothing before it settled, then what holds.
+        *quiet.lock().unwrap() = Instant::now() + Duration::from_secs(2);
+        set.send(false).unwrap();
+        assert!(hears.recv_timeout(Duration::from_millis(1_500)).is_err(), "not before Sioul's change settled");
+        assert_eq!(hears.recv_timeout(Duration::from_secs(4)), Ok(false));
+        // On again within the settle after Sioul's own change turned it off: on
+        // before, on after, nothing told; no press, no loop.
+        set.send(true).unwrap();
+        assert_eq!(hears.recv_timeout(Duration::from_secs(5)), Ok(true));
+        *quiet.lock().unwrap() = Instant::now() + Duration::from_secs(2);
+        set.send(false).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        set.send(true).unwrap();
+        assert!(hears.recv_timeout(Duration::from_millis(4_000)).is_err(), "on before, on after: nothing");
+        assert_eq!(watch.seen(), Some(true));
+        // plasmashell started again, its do-not-disturb on: read, not told.
+        stop.store(true, Ordering::Relaxed);
+        let wait = Duration::from_secs(5);
+        let second_stop = Arc::new(AtomicBool::new(false));
+        let (_set_again, announced_again) = channel();
+        let says_again = Says { value: Arc::new(AtomicBool::new(true)), set: announced_again };
+        // It waits for the first to leave the name (two seconds at most).
+        assert!(stand_in_saying(50, told.clone(), Arc::clone(&second_stop), Duration::from_secs(30), Some(says_again)).is_some(), "the second stand-in took the name");
+        let until = Instant::now() + wait;
+        while watch.seen() != Some(true) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(watch.seen(), Some(true), "the new server read");
+        assert!(hears.recv_timeout(Duration::from_millis(500)).is_err(), "and not told");
+        assert!(watch.alive());
+        second_stop.store(true, Ordering::Relaxed);
+    }
+
+    /// dconf's changes of a key told as they come, on a bus of the test's own.
+    #[test]
+    fn dconf_tells_each_change_of_its_key() {
+        let _alone = ON_THE_BUS.lock().unwrap_or_else(|e| e.into_inner());
+        let free = |bus: &LocalConnection| {
+            let until = Instant::now() + Duration::from_secs(1);
+            while has_owner(bus, SERVER) && Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            !has_owner(bus, SERVER)
+        };
+        let Some(bus) = LocalConnection::new_session().ok().filter(|bus| free(bus)) else {
+            eprintln!("No bus of the test's own (dbus-run-session): skipped.");
+            return;
+        };
+        let key = "/org/gnome/desktop/notifications/show-banners";
+        let (heard, hears) = channel();
+        let _changes = watch_dconf_told(key, Box::new(move || {
+            let _ = heard.send(());
+        }))
+        .expect("listening");
+        let notify = |prefix: &str, changed: Vec<&str>| {
+            let signal = dbus::Message::new_signal("/ca/desrt/dconf/Writer/user", DCONF_WRITER, "Notify").unwrap().append3(prefix, changed, "tag");
+            let _ = bus.send(signal);
+            bus.process(Duration::from_millis(10)).ok();
+        };
+        notify("/org/gnome/desktop/interface/", vec!["color-scheme"]);
+        notify(key, vec![""]);
+        assert_eq!(hears.recv_timeout(Duration::from_secs(5)), Ok(()));
+        assert!(hears.recv_timeout(Duration::from_millis(300)).is_err(), "another key's change is not told");
     }
 
     /// dconf's word that a key changed, on a bus of the test's own. Skipped on

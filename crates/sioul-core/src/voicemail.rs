@@ -398,9 +398,9 @@ mod tests {
         let raw = mail("Free Mobile <messagerie@free-mobile.fr>", "Nouveau message vocal", "Vous avez un nouveau message.", Some(("audio/x-wav", "20261006093100_0199005555.wav")));
         assert_eq!(read_it(&raw).unwrap().key, "+33199005555");
         // English words, a numeric date the other way round.
-        let raw = mail("Free Mobile <voicemail@free-mobile.fr>", "New voicemail", "You have a new voice message from +33 6 39 98 12 34 on 2026-10-06 at 09:31. Duration: 42 s", Some(("audio/x-wav", "vm.wav")));
+        let raw = mail("Free Mobile <voicemail@free-mobile.fr>", "New voicemail", "You have a new voice message from +33 4 65 71 12 34 on 2026-10-06 at 09:31. Duration: 42 s", Some(("audio/x-wav", "vm.wav")));
         let v = read_it(&raw).unwrap();
-        assert_eq!((v.key.as_str(), v.at, v.seconds), ("+33639981234", at("2026-10-06T09:31[Europe/Paris]"), Some(42)));
+        assert_eq!((v.key.as_str(), v.at, v.seconds), ("+33465711234", at("2026-10-06T09:31[Europe/Paris]"), Some(42)));
     }
 
     #[test]
@@ -439,8 +439,8 @@ mod tests {
     #[test]
     fn each_voicemail_goes_with_the_call_it_followed() {
         let t = at("2026-10-06T09:30[Europe/Paris]");
-        let calls = vec![held(t, "+33199001234"), held(t + 600, "+33199001234"), held(t + 60, ""), held(t + 120, "+33639981234")];
-        let mails = vec![voicemail(t + 30, "+33199001234"), voicemail(t + 700, "+33199001234"), voicemail(t + 90, ""), voicemail(t + 4 * 3600, "+33639981234")];
+        let calls = vec![held(t, "+33199001234"), held(t + 600, "+33199001234"), held(t + 60, ""), held(t + 120, "+33465711234")];
+        let mails = vec![voicemail(t + 30, "+33199001234"), voicemail(t + 700, "+33199001234"), voicemail(t + 90, ""), voicemail(t + 4 * 3600, "+33465711234")];
         let linked = link(&calls, &mails);
         assert_eq!(linked.get(&calls[0].id()), Some(&0));
         assert_eq!(linked.get(&calls[1].id()), Some(&1), "the second call has the second message");

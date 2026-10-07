@@ -20,6 +20,7 @@
 //! The MCP's spam tools (`mcp/spam.rs`) say the same through `report`; its
 //! long ones start `sioul spam fetch|train --job <id>` apart (`jobs`).
 
+pub(crate) mod by_itself;
 pub(crate) mod jobs;
 pub(crate) mod report;
 
@@ -79,6 +80,12 @@ pub(crate) enum SpamCommand {
         /// Runs as the job of this id (`sioul spam job`): where it stands goes to its file.
         #[arg(long, hide = true)]
         job: Option<String>,
+        /// Trains again by itself (`sioul_learn::auto`): without `--job`, its
+        /// job started apart at once, as the window's minute asks; as its
+        /// job, at the lowest priority, stopped when the computer is
+        /// unplugged or starts saving power.
+        #[arg(long, hide = true)]
+        by_itself: bool,
     },
     /// Tests the table in place on the newest fifth of the corpus: its
     /// numbers, by account and folder, at other thresholds, and its worst errors.
@@ -119,7 +126,7 @@ pub(crate) enum SpamCommand {
         #[arg(long)]
         json: bool,
     },
-    /// The review queue: what your filter flagged or moved, waiting for your word.
+    /// What your own filter caught, as the Porch lists it: flagged, or moved into a Junk folder.
     Review {
         #[arg(long, default_value_t = 100)]
         limit: usize,
@@ -266,9 +273,18 @@ pub(crate) fn run(s: &Session, command: SpamCommand) -> Result<(), String> {
     match command {
         SpamCommand::Fetch { account, verify: false, json, job } => long(s, json, job.as_deref(), |progress, cancel| report::fetch(s, &dirs, account.as_deref(), progress, cancel)),
         SpamCommand::Fetch { account, verify: true, json, job } => long(s, json, job.as_deref(), |progress, cancel| report::verify(s, &dirs, account.as_deref(), progress, cancel)),
-        SpamCommand::Train { no_fetch, no_replace, errors, scores, settings, json, job } => {
+        SpamCommand::Train { no_fetch, no_replace, errors, scores, settings, json, job, by_itself } => {
+            // Asked by the window's minute: the run by itself started apart, answered at once.
+            if by_itself && job.is_none() {
+                let job = by_itself::start(s, !no_fetch, settings.threads)?;
+                let line = s.say("spam-job-started", &[("id", job.id.clone()), ("kind", job.kind.clone())]);
+                return say(Report { lines: vec![line], data: serde_json::json!({ "job": job.id }) }, json);
+            }
             let ask = report::TrainAsk { fetch: !no_fetch, replace: !no_replace, errors: errors.map(|n| n as usize), scores, settings: settings.settings() };
-            long(s, json, job.as_deref(), |progress, cancel| report::train(s, &dirs, &ask, progress, cancel))
+            match job.as_deref() {
+                Some(id) if by_itself => by_itself::run(s, &dirs, id, &ask, json),
+                _ => long(s, json, job.as_deref(), |progress, cancel| report::train(s, &dirs, &ask, progress, cancel)),
+            }
         }
         SpamCommand::Eval { errors, json } => long(s, json, None, |progress, cancel| report::eval(s, &dirs, errors as usize, progress, cancel)),
         SpamCommand::Status { json } => say(report::status(s, &dirs)?, json),

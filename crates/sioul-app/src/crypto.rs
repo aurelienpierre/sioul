@@ -21,12 +21,15 @@ fn looks_protected(raw: &[u8]) -> bool {
 }
 
 /// A protected message opened with your keys: what it reads once decrypted,
-/// and what was found; None when it is not protected.
+/// and what was found; None when it is not protected. Your security key is
+/// never asked here: a message encrypted to it opens from its session key,
+/// kept since you opened it with the key, or waits for "Open with your
+/// security key".
 pub(crate) fn open(raw: &[u8]) -> Option<(Option<Vec<u8>>, PgpView)> {
     if !looks_protected(raw) {
         return None;
     }
-    pgp::open(raw, &Keys::load(), &|fingerprint| secret::pgp_passphrase(&fingerprint.to_hex()))
+    pgp::open(raw, &Keys::load(), &pgp::Unlock::new(&|fingerprint| secret::pgp_passphrase(&fingerprint.to_hex()), pgp::SessionKeys::global()))
 }
 
 /// The message as it reads: decrypted when it was encrypted to you.
@@ -56,6 +59,9 @@ pub(crate) struct DraftProtection {
     pub can_encrypt: bool,
     /// Recipients without a known key: "Encrypt" waits for them.
     pub missing: Vec<String>,
+    /// The security key that signs for the address has an expired
+    /// certificate: when it expired, and how to renew it; else "".
+    pub expired: String,
 }
 
 pub(crate) fn draft_protection(draft: &Draft) -> DraftProtection {
@@ -63,7 +69,9 @@ pub(crate) fn draft_protection(draft: &Draft) -> DraftProtection {
     let Some(address) = config.account(&draft.account).and_then(|a| a.address.clone()) else { return DraftProtection::default() };
     let keys = Keys::load();
     let missing: Vec<String> = draft.recipients().into_iter().filter(|r| keys.for_address(r).is_none()).collect();
-    DraftProtection { can_sign: keys.own_for(&address).is_some(), can_encrypt: !draft.recipients().is_empty() && missing.is_empty(), missing }
+    let can_sign = keys.own_for(&address).is_some();
+    let expired = if can_sign { String::new() } else { crate::securitykey::expired_line(&keys, &address).unwrap_or_default() };
+    DraftProtection { can_sign, can_encrypt: !draft.recipients().is_empty() && missing.is_empty(), missing, expired }
 }
 
 /// Answering an encrypted message: the copy kept with the draft is the
@@ -92,7 +100,8 @@ struct KeysView {
 pub(crate) fn keys_view() -> String {
     let keys = Keys::load();
     let config = load_config();
-    let without_key: Vec<String> = config.accounts.iter().filter(|a| a.syncs()).filter_map(|a| a.address.clone()).filter(|a| keys.own_for(a).is_none()).collect();
+    // An address your security key serves has its key, even expired: it alone signs for it.
+    let without_key: Vec<String> = config.accounts.iter().filter(|a| a.syncs()).filter_map(|a| a.address.clone()).filter(|a| keys.own_for(a).is_none() && keys.card_for(a).is_none()).collect();
     json(&KeysView { keys: pgp::summaries(), without_key })
 }
 

@@ -14,9 +14,11 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.service.notification.Condition;
 import android.service.notification.ZenPolicy;
+import android.service.quicksettings.TileService;
 import android.util.Log;
 
 import org.json.JSONException;
@@ -42,6 +44,14 @@ import java.util.Map;
  * person gives in Android's settings; without it, nothing is done and Rust
  * says so. Also the tile and the shortcut's press (PauseOpener, PauseTile).
  *
+ * Both ways (docs/do-not-disturb.md): before each change of its own, Sioul
+ * notes until when it settles (`changing_until`), so that DndReceiver never
+ * takes it for the person's; a mode is recorded on before Android is asked to
+ * turn it on. A switch "on" taken from the phone's own do-not-disturb adds no
+ * mode of Sioul's over it (`stack` false: {@code held.<kind>}, its channels that
+ * pass still used). Sioul's going off turns the phone's own off too, up to
+ * Android 14 (`quiet-off`).
+ *
  * Rust asks through call(verb, json) (android/main.cpp), and is answered in JSON.
  */
 final class PauseMode
@@ -58,6 +68,14 @@ final class PauseMode
     private static final long PRESS_KEPT_MS = 5 * 60 * 1000L;
     /** Sioul's modes: the two pauses, and its do-not-disturb on every device. */
     private static final String[] KINDS = { "pause", "free-time", "dnd" };
+    /** Until when Sioul's own change settles (SystemClock.elapsedRealtime): DndReceiver looks again after. */
+    static final String CHANGING = "changing_until";
+    /** How long Sioul's own change of a mode takes to settle. */
+    private static final long SETTLE_MS = 3_000;
+    /** The phone's do-not-disturb as DndReceiver last saw it: on or off. */
+    static final String SEEN = "seen_on";
+    /** Sioul's do-not-disturb holds on this phone, as Rust said at its last apply (the tile, DndReceiver). */
+    static final String SIOUL_ON = "sioul_on";
 
     private PauseMode() {}
 
@@ -76,6 +94,15 @@ final class PauseMode
                 return takePressed(context) ? "true" : "false";
             case "open":
                 open(context, json);
+                return "{}";
+            case "holds":
+                return holds(context, json).toString();
+            case "own":
+                return own(context).toString();
+            case "quiet-off":
+                return quietOff(context).toString();
+            case "flags":
+                flags(context, new JSONObject(json));
                 return "{}";
             default:
                 return null;
@@ -237,7 +264,23 @@ final class PauseMode
         // A mode the person turned off in Android's settings stays off.
         boolean enabled = existing == null || existing.isEnabled();
         AutomaticZenRule wanted = rule(context, name, asked.optString("trigger", ""), condition, policy, enabled);
+        // Held by the phone's own do-not-disturb, which turned Sioul's on: no mode of
+        // Sioul's over it (its end must show), its channels that pass still used.
+        if (!asked.optBoolean("stack", true)) {
+            if (wasOn && id != null) {
+                kept.edit().putBoolean("on." + kind, false).putLong(CHANGING, SystemClock.elapsedRealtime() + SETTLE_MS).commit();
+                notifications.setAutomaticZenRuleState(id, state(condition, name, false, false));
+            }
+            kept.edit().putBoolean("on." + kind, false).putBoolean("held." + kind, true).putBoolean("doses." + kind, through.doses).putBoolean("events." + kind, through.events).commit();
+            put(answer, DndHeard.seen(notifications.getCurrentInterruptionFilter()) ? "held" : "turned_off", true);
+            put(answer, "doses", dosesThrough);
+            put(answer, "events", eventsThrough);
+            return answer;
+        }
+        kept.edit().remove("held." + kind).commit();
         boolean fresh = !wasOn;
+        // Sioul's own change from here: a change heard meanwhile is looked at once it settled.
+        kept.edit().putLong(CHANGING, SystemClock.elapsedRealtime() + SETTLE_MS).commit();
         if (existing == null) {
             id = notifications.addAutomaticZenRule(wanted);
             fresh = true;
@@ -258,7 +301,14 @@ final class PauseMode
             if (!wasOn)
                 kept.edit().putBoolean("already." + kind, already).commit();
             put(answer, "already", already);
-            notifications.setAutomaticZenRuleState(id, state(condition, name, true, !wasOn));
+            // Recorded on before Android is asked: its word of the change finds Sioul wanting it.
+            kept.edit().putBoolean("on." + kind, true).putLong(CHANGING, SystemClock.elapsedRealtime() + SETTLE_MS).commit();
+            try {
+                notifications.setAutomaticZenRuleState(id, state(condition, name, true, !wasOn));
+            } catch (RuntimeException e) {
+                kept.edit().putBoolean("on." + kind, wasOn).commit();
+                throw e;
+            }
         } else if (turnedOff(notifications, id)) {
             // Turned off by the person during the pause (the quick settings): left off.
             put(answer, "turned_off", true);
@@ -301,9 +351,10 @@ final class PauseMode
             return answer;
         }
         SharedPreferences kept = kept(context);
-        boolean was = kept.getBoolean("on." + kind, false);
+        boolean was = kept.getBoolean("on." + kind, false) || kept.getBoolean("held." + kind, false);
         boolean already = kept.getBoolean("already." + kind, false);
-        kept.edit().putBoolean("on." + kind, false).remove("already." + kind).commit();
+        kept.edit().putBoolean("on." + kind, false).remove("held." + kind).remove("already." + kind)
+            .putLong(CHANGING, SystemClock.elapsedRealtime() + SETTLE_MS).commit();
         put(answer, "was", was);
         NotificationManager notifications = notifications(context);
         if (!notifications.isNotificationPolicyAccessGranted()) {
@@ -412,12 +463,19 @@ final class PauseMode
         return new Condition(condition, name, state);
     }
 
-    /** Whether the person turned the mode off during the pause. */
+    /**
+     * Whether the person turned the mode off while it was on. Android 15's
+     * getAutomaticZenRuleState gives Sioul's own condition and misses a
+     * snooze from the quick settings (AOSP 16: "Buggy, does not consider
+     * snoozing"); with the Modes UI of Android 16 it says the mode's state.
+     * The filter at ALL says it on every version: while one of Sioul's modes
+     * is on and not snoozed, the phone is never at ALL.
+     */
     @TargetApi(Build.VERSION_CODES.Q)
     private static boolean turnedOff(NotificationManager notifications, String id)
     {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM)
-            return notifications.getAutomaticZenRuleState(id) != Condition.STATE_TRUE;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM && notifications.getAutomaticZenRuleState(id) != Condition.STATE_TRUE)
+            return true;
         return notifications.getCurrentInterruptionFilter() == NotificationManager.INTERRUPTION_FILTER_ALL;
     }
 
@@ -474,7 +532,8 @@ final class PauseMode
     {
         boolean on = false;
         for (String kind : KINDS) {
-            if (!Boolean.TRUE.equals(kept.get("on." + kind)))
+            // A mode held by the phone's own do-not-disturb counts as Sioul's: its channels pass.
+            if (!Boolean.TRUE.equals(kept.get("on." + kind)) && !Boolean.TRUE.equals(kept.get("held." + kind)))
                 continue;
             // Not said (a mode entered by an older Sioul): let through, as before.
             if (flag != null && Boolean.FALSE.equals(kept.get(flag + kind)))
@@ -559,6 +618,142 @@ final class PauseMode
         return kept(context).getBoolean("on.pause", false);
     }
 
+    // ---------------------------------------------------------------- both ways
+
+    /** The kind of a mode from its condition id ({@code "condition://<package>/dnd"}); null when not Sioul's. Pure. */
+    static String kindOf(String conditionId, String app)
+    {
+        String prefix = Condition.SCHEME + "://" + app + "/";
+        if (conditionId == null || !conditionId.startsWith(prefix))
+            return null;
+        String kind = conditionId.substring(prefix.length());
+        for (String known : KINDS)
+            if (known.equals(kind))
+                return kind;
+        return null;
+    }
+
+    /** The kind of Sioul's mode with this id, as Android has it; null when none. */
+    @TargetApi(Build.VERSION_CODES.Q)
+    static String kindOfRule(Context context, String id)
+    {
+        if (tooOld() || id == null || !accessGranted(context))
+            return null;
+        AutomaticZenRule rule = notifications(context).getAutomaticZenRule(id);
+        return rule == null ? null : kindOf(String.valueOf(rule.getConditionId()), context.getPackageName());
+    }
+
+    /** Sioul's mode with this id as Android has it now (DndHeard.LIVE_*). */
+    @TargetApi(Build.VERSION_CODES.Q)
+    static int live(Context context, String id)
+    {
+        if (tooOld() || id == null || !accessGranted(context))
+            return DndHeard.LIVE_UNKNOWN;
+        NotificationManager notifications = notifications(context);
+        AutomaticZenRule rule = notifications.getAutomaticZenRule(id);
+        if (rule == null)
+            return DndHeard.LIVE_GONE;
+        if (!rule.isEnabled())
+            return DndHeard.LIVE_DISABLED;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM)
+            return notifications.getAutomaticZenRuleState(id) == Condition.STATE_TRUE ? DndHeard.LIVE_ON : DndHeard.LIVE_OFF;
+        return DndHeard.LIVE_UNKNOWN;
+    }
+
+    /**
+     * A change heard by DndReceiver, decided (DndHeard.decide) from what
+     * Android has now and Sioul's record; the phone's state noted as seen,
+     * unless the decision waits for Sioul's own change to settle.
+     */
+    static String decide(Context context, String action, int status, String kind, String id)
+    {
+        SharedPreferences kept = kept(context);
+        boolean access = !tooOld() && accessGranted(context);
+        int filter = access ? notifications(context).getCurrentInterruptionFilter() : NotificationManager.INTERRUPTION_FILTER_UNKNOWN;
+        String said = DndHeard.decide(access, kept.getAll(), action, status, kind, live(context, id), filter, SystemClock.elapsedRealtime());
+        if (access && !said.startsWith(DndHeard.LATER) && filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN)
+            kept.edit().putBoolean(SEEN, DndHeard.seen(filter)).commit();
+        return said;
+    }
+
+    /** At a restart or an update: the phone's state found, not heard; the next change counts from what holds then. */
+    static void forgetSeen(Context context)
+    {
+        kept(context).edit().remove(SEEN).commit();
+    }
+
+    /** Whether Sioul's do-not-disturb holds on this phone, as Rust last said (the tile). */
+    static boolean sioulOn(Context context)
+    {
+        return kept(context).getBoolean(SIOUL_ON, false);
+    }
+
+    /** Rust's word at each apply: {on}, Sioul's do-not-disturb here; the tile shown again when it changed. */
+    private static void flags(Context context, JSONObject said)
+    {
+        boolean on = said.optBoolean("on", false);
+        SharedPreferences kept = kept(context);
+        if (kept.contains(SIOUL_ON) && kept.getBoolean(SIOUL_ON, false) == on)
+            return;
+        kept.edit().putBoolean(SIOUL_ON, on).commit();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
+            TileService.requestListeningState(context, new ComponentName(context, DndTile.class));
+    }
+
+    /** {holds}: whether the mode of this kind is still on as Sioul turned it on (cheap; Rust asks at each look). */
+    @TargetApi(Build.VERSION_CODES.Q)
+    private static JSONObject holds(Context context, String kind)
+    {
+        JSONObject answer = new JSONObject();
+        SharedPreferences kept = kept(context);
+        if (tooOld() || !accessGranted(context) || !kept.getBoolean("on." + kind, false))
+            return answer;
+        NotificationManager notifications = notifications(context);
+        Uri condition = conditionId(context, kind);
+        for (Map.Entry<String, AutomaticZenRule> rule : notifications.getAutomaticZenRules().entrySet()) {
+            if (condition.equals(rule.getValue().getConditionId())) {
+                put(answer, "holds", rule.getValue().isEnabled() && !turnedOff(notifications, rule.getKey()));
+                return answer;
+            }
+        }
+        put(answer, "holds", false);
+        return answer;
+    }
+
+    /** {on}: the phone's own do-not-disturb on now, whatever holds it; {} without the access. */
+    private static JSONObject own(Context context)
+    {
+        JSONObject answer = new JSONObject();
+        if (tooOld() || !accessGranted(context))
+            return answer;
+        int filter = notifications(context).getCurrentInterruptionFilter();
+        if (filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN)
+            put(answer, "on", DndHeard.seen(filter));
+        return answer;
+    }
+
+    /**
+     * Sioul's do-not-disturb gone off on this phone: the phone's own off too,
+     * with Sioul's Do Not Disturb access, up to Android 14 (it also snoozes
+     * every other mode on then, until it ends by itself). From Android 15 an
+     * application may end only a mode of its own: {done: false}, and Rust says so.
+     */
+    private static JSONObject quietOff(Context context)
+    {
+        JSONObject answer = new JSONObject();
+        put(answer, "done", false);
+        if (tooOld() || Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM || !accessGranted(context))
+            return answer;
+        NotificationManager notifications = notifications(context);
+        if (!DndHeard.seen(notifications.getCurrentInterruptionFilter()))
+            return answer;
+        kept(context).edit().putLong(CHANGING, SystemClock.elapsedRealtime() + SETTLE_MS).commit();
+        notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+        Log.i(TAG, "Do not disturb: the phone's own turned off with Sioul's.");
+        put(answer, "done", true);
+        return answer;
+    }
+
     // ---------------------------------------------------------------- Android's pages
 
     /**
@@ -571,7 +766,14 @@ final class PauseMode
     {
         String app = context.getPackageName();
         Intent[] pages;
-        if ("starred".equals(which)) {
+        if ("modes".equals(which)) {
+            // Android's own do-not-disturb, where the person turns it off (or a mode of Sioul's on again).
+            pages = new Intent[] {
+                new Intent(Settings.ACTION_ZEN_MODE_PRIORITY_SETTINGS),
+                new Intent(Settings.ACTION_SOUND_SETTINGS),
+                new Intent(Settings.ACTION_SETTINGS),
+            };
+        } else if ("starred".equals(which)) {
             pages = new Intent[] {
                 new Intent("com.android.contacts.action.LIST_STARRED"),
                 Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_CONTACTS),

@@ -16,7 +16,7 @@ Everything Sioul keeps is in plain files, in your own folders, readable by other
 |---|---|
 | Settings, the senders you let in, safe, neutral, restricted or blocked | `~/.config/sioul/` |
 | Mail (one Maildir per address), calendars and contacts (one file per item), drafts, time spent, invoices, medicines, your watch's days | `~/.local/share/sioul/` |
-| Where each fetch stopped, where the Porch was closed, the sites' news, the log of an AI agent's calls | `~/.local/state/sioul/` |
+| Where each fetch stopped, where the Porch was closed, the sites' news, the log of an AI agent's calls, the calls your phones screened (a month of them) | `~/.local/state/sioul/` |
 | Your own spam filter: what its training read of your mail, the language model it learned, its table; what you said is spam or not | `~/.local/share/sioul/spam/`, `~/.local/state/sioul/spam/` |
 | Notes, projects, budgets, papers, scanned letters | your notes folder, wherever you chose it |
 
@@ -37,6 +37,7 @@ On Windows, Sioul's folders are in `%APPDATA%\Sioul`; on macOS, in `~/Library/Ap
 | OpenStreetMap's geocoder (Nominatim) | your contacts' postal addresses, once each, nothing else | only after you choose **Place them** |
 | OpenStreetMap's map images, or those you chose | which part of the map is shown | while the map is open |
 | Their domain's Web Key Directory, then keys.openpgp.org | the addresses you write to | only when you choose **Look for their keys** |
+| The address written on your security key, your domain's key directory, then keys.openpgp.org | your security key's fingerprint, and your addresses' domain | only when you choose **Look for it** or **Look for a newer version** |
 | Each site you pin | a request for its own icon | about once a week |
 | Anthropic | each new message to an address you protect | only with **Let the AI read it first**, and your own key |
 | The AI agent you connect, and its provider | what it reads | only if you connect one ([Using an AI agent](ai-agent.md)) |
@@ -67,13 +68,14 @@ The results are kept with the message, under a name only your copy of Sioul uses
 
 ## Your own spam filter
 
-Sioul's own spam filter learns on your computer, when you press **Train now**, from your own mail ([Settings](settings.md#your-own-spam-filter)):
+Sioul's own spam filter learns on your computer, when you press **Train now** and again by itself once a week when that computer is plugged in and idle, from your own mail ([Settings](settings.md#your-own-spam-filter)):
 
 - **What training reads**: from every folder of every address but the trash, drafts, sent mail and Gmail's All Mail, the headers and the start of each text, never attachments, without changing anything on the server. It keeps them on this computer (`~/.local/share/sioul/spam/corpus/`), so that junk stays known after your provider empties its junk folder.
 - **What it learns**: a language model of your mail's words, kept beside it (`language.bin`). It holds the words of your mail in plain text: it never leaves this computer.
 - **What travels**: its table, the result, to your other devices through your folder, sealed like everything there: numbers, the words as hashes, never in plain text; and what you said, below. A phone never trains: it reads that table.
-- **What you said**: **Junk**, **Not junk**, **Spam**, **Not spam** and blocking a sender from a message add a line to this device's record (`~/.local/state/sioul/spam/labels/`), and each message the filter moves into a Junk folder another (`~/.local/state/sioul/spam/moved/`): when, where, which message by its number and its Message-ID, spam or not; never a word of it. Each device keeps its own; they travel sealed to your other devices, so that a message you said is not spam on one is never flagged again on another.
+- **What you said**: **Junk**, **Not junk**, **Spam**, **Not spam** and blocking a sender from a message add a line to this device's record (`~/.local/state/sioul/spam/labels/`), each message the filter moves into a Junk folder another (`~/.local/state/sioul/spam/moved/`), and each it flags where it is another (`~/.local/state/sioul/spam/flagged/`): when, where, which message by its number and its Message-ID, spam or not; never a word of it. Each device keeps its own; they travel sealed to your other devices, so that a message you said is not spam on one is never flagged again on another.
 - **Outside material**, if you import some (`sioul spam import`): the subjects and texts of mail labelled elsewhere, kept on that computer only, apart from your mail (`~/.local/share/sioul/spam/external/`), yours alone, never shared; `sioul spam import --remove` takes it away.
+- **What it asks your computer**, to train by itself: whether it is on mains power, saving power, idle or locked, and whether your connection is metered, from the system's own services; asked on this computer, kept nowhere, sent nowhere.
 - **Nothing to anyone else**: no server, no AI. Its numbers are totals only; the words that weighed in one message are for you, in your own terminal (`sioul spam why`), never offered to an AI agent.
 
 To forget it all, delete `~/.local/share/sioul/spam/` on that computer: its table, shared, then leaves your other devices too.
@@ -99,7 +101,7 @@ Each device keeps its own data. What must travel between your computers and your
 
 ## Encrypted mail
 
-With OpenPGP, Sioul signs and encrypts your messages as you send them, decrypts and checks those you receive, and gives your public key to those you write to (Autocrypt). Your secret keys stay on the device they were made on. See [Mail](mail.md#signing-and-encrypting).
+With OpenPGP, Sioul signs and encrypts your messages as you send them, decrypts and checks those you receive, and gives your public key to those you write to (Autocrypt). Your secret keys stay on the device they were made on. A key kept on a [security key](accounts.md#security-key) never leaves it: the key signs and opens itself, after its PIN, which Sioul keeps in memory fifteen minutes without use and never writes anywhere. See [Mail](mail.md#signing-and-encrypting).
 
 ## A public address
 

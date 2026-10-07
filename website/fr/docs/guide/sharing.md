@@ -88,6 +88,7 @@ Sous **Ce qui voyage depuis cet appareil**, chaque partie a son interrupteur, di
 |---|---|
 | Réglages et comptes | vos réglages et vos comptes (jamais leurs mots de passe), les liens entre les choses, l’endroit où le Porche a été fermé, les courriels dont vous avez dit qu’ils ne sont pas des paiements, l’interrupteur de « Ne pas déranger » |
 | Expéditeurs | qui peut vous joindre (les listes : connus, bloqués, sûrs, neutres, restreints, avec adresses, numéros et fiches), qui peut vous joindre pendant « Ne pas déranger », ce que le bouclier a lu, les clés publiques des autres |
+| Appels | les appels filtrés par vos téléphones, refusés ou sonnés, un mois d’entre eux, et ceux marqués Vu : pour que le Porche d’un ordinateur liste ce que votre téléphone a refusé ([Les appels](calls.md#on-your-computers)) |
 | Filtre à indésirables | la table que fait l’apprentissage de votre propre filtre à indésirables sur un ordinateur, pour que chaque appareil juge le courrier pareil, et ce que vous avez dit indésirable ou pas sur chaque appareil ; jamais le courrier dont il a appris, ni ses mots ([les réglages du Courrier](settings.md#your-own-spam-filter)) |
 | Santé | les médicaments, les ordonnances et les prises |
 | Temps | le temps noté, la séance en cours, les choix du jour, où vous vous êtes arrêté, travailler tard ou fini pour aujourd’hui |

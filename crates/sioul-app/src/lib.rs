@@ -53,6 +53,7 @@
 //! - [`mailsearch`](mailsearch/index.html): searching the mail by conditions, here and on the servers.
 //! - [`gmail`](gmail/index.html): Google's mail, signed in on Google's page.
 //! - [`crypto`](crypto/index.html): OpenPGP: protected messages opened for the reader, drafts signed or encrypted, your keys.
+//! - [`securitykey`](securitykey/index.html): your security key: signing at Send, opening on request, its PIN held a while, its setup.
 //! - [`senders`](senders/index.html): who someone is to you: where they stand, and why.
 //! - [`mailnote`](mailnote/index.html): new mail told as a notification, at the times it may come.
 //! - [`letters`](letters/index.html): paper letters: scans read in the background, each a card in the Porch.
@@ -143,6 +144,7 @@ mod projects;
 mod reaches;
 mod remind;
 mod reviews;
+mod securitykey;
 mod senders;
 mod share;
 mod sites;
@@ -239,6 +241,8 @@ fn process_age() -> Option<std::time::Duration> {
 
 /// The window, until it is closed; returns what the program returns.
 pub fn run() -> i32 {
+    // Before anything else: no crate logs above "info", a security key's PIN never (securitykey.rs).
+    sioul_sync::securitykey::cap_logging();
     STARTED.get_or_init(std::time::Instant::now);
     if let Some(age) = process_age().filter(|_| timed()) {
         eprintln!("Sioul: the process started {} ms before Sioul did", age.as_millis());
@@ -341,6 +345,9 @@ pub fn run() -> i32 {
     }
     // The time running's notification goes with the window (a phone's stays).
     timenote::closing();
+    // On a computer, do-not-disturb's table as it holds without Sioul (its
+    // inhibition ended with it): sent by the exchange that follows.
+    everywhere::closing();
     // What was marked goes out, and your other devices learn this one closed.
     share::closing();
     // The next Sioul started opens by itself rather than knocking here.

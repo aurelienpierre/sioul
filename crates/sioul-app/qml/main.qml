@@ -285,6 +285,12 @@ SioulWindow {
         contactsPage.open(key)
     }
 
+    // A new contact with a number filled in: a call's line on a computer's Porch (CallsSection.qml).
+    function newContactWith(number) {
+        window.page = 5
+        contactsPage.startNew(number)
+    }
+
     function openTask(uid) {
         window.page = 1
         tasksPage.open(uid)
@@ -896,7 +902,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "calls": grabber.callsSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -2429,6 +2435,22 @@ SioulWindow {
                 () => grabber.save("spam-reader"),
                 () => window.close()
             ]
+            // The calls your phones declined, on a computer's Porch (SIOUL_GRAB_STEPS=calls),
+            // on a demo profile made with a phone's log (make-demo.py --calls, or
+            // SIOUL_DEMO_CALLS=1); then the doctor's sheet, opened by her number as from a
+            // call's line, with her calls of the month.
+            readonly property var callsSteps: [
+                () => window.page = 0,
+                () => {},
+                () => {},
+                () => grabber.save("calls-porch"),
+                () => window.openPersonSheet("", JSON.stringify(["tel:+33465714770"])),
+                () => {},
+                () => {},
+                () => grabber.savePopup(personSheet.item, "calls-sheet"),
+                () => personSheet.item.close(),
+                () => window.close()
+            ]
             // A second computer: the folder already sealed (one passphrase), then joined.
             readonly property var shareJoin: [
                 () => window.page = 12,
@@ -2623,6 +2645,35 @@ SioulWindow {
                 () => window.close()
             ]
             // OpenPGP, for tests against a test server: what the reader says of protected messages.
+            // Your security key (SIOUL_GRAB_STEPS=security-key), on a demo profile,
+            // whose key is software (its PIN 123456): its setup in Accounts ▸
+            // Encryption, then a message signed at Send: the PIN asked, a wrong
+            // one, the touch, then the ten seconds of "Undo".
+            readonly property var securityKeySteps: [
+                () => window.page = 11,
+                () => accountsPage.showTab(2),
+                () => grabber.save("seckey-accounts"),
+                () => sioul.readSecurityKey(),
+                () => grabber.save("seckey-found"),
+                () => sioul.findSecurityKeyCertificate(""),
+                () => {},
+                () => grabber.save("seckey-kept"),
+                () => window.compose("new", ""),
+                () => window.drafts[0].fill("Bob <bob@example.org>", "Signed at Send", "Hello Bob,\nthis one is signed with my security key."),
+                () => window.drafts[0].setSigned(true),
+                () => window.drafts[0].send(),
+                () => {},
+                () => grabber.saveDraft("seckey-pin"),
+                () => sioul.signAndSend(window.drafts[0].draftId, "000000"),
+                () => {},
+                () => grabber.saveDraft("seckey-wrong-pin"),
+                () => sioul.signAndSend(window.drafts[0].draftId, "123456"),
+                () => grabber.saveDraft("seckey-touch"),
+                () => {},
+                () => {},
+                () => grabber.save("seckey-sending"),
+                () => window.close()
+            ]
             readonly property var pgp: [
                 () => window.page = 2,
                 () => mailPage.openSubject("GnuPG, encrypted"),

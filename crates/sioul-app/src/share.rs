@@ -155,6 +155,7 @@ fn part_words(part: &str) -> (String, String) {
     match part {
         "settings" => (text("share-part-settings"), text("share-part-settings-carries")),
         "senders" => (text("share-part-senders"), text("share-part-senders-carries")),
+        "calls" => (text("share-part-calls"), text("share-part-calls-carries")),
         "spam" => (text("share-part-spam"), text("share-part-spam-carries")),
         "health" => (text("share-part-health"), text("share-part-health-carries")),
         "time" => (text("share-part-time"), text("share-part-time-carries")),
@@ -932,6 +933,8 @@ pub(crate) fn nudge_tick(qt: &QtThread, shared: &Arc<Shared>) {
 pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, String>> {
     let here = here();
     let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
+    // A phone's calls copied into its own log first (the background step's, a dose's alarm's).
+    crate::calls::before_exchange();
     let mirror = mirrored().is_some();
     // Sioul keeping the folder itself: the server looked through now, no sync app to wait for.
     if mirror && fetch_first {
@@ -1026,6 +1029,8 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
         let here = here();
         let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return };
+        // A phone's calls copied into its own log first, so that they go now (`calls`).
+        crate::calls::before_exchange();
         let stores = stores_here(&here);
         let now = jiff::Timestamp::now();
         let memory = memory_path();

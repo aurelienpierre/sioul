@@ -20,7 +20,7 @@ use sioul_core::i18n::{self, Translator};
 use sioul_core::porch::{self, KnownSenders, SenderList, Triaged};
 use sioul_core::state::{MoneyState, PorchState};
 use sioul_core::{maildir, reading, view};
-use crate::{crypto, gmail, mail, pim, work};
+use crate::{crypto, gmail, mail, pim, securitykey, work};
 use sioul_sync::antivirus::{self, Verdict};
 use sioul_sync::{Control, Learned, Report, SyncError, notify, secret};
 use std::collections::{BTreeMap, BTreeSet};
@@ -513,6 +513,56 @@ pub mod qobject {
         /// Looks up the keys a draft's recipients miss (their domain, then keys.openpgp.org).
         #[qinvokable]
         fn pgp_lookup(self: Pin<&mut Sioul>, draft: &QString);
+
+        /// The security key that signs a draft at Send, as JSON {ident, label},
+        /// or {expired} when its certificate expired; "" when it is signed
+        /// another way, or not at all.
+        #[qinvokable]
+        fn security_key_for_draft(self: &Sioul, id: &QString) -> QString;
+
+        /// Signs a draft with your security key, then sends it after ten
+        /// seconds to undo; `pin` as typed, or "" for the one held. What the
+        /// band shows comes in `security_key_changed`, for the draft's id.
+        #[qinvokable]
+        fn sign_and_send(self: Pin<&mut Sioul>, id: &QString, pin: &QString);
+
+        /// "Open with your security key": `pin` as typed, or "" for the one
+        /// held. What the band shows comes in `security_key_changed`, for the message's key.
+        #[qinvokable]
+        fn open_with_security_key(self: Pin<&mut Sioul>, key: &QString, pin: &QString);
+
+        /// "Not now": the band stops waiting for the security key.
+        #[qinvokable]
+        fn security_key_not_now(self: Pin<&mut Sioul>, context: &QString);
+
+        /// "Let GnuPG release it": GnuPG's smart card daemon stopped. JSON {line, done}.
+        #[qinvokable]
+        fn let_gnupg_release(self: Pin<&mut Sioul>) -> QString;
+
+        /// Your security keys, as JSON, for Accounts ▸ Encryption.
+        #[qinvokable]
+        fn security_keys(self: &Sioul) -> QString;
+
+        /// "Use a security key": reads the key plugged in, without its PIN.
+        #[qinvokable]
+        fn read_security_key(self: Pin<&mut Sioul>);
+
+        /// "Look for it", "Look for a newer version": the key's certificate,
+        /// looked up now that you asked; `ident` empty for the key just read.
+        #[qinvokable]
+        fn find_security_key_certificate(self: Pin<&mut Sioul>, ident: &QString);
+
+        /// "Import a file…": the key's certificate from a file (`file://`).
+        #[qinvokable]
+        fn import_security_key_certificate(self: Pin<&mut Sioul>, ident: &QString, url: &QString);
+
+        /// "Forget the PIN now".
+        #[qinvokable]
+        fn forget_security_key_pin(self: Pin<&mut Sioul>);
+
+        /// "Stop using this security key".
+        #[qinvokable]
+        fn stop_using_security_key(self: Pin<&mut Sioul>, ident: &QString);
 
         /// The task page's choices: the list grouped "case" or "list", done tasks, a search, one case.
         #[qinvokable]
@@ -1618,6 +1668,11 @@ pub mod qobject {
         /// Keys were found or made: windows showing them read them again.
         #[qsignal]
         fn keys_changed(self: Pin<&mut Sioul>);
+
+        /// What a security key's band shows now, as JSON {state, line, tries,
+        /// warm, action}: for `context`, a draft's id, a message's key, or "setup".
+        #[qsignal]
+        fn security_key_changed(self: Pin<&mut Sioul>, context: QString, state: QString);
 
         /// A tie was made or undone: what shows ties reads them again.
         #[qsignal]
@@ -3430,6 +3485,7 @@ impl qobject::Sioul {
     fn flush(self: Pin<&mut Self>) {
         mail::flush(&self.shared());
         end_work_now();
+        securitykey::closing();
     }
 
     fn compose(mut self: Pin<&mut Self>, kind: &QString, key: &QString, account: &QString) -> QString {
@@ -3726,6 +3782,52 @@ impl qobject::Sioul {
             tell(&qt, &shared, crypto::lookup(&draft));
             let _ = qt.queue(|mut sioul| sioul.as_mut().keys_changed());
         });
+    }
+
+    fn security_key_for_draft(&self, id: &QString) -> QString {
+        QString::from(&securitykey::for_draft(&id.to_string()))
+    }
+
+    fn sign_and_send(self: Pin<&mut Self>, id: &QString, pin: &QString) {
+        securitykey::sign_and_send(&self.qt_thread(), &self.shared(), &id.to_string(), pin.to_string());
+    }
+
+    fn open_with_security_key(self: Pin<&mut Self>, key: &QString, pin: &QString) {
+        securitykey::open_message(&self.qt_thread(), &self.shared(), &key.to_string(), pin.to_string());
+    }
+
+    fn security_key_not_now(self: Pin<&mut Self>, context: &QString) {
+        securitykey::not_now(&context.to_string());
+    }
+
+    fn let_gnupg_release(self: Pin<&mut Self>) -> QString {
+        QString::from(&securitykey::release())
+    }
+
+    fn security_keys(&self) -> QString {
+        QString::from(&securitykey::known_view())
+    }
+
+    fn read_security_key(self: Pin<&mut Self>) {
+        securitykey::read_for_setup(&self.qt_thread());
+    }
+
+    fn find_security_key_certificate(self: Pin<&mut Self>, ident: &QString) {
+        securitykey::look_for_certificate(&self.qt_thread(), &ident.to_string());
+    }
+
+    fn import_security_key_certificate(self: Pin<&mut Self>, ident: &QString, url: &QString) {
+        securitykey::import_certificate(&self.qt_thread(), &ident.to_string(), &url.to_string());
+    }
+
+    fn forget_security_key_pin(mut self: Pin<&mut Self>) {
+        let line = securitykey::forget_pin();
+        self.as_mut().set_status(QString::from(&line));
+        self.as_mut().keys_changed();
+    }
+
+    fn stop_using_security_key(self: Pin<&mut Self>, ident: &QString) {
+        securitykey::stop_using(&self.qt_thread(), &self.shared(), &ident.to_string());
     }
 
     fn show_tasks(self: Pin<&mut Self>, by: &QString, done: bool, query: &QString, case_id: &QString) {
@@ -4697,6 +4799,9 @@ impl qobject::Sioul {
         // device, the command line), or while a phone had Sioul put away.
         let (qt_time, shared_time) = (self.qt_thread(), self.shared());
         std::thread::spawn(move || crate::timenote::follow(&qt_time, &shared_time));
+        // The spam filter trains again by itself, plugged in and idle, on the computer that made its table.
+        let qt_spam = self.qt_thread();
+        std::thread::spawn(move || crate::spam::by_itself(qt_spam));
         // The pauses: free time ended by itself, the do-not-disturb as the pauses are (docs/pauses.md).
         crate::pauses::tick(&self.qt_thread(), &self.shared());
         // Put away on a phone: the reminders only, and an exchange every five
@@ -5257,8 +5362,11 @@ impl qobject::Sioul {
         // sharing's tab before sharing, its two ways (docs/database.md), "spam" the spam
         // filter's settings and the words it puts beside mail (docs/spam-filter.md), "mail-search" the
         // search by conditions, its results, a selection held over a folder (docs/client.md), "mail-filters"
-        // the mail filters in Mail's ⚙, their editor, a run's preview, a search made a filter, on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "spam", "mail-search", "mail-filters"].contains(&steps.as_str()) && offline()) {
+        // the mail filters in Mail's ⚙, their editor, a run's preview, a search made a filter, "security-key"
+        // the setup of the demo's software security key and a message signed at Send with it (docs/client.md),
+        // "calls" the calls a phone declined on a computer's Porch and a person's calls of the month (docs/porch.md),
+        // on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "spam", "mail-search", "mail-filters", "security-key", "calls"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

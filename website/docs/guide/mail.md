@@ -62,7 +62,7 @@ Filters act on new mail as it arrives, on its server: into a folder, archived, t
 
 - **The order** matters: the first filter that moves a message decides where it goes. ▴ and ▾ ask a filter earlier or later. With several addresses, **Show the filters of** shows those of one address.
 - **When they act**: on mail that arrives unread in an inbox, on the first of your devices to fetch it (this computer, your phone in the background, `sioul watch`). That device marks the message on its server, so that your other devices leave it alone. Your filters travel to your other devices with your settings.
-- **What they never touch**: mail the Porch sets aside, a code you asked for, what your spam filter keeps for review. Nothing is deleted for good: the trash keeps it.
+- **What they never touch**: mail the Porch sets aside, a code you asked for, what your own spam filter caught. Nothing is deleted for good: the trash keeps it.
 - **Not told**: a message a filter moves out of the inbox, or marks read, is not notified, and does not wait on the Porch. When a filter cannot act on a message (a folder missing, the server refusing), the message is notified as any new mail, and the status line says why.
 - **Run them on the inboxes…** applies them to everything in your inboxes now, read mail too. Sioul first says what would change; **Run them now** does it after ten seconds, with **Undo**.
 - **From a search**: **Make it a filter…**, beside the search's Clear, makes a filter of its conditions and opens it at the end of the list, for you to choose what it does.
@@ -152,6 +152,10 @@ When you have an OpenPGP key (made or imported in [Accounts ▸ Encryption](acco
 
 An encrypted message is decrypted when you open it; a signature is checked and said under the sender: "Encrypted · Signed by …", or "The signature does not match the text", in warm colours, never red. Your messages carry your public key (Autocrypt), so that people who write back can encrypt.
 
+A message your [security key](accounts.md#security-key) signs is signed when you press **Send**, before the ten seconds of **Undo**: a band at the bottom of the writing window asks for the key's PIN, and says how many tries are left when some were lost; then, when the key asks for a touch, it says **Touch your security key** while the key blinks. Not plugged in, it says so, and goes on as soon as the key comes. **Send unsigned** and **Not now** are there all along, and **Undo** throws the signed message away and opens the draft again. The PIN stays in memory fifteen minutes after its last use, never written anywhere; it is forgotten when you pull the key out, close Sioul, or choose **Forget the PIN now** in Accounts.
+
+A message encrypted to your security key is never opened just because it is shown: the line under the sender says "Encrypted for your security key", with **Open with your security key**. Once opened, it opens again without the key, its attachments too, until Sioul closes.
+
 ## Settings
 
 The ⚙ at the top of the Mail page:
@@ -164,7 +168,7 @@ The ⚙ at the top of the Mail page:
 
 ### Your own spam filter
 
-Under **Your own spam filter**: what it does with each of its verdicts on a stranger's mail (probably spam, maybe spam, probably not spam: move it into the Junk folder on the server as it arrives, flag it, or nothing), how sure it must be for each, and on a computer **Train now**, to learn from all your mail, with what the last training measured. What it flags waits on the Porch, in its review queue, and stays in its folder here; what it moves, you find in the Junk folder too ([the Porch](porch.md#spam-and-your-own-filter)). Each setting, in full: [Settings](settings.md#your-own-spam-filter).
+Under **Your own spam filter**: what it does with each of its verdicts on a stranger's mail (probably spam, maybe spam, probably not spam: move it into the Junk folder on the server as it arrives, flag it, or nothing), how sure it must be for each, and on a computer **Train now**, to learn from all your mail, with what the last training measured. What it flags waits on the Porch, in **Caught by your own spam filter**, and stays in its folder here; what it moves, you find in the Junk folder too ([the Porch](porch.md#spam-and-your-own-filter)). Each setting, in full: [Settings](settings.md#your-own-spam-filter).
 
 Each address's own settings (what it is for, how far back, how often, its protection) are on its card in [Accounts](accounts.md#your-accounts).
 
