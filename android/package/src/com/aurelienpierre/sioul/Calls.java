@@ -42,7 +42,7 @@ import java.util.Set;
 /**
  * Calls screened (docs/android.md, "Calls"; docs/research/call-screening.md,
  * section 8). Android asks Sioul about each call (CallScreen, as the "Caller
- * ID & spam app"); the answer comes from a table Sioul's Rust side wrote
+ * ID &amp; spam app"); the answer comes from a table Sioul's Rust side wrote
  * ahead (crates/sioul-app/src/calls.rs, `calls/table.json` in its state
  * folder), read here in milliseconds, without Sioul's library or Qt. A call
  * is let ring, or refused plainly: the network sends it to the operator's
@@ -762,7 +762,7 @@ final class Calls
         return state;
     }
 
-    /** Android's page of default apps, where "Caller ID & spam app" is chosen or set to none. */
+    /** Android's page of default apps, where "Caller ID &amp; spam app" is chosen or set to none. */
     private static boolean openRoles(Context context)
     {
         Intent[] pages = {

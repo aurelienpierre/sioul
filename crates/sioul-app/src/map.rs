@@ -25,7 +25,7 @@ struct Pin {
 struct MapView {
     /// Addresses may be placed (you allowed it).
     allowed: bool,
-    /// The tile server, as Qt's map wants it: "https://tile.openstreetmap.org/".
+    /// The tile server, as Qt's map wants it: `https://tile.openstreetmap.org/`.
     tiles: String,
     pins: Vec<Pin>,
     /// Addresses not placed yet.

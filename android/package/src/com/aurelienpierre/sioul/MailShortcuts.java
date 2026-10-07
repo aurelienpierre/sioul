@@ -27,7 +27,7 @@ import java.util.Set;
 /**
  * Sioul's addresses that can send, published to Android (docs/android.md,
  * "Sharing"): one shortcut each, which the share sheet offers as a direct
- * target from Android 10 (its <share-target> in res/xml/sioul_shortcuts.xml
+ * target from Android 10 (its {@code <share-target>} in res/xml/sioul_shortcuts.xml
  * matches their category), and a long press on Sioul's icon as "Write from
  * you@example.org". Chosen, ShareActivity makes the draft from that address.
  *

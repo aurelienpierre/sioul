@@ -664,7 +664,7 @@ pub fn done(dir: &Path, now: i64) -> Vec<Done> {
 }
 
 /// Puts the cards back as they were before `id`, then forgets it. A card
-/// changed since (a sync, an edit) is set aside first, as "<id>.<n>.vcf"
+/// changed since (a sync, an edit) is set aside first, as `<id>.<n>.vcf`
 /// beside the record. Files outside `root` (the address books) are never
 /// written; a card whose address book is gone stays gone. Returns the files
 /// written back or removed, and how many versions were set aside.

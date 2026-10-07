@@ -246,6 +246,19 @@ Item {
             page.openKey = page.shown.items[0].key
     }
 
+    // The page's settings, open or not, scrolled to one of them, and their picture: for the window's images.
+    function openSettings(open) {
+        mailSettings.show(open)
+    }
+
+    function scrollSettings(key) {
+        mailSettings.scrollTo(key)
+    }
+
+    function grabSettings(path) {
+        mailSettings.grab(path)
+    }
+
     // Once the bindings reading the accounts are done: the folder opened
     // changes what they read (a binding loop when done at once).
     onAccountsChanged: Qt.callLater(() => {
@@ -573,6 +586,8 @@ Item {
                     }
                 }
                 SettingsButton {
+                    id: mailSettings
+
                     sioul: page.sioul
                     theme: page.theme
                     view: "mail"

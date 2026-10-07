@@ -88,6 +88,7 @@ Under **What travels from this device**, each part has its switch, says what it 
 |---|---|
 | Settings and accounts | your settings and accounts (never their passwords), the ties between things, where the Porch was closed, mail you said is no payment, do-not-disturb's switch |
 | Senders | who may reach you (the lists: known, blocked, safe, neutral, restricted, with addresses, numbers and cards), who may reach you during do-not-disturb, what the shield read, others' public keys |
+| Spam filter | the table your own spam filter's training makes on a computer, so that every device judges mail alike; never the mail it learned from, nor its words ([Settings](settings.md#your-own-spam-filter)) |
 | Health | medicines, prescriptions and the doses taken |
 | Time | time noted, the session running, the day's choices, where you stopped, working late or done for the day |
 | Drafts and invoices | mail being written, invoices made |

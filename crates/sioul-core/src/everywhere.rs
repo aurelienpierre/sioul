@@ -692,8 +692,8 @@ pub fn from_contact(contact: &crate::contacts::Contact) -> Person {
 
 /// People from the Safe list: each address, with its card's name and numbers
 /// when a card has it; everyone whose card is in a category on it
-/// ("category:Friends"); a card on it ("contact:<UID>"); a number on it
-/// ("tel:+33…"). Patterns ("@example.org", "*@example.org", "tel:+3319900*")
+/// (`category:Friends`); a card on it (`contact:<UID>`); a number on it
+/// (`tel:+33…`). Patterns (`@example.org`, `*@example.org`, `tel:+3319900*`)
 /// name nobody: counted, left.
 pub fn from_safe(entries: &[String], contacts: &[crate::contacts::Contact]) -> (Vec<Person>, usize) {
     let (mut found, mut patterns) = (Vec::new(), 0);

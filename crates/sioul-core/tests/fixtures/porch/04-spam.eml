@@ -1,4 +1,5 @@
 X-Spam-Status: Yes, score=9.1 required=5.0 tests=BAYES_99
+Received: from mail.lottery.test (mail.lottery.test [203.0.112.40]) by mx.example.org with ESMTPS; Thu, 01 Oct 2026 08:00:02 +0200
 From: Winner <win@lottery.test>
 To: you@example.org
 Subject: You won

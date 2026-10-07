@@ -3,11 +3,14 @@
 
 //! Who really sent a message, from what the servers recorded.
 //!
-//! Version 0 reads the Authentication-Results header (RFC 8601) written by
-//! your own provider, and nobody else's: any sender can write that header into
-//! a message, so only the ones carrying an authserv-id you trust count (RFC 8601
-//! §5 and §7.1). Checking DKIM independently with Stalwart's mail-auth comes
-//! next (docs/roadmap.md), because providers differ in what they record.
+//! It reads the Authentication-Results headers (RFC 8601) written by your own
+//! provider, and nobody else's: any sender can write that header into a
+//! message, so only the ones carrying an authserv-id you trust count (RFC 8601
+//! §5 and §7.1). Providers differ in what they record, so Sioul also checks
+//! each message itself as it is fetched (`sioul_sync::verify`, with
+//! Stalwart's mail-auth): its results are one more such header, under its own
+//! id ([`config::sioul_authserv_id`](crate::config::sioul_authserv_id)),
+//! trusted first.
 //!
 //! The spam verdicts of the provider's own filters (SpamAssassin, rspamd) are
 //! read here too, for the same reason: they are only as good as their source.
@@ -347,6 +350,39 @@ pub fn judge_sender(results: Option<&AuthResults>, mailing_list: bool, sender_do
     }
 }
 
+/// Whether a message is authenticated, as the results its account trusts
+/// record it (`read_auth_results`: Sioul's own stamp, else your provider's).
+/// It is not when SPF and DKIM both failed, unless DMARC passed, or ARC passed
+/// on a chain whose newest seal is a sealer's you trust (`sealers`: your
+/// provider's, your own domains'; `arc_sealer`): forwarding breaks SPF, and a
+/// forwarder that changes the message breaks DKIM, but anyone can seal a
+/// chain of their own. "none" (nothing published to check) is no failure, nor
+/// is a softfail; no results at all say nothing. DMARC failing under a policy
+/// is forged (`judge_sender`), set aside before this is asked. Mail that is
+/// not authenticated is not taken as coming from the address it shows
+/// (porch.rs: its sender is a stranger).
+pub fn authenticated(results: Option<&AuthResults>, headers: &RawHeaders, sealers: &[String]) -> bool {
+    let Some(r) = results else { return true };
+    if !(r.spf == Some(Outcome::Fail) && r.dkim == Some(Outcome::Fail)) || r.dmarc == Some(Outcome::Pass) {
+        return true;
+    }
+    r.arc == Some(Outcome::Pass) && arc_sealer(headers).is_some_and(|sealer| sealers.iter().any(|s| aligned(&sealer, s)))
+}
+
+/// The domain that sealed the newest ARC set: the `d=` of the `ARC-Seal`
+/// with the highest instance (`i=`), lower case (RFC 8617 §4.1.3).
+pub fn arc_sealer(headers: &RawHeaders) -> Option<String> {
+    headers
+        .all("ARC-Seal")
+        .filter_map(|seal| {
+            let tags: Vec<(&str, &str)> = seal.split(';').filter_map(|tag| tag.split_once('=')).map(|(k, v)| (k.trim(), v.trim())).collect();
+            let tag = |name: &str| tags.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| *v);
+            Some((tag("i")?.parse::<u32>().ok()?, tag("d")?.to_ascii_lowercase()))
+        })
+        .max_by_key(|(instance, _)| *instance)
+        .map(|(_, domain)| domain)
+}
+
 /// Where the message entered your provider: the first server, from the top of
 /// the `Received` chain, that handed it over from a public address. SPF and the
 /// reverse DNS are checked on it; every hop below it could be written by anyone.
@@ -399,9 +435,64 @@ pub struct SpamVerdict {
     pub source: &'static str,
 }
 
-/// Reads SpamAssassin's X-Spam-* headers, else rspamd's.
+/// Reads SpamAssassin's X-Spam-* headers, else rspamd's, among the fields
+/// your provider wrote (`written_on_arrival`) and nowhere else: a sender
+/// writes what it likes into its own message, "X-Spam-Flag: NO" too, and its
+/// outgoing server's filter judges what it sends, not what you receive.
 pub fn read_spam_verdict(headers: &RawHeaders) -> Option<SpamVerdict> {
-    spamassassin(headers).or_else(|| rspamd(headers))
+    let provider = written_on_arrival(headers);
+    spamassassin(&provider).or_else(|| rspamd(&provider))
+}
+
+/// The fields your provider wrote on a message once it took it in, top to
+/// bottom: those above the `Received` line where it came in from the Internet.
+///
+/// Each server adds its lines on top of what it is handed (RFC 5321 §4.4), so
+/// whatever a sender wrote, its own servers' lines included, lies below that
+/// line, and nothing above it is theirs. Walking down from the top, the
+/// provider's own hops are passed: a line without `from` (a server handing
+/// the message to itself), one from a private or local address (a filter, an
+/// antivirus, the next server inside), the delivery into the mailbox (LMTP:
+/// Dovecot and Cyrus add their line on top of the filters' verdicts). The
+/// walk stops at the first line from a public address, where the message came
+/// in, or at one it cannot read (an address written another way): the fields
+/// above it are the provider's. Sioul's own results, on the very top, are
+/// neither a line nor a verdict. Mail that never came from outside (only
+/// private addresses) ends at its lowest `Received`; mail without any (copied
+/// into the mailbox, never delivered) has nothing of its provider's. A filter
+/// that adds its verdict at the bottom of the block, or just below the line
+/// where the message came in, cannot be told from the sender: its verdict is not read.
+fn written_on_arrival(headers: &RawHeaders) -> RawHeaders {
+    let mut lowest = 0;
+    for (at, (name, value)) in headers.fields().enumerate() {
+        if !name.eq_ignore_ascii_case("Received") {
+            continue;
+        }
+        if !inside_hop(value) {
+            return headers.top(at);
+        }
+        lowest = at;
+    }
+    headers.top(lowest)
+}
+
+/// A hop inside your provider, as its `Received` line says: no `from`, a
+/// private or local address in it, or the delivery into the mailbox.
+fn inside_hop(received: &str) -> bool {
+    let from = received.trim_start().get(..5).is_some_and(|w| w.eq_ignore_ascii_case("from "));
+    if !from {
+        return true;
+    }
+    match bracketed_ip(received) {
+        Some(ip) => !is_public(&ip),
+        None => lmtp(received),
+    }
+}
+
+/// "… with LMTP id …", LMTPS, LMTPA, LMTPSA (RFC 3848): the mailbox's own delivery.
+fn lmtp(received: &str) -> bool {
+    let words: Vec<&str> = received.split_whitespace().collect();
+    words.windows(2).any(|pair| pair[0].eq_ignore_ascii_case("with") && pair[1].get(..4).is_some_and(|p| p.eq_ignore_ascii_case("LMTP")))
 }
 
 /// `X-Spam-Flag: YES`, `X-Spam-Status: Yes, score=9.1 required=5.0 tests=...`.
@@ -627,10 +718,84 @@ mod tests {
 
     #[test]
     fn reads_both_spam_filters() {
-        let sa = headers("X-Spam-Status: Yes, score=9.1 required=5.0 tests=BAYES_99\n\n");
+        let came_in = "Received: from mail.sender.example (mail.sender.example [203.0.112.9]) by mx.provider.example with ESMTPS\n";
+        let sa = headers(&format!("X-Spam-Status: Yes, score=9.1 required=5.0 tests=BAYES_99\n{came_in}\n"));
         assert_eq!(read_spam_verdict(&sa), Some(SpamVerdict { flagged: true, score: Some(9.1), source: "SpamAssassin" }));
-        let rs = headers("X-Spamd-Result: default: False [1.20 / 15.00]; R_SPF_ALLOW(-0.20)\n\n");
+        let rs = headers(&format!("X-Spamd-Result: default: False [1.20 / 15.00]; R_SPF_ALLOW(-0.20)\n{came_in}\n"));
         assert_eq!(read_spam_verdict(&rs), Some(SpamVerdict { flagged: false, score: Some(1.2), source: "rspamd" }));
+    }
+
+    /// Only the verdict your provider wrote counts: above the line where the
+    /// message came in, never below it, where its sender writes.
+    #[test]
+    fn spam_verdicts_count_only_from_your_provider() {
+        // Sioul's results on top, the mailbox's delivery and the provider's
+        // own hops (local addresses) above the verdict, the hop from outside below it.
+        let genuine = headers(
+            "Authentication-Results: sioul-0123456789ab.invalid; spf=pass smtp.mailfrom=sender.example\n\
+             Return-Path: <sales@sender.example>\n\
+             Received: from mx.provider.example by imap.provider.example with LMTP id 1\n\
+             Received: from localhost (localhost [127.0.0.1]) by mx.provider.example (Postfix)\n\
+             X-Spam-Flag: YES\n\
+             X-Spam-Status: Yes, score=9.1 required=5.0 tests=BAYES_99\n\
+             Received: from mx.provider.example ([127.0.0.1]) by localhost (amavisd-new, port 10024)\n\
+             Received: from mail-out.sender.example (mail-out.sender.example [203.0.112.9]) by mx.provider.example (Postfix) with ESMTPS\n\
+             X-Spam-Flag: NO\n\
+             X-Spam-Status: No, score=-50.0 required=5.0\n\
+             From: Sales <sales@sender.example>\n\n",
+        );
+        assert_eq!(read_spam_verdict(&genuine), Some(SpamVerdict { flagged: true, score: Some(9.1), source: "SpamAssassin" }));
+        // "NO", written below the line where it came in, and nothing from the provider: no verdict at all.
+        let forged = headers(
+            "Received: from mx.provider.example by imap.provider.example with LMTP id 2\n\
+             Received: from mail-out.sender.example (mail-out.sender.example [203.0.112.9]) by mx.provider.example (Postfix) with ESMTPS\n\
+             X-Spam-Flag: NO\n\
+             X-Spam-Status: No, score=-50.0 required=5.0\n\
+             X-Spamd-Result: default: False [-20.00 / 15.00]\n\
+             From: Sales <sales@sender.example>\n\n",
+        );
+        assert_eq!(read_spam_verdict(&forged), None);
+        // A filter that adds its verdict at the bottom cannot be told from the
+        // sender, whose "NO" above it is not read either.
+        let appended = headers("Received: from mail-out.sender.example (mail-out.sender.example [203.0.112.9]) by mx.provider.example\nX-Spam-Flag: NO\nFrom: a@sender.example\nX-Spam-Flag: YES\n\n");
+        assert_eq!(read_spam_verdict(&appended), None);
+        // A line written another way stops the walk: a sender's own line from
+        // a public address further down does not open its "NO" to it.
+        let unreadable = headers(
+            "Received: from unknown (HELO mail.sender.example) (203.0.112.5) by mx.provider.example with SMTP\n\
+             X-Spam-Flag: NO\n\
+             Received: from relay.sender.example (relay.sender.example [203.0.112.9]) by mail.sender.example\n\n",
+        );
+        assert_eq!(read_spam_verdict(&unreadable), None);
+        // Copied into the mailbox, never delivered: nobody's verdict.
+        assert_eq!(read_spam_verdict(&headers("X-Spam-Flag: YES\nFrom: a@sender.example\n\n")), None);
+        // Delivered from inside the provider: what is above its lowest line.
+        let inside = headers("X-Spam: Yes\nReceived: from mx.provider.example (mx.provider.example [10.0.0.5]) by imap.provider.example\nX-Spam: No\n\n");
+        assert_eq!(read_spam_verdict(&inside).map(|v| v.flagged), Some(true));
+    }
+
+    #[test]
+    fn failing_spf_and_dkim_is_not_authenticated() {
+        let ids = ["mx.example.net".to_string()];
+        let read = |text: &str| {
+            let h = headers(text);
+            let results = read_auth_results(&h, &ids);
+            authenticated(results.as_ref(), &h, &["mx.example.net".to_string(), "mine.example".to_string()])
+        };
+        let failed = "Authentication-Results: mx.example.net; spf=fail smtp.mailfrom=a.example; dkim=fail header.d=a.example";
+        assert!(!read(&format!("{failed}\n\n")));
+        // DMARC, or one of the two passing, authenticates; "none" and a softfail are no failure; no results say nothing.
+        assert!(read(&format!("{failed}; dmarc=pass header.from=a.example\n\n")));
+        assert!(read("Authentication-Results: mx.example.net; spf=fail smtp.mailfrom=a.example; dkim=pass header.d=a.example\n\n"));
+        assert!(read("Authentication-Results: mx.example.net; spf=none smtp.mailfrom=a.example; dkim=none\n\n"));
+        assert!(read("Authentication-Results: mx.example.net; spf=softfail smtp.mailfrom=a.example; dkim=fail header.d=a.example\n\n"));
+        assert!(read("Subject: no results\n\n"));
+        // ARC: the newest seal must be a trusted sealer's (the provider's, one of your domains).
+        let sealed = |by: &str| format!("ARC-Seal: i=2; a=rsa-sha256; cv=pass; d={by}; s=arc; b=Ab+C/d==\nARC-Seal: i=1; a=rsa-sha256; cv=none; d=first.example; s=arc; b=xyz=\n{failed}; arc=pass\n\n");
+        assert!(read(&sealed("example.net")) && read(&sealed("mine.example")));
+        assert!(!read(&sealed("relay.example")));
+        assert_eq!(arc_sealer(&headers(&sealed("Mine.Example"))).as_deref(), Some("mine.example"));
+        assert!(!read(&sealed("example.net").replace("arc=pass", "arc=fail")));
     }
 
     #[test]

@@ -192,7 +192,7 @@ pub struct Today {
     /// Blocks skipped today (an older Sioul's): no notice, kept free all the same.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub skipped: BTreeSet<String>,
-    /// Notices given: "<key>:heads-up", "<key>:start".
+    /// Notices given: `<key>:heads-up`, `<key>:start`.
     #[serde(default)]
     pub sent: BTreeSet<String>,
 }
@@ -1279,7 +1279,7 @@ mod tests {
         let mode = |now: &Zoned| crate::quiet::mode(&[], &[], &crate::quiet::Overrides::default(), &crate::quiet::Blocks::of(&needs, &Days::default(), &[], now), now);
         assert!(mode(&before).sleeps());
         assert!(!mode(&ringing).sleeps());
-        assert!(crate::quiet::may_notify(&mode(&ringing), false, false));
+        assert!(crate::notify::Notify::usual().comes(crate::notify::Kind::Move, &crate::notify::Now::of(&mode(&ringing), false, false)));
     }
 
     #[test]

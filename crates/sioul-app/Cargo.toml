@@ -30,6 +30,15 @@ cxx.workspace = true
 cxx-qt.workspace = true
 cxx-qt-lib.workspace = true
 
+# The spam filter's training ("Train now" in the mail settings): desktops only;
+# the phone reads the table it makes, never trains (android/CMakeLists.txt builds sioul-app alone).
+[target.'cfg(not(target_os = "android"))'.dependencies]
+sioul-learn = { path = "../sioul-learn" }
+
+# The training's thread below the window's, on Linux (each thread its own priority there).
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
 [build-dependencies]
 cxx-qt-build.workspace = true
 # The Windows program's icon and details (Explorer's properties); used only when building for Windows.
@@ -37,4 +46,4 @@ winresource = { version = "0.1.31", default-features = false }
 
 [features]
 # For tests against a local mail server only (see sioul-sync's feature of the same name).
-insecure-test-tls = ["sioul-sync/insecure-test-tls"]
+insecure-test-tls = ["sioul-sync/insecure-test-tls", "sioul-learn/insecure-test-tls"]

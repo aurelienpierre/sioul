@@ -461,8 +461,8 @@ pub fn add_export_name(path: &std::path::Path, id: &str, name: &str) -> Result<(
     write(path, &doc)
 }
 
-/// Where one movement goes, by your hand: "budget:<id>", "none" (in no budget),
-/// or "" (as the rules say again).
+/// Where one movement goes, by your hand: `budget:<id>`, `none` (in no budget),
+/// or `""` (as the rules say again).
 pub fn set_assignment(path: &std::path::Path, account: &str, movement: &str, choice: &str) -> Result<(), String> {
     let mut doc = open(path)?;
     let all = tables(&mut doc, "assign")?;
@@ -481,8 +481,8 @@ pub fn set_assignment(path: &std::path::Path, account: &str, movement: &str, cho
     write(path, &doc)
 }
 
-/// A rule as the window gives it: words, which way, and where to: "budget:<id>",
-/// "reserve:<id>", "transfer:<bank account>".
+/// A rule as the window gives it: words, which way, and where to: `budget:<id>`,
+/// `reserve:<id>`, `transfer:<bank account>`.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct SplitEdit {
     #[serde(default)]

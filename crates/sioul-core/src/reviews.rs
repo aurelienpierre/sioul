@@ -462,6 +462,13 @@ pub fn offer(moment: &Moment, reviews: &Reviews) -> Option<Offer> {
     if moment.mode.sleeps() || moment.mode.time.works() || moment.mode.free() {
         return None;
     }
+    offer_any_time(moment, reviews)
+}
+
+/// What `offer` would offer whatever the time now is for: for the notice
+/// "Work hours are over", whose times are the notification matrix's to say
+/// (`notify`; as usual, those of `offer`).
+pub fn offer_any_time(moment: &Moment, reviews: &Reviews) -> Option<Offer> {
     let stamp = moment.now.timestamp().as_second();
     let ended = moment.work_end.as_ref().is_some_and(|end| stamp >= end.timestamp().as_second());
     let work_over = moment.closed_today || moment.work_end.is_none() || ended;

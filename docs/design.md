@@ -53,7 +53,7 @@ From the card, one key does each of:
   - Unicode confusables (UTS #39) and near-spellings.
 - **Reputation**: Spamhaus for the sending address, through its free Data Query Service key (its public mirrors refuse queries made through public DNS resolvers), and domain blocklists for the links.
 - **The provider's spam verdicts**: SpamAssassin's `X-Spam-*`, rspamd's `X-Spamd-Result`.
-- **Your own classifier**, trained by your "junk / not junk" keys: Bayesian at first, a linear SVM once there are a few hundred examples. It always says why.
+- **Your own spam filter**, trained on your computer from your own mail (your Junk folders, your "junk / not junk" and "Not spam"): a linear model on its words and its headers, folded into a small table every device reads; never for people you know, codes or projects. It always says why ([spam-filter.md](spam-filter.md)).
 - **Newsletters**: one-click unsubscribe (RFC 8058).
 
 ## Portals

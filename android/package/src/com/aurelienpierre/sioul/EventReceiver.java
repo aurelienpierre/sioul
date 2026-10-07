@@ -22,7 +22,7 @@ import org.json.JSONObject;
  * takes Sioul for hung, and the words given with the list are said: never
  * nothing; Rust's answer, if it comes, replaces them or takes them away.
  * Also the phone's own moments: started, Sioul updated, the time or the zone
- * changed, "Alarms & reminders" allowed again: the alarms given again from
+ * changed, "Alarms &amp; reminders" allowed again: the alarms given again from
  * the list kept, then Rust asked for the list as it is now; and once a day.
  */
 public final class EventReceiver extends BroadcastReceiver

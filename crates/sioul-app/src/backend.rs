@@ -158,6 +158,11 @@ pub mod qobject {
         #[qinvokable]
         fn block(self: Pin<&mut Sioul>, entry: &QString);
 
+        /// Blocks an address, or `@domain`, from one of their messages (its
+        /// file, `key`): as `block`, and the message goes into the spam filter's label log.
+        #[qinvokable]
+        fn block_from(self: Pin<&mut Sioul>, entry: &QString, key: &QString);
+
         /// Out of the blocked list; written neutral when a category or a domain would still block it.
         #[qinvokable]
         fn unblock(self: Pin<&mut Sioul>, entry: &QString);
@@ -249,7 +254,8 @@ pub mod qobject {
         fn opened(self: Pin<&mut Sioul>, key: &QString);
 
         /// Does something to a message: "read", "unread", "flag", "unflag" at once;
-        /// "archive", "trash", "junk", "not-junk", "move" (to `target`) after ten seconds to undo.
+        /// "archive", "trash", "junk", "not-junk", "not-spam" (mail set aside as
+        /// spam, back in its lane), "move" (to `target`) after ten seconds to undo.
         #[qinvokable]
         fn act(self: Pin<&mut Sioul>, key: &QString, action: &QString, target: &QString);
 
@@ -1054,6 +1060,20 @@ pub mod qobject {
         #[qinvokable]
         fn share_estimate(self: Pin<&mut Sioul>, part: &QString);
 
+        /// Sioul's own spam filter as the mail settings show it (`spam::status`), as JSON.
+        #[qinvokable]
+        fn spam_status(self: &Sioul) -> QString;
+
+        /// "Train now", on a computer: the corpus brought up to date, then a
+        /// training, off the window's thread; `spam_changed` says how it goes.
+        /// Returns why it did not start, else "".
+        #[qinvokable]
+        fn spam_train(self: Pin<&mut Sioul>) -> QString;
+
+        /// The training running stops at its next step.
+        #[qinvokable]
+        fn spam_stop(self: Pin<&mut Sioul>);
+
         /// The other devices' files fetched from the server too, or not, on
         /// this device (docs/database.md); returns what went wrong, else "".
         #[qinvokable]
@@ -1477,6 +1497,10 @@ pub mod qobject {
         /// What switching Notes or Papers on would send (`share_estimate`), as JSON {"part", "text"}.
         #[qsignal]
         fn share_estimated(self: Pin<&mut Sioul>, estimate: QString);
+
+        /// The spam filter's training moved on, or ended: its state, as `spam_status` gives it.
+        #[qsignal]
+        fn spam_changed(self: Pin<&mut Sioul>, status: QString);
 
         /// Sharing through a folder Sioul keeps in step with a server itself
         /// (`start_sharing_on_server`): "" when it started, else why not.
@@ -2020,11 +2044,6 @@ pub(crate) fn update_weather(qt: &QtThread, shared: &Arc<Shared>) {
     });
 }
 
-/// Whether work rests now.
-pub(crate) fn quiet_now() -> bool {
-    mode_now().quiet
-}
-
 /// The time now: what it is for, and until when (docs/areas.md; `hours`).
 pub(crate) fn mode_now() -> sioul_core::quiet::Mode {
     crate::hours::mode_now()
@@ -2560,8 +2579,9 @@ fn learn(qt: &QtThread, shared: &Shared, id: &str) {
 
 /// One quiet notification per verified code among new mail, with a copy button.
 fn notify_codes(qt: &QtThread, files: &[PathBuf]) {
-    // While you sleep or pause nothing notifies: the code waits on the Porch (docs/health.md); in free time it comes.
-    if !crate::hours::may_notify_code() {
+    // As the notification matrix says (as usual, not while you sleep or pause):
+    // a code not told waits on the Porch (docs/health.md).
+    if !crate::hours::comes(sioul_core::notify::Kind::Codes) {
         return;
     }
     let config = load_config();
@@ -2976,6 +2996,11 @@ impl qobject::Sioul {
 
     fn block(self: Pin<&mut Self>, entry: &QString) {
         self.set_standing(entry, &QString::from("blocked"));
+    }
+
+    fn block_from(self: Pin<&mut Self>, entry: &QString, key: &QString) {
+        crate::mail::label_blocked(&key.to_string());
+        self.block(entry);
     }
 
     fn unblock(mut self: Pin<&mut Self>, entry: &QString) {
@@ -5063,8 +5088,10 @@ impl qobject::Sioul {
         // with its Unsubscribe button (docs/client.md), "reach" who may reach you on each
         // channel and a contact's list (docs/porch.md), "line" the status line with all it
         // may hold, a new draft deleted and taken back (docs/design.md), "share-panel" the
-        // sharing's tab before sharing, its two ways (docs/database.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "reach", "line", "share-panel"].contains(&steps.as_str()) && offline()) {
+        // sharing's tab before sharing, its two ways (docs/database.md), "spam" the spam
+        // filter's settings and the words it puts beside mail (docs/spam-filter.md), "notify" the
+        // notification matrix and a cell's choices (docs/reminders.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "reach", "line", "share-panel", "spam", "notify"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -5131,6 +5158,18 @@ impl qobject::Sioul {
             let counted = crate::share::estimate(&part);
             let _ = qt.queue(move |mut sioul| sioul.as_mut().share_estimated(QString::from(&counted)));
         });
+    }
+
+    fn spam_status(&self) -> QString {
+        QString::from(&crate::spam::status())
+    }
+
+    fn spam_train(self: Pin<&mut Self>) -> QString {
+        QString::from(&crate::spam::train(self.qt_thread(), self.shared()))
+    }
+
+    fn spam_stop(self: Pin<&mut Self>) {
+        crate::spam::stop(self.qt_thread());
     }
 
     fn set_share_backup(self: Pin<&mut Self>, on: bool) -> QString {

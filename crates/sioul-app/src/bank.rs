@@ -88,7 +88,7 @@ struct MovementView {
     place: String,
     /// "hand", "mail", "rule", "between", "preset", "first", "unknown".
     why: String,
-    /// Your choice for it: "budget:<id>", "none", or "" (as the rules say).
+    /// Your choice for it: `budget:<id>`, `none`, or `""` (as the rules say).
     chosen: String,
 }
 
@@ -99,7 +99,7 @@ struct RuleView {
     words: Vec<String>,
     /// "credit", "debit", "".
     direction: String,
-    /// "budget:<id>", "reserve:<id>", "transfer:<id>", "preset:<id>".
+    /// `budget:<id>`, `reserve:<id>`, `transfer:<id>`, `preset:<id>`.
     to: String,
     to_title: String,
     /// It reads every account's movements, not this one's alone.
@@ -308,7 +308,7 @@ pub(crate) fn remove_account(id: &str) -> String {
     ledger_path().and_then(|path| sioul_core::accounts::remove_bank_account(&path, id)).err().unwrap_or_default()
 }
 
-/// One movement placed by your hand: "budget:<id>", "none", or "" (as the rules say).
+/// One movement placed by your hand: `budget:<id>`, `none`, or `""` (as the rules say).
 pub(crate) fn place_movement(account: &str, movement: &str, choice: &str) -> String {
     ledger_path().and_then(|path| sioul_core::accounts::set_assignment(&path, account, movement, choice)).err().unwrap_or_default()
 }

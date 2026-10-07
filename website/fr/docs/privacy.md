@@ -7,7 +7,7 @@ description: "La politique de confidentialité de Sioul : Sioul fonctionne sur
 
 Cette page traduit la politique de confidentialité de Sioul ; en cas de doute, la [version anglaise](https://aurelienpierre.github.io/sioul/privacy.html) fait foi.
 
-*Dernière mise à jour le 5 octobre 2026 (2026-10-05).*
+*Dernière mise à jour le 7 octobre 2026 (2026-10-07).*
 
 Sioul est une application de bureau libre et à code source ouvert, publiée par Aurélien Pierre sous la licence GPL-3.0-or-later. Cette politique dit ce que Sioul fait de vos données, et en particulier des données qu’il reçoit de Google quand vous vous connectez avec un compte Google.
 
@@ -95,6 +95,8 @@ Sioul lit et garde votre courrier, vos agendas, contacts, tâches, notes, budget
 - **Les signatures antivirus**, une fois par jour, seulement quand votre système n’en tient aucune à jour lui-même.
 
 Sur un téléphone, si vous donnez à Sioul l’accès aux notifications d’Android, il lit les notifications des applications que vous le laissez voir, sur le téléphone, pour les retenir jusqu’à leur heure ; il ne garde aucun de leurs mots et n’en envoie rien nulle part, vos autres appareils compris ([Paramètres](guide/settings.md#other-apps)).
+
+**Votre propre filtre à indésirables**, sur un ordinateur, quand vous lui demandez d’apprendre (**Entraîner maintenant**) : Sioul lit chez votre fournisseur de courrier, sans rien y changer, les en-têtes et le début du texte de vos messages, dans chaque dossier sauf la corbeille, les brouillons, les envoyés et « Tous les messages » de Gmail, et les garde sur cet ordinateur pour en apprendre, avec le modèle de langue qu’il apprend. Ni l’un ni l’autre ne quitte jamais cet ordinateur. Seul le résultat, une table de nombres sans aucun mot de votre courrier en clair, va vers vos autres appareils, chiffrée avec votre phrase de passe, si vous partagez entre vos appareils. Rien n’en va au développeur, à une IA ni à aucun autre service. Il n’apprend que de votre courrier : jamais des données reçues de Google ([Vie privée et sécurité](guide/privacy-security.md#your-own-spam-filter)).
 
 Sur un téléphone, si vous faites de Sioul l’appli numéro de l’appelant et spam d’Android, Android lui montre le numéro de chaque appel avant que le téléphone sonne ; Sioul décide là, sur le téléphone, y garde la liste des appels qu’il a refusés, et n’envoie aucun numéro nulle part : aucun serveur, aucune recherche, vos autres appareils compris. Il ne décroche jamais, n’enregistre jamais un appel et n’écoute jamais ([Les appels](guide/calls.md)).
 

@@ -8,13 +8,14 @@
 //! a time, kept in `$XDG_STATE_HOME/sioul/quiet.toml`: working late keeps
 //! work in view; done for the day brings leisure early, until work comes
 //! back. Outside work, work rests (quiet time); during sleep nothing
-//! disturbs: no notification but the doses you asked for (`may_notify`).
-//! Two pauses come above them (docs/pauses.md, `pause`): the pause holds
+//! disturbs, as usual: no notification but the doses you asked for. Two
+//! pauses come above them (docs/pauses.md, `pause`): the pause holds
 //! everything, whatever the time; Free time is leisure whatever the hour,
 //! sleep first, and may move the end of today's work later.
 //!
 //! Who may reach you when is a matrix per channel (`reach::Reach`): for each
-//! state, the times they come; mail's rule is `mail_in_view`.
+//! state, the times they come; mail's rule is `mail_in_view`. What each kind
+//! of notification does at each time is another matrix (`notify::Notify`).
 //!
 //! Detachment from work in the evening is what recovery needs most
 //! (Sonnentag & Fritz 2007, 2015); work cues in off-hours keep it from
@@ -88,7 +89,7 @@ pub struct Mode {
 
 impl Mode {
     /// Asleep: the night from winding down to waking, or a nap. Nothing
-    /// disturbs (`may_notify`); tasks, projects and time wait behind a sentence.
+    /// disturbs, as usual (`notify`); tasks, projects and time wait behind a sentence.
     pub fn sleeps(&self) -> bool {
         self.time == Time::Sleep
     }
@@ -529,12 +530,14 @@ pub fn list_choice(tr: &crate::i18n::Translator, who: Who, matrix: &Matrix, one:
 /// only to an address for what now is for (docs/areas.md), unless the two
 /// never meet in your week: then their row alone decides, so that no mail
 /// waits for good. Forged mail, set aside before (porch.rs), is weighed as a
-/// stranger's, never as its sender's.
+/// stranger's, never as its sender's, and so is mail nothing authenticates
+/// (the triage said so: `porch::Reason::NotAuthenticated`).
 pub fn mail_in_view(triaged: &crate::porch::Triaged, senders: &crate::porch::Senders, reach: &Matrix, account: Area, time: Time, week: Week) -> bool {
     if triaged.lane == crate::porch::Lane::RightNow || triaged.reasons.contains(&crate::porch::Reason::FromYourself) || time == Time::Any {
         return true;
     }
-    let who = if triaged.lane == crate::porch::Lane::SetAside { Who::Stranger } else { senders.who_of(&triaged.card) };
+    let unproven = triaged.lane == crate::porch::Lane::SetAside || triaged.reasons.contains(&crate::porch::Reason::NotAuthenticated);
+    let who = if unproven { Who::Stranger } else { senders.who_of(&triaged.card) };
     let times = reach.times(who);
     if !times.at(time, week) {
         return false;
@@ -544,44 +547,6 @@ pub fn mail_in_view(triaged: &crate::porch::Triaged, senders: &crate::porch::Sen
     }
     // The address is for other times than those of its sender: when they never meet, the row decides.
     !Time::STATES.into_iter().any(|t| week.has(t) && times.at(t, week) && in_view(account, t, week))
-}
-
-/// Whether a notification may come now (docs/health.md, "Do not disturb"):
-/// any, but during sleep; then only a dose, unless you asked doses to stay
-/// silent while you sleep (they come at waking). What the window shows is
-/// shown when you open it. The pauses as `may_tell` says, doses coming.
-pub fn may_notify(mode: &Mode, dose: bool, doses_in_sleep: bool) -> bool {
-    may_tell(mode, if dose { Notice::Dose } else { Notice::Other }, doses_in_sleep, true)
-}
-
-/// What a notification is, for whether it may come now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Notice {
-    /// A dose's reminder.
-    Dose,
-    /// A code or a link you just asked a site for.
-    Code,
-    /// The alarm an event of yours carries.
-    Alarm,
-    /// Anything else: reminders before dates, sites, meals, the pause to move.
-    Other,
-}
-
-/// Whether a notification may come now (docs/health.md, docs/pauses.md):
-/// - the pause: a dose, unless the pause's setup holds them too
-///   (`doses_in_pause`), and an event's own alarm, an alarm you set (P7;
-///   whether its event falls in the pause is `reminders`' to say);
-/// - sleep: only a dose, unless doses stay silent then (`doses_in_sleep`);
-/// - Free time: doses, codes you asked for, your events' alarms; nothing else;
-/// - else: any.
-pub fn may_tell(mode: &Mode, notice: Notice, doses_in_sleep: bool, doses_in_pause: bool) -> bool {
-    if mode.paused() {
-        return (notice == Notice::Dose && doses_in_pause) || notice == Notice::Alarm;
-    }
-    if mode.sleeps() {
-        return notice == Notice::Dose && doses_in_sleep;
-    }
-    !(mode.free() && notice == Notice::Other)
 }
 
 /// Whether a task is yours, outside work: one of its categories is among
@@ -839,7 +804,7 @@ mod tests {
         let known = crate::porch::SenderList::default();
         let trusted = ["mx.example.net".to_string()];
         let own = ["me@example.net".to_string()];
-        let ctx = crate::porch::Context { cases: None, known: &known, senders, trusted_ids: &trusted, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &own };
+        let ctx = crate::porch::Context { cases: None, known: &known, senders, trusted_ids: &trusted, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &own, spam: None };
         crate::porch::triage(crate::card::Card::from_bytes(raw.as_bytes()).unwrap(), &ctx)
     }
 
@@ -871,6 +836,9 @@ mod tests {
         assert_eq!(at_times(&stranger, &usual, personal), ["admin"]);
         // The address and the row never meet: the row alone decides, so nothing waits for good.
         assert_eq!(at_times(&stranger, &usual, leisure_address), ["work", "admin"]);
+        // Jane's address on mail failing SPF and DKIM: nothing proves it is hers, a stranger's times.
+        let unproven = message("Jane <jane@example.org>", "Authentication-Results: mx.example.net; spf=fail smtp.mailfrom=example.org; dkim=fail header.d=example.org\r\n", "Hello", &senders);
+        assert_eq!(at_times(&unproven, &usual, work_address), ["work"]);
         // Strangers on their own row: never, and they wait while the neutral come.
         let no_strangers = Matrix { stranger: Times::NEVER, ..usual };
         assert_eq!(at_times(&stranger, &no_strangers, work_address), Vec::<&str>::new());
@@ -902,13 +870,19 @@ mod tests {
 
     #[test]
     fn nothing_disturbs_but_doses() {
+        use crate::notify::{Column, Kind, Notify, Now};
         let sleeping = Mode { quiet: true, time: Time::Sleep, week: Week::default(), reason: Reason::Sleep, until: None, back: None, label: String::new() };
         let awake = Mode { time: Time::Leisure, reason: Reason::Evening, ..sleeping.clone() };
-        assert!(!may_notify(&sleeping, false, true), "no notification during sleep");
-        assert!(may_notify(&sleeping, true, true), "a dose comes: you set its time");
-        assert!(!may_notify(&sleeping, true, false), "unless doses stay silent then");
-        assert!(may_notify(&awake, false, false) && may_notify(&awake, true, false));
+        // As the notification matrix has it as usual (`notify`).
+        let usual = Notify::usual();
+        let comes = |notify: &Notify, kind: Kind, mode: &Mode| notify.comes(kind, &Now::of(mode, false, false));
+        assert!(!comes(&usual, Kind::Move, &sleeping) && !comes(&usual, Kind::Dates, &sleeping), "no notification during sleep");
+        assert!(comes(&usual, Kind::Doses, &sleeping), "a dose comes: you set its time");
+        let mut silent = Notify::usual();
+        silent.set(Kind::Doses, Column::Sleep, crate::notify::Cell::Later).unwrap();
+        assert!(!comes(&silent, Kind::Doses, &sleeping), "unless doses stay silent then");
+        assert!(comes(&silent, Kind::Move, &awake) && comes(&silent, Kind::Doses, &awake));
         let winding = Mode { reason: Reason::WindingDown, ..sleeping };
-        assert!(winding.sleeps() && !may_notify(&winding, false, true));
+        assert!(winding.sleeps() && !comes(&usual, Kind::Move, &winding));
     }
 }

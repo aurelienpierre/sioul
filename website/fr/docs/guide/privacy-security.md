@@ -17,6 +17,7 @@ Tout ce que Sioul garde est dans des fichiers simples, dans vos propres dossiers
 | Les réglages, les expéditeurs que vous laissez entrer, sûrs, neutres, restreints ou bloqués | `~/.config/sioul/` |
 | Le courrier (un Maildir par adresse), les agendas et les contacts (un fichier par élément), les brouillons, le temps passé, les factures, les médicaments, les journées de votre montre | `~/.local/share/sioul/` |
 | Où chaque relève s’est arrêtée, où le Porche a été fermé, les nouvelles des sites, le journal des appels d’un agent d’IA | `~/.local/state/sioul/` |
+| Votre propre filtre à indésirables : ce que son apprentissage a lu de votre courrier, le modèle de langue qu’il a appris, sa table ; ce que vous avez dit indésirable ou non | `~/.local/share/sioul/spam/`, `~/.local/state/sioul/spam/` |
 | Notes, projets, budgets, papiers, lettres scannées | votre dossier de notes, là où vous l’avez choisi |
 
 Sous Windows, les dossiers de Sioul sont dans `%APPDATA%\Sioul` ; sous macOS, dans `~/Library/Application Support/Sioul`.
@@ -58,11 +59,23 @@ Quand un message arrive, Sioul le vérifie lui-même, par le DNS de votre systè
 - **DMARC**, avec la politique du domaine lui-même ;
 - **ARC**, pour le courrier transféré, et le **DNS inverse** du serveur d’envoi.
 
-Les résultats sont gardés avec le message, sous un nom que seule votre copie de Sioul utilise, pour qu’aucun expéditeur ne puisse écrire des résultats qui passeraient pour ceux de Sioul. Un message est alors **vérifié**, **non vérifié** (avec la raison), ou **falsifié**. Le courrier falsifié est mis de côté, avec la raison ; rien n’est supprimé. Les verdicts de votre fournisseur sur les indésirables comptent aussi.
+Les résultats sont gardés avec le message, sous un nom que seule votre copie de Sioul utilise, pour qu’aucun expéditeur ne puisse écrire des résultats qui passeraient pour ceux de Sioul. Un message est alors **vérifié**, **non vérifié** (avec la raison), ou **falsifié**. Le courrier falsifié est mis de côté, avec la raison ; rien n’est supprimé. Les verdicts de votre fournisseur sur les indésirables comptent aussi, pour le courrier d’inconnus seulement ([plus bas](#your-own-spam-filter)).
 
 **Les noms empruntés** sont repérés : un expéditeur qui prend le nom d’une banque, d’un service public ou de votre propre domaine, depuis une adresse qui ne leur appartient pas, est mis de côté. Les lettres qui se ressemblent (un l minuscule pour un I majuscule, un 0 pour un O, des lettres cyrilliques) ne cachent pas le nom.
 
 **Le courrier HTML** est montré avec ses paragraphes, ses listes, son texte en gras et ses liens seulement : pas d’images, pas de styles, pas de scripts, rien qui se charge depuis le réseau, si bien qu’aucune image de pistage n’apprend que vous avez ouvert un message. Chaque lien montre son adresse complète avant que vous cliquiez dessus.
+
+## Votre filtre à indésirables {#your-own-spam-filter}
+
+Le propre filtre à indésirables de Sioul apprend sur votre ordinateur, quand vous appuyez sur **Entraîner maintenant**, de votre propre courrier ([les réglages du Courrier](settings.md#your-own-spam-filter)) :
+
+- **Ce que l’apprentissage lit** : de chaque dossier de chaque adresse, sauf la corbeille, les brouillons, les envoyés et « Tous les messages » de Gmail, les en-têtes et le début de chaque texte, jamais les pièces jointes, sans rien changer sur le serveur. Il les garde sur cet ordinateur (`~/.local/share/sioul/spam/corpus/`), pour que les indésirables restent connus après que votre fournisseur a vidé son dossier des indésirables.
+- **Ce qu’il apprend** : un modèle de langue des mots de votre courrier, gardé à côté (`language.bin`). Il contient les mots de votre courrier en clair : il ne quitte jamais cet ordinateur.
+- **Ce qui voyage** : seulement sa table, le résultat, vers vos autres appareils par votre dossier, scellée comme tout ce qui s’y trouve : des nombres, les mots en empreintes, jamais en clair. Un téléphone n’entraîne jamais : il lit cette table.
+- **Ce que vous avez dit** : **Indésirable**, **Pas indésirable** et bloquer un expéditeur depuis un message ajoutent une ligne au relevé de cet appareil (`~/.local/state/sioul/spam/labels.jsonl`) : quand, où, quel message par son numéro, indésirable ou non ; jamais un mot de lui.
+- **Rien à personne d’autre** : aucun serveur, aucune IA. Ses chiffres ne sont que des totaux ; les mots qui ont pesé dans un message sont pour vous, dans votre propre terminal (`sioul spam why`), jamais proposés à un agent d’IA.
+
+Pour tout oublier, supprimez `~/.local/share/sioul/spam/` sur cet ordinateur : sa table, partagée, quitte alors aussi vos autres appareils.
 
 ## Les pièces jointes et l’antivirus {#attachments-and-the-antivirus}
 
@@ -89,7 +102,7 @@ Avec OpenPGP, Sioul signe et chiffre vos messages quand vous les envoyez, déchi
 
 ## Une adresse publique {#a-public-address}
 
-Une adresse que vous publiez peut être protégée contre le harcèlement : son courrier est lu avant que vous le voyiez, et les messages hostiles sont écartés sans que leurs mots soient montrés. Voir [le Porche](porch.md#a-public-address-protected).
+Une adresse que vous publiez peut être protégée contre le harcèlement : son courrier est lu avant que vous le voyiez, et les messages hostiles sont mis de côté sans que leurs mots soient montrés. Voir [le Porche](porch.md#a-public-address-protected).
 
 ## Ce site web {#this-website}
 

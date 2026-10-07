@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! JSON-RPC 2.0 (https://www.jsonrpc.org/specification) and the parts of MCP
+//! JSON-RPC 2.0 (<https://www.jsonrpc.org/specification>) and the parts of MCP
 //! 2025-06-18 Sioul answers: the handshake ("Lifecycle"), ping, tools, and a
 //! few resources made by the same tools. One message in, at most one out;
 //! the transport only carries them.

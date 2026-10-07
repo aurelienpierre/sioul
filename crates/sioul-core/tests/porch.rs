@@ -23,7 +23,7 @@ fn the_porch_sorts_a_morning() {
     let known = KnownSenders::parse(&std::fs::read_to_string(root.join("known-senders.txt")).unwrap());
     let ids = vec!["mx.example.net".to_string()];
     let senders = porch::Senders::default();
-    let ctx = Context { cases: Some(&store), known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[] };
+    let ctx = Context { cases: Some(&store), known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
     let triaged: Vec<_> = maildir::read_messages(&root.join("porch")).into_iter().map(|c| porch::triage(c, &ctx)).collect();
     let find = |part: &str| triaged.iter().find(|t| t.card.subject.contains(part)).unwrap();
 
@@ -63,9 +63,10 @@ fn what_you_send_yourself_comes_in() {
     let senders = porch::Senders::default();
     let ids = vec!["mx.example.net".to_string()];
     let own = vec!["me@example.org".to_string(), "me@work.example".to_string()];
-    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &own };
+    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &own, spam: None };
     let mail = |auth: &str| {
-        let raw = format!("Authentication-Results: mx.example.net; dkim={auth} header.d=example.org; spf={auth} smtp.mailfrom=example.org; dmarc={auth} header.from=example.org\r\nFrom: Me <me@example.org>\r\nTo: me@work.example\r\nSubject: The scan\r\nMessage-ID: <scan@example.org>\r\nX-Spam-Flag: YES\r\n\r\nThe file.\r\n");
+        // The provider's spam flag, above the line where the message came in: its own.
+        let raw = format!("Authentication-Results: mx.example.net; dkim={auth} header.d=example.org; spf={auth} smtp.mailfrom=example.org; dmarc={auth} header.from=example.org\r\nX-Spam-Flag: YES\r\nReceived: from mail.example.org (mail.example.org [203.0.112.20]) by mx.example.net with ESMTPS\r\nFrom: Me <me@example.org>\r\nTo: me@work.example\r\nSubject: The scan\r\nMessage-ID: <scan@example.org>\r\n\r\nThe file.\r\n");
         sioul_core::card::Card::from_bytes(raw.as_bytes()).unwrap()
     };
     // Verified: in, past the screener and the spam flag.
@@ -87,7 +88,7 @@ fn codes_sent_with_bulk_headers_come_at_once() {
     let known = KnownSenders::default();
     let senders = porch::Senders::default();
     let ids = vec!["mx.example.net".to_string()];
-    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[] };
+    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
     let triaged: Vec<_> = maildir::read_messages(&fixtures().join("porch-bulk")).into_iter().map(|c| porch::triage(c, &ctx)).collect();
     assert_eq!(triaged.len(), 7);
     assert!(triaged.iter().all(|t| t.card.is_list), "every one carries bulk headers");
@@ -117,4 +118,31 @@ fn codes_sent_with_bulk_headers_come_at_once() {
     let unverified = find("one-time code");
     assert_eq!((unverified.lane.clone(), kind("one-time code")), (Lane::RightNow, Some((CodeKind::Code, Some("309118".to_string())))));
     assert!(unverified.reasons.contains(&Reason::UnverifiedCode(CodeKind::Code)));
+}
+
+/// "Not spam" on mail your provider flagged: its `$NotJunk` keyword, in its
+/// file name as each sync keeps it, takes it out of Set aside for good, into
+/// the lane it would have had; `$Junk` beside it says nothing either way.
+#[test]
+fn mail_said_not_spam_leaves_set_aside() {
+    let known = KnownSenders::default();
+    let senders = porch::Senders::default();
+    let ids = vec!["mx.example.net".to_string()];
+    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+    let raw = "Authentication-Results: mx.example.net; dkim=pass header.d=lottery.test; spf=pass smtp.mailfrom=lottery.test; dmarc=pass header.from=lottery.test\r\n\
+               X-Spam-Flag: YES\r\n\
+               Received: from mail.lottery.test (mail.lottery.test [203.0.112.40]) by mx.example.net with ESMTPS\r\n\
+               From: Prize <win@lottery.test>\r\nTo: you@example.org\r\nSubject: You won\r\nMessage-ID: <win-1@lottery.test>\r\n\r\nClaim it.\r\n";
+    let stored = |flags: String| {
+        let mut card = sioul_core::card::Card::from_bytes(raw.as_bytes()).unwrap();
+        card.path = Some(PathBuf::from(format!("/mail/home/cur/1759400000.U7-1.sioul{}2,{flags}", maildir::INFO)));
+        porch::triage(card, &ctx)
+    };
+    let flagged = stored("S".into());
+    assert_eq!(flagged.lane, Lane::SetAside);
+    assert!(flagged.reasons.iter().any(Reason::is_spam));
+    let said = stored(format!("S{}", maildir::NOT_JUNK));
+    assert_eq!(said.lane, Lane::Screener, "a stranger's mail, as it would have been");
+    assert!(!said.reasons.iter().any(Reason::is_spam));
+    assert_eq!(stored(format!("S{}{}", maildir::JUNK, maildir::NOT_JUNK)).lane, Lane::SetAside);
 }

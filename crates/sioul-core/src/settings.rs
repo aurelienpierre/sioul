@@ -63,6 +63,13 @@ pub enum Kind {
     Link,
     /// Boxes in a grid: `rows` down, `choices` across; `value` lists those ticked as "row:column".
     Matrix,
+    /// Sioul's own spam filter, the window's own block (`SpamFilter.qml`): on
+    /// a computer, "Train now" and what the last training found; on a phone,
+    /// where its table comes from. Nothing in `value`.
+    Spam,
+    /// What each kind of notification does at each time (`grid`,
+    /// `notify::Grid`): saved a row at a time, `notify.<row>`.
+    Notify,
 }
 
 /// One of a setting's choices.
@@ -75,7 +82,7 @@ pub struct Choice {
 /// One setting, as its page shows it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Setting {
-    /// Where it is written: "history_weeks", "reading.size", "account.<id>.shield", "window", "known", "blocked".
+    /// Where it is written: `history_weeks`, `reading.size`, `account.<id>.shield`, `window`, `known`, `blocked`.
     pub key: String,
     pub kind: Kind,
     pub label: String,
@@ -97,6 +104,9 @@ pub struct Setting {
     /// The tab it is in, on a page with tabs (Settings): "look", "hours", "reminders", "files", "invoices".
     #[serde(skip_serializing_if = "String::is_empty")]
     pub section: String,
+    /// The notification matrix, in words (`Kind::Notify`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub grid: Option<crate::notify::Grid>,
 }
 
 struct Builder<'a> {
@@ -111,7 +121,7 @@ impl Builder<'_> {
     fn push(&mut self, key: &str, id: &str, kind: Kind, value: SettingValue) -> &mut Setting {
         let label = self.tr.text(&format!("set-{id}"), None);
         let help = self.tr.text(&format!("set-{id}-help"), None);
-        self.out.push(Setting { key: key.to_string(), kind, label, help, value, choices: Vec::new(), rows: Vec::new(), min: 0.0, max: 0.0, step: 1.0, unit: String::new(), group: self.group.clone(), section: self.section.clone() });
+        self.out.push(Setting { key: key.to_string(), kind, label, help, value, choices: Vec::new(), rows: Vec::new(), min: 0.0, max: 0.0, step: 1.0, unit: String::new(), group: self.group.clone(), section: self.section.clone(), grid: None });
         let last = self.out.len() - 1;
         &mut self.out[last]
     }
@@ -146,7 +156,7 @@ impl Builder<'_> {
     /// A sentence to read, nothing to change.
     fn note(&mut self, about: String, lines: Vec<String>) {
         let key = format!("note.{}", self.out.len());
-        self.out.push(Setting { key, kind: Kind::Note, label: about, help: lines.join("\n"), value: SettingValue::Text(String::new()), choices: Vec::new(), rows: Vec::new(), min: 0.0, max: 0.0, step: 1.0, unit: String::new(), group: self.group.clone(), section: self.section.clone() });
+        self.out.push(Setting { key, kind: Kind::Note, label: about, help: lines.join("\n"), value: SettingValue::Text(String::new()), choices: Vec::new(), rows: Vec::new(), min: 0.0, max: 0.0, step: 1.0, unit: String::new(), group: self.group.clone(), section: self.section.clone(), grid: None });
     }
 
     fn range(setting: &mut Setting, min: f64, max: f64, step: f64, unit: &str) {
@@ -263,6 +273,19 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             Builder::range(s, 1.0, 240.0, 1.0, "min");
             // Each address's own: in Accounts, on its card.
             b.note(tr.text("set-accounts-elsewhere", None), Vec::new());
+            // Sioul's own spam filter: what it does with its verdicts, how sure it must be.
+            b.group = tr.text("set-spam-group", None);
+            let s = b.push("spam.mode", "spam-mode", Kind::Choice, SettingValue::Text(config.spam.mode().as_str().into()));
+            s.choices = crate::spam::Mode::ALL.iter().map(|m| Choice { value: SettingValue::Text(m.as_str().into()), label: tr.text(&format!("set-spam-mode-{}", m.as_str()), None) }).collect();
+            let (spam, unsure) = config.spam.thresholds();
+            let hundredths = |t: f32| (f64::from(t) * 100.0).round() / 100.0;
+            // Shown as percentages ("%"); each stops a point short of the other: unsure stays below spam.
+            let s = b.push("spam.threshold_spam", "spam-threshold", Kind::Float, SettingValue::Float(hundredths(spam)));
+            Builder::range(s, (hundredths(unsure) + 0.01).max(0.5), 0.99, 0.01, "%");
+            let s = b.push("spam.threshold_unsure", "spam-unsure", Kind::Float, SettingValue::Float(hundredths(unsure)));
+            Builder::range(s, 0.05, (hundredths(spam) - 0.01).min(0.95), 0.01, "%");
+            // Its training on a computer, where its table comes from on a phone.
+            b.push("spam.filter", if cfg!(target_os = "android") { "spam-filter-phone" } else { "spam-filter" }, Kind::Spam, SettingValue::Text(String::new()));
             // How a message reads: the reading panel's own ("Aa" in Notes), shown where messages are read.
             b.group = tr.text("ui-reading", None);
             reading(&mut b, config);
@@ -493,9 +516,13 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // What sites notified, gathered at set times; real time and calls come at once.
             b.push("reminders.gather", "reminders-gather", Kind::Bool, SettingValue::Bool(config.reminders.gather));
             b.push("reminders.gathered", "reminders-gathered", Kind::Words, SettingValue::Texts(config.reminders.gathered_times()));
-            // While you sleep nothing notifies; doses do, unless they stay silent then (docs/health.md).
-            let s = b.push("reminders.doses_in_sleep", "doses-in-sleep", Kind::Choice, SettingValue::Bool(config.reminders.doses_in_sleep));
-            s.choices = [(true, "set-doses-in-sleep-remind"), (false, "set-doses-in-sleep-silent")].iter().map(|(v, l)| Choice { value: SettingValue::Bool(*v), label: tr.text(l, None) }).collect();
+            // What each kind of notification does at each time (`notify`, docs/reminders.md): the
+            // grid holds the doses during sleep and a pause too, where two switches used to.
+            b.group = tr.text("set-notify-group", None);
+            let notify = crate::notify::Notify::of(config);
+            let cells = crate::notify::Kind::ALL.iter().flat_map(|k| notify.words(*k).into_iter().map(move |w| format!("{}:{w}", k.id()))).collect();
+            let s = b.push("notify", "notify", Kind::Notify, SettingValue::Texts(cells));
+            s.grid = Some(crate::notify::grid(&notify, tr));
             // The two pauses, set up on a calm day (docs/pauses.md): free time, then the pause.
             b.section = "pauses".into();
             b.group = tr.text("set-free-time-group", None);
@@ -507,7 +534,8 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.group = tr.text("set-pause-group", None);
             // Said once, where the pause is set up (P5).
             b.note(tr.text("set-pause-about", None), Vec::new());
-            b.push("pause.doses", "pause-doses", Kind::Bool, SettingValue::Bool(config.pause.doses));
+            // Doses during a pause, and what else comes then: the grid of Reminders and notifications.
+            b.push("link.notify.pauses", "pause-notify", Kind::Link, SettingValue::Text("settings:notify".into()));
             b.push("pause.people", "pause-people", Kind::Bool, SettingValue::Bool(config.pause.people));
             b.push("pause.helps", "pause-helps", Kind::Words, SettingValue::Texts(config.pause.helps.clone()));
             b.push("pause.grounding", "pause-grounding", Kind::Text, SettingValue::Text(config.pause.grounding.clone()));
@@ -534,6 +562,8 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("dnd.pauses", "dnd-pauses", Kind::Bool, SettingValue::Bool(config.dnd.pauses));
             b.push("dnd.sleep", "dnd-sleep", Kind::Bool, SettingValue::Bool(config.dnd.sleep));
             b.push("dnd.people", "dnd-people", Kind::Bool, SettingValue::Bool(config.dnd.people));
+            // What comes during do-not-disturb, kind by kind: the grid of Reminders and notifications.
+            b.push("link.notify.dnd", "dnd-notify", Kind::Link, SettingValue::Text("settings:notify".into()));
             // Invoices, made from Time and from Projects: who sends them, how they are numbered, where they go.
             b.section = "invoices".into();
             b.group = tr.text("set-invoice-group", None);
@@ -704,6 +734,29 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
             let root = config.case_store_path().ok_or_else(|| format!("{key}: no case store"))?;
             crate::cases::set_routes(&root.join(crate::cases::MANIFEST), id, routes)
         }
+        // A row of the notification matrix, its words: read, checked, written whole.
+        _ if key.starts_with("notify.") => crate::notify::apply(config_path, config, key, value),
+        // Sioul's own spam filter: a mode it knows; thresholds between 0 and 1, the doubt below the spam.
+        "spam.mode" => match value {
+            SettingValue::Text(mode) if crate::spam::Mode::read(mode).is_some() => set_value(config_path, key, value),
+            _ => Err(format!("{key}: off, say or act")),
+        },
+        "spam.threshold_spam" | "spam.threshold_unsure" => {
+            let wanted = match value {
+                SettingValue::Float(f) => *f,
+                SettingValue::Int(n) => *n as f64,
+                _ => return Err(format!("{key}: a number between 0 and 1 expected")),
+            };
+            if !(wanted.is_finite() && wanted > 0.0 && wanted <= 1.0) {
+                return Err(format!("{key}: {wanted} is not between 0 and 1"));
+            }
+            let (spam, unsure) = config.spam.thresholds();
+            let (spam, unsure) = if key == "spam.threshold_spam" { (wanted, f64::from(unsure)) } else { (f64::from(spam), wanted) };
+            if unsure >= spam {
+                return Err(format!("{key}: unsure ({unsure:.2}) must stay below spam ({spam:.2})"));
+            }
+            set_value(config_path, key, &SettingValue::Float(wanted))
+        }
         // "Like the others": the account's own value goes.
         _ if key.starts_with("account.") && key.ends_with(".history_weeks") && *value == SettingValue::Int(-1) => set_value(config_path, key, &SettingValue::Text(String::new())),
         _ if key.starts_with("account.") && key.ends_with(".fetch_minutes") && *value == SettingValue::Int(0) => set_value(config_path, key, &SettingValue::Text(String::new())),
@@ -725,7 +778,7 @@ mod tests {
         let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
         assert_eq!(keys("notes"), vec!["notes_folder"]);
         // Mail's own, then how a message reads: the reading panel's, shown where messages are read.
-        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "reading.family", "reading.size", "reading.spacing"]);
+        assert_eq!(keys("mail"), vec!["mail.threads", "fetch_minutes", "spam.mode", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "reading.family", "reading.size", "reading.spacing"]);
         // An address's own, on its card in Accounts; what all share, under them.
         assert_eq!(keys("account:a"), vec!["account.a.area", "account.a.history_weeks", "account.a.fetch_minutes", "account.a.shield", "account.a.shield_ai"]);
         assert_eq!(keys("accounts"), vec!["ai_key"]);
@@ -745,11 +798,17 @@ mod tests {
             parameters,
             vec![
                 "language", "theme", "places_named", "passwords_shown", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.before_event", "reminders.events", "reminders.asked_days",
-                "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "reminders.gathered", "reminders.doses_in_sleep", "free_time.nothing", "free_time.moves", "free_time.latest_after", "free_time.movement",
-                "pause.doses", "pause.people", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "dnd.people", "invoice.name", "invoice.address", "invoice.siret", "invoice.vat", "invoice.prefix", "invoice.currency", "invoice.payment",
-                "invoice.folder", "invoice.rate"
+                "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "reminders.gathered", "notify", "free_time.nothing", "free_time.moves", "free_time.latest_after", "free_time.movement",
+                "link.notify.pauses", "pause.people", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "dnd.people", "link.notify.dnd", "invoice.name", "invoice.address", "invoice.siret", "invoice.vat", "invoice.prefix",
+                "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate"
             ]
         );
+        // The notification matrix: every kind, every time, in words; the doses' two switches are its cells now.
+        let notify = for_view("parameters", &config, &tr, &[], None).into_iter().find(|s| s.key == "notify").unwrap();
+        let grid = notify.grid.as_ref().unwrap();
+        assert_eq!((notify.kind, notify.section.as_str(), grid.rows.len(), grid.columns.len()), (Kind::Notify, "reminders", 19, 9));
+        assert!(matches!(&notify.value, SettingValue::Texts(cells) if cells.contains(&"doses:sleep".to_string()) && cells.contains(&"mail:dnd:list".to_string())));
+        assert!(!notify.label.starts_with("set-") && !notify.help.starts_with("set-"));
         // Nothing is set in two places: a setting has one owner. The reading
         // panel's own ("Aa" in Notes) are shown in Mail's and the Porch's too,
         // where messages are read, as each lane's are in the Porch's.
@@ -793,6 +852,20 @@ mod tests {
         // The last one taken away: the window sends `[]`.
         apply(&path, &config, "known", &serde_json::from_str("[]").unwrap()).unwrap();
         assert!(SenderList::load(&config.known_senders_path()).entries().is_empty());
+        // The spam filter's thresholds: the doubt stays below the spam, each between 0 and 1.
+        assert!(apply(&path, &config, "spam.threshold_unsure", &SettingValue::Float(0.97)).is_err());
+        assert!(apply(&path, &config, "spam.threshold_spam", &SettingValue::Float(1.5)).is_err());
+        assert!(apply(&path, &config, "spam.mode", &SettingValue::Text("acts".into())).is_err());
+        apply(&path, &config, "spam.threshold_spam", &SettingValue::Float(0.9)).unwrap();
+        apply(&path, &config, "spam.mode", &SettingValue::Text("act".into())).unwrap();
+        let config = Config::load(&path).unwrap();
+        assert_eq!((config.spam.mode(), config.spam.thresholds()), (crate::spam::Mode::Act, (0.9, 0.5)));
+        assert!(apply(&path, &config, "spam.threshold_unsure", &SettingValue::Float(0.9)).is_err());
+        // Shown as percentages, each slider stopping a point short of the other.
+        let rows = for_view("mail", &config, &Translator::new("en"), &[], None);
+        let range = |key: &str| rows.iter().find(|s| s.key == key).map(|s| ((s.min * 100.0).round(), (s.max * 100.0).round(), s.unit.clone())).unwrap();
+        assert_eq!((range("spam.threshold_spam"), range("spam.threshold_unsure")), ((51.0, 99.0, "%".to_string()), (5.0, 89.0, "%".to_string())));
+        assert!(rows.iter().any(|s| s.key == "spam.filter" && s.kind == Kind::Spam));
         // A secret is never written into the configuration.
         assert!(apply(&path, &config, "github_token", &SettingValue::Int(12345)).is_err());
         assert!(!std::fs::read_to_string(&path).unwrap().contains("github_token"));

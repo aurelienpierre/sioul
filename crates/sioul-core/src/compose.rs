@@ -356,7 +356,7 @@ fn prefixed(subject: &str, prefix: &str, known: &[&str]) -> String {
 /// mail is meant, as in a chat or a GitHub comment: it is kept.
 ///
 /// HTML written in the text (a note quoting a mail, a draft) shows as it was
-/// written, never read: only marks of plain formatting ("<b>", "<br>") and
+/// written, never read: only marks of plain formatting (`<b>`, `<br>`) and
 /// pictures of this computer or of the text itself stay, as the pictures a
 /// vault's notes embed (`Vault::with_links`). A picture from elsewhere
 /// ("![](https://…)", a tracking pixel) is a link to it: showing the text

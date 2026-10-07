@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Finding an account's IMAP server from its address, the way Thunderbird does
-//! (https://wiki.mozilla.org/Thunderbird:Autoconfiguration):
+//! (<https://wiki.mozilla.org/Thunderbird:Autoconfiguration>):
 //!
 //! 1. the provider's own settings, `autoconfig.<domain>` (cPanel hosts and
 //!    Nextcloud providers publish them), then `<domain>/.well-known/autoconfig`;

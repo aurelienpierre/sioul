@@ -501,6 +501,9 @@ fn porch_key(m: &Moment, mode: &Mode, at: &Zoned) -> String {
 fn snapshot(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput>, doses: &[Dose]) -> Snapshot {
     let set_up = m.config.every_account().next().is_some();
     let mut made: BTreeMap<String, PorchLines> = BTreeMap::new();
+    // Codes and doses as the notification matrix lets them come at each time (Settings ▸ Reminders and notifications).
+    let notify = sioul_core::notify::Notify::of(m.config);
+    let comes = |kind: sioul_core::notify::Kind, mode: &sioul_core::quiet::Mode| notify.comes(kind, &sioul_core::notify::Now::of(mode, false, false));
     let frames = timeline(m)
         .into_iter()
         .enumerate()
@@ -523,8 +526,9 @@ fn snapshot(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput>, do
                 dnd: m.dnd.map(|d| d.line_in(kind, ms(&from), index == 0)).unwrap_or_default(),
                 porch,
                 step: plan.and_then(|p| step_at(m, p, &mode, &from)),
-                codes: !mode.sleeps() && !mode.paused(),
-                doses: !mode.paused() && (!mode.sleeps() || m.config.reminders.doses_in_sleep),
+                codes: comes(sioul_core::notify::Kind::Codes, &mode),
+                // The pause's card shows the pause alone.
+                doses: !mode.paused() && comes(sioul_core::notify::Kind::Doses, &mode),
             }
         })
         .collect();
@@ -826,6 +830,7 @@ pub(crate) fn setting(group: &str, section: &str, on: bool) -> sioul_core::setti
         unit: String::new(),
         group: group.to_string(),
         section: section.to_string(),
+        grid: None,
     }
 }
 
@@ -1164,6 +1169,13 @@ mod tests {
         let card = snapshot(&moment, None, None, &doses);
         let night = card.frames.iter().find(|f| f.kind == "sleep").unwrap();
         assert!(!night.doses, "doses during sleep: stay silent");
+        assert!(!night.codes, "as usual, codes wait on the Porch while you sleep");
+        // As the notification matrix says (Settings ▸ Reminders and notifications): doses held in sleep, codes told then.
+        let mut grid = config();
+        grid.notify = toml::from_str::<Config>("[notify]\ndoses = [\"sleep:later\"]\ncodes = [\"sleep\"]\n").unwrap().notify;
+        let card = snapshot(&Moment { config: &grid, ..moment }, None, None, &doses);
+        let night = card.frames.iter().find(|f| f.kind == "sleep").unwrap();
+        assert!(!night.doses && night.codes);
         // In French, with its typography.
         let fr = make("2026-10-05T10:00[Europe/Paris]", &Overrides::default(), true, "fr", &doses);
         assert_eq!(fr.card.doses[0].check, "Magnesium · 300 mg, 09:45\u{202f}: vérifiez avant de la prendre.");

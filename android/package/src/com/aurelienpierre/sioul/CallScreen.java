@@ -8,7 +8,7 @@ import android.telecom.CallScreeningService;
 import android.util.Log;
 
 /**
- * Android's question about each call, to Sioul as the "Caller ID & spam app"
+ * Android's question about each call, to Sioul as the "Caller ID &amp; spam app"
  * (docs/android.md, "Calls"): answered from the table Rust wrote ahead
  * (Calls.decide), in a process of its own (":calls") that never loads
  * Sioul's library or Qt, so that Telecom, which holds the ringing until it

@@ -381,8 +381,8 @@ fn writable_lists() -> Vec<ListChoice> {
 
 /// A task moved to another list, its steps with it: written there, then taken
 /// out here (the accounts send both). When the list would not keep something
-/// the task uses, nothing moves until `confirmed`: returns {"losses": [words]},
-/// else {"uid"} or {"error"}.
+/// the task uses, nothing moves until `confirmed`: returns `{"losses": [words]}`,
+/// else `{"uid"}` or `{"error"}`.
 pub(crate) fn move_task(qt: &QtThread, shared: &Arc<Shared>, uid: &str, list: &str, confirmed: bool) -> String {
     let loaded = loaded(shared);
     let Some(target) = tasks::lists().into_iter().find(|c| !c.read_only && format!("{}/{}", c.account, c.id) == list) else { return answer(Err(tr().text("task-list-no-tasks", None))) };
@@ -1508,7 +1508,7 @@ fn notes_folder() -> String {
     load_config().notes_folder.filter(|f| !f.trim().is_empty()).unwrap_or_else(|| NOTES_FOLDER.to_string())
 }
 
-/// Where a new audio memo is recorded: "<notes>/memos/2026-10-03 18.40.ogg", as
+/// Where a new audio memo is recorded: `<notes>/memos/2026-10-03 18.40.ogg`, as
 /// a file URL, its folder made; "" without a notes folder.
 pub(crate) fn memo_url() -> String {
     let Some(root) = load_config().case_store_path() else { return String::new() };

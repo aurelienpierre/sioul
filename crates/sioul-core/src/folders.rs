@@ -109,7 +109,7 @@ pub fn folder(name: &str, delimiter: Option<&str>, special: Option<Role>) -> Fol
     Folder { name: name.to_string(), display, role, local, special: special.is_some_and(|s| s == role) }
 }
 
-/// "INBOX.Sent" → "Sent", "[Gmail]/Sent Mail" → "[Gmail]/Sent Mail", "Re&AOc-us" → "Reçus".
+/// `INBOX.Sent` → `Sent`, `[Gmail]/Sent Mail` → `[Gmail]/Sent Mail`, `Re&AOc-us` → `Reçus`.
 fn display_name(name: &str, delimiter: Option<&str>) -> String {
     let decoded = decode_utf7(name);
     match delimiter {

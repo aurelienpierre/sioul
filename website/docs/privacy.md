@@ -5,7 +5,7 @@ description: Sioul's privacy policy - Sioul runs on your device and has no serve
 
 # Privacy policy
 
-*Last updated on 5 October 2026 (2026-10-05).*
+*Last updated on 7 October 2026 (2026-10-07).*
 
 Sioul is a free and open-source desktop application, published by Aurélien Pierre under the GPL-3.0-or-later licence. This policy says what Sioul does with your data, and in particular with the data it receives from Google when you sign in with a Google account.
 
@@ -92,6 +92,8 @@ Sioul reads and keeps your mail, calendars, contacts, tasks, notes, budgets, pap
 On a phone, if you give Sioul Android's notification access, it reads the notifications of the apps you let it see, on the phone, to hold them until their time; it keeps none of their words and sends nothing of them anywhere, your other devices included ([Settings](guide/settings.md#other-apps)).
 
 On a phone, if you make Sioul Android's caller ID & spam app, Android shows it each call's number before the phone rings; Sioul decides there, on the phone, keeps the list of the calls it declined on the phone, and sends no number anywhere: no server, no lookup, your other devices included. It never answers, records or listens to a call ([Calls](guide/calls.md)).
+
+**Your own spam filter**, on a computer, when you ask it to learn (**Train now**): Sioul reads from your mail provider, without changing anything there, the headers and the start of the text of your messages, in every folder but the trash, drafts, sent mail and Gmail's All Mail, and keeps them on that computer to learn from, with the language model it learns. Neither ever leaves that computer. Only the result, a table of numbers with no word of your mail in plain text, goes to your other devices, encrypted with your passphrase, if you share between your devices. Nothing of it goes to the developer, to an AI or to any other service. It learns from your mail only: never from data received from Google ([Privacy and security](guide/privacy-security.md#your-own-spam-filter)).
 
 The complete list, with when each happens: [Privacy and security](guide/privacy-security.md#what-leaves-your-computer-and-when).
 

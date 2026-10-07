@@ -134,7 +134,7 @@ final class WakeAlarms
      * kept: Android forgets them at a restart, a change of zone moves them.
      * The list run out (Sioul not asked for eight days), the usual week. A
      * ring after "10 min later" given again too. Never inexact: without
-     * "Alarms & reminders", nothing, and the Health settings say so. Any thread.
+     * "Alarms &amp; reminders", nothing, and the Health settings say so. Any thread.
      */
     static synchronized void arm(Context context, String why)
     {
@@ -405,7 +405,7 @@ final class WakeAlarms
 
     // ---------------------------------------------------------------- what Android allows
 
-    /** "Alarms & reminders": Android 12 gives it at install and lets you take it back; 13 gives it for good (USE_EXACT_ALARM). */
+    /** "Alarms &amp; reminders": Android 12 gives it at install and lets you take it back; 13 gives it for good (USE_EXACT_ALARM). */
     static boolean exact(Context context)
     {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.S || context.getSystemService(AlarmManager.class).canScheduleExactAlarms();

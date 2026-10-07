@@ -147,7 +147,9 @@ fn decide(json: &str) -> String {
     let live = live(&config, &now);
     let gathered = config.reminders.gathered_times();
     let slot = |at: &Zoned| crate::capacity::in_gain_slot(at);
-    let ask = Ask { now: &now, clock: &live, reach: &live, gathered: &gathered, area, gate: gate.as_ref().map(|(_, until)| Gate { until: *until }), slot_at: &slot, also: &[] };
+    // What comes when, kind by kind (Settings ▸ Reminders and notifications).
+    let notify = sioul_core::notify::Notify::of(&config);
+    let ask = Ask { now: &now, clock: &live, reach: &live, notify: &notify, gathered: &gathered, area, gate: gate.as_ref().map(|(_, until)| Gate { until: *until }), slot_at: &slot, also: &[] };
     let hash = appnotes::key_hash(&posted.key);
     let path = Ledger::default_path();
     let decision = sioul_core::filelock::with_lock(&path, || {
@@ -196,6 +198,7 @@ fn review(json: &str) -> String {
     let live = live(&config, &now);
     let gathered = config.reminders.gathered_times();
     let slot = |at: &Zoned| crate::capacity::in_gain_slot(at);
+    let notify = sioul_core::notify::Notify::of(&config);
     let path = Ledger::default_path();
     let again = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
@@ -205,7 +208,7 @@ fn review(json: &str) -> String {
         for key in &keys {
             let hash = appnotes::key_hash(key);
             let Some(held) = ledger.held.get(&hash).cloned() else { continue };
-            let ask = Ask { now: &now, clock: &live, reach: &live, gathered: &gathered, area: held.area, gate: gate.as_ref().map(|(_, until)| Gate { until: *until }), slot_at: &slot, also: &[] };
+            let ask = Ask { now: &now, clock: &live, reach: &live, notify: &notify, gathered: &gathered, area: held.area, gate: gate.as_ref().map(|(_, until)| Gate { until: *until }), slot_at: &slot, also: &[] };
             let until = appnotes::again(&held, &choices, &ask).until.unwrap_or(stamp);
             if (until - held.until).abs() > 60 {
                 if let Some(kept) = ledger.held.get_mut(&hash) {
@@ -377,8 +380,8 @@ pub(crate) fn setup() -> String {
 }
 
 /// A choice of the tab, or one of Android's pages (`AppNotesSetup.act`): the tab again, as JSON.
-/// "set" {key, value}: "hold", "app.<package>.kind", "app.<package>.area",
-/// "conversation.<key>", "site.<host>"; "open-access", "open-info",
+/// "set" {key, value}: "hold", `app.<package>.kind`, `app.<package>.area`,
+/// `conversation.<key>`, `site.<host>`; "open-access", "open-info",
 /// "open-app" {package}, "open-channel" {package, channel}; "contacts".
 pub(crate) fn change(verb: &str, json: &str) -> String {
     let asked: Value = serde_json::from_str(json).unwrap_or(Value::Null);

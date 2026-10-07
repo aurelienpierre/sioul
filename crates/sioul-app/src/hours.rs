@@ -2,15 +2,19 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! What now is for, as the window asks it (docs/areas.md): work, admin,
-//! leisure, a meal, sleep; and do-not-disturb while you sleep
-//! (docs/health.md) or pause, and in free time (docs/pauses.md). One place for the pages and the notifications; the rule
+//! leisure, a meal, sleep, the pauses; and what each kind of notification
+//! does then, as the notification matrix says (`notify_now`, `comes`; the
+//! matrix is `sioul_core::notify`, set in Settings ▸ Reminders and
+//! notifications). One place for the pages and the notifications; the rule
 //! itself is `sioul_core::quiet::mode`. Health's meals, naps and nights are
 //! read again when its files change, and today's events at most every five
 //! minutes: this is asked often (every list of sites, every notification).
 
 use crate::backend::load_config;
 use jiff::Zoned;
+use sioul_core::notify::{self, Cell, Notify, Now};
 use sioul_core::quiet::{self, Blocks, Mode, Overrides};
+use sioul_core::reminders::Holds;
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -68,54 +72,44 @@ pub(crate) fn mode_now() -> Mode {
     mode_at(&Zoned::now())
 }
 
-/// Asleep now: the night from winding down to waking, or a nap.
-pub(crate) fn asleep() -> bool {
-    mode_now().sleeps()
-}
-
-/// Whether a notification may come now: none while you sleep or pause, nor in
-/// free time, nor while do-not-disturb holds from its switch or a focus
-/// session (docs/do-not-disturb.md) (doses: `doses_silent`; codes: `may_notify_code`).
-pub(crate) fn may_notify() -> bool {
-    quiet::may_tell(&mode_now(), quiet::Notice::Other, true, true) && !crate::everywhere::holds_others()
-}
-
-/// Whether Health's notices of a meal, a nap or the night may come now: as
-/// `may_notify`, but do-not-disturb's switch and focus sessions never drop
-/// them (the system's do-not-disturb keeps them silent, in the shade): a meal
-/// forgotten during a long focus costs more than a quiet notice.
-pub(crate) fn may_notify_need() -> bool {
-    quiet::may_tell(&mode_now(), quiet::Notice::Other, true, true)
-}
-
-/// Paused now (docs/pauses.md): nothing of Sioul's shows, the night's own
-/// notice neither; doses as the pause's setup says (`doses_silent`).
-pub(crate) fn paused() -> bool {
-    mode_now().paused()
-}
-
-/// Whether a code you asked a site for may notify now: not while you sleep or
-/// pause; in free time, yes (docs/pauses.md).
-pub(crate) fn may_notify_code() -> bool {
-    quiet::may_tell(&mode_now(), quiet::Notice::Code, true, true)
-}
-
-/// In one of today's slots of time for you (docs/capacity.md, G18b): what can
-/// wait, waits there, the messages of sites and the pauses to move; doses,
-/// meals and sleep, codes asked for, calls and an event's alarm still come.
+/// In one of today's slots of time for you (docs/capacity.md, G18b): a layer
+/// of the notification matrix, which says what waits there (as usual, new
+/// mail, the sites' notifications and the pause to move).
 pub(crate) fn quiet_slot() -> bool {
     crate::capacity::in_gain_slot(&Zoned::now())
 }
 
-/// Whether a dose's reminder waits now: asleep, and "Doses during sleep: stay
-/// silent" chosen; paused, and the pause's setup holding doses too
-/// (docs/pauses.md). Never without that choice: a dose at 05:00 is meant to wake you.
+/// The time now as the notification matrix reads it (`sioul_core::notify`):
+/// what now is for, a slot of time for you, and do-not-disturb from its
+/// switch or a focus session (docs/do-not-disturb.md).
+pub(crate) fn notify_now() -> Now {
+    Now::of(&mode_now(), quiet_slot(), crate::everywhere::holds_others())
+}
+
+/// What the matrix (Settings ▸ Reminders and notifications) says now of one
+/// kind of notification.
+pub(crate) fn cell(kind: notify::Kind) -> Cell {
+    Notify::of(&load_config()).at(kind, &notify_now())
+}
+
+/// Whether one kind of notification comes now, at once.
+pub(crate) fn comes(kind: notify::Kind) -> bool {
+    cell(kind) == Cell::Now
+}
+
+/// Reminders' holds (`reminders::gather`) with this process's layers: a slot
+/// of time for you, which only the window knows, and do-not-disturb.
+pub(crate) fn with_layers(mut holds: Holds) -> Holds {
+    holds.now.slot = quiet_slot();
+    holds.now.dnd = crate::everywhere::holds_others();
+    holds
+}
+
+/// Whether a dose's reminder waits now: the matrix's doses row, whose only
+/// cells that may hold it are sleep's and the pause's, your choice. Never
+/// without it: a dose at 05:00 is meant to wake you.
 pub(crate) fn doses_silent() -> bool {
-    let config = load_config();
-    if mode_now().paused() {
-        return !config.pause.doses;
-    }
-    !config.reminders.doses_in_sleep && asleep()
+    !comes(notify::Kind::Doses)
 }
 
 /// When this sleep ends (Unix seconds), while asleep: waking, or a nap's end;
@@ -134,12 +128,13 @@ pub(crate) fn waking() -> Option<i64> {
 /// waking, and are reminded now; the same for a pause holding doses, at
 /// coming back (docs/pauses.md). None otherwise.
 pub(crate) fn woke_from() -> Option<i64> {
-    let config = load_config();
+    let notify = Notify::of(&load_config());
+    let held_in = |column: notify::Column| notify.cell(notify::Kind::Doses, column) != Cell::Now;
     let now = Zoned::now();
     let stamp = now.timestamp().as_second();
     let overrides = Overrides::load(&Overrides::default_path());
-    let paused = overrides.paused_since.zip(overrides.paused_ended).filter(|(since, ended)| !config.pause.doses && ended > since && *ended <= stamp && stamp - ended < 30 * 60).map(|(since, _)| since);
-    if config.reminders.doses_in_sleep {
+    let paused = overrides.paused_since.zip(overrides.paused_ended).filter(|(since, ended)| held_in(notify::Column::Pause) && ended > since && *ended <= stamp && stamp - ended < 30 * 60).map(|(since, _)| since);
+    if !held_in(notify::Column::Sleep) {
         return paused;
     }
     let blocks = blocks(&now);

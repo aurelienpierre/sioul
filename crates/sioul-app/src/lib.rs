@@ -5,6 +5,104 @@
 //! core as the command line; the window only lays out what the core decided.
 //! A library: the desktop program (main.rs) runs it, and so does Android's
 //! (android/main.cpp, docs/android.md).
+//!
+//! The window is made of QML pages, in `crates/sioul-app/qml/` (each one is
+//! described in the QML reference:
+//! <https://aurelienpierre.github.io/sioul/dev/qml.html>), and of this crate's
+//! Rust. CXX-Qt joins the two: [`backend`](backend/index.html) declares the
+//! QML type `Sioul`, whose properties the pages read and whose functions they
+//! call, and [`desktop`](desktop/index.html) a second one, `Desktop`, for the
+//! desktop's icons and title bar.
+//! What the pages show comes from [sioul-core](../sioul_core/index.html), as
+//! JSON with every sentence already in your language; what comes from servers
+//! is fetched with [sioul-sync](../sioul_sync/index.html) on other threads,
+//! so that the window never waits.
+//!
+//! Every module here is private: only the window uses them. This reference
+//! shows them all.
+//!
+//! # Where to start reading
+//!
+//! - [`run`]: the window, from the program's start to its end.
+//! - [`backend`](backend/index.html): the object `Sioul`. In its bridge, the
+//!   module `qobject`, each `#[qproperty]` is a value the pages read, and are
+//!   told about when it changes; each `#[qinvokable]` is a function a page
+//!   calls, its name in camelCase in QML (`text_with` is
+//!   `sioul.textWith(…)`). `SioulRust` holds what the object keeps.
+//! - [`work`](work/index.html) (tasks, notes, links, focus),
+//!   [`mail`](mail/index.html) and [`pim`](pim/index.html) (contacts and
+//!   calendars): the same pattern, one area at a time. Most functions there
+//!   return JSON for a page, or run their work off the window's thread and
+//!   hand the result back to it.
+//!
+//! Names such as docs/android.md are the design notes in the repository's
+//! `docs/` folder. The website shows them too, under the same name:
+//! <https://aurelienpierre.github.io/sioul/dev/android.html>.
+//!
+//! # Modules, by theme
+//!
+//! ## The window's objects
+//!
+//! - [`backend`](backend/index.html): the object behind the window, `Sioul`, and the work it runs off the window's thread.
+//! - [`desktop`](desktop/index.html): the desktop's icon theme, and where the desktop puts a window's buttons.
+//! - [`hours`](hours/index.html): what now is for (work, admin, leisure, a meal, sleep), as the pages and notifications ask it.
+//!
+//! ## Mail
+//!
+//! - [`mail`](mail/index.html): the mail client: folders and their messages, what you do to them, drafts and sending.
+//! - [`gmail`](gmail/index.html): Google's mail, signed in on Google's page.
+//! - [`crypto`](crypto/index.html): OpenPGP: protected messages opened for the reader, drafts signed or encrypted, your keys.
+//! - [`senders`](senders/index.html): who someone is to you: where they stand, and why.
+//! - [`mailnote`](mailnote/index.html): new mail told as a notification, at the times it may come.
+//! - [`letters`](letters/index.html): paper letters: scans read in the background, each a card in the Porch.
+//! - [`outside`](outside/index.html): writing from other applications: shared files and text, `mailto:` links.
+//! - [`sites`](sites/index.html): sites kept in Sioul: the list, their notifications, logins filled from Bitwarden.
+//! - [`spam`](spam/index.html): Sioul's own spam filter in the mail settings, and on a computer "Train now" (docs/spam-filter.md).
+//!
+//! ## Tasks, projects and time
+//!
+//! - [`work`](work/index.html): tasks, notes, links and focus.
+//! - [`blocks`](blocks/index.html): time blocks: a task pinned to a time, as an event in a calendar.
+//! - [`capacity`](capacity/index.html): what a day holds, as the window uses it.
+//! - [`projects`](projects/index.html): projects, time and invoices.
+//! - [`github`](github/index.html): GitHub's issues and pull requests, in the local "GitHub" list.
+//! - [`reviews`](reviews/index.html): the two rituals: closing the work day, and closing the day before sleep.
+//! - [`remind`](remind/index.html): reminders before dates, each a quiet notification.
+//! - [`timenote`](timenote/index.html): the time running, in the system's notifications.
+//!
+//! ## Contacts and calendars
+//!
+//! - [`pim`](pim/index.html): contacts and calendars.
+//! - [`duplicates`](duplicates/index.html): duplicates in the contacts, found and cleaned when you ask.
+//! - [`map`](map/index.html): contacts on a map.
+//!
+//! ## Money and papers
+//!
+//! - [`bank`](bank/index.html): the money watch: bank accounts, where each movement went, what passed and what did not.
+//! - [`contracts`](contracts/index.html): contracts and subscriptions.
+//! - [`papers`](papers/index.html): the papers wallet.
+//!
+//! ## Pauses, do-not-disturb and health
+//!
+//! - [`pauses`](pauses/index.html): the two pauses, Free time and Pause.
+//! - [`dnd`](dnd/index.html): the system's do-not-disturb, during the pauses and Sioul's own, where the system lets an app set it.
+//! - [`everywhere`](everywhere/index.html): do-not-disturb on every device, as this device applies it.
+//! - [`health`](health/index.html): the Health page, its settings, and the minute that reminds a dose.
+//!
+//! ## Your devices
+//!
+//! - [`share`](share/index.html): sharing with your other devices: set up, one exchange a minute, versions put back.
+//! - [`devices`](devices/index.html): this device's sessions, as your other devices learn them.
+//!
+//! ## On a phone
+//!
+//! - [`alarms`](alarms/index.html): doses reminded by Android's alarm clock while Sioul is away.
+//! - [`eventalarms`](eventalarms/index.html): reminders before events, by Android's alarm clock.
+//! - [`wake`](wake/index.html): the alarm at waking.
+//! - [`steps`](steps/index.html): the phone in the background: a service that keeps your devices in step.
+//! - [`homecard`](homecard/index.html): the card on the phone's home screen.
+//! - [`calls`](calls/index.html): calls screened on a phone.
+//! - [`appnotes`](appnotes/index.html): other apps' notifications on a phone: now, or how long they wait.
 
 mod alarms;
 mod appnotes;
@@ -42,6 +140,7 @@ mod reviews;
 mod senders;
 mod share;
 mod sites;
+mod spam;
 mod steps;
 mod timenote;
 mod wake;

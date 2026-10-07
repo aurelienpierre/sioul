@@ -27,7 +27,7 @@ const SKIPPED: &[&str] = &["node_modules", "target", ".git", ".obsidian", ".tras
 /// A link found in a note.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NoteLink {
-    /// Another note: "sioul:note/<path>"; else the address as written ("mid:…", "sioul:task/…", "https://…").
+    /// Another note: `sioul:note/<path>`; else the address as written (`mid:…`, `sioul:task/…`, `https://…`).
     pub target: String,
     /// "#heading" in the target, without the "#".
     pub anchor: String,
@@ -496,7 +496,7 @@ pub fn read(path: &str, text: &str) -> Note {
     note
 }
 
-/// "- [ ] text", "* [x] text", "1. [ ] text".
+/// `- [ ] text`, `* [x] text`, `1. [ ] text`.
 fn checkbox(line: &str, number: usize) -> Option<Checkbox> {
     let rest = line.strip_prefix(['-', '*', '+']).map(str::trim_start).or_else(|| {
         let digits = line.chars().take_while(char::is_ascii_digit).count();

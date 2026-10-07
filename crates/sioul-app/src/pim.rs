@@ -229,7 +229,7 @@ pub(crate) fn books() -> String {
 
 /// A contact moved to another address book: written there, then taken out
 /// here. When the book would not keep something the card holds, nothing moves
-/// until `confirmed`: returns {"losses": [words]}, else {"key"} or {"error"}.
+/// until `confirmed`: returns `{"losses": [words]}`, else `{"key"}` or `{"error"}`.
 pub(crate) fn move_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, book: &str, confirmed: bool) -> String {
     let fail = |e: String| serde_json::json!({ "error": e }).to_string();
     let Some(from) = ours(key) else { return fail(tr().text("contact-gone", None)) };

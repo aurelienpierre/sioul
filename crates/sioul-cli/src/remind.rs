@@ -54,8 +54,9 @@ pub(crate) fn watch(s: &Session) -> Result<(), String> {
             reminders::forget_old(&dir);
             forgotten_on = Some(now.date());
         }
-        let (all, wait) = reminders::gather(&config, &s.tr, &now);
-        for reminder in reminders::to_tell(all, &dir, now.timestamp().as_second(), wait) {
+        // What holds now, as the notification matrix says (a slot of time for you is the window's alone).
+        let (all, holds) = reminders::gather(&config, &s.tr, &now);
+        for reminder in reminders::to_tell(all, &dir, now.timestamp().as_second(), &holds) {
             if let Err(e) = sioul_sync::notify::remind(&reminder.title, &reminder.body, None) {
                 eprintln!("{e}");
             }

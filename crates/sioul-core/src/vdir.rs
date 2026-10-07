@@ -5,7 +5,7 @@
 //! one file per contact (`.vcf`) or per event (`.ics`), the collection's name
 //! and colour in the files `displayname` and `color`. pimsync, vdirsyncer,
 //! khal and khard read the same folders
-//! (https://vdirsyncer.pimutils.org/en/stable/vdir.html).
+//! (<https://vdirsyncer.pimutils.org/en/stable/vdir.html>).
 //!
 //! What sync needs to remember, where each file sits on the server and its
 //! ETag, lives apart in the state folder: the data folders hold only your

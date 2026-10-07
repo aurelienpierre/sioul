@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! `sioul mcp`: what Sioul keeps on this computer, served to AI agents over
-//! the Model Context Protocol (https://modelcontextprotocol.io, revision
+//! the Model Context Protocol (<https://modelcontextprotocol.io>, revision
 //! 2025-06-18), on standard input and output, as Claude Code and Claude
 //! Desktop start it (docs/mcp.md).
 //!

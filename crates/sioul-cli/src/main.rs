@@ -7,6 +7,38 @@
 //! the Qt interface comes on top of the same core (docs/roadmap.md). Every
 //! sentence goes through the translator: the language is the configuration's,
 //! else the session's (docs/i18n.md).
+//!
+//! This crate is `crates/sioul-cli` in the repository; the program it builds,
+//! and so this reference, are named `sioul`. It decides nothing itself: it
+//! reads and judges with [sioul-core](../sioul_core/index.html), reaches
+//! servers with [sioul-sync](../sioul_sync/index.html), and prints. `sioul
+//! --help`, or `sioul <command> --help`, says what each command takes.
+//!
+//! # Where to start reading
+//!
+//! - [`Command`]: one variant per command (`sioul porch`, `sioul tasks …`).
+//!   Its comments are also the help the program prints, through `clap`.
+//!   [`Cli`] holds the options every command takes.
+//! - [`main`]: reads the command line, makes the [`Session`] (the
+//!   configuration, where it lives, the language), then runs the command.
+//! - The commands that have commands of their own are in the modules below;
+//!   the others (`sioul porch`, `sioul budgets`, `sioul block`…) are
+//!   functions of this file, named after them ([`porch_command`]).
+//!
+//! Names such as docs/mcp.md are the design notes in the repository's `docs/`
+//! folder. The website shows them too, under the same name:
+//! <https://aurelienpierre.github.io/sioul/dev/mcp.html>.
+//!
+//! # Modules
+//!
+//! - [`accounts`]: mail accounts and sync: `sioul account …`, `sioul sync`, `sioul watch`.
+//! - [`mail`]: the mail client: `sioul mail folders | list | act | send`.
+//! - [`pgp`]: OpenPGP keys: `sioul pgp list | make | import | export | lookup`.
+//! - [`dav`]: contacts and calendars: `sioul dav …`, `sioul contacts`, `sioul agenda`, `sioul event`.
+//! - [`tasks`]: tasks, notes, links and focus: `sioul tasks …`, `sioul focus …`, `sioul notes`, `sioul links`.
+//! - [`remind`]: reminders before dates: `sioul remind`, and `--watch` with the window closed.
+//! - [`mcp`]: `sioul mcp`, what Sioul keeps served to AI agents over the Model Context Protocol.
+//! - [`spam`]: `sioul spam`, the spam filter learned on this computer (docs/spam-filter.md); computers only.
 
 mod accounts;
 mod dav;
@@ -14,6 +46,9 @@ mod mail;
 mod mcp;
 mod pgp;
 mod remind;
+// The spam filter learned on this computer (sioul-learn): desktops only.
+#[cfg(not(target_os = "android"))]
+mod spam;
 mod tasks;
 
 use clap::{Parser, Subcommand};
@@ -138,7 +173,7 @@ enum Command {
     /// A focus session on one task: start, status, stop.
     #[command(subcommand)]
     Focus(tasks::FocusCommand),
-    /// What a thing is tied to, both ways: "sioul:task/<UID>", "mid:<Message-ID>", "sioul:note/<path>"…
+    /// What a thing is tied to, both ways: `sioul:task/<UID>`, `mid:<Message-ID>`, `sioul:note/<path>`…
     Links { uri: String },
     /// Notes of the case store: those matching, or one with --path.
     Notes {
@@ -173,6 +208,11 @@ enum Command {
     /// Serves Sioul to AI agents (Claude Code, Claude Desktop…) over MCP, on standard input
     /// and output: they read and write this computer's files only, and never send (docs/mcp.md).
     Mcp,
+    /// Sioul's own spam filter, learned on this computer from your mail: the training
+    /// corpus, training, its numbers, and why it judges a message as it does.
+    #[cfg(not(target_os = "android"))]
+    #[command(subcommand)]
+    Spam(spam::SpamCommand),
 }
 
 /// What every command needs: the configuration, where it lives, and the language.
@@ -330,6 +370,8 @@ fn main() -> ExitCode {
         Command::Remind { watch: true } => remind::watch(&session),
         Command::Shield { account, read } => shield_command(&session, account.as_deref(), read),
         Command::Mcp => mcp::run(&session),
+        #[cfg(not(target_os = "android"))]
+        Command::Spam(command) => spam::run(&session, command),
     };
     result.map_or_else(
         |message| {
@@ -347,7 +389,7 @@ fn sources(config: &Config, maildirs: &[PathBuf]) -> Vec<Source> {
         return config.mail_sources();
     }
     let ids = config.all_trusted_ids();
-    maildirs.iter().map(|m| Source { account: None, address: None, folder: m.clone(), trusted_ids: ids.clone(), priority: Default::default(), shielded: false, filed_words: Vec::new() }).collect()
+    maildirs.iter().map(|m| Source { account: None, address: None, folder: m.clone(), trusted_ids: ids.clone(), priority: Default::default(), shielded: false, filed_words: Vec::new(), spam: Some(sioul_core::spam::Filter::of(config)) }).collect()
 }
 
 pub(crate) fn load_store(config: &Config) -> Option<CaseStore> {
@@ -393,8 +435,7 @@ fn shield_command(s: &Session, account: Option<&str>, read: bool) -> Result<(), 
         let cache = AiCache::load(&account.id);
         // Newest first, as the Porch reads a public address.
         for card in maildir::read_messages(&account.maildir_path()).iter().rev() {
-            let by_ai = card.message_id.as_deref().and_then(|id| cache.messages.get(&sioul_core::mailindex::bare_id(id)));
-            let assessment = by_ai.cloned().unwrap_or_else(|| shield::assess(&card.subject, &card.excerpt));
+            let assessment = shield::reading(card, Some(&cache.messages));
             let tone = s.tr.text(&format!("tone-{}", match assessment.tone { Tone::Calm => "calm", Tone::Rude => "rude", Tone::Hostile => "hostile" }), None);
             let (sender, subject) = if assessment.tone == Tone::Hostile {
                 let domain = card.from_address.as_deref().and_then(|a| a.rsplit_once('@')).map(|(_, d)| d.to_string()).unwrap_or_default();
@@ -491,7 +532,9 @@ fn card_command(s: &Session, file: &Path) -> Result<(), String> {
     let spam = trust::read_spam_verdict(&card.headers);
     let route: Vec<String> = trust::route_ips(&card.headers).iter().map(ToString::to_string).collect();
     let own_addresses = porch::own_addresses(&s.config.mail_sources());
-    let ctx = Context { cases: store.as_ref(), known: &known, senders: &senders, trusted_ids: &ids, now: Some(Timestamp::now().as_second()), priority: Default::default(), own_domains: &own, shielded: false, assessments: None, filed_words: &[], own_addresses: &own_addresses };
+    // Sioul's own spam filter, as the Porch asks it.
+    let filter = sioul_core::spam::Filter::of(&s.config);
+    let ctx = Context { cases: store.as_ref(), known: &known, senders: &senders, trusted_ids: &ids, now: Some(Timestamp::now().as_second()), priority: Default::default(), own_domains: &own, shielded: false, assessments: None, filed_words: &[], own_addresses: &own_addresses, spam: Some(&filter) };
     let t = porch::triage(card, &ctx);
     println!("From      {} <{}>", one_line(t.card.sender()), one_line(t.card.from_address.as_deref().unwrap_or("?")));
     println!("Subject   {}", one_line(&t.card.subject));

@@ -57,6 +57,8 @@ fn main() {
         "qml/SettingsPanel.qml",
         "qml/SettingsButton.qml",
         "qml/SettingRow.qml",
+        "qml/SpamFilter.qml",
+        "qml/NotifyGrid.qml",
         "qml/MoveDialog.qml",
         "qml/AddMenu.qml",
         "qml/ThingActions.qml",

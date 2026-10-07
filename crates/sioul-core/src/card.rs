@@ -42,6 +42,8 @@ pub struct Card {
     /// A newsletter or a mailing list (List-Id, List-Unsubscribe, Precedence: bulk/list).
     pub is_list: bool,
     pub headers: RawHeaders,
+    /// What it is made of: its text and HTML versions, its other parts (the spam filter's features).
+    pub shape: Shape,
 }
 
 impl Card {
@@ -65,6 +67,7 @@ impl Card {
             attachments: message.attachments().filter(|p| !is_pgp_part(p)).filter_map(|p| p.attachment_name()).map(str::to_string).collect(),
             is_list: is_list(&headers),
             headers,
+            shape: shape_of(&message),
         })
     }
 
@@ -120,6 +123,35 @@ fn is_pgp_part(part: &mail_parser::MessagePart) -> bool {
         matches!(kind.as_str(), "application/pgp-signature" | "application/pgp-encrypted" | "application/pgp-keys")
             || (kind == "application/octet-stream" && t.attribute("name").is_some_and(|n| n.eq_ignore_ascii_case("encrypted.asc")))
     })
+}
+
+/// What a message is made of, for the spam filter (`spam::features`): whether
+/// it has a text version and an HTML version to read, and the name and type
+/// of each of its other parts, attached or inline (an OpenPGP part is none).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Shape {
+    /// A text/plain part to read.
+    pub text: bool,
+    /// A text/html part to read.
+    pub html: bool,
+    /// Every other part: its file name ("" when it has none) and its MIME type, lowercase.
+    pub parts: Vec<(String, String)>,
+}
+
+fn shape_of(message: &mail_parser::Message<'_>) -> Shape {
+    use mail_parser::PartType;
+    // mail-parser lends an HTML-only message's HTML as its text, and the reverse: the parts' own types say.
+    let text = message.text_bodies().any(|p| matches!(p.body, PartType::Text(_)));
+    let html = message.html_bodies().any(|p| matches!(p.body, PartType::Html(_)));
+    let parts = message
+        .attachments()
+        .filter(|p| !is_pgp_part(p))
+        .map(|p| {
+            let kind = p.content_type().map_or_else(String::new, |t| format!("{}/{}", t.ctype(), t.subtype().unwrap_or("")).to_ascii_lowercase());
+            (p.attachment_name().unwrap_or("").to_string(), kind)
+        })
+        .collect();
+    Shape { text, html, parts }
 }
 
 fn is_list(headers: &RawHeaders) -> bool {

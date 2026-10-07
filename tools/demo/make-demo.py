@@ -4,7 +4,7 @@
 """A demo profile for Sioul: an invented, calm and lived-in life, in English
 or in French, for trying Sioul and for the documentation's screenshots.
 
-    make-demo.py --into DIR [--now 2026-10-05T14:00+02:00] [--language en|fr] [--no-hours] [--notes-at PATH]
+    make-demo.py --into DIR [--now 2026-10-05T14:00+02:00] [--language en|fr] [--no-hours] [--notes-at PATH] [--spam]
 
 Writes DIR/config, DIR/data, DIR/state and DIR/cache (the four XDG folders:
 run Sioul with XDG_CONFIG_HOME=DIR/config, XDG_DATA_HOME=DIR/data,
@@ -12,7 +12,7 @@ XDG_STATE_HOME=DIR/state, XDG_CACHE_HOME=DIR/cache and SIOUL_DEMO=1, which
 keeps it off the network), and DIR/notes, the folder of notes (the case store).
 
 Everything is invented: the people, the companies, the messages. Addresses are
-on example.org, example.com and .invalid hosts (RFC 2606), phone numbers in the
+on example.org, example.com, .example, .test and .invalid hosts (RFC 2606), phone numbers in the
 ranges the French regulator keeps for fiction (04 65 71, 06 39 98). Nothing is
 random: the same --now gives the same files. Dates are laid around --now (by
 default, now): mail of the last two weeks, a one-time code from two minutes
@@ -24,6 +24,9 @@ tasks, notes and money), with Sioul in French.
 --no-hours leaves the working hours out, so the Porch asks for them.
 --notes-at says where Sioul will find DIR/notes when it runs in a sandbox that
 mounts it elsewhere (tools/demo/screenshots.sh mounts it at /home/demo/Notes).
+--spam (or SIOUL_DEMO_SPAM=1 in the environment) adds Sioul's own spam filter:
+a table made by hand, and two strangers' messages it has a word for
+(docs/spam-filter.md).
 
 DIR must be new, empty, or a demo profile made by this script: it is then
 emptied first."""
@@ -927,6 +930,79 @@ Noa"""), to=[marc], folder=".Sent", flags="S", key="sent-marc"),
     for reply, original in [("sent-hours", "hours"), ("homepage", "sent-draft"), ("sent-marc", "marc"), ("posters", "sent-posters")]:
         by_key[reply].reply_to_id = by_key[original].message_id
     return mails
+
+
+def spam_mail(clock: Clock) -> list[Mail]:
+    """Two strangers' messages Sioul's own spam filter has a word for, with the
+    demo's table (`spam_table`): one it is sure of ("probably spam"), one it
+    doubts ("maybe spam"). Their headers do it: replies going elsewhere, links
+    elsewhere, a name that names another domain."""
+    c = clock
+    return [
+        Mail("work", c.ago(hours=2), (t("Parcel desk at deliveries.example", "Service colis livraisons.example"), "desk@quick-parcels.test"),
+             t("Your parcel is waiting", "Votre colis vous attend"), t(
+            """Hello,
+
+Your parcel could not be delivered: customs fees of 1.99 EUR are unpaid.
+
+Pay them today to receive it: https://pay.parcel-fees.example/r/7731
+Follow it: https://track.parcel-fees.example/7731
+
+Parcel desk""",
+            """Bonjour,
+
+Votre colis n'a pas pu être livré : des frais de douane de 1,99 EUR restent à payer.
+
+Payez-les aujourd'hui pour le recevoir : https://pay.parcel-fees.example/r/7731
+Suivez-le : https://track.parcel-fees.example/7731
+
+Service colis"""), auth="none", extra=["Reply-To: claims@claims-office.example"], key="parcel"),
+        Mail("work", c.ago(hours=4), (t("Print deals", "Bonnes affaires impression"), "offers@print-deals.example"),
+             t("Business cards, this week only", "Cartes de visite, cette semaine seulement"), t(
+            """Business cards from 9.90 EUR, this week only.
+
+Order yours: https://print-orders.test/cards""",
+            """Des cartes de visite à partir de 9,90 EUR, cette semaine seulement.
+
+Commandez les vôtres : https://print-orders.test/cartes"""), auth="none", extra=["Reply-To: orders@print-orders.test"], key="print"),
+    ]
+
+
+def spam_table(clock: Clock) -> bytes:
+    """Sioul's own spam filter's table for the demo, written by hand in its
+    file's format (crates/sioul-core/src/spam/table.rs): no fastText, no word of
+    anyone's mail. Three header features weigh (replies going elsewhere, a name
+    naming another domain, links elsewhere) and two placeholders (a price, a
+    link), so that only `spam_mail`'s two messages get a word. Made for the
+    tokenizer's and the header features' versions Sioul reads now (1 and 1):
+    with another, Sioul refuses it, and says so."""
+    def fnv64(data: bytes) -> int:
+        h = 0xCBF29CE484222325
+        for byte in data:
+            h = ((h ^ byte) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+        return h
+
+    features = 41  # spam::features::N
+    weights = [0.0] * features
+    # reply_to_elsewhere, name_names_domain, links_elsewhere: their places in features.rs's NAMES.
+    for at, weight in ((12, 2.5), (15, 2.0), (34, 1.5)):
+        weights[at] = weight
+    words = sorted((fnv64(word.encode()), score) for word, score in (("_PRICE_", 2.0), ("_URL_", 1.0)))
+    buckets = [0.0] * 8
+    meta = json.dumps({
+        "trained_at": unix(clock.ago(hours=26)), "ham": 4210, "spam": 655, "test_ham": 1052, "test_spam": 164,
+        "metrics": {"threshold_spam": 0.95, "threshold_unsure": 0.5, "ham_called_spam": 0.0019, "spam_caught": 0.872,
+                    "ham_called_unsure": 0.0124, "spam_caught_unsure": 0.951, "unsure": 0.031, "auc": 0.991},
+        "device": t("noa-desk", "noa-bureau"),
+    }, separators=(",", ":")).encode()
+    # The format, the tokenizer's and the features' versions, the dimension, n-grams of 3 to 6, then the counts.
+    out = b"SIOULSPM" + struct.pack("<12I", 1, 1, 1, 2, 3, 6, len(buckets), len(words), features, len(meta), 0, 0)
+    # The bias, the mean message's text, Platt's A and B: p = 1 / (1 + exp(-f)).
+    out += struct.pack("<4f", -2.5, 0.0, -1.0, 0.0)
+    out += b"".join(struct.pack("<Q", h) for h, _ in words) + b"".join(struct.pack("<f", score) for _, score in words)
+    out += b"".join(struct.pack("<f", x) for x in buckets + weights + [0.0] * features)
+    out += meta
+    return out + struct.pack("<Q", fnv64(out))
 
 
 def account_id(key: str) -> str:
@@ -2235,6 +2311,8 @@ def main():
     parser.add_argument("--language", choices=("en", "fr"), default="en", help="the language of the life written, and of Sioul")
     parser.add_argument("--no-hours", action="store_true", help="leave the week's hours out: the Porch asks for them")
     parser.add_argument("--notes-at", help="where Sioul finds DIR/notes when it runs (default: DIR/notes)")
+    parser.add_argument("--spam", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_SPAM")),
+                        help="Sioul's own spam filter: a table made by hand, and two strangers' messages it has a word for (SIOUL_DEMO_SPAM=1 too)")
     args = parser.parse_args()
     LANG = args.language
     W = World()
@@ -2245,9 +2323,11 @@ def main():
     prepare(root)
     clock = Clock(now)
     profile = Profile(root, clock, args.notes_at or str(root / "notes"), not args.no_hours)
-    mails = the_mail(clock)
+    mails = the_mail(clock) + (spam_mail(clock) if args.spam else [])
     write_config(profile)
     write_mail(profile, mails)
+    if args.spam:
+        profile.write(profile.data / "spam" / "table.bin", spam_table(clock), clock.ago(hours=26))
     write_contacts(profile)
     write_calendars(profile, mails)
     write_notes(profile, mails)

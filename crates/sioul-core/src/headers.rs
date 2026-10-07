@@ -44,6 +44,16 @@ impl RawHeaders {
     pub fn has(&self, name: &str) -> bool {
         self.first(name).is_some()
     }
+
+    /// Every field, top to bottom: its name as written, its value unfolded.
+    pub fn fields(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.fields.iter().map(|(name, value)| (name.as_str(), value.as_str()))
+    }
+
+    /// The `n` topmost fields alone: what servers added above a given one.
+    pub fn top(&self, n: usize) -> RawHeaders {
+        RawHeaders { fields: self.fields.iter().take(n).cloned().collect() }
+    }
 }
 
 /// The header block ends at the first empty line (RFC 5322 §2.1), whatever

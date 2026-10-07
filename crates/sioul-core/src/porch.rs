@@ -54,6 +54,10 @@ pub enum Reason {
     Trust(Proof),
     Forged,
     Spam { source: &'static str, score: Option<f32> },
+    /// Sioul's own filter finds it spam: how likely, from 0 to 1, and what weighed.
+    LearnedSpam { p: f32, why: crate::spam::Why },
+    /// Sioul's own filter is not sure it is wanted: said beside it, its lane kept.
+    Unsure { p: f32, why: crate::spam::Why },
     /// You blocked the sender: set aside for good, never shown.
     Blocked,
     /// The name shown claims a brand the address does not belong to.
@@ -68,9 +72,21 @@ pub enum Reason {
     Newsletter,
     Automatic,
     FirstMessage,
+    /// SPF and DKIM both failed, and nothing else vouches for it
+    /// (`trust::authenticated`): its sender counts as nobody you know,
+    /// whoever its address is.
+    NotAuthenticated,
     KnownPerson,
     /// It came through an account you ranked below the others.
     LowPriority,
+}
+
+impl Reason {
+    /// A spam verdict, your provider's or Sioul's own filter's: what "Not
+    /// spam" answers, for good (`spam::labels::said_ham`).
+    pub fn is_spam(&self) -> bool {
+        matches!(self, Reason::Spam { .. } | Reason::LearnedSpam { .. })
+    }
 }
 
 /// A message with its lane and the reasons, as the Porch shows it.
@@ -1081,26 +1097,55 @@ pub struct Context<'a> {
     pub own_domains: &'a [String],
     /// The address is public and shielded (`shield`).
     pub shielded: bool,
-    /// What an AI made of shielded mail, by Message-ID, when you allowed it.
+    /// What an AI made of shielded mail, under `shield::ai_key`, when you allowed it (read with `shield::reading`).
     pub assessments: Option<&'a std::collections::BTreeMap<String, crate::shield::Assessment>>,
     /// Words that make a sender automatic (filed); empty for the usual ones (`AUTOMATIC`).
     pub filed_words: &'a [String],
     /// Your own addresses, every account's: what you send yourself is let in.
     pub own_addresses: &'a [String],
+    /// Sioul's own spam filter (`Source::spam`); none, no learned verdict.
+    pub spam: Option<&'a crate::spam::Filter>,
 }
 
-impl Context<'_> {
+/// Who sent a message, as every rule of its triage reads it: judged once (`Context::sender`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Sender {
+    /// Its row in who may reach you when.
+    who: crate::reach::Who,
     /// Past the screener: a sender you let in, or marked safe, or named for
     /// themselves (their address on a list, their card, its categories, your
     /// address books). A domain alone does not make a sender known: their
     /// first mail still waits in the screener, at the times its list says.
-    fn knows(&self, card: &Card) -> bool {
-        if self.known.knows(card) {
-            return true;
+    knows: bool,
+    /// The message is not authenticated: nothing proves it comes from the address it shows.
+    unproven: bool,
+}
+
+impl Sender {
+    /// Nobody you know: what spam verdicts may judge.
+    fn stranger(self) -> bool {
+        self.who == crate::reach::Who::Stranger && !self.knows
+    }
+}
+
+impl Context<'_> {
+    /// Who sent a message: your lists, your address books and the senders
+    /// you let in judge the address it shows (`Senders::judge`), unless the
+    /// message is not authenticated (`trust::authenticated`): then nothing
+    /// proves it comes from that address, and its sender is a stranger,
+    /// whoever the address is: no People lane, a stranger's times, no
+    /// protection from spam. A blocked address stays blocked: keeping someone
+    /// out asks for no proof.
+    fn sender(&self, card: &Card, authenticated: bool) -> Sender {
+        let judged = card.from_address.as_deref().map_or_else(Judged::stranger, |a| self.senders.judge(a));
+        if judged.who == crate::reach::Who::Blocked {
+            return Sender { who: judged.who, knows: false, unproven: false };
         }
-        let Some(address) = card.from_address.as_deref() else { return false };
-        let judged = self.senders.judge(address);
-        judged.who == crate::reach::Who::Safe || matches!(judged.by, By::Address | By::Card | By::Category | By::Book | By::LetIn)
+        if !authenticated {
+            return Sender { who: crate::reach::Who::Stranger, knows: false, unproven: true };
+        }
+        let knows = self.known.knows(card) || judged.who == crate::reach::Who::Safe || matches!(judged.by, By::Address | By::Card | By::Category | By::Book | By::LetIn);
+        Sender { who: judged.who, knows, unproven: false }
     }
 
     /// Sent from one of your own addresses, and verified: a file sent from
@@ -1109,6 +1154,13 @@ impl Context<'_> {
     fn from_yourself(&self, card: &Card, trust: Trust) -> bool {
         trust == Trust::Verified && card.from_address.as_deref().is_some_and(|from| self.own_addresses.iter().any(|own| own.eq_ignore_ascii_case(from.trim())))
     }
+}
+
+/// Whose ARC seal vouches for mail that failed SPF and DKIM on its way
+/// (`trust::authenticated`): your provider's (the hosts of the ids it writes
+/// its results under; Sioul's own stamp seals nothing) and your own domains.
+fn sealers(trusted_ids: &[String], own_domains: &[String]) -> Vec<String> {
+    trusted_ids.iter().map(|id| id.trim().to_ascii_lowercase()).filter(|id| id.contains('.') && !id.ends_with(".invalid")).chain(own_domains.iter().cloned()).collect()
 }
 
 /// Automatic senders, as Virtual Secretary's notification filter lists them.
@@ -1128,18 +1180,45 @@ pub fn triage(card: Card, ctx: &Context) -> Triaged {
     let (trust, proof) = trust::judge_sender(auth.as_ref(), card.is_list && detected.is_none(), card.sender_domain());
     let code = detected.filter(|c| !expired(c, sent(&card), ctx.now));
     // A shielded address's mail is read before anything else is decided.
-    let assessment = ctx.shielded.then(|| {
-        let by_ai = crate::shield::ai_key(&card).and_then(|key| ctx.assessments?.get(&key)).cloned();
-        by_ai.unwrap_or_else(|| crate::shield::assess(&card.subject, &card.excerpt))
-    });
-    let (lane, reason) = choose_lane(&card, ctx, trust, code.as_ref(), assessment.as_ref());
+    let assessment = ctx.shielded.then(|| crate::shield::reading(&card, ctx.assessments));
+    // Who sent it, judged once: a stranger when nothing authenticates it.
+    let authenticated = trust::authenticated(auth.as_ref(), &card.headers, &sealers(ctx.trusted_ids, ctx.own_domains));
+    let sender = ctx.sender(&card, authenticated);
+    // Spam is said of strangers' mail only: Sioul's own filter reads nothing protected.
+    let protected = protected(&card, ctx, trust, code.as_ref(), sender);
+    // Its features read your provider's results alone, as the training does (`spam::features::provider_results`).
+    let learned = if protected { None } else { ctx.spam.and_then(|filter| filter.judge(&card, ctx.trusted_ids).map(|verdict| (filter, verdict))) };
+    let (lane, reason) = choose_lane(&card, ctx, trust, code.as_ref(), assessment.as_ref(), sender, protected, learned.as_ref().map(|(filter, verdict)| (*filter, verdict)));
     let mut reasons = vec![Reason::Trust(proof), reason];
+    // Why its sender counts as nobody you know: in place of "the first
+    // message" in the screener (letting them in would change nothing), else
+    // beside its lane's reason. Forged mail says so itself, set aside.
+    if sender.unproven && trust != Trust::Forged {
+        match reasons.iter_mut().find(|r| **r == Reason::FirstMessage) {
+            Some(first) => *first = Reason::NotAuthenticated,
+            None => reasons.push(Reason::NotAuthenticated),
+        }
+    }
     // The warning goes with a code shown at once, not with one set aside or folded.
     if let Some(c) = &code
         && trust != Trust::Verified
         && lane == Lane::RightNow
     {
         reasons.push(Reason::UnverifiedCode(c.kind));
+    }
+    // The filter's verdict on mail it did not set aside (it only says, or it is
+    // not sure): beside it, the lane kept. Never on mail whose words a shield
+    // hides or found rude: its "why" would show them.
+    let calm = assessment.as_ref().is_none_or(|a| a.tone == crate::shield::Tone::Calm);
+    if let Some((filter, verdict)) = learned
+        && lane != Lane::SetAside
+        && calm
+    {
+        match filter.class(verdict.p) {
+            crate::spam::Class::Spam => reasons.push(Reason::LearnedSpam { p: verdict.p, why: verdict.why }),
+            crate::spam::Class::Unsure => reasons.push(Reason::Unsure { p: verdict.p, why: verdict.why }),
+            crate::spam::Class::Ham => {}
+        }
     }
     Triaged { card, lane, trust, code, reasons, priority: ctx.priority, checks: auth, assessment }
 }
@@ -1170,29 +1249,42 @@ pub fn sent(card: &Card) -> Option<i64> {
 /// hostile; codes; cases; what you sent yourself; a shielded address's own
 /// lane; addresses ranked below; newsletters and automatic senders; the
 /// screener; people you know.
-fn choose_lane(card: &Card, ctx: &Context, trust: Trust, code: Option<&OneTimeCode>, assessment: Option<&crate::shield::Assessment>) -> (Lane, Reason) {
-    set_aside(card, ctx, trust)
+#[allow(clippy::too_many_arguments)]
+fn choose_lane(card: &Card, ctx: &Context, trust: Trust, code: Option<&OneTimeCode>, assessment: Option<&crate::shield::Assessment>, sender: Sender, protected: bool, learned: Option<(&crate::spam::Filter, &crate::spam::Verdict)>) -> (Lane, Reason) {
+    set_aside(card, ctx, trust, sender, protected, learned)
         .or_else(|| assessment.filter(|a| a.tone == crate::shield::Tone::Hostile).map(|_| (Lane::Hostile, Reason::Hostile)))
         .or_else(|| right_now(code))
-        .or_else(|| in_case(card, ctx))
+        .or_else(|| in_case(card, ctx, sender.unproven))
         .or_else(|| ctx.from_yourself(card, trust).then_some((Lane::People, Reason::FromYourself)))
-        .or_else(|| public(card, ctx, assessment))
+        .or_else(|| public(card, assessment, sender))
         .or_else(|| (ctx.priority == Priority::Below).then_some((Lane::Low, Reason::LowPriority)))
         .or_else(|| filed(card, ctx))
-        .or_else(|| screener(card, ctx))
+        .or_else(|| screener(sender))
         .unwrap_or((Lane::People, Reason::KnownPerson))
 }
 
 /// A shielded address's mail from someone you have not let in: its own lane.
-fn public(card: &Card, ctx: &Context, assessment: Option<&crate::shield::Assessment>) -> Option<(Lane, Reason)> {
-    let assessment = assessment.filter(|_| !ctx.knows(card))?;
+fn public(card: &Card, assessment: Option<&crate::shield::Assessment>, sender: Sender) -> Option<(Lane, Reason)> {
+    let assessment = assessment.filter(|_| !sender.knows)?;
     Some((Lane::Public(card.account.clone().unwrap_or_default()), Reason::Public(assessment.topic)))
 }
 
+/// What no spam verdict touches, your provider's or Sioul's own filter's (the
+/// owner's decision; docs/porch.md, "Set aside"): mail from anyone but a
+/// stranger (safe, neutral or restricted: in your address books, on a list,
+/// let in), a code or a password, mail a project's routes take, your own; and
+/// a message you said is not spam, here, on another device or in another
+/// mail client (`spam::labels::said_ham`). Blocked and forged mail, and a
+/// stranger borrowing a name, are set aside before this is asked.
+fn protected(card: &Card, ctx: &Context, trust: Trust, code: Option<&OneTimeCode>, sender: Sender) -> bool {
+    code.is_some() || ctx.from_yourself(card, trust) || !sender.stranger() || in_case(card, ctx, sender.unproven).is_some() || crate::spam::labels::said_ham(card)
+}
+
 /// Blocked, forged, borrowing a brand's name, or spam: set aside, never deleted.
-/// A sender you let in keeps the name they use.
-fn set_aside(card: &Card, ctx: &Context, trust: Trust) -> Option<(Lane, Reason)> {
-    if ctx.senders.who_of(card) == crate::reach::Who::Blocked {
+/// A sender you let in keeps the name they use. Spam is your provider's word,
+/// else Sioul's own filter's when you let it act; neither reaches what is `protected`.
+fn set_aside(card: &Card, ctx: &Context, trust: Trust, sender: Sender, protected: bool, learned: Option<(&crate::spam::Filter, &crate::spam::Verdict)>) -> Option<(Lane, Reason)> {
+    if sender.who == crate::reach::Who::Blocked {
         return Some((Lane::SetAside, Reason::Blocked));
     }
     if trust == Trust::Forged {
@@ -1202,12 +1294,20 @@ fn set_aside(card: &Card, ctx: &Context, trust: Trust) -> Option<(Lane, Reason)>
     if ctx.from_yourself(card, trust) {
         return None;
     }
-    let borrowed = (!ctx.knows(card)).then(|| lookalike::impersonation(card.from_name.as_deref(), card.sender_domain(), ctx.own_domains)).flatten();
+    let borrowed = (!sender.knows).then(|| lookalike::impersonation(card.from_name.as_deref(), card.sender_domain(), ctx.own_domains)).flatten();
     if let Some(fake) = borrowed {
         return Some((Lane::SetAside, Reason::Impersonation { brand: fake.brand, domain: fake.domain }));
     }
-    let spam = trust::read_spam_verdict(&card.headers).filter(|s| s.flagged)?;
-    Some((Lane::SetAside, Reason::Spam { source: spam.source, score: spam.score }))
+    // Someone you know, a code, a project's, said not spam by you: never spam, whoever says it.
+    if protected {
+        return None;
+    }
+    if let Some(spam) = trust::read_spam_verdict(&card.headers).filter(|s| s.flagged) {
+        return Some((Lane::SetAside, Reason::Spam { source: spam.source, score: spam.score }));
+    }
+    let (filter, verdict) = learned?;
+    let acts = filter.mode == crate::spam::Mode::Act && filter.class(verdict.p) == crate::spam::Class::Spam;
+    acts.then(|| (Lane::SetAside, Reason::LearnedSpam { p: verdict.p, why: verdict.why.clone() }))
 }
 
 /// What you just asked a site for, from its automatic address too: at once.
@@ -1216,8 +1316,13 @@ fn right_now(code: Option<&OneTimeCode>) -> Option<(Lane, Reason)> {
     Some((Lane::RightNow, Reason::ExpiresSoon(code?.kind)))
 }
 
-fn in_case(card: &Card, ctx: &Context) -> Option<(Lane, Reason)> {
-    let routing = ctx.cases?.route(card).into_iter().next()?;
+/// A project's or a case's mail, as its routes say. Mail nothing
+/// authenticates is read as from nobody: a route that names a sender's
+/// address or domain takes it no more; one by its subject, its text or an
+/// attachment still does.
+fn in_case(card: &Card, ctx: &Context, unproven: bool) -> Option<(Lane, Reason)> {
+    let cases = ctx.cases?;
+    let routing = if unproven { cases.route(&Card { from_address: None, ..card.clone() }) } else { cases.route(card) }.into_iter().next()?;
     let id = routing.case.id.clone();
     Some((Lane::Case(id.clone()), Reason::Case { case_id: id, matched: routing.matched }))
 }
@@ -1229,8 +1334,8 @@ fn filed(card: &Card, ctx: &Context) -> Option<(Lane, Reason)> {
     (card.is_list || automatic).then_some((Lane::Filed, reason))
 }
 
-fn screener(card: &Card, ctx: &Context) -> Option<(Lane, Reason)> {
-    (!ctx.knows(card)).then_some((Lane::Screener, Reason::FirstMessage))
+fn screener(sender: Sender) -> Option<(Lane, Reason)> {
+    (!sender.knows).then_some((Lane::Screener, Reason::FirstMessage))
 }
 
 /// Everything waiting in the Porch, from every source, minus what you closed it on.
@@ -1245,7 +1350,7 @@ pub fn gather(sources: &[Source], cases: Option<&CaseStore>, known: &SenderList,
         .iter()
         .flat_map(|src| {
             let account = src.account.as_deref();
-            let ctx = Context { cases, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains, shielded: src.shielded, assessments: Some(&assessments), filed_words: &src.filed_words, own_addresses: &own_addresses };
+            let ctx = Context { cases, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains, shielded: src.shielded, assessments: Some(&assessments), filed_words: &src.filed_words, own_addresses: &own_addresses, spam: src.spam.as_ref() };
             // An account the Porch was never closed on shows its first window only:
             // all your mail is kept, the Porch is not an archive.
             let fresh = account.is_some_and(|a| !state.done.contains_key(a));
@@ -1281,10 +1386,12 @@ fn follow_conversations(items: &mut [Triaged]) {
         if matches!(item.lane, Lane::People | Lane::Screener | Lane::Filed | Lane::Low | Lane::Public(_)) {
             item.lane = Lane::Case(id.clone());
             let reason = Reason::Case { case_id: id.clone(), matched: vec![crate::cases::RouteMatch { field: crate::cases::RouteField::Thread, value: String::new() }] };
-            match item.reasons.iter_mut().find(|r| !matches!(r, Reason::Trust(_) | Reason::UnverifiedCode(_))) {
+            match item.reasons.iter_mut().find(|r| !matches!(r, Reason::Trust(_) | Reason::UnverifiedCode(_) | Reason::NotAuthenticated)) {
                 Some(slot) => *slot = reason,
                 None => item.reasons.push(reason),
             }
+            // A project's conversation is protected: the filter's word on it goes.
+            item.reasons.retain(|r| !matches!(r, Reason::LearnedSpam { .. } | Reason::Unsure { .. }));
         }
     }
 }
@@ -1293,13 +1400,15 @@ fn follow_conversations(items: &mut [Triaged]) {
 pub fn judge(paths: &[PathBuf], sources: &[Source], cases: Option<&CaseStore>, known: &SenderList, senders: &Senders, now: i64) -> Vec<Triaged> {
     let own = own_domains(sources);
     let own_addresses = own_addresses(sources);
+    // The AI's answers, as `gather` reads them: a message it found hostile is hostile here too.
+    let assessments = sources.iter().any(|src| src.shielded).then(crate::shield::AiCache::load_all);
     let mut judged = paths
         .iter()
         .filter_map(|path| {
             let src = sources.iter().find(|src| path.starts_with(&src.folder))?;
             let mut card = maildir::read_one(path).filter(|card| senders.who_of(card) != crate::reach::Who::Blocked)?;
             card.account = src.account.clone();
-            let ctx = Context { cases, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains: &own, shielded: src.shielded, assessments: None, filed_words: &src.filed_words, own_addresses: &own_addresses };
+            let ctx = Context { cases, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains: &own, shielded: src.shielded, assessments: assessments.as_ref(), filed_words: &src.filed_words, own_addresses: &own_addresses, spam: src.spam.as_ref() };
             Some(triage(card, &ctx))
         })
         .collect::<Vec<_>>();
@@ -1364,7 +1473,7 @@ mod tests {
         let raw = format!("From: {from}\r\nSubject: Votre abonnement\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\n\r\nVotre abonnement a été renouvelé : 69,90 €.\r\n");
         let card = Card::from_bytes(raw.as_bytes()).unwrap();
         let senders = Senders { blocked: blocked.clone(), ..Senders::default() };
-        triage(card, &Context { cases: None, known, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[] })
+        triage(card, &Context { cases: None, known, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None })
     }
 
     #[test]
@@ -1391,7 +1500,7 @@ mod tests {
         assert_eq!(normalize("two words@x"), None);
         // A safe sender skips the screener; a forged message from them is still set aside.
         let none = SenderList::default();
-        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[] };
+        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
         let card = |from: &str| Card::from_bytes(format!("From: {from}\r\nSubject: Hello\r\n\r\nHi.\r\n").as_bytes()).unwrap();
         assert_eq!(triage(card("Jane <jane@example.org>"), &ctx).lane, Lane::People);
         assert_eq!(triage(card("Someone <someone@elsewhere.example>"), &ctx).lane, Lane::Screener);
@@ -1602,7 +1711,7 @@ mod tests {
     fn an_account_ranked_below_waits_folded() {
         let none = SenderList::default();
         let raw = "From: Social <notify@social.example>\r\nSubject: Someone liked your post\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\n\r\nHello.\r\n";
-        let low = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Below, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[] };
+        let low = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Below, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
         let t = triage(Card::from_bytes(raw.as_bytes()).unwrap(), &low);
         assert_eq!((t.lane.clone(), t.reasons.last()), (Lane::Low, Some(&Reason::LowPriority)));
         let summary = summarise(&[t]);
@@ -1624,7 +1733,7 @@ mod tests {
     fn a_code_set_aside_is_not_offered() {
         let none = SenderList::default();
         let raw = "From: PayPal <service@unrelated.example>\r\nSubject: Your security code\r\n\r\nYour security code is 482913.\r\n";
-        let ctx = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[] };
+        let ctx = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
         let t = triage(Card::from_bytes(raw.as_bytes()).unwrap(), &ctx);
         assert_eq!(t.lane, Lane::SetAside);
         assert!(!t.reasons.iter().any(|r| matches!(r, Reason::UnverifiedCode(_))), "{:?}", t.reasons);
@@ -1641,9 +1750,152 @@ mod tests {
         std::fs::File::options().write(true).open(&path).unwrap().set_modified(arrived).unwrap();
         let now = i64::try_from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()).unwrap();
         let none = SenderList::default();
-        let ctx = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: Some(now), priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[] };
+        let ctx = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: Some(now), priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
         let t = triage(maildir::read_one(&path).unwrap(), &ctx);
         assert!(t.code.is_none() && t.lane != Lane::RightNow, "{:?}", t.lane);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Spam, your provider's word or Sioul's filter's, never reaches someone you
+    /// know, a code, a project's mail, a message said not spam.
+    #[test]
+    fn spam_never_touches_who_you_know() {
+        use crate::cases::{Case, CaseStore, Route};
+        // Your provider wrote its verdict above the line where the message came in.
+        let flagged = |from: &str, subject: &str, body: &str| {
+            let raw = format!("X-Spam-Flag: YES\r\nReceived: from mail.sender.example (mail.sender.example [203.0.112.9]) by mx.provider.example with ESMTPS\r\nFrom: {from}\r\nSubject: {subject}\r\n\r\n{body}\r\n");
+            Card::from_bytes(raw.as_bytes()).unwrap()
+        };
+        let senders = Senders { safe: SenderList::parse("jane@example.org"), neutral: SenderList::parse("@partner.example"), ..Senders::default() };
+        let none = SenderList::default();
+        let taxes = Case { id: "taxes".into(), title: "Taxes".into(), routes: vec![Route { from_domains: vec!["finances.example".into()], ..Route::default() }], ..Case::default() };
+        let store = CaseStore { root: PathBuf::from("."), cases: vec![taxes], ties: Default::default() };
+        let ctx = Context { cases: Some(&store), known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+        let stranger = triage(flagged("Prize <win@lottery.test>", "You won", "Claim it."), &ctx);
+        assert_eq!((stranger.lane.clone(), stranger.reasons.last()), (Lane::SetAside, Some(&Reason::Spam { source: "SpamAssassin", score: None })));
+        assert!(stranger.reasons.last().is_some_and(Reason::is_spam));
+        // A safe sender, a domain on a list, a code, a project's route: their lanes.
+        assert_eq!(triage(flagged("Jane <jane@example.org>", "Lunch", "Tomorrow?"), &ctx).lane, Lane::People);
+        assert_eq!(triage(flagged("Ops <ops@partner.example>", "Hello", "Hi."), &ctx).lane, Lane::Screener);
+        assert_eq!(triage(flagged("Shop <codes@shop.example>", "Your verification code", "Your verification code: 482913"), &ctx).lane, Lane::RightNow);
+        assert_eq!(triage(flagged("Avis <avis@dgfip.finances.example>", "Avis", "Votre avis."), &ctx).lane, Lane::Case("taxes".into()));
+        // A name it borrows ("Impots") is set aside before: borrowing comes first, as it did.
+        assert_eq!(triage(flagged("Impots <avis@dgfip.finances.example>", "Avis", "Votre avis."), &ctx).lane, Lane::SetAside);
+        // Said not spam: its `$NotJunk` keyword kept in the file's name.
+        let mut said = flagged("Prize <win@lottery.test>", "You won", "Claim it.");
+        said.path = Some(PathBuf::from(format!("/mail/home/cur/1759400000.U7-1.sioul{}2,S{}", maildir::INFO, maildir::NOT_JUNK)));
+        assert_eq!(triage(said, &ctx).lane, Lane::Screener);
+    }
+
+    /// Sioul's own filter, with a table made by hand: the lottery's words weigh toward spam.
+    #[test]
+    fn the_learned_verdict_says_or_acts() {
+        use crate::spam::{Class, Filter, Mode, features, table, tokenize};
+        let dir = std::env::temp_dir().join(format!("sioul-porch-spam-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("table.bin");
+        let lottery = tokenize::tokens("You won the lottery", "Claim your lottery prize now");
+        let mut made = table::Table {
+            tokenizer: tokenize::TOKENIZER,
+            features: features::FEATURES,
+            dim: 2,
+            minn: 3,
+            maxn: 6,
+            bucket: 16,
+            words: lottery.words.iter().map(|w| (table::word_hash(w), 5.0)).collect(),
+            buckets: vec![0.0; 16],
+            weights: vec![0.0; features::N],
+            means: vec![0.0; features::N],
+            bias: -1.0,
+            text_mean: 0.0,
+            platt_a: -1.0,
+            platt_b: 0.0,
+            meta: table::Meta::default(),
+        };
+        made.sort();
+        made.write(&path).unwrap();
+        let card = |from: &str, subject: &str, body: &str| Card::from_bytes(format!("From: {from}\r\nSubject: {subject}\r\n\r\n{body}\r\n").as_bytes()).unwrap();
+        let filter = |mode: Mode| Filter { mode, threshold_spam: 0.95, threshold_unsure: 0.5, table: path.clone() };
+        let (act, say, off) = (filter(Mode::Act), filter(Mode::Say), filter(Mode::Off));
+        let spam = card("Prize <win@lottery.test>", "You won the lottery", "Claim your lottery prize now");
+        let doubt = card("Club <club@garden.test>", "Lottery", "The garden fence, the tomatoes and the lottery prize");
+        assert_eq!(act.class(crate::spam::score(&made, &spam, &[]).p), Class::Spam);
+        assert_eq!(act.class(crate::spam::score(&made, &doubt, &[]).p), Class::Unsure);
+        let senders = Senders { safe: SenderList::parse("jane@example.org"), ..Senders::default() };
+        let none = SenderList::default();
+        let ctx = |filter| Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: filter };
+        // Acting: spam set aside with its why; a doubt said, its lane kept.
+        let t = triage(spam.clone(), &ctx(Some(&act)));
+        assert_eq!(t.lane, Lane::SetAside);
+        let Some(Reason::LearnedSpam { p, why }) = t.reasons.last() else { panic!("{:?}", t.reasons) };
+        // "lottery", said twice, weighs most; the header said nothing.
+        assert!(*p >= 0.95 && why.words.first().map(String::as_str) == Some("loteri") && why.words.len() == 4 && why.signs.is_empty(), "{p} {why:?}");
+        let t = triage(doubt.clone(), &ctx(Some(&act)));
+        assert_eq!(t.lane, Lane::Screener);
+        assert!(matches!(t.reasons.last(), Some(Reason::Unsure { .. })), "{:?}", t.reasons);
+        // Saying only: nothing moves, the verdict said.
+        let t = triage(spam.clone(), &ctx(Some(&say)));
+        assert_eq!(t.lane, Lane::Screener);
+        assert!(t.reasons.last().is_some_and(Reason::is_spam));
+        // Off, or no table yet: as before.
+        assert_eq!(triage(spam.clone(), &ctx(Some(&off))).reasons.len(), 2);
+        let missing = Filter { table: dir.join("none.bin"), ..act.clone() };
+        assert_eq!(triage(spam.clone(), &ctx(Some(&missing))).lane, Lane::Screener);
+        // Never on someone you know, nor on a code.
+        let jane = triage(card("Jane <jane@example.org>", "You won the lottery", "Claim your lottery prize now"), &ctx(Some(&act)));
+        assert_eq!((jane.lane, jane.reasons.len()), (Lane::People, 2));
+        let code = triage(card("Prize <win@lottery.test>", "Your verification code", "Your verification code: 482913. You won the lottery, claim your lottery prize now."), &ctx(Some(&act)));
+        assert_eq!(code.lane, Lane::RightNow);
+        assert!(!code.reasons.iter().any(|r| matches!(r, Reason::LearnedSpam { .. } | Reason::Unsure { .. })), "{:?}", code.reasons);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Mail failing SPF and DKIM is not authenticated: its sender counts as
+    /// nobody you know, whoever the address it shows.
+    #[test]
+    fn unauthenticated_mail_is_a_strangers() {
+        use crate::cases::{Case, CaseStore, Route};
+        let senders = Senders { safe: SenderList::parse("jane@example.org"), blocked: SenderList::parse("pest@example.org"), ..Senders::default() };
+        let none = SenderList::default();
+        let ids = ["mx.provider.example".to_string()];
+        let by_sender = Case { id: "jane".into(), title: "With Jane".into(), routes: vec![Route { from_addresses: vec!["jane@example.org".into()], ..Route::default() }], ..Case::default() };
+        let by_subject = Case { id: "trip".into(), title: "The trip".into(), routes: vec![Route { subject_contains: vec!["the trip".into()], ..Route::default() }], ..Case::default() };
+        let store = CaseStore { root: PathBuf::from("."), cases: vec![by_sender, by_subject], ties: Default::default() };
+        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &ids, now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+        let mail = |from: &str, results: &str, above: &str, subject: &str| {
+            let raw = format!("{above}Authentication-Results: mx.provider.example; {results}\r\nFrom: {from}\r\nSubject: {subject}\r\n\r\n{subject}?\r\n");
+            Card::from_bytes(raw.as_bytes()).unwrap()
+        };
+        let failed = "spf=fail smtp.mailfrom=example.org; dkim=fail header.d=example.org";
+        // A safe contact's address, SPF and DKIM failing: the screener, with why; nothing to let in.
+        let t = triage(mail("Jane <jane@example.org>", failed, "", "Lunch"), &ctx);
+        assert_eq!(t.lane, Lane::Screener);
+        assert!(t.reasons.contains(&Reason::NotAuthenticated) && !t.reasons.contains(&Reason::FirstMessage), "{:?}", t.reasons);
+        // Spam's to judge: your provider's flag sets it aside.
+        let flagged = "X-Spam-Flag: YES\r\nReceived: from mail.sender.example (mail.sender.example [203.0.112.9]) by mx.provider.example with ESMTPS\r\n";
+        assert_eq!(triage(mail("Jane <jane@example.org>", failed, flagged, "Lunch"), &ctx).lane, Lane::SetAside);
+        assert_eq!(triage(mail("Jane <jane@example.org>", "spf=pass smtp.mailfrom=example.org; dkim=fail header.d=example.org", flagged, "Lunch"), &ctx).lane, Lane::People, "known, so protected");
+        // ARC passing on a chain your provider sealed: authenticated, known; sealed by anyone else: not.
+        let arc = |by: &str| format!("ARC-Seal: i=1; a=rsa-sha256; cv=none; d={by}; s=arc; b=AbC=\r\n");
+        let arc_pass = format!("{failed}; arc=pass");
+        assert_eq!(triage(mail("Jane <jane@example.org>", &arc_pass, &arc("provider.example"), "Lunch"), &ctx).lane, Lane::People);
+        assert_eq!(triage(mail("Jane <jane@example.org>", &arc_pass, &arc("relay.example"), "Lunch"), &ctx).lane, Lane::Screener);
+        // DKIM passing alone, nothing published ("none"), a softfail: known, as before.
+        assert_eq!(triage(mail("Jane <jane@example.org>", "spf=fail smtp.mailfrom=example.org; dkim=pass header.d=example.org", "", "Lunch"), &ctx).lane, Lane::People);
+        assert_eq!(triage(mail("Jane <jane@example.org>", "spf=none smtp.mailfrom=example.org; dkim=none", "", "Lunch"), &ctx).lane, Lane::People);
+        assert_eq!(triage(mail("Jane <jane@example.org>", "spf=softfail smtp.mailfrom=example.org; dkim=fail header.d=example.org", "", "Lunch"), &ctx).lane, Lane::People);
+        // A blocked address stays blocked, proven or not; forged mail (DMARC failing under a policy) stays forged, said once.
+        assert_eq!(triage(mail("Pest <pest@example.org>", failed, "", "Hi"), &ctx).reasons.last(), Some(&Reason::Blocked));
+        let forged = triage(mail("Jane <jane@example.org>", &format!("{failed}; dmarc=fail header.from=example.org policy.dmarc=reject"), "", "Lunch"), &ctx);
+        assert_eq!((forged.lane.clone(), forged.reasons.last()), (Lane::SetAside, Some(&Reason::Forged)));
+        // A code keeps its lane and its warning: it never rested on who sent it.
+        let code = triage(mail("Shop <codes@shop.example>", failed, "", "Your verification code: 482913"), &ctx);
+        assert_eq!(code.lane, Lane::RightNow);
+        assert!(code.reasons.iter().any(|r| matches!(r, Reason::UnverifiedCode(_))), "{:?}", code.reasons);
+        // Routes: one that names the sender takes it no more; one by its subject still does.
+        let routed = Context { cases: Some(&store), ..ctx };
+        assert_eq!(triage(mail("Jane <jane@example.org>", "spf=pass smtp.mailfrom=example.org; dkim=pass header.d=example.org", "", "Lunch"), &routed).lane, Lane::Case("jane".into()));
+        assert_eq!(triage(mail("Jane <jane@example.org>", failed, "", "Lunch"), &routed).lane, Lane::Screener);
+        assert_eq!(triage(mail("Jane <jane@example.org>", failed, "", "About the trip"), &routed).lane, Lane::Case("trip".into()));
     }
 }

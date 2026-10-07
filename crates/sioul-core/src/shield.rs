@@ -189,7 +189,6 @@ pub fn assess(subject: &str, text: &str) -> Assessment {
     Assessment { tone, topic, words, summary: String::new(), by_ai: false }
 }
 
-/// What an AI is asked about a message, to answer in one line of JSON.
 /// Where an AI's answer about a message is kept: its Message-ID, which its
 /// sender writes, and a digest of who sent it and what it says (FNV-1a), so
 /// that a message borrowing the ID of a calm one is read again, never taken for it.
@@ -203,6 +202,16 @@ pub fn ai_key(card: &crate::card::Card) -> Option<String> {
     Some(format!("{id}#{digest:016x}"))
 }
 
+/// How a message to a shielded address reads: the AI's answer about this
+/// very message when it read it (found under `ai_key`, where
+/// `sioul_sync::shield_ai` keeps it), else the word lists'. Every reader goes
+/// through here (the Porch, `sioul shield`, the MCP server), so that none
+/// looks an answer up another way, misses it, and passes on mail the AI found hostile.
+pub fn reading(card: &crate::card::Card, answers: Option<&std::collections::BTreeMap<String, Assessment>>) -> Assessment {
+    answers.and_then(|answers| answers.get(&ai_key(card)?)).cloned().unwrap_or_else(|| assess(&card.subject, &card.excerpt))
+}
+
+/// What an AI is asked about a message, to answer in one line of JSON.
 pub fn ai_prompt(subject: &str, text: &str) -> String {
     let excerpt: String = text.chars().take(4000).collect();
     format!(
@@ -230,9 +239,9 @@ pub fn read_ai_answer(answer: &str) -> Option<Assessment> {
     Some(Assessment { tone: parsed.tone, topic: parsed.topic, words: Vec::new(), summary: parsed.summary.chars().take(200).collect(), by_ai: true })
 }
 
-/// What an AI made of shielded mail, by Message-ID, one file per account
+/// What an AI made of shielded mail, one file per account
 /// (`$XDG_STATE_HOME/sioul/shield/<account>.toml`): asked once per message,
-/// kept under `ai_key`.
+/// kept under `ai_key`, read with `reading`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AiCache {
     #[serde(default)]
@@ -252,7 +261,7 @@ impl AiCache {
         std::fs::read_to_string(AiCache::path(account)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
-    /// Every account's answers together, by Message-ID.
+    /// Every account's answers together, under `ai_key`.
     pub fn load_all() -> std::collections::BTreeMap<String, Assessment> {
         let Ok(entries) = std::fs::read_dir(AiCache::folder()) else { return Default::default() };
         entries
@@ -305,5 +314,24 @@ mod tests {
         assert!(read_ai_answer("no json").is_none());
         assert!(read_ai_answer("} said the model, then {").is_none());
         assert!(ai_prompt("s", "t").contains("Subject: s"));
+    }
+
+    /// The AI's answer is kept under `ai_key` and read back under it, by
+    /// every reader: never under the bare Message-ID, which its sender writes.
+    #[test]
+    fn the_ai_answer_is_found_where_it_is_kept() {
+        let card = |text: &str| crate::card::Card::from_bytes(format!("From: Someone <someone@hostile.example>\r\nSubject: Words for you\r\nMessage-ID: <h-1@hostile.example>\r\n\r\n{text}\r\n").as_bytes()).unwrap();
+        let calm_words = card("Some unkind sentences.");
+        assert_eq!(assess(&calm_words.subject, &calm_words.excerpt).tone, Tone::Calm, "the word lists find nothing");
+        let hostile = Assessment { tone: Tone::Hostile, by_ai: true, ..Assessment::default() };
+        let answers: std::collections::BTreeMap<String, Assessment> = [(ai_key(&calm_words).unwrap(), hostile.clone())].into();
+        assert_eq!(reading(&calm_words, Some(&answers)), hostile);
+        // Under the bare Message-ID, nothing is kept: an answer kept there would be read for any message borrowing it.
+        assert!(!answers.contains_key("h-1@hostile.example"));
+        // Another text under the same Message-ID is read again, by the word lists here.
+        assert_eq!(reading(&card("Thanks for the export module."), Some(&answers)).tone, Tone::Calm);
+        assert!(!reading(&card("Thanks for the export module."), Some(&answers)).by_ai);
+        // No answers at all: the word lists.
+        assert_eq!(reading(&calm_words, None).tone, Tone::Calm);
     }
 }

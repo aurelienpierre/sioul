@@ -170,7 +170,7 @@ final class EventAlarms
 
     /**
      * A reminder's alarm, at its time even while the phone sleeps (Doze);
-     * without "Alarms & reminders", as close as Android allows: up to an hour
+     * without "Alarms &amp; reminders", as close as Android allows: up to an hour
      * late. Never Android's alarm clock: no alarm icon for an appointment.
      */
     private static void alarm(Context context, String key, long at)

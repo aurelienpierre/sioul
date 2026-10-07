@@ -1092,15 +1092,29 @@ Panel {
             Layout.fillWidth: true
             spacing: reader.theme.gap
 
-            Button {
-                visible: reader.item !== null && !!reader.item.screener && reader.item.address !== ""
-                text: reader.sioul.text("ui-let-in")
-                onClicked: reader.sioul.letIn(reader.item.address)
-            }
-            Item {
+            // On more lines when the screen is narrow (a phone, in French): never wider than it.
+            Flow {
                 Layout.fillWidth: true
+                Layout.preferredWidth: 0
+                spacing: reader.theme.gap
+
+                Button {
+                    visible: reader.item !== null && !!reader.item.screener && reader.item.address !== ""
+                    text: reader.sioul.text("ui-let-in")
+                    onClicked: reader.sioul.letIn(reader.item.address)
+                }
+                // Called spam, or maybe spam, and it is not: set aside, back in its
+                // lane; said only, the word taken away; for good, with ten seconds to
+                // undo; `$NotJunk` told to the server, the act kept in the label log
+                // that the next training learns from.
+                Button {
+                    visible: reader.item !== null && !!reader.item.spam
+                    text: reader.sioul.text("ui-not-spam")
+                    onClicked: reader.act("not-spam")
+                }
             }
             Button {
+                Layout.alignment: Qt.AlignTop
                 text: reader.sioul.text("ui-close")
                 onClicked: reader.closeRequested()
             }
@@ -1135,7 +1149,7 @@ Panel {
                         Layout.fillWidth: true
                         text: reader.reading && reader.reading.block_address ? reader.theme.plain(reader.sioul.textWith("ui-block-address", "address", reader.reading.block_address)) : ""
                         onClicked: {
-                            reader.sioul.block(reader.reading.block_address)
+                            reader.sioul.blockFrom(reader.reading.block_address, reader.key)
                             blockDialogForm.close()
                             reader.closeRequested()
                         }
@@ -1145,7 +1159,7 @@ Panel {
                         visible: reader.reading !== null && !!reader.reading.block_domain
                         text: reader.reading && reader.reading.block_domain ? reader.theme.plain(reader.sioul.textWith("ui-block-domain", "domain", reader.reading.block_domain)) : ""
                         onClicked: {
-                            reader.sioul.block(reader.reading.block_domain)
+                            reader.sioul.blockFrom(reader.reading.block_domain, reader.key)
                             blockDialogForm.close()
                             reader.closeRequested()
                         }

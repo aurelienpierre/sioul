@@ -31,6 +31,11 @@ unic-langid.workspace = true
 # not Garmin's SDK, whose licence forbids copyleft; and the ZIPs exports come in.
 fitparser = "0.11"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# The spam filter's tokenizer (spam/tokenize.rs): both already built for every
+# target, Android included (regex through sequoia-openpgp, icu_normalizer
+# through sioul-sync), so nothing new is compiled.
+regex = "1"
+icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
 
 [dev-dependencies]
 fluent-syntax.workspace = true

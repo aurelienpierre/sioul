@@ -183,10 +183,15 @@ fn next_step(in_use: bool, asleep: bool) -> i64 {
 }
 
 /// Whether mail is fetched at this step: at its rhythm, not while you sleep
-/// or pause (nothing is told then; it comes when Sioul opens or after), and
+/// or pause unless the notification matrix lets new mail come then (as
+/// usual, nothing is told then; it comes when Sioul opens or after), and
 /// only when new mail is notified at all.
 fn mail_due(config: &Config, now: i64, last: i64, asleep: bool, paused: bool) -> bool {
-    config.reminders.mail && !asleep && !paused && now - last >= MAIL_EVERY - 30 && config.accounts.iter().any(sioul_core::config::Account::syncs)
+    use sioul_core::notify::{Cell, Column, Kind, Notify};
+    let notify = Notify::of(config);
+    let held = |column: Column| matches!(notify.cell(Kind::Mail, column), Cell::Later | Cell::Never);
+    let resting = (asleep && held(Column::Sleep)) || (paused && held(Column::Pause));
+    config.reminders.mail && !resting && now - last >= MAIL_EVERY - 30 && config.accounts.iter().any(sioul_core::config::Account::syncs)
 }
 
 /// The inbox of each account fetched, its arrivals handed to the new-mail
@@ -319,6 +324,10 @@ mod tests {
         assert!(mail_due(&config, now, now - MAIL_EVERY, false, false));
         assert!(!mail_due(&config, now, 0, true, false), "asleep");
         assert!(!mail_due(&config, now, 0, false, true), "paused");
+        // New mail told while you sleep, as the notification matrix now says: fetched then too.
+        let mut told: Config = toml::from_str("[notify]\nmail = [\"sleep\"]\n").unwrap();
+        told.accounts = config.accounts.clone();
+        assert!(mail_due(&told, now, 0, true, false) && !mail_due(&told, now, 0, false, true));
         config.reminders.mail = false;
         assert!(!mail_due(&config, now, 0, false, false), "new mail not notified at all");
         config.reminders.mail = true;

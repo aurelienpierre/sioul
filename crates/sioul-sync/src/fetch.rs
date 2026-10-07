@@ -651,7 +651,10 @@ async fn store_checked(arrived: Vec<Arrived>, validity: u32, root: &Path, verifi
     Ok(written)
 }
 
-/// IMAP's system flags as Maildir's letters (https://cr.yp.to/proto/maildir.html).
+/// IMAP's system flags as Maildir's letters (<https://cr.yp.to/proto/maildir.html>),
+/// and the keywords kept, `$Junk` and `$NotJunk`, as Dovecot's lowercase
+/// letters (`maildir::KEYWORDS`): what you or a mail client said of a message,
+/// which the spam filter learns from and the Porch heeds. `reconcile` keeps them in step.
 pub(crate) fn maildir_flags<'a>(flags: impl Iterator<Item = Flag<'a>>) -> String {
     flags
         .filter_map(|flag| match flag {
@@ -660,6 +663,7 @@ pub(crate) fn maildir_flags<'a>(flags: impl Iterator<Item = Flag<'a>>) -> String
             Flag::Flagged => Some('F'),
             Flag::Deleted => Some('T'),
             Flag::Draft => Some('D'),
+            Flag::Custom(keyword) => maildir::keyword_letter(&keyword),
             _ => None,
         })
         .collect()
@@ -960,5 +964,8 @@ mod tests {
     fn flags_become_maildir_letters() {
         let flags = [Flag::Seen, Flag::Flagged, Flag::Recent];
         assert_eq!(maildir_flags(flags.into_iter()), "SF");
+        // `$Junk` and `$NotJunk` are kept, whatever their case; other keywords are not.
+        let flags = [Flag::Seen, Flag::Custom("$NotJunk".into()), Flag::Custom("$Forwarded".into()), Flag::Custom("$junk".into()), Flag::Custom("NonJunk".into())];
+        assert_eq!(maildir_flags(flags.into_iter()), format!("S{}{}", maildir::NOT_JUNK, maildir::JUNK));
     }
 }

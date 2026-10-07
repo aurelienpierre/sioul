@@ -63,7 +63,7 @@ pub struct Site {
     pub personal: bool,
 }
 
-/// The host of an address: "https://mail.proton.me/u/0" → "mail.proton.me".
+/// The host of an address: `https://mail.proton.me/u/0` → `mail.proton.me`.
 pub fn host_of(url: &str) -> String {
     let rest = url.split("://").nth(1).unwrap_or(url);
     rest.split(['/', '?', '#']).next().unwrap_or("").split('@').next_back().unwrap_or("").split(':').next().unwrap_or("").to_lowercase()

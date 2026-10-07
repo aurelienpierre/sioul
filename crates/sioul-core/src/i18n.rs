@@ -148,6 +148,8 @@ impl Translator {
             Reason::Trust(proof) => self.text(proof_id(*proof), None),
             Reason::Forged => self.text("reason-forged", None),
             Reason::Spam { source, score } => self.spam_reason(source, *score),
+            Reason::LearnedSpam { p, why } => self.learned("reason-learned-spam", *p, why),
+            Reason::Unsure { p, why } => self.learned("reason-unsure", *p, why),
             Reason::Blocked => self.text("reason-blocked", None),
             Reason::Impersonation { brand, domain } => {
                 let mut args = FluentArgs::new();
@@ -172,6 +174,7 @@ impl Translator {
             Reason::Newsletter => self.text("reason-newsletter", None),
             Reason::Automatic => self.text("reason-automatic", None),
             Reason::FirstMessage => self.text("reason-first-message", None),
+            Reason::NotAuthenticated => self.text("reason-not-authenticated", None),
             Reason::KnownPerson => self.text("reason-known", None),
             Reason::FromYourself => self.text("reason-from-yourself", None),
             Reason::LowPriority => self.text("reason-low-priority", None),
@@ -186,6 +189,39 @@ impl Translator {
             "reason-spam-score"
         });
         self.text(id, Some(&args))
+    }
+
+    /// Sioul's own filter's verdict: "probably spam (96%): “gratuit”, a price;
+    /// SPF failed", with the words and the header's signs that weighed.
+    fn learned(&self, id: &str, p: f32, why: &crate::spam::Why) -> String {
+        let mut args = FluentArgs::new();
+        args.set("p", percent(p));
+        let words: Vec<String> = why.words.iter().map(|w| self.spam_word(w)).collect();
+        let signs: Vec<String> = why.signs.iter().map(|s| self.text(&format!("spam-sign-{}", s.replace('_', "-")), None)).collect();
+        let why = match (words.is_empty(), signs.is_empty()) {
+            (true, true) => return self.text(&format!("{id}-bare"), Some(&args)),
+            (false, true) => words.join(", "),
+            (true, false) => signs.join(", "),
+            (false, false) => {
+                let mut both = FluentArgs::new();
+                both.set("words", words.join(", "));
+                both.set("signs", signs.join(", "));
+                self.text("spam-why-both", Some(&both))
+            }
+        };
+        args.set("why", why);
+        self.text(id, Some(&args))
+    }
+
+    /// A word Sioul's spam filter weighed, quoted; a placeholder by what it
+    /// stands for ("_PRICE_": "a price").
+    pub fn spam_word(&self, word: &str) -> String {
+        if let Some(kind) = word.strip_prefix('_').and_then(|w| w.strip_suffix('_')).filter(|k| !k.is_empty()) {
+            return self.text(&format!("spam-token-{}", kind.to_ascii_lowercase()), None);
+        }
+        let mut args = FluentArgs::new();
+        args.set("word", word.to_string());
+        self.text("spam-word", Some(&args))
     }
 
     /// A decimal with this language's separator: "9.1", "9,1".
@@ -468,6 +504,13 @@ pub fn system_language() -> String {
         .map(|v| base_language(&v))
         .find(|l| !l.is_empty() && l != "c" && l != "posix")
         .unwrap_or_else(|| "en".to_string())
+}
+
+/// A probability as a whole percentage, never above what it is: 0.9496 is
+/// 94, so that a doubt never reads as the spam threshold it stays below.
+pub fn percent(p: f32) -> String {
+    let p = (f64::from(p) * 100.0 + 1e-4).floor().clamp(0.0, 100.0);
+    format!("{p:.0}")
 }
 
 fn bundle(language: &str) -> Bundle {

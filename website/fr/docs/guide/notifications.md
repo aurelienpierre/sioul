@@ -1,14 +1,14 @@
 ---
-description: "Quand Sioul vous dit quelque chose, et quand il garde une notification pour plus tard : les codes tout de suite, le nouveau courrier à ses heures, les rappels et les prises, vos sites et les autres applications aux heures de regroupement ; et « Ne pas déranger », un seul interrupteur pour tous vos appareils, avec une seule liste des personnes qui peuvent vous joindre pendant ce temps."
+description: "Quand Sioul vous dit quelque chose, et quand il garde une notification pour plus tard, chaque sorte à chaque moment comme vous le réglez dans une seule grille : les codes tout de suite, le nouveau courrier à ses heures, les rappels et les prises, vos sites et les autres applications aux heures de regroupement ; et « Ne pas déranger », un seul interrupteur pour tous vos appareils, avec une seule liste des personnes qui peuvent vous joindre pendant ce temps."
 ---
 
 # Les notifications et « Ne pas déranger » {#notifications-and-do-not-disturb}
 
-Sioul vous dit peu de choses, chacune une fois, aux heures que vous choisissez. Ce qui peut venir maintenant vient ; le reste attend son heure. « Ne pas déranger » est un seul interrupteur pour tous vos appareils, avec une seule liste des personnes qui peuvent vous joindre pendant ce temps.
+Sioul vous dit peu de choses, chacune une fois, aux heures que vous choisissez. Ce qui peut venir maintenant vient ; le reste attend son heure. Ce que fait chaque sorte à chaque moment, c’est à vous de le changer, dans une seule grille ([Quand chacune vient](#when-each-comes)). « Ne pas déranger » est un seul interrupteur pour tous vos appareils, avec une seule liste des personnes qui peuvent vous joindre pendant ce temps.
 
 ## Ce que Sioul vous dit, et quand {#what-sioul-tells-you-and-when}
 
-Chaque notification vient une fois, jamais répétée.
+Chaque notification vient une fois, jamais répétée. Plus bas, ce que fait chacune sauf si vous le changez ([Quand chacune vient](#when-each-comes)).
 
 - **Les codes et les liens que vous venez de demander à un site** : tout de suite, à n’importe quelle heure, même depuis l’adresse automatique d’un site : le code, avec **Copier le code** sous Linux, et sa durée de validité. Pas pendant le sommeil ni une pause : la carte attend en haut du Porche. Sur un téléphone, la carte seule, sur le Porche et sur l’écran d’accueil. Voir [Le Porche](porch.md#codes-and-links-come-at-once).
 - **Le nouveau courrier** : quand arrive du courrier qui peut vous joindre maintenant, une seule notification pour le lot : combien de lettres, et les premiers expéditeurs avec leur objet. **Ouvrir** montre le Porche. Le courrier qui attendait son heure est dit une fois, quand elle vient : « Le Porche ouvre : trois lettres vous attendent. » Avec un téléphone et un ordinateur, seul celui dont vous vous êtes servi en dernier le dit. Voir [Le Porche](porch.md#new-mail-told-at-its-times).
@@ -28,8 +28,9 @@ Le nouveau courrier, les appels et les messages des autres applications suivent 
 - **Cinq états** : sûrs, neutres, restreints, inconnus, et les bloqués, qui ne vous joignent jamais.
 - **Une grille par canal** : **Courrier**, **Appels** et **Messages** (les SMS et les discussions des autres applications, sur un téléphone), les états en lignes, les moments en colonnes : Travail, Démarches, Loisirs, Repas, Sommeil, En pause. Coché, ils viennent alors. Décoché, le courrier et les messages attendent le prochain moment coché, et les appels vont sur votre messagerie.
 - **L’adresse où il arrive** : le courrier de vos expéditeurs sûrs vient à n’importe laquelle de vos adresses ; celui des autres, seulement à une adresse faite pour le moment présent ([Les heures](hours.md)).
+- **Et le moment** : pour le nouveau courrier et les messages des autres applications, [Quand chacune vient](#when-each-comes) dit s’ils peuvent venir maintenant, et ces grilles de qui : les deux doivent les laisser passer. Les appels ne sont pas des notifications : la grille **Appels** les décide, avec votre liste de « Ne pas déranger ».
 
-Le Porche montre ce qui peut venir maintenant, et le nouveau courrier est dit selon la même règle. En dehors de vos heures, le Porche dit quand il ouvre, et ce qui est arrivé entre-temps est dit à ce moment-là, en une seule notification. Pendant le sommeil, rien n’est dit, même le courrier coché pour le sommeil : il se montre sur le Porche si vous ouvrez Sioul.
+Le Porche montre ce qui peut venir maintenant, et le nouveau courrier est dit selon la même règle. En dehors de vos heures, le Porche dit quand il ouvre, et ce qui est arrivé entre-temps est dit à ce moment-là, en une seule notification. Pendant le sommeil, rien n’est dit sauf si vous le changez, même le courrier coché pour le sommeil : il se montre sur le Porche si vous ouvrez Sioul.
 
 ### Ce qui ne notifie jamais {#what-never-notifies}
 
@@ -38,27 +39,57 @@ Le Porche montre ce qui peut venir maintenant, et le nouveau courrier est dit se
 - Le message d’un code, comme nouveau courrier : le code a sa propre notification.
 - Sur un téléphone : les codes, et les rappels des dates, des attentes, des paiements, des papiers et des contrats. Ils viennent sur un ordinateur.
 
-## Les notifications gardées pour plus tard {#held-for-later}
+## Ce que fait Sioul, sauf si vous le changez {#held-for-later}
 
-Les notifications de Sioul attendent tant que ce n’est pas leur moment, sur tous vos appareils. Ce qui attendait vient quand son moment vient, s’il a encore un sens alors : le nouveau courrier en une seule notification (« Le Porche ouvre : … »), les rappels, les notifications de vos sites et des autres applications à l’heure de regroupement suivante. Le courrier n’est jamais perdu ; l’avis d’un repas tombé entre-temps n’est pas dit.
+Sauf si vous le changez dans Paramètres ▸ Rappels et notifications ▸ **Quand chacune vient** ([plus bas](#when-each-comes)), les notifications de Sioul attendent tant que ce n’est pas leur moment, sur tous vos appareils. Ce qui attendait vient quand son moment vient, s’il a encore un sens alors : le nouveau courrier en une seule notification (« Le Porche ouvre : … »), les rappels, les notifications de vos sites et des autres applications à l’heure de regroupement suivante. Le courrier n’est jamais perdu ; l’avis d’un repas tombé entre-temps n’est pas dit.
 
 | Maintenant | Ce qui vient quand même | Ce qui attend |
 |---|---|---|
 | **Vos heures** ([Les heures](hours.md)) | ce qui est fait pour maintenant | ce qui est fait pour d’autres moments : les notifications d’un site de travail le soir, celles d’un site de discussion pendant les heures de travail, les rappels des dates et des attentes des tâches de travail pendant que le travail se repose |
-| **Le sommeil**, du moment de se détendre au réveil, et les siestes | les prises, sauf si vous avez choisi **Rester silencieux** ; l’avis propre à la nuit ou à la sieste, à son début ; les rappels d’un événement quand l’événement lui-même tombe dans la nuit | tout le reste ; les codes attendent sur le Porche |
-| **Une pause** ([Les pauses](pauses.md#pause)) | les prises, sauf si les réglages de la pause les retiennent ; les rappels et les alarmes de vos événements | tout le reste, jusqu’à votre retour ; le nouveau courrier, jusqu’à ce que le Porche ouvre de nouveau, à vos prochaines heures de démarches |
+| **Le sommeil**, du moment de se détendre au réveil, et les siestes | les prises, sauf si vous les y retenez ; l’avis propre à la nuit ou à la sieste, à son début ; les rappels d’un événement quand l’événement lui-même tombe dans la nuit | tout le reste ; les codes attendent sur le Porche |
+| **Une pause** ([Les pauses](pauses.md#pause)) | les prises, sauf si vous les y retenez ; les rappels et les alarmes de vos événements | tout le reste, jusqu’à votre retour ; le nouveau courrier, jusqu’à ce que le Porche ouvre de nouveau, à vos prochaines heures de démarches |
 | **Le temps libre** ([Les pauses](pauses.md#free-time)) | les prises ; les codes demandés ; les rappels et les alarmes de vos événements quand l’événement tombe pendant ce temps | tout le reste jusqu’à sa fin, le nouveau courrier compris : celui de vos expéditeurs sûrs se montre sur le Porche, sans être dit |
 | **Un moment de temps pour vous** ([Les tâches](tasks.md#the-day)) | les prises, les repas, les codes demandés, les appels, l’alarme d’un événement, les rappels | le nouveau courrier, les notifications de vos sites, la pause pour bouger ; sur un téléphone, les notifications des autres applications, sauf les messages des personnes |
 | **« Ne pas déranger »**, par son interrupteur ou une séance de concentration ([plus bas](#do-not-disturb-on-every-device)) | les prises, les codes demandés, les rappels, les avis des repas, des siestes et de la nuit ; le nouveau courrier des personnes de votre liste | les notifications de vos sites, appels compris ; la pause pour bouger ; le reste du nouveau courrier ; sur un téléphone, les notifications des autres applications, sauf celles des personnes de votre liste |
 
 Quand « Ne pas déranger » tient pour votre sommeil ou une pause, ce sont leurs propres lignes qui valent.
 
+### Quand chacune vient {#when-each-comes}
+
+Dans **Paramètres ▸ Rappels et notifications ▸ Quand chacune vient**, une grille : chaque sorte de notification en lignes, en cinq groupes (ce que vous avez réglé ou demandé, les rappels, votre journée, le courrier et les sites, les autres applications sur un téléphone), et en colonnes ce qu’est le moment : **Travail**, **Démarches**, **Loisirs**, **Repas**, **Sommeil**, **En pause**, **Temps libre**, **Du temps pour vous** (un moment du plan, [Les tâches](tasks.md#the-day)) et **Ne pas déranger** (par son interrupteur ou une séance de concentration). Une marque dans chaque case ; appuyez dessus pour choisir, en mots :
+
+- ● **Tout de suite** ; pour le courrier et les messages, de ceux que [Qui peut vous joindre](#who-may-reach-you-and-when) laisse passer alors.
+- ○ **Plus tard** : elle attend un moment où elle peut venir, et vient alors si elle a encore un sens. Le nouveau courrier : « Le Porche ouvre… » ; vos sites et les automates des autres applications : l’heure de regroupement suivante.
+- ◎ **Aux heures de regroupement** : les notifications de vos sites, les automates des autres applications.
+- ◐ **Si son événement tombe dans ce moment** : les alarmes d’un événement et le rappel de Sioul avant lui ; sinon plus tard.
+- – **Pas du tout** : l’avis d’un repas, la pause pour bouger, le temps qui court sont abandonnés ; un code reste sur le Porche ; le nouveau courrier n’est jamais dit, le Porche le montre.
+- ☆ et ★ **Votre liste de « Ne pas déranger »**, pour le courrier et les messages pendant « Ne pas déranger » : ☆ si Qui peut vous joindre les laisse passer aussi, ★ quoi qu’il dise, comme pour les appels.
+
+Ce qu’est le moment, la grille le lit comme le disent [Les heures](hours.md) : la pause d’abord, puis le sommeil, le temps libre, un repas, les heures. Sans aucune heure réglée, Travail et Démarches ensemble, la plus ouverte de leurs deux cases. Un moment de temps pour vous et « Ne pas déranger » viennent par-dessus le moment : la case la plus stricte l’emporte. « Ne pas déranger » tenu pour votre sommeil ou une pause ne change rien ; leurs propres colonnes le disent.
+
+**Fixes**, grisées, pour votre sécurité ; appuyez sur l’une d’elles pour lire pourquoi :
+
+- **Les prises** : tout de suite, sauf pendant le sommeil et une pause, où vous pouvez les retenir jusqu’à votre réveil ou votre retour. Jamais « pas du tout ».
+- **Les codes que vous avez demandés** : tout de suite, sauf pendant le sommeil et une pause. Vous venez de les demander, et un code ne vaut que quelques minutes.
+- **Les alarmes d’un événement** : tout de suite pendant une pause et « Ne pas déranger », comme toutes deux le promettent.
+- **Le réveil** : toujours.
+
+**Ce que la grille laisse en paix** : ce à quoi sert une chose, et si le moment est fait pour elle (un site du travail le soir, la date d’une tâche du travail quand le travail se repose, [Les heures](hours.md)) ; rien pendant une réunion pour l’avis d’un repas et la fin du travail ; le Porche qui se repose après une pause ; les réglages qui disent si une sorte est dite du tout (**Nouveau courrier : notifier aux heures où il peut venir**, **Notifications des sites regroupées**…) ; le **Temps réel** de chaque site, et le choix de chaque application et de chaque conversation ([plus bas](#other-apps-on-a-phone)).
+
+Quelques-unes des choses qu’elle peut dire :
+
+- **Le courrier de vos expéditeurs sûrs pendant le temps libre** : Nouveau courrier ▸ Temps libre ▸ Tout de suite. Le temps libre ne laisse toujours passer que vos expéditeurs sûrs, ou personne avec **Rien du tout**.
+- **Le courrier et les messages de votre liste de « Ne pas déranger », quoi que dise Qui peut vous joindre**, comme leurs appels : Nouveau courrier, et Messages de personnes ▸ Ne pas déranger ▸ ★.
+- **Aucun rappel avant un événement pendant une pause** : Rappels avant un événement ▸ En pause ▸ Plus tard. Les alarmes de l’événement viennent toujours.
+- **L’avis d’un repas ou d’une sieste pendant le sommeil ou le temps libre** : Repas, siestes et la nuit ▸ Sommeil, ou Temps libre ▸ Tout de suite.
+
+La grille voyage avec vos paramètres vers vos autres appareils ([Le partage](sharing.md)) : une seule grille pour tous. Un Sioul plus ancien continue de faire ce qu’il faisait.
+
 ### Les prises {#doses}
 
-Du moment de se détendre au réveil, et pendant une sieste, rien ne notifie, sauf les prises : c’est vous qui avez réglé leurs heures, et une prise à 05:00 est faite pour vous réveiller.
+Du moment de se détendre au réveil, et pendant une sieste, rien ne notifie que les prises, sauf si vous le changez : c’est vous qui avez réglé leurs heures, et une prise à 05:00 est faite pour vous réveiller.
 
-- **Prises pendant le sommeil**, dans Paramètres ▸ Rappels et notifications : **Rappeler** (sauf si vous le changez) ou **Rester silencieux**. En silence, le rappel de chaque prise vient au réveil, comme la question sur les prises dues pendant que Sioul était fermé. Sioul ne met jamais une prise en silence sans ce choix.
-- **Les rappels de prises viennent toujours**, dans Paramètres ▸ Pauses : activé, sauf si vous le désactivez. Désactivé, ils attendent votre retour d’une pause, et viennent une fois à ce moment-là.
+- **Pendant le sommeil et une pause** : [Quand chacune vient](#when-each-comes), la ligne **Prises** : **Tout de suite** (sauf si vous le changez) ou **Plus tard**. Plus tard, le rappel de chaque prise vient à votre réveil ou à votre retour, une fois, comme la question sur les prises dues pendant que Sioul était fermé. Toutes les autres cases sont fixées à tout de suite : Sioul ne retient jamais une prise sans ce choix.
 - **Sans nuit réglée** sur la page Santé, rien n’éloigne les notifications la nuit : le Porche la demande dans une carte ([Les heures](hours.md#sleep)).
 
 ### Les heures de regroupement {#the-gathered-times}
@@ -67,7 +98,7 @@ Paramètres ▸ Rappels et notifications ▸ **Regroupées à** : 09:00, 13:00
 
 - **Sur un ordinateur**, une seule notification dit alors lesquels de vos sites ont du nouveau, pour les sites de ces heures-là, sur l’ordinateur où vous êtes, avec **Ouvrir le Porche**. Avec **Notifications des sites regroupées** décoché, leurs nouvelles attendent sur le Porche seulement.
 - **Sur un téléphone**, les notifications des automates des autres applications reviennent alors.
-- **Une heure de regroupement** qui tombe pendant votre sommeil, une pause, le temps libre, un moment de temps pour vous ou « Ne pas déranger » est sautée : ce qui attend vient à la suivante.
+- **Une heure de regroupement** qui tombe pendant votre sommeil, une pause, le temps libre, un moment de temps pour vous ou « Ne pas déranger » est sautée, sauf si vous le changez ([Quand chacune vient](#when-each-comes)) : ce qui attend vient à la suivante.
 
 ### Ce qui passe quand même {#what-comes-through-anyway}
 
@@ -139,7 +170,7 @@ Une seule liste pour tous vos appareils, dans **Paramètres ▸ Ne pas déranger
 
 Quelqu’un ajouté de nouveau par l’une de ses adresses, l’un de ses numéros ou sa fiche reste une seule personne. Sous chaque nom, Sioul dit ce qui manque : « Pas de numéro : ses appels et messages ne peuvent pas passer. » ; « Pas d’adresse : son courrier n’est pas notifié pendant “Ne pas déranger”. »
 
-**Les personnes de ma liste passent** (activé) : leur courrier est dit, aux moments où vos listes le laissent passer ; le courrier des autres attend, et il est dit quand « Ne pas déranger » prend fin. Sur un téléphone, leurs appels et messages sonnent là où ces personnes sont en favori, ainsi qu’un second appel du même numéro dans les 15 minutes. Décoché : personne, sauf les alarmes et les rappels de prises.
+**Les personnes de ma liste passent** (activé) : leur courrier est dit, aux moments où vos listes le laissent passer, ou quoi qu’elles disent avec ★ dans [Quand chacune vient](#when-each-comes) ; le courrier des autres attend, et il est dit quand « Ne pas déranger » prend fin. Sur un téléphone, leurs appels et messages sonnent là où ces personnes sont en favori, ainsi qu’un second appel du même numéro dans les 15 minutes. Décoché : personne, sauf les alarmes et les rappels de prises.
 
 - **Sur un téléphone**, Android laisse passer les contacts en favori dans votre application Contacts : il n’a pas de liste à lui, et chaque contact en favori passe, sur votre liste ou non. Sous **En favori sur ce téléphone**, Sioul dit qui, sur votre liste, n’y est pas en favori (« Deux personnes de votre liste ne sont pas en favori sur ce téléphone. »), avec **Ouvrir son contact**, pour le mettre en favori, ou **Ajouter aux contacts**, le formulaire d’Android, rempli, que vous enregistrez. Il lit vos contacts pour cela (**Autoriser la lecture des contacts**), et ne les modifie jamais.
 - **Sur un ordinateur**, il n’y a pas d’appels : le courrier de la liste arrive comme le nouveau courrier ([plus bas](#what-each-system-does)).
@@ -181,9 +212,9 @@ Sur un téléphone Android, le filtrage des appels est à part de « Ne pas d�
 
 ## Où changer chaque chose {#where-to-change-each-thing}
 
-- **Paramètres ▸ Rappels et notifications** : **Avant un événement**, **Événements, le jour travaillé d’avant**, **Dates demandées : jours travaillés avant**, **Une attente finie**, **Paiements prévus : jours travaillés avant**, **Fenêtre de Sioul fermée**, **Nouveau courrier : notifier aux heures où il peut venir**, **Avec les lettres d’information**, **Notifications des sites regroupées**, **Regroupées à**, **Prises pendant le sommeil** ([Les paramètres](settings.md#reminders-and-notifications)).
+- **Paramètres ▸ Rappels et notifications** : **Avant un événement**, **Événements, le jour travaillé d’avant**, **Dates demandées : jours travaillés avant**, **Une attente finie**, **Paiements prévus : jours travaillés avant**, **Fenêtre de Sioul fermée**, **Nouveau courrier : notifier aux heures où il peut venir**, **Avec les lettres d’information**, **Notifications des sites regroupées**, **Regroupées à**, **Quand chacune vient** ([Les paramètres](settings.md#reminders-and-notifications)).
 - **Paramètres ▸ Ne pas déranger** : **L’interrupteur dans la ligne d’état**, **Pendant que je me concentre sur une tâche**, **Pendant les pauses**, **Pendant mon sommeil**, **Les personnes de ma liste passent** ; la liste ; ce que le système de cet appareil laisse faire à Sioul ; sur un téléphone, qui y est en favori, et **Garder ce téléphone à jour en arrière-plan**.
-- **Paramètres ▸ Pauses** : **Rien du tout**, pour le temps libre ; **Les rappels de prises viennent toujours** et **Les contacts favoris passent**, pour la pause ([Les pauses](pauses.md)).
+- **Paramètres ▸ Pauses** : **Rien du tout**, pour le temps libre ; **Les contacts favoris passent**, pour la pause ([Les pauses](pauses.md)). Les prises pendant une pause : **Quand chacune vient**.
 - **Paramètres ▸ Autres applications** et **Paramètres ▸ Appels**, sur un téléphone.
 - **Comptes ▸ Qui peut vous joindre** : les grilles et les listes ([Les comptes](accounts.md#senders)).
 - **Un événement** : **Rappel**, dans son formulaire et ses détails ([L’agenda](agenda.md#reminders)).

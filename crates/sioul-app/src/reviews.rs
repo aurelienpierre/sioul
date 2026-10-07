@@ -54,6 +54,17 @@ fn offer_at(now: &Zoned, mode: &Mode) -> Option<Offer> {
     reviews::offer(&Moment { now, mode, work_end, night, closed_today }, &reviews)
 }
 
+/// What the notice "Work hours are over" offers at `now`: as the status
+/// line, at the times the notification matrix lets it come (as usual, the
+/// status line's own: never at work, asleep, paused or in Free time).
+fn notice_at(now: &Zoned, mode: &Mode) -> Option<Offer> {
+    if !crate::hours::comes(sioul_core::notify::Kind::WorkOver) {
+        return None;
+    }
+    let (work_end, night, closed_today, reviews) = standing(now);
+    reviews::offer_any_time(&Moment { now, mode, work_end, night, closed_today }, &reviews)
+}
+
 /// For the status line (`mode_json`): {kind, date, line, button}; kind "" when
 /// nothing is offered: at work, while you sleep, once said.
 pub(crate) fn offer_json(now: &Zoned, mode: &Mode) -> serde_json::Value {
@@ -274,9 +285,10 @@ fn mark_told(date: Date) {
 
 /// Each minute: at the end of the day's last work or admin hours, one quiet
 /// notice, "Work hours are over", with "Close the work day"; once, from the
-/// device you are at, within ten minutes of the hours' end; never while you
-/// sleep or work, nor during a meeting, nor once the day was closed or its
-/// review given. Off the window's thread.
+/// device you are at, within ten minutes of the hours' end; at the times the
+/// notification matrix lets it come (as usual, never while you sleep or
+/// work), never during a meeting, nor once the day was closed or its review
+/// given. Off the window's thread.
 pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
@@ -289,7 +301,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             return;
         }
         let mode = crate::hours::mode_at(&now);
-        let Some(Offer { kind: Kind::Work, date }) = offer_at(&now, &mode) else { return };
+        let Some(Offer { kind: Kind::Work, date }) = notice_at(&now, &mode) else { return };
         // In a meeting, nothing is said: the status line still offers it.
         if meeting(stamp) {
             mark_told(date);

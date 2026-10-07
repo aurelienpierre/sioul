@@ -57,6 +57,17 @@ nav = [
   ] },
   { "For developers" = [
     { "Overview" = "dev/index.md" },
+    # For developers new to Rust, Qt Quick, CXX-Qt, Fluent or Android: the
+    # code's map, a guide per tool as Sioul uses it, a feature end to end.
+    { "Start here" = [
+      { "A map of the code" = "dev/start-here.md" },
+      { "Rust" = "dev/rust.md" },
+      { "Qt Quick and QML" = "dev/qt-quick.md" },
+      { "The bridge: CXX-Qt" = "dev/cxx-qt.md" },
+      { "Strings: Fluent" = "dev/fluent.md" },
+      { "Android, the basics" = "dev/android-basics.md" },
+      { "A feature, end to end" = "dev/end-to-end.md" },
+    ] },
     { "Design" = [
       { "Design" = "dev/design.md" },
       { "What the research says" = "dev/research.md" },
@@ -77,8 +88,15 @@ nav = [
       { "Architecture" = "dev/architecture.md" },
       { "Languages" = "dev/i18n.md" },
     ] },
+    # Made from the code's comments: rustdoc and javadoc with build.sh --api,
+    # the QML page by tools/qml-docs.py at every build.
+    { "Reference" = [
+      { "API reference" = "dev/api.md" },
+      { "QML files" = "dev/qml.md" },
+    ] },
     { "Mail" = [
       { "The Porch" = "dev/porch.md" },
+      { "Your own spam filter" = "dev/spam-filter.md" },
       { "Mail, contacts, calendars" = "dev/client.md" },
       { "The case store" = "dev/case-store.md" },
       { "Virtual Secretary" = "dev/virtual-secretary.md" },

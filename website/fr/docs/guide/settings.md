@@ -45,17 +45,17 @@ Chaque rappel vient une fois, en notification discrète, sans son, jamais répé
 - **Nouveau courrier : notifier aux heures où il peut venir** : une seule notification discrète pour chaque lot de courrier qui peut vous joindre maintenant, et une quand le courrier qui attendait peut venir : « Le Porche ouvre : trois lettres vous attendent. » Activé d’origine. Voir [Ce que Sioul vous dit](notifications.md#what-sioul-tells-you-and-when).
 - **Avec les lettres d’information** : les lettres d’information et les listes de diffusion, rangées sur le Porche, sont dites aussi. Les expéditeurs automatiques (une facture de no-reply) le sont de toute façon. Désactivé d’origine.
 - **Notifications des sites regroupées**, et **Regroupées à** : ce que vos sites notifient attend, puis vient en une seule notification à ces moments-là : 09:00, 13:00 et 18:00, sauf si vous en réglez d’autres. Sur un téléphone, les notifications des automates des autres applications reviennent alors. Voir [Les heures de regroupement](notifications.md#the-gathered-times).
-- **Prises pendant le sommeil** : **Rappeler** ou **Rester silencieux**. Pendant le sommeil, rien ne notifie, sauf les prises ; en silence, le rappel d’une prise vient au réveil. Voir [Les prises](notifications.md#doses).
+- **Quand chacune vient** : une grille de ce que fait chaque sorte de notification à chaque moment, les sortes en lignes, les moments en colonnes (vos heures, le sommeil, les pauses, un moment de temps pour vous, « Ne pas déranger ») : tout de suite, plus tard, aux heures de regroupement, si son événement tombe dans ce moment, pas du tout ; pendant « Ne pas déranger », votre liste. Les prises pendant le sommeil et une pause sont de ses cases. Certaines cases sont fixes, pour votre sécurité. Voir [Quand chacune vient](notifications.md#when-each-comes).
 
 Les prises de médicaments sont rappelées depuis la page [Santé](health.md), et les papiers à renouveler depuis [Papiers](papers.md). Sur un téléphone, les prises, les événements et le nouveau courrier sont dits ; les autres rappels viennent sur un ordinateur ([Sur un téléphone](first-steps.md#on-a-phone)). Ce qui vient quand, et ce qui attend : [Les notifications et « Ne pas déranger »](notifications.md).
 
 ## Pauses {#pauses}
 
-Le temps libre et la pause, préparés un jour calme : qui vous joint en temps libre, jusqu’où la fin du travail peut se décaler, si le mouvement est proposé ; pour la pause, les prises, vos contacts favoris, ce qui vous aide, votre ligne, le guide de respiration, ce que tient le reste de la journée ensuite, de quel pays sont les numéros, et ce que peut le mode Ne pas déranger de cet appareil ([Ce que fait chaque système](notifications.md#what-each-system-does)) ; **Essayer l’écran de pause**. Voir [Les pauses](pauses.md).
+Le temps libre et la pause, préparés un jour calme : qui vous joint en temps libre, jusqu’où la fin du travail peut se décaler, si le mouvement est proposé ; pour la pause, vos contacts favoris, ce qui vous aide, votre ligne, le guide de respiration, ce que tient le reste de la journée ensuite, de quel pays sont les numéros, et ce que peut le mode Ne pas déranger de cet appareil ([Ce que fait chaque système](notifications.md#what-each-system-does)) ; **Essayer l’écran de pause**. Voir [Les pauses](pauses.md).
 
 ## Ne pas déranger {#do-not-disturb}
 
-Un seul « Ne pas déranger » pour tous vos appareils : **L’interrupteur dans la ligne d’état** ; ce qui l’active de soi-même, **Pendant que je me concentre sur une tâche**, **Pendant les pauses**, **Pendant mon sommeil** ; **Les personnes de ma liste passent**, et la liste, la même sur tous vos appareils ; ce que le système de cet appareil laisse faire à Sioul ; sur un téléphone, qui, sur votre liste, y est en favori, et **Garder ce téléphone à jour en arrière-plan**. Voir [Ne pas déranger sur tous vos appareils](notifications.md#do-not-disturb-on-every-device).
+Un seul « Ne pas déranger » pour tous vos appareils : **L’interrupteur dans la ligne d’état** ; ce qui l’active de soi-même, **Pendant que je me concentre sur une tâche**, **Pendant les pauses**, **Pendant mon sommeil** ; **Les personnes de ma liste passent**, et la liste, la même sur tous vos appareils ; ce que le système de cet appareil laisse faire à Sioul ; sur un téléphone, qui, sur votre liste, y est en favori, et **Garder ce téléphone à jour en arrière-plan**. Ce qui vient pendant ce temps, sorte par sorte : **Quand chacune vient**, dans Rappels et notifications. Voir [Ne pas déranger sur tous vos appareils](notifications.md#do-not-disturb-on-every-device).
 
 ## Appels {#calls}
 
@@ -90,7 +90,7 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 | Page | Derrière son ⚙ |
 |---|---|
 | [Porche](porch.md#the-porchs-settings) | les projets qui y sont montrés, où arrivent les scans, la lecture d’un message, comment le courrier est trié |
-| [Courrier](mail.md#settings) | par conversation, à quel rythme les dossiers sont relevés, la lecture d’un message, les listes quittées |
+| [Courrier](mail.md#settings) | par conversation, à quel rythme les dossiers sont relevés, votre propre filtre à indésirables, la lecture d’un message, les listes quittées |
 | [Tâches](tasks.md#the-tasks-settings) | heures de bureau, types, catégories, listes de tâches, où vont les nouvelles tâches, ce qui est du travail et ce qui est à vous, GitHub |
 | [Agenda](agenda.md#the-agenda-settings) | agendas, l’heure à laquelle commence la journée |
 | [Contacts](contacts.md#the-contacts-settings) | carnets d’adresses, la carte |
@@ -99,6 +99,23 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 | [Santé](health.md#your-watch) | le dossier de votre montre, les propositions douces |
 
 Les réglages propres à chaque adresse sont sur sa fiche dans [Comptes](accounts.md#a-mail-address). La lecture du texte long (la police, sa taille et l’interligne) est dans le ⚙ des pages où se lisent les messages, Courrier et Porche, et derrière **Aa** dans les Notes : un seul réglage, montré là où il sert.
+
+### Votre filtre à indésirables {#your-own-spam-filter}
+
+Dans le ⚙ de la page Courrier, sous **Votre filtre à indésirables**. Ce qu’il fait sur le Porche : [Les indésirables, et votre propre filtre](porch.md#spam-and-your-own-filter).
+
+<figure markdown="span">
+  [![Les réglages de la page Courrier, « Votre filtre à indésirables » : Ce qu’il fait, « Montrer son avis seulement » ; Indésirable à partir de, un curseur à 95 % ; Peut-être indésirable à partir de, à 50 % ; Son apprentissage : « En service : appris par noa-bureau le mardi 6 octobre, sur 4 210 messages légitimes et 655 indésirables », ce qu’il a mesuré alors, Entraîner maintenant et ce qu’il fait, puis ce dont il apprend et la place qui reste sur le disque.](../assets/screens/fr/settings-spam.png){ loading=lazy }](../assets/screens/fr/settings-spam.png "Ouvrir l’image en grand")
+  <figcaption>Ce qu’il fait, ses deux seuils, et sur un ordinateur son apprentissage.</figcaption>
+</figure>
+
+- **Ce qu’il fait** : **Éteint** ; **Montrer son avis seulement**, là où il commence : « peut-être indésirable » ou « probablement indésirable » à côté du message d’un inconnu, rien de déplacé ; **Mettre l’indésirable de côté** : ce dont il est sûr va dans Mis de côté, d’où **Pas indésirable** le fait revenir.
+- **Indésirable à partir de** : à quel point il doit être sûr pour dire indésirable le message d’un inconnu, 95 % sauf si vous le changez. Plus haut : moins de vos messages pris pour indésirables, plus d’indésirables laissés passer.
+- **Peut-être indésirable à partir de** : de là jusqu’à l’autre, un message garde sa file avec « peut-être indésirable » à côté ; 50 % sauf si vous le changez. Chaque curseur s’arrête avant l’autre : « peut-être » reste sous « indésirable ».
+- **Son apprentissage**, sur un ordinateur. **Entraîner maintenant** télécharge ce dont l’apprentissage a besoin, de chaque dossier de chaque adresse (les en-têtes et le début de chaque texte, jamais les pièces jointes), puis apprend de votre courrier : vos dossiers des indésirables, et ce que vous avez marqué indésirable ou pas indésirable, lui apprennent le plus. La première fois est longue. Pendant ce temps, il dit où il en est (« Messages téléchargés : 1 200 sur environ 15 000 », puis chaque étape), et Sioul reste utilisable ; **Arrêter** garde ce qui est venu, et la fois suivante reprend de là. Sa nouvelle table ne remplace celle en service que si elle ne prend pas plus de vos messages pour indésirables. Dessous, le dernier apprentissage : quand, si sa table a remplacé celle en service et pourquoi, sur combien de messages, et sur votre courrier le plus récent, quelle part en a été prise pour indésirable et quelle part des indésirables a été repérée, chacune avec sa marge ; puis ce dont il apprend, et la place qui reste sur le disque.
+- **Sa table**, sur un téléphone, qui ne l’entraîne jamais : l’ordinateur qui l’a entraîné, et quand, avec ce qu’il a mesuré alors. Elle arrive par votre dossier, scellée (la partie **Filtre à indésirables**, dans [Le partage](sharing.md#what-travels-from-this-device)).
+
+Le mode et les seuils voyagent vers vos autres appareils avec vos réglages. Ce que l’apprentissage lit, et ce qu’il garde : [Vie privée et sécurité](privacy-security.md#your-own-spam-filter).
 
 ## Où les réglages sont gardés {#where-settings-are-kept}
 

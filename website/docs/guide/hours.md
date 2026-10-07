@@ -86,8 +86,8 @@ One sentence in the status line says until when: "Work comes back tomorrow at 09
 
 From winding down to waking, and during a nap, nothing disturbs:
 
-- **no notification**: no code (it waits on the Porch), no site, no reminder before a date, no pause to move, no meal or nap notice. What still makes sense when you wake comes then;
-- **doses come all the same**: you set their times, and a dose at 05:00 is meant to wake you. To keep them silent while you sleep, choose **Stay silent** in [Settings ▸ Reminders and notifications](settings.md#reminders-and-notifications) ▸ **Doses during sleep**: they come when you wake. Sioul never silences a dose without that choice;
+- **no notification**, unless you change it ([When each comes](notifications.md#when-each-comes)): no code (it waits on the Porch), no site, no reminder before a date, no pause to move, no meal or nap notice. What still makes sense when you wake comes then;
+- **doses come all the same**: you set their times, and a dose at 05:00 is meant to wake you. To keep them silent while you sleep, choose **Later** in Settings ▸ Reminders and notifications ▸ [When each comes](notifications.md#when-each-comes), Doses ▸ Sleep: they come when you wake. Sioul never silences a dose without that choice;
 - if you open Sioul, the Porch shows what your lists let through now, nothing about money or paper letters; a message about a project comes among the people you know;
 - every address folds on the Mail page; only the sites for leisure are listed;
 - Tasks, Projects and Time wait behind one sentence and **Show anyway**; on Tasks, a thought can still be noted for later.

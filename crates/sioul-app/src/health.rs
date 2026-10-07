@@ -485,7 +485,9 @@ pub(crate) fn watch_offer(qt: &QtThread, focus_minutes: u32) {
     }
     let now = Zoned::now();
     let mut memory: sioul_core::wearable::Memory = std::fs::read_to_string(offers_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-    let moment = sioul_core::wearable::Moment { now: now.timestamp().as_second(), hour: now.hour() as u8, quiet: crate::backend::quiet_now(), breakpoint: true, focus_minutes };
+    // Quiet for the watch: a time the notification matrix drops its offers (as usual, all but work).
+    let quiet = !crate::hours::comes(sioul_core::notify::Kind::Watch);
+    let moment = sioul_core::wearable::Moment { now: now.timestamp().as_second(), hour: now.hour() as u8, quiet, breakpoint: true, focus_minutes };
     let Some(offer) = sioul_core::wearable::offer(&folder, &moment, &memory, now.time_zone(), now.date()) else { return };
     sioul_core::wearable::offered(&mut memory, offer, moment.now, now.date());
     let _ = std::fs::create_dir_all(sioul_core::config::state_dir());
@@ -1108,8 +1110,9 @@ fn movement_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zon
     use std::sync::atomic::Ordering;
     let stamp = now.timestamp().as_second();
     let last = MOVED.load(Ordering::Relaxed);
-    // Asleep too: the pause is counted again from waking.
-    if last == 0 || !health.movement.enabled || sioul_core::timelog::running().is_some() || !crate::hours::may_notify() || crate::hours::quiet_slot() {
+    // At a time the notification matrix drops it (as usual: sleep, the pauses, a slot
+    // of time for you, do-not-disturb), the pause is counted again from its end.
+    if last == 0 || !health.movement.enabled || sioul_core::timelog::running().is_some() || !crate::hours::comes(sioul_core::notify::Kind::Move) {
         MOVED.store(stamp, Ordering::Relaxed);
         return;
     }
@@ -1130,7 +1133,7 @@ fn movement_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zon
 static ASKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Doses reminded in this session: never twice, even when the record cannot be written.
 static SENT: std::sync::Mutex<std::collections::BTreeSet<String>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
-/// "Reminders come on <computer>", when another computer keeps them.
+/// "Reminders come on `<computer>`", when another computer keeps them.
 static REMINDED_THERE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
 /// Why the doses here may not be all: this computer alone, or what is not
@@ -2058,7 +2061,7 @@ pub(crate) fn choose(key: &str, taken: bool) -> String {
     record_answer(key, if taken { sioul_core::doses::TAKEN } else { sioul_core::doses::SKIPPED }, at, true)
 }
 
-/// When a dose is due, from its key ("<medicine>@<Unix seconds>").
+/// When a dose is due, from its key (`<medicine>@<Unix seconds>`).
 fn due_of(key: &str) -> Option<i64> {
     key.rsplit_once('@').and_then(|(_, at)| at.parse().ok())
 }
@@ -2338,12 +2341,18 @@ fn needs_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned)
         return;
     }
     let hm = |at: i64| clock(at, now.time_zone());
-    let may = crate::hours::may_notify_need();
+    // As the notification matrix says (as usual, nothing while you sleep, in a pause or in Free time).
+    let notify = sioul_core::notify::Notify::of(&crate::backend::load_config());
+    let moment = crate::hours::notify_now();
+    let may = notify.comes(sioul_core::notify::Kind::Needs, &moment);
+    // The night's or a nap's own notice as it begins says that sleep begins:
+    // sleep's column does not hold it (docs/health.md); a pause does.
+    let mut awake = moment.clone();
+    awake.times.retain(|c| *c != sioul_core::notify::Column::Sleep);
+    let starting = notify.comes(sioul_core::notify::Kind::Needs, &awake);
     for (block, heads_up) in due {
-        // Asleep (the night from winding down, a nap): nothing is said, but the
-        // night's or the nap's own notice as it starts (docs/health.md). Paused:
-        // nothing at all (docs/pauses.md).
-        if crate::hours::paused() || (!may && (heads_up || !(block.kind == "sleep" || block.kind == "nap") || block.start > stamp)) {
+        let own_start = !heads_up && (block.kind == "sleep" || block.kind == "nap") && block.start <= stamp;
+        if !(may || (own_start && starting)) {
             continue;
         }
         let name = name_of(block);

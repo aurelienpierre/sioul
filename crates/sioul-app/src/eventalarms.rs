@@ -21,7 +21,7 @@
 use crate::backend::{load_config, tr};
 use jiff::Zoned;
 use jiff::tz::TimeZone;
-use sioul_core::reminders::{self, Kind, Reminder, Wait};
+use sioul_core::reminders::{self, Holds, Kind, Reminder};
 use std::ffi::{CString, c_char};
 use std::sync::Mutex;
 
@@ -66,18 +66,18 @@ fn words() -> serde_json::Value {
 /// to ask for the list again (a day on, in steps of six hours, so that the
 /// list given is the same from one minute to the next); `words`.
 pub(crate) fn coming(now: &Zoned) -> String {
-    let (all, wait) = reminders::gather_events(&load_config(), tr(), now);
-    listed(&all, wait, now)
+    let (all, holds) = reminders::gather_events(&load_config(), tr(), now);
+    listed(&all, &crate::hours::with_layers(holds), now)
 }
 
 /// The list Java is given, from reminders gathered already: the events' own.
-fn listed(all: &[Reminder], wait: Wait, now: &Zoned) -> String {
+fn listed(all: &[Reminder], holds: &Holds, now: &Zoned) -> String {
     let stamp = now.timestamp().as_second();
     let dir = reminders::told_dir();
     let mut due: Vec<(i64, &Reminder)> = all
         .iter()
         .filter(|r| matches!(r.kind, Kind::Event | Kind::Before | Kind::Alarm) && r.until > stamp && !reminders::told(&dir, &r.key))
-        .map(|r| (when(r, wait, stamp), r))
+        .map(|r| (when(r, holds, stamp), r))
         .filter(|(at, r)| *at < r.until)
         .collect();
     due.sort_by_key(|(at, r)| (*at, r.key.clone()));
@@ -88,13 +88,13 @@ fn listed(all: &[Reminder], wait: Wait, now: &Zoned) -> String {
 
 /// When a reminder's alarm rings (Unix seconds): its time; past it, at once
 /// when nothing holds it, else when the hold ends (waking).
-fn when(reminder: &Reminder, wait: Wait, stamp: i64) -> i64 {
+fn when(reminder: &Reminder, holds: &Holds, stamp: i64) -> i64 {
     if reminder.at > stamp {
         reminder.at
-    } else if reminder.ready(stamp, wait) {
+    } else if reminder.ready_in(stamp, holds) {
         stamp + 1
     } else {
-        again_at(wait, stamp)
+        again_at(holds, stamp)
     }
 }
 
@@ -124,11 +124,11 @@ pub(crate) fn schedule() {
 
 /// The same from the window's minute, with the reminders it gathered
 /// (`remind::tick`): the calendars read once a minute, not twice.
-pub(crate) fn schedule_from(all: &[Reminder], wait: Wait, now: &Zoned) {
+pub(crate) fn schedule_from(all: &[Reminder], holds: &Holds, now: &Zoned) {
     if !cfg!(target_os = "android") {
         return;
     }
-    hand(listed(all, wait, now));
+    hand(listed(all, holds, now));
 }
 
 /// A reminder shown in Android's notifications, "Events": its words, "Open",
@@ -163,11 +163,13 @@ pub(crate) fn mail_note(title: &str, body: &str) {
     let _ = text;
 }
 
-/// When a reminder held now may come: waking, the end of free time; else
-/// in a quarter of an hour (Unix seconds).
-fn again_at(wait: Wait, stamp: i64) -> i64 {
-    match wait {
-        Wait::Sleep { until, .. } | Wait::Free { until } => until.max(stamp + 60),
+/// When a reminder held now may come: when the time now ends (waking, the
+/// end of free time, the hours' end); while a layer holds it (a slot of time
+/// for you, do-not-disturb) or the end is unknown (a pause), in a quarter of
+/// an hour (Unix seconds).
+fn again_at(holds: &Holds, stamp: i64) -> i64 {
+    match holds.until {
+        Some(until) if !holds.now.slot && !holds.now.dnd => until.max(stamp + 60),
         _ => stamp + AGAIN,
     }
 }
@@ -179,10 +181,11 @@ fn again_at(wait: Wait, stamp: i64) -> i64 {
 fn decide(key: &str) -> String {
     let now = Zoned::now();
     let stamp = now.timestamp().as_second();
-    let (all, wait) = reminders::gather_events(&load_config(), tr(), &now);
+    let (all, holds) = reminders::gather_events(&load_config(), tr(), &now);
+    let holds = crate::hours::with_layers(holds);
     let dir = reminders::told_dir();
     let answer = match all.iter().find(|r| r.key == key) {
-        Some(r) if r.ready(stamp, wait) => {
+        Some(r) if r.ready_in(stamp, &holds) => {
             // Told by the window's minute already: nothing more.
             let shown = reminders::claim(&dir, &r.key);
             if shown {
@@ -192,7 +195,7 @@ fn decide(key: &str) -> String {
         }
         // Not yet due (an alarm a moment early), or held now (you sleep): asked again then.
         Some(r) if stamp < r.until && !reminders::told(&dir, &r.key) => {
-            let again = when(r, wait, stamp).max(stamp + 1);
+            let again = when(r, &holds, stamp).max(stamp + 1);
             if again < r.until { serde_json::json!({ "again_at": again * 1000 }) } else { serde_json::json!({}) }
         }
         _ => serde_json::json!({}),
@@ -260,16 +263,23 @@ mod tests {
 
     #[test]
     fn held_reminders_are_asked_about_again_when_the_hold_ends() {
+        use sioul_core::reminders::Wait;
         let stamp = 1_800_000_000;
-        assert_eq!(again_at(Wait::Sleep { from: stamp - 3600, until: stamp + 7200 }, stamp), stamp + 7200, "at waking");
-        assert_eq!(again_at(Wait::Free { until: stamp + 600 }, stamp), stamp + 600, "at the end of free time");
-        assert_eq!(again_at(Wait::Free { until: stamp }, stamp), stamp + 60, "never at once again");
-        assert_eq!(again_at(Wait::Paused, stamp), stamp + AGAIN);
+        let usual = Holds::usual;
+        assert_eq!(again_at(&usual(Wait::Sleep { from: stamp - 3600, until: stamp + 7200 }), stamp), stamp + 7200, "at waking");
+        assert_eq!(again_at(&usual(Wait::Free { until: stamp + 600 }), stamp), stamp + 600, "at the end of free time");
+        assert_eq!(again_at(&usual(Wait::Free { until: stamp }), stamp), stamp + 60, "never at once again");
+        assert_eq!(again_at(&usual(Wait::Paused), stamp), stamp + AGAIN);
         // A reminder's alarm: its time; due and free, at once; held (a train after waking), at waking.
         let reminder = |at: i64, until: i64| Reminder { key: "before:train:1".into(), kind: Kind::Before, at, until, title: String::new(), body: String::new(), target: String::new(), work: false, starts: Some(until) };
-        let night = Wait::Sleep { from: stamp - 8 * 3600, until: stamp + 900 };
-        assert_eq!(when(&reminder(stamp + 600, stamp + 3600), Wait::Nothing, stamp), stamp + 600);
-        assert_eq!(when(&reminder(stamp - 60, stamp + 3600), Wait::Nothing, stamp), stamp + 1);
-        assert_eq!(when(&reminder(stamp - 60, stamp + 3600), night, stamp), stamp + 900, "kept in the list given, at waking");
+        let night = usual(Wait::Sleep { from: stamp - 8 * 3600, until: stamp + 900 });
+        assert_eq!(when(&reminder(stamp + 600, stamp + 3600), &usual(Wait::Nothing), stamp), stamp + 600);
+        assert_eq!(when(&reminder(stamp - 60, stamp + 3600), &usual(Wait::Nothing), stamp), stamp + 1);
+        assert_eq!(when(&reminder(stamp - 60, stamp + 3600), &night, stamp), stamp + 900, "kept in the list given, at waking");
+        // Held during do-not-disturb (the matrix changed): asked again in a quarter of an hour.
+        let mut focus = usual(Wait::Nothing);
+        focus.now.dnd = true;
+        focus.notify.set(sioul_core::notify::Kind::Before, sioul_core::notify::Column::Dnd, sioul_core::notify::Cell::Later).unwrap();
+        assert_eq!(when(&reminder(stamp - 60, stamp + 3600), &focus, stamp), stamp + AGAIN);
     }
 }

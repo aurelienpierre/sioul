@@ -12,7 +12,7 @@ import android.os.Bundle;
 import android.util.Log;
 
 /**
- * Android's question "Set Sioul as your default caller ID & spam app?"
+ * Android's question "Set Sioul as your default caller ID &amp; spam app?"
  * (docs/android.md, "Calls"), asked from Settings ▸ Calls: Android answers
  * only an activity that asks for a result, so this one, never seen, asks
  * and goes. Its answer is read again by Sioul when its window comes back.

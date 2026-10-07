@@ -4,7 +4,7 @@
 //! The weather at a place you chose, for a small applet in the status line:
 //! now, the next four hours one by one, then mornings, afternoons, evenings
 //! and nights. From Open-Meteo (no key; data CC BY 4.0, credited where
-//! shown: https://open-meteo.com/en/licence), in monochrome icons.
+//! shown: <https://open-meteo.com/en/licence>), in monochrome icons.
 
 use crate::i18n::Translator;
 use jiff::{Timestamp, Zoned};

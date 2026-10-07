@@ -275,7 +275,7 @@ pub fn mail_cases(links: &LocalLinks) -> std::collections::BTreeMap<String, Stri
 /// A budget line, as links see it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BudgetRef {
-    /// "sioul:budget/<budget>/<position>".
+    /// `sioul:budget/<budget>/<position>`.
     pub uri: String,
     /// Its label and amount, as the budget page writes them.
     pub title: String,

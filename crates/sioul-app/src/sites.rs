@@ -96,8 +96,8 @@ pub(crate) fn presets(country: &str, region: &str) -> String {
 
 /// The usual sites as a menu: each country (and everyone's), its groups
 /// (offices, banks, energy…) and its states or provinces apart, each with its
-/// own groups: {"countries": [{"name", "groups": [{"name", "sites": [row]}],
-/// "regions_name", "regions": [{"name", "groups"}]}]}.
+/// own groups: `{"countries": [{"name", "groups": [{"name", "sites": [row]}],
+/// "regions_name", "regions": [{"name", "groups"}]}]}`.
 pub(crate) fn presets_tree() -> String {
     let presets = sioul_core::presets::load();
     let language = tr().text("qt-locale", None);
@@ -258,12 +258,13 @@ static GATHERED: Mutex<i64> = Mutex::new(0);
 /// What sites notified, gathered in one notification at the times you set
 /// (docs/sites.md, "Notifications"): only the sites of these hours, not
 /// silenced, on the computer you are at. A site in real time, and a call,
-/// came at once already; the rest waits for the Porch as before. While you
-/// sleep, none: what the sites said waits for the next time after waking.
+/// came at once already; the rest waits for the Porch as before. A gathered
+/// time the notification matrix holds (as usual: sleep, a pause, Free time, a
+/// slot of time for you, do-not-disturb) is skipped: what the sites said
+/// waits for the next one.
 pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
     let config = load_config();
-    // While you sleep, and in a slot of time for you, what the sites said waits.
-    if !config.reminders.gather || !crate::hours::may_notify() || crate::hours::quiet_slot() {
+    if !config.reminders.gather || crate::hours::cell(sioul_core::notify::Kind::Sites) != sioul_core::notify::Cell::Gathered {
         return;
     }
     let now = jiff::Zoned::now();
@@ -329,17 +330,19 @@ pub(crate) fn list() -> String {
 
 /// A site's notification: shown at once when the site is in real time (or
 /// you asked for real time everywhere), else kept for the Porch. In quiet
-/// time, a work site's waits for work to come back; while you sleep, every
-/// site's waits.
+/// time, a work site's waits for work to come back; at the times the
+/// notification matrix holds them (as usual: sleep, a pause, Free time,
+/// do-not-disturb, and but for a call a slot of time for you), every site's.
 pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, title: &str, text: &str) {
     let config = load_config();
     let Some(site) = sites::sites(&config).into_iter().find(|s| s.id == id) else { return };
     let everywhere = shared.realtime.load(std::sync::atomic::Ordering::Relaxed);
-    let resting = !crate::backend::in_view_now(site.area) || (site.kind == "chat" && crate::health::chats_covered()) || !crate::hours::may_notify();
-    // A call waits for nobody: shown at once, unless the site is silenced or resting;
-    // in a slot of time for you, only a call (docs/capacity.md).
+    let resting = !crate::backend::in_view_now(site.area) || (site.kind == "chat" && crate::health::chats_covered());
+    // A call waits for nobody: shown at once, unless the site is silenced or
+    // resting, or the matrix holds calls in sites now.
     let call = sites::is_call(title, text) && !site.muted;
-    if (site.realtime || everywhere || call) && !resting && (call || !crate::hours::quiet_slot()) {
+    let kind = if call { sioul_core::notify::Kind::SiteCalls } else { sioul_core::notify::Kind::SitesLive };
+    if (site.realtime || everywhere || call) && !resting && crate::hours::comes(kind) {
         let heading = format!("{} · {}", site.name, title);
         if let Err(e) = sioul_sync::notify::code(&heading, text, None) {
             crate::backend::tell(qt, shared, e);
@@ -450,8 +453,8 @@ pub(crate) fn bitwarden_state(shared: &Shared) -> String {
 
 /// Opens the vault with your master password, and the second step's code
 /// when one was asked (`provider` as Bitwarden numbers them; -1 for none,
-/// 100 for the code of a new device). Returns {"ok"}, {"factor": [providers]},
-/// {"new_device"} or {"error"}. The password is never kept.
+/// 100 for the code of a new device). Returns `{"ok"}`, `{"factor": [providers]}`,
+/// `{"new_device"}` or `{"error"}`. The password is never kept.
 pub(crate) fn bitwarden_unlock(shared: &Shared, password: &str, provider: i32, code: &str) -> String {
     let config = load_config();
     let Some(email) = config.bitwarden.email.clone().filter(|e| !e.trim().is_empty()) else { return serde_json::json!({ "error": tr().text("bitwarden-missing", None) }).to_string() };

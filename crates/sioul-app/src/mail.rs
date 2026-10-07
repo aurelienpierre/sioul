@@ -265,7 +265,7 @@ pub(crate) fn locate(key: &str) -> Option<(Account, PathBuf)> {
     Some((account, file))
 }
 
-/// "read", "unread", "flag", "unflag", "archive", "trash", "junk", "not-junk", "move".
+/// "read", "unread", "flag", "unflag", "archive", "trash", "junk", "not-junk", "not-spam", "move".
 pub(crate) fn act(qt: &QtThread, shared: &Arc<Shared>, key: &str, action: &str, target: &str) {
     let Some((account, file)) = locate(key) else {
         set_status(qt, tr().text("mail-message-gone", None));
@@ -280,12 +280,21 @@ pub(crate) fn act(qt: &QtThread, shared: &Arc<Shared>, key: &str, action: &str, 
         Action::Trash => tr().text("undo-trashed", None),
         Action::Junk => tr().text("undo-junked", None),
         Action::NotJunk => tr().text("undo-not-junk", None),
+        Action::NotSpam => tr().text("undo-not-spam", None),
         Action::Move(name) => {
             let title = mailbox::folders(&account.id).into_iter().find(|f| f.name == *name).map_or_else(|| name.clone(), |f| folder_title(&f));
             say("undo-moved", &[("folder", title)])
         }
     };
     schedule(qt, shared, Work::Act { account, file, action }, line);
+}
+
+/// A sender blocked from one of their messages: the message goes into the
+/// spam filter's label log (`spam::labels`). Blocking does not wait on it.
+pub(crate) fn label_blocked(key: &str) {
+    if let Some((account, file)) = locate(key) {
+        let _ = mailbox::label(&account, &file, sioul_core::spam::labels::Source::Block);
+    }
 }
 
 fn folder_title(folder: &Folder) -> String {
@@ -303,6 +312,7 @@ fn action_of(action: &str, target: &str) -> Option<Action> {
         "trash" => Action::Trash,
         "junk" => Action::Junk,
         "not-junk" => Action::NotJunk,
+        "not-spam" => Action::NotSpam,
         "move" if !target.is_empty() => Action::Move(target.to_string()),
         _ => return None,
     })
@@ -328,6 +338,7 @@ pub(crate) fn act_many(qt: &QtThread, shared: &Arc<Shared>, keys: &[String], act
         Action::Archive => "undo-many-archived",
         Action::Junk => "undo-many-junked",
         Action::NotJunk => "undo-many-not-junk",
+        Action::NotSpam => "undo-many-not-spam",
         _ if in_trash => "undo-many-deleted",
         _ => "undo-many-trashed",
     };
