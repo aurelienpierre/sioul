@@ -207,7 +207,7 @@ The pair `stopped` and `set_stopped` above is the model. To let QML ask Rust som
     fn stopped(self: &Sioul) -> QString;
     ```
 
-    `&Sioul` if it only reads; `Pin<&mut Sioul>` if it sets a property or starts work that will.
+    `&Sioul` if it only reads; `Pin<&mut Sioul>` if it sets a property or starts work that will. The bridge writes the declaration out in C++, so a parameter must not be named with a C++ keyword: `auto` and `case`, as parameter names, once broke the build (name them `automatic`, `which`…); and an invokable named like one of `QObject`'s own methods hides it (`event` hides `QObject::event`, and the compiler warns at every build).
 
 3. **The implementation**, in the `impl qobject::Sioul` block: convert the `QString`s (`to_string()`, `QString::from`), call the function, return. Anything slow goes to a thread, and comes back through `qt.queue` (above).
 4. **The call**, in QML, by its camel-case name, through the page's `sioul`: `JSON.parse(card.sioul.stopped() || "null")`.

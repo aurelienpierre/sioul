@@ -249,6 +249,7 @@ The same files serve both. What differs:
 - **Changing an object inside a `var`** tells nobody (above): assign a new one.
 - **A page out of sight** keeps what it showed: `PorchPage.qml` copies `sioul.porch` into its own `porchText` only while it is visible, and again when it comes back, so that results landing meanwhile cost nothing.
 - **A window shown too early**: `main.qml` sets `visible: true` and maximizes the window in `Component.onCompleted`; its comment says that a `visibility` set in the declaration "left a phone's window unshown: a black screen".
+- **A tray menu shown by itself**: `Qt.labs.platform`'s `Menu` is visible by default, and a visible menu is a menu on the screen: Plasma's tray menu, and the widgets' fallback, then opened it at the screen's top left corner, unasked, as Sioul started. `qml-desktop/Tray.qml` sets `visible: false` on it; a right click on the tray icon still opens it.
 - **Every object made costs something later**: with Qt 6.11, each item shown, hidden or restacked makes Qt walk the window's whole tree at the next frame ([android.md](android.md#pages-and-scrolling)). Make as little as the page needs.
 
 ## Checking QML

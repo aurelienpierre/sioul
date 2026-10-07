@@ -55,7 +55,7 @@ What now is for is one of five times (`sioul_core::areas::Time`, decided by `sio
 | Sleep | leisure, if you open Sioul; no notification of any kind but doses | tasks, projects, time behind one sentence; every notification |
 | No hours set at all | everything, as before any were set | nothing |
 
-`sioul_core::areas::in_view` is the whole rule for areas, `sioul_core::quiet::mail_in_view` for mail; the status line says what now is and until when: "Admin time until 19:00: offices, bills, letters.", "Meal until 13:00.", "Leisure until 22:00: what you enjoy.", "Sleep: nothing disturbs until 07:00.", and for the two pauses "Free time: only your safe senders, doses and codes reach you. Work comes back when you do." and "Paused."
+`sioul_core::areas::in_view` is the whole rule for areas, the attention model's `Attention::mail` for mail ([attention.md](attention.md)); the status line says what now is and until when: "Admin time until 19:00: offices, bills, letters.", "Meal until 13:00.", "Leisure until 22:00: what you enjoy.", "Sleep: nothing disturbs until 07:00.", and for the two pauses "Free time: only your safe senders, doses and codes reach you. Work comes back when you do." and "Paused."
 
 ### "Work now"
 A box beside "Real time" on the Porch, and in the status line's menu on every page: work shown whatever the hours, as in working hours. It ends when you untick it, when Sioul closes (Sioul takes it back on starting too, after a crash), or once the next working day is over: today's working hours when they are not over yet, else the next working day's, past any time off; without working hours, at midnight (`quiet::end_of_next_workday`, `Overrides::work_now`). The status line says until when. Meals and sleep still come first.

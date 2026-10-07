@@ -289,6 +289,8 @@ Quotations are from the sources. Sources are listed under each section.
 - **In Sioul**: Now, List, Board and Timeline are built ([tasks.md](../tasks.md), "Places").
 
 ## Anti-patterns users complain about
+The column "In Sioul" says where Sioul stood on 4 October 2026; [tasks.md](../tasks.md) says how it is now.
+
 | Anti-pattern | Where | What users say, or what happens | Sioul's rule | In Sioul |
 |---|---|---|---|---|
 | Overdue pile in red | Todoist, Lunatask's badge, most apps | "Seeing a long list of overdue tasks can be paralysing"; the app itself avoided | No overdue state for plans; dates asked as time left | built |
@@ -315,7 +317,7 @@ Sources: as in the sections above, and https://www.additudemag.com/reviews/post/
 - Sources: https://forum.obsidian.md/t/a-maintainable-second-braind-for-someone-with-adhd/36106 · https://forum.obsidian.md/t/adhd-and-obsidian/89491 · https://www.dsebastien.net/stop-tweaking-your-tools-and-start-actually-using-them · https://docs.activitywatch.net/en/latest/faq.html · https://activitywatch.net/blog/activitywatch-vs-rescuetime/
 
 ## Ranked ideas, and where they stand
-Ranked by expected effect on starting a task and on overwhelm, for autistic and ADHD people in burnout first; evidence quality breaks ties.
+Ranked by expected effect on starting a task and on overwhelm, for autistic and ADHD people in burnout first; evidence quality breaks ties. The column "In Sioul" says where Sioul stood on 4 October 2026; [tasks.md](../tasks.md) says how it is now.
 
 | # | Idea | Main evidence | In Sioul |
 |---|---|---|---|
