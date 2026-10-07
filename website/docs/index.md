@@ -1,6 +1,6 @@
 ---
 title: Admin that adapts to you
-description: Sioul is a personal administrative environment. It fits the demands of work, institutions and money around what a person can give (attention, energy, health and rest first) and keeps the links between mail, tasks, appointments, papers and payments. Free software, on your own devices, designed as an act of care, from research.
+description: Sioul is a personal administrative environment. It fits the demands of work, institutions and money around what a person can give (attention, energy, health and rest first), lets them decide what may reach them and when, and keeps the links between mail, tasks, appointments, papers and payments. Free software, on your own devices, designed as an act of care, from research.
 ---
 
 # Sioul
@@ -20,6 +20,16 @@ A letter from the tax office, the task it asks for, the appointment, the documen
   <figcaption>The Porch: what came in waits for the hours you chose; the codes you just asked for come at once.</figcaption>
 </figure>
 
+## You decide what gets through
+
+The world does not get straight to your attention. Mail, calls, messages from other apps, the websites you keep, reminders and doses all pass through the same rules, and you set them. Each kind of time in your day has rules of its own: work, your admin, leisure, meals, sleep, and the free time or the pause you take at the press of a button.
+
+Some things come at once: the code you just asked a website for, a dose, a call from someone you chose. Some wait for their time: a client's mail waits for your working hours, the tax office's for your admin hours, and nobody's work reaches your evening. Some are shown where you look, on the Porch or on your phone's home screen, without a notification. Some never reach you, such as the senders you blocked.
+
+Being shown is not being interrupted. What waits on the Porch asks nothing of you until you look; only what you allowed may interrupt you.
+
+Most software lets each app decide when it may interrupt you. Sioul turns that around: you set the rules once, and they hold for your mail, calls, messages, sites and reminders, on your computer and on your phone; do-not-disturb, switched on one of them, holds on all. [What reaches you, and when](guide/notifications.md)
+
 ## Why Sioul exists
 
 Sioul is the working counterpart of a book by the same author, *Design and Engineering, in Spite of Open-Source* ([free, in PDF and EPUB](https://editions.aurelienpierre.com/en/concevoir/)). The book states: "A tool serves its user, or it betrays them. There is no in-between." Sioul applies its method where software most often leaves the burden on the person: everyday admin.
@@ -31,11 +41,11 @@ One test for everything added to Sioul: does it take work off the person, rather
 | Most software | Sioul |
 |---|---|
 | Your obligations fill the day; your needs fit around them. | Your needs shape the day; the work fits around them. |
-| Everything shows the moment it arrives. | Only what belongs in your attention now is shown. |
+| Every app decides when it may interrupt you. | You decide what may reach you, and when; the rest waits for its time. |
 | Each kind of thing has its own program, and you keep the links. | Each piece is tied to the others, and Sioul keeps the links. |
 | A missed date becomes overdue work. | The plan starts again from today. Nothing becomes a debt. |
 
-**These are not four interface choices. They are the four rules from which the rest of Sioul follows.**
+**These are not four interface choices. They are the four rules from which the rest of Sioul follows.** Mail, calls, the agenda, tasks, health, budgets and the phone are not separate modules side by side: they are the same four rules, each time applied to one kind of thing.
 
 ## Day to day
 
@@ -45,7 +55,7 @@ You set your meals, your rest and your sleep first. They are kept free in the pl
 
 ### A porch between the world and your attention
 
-Nothing new walks straight in. Mail, the news from the "secure mailboxes" of banks and offices, chats: everything waits on the Porch, sorted, and shown in the hours you chose. The question is not what has arrived, but what belongs in your attention now: a client in your working hours, the tax office in your admin hours, nobody's work in the evening. Each message is checked first, genuine or forged. The codes you just asked a website for come at once.
+Nothing new walks straight in: arriving is not entering. Mail, the news from the "secure mailboxes" of banks and offices, chats: everything waits on the Porch, sorted, and shown in the hours you chose. The question is not what has arrived, but what belongs in your attention now. Each message is checked first, genuine or forged. Even spam is dealt with before it reaches you: a filter of your own, trained on your computer from your mail, judges only strangers' messages, and what looks like spam waits in a folded queue, never announced, until you have time to look. The codes you just asked a website for come at once.
 
 ### Nothing to be afraid of getting wrong
 
@@ -53,7 +63,7 @@ No unread counts, no badges, no red, no streaks; new mail makes no sound, and no
 
 ## The software keeps the links
 
-Most software splits a case across a mail program, a calendar, a task list, a folder and a bank's website, and leaves you to remember how the pieces relate.
+Most software splits a case across a mail program, a calendar, a task list, a folder and a bank's website, and leaves you to remember how the pieces relate. Yet you never think "now I use my mail program"; you think "now I deal with this client". Sioul is built the second way.
 
 In Sioul, each case is a project: a tax return, a lease, a client's work, any matter you follow. Its mail comes to it by itself, by sender or by words. Its tasks, events, notes and the people involved are tied to it, and each task, contact or note shows what it is tied to. The project lays it all on one line of time: what is coming, then what happened. Your own business too: a client's mail, the tasks, the time spent, the invoice, the money expected and the figures for your accountant form one chain.
 
@@ -89,7 +99,7 @@ Many neurodivergent people work for themselves, because office life does not fit
 
     ---
 
-    Working hours and hours for your own admin; leisure every other time; meals and sleep from Health. Each address, site, budget and task belongs to one or several; the rest waits, out of sight. While you sleep, nothing disturbs but your doses.
+    Working hours and hours for your own admin; leisure every other time; meals and sleep from Health; Free time and Pause when you take them. Each address, site, budget and task belongs to one or several; the rest waits, out of sight. While you sleep, nothing disturbs but what you let through, such as your doses.
 
     [Hours](guide/hours.md)
 
@@ -193,11 +203,13 @@ It is made by one person, in the open: no support is promised. Questions and rep
 1. [Install Sioul](guide/install.md).
 2. [Take the first steps](guide/first-steps.md): add your mail, your calendars and contacts, your Google account, the websites you check.
 3. [Set your hours](guide/hours.md), so that work, admin and rest each have their time.
-4. Then read about [the Porch](guide/porch.md), where new mail waits.
+4. [See what reaches you, and when](guide/notifications.md), said in sentences, and change what does not suit you.
+5. Then read about [the Porch](guide/porch.md), where new mail waits.
 
 ## For technical readers
 
 - **Every message checked on arrival**: SPF, DKIM, DMARC, ARC and reverse DNS, by Sioul itself. Forged mail is set aside with the reason. Names borrowed from brands are caught, even when written with look-alike letters ([Privacy and security](guide/privacy-security.md)).
+- **A spam filter of your own**: a fastText classifier trained on your computer, when you ask, from your own mail (the headers and the start of each text, never attachments); only its compact table travels to your phone, sealed. It judges only strangers' mail, and moves nothing unless you choose to ([Your own spam filter](guide/settings.md#your-own-spam-filter)).
 - **Attachments scanned before they open**, by your system's antivirus: ClamAV on Linux and macOS, Microsoft Defender (through AMSI) on Windows.
 - **HTML mail made safe**: nothing remote loads, nothing runs.
 - **Security keys and Bitwarden**: WebAuthn and FIDO2 keys (a YubiKey) work in the sites you keep. Logins are filled from Bitwarden, read by Sioul itself and never written.
