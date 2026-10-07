@@ -176,7 +176,13 @@ pub fn folders(account: &str) -> Vec<Folder> {
 pub fn folder_of(account: &Account, file: &Path) -> Option<Folder> {
     let directory = file.parent()?.parent()?;
     let root = account.maildir_path();
-    folders(&account.id).into_iter().find(|f| root.join(&f.local) == directory)
+    let all = folders(&account.id);
+    if let Some(folder) = all.iter().find(|f| root.join(&f.local) == directory) {
+        return Some(folder.clone());
+    }
+    // Each path as the system resolves it, where a folder sits behind a link (as `Config::account_of`).
+    let directory = std::fs::canonicalize(directory).ok()?;
+    all.into_iter().find(|f| std::fs::canonicalize(root.join(&f.local)).is_ok_and(|d| d == directory))
 }
 
 /// Brings back what changed on the server since the last sync, for the
