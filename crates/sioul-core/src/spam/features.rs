@@ -6,16 +6,16 @@
 //! message's words (`header_words`), so that each can be explained by its
 //! name (docs/spam-filter.md, "The header features").
 //!
-//! They are read from the raw header block (`RawHeaders`), from your
-//! provider's authentication results (`provider_results`), from the
-//! message's parts (`card::Shape`) and from
+//! They are read from the raw header block (`RawHeaders`), from the
+//! authentication results (`auth_results`: Sioul's own first, your
+//! provider's second), from the message's parts (`card::Shape`) and from
 //! the links its text holds (`tokenize::Tokens::links`); never from the order
 //! of the headers. Left out, because they would teach the filter where mail
 //! was collected rather than what it is: To and Cc, the account, dates as
 //! such, the provider's own marks.
 //!
-//! A value can be missing (`f32::NAN`): your provider's checks when it wrote
-//! none, or none under a name you trust; the route where it cannot be read.
+//! A value can be missing (`f32::NAN`): the checks when neither Sioul nor
+//! a provider you trust wrote any; the route where it cannot be read.
 //! A missing value stands at the training's mean, which is over the messages
 //! that have it: it weighs nothing (`table::Table::score`). So mail from a
 //! provider that writes no results, or reached through one whose lines are
@@ -35,6 +35,34 @@
 //! as words (`header_words`: a fact that holds, its name; a number, its bin)
 //! rather than weighed by an SVM beside the mean of the words' vectors.
 //!
+//! Version 4 (the same evening): the checks are Sioul's own first, your
+//! provider's second (`auth_results`). Sioul checks each message whole as it
+//! stores it (its stamp on top of it, `sioul_sync::verify`), and the
+//! training corpus now keeps the same checks, made on the whole message
+//! when it fetched it (`sioul_learn::corpus::Checked`, read with
+//! `stamp_results`): the training and the sorting weigh the same verifier's
+//! word. Before, the corpus had no such checks, and both read the
+//! provider's alone, which a shared host may never write: there, every
+//! check was missing, and only a signature's unverified claim was left.
+//!
+//! How a result reads (`features`): a pass, the fact holds (DKIM: a
+//! signature verified against its key in the DNS; SPF: the server that
+//! handed the message to your provider is one its domain names; DMARC: the
+//! sender's domain vouches for it); a fail or a softfail, the failure
+//! holds; anything else is neither, unknown, never a failure: no signature
+//! or no record ("none"), a key not found or revoked, a DNS error
+//! ("permerror", "temperror"), a signature expired or a body changed since
+//! it was signed ("neutral", as mail-auth says them). Checks made long after
+//! the message came (`LATE`: the corpus's, of old mail) keep their passes,
+//! for what passes today passed then (the key that verifies the signature,
+//! the server its domain still names). Their failures hold only when the
+//! message carries no DKIM signature (`late`, `signed`): a signature that no
+//! longer verifies (expired, its key gone or rotated, some under the same
+//! selector) may have passed then, and DMARC with it, so beside one every
+//! failure reads unknown; a message without one has nothing of its own to
+//! expire, and a sender spoofed then is spoofed now (its domain's records do
+//! not turn the failure into a pass).
+//!
 //! The same function runs on the desktop when training and on every device
 //! when sorting: a change of a feature, of its order or of its scale raises
 //! `FEATURES`, and a table made with others is refused.
@@ -45,16 +73,16 @@ use crate::headers::RawHeaders;
 use crate::trust::{self, AuthResults, Outcome, Trust};
 
 /// The header features' version, stamped in every table.
-pub const FEATURES: u32 = 3;
+pub const FEATURES: u32 = 4;
 
 /// How many header features there are.
 pub const N: usize = 35;
 
 /// Each feature's name, in the order of `features`' values.
 pub const NAMES: [&str; N] = [
-    // Authentication as your provider checked it (`provider_results`): pass,
-    // fail, or neither for each check; missing when it wrote no results
-    // under a name you trust. Then the sender's domain vouching for the
+    // Authentication as Sioul checked it, else your provider (`auth_results`):
+    // pass, fail, or neither for each check; missing when neither wrote
+    // results (under a name you trust). Then the sender's domain vouching for the
     // message (DMARC, or a signature of its own: `trust::judge_sender`), missing alike.
     "spf_pass", "spf_fail", "dkim_pass", "dkim_fail", "dmarc_pass", "dmarc_fail", "aligned",
     // What the message carries itself, the same wherever it is received:
@@ -80,17 +108,59 @@ pub const NAMES: [&str; N] = [
     "list_unsubscribe", "list_id", "precedence_bulk",
 ];
 
-/// The authentication results the features read: your provider's alone, as
-/// its account trusts them (`trust::read_auth_results` with `trusted_ids`
-/// but Sioul's own, under `.invalid`). Sioul stamps a message as it stores it
-/// and checks DKIM on the whole message; the training corpus keeps the
-/// message as the server holds it, its header block and a part of its text:
-/// its provider's header is the one both read, so the training and the
-/// sorting weigh the same thing. Everything else (lanes, forgeries, who sent
-/// it) reads Sioul's stamp first.
-pub fn provider_results(headers: &RawHeaders, trusted_ids: &[String]) -> Option<AuthResults> {
-    let provider: Vec<String> = trusted_ids.iter().filter(|id| !id.trim().to_ascii_lowercase().ends_with(".invalid")).cloned().collect();
-    trust::read_auth_results(headers, &provider)
+/// The authentication results the features read of a message as it is
+/// stored: Sioul's own first (its stamp, under this installation's id, which
+/// ends in `.invalid`), your provider's second (the account's other trusted
+/// ids), as the lanes, the forgeries and the senders read them. The training
+/// corpus keeps the message as the server holds it, without the stamp, and
+/// Sioul's checks beside it (`sioul_learn::corpus::Checked`), which it reads
+/// with `stamp_results` first: the same verifier on both sides.
+pub fn auth_results(headers: &RawHeaders, trusted_ids: &[String]) -> Option<AuthResults> {
+    let (own, provider): (Vec<String>, Vec<String>) = trusted_ids.iter().cloned().partition(|id| id.trim().to_ascii_lowercase().ends_with(".invalid"));
+    trust::read_auth_results(headers, &own).or_else(|| trust::read_auth_results(headers, &provider))
+}
+
+/// What a stamp of Sioul's says ("Authentication-Results: sioul-….invalid;
+/// dkim=pass …"), whatever installation's id it bears: for a stamp kept
+/// apart from its message, where no sender could have written it (the
+/// training corpus's `Checked`); none when it says nothing readable.
+pub fn stamp_results(stamp: &str) -> Option<AuthResults> {
+    let headers = RawHeaders::parse(format!("{}\r\n\r\n", stamp.trim_end()).as_bytes());
+    let id = headers.first("Authentication-Results")?.split(';').next()?.split_whitespace().next()?.to_string();
+    trust::read_auth_results(&headers, &[id])
+}
+
+/// How long after a message came its checks read as they are; later, the
+/// failures of a signed message read unknown (see the module): 30 days, in
+/// seconds.
+pub const LATE: i64 = 30 * 86_400;
+
+/// Checks made long after the message came (`LATE`), of a message that
+/// carries a DKIM signature or not (`signed`): signed, their passes only,
+/// every other result unknown; unsigned, as they are (see the module).
+pub fn late(mut results: AuthResults, signed: bool) -> AuthResults {
+    if !signed {
+        return results;
+    }
+    if results.dkim != Some(Outcome::Pass) {
+        results.dkim_domain = None;
+    }
+    if results.dmarc != Some(Outcome::Pass) {
+        results.dmarc_policy = None;
+    }
+    for outcome in [&mut results.spf, &mut results.dkim, &mut results.dmarc, &mut results.arc, &mut results.iprev] {
+        if *outcome != Some(Outcome::Pass) {
+            *outcome = None;
+        }
+    }
+    results
+}
+
+/// Whether a message carries a DKIM signature (one naming its domain, `d=`),
+/// whatever became of it since: what `dkim_signed` says, and what tells old
+/// mail's failures apart (`late`).
+pub fn signed(headers: &RawHeaders) -> bool {
+    headers.all("DKIM-Signature").any(|value| dkim_domain(value).is_some())
 }
 
 /// A feature's place, by its name.
@@ -153,7 +223,7 @@ pub fn all_header_words() -> Vec<(String, usize)> {
 }
 
 /// The header features of a message: its card (headers, parts, text),
-/// its provider's authentication results (`provider_results`),
+/// its authentication results (`auth_results`, or the corpus's own checks),
 /// when its provider received it (IMAP's INTERNALDATE, the Maildir file's
 /// time), the domains of its links (`tokenize::tokens`). A value it cannot
 /// know is `f32::NAN` (see the module).
@@ -402,25 +472,70 @@ mod tests {
         assert_eq!((value(&esp, "dkim_signed"), value(&esp, "dkim_signed_by_sender"), value(&esp, "return_path_at_sender")), (1.0, 0.0, 0.0));
     }
 
-    /// Sioul's stamp on top, or not: the features are the same, read from the
-    /// provider's header that the training corpus has too.
+    /// Sioul's own checks first, the provider's when Sioul's are not there;
+    /// the training corpus's checks, kept apart from the message as the
+    /// server holds it, read as the stamp on top of the message stored.
     #[test]
-    fn sioul_stamp_or_not_the_same_features() {
+    fn sioul_first_then_the_provider() {
         let provider = "Authentication-Results: mx.provider.example; spf=pass smtp.mailfrom=shop.example; dkim=pass header.d=shop.example; dmarc=pass header.from=shop.example\r\n\
                         From: Shop <news@shop.example>\r\nMessage-ID: <n-1@shop.example>\r\nDate: Wed, 07 Oct 2026 07:00:00 +0000\r\nSubject: This week\r\n\r\nNew in store.\r\n";
-        let stamped = format!("Authentication-Results: sioul-0123456789ab.invalid; spf=fail smtp.mailfrom=shop.example; dkim=fail header.d=shop.example; dmarc=none\r\n{provider}");
+        // As mail-auth writes it: comments, folded lines.
+        let stamp = "Authentication-Results: sioul-0123456789ab.invalid;\r\n\tdkim=fail (verification failed) header.d=shop.example header.s=s1 header.b=AbCdEf;\r\n\tspf=fail (sioul-0123456789ab.invalid: domain of shop.example does not designate 192.0.2.7 as permitted sender) smtp.mailfrom=shop.example;\r\n\tdmarc=fail header.from=shop.example policy.dmarc=none\r\n";
+        let stamped = format!("{stamp}{provider}");
         let ids = ["sioul-0123456789ab.invalid".to_string(), "mx.provider.example".to_string()];
-        let read = |raw: &str| {
+        let read = |raw: &str, own: Option<AuthResults>| {
             let card = Card::from_bytes(raw.as_bytes()).unwrap();
             let links = super::super::tokenize::tokens(&card.subject, &card.excerpt).links;
-            (features(&card, provider_results(&card.headers, &ids).as_ref(), Some(1_791_360_000), &links), trust::read_auth_results(&card.headers, &ids))
+            let auth = own.or_else(|| auth_results(&card.headers, &ids));
+            features(&card, auth.as_ref(), Some(1_791_360_000), &links)
         };
-        let ((plain, _), (with_stamp, sioul_first)) = (read(provider), read(&stamped));
-        // Bit for bit: a missing value (no route here) is NaN in both, which equals nothing.
-        assert_eq!(plain.map(f32::to_bits), with_stamp.map(f32::to_bits));
+        // Without Sioul's stamp: the provider's.
+        let plain = read(provider, None);
         assert_eq!((value(&plain, "spf_pass"), value(&plain, "dkim_pass"), value(&plain, "aligned")), (1.0, 1.0, 1.0));
-        // What the lanes read differs: Sioul's own checks come first there.
-        assert_eq!(sioul_first.map(|r| r.authserv_id).as_deref(), Some("sioul-0123456789ab.invalid"));
+        // With it on top (a stored message, as the Porch sorts it): Sioul's, whatever the provider says.
+        let sorted = read(&stamped, None);
+        assert_eq!((value(&sorted, "spf_fail"), value(&sorted, "dkim_fail"), value(&sorted, "dmarc_fail"), value(&sorted, "aligned")), (1.0, 1.0, 1.0, 0.0));
+        assert_eq!((value(&sorted, "spf_pass"), value(&sorted, "dkim_pass"), value(&sorted, "dmarc_pass")), (0.0, 0.0, 0.0));
+        // The same checks kept apart (a corpus record): the same features, bit for bit
+        // (a missing value, no route here, is NaN in both, which equals nothing).
+        let trained = read(provider, stamp_results(stamp));
+        assert_eq!(trained.map(f32::to_bits), sorted.map(f32::to_bits));
+        // Another installation's stamp on a message is anyone's: not read, the provider's is.
+        let foreign = read(&stamped.replace("sioul-0123456789ab", "sioul-ffffffffffff"), None);
+        assert_eq!(foreign.map(f32::to_bits), plain.map(f32::to_bits));
+        assert!(stamp_results("Subject: no stamp").is_none() && stamp_results("").is_none());
+    }
+
+    /// Old mail checked today: what passes still says so; beside a
+    /// signature (which may have expired or lost its key since), a failure
+    /// reads unknown (neither pass nor fail), never failed, and nothing else
+    /// changes; without one, the failures hold (nothing of the message
+    /// expires: a sender spoofed then is spoofed now).
+    #[test]
+    fn old_checks_keep_their_passes_and_unsigned_failures() {
+        let raw = "From: Bank <alerts@bank.example>\r\nMessage-ID: <b-1@bank.example>\r\nSubject: Statement\r\n\r\nYour statement.\r\n";
+        let card = Card::from_bytes(raw.as_bytes()).unwrap();
+        let read = |auth: Option<AuthResults>| features(&card, auth.as_ref(), Some(1_791_360_000), &[]);
+        let failed = stamp_results("Authentication-Results: sioul-0123456789ab.invalid; dkim=fail header.d=bank.example header.s=selector1; spf=softfail smtp.mailfrom=bank.example; dmarc=fail header.from=bank.example policy.dmarc=reject").unwrap();
+        let fresh = read(Some(failed.clone()));
+        assert_eq!((value(&fresh, "dkim_fail"), value(&fresh, "spf_fail"), value(&fresh, "dmarc_fail")), (1.0, 1.0, 1.0));
+        let old = read(Some(late(failed, true)));
+        for name in ["spf_pass", "spf_fail", "dkim_pass", "dkim_fail", "dmarc_pass", "dmarc_fail", "aligned"] {
+            assert_eq!(value(&old, name), 0.0, "{name}: unknown, not failed (nor missing: Sioul checked it)");
+        }
+        let passed = stamp_results("Authentication-Results: sioul-0123456789ab.invalid; dkim=pass header.d=bank.example header.s=s2024; dkim=permerror (no key) header.d=bank.example header.s=s2019; spf=pass smtp.mailfrom=bank.example; dmarc=pass header.from=bank.example policy.dmarc=reject").unwrap();
+        assert_eq!(read(Some(late(passed.clone(), true))).map(f32::to_bits), read(Some(passed)).map(f32::to_bits), "passes kept as they are");
+        let x = read(Some(late(stamp_results("Authentication-Results: sioul-0123456789ab.invalid; dkim=pass header.d=bank.example; spf=fail smtp.mailfrom=bank.example").unwrap(), true)));
+        assert_eq!((value(&x, "dkim_pass"), value(&x, "aligned"), value(&x, "spf_fail")), (1.0, 1.0, 0.0));
+        // Unsigned (a spoofed sender, as junk folders hold them): its failures as they are.
+        let spoofed = stamp_results("Authentication-Results: sioul-0123456789ab.invalid; spf=softfail smtp.mailfrom=bank.example; dmarc=fail header.from=bank.example policy.dmarc=reject").unwrap();
+        let unsigned = read(Some(late(spoofed.clone(), false)));
+        assert_eq!(unsigned.map(f32::to_bits), read(Some(spoofed)).map(f32::to_bits), "unsigned: as they are");
+        assert_eq!((value(&unsigned, "spf_fail"), value(&unsigned, "dmarc_fail"), value(&unsigned, "aligned")), (1.0, 1.0, 0.0));
+        // What tells them apart: a DKIM-Signature naming its domain, whatever became of it.
+        let signed_card = Card::from_bytes(format!("DKIM-Signature: v=1; a=rsa-sha256; d=bank.example; s=selector1; bh=x; b=y\r\n{raw}").as_bytes()).unwrap();
+        assert!(signed(&signed_card.headers) && !signed(&card.headers));
+        assert!(!signed(&RawHeaders::parse(b"DKIM-Signature: v=1; s=selector1; b=y\r\n\r\n")), "no domain: no signature");
     }
 
     /// The header facts as words: those that hold, numbers in bins, nothing for a missing one.

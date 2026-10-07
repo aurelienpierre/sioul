@@ -718,6 +718,9 @@ mod tests {
         assert!(Table::from_bytes(&other.to_bytes()).unwrap_err().contains("tokenizer"));
         let fewer = Table { weights: vec![0.0; N - 1], means: vec![0.0; N - 1], ..small() };
         assert!(Table::from_bytes(&fewer.to_bytes()).unwrap_err().contains("header features"));
+        // The version before (features 3: the provider's checks alone, none of Sioul's): refused.
+        let older = Table { features: features::FEATURES - 1, ..small() };
+        assert!(Table::from_bytes(&older.to_bytes()).unwrap_err().contains(&format!("header features {}", features::FEATURES - 1)));
         let broken = Table { buckets: vec![f32::NAN; 8], ..small() };
         assert!(Table::from_bytes(&broken.to_bytes()).is_err());
         // Format 1 (made before the classifier's kind): refused, its checksum made good again.

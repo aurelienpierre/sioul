@@ -1259,7 +1259,7 @@ pub fn triage(card: Card, ctx: &Context) -> Triaged {
     let sender = ctx.sender(&card, authenticated);
     // Spam is said of strangers' mail only: Sioul's own filter reads nothing protected.
     let protected = protected(&card, ctx, trust, code.as_ref(), sender);
-    // Its features read your provider's results alone, as the training does (`spam::features::provider_results`).
+    // Its features read Sioul's own checks first, your provider's second, as the training reads the corpus's (`spam::features::auth_results`).
     let learned = if protected { None } else { ctx.spam.and_then(|filter| filter.judge(&card, ctx.trusted_ids).map(|verdict| (filter, verdict))) };
     let (lane, reason) = choose_lane(&card, ctx, trust, code.as_ref(), assessment.as_ref(), sender, protected, learned);
     let mut reasons = vec![Reason::Trust(proof), reason];

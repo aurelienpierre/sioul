@@ -4066,6 +4066,7 @@ attention-exceptions-events = An event's own reminder
 attention-exceptions-events-help = Each event can say its own reminder, or none: in its form, Remind.
 attention-open-agenda = Open the Agenda
 attention-exceptions-health = A meal, a nap, the night, one day
+spam-stage-verify = Checking each message as Sioul checks the mail it stores, its signatures and its sender (each fetched whole once, in memory only)…
 attention-exceptions-health-help = Each can go without its notices, for one day or for good: on the Health page.
 attention-open-health = Open Health
 attention-dnd-turns-on = What turns it on
@@ -4120,6 +4121,12 @@ attention-sheet-line-messages-now = { $first ->
    *[other] They come at once { $during }.
 }
 attention-sheet-line-messages-later = { $first ->
+spam-fetch-checked = { $n ->
+    [one] One message checked by Sioul, { $gone } of them no longer on its server.
+   *[other] { $n } messages checked by Sioul, { $gone } of them no longer on their server.
+}
+spam-fetch-offline = No DNS server answered: the messages left are checked at the next download.
+spam-checks = { $account }: Sioul checked { $checked } of { $records } messages ({ $gone } no longer on their server). DKIM: { $dkim_pass } pass, { $dkim_fail } fail, { $dkim_unknown } unknown, { $dkim_none } unsigned. SPF: { $spf_pass } pass, { $spf_fail } fail, { $spf_unknown } unknown. DMARC: { $dmarc_pass } pass, { $dmarc_fail } fail, { $dmarc_unknown } unknown. The sender verified: { $verified }. Old mail whose failures read unknown: { $late }.
     [yes] Their messages are held { $during }.
    *[other] They are held { $during }.
 }

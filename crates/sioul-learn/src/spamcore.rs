@@ -201,6 +201,7 @@ mod tests {
             structure: Some(structure),
             plain: plain.map(text),
             html: html.map(text),
+            checked: None,
             fetched: 0,
         }
     }

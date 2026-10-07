@@ -232,6 +232,9 @@ pub(crate) fn status(s: &Session, dirs: &Dirs) -> Result<Report, String> {
         lines.push(s.say("spam-verdicts", &[("account", account.clone()), ("records", v.records.to_string()), ("with", v.with_header.to_string()), ("read", v.read.to_string()), ("flagged", v.flagged.to_string())]));
         verdicts.insert(account, json!({ "records": v.records, "with_header": v.with_header, "read": v.read, "flagged": v.flagged }));
     }
+    // Sioul's own checks of the corpus's messages, as training reads them: totals only.
+    let (check_lines, checks) = check_counts(s, dirs)?;
+    lines.extend(check_lines);
     // The table in use here.
     let table = match Table::read(&dirs.table()) {
         Ok(table) => {
@@ -265,8 +268,46 @@ pub(crate) fn status(s: &Session, dirs: &Dirs) -> Result<Report, String> {
         "held": corpus.held.map(|h| json!({ "at": instant(h.at), "free_mb": h.free >> 20 })), "errors": corpus.errors,
     });
     let jobs: Vec<Value> = running.iter().map(job_data).collect();
-    let data = json!({ "corpus": corpus_data, "outside": outside, "verdicts": verdicts, "table": table, "last_training": last.as_ref().map(to_data), "jobs": jobs });
+    let data = json!({ "corpus": corpus_data, "outside": outside, "verdicts": verdicts, "checks": checks, "table": table, "last_training": last.as_ref().map(to_data), "jobs": jobs });
     Ok(Report { lines, data })
+}
+
+/// What Sioul's checks say of each account's messages in the corpus, as
+/// training reads them (`corpus::checks`): a line per account, and the
+/// counts as data. Numbers only, never a message.
+fn check_counts(s: &Session, dirs: &Dirs) -> Result<(Vec<String>, Value), String> {
+    let mut lines = Vec::new();
+    let mut data = Map::new();
+    for (account, c) in corpus::checks(dirs).map_err(|e| e.to_string())? {
+        let tally = |t: &corpus::Tally| [t.pass.to_string(), t.fail.to_string(), t.unknown.to_string(), t.none.to_string()];
+        let [dkim_pass, dkim_fail, dkim_unknown, dkim_none] = tally(&c.dkim);
+        let [spf_pass, spf_fail, spf_unknown, _] = tally(&c.spf);
+        let [dmarc_pass, dmarc_fail, dmarc_unknown, _] = tally(&c.dmarc);
+        let checked = c.records - c.unchecked;
+        lines.push(s.say(
+            "spam-checks",
+            &[
+                ("account", account.clone()),
+                ("records", c.records.to_string()),
+                ("checked", checked.to_string()),
+                ("gone", c.gone.to_string()),
+                ("verified", c.verified.to_string()),
+                ("dkim_pass", dkim_pass),
+                ("dkim_fail", dkim_fail),
+                ("dkim_unknown", dkim_unknown),
+                ("dkim_none", dkim_none),
+                ("spf_pass", spf_pass),
+                ("spf_fail", spf_fail),
+                ("spf_unknown", spf_unknown),
+                ("dmarc_pass", dmarc_pass),
+                ("dmarc_fail", dmarc_fail),
+                ("dmarc_unknown", dmarc_unknown),
+                ("late", c.late_failures.to_string()),
+            ],
+        ));
+        data.insert(account, to_data(&c));
+    }
+    Ok((lines, Value::Object(data)))
 }
 
 // A training's summary, in lines.
@@ -556,8 +597,19 @@ fn detail_report(s: &Session, detail: &Detail, learned_before: Option<i64>, said
 
 // `sioul spam fetch`.
 
-/// The corpus brought up to date: every account that syncs, or one.
+/// The corpus brought up to date: every account that syncs, or one; each
+/// message checked by Sioul as it comes, then those kept before without
+/// checks.
 pub(crate) fn fetch(s: &Session, dirs: &Dirs, only: Option<&str>, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Report, String> {
+    fetch_or_verify(s, dirs, only, false, progress, cancel)
+}
+
+/// Only Sioul's checks of the messages kept without them (`sioul spam fetch --verify`): nothing new downloaded.
+pub(crate) fn verify(s: &Session, dirs: &Dirs, only: Option<&str>, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Report, String> {
+    fetch_or_verify(s, dirs, only, true, progress, cancel)
+}
+
+fn fetch_or_verify(s: &Session, dirs: &Dirs, only: Option<&str>, verify: bool, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Report, String> {
     let accounts: Vec<_> = s.config.accounts.iter().filter(|a| a.syncs() && only.is_none_or(|id| a.id == id)).cloned().collect();
     if accounts.is_empty() {
         return Err(match only {
@@ -565,7 +617,8 @@ pub(crate) fn fetch(s: &Session, dirs: &Dirs, only: Option<&str>, progress: &mut
             None => s.tr.text("sync-nothing", None),
         });
     }
-    let update = corpus::update(&accounts, &|a| sioul_sync::secret::password(a), dirs, &corpus::free_space, progress, cancel);
+    let password = |a: &sioul_core::config::Account| sioul_sync::secret::password(a);
+    let update = if verify { corpus::verify(&accounts, &password, dirs, progress, cancel) } else { corpus::update(&accounts, &password, dirs, &corpus::free_space, progress, cancel) };
     if update.cancelled {
         return Err(s.tr.text("spam-stopped", None));
     }
@@ -573,12 +626,23 @@ pub(crate) fn fetch(s: &Session, dirs: &Dirs, only: Option<&str>, progress: &mut
     for (account, detail) in &update.failed {
         lines.push(s.say("spam-account-failed", &[("account", account.clone()), ("detail", one_line(detail))]));
     }
-    lines.push(s.say("spam-fetch-added", &[("n", update.added.to_string())]));
+    if !verify {
+        lines.push(s.say("spam-fetch-added", &[("n", update.added.to_string())]));
+    }
+    lines.push(s.say("spam-fetch-checked", &[("n", update.checked.to_string()), ("gone", update.gone.to_string())]));
+    if update.offline {
+        lines.push(s.tr.text("spam-fetch-offline", None));
+    }
     if let Some(held) = update.held {
         lines.push(s.say("spam-held", &[("free", (held.free >> 20).to_string())]));
     }
+    let (check_lines, checks) = check_counts(s, dirs)?;
+    lines.extend(check_lines);
     let failed: Vec<Value> = update.failed.iter().map(|(account, detail)| json!({ "account": account, "detail": one_line(detail) })).collect();
-    let data = json!({ "added": update.added, "failed": failed, "held": update.held.map(|h| json!({ "free_mb": h.free >> 20 })) });
+    let data = json!({
+        "added": update.added, "checked": update.checked, "gone": update.gone, "offline": update.offline,
+        "failed": failed, "held": update.held.map(|h| json!({ "free_mb": h.free >> 20 })), "checks": checks,
+    });
     Ok(Report { lines, data })
 }
 

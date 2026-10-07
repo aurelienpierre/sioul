@@ -28,7 +28,7 @@
 //!
 //! # Modules
 //!
-//! - [`corpus`]: what training reads, downloaded from every folder of every account and kept here, junk included after your provider purges it.
+//! - [`corpus`]: what training reads, downloaded from every folder of every account and kept here, junk included after your provider purges it, with Sioul's own checks of each message (its signatures, its sender) made on the whole message.
 //! - [`external`]: outside training material, mail labelled elsewhere, imported once (`sioul spam import`): more words to learn, and a baseline.
 //! - [`labels`]: spam or ham for each message, from its folder, its keywords and your own actions (every device's label log).
 //! - [`train`]: training on demand: fastText on your mail, the message vectors, the SVM, its calibration, the evaluation, and the reduced table every device reads, replaced only when no worse.
@@ -129,6 +129,9 @@ impl Dirs {
 pub enum Stage {
     /// Downloading the corpus: `detail` is "account · folder".
     Corpus,
+    /// Sioul's own checks of the messages kept without them, each fetched
+    /// whole once (`corpus::verify`): `detail` is the account.
+    Verify,
     /// Reading the corpus and deciding each message's label.
     Labels,
     /// Turning each message into words.
@@ -150,6 +153,7 @@ impl Stage {
     pub fn as_str(self) -> &'static str {
         match self {
             Stage::Corpus => "corpus",
+            Stage::Verify => "verify",
             Stage::Labels => "labels",
             Stage::Tokens => "tokens",
             Stage::Language => "language",

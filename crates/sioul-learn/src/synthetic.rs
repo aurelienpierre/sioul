@@ -163,6 +163,7 @@ pub fn record_of(mail: &Mail, uidvalidity: u32, uid: u32) -> Record {
         structure: Some(Node::Leaf(Leaf { mime: "text/plain".into(), charset: Some("utf-8".into()), encoding: "8bit".into(), octets: body.len() as u32, ..Leaf::default() })),
         plain: Some(Text { at: vec![1], text: body.chars().take(6000).collect() }),
         html: None,
+        checked: None,
         fetched: mail.date + 60,
     }
 }

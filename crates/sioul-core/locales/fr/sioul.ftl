@@ -4084,6 +4084,7 @@ attention-exceptions-events = Le rappel propre à un événement
 attention-exceptions-events-help = Chaque événement peut dire son propre rappel, ou aucun : dans son formulaire, Rappel.
 attention-open-agenda = Ouvrir l’Agenda
 attention-exceptions-health = Un repas, une sieste, la nuit, un jour
+spam-stage-verify = Vérification de chaque message comme Sioul vérifie le courrier qu’il range, ses signatures et son expéditeur (chacun téléchargé entier une fois, en mémoire seulement)…
 attention-exceptions-health-help = Chacun peut se passer de ses avis, pour un jour ou pour de bon : sur la page Santé.
 attention-open-health = Ouvrir Santé
 attention-dnd-turns-on = Ce qui l’active
@@ -4138,6 +4139,12 @@ attention-sheet-line-messages-now = { $first ->
    *[other] Ils arrivent tout de suite { $during }.
 }
 attention-sheet-line-messages-later = { $first ->
+spam-fetch-checked = { $n ->
+    [one] Un message vérifié par Sioul, dont { $gone } absent de son serveur.
+   *[other] { $n } messages vérifiés par Sioul, dont { $gone } absents de leur serveur.
+}
+spam-fetch-offline = Aucun serveur DNS n’a répondu : les messages restants seront vérifiés au prochain téléchargement.
+spam-checks = { $account } : Sioul a vérifié { $checked } messages sur { $records } ({ $gone } absents de leur serveur). DKIM : { $dkim_pass } valides, { $dkim_fail } en échec, { $dkim_unknown } inconnus, { $dkim_none } non signés. SPF : { $spf_pass } valides, { $spf_fail } en échec, { $spf_unknown } inconnus. DMARC : { $dmarc_pass } valides, { $dmarc_fail } en échec, { $dmarc_unknown } inconnus. Expéditeur vérifié : { $verified }. Courrier ancien dont les échecs se lisent inconnus : { $late }.
     [yes] Ses messages sont retenus { $during }.
    *[other] Ils sont retenus { $during }.
 }
