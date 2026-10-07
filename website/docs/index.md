@@ -17,7 +17,7 @@ A letter from the tax office, the task it asks for, the appointment, the documen
 
 **It is not a productivity app.** It does not try to make you do more, answer faster or keep up with everything: it tries to make admin ask less of you. It is designed as [an act of care](#an-act-of-care).
 
-**It is made for the people who need it most, from research, not from taste.** Sioul is designed for the people for whom admin costs most, whose energy or thinking is limited or changes from day to day: neurodivergent people, autistic or with ADHD; people living with PTSD or another trauma, anxiety, depression or burnout; with ME/CFS (chronic fatigue syndrome), long COVID or another illness that limits energy or thinking; with an eating disorder; and everyone who knows admin anxiety, the dread that a letter, a form or a call from an office can bring, which ADHD and PTSD often share. Its design is trauma-informed: safety, predictability and choice come first, nothing surprises or blames you, and everything can be undone. Its choices are firm, and none of them is a matter of taste: each comes from published studies, cited with what they found and how strong their evidence is ([what the research says](dev/research.md)).
+**It is made for the people who need it most, from research, not from taste.** Sioul is designed for the people for whom admin costs most, whose energy or thinking is limited or changes from day to day: neurodivergent people, autistic or with ADHD; people living with PTSD or another trauma, anxiety, depression or burnout; with ME/CFS (chronic fatigue syndrome), long COVID or another illness that limits energy or thinking; with an eating disorder; and everyone who knows admin anxiety, the dread that a letter, a form or a call from an office can bring: ADHD makes admin harder to start and to keep track of, PTSD can turn an office's demands into a reminder of harm, and the two often come together. Its design is trauma-informed: safety, predictability and choice come first, nothing surprises or blames you, and everything can be undone. Its choices are firm, and none of them is a matter of taste: each comes from published studies, cited with what they found and how strong their evidence is ([what the research says](dev/research.md)).
 
 ## You decide what gets through
 
@@ -44,7 +44,7 @@ Calls follow the same rules. On an Android phone, Sioul screens them: a call fro
 
 ### A filter that learns what can wait
 
-Most spam filters keep an inbox tidy. Sioul's protects your attention: it decides what can wait. It learns from your own mail, on your computer, when you ask: from your junk folders, and from every message you mark as spam or not spam, on any of your devices. Sioul sends your mail to no filtering service; only the small table the filter learns travels to your phone, sealed.
+Most spam filters keep an inbox tidy. Sioul's protects your attention: it decides what can wait. It learns from your own mail, on your computer: from your junk folders, and from every message you mark as spam or not spam, on any of your devices. You start its first training; after that, it trains again by itself once a week, on the computer that trained it, while that computer is plugged in and idle. Sioul sends your mail to no filtering service; only the small table the filter learns travels to your phone, sealed.
 
 It judges strangers' mail only, never that of someone you know, a code you asked for or a project's mail. It does not pretend to be sure either: what looks like spam, or might be, waits in a folded queue on the Porch, without a count or a notification, until you have time to look. You choose what it does with each verdict; until you do, it moves nothing. [Spam, and your own filter](guide/porch.md#spam-and-your-own-filter)
 
@@ -86,7 +86,7 @@ Freelancers, consultants, the self-employed: the work you sell and the admin it 
 - **A project per client**, whose mail comes to it by itself: by the client's domain or addresses, by words in a subject or in an attachment's name.
 - **Time counted while you work.** The focus timer counts for the task and its project; a meeting or a call is noted in a few keys: `1h30`. The same record teaches the plan [how long things take](guide/time.md#how-long-things-take).
 - **What is left to bill**, for each project, in hours and in money, always in view.
-- **The invoice in one click**: a line per task at the project's rate, numbers that never skip or repeat, the mentions French law asks for, a PDF; then the money expected in your budget until it is paid.
+- **The invoice in one click**: a line per task at the project's rate, numbers that never skip or repeat, most of the mentions French law asks for ("EI" and the date of the service are still to come), a PDF; then the money expected in your budget until it is paid.
 - **A spreadsheet for your accountant**, and the same time and invoices on your desktop and your laptop, sealed end to end.
 
 No time tracker, timesheet or invoicing service beside it, and no subscription: your clients and your invoices stay in your own files. [Working for clients](guide/clients.md)
@@ -100,9 +100,9 @@ No time tracker, timesheet or invoicing service beside it, and no subscription: 
 
 Sioul was designed first for people for whom administration is especially costly: autistic people, people with ADHD, people dealing with anxiety, PTSD or another trauma, burnout, depression or exhaustion, and people whose energy or cognition fluctuates. The same needs come with long COVID, ME/CFS and other conditions that limit energy or thinking, with an eating disorder or irregular eating, with caring for someone, with a bad stretch of life.
 
-Admin anxiety is not laziness: putting off a letter protects your mood for now (Sirois & Pychyl 2013). And administrative burden weighs most on the people with the fewest resources left, executive function and health among them (Christensen et al. 2020). Sioul works from what a day can hold, which changes, not from a diagnosis: it needs none, and guesses nothing about your state. You say what you can do, and it plans around that.
+Admin anxiety is not laziness: putting off a letter protects your mood for now (Sirois & Pychyl 2013). And administrative burden weighs most on the people with the fewest resources left, executive function and health among them (Christensen et al. 2020): people reporting ADHD, anxiety or chronic pain find tax and student-aid rules more burdensome, and those with ADHD or pain lose the aid more often (Bell et al. 2023). Sioul works from what a day can hold, which changes, not from a diagnosis: it needs none, and guesses nothing about your state. You say what you can do, and it plans around that.
 
-Many neurodivergent people work for themselves, because office life does not fit them, and that brings more admin of exactly the hard kind: quotes and invoices, taxes, contributions, clients, the bank. So Sioul also carries a small business, from a client's first mail to the paid invoice ([above](#working-for-yourself)).
+People with a disability or a long-term health condition work for themselves more often than others, and studies link ADHD to self-employment; some say they left jobs that would not adapt to them. Working for yourself brings the admin an employer would otherwise do, of exactly the hard kind: quotes and invoices, taxes, contributions, clients, the bank. So Sioul also carries a small business, from a client's first mail to the paid invoice ([above](#working-for-yourself)).
 
 ## In the window
 
@@ -221,14 +221,18 @@ It is made by one person, in the open: no support is promised. Questions and rep
 
 ## For technical readers
 
-- **Every message checked on arrival**: SPF, DKIM, DMARC, ARC and reverse DNS, by Sioul itself. Forged mail is set aside with the reason. Names borrowed from brands are caught, even when written with look-alike letters ([Privacy and security](guide/privacy-security.md)).
-- **A spam filter of your own**: a fastText classifier trained on your computer, when you ask, from your own mail (the headers and the start of each text, never attachments); only its compact table travels to your phone, sealed. It judges only strangers' mail, and moves nothing unless you choose to ([Your own spam filter](guide/settings.md#your-own-spam-filter)).
-- **Attachments scanned before they open**, by your system's antivirus: ClamAV on Linux and macOS, Microsoft Defender (through AMSI) on Windows.
-- **HTML mail made safe**: nothing remote loads, nothing runs.
-- **Security keys and Bitwarden**: WebAuthn and FIDO2 keys (a YubiKey) work in the sites you keep. Logins are filled from Bitwarden, read by Sioul itself and never written.
-- **OpenPGP**: signing and encrypting as you send, with Autocrypt and the Web Key Directory.
-- **Sharing between your devices**, a phone included: each device keeps its own data; a folder that any sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…) passes changes between them, each device writing only its own file, sealed end to end (XChaCha20-Poly1305, the key made from your passphrase by Argon2id). Notes and papers travel file by file; earlier versions are kept on each device. No server of ours. [How it works, and what it protects](guide/sharing.md).
-- **AI agents**, only if you connect one: `sioul mcp` serves an agent what Sioul keeps on this device, through the Model Context Protocol. It never sends, deletes or pays.
+- **Security by default, with nothing to set up**: no server of ours, no telemetry, no update check; encrypted connections only (TLS through rustls, with no clear-text option); Sioul's folders closed to the computer's other accounts ([Privacy and security](guide/privacy-security.md)).
+- **Every message checked on arrival**: SPF, DKIM, DMARC, ARC and reverse DNS, by Sioul itself. Forged mail is set aside with the reason, and a sender that nothing authenticates counts as a stranger, whatever address it shows. Names borrowed from brands and public services are caught, even when written with look-alike letters ([How a sender is checked](guide/mail.md#how-a-sender-is-checked)).
+- **A spam filter of your own**: a fastText classifier trained on your computer from your own mail (the headers and the start of each text, never attachments), first when you ask, then again by itself once a week while that computer is plugged in and idle; only its compact table travels to your phone, sealed. It judges only strangers' mail, and moves nothing unless you choose to ([Your own spam filter](guide/settings.md#your-own-spam-filter)).
+- **Attachments scanned before they open**, by your system's antivirus: ClamAV on Linux and macOS, Microsoft Defender (through AMSI) on Windows. Programs never open from a mail, and on Windows and macOS the files you open or save carry the system's mark that they came from the Internet.
+- **HTML mail made safe**: nothing remote loads, ever, and nothing runs; links show their address before they open.
+- **Hard authentication**, on computers:
+    - your OpenPGP key on a security key (an OpenPGP card: YubiKey, Nitrokey), its PIN held in memory only and never logged;
+    - FIDO2 and WebAuthn security keys, and the passkeys kept on them, in the sites you keep, with the PIN asked in Sioul's own dialog;
+    - Bitwarden, read by Sioul's own client and never written, unlocked with a security key as the second step, or alone as a passkey.
+- **OpenPGP**: Sequoia, signing and encrypting as you send, with Autocrypt (keys taken from verified mail only) and the Web Key Directory.
+- **Sharing between your devices**, a phone included: each device keeps its own data; a folder that any sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…) passes changes between them, each device writing only its own file, sealed end to end (XChaCha20-Poly1305, the key made from your passphrase by Argon2id and kept in each device's keyring). Notes and papers travel file by file; earlier versions are kept on each device. No server of ours. [How it works, and what it protects](guide/sharing.md).
+- **AI agents**, only if you connect one: `sioul mcp` serves an agent what Sioul keeps on this device, through the Model Context Protocol. It never sends, deletes or pays; one-time codes and bank, card and social security numbers are masked; each call is logged by the addresses of what was given, never its words ([Using an AI agent](guide/ai-agent.md)).
 - **Open standards and plain files**: IMAP, SMTP, CalDAV and CardDAV, tasks linked as RFC 9253 says, Maildir, TOML, and notes in Markdown, fully compatible with Obsidian vaults (wikilinks, embeds, tags, front matter, aliases) and with Nextcloud Notes (`.txt` or `.md`, categories as folders). What works with what, feature by feature, and how far each was tested: [Works with](guide/compatibility.md).
 - **Free software**, under the GPL-3.0-or-later licence, written in Rust, with a Qt 6 window.
 

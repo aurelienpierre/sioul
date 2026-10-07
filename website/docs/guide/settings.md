@@ -1,14 +1,21 @@
 ---
-description: Sioul's settings - language and colours, your hours, what reaches you and when, reminders, the pauses, on a phone what sets it up, your folder and sharing, invoices; and each page's own settings, where they apply.
+description: Sioul's settings - one place for what belongs to Sioul as a whole, one ⚙ on each page for that page; each setting said in a sentence and saved at once; your settings shared with your other devices, sealed, never your passwords.
 ---
 
 # Settings
 
-**Settings** is the sliders icon at the bottom of the left column. It holds what belongs to Sioul as a whole. What belongs to one page is on that page, behind its ⚙ (below).
+## In short {#in-short}
 
-Each setting says in one sentence what it changes, and is saved at once. Nothing to confirm, nothing to apply.
+**Settings** is the sliders icon at the bottom of the left column. It holds what belongs to Sioul as a whole; what belongs to one page is on that page, behind its ⚙ ([below](#each-pages-own-settings)). Each setting says in one sentence what it changes, and is saved as soon as you change it: nothing to confirm, nothing to apply. Your settings follow you to your other devices when you share between them; your passwords never do.
 
-The Settings page has seven tabs; a phone adds one, **This phone**.
+The Settings page has a tab for each of the sections below, from **Display** to **Invoices**; a phone adds **This phone**.
+
+## Protected by default {#what-is-protected}
+
+- Your settings hold no password, no key and no token: those go to your system's keyring, even when you type them in a settings panel.
+- Your settings travel to your other devices only if you share between them, and then sealed, with the rest of the sharing.
+- A settings file found empty, after a crash or with a full disk, is not emptied on your other devices at once: the status line says so, and nothing of it is taken out elsewhere for ten minutes.
+- **Show passwords as you type** stays on the device where you chose it, and a phone whose screen others see can keep its home screen discreet (**Details on the home screen**, below).
 
 ## Display
 
@@ -34,7 +41,15 @@ Each day of each week is on or off, with one range of hours or several: **+** ad
 
 ## What reaches you {#what-reaches-you}
 
-One place for when each thing reaches you: mail, calls and other apps' messages by who writes them, Sioul's own notifications by what they are, at each time of your day. On top, what holds now, in sentences, and **Start from**: **As Sioul does now**, **Quieter** or **More reachable**. Then five views: **By time**, a card per time in sentences, **Change…** opening its rows; **By person**, the grids of mail, calls and messages, **Tell me of new mail**, **Include newsletters**, and who is on which list; **Sioul's own**, codes, doses, reminders, Health's notices, your sites and other apps, with **Sites' notifications gathered**; **Exceptions**, your Always through people and each conversation, app or site with a choice of its own; **Do not disturb**, what turns it on (**The switch in the status line**, **While I focus on a task**, **During the pauses**, **While I sleep**), what holds while it does, what each device does. Free time's **Nothing at all** is on its card. See [What reaches you, and when](notifications.md).
+One place for when each thing reaches you: mail, calls and other apps' messages by who sends them, Sioul's own notifications by what they are, at each time of your day. On top, what holds now, in sentences, and **Start from**: **As Sioul does now**, **Quieter** or **More reachable**. Then five views:
+
+- **By time**: a card for each time of your day, in sentences; **Change…** opens its rows.
+- **By person**: what reaches you by mail, by phone and by message from each list of people, **Tell me of new mail**, **Include newsletters**, and who is on which list.
+- **Sioul's own**: codes, doses, reminders, Health's notices, your sites and other apps, with **Sites' notifications gathered**.
+- **Exceptions**: the people who always get through, and each conversation, app or site with a choice of its own.
+- **Do not disturb**: what turns it on, what holds while it does, what each device does.
+
+Free time's **Nothing at all** is on its card. See [What reaches you, and when](notifications.md).
 
 ## Reminders {#reminders}
 
@@ -65,8 +80,9 @@ On a phone, what sets it up, nothing that decides when (that is [What reaches yo
 
 ## Your folder and sharing
 
-- **The notes folder**: your folder of Markdown files, read as a vault: your notes, and beside them your projects, budgets, papers and letters. Sioul links to it; it never owns it.
+- **The notes folder**: your folder of Markdown files, read as a vault: your notes, and beside them your projects, budgets, papers and letters. Sioul links to it; it never owns it ([Notes](notes.md)).
 - **Between your devices**: sharing with your other devices what Sioul keeps on this one, part by part, sealed with a passphrase; your notes and papers too, if you switch them on. See [Sharing between your devices](sharing.md).
+- **Show earlier versions**: what another device's change replaced here, kept on this device, with **Put back** ([Putting back an older version](sharing.md#putting-back-an-older-version)).
 
 ## Invoices
 
@@ -75,7 +91,7 @@ Printed on the invoices you make from [Time](time.md#invoices) and [Projects](pr
 - **Your name or business name**, **Your address** (on lines, as on an envelope);
 - **SIRET**, or the business number where you are; empty until you are registered;
 - **VAT line**: for a French micro-entrepreneur, « TVA non applicable, art. 293 B du CGI »;
-- **Invoice numbers start with**: numbers then follow each other, 2026-001, 2026-002…;
+- **Invoice numbers start with**: numbers then follow each other, 2026-001, 2026-002…; left empty, the prefix is the year, so numbering starts again each year, while a prefix of your own goes on counting;
 - **Currency**: a three-letter code, such as EUR, USD, CHF;
 - **Payment details**: printed at the bottom: bank details, terms, late fees;
 - **Invoices go into**: the folder of their PDFs, `Documents/Invoices` in your home folder when empty;
@@ -102,44 +118,36 @@ Each address's own settings are on its card in [Accounts](accounts.md#a-mail-add
 
 ### Your filters
 
-In the Mail page's ⚙, under **Filters**: what is done to new mail on its server, by conditions (into a folder, archived, to spam, flagged, marked read, to the trash, a keyword), one list for all your addresses, each filter in a sentence. How to make one, and when they act: [Mail, Filters](mail.md#filters).
-
-<figure markdown="span">
-  [![Under the filters, after Run them on the inboxes…: “In your inboxes now, one message would change, read or not. Codes you asked for, mail set aside and what your spam filter keeps for review stay as they are.”, then each filter that would act with its count, “One message: Bank (From contains …)”, and two buttons, Run them now and Not now.](../assets/screens/mail-filters-run.png){ loading=lazy }](../assets/screens/mail-filters-run.png "Open the picture at full size")
-  <figcaption>Running them on the inboxes: what would change is said first.</figcaption>
-</figure>
-
-- **Each filter**: its switch (off, it is kept and does nothing), its sentence, ▴ ▾ to ask it earlier or later, and the pencil to change it. The first filter that moves a message decides where it goes.
-- **Show the filters of**, with several addresses: those of one address.
-- **Run them on the inboxes…**: on everything in your inboxes now, read mail too. Sioul says first what would change, then **Run them now** does it after ten seconds, with **Undo**.
-
-Your filters travel to your other devices with your settings, in `config.toml` as `[[mail.filter]]`. Each message is filtered once, by the first device that fetches it.
+In the Mail page's ⚙, under **Filters**: what is done to new mail on its server, by conditions (into a folder, archived, to spam, flagged, marked read, to the trash, a keyword), one list for all your addresses, each filter in a sentence. **Run them on the inboxes…** says first what would change. Your filters travel with your settings. How to make one, and when they act: [Mail, Filters](mail.md#filters).
 
 ### Your own spam filter
 
-In the Mail page's ⚙, under **Your own spam filter**. What it does on the Porch: [Spam, and your own filter](porch.md#spam-and-your-own-filter).
+In the Mail page's ⚙, under **Your own spam filter**: what it does with each of its verdicts on a stranger's mail (**Move to spam**, **Flag only** or **Do nothing**), how sure it must be (**Spam from**, 95% unless you change it; **Maybe spam from**, 50%), and its training, on one computer: by hand with **Train now**, then by itself once a week while that computer is plugged in and idle, unless you switch that off. Your phone never trains it: it uses the computer's table, which comes sealed with the sharing. Its settings: [Mail, Your own spam filter](mail.md#your-own-spam-filter); what it does on the Porch: [Spam, and your own filter](porch.md#spam-and-your-own-filter); what training reads and keeps: [Privacy and security](privacy-security.md#your-own-spam-filter).
 
-<figure markdown="span">
-  [![The Mail page's settings, "Your own spam filter": What it does with each verdict, three rows of round buttons, Probably spam, Maybe spam and Probably not spam, each with Move to spam, Flag only and Do nothing; Spam from, a slider at 95%; Maybe spam from, at 50%; Its training: "In use: trained by noa-desk on Tuesday 6 October, from 4,210 wanted messages and 655 spam", what it measured then, Train now and what it does.](../assets/screens/settings-spam.png){ loading=lazy }](../assets/screens/settings-spam.png "Open the picture at full size")
-  <figcaption>What it does with each verdict, its two thresholds, and on a computer its training.</figcaption>
-</figure>
+## What travels with you {#what-travels-with-you}
 
-- **What it does with each verdict**: for what it finds **probably spam**, **maybe spam** and **probably not spam**, one of three:
-    - **Move to spam**: as it arrives, the message goes into its address's Junk folder, **on the server**, where your other mail apps see it too; it waits on the Porch, in **Caught by your own spam filter**, where **Not spam** brings it back to the inbox. Only mail as it arrives: what is in the inbox already stays there, flagged;
-    - **Flag only**: it stays where it is, marked, and waits there too;
-    - **Do nothing**: it goes to its lane, as any message.
+When you [share between your devices](sharing.md), your settings go with the part **Settings and accounts**, sealed like everything there. A setting changed on two devices keeps the later change, setting by setting.
 
-    Until you choose: probable spam and doubts flagged, nothing done with the rest. Nothing it flags or moves is ever notified, on any device.
-- **Spam from**: how sure it must be to call a stranger's message probably spam, 95% unless you change it. Higher: fewer of your messages taken for spam, more spam let through.
-- **Maybe spam from**: from here up to the other, a stranger's message is maybe spam; below, probably not; 50% unless you change it. Each slider stops short of the other: "maybe" stays below "spam".
-- **Its training**, on one computer: by hand with **Train now**, and again by itself once a week (below). Train it on that one alone (two computers training their own is not supported). **Train now** downloads what training needs from every folder of every address (the headers and the start of each text, never attachments), then learns from your mail: your junk folders teach it most; what it caught itself counts as it is (what it moved or found probably spam, as spam; a maybe spam, only once you say); and what you said is spam or not, on any of your devices, always wins. The first time takes long. While it runs, it says where it is ("Messages fetched: 1,200 of about 15,000", then each step), and Sioul stays usable; **Stop** keeps what came, and the next time goes on from there. Its new table replaces the one in use only if it takes no more of your messages for spam. Below, the last training: when, whether its table replaced the one in use and why, from how many messages, and on your newest mail how much of it was taken for spam and how much spam was caught, each with its margin; then what it learns from, the room left on the disk, and the outside material you imported, if any, with what the filter measured on it.
-- **Outside material**: mail labelled elsewhere (an older filter's archive), imported once on that computer with `sioul spam import <file>`, gives the filter more words to learn and a baseline to measure it against; it stays on that computer, apart from your mail, and `sioul spam import --remove <name>` takes it away. Its format: [the developers' notes, "Outside material"](../dev/spam-filter.md#outside-material).
-- **Its table**, on a phone, which never trains it: the computer that trained it, and when, with what it measured then. It comes through your folder, sealed (the part **Spam filter**, in [Sharing](sharing.md#what-travels-from-this-device)), with what you said is spam or not on each device, and what its filter caught there.
-
-- **Train again by itself once a week, when this computer is plugged in and idle**: on unless you switch it off, on the computer that made the table in use; on your other computers the switch is greyed, and one sentence says which computer trains. Once a week at most after the last training, by hand or by itself; never on battery nor while saving power, only after 15 minutes without anyone at the computer or with its session locked, never during a focus session. It runs at the lowest priority, on half the processor; on a metered connection it learns from what it has, without downloading first. Unplugged or saving power while it runs, it stops and tries again later. It never notifies you: one line under the switch says when it last trained by itself, and whether its table replaced the one in use.
-
-What it does with each verdict, the thresholds and whether it trains by itself travel to your other devices with your settings. What training reads, and what it keeps: [Privacy and security](privacy-security.md#your-own-spam-filter).
+What stays on each device: where its folders are (the notes folder, where scans arrive), how text reads on its screen (**Aa**), **Show passwords as you type**, a phone's **Details on the home screen**, and how its pages were left. Passwords, keys and tokens never travel: each device keeps its own in its keyring.
 
 ## Where settings are kept
 
-In one plain text file, `config.toml`, in your configuration folder (`~/.config/sioul/` on Linux). You can read it and change it by hand: when Sioul writes it, your comments stay.
+In one plain text file, `config.toml`, in your configuration folder (`~/.config/sioul/` on Linux). You can read it and change it by hand: when Sioul writes it, your comments and your order stay. It holds no secret: the keys and tokens you type in a settings panel (the AI shield's key, GitHub's token) go to your system's keyring, like passwords.
+
+## Going further {#going-further}
+
+- **Back to the default**: clearing a setting takes its line out of `config.toml`, and its default comes back.
+- **Lists travel whole**: your pinned sites, your hours, your days off and your mail filters each travel as one list, so that when two devices change the same list before they exchange, the later list is kept. Change such a list on one device at a time.
+- **Not emptied everywhere at once**: a settings file found empty or gone, after a crash or with a full disk, counts as taken out only if it stays so for ten minutes; meanwhile the status line says so, and nothing of it is taken out on your other devices.
+
+## Compared with other apps {#compared-with-other-apps}
+
+Every app has settings, and a table would compare nothing you choose an app for, so there is none here. What Sioul does its own way is said above: one place for each setting, a sentence for each, saved at once, the same settings on each of your devices, and no secret among them.
+
+## For technical readers {#for-technical-readers}
+
+- **The file**: `config.toml` in `~/.config/sioul/` on Linux (or `$XDG_CONFIG_HOME/sioul/`), `%APPDATA%\sioul\` on Windows, `~/Library/Application Support/sioul/` on macOS. Sioul writes it in place (`toml_edit`), one key at a time, keeping comments and order; an empty value removes the key, so its default comes back.
+- **Secrets**: account passwords, the AI shield's key and the GitHub token go to the system's keyring (the Secret Service, the macOS Keychain, the Windows Credential Manager, Android's KeyStore), never to `config.toml`.
+- **Shared entry by entry**: each setting is one entry, and each account one entry, keyed by its `id`; a list such as your pinned sites (`[[site]]`), your hours (`[[window]]`), your days off or your filters (`[[mail.filter]]`) travels whole, as one entry. The later change wins by a hybrid logical clock, so that a change made after seeing another always comes after it. Each entry is a sealed record (XChaCha20-Poly1305, under a key made from your passphrase by Argon2id), as for the rest of the [sharing](sharing.md#what-it-protects-and-what-it-cannot-hide).
+- **Kept on each device**: `case_store` (the notes folder), `reading`, `history_weeks`, `letters.inbox` (where scans arrive), `dnd.background`, and each account's `maildir` and `history_weeks`. The senders' lists travel in their own part, **Senders**. Per-device view choices (passwords shown, the home screen's details, how pages were left) are kept in the window's state, outside `config.toml`.
+- **The panels**: a page's ⚙ opens on its right, 42% of the window, between 520 and 760 pixels and leaving the page 240; under 720 pixels (a phone), the whole width. The Settings page reads 720 pixels wide at most, 1,100 for What reaches you's cards.
