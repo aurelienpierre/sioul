@@ -4,9 +4,11 @@ description: Using Sioul on several computers and a phone. How it works (each de
 
 # Sharing between your devices
 
-Each device keeps all of its data in its own files, and works without the others. What must travel between them goes through a folder that a sync app you already use carries: Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive, or another. Everything is sealed on your device before it is written there, so the folder and its server hold nothing they can read. There is no server of ours, and nothing reaches the developer.
+## In short {#in-short}
 
-## How it works
+Each of your devices keeps all of its data in its own files, and works without the others. What must travel between them goes through a folder that a sync app you already use carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive, or another), sealed on your device first: the folder and its server can read nothing, and change nothing without it showing. There is no server of ours, and nothing reaches the developer. Nothing that happens to that folder can take data away from your devices, and what a device cannot know, it says.
+
+## How it works {#how-it-works}
 
 - **Your devices hold your data; the folder only passes messages between them.** Each device keeps its own complete copy. The shared folder holds sealed changes, sent from one device to the others. A device that loses the folder, or finds it damaged, keeps everything it had.
 - **One file per device, written by that device alone.** Each device writes its changes at the end of its own file in the folder, one sealed line per change, and never touches the files of the others. A sync app makes "conflicted copies" when two devices change the same file. Here that never happens, so it never has to choose for you.
@@ -21,7 +23,7 @@ Sync apps carry files at their own pace, and Sioul cannot hurry most of them. A 
 
 WebDAV is the one protocol for which Sioul takes matters into its own hands. When the shared folder sits on a Nextcloud server Sioul already has an account for (Murena's included), it also reads the other devices' files from the server itself, as a backup, and keeps whichever copy is newer: a phone then follows within about a minute, whatever its sync app does. With Nextcloud, a sync app is even optional: Sioul can keep the folder in step itself, sending as well as fetching, so that a phone needs no other app ([setting it up](#setting-it-up)). With any other sync app (Syncthing, Dropbox, Google Drive…), changes arrive when that app brings them. That is why Nextcloud is the first choice: [where to get one](compatibility.md#where-to-get-a-nextcloud).
 
-### When something goes wrong in the folder
+### When something goes wrong in the folder {#when-something-goes-wrong-in-the-folder}
 
 Nothing that happens in the folder can take your data away from you. Sioul treats every surprise as something it does not know:
 
@@ -32,10 +34,10 @@ Nothing that happens in the folder can take your data away from you. Sioul treat
 - **A device restored from a backup**, or one that lost its memory, carries on from where the folder is and catches up: what it marked after the backup comes back.
 - **Before another device's change replaces or removes a file here**, the file as it was is kept on this device, to put back if needed ([below](#putting-back-an-older-version)).
 
-## What it protects, and what it cannot hide
+## What it protects, and what it cannot hide {#what-it-protects-and-what-it-cannot-hide}
 
 - **Sealed on your device.** Every change is encrypted before it is written into the folder, with XChaCha20-Poly1305, a cipher that also detects any change made to what it sealed. Notes and papers are compressed, then sealed in pieces of 1 MiB.
-- **One passphrase.** The key is made from a passphrase you choose, through Argon2id, which is deliberately slow and costly to try (64 MiB of memory and three passes for each guess). You type it once on each device, which keeps it in its keyring (on a phone, behind Android's KeyStore). It is never sent anywhere. A wrong one is said at once. It needs at least 12 characters: a few words you will not forget.
+- **One passphrase.** The key is made from a passphrase you choose, through Argon2id, which is deliberately slow and costly to try (64 MiB of memory and three passes for each guess). You type it once on each device, which keeps the key made from it in its keyring (on a phone, behind Android's KeyStore); the passphrase itself is kept nowhere and sent nowhere. A wrong one is said at once. It needs at least 12 characters: a few words you will not forget.
 - **What the folder and its server can see**: which device wrote (an identifier drawn at random, not your name nor the device's), when, and how much. For notes and papers, how big each sealed file is: a well-known document, such as a public form, might be recognised by its size. They can also tell when a change reuses a content already sealed there (a file put back as it was).
 - **What they never see**: what the changes are. Not the names of things (addresses, file names, settings), not their content.
 - **Tampering shows.** Each line is bound to the device that wrote it, its place in that device's file, and its time. A line changed, moved into another device's file, or put in another order does not open. Each piece of a sealed file is bound to its file and its place, so pieces cannot be swapped, cut or added. Whatever does not open is set aside as damaged and said. It never erases anything.
@@ -47,7 +49,7 @@ Nothing that happens in the folder can take your data away from you. Sioul treat
 !!! warning "A lost passphrase cannot be found again"
     Nobody can recover it for you: it is never sent anywhere. If it is lost, stop sharing on every device and start again with a new folder. Nothing on your devices is lost.
 
-## What travels, and how
+## What travels, and how {#what-travels-and-how}
 
 | What | How it reaches your other devices |
 |---|---|
@@ -57,7 +59,7 @@ Nothing that happens in the folder can take your data away from you. Sioul treat
 
 **Never shared**: what each device chooses to share, where things are on each device (each keeps its own folders), how text reads on this screen, how pages are laid out, this device's browser notices, caches, and your own OpenPGP keys (copy them by hand). Passwords stay in each device's keyring.
 
-## Setting it up
+## Setting it up {#setting-it-up}
 
 No cloud yet? Nextcloud is the one Sioul is tested with: [where to get a Nextcloud](compatibility.md#where-to-get-a-nextcloud).
 
@@ -80,7 +82,7 @@ On a Nextcloud (Murena's included), the panel also says whether Sioul reads the 
 
 Your notes folder travels by its own sync, not by Sioul, unless you switch it on below. If it does not seem to be inside a synced folder, the panel says so: your other device would not see your notes and projects. Moved into one (and chosen again in Settings), they travel too; or switch **Notes**, **Projects and money** and **Papers** on, and Sioul carries them, sealed.
 
-## What travels from this device
+## What travels from this device {#what-travels-from-this-device}
 
 Under **What travels from this device**, each part has its switch, says what it carries, and when it last sent and received a change:
 
@@ -101,7 +103,7 @@ Under **What travels from this device**, each part has its switch, says what it 
 
 Each device chooses for itself: switching a part off on the phone changes nothing on the desktop. A part switched off sends nothing and takes nothing out on your other devices; switched on again, it joins them as a new device would: what they hold comes first, and what only this one holds goes out. A device that never chose shares what Sioul shared before parts had switches: everything but notes and papers, and projects and money if you had ticked them. Before **Notes** or **Papers** is switched on, the panel says how many files would travel, and how big they are in all.
 
-## Notes and papers
+## Notes and papers {#notes-and-papers}
 
 Switched on, notes and papers travel through the same sealed folder, one file at a time:
 
@@ -116,7 +118,7 @@ Switched on, notes and papers travel through the same sealed folder, one file at
 - **Not with a synced notes folder**: if a sync app already carries your notes folder on this device (Nextcloud, Dropbox, Syncthing, or on a phone the same folder as the sharing one), Sioul refuses to carry it too, and says why: two carriers would undo each other's changes. Move the notes to a folder no sync carries to let Sioul carry them, or leave them to that sync. Sioul does not recognise every sync app (Google Drive, Insync, rclone, MEGA…): leave Notes off where one carries your notes.
 - **On Android**, notes and papers wait while Sioul lacks Android's access to all your files (without it, Sioul would see only the files it made).
 
-## Putting back an older version
+## Putting back an older version {#putting-back-an-older-version}
 
 Before a change from another device is written into a file here, or takes it out, Sioul keeps the file as it was, on this device only: the last 20 versions of each file, and all those of the last 30 days; of a file deleted since, those of the last 30 days; never more than a gigabyte in all, the oldest going first. They are never shared. A note or a paper whose version is still in the sharing folder is kept as a pointer to it, for two months, rather than copied.
 
@@ -127,7 +129,7 @@ In **Settings ▸ Your folder and sharing**, **Show earlier versions** lists the
 
 The next exchange sends what was put back to your other devices, as a change you made now.
 
-## On a phone
+## On a phone {#on-a-phone}
 
 Sioul for Android shares the same way, through the folder your phone's sync app keeps on the phone: Murena's eDrive, Syncthing, FolderSync, Autosync, Nextcloud's own app, or any app that keeps a folder on the phone in step with your cloud (Nextcloud, Dropbox, Google Drive, OneDrive…). Sioul reads the folder; it asks only that new files, and files that grow, reach the other side some day.
 
@@ -142,12 +144,23 @@ Sioul for Android shares the same way, through the folder your phone's sync app 
 - **Files kept online only**: if your sync app keeps files on the server until you open them (OneDrive, Google Drive, iCloud, Nextcloud's "virtual files"), set the sharing folder to stay **always on this device**.
 - **What is never needed**: deletions (eDrive never deletes on one side what was deleted on the other: the old files Sioul clears stay, and are not read again), and nothing it keeps aside, such as conflicted copies, is read.
 
-## Some things, one device at a time
+## Some things, one device at a time {#some-things-one-device-at-a-time}
 
 - **Medicines** are reminded by the device you are using only, so that a dose is not reminded twice. A dose marked taken goes to the others at once.
 - **The sites' gathered notification** comes on the device you are using.
 - **Invoices** are numbered on one device only, so that a number is never given twice. Another device says where they are made, and offers **Make invoices on this device**. See [Time and invoices](time.md#on-several-computers).
 
-## Not there yet
+## Not there yet {#not-there-yet}
 
 Sizes padded to steps, and the devices' notes sealed too, so that the folder tells even less; a database server instead of a folder, for those who would rather have one; drafts in your mail server's Drafts folder, for other mail programs to see; phones other than Android's. The format is plain and documented ([the design notes](../dev/database.md)), so that they can come.
+
+## For technical readers {#for-technical-readers}
+
+- **Records** are sealed with XChaCha20-Poly1305 (RustCrypto), a random 192-bit nonce each. The associated data binds each record to its device, its round, its place in the file and its clock: a record moved, reordered or copied into another device's file does not open.
+- **The key**: Argon2id v1.3, 64 MiB, 3 passes, 1 lane, a 16-byte random salt, and a check value sealed under the key, all in the folder's `seal.toml`. A seal asking more than 1 GiB or 16 passes is refused, so that a tampered folder cannot make a device spend unbounded memory. Each device's keyring keeps the 256-bit key; the passphrase, at least 12 characters, is kept nowhere.
+- **Notes and papers**: HKDF-SHA-256 derives a sealing key and a naming key from it. A file is gzip-compressed, then sealed in 1 MiB pieces, each bound to the file's name, its index and whether it is the last, so that pieces cannot be swapped, cut or added. Names are an HMAC-SHA-256 of the content's hash, so that equal files in two folders cannot be linked. A file must open whole and match its record before it replaces anything, and opening stops at 64 MiB, whatever the compressed size claims.
+- **Order**: a hybrid logical clock, the later change winning entry by entry.
+- **Writing** from the folder never goes through a link, outside the part's own folder, in plain into the sharing folder, or into Sioul's own state.
+- **From a Nextcloud server**: WebDAV over HTTPS only, never redirected, with that account's password taken from the keyring for each request; a folder there is read only when its `seal.toml` is this folder's, byte for byte.
+- **Unsealed**: each device's small note (when it last exchanged, how far it read the others), sizes and times. Padding to fixed steps is not built.
+- **Format**: [the design notes](../dev/database.md).

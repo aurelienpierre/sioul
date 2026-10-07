@@ -1,14 +1,21 @@
 ---
-description: Les paramètres de Sioul – langue et couleurs, vos heures, ce qui vous joint et quand, les rappels, les pauses, sur un téléphone ce qui le règle, votre dossier et le partage, factures ; et les réglages propres à chaque page, là où ils s’appliquent.
+description: Les paramètres de Sioul – un seul endroit pour ce qui concerne Sioul tout entier, un ⚙ sur chaque page pour cette page ; chaque réglage dit en une phrase et enregistré tout de suite ; vos réglages partagés avec vos autres appareils, scellés, jamais vos mots de passe.
 ---
 
 # Les paramètres {#settings}
 
-**Paramètres** est l’icône à curseurs en bas de la colonne de gauche. On y trouve ce qui concerne Sioul tout entier. Ce qui concerne une seule page est sur cette page, derrière son ⚙ (plus bas).
+## En bref {#in-short}
 
-Chaque réglage dit en une phrase ce qu’il change, et s’enregistre tout de suite. Rien à confirmer, rien à appliquer.
+**Paramètres** est l’icône à curseurs en bas de la colonne de gauche. On y trouve ce qui concerne Sioul tout entier ; ce qui concerne une seule page est sur cette page, derrière son ⚙ ([plus bas](#each-pages-own-settings)). Chaque réglage dit en une phrase ce qu’il change, et s’enregistre dès que vous le changez : rien à confirmer, rien à appliquer. Vos réglages vous suivent sur vos autres appareils quand vous partagez entre eux ; vos mots de passe, jamais.
 
-La page Paramètres a sept onglets ; un téléphone en ajoute un, **Ce téléphone**.
+La page Paramètres a un onglet pour chacune des sections ci-dessous, d’**Affichage** à **Factures** ; un téléphone ajoute **Ce téléphone**.
+
+## Protégé par défaut {#what-is-protected}
+
+- Vos réglages ne contiennent aucun mot de passe, aucune clé, aucun jeton : ceux-là vont dans le trousseau de votre système, même quand vous les tapez dans un panneau de réglages.
+- Vos réglages ne voyagent vers vos autres appareils que si vous partagez entre eux, et alors scellés, avec le reste du partage.
+- Un fichier de réglages trouvé vide, après une panne ou avec un disque plein, n’est pas vidé d’un coup sur vos autres appareils : la ligne d’état le dit, et rien n’en est retiré ailleurs pendant dix minutes.
+- **Afficher les mots de passe pendant la saisie** reste sur l’appareil où vous l’avez choisi, et un téléphone dont d’autres voient l’écran peut garder son écran d’accueil discret (**Détails sur l’écran d’accueil**, plus bas).
 
 ## Affichage {#display}
 
@@ -34,7 +41,15 @@ Chaque jour de chaque semaine est actif ou non, avec une plage horaire ou plusie
 
 ## Ce qui vous joint {#what-reaches-you}
 
-Un seul endroit pour quand chaque chose vous joint : le courrier, les appels et les messages des autres applications selon qui les écrit, les notifications de Sioul selon ce qu’elles sont, à chaque moment de votre journée. En haut, ce qui vaut maintenant, en phrases, et **Partir de** : **Comme Sioul le fait maintenant**, **Plus calme** ou **Plus joignable**. Puis cinq vues : **Par moment**, une carte par moment en phrases, **Changer…** ouvrant ses lignes ; **Par personne**, les grilles du courrier, des appels et des messages, **Me dire le nouveau courrier**, **Avec les lettres d’information**, et qui est sur quelle liste ; **Celles de Sioul**, les codes, les prises, les rappels, les avis de Santé, vos sites et les autres applications, avec **Notifications des sites regroupées** ; **Exceptions**, les personnes qui passent toujours et chaque conversation, application ou site qui a un choix à lui ; **Ne pas déranger**, ce qui le met (**L’interrupteur dans la ligne d’état**, **Pendant que je me concentre sur une tâche**, **Pendant les pauses**, **Pendant mon sommeil**), ce qui tient pendant ce temps, ce que fait chaque appareil. **Rien du tout**, pour le temps libre, est sur sa carte. Voir [Ce qui vous joint, et quand](notifications.md).
+Un seul endroit pour quand chaque chose vous joint : le courrier, les appels et les messages des autres applications selon qui les envoie, les notifications de Sioul selon ce qu’elles sont, à chaque moment de votre journée. En haut, ce qui vaut maintenant, en phrases, et **Partir de** : **Comme Sioul le fait maintenant**, **Plus calme** ou **Plus joignable**. Puis cinq vues :
+
+- **Par moment** : une carte pour chaque moment de votre journée, en phrases ; **Changer…** ouvre ses lignes.
+- **Par personne** : ce qui vous joint par courrier, par téléphone et par message de la part de chaque liste de personnes, **Me dire le nouveau courrier**, **Avec les lettres d’information**, et qui est sur quelle liste.
+- **Celles de Sioul** : les codes, les prises, les rappels, les avis de Santé, vos sites et les autres applications, avec **Notifications des sites regroupées**.
+- **Exceptions** : les personnes qui passent toujours, et chaque conversation, application ou site qui a un choix à lui.
+- **Ne pas déranger** : ce qui le met, ce qui tient pendant ce temps, ce que fait chaque appareil.
+
+**Rien du tout**, pour le temps libre, est sur sa carte. Voir [Ce qui vous joint, et quand](notifications.md).
 
 ## Rappels {#reminders}
 
@@ -65,8 +80,9 @@ Sur un téléphone, ce qui le règle, rien de ce qui décide quand (c’est [Ce 
 
 ## Votre dossier et le partage {#your-folder-and-sharing}
 
-- **Le dossier des notes** : votre dossier de fichiers Markdown, lu comme un coffre : vos notes, et à côté vos projets, budgets, papiers et lettres. Sioul s’y lie ; il ne le possède jamais.
+- **Le dossier des notes** : votre dossier de fichiers Markdown, lu comme un coffre : vos notes, et à côté vos projets, budgets, papiers et lettres. Sioul s’y lie ; il ne le possède jamais ([Les notes](notes.md)).
 - **Entre vos appareils** : partager avec vos autres appareils ce que Sioul garde sur celui-ci, partie par partie, scellé par une phrase de passe ; vos notes et vos papiers aussi, si vous les activez. Voir [Partager entre vos appareils](sharing.md).
+- **Voir les versions précédentes** : ce qu’un changement venu d’un autre appareil a remplacé ici, gardé sur cet appareil, avec **Remettre** ([Remettre une version précédente](sharing.md#putting-back-an-older-version)).
 
 ## Factures {#invoices}
 
@@ -75,7 +91,7 @@ Ce qui est imprimé sur les factures que vous faites depuis [Temps](time.md#invo
 - **Votre nom ou raison sociale**, **Votre adresse** (sur plusieurs lignes, comme sur une enveloppe) ;
 - **SIRET**, ou le numéro d’entreprise là où vous êtes ; vide tant que votre entreprise n’est pas immatriculée ;
 - **Mention de TVA** : pour une micro-entreprise en France, « TVA non applicable, art. 293 B du CGI » ;
-- **Les numéros de facture commencent par** : les numéros se suivent ensuite, 2026-001, 2026-002… ;
+- **Les numéros de facture commencent par** : les numéros se suivent ensuite, 2026-001, 2026-002… ; laissé vide, le préfixe est l’année, si bien que la numérotation repart chaque année, tandis qu’un préfixe à vous continue de compter ;
 - **Devise** : un code de trois lettres, comme EUR, USD, CHF ;
 - **Modalités de paiement** : imprimées en bas (coordonnées bancaires, délai, pénalités de retard) ;
 - **Les factures vont dans** : le dossier de leurs PDF, `Documents/Factures` dans votre dossier personnel s’il est vide ;
@@ -102,44 +118,36 @@ Les réglages propres à chaque adresse sont sur sa fiche dans [Comptes](account
 
 ### Vos filtres {#your-filters}
 
-Dans le ⚙ de la page Courrier, sous **Filtres** : ce qui est fait au courrier qui arrive, sur son serveur, selon des conditions (dans un dossier, archivé, en indésirable, suivi, marqué comme lu, à la corbeille, un mot-clé), une seule liste pour toutes vos adresses, chaque filtre en une phrase. Comment en faire un, et quand ils agissent : [Courrier, Filtres](mail.md#filters).
-
-<figure markdown="span">
-  [![Sous les filtres, après Les appliquer aux boîtes de réception… : « Dans vos boîtes de réception, un message changerait, lu ou non. Les codes que vous avez demandés, le courrier mis de côté et ce que votre filtre à indésirables garde à revoir restent comme ils sont. », puis chaque filtre qui agirait avec son nombre, « Un message : Banque (De contient …) », et deux boutons, Les appliquer maintenant et Pas maintenant.](../assets/screens/fr/mail-filters-run.png){ loading=lazy }](../assets/screens/fr/mail-filters-run.png "Ouvrir l’image en grand")
-  <figcaption>Les appliquer aux boîtes de réception : ce qui changerait est dit d’abord.</figcaption>
-</figure>
-
-- **Chaque filtre** : son interrupteur (inactif, il est gardé et ne fait rien), sa phrase, ▴ ▾ pour le demander plus tôt ou plus tard, et le crayon pour le modifier. Le premier filtre qui déplace un message décide où il va.
-- **Montrer les filtres de**, avec plusieurs adresses : ceux d’une adresse.
-- **Les appliquer aux boîtes de réception…** : à tout ce qui est dans vos boîtes de réception maintenant, le courrier lu aussi. Sioul dit d’abord ce qui changerait, puis **Les appliquer maintenant** le fait au bout de dix secondes, avec **Annuler**.
-
-Vos filtres vont sur vos autres appareils avec vos réglages, dans `config.toml`, en `[[mail.filter]]`. Chaque message est filtré une fois, par le premier appareil qui le relève.
+Dans le ⚙ de la page Courrier, sous **Filtres** : ce qui est fait au courrier qui arrive, sur son serveur, selon des conditions (dans un dossier, archivé, en indésirable, suivi, marqué comme lu, à la corbeille, un mot-clé), une seule liste pour toutes vos adresses, chaque filtre en une phrase. **Les appliquer aux boîtes de réception…** dit d’abord ce qui changerait. Vos filtres voyagent avec vos réglages. Comment en faire un, et quand ils agissent : [Courrier, Filtres](mail.md#filters).
 
 ### Votre filtre à indésirables {#your-own-spam-filter}
 
-Dans le ⚙ de la page Courrier, sous **Votre filtre à indésirables**. Ce qu’il fait sur le Porche : [Les indésirables, et votre propre filtre](porch.md#spam-and-your-own-filter).
+Dans le ⚙ de la page Courrier, sous **Votre filtre à indésirables** : ce qu’il fait de chacun de ses avis sur le courrier d’un inconnu (**Déplacer dans les indésirables**, **Signaler seulement** ou **Ne rien faire**), à quel point il doit être sûr (**Indésirable à partir de**, 95 % sauf si vous le changez ; **Peut-être indésirable à partir de**, 50 %), et son apprentissage, sur un seul ordinateur : à la main avec **Entraîner maintenant**, puis de lui-même une fois par semaine quand cet ordinateur est branché et inactif, sauf si vous le désactivez. Votre téléphone ne l’entraîne jamais : il se sert de la table de l’ordinateur, qui arrive scellée avec le partage. Ses réglages : [Courrier, Votre filtre à indésirables](mail.md#your-own-spam-filter) ; ce qu’il fait sur le Porche : [Les indésirables, et votre propre filtre](porch.md#spam-and-your-own-filter) ; ce que l’apprentissage lit et garde : [Vie privée et sécurité](privacy-security.md#your-own-spam-filter).
 
-<figure markdown="span">
-  [![Les réglages de la page Courrier, « Votre filtre à indésirables » : Ce qu’il fait de chaque avis, trois rangées de boutons ronds, Probablement indésirable, Peut-être indésirable et Probablement pas indésirable, chacune avec Déplacer dans les indésirables, Signaler seulement et Ne rien faire ; Indésirable à partir de, un curseur à 95 % ; Peut-être indésirable à partir de, à 50 % ; Son apprentissage : « En service : appris par noa-bureau le mardi 6 octobre, sur 4 210 messages légitimes et 655 indésirables », ce qu’il a mesuré alors, Entraîner maintenant et ce qu’il fait.](../assets/screens/fr/settings-spam.png){ loading=lazy }](../assets/screens/fr/settings-spam.png "Ouvrir l’image en grand")
-  <figcaption>Ce qu’il fait de chaque avis, ses deux seuils, et sur un ordinateur son apprentissage.</figcaption>
-</figure>
+## Ce qui voyage avec vous {#what-travels-with-you}
 
-- **Ce qu’il fait de chaque avis** : pour ce qu’il trouve **probablement indésirable**, **peut-être indésirable** et **probablement pas indésirable**, l’un des trois :
-    - **Déplacer dans les indésirables** : à son arrivée, le message va dans le dossier Indésirables de son adresse, **sur le serveur**, où vos autres logiciels de courrier le voient aussi ; il attend sur le Porche, dans **Retenu par votre filtre à indésirables**, où **Pas indésirable** le ramène dans la boîte de réception. Seulement le courrier qui arrive : ce qui est déjà dans la boîte de réception y reste, signalé ;
-    - **Signaler seulement** : il reste où il est, signalé, et y attend aussi ;
-    - **Ne rien faire** : il va dans sa file, comme tout message.
+Quand vous [partagez entre vos appareils](sharing.md), vos réglages partent avec la partie **Réglages et comptes**, scellés comme tout ce qui s’y trouve. Un réglage changé sur deux appareils garde le changement le plus récent, réglage par réglage.
 
-    Tant que vous n’avez pas choisi : le probablement indésirable et le douteux signalés, rien pour le reste. Rien de ce qu’il signale ou déplace ne donne jamais de notification, sur aucun appareil.
-- **Indésirable à partir de** : à quel point il doit être sûr pour dire probablement indésirable le message d’un inconnu, 95 % sauf si vous le changez. Plus haut : moins de vos messages pris pour indésirables, plus d’indésirables laissés passer.
-- **Peut-être indésirable à partir de** : de là jusqu’à l’autre, le message d’un inconnu est peut-être indésirable ; en dessous, probablement pas ; 50 % sauf si vous le changez. Chaque curseur s’arrête avant l’autre : « peut-être » reste sous « indésirable ».
-- **Son apprentissage**, sur un seul ordinateur : à la main avec **Entraîner maintenant**, et de lui-même une fois par semaine (plus bas). Entraînez-le sur celui-là seulement (deux ordinateurs qui entraînent chacun le leur, ce n’est pas prévu). **Entraîner maintenant** télécharge ce dont l’apprentissage a besoin, de chaque dossier de chaque adresse (les en-têtes et le début de chaque texte, jamais les pièces jointes), puis apprend de votre courrier : vos dossiers des indésirables lui apprennent le plus ; ce qu’il a retenu lui-même compte tel quel (ce qu’il a déplacé ou trouvé probablement indésirable, comme indésirable ; un peut-être indésirable, seulement une fois que vous l’avez dit) ; et ce que vous avez dit indésirable ou pas, sur chacun de vos appareils, l’emporte toujours. La première fois est longue. Pendant ce temps, il dit où il en est (« Messages téléchargés : 1 200 sur environ 15 000 », puis chaque étape), et Sioul reste utilisable ; **Arrêter** garde ce qui est venu, et la fois suivante reprend de là. Sa nouvelle table ne remplace celle en service que si elle ne prend pas plus de vos messages pour indésirables. Dessous, le dernier apprentissage : quand, si sa table a remplacé celle en service et pourquoi, sur combien de messages, et sur votre courrier le plus récent, quelle part en a été prise pour indésirable et quelle part des indésirables a été repérée, chacune avec sa marge ; puis ce dont il apprend, la place qui reste sur le disque, et l’apport extérieur que vous avez importé, s’il y en a, avec ce que le filtre y a mesuré.
-- **L’apport extérieur** : du courrier étiqueté ailleurs (les archives d’un ancien filtre), importé une fois sur cet ordinateur avec `sioul spam import <fichier>`, donne au filtre plus de mots à apprendre et une référence pour le mesurer ; il reste sur cet ordinateur, à part de votre courrier, et `sioul spam import --remove <nom>` le retire. Son format : [les notes des développeurs, « Outside material » (en anglais)](https://aurelienpierre.github.io/sioul/dev/spam-filter.html#outside-material).
-- **Sa table**, sur un téléphone, qui ne l’entraîne jamais : l’ordinateur qui l’a entraîné, et quand, avec ce qu’il a mesuré alors. Elle arrive par votre dossier, scellée (la partie **Filtre à indésirables**, dans [Le partage](sharing.md#what-travels-from-this-device)), avec ce que vous avez dit indésirable ou pas sur chaque appareil, et ce que son filtre y a retenu.
-
-- **Se réentraîner de lui-même une fois par semaine, quand cet ordinateur est branché et inactif** : actif tant que vous ne le désactivez pas, sur l’ordinateur qui a fait la table en service ; sur vos autres ordinateurs l’interrupteur est grisé, et une phrase dit quel ordinateur s’en charge. Une fois par semaine au plus après le dernier apprentissage, à la main ou de lui-même ; jamais sur batterie ni en économie d’énergie, seulement après 15 minutes sans personne devant l’ordinateur ou avec sa session verrouillée, jamais pendant une session de concentration. Il tourne à la priorité la plus basse, sur la moitié du processeur ; sur une connexion limitée il apprend de ce qu’il a, sans télécharger d’abord. Débranché ou en économie d’énergie pendant qu’il tourne, il s’arrête et réessaie plus tard. Il ne vous notifie jamais : une ligne sous l’interrupteur dit quand il s’est réentraîné de lui-même la dernière fois, et si sa table a remplacé celle en service.
-
-Ce qu’il fait de chaque avis, les seuils et s’il se réentraîne de lui-même voyagent vers vos autres appareils avec vos réglages. Ce que l’apprentissage lit, et ce qu’il garde : [Vie privée et sécurité](privacy-security.md#your-own-spam-filter).
+Ce qui reste sur chaque appareil : l’endroit où sont ses dossiers (le dossier des notes, celui où arrivent les scans), la lecture du texte sur son écran (**Aa**), **Afficher les mots de passe pendant la saisie**, les **Détails sur l’écran d’accueil** d’un téléphone, et la façon dont ses pages ont été laissées. Les mots de passe, les clés et les jetons ne voyagent jamais : chaque appareil garde les siens dans son trousseau.
 
 ## Où les réglages sont gardés {#where-settings-are-kept}
 
-Dans un seul fichier de texte brut, `config.toml`, dans votre dossier de configuration (`~/.config/sioul/` sous Linux). Vous pouvez le lire et le modifier à la main : quand Sioul l’écrit, vos commentaires restent.
+Dans un seul fichier de texte brut, `config.toml`, dans votre dossier de configuration (`~/.config/sioul/` sous Linux). Vous pouvez le lire et le modifier à la main : quand Sioul l’écrit, vos commentaires et votre ordre restent. Il ne contient aucun secret : les clés et les jetons que vous tapez dans un panneau de réglages (la clé du bouclier IA, le jeton de GitHub) vont dans le trousseau de votre système, comme les mots de passe.
+
+## Pour aller plus loin {#going-further}
+
+- **Revenir à la valeur par défaut** : effacer un réglage retire sa ligne de `config.toml`, et sa valeur par défaut revient.
+- **Les listes voyagent entières** : vos sites épinglés, vos heures, vos jours de congé et vos filtres de courrier voyagent chacun comme une seule liste ; quand deux appareils changent la même liste avant de s’échanger leurs changements, la liste la plus récente est gardée. Changez une telle liste sur un appareil à la fois.
+- **Pas vidé partout d’un coup** : un fichier de réglages trouvé vide ou disparu, après une panne ou avec un disque plein, ne compte comme retiré que s’il le reste dix minutes ; entre-temps, la ligne d’état le dit, et rien n’en est retiré sur vos autres appareils.
+
+## Comparé à d’autres applications {#compared-with-other-apps}
+
+Toute application a des réglages, et un tableau ne comparerait rien de ce pour quoi on choisit une application : il n’y en a donc pas ici. Ce que Sioul fait à sa façon est dit plus haut : un seul endroit pour chaque réglage, une phrase pour chacun, enregistré tout de suite, les mêmes réglages sur chacun de vos appareils, et aucun secret parmi eux.
+
+## Côté technique {#for-technical-readers}
+
+- **Le fichier** : `config.toml` dans `~/.config/sioul/` sous Linux (ou `$XDG_CONFIG_HOME/sioul/`), `%APPDATA%\sioul\` sous Windows, `~/Library/Application Support/sioul/` sous macOS. Sioul l’écrit sur place (`toml_edit`), une clé à la fois, en gardant les commentaires et l’ordre ; une valeur vide retire la clé, et sa valeur par défaut revient.
+- **Les secrets** : les mots de passe des comptes, la clé du bouclier IA et le jeton de GitHub vont dans le trousseau du système (le Secret Service, le trousseau de macOS, le gestionnaire d’identifiants de Windows, le KeyStore d’Android), jamais dans `config.toml`.
+- **Partagé entrée par entrée** : chaque réglage est une entrée, et chaque compte une entrée, repérée par son `id` ; une liste comme vos sites épinglés (`[[site]]`), vos heures (`[[window]]`), vos jours de congé ou vos filtres (`[[mail.filter]]`) voyage entière, en une seule entrée. Le changement le plus récent l’emporte selon une horloge logique hybride, pour qu’un changement fait après en avoir vu un autre vienne toujours après lui. Chaque entrée est un enregistrement scellé (XChaCha20-Poly1305, sous une clé faite à partir de votre phrase de passe par Argon2id), comme le reste du [partage](sharing.md#what-it-protects-and-what-it-cannot-hide).
+- **Gardé sur chaque appareil** : `case_store` (le dossier des notes), `reading`, `history_weeks`, `letters.inbox` (où arrivent les scans), `dnd.background`, et pour chaque compte `maildir` et `history_weeks`. Les listes d’expéditeurs voyagent dans leur propre partie, **Expéditeurs**. Les choix d’affichage propres à un appareil (mots de passe affichés, détails de l’écran d’accueil, façon dont les pages ont été laissées) sont gardés dans l’état de la fenêtre, hors de `config.toml`.
+- **Les panneaux** : le ⚙ d’une page s’ouvre à sa droite, sur 42 % de la fenêtre, entre 520 et 760 pixels, en laissant 240 à la page ; sous 720 pixels (un téléphone), sur toute la largeur. La page Paramètres se lit sur 720 pixels de large au plus, 1 100 pour les cartes de Ce qui vous joint.
