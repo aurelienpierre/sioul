@@ -35,7 +35,8 @@ finish-args:
   - --device=all
   # Your OpenPGP keys on a security key: the system's smart card service
   # (pcscd), whose socket this binds into the sandbox; pcscd owns the reader,
-  # so --device=all does not reach it. The runtime brings pcsc-lite's client.
+  # so --device=all does not reach it. pcsc-lite's client, which the runtime
+  # lacks, is built in (the module pcsc-lite, below).
   - --socket=pcsc
   # The system keyring (Secret Service) and notifications.
   - --talk-name=org.freedesktop.secrets
@@ -50,6 +51,23 @@ cleanup-commands:
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
 modules:
+  # pcsc-lite's client, which the KDE runtime does not carry: built from its
+  # source, the client alone, and linked into the programs, as the AppImage
+  # does (its 2.5 client speaks the daemon's protocols 4.4 to 4.6). The static
+  # library is only needed to build, and leaves the package.
+  - name: pcsc-lite
+    buildsystem: simple
+    build-commands:
+      - meson setup build --default-library=static -Dlibsystemd=false -Dlibudev=false -Dpolkit=false -Dusb=false -Dserial=false
+      - meson compile -C build pcsclite
+      - install -Dm644 build/libpcsclite.a /app/lib/libpcsclite.a
+      - install -Dm644 COPYING /app/share/licenses/pcsc-lite/COPYING
+    cleanup:
+      - /lib/libpcsclite.a
+    sources:
+      - type: archive
+        url: https://pcsclite.apdu.fr/files/pcsc-lite-2.5.2.tar.xz
+        sha256: 60a08942d8c00a1d86a3bf4c64eddbf7a5569c7c54f6904e3f07801bb5316acd
   - name: sioul
     buildsystem: simple
     build-options:
@@ -60,6 +78,9 @@ modules:
         CARGO_HOME: /run/build/sioul/cargo
         CARGO_INCREMENTAL: '0'
         QMAKE: /run/build/sioul/qmake-both
+        # pcsc-sys links the client built above (static=pcsclite).
+        PCSC_LIB_DIR: /app/lib
+        PCSC_LIB_NAME: static=pcsclite
     build-commands:
       - sh packaging/flatpak/qt-both.sh
       - cargo build --release --locked -p sioul-app -p sioul-cli
