@@ -320,7 +320,7 @@ What `android/CMakeLists.txt` makes of them:
 5. **`androiddeployqt`**, run by the `apk` target, copies Qt's Android project template into the build folder and lays `android/package/` over it (`QT_ANDROID_PACKAGE_SOURCE_DIR`: the manifest, `res/`, `src/`); fills the manifest's `-- %%INSERT_…%% --` parts (the version, the library's name) and `<!-- %%INSERT_PERMISSIONS -->` (what Qt's own modules need); gathers Qt's libraries, plugins and the QML modules the pages import (it reads them from `crates/sioul-app/qml`, `QT_QML_ROOT_PATH`); then runs **Gradle**, Android's build tool, which compiles the Java classes and packs the APK.
 6. **The APK comes out unsigned**, under `build-android/…/outputs/apk/release/`.
 
-The version: Android's `versionName` is `Cargo.toml`'s version (`0.0.2`); its `versionCode`, the number Android compares to allow an update, is worked out from it: major × 10,000 + minor × 100 + patch.
+The version: Android's `versionName` is `Cargo.toml`'s version (`0.0.3`); its `versionCode`, the number Android compares to allow an update, is worked out from it: major × 10,000 + minor × 100 + patch.
 
 **In CI**, `.github/workflows/android.yml` runs on each push to `main` that changes `android/`, `crates/`, `Cargo.toml` or `Cargo.lock`, and by hand (Actions, "Android", "Run workflow"). It installs Rust with the phone's target, Java, the NDK, the platform and the build tools into the runner's SDK, and Qt for Android with its desktop Qt (`jurplel/install-qt-action`); configures and builds as above; signs (below); checks the alignment of every library of the APK for 16 KB memory pages (Sioul's own must pass; the run's summary lists all of them); and keeps the APK as the run's artifact, `sioul-android-arm64`.
 
