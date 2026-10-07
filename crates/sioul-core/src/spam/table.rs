@@ -448,6 +448,16 @@ impl Table {
         let mut file = std::fs::File::create(&temporary).map_err(fail)?;
         file.write_all(&self.to_bytes()).and_then(|()| file.sync_all()).map_err(fail)?;
         drop(file);
+        // `cached` sees a new table by its size and time. A clock that ticks
+        // coarsely (Windows: every 15.6 ms) can give the new file the time of the
+        // one it replaces, and a new table often has the same size: the new one is
+        // made a millisecond younger than the one it replaces, at least.
+        let modified = |at: &Path| std::fs::metadata(at).ok().and_then(|m| m.modified().ok());
+        if let Some(old) = modified(path)
+            && modified(&temporary).is_none_or(|new| new <= old)
+        {
+            let _ = std::fs::File::options().write(true).open(&temporary).and_then(|f| f.set_modified(old + std::time::Duration::from_millis(1)));
+        }
         keep_previous(path);
         std::fs::rename(&temporary, path).map_err(fail)
     }
@@ -656,7 +666,9 @@ mod tests {
         table.write(&path).unwrap();
         assert_eq!(Table::read(&path).unwrap(), sorted);
         assert_eq!(Table::cached(&path).as_deref(), Some(&sorted));
-        // A new one replaces it; the one before is kept.
+        // A new one replaces it; the one before is kept. The one in place dated
+        // ahead, as a coarse clock can leave it (Windows): still seen as new.
+        std::fs::File::options().write(true).open(&path).unwrap().set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60)).unwrap();
         let newer = Table { bias: 1.0, ..table.clone() };
         newer.write(&path).unwrap();
         assert_eq!(Table::read(&previous(&path)).unwrap().bias, -0.5);
