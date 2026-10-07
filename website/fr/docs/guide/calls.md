@@ -17,7 +17,7 @@ Sur un téléphone Android, Sioul peut filtrer vos appels. Un appel de quelqu’
 
 L’annonce de votre messagerie peut demander d’envoyer plutôt un SMS.
 
-Android 9 ne laisse aucune application filtrer les appels ; « Ne pas déranger » garde les appels silencieux aux moments choisis ([Les pauses](pauses.md)).
+Android 9 ne laisse aucune application filtrer les appels, et Sioul ne peut pas non plus le mettre en silence : il faut Android 10. Le mode « Ne pas déranger » d’Android, réglé dans ses paramètres, peut y garder les appels silencieux ([Ne pas déranger sur tous vos appareils](notifications.md#do-not-disturb-on-every-device)).
 
 ## Ce qui sonne toujours {#what-always-rings}
 

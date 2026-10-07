@@ -17,7 +17,7 @@ On an Android phone, Sioul can screen your calls. A call from someone who may no
 
 Your voicemail greeting can ask callers to send a text instead.
 
-Android 9 cannot let an app screen calls; do-not-disturb keeps calls quiet at the times you set ([Pauses](pauses.md)).
+Android 9 lets no app screen calls, and Sioul cannot silence it either: that takes Android 10. Android's own do-not-disturb, set in its settings, can keep calls quiet there ([Do not disturb on every device](notifications.md#do-not-disturb-on-every-device)).
 
 ## What always rings {#what-always-rings}
 

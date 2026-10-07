@@ -14,7 +14,7 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
   [![Sioul's window: across the top, its title bar, the status line with the keys, the sound button, the weather, Free time and Pause, then the window's buttons; on the left, a narrow column of icons, New (a plus), then the places from Porch to Health, the one shown marked, and three icons at the bottom (Accounts, Settings, Refresh everything); on the right, the Porch.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
 </figure>
 
-**At the top**, across the whole window, the status line is its title bar. It says one sentence about what happened last. After anything is moved, deleted or sent, "Undo" waits there for ten seconds. In quiet time, it says when work comes back; once the day's hours are over, it offers to close the work day, and in the evening the day. Further along are the keys, [do-not-disturb](pauses.md#do-not-disturb-on-every-device), the sound button ([sounds to focus or rest by](tasks.md#sounds)), the weather at a place you choose, and at its end [**Free time** and **Pause**](pauses.md).
+**At the top**, across the whole window, the status line is its title bar. It says one sentence about what happened last. After anything is moved, deleted or sent, "Undo" waits there for ten seconds. In quiet time, it says when work comes back; once the day's hours are over, it offers to close the work day, and in the evening the day. Further along are the keys, [do-not-disturb](notifications.md#do-not-disturb-on-every-device), the sound button ([sounds to focus or rest by](tasks.md#sounds)), the weather at a place you choose, and at its end [**Free time** and **Pause**](pauses.md).
 
 - **Its left end**, over the places, is the button that shows the places' names beside their icons, in a wider column, or keeps their icons only (++f9++): the same choice as **Settings ▸ Display ▸ Show the places' names beside their icons**.
 - **The window's buttons**, minimize, maximize or restore, and close, are on the side your system puts them, in its order: KDE Plasma, GNOME and Xfce say where in their settings; on the left on a Mac, on the right on Windows.
@@ -146,4 +146,5 @@ Reminders can also come with the window closed: in **Settings ▸ Reminders and 
 - [The Porch](porch.md), where new mail waits.
 - [Tasks](tasks.md), and the one next step.
 - [Hours](hours.md), and quiet time.
+- [Notifications and do-not-disturb](notifications.md): what Sioul tells you when, and what waits.
 - [Works with](compatibility.md): the servers, apps and systems Sioul works with, and how far each was tried.

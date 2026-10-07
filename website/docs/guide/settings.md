@@ -8,7 +8,7 @@ description: Sioul's settings - language and colours, your hours, reminders and 
 
 Each setting says in one sentence what it changes, and is saved at once. Nothing to confirm, nothing to apply.
 
-The Settings page has five tabs.
+The Settings page has seven tabs; a phone adds two, **Calls** and **Other apps**.
 
 ## Display
 
@@ -42,20 +42,20 @@ Each reminder comes once, as a quiet notification, without sound, never repeated
 - **A wait over**: when a wait after a step done is over (an answer due), once, when work is there.
 - **Payments planned: working days before**: when work starts, so many working days before a planned payment (a bill, a tax); 0 for none. The reminder says whether the account will hold it.
 - **With Sioul's window closed**: your session starts a small watcher that tells reminders when the window is closed; nothing else runs, no mail is fetched. It needs the `sioul` command installed next to Sioul ([Install](install.md#into-your-application-menu)). Not on Windows yet.
-- **New mail: notify at the times it may come**: when mail your lists let through now arrives, one quiet notification for the batch: how many, and the first senders with their subjects. Mail that waited for its time is told once, when its time comes: "The Porch opens: three letters wait for you." Never while you sleep or pause; never for codes (they have their own), nor for what is set aside, blocked, sent by yourself or come to your less important addresses. On by default. See [The Porch](porch.md#new-mail-told-at-its-times).
+- **New mail: notify at the times it may come**: one quiet notification for each batch of mail that may reach you now, and one when mail that waited may come: "The Porch opens: three letters wait for you." On by default. See [What Sioul tells you](notifications.md#what-sioul-tells-you-and-when).
 - **Include newsletters**: newsletters and mailing lists, filed on the Porch, are told too. Automatic senders (a bill from no-reply) are told either way. Off by default.
-- **Sites' notifications gathered**, and **Gathered at**: what your sites notify waits, then comes in one notification at these times, for the sites of those hours: 09:00, 13:00 and 18:00 unless you set others. A site in real time, and a call, come at once. On a phone, other apps' notifications from automatons come back at these times too ([Other apps](#other-apps)).
-- **Doses during sleep**: **Remind** or **Stay silent**. While you sleep (the night from winding down to waking, a nap), no notification comes; a dose's reminder comes all the same, since you set its time, unless you choose **Stay silent**: then it comes when you wake. See [Hours](hours.md#sleep).
+- **Sites' notifications gathered**, and **Gathered at**: what your sites notify waits, then comes in one notification at these times: 09:00, 13:00 and 18:00 unless you set others. On a phone, other apps' notifications from automatons come back then. See [The gathered times](notifications.md#the-gathered-times).
+- **Doses during sleep**: **Remind** or **Stay silent**. While you sleep nothing notifies but doses; silent, a dose's reminder comes when you wake. See [Doses](notifications.md#doses).
 
-Doses of medicine are reminded from the [Health](health.md) page, and papers to renew from [Papers](papers.md). On a phone, the doses, the events and new mail are told; the other reminders come on a computer ([On a phone](first-steps.md#on-a-phone)).
+Doses of medicine are reminded from the [Health](health.md) page, and papers to renew from [Papers](papers.md). On a phone, the doses, the events and new mail are told; the other reminders come on a computer ([On a phone](first-steps.md#on-a-phone)). What comes when, and what waits: [Notifications and do-not-disturb](notifications.md).
 
 ## Pauses
 
-Free time and the pause, set up on a calm day: who reaches you in free time, how far the end of work may move, whether movement is offered; for the pause, the doses, your starred contacts, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show, and what this device's do-not-disturb can do; **Try the pause screen**. See [Pauses](pauses.md).
+Free time and the pause, set up on a calm day: who reaches you in free time, how far the end of work may move, whether movement is offered; for the pause, the doses, your starred contacts, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show, and what this device's do-not-disturb can do ([What each system does](notifications.md#what-each-system-does)); **Try the pause screen**. See [Pauses](pauses.md).
 
 ## Do not disturb
 
-One do-not-disturb for all your devices: the switch in the status line, what turns it on by itself (the pauses, a focus session, your sleep), who gets through, and the list of the people who may reach you then, the same on every device; what this device's system lets Sioul do; on a phone, who on your list is starred there, and Sioul kept in step in the background. See [Do not disturb on every device](pauses.md#do-not-disturb-on-every-device).
+One do-not-disturb for all your devices: **The switch in the status line**; what turns it on by itself, **While I focus on a task**, **During the pauses**, **While I sleep**; **The people on my list get through**, and the list, the same on every device; what this device's system lets Sioul do; on a phone, who on your list is starred there, and **Keep this phone in step in the background**. See [Do not disturb on every device](notifications.md#do-not-disturb-on-every-device).
 
 ## Calls
 
@@ -63,16 +63,7 @@ On a phone: Sioul as Android's caller ID & spam app, so that a call from someone
 
 ## Other apps
 
-On a phone, other apps' notifications are held until their time, as your mail is. Messages between people (SMS, chats, mail apps) come when the person who wrote may reach you: **Accounts ▸ Who may reach you**, its **Messages** row (mail apps: **Mail**). Notifications from automatons (shops, news, social networks, your browser's sites) come back at the gathered times, the same as your sites' ([Reminders and notifications](#reminders-and-notifications)), never while you sleep, pause, take free time or have do-not-disturb on. A held notification comes back whole, with its own tap and actions: Sioul never answers, marks anything as read, touches read receipts or typing, or deletes one.
-
-- **The access**: Android's **Notification access**. Sioul installed from a file takes two steps: **Sioul's app info** ▸ ⋮ (at the top) ▸ **Allow restricted settings**, then **Notification access** ▸ Sioul ▸ on. On that page you may narrow what Sioul sees, by app and by kind. Without it, nothing is held: other apps' notifications come as they are sent, and only do-not-disturb holds them.
-- **Hold other apps' notifications until their time**: off, everything comes as the apps send it.
-- **The first sound**: Android plays a notification's sound before Sioul sees it. Make the apps Sioul holds silent: the tab lists each app and channel that rang before Sioul held it, with **Make it silent**, Android's page for that channel. Chats and SMS may keep their sound, so that the people let through ring; one held then rings once and waits out of sight.
-- **Each app**: **Notification by notification** (the usual: messages by who wrote them, the rest gathered), **Messages between people**, **An automaton: gathered**, or **At once**; and what it is for (work, your admin, leisure), as for an address.
-- **Each conversation**: **By who writes**; **Always through**, at any time, sleep, pauses and do-not-disturb included (the school's group, say); **Gathered with the automatons**; or **Never**. A group is judged as people you do not know until you choose. Sioul lets a conversation through, never a name: in chats, anyone can choose their name.
-- **Each site** of your browser: **Gathered** or **At once**.
-- **Always come**: calls and alarms; what runs (music, a call in progress, navigation, a download); the reminders and events you set in other apps; codes, and sign-ins or payments to approve; Sioul's own.
-- **What Sioul keeps**, on the phone only, never shared with your other devices: your choices, the names of the apps, conversations and sites it saw, and when what it held comes back. Never what a notification says.
+On a phone, other apps' notifications held until their time, as your mail is: messages from people as [who may reach you](accounts.md#senders) says, notifications from automatons at the gathered times. The access (Android's **Notification access**, two steps for Sioul installed from a file), **Hold other apps' notifications until their time**, the apps that rang before Sioul held them, with **Make it silent**, and a choice for each app, conversation and site. See [Other apps' notifications, on a phone](notifications.md#other-apps-on-a-phone).
 
 ## Your folder and sharing
 
