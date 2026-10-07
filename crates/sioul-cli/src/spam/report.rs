@@ -325,6 +325,20 @@ pub(crate) fn summary_lines(s: &Session, summary: &train::Summary) -> Vec<String
     }
     let m = &summary.model;
     let pairs = [("vocabulary", m.vocabulary.to_string()), ("dim", m.dim.to_string()), ("c", decimal(s, m.c, 2)), ("seconds", decimal(s, summary.seconds, 0)), ("bytes", (m.table_bytes >> 10).to_string())];
+    if m.kind == "classifier" {
+        lines.push(s.say("spam-model-classifier", &pairs));
+        let asked = [
+            ("epochs", m.epochs.to_string()),
+            ("lr", decimal(s, m.lr, 2)),
+            ("minn", m.minn.to_string()),
+            ("maxn", m.maxn.to_string()),
+            ("bucket", m.bucket.to_string()),
+            ("mincount", m.min_count.to_string()),
+            ("threads", m.threads.to_string()),
+        ];
+        lines.push(s.say("spam-model-asked-classifier", &asked));
+        return lines;
+    }
     lines.push(s.say("spam-model", &pairs));
     if m.threads > 0 {
         let costs = if m.costs.is_empty() { decimal(s, m.c, 2) } else { m.costs.iter().map(|c| format!("{c}").replace('.', &s.tr.text("decimal-separator", None))).collect::<Vec<_>>().join(", ") };
@@ -481,7 +495,7 @@ fn errors_listed(s: &Session, hiding: &Hiding, errors: &Errors, learned_before: 
 /// A test's detail: by account and folder, the grid, the errors asked, your
 /// own mail's then each outside source's. Lines only when `said`; the data
 /// always. `learned_before`: when the table tested was trained (`eval`).
-fn detail_report(s: &Session, detail: &Detail, learned_before: Option<i64>, said: bool, lines: &mut Vec<String>) -> Map<String, Value> {
+fn detail_report(s: &Session, detail: &Detail, learned_before: Option<i64>, said: bool, scores: bool, lines: &mut Vec<String>) -> Map<String, Value> {
     let mut out: Vec<String> = Vec::new();
     let hiding = Hiding::of(&s.config);
     out.push(s.tr.text("spam-by-account", None));
@@ -518,7 +532,11 @@ fn detail_report(s: &Session, detail: &Detail, learned_before: Option<i64>, said
         out.push(s.say("spam-errors-outside", &[("source", one_line(source))]));
         out.push(format!("  {}", confusion_line(s, &one_line(source), &o.confusion)));
         let errors = errors_listed(s, &hiding, &o.errors, None, &mut out);
-        outside.insert(source.clone(), json!({ "confusion": o.confusion, "grid": o.grid, "errors": errors }));
+        let mut part = json!({ "confusion": o.confusion, "grid": o.grid, "errors": errors });
+        if scores {
+            part["scores"] = json!(o.scores);
+        }
+        outside.insert(source.clone(), part);
     }
     if said {
         lines.extend(out);
@@ -528,6 +546,9 @@ fn detail_report(s: &Session, detail: &Detail, learned_before: Option<i64>, said
     data.insert("by_folder".into(), Value::Array(by_folder));
     data.insert("grid".into(), json!(detail.grid));
     data.insert("grid_settled".into(), json!(detail.grid_settled));
+    if scores {
+        data.insert("scores".into(), json!(detail.scores));
+    }
     data.insert("errors".into(), errors);
     data.insert("outside_detail".into(), Value::Object(outside));
     data
@@ -572,11 +593,13 @@ pub(crate) struct TrainAsk {
     pub replace: bool,
     /// The worst errors of each kind to list; none: the detail as data only.
     pub errors: Option<usize>,
-    /// fastText's and the SVM's settings instead of the defaults.
+    /// Every test message's probability in the data, numbers only (`--scores`).
+    pub scores: bool,
+    /// The model and its settings instead of the defaults.
     pub settings: Settings,
 }
 
-/// fastText's and the SVM's settings, each instead of its default when given (recorded in `trained.toml`).
+/// The model and its settings, each instead of its default when given (recorded in `trained.toml`).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Settings {
     pub threads: Option<u32>,
@@ -587,6 +610,13 @@ pub(crate) struct Settings {
     pub maxn: Option<u32>,
     pub c: Option<f64>,
     pub ham_weight: Option<f64>,
+    /// The model ("supervised", "centroid": `train::Model`); the classifier's
+    /// word pairs (above 1: a trial, the table reads none) and learning rate.
+    pub model: Option<String>,
+    pub word_ngrams: Option<u32>,
+    pub lr: Option<f64>,
+    /// Words seen fewer times than this are left out of the vocabulary (5).
+    pub min_count: Option<u32>,
 }
 
 impl Settings {
@@ -600,6 +630,26 @@ impl Settings {
             Some(v) if !(v.is_finite() && v > 0.0 && v <= 1e6) => Err(format!("--{name} is a number above 0.")),
             _ => Ok(value),
         };
+        // The model first: its own passes by default.
+        let (word_ngrams, lr) = (within("word-ngrams", self.word_ngrams, 1, 5)?, positive("lr", self.lr)?);
+        match self.model.as_deref() {
+            Some("centroid") => options.model = train::Model::Centroid,
+            Some("supervised") | None => {
+                if let train::Model::Supervised { word_ngrams: n, lr: rate } = &mut options.model {
+                    *n = word_ngrams.unwrap_or(*n);
+                    *rate = lr.unwrap_or(*rate);
+                }
+            }
+            Some(other) => return Err(format!("--model is supervised or centroid, not {other}.")),
+        }
+        if options.model == train::Model::Centroid && (word_ngrams.is_some() || lr.is_some()) {
+            return Err("--word-ngrams and --lr are the classifier's (--model supervised).".into());
+        }
+        // Word pairs: the table reads none, so a trial.
+        if matches!(options.model, train::Model::Supervised { word_ngrams: n, .. } if n > 1) {
+            options.replace = false;
+        }
+        options.epochs = options.model.epochs();
         if let Some(v) = within("threads", self.threads, 1, 256)? {
             options.threads = v;
         }
@@ -632,21 +682,30 @@ impl Settings {
         if let Some(w) = positive("ham-weight", self.ham_weight)? {
             options.ham_weight = w;
         }
+        if let Some(n) = within("min-count", self.min_count, 1, 1000)? {
+            options.min_count = n;
+        }
         Ok(())
     }
 
     /// The same, as the command line takes them (a job's arguments).
     pub(crate) fn args(&self) -> Vec<String> {
         let mut args = Vec::new();
-        for (name, value) in [("threads", self.threads), ("dim", self.dim), ("epochs", self.epochs), ("bucket", self.bucket), ("minn", self.minn), ("maxn", self.maxn)] {
+        for (name, value) in [("threads", self.threads), ("dim", self.dim), ("epochs", self.epochs), ("bucket", self.bucket), ("minn", self.minn), ("maxn", self.maxn), ("min-count", self.min_count)] {
             if let Some(v) = value {
                 args.extend([format!("--{name}"), v.to_string()]);
             }
         }
-        for (name, value) in [("c", self.c), ("ham-weight", self.ham_weight)] {
+        for (name, value) in [("c", self.c), ("ham-weight", self.ham_weight), ("lr", self.lr)] {
             if let Some(v) = value {
                 args.extend([format!("--{name}"), v.to_string()]);
             }
+        }
+        if let Some(model) = &self.model {
+            args.extend(["--model".to_string(), model.clone()]);
+        }
+        if let Some(n) = self.word_ngrams {
+            args.extend(["--word-ngrams".to_string(), n.to_string()]);
         }
         args
     }
@@ -656,8 +715,9 @@ impl Settings {
 /// unless `replace`; its summary, and its test's detail (lines when errors are asked).
 pub(crate) fn train(s: &Session, dirs: &Dirs, ask: &TrainAsk, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Report, String> {
     let mut options = train::Options::of(&s.config);
-    ask.settings.apply(&mut options)?;
     options.replace = ask.replace;
+    // After: a setting the table cannot follow (word pairs) makes it a trial.
+    ask.settings.apply(&mut options)?;
     lower_priority();
     let mut lines = Vec::new();
     let mut data = Map::new();
@@ -670,7 +730,7 @@ pub(crate) fn train(s: &Session, dirs: &Dirs, ask: &TrainAsk, progress: &mut dyn
     lines.extend(summary_lines(s, &summary));
     data.insert("summary".into(), json!(summary));
     data.insert("trial".into(), json!(summary.trial));
-    data.extend(detail_report(s, &detail, None, ask.errors.is_some(), &mut lines));
+    data.extend(detail_report(s, &detail, None, ask.errors.is_some(), ask.scores, &mut lines));
     Ok(Report { lines, data: Value::Object(data) })
 }
 
@@ -717,7 +777,7 @@ pub(crate) fn eval(s: &Session, dirs: &Dirs, errors: usize, progress: &mut dyn F
     data.insert("numbers".into(), json!(evaluation.numbers));
     data.insert("unseen".into(), evaluation.unseen.as_ref().map_or(Value::Null, |u| json!({ "since": instant(u.since), "numbers": u.numbers })));
     data.insert("outside".into(), Value::Object(outside));
-    data.extend(detail_report(s, &detail, Some(table.trained_at), true, &mut lines));
+    data.extend(detail_report(s, &detail, Some(table.trained_at), true, false, &mut lines));
     Ok(Report { lines, data: Value::Object(data) })
 }
 
@@ -1127,7 +1187,7 @@ mod tests {
     #[test]
     fn settings_in_their_ranges() {
         let mut options = train::Options::default();
-        let asked = Settings { threads: Some(2), dim: Some(50), epochs: Some(3), bucket: Some(1000), minn: Some(2), maxn: Some(4), c: Some(0.5), ham_weight: Some(3.0) };
+        let asked = Settings { threads: Some(2), dim: Some(50), epochs: Some(3), bucket: Some(1000), minn: Some(2), maxn: Some(4), c: Some(0.5), ham_weight: Some(3.0), ..Settings::default() };
         asked.apply(&mut options).unwrap();
         assert_eq!((options.threads, options.dim, options.epochs, options.bucket, options.minn, options.maxn), (2, 50, 3, 1000, 2, 4));
         assert_eq!((options.costs.clone(), options.ham_weight), (vec![0.5], 3.0));
@@ -1145,5 +1205,20 @@ mod tests {
         let mut none = train::Options::default();
         Settings { maxn: Some(0), ..Settings::default() }.apply(&mut none).unwrap();
         assert_eq!((none.minn, none.maxn, none.bucket), (0, 0, 0));
+        // The model: the classifier by default, its 25 passes; the centroid on request, its language model's 5.
+        let mut classifier = train::Options::default();
+        Settings::default().apply(&mut classifier).unwrap();
+        assert_eq!((classifier.model, classifier.epochs, classifier.replace), (train::Model::Supervised { word_ngrams: 1, lr: 0.1 }, 25, true));
+        let mut centroid = train::Options::default();
+        let asked = Settings { model: Some("centroid".into()), min_count: Some(3), ..Settings::default() };
+        asked.apply(&mut centroid).unwrap();
+        assert_eq!((centroid.model, centroid.epochs, centroid.min_count), (train::Model::Centroid, 5, 3));
+        assert_eq!(asked.args(), ["--min-count", "3", "--model", "centroid"]);
+        // Word pairs: the table reads none, so a trial; the classifier's settings are not the centroid's.
+        let mut pairs = train::Options::default();
+        Settings { word_ngrams: Some(2), lr: Some(0.05), ..Settings::default() }.apply(&mut pairs).unwrap();
+        assert_eq!((pairs.model, pairs.replace), (train::Model::Supervised { word_ngrams: 2, lr: 0.05 }, false));
+        assert!(Settings { model: Some("centroid".into()), lr: Some(0.2), ..Settings::default() }.apply(&mut train::Options::default()).is_err());
+        assert!(Settings { model: Some("bayes".into()), ..Settings::default() }.apply(&mut train::Options::default()).is_err());
     }
 }

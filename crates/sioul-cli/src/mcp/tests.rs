@@ -809,13 +809,20 @@ fn spam_reports_say_it_as_data() {
     // A trial on the same corpus: its detail and its errors said, nothing of the filter changed.
     let table = std::fs::read(dirs.table()).unwrap();
     let settings = report::Settings { threads: Some(1), dim: Some(8), epochs: Some(2), bucket: Some(500), ..report::Settings::default() };
-    let ask = report::TrainAsk { fetch: false, replace: false, errors: Some(2), settings };
+    let ask = report::TrainAsk { fetch: false, replace: false, errors: Some(2), scores: false, settings };
     let trial = report::train(&s, &dirs, &ask, &mut |_| {}, &sioul_learn::Cancel::new()).unwrap();
     assert_eq!((trial.data["trial"].clone(), trial.data["summary"]["replaced"].clone(), trial.data["summary"]["model"]["dim"].clone()), (json!(true), json!(false), json!(8)), "{}", trial.data);
     assert!(trial.data["errors"]["ham_called_spam"].is_array() && trial.data["grid"].is_array() && trial.data["by_folder"].is_array(), "{}", trial.data);
     assert!(trial.lines.iter().any(|l| l.starts_with("A trial:")) && trial.lines.iter().any(|l| l.starts_with("fastText: 2 passes")), "{:?}", trial.lines);
     assert_eq!(std::fs::read(dirs.table()).unwrap(), table, "a trial changes nothing");
     assert!(!dirs.trained().exists() && !dirs.language().exists() && !dirs.previous_table().exists());
+    // The scores of every test message only when asked (`--scores`), numbers only: never in an agent's answer.
+    assert!(trial.data.get("scores").is_none(), "{}", trial.data);
+    let scored = report::train(&s, &dirs, &report::TrainAsk { scores: true, ..ask }, &mut |_| {}, &sioul_learn::Cancel::new()).unwrap();
+    let tested = scored.data["summary"]["test"]["ham"].as_u64().unwrap() + scored.data["summary"]["test"]["spam"].as_u64().unwrap();
+    let scores = scored.data["scores"].as_array().unwrap_or_else(|| panic!("{}", scored.data));
+    assert_eq!(scores.len() as u64, tested);
+    assert!(scores.iter().all(|x| x[0].as_f64().is_some_and(|p| (0.0..=1.0).contains(&p)) && x[1].is_boolean() && x[2].is_boolean()), "{scores:?}");
     // review: the strangers' spam, flagged where it is.
     let review = report::review(&s, 10).unwrap();
     let queued = &review.data["messages"];

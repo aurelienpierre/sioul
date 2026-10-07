@@ -16,7 +16,7 @@
 
 use crate::corpus::{Leaf, Node, Record, Text};
 use mail_parser::{MessageParser, PartType};
-pub(crate) use sioul_core::spam::features::{FEATURES, N, NAMES, features};
+pub(crate) use sioul_core::spam::features::{FEATURES, N, NAMES, all_header_words, features, header_words};
 #[cfg(test)]
 pub(crate) use sioul_core::spam::table::ngram_buckets;
 pub(crate) use sioul_core::spam::table::{Meta, Table, word_hash};

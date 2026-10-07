@@ -137,7 +137,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "spam_train",
         title: "Train the spam filter",
-        description: "Starts a training apart (`sioul spam train`) and answers at once with a job id, for spam_job: the corpus brought up to date first unless `no_fetch`, then fastText and the classifier learned from the oldest 80 % and tested on the newest 20 %, with the test's detail and `errors` worst errors of each kind. A trial unless `replace` is true: it changes nothing of the filter, and says what it would do. With `replace`, the table every device reads is replaced only when it takes no more ham for spam than the one in place, which stays beside it; that changes what the filter flags or moves on every device. fastText's and the SVM's settings may be given for an experiment; they are recorded. It runs below other programs' priority, on every core; one training at a time.",
+        description: "Starts a training apart (`sioul spam train`) and answers at once with a job id, for spam_job: the corpus brought up to date first unless `no_fetch`, then the model (fastText's classifier, the filter's; the centroid and its SVM when asked) learned from the oldest 80 % and tested on the newest 20 %, with the test's detail and `errors` worst errors of each kind. A trial unless `replace` is true: it changes nothing of the filter, and says what it would do. With `replace`, the table every device reads is replaced only when it takes no more ham for spam than the one in place, which stays beside it; that changes what the filter flags or moves on every device. The model's settings may be given for an experiment; they are recorded. It runs below other programs' priority, on every core; one training at a time.",
         writes: true,
         idempotent: false,
         open_world: false,
@@ -147,14 +147,17 @@ pub const TOOLS: &[Tool] = &[
                     "no_fetch": { "type": "boolean", "description": "Train on the corpus as it is, without downloading first." },
                     "replace": { "type": "boolean", "description": "Replace the table in use when no worse; false (the default): a trial." },
                     "errors": { "type": "integer", "minimum": 0, "maximum": 200, "description": "Worst errors listed of each kind; 20 by default." },
+                    "model": { "type": "string", "enum": ["supervised", "centroid"], "description": "supervised: fastText's classifier, the header facts as words (the default, the filter's); centroid: the language model's mean word vector weighed by an SVM." },
                     "threads": { "type": "integer", "minimum": 1, "maximum": 256, "description": "fastText's threads; the computer's cores by default." },
                     "dim": { "type": "integer", "minimum": 2, "maximum": 1000, "description": "The word vectors' dimension; 100 by default." },
-                    "epochs": { "type": "integer", "minimum": 1, "maximum": 100, "description": "fastText's passes; 5 by default." },
+                    "epochs": { "type": "integer", "minimum": 1, "maximum": 100, "description": "fastText's passes; 25 by default for the classifier, 5 for the centroid's language model." },
+                    "min_count": { "type": "integer", "minimum": 1, "maximum": 1000, "description": "Words seen fewer times are left out of the vocabulary and of the table; 5 by default." },
+                    "lr": { "type": "number", "exclusiveMinimum": 0, "maximum": 10, "description": "The classifier's learning rate; 0.1 by default." },
                     "bucket": { "type": "integer", "minimum": 0, "maximum": 4000000, "description": "The character n-grams' hash buckets; 200000 by default." },
                     "minn": { "type": "integer", "minimum": 0, "maximum": 20, "description": "The shortest character n-grams; 3 by default." },
                     "maxn": { "type": "integer", "minimum": 0, "maximum": 20, "description": "The longest; 6 by default, 0 for none." },
-                    "c": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000, "description": "The SVM's cost, fixed; chosen among 0.01, 0.1, 1 and 10 by default." },
-                    "ham_weight": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000, "description": "How much more calling ham spam costs than missing spam; 5 by default." },
+                    "c": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000, "description": "The centroid's SVM: its cost, fixed; chosen among 0.01, 0.1, 1 and 10 by default." },
+                    "ham_weight": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000, "description": "The centroid's SVM: how much more calling ham spam costs than missing spam; 5 by default." },
                 }),
                 &[],
             )
@@ -237,6 +240,10 @@ fn train(s: &Session, args: &Args) -> Result<Answer, String> {
         maxn: whole("maxn", 0, 20)?,
         c: args.decimal("c", f64::MIN_POSITIVE, 1e6)?,
         ham_weight: args.decimal("ham_weight", f64::MIN_POSITIVE, 1e6)?,
+        model: args.text("model")?,
+        lr: args.decimal("lr", f64::MIN_POSITIVE, 10.0)?,
+        min_count: whole("min_count", 1, 1000)?,
+        ..report::Settings::default()
     };
     // Checked now, so that a wrong setting is said here and not in the job.
     settings.apply(&mut sioul_learn::train::Options::default())?;
