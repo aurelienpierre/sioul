@@ -9,16 +9,13 @@ description: "Sioul est un environnement administratif personnel. Il ajuste les 
 
 **La plupart des logiciels attendent des gens qu’ils s’adaptent à eux. Sioul adapte les exigences du monde à la personne.**
 
-La machinerie administrative de la vie moderne suppose quelqu’un de toujours disponible, toujours en pleine forme, qui se souvient de la façon dont une douzaine de systèmes séparés se répondent. Sioul part de l’autre bout, de ce que vous pouvez donner aujourd’hui : votre attention, votre énergie, votre santé, votre repos. Il les protège d’abord, et range le travail, les institutions et l’argent dans ce qui reste.
+La vie administrative moderne suppose quelqu’un de toujours disponible et toujours en pleine forme. Sioul part au contraire de ce que vous pouvez donner aujourd’hui, votre attention, votre énergie, votre santé et votre repos, et y ajuste le travail, les institutions et l’argent.
 
 Une lettre des impôts, la tâche qu’elle demande, le rendez-vous, le document, la personne qui l’a envoyée et le paiement forment un seul dossier. Vous n’avez pas à garder en tête ce qui les relie : Sioul le garde pour vous.
 
-**Sioul est un environnement administratif personnel.** Il relie ce que la vie moderne éparpille entre les messageries, les sites, les agendas, les listes de tâches, les fichiers et les banques, et décide de ce qui a sa place dans votre attention d’après ce que vous avez dit pouvoir donner : vos heures, et comment est la journée. C’est un lieu calme entre vous et cette machinerie, sur vos propres appareils.
+**Sioul est un environnement administratif personnel.** Il rassemble ce que la vie moderne éparpille entre les messageries, les sites, les agendas, les listes de tâches, les fichiers et les banques, et ne met en avant que ce qui a sa place dans votre attention maintenant. Il fonctionne sur vos propres appareils.
 
-<figure markdown="span">
-  [![La fenêtre de Sioul. À gauche, la liste des lieux : Porche, Tâches, Courrier, Sites, Agenda, Contacts, Notes, Projets, Temps, Budgets, Papiers, Santé. À droite, le Porche : les paiements de la semaine en une ligne, un code à usage unique avec son bouton Copier, les nouvelles d’une discussion, puis le nouveau courrier réparti en files.](assets/screens/fr/porch.png){ loading=lazy }](assets/screens/fr/porch.png "Ouvrir l’image en grand")
-  <figcaption>Le Porche : ce qui est arrivé attend les heures que vous avez choisies ; les codes que vous venez de demander arrivent tout de suite.</figcaption>
-</figure>
+**Ce n’est pas un logiciel de productivité.** Il ne cherche pas à vous faire faire plus, répondre plus vite ou tout tenir à jour : il cherche à ce que les démarches vous demandent moins. Il est conçu comme [un acte de soin](#an-act-of-care).
 
 ## Vous décidez de ce qui passe {#you-decide-what-gets-through}
 
@@ -26,36 +23,49 @@ Le monde n’accède pas directement à votre attention. Le courrier, les appels
 
 Certaines choses arrivent tout de suite : le code que vous venez de demander à un site, une prise, l’appel de quelqu’un que vous avez choisi. D’autres attendent leur moment : le courrier d’un client attend vos heures de travail, celui des impôts vos heures de démarches, et le travail de personne n’atteint votre soirée. D’autres s’affichent là où vous regardez, sous le Porche ou sur l’écran d’accueil de votre téléphone, sans notification. D’autres ne vous joignent jamais, comme les expéditeurs que vous avez bloqués.
 
-Être affiché n’est pas être dérangé. Ce qui attend sous le Porche ne vous demande rien tant que vous ne regardez pas ; seul ce que vous avez permis peut vous interrompre.
+**Être affiché n’est pas être dérangé.** Ce qui attend sous le Porche ne vous demande rien tant que vous ne regardez pas ; seul ce que vous avez permis peut vous interrompre.
 
-La plupart des logiciels laissent chaque application décider quand elle peut vous interrompre. Sioul fait l’inverse : vous fixez les règles une fois, et elles valent pour votre courrier, vos appels, vos messages, vos sites et vos rappels, sur votre ordinateur comme sur votre téléphone ; « Ne pas déranger », mis sur l’un, vaut sur tous. [Ce qui vous joint, et quand](guide/notifications.md)
+La plupart des logiciels laissent chaque application décider quand elle peut vous interrompre. Sioul fait l’inverse : vous fixez les règles une fois, et elles valent pour votre courrier, vos appels, vos messages, vos sites et vos rappels. [Ce qui vous joint, et quand](guide/notifications.md)
 
-## Pourquoi Sioul existe {#why-sioul-exists}
+<figure markdown="span">
+  [![La fenêtre de Sioul. À gauche, la liste des lieux : Porche, Tâches, Courrier, Sites, Agenda, Contacts, Notes, Projets, Temps, Budgets, Papiers, Santé. À droite, le Porche : les paiements de la semaine en une ligne, un code à usage unique avec son bouton Copier, les nouvelles d’une discussion, puis le nouveau courrier réparti en files.](assets/screens/fr/porch.png){ loading=lazy }](assets/screens/fr/porch.png "Ouvrir l’image en grand")
+  <figcaption>Le Porche : ce qui est arrivé attend les heures que vous avez choisies ; les codes que vous venez de demander arrivent tout de suite.</figcaption>
+</figure>
 
-Sioul est la contrepartie en actes d’un livre du même auteur, *La conception et l’ingénierie malgré l’open-source* ([gratuit, en PDF et en EPUB](https://editions.aurelienpierre.com/concevoir/)). Le livre pose : « Un outil sert son utilisateur, ou il le trahit. Il n’y a pas d’entre-deux. » Sioul applique sa méthode là où les logiciels laissent le plus souvent la charge à la personne : les démarches du quotidien.
+### Vos appareils suivent vos limites {#your-devices-follow-your-boundaries}
 
-Une seule épreuve pour tout ce qu’on ajoute à Sioul : est-ce que cela enlève du travail à la personne, au lieu de le déplacer ailleurs ?
+Votre attention n’appartient pas à chaque appareil séparément. Votre ordinateur et votre téléphone sont deux accès aux mêmes règles : ce que vous réglez sur l’un voyage vers les autres, scellé, par un dossier que votre propre application de synchronisation transporte. Quand vos heures de travail finissent, le travail attend sur tous.
+
+« Ne pas déranger » est un seul interrupteur pour tous vos appareils : mis sur votre ordinateur, il vaut sur votre téléphone, en général en quelques minutes, et inversement. Une pause et le temps libre voyagent de la même façon. Chaque appareil met alors son propre système en silence, autant que ce système le permet à une application.
+
+Les appels suivent les mêmes règles. Sur un téléphone Android, Sioul les filtre : l’appel de quelqu’un qui ne peut pas vous joindre maintenant est refusé simplement et part sur votre messagerie, et le Porche vous dit ensuite qui a appelé. Sioul ne répond jamais à un appel et n’écoute jamais. Quand vous en attendez un, un clic sur n’importe lequel de vos appareils, votre ordinateur compris, laisse sonner tous les appels pendant une heure. [« Ne pas déranger » sur tous vos appareils](guide/notifications.md#do-not-disturb-on-every-device) · [Les appels](guide/calls.md)
+
+### Un filtre qui apprend ce qui peut attendre {#a-filter-that-learns-what-can-wait}
+
+La plupart des filtres à indésirables gardent une boîte de réception en ordre. Celui de Sioul protège votre attention : il décide de ce qui peut attendre. Il apprend de votre propre courrier, sur votre ordinateur, quand vous le demandez : de vos dossiers d’indésirables, et de chaque message que vous marquez comme indésirable ou non, sur n’importe lequel de vos appareils. Sioul n’envoie votre courrier à aucun service de filtrage ; seule la petite table que le filtre apprend voyage vers votre téléphone, scellée.
+
+Il ne juge que le courrier des inconnus, jamais celui de quelqu’un que vous connaissez, un code que vous avez demandé ou le courrier d’un projet. Il ne prétend pas non plus être sûr : ce qui ressemble à un indésirable, ou pourrait en être un, attend dans une file repliée sous le Porche, sans compte ni notification, que vous ayez le temps d’y regarder. Vous choisissez ce qu’il fait de chaque avis ; tant que vous n’avez pas choisi, il ne déplace rien. [Les indésirables, et votre propre filtre](guide/porch.md#spam-and-your-own-filter)
 
 ## À l’envers {#the-other-way-round}
 
 | La plupart des logiciels | Sioul |
 |---|---|
-| Vos obligations remplissent la journée ; vos besoins se logent où ils peuvent. | Vos besoins dessinent la journée ; le travail prend la place qui reste. |
+| Vos obligations remplissent la journée ; vos besoins se logent où ils peuvent. | Vos besoins dessinent la journée ; le travail s’ajuste autour d’eux. |
 | Chaque application décide quand elle peut vous interrompre. | Vous décidez de ce qui peut vous joindre, et quand ; le reste attend son moment. |
 | Chaque type de chose a son programme, et c’est à vous de garder les liens. | Chaque pièce est reliée aux autres, et c’est Sioul qui garde les liens. |
 | Une date manquée devient du travail en retard. | Le plan repart d’aujourd’hui. Rien ne devient une dette. |
 
-**Ce ne sont pas quatre choix d’interface. Ce sont les quatre règles dont découle tout le reste de Sioul.** Le courrier, les appels, l’agenda, les tâches, la santé, les budgets et le téléphone ne sont pas des modules posés côte à côte : ce sont les quatre mêmes règles, appliquées chaque fois à un type de choses.
+**Ce ne sont pas quatre choix d’interface. Ce sont les quatre règles dont découle tout le reste de Sioul.** Le courrier, les appels, l’agenda, les tâches, la santé, les budgets et le téléphone ne sont pas des modules posés côte à côte : ce sont les quatre mêmes règles, appliquées chaque fois à un type de choses. Ils vont ensemble parce que chacun réclame la même attention, limitée : la vôtre.
 
 ## Au quotidien {#day-to-day}
 
 ### Vos besoins d’abord, ensuite le travail {#your-needs-first-then-the-work}
 
-Vous réglez d’abord vos repas, votre repos et votre sommeil. Ils sont gardés libres dans le plan, comme le temps de vous préparer, d’y aller et de revenir autour de chaque événement. Chaque jour, vous pouvez dire comment il est : clair, brume ou brouillard ; un jour de brume ou de brouillard tient moins. En fin de journée, vous pouvez dire si c’était trop plein, juste ce qu’il faut ou trop vide, et le plan en apprend ce que tient une journée pour vous ; il ne devine jamais votre état d’après ce que vous faites. Le travail va dans ce qui reste, aux heures prévues pour lui, sous la forme d’une seule étape suivante, avec la raison pour laquelle elle vient maintenant. Rien n’est jamais en retard : une date dans le plan n’est pas une dette.
+Vous réglez d’abord vos repas, votre repos et votre sommeil. Ils sont gardés libres dans le plan, comme le temps de vous préparer, d’y aller et de revenir autour de chaque événement. Chaque jour, vous pouvez dire comment il est : clair, brume ou brouillard ; un jour de brume ou de brouillard tient moins. En fin de journée, vous pouvez dire si c’était trop plein, juste ce qu’il faut ou trop vide, et le plan en apprend ce que tient une journée pour vous ; il ne devine jamais votre état d’après ce que vous faites. Le travail va dans les heures que vous lui avez données, sous la forme d’une seule étape suivante, avec la raison pour laquelle elle vient maintenant. Rien n’est jamais en retard : une date dans le plan n’est pas une dette.
 
 ### Un porche entre le monde et votre attention {#a-porch-between-the-world-and-your-attention}
 
-Rien de nouveau n’entre directement : arriver n’est pas entrer. Le courrier, les nouvelles des « messageries sécurisées » des banques et des administrations, les discussions : tout attend sous le Porche, trié, et montré aux heures que vous avez choisies. La question n’est pas ce qui est arrivé, mais ce qui a sa place dans votre attention maintenant. Chaque message est d’abord vérifié : authentique ou falsifié. Même les indésirables sont traités avant de vous atteindre : un filtre à vous, entraîné sur votre ordinateur à partir de votre courrier, ne juge que les messages d’inconnus, et ce qui ressemble à un indésirable attend dans une file repliée, jamais annoncée, que vous ayez le temps d’y regarder. Les codes que vous venez de demander à un site arrivent tout de suite.
+Rien de nouveau n’entre directement : arriver n’est pas entrer. Le courrier, les nouvelles des « messageries sécurisées » des banques et des administrations, les discussions : tout attend sous le Porche, trié, et montré aux heures que vous avez choisies. La question n’est pas ce qui est arrivé, mais ce qui a sa place dans votre attention maintenant. Chaque message est d’abord vérifié : authentique ou falsifié. Les codes que vous venez de demander à un site arrivent tout de suite.
 
 ### Sans peur de se tromper {#nothing-to-be-afraid-of-getting-wrong}
 
@@ -67,13 +77,30 @@ La plupart des logiciels éparpillent les pièces d’un dossier entre la messag
 
 Dans Sioul, chaque dossier est un projet : une déclaration d’impôts, un bail, le travail pour un client, toute affaire que vous suivez. Son courrier lui arrive tout seul, par l’expéditeur ou par des mots. Ses tâches, ses événements, ses notes et les personnes concernées lui sont reliés, et chaque tâche, chaque contact, chaque note montre ce qui lui est relié. Le projet pose tout sur une ligne de temps : ce qui vient, puis ce qui s’est passé. Votre propre activité aussi : le courrier d’un client, les tâches, le temps passé, la facture, l’argent attendu et les chiffres pour votre comptable forment une seule chaîne.
 
+## Travailler à son compte {#working-for-yourself}
+
+Indépendants, consultants, micro-entrepreneurs : le travail que vous vendez et les démarches qu’il entraîne vivent dans la même fenêtre, du premier courrier du client à la facture payée.
+
+- **Un projet par client**, dont le courrier lui arrive tout seul : par le domaine ou les adresses du client, par des mots d’un objet ou du nom d’une pièce jointe.
+- **Le temps compté pendant le travail.** Le minuteur de concentration compte pour la tâche et son projet ; une réunion ou un appel se note en quelques touches : `1h30`. Le même relevé apprend au plan [combien de temps prennent les choses](guide/time.md#how-long-things-take).
+- **Ce qui reste à facturer**, pour chaque projet, en heures et en argent, toujours en vue.
+- **La facture en un clic** : une ligne par tâche au taux du projet, des numéros qui ne sautent ni ne se répètent, les mentions que la loi française demande, un PDF ; puis l’argent attendu dans votre budget jusqu’au paiement.
+- **Un tableur pour votre comptable**, et le même temps et les mêmes factures sur votre ordinateur de bureau et votre portable, scellés de bout en bout.
+
+Pas d’outil de suivi du temps, de feuille d’heures ni de service de facturation à côté, et pas d’abonnement : vos clients et vos factures restent dans vos propres fichiers. [Travailler pour des clients](guide/clients.md)
+
+<figure markdown="span">
+  [![La page Projets : trois projets listés à gauche, avec Nouveau projet ; l’un ouvert à droite : « Pour un client », son taux, Tableau, Liste, Calendrier, Noter du temps et Faire la facture ; ses tâches ouvertes et faites, le temps noté et à facturer ; « Le courrier qui arrive ici tout seul », replié ; ses factures, l’une marquée Payée ; puis « Sur une ligne de temps », ce qui vient et ce qui s’est passé avant.](assets/screens/fr/projects.png){ loading=lazy }](assets/screens/fr/projects.png "Ouvrir l’image en grand")
+  <figcaption>Le projet d’un client : ses tâches, son temps, son courrier et ses factures, sur une ligne de temps.</figcaption>
+</figure>
+
 ## Quand les forces changent {#when-capacity-changes}
 
 Sioul a d’abord été pensé pour les personnes à qui l’administratif coûte particulièrement cher : les personnes autistes, celles qui ont un TDAH, celles aux prises avec l’anxiété, un traumatisme, un épuisement professionnel, une dépression ou une grande fatigue, et celles dont l’énergie ou les capacités cognitives fluctuent. Les mêmes besoins viennent avec le covid long, l’encéphalomyélite myalgique (EM/SFC) et d’autres maladies qui limitent l’énergie, avec un trouble des conduites alimentaires ou des repas irréguliers, avec le soin d’un proche, avec une mauvaise passe.
 
 Repousser une lettre n’est pas de la paresse : cela protège votre humeur, pour le moment (Sirois & Pychyl 2013). Et la charge administrative pèse le plus sur les personnes à qui il reste le moins de ressources, fonctions exécutives et santé comprises (Christensen et al. 2020). Sioul part de ce que peut tenir une journée, qui change, et non d’un diagnostic : il n’en demande aucun, et ne devine rien de votre état. Vous dites ce que vous pouvez faire, et il s’organise autour.
 
-Beaucoup de personnes neuroatypiques travaillent à leur compte, parce que la vie de bureau ne leur convient pas, et cela apporte plus d’administratif, justement du plus dur : devis et factures, impôts, cotisations, clients, banque. Sioul porte donc aussi une petite activité, du premier courrier d’un client à la facture payée ([plus bas](#working-for-yourself)).
+Beaucoup de personnes neuroatypiques travaillent à leur compte, parce que la vie de bureau ne leur convient pas, et cela apporte plus d’administratif, justement du plus dur : devis et factures, impôts, cotisations, clients, banque. Sioul porte donc aussi une petite activité, du premier courrier d’un client à la facture payée ([plus haut](#working-for-yourself)).
 
 ## Dans la fenêtre {#in-the-window}
 
@@ -155,23 +182,6 @@ Beaucoup de personnes neuroatypiques travaillent à leur compte, parce que la vi
 
 Vos agendas, contacts et tâches Google peuvent venir aussi. Si vous vous connectez avec votre compte Google, Sioul les lit et les écrit, seulement pour les montrer à côté du reste de vos démarches et pour enregistrer les changements que vous faites dans Sioul, et en garde une copie sur votre appareil. Rien ne part chez le développeur. Ce qu’il lit, où il le garde, et comment lui retirer l’accès : [politique de confidentialité](privacy.md#google-calendars-contacts-and-tasks).
 
-## Travailler à son compte {#working-for-yourself}
-
-Indépendants, consultants, micro-entrepreneurs : le travail que vous vendez et les démarches qu’il entraîne vivent dans la même fenêtre, du premier courrier du client à la facture payée.
-
-- **Un projet par client**, dont le courrier lui arrive tout seul : par le domaine ou les adresses du client, par des mots d’un objet ou du nom d’une pièce jointe.
-- **Le temps compté pendant le travail.** Le minuteur de concentration compte pour la tâche et son projet ; une réunion ou un appel se note en quelques touches : `1h30`. Le même relevé apprend au plan [combien de temps prennent les choses](guide/time.md#how-long-things-take).
-- **Ce qui reste à facturer**, pour chaque projet, en heures et en argent, toujours en vue.
-- **La facture en un clic** : une ligne par tâche au taux du projet, des numéros qui ne sautent ni ne se répètent, les mentions que la loi française demande, un PDF ; puis l’argent attendu dans votre budget jusqu’au paiement.
-- **Un tableur pour votre comptable**, et le même temps et les mêmes factures sur votre ordinateur de bureau et votre portable, scellés de bout en bout.
-
-Pas d’outil de suivi du temps, de feuille d’heures ni de service de facturation à côté, et pas d’abonnement : vos clients et vos factures restent dans vos propres fichiers. [Travailler pour des clients](guide/clients.md)
-
-<figure markdown="span">
-  [![La page Projets : trois projets listés à gauche, avec Nouveau projet ; l’un ouvert à droite : « Pour un client », son taux, Tableau, Liste, Calendrier, Noter du temps et Faire la facture ; ses tâches ouvertes et faites, le temps noté et à facturer ; « Le courrier qui arrive ici tout seul », replié ; ses factures, l’une marquée Payée ; puis « Sur une ligne de temps », ce qui vient et ce qui s’est passé avant.](assets/screens/fr/projects.png){ loading=lazy }](assets/screens/fr/projects.png "Ouvrir l’image en grand")
-  <figcaption>Le projet d’un client : ses tâches, son temps, son courrier et ses factures, sur une ligne de temps.</figcaption>
-</figure>
-
 ## Fondé sur la recherche, et sur des refus {#built-on-research-and-on-refusals}
 
 Chaque règle de Sioul vient d’une chaîne : ce que des études ont observé, pourquoi, la règle qui en découle, ce que fait Sioul, et ce qu’il refuse. En voici cinq :
@@ -188,9 +198,9 @@ Tous les résultats, avec leurs sources et la règle que chacun donne : [ce qu
 
 ## Un acte de soin {#an-act-of-care}
 
-La conclusion de *La conception et l’ingénierie malgré l’open-source* emploie « un mot que l’ingénierie ne prononce jamais : concevoir, c’est prendre soin ». Le livre décrit aussi ce qui arrive aux moins armés : « On conscrit d’abord tout le monde à l’ordinateur, pour des tâches qui se faisaient bien sans lui ; puis on met techniquement en échec les moins équipés ; puis on leur fait porter la faute. » C’est dans les démarches du quotidien que cela arrive le plus.
+Sioul est la contrepartie en actes d’un livre du même auteur, *La conception et l’ingénierie malgré l’open-source* ([gratuit, en PDF et en EPUB](https://editions.aurelienpierre.com/concevoir/)). Sa conclusion emploie « un mot que l’ingénierie ne prononce jamais : concevoir, c’est prendre soin ». Le livre décrit aussi ce qui arrive aux moins armés : « On conscrit d’abord tout le monde à l’ordinateur, pour des tâches qui se faisaient bien sans lui ; puis on met techniquement en échec les moins équipés ; puis on leur fait porter la faute. » C’est dans les démarches du quotidien que cela arrive le plus, et c’est là que Sioul applique la méthode du livre. Une seule épreuve décide de tout ce qu’on lui ajoute : est-ce que cela enlève du travail à la personne, au lieu de le déplacer ailleurs ?
 
-Le même raisonnement décide de la façon dont Sioul est construit. Vos données restent sur vos appareils, dans de simples fichiers et des formats ouverts, et dans vos propres comptes. Vos notes sont un dossier de fichiers Markdown qu’Obsidian et Nextcloud Notes lisent comme les leurs ([Les notes](guide/notes.md#the-same-folder-as-obsidian-and-nextcloud-notes)). Ce qui passe d’un appareil à l’autre voyage scellé, par un dossier que votre propre application de synchronisation transporte. Il n’y a pas de serveur à nous, et rien ne parvient au développeur. Le code est un logiciel libre, sous licence GPL. Un outil fait pour alléger le poids de la machinerie administrative ne peut pas, sans se contredire, vous attacher à un service que vous ne pourriez pas quitter.
+Le même raisonnement décide de la façon dont Sioul est construit. Vos données restent sur vos appareils, dans de simples fichiers et des formats ouverts, et dans vos propres comptes. Vos notes sont un dossier de fichiers Markdown qu’Obsidian et Nextcloud Notes lisent comme les leurs ([Les notes](guide/notes.md#the-same-folder-as-obsidian-and-nextcloud-notes)). Ce qui passe d’un appareil à l’autre voyage scellé, par un dossier que votre propre application de synchronisation transporte. Il n’y a pas de serveur à nous, et rien ne parvient au développeur. Le code est un logiciel libre, sous licence GPL. Un outil fait pour alléger le poids de la machinerie administrative ne peut pas, sans se contredire, vous attacher à un service que vous ne pourriez pas quitter : comme le dit le livre, « un outil sert son utilisateur, ou il le trahit ».
 
 ## Où il en est {#where-it-stands}
 
