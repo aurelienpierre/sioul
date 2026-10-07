@@ -8,7 +8,11 @@
 ; Attachments are checked by Windows' own antivirus (AMSI, Microsoft Defender
 ; by default): nothing more to install. Passwords go to the Credential Manager.
 
-#define Version "0.0.1"
+; The version: the packages' workflow gives it (/DVersion=..., from the tag or
+; Cargo.toml); this one only when the installer is built by hand.
+#ifndef Version
+  #define Version "0.0.2"
+#endif
 
 [Setup]
 AppId={{6A3F2C1E-5D4B-4E8A-9C7F-2B1D0E9F8A31}
