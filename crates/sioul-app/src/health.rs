@@ -485,8 +485,8 @@ pub(crate) fn watch_offer(qt: &QtThread, focus_minutes: u32) {
     }
     let now = Zoned::now();
     let mut memory: sioul_core::wearable::Memory = std::fs::read_to_string(offers_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-    // Quiet for the watch: a time the notification matrix drops its offers (as usual, all but work).
-    let quiet = !crate::hours::comes(sioul_core::notify::Kind::Watch);
+    // Quiet for the watch: a time the matrix of what reaches you drops its offers (as usual, all but work).
+    let quiet = !crate::hours::comes(sioul_core::attention::Kind::Watch);
     let moment = sioul_core::wearable::Moment { now: now.timestamp().as_second(), hour: now.hour() as u8, quiet, breakpoint: true, focus_minutes };
     let Some(offer) = sioul_core::wearable::offer(&folder, &moment, &memory, now.time_zone(), now.date()) else { return };
     sioul_core::wearable::offered(&mut memory, offer, moment.now, now.date());
@@ -1110,9 +1110,9 @@ fn movement_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zon
     use std::sync::atomic::Ordering;
     let stamp = now.timestamp().as_second();
     let last = MOVED.load(Ordering::Relaxed);
-    // At a time the notification matrix drops it (as usual: sleep, the pauses, a slot
+    // At a time the matrix of what reaches you drops it (as usual: sleep, the pauses, a slot
     // of time for you, do-not-disturb), the pause is counted again from its end.
-    if last == 0 || !health.movement.enabled || sioul_core::timelog::running().is_some() || !crate::hours::comes(sioul_core::notify::Kind::Move) {
+    if last == 0 || !health.movement.enabled || sioul_core::timelog::running().is_some() || !crate::hours::comes(sioul_core::attention::Kind::Move) {
         MOVED.store(stamp, Ordering::Relaxed);
         return;
     }
@@ -2341,15 +2341,16 @@ fn needs_tick(qt: &QtThread, shared: &Arc<Shared>, health: &Health, now: &Zoned)
         return;
     }
     let hm = |at: i64| clock(at, now.time_zone());
-    // As the notification matrix says (as usual, nothing while you sleep, in a pause or in Free time).
-    let notify = sioul_core::notify::Notify::of(&crate::backend::load_config());
-    let moment = crate::hours::notify_now();
-    let may = notify.comes(sioul_core::notify::Kind::Needs, &moment);
+    // As the matrix of what reaches you says (as usual, nothing while you sleep, in a pause or in Free time).
+    let attention = crate::hours::attention();
+    let moment = crate::hours::attention_now();
+    let needs = sioul_core::attention::Row::Own(sioul_core::attention::Kind::Needs);
+    let may = attention.level(needs, &moment) == sioul_core::attention::Level::Now;
     // The night's or a nap's own notice as it begins says that sleep begins:
     // sleep's column does not hold it (docs/health.md); a pause does.
     let mut awake = moment.clone();
-    awake.times.retain(|c| *c != sioul_core::notify::Column::Sleep);
-    let starting = notify.comes(sioul_core::notify::Kind::Needs, &awake);
+    awake.times.retain(|c| *c != sioul_core::attention::Column::Sleep);
+    let starting = attention.level(needs, &awake) == sioul_core::attention::Level::Now;
     for (block, heads_up) in due {
         let own_start = !heads_up && (block.kind == "sleep" || block.kind == "nap") && block.start <= stamp;
         if !(may || (own_start && starting)) {

@@ -25,7 +25,7 @@ A contact opens on the right:
 - its **e-mail addresses**, each with **Write**;
 - its **phone numbers**, each with **Call**;
 - folded under **More**: postal addresses, organisation and role, birthday, notes, web sites;
-- **Their list**: who they are to you, for all their addresses and numbers, on any card, one with a number only too ([Accounts ▸ Who may reach you](accounts.md#senders)). Anyone in your address books is neutral until you choose; their categories can decide, when a list names one of them; their own choice comes first: safe, neutral, restricted or blocked, or back to **As their categories say**. Under it, a sentence says what decides now, and a line names any address or number of theirs with a list of its own, which comes first;
+- **How they reach you**: who they are to you in a sentence ("Neutral: in your address book, on no list."), and **How … reaches you**, their sheet: their list, for all their addresses and numbers, on any card, one with a number only too; **Always through**; and what reaches you from them at each time ([A person's sheet](notifications.md#a-persons-sheet)). Anyone in your address books is neutral until you choose; their categories can decide, when a list names one of them; their own choice comes first: safe, neutral, restricted or blocked, or back to **As their categories say**;
 - a small map with a pin at their address, once it is placed (below);
 - what is **tied to it**: the mail exchanged, tasks, events, notes, projects.
 
@@ -41,7 +41,7 @@ When you write a message, addresses are completed from your contacts.
 
 Categories are the groups Nextcloud Contacts shows: "Family", "Friends", "Neighbours"; a card can have several. In the form, under **Categories**, × takes one off, and the field after them adds one, chosen among those your cards already have or typed. "amis" and "Amis" are one category, written as your cards first wrote it.
 
-They are saved in the card itself (vCard's `CATEGORIES`), so Nextcloud, your phone and other programs see them, and a card saved in Sioul keeps those it had. A list can name a category ([Accounts ▸ Who may reach you](accounts.md#senders), "Your contacts' categories"): they then reach you as that list says, by mail, by phone and through other apps' messages, unless you chose otherwise for them on their card. Nothing goes on a list by itself, family and friends included.
+They are saved in the card itself (vCard's `CATEGORIES`), so Nextcloud, your phone and other programs see them, and a card saved in Sioul keeps those it had. A list can name a category (Settings ▸ [What reaches you](notifications.md#who-is-on-which-list), "Your contacts' categories"): they then reach you as that list says, by mail, by phone and through other apps' messages, unless you chose otherwise for them on their card. Nothing goes on a list by itself, family and friends included.
 
 ## Duplicates
 

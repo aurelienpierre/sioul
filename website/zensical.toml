@@ -45,7 +45,7 @@ nav = [
     ] },
     { "Across Sioul" = [
       { "Hours: work, your admin, leisure, meals, sleep" = "guide/hours.md" },
-      { "Notifications and do-not-disturb" = "guide/notifications.md" },
+      { "What reaches you, and when" = "guide/notifications.md" },
       { "Pauses: Free time and Pause" = "guide/pauses.md" },
       { "Calls: who may ring, and when" = "guide/calls.md" },
       { "Sharing between your devices" = "guide/sharing.md" },
@@ -105,6 +105,7 @@ nav = [
       { "Tasks, notes, links, focus" = "dev/tasks.md" },
       { "What a day holds" = "dev/capacity.md" },
       { "The two pauses" = "dev/pauses.md" },
+      { "What reaches you, and when" = "dev/attention.md" },
       { "Do not disturb" = "dev/do-not-disturb.md" },
       { "The end of the day" = "dev/reviews.md" },
       { "Areas and hours" = "dev/areas.md" },

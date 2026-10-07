@@ -7,7 +7,9 @@
 //! comes now or how long it waits (`sioul_appnotes_decide`), and, when
 //! something moved the times (a pause ended, the hours or the choices
 //! changed), how long what it holds waits now (`sioul_appnotes_review`). The
-//! rules are `sioul_core::appnotes`; who may reach you when, `sioul_core::reach`.
+//! rules are `sioul_core::appnotes`; what reaches you when, `sioul_core::attention`,
+//! with today's slots of time for you from their file (`hours::slots`): Time
+//! for you holds in this process too.
 //!
 //! Also here, for the window: Settings ▸ Other apps (`setup`, `change`), and
 //! the Porch's line on what waits and what came back (`porch_line`). On a
@@ -21,7 +23,7 @@ use sioul_core::areas::Area;
 use sioul_core::config::Config;
 use sioul_core::everywhere::People;
 use sioul_core::porch::{By, Senders};
-use sioul_core::reach::{Clock, Reach, Who};
+use sioul_core::reach::{Clock, Who};
 use std::ffi::c_char;
 use std::path::Path;
 use std::sync::Mutex;
@@ -64,9 +66,9 @@ fn changed(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
-/// The clock and the matrix as they stand, kept a minute in the listener's
-/// process: read again sooner when the pause or free time, Health, the hours
-/// or the settings change. Asked at every notification.
+/// The clock as it stands, kept a minute in the listener's process: read
+/// again sooner when the pause or free time, Health, the hours or the
+/// settings change. Asked at every notification.
 fn live(config: &Config, now: &Zoned) -> Live {
     type Key = (i64, [Option<SystemTime>; 4]);
     static KEPT: Mutex<Option<(Key, Live)>> = Mutex::new(None);
@@ -83,7 +85,7 @@ fn live(config: &Config, now: &Zoned) -> Live {
     {
         return live.clone();
     }
-    let live = Live { clock: Clock::load(config, now), reach: Reach::load(config) };
+    let live = Live { clock: Clock::load(config, now) };
     if let Ok(mut kept) = KEPT.lock() {
         *kept = Some((key, live.clone()));
     }
@@ -91,15 +93,15 @@ fn live(config: &Config, now: &Zoned) -> Live {
 }
 
 /// Who wrote, as your address books and lists say (`porch::Senders`): none
-/// when nobody knows a name; and whether do-not-disturb's list holds them,
-/// while it holds (`gate`).
-fn who_of(sender: &Sender, senders: &Senders, gate: Option<&People>, config: &Config) -> (Option<Who>, bool) {
+/// when nobody knows a name; and whether the Always through list holds them
+/// (by a number or an address, never a name, which anyone can take).
+fn who_of(sender: &Sender, senders: &Senders, always: &People, config: &Config) -> (Option<Who>, bool) {
     match sender {
         Sender::Known { numbers, emails, contact } => {
             let by_number = numbers.iter().map(|n| senders.judge_number(n)).find(|j| j.by != By::Default).map(|j| j.who);
             let by_address = emails.iter().map(|e| senders.who(e)).find(|w| *w != Who::Stranger);
             let region = sioul_core::reach::region(config);
-            let admitted = gate.is_some_and(|people| numbers.iter().any(|n| people.admits_number(n, region)) || emails.iter().any(|e| people.admits_address(e)));
+            let admitted = numbers.iter().any(|n| always.admits_number(n, region)) || emails.iter().any(|e| always.admits_address(e));
             // In the phone's address book though not in Sioul's: someone you know.
             let unknown = if *contact { Who::Neutral } else { Who::Stranger };
             (Some(by_number.or(by_address).unwrap_or(unknown)), admitted)
@@ -122,10 +124,10 @@ fn area_of(posted: &Posted, kind: &Kind, choices: &Choices, config: &Config) -> 
     })
 }
 
-/// Do-not-disturb's switch or a focus session, holding now: its list, and
-/// when it ends when that is known.
-fn gate() -> Option<(People, Option<i64>)> {
-    crate::everywhere::mail_gate().map(|people| (people, crate::everywhere::now().until()))
+/// Do-not-disturb's switch or a focus session, holding now: when it ends,
+/// when that is known (a layer of the matrix).
+fn gate() -> Option<Option<i64>> {
+    crate::everywhere::gate()
 }
 
 /// One notification decided (`AppNotes.decide`): {"hold": milliseconds (0:
@@ -140,16 +142,20 @@ fn decide(json: &str) -> String {
     let stamp = now.timestamp().as_second();
     let gate = gate();
     let (who, admitted) = match &kind {
-        Kind::People(talk) => who_of(&talk.sender, &Senders::load(&config), gate.as_ref().map(|(people, _)| people), &config),
+        Kind::People(talk) => who_of(&talk.sender, &Senders::load(&config), &People::load(&People::default_path()), &config),
         _ => (None, false),
     };
     let area = area_of(&posted, &kind, &choices, &config);
     let live = live(&config, &now);
     let gathered = config.reminders.gathered_times();
-    let slot = |at: &Zoned| crate::capacity::in_gain_slot(at);
-    // What comes when, kind by kind (Settings ▸ Reminders and notifications).
-    let notify = sioul_core::notify::Notify::of(&config);
-    let ask = Ask { now: &now, clock: &live, reach: &live, notify: &notify, gathered: &gathered, area, gate: gate.as_ref().map(|(_, until)| Gate { until: *until }), slot_at: &slot, also: &[] };
+    // Today's slots of time for you, as the window wrote them; where they begin and end.
+    let slots = crate::hours::slots();
+    let slot = |at: &Zoned| slots.at(at);
+    let also = slots.edges();
+    // What reaches you when (Settings ▸ What reaches you); Free time's "Nothing at all".
+    let attention = sioul_core::attention::Attention::of(&config);
+    let nothing = sioul_core::pause::nothing_now(&sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path()), &config.free_time);
+    let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also };
     let hash = appnotes::key_hash(&posted.key);
     let path = Ledger::default_path();
     let decision = sioul_core::filelock::with_lock(&path, || {
@@ -197,8 +203,11 @@ fn review(json: &str) -> String {
     let gate = gate();
     let live = live(&config, &now);
     let gathered = config.reminders.gathered_times();
-    let slot = |at: &Zoned| crate::capacity::in_gain_slot(at);
-    let notify = sioul_core::notify::Notify::of(&config);
+    let slots = crate::hours::slots();
+    let slot = |at: &Zoned| slots.at(at);
+    let also = slots.edges();
+    let attention = sioul_core::attention::Attention::of(&config);
+    let nothing = sioul_core::pause::nothing_now(&sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path()), &config.free_time);
     let path = Ledger::default_path();
     let again = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
@@ -208,7 +217,7 @@ fn review(json: &str) -> String {
         for key in &keys {
             let hash = appnotes::key_hash(key);
             let Some(held) = ledger.held.get(&hash).cloned() else { continue };
-            let ask = Ask { now: &now, clock: &live, reach: &live, notify: &notify, gathered: &gathered, area: held.area, gate: gate.as_ref().map(|(_, until)| Gate { until: *until }), slot_at: &slot, also: &[] };
+            let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also };
             let until = appnotes::again(&held, &choices, &ask).until.unwrap_or(stamp);
             if (until - held.until).abs() > 60 {
                 if let Some(kept) = ledger.held.get_mut(&hash) {
@@ -346,12 +355,17 @@ pub(crate) fn setup() -> String {
     let throughs: Vec<(Value, String)> = Through::ALL.iter().map(|t| (json!(t.id()), text(&format!("appnotes-through-{}", t.id())))).collect();
     let mut talks: Vec<(&String, &appnotes::SeenTalk)> = ledger.conversations.iter().collect();
     talks.sort_by_key(|(_, t)| -t.seen);
+    // What Android says of each: marked Priority there (it rings through Sioul's modes), its page.
+    let android_says = if android { java("conversations", "{}") } else { Value::Null };
     let conversations: Vec<Value> = talks
         .into_iter()
         .map(|(key, seen)| {
             let label = format!("{} · {}", seen.title, seen.label);
             let help = if seen.group { text("appnotes-group") } else { String::new() };
-            row(&format!("conversation.{key}"), "choice", &label, &help, json!(choices.through(key).id()), throughs.clone())
+            let mut said = row(&format!("conversation.{key}"), "choice", &label, &help, json!(choices.through(key).id()), throughs.clone());
+            said["talk"] = json!(key);
+            said["important"] = json!(android_says["conversations"][key.as_str()]["important"] == true);
+            said
         })
         .collect();
     let at_once = vec![(json!(false), text("appnotes-site-gathered")), (json!(true), text("appnotes-site-at-once"))];
@@ -400,7 +414,8 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
                 eprintln!("Notes: {e}");
             }
         }
-        "open-access" | "open-info" | "open-app" | "open-channel" => {
+        // Android's pages; a conversation's by its key (`talk`), to mark it Priority there.
+        "open-access" | "open-info" | "open-app" | "open-channel" | "open-conversation" => {
             java(verb, json);
         }
         "contacts" => crate::steps::ask_contacts(),

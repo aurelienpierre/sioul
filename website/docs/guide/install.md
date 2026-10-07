@@ -29,7 +29,7 @@ Measured on 6 October 2026 on a Linux computer with 8 cores, with Sioul and ever
 - **What is not open costs nothing.** Each page of the window, each form and menu is made the first time you open it, and the engine that shows websites starts with the first site you open. On 4 October, before this, Sioul alone took 280 MB, and 1.9 GB in daily use (its own process 0.7 GB).
 - **The sites are the heavy part.** Each one kept open costs what a tab of a web browser costs, 150 to 350 MB, and the processor its page uses: a chat that keeps itself up to date is the busiest.
 - **Disk**: a few megabytes read and written in a few minutes.
-- **With the window closed**, the reminder watcher (Settings ▸ Reminders and notifications) takes 10 MB and almost no processor.
+- **With the window closed**, the reminder watcher (Settings ▸ Reminders) takes 10 MB and almost no processor.
 - **On a phone** (Android, a 2019 phone): about 200 MB while Sioul is on the screen and 140 MB once it is put away, with almost no processor then; each page opens in 0.1 to 0.5 s the first time, and at once after.
 - **What to plan for**: 4 GB of memory for Sioul and a few sites beside your other programs, 8 GB to keep many sites open; without sites, Sioul needs very little. Any processor of the last ten years.
 
@@ -107,7 +107,7 @@ install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml ~/.local/share/metainf
 mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 ```
 
-Sioul then shows in your application menu as "Sioul". The command line `sioul` is worth installing too: reminders use it when the window is closed ([Settings](settings.md#reminders-and-notifications)).
+Sioul then shows in your application menu as "Sioul". The command line `sioul` is worth installing too: reminders use it when the window is closed ([Settings](settings.md#reminders)).
 
 ### Updating
 

@@ -9,8 +9,7 @@
 
 use crate::backend::{load_config, say, tr};
 use sioul_core::porch::{self, By, Judged, Standing};
-use sioul_core::quiet;
-use sioul_core::reach::{Reach, Who};
+use sioul_core::reach::Who;
 
 /// A JSON array of addresses, or one address.
 fn addresses(text: &str) -> Vec<String> {
@@ -49,12 +48,12 @@ fn by_id(by: By) -> String {
 pub(crate) fn standing_json(text: &str) -> String {
     let config = load_config();
     let senders = porch::Senders::load(&config);
-    let reach = Reach::of(&config.reach);
+    let attention = sioul_core::attention::Attention::of(&config);
     let first = addresses(text).into_iter().next().unwrap_or_default();
     let judged = senders.judge(&first);
     let own = judged.by == By::Address;
     let choices: Vec<serde_json::Value> = std::iter::once(serde_json::json!({ "value": "", "label": tr().text("sender-categories", None) }))
-        .chain(Standing::ALL.iter().map(|s| serde_json::json!({ "value": s.as_str(), "label": quiet::list_choice(tr(), Who::of(*s), &reach.mail, true) })))
+        .chain(Standing::ALL.iter().map(|s| serde_json::json!({ "value": s.as_str(), "label": sioul_core::attention::list_choice(tr(), Who::of(*s), &attention, true) })))
         .collect();
     serde_json::json!({
         "standing": judged.who.id(),

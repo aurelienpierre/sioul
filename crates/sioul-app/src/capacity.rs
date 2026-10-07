@@ -4,9 +4,10 @@
 //! What a day holds, as the window uses it (docs/capacity.md): the record
 //! gathered for the plan each time it is made (`planned`) and kept for what
 //! the pages show beside it; today's slots of time for you, named, with a
-//! suggestion from your own well-rated items, and kept for the notifications
-//! to stay quiet in them (`crate::hours::quiet_slot`); the day's balance, in
-//! words, for the evening's review (`day_balance`).
+//! suggestion from your own well-rated items, and written to
+//! `state/slots.toml` for every process of this device to hold what waits in
+//! them (`sioul_core::attention::Slots`, `crate::hours::in_slot`); the day's
+//! balance, in words, for the evening's review (`day_balance`).
 
 use crate::backend::{load_config, say, tr};
 use jiff::Zoned;
@@ -62,20 +63,12 @@ pub(crate) fn ratio_line(task: &Task) -> String {
     last().map(|record| record.ratio_line(task, tr())).unwrap_or_default()
 }
 
-/// Today's slots of time for you, (start, end) in Unix seconds, with their day.
-static SLOTS: Mutex<(Option<Date>, Vec<(i64, i64)>)> = Mutex::new((None, Vec::new()));
-
-/// Whether `now` is in one of today's slots of time for you: what can wait,
-/// waits (G18b).
-pub(crate) fn in_gain_slot(now: &Zoned) -> bool {
-    let stamp = now.timestamp().as_second();
-    let slots = SLOTS.lock().unwrap_or_else(|e| e.into_inner());
-    slots.0 == Some(now.date()) && slots.1.iter().any(|&(from, to)| from <= stamp && stamp < to)
-}
-
 /// Today's layout in words: the slots of time for you named, one suggestion
 /// from your own items when there is one (G19), the free time kept named, and
-/// why today holds what it holds. Its slots are kept for the notifications.
+/// why today holds what it holds. Its slots are written down, when they
+/// changed, for every process of this device: what can wait, waits (G18b),
+/// whichever process decides it (the window, the listener of other apps, a
+/// phone's background step, `sioul remind --watch`, the calls' table).
 pub(crate) fn dress(day: &mut DayView, tasks: &[Task]) {
     let now = Zoned::now();
     let record = last();
@@ -91,8 +84,15 @@ pub(crate) fn dress(day: &mut DayView, tasks: &[Task]) {
         }
     }
     day.said = record.map(|r| r.reasons(now.date(), tr())).unwrap_or_default();
-    let slots: Vec<(i64, i64)> = day.blocks.iter().filter(|b| b.kind == "gain").map(|b| (b.start, b.end)).collect();
-    *SLOTS.lock().unwrap_or_else(|e| e.into_inner()) = (Some(now.date()), slots);
+    let slots = sioul_core::attention::Slots { day: Some(now.date()), slots: day.blocks.iter().filter(|b| b.kind == "gain").map(|b| (b.start, b.end)).collect() };
+    match slots.save(&sioul_core::attention::Slots::default_path()) {
+        // Calls ring or go to voicemail in them too: the phone's table follows.
+        Ok(true) => {
+            std::thread::spawn(|| crate::calls::refresh(true));
+        }
+        Ok(false) => {}
+        Err(e) => eprintln!("sioul: {e}"),
+    }
 }
 
 /// A day's balance, in words, for the evening's review: each cost and the

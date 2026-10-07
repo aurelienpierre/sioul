@@ -2,9 +2,10 @@
 // Copyright © 2026 Aurélien Pierre
 
 // What belongs to Sioul as a whole rather than to one page: language and
-// colours, working hours and days off, who may write to you when, sharing
-// between your computers, the antivirus, connections asked for. Each setting
-// says in a sentence what it changes and is saved at once.
+// colours, working hours and days off, what reaches you and when
+// (ReachesTab.qml), reminders, the pauses, on a phone what sets it up
+// (PhoneSetup.qml), your folder and sharing, invoices. Each setting says in a
+// sentence what it changes and is saved at once.
 
 pragma ComponentBehavior: Bound
 
@@ -27,13 +28,16 @@ Item {
         if (page.section === "files")
             page.shareMade = true
     }
-    // One tab at a time: how it looks, the hours, reminders and notifications,
-    // your folder and sharing, invoices; on a phone, its calls and other apps' notifications.
-    readonly property var sections: ["look", "hours", "reminders", "pauses", "dnd"].concat(Qt.platform.os === "android" ? ["calls", "apps"] : []).concat(["files", "invoices"])
+    // One tab at a time: how it looks, the hours, what reaches you, reminders,
+    // the pauses; on a phone, what sets it up; your folder and sharing, invoices.
+    readonly property var sections: ["look", "hours", "attention", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(["files", "invoices"])
     // The pause's screen tried from its setup (main.qml shows it, nothing held).
     signal tryPause
     property string section: "look"
-    readonly property var shown: page.rows.filter(r => r.section === page.section)
+    // What reaches you draws its own switches (ReachesTab.qml): none listed here.
+    readonly property var shown: page.section === "attention" ? [] : page.rows.filter(r => r.section === page.section)
+    // A view of What reaches you asked for before its tab was made: shown once it is.
+    property string reachesAsked: ""
 
     function reload() {
         page.rows = JSON.parse(page.sioul.settings("parameters"))
@@ -53,9 +57,39 @@ Item {
         bar.position = Math.min(1 - bar.size, bar.position + part)
     }
 
+    // What reaches you at one of its views ("attention.dnd"), times
+    // ("attention.pause") or channels ("attention.calls"); the older screens'
+    // keys lead there too ("notify", "dnd.people", "calls").
+    function showReaches(key) {
+        page.section = "attention"
+        scroll.ScrollBar.vertical.position = 0
+        page.reachesAsked = key.startsWith("attention.") ? key.slice("attention.".length) : "time"
+        if (reaches.item)
+            page.showAsked()
+    }
+
+    function showAsked() {
+        const asked = page.reachesAsked
+        page.reachesAsked = ""
+        const views = ["time", "person", "own", "exceptions", "dnd"]
+        if (views.includes(asked))
+            reaches.item.show(asked, "")
+        else if (["mail", "calls", "messages"].includes(asked))
+            reaches.item.show("person", asked)
+        else
+            reaches.item.show("time", asked)
+    }
+
     // One setting in view: where the Porch sends you for the hours. Once the
     // page is laid out, which takes a moment after it shows.
     function showSetting(key) {
+        const android = Qt.platform.os === "android"
+        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "calls": android ? "phone" : "attention.calls", "apps": android ? "phone" : "attention.exceptions" }
+        key = older[key] || key
+        if (key === "attention" || key.startsWith("attention.")) {
+            page.showReaches(key)
+            return
+        }
         const row = page.rows.find(r => r.key === key)
         if (row)
             page.section = row.section
@@ -96,7 +130,8 @@ Item {
         clip: true
 
         ColumnLayout {
-            width: Math.min(scroll.availableWidth, 720)
+            // What reaches you's cards sit three in a row where they can.
+            width: Math.min(scroll.availableWidth, page.section === "attention" ? 1100 : 720)
             spacing: 6
 
             Label {
@@ -183,50 +218,50 @@ Item {
                     PauseSetup {
                         sioul: page.sioul
                         theme: page.theme
+                        deviceShown: false
                         onTried: page.tryPause()
                     }
                 }
             }
 
-            // Do-not-disturb on every device: this device's line, the list of people, the phone's own (docs/do-not-disturb.md).
+            // What reaches you, and when: one place (docs/attention.md).
             Loader {
-                active: page.section === "dnd"
+                id: reaches
+
+                active: page.section === "attention"
                 visible: active
                 Layout.fillWidth: true
+                onLoaded: {
+                    if (page.reachesAsked !== "")
+                        page.showAsked()
+                }
 
                 sourceComponent: Component {
-                    DndSetup {
+                    ReachesTab {
+                        id: reachesTab
+
                         sioul: page.sioul
                         theme: page.theme
+                        rows: page.rows.filter(r => r.section === "attention")
+                        onSave: (key, value) => {
+                            page.save(key, value)
+                            reachesTab.reload()
+                        }
+                        onToTop: scroll.ScrollBar.vertical.position = 0
                     }
                 }
             }
 
-            // Calls, on a phone: Sioul as the caller ID & spam app, what always rings, where a declined call goes (docs/android.md, "Calls").
+            // This phone: what sets it up, nothing that decides when (docs/android.md).
             Loader {
-                active: page.section === "calls"
+                active: page.section === "phone"
                 visible: active
                 Layout.fillWidth: true
 
                 sourceComponent: Component {
-                    CallsSetup {
+                    PhoneSetup {
                         sioul: page.sioul
                         theme: page.theme
-                    }
-                }
-            }
-
-            // Other apps' notifications, on a phone: the access, holding, each app and conversation (docs/android.md, "Notifications from other apps").
-            Loader {
-                active: page.section === "apps"
-                visible: active
-                Layout.fillWidth: true
-
-                sourceComponent: Component {
-                    AppNotesSetup {
-                        sioul: page.sioul
-                        theme: page.theme
-                        onShowSetting: key => page.showSetting(key)
                     }
                 }
             }

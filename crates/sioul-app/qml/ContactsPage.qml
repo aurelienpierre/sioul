@@ -129,13 +129,6 @@ Item {
         return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
     }
 
-    // Their list, for all their addresses and numbers: a list of their own, or
-    // ("") what their categories say.
-    function setStanding(choice) {
-        page.sioul.setPerson(page.openKey, choice)
-        page.readMail()
-    }
-
     // For the window's tests: the open contact gets another number, and is saved.
     function addNumber(number) {
         page.formNow().load(page.person)
@@ -645,15 +638,14 @@ Item {
                                     }
                                 }
 
-                                // Their list: their own choice, else what their categories say, and
-                                // why; the choices as the lists give them. Any card, with an address
-                                // or only a number. On a phone, the choice under its name.
-                                GridLayout {
+                                // How they reach you: their list and why, in a sentence; their
+                                // sheet (PersonSheet.qml) chooses their list, Always through, and
+                                // says what each channel does with them at each time. Any card,
+                                // with an address or only a number.
+                                RowLayout {
                                     visible: page.person !== null
                                     Layout.fillWidth: true
-                                    columns: page.window.compact ? 2 : 3
-                                    columnSpacing: 8
-                                    rowSpacing: 4
+                                    spacing: 8
 
                                     // Names that are bundled (tools/bundle-icons.py): Windows and macOS have no theme.
                                     Icon {
@@ -661,40 +653,22 @@ Item {
                                         size: 16
                                     }
                                     Label {
-                                        Layout.fillWidth: page.window.compact
-                                        text: page.sioul.text("person-standing")
-                                        color: page.theme.muted
-                                    }
-                                    ComboBox {
-                                        Layout.columnSpan: page.window.compact ? 2 : 1
                                         Layout.fillWidth: true
-                                        Layout.minimumWidth: 0
-                                        model: page.mail.choices.map(c => c.label)
-                                        currentIndex: Math.max(0, page.mail.choices.findIndex(c => c.value === page.mail.choice))
-                                        Accessible.name: page.sioul.text("person-standing")
-                                        onActivated: index => page.setStanding(page.mail.choices[index].value)
+                                        text: page.mail.said
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.Wrap
+                                        color: page.theme.text
                                     }
                                 }
-                                Label {
-                                    visible: page.person !== null && page.mail.said !== ""
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 24
-                                    text: page.mail.said
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    font.pixelSize: 13
-                                    color: page.theme.muted
-                                }
-                                // An address or a number of theirs with a list of its own: it comes first.
-                                Label {
-                                    visible: page.person !== null && page.mail.own.length > 0
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 24
-                                    text: page.mail.own.join("\n")
-                                    textFormat: Text.PlainText
-                                    wrapMode: Text.Wrap
-                                    font.pixelSize: 13
-                                    color: page.theme.muted
+                                Button {
+                                    visible: page.person !== null
+                                    Layout.leftMargin: 18
+                                    flat: true
+                                    objectName: "personSheetButton"
+                                    text: page.sioul.textWith("attention-sheet-title", "name", page.person ? (page.person.name || page.sioul.text("attention-sheet-them")) : "")
+                                    icon.name: "go-next"
+                                    icon.color: page.theme.text
+                                    onClicked: page.window.openPersonSheet(page.openKey, "")
                                 }
 
                                 // Where they live, when the address is placed.

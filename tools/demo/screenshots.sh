@@ -149,7 +149,7 @@ run "$scratch/profile-no-hours$suffix" "$scratch/shots-no-hours$suffix"
 # With hours, a weekday afternoon; without them, what asks for them, and the
 # budgets of every area at once (with hours, only those of the hours now).
 names=(porch mail mail-reader tasks-now tasks-day tasks-list agenda-week contacts notes projects time
-       papers health health-week health-settings sites sites-menu accounts accounts-senders settings-hours work-now)
+       papers health health-week health-settings sites sites-menu accounts settings-attention settings-hours work-now)
 no_hours=(porch-hours budgets bank-accounts)
 mkdir -p "$screens"
 missing=0

@@ -326,7 +326,7 @@ fn lexical(path: &Path) -> PathBuf {
 /// A message's file, by its key (its file, as the Porch and search give it)
 /// or its Message-ID; only inside the configured accounts' mail, wherever
 /// its flags have moved it since.
-pub(super) fn find_message(s: &Session, wanted: &str) -> Result<PathBuf, String> {
+pub(crate) fn find_message(s: &Session, wanted: &str) -> Result<PathBuf, String> {
     let gone = || s.tr.text("mail-message-gone", None);
     let wanted = wanted.trim();
     let outside = || format!("“{}”: not a message of the configured accounts.", one_line(&wanted.chars().take(200).collect::<String>()));

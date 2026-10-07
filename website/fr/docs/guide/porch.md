@@ -17,7 +17,7 @@ Le Porche est l’endroit où le nouveau courrier attend que vous regardiez : 
 - **En dehors de vos heures**, le Porche dit quand il ouvre la prochaine fois, et rien d’autre de votre courrier : aucun nombre, aucun nom. Vos prises du jour s’affichent quand même (plus bas). **L’ouvrir quand même** reste possible, discrètement. D’ici là, ce qui arrive est vérifié et trié.
 - **Sans aucune heure réglée**, le Porche est toujours ouvert.
 
-Quel courrier vient quand dépend de qui écrit, aux moments que vous cochez pour chacun des cinq états (sûrs, neutres, restreints, inconnus ; les bloqués jamais), et de ce à quoi sert chaque adresse : travail, vos démarches, loisirs. Voir [Qui peut vous joindre](accounts.md#senders) et [Les heures](hours.md).
+Quel courrier vient quand dépend de qui écrit, comme le dit la ligne de chaque liste à chaque moment (sûrs, neutres, restreints, inconnus, les personnes qui passent toujours ; les bloqués jamais), et de ce à quoi sert chaque adresse : travail, vos démarches, loisirs. Voir [Ce qui vous joint, et quand](notifications.md#by-person) et [Les heures](hours.md).
 
 Pendant tout ce temps, le courrier continue d’arriver en arrière-plan. Le Porche décide seulement quand il est montré, et quand il est dit ([plus bas](#new-mail-told-at-its-times)).
 
@@ -42,7 +42,7 @@ Quand arrive du courrier que vos listes laissent passer maintenant, une seule no
 - **Jamais** pour les codes (ils ont la leur, plus haut), le courrier mis de côté, ce que votre propre filtre à indésirables a signalé ou déplacé (cela attend dans « À revoir », [plus bas](#spam-and-your-own-filter)), les expéditeurs bloqués, vos adresses moins importantes, ce que vous vous envoyez, les lettres d’information sauf si vous les incluez, ni le courrier déjà lu ailleurs. Rien pendant le sommeil ni une pause.
 - **Sans son.** Avec un téléphone et un ordinateur, seul celui dont vous vous êtes servi en dernier le dit.
 
-Paramètres ▸ Rappels et notifications ▸ **Nouveau courrier : notifier aux heures où il peut venir**, et **Avec les lettres d’information** ([Paramètres](settings.md#reminders-and-notifications)).
+Paramètres ▸ Ce qui vous joint ▸ Par personne ▸ Courrier : **Me dire le nouveau courrier**, et **Avec les lettres d’information** ([Ce qui vous joint, et quand](notifications.md#by-person)).
 
 ## Les files {#the-lanes}
 
@@ -69,7 +69,7 @@ Sous le titre de chaque file, une ligne dit ce qu’elle contient. Son **?** (Co
 
 Un message en attente de votre accord a **Accepter cette adresse** : les messages suivants de cette personne vont dans « De personnes que vous connaissez ».
 
-Chaque message a aussi **Son courrier**, dans son menu (⋮). D’abord, une ligne dit ce qui décide pour cet expéditeur maintenant : « Sûr, comme le dit la catégorie Amis. » Puis les choix : **Comme le disent ses catégories** (son entrée propre retirée des listes : les catégories de sa fiche décident, sinon le domaine de son adresse), ou l’une des quatre listes, chacune avec les moments de son courrier : **Sûr**, **Neutre**, **Restreint**, **Bloqué** (mis de côté pour de bon, jamais montré). Un expéditeur qui n’est dans aucun de vos carnets d’adresses ni sur aucune liste est un inconnu, avec ses propres moments. Les mêmes listes, avec des motifs comme `*@example.org` et des numéros, et le moment où vient chacun, sont dans [Comptes ▸ Qui peut vous joindre](accounts.md#senders).
+Chaque message a aussi **Comment cette personne vous joint…**, dans son menu (⋮) : la fiche de l’expéditeur. D’abord, une ligne dit ce qui décide pour cet expéditeur maintenant : « Sûr, comme le dit la catégorie Amis. » Puis sa liste : **Comme le disent ses catégories** (son entrée propre retirée des listes : les catégories de sa fiche décident, sinon le domaine de son adresse), ou l’une des quatre listes : **Sûr**, **Neutre**, **Restreint**, **Bloqué** (mis de côté pour de bon, jamais montré) ; **Passe toujours** ; et ce qui vous joint de sa part à chaque moment. Un expéditeur qui n’est dans aucun de vos carnets d’adresses ni sur aucune liste est un inconnu, avec sa propre ligne. Les mêmes listes, avec des motifs comme `*@example.org` et des numéros, et ce que fait chacune à chaque moment, sont dans Paramètres ▸ [Ce qui vous joint](notifications.md#by-person).
 
 Le courrier falsifié est jugé à part : un message falsifié est mis de côté quoi que disent les listes, même s’il prétend venir de quelqu’un que vous avez marqué sûr, et pesé comme celui d’un inconnu.
 
@@ -148,7 +148,7 @@ Quand il y a quelque chose, quelques lignes viennent avant les files :
 - **Les paiements de la semaine**, en une ligne : « Cette semaine : Électricité 62 € (lun.). Le compte les tient. » Quand quelque chose demande un coup d’œil côté argent, la ligne le dit, sans nombre. Voir [Les budgets](budgets.md#the-bank-watch).
 
 <figure markdown="span">
-  [![Une carte en haut du Porche : « Vos heures ne sont pas réglées : travail et démarches arrivent à toute heure. », une phrase sur ce qu’apporte chaque sorte d’heures, et deux boutons, « Régler mes heures » et « Laisser ainsi ».](../assets/screens/fr/porch-hours.png){ loading=lazy }](../assets/screens/fr/porch-hours.png "Ouvrir l’image en grand")
+  [![Une carte en haut du Porche : « Vos heures ne sont pas réglées : travail et démarches arrivent à toute heure. », une phrase sur ce qu’apporte chaque type d’heures, et deux boutons, « Régler mes heures » et « Laisser ainsi ».](../assets/screens/fr/porch-hours.png){ loading=lazy }](../assets/screens/fr/porch-hours.png "Ouvrir l’image en grand")
   <figcaption>Tant que vos heures ne sont pas réglées, le Porche demande une fois.</figcaption>
 </figure>
 
@@ -172,7 +172,7 @@ Le ⚙ en haut du Porche contient ce qui n’appartient qu’au Porche, et la le
 - **Lecture du texte** : la police, sa taille et l’interligne d’un message ouvert ici, les mêmes que dans le ⚙ de la page Courrier.
 - **Comment le courrier est trié** : chaque file, dans l’ordre du tri, avec ses règles ; les expéditeurs que vous connaissez ; les mots qui rendent un expéditeur automatique (no-reply…).
 
-Ce qui appartient à autre chose se règle là où se trouve cette chose : le rang et la protection d’une adresse sur sa fiche dans [Comptes](accounts.md), les règles d’un projet sur sa page dans [Projets](projects.md), qui peut vous écrire et quand dans [Comptes ▸ Expéditeurs](accounts.md#senders), vos heures dans [Paramètres](settings.md#hours).
+Ce qui appartient à autre chose se règle là où se trouve cette chose : le rang et la protection d’une adresse sur sa fiche dans [Comptes](accounts.md), les règles d’un projet sur sa page dans [Projets](projects.md), qui peut vous écrire et quand dans Paramètres ▸ [Ce qui vous joint](notifications.md#by-person), vos heures dans [Paramètres](settings.md#hours).
 
 ### Certaines adresses d’abord, d’autres en dernier {#some-addresses-first-others-last}
 

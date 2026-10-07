@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// What each kind of notification does at each time (Settings ▸ Reminders and
-// notifications; the matrix is sioul_core::notify): the kinds down, in their
-// groups, the times across, a mark in each cell. A press on a mark opens its
-// choices in words; a fixed mark, greyed, says why. Drawn as the grid of who
-// may reach you (SettingRow.qml): on a screen too narrow for a row, its name
-// stands above its marks, and the times' names stand upright when even they
-// are too wide. Each choice is saved at once, the row whole ("notify.<row>").
+// The matrix of what reaches you, or a part of it (Settings ▸ What reaches
+// you, ReachesTab.qml; the matrix is sioul_core::attention): the rows down,
+// in their groups (a channel's people, or Sioul's own kinds), the seven times
+// and the two layers across, a mark in each cell (LevelMark.qml). A press on
+// a mark opens its choices in words; a fixed mark, greyed, says why; a cell
+// changed from As Sioul does now carries a dot. On a screen too narrow for a
+// row, its name stands above its marks, and the times' names stand upright
+// when even they are too wide (a phone shows lists instead: ReachesTab.qml).
+// Each choice is saved at once, the row whole ("attention.<row>").
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Controls.impl
 import QtQuick.Layouts
 
 ColumnLayout {
@@ -25,6 +26,9 @@ ColumnLayout {
 
     // A row's words, nine of them, the one chosen changed.
     signal save(string key, var value)
+
+    // Where a row is saved: "attention." and its id ("attention.mail.safe").
+    property string prefix: "attention."
 
     readonly property var matrix: grid.setting.grid || ({ columns: [], marks: [], rows: [] })
     readonly property var columns: grid.matrix.columns
@@ -110,11 +114,11 @@ ColumnLayout {
             const v = c.column === column ? value : c.value
             return v === "now" ? c.column : c.column + ":" + v
         })
-        grid.save("notify." + row.id, words)
+        grid.save(grid.prefix + row.id, words)
     }
 
     // A cell's choices opened by its row's and column's ids, and closed: for
-    // the documentation's pictures (main.qml's steps "notify").
+    // the documentation's pictures (main.qml's steps "attention").
     function openAt(rowId, columnId) {
         const row = grid.rows.find(r => r.id === rowId)
         const cell = row ? row.cells.find(c => c.column === columnId) : null
@@ -140,96 +144,9 @@ ColumnLayout {
         choices.close()
     }
 
-    objectName: "notifyGrid"
+    objectName: "attentionGrid"
 
     spacing: 0
-
-    // A value's mark: ● at once, ○ later, ◎ at the gathered times, ◐ when its
-    // event falls then, – not at all, ★ and ☆ do-not-disturb's list (whatever
-    // the grid of who may reach you, or with it). Drawn, not a font's glyph:
-    // the same on every system.
-    component Mark: Item {
-        id: mark
-
-        required property string value
-        property color tint: "black"
-        // The page's colour, to hollow the star of ☆.
-        property color hole: "white"
-
-        implicitWidth: 16
-        implicitHeight: 16
-
-        Rectangle {
-            visible: mark.value === "now"
-            anchors.centerIn: parent
-            width: 10
-            height: 10
-            radius: 5
-            color: mark.tint
-        }
-        Rectangle {
-            visible: mark.value === "later" || mark.value === "gathered" || mark.value === "event"
-            anchors.centerIn: parent
-            width: 12
-            height: 12
-            radius: 6
-            color: "transparent"
-            border.color: mark.tint
-            border.width: 1.5
-        }
-        Rectangle {
-            visible: mark.value === "gathered"
-            anchors.centerIn: parent
-            width: 4
-            height: 4
-            radius: 2
-            color: mark.tint
-        }
-        // The left half of the ring, filled.
-        Item {
-            visible: mark.value === "event"
-            anchors.centerIn: parent
-            width: 12
-            height: 12
-
-            Item {
-                width: 6
-                height: 12
-                clip: true
-
-                Rectangle {
-                    width: 12
-                    height: 12
-                    radius: 6
-                    color: mark.tint
-                }
-            }
-        }
-        Rectangle {
-            visible: mark.value === "never"
-            anchors.centerIn: parent
-            width: 10
-            height: 2
-            radius: 1
-            color: mark.tint
-        }
-        IconImage {
-            visible: mark.value === "list" || mark.value === "list-any"
-            anchors.centerIn: parent
-            name: "emblem-favorite"
-            color: mark.tint
-            sourceSize: Qt.size(15, 15)
-        }
-        // ☆: the star hollowed by a smaller one, of the page's colour.
-        IconImage {
-            visible: mark.value === "list"
-            anchors.centerIn: parent
-            anchors.verticalCenterOffset: 1
-            name: "emblem-favorite"
-            color: mark.hole
-            sourceSize: Qt.size(7, 7)
-        }
-    }
 
     // Measured once each, for the widths above.
     Repeater {
@@ -383,12 +300,23 @@ ColumnLayout {
                             color: box.down ? grid.theme.pressed : box.hovered || box.visualFocus ? grid.theme.hover : "transparent"
                         }
                         contentItem: Item {
-                            Mark {
+                            LevelMark {
                                 anchors.centerIn: parent
                                 value: box.modelData.value
+                                always: row.modelData.id.endsWith(".always")
                                 tint: box.fixed ? grid.theme.muted : grid.theme.text
                                 hole: grid.theme.background
                                 opacity: box.fixed ? 0.6 : 1
+                            }
+                            // Changed from As Sioul does now: a dot in its corner.
+                            Rectangle {
+                                visible: box.modelData.changed === true
+                                x: parent.width / 2 + 8
+                                y: 4
+                                width: 5
+                                height: 5
+                                radius: 2.5
+                                color: grid.theme.accent
                             }
                         }
                         onClicked: grid.open(row.modelData, box.modelData, box)
@@ -398,7 +326,17 @@ ColumnLayout {
         }
     }
 
-    // What each mark says.
+    // What each mark shown in these rows says, and no other: at once on the
+    // Always through row is ★, said apart.
+    readonly property var legendMarks: {
+        const starred = r => r.id.endsWith(".always")
+        const shown = id => grid.rows.some(r => r.cells.some(c => c.value === id && !(id === "now" && starred(r))))
+        const used = grid.matrix.marks.filter(m => shown(m.id))
+        const always = grid.rows.find(starred)
+        const star = always && always.cells.some(c => c.value === "now") ? always.choices.find(c => c.id === "now") : null
+        return star ? used.concat([{ id: "now", label: star.label, always: true }]) : used
+    }
+
     Flow {
         Layout.fillWidth: true
         Layout.topMargin: 10
@@ -406,7 +344,7 @@ ColumnLayout {
         spacing: 14
 
         Repeater {
-            model: grid.matrix.marks
+            model: grid.legendMarks
 
             delegate: RowLayout {
                 id: legend
@@ -415,8 +353,9 @@ ColumnLayout {
 
                 spacing: 5
 
-                Mark {
+                LevelMark {
                     value: legend.modelData.id
+                    always: legend.modelData.always === true
                     tint: grid.theme.text
                     hole: grid.theme.background
                 }
@@ -433,14 +372,14 @@ ColumnLayout {
         RowLayout {
             spacing: 5
 
-            Mark {
+            LevelMark {
                 value: "now"
                 tint: grid.theme.muted
                 hole: grid.theme.background
                 opacity: 0.6
             }
             Label {
-                text: grid.sioul.text("notify-legend-fixed")
+                text: grid.sioul.text("attention-legend-fixed")
                 font.pixelSize: 12
                 color: grid.theme.muted
             }
@@ -490,9 +429,10 @@ ColumnLayout {
                 contentItem: RowLayout {
                     spacing: 8
 
-                    Mark {
+                    LevelMark {
                         visible: !line.said
                         value: line.said ? "" : line.modelData.id
+                        always: grid.openRow !== null && grid.openRow.id.endsWith(".always")
                         tint: line.current ? grid.theme.accent : grid.theme.text
                         hole: grid.theme.surface
                     }

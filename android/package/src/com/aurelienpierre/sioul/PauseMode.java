@@ -29,9 +29,13 @@ import java.util.Map;
  * do-not-disturb (crates/sioul-app/src/dnd.rs, docs/android.md "Pauses"): a
  * mode of Sioul's own for each, an AutomaticZenRule named "Pause" / "En
  * pause", "Free time" / "Temps libre" or "Do not disturb (Sioul)",
- * letting through starred contacts and repeat callers (or nobody), alarms,
- * and the sound of what the person plays; Sioul's dose reminders through a
- * channel of their own that may pass it. Turned on and off with
+ * letting through what the matrix of what reaches you lets through then, as
+ * far as Android can say it (sioul_core::attention::Silence, docs/attention.md
+ * §3.3): calls and messages from nobody, starred contacts, contacts or
+ * anyone; a second call within 15 minutes; the conversations marked
+ * important in Android (Android 11 and later); alarms; the sound of what the
+ * person plays. Sioul's dose reminders and an event's alarms, through
+ * channels of their own that pass it. Turned on and off with
  * setAutomaticZenRuleState: the person's own do-not-disturb, and every other
  * mode, is never touched; the system combines them, the strictest winning.
  * Needs "Do Not Disturb access" (Modes access from Android 15), which the
@@ -46,6 +50,8 @@ final class PauseMode
     /** The dose reminders' channel while a pause lets them through: it passes do-not-disturb. */
     static final String DOSES_CHANNEL = "doses-pause";
     private static final String DOSES_USUAL = "doses";
+    /** An event's alarms while one of Sioul's modes lets them through: it passes do-not-disturb (EventAlarms). */
+    static final String ALARMS_CHANNEL = "event-alarms-pause";
     private static final String KEPT = "sioul-pause";
     private static final String PRESSED = "pressed";
     /** A press older than this is not taken: Sioul did not come up meanwhile. */
@@ -116,11 +122,77 @@ final class PauseMode
     // ---------------------------------------------------------------- on, off
 
     /**
+     * What one of Sioul's modes lets through, as Rust asks it (dnd.rs's Ask,
+     * from the matrix: sioul_core::attention::Silence): who may call and who
+     * may write ("none", "starred", "contacts", "anyone"), a second call
+     * within 15 minutes, the conversations marked important in Android,
+     * alarms, the doses' and an event's alarms' channels. An older Sioul says
+     * only "people": starred contacts and repeat callers, or nobody; no
+     * conversation. Pure, checked on a JVM.
+     */
+    static final class Through
+    {
+        /** ZenPolicy's PEOPLE_TYPE_*. */
+        int calls;
+        int messages;
+        boolean repeat;
+        boolean conversations;
+        boolean alarms;
+        boolean doses;
+        boolean events;
+
+        static Through of(JSONObject asked)
+        {
+            // The matrix's words beside the older ones (dnd.rs), or apart, as "silence".
+            JSONObject said = asked.optJSONObject("silence");
+            if (said == null)
+                said = asked;
+            Through through = new Through();
+            int usual = asked.optBoolean("people", true) ? ZenPolicy.PEOPLE_TYPE_STARRED : ZenPolicy.PEOPLE_TYPE_NONE;
+            through.calls = senders(said.optString("calls", ""), usual);
+            through.messages = senders(said.optString("messages", ""), usual);
+            through.repeat = said.optBoolean("repeat", through.calls != ZenPolicy.PEOPLE_TYPE_NONE);
+            through.conversations = said.optBoolean("conversations", false);
+            through.alarms = said.optBoolean("alarms", true);
+            through.doses = said.optBoolean("doses", asked.optBoolean("doses", true));
+            // An event's alarm is shown during a mode only when the matrix lets it come then (Rust decides).
+            through.events = said.optBoolean("events", true);
+            return through;
+        }
+
+        /** Android's senders for Rust's word; `usual` for none given, or a word not known. */
+        static int senders(String word, int usual)
+        {
+            switch (word) {
+            case "none":
+                return ZenPolicy.PEOPLE_TYPE_NONE;
+            case "starred":
+                return ZenPolicy.PEOPLE_TYPE_STARRED;
+            case "contacts":
+                return ZenPolicy.PEOPLE_TYPE_CONTACTS;
+            case "anyone":
+                return ZenPolicy.PEOPLE_TYPE_ANYONE;
+            default:
+                return usual;
+            }
+        }
+
+        /** The conversations let through, as Android names them (Android 11 and later). */
+        int conversationSenders()
+        {
+            return conversations ? ZenPolicy.CONVERSATION_SENDERS_IMPORTANT : ZenPolicy.CONVERSATION_SENDERS_NONE;
+        }
+    }
+
+    /**
      * The pause's mode on, made or brought up to date first: {kind, name,
-     * trigger, people, doses, channel}. Answers what the mode lets through,
+     * trigger, calls, messages, repeat, conversations, alarms, doses,
+     * events, channel, events_channel} (an older Sioul: {kind, name,
+     * trigger, people, doses, channel}). Answers what the mode lets through,
      * read back from Android (the person may have changed it in Android's
-     * settings): {access, rule: {name, calls, messages, repeat, alarms},
-     * doses, already, disabled, turned_off}.
+     * settings): {api, access, rule: {name, calls, messages, repeat, alarms,
+     * conversations (Android 11 and later), channels (15 and later)}, doses,
+     * events, already, disabled, turned_off}.
      */
     @TargetApi(Build.VERSION_CODES.Q)
     private static JSONObject enter(Context context, JSONObject asked)
@@ -130,24 +202,27 @@ final class PauseMode
             put(answer, "too_old", true);
             return answer;
         }
+        put(answer, "api", Build.VERSION.SDK_INT);
         boolean access = accessGranted(context);
         put(answer, "access", access);
         if (!access)
             return answer;
         NotificationManager notifications = notifications(context);
         String kind = asked.optString("kind", "pause");
-        boolean people = asked.optBoolean("people", true);
-        boolean doses = asked.optBoolean("doses", true);
+        Through through = Through.of(asked);
         String name = asked.optString("name", "pause".equals(kind) ? "Pause" : "Free time");
         Uri condition = conditionId(context, kind);
-        ZenPolicy policy = policy(people);
+        ZenPolicy policy = policy(through);
         SharedPreferences kept = kept(context);
         boolean wasOn = kept.getBoolean("on." + kind, false);
 
-        // The doses' channel first: a reminder due meanwhile finds it.
+        // The channels that pass first: a reminder due meanwhile finds them.
         boolean dosesThrough = false;
-        if (doses)
-            dosesThrough = dosesChannel(context, notifications, asked.optString("channel", "Doses during a pause"));
+        if (through.doses)
+            dosesThrough = passingChannel(notifications, DOSES_CHANNEL, asked.optString("channel", "Doses during a pause"));
+        boolean eventsThrough = false;
+        if (through.events)
+            eventsThrough = passingChannel(notifications, ALARMS_CHANNEL, asked.optString("events_channel", EventAlarms.word(context, "alarms-pause")));
 
         String id = null;
         AutomaticZenRule existing = null;
@@ -188,7 +263,7 @@ final class PauseMode
             // Turned off by the person during the pause (the quick settings): left off.
             put(answer, "turned_off", true);
         }
-        kept.edit().putBoolean("on." + kind, enabled).putBoolean("doses." + kind, doses).commit();
+        kept.edit().putBoolean("on." + kind, enabled).putBoolean("doses." + kind, through.doses).putBoolean("events." + kind, through.events).commit();
 
         AutomaticZenRule now = notifications.getAutomaticZenRule(id);
         ZenPolicy set = now == null ? null : now.getZenPolicy();
@@ -199,11 +274,20 @@ final class PauseMode
             put(rule, "messages", set.getPriorityMessageSenders());
             put(rule, "repeat", set.getPriorityCategoryRepeatCallers());
             put(rule, "alarms", set.getPriorityCategoryAlarms());
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM && set.getPriorityChannelsAllowed() == ZenPolicy.STATE_DISALLOW)
-                dosesThrough = false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                put(rule, "conversations", set.getPriorityConversationSenders());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                int channels = set.getPriorityChannelsAllowed();
+                put(rule, "channels", channels);
+                if (channels == ZenPolicy.STATE_DISALLOW) {
+                    dosesThrough = false;
+                    eventsThrough = false;
+                }
+            }
         }
         put(answer, "rule", rule);
         put(answer, "doses", dosesThrough);
+        put(answer, "events", eventsThrough);
         return answer;
     }
 
@@ -241,22 +325,25 @@ final class PauseMode
 
     /**
      * Who gets through, every field set: one left unset would take the
-     * person's own do-not-disturb settings. Calls and messages from starred
-     * contacts and a second call within 15 minutes, or nobody; alarms; media
-     * (the music the person plays); priority channels (Sioul's doses, from
-     * Android 15). Notifications held stay in the shade and the status bar,
-     * without sound, banner, light, full screen or ambient display, as
+     * person's own do-not-disturb settings. Calls and messages as Rust asks
+     * (nobody, starred contacts, contacts, anyone), a second call within 15
+     * minutes, the conversations marked important (Android 11 and later;
+     * Android 10 has no conversations: they are messages there); alarms;
+     * media (the music the person plays); priority channels (Sioul's doses
+     * and an event's alarms, from Android 15; before, Android lets a channel
+     * that passes through whatever the mode says). Other apps' reminders and
+     * events stay held. Notifications held stay in the shade and the status
+     * bar, without sound, banner, light, full screen or ambient display, as
      * Android's own do-not-disturb does by default; they come back after.
      */
     @TargetApi(Build.VERSION_CODES.Q)
-    private static ZenPolicy policy(boolean people)
+    private static ZenPolicy policy(Through through)
     {
-        int who = people ? ZenPolicy.PEOPLE_TYPE_STARRED : ZenPolicy.PEOPLE_TYPE_NONE;
         ZenPolicy.Builder policy = new ZenPolicy.Builder()
-            .allowCalls(who)
-            .allowMessages(who)
-            .allowRepeatCallers(people)
-            .allowAlarms(true)
+            .allowCalls(through.calls)
+            .allowMessages(through.messages)
+            .allowRepeatCallers(through.repeat)
+            .allowAlarms(through.alarms)
             .allowMedia(true)
             .allowSystem(false)
             .allowReminders(false)
@@ -269,7 +356,7 @@ final class PauseMode
             .showBadges(true)
             .showInNotificationList(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-            policy.allowConversations(ZenPolicy.CONVERSATION_SENDERS_NONE);
+            policy.allowConversations(through.conversationSenders());
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM)
             policy.allowPriorityChannels(true);
         return policy.build();
@@ -356,44 +443,93 @@ final class PauseMode
         return false;
     }
 
-    // ---------------------------------------------------------------- the doses
+    // ---------------------------------------------------------------- the channels that pass
 
     /**
-     * The channel of the dose reminders during a pause that lets them
-     * through: it passes do-not-disturb (allowed with Do Not Disturb access,
-     * and only while the person has not changed the channel: then their
-     * choice stays). The usual "Doses" channel is never changed: outside the
-     * pauses, the person's own do-not-disturb holds the reminders as before.
-     * Whether they get through, as Android has the channel now.
+     * A channel that passes do-not-disturb, for what one of Sioul's modes
+     * lets through: the doses ("Doses during a pause"), an event's alarms,
+     * the mail of someone Always through. At Android's default importance
+     * (its sound, no banner), allowed to pass with Do Not Disturb access, and
+     * only while the person has not changed the channel: then their choice
+     * stays. The usual channels are never changed: outside Sioul's modes, the
+     * person's own do-not-disturb holds them as before. Whether it gets
+     * through, as Android has the channel now.
      */
-    private static boolean dosesChannel(Context context, NotificationManager notifications, String name)
+    private static boolean passingChannel(NotificationManager notifications, String id, String name)
     {
-        NotificationChannel channel = new NotificationChannel(DOSES_CHANNEL, name, NotificationManager.IMPORTANCE_DEFAULT);
+        NotificationChannel channel = new NotificationChannel(id, name, NotificationManager.IMPORTANCE_DEFAULT);
         channel.setBypassDnd(true);
         notifications.createNotificationChannel(channel);
-        NotificationChannel kept = notifications.getNotificationChannel(DOSES_CHANNEL);
+        NotificationChannel kept = notifications.getNotificationChannel(id);
         return kept != null && kept.canBypassDnd() && kept.getImportance() != NotificationManager.IMPORTANCE_NONE && notifications.areNotificationsEnabled();
     }
 
     /**
+     * Whether a channel that passes is the one now: one of Sioul's modes is
+     * on, and every mode on lets `flag` through ("doses.", "events."; null:
+     * any mode on will do), as `kept` has them (SharedPreferences.getAll).
+     * Pure, checked on a JVM.
+     */
+    static boolean passesNow(Map<String, ?> kept, String flag)
+    {
+        boolean on = false;
+        for (String kind : KINDS) {
+            if (!Boolean.TRUE.equals(kept.get("on." + kind)))
+                continue;
+            // Not said (a mode entered by an older Sioul): let through, as before.
+            if (flag != null && Boolean.FALSE.equals(kept.get(flag + kind)))
+                return false;
+            on = true;
+        }
+        return on;
+    }
+
+    private static String channelNow(Context context, String flag, String passing, String usual)
+    {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !passesNow(kept(context).getAll(), flag))
+            return usual;
+        return notifications(context).getNotificationChannel(passing) != null ? passing : usual;
+    }
+
+    /**
      * The channel a dose reminder goes to now (DoseAlarms): the pauses' own
-     * while every pause on lets the doses through, the usual one otherwise
-     * (a pause that holds them, or none).
+     * while every mode on lets the doses through, the usual one otherwise
+     * (a mode that holds them, or none).
      */
     static String dosesChannelNow(Context context)
     {
-        SharedPreferences kept = kept(context);
-        boolean on = false;
-        for (String kind : KINDS) {
-            if (!kept.getBoolean("on." + kind, false))
-                continue;
-            if (!kept.getBoolean("doses." + kind, true))
-                return DOSES_USUAL;
-            on = true;
-        }
-        if (!on || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q)
-            return DOSES_USUAL;
-        return context.getSystemService(NotificationManager.class).getNotificationChannel(DOSES_CHANNEL) != null ? DOSES_CHANNEL : DOSES_USUAL;
+        return channelNow(context, "doses.", DOSES_CHANNEL, DOSES_USUAL);
+    }
+
+    /**
+     * The channel an event's alarm goes to now (EventAlarms): the one that
+     * passes while every mode on lets an event's alarms through, the usual
+     * "An event's alarms" otherwise. Sioul's reminders before an event never
+     * come here: they stay in the quiet "Events".
+     */
+    static String alarmsChannelNow(Context context)
+    {
+        return channelNow(context, "events.", ALARMS_CHANNEL, EventAlarms.ALARMS);
+    }
+
+    /** New mail's channel that passes, for someone Always through while one of Sioul's modes is on (MailNotes). */
+    static final String MAIL_CHANNEL = "mail-through";
+
+    /**
+     * The channel new mail goes to now (MailNotes, from the window's process
+     * or the background service's): the one that passes while one of Sioul's
+     * modes is on and someone Always through wrote (`through`, Rust's word:
+     * told through the system's do-not-disturb), made then with `name`; the
+     * quiet "New mail" otherwise.
+     */
+    static String mailChannelNow(Context context, boolean through, String name)
+    {
+        if (!through || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !passesNow(kept(context).getAll(), null))
+            return MailNotes.CHANNEL;
+        NotificationManager notifications = notifications(context);
+        if (accessGranted(context))
+            passingChannel(notifications, MAIL_CHANNEL, name);
+        return notifications.getNotificationChannel(MAIL_CHANNEL) != null ? MAIL_CHANNEL : MailNotes.CHANNEL;
     }
 
     // ---------------------------------------------------------------- the tile and the shortcut
@@ -459,9 +595,15 @@ final class PauseMode
 
     // ---------------------------------------------------------------- kept
 
+    /**
+     * What Sioul's own process keeps of its modes (the only one that turns
+     * them on and off), read again when it changed: new mail is told from
+     * the background service's process too (MailNotes).
+     */
+    @SuppressWarnings("deprecation")
     private static SharedPreferences kept(Context context)
     {
-        return context.getSharedPreferences(KEPT, Context.MODE_PRIVATE);
+        return context.getSharedPreferences(KEPT, Context.MODE_PRIVATE | Context.MODE_MULTI_PROCESS);
     }
 
     private static void put(JSONObject object, String name, Object value)

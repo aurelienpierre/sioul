@@ -32,7 +32,7 @@ Une seule épreuve pour tout ce qu’on ajoute à Sioul : est-ce que cela enl�
 |---|---|
 | Vos obligations remplissent la journée ; vos besoins se logent où ils peuvent. | Vos besoins dessinent la journée ; le travail prend la place qui reste. |
 | Tout s’affiche dès que cela arrive. | Seul s’affiche ce qui a sa place dans votre attention maintenant. |
-| Chaque sorte de chose a son programme, et c’est à vous de garder les liens. | Chaque pièce est reliée aux autres, et c’est Sioul qui garde les liens. |
+| Chaque type de chose a son programme, et c’est à vous de garder les liens. | Chaque pièce est reliée aux autres, et c’est Sioul qui garde les liens. |
 | Une date manquée devient du travail en retard. | Le plan repart d’aujourd’hui. Rien ne devient une dette. |
 
 **Ce ne sont pas quatre choix d’interface. Ce sont les quatre règles dont découle tout le reste de Sioul.**

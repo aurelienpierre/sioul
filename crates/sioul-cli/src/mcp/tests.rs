@@ -8,6 +8,12 @@
 //! with invented mail (reserved example domains, RFC 2606), an invented
 //! case, note, task list and calendar; the XDG folders and HOME point into
 //! it, so the person's own files are never read nor written.
+//!
+//! The spam filter's tools and `sioul spam`'s reports are tested here too,
+//! in the same home (a hand-made table, a corpus of invented mail, two
+//! strangers' spam in the inbox): the environment is the process's, one
+//! home for every test of this program. Those that write the spam filter's
+//! state, or must see it still, take `spam_lock` in turn.
 
 use super::mask;
 use super::protocol::{PROTOCOL_VERSION, Server};
@@ -127,11 +133,80 @@ fn make(root: &Path) -> PathBuf {
     let edit = TaskEdit { title: "Find the rent receipt".into(), cases: vec!["housing".into()], estimate: 10, ..TaskEdit::default() };
     vdir::write_item(&list.dir.join("receipt.ics"), &tasks::new_task(&edit, "receipt", &jiff::tz::TimeZone::system(), &Zoned::now()).unwrap()).unwrap();
     vdir::create(Kind::Calendars, vdir::LOCAL, "Agenda", None, &["VEVENT"]).unwrap();
+    spam_fixture(root, &mail);
     config
+}
+
+/// When the fixture's table was trained: some of the corpus's newest fifth came after.
+const TABLE_TRAINED: i64 = 1_760_000_000;
+
+/// The spam filter's files: a table that knows a few words of spam (and,
+/// wrongly, two of ham and two of spam the other way round, so that it
+/// errs), a training corpus of invented mail, and two strangers' spam in the inbox.
+fn spam_fixture(root: &Path, mail: &Path) {
+    use sioul_core::spam::{features, table, tokenize};
+    let scored = |text: &str, score: f32| tokenize::tokens(text, "").words.into_iter().map(move |w| (table::word_hash(&w), score)).collect::<Vec<_>>();
+    let mut words = scored("winner lottery prize casino jackpot claim reward congratulations bonus", 40.0);
+    words.extend(scored("invoice budget", 200.0));
+    words.extend(scored("voucher discount", -200.0));
+    let meta = table::Meta { trained_at: TABLE_TRAINED, ham: 40, spam: 30, test_ham: 8, test_spam: 6, metrics: Default::default(), device: "desk".into() };
+    let table = table::Table {
+        tokenizer: tokenize::TOKENIZER,
+        features: features::FEATURES,
+        dim: 8,
+        minn: 3,
+        maxn: 6,
+        bucket: 16,
+        words,
+        buckets: vec![0.0; 16],
+        weights: vec![0.0; features::N],
+        means: vec![0.0; features::N],
+        bias: -3.0,
+        text_mean: 0.0,
+        platt_a: -1.0,
+        platt_b: 0.0,
+        meta,
+    };
+    table.write(&root.join("data/sioul/spam/table.bin")).unwrap();
+    let invented = sioul_learn::synthetic::mailbox(3, 40, 30);
+    let records: Vec<_> = invented.iter().enumerate().map(|(i, m)| sioul_learn::synthetic::record_of(m, 1, i as u32 + 1)).collect();
+    sioul_learn::corpus::store(&sioul_learn::Dirs::standard(), &records).unwrap();
+    // Two strangers' spam, verified, no code, in the inbox: the filter judges them.
+    let prize = message("prize-1@lottery.test", "Prize Office <win@lottery.test>", "Winner: claim your lottery prize", "Congratulations winner, claim the jackpot reward of the casino lottery today.", 1);
+    std::fs::write(mail.join("cur").join(seen("1759300005.U1-5.test")), prize).unwrap();
+    let offer = message("offer-1@offers.invalid", "Offers <deal@offers.invalid>", "Your casino bonus", "Claim the casino jackpot and the lottery bonus now.", 1);
+    std::fs::write(mail.join("cur").join(seen("1759300006.U1-6.test")), offer).unwrap();
 }
 
 fn server() -> Server {
     Server::new(&home().config, "en")
+}
+
+/// The spam filter's state, written or watched by one test at a time.
+fn spam_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// The home's configuration, as a command reads it.
+fn session() -> crate::Session {
+    let config = sioul_core::config::Config::load(&home().config).unwrap();
+    crate::Session { config, config_path: home().config.clone(), tr: sioul_core::i18n::Translator::new("en") }
+}
+
+/// Every file and folder under `roots`, with its size and time: what a dry run must leave as it was.
+fn snapshot(roots: &[PathBuf]) -> Vec<(PathBuf, u64, Option<std::time::SystemTime>)> {
+    let mut seen = Vec::new();
+    let mut stack: Vec<PathBuf> = roots.to_vec();
+    while let Some(path) = stack.pop() {
+        let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
+        seen.push((path.clone(), meta.len(), meta.modified().ok()));
+        if meta.is_dir() {
+            stack.extend(std::fs::read_dir(&path).unwrap().filter_map(Result::ok).map(|e| e.path()));
+        }
+    }
+    seen.sort();
+    seen
 }
 
 /// A request's whole answer.
@@ -231,13 +306,16 @@ fn unreadable_lines_are_said() {
 
 const READING: &[&str] = &["porch", "search_mail", "read_message", "list_tasks", "agenda", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find"];
 const WRITING: &[&str] = &["add_task", "complete_task", "add_event", "add_note", "draft_reply", "draft_message", "link"];
+/// The spam filter's, listed after the others; those that write, and the one that reads your servers.
+const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];
+const SPAM_WRITING: &[&str] = &["spam_label", "spam_fetch", "spam_train"];
 
 #[test]
 fn the_tools_listed() {
     let mut server = server();
     let tools = ask(&mut server, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().clone();
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, READING.iter().chain(WRITING).copied().collect::<Vec<_>>());
+    assert_eq!(names, READING.iter().chain(WRITING).chain(SPAM).copied().collect::<Vec<_>>());
     for tool in &tools {
         let name = tool["name"].as_str().unwrap();
         let description = tool["description"].as_str().unwrap();
@@ -247,8 +325,9 @@ fn the_tools_listed() {
             assert!(schema["properties"][needed.as_str().unwrap()].is_object(), "{name}: {needed} is described");
         }
         let hints = &tool["annotations"];
-        assert_eq!((hints["destructiveHint"].as_bool(), hints["openWorldHint"].as_bool()), (Some(false), Some(false)), "{name}");
-        let writes = WRITING.contains(&name);
+        // Only the corpus's download reaches beyond this computer: your mail servers, read-only.
+        assert_eq!((hints["destructiveHint"].as_bool(), hints["openWorldHint"].as_bool()), (Some(false), Some(name == "spam_fetch")), "{name}");
+        let writes = WRITING.contains(&name) || SPAM_WRITING.contains(&name);
         assert_eq!(hints["readOnlyHint"].as_bool(), Some(!writes), "{name}");
         assert!(!tool["title"].as_str().unwrap().is_empty());
         if writes {
@@ -677,4 +756,272 @@ fn every_secret_of_a_message() {
     // An ordinary message keeps its links and its numbers.
     let (_, body) = mask::message("Lunch", "See https://example.org/menu, table 4821, 12 345 €.");
     assert_eq!(body, "See https://example.org/menu, table 4821, 12 345 €.");
+}
+
+// The spam filter's tools, and `sioul spam`'s reports.
+
+fn subjects(list: &Value) -> Vec<String> {
+    list.as_array().into_iter().flatten().filter_map(|m| m["subject"].as_str().map(str::to_string)).collect()
+}
+
+/// `sioul spam`'s reports, as `--json` prints them: what each says in lines,
+/// and the same as data, its messages by their envelopes, masked.
+#[test]
+fn spam_reports_say_it_as_data() {
+    home();
+    let _spam = spam_lock();
+    let s = session();
+    let dirs = sioul_learn::Dirs::standard();
+    use crate::spam::report;
+    // status: the corpus, the table, the last training, numbers only.
+    let status = report::status(&s, &dirs).unwrap();
+    let data = &status.data;
+    let accounts: Vec<&str> = data["corpus"]["accounts"].as_array().unwrap().iter().map(|a| a["account"].as_str().unwrap()).collect();
+    assert_eq!(accounts, ["home", "work"], "{data}");
+    assert!(data["table"]["trained_at"].as_i64() == Some(TABLE_TRAINED) && data["table"]["device"] == "desk", "{data}");
+    assert!(data["verdicts"].is_object() && data["outside"].is_array() && data["jobs"].is_array() && data["last_training"].is_null(), "{data}");
+    assert!(status.lines.iter().any(|l| l.starts_with("The table in place: trained on")), "{:?}", status.lines);
+    // eval: the numbers, those of the mail it never learned from, by account and folder, the grid, the worst errors.
+    let eval = report::eval(&s, &dirs, 3, &mut |_| {}, &sioul_learn::Cancel::new()).unwrap();
+    let data = &eval.data;
+    for key in ["table", "labels", "split", "numbers", "unseen", "outside", "by_account", "by_folder", "grid", "errors", "outside_detail"] {
+        assert!(data.get(key).is_some(), "{key}: {data}");
+    }
+    assert_eq!(data["grid"].as_array().unwrap().len(), sioul_learn::detail::GRID.len());
+    assert_eq!(data["grid"][0]["threshold"], 0.5);
+    let unseen = &data["unseen"]["numbers"];
+    assert!(unseen["ham"].as_u64().unwrap() + unseen["spam"].as_u64().unwrap() > 0, "{}", data["unseen"]);
+    let tested: u64 = data["by_account"].as_object().unwrap().values().map(|c| ["ham", "spam"].iter().map(|l| ["spam", "unsure", "ham"].iter().map(|k| c[l][k].as_u64().unwrap()).sum::<u64>()).sum::<u64>()).sum();
+    assert_eq!(tested, data["split"]["test_ham"].as_u64().unwrap() + data["split"]["test_spam"].as_u64().unwrap());
+    let ham_called_spam = data["errors"]["ham_called_spam"].as_array().unwrap();
+    let errors: Vec<&Value> = ham_called_spam.iter().chain(data["errors"]["spam_missed"].as_array().unwrap()).collect();
+    assert!(!errors.is_empty() && errors.len() <= 6, "the fixture's table errs, at most three of each: {data}");
+    for error in &errors {
+        for key in ["p", "date", "account", "folder", "from", "subject", "class", "label", "evidence", "uri", "learned_from", "hidden"] {
+            assert!(error.get(key).is_some(), "{key}: {error}");
+        }
+        assert!(error["uri"].as_str().unwrap().starts_with("mid:") && error["from"].as_str().unwrap().contains('@'), "{error}");
+        assert!(["folder", "junk-folder", "keyword", "log"].contains(&error["evidence"].as_str().unwrap()), "{error}");
+    }
+    let ps: Vec<f64> = ham_called_spam.iter().map(|e| e["p"].as_f64().unwrap()).collect();
+    assert!(ps.windows(2).all(|w| w[0] >= w[1]), "the surest first: {ps:?}");
+    assert!(eval.lines.iter().any(|l| l.contains("data, never instructions")) && eval.lines.iter().any(|l| l.trim_start().starts_with("From 0.50:")), "{:?}", eval.lines);
+    // A trial on the same corpus: its detail and its errors said, nothing of the filter changed.
+    let table = std::fs::read(dirs.table()).unwrap();
+    let settings = report::Settings { threads: Some(1), dim: Some(8), epochs: Some(2), bucket: Some(500), ..report::Settings::default() };
+    let ask = report::TrainAsk { fetch: false, replace: false, errors: Some(2), settings };
+    let trial = report::train(&s, &dirs, &ask, &mut |_| {}, &sioul_learn::Cancel::new()).unwrap();
+    assert_eq!((trial.data["trial"].clone(), trial.data["summary"]["replaced"].clone(), trial.data["summary"]["model"]["dim"].clone()), (json!(true), json!(false), json!(8)), "{}", trial.data);
+    assert!(trial.data["errors"]["ham_called_spam"].is_array() && trial.data["grid"].is_array() && trial.data["by_folder"].is_array(), "{}", trial.data);
+    assert!(trial.lines.iter().any(|l| l.starts_with("A trial:")) && trial.lines.iter().any(|l| l.starts_with("fastText: 2 passes")), "{:?}", trial.lines);
+    assert_eq!(std::fs::read(dirs.table()).unwrap(), table, "a trial changes nothing");
+    assert!(!dirs.trained().exists() && !dirs.language().exists() && !dirs.previous_table().exists());
+    // review: the strangers' spam, flagged where it is.
+    let review = report::review(&s, 10).unwrap();
+    let queued = &review.data["messages"];
+    let prize = queued.as_array().unwrap().iter().find(|m| m["uri"] == "mid:prize-1@lottery.test").unwrap_or_else(|| panic!("{}", review.data));
+    assert!(prize["moved"] == false && prize["class"] == "spam" && prize["from"] == "win@lottery.test" && prize["key"].as_str().unwrap().contains("U1-5"), "{prize}");
+    assert!(subjects(queued).iter().any(|subject| subject == "Winner: claim your lottery prize"), "{}", review.data);
+    // fetch: an account that is not there is said, nothing reached.
+    let unknown = report::fetch(&s, &dirs, Some("nowhere"), &mut |_| {}, &sioul_learn::Cancel::new()).err().unwrap();
+    assert!(unknown.contains("nowhere"), "{unknown}");
+    // jobs: listed as data.
+    assert!(report::job(&s, None, false).unwrap().data["jobs"].is_array());
+}
+
+/// A dry run says what the filter would do with the mail in each inbox,
+/// with the settings' matrix or one tried, and moves and writes nothing:
+/// the mail, the filter's files and its state are as they were.
+#[test]
+fn a_dry_run_moves_and_writes_nothing() {
+    let home = home();
+    let _spam = spam_lock();
+    let watched: Vec<PathBuf> = ["mail/home/cur", "mail/home/new", "mail/home/tmp", "mail/public/cur", "mail/public/new", "data/sioul/spam", "state/sioul/spam"].iter().map(|p| home.root.join(p)).collect();
+    let before = snapshot(&watched);
+    let s = session();
+    use crate::spam::report;
+    // The settings' matrix: spam and doubts flagged, nothing moved.
+    let flagging = report::dry_run(&s, &report::DryAsk { limit: 50, ..report::DryAsk::default() }).unwrap();
+    assert_eq!((flagging.data["matrix"]["spam"].clone(), flagging.data["would_move"]["total"].clone()), (json!("flag"), json!(0)), "{}", flagging.data);
+    assert!(subjects(&flagging.data["would_flag"]["messages"]).contains(&"Winner: claim your lottery prize".to_string()), "{}", flagging.data);
+    // "Move to spam" tried for probable spam: the prize would be moved; codes, people, cases protected.
+    let moving = report::dry_run(&s, &report::DryAsk { limit: 50, account: Some("home".into()), spam: Some(sioul_core::spam::Action::Move), ..report::DryAsk::default() }).unwrap();
+    let data = &moving.data;
+    let moved = &data["would_move"]["messages"];
+    assert!(subjects(moved).contains(&"Winner: claim your lottery prize".to_string()), "{data}");
+    let prize = moved.as_array().unwrap().iter().find(|m| m["uri"] == "mid:prize-1@lottery.test").unwrap();
+    assert!(prize["p"].as_f64().unwrap() >= 0.95 && prize["class"] == "spam" && prize["account"] == "home", "{prize}");
+    let account = &data["accounts"][0];
+    assert_eq!(account["account"], "home");
+    // Every message counted once: judged, or protected (the letter, a case's; the codes, a day old, are no codes any more), or set aside before.
+    let count = |key: &str| account[key].as_u64().unwrap();
+    assert_eq!(count("judged") + count("protected") + count("set_aside") + count("hostile") + count("blocked"), count("messages"), "{account}");
+    assert!(count("protected") >= 1 && count("judged") >= 2, "{account}");
+    assert_eq!(account["classes"]["spam"]["action"], "move");
+    assert_eq!(data["moved"], 0);
+    assert_eq!(moving.lines.last().map(String::as_str), Some("Nothing was moved."), "{:?}", moving.lines);
+    assert!(moving.lines.iter().any(|l| l.contains("Winner: claim your lottery prize")), "{:?}", moving.lines);
+    // Wrong thresholds are said.
+    assert!(report::dry_run(&s, &report::DryAsk { threshold_spam: Some(0.4), threshold_unsure: Some(0.6), ..report::DryAsk::default() }).is_err());
+    // The same through MCP.
+    let mut server = server();
+    let answer = call(&mut server, "spam_dry_run", json!({ "spam": "move", "threshold_spam": 0.9, "limit": 5 }));
+    assert_eq!(answer["isError"], false, "{answer}");
+    assert_eq!(answer["structuredContent"]["moved"], 0);
+    assert!(subjects(&answer["structuredContent"]["would_move"]["messages"]).contains(&"Winner: claim your lottery prize".to_string()), "{answer}");
+    assert!(text(&answer).ends_with("Nothing was moved."), "{}", text(&answer));
+    assert_eq!(call(&mut server, "spam_dry_run", json!({ "spam": "delete" }))["isError"], true);
+    assert_eq!(snapshot(&watched), before, "a dry run writes nothing");
+}
+
+/// `label` says spam or not in this device's label log, and nothing else:
+/// without `--move` the message stays where it is, its file as it was; a
+/// message only in the corpus is labelled by its place there; an agent can
+/// label, never move.
+#[test]
+fn a_label_only_labels() {
+    let home = home();
+    let _spam = spam_lock();
+    let mail: Vec<PathBuf> = ["mail/home/cur", "mail/home/new", "mail/home/tmp"].iter().map(|p| home.root.join(p)).collect();
+    let before = snapshot(&mail);
+    let s = session();
+    let dirs = sioul_learn::Dirs::standard();
+    use crate::spam::report;
+    let labels = home.root.join("state/sioul/spam/labels");
+    let lines = || -> Vec<Value> { std::fs::read_dir(&labels).into_iter().flatten().filter_map(Result::ok).flat_map(|e| std::fs::read_to_string(e.path()).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect::<Vec<Value>>()).collect() };
+    let written = lines().len();
+    // By its Message-ID: spam, written as the window's Spam writes it, nothing moved.
+    let said = report::label(&s, &dirs, "mid:prize-1@lottery.test", sioul_core::spam::labels::Label::Spam, false).unwrap();
+    assert_eq!((said.data["moved"].clone(), said.data["found"].clone(), said.data["source"].clone(), said.data["folder"].clone()), (json!(false), json!("here"), json!("junk"), json!("INBOX")), "{}", said.data);
+    assert!(said.lines.iter().any(|l| l.starts_with("Nothing was moved")), "{:?}", said.lines);
+    let all = lines();
+    assert_eq!(all.len(), written + 1);
+    let line = all.iter().find(|l| l["message_id"] == "prize-1@lottery.test").unwrap();
+    assert_eq!((line["label"].clone(), line["account"].clone(), line["uid"].clone()), (json!("spam"), json!("home"), json!(5)), "{line}");
+    // Through MCP, by its file: not spam, the line written; a move is no argument it takes.
+    let mut server = server();
+    let key = home.root.join("mail/home/cur").join(seen("1759300006.U1-6.test")).display().to_string();
+    let answer = call(&mut server, "spam_label", json!({ "message": key, "label": "ham" }));
+    assert_eq!((answer["isError"].clone(), answer["structuredContent"]["moved"].clone(), answer["structuredContent"]["label"].clone()), (json!(false), json!(false), json!("ham")), "{answer}");
+    assert!(lines().iter().any(|l| l["message_id"] == "offer-1@offers.invalid" && l["label"] == "ham" && l["source"] == "not-spam"));
+    let moving = call(&mut server, "spam_label", json!({ "message": key, "label": "ham", "move": true }));
+    assert_eq!(moving["isError"], true, "{moving}");
+    assert_eq!(call(&mut server, "spam_label", json!({ "message": key, "label": "maybe" }))["isError"], true);
+    // Only in the corpus (an invented message of another account): labelled by its place there, never moved.
+    let record = sioul_learn::synthetic::record_of(&sioul_learn::synthetic::mailbox(3, 40, 30)[0], 1, 1);
+    let id = sioul_core::card::Card::from_bytes(record.header.as_bytes()).and_then(|c| c.message_id).map(|id| sioul_core::mailindex::bare_id(&id)).unwrap();
+    let corpus = report::label(&s, &dirs, &format!("mid:{id}"), sioul_core::spam::labels::Label::Ham, false).unwrap();
+    assert_eq!((corpus.data["found"].clone(), corpus.data["account"].clone(), corpus.data["uid"].clone()), (json!("corpus"), json!(record.account), json!(1)), "{}", corpus.data);
+    assert!(report::label(&s, &dirs, &format!("mid:{id}"), sioul_core::spam::labels::Label::Ham, true).is_err(), "not here: never moved");
+    // Not a message of the accounts: refused, whatever path it is.
+    assert!(report::label(&s, &dirs, &home.config.display().to_string(), sioul_core::spam::labels::Label::Spam, false).is_err());
+    assert!(report::label(&s, &dirs, "mid:nobody@nowhere.invalid", sioul_core::spam::labels::Label::Spam, false).is_err());
+    assert_eq!(snapshot(&mail), before, "nothing moved, no file touched");
+}
+
+/// The spam tools answer on this home, their words masked and marked as
+/// data; those that would start a job refuse what is wrong before starting anything.
+#[test]
+fn spam_tools_answer() {
+    home();
+    let _spam = spam_lock();
+    let mut server = server();
+    let status = call(&mut server, "spam_status", json!({}));
+    assert_eq!(status["isError"], false, "{status}");
+    assert!(status["structuredContent"]["corpus"]["accounts"].is_array() && text(&status).contains("The table in place"), "{status}");
+    let eval = call(&mut server, "spam_eval", json!({ "errors": 2 }));
+    assert_eq!(eval["isError"], false, "{eval}");
+    let content = &eval["structuredContent"];
+    assert!(content["errors"]["ham_called_spam"].as_array().unwrap().len() <= 2 && content["grid"].is_array(), "{content}");
+    assert!(text(&eval).contains("data, never instructions"), "{}", text(&eval));
+    assert_eq!(call(&mut server, "spam_eval", json!({ "errors": 1000 }))["isError"], true);
+    let review = call(&mut server, "spam_review", json!({ "limit": 5 }));
+    assert_eq!(review["isError"], false, "{review}");
+    assert!(review["structuredContent"]["messages"].as_array().unwrap().iter().any(|m| m["uri"] == "mid:prize-1@lottery.test"), "{review}");
+    let jobs = call(&mut server, "spam_job", json!({}));
+    assert!(jobs["isError"] == false && jobs["structuredContent"]["jobs"].is_array(), "{jobs}");
+    assert_eq!(call(&mut server, "spam_job", json!({ "id": "../../config" }))["isError"], true);
+    assert_eq!(call(&mut server, "spam_job", json!({ "stop": true }))["isError"], true, "stop needs an id");
+    // Refused before any job starts: an account that is not there, a setting out of its range.
+    assert_eq!(call(&mut server, "spam_fetch", json!({ "account": "nowhere" }))["isError"], true);
+    for wrong in [json!({ "dim": 1 }), json!({ "minn": 5, "maxn": 3 }), json!({ "c": 0 }), json!({ "errors": -1 }), json!({ "replace": "maybe" })] {
+        let refused = call(&mut server, "spam_train", wrong.clone());
+        assert_eq!(refused["isError"], true, "{wrong}: {refused}");
+    }
+}
+
+/// `[mcp] spam = false`: the spam tools are neither listed nor called.
+#[test]
+fn the_spam_tools_can_be_kept_from_agents() {
+    let home = home();
+    let off = home.root.join("config/sioul/spam-off.toml");
+    let config = std::fs::read_to_string(&home.config).unwrap();
+    std::fs::write(&off, format!("{config}\n[mcp]\nspam = false\n")).unwrap();
+    let mut server = Server::new(&off, "en");
+    let tools = ask(&mut server, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().clone();
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert_eq!(names, READING.iter().chain(WRITING).copied().collect::<Vec<_>>());
+    let refused = ask(&mut server, "tools/call", json!({ "name": "spam_status", "arguments": {} }));
+    assert!(refused["error"]["message"].as_str().unwrap().contains("[mcp] spam = false"), "{refused}");
+    // On by default.
+    assert!(ask(&mut self::server(), "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == "spam_label"));
+}
+
+/// A job's file from start to end, as its process writes it: starting,
+/// running (its process holds the lock), its step, asked to stop, stopped;
+/// one that ends without a word is said to have died; one of each kind at
+/// a time; ids that name nothing else.
+#[test]
+fn a_jobs_file_from_start_to_end() {
+    let home = home();
+    let _spam = spam_lock();
+    let s = session();
+    use crate::spam::jobs::{self, State};
+    let job = jobs::create(&s, "train", vec!["--no-replace".into()]).unwrap();
+    assert_eq!(jobs::look(&job.id).unwrap().state, State::Starting, "within its grace");
+    let mut running = jobs::Running::open(&job.id).unwrap();
+    let looked = jobs::look(&job.id).unwrap();
+    assert_eq!((looked.state, looked.pid), (State::Running, Some(std::process::id())));
+    assert!(jobs::create(&s, "train", Vec::new()).unwrap_err().contains(&job.id), "one training at a time");
+    running.see(&s, &sioul_learn::Progress { stage: sioul_learn::Stage::Language, done: 0, total: 0, detail: String::new() });
+    let step = jobs::look(&job.id).unwrap().progress.unwrap();
+    assert!(step.stage == "language" && step.line.contains("fastText"), "{step:?}");
+    // Asked to stop: it stops at its next step, and says so.
+    assert!(jobs::stop(&job.id).unwrap().stop_asked);
+    let cancel = running.cancel();
+    let asked = std::time::Instant::now();
+    while !cancel.cancelled() && asked.elapsed() < std::time::Duration::from_secs(5) {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(cancel.cancelled(), "the stop is seen");
+    running.finish(Err("Stopped.".into())).unwrap();
+    let stopped = jobs::look(&job.id).unwrap();
+    assert!(stopped.state == State::Stopped && stopped.ended.is_some() && stopped.error.as_deref() == Some("Stopped."), "{stopped:?}");
+    // Done: its lines and its data kept.
+    let fetch = jobs::create(&s, "fetch", Vec::new()).unwrap();
+    jobs::Running::open(&fetch.id).unwrap().finish(Ok((vec!["One message added to the corpus.".into()], json!({ "added": 1 })))).unwrap();
+    let done = crate::spam::report::job(&s, Some(fetch.id.as_str()), false).unwrap();
+    assert_eq!((done.data["state"].clone(), done.data["result"]["added"].clone()), (json!("done"), json!(1)), "{}", done.data);
+    assert!(done.lines.iter().any(|l| l == "One message added to the corpus."), "{:?}", done.lines);
+    // A process gone without a word: died, said with what it last printed.
+    let lost = jobs::create(&s, "fetch", Vec::new()).unwrap();
+    drop(jobs::Running::open(&lost.id).unwrap());
+    std::fs::write(jobs::folder().join(format!("{}.log", lost.id)), "thread 'main' panicked\n").unwrap();
+    let died = jobs::look(&lost.id).unwrap();
+    assert!(died.state == State::Died && died.error.as_deref().is_some_and(|e| e.contains("panicked")), "{died:?}");
+    // Through MCP: the job, as it stands.
+    let mut server = server();
+    let answer = call(&mut server, "spam_job", json!({ "id": fetch.id }));
+    assert_eq!((answer["isError"].clone(), answer["structuredContent"]["state"].clone()), (json!(false), json!("done")), "{answer}");
+    // Files yours alone; ids that name nothing else refused.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(jobs::folder()).unwrap().permissions().mode() & 0o777, 0o700);
+        assert_eq!(std::fs::metadata(jobs::folder().join(format!("{}.json", job.id))).unwrap().permissions().mode() & 0o777, 0o600);
+    }
+    assert!(jobs::folder().starts_with(home.root.join("state")));
+    for id in ["../x", "", "a/b"] {
+        assert!(jobs::look(id).is_err() && jobs::Running::open(id).is_err(), "{id}");
+    }
 }

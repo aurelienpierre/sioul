@@ -206,7 +206,7 @@ A task tagged `joy` is offered under **If you want**, never proposed as the next
 - **Always up to date**: the plan is made again at once whenever something it depends on changes (a task, its estimate or the time noted for it, an event, a meal or the night, your hours or days off, the day's weather, **Done for today**, what your other devices or a sync bring), as well as when Sioul starts, every twelve hours and at midnight.
 - **When a date will not hold**, the task says so once: "At this pace, the plan ends after 30 October. Doing it sooner, making it smaller or handing it over would keep the date." Near a date asked, Now says how much fits: "Until Wednesday 7 October: about 30 min of steps, 3 h of room."
 
-A reminder comes, once, two working days before a date asked, and when a wait is over ([Settings](settings.md#reminders-and-notifications)).
+A reminder comes, once, two working days before a date asked, and when a wait is over ([Settings](settings.md#reminders)).
 
 ## What a day holds
 

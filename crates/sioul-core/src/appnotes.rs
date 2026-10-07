@@ -11,20 +11,21 @@
 //! Two kinds, decided per notification, not per app:
 //! - **between people**: SMS, chats, mail, a missed call. Who wrote, as far
 //!   as the app says it (a number, an address, a contact of the phone's
-//!   address book, else a name), then who may reach you when (the matrix of
-//!   `reach`, its Messages, Mail or Calls row). A group is judged as the
-//!   conversation, never by a member's name; "always through" goes by
+//!   address book, else a name), then what reaches you when (the matrix of
+//!   `attention`, its Messages rows; a mail app's, its Mail rows; a missed
+//!   call, its Calls rows). A group is judged as the conversation, on its
+//!   own row, never by a member's name; "always through" goes by
 //!   conversation, which the app identifies, never by a name, which anyone
-//!   can take (research 9.3).
+//!   can take (research 9.3); the blocked never, whatever a conversation says.
 //! - **from an automaton**: everything else (shops, news, social networks,
 //!   a browser's sites). Gathered: it comes at the next of the times set for
 //!   that, `[reminders] gathered` (three a day unless set otherwise, as the
 //!   sites' notifications on a computer), never while you sleep, pause or
 //!   take free time.
 //!
-//! When each kind may come is the notification matrix's to say (`notify`:
-//! its rows for messages between people, automatons and the apps you set to
-//! come at once); the times above are its usual values.
+//! When each kind may come is the matrix of what reaches you's to say
+//! (`attention`: its people's rows, the rows of automatons and of the apps
+//! you set to come at once); the times above are its usual values.
 //!
 //! Never held: calls, alarms, what runs (music, a call in progress, a
 //! download), the reminders you set, Sioul's own; codes and sign-ins or
@@ -39,8 +40,8 @@
 //! `app-notes-seen.toml` in the state). Never what a notification says.
 
 use crate::areas::{Area, in_view};
+use crate::attention::{self, Attention, Event, Level, Source};
 use crate::i18n::Translator;
-use crate::notify::{self, Cell, Notify};
 use crate::quiet::Mode;
 use crate::reach::{Channel, Who};
 use jiff::Zoned;
@@ -698,16 +699,10 @@ pub trait TimeSource {
     fn starts(&self, from: &Zoned, until: &Zoned) -> Vec<Zoned>;
 }
 
-/// Who may reach you when (`reach::Reach`, the matrix, through `Live`).
-pub trait WhoMayReach {
-    fn allows(&self, via: Channel, who: Who, at: &Zoned, mode: &Mode) -> bool;
-}
-
-/// The matrix and the clock as they stand now (`reach`): what a decision asks of them.
+/// The clock as it stands now (`reach::Clock`): what a decision asks of it.
 #[derive(Debug, Clone)]
 pub struct Live {
     pub clock: crate::reach::Clock,
-    pub reach: crate::reach::Reach,
 }
 
 impl TimeSource for Live {
@@ -721,14 +716,8 @@ impl TimeSource for Live {
     }
 }
 
-impl WhoMayReach for Live {
-    fn allows(&self, via: Channel, who: Who, at: &Zoned, _mode: &Mode) -> bool {
-        self.reach.allows(via, who, &self.clock.moment(at))
-    }
-}
-
-/// Do-not-disturb's switch or a focus session, holding now: as usual, only
-/// its list's people come (docs/do-not-disturb.md; the matrix's column).
+/// Do-not-disturb's switch or a focus session, holding now: a layer of the
+/// matrix (as usual, only Always through's messages come, docs/attention.md).
 pub struct Gate {
     /// When it ends, when known (Unix seconds); else asked again in half an hour.
     pub until: Option<i64>,
@@ -738,18 +727,19 @@ pub struct Gate {
 pub struct Ask<'a> {
     pub now: &'a Zoned,
     pub clock: &'a dyn TimeSource,
-    pub reach: &'a dyn WhoMayReach,
-    /// What each kind does at each time (`notify`, `[notify]`).
-    pub notify: &'a Notify,
+    /// What reaches you when (`attention`, `[attention]`).
+    pub attention: &'a Attention,
     /// The gathered times, "09:00" (`[reminders] gathered`).
     pub gathered: &'a [String],
     /// What the app (or the address a mail came to) is for, when said.
     pub area: Option<Area>,
     pub gate: Option<Gate>,
-    /// One of today's slots of time for you then (docs/capacity.md): a layer of the matrix.
+    /// One of today's slots of time for you then (`attention::Slots`): a layer of the matrix.
     pub slot_at: &'a dyn Fn(&Zoned) -> bool,
+    /// Free time's "Nothing at all", for this Free time.
+    pub nothing: bool,
     /// Where things change that the clock does not know (Unix seconds): the
-    /// end of a slot of time for you, of do-not-disturb's switch.
+    /// ends of slots of time for you, of do-not-disturb's switch.
     pub also: &'a [i64],
 }
 
@@ -781,10 +771,17 @@ impl Ask<'_> {
         moments
     }
 
-    /// What the notification matrix says of `kind` at `at` (what time it is
-    /// then, a slot of time for you, do-not-disturb).
-    fn cell(&self, kind: notify::Kind, at: &Zoned, mode: &Mode) -> Cell {
-        self.notify.at(kind, &notify::Now::of(mode, (self.slot_at)(at), self.gated(at)))
+    /// The moment at `at` as the matrix reads it: what time it is then, a
+    /// slot of time for you, do-not-disturb, Free time's "Nothing at all".
+    fn moment(&self, at: &Zoned, mode: &Mode) -> attention::Now {
+        let mut now = attention::Now::of(mode).layers((self.slot_at)(at), self.gated(at));
+        now.nothing = self.nothing && mode.free();
+        now
+    }
+
+    /// What the matrix says of a kind at `at`.
+    fn level(&self, kind: attention::Kind, at: &Zoned, mode: &Mode) -> Level {
+        self.attention.level(attention::Row::Own(kind), &self.moment(at, mode))
     }
 
     /// Whether the app is for that time (its area), or says nothing of it.
@@ -897,7 +894,7 @@ pub fn next_gathering(ask: &Ask) -> Option<Zoned> {
                 continue;
             }
             let mode = ask.clock.mode(&at);
-            if ask.cell(notify::Kind::AppAutomatons, &at, &mode) == Cell::Gathered && ask.area_fits(&mode) {
+            if ask.level(attention::Kind::AppAutomatons, &at, &mode) == Level::Gathered && ask.area_fits(&mode) {
                 return Some(at);
             }
         }
@@ -917,26 +914,25 @@ fn gathered(ask: &Ask) -> Decision {
 /// At once, at the times the matrix lets these apps come (as usual, as
 /// Sioul's own notifications come): else when it does.
 fn at_once(ask: &Ask) -> Decision {
-    match first_moment(ask, &|at, mode| ask.cell(notify::Kind::AppAtOnce, at, mode) == Cell::Now && ask.area_fits(mode)) {
+    match first_moment(ask, &|at, mode| ask.level(attention::Kind::AppAtOnce, at, mode) == Level::Now && ask.area_fits(mode)) {
         Some(at) if at.timestamp().as_second() <= ask.stamp() => Decision::through(Why::AtOnce),
         Some(at) => Decision::held(at.timestamp().as_second(), Why::AtOnce),
         None => Decision::held(ask.stamp() + RECHECK, Why::AtOnce),
     }
 }
 
-/// Someone's message: now when both matrices let them through (who may
-/// reach you; what comes when, with do-not-disturb's list during it:
-/// `Cell::admits`), the notification's area fitting now for all but your
-/// safe people (as mail to an address for another time, docs/areas.md);
-/// else at their next time.
-fn person(talk: &Talk, who: Who, admitted: bool, ask: &Ask) -> Decision {
+/// Someone's message: now when the matrix lets them through
+/// (`attention::Attention::decide`: their row on its channel, a group's own
+/// row, Always through's, the time, its layers), the notification's area
+/// fitting now for all but your safe people and Always through (as mail to an
+/// address for another time, docs/areas.md); else at their next time.
+fn person(talk: &Talk, who: Who, group: bool, always: bool, ask: &Ask) -> Decision {
     if who == Who::Blocked {
         return Decision::held(ask.stamp() + FOR_GOOD, Why::Never);
     }
-    let area_fits = |mode: &Mode| who == Who::Safe || ask.area_fits(mode);
-    let open = |at: &Zoned, mode: &Mode| ask.cell(notify::Kind::AppPeople, at, mode).admits(ask.reach.allows(talk.via, who, at, mode), admitted);
+    let open = |at: &Zoned, mode: &Mode, area: Option<Area>| ask.attention.decide(&Event::of(Source::Message { via: talk.via, who, group, always }).for_area(area), &ask.moment(at, mode)).told;
     // Its area and its times never meeting in the coming days, the matrix alone decides: nothing waits for good.
-    let next = first_moment(ask, &|at, mode| open(at, mode) && area_fits(mode)).or_else(|| first_moment(ask, &open));
+    let next = first_moment(ask, &|at, mode| open(at, mode, ask.area)).or_else(|| first_moment(ask, &|at, mode| open(at, mode, None)));
     match next {
         Some(at) if at.timestamp().as_second() <= ask.stamp() => Decision::through(Why::Allowed),
         Some(at) => Decision::held(at.timestamp().as_second(), Why::Waiting),
@@ -944,11 +940,21 @@ fn person(talk: &Talk, who: Who, admitted: bool, ask: &Ask) -> Decision {
     }
 }
 
+/// A conversation let through always: Always through's row (at once at any
+/// time, as usual), read against who writes, or the group's row.
+fn always(talk: &Talk, who: Who, group: bool, ask: &Ask) -> Decision {
+    match person(talk, who, group, true, ask) {
+        Decision { until: None, why: Why::Allowed } => Decision::through(Why::Always),
+        other => other,
+    }
+}
+
 /// Whether a notification comes now, or until when it waits.
 /// `who`: the sender as the address books and lists judge them (`named` for
-/// a name), none when nobody knows them; `admitted`: do-not-disturb's list
-/// holds them.
-pub fn decide(kind: &Kind, who: Option<Who>, admitted: bool, choices: &Choices, ask: &Ask) -> Decision {
+/// a name), none when nobody knows them; `listed`: the Always through list
+/// holds them. The blocked never, whatever their conversation says (blocked
+/// beats Always through, docs/attention.md, Q3).
+pub fn decide(kind: &Kind, who: Option<Who>, listed: bool, choices: &Choices, ask: &Ask) -> Decision {
     match kind {
         Kind::Untouched => Decision::through(Why::Untouched),
         Kind::Code => Decision::through(Why::Code),
@@ -956,9 +962,14 @@ pub fn decide(kind: &Kind, who: Option<Who>, admitted: bool, choices: &Choices, 
         Kind::AtOnce => at_once(ask),
         Kind::Automaton { .. } => gathered(ask),
         Kind::People(talk) => {
+            if who == Some(Who::Blocked) {
+                return Decision::held(ask.stamp() + FOR_GOOD, Why::Never);
+            }
+            // A group is judged as the conversation, on its own row: anyone in it may write.
+            let group = talk.conversation.as_ref().is_some_and(|c| c.group);
             let through = talk.conversation.as_ref().map_or(Through::Usual, |c| choices.through(&c.key));
             match through {
-                Through::Always => Decision::through(Why::Always),
+                Through::Always => always(talk, who.unwrap_or(Who::Stranger), group, ask),
                 Through::Gathered => gathered(ask),
                 Through::Never => Decision::held(ask.stamp() + FOR_GOOD, Why::Never),
                 Through::Usual => {
@@ -966,10 +977,7 @@ pub fn decide(kind: &Kind, who: Option<Who>, admitted: bool, choices: &Choices, 
                     if talk.sms && who.is_none() && matches!(talk.sender, Sender::Named { .. }) {
                         return gathered(ask);
                     }
-                    // A group is judged as the conversation: anyone in it may write.
-                    let group = talk.conversation.as_ref().is_some_and(|c| c.group);
-                    let who = if group { Who::Stranger } else { who.unwrap_or(Who::Stranger) };
-                    person(talk, who, admitted && !group, ask)
+                    person(talk, who.unwrap_or(Who::Stranger), group, listed && !group, ask)
                 }
             }
         }
@@ -992,9 +1000,12 @@ pub struct Held {
     pub via: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub who: String,
-    /// Do-not-disturb's list holds the sender.
+    /// The Always through list holds the sender.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub admitted: bool,
+    /// A group's conversation: its own row, whoever writes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub group: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub conversation: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -1139,11 +1150,12 @@ impl Ledger {
             Why::Gathered => "gathered",
             _ => kind_id,
         };
-        // A group is judged as the conversation, whoever wrote in it (`decide`).
+        // A group is judged as the conversation, on its own row, whoever wrote in it (`decide`);
+        // the one who wrote kept, for the blocked.
         let group = matches!(kind, Kind::People(t) if t.conversation.as_ref().is_some_and(|c| c.group));
-        let (who, admitted) = if group { (Some(Who::Stranger), false) } else { (who, admitted) };
+        let admitted = admitted && !group;
         let again = self.held.get(&hash).map_or(0, |h| h.again);
-        self.held.insert(hash, Held { app: p.package.clone(), label, kind: kind_id.into(), via: via.to_string(), who: who.map(|w| w.id().to_string()).unwrap_or_default(), admitted, conversation, site, area, since: now, until, again });
+        self.held.insert(hash, Held { app: p.package.clone(), label, kind: kind_id.into(), via: via.to_string(), who: who.map(|w| w.id().to_string()).unwrap_or_default(), admitted, group, conversation, site, area, since: now, until, again });
     }
 
     /// A held notification Android brought back and that comes now: no
@@ -1198,22 +1210,23 @@ pub fn again(held: &Held, choices: &Choices, ask: &Ask) -> Decision {
     if app.kind == AppKind::AtOnce || (!held.site.is_empty() && choices.site.get(&held.site).is_some_and(|s| s.at_once)) {
         return at_once(ask);
     }
+    let who = Who::read(&held.who);
+    // The blocked never, whatever their conversation says.
+    if who == Some(Who::Blocked) {
+        return Decision::held(held.until.max(ask.stamp() + 60), Why::Never);
+    }
+    let talk = Talk { via: Channel::read(&held.via).unwrap_or(Channel::Messages), sender: Sender::Unknown, conversation: None, to: String::new(), sms: false };
     if !held.conversation.is_empty() {
         match choices.through(&held.conversation) {
-            Through::Always => return Decision::through(Why::Always),
+            Through::Always => return always(&talk, who.unwrap_or(Who::Stranger), held.group, ask),
             Through::Gathered => return gathered(ask),
             Through::Never => return Decision::held(held.until.max(ask.stamp() + 60), Why::Never),
             Through::Usual => {}
         }
     }
-    let who = Who::read(&held.who);
     match held.kind.as_str() {
         _ if app.kind == AppKind::Automaton => gathered(ask),
-        "never" if who == Some(Who::Blocked) => Decision::held(held.until.max(ask.stamp() + 60), Why::Never),
-        "people" | "never" => {
-            let talk = Talk { via: Channel::read(&held.via).unwrap_or(Channel::Messages), sender: Sender::Unknown, conversation: None, to: String::new(), sms: false };
-            person(&talk, who.unwrap_or(Who::Stranger), held.admitted, ask)
-        }
+        "people" | "never" => person(&talk, who.unwrap_or(Who::Stranger), held.group, held.admitted, ask),
         _ => gathered(ask),
     }
 }
@@ -1289,8 +1302,9 @@ pub fn why_text(tr: &Translator, why: &str, until: i64, now: &Zoned) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::attention::{Column, Person, Row};
     use crate::needs::{Days, Needs};
-    use crate::quiet::{Blocks, Overrides, Times};
+    use crate::quiet::{Blocks, Overrides};
     use crate::window::AdminWindow;
 
     fn at(text: &str) -> Zoned {
@@ -1337,37 +1351,27 @@ mod tests {
         }
     }
 
-    /// Safe at any time; neutral in work, admin and leisure; strangers and
-    /// the restricted in work; the pause lets only the safe through, Free
-    /// time too; blocked never.
-    struct TestReach;
-
-    impl WhoMayReach for TestReach {
-        fn allows(&self, _via: Channel, who: Who, _at: &Zoned, mode: &Mode) -> bool {
-            let times = match who {
-                Who::Safe => return true,
-                Who::Blocked => return false,
-                Who::Neutral => Times { work: true, admin: true, leisure: true, ..Times::NEVER },
-                Who::Stranger | Who::Restricted => Times { work: true, ..Times::NEVER },
-            };
-            !mode.paused() && !mode.free() && times.at(mode.time, mode.week)
-        }
-    }
-
     fn never_slot(_: &Zoned) -> bool {
         false
     }
 
-    /// The notification matrix as usual.
-    fn usual() -> &'static Notify {
-        static USUAL: std::sync::OnceLock<Notify> = std::sync::OnceLock::new();
-        USUAL.get_or_init(Notify::usual)
+    /// The matrix of what reaches you as usual, but the neutral in leisure on
+    /// mail and messages too (as these tests' people come then).
+    fn usual() -> &'static Attention {
+        static USUAL: std::sync::OnceLock<Attention> = std::sync::OnceLock::new();
+        USUAL.get_or_init(|| {
+            let mut matrix = Attention::usual();
+            for channel in [Channel::Mail, Channel::Messages] {
+                matrix.set(Row::People(channel, Person::Neutral), Column::Leisure, Level::Now).unwrap();
+            }
+            matrix
+        })
     }
 
     fn ask<'a>(now: &'a Zoned, clock: &'a TestClock, area: Option<Area>, gate: Option<Gate>) -> Ask<'a> {
         static GATHERED: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
         let gathered = GATHERED.get_or_init(|| vec!["09:00".into(), "13:00".into(), "18:00".into()]);
-        Ask { now, clock, reach: &TestReach, notify: usual(), gathered, area, gate, slot_at: &never_slot, also: &[] }
+        Ask { now, clock, attention: usual(), gathered, area, gate, slot_at: &never_slot, nothing: false, also: &[] }
     }
 
     fn posted(json: &str) -> Posted {
@@ -1518,9 +1522,14 @@ mod tests {
         assert_eq!(decide_at(WHATSAPP_PERSON, Some(Who::Neutral), &evening), Decision::through(Why::Allowed));
         let held = decide_at(WHATSAPP_PERSON, Some(Who::Neutral), &night);
         assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-07T07:00:00"));
-        // Safe people at any time; the blocked held for good.
-        assert_eq!(decide_at(SMS_CONTACT, Some(Who::Safe), &night), Decision::through(Why::Allowed));
+        // Safe people in the evening; in the night held until waking (docs/attention.md, Q4: before, let through);
+        // on the Always through list, at once; the blocked held for good, on the list or not.
+        assert_eq!(decide_at(SMS_CONTACT, Some(Who::Safe), &evening), Decision::through(Why::Allowed));
+        let held = decide_at(SMS_CONTACT, Some(Who::Safe), &night);
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-07T07:00:00"));
+        assert_eq!(decide(&kind(SMS_CONTACT), Some(Who::Safe), true, &choices, &ask(&night, &clock, None, None)), Decision::through(Why::Allowed));
         assert_eq!(decide_at(SMS_CONTACT, Some(Who::Blocked), &morning).why, Why::Never);
+        assert_eq!(decide(&kind(SMS_CONTACT), Some(Who::Blocked), true, &choices, &ask(&morning, &clock, None, None)).why, Why::Never);
         // A business's SMS id nobody knows: gathered; the same name found in a card: a person.
         let ameli = decide_at(SMS_SENDER_ID, None, &morning);
         assert_eq!((ameli.why, until_of(ameli).as_str()), (Why::Gathered, "2026-10-06T13:00:00"));
@@ -1535,6 +1544,8 @@ mod tests {
         for now in [&evening, &night] {
             assert_eq!(decide(&kind(WHATSAPP_GROUP), None, false, &chosen, &ask(now, &clock, None, None)), Decision::through(Why::Always));
         }
+        // Blocked beats Always through (Q3): a blocked person writing there is held (before: let through).
+        assert_eq!(decide(&kind(WHATSAPP_GROUP), Some(Who::Blocked), false, &chosen, &ask(&evening, &clock, None, None)).why, Why::Never);
         // A noisy group gathered, another never.
         chosen.conversation.insert(school.clone(), TalkChoice { through: Through::Gathered, ..TalkChoice::default() });
         let gathered = decide(&kind(WHATSAPP_GROUP), None, false, &chosen, &ask(&morning, &clock, None, None));
@@ -1597,7 +1608,7 @@ mod tests {
         let late = vec!["06:30".to_string(), "13:00".into(), "22:30".into()];
         let ask_late = |now: &'static str| {
             let now = Box::leak(Box::new(at(now)));
-            Ask { now, clock: &clock, reach: &TestReach, notify: usual(), gathered: &late, area: None, gate: None, slot_at: &never_slot, also: &[] }
+            Ask { now, clock: &clock, attention: usual(), gathered: &late, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[] }
         };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &ask_late("2026-10-06T20:00[Europe/Paris]"))), "2026-10-07T13:00:00", "22:30 and 06:30 are asleep");
         // A pause: nothing gathered until it ends; asked again six hours on, brought back when it ends (`again`).
@@ -1617,7 +1628,7 @@ mod tests {
         let slot = |z: &Zoned| z.date() == at("2026-10-06T00:00[Europe/Paris]").date() && z.hour() == 13;
         let now = at("2026-10-06T10:00[Europe/Paris]");
         let usual = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
-        let with_slot = Ask { now: &now, clock: &clock, reach: &TestReach, notify: self::usual(), gathered: &usual, area: None, gate: None, slot_at: &slot, also: &[] };
+        let with_slot = Ask { now: &now, clock: &clock, attention: self::usual(), gathered: &usual, area: None, gate: None, slot_at: &slot, nothing: false, also: &[] };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &with_slot)), "2026-10-06T18:00:00");
         // No time that reads: three a day.
         assert_eq!(times_of(&["later".into()]).len(), 3);
@@ -1631,7 +1642,7 @@ mod tests {
         let sms = classify(&posted(SMS_CONTACT), &choices);
         let morning = at("2026-10-06T10:00[Europe/Paris]");
         let gate = || Some(Gate { until: Some(at("2026-10-06T11:00[Europe/Paris]").timestamp().as_second()) });
-        // Mum is on the list: she comes during focus; a neutral stranger waits for its end.
+        // Mum is Always through: she comes during focus; someone neutral waits for its end.
         assert_eq!(decide(&sms, Some(Who::Neutral), true, &choices, &ask(&morning, &clock, None, gate())).why, Why::Allowed);
         let held = decide(&sms, Some(Who::Neutral), false, &choices, &ask(&morning, &clock, None, gate()));
         assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-06T11:00:00"));
@@ -1642,35 +1653,55 @@ mod tests {
     }
 
     #[test]
-    fn the_notification_matrix_changes_when() {
+    fn the_matrix_changes_when() {
         let clock = TestClock::new();
         let choices = Choices::default();
         let sms = classify(&posted(SMS_CONTACT), &choices);
         let shop = classify(&posted(SHOP), &choices);
         let gathered = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
-        let decided = |kind: &Kind, who: Option<Who>, admitted: bool, notify: &Notify, now: &Zoned, clock: &TestClock, gate: Option<Gate>| {
-            decide(kind, who, admitted, &choices, &Ask { now, clock, reach: &TestReach, notify, gathered: &gathered, area: None, gate, slot_at: &never_slot, also: &[] })
+        let decided = |kind: &Kind, who: Option<Who>, listed: bool, matrix: &Attention, now: &Zoned, clock: &TestClock, gate: Option<Gate>| {
+            decide(kind, who, listed, &choices, &Ask { now, clock, attention: matrix, gathered: &gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[] })
         };
-        let mut notify = Notify::usual();
-        // Do-not-disturb's list whatever Who may reach you says: a stranger on it comes in the evening.
-        let evening = at("2026-10-06T19:30[Europe/Paris]");
+        let mut matrix = usual().clone();
+        // Always through under do-not-disturb: at once whatever their row (Q2), as usual; their row's times with ☆.
+        let evening = at("2026-10-06T20:30[Europe/Paris]");
         let gate = || Some(Gate { until: Some(at("2026-10-06T21:00[Europe/Paris]").timestamp().as_second()) });
-        assert_eq!(decided(&sms, Some(Who::Stranger), true, &notify, &evening, &clock, gate()).why, Why::Waiting, "as usual, both must let them through");
-        notify.set(notify::Kind::AppPeople, notify::Column::Dnd, Cell::ListAny).unwrap();
-        assert_eq!(decided(&sms, Some(Who::Stranger), true, &notify, &evening, &clock, gate()).why, Why::Allowed);
-        assert_eq!(decided(&sms, Some(Who::Safe), false, &notify, &evening, &clock, gate()).why, Why::Waiting, "only the list's");
-        // Messages from people wait in Free time, even your safe people's, until it ends at the night.
+        assert_eq!(decided(&sms, Some(Who::Stranger), true, &matrix, &evening, &clock, gate()).why, Why::Allowed);
+        matrix.set(Row::People(Channel::Messages, Person::Always), Column::Leisure, Level::As).unwrap();
+        matrix.set(Row::People(Channel::Messages, Person::Always), Column::Dnd, Level::Through).unwrap();
+        assert_eq!(decided(&sms, Some(Who::Stranger), true, &matrix, &evening, &clock, gate()).why, Why::Waiting, "a stranger's row in the evening");
+        assert_eq!(decided(&sms, Some(Who::Neutral), true, &matrix, &evening, &clock, gate()).why, Why::Allowed, "the neutral come in leisure");
+        assert_eq!(decided(&sms, Some(Who::Safe), false, &matrix, &evening, &clock, gate()).why, Why::Waiting, "not on the list: do-not-disturb holds them");
+        // Messages from people in Free time: your safe people's come, as usual; held when you say so, until it ends
+        // at the night, and the night holds them too (Q4: before, they came at 22:00): at waking.
         let free = TestClock { overrides: Overrides { free_since: Some(at("2026-10-06T15:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() } };
         let afternoon = at("2026-10-06T16:00[Europe/Paris]");
-        assert_eq!(decided(&sms, Some(Who::Safe), false, &notify, &afternoon, &free, None).why, Why::Allowed, "as usual");
-        notify.set(notify::Kind::AppPeople, notify::Column::Free, Cell::Later).unwrap();
-        let held = decided(&sms, Some(Who::Safe), false, &notify, &afternoon, &free, None);
-        assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-06T22:00:00"));
+        assert_eq!(decided(&sms, Some(Who::Safe), false, &matrix, &afternoon, &free, None).why, Why::Allowed, "as usual");
+        matrix.set(Row::People(Channel::Messages, Person::Safe), Column::Free, Level::Later).unwrap();
+        let held = decided(&sms, Some(Who::Safe), false, &matrix, &afternoon, &free, None);
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-07T07:00:00"));
         // Automatons not gathered in working hours: Tuesday's 09:00 and 13:00 skipped, 18:00 kept.
         let morning = at("2026-10-06T08:00[Europe/Paris]");
-        assert_eq!(until_of(decided(&shop, None, false, &notify, &morning, &clock, None)), "2026-10-06T09:00:00", "as usual");
-        notify.set(notify::Kind::AppAutomatons, notify::Column::Work, Cell::Later).unwrap();
-        assert_eq!(until_of(decided(&shop, None, false, &notify, &morning, &clock, None)), "2026-10-06T18:00:00");
+        assert_eq!(until_of(decided(&shop, None, false, &matrix, &morning, &clock, None)), "2026-10-06T09:00:00", "as usual");
+        matrix.set(Row::Own(crate::attention::Kind::AppAutomatons), Column::Work, Level::Later).unwrap();
+        assert_eq!(until_of(decided(&shop, None, false, &matrix, &morning, &clock, None)), "2026-10-06T18:00:00");
+        // Time for you everywhere (Q12): the listener reads the slots, which hold automatons as the window's did.
+        let in_slot = |z: &Zoned| z.hour() == 9;
+        let slotted = Ask { now: &morning, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[] };
+        assert_eq!(until_of(decide(&shop, None, false, &choices, &slotted)), "2026-10-06T13:00:00");
+        // "Nothing at all" in Free time: the safe wait too, Always through comes.
+        let nothing = Ask { now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[] };
+        assert_eq!(decide(&sms, Some(Who::Safe), false, &choices, &nothing).why, Why::Waiting);
+        assert_eq!(decide(&sms, Some(Who::Safe), true, &choices, &nothing).why, Why::Allowed);
+        // A mail app's notification takes the Mail rows (Q5): a safe sender's at night waits for waking (before: let through).
+        let proton = classify(&posted(PROTON), &choices);
+        let night = at("2026-10-06T23:30[Europe/Paris]");
+        let held = decide(&proton, Some(Who::Safe), false, &choices, &ask(&night, &clock, None, None));
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-07T07:00:00"));
+        // A missed call by the Calls row (Q23): a stranger's in work time, never at night.
+        let missed = classify(&posted(r#"{"key":"m","package":"com.android.dialer","category":"missed_call","title":"+33 6 39 98 01 07"}"#), &choices);
+        assert_eq!(decide(&missed, Some(Who::Stranger), false, &choices, &ask(&at("2026-10-06T10:00[Europe/Paris]"), &clock, None, None)).why, Why::Allowed);
+        assert_eq!(decide(&missed, Some(Who::Stranger), false, &choices, &ask(&night, &clock, None, None)).why, Why::Waiting);
     }
 
     #[test]
@@ -1745,7 +1776,7 @@ mod tests {
         let decision = decide(&kind, Some(Who::Safe), true, &choices, &ask(&evening, &clock, None, None));
         ledger.note(&p, &kind, Some(Who::Safe), true, None, &decision, evening.timestamp().as_second());
         let group = ledger.held.values().next().unwrap().clone();
-        assert_eq!((group.who.as_str(), group.admitted), ("stranger", false));
+        assert_eq!((group.who.as_str(), group.admitted, group.group), ("safe", false, true));
         assert_eq!(until_of(again(&group, &choices, &ask(&evening, &clock, None, None))), "2026-10-07T09:00:00");
         // Its conversation set to gathered, then to always: back now.
         let mut gathered_then_always = Choices::default();

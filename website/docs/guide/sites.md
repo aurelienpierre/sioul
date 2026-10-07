@@ -59,7 +59,7 @@ Every site's notifications are accepted, then kept by Sioul; the site itself nev
 - **A call** ("incoming call") comes at once, unless the site is silenced. A missed call waits like the rest.
 - Everything else waits, as "*the site* has news" on [the Porch](porch.md#above-the-lanes). Opening the site clears its news.
 
-At set times (09:00, 13:00 and 18:00, unless you choose others in [Settings ▸ Reminders and notifications](settings.md#reminders-and-notifications)), one notification gathers which sites have news, with **Open the Porch**. Three a day helped most in a field trial (Fitz et al. 2019).
+At set times (09:00, 13:00 and 18:00, unless you choose others in [Settings ▸ Reminders](settings.md#reminders)), one notification gathers which sites have news, with **Open the Porch**. Three a day helped most in a field trial (Fitz et al. 2019).
 
 A site whose hours have not come keeps its notifications, real time and calls included, until they do.
 

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Settings ▸ Calls, on a phone (docs/android.md, "Calls"): what Sioul does
+// Settings ▸ This phone ▸ Calls (docs/android.md, "Calls"): what Sioul does
 // with calls, what it never does, what always rings; then this phone: Sioul
 // as Android's "Caller ID & spam app" (Android 10 and later, asked in
 // Android's own dialog), reading the contacts, where a declined call goes
 // (the operator's voicemail, read with the codes the phone app dials), and
-// what Sioul leaves to Android (texts, its own blocked numbers).
+// what Sioul leaves to Android (texts, its own blocked numbers). Who rings
+// when is What reaches you's (By person ▸ Calls; Exceptions ▸ Always through).
 
 pragma ComponentBehavior: Bound
 
@@ -20,8 +21,8 @@ ColumnLayout {
     required property var sioul
     required property var theme
 
-    // calls.rs's `setup`: {android, state: {api, available, held, contacts, table, emergency_at}, moment, people, dnd_people}.
-    property var shown: ({ android: false, state: null, moment: {}, people: 0, dnd_people: true })
+    // calls.rs's `setup`: {android, state: {api, available, held, contacts, table, emergency_at}, moment}.
+    property var shown: ({ android: false, state: null, moment: {} })
     readonly property var phone: setup.shown.state || ({})
     readonly property bool held: setup.phone.held === true
     readonly property bool available: setup.phone.available === true
@@ -154,22 +155,22 @@ ColumnLayout {
     Said {
         text: setup.sioul.text("calls-setup-when")
     }
-    // Accounts ▸ Who may reach you ▸ Calls (AccountsPage.qml, the reach matrix).
-    Button {
-        flat: true
-        text: setup.sioul.text("calls-setup-when-open")
-        onClicked: setup.sioul.reminderOpened("reach-calls", "", "")
-    }
-    Said {
-        text: setup.sioul.text(!setup.shown.dnd_people ? "calls-setup-people-off" : setup.shown.people > 0 ? "calls-setup-people" : "calls-setup-people-none")
-    }
-    Button {
-        flat: true
-        text: setup.sioul.text("calls-setup-people-open")
-        onClicked: {
-            const window = setup.Window.window
-            if (window && window.showParameters)
-                window.showParameters("dnd.people")
+    // Settings ▸ What reaches you ▸ By person ▸ Calls, and its Always through people.
+    Flow {
+        Layout.fillWidth: true
+        spacing: 6
+
+        Button {
+            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+            flat: true
+            text: setup.sioul.text("calls-setup-when-open")
+            onClicked: setup.sioul.reminderOpened("settings:attention.calls", "", "")
+        }
+        Button {
+            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+            flat: true
+            text: setup.sioul.text("calls-setup-people-open")
+            onClicked: setup.sioul.reminderOpened("settings:attention.exceptions", "", "")
         }
     }
 

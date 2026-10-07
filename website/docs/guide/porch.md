@@ -17,7 +17,7 @@ The Porch is where new mail waits until you look: from every address, checked (g
 - **Outside your hours**, the Porch says when it opens next, and nothing else of your mail: no counts, no names. Your doses of the day still show (below). **Open it anyway** stays possible, quietly. Meanwhile, what comes is checked and sorted.
 - **Without any hours set**, the Porch is always open.
 
-Which mail comes when follows who wrote, at the times you tick for each of the five states (safe, neutral, restricted, strangers; the blocked never), and what each address is for: work, your admin, leisure. See [Who may reach you](accounts.md#senders) and [Hours](hours.md).
+Which mail comes when follows who wrote, as each list's row says at each time (safe, neutral, restricted, strangers, your Always through people; the blocked never), and what each address is for: work, your admin, leisure. See [What reaches you, and when](notifications.md#by-person) and [Hours](hours.md).
 
 Mail keeps arriving in the background all the while. The Porch only decides when it is shown, and when it is told ([below](#new-mail-told-at-its-times)).
 
@@ -42,7 +42,7 @@ When mail your lists let through now arrives, one quiet notification says it, fo
 - **Never** for codes (they have their own, above), mail set aside, what your own spam filter flagged or moved (it waits in "To review", [below](#spam-and-your-own-filter)), blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.
 - **No sound.** With a phone and a computer, only the one you used last tells.
 
-Settings ▸ Reminders and notifications ▸ **New mail: notify at the times it may come**, and **Include newsletters** ([Settings](settings.md#reminders-and-notifications)).
+Settings ▸ What reaches you ▸ By person ▸ Mail: **Tell me of new mail**, and **Include newsletters** ([What reaches you, and when](notifications.md#by-person)).
 
 ## The lanes
 
@@ -69,7 +69,7 @@ Under each lane's title, one line says what it holds. Its **?** (How mail lands 
 
 A message in the screener has **Let this address in**: their next messages go to "From people you know".
 
-Every message also has **Their mail**, in its menu (⋮). First, one line says what decides for this sender now: "Safe, as the category Friends says." Then the choices: **As their categories say** (their own entry taken out of the lists: the categories on their contact card decide, else their address's domain), or one of the four lists, each with its mail's times: **Safe**, **Neutral**, **Restricted**, **Blocked** (set aside for good, never shown). A sender in none of your address books and on no list is a stranger, with times of their own. The same lists, with patterns such as `*@example.org` and numbers, and when each comes, are in [Accounts ▸ Who may reach you](accounts.md#senders).
+Every message also has **How they reach you…**, in its menu (⋮): the sender's sheet. First, one line says what decides for this sender now: "Safe, as the category Friends says." Then their list: **As their categories say** (their own entry taken out of the lists: the categories on their contact card decide, else their address's domain), or one of the four lists: **Safe**, **Neutral**, **Restricted**, **Blocked** (set aside for good, never shown); **Always through**; and what reaches you from them at each time. A sender in none of your address books and on no list is a stranger, with a row of their own. The same lists, with patterns such as `*@example.org` and numbers, and what each does at each time, are in Settings ▸ [What reaches you](notifications.md#by-person).
 
 Forged mail is judged apart: a forged message is set aside whatever the lists say, even if it claims to come from someone you marked safe, and it is weighed as a stranger's.
 
@@ -172,7 +172,7 @@ The ⚙ at the top of the Porch holds what is the Porch's alone, and how a messa
 - **How text reads**: the font, its size and the space between lines of a message opened here, the same as in the Mail page's ⚙.
 - **How mail is sorted**: every lane, in the order mail is sorted, with its rules; the senders you know; the words that make a sender automatic (no-reply…).
 
-What belongs to something else is set where that thing is: an address's rank and protection on its card in [Accounts](accounts.md), a project's routes on its page in [Projects](projects.md), who may write to you when in [Accounts ▸ Senders](accounts.md#senders), your hours in [Settings](settings.md#hours).
+What belongs to something else is set where that thing is: an address's rank and protection on its card in [Accounts](accounts.md), a project's routes on its page in [Projects](projects.md), who may write to you when in Settings ▸ [What reaches you](notifications.md#by-person), your hours in [Settings](settings.md#hours).
 
 ### Some addresses first, others last
 

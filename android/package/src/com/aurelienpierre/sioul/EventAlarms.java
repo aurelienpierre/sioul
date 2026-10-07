@@ -33,18 +33,24 @@ import java.util.Set;
  * is given to Android's alarm clock, as the doses are (DoseAlarms). At its
  * time EventReceiver asks Rust what to say: the event read again, sleep or a
  * pause holding it or not, the time left said as it is then. Rust shows it
- * through `show`, in the "Events" channel, at low importance: no sound, no
- * banner, yours to change in Android's settings; a tap opens the event in
- * Sioul (ReminderOpener). Rust silent, the words given with the list are
- * shown instead: never nothing. Apart from the doses: its own list, alarms,
- * channel and receiver.
+ * through `show`: Sioul's reminders before an event and the working day
+ * before in the "Events" channel, at low importance (no sound, no banner);
+ * an alarm the event carries in "An event's alarms", at Android's default
+ * importance (its sound, no banner), or, while one of Sioul's modes lets
+ * them through, in its twin that passes do-not-disturb (PauseMode); each
+ * yours to change in Android's settings. A tap opens the event in Sioul
+ * (ReminderOpener). Rust silent, the words given with the list are shown
+ * instead: never nothing. Apart from the doses: its own list, alarms,
+ * channels and receiver.
  */
 final class EventAlarms
 {
     static final String RING = "com.aurelienpierre.sioul.action.EVENT_REMINDER";
     static final String LOOK = "com.aurelienpierre.sioul.action.EVENT_LOOK";
-    /** The "Events" channel: the reminders, quiet. */
+    /** The "Events" channel: Sioul's reminders before an event, and the working day before; quiet. */
     static final String CHANNEL = "events";
+    /** "An event's alarms": the alarms an event carries, with their sound. */
+    static final String ALARMS = "event-alarms";
 
     private static final String SCHEME = "sioul-event";
     private static final String KEPT = "sioul-events";
@@ -286,17 +292,35 @@ final class EventAlarms
 
     // ---------------------------------------------------------------- the reminders
 
-    /** The "Events" channel: low importance, without sound or banner; yours to change. */
+    /**
+     * The channels: "Events" at low importance, without sound or banner, for
+     * Sioul's reminders before an event and the working day before; "An
+     * event's alarms" at Android's default importance (its sound, no banner),
+     * for the alarms an event carries. Yours to change.
+     */
     static void channel(Context context)
     {
-        context.getSystemService(NotificationManager.class).createNotificationChannel(
-            new NotificationChannel(CHANNEL, word(context, "channel"), NotificationManager.IMPORTANCE_LOW));
+        NotificationManager notifications = context.getSystemService(NotificationManager.class);
+        notifications.createNotificationChannel(new NotificationChannel(CHANNEL, word(context, "channel"), NotificationManager.IMPORTANCE_LOW));
+        notifications.createNotificationChannel(new NotificationChannel(ALARMS, word(context, "alarms"), NotificationManager.IMPORTANCE_DEFAULT));
     }
 
     /**
-     * Rust's reminder (eventalarms.rs, `show`): JSON {key, title, body, event
-     * (its file), until (Unix ms, when the event begins), words}. A tap, or
-     * Open, brings Sioul up on the event. Any thread.
+     * Whether a reminder is an alarm its event carries: as Rust says it
+     * ("kind": "alarm", "before", "event"), else by its key (`alarm:…`, a
+     * list given by an older Sioul). Pure, checked on a JVM.
+     */
+    static boolean isAlarm(String kind, String key)
+    {
+        if (kind != null && !kind.isEmpty())
+            return "alarm".equals(kind);
+        return key != null && key.startsWith("alarm:");
+    }
+
+    /**
+     * Rust's reminder (eventalarms.rs, `show`): JSON {key, kind, title, body,
+     * event (its file), until (Unix ms, when the event begins), words}. A
+     * tap, or Open, brings Sioul up on the event. Any thread.
      */
     static void show(Context context, String json)
     {
@@ -311,7 +335,7 @@ final class EventAlarms
         if (words != null)
             kept(context).edit().putString(WORDS, words.toString()).apply();
         String key = said.optString("key");
-        post(context, key, said.optString("title"), said.optString("body"), said.optString("event"), said.optLong("until"));
+        post(context, key, isAlarm(said.optString("kind"), key), said.optString("title"), said.optString("body"), said.optString("event"), said.optLong("until"));
         // Told (from the window's minute, maybe): its alarm has nothing left to do.
         cancel(context, key);
         done(context, key);
@@ -323,7 +347,7 @@ final class EventAlarms
         JSONObject reminder = kept(context, key);
         if (reminder == null)
             return;
-        post(context, key, reminder.optString("title"), reminder.optString("body"), "", 0);
+        post(context, key, isAlarm(reminder.optString("kind"), key), reminder.optString("title"), reminder.optString("body"), "", 0);
     }
 
     /** A reminder said for nothing (by the fallback) taken away. */
@@ -332,14 +356,21 @@ final class EventAlarms
         context.getSystemService(NotificationManager.class).cancel(key, NOTE);
     }
 
-    private static void post(Context context, String key, String title, String body, String event, long until)
+    /**
+     * A reminder in the shade: an alarm the event carries in "An event's
+     * alarms", or in its twin that passes do-not-disturb while every one of
+     * Sioul's modes on lets an event's alarms through (PauseMode); Sioul's
+     * own reminders in the quiet "Events".
+     */
+    private static void post(Context context, String key, boolean alarm, String title, String body, String event, long until)
     {
         channel(context);
+        String channel = alarm ? PauseMode.alarmsChannelNow(context) : CHANNEL;
         // Without its event's file (said from the words kept): Sioul as by its icon.
         Intent sioul = new Intent(context, ReminderOpener.class).setData(Uri.fromParts(ReminderOpener.SCHEME, event.isEmpty() ? "app" : "event", null))
                            .putExtra(ReminderOpener.KEY, event).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent open = PendingIntent.getActivity(context, key.hashCode(), sioul, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        Notification.Builder reminder = new Notification.Builder(context, CHANNEL)
+        Notification.Builder reminder = new Notification.Builder(context, channel)
             .setSmallIcon(R.drawable.sioul_notification)
             .setColor(context.getColor(R.color.sioul_green))
             .setContentTitle(title.isEmpty() ? "Sioul" : title)
@@ -360,7 +391,10 @@ final class EventAlarms
 
     private static final String[][] FALLBACK_WORDS = {
         { "channel", "Events", "Événements" },
+        { "alarms", "An event's alarms", "Alarmes des événements" },
+        { "alarms-pause", "An event's alarms during a pause", "Alarmes des événements pendant une pause" },
         { "mail", "New mail", "Nouveau courrier" },
+        { "mail-through", "New mail from people always let through", "Courrier des personnes qui passent toujours" },
         { "open", "Open", "Ouvrir" },
     };
 

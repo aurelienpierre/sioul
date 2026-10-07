@@ -259,12 +259,12 @@ static GATHERED: Mutex<i64> = Mutex::new(0);
 /// (docs/sites.md, "Notifications"): only the sites of these hours, not
 /// silenced, on the computer you are at. A site in real time, and a call,
 /// came at once already; the rest waits for the Porch as before. A gathered
-/// time the notification matrix holds (as usual: sleep, a pause, Free time, a
-/// slot of time for you, do-not-disturb) is skipped: what the sites said
-/// waits for the next one.
+/// time the matrix of what reaches you holds (as usual: sleep, a pause, Free
+/// time, a slot of time for you, do-not-disturb) is skipped: what the sites
+/// said waits for the next one.
 pub(crate) fn gather_tick(qt: &QtThread, shared: &Arc<Shared>) {
     let config = load_config();
-    if !config.reminders.gather || crate::hours::cell(sioul_core::notify::Kind::Sites) != sioul_core::notify::Cell::Gathered {
+    if !config.reminders.gather || crate::hours::level(sioul_core::attention::Kind::Sites) != sioul_core::attention::Level::Gathered {
         return;
     }
     let now = jiff::Zoned::now();
@@ -330,19 +330,30 @@ pub(crate) fn list() -> String {
 
 /// A site's notification: shown at once when the site is in real time (or
 /// you asked for real time everywhere), else kept for the Porch. In quiet
-/// time, a work site's waits for work to come back; at the times the
-/// notification matrix holds them (as usual: sleep, a pause, Free time,
+/// time, a work site's waits for work to come back; at the times the matrix
+/// of what reaches you holds them (as usual: sleep, a pause, Free time,
 /// do-not-disturb, and but for a call a slot of time for you), every site's.
+/// A chat site's that names someone your cards know follows their Messages
+/// row too, which may only hold more (docs/attention.md, Q13): a blocked
+/// person's is not even kept.
 pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, title: &str, text: &str) {
+    use sioul_core::attention::{Event, Level, Source};
     let config = load_config();
     let Some(site) = sites::sites(&config).into_iter().find(|s| s.id == id) else { return };
     let everywhere = shared.realtime.load(std::sync::atomic::Ordering::Relaxed);
-    let resting = !crate::backend::in_view_now(site.area) || (site.kind == "chat" && crate::health::chats_covered());
     // A call waits for nobody: shown at once, unless the site is silenced or
     // resting, or the matrix holds calls in sites now.
     let call = sites::is_call(title, text) && !site.muted;
-    let kind = if call { sioul_core::notify::Kind::SiteCalls } else { sioul_core::notify::Kind::SitesLive };
-    if (site.realtime || everywhere || call) && !resting && crate::hours::comes(kind) {
+    let chat = site.kind == "chat";
+    let named = if chat { sioul_core::porch::Senders::load(&config).judge_name(title.trim()).map(|j| j.who) } else { None };
+    let mut now = crate::hours::attention_now();
+    now.realtime = everywhere;
+    now.holds.chats = chat && crate::health::chats_covered();
+    let out = crate::hours::attention().decide(&Event::of(Source::Site { call, live: site.realtime, named }).for_area(Some(site.area)), &now);
+    if out.level == Level::Never {
+        return;
+    }
+    if (site.realtime || everywhere || call) && out.told {
         let heading = format!("{} · {}", site.name, title);
         if let Err(e) = sioul_sync::notify::code(&heading, text, None) {
             crate::backend::tell(qt, shared, e);

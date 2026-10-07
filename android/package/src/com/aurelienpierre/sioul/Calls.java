@@ -51,12 +51,17 @@ import java.util.Set;
  *
  * The order (research 8.3): the floors first, which always ring (an
  * emergency number or the emergency services' callback number; any call for
- * a day after you call an emergency number; the people on your
- * do-not-disturb list); then your blocked numbers, refused; then "Let every
- * call through"; then a second call from the same number within 15 minutes,
- * which rings; then who calls at this time, as the table's frame for now
- * says. Nothing to decide from (no table, a table past its frames, anything
- * that fails): it rings, as Android would.
+ * a day after you call an emergency number; the numbers of `floors.people`,
+ * which a table of the matrix of what reaches you leaves empty: Always
+ * through has rows of its own there, read below, so that blocked beats it);
+ * then your blocked numbers, refused; then "Let every call through"; then a
+ * second call from the same number within 15 minutes, which rings; then who
+ * calls at this time, as the table's frame for now says: the times, Free
+ * time, and the layers above them (a slot of time for you, do-not-disturb
+ * from its switch or a focus session). Nothing to decide from (no table, a
+ * table past its frames, a row a frame does not name, anything that fails):
+ * it rings, as Android would. The JVM checks this order against Rust's
+ * (crates/sioul-core/src/calls.rs, `decide`) on tables as Rust writes them.
  *
  * Here too: Rust's questions (StepService.call, verbs "calls-…"), and the
  * press of "Let every call through" on the background service's notification,
@@ -102,9 +107,12 @@ final class Calls
     {
         long from;
         long until;
-        /** "work", "admin", "leisure", "meals", "sleep", "pause". */
+        /** "work", "admin", "leisure", "meals", "sleep", "pause", "free"; a layer above them, "slot", "dnd". */
         String column = "";
-        /** A row ("safe", "neutral", "restricted", "stranger", "hidden") → rings. */
+        /**
+         * A row → rings: "safe", "neutral", "restricted", "stranger", "hidden",
+         * and Always through read against each state ("always-safe"…).
+         */
         final Map<String, Boolean> ring = new HashMap<>();
     }
 
@@ -139,13 +147,16 @@ final class Calls
         Region region;
         /** Country codes whose numbers drop a written trunk "0" ("+33 06…"). */
         final Set<String> trunkZero = new HashSet<>();
-        /** Number keys → who: "safe", "neutral", "restricted", "blocked". */
+        /**
+         * Number keys → who: "safe", "neutral", "restricted", "blocked"; the
+         * people Always through, "always-" and their own state ("always-safe").
+         */
         final Map<String, String> numbers = new HashMap<>();
         /** The lists' prefixes ("+3346571") and who they make a number, the longest first. */
         final List<String[]> prefixes = new ArrayList<>();
         /** Who a number in this phone's contacts is when the table does not know it. */
         String phoneContacts = "neutral";
-        /** Numbers that always ring: emergency numbers and callbacks; the do-not-disturb list's people. */
+        /** Numbers that always ring: emergency numbers and callbacks; `people`, from an older table only (the do-not-disturb list's). */
         final Set<String> emergency = new HashSet<>();
         final Set<String> people = new HashSet<>();
         Press through;
@@ -442,7 +453,7 @@ final class Calls
         String raw = "";
         boolean hidden;
         int presentation;
-        /** The row: "safe", "neutral", "restricted", "stranger", "hidden", "blocked". */
+        /** The row: "safe", "neutral", "restricted", "stranger", "hidden", "blocked", "always-safe"… */
         String who = "";
         /** The name this phone's contacts give the number, when the table did not know it. */
         String name = "";

@@ -21,13 +21,12 @@
 
 use crate::backend::{QtThread, load_config, tr};
 use jiff::Zoned;
-use sioul_core::areas::{Area, Time};
+use sioul_core::areas::Area;
+use sioul_core::attention::{Attention, Level, Now, Output};
 use sioul_core::config::Config;
-use sioul_core::mailnote::{self, Ledger, Letter};
-use sioul_core::notify::{Cell, Kind, Notify, Now};
+use sioul_core::everywhere::People;
+use sioul_core::mailnote::{self, Fate, Ledger, Letter};
 use sioul_core::porch::{self, Triaged};
-use sioul_core::quiet::{Mode, Overrides};
-use sioul_core::reach::{Matrix, Reach};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -84,62 +83,62 @@ fn add_to_batch(letters: Vec<Letter>, window: Option<Window>, opens: bool) {
 /// The moment last seen by `tick`, in this process: a change is a time beginning.
 static MOMENT: Mutex<Option<String>> = Mutex::new(None);
 
-/// The people on do-not-disturb's list, by their address, while it holds from
-/// its switch or a focus session (`everywhere::mail_gate`); none otherwise.
-fn gate() -> Option<Box<dyn Fn(&str) -> bool>> {
-    crate::everywhere::mail_gate().map(|people| Box::new(move |address: &str| people.admits_address(address)) as Box<dyn Fn(&str) -> bool>)
-}
-
-/// What decides now whether a message is told: what now is for, who your
-/// lists let through now (Free time narrowing them), what the notification
-/// matrix says of new mail now, and do-not-disturb's list.
+/// What decides now whether a message is told: the matrix of what reaches
+/// you (`attention`), the moment as it reads it (the time, a slot of time for
+/// you, do-not-disturb, Free time's "Nothing at all", the Porch resting
+/// after a pause), the Always through list, and whether new mail is told at all.
 struct Seen {
     config: Config,
-    mode: Mode,
-    reach: Matrix,
     /// Read when a message is judged, not for the minute's moment: the
     /// contacts' categories are looked at for it.
     senders: std::cell::OnceCell<porch::Senders>,
-    /// The matrix's cell for new mail now (as usual: at once in your hours;
-    /// later in sleep, a pause, Free time and a slot of time for you; during
-    /// do-not-disturb, its list when Who may reach you lets them through too).
-    cell: Cell,
-    /// Nothing is told while the matrix holds new mail, while the Porch rests
-    /// after a pause, or with the setting off.
+    attention: Attention,
+    now: Now,
+    /// Always through: the people on that list, by their address.
+    always: People,
+    /// Nothing is told with the setting off, nor while the Porch rests after a pause.
     may: bool,
-    gate: Option<Box<dyn Fn(&str) -> bool>>,
 }
 
 impl Seen {
     fn now(config: Config, now: &Zoned) -> Seen {
-        let stamp = now.timestamp().as_second();
         let mode = crate::hours::mode_at(now);
-        let overrides = Overrides::load(&Overrides::default_path());
-        let reach = sioul_core::pause::reach_now(Reach::of(&config.reach).mail, &mode, sioul_core::pause::nothing_now(&overrides, &config.free_time));
-        let moment = Now::of(&mode, crate::hours::quiet_slot(), crate::everywhere::holds_others());
-        let cell = Notify::of(&config).at(Kind::Mail, &moment);
-        let may = config.reminders.mail && !matches!(cell, Cell::Later | Cell::Never) && !overrides.porch_rests(stamp);
-        Seen { config, mode, reach, senders: std::cell::OnceCell::new(), cell, may, gate: gate() }
+        let moment = crate::hours::attention_at(&mode, now);
+        let may = config.reminders.mail && !moment.holds.porch_rests;
+        Seen { attention: Attention::of(&config), always: People::load(&People::default_path()), config, senders: std::cell::OnceCell::new(), now: moment, may }
     }
 
     fn senders(&self) -> &porch::Senders {
         self.senders.get_or_init(|| porch::Senders::load(&self.config))
     }
 
-    /// Whether this message may be told now: both matrices let it through
-    /// (`Cell::admits`: who may reach you, and do-not-disturb's list as the cell says).
-    fn tells(&self, t: &Triaged) -> bool {
-        if !self.may {
-            return false;
-        }
+    /// What the matrix says of this message now (`Attention::mail`): its
+    /// sender's row as the Porch weighs it, Always through, what the address
+    /// it came to is for (unsaid: work's).
+    fn decided(&self, t: &Triaged) -> Output {
         let area = t.card.account.as_deref().and_then(|id| self.config.account(id)).and_then(|a| a.area.as_deref()).and_then(Area::parse).unwrap_or(Area::WORK);
-        let in_view = self.mode.time == Time::Any || sioul_core::quiet::mail_in_view(t, self.senders(), &self.reach, area, self.mode.time, self.mode.week);
-        let listed = self.gate.as_ref().is_some_and(|admits| t.card.from_address.as_deref().is_some_and(|address| admits(address)));
-        self.cell.admits(in_view, listed)
+        self.attention.mail(t, self.senders(), &self.always, area, &self.now)
+    }
+
+    /// Told now, through the system's do-not-disturb, later, or never.
+    fn fate(&self, t: &Triaged) -> Fate {
+        let out = self.decided(t);
+        match out {
+            _ if !self.may => Fate::Later,
+            out if out.told && out.pierce => Fate::Through,
+            out if out.told => Fate::Now,
+            out if out.level == Level::Never => Fate::Never,
+            _ => Fate::Later,
+        }
+    }
+
+    /// Whether this message may be told now.
+    fn tells(&self, t: &Triaged) -> bool {
+        self.may && self.decided(t).told
     }
 
     fn moment(&self) -> String {
-        format!("{}:{}", mailnote::moment(&self.mode, self.may, self.gate.is_some()), self.cell.id())
+        mailnote::moment(&self.now, self.may)
     }
 
     /// Messages judged as the Porch judges them: with the projects and their
@@ -190,18 +189,17 @@ fn arrived_from(_account: &str, new: &[PathBuf], first: bool, window: Option<Win
     let seen = Seen::now(config, &now);
     let arrivals = seen.judge(new, stamp);
     let path = Ledger::default_path();
-    // Marked at once: those never told, those waiting for their time, and
-    // those of the batch, waiting until it is told (Sioul stopped before,
-    // they come with "The Porch opens"). Come at a time the matrix says
-    // "Not at all" for new mail: never told, on the Porch only.
-    let dropped = seen.cell == Cell::Never;
+    // Marked at once: those never told (its sender's row says "not at all"
+    // now: on the Porch only), those waiting for their time, and those of the
+    // batch, waiting until it is told (Sioul stopped before, they come with
+    // "The Porch opens").
     let letters = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
-        let sorted = mailnote::sort(&arrivals, &ledger, newsletters, |t| seen.tells(t));
-        for key in sorted.never.iter().chain(sorted.later.iter().filter(|_| dropped)) {
+        let sorted = mailnote::sort(&arrivals, &ledger, newsletters, |t| seen.fate(t));
+        for key in &sorted.never {
             ledger.tell(key, stamp);
         }
-        for key in sorted.later.iter().filter(|_| !dropped).chain(sorted.now.iter().map(|l| &l.key)) {
+        for key in sorted.later.iter().chain(sorted.now.iter().map(|l| &l.key)) {
             ledger.wait(key, stamp);
         }
         ledger.forget_old(stamp);
@@ -252,7 +250,7 @@ fn tell_batch(letters: Vec<Letter>, window: Option<Window>, opens: bool) {
         return;
     }
     let (title, body) = if opens { mailnote::opens(tr(), &mine) } else { mailnote::batch(tr(), &mine) };
-    show(&title, &body, window.as_ref());
+    show(&title, &body, mine.iter().any(|l| l.through), window.as_ref());
 }
 
 /// Each minute: when the moment changed (a time began, waking, a pause or a
@@ -307,7 +305,7 @@ fn tick_from(window: Option<Window>) {
         return;
     }
     let (title, body) = mailnote::opens(tr(), &mine);
-    show(&title, &body, window.as_ref());
+    show(&title, &body, mine.iter().any(|l| l.through), window.as_ref());
 }
 
 /// The letters still waiting in the ledger, marked told by this process
@@ -345,13 +343,14 @@ fn ours(window: Option<&Window>) -> bool {
 }
 
 /// The notification: the desktop's, with "Open" (the Porch) where it takes
-/// buttons; on a phone, Android's, in the quiet "New mail" channel, a tap
-/// opening the Porch.
-fn show(title: &str, body: &str, window: Option<&Window>) {
+/// buttons, at critical urgency when someone Always through is in it
+/// (`through`: it passes the desktop's do-not-disturb); on a phone,
+/// Android's, in the quiet "New mail" channel, a tap opening the Porch.
+fn show(title: &str, body: &str, through: bool, window: Option<&Window>) {
     #[cfg(target_os = "android")]
     {
         let _ = window;
-        crate::eventalarms::mail_note(title, body);
+        crate::eventalarms::mail_note(title, body, through);
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -363,7 +362,7 @@ fn show(title: &str, body: &str, window: Option<&Window>) {
             });
             (tr().text("reminder-open", None), action)
         });
-        if let Err(e) = sioul_sync::notify::mail(title, body, open) {
+        if let Err(e) = sioul_sync::notify::mail(title, body, through, open) {
             eprintln!("{e}");
         }
     }

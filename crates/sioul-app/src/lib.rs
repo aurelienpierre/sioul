@@ -103,6 +103,7 @@
 //! - [`homecard`](homecard/index.html): the card on the phone's home screen.
 //! - [`calls`](calls/index.html): calls screened on a phone.
 //! - [`appnotes`](appnotes/index.html): other apps' notifications on a phone: now, or how long they wait.
+//! - [`reaches`](reaches/index.html): Settings ▸ What reaches you in words, and a person's sheet.
 
 mod alarms;
 mod appnotes;
@@ -135,6 +136,8 @@ mod papers;
 mod pauses;
 mod pim;
 mod projects;
+// Settings ▸ What reaches you, in words, and a person's sheet (docs/attention.md).
+mod reaches;
 mod remind;
 mod reviews;
 mod senders;

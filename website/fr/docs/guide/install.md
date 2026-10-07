@@ -29,7 +29,7 @@ Mesuré le 6 octobre 2026 sur un ordinateur Linux à 8 cœurs, Sioul et tous le
 - **Ce qui n’est pas ouvert ne coûte rien.** Chaque page de la fenêtre, chaque formulaire et chaque menu est fait la première fois que vous l’ouvrez, et le moteur qui affiche les sites démarre avec le premier site ouvert. Le 4 octobre, avant cela, Sioul seul prenait 280 Mo, et 1,9 Go au quotidien (son propre processus 0,7 Go).
 - **Les sites sont la part lourde.** Chacun gardé ouvert coûte ce que coûte un onglet de navigateur, 150 à 350 Mo, et le processeur qu’utilise sa page : une messagerie qui se tient à jour toute seule est la plus active.
 - **Disque** : quelques mégaoctets lus et écrits en quelques minutes.
-- **Fenêtre fermée**, le veilleur des rappels (Paramètres ▸ Rappels et notifications) prend 10 Mo et presque pas de processeur.
+- **Fenêtre fermée**, le veilleur des rappels (Paramètres ▸ Rappels) prend 10 Mo et presque pas de processeur.
 - **Sur un téléphone** (Android, un téléphone de 2019) : environ 200 Mo quand Sioul est à l’écran et 140 Mo une fois mis de côté, avec presque pas de processeur alors ; chaque page s’ouvre en 0,1 à 0,5 s la première fois, puis tout de suite.
 - **Ce qu’il faut prévoir** : 4 Go de mémoire pour Sioul et quelques sites à côté de vos autres programmes, 8 Go pour garder beaucoup de sites ouverts ; sans sites, Sioul demande très peu. N’importe quel processeur des dix dernières années.
 
@@ -107,7 +107,7 @@ install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml ~/.local/share/metainf
 mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 ```
 
-Sioul apparaît alors dans votre menu d’applications sous le nom « Sioul ». La ligne de commande `sioul` vaut la peine d’être installée aussi : les rappels s’en servent quand la fenêtre est fermée ([Paramètres](settings.md#reminders-and-notifications)).
+Sioul apparaît alors dans votre menu d’applications sous le nom « Sioul ». La ligne de commande `sioul` vaut la peine d’être installée aussi : les rappels s’en servent quand la fenêtre est fermée ([Paramètres](settings.md#reminders)).
 
 ### Mettre à jour {#updating}
 

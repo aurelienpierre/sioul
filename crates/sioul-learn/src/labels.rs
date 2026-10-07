@@ -122,6 +122,8 @@ pub struct Labeled {
     pub evidence: Evidence,
     /// When it first arrived: the earliest INTERNALDATE of its copies.
     pub date: i64,
+    /// The role of the folder the copy learned from is in (an inbox, a Junk folder…).
+    pub role: Role,
 }
 
 /// What deciding the labels found, in numbers only.
@@ -222,7 +224,7 @@ pub fn decide(copies: Vec<Copy>, log: &[Entry], moved: &[Moved]) -> (Vec<Labeled
             Label::Ham => counts.0 += 1,
             Label::Spam => counts.1 += 1,
         }
-        labeled.push(Labeled { key, place: copy.place.clone(), label, evidence, date });
+        labeled.push(Labeled { key, place: copy.place.clone(), label, evidence, date, role: copy.role });
     }
     (labeled, summary)
 }

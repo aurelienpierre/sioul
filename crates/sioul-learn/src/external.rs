@@ -27,8 +27,10 @@
 //! - `source`: a name for where it comes from; else the one given to the
 //!   import, else the file's name.
 //!
-//! Kept apart from your own corpus, never shared, never shown to an AI
-//! agent: `$XDG_DATA_HOME/sioul/spam/external/<source>.jsonl.gz`, each
+//! Kept apart from your own corpus, never shared; an AI agent sees of it
+//! only the sender and the subject, masked, of a test's worst errors, when
+//! you let it use the spam filter's tools (`[mcp] spam`, docs/mcp.md):
+//! `$XDG_DATA_HOME/sioul/spam/external/<source>.jsonl.gz`, each
 //! message checked and cut to what the Porch reads (6 000 characters of
 //! text, 64 KB of HTML, 32 KB of headers), with `<source>.toml` beside it
 //! (counts only). An import replaces what was imported before under the same
@@ -83,6 +85,28 @@ impl Message {
     /// Its words, as the Porch reads a message: the subject, the text, the
     /// HTML read as text when there is no text or only a stand-in.
     pub fn words(&self) -> Vec<String> {
+        let excerpt = self.rebuilt(b"").map(|card| card.excerpt).unwrap_or_else(|| self.text.clone());
+        crate::spamcore::tokens(&self.subject, &excerpt).words.into_iter().filter(|w| !w.is_empty() && !w.contains(char::is_whitespace)).collect()
+    }
+
+    /// The message as the Porch would read it: its sender, its subject, its
+    /// Message-ID and the start of its text, so that a test's worst errors
+    /// can say which message each is (`detail`). Each field on one line.
+    pub fn card(&self) -> Option<sioul_core::card::Card> {
+        let line = |text: &str| text.replace(['\r', '\n'], " ");
+        let mut header = String::new();
+        if let Some(from) = self.from.as_deref() {
+            header.push_str(&format!("From: {}\r\n", line(from)));
+        }
+        header.push_str(&format!("Subject: {}\r\n", line(&self.subject)));
+        if let Some(id) = self.message_id() {
+            header.push_str(&format!("Message-ID: <{}>\r\n", line(&id)));
+        }
+        self.rebuilt(header.as_bytes())
+    }
+
+    /// The message made again from its texts, as a corpus record is (`spamcore::rebuild`), under `header`.
+    fn rebuilt(&self, header: &[u8]) -> Option<sioul_core::card::Card> {
         let plain = (!self.text.is_empty()).then(|| Text { at: vec![1], text: self.text.clone() });
         let html = self.html.as_ref().filter(|h| !h.is_empty()).map(|h| Text { at: vec![if plain.is_some() { 2 } else { 1 }], text: h.clone() });
         let leaf = |mime: &str| Node::Leaf(Leaf { mime: mime.into(), charset: Some("utf-8".into()), ..Leaf::default() });
@@ -91,9 +115,8 @@ impl Message {
             (None, Some(_)) => leaf("text/html"),
             _ => leaf("text/plain"),
         };
-        let raw = crate::spamcore::rebuild(b"", Some(&structure), plain.as_ref(), html.as_ref());
-        let excerpt = sioul_core::card::Card::from_bytes(&raw).map(|card| card.excerpt).unwrap_or_else(|| self.text.clone());
-        crate::spamcore::tokens(&self.subject, &excerpt).words.into_iter().filter(|w| !w.is_empty() && !w.contains(char::is_whitespace)).collect()
+        let raw = crate::spamcore::rebuild(header, Some(&structure), plain.as_ref(), html.as_ref());
+        sioul_core::card::Card::from_bytes(&raw)
     }
 }
 

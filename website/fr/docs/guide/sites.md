@@ -59,7 +59,7 @@ Les notifications de chaque site sont acceptées, puis gardées par Sioul ; le
 - **Un appel** (« appel entrant ») vient tout de suite, sauf si les sons du site sont coupés. Un appel manqué attend comme le reste.
 - Tout le reste attend sur [le Porche](porch.md#above-the-lanes), en une ligne « Du nouveau sur » suivie du nom du site. Ouvrir le site efface ses nouvelles.
 
-À heures fixes (09:00, 13:00 et 18:00, sauf si vous en choisissez d’autres dans [Paramètres ▸ Rappels et notifications](settings.md#reminders-and-notifications)), une seule notification rassemble les sites qui ont du nouveau, avec **Ouvrir le Porche**. Trois par jour ont le plus aidé dans un essai en conditions réelles (Fitz et al. 2019).
+À heures fixes (09:00, 13:00 et 18:00, sauf si vous en choisissez d’autres dans [Paramètres ▸ Rappels](settings.md#reminders)), une seule notification rassemble les sites qui ont du nouveau, avec **Ouvrir le Porche**. Trois par jour ont le plus aidé dans un essai en conditions réelles (Fitz et al. 2019).
 
 Un site dont les heures ne sont pas venues garde ses notifications, temps réel et appels compris, jusqu’à ce qu’elles viennent.
 

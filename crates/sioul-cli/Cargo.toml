@@ -28,6 +28,10 @@ toml.workspace = true
 [target.'cfg(not(target_os = "android"))'.dependencies]
 sioul-learn = { path = "../sioul-learn" }
 
+# A training runs below the other programs' priority (setpriority), as the window's does.
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
 [features]
 # For tests against a local mail server only (see sioul-sync's feature of the same name).
 insecure-test-tls = ["sioul-sync/insecure-test-tls", "sioul-learn/insecure-test-tls"]

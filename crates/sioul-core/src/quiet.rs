@@ -13,9 +13,9 @@
 //! everything, whatever the time; Free time is leisure whatever the hour,
 //! sleep first, and may move the end of today's work later.
 //!
-//! Who may reach you when is a matrix per channel (`reach::Reach`): for each
-//! state, the times they come; mail's rule is `mail_in_view`. What each kind
-//! of notification does at each time is another matrix (`notify::Notify`).
+//! What reaches you when, who and what, is one matrix (`attention`,
+//! docs/attention.md): its columns are these times, the pauses and two
+//! layers above them; the Porch's mail is shown as it says (`Attention::mail`).
 //!
 //! Detachment from work in the evening is what recovery needs most
 //! (Sonnentag & Fritz 2007, 2015); work cues in off-hours keep it from
@@ -23,7 +23,6 @@
 
 use crate::areas::{Area, TaskAreas, Time, Week, in_view};
 use crate::config::TimeOff;
-use crate::reach::{Matrix, Who};
 use crate::window::{self, AdminWindow};
 use jiff::civil::Date;
 use jiff::{Span, Zoned};
@@ -501,54 +500,6 @@ impl Situation {
     }
 }
 
-/// A row's boxes: the columns ticked (`reach::Times`).
-pub use crate::reach::Times;
-
-/// A state with its times on a channel, as its matrix ticks them: "Neutral:
-/// work, admin", "Safe: any time", "Blocked: never"; `one`: as said of one
-/// person (French says "Sûr" of a person, "Sûrs" of the list).
-pub fn list_choice(tr: &crate::i18n::Translator, who: Who, matrix: &Matrix, one: bool) -> String {
-    let times = matrix.times(who);
-    let words = if times == Times::ALL {
-        tr.text("reach-any", None)
-    } else if times == Times::NEVER {
-        tr.text("reach-never", None)
-    } else {
-        times.ids().iter().map(|t| tr.text(&format!("reach-word-{t}"), None)).collect::<Vec<_>>().join(", ")
-    };
-    let mut args = crate::i18n::args();
-    args.set("list", tr.text(&format!("sender-{}-{}", if one { "one" } else { "list" }, who.id()), None));
-    args.set("times", words);
-    tr.text("sender-list-times", Some(&args))
-}
-
-/// Whether mail comes forward now (docs/porch.md, "Who may reach you, and
-/// when"): the codes and links you just asked a site for, and what you send
-/// yourself, at once; with no hours set, everything; else when mail's matrix
-/// (`reach`, as `pause::reach_now` gives it for now) ticks its sender's row
-/// now. Your safe senders' mail comes to any of your addresses; the others'
-/// only to an address for what now is for (docs/areas.md), unless the two
-/// never meet in your week: then their row alone decides, so that no mail
-/// waits for good. Forged mail, set aside before (porch.rs), is weighed as a
-/// stranger's, never as its sender's, and so is mail nothing authenticates
-/// (the triage said so: `porch::Reason::NotAuthenticated`).
-pub fn mail_in_view(triaged: &crate::porch::Triaged, senders: &crate::porch::Senders, reach: &Matrix, account: Area, time: Time, week: Week) -> bool {
-    if triaged.lane == crate::porch::Lane::RightNow || triaged.reasons.contains(&crate::porch::Reason::FromYourself) || time == Time::Any {
-        return true;
-    }
-    let unproven = triaged.lane == crate::porch::Lane::SetAside || triaged.reasons.contains(&crate::porch::Reason::NotAuthenticated);
-    let who = if unproven { Who::Stranger } else { senders.who_of(&triaged.card) };
-    let times = reach.times(who);
-    if !times.at(time, week) {
-        return false;
-    }
-    if who == Who::Safe || in_view(account, time, week) {
-        return true;
-    }
-    // The address is for other times than those of its sender: when they never meet, the row decides.
-    !Time::STATES.into_iter().any(|t| week.has(t) && times.at(t, week) && in_view(account, t, week))
-}
-
 /// Whether a task is yours, outside work: one of its categories is among
 /// `personal` (case and accents aside), or one of its cases is marked as yours.
 pub fn personal_task(task: &crate::tasks::Task, personal: &[String], personal_cases: &[String]) -> bool {
@@ -798,88 +749,18 @@ mod tests {
         assert_eq!(mode(&[], &[], &none, &self::none(), &at("2026-10-02T10:00[Europe/Paris]")).time, Time::Any);
     }
 
-    /// A message from `from` as the Porch judges it; `headers` before the subject.
-    fn message(from: &str, headers: &str, subject: &str, senders: &crate::porch::Senders) -> crate::porch::Triaged {
-        let raw = format!("From: {from}\r\n{headers}Subject: {subject}\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\n\r\n{subject}.\r\n");
-        let known = crate::porch::SenderList::default();
-        let trusted = ["mx.example.net".to_string()];
-        let own = ["me@example.net".to_string()];
-        let ctx = crate::porch::Context { cases: None, known: &known, senders, trusted_ids: &trusted, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &own, spam: None };
-        crate::porch::triage(crate::card::Card::from_bytes(raw.as_bytes()).unwrap(), &ctx)
-    }
-
-    #[test]
-    fn who_may_write_when() {
-        use crate::porch::{SenderList, Senders};
-        use crate::reach::Reach;
-        // Mail's usual matrix: safe at any time, the pause too; neutral in work and admin; restricted in work; strangers as neutral.
-        let usual = Reach::default().mail;
-        assert_eq!((usual.safe.ids(), usual.neutral.ids(), usual.restricted.ids(), usual.stranger.ids()), (vec!["work", "admin", "leisure", "meals", "sleep", "pause"], vec!["work", "admin"], vec!["work"], vec!["work", "admin"]));
-        assert_eq!(Reach::of(&crate::config::ReachSettings::default()).mail, usual);
-        let mine = Reach::of(&crate::config::ReachSettings { neutral: Some(vec!["Leisure".into(), "repas".into()]), restricted: Some(Vec::new()), ..Default::default() }).mail;
-        assert_eq!((mine.safe, mine.neutral.ids(), mine.restricted), (Times::ALL, vec!["leisure", "meals"], Times::NEVER), "a row left out keeps its usual times; an empty one is never");
-        assert_eq!(mine.stranger, mine.neutral, "written before the five states: strangers as the neutral");
-        let senders = Senders { safe: SenderList::parse("jane@example.org"), restricted: SenderList::parse("*@company.example"), ..Senders::default() };
-        let set = Week { work_hours: true, admin_hours: true, meals: true, sleep: true };
-        let (work_address, personal, leisure_address) = (Area::WORK, Area::PERSONAL, Area::LEISURE);
-        let comes = |t: &crate::porch::Triaged, reach: &Matrix, account: Area, time: Time| mail_in_view(t, &senders, reach, account, time, set);
-        // Safe: to any address, at every time ticked; untick sleep and it waits.
-        let jane = message("Jane <jane@example.org>", "", "Hello", &senders);
-        assert!(Time::STATES.into_iter().all(|time| comes(&jane, &usual, work_address, time)));
-        let no_sleep = Matrix { safe: Times { sleep: false, ..Times::ALL }, ..usual };
-        assert!(!comes(&jane, &no_sleep, work_address, Time::Sleep) && comes(&jane, &no_sleep, work_address, Time::Meals));
-        // A stranger, to the work address: work time only (the address is work's, the row says work and admin).
-        let stranger = message("Someone <someone@elsewhere.example>", "", "A question", &senders);
-        assert_eq!(senders.who_of(&stranger.card), Who::Stranger);
-        let at_times = |t: &crate::porch::Triaged, reach: &Matrix, account: Area| Time::STATES.into_iter().filter(|time| comes(t, reach, account, *time)).map(Time::id).collect::<Vec<_>>();
-        assert_eq!(at_times(&stranger, &usual, work_address), ["work"]);
-        assert_eq!(at_times(&stranger, &usual, personal), ["admin"]);
-        // The address and the row never meet: the row alone decides, so nothing waits for good.
-        assert_eq!(at_times(&stranger, &usual, leisure_address), ["work", "admin"]);
-        // Jane's address on mail failing SPF and DKIM: nothing proves it is hers, a stranger's times.
-        let unproven = message("Jane <jane@example.org>", "Authentication-Results: mx.example.net; spf=fail smtp.mailfrom=example.org; dkim=fail header.d=example.org\r\n", "Hello", &senders);
-        assert_eq!(at_times(&unproven, &usual, work_address), ["work"]);
-        // Strangers on their own row: never, and they wait while the neutral come.
-        let no_strangers = Matrix { stranger: Times::NEVER, ..usual };
-        assert_eq!(at_times(&stranger, &no_strangers, work_address), Vec::<&str>::new());
-        let boss = message("Boss <boss@company.example>", "", "Monday", &senders);
-        assert_eq!(at_times(&boss, &usual, personal), ["work"], "restricted to work, writing to a personal address");
-        assert_eq!(at_times(&boss, &usual, work_address), ["work"]);
-        assert_eq!(at_times(&boss, &mine, work_address), Vec::<&str>::new(), "never");
-        // Without admin hours, work time takes admin's ticks; without work hours, admin time takes work's.
-        let admin_only = Matrix { stranger: Times { admin: true, ..Times::NEVER }, ..usual };
-        let no_admin = Week { admin_hours: false, ..set };
-        assert!(mail_in_view(&stranger, &senders, &admin_only, Area::MIXED, Time::Work, no_admin));
-        assert!(!mail_in_view(&stranger, &senders, &admin_only, Area::MIXED, Time::Work, set));
-        let no_work = Week { work_hours: false, ..set };
-        assert!(mail_in_view(&boss, &senders, &usual, work_address, Time::Admin, no_work));
-        // Codes asked for and what you send yourself: at once, asleep or not; no hours set: everything.
-        let code = message("Bank <codes@bank.example>", "", "Your verification code: 482913", &senders);
-        assert_eq!(code.lane, crate::porch::Lane::RightNow);
-        assert!(comes(&code, &mine, work_address, Time::Sleep));
-        let mine_own = message("Me <me@example.net>", "Authentication-Results: mx.example.net; dmarc=pass header.from=example.net\r\n", "A file", &senders);
-        assert!(mine_own.reasons.contains(&crate::porch::Reason::FromYourself), "{:?}", mine_own.reasons);
-        assert!(comes(&mine_own, &mine, work_address, Time::Sleep));
-        assert!(comes(&stranger, &usual, leisure_address, Time::Any));
-        // Forged in a safe sender's name: set aside, and weighed as a stranger's.
-        let forged = message("Jane <jane@example.org>", "Authentication-Results: mx.example.net; dmarc=fail (p=reject) header.from=example.org\r\n", "Hello", &senders);
-        assert_eq!(forged.lane, crate::porch::Lane::SetAside);
-        assert!(!comes(&forged, &usual, personal, Time::Leisure) && comes(&forged, &usual, personal, Time::Admin));
-        assert!(!comes(&forged, &no_strangers, personal, Time::Admin), "on the strangers' row");
-    }
-
     #[test]
     fn nothing_disturbs_but_doses() {
-        use crate::notify::{Column, Kind, Notify, Now};
+        use crate::attention::{Attention, Column, Kind, Level, Now, Row};
         let sleeping = Mode { quiet: true, time: Time::Sleep, week: Week::default(), reason: Reason::Sleep, until: None, back: None, label: String::new() };
         let awake = Mode { time: Time::Leisure, reason: Reason::Evening, ..sleeping.clone() };
-        // As the notification matrix has it as usual (`notify`).
-        let usual = Notify::usual();
-        let comes = |notify: &Notify, kind: Kind, mode: &Mode| notify.comes(kind, &Now::of(mode, false, false));
+        // As the matrix of what reaches you has it as usual (`attention`).
+        let usual = Attention::usual();
+        let comes = |matrix: &Attention, kind: Kind, mode: &Mode| matrix.level(Row::Own(kind), &Now::of(mode)) == Level::Now;
         assert!(!comes(&usual, Kind::Move, &sleeping) && !comes(&usual, Kind::Dates, &sleeping), "no notification during sleep");
         assert!(comes(&usual, Kind::Doses, &sleeping), "a dose comes: you set its time");
-        let mut silent = Notify::usual();
-        silent.set(Kind::Doses, Column::Sleep, crate::notify::Cell::Later).unwrap();
+        let mut silent = Attention::usual();
+        silent.set(Row::Own(Kind::Doses), Column::Sleep, Level::Later).unwrap();
         assert!(!comes(&silent, Kind::Doses, &sleeping), "unless doses stay silent then");
         assert!(comes(&silent, Kind::Move, &awake) && comes(&silent, Kind::Doses, &awake));
         let winding = Mode { reason: Reason::WindingDown, ..sleeping };

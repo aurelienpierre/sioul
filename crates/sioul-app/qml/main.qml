@@ -563,15 +563,16 @@ SioulWindow {
             if (window.healthPage)
                 window.healthPage.showNeeds()
         }
-        // Who may reach you, at one channel's matrix (Accounts): "reach-mail", "reach-calls", "reach-messages".
-        else if (item.kind === "reach-mail" || item.kind === "reach-calls" || item.kind === "reach-messages") {
-            window.page = 11
-            if (window.accountsPage)
-                window.accountsPage.showReach(item.kind === "reach-mail" ? "reach" : item.kind.replace("reach-", "reach."))
-        }
-        // A setting, from another tab's link: "settings:notify", the notification matrix.
+        // Who may reach you on one channel: Settings ▸ What reaches you ▸ By person, at that channel.
+        else if (item.kind === "reach-mail" || item.kind === "reach-calls" || item.kind === "reach-messages")
+            window.showParameters("attention." + item.kind.slice("reach-".length))
+        // A setting, from another tab's link: "settings:attention.pause", What reaches you at the pause's card.
         else if (item.kind.startsWith("settings:"))
             window.showParameters(item.kind.slice("settings:".length))
+        else if (item.kind === "agenda")
+            window.page = 4
+        else if (item.kind === "sites")
+            window.page = 3
         else if (item.kind === "porch")
             window.page = 0
         // The phone's home screen card (homecard.rs): Now; its step's details
@@ -667,12 +668,12 @@ SioulWindow {
         id: sioul
     }
 
-    // The notification matrix's grid in Settings, once made (NotifyGrid.qml): for the pictures' steps.
-    function notifyGrid(): var {
+    // Settings ▸ What reaches you, once made (ReachesTab.qml): for the pictures' steps.
+    function reachesTab(): var {
         const find = item => {
             if (!item)
                 return null
-            if (item.objectName === "notifyGrid")
+            if (item.objectName === "reachesTab")
                 return item
             for (let i = 0; i < item.children.length; i++) {
                 const found = find(item.children[i])
@@ -682,6 +683,14 @@ SioulWindow {
             return null
         }
         return find(parametersPage)
+    }
+
+    // How someone reaches you (PersonSheet.qml, made the first time): a
+    // contact's card by its file or UID, or a sender's addresses (a JSON array).
+    function openPersonSheet(key, addresses) {
+        if (personSheet.item === null)
+            personSheet.setSource("PersonSheet.qml", { sioul: sioul, theme: theme })
+        personSheet.item.ask(key, addresses)
     }
 
     // Settings, at one of them: the hours, from the Porch.
@@ -866,7 +875,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "reach": grabber.reachSteps, "notify": grabber.notifySteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel, "spam": grabber.spamSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel, "spam": grabber.spamSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -1132,11 +1141,11 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("accounts"),
-                () => accountsPage.showTab(2),
+                () => window.showParameters("attention"),
                 () => {},
-                () => grabber.save("accounts-senders"),
+                () => {},
+                () => grabber.save("settings-attention"),
                 () => {
-                    accountsPage.showTab(0)
                     window.page = 12
                     parametersPage.section = "hours"
                 },
@@ -1857,7 +1866,7 @@ SioulWindow {
                 () => window.close()
             ]
             // Accounts in tabs: an address with its services (one switched off), adding
-            // one, the senders' lists, the keys.
+            // one, the keys.
             readonly property var accountTabs: [
                 () => window.page = 11,
                 () => {},
@@ -1872,70 +1881,75 @@ SioulWindow {
                 () => grabber.save("account-tabs-add"),
                 () => accountsPage.showTab(2),
                 () => {},
-                () => grabber.save("account-tabs-senders"),
-                () => accountsPage.showTab(3),
-                () => {},
                 () => grabber.save("account-tabs-keys"),
                 () => window.close()
             ]
-            // Who may reach you (SIOUL_GRAB_STEPS=reach; SIOUL_GRAB_PHONE for a
-            // phone's): each channel's matrix, the lists under them, the people
-            // and the categories; a contact's list, a card with a number only and one
-            // whose address has a list of its own.
-            // The notification matrix (SIOUL_GRAB_STEPS=notify; SIOUL_GRAB_PHONE for a phone's):
-            // Settings ▸ Reminders and notifications at its grid, a cell's choices, a fixed cell's why.
-            readonly property var notifySteps: [
+            // What reaches you (SIOUL_GRAB_STEPS=attention; SIOUL_GRAB_PHONE for a
+            // phone's): Settings ▸ What reaches you by time, a time's rows and a
+            // cell's choices; by person (mail, then calls), a row's times on a
+            // phone; Sioul's own and a fixed cell's why; the exceptions; do not
+            // disturb; then a contact's card and how they reach you.
+            readonly property var attentionSteps: [
+                () => window.showParameters("attention"),
+                () => {},
+                () => {},
+                () => grabber.save("attention-time"),
+                () => parametersPage.scrollBy(0.5),
+                () => {},
+                () => grabber.save("attention-time-more"),
+                // A time's rows, sleep's; a cell's choices in words.
+                () => window.showParameters("attention.sleep"),
+                () => {},
+                () => {},
+                () => grabber.save("attention-sleep"),
+                () => window.reachesTab().openCell("mail.safe", "sleep"),
+                () => {},
+                () => grabber.saveWindow("attention-choices"),
+                () => window.reachesTab().closeChoices(),
+                // By person: mail, then calls; on a phone, a row's nine values.
+                () => window.showParameters("attention.mail"),
+                () => {},
+                () => {},
+                () => grabber.save("attention-person-mail"),
+                () => window.showParameters("attention.calls"),
+                () => {},
+                () => grabber.save("attention-person-calls"),
                 () => {
-                    window.page = 12
-                    parametersPage.section = "reminders"
+                    window.showParameters("attention.mail")
+                    window.reachesTab().rowOpen = "mail.neutral"
                 },
                 () => {},
-                () => parametersPage.showSetting("notify"),
+                () => grabber.save("attention-row"),
+                // Sioul's own, and a fixed cell's why.
+                () => window.showParameters("attention.own"),
                 () => {},
                 () => {},
-                () => grabber.save("notify-grid"),
-                () => parametersPage.scrollBy(0.45),
+                () => grabber.save("attention-own"),
+                () => window.reachesTab().openCell("doses", "dnd"),
                 () => {},
-                () => grabber.save("notify-grid-down"),
-                // New mail during Free time: its choices.
-                () => parametersPage.showSetting("notify"),
+                () => grabber.saveWindow("attention-fixed"),
+                () => window.reachesTab().closeChoices(),
+                // The exceptions, your safe senders put on Always through; and do not disturb.
+                () => sioul.dndChange("add-safe", "{}"),
+                () => window.showParameters("attention.exceptions"),
                 () => {},
-                () => window.notifyGrid().openAt("mail", "free"),
                 () => {},
-                () => grabber.saveWindow("notify-choices"),
-                () => window.notifyGrid().closeChoices(),
-                // A dose during do-not-disturb: fixed, and why.
-                () => window.notifyGrid().openAt("doses", "dnd"),
+                () => grabber.save("attention-exceptions"),
+                () => window.showParameters("attention.dnd"),
                 () => {},
-                () => grabber.saveWindow("notify-fixed"),
-                () => window.notifyGrid().closeChoices(),
-                () => window.close()
-            ]
-            readonly property var reachSteps: [
-                () => window.page = 11,
-                () => accountsPage.showReach("reach"),
                 () => {},
-                () => grabber.save("reach-mail"),
-                () => accountsPage.showReach("reach.calls"),
-                () => {},
-                () => grabber.save("reach-calls"),
-                () => accountsPage.showReach("reach.messages"),
-                () => {},
-                () => grabber.save("reach-messages"),
-                () => accountsPage.scrollSenders(0.5),
-                () => {},
-                () => grabber.save("reach-lists"),
-                () => accountsPage.scrollSenders(1),
-                () => {},
-                () => grabber.save("reach-people"),
+                () => grabber.save("attention-dnd"),
+                // A contact's card, and their sheet.
                 () => window.page = 5,
                 () => {},
                 () => contactsPage.open((contactsPage.shown.contacts.find(c => c.name.indexOf("Varga") >= 0) || contactsPage.shown.contacts[0]).key),
                 () => {},
-                () => grabber.save("reach-card-doctor"),
-                () => contactsPage.open((contactsPage.shown.contacts.find(c => c.name.indexOf("Maud") >= 0) || contactsPage.shown.contacts[0]).key),
+                () => grabber.save("attention-card"),
+                () => window.openPersonSheet(contactsPage.openKey, ""),
                 () => {},
-                () => grabber.save("reach-card-mum"),
+                () => {},
+                () => grabber.savePopup(personSheet.item, "attention-sheet"),
+                () => personSheet.item.close(),
                 () => window.close()
             ]
             // Settings in tabs; the Health page in its order; a site's menu by a right
@@ -2828,6 +2842,25 @@ SioulWindow {
     }
     Loader {
         id: interruption
+    }
+    Loader {
+        id: personSheet
+    }
+    // A person's list or Always through changed on their sheet: their card says it again.
+    Connections {
+        target: personSheet.item
+        ignoreUnknownSignals: true
+
+        function onChanged() {
+            if (contactsPage.openKey !== "")
+                contactsPage.readMail()
+            // What reaches you's lists and words, when they are what is shown.
+            const tab = window.reachesTab()
+            if (tab) {
+                tab.readLists()
+                tab.reload()
+            }
+        }
     }
     Connections {
         target: interruption.item

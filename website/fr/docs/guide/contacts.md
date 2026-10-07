@@ -25,7 +25,7 @@ Un contact s’ouvre à droite :
 - ses **Adresses électroniques**, chacune avec **Écrire** ;
 - ses **Numéros de téléphone**, chacun avec **Appeler** ;
 - replié sous **Plus** : adresses postales, organisation et fonction, anniversaire, notes, sites web ;
-- **Sa liste** : qui cette personne est pour vous, pour toutes ses adresses et tous ses numéros, sur toute fiche, même avec un numéro seul ([Comptes ▸ Qui peut vous joindre](accounts.md#senders)). Toute personne de vos carnets d’adresses est neutre tant que vous ne choisissez pas ; ses catégories peuvent en décider, quand une liste en nomme une ; votre choix pour cette personne passe avant : sûr, neutre, restreint ou bloqué, ou de nouveau **Comme le disent ses catégories**. Dessous, une phrase dit ce qui décide maintenant, et une ligne nomme chaque adresse ou numéro qui a sa propre liste, laquelle passe d’abord ;
+- **Comment cette personne vous joint** : qui elle est pour vous, en une phrase (« Neutre : dans votre carnet d’adresses, sur aucune liste. »), et **Comment … vous joint**, sa fiche : sa liste, pour toutes ses adresses et tous ses numéros, sur toute fiche, même avec un numéro seul ; **Passe toujours** ; et ce qui vous joint de sa part à chaque moment ([La fiche d’une personne](notifications.md#a-persons-sheet)). Toute personne de vos carnets d’adresses est neutre tant que vous ne choisissez pas ; ses catégories peuvent en décider, quand une liste en nomme une ; votre choix pour cette personne passe avant : sûr, neutre, restreint ou bloqué, ou de nouveau **Comme le disent ses catégories** ;
 - une petite carte avec une épingle à son adresse, une fois celle-ci placée (plus bas) ;
 - **Lié à cela** : le courrier échangé, les tâches, les événements, les notes, les projets.
 
@@ -41,7 +41,7 @@ Quand vous écrivez un message, les adresses se complètent depuis vos contacts.
 
 Les catégories sont les groupes que montre Nextcloud Contacts : « Famille », « Amis », « Voisins » ; une fiche peut en avoir plusieurs. Dans le formulaire, sous **Catégories**, × en retire une, et le champ qui les suit en ajoute une, choisie parmi celles qu’ont déjà vos fiches ou tapée. « amis » et « Amis » sont une seule catégorie, écrite comme vos fiches l’ont écrite d’abord.
 
-Elles sont enregistrées dans la fiche elle-même (le `CATEGORIES` du vCard) : Nextcloud, votre téléphone et les autres programmes les voient, et une fiche enregistrée dans Sioul garde celles qu’elle avait. Une liste peut nommer une catégorie ([Comptes ▸ Qui peut vous joindre](accounts.md#senders), « Les catégories de vos contacts ») : ces personnes vous joignent alors comme le dit cette liste, par courrier, par téléphone et par les messages des autres applications, sauf si vous avez choisi autre chose pour elles sur leur fiche. Rien ne va sur une liste tout seul, famille et amis compris.
+Elles sont enregistrées dans la fiche elle-même (le `CATEGORIES` du vCard) : Nextcloud, votre téléphone et les autres programmes les voient, et une fiche enregistrée dans Sioul garde celles qu’elle avait. Une liste peut nommer une catégorie (Paramètres ▸ [Ce qui vous joint](notifications.md#who-is-on-which-list), « Les catégories de vos contacts ») : ces personnes vous joignent alors comme le dit cette liste, par courrier, par téléphone et par les messages des autres applications, sauf si vous avez choisi autre chose pour elles sur leur fiche. Rien ne va sur une liste tout seul, famille et amis compris.
 
 ## Les doublons {#duplicates}
 

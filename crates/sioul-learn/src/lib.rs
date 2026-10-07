@@ -35,18 +35,23 @@
 //! - [`svm`]: the linear SVM, solved as liblinear solves it.
 //! - [`platt`]: the SVM's scores turned into probabilities (Platt scaling).
 //! - [`eval`]: the filter's numbers, aggregates only, each with its interval.
+//! - [`detail`]: what a test said message by message: counts by account and folder, a grid of thresholds, the worst errors (`sioul spam eval --errors`).
+//! - [`diagnose`]: each header feature's mean by account and label (`sioul spam features`): which ones tell accounts apart rather than spam from ham.
 //! - [`spamcore`](spamcore/index.html): the seam to sioul-core's spam module: a corpus record read as the Porch reads the message.
-//! - `synthetic`, built for the tests only (so not shown here): invented mail on reserved domains.
+//! - `synthetic`, for tests only, this crate's and the command line's (so not shown here): invented mail on reserved domains.
 
 pub mod corpus;
+pub mod detail;
+pub mod diagnose;
 pub mod eval;
 pub mod external;
 pub mod labels;
 pub mod platt;
 pub(crate) mod spamcore;
 pub mod svm;
-#[cfg(test)]
-mod synthetic;
+/// Invented mail on reserved domains, for the tests of this crate and of the command line.
+#[doc(hidden)]
+pub mod synthetic;
 pub mod train;
 
 use std::path::PathBuf;
@@ -229,11 +234,12 @@ pub(crate) fn io_error(path: &std::path::Path, e: impl std::fmt::Display) -> Lea
 
 /// A small, seeded random number generator (splitmix64): the same seed gives
 /// the same visit order, so the same model.
+#[doc(hidden)]
 #[derive(Debug, Clone)]
-pub(crate) struct Rng(u64);
+pub struct Rng(u64);
 
 impl Rng {
-    pub(crate) fn new(seed: u64) -> Rng {
+    pub fn new(seed: u64) -> Rng {
         Rng(seed)
     }
 
@@ -251,7 +257,6 @@ impl Rng {
     }
 
     /// A number in [0, 1).
-    #[cfg(test)]
     pub(crate) fn unit(&mut self) -> f64 {
         (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
     }

@@ -69,15 +69,18 @@ pub fn remind(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() 
 /// New mail at the times it may come (docs/porch.md, "Notifications"): one
 /// notification for the batch, no sound, with one button ("Open": the
 /// Porch) whose action runs when pressed. At normal urgency, unlike codes
-/// and reminders: the desktop's own do-not-disturb holds it.
+/// and reminders: the desktop's own do-not-disturb holds it; but at critical
+/// urgency when someone Always through is in it (`through`), which passes it
+/// (docs/attention.md, Q10).
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
-pub fn mail(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+pub fn mail(title: &str, body: &str, through: bool, action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    let urgency = if through { Urgency::Critical } else { Urgency::Normal };
     let Some((label, on_press)) = action else {
-        return build(title, body, None).icon("mail-unread").urgency(Urgency::Normal).show().map(drop).map_err(|e| e.to_string());
+        return build(title, body, None).icon("mail-unread").urgency(urgency).show().map(drop).map_err(|e| e.to_string());
     };
     let (title, body) = (title.to_string(), body.to_string());
     std::thread::spawn(move || {
-        let Ok(handle) = build(&title, &body, Some(&label)).icon("mail-unread").urgency(Urgency::Normal).show() else { return };
+        let Ok(handle) = build(&title, &body, Some(&label)).icon("mail-unread").urgency(urgency).show() else { return };
         let mut on_press = Some(on_press);
         let _ = handle.wait_for_action(|action: &str| {
             if action == "copy"
@@ -92,13 +95,13 @@ pub fn mail(title: &str, body: &str, action: Option<(String, Box<dyn FnOnce() + 
 
 /// Windows and macOS: the mail's words alone; their notifications carry no button here.
 #[cfg(any(windows, target_os = "macos"))]
-pub fn mail(title: &str, body: &str, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+pub fn mail(title: &str, body: &str, _through: bool, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
     Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
 }
 
 /// Android: made on the window's side, through Java (sioul-app's `eventalarms`).
 #[cfg(target_os = "android")]
-pub fn mail(_title: &str, _body: &str, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+pub fn mail(_title: &str, _body: &str, _through: bool, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
     Err("notifications are made through Java on Android".to_string())
 }
 

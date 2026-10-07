@@ -5,9 +5,11 @@
 //! for a good moment, and **Paused** (« En pause »), for a moment that
 //! overwhelms.
 //!
-//! - Free time is leisure whatever the hour: only your safe senders reach you
-//!   (or no one: "Nothing at all"), with doses, codes you asked for and your
-//!   events' alarms; leisure is offered, never a list to finish. The working
+//! - Free time is leisure whatever the hour: as usual only your safe senders
+//!   reach you (or no one but Always through: "Nothing at all"; Free time is
+//!   a column of the matrix of what reaches you, `attention`), with doses,
+//!   codes you asked for and your events' alarms; leisure is offered, never a
+//!   list to finish. The working
 //!   time it took moves the end of today's work later by as much, never past
 //!   the wind-down less an hour, your latest end or the evening's time for
 //!   you, with light steps only after the usual end; "Keep my usual end" moves
@@ -25,8 +27,7 @@
 
 use crate::areas::Area;
 use crate::i18n::Translator;
-use crate::quiet::{Blocks, Mode, Overrides, Reason};
-use crate::reach::{Matrix, Times};
+use crate::quiet::{Blocks, Overrides};
 use crate::window::AdminWindow;
 use jiff::Zoned;
 use jiff::civil::Date;
@@ -91,12 +92,12 @@ impl FreeTimeSettings {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct PauseSettings {
     /// Dose reminders still come during the pause (P7, docs/health.md). The
-    /// notification matrix's cell now (`[notify] doses`, `notify::Notify::of`),
-    /// read from here while that row says nothing of the pause, and written
-    /// here beside it for an older Sioul.
+    /// matrix's cell now (`[attention] doses`, `attention::Attention::of`),
+    /// read from here once to seed it while no `[attention]` is written.
     #[serde(default = "yes")]
     pub doses: bool,
     /// On the phone, starred contacts and repeat callers get through (P9).
+    /// Always through's pause cells now (`attention`), read from here once to seed them.
     #[serde(default = "yes")]
     pub people: bool,
     /// What helps you, in your words, one a line; a line with a link or a
@@ -225,24 +226,6 @@ fn midnight_of(date: Date, zone: &TimeZone) -> i64 {
 /// "Nothing at all" now: this Free time's own choice, else the setting.
 pub fn nothing_now(overrides: &Overrides, settings: &FreeTimeSettings) -> bool {
     overrides.free_nothing.unwrap_or(settings.nothing)
-}
-
-/// Who may write to you now (docs/pauses.md), for mail's rule
-/// (`quiet::mail_in_view`, which reads the time): in the pause, each row's
-/// pause box, in the place of its sleep box (the pause's time is sleep's,
-/// `quiet::mode`); in Free time, your safe senders at the times you ticked
-/// for them, or no one; the others wait whatever their ticks. Codes you
-/// asked for and what you send yourself always come. Otherwise the matrix as
-/// set. Calls and messages read the same from `reach::Moment`.
-pub fn reach_now(reach: Matrix, mode: &Mode, nothing: bool) -> Matrix {
-    if mode.paused() {
-        let paused = |times: Times| Times { sleep: times.pause, ..times };
-        return Matrix { safe: paused(reach.safe), neutral: paused(reach.neutral), restricted: paused(reach.restricted), stranger: paused(reach.stranger), hidden: paused(reach.hidden) };
-    }
-    if mode.reason != Reason::FreeTime {
-        return reach;
-    }
-    Matrix { safe: if nothing { Times::NEVER } else { reach.safe }, neutral: Times::NEVER, restricted: Times::NEVER, stranger: Times::NEVER, hidden: Times::NEVER }
 }
 
 // ---------------------------------------------------------------- the end of work
@@ -677,8 +660,9 @@ mod tests {
     use crate::areas::{TaskAreas, Time};
     use crate::needs::{Days, Needs};
     use crate::plan::{Settings, plan};
-    use crate::notify::{Cell, Column, Kind, Notify, Now};
-    use crate::quiet::mode;
+    use crate::attention::{Attention, Column, Kind, Level, Now, Person, Row};
+    use crate::quiet::{Reason, mode};
+    use crate::reach::Channel;
     use std::collections::BTreeSet;
 
     fn at(text: &str) -> Zoned {
@@ -720,14 +704,15 @@ mod tests {
             let now = at(&format!("2026-10-02T{time}"));
             let m = mode(&week(), &[], &paused, &health(&now), &now);
             assert_eq!((m.reason.clone(), m.time, m.quiet), (Reason::Paused, Time::Sleep, true), "{time}: above work, meals, naps, evenings and the night");
-            // As usual (`notify`): doses come unless the setup said otherwise, and an
-            // event's own alarm (an alarm you set); nothing else, codes neither.
-            let (usual, n) = (Notify::usual(), Now::of(&m, false, false));
-            let mut held = Notify::usual();
-            held.set(Kind::Doses, Column::Pause, Cell::Later).unwrap();
-            assert!(usual.comes(Kind::Doses, &n) && !held.comes(Kind::Doses, &n));
-            assert!(usual.comes(Kind::Alarms, &n));
-            assert!(!usual.comes(Kind::Codes, &n) && !usual.comes(Kind::Move, &n) && !usual.comes(Kind::Needs, &n));
+            // As usual (`attention`): doses come unless the setup said otherwise, an
+            // event's own alarm (an alarm you set), a code you just asked for (Q6); nothing else.
+            let (usual, n) = (Attention::usual(), Now::of(&m));
+            let comes = |matrix: &Attention, kind: Kind| matrix.level(Row::Own(kind), &n) == Level::Now;
+            let mut held = Attention::usual();
+            held.set(Row::Own(Kind::Doses), Column::Pause, Level::Later).unwrap();
+            assert!(comes(&usual, Kind::Doses) && !comes(&held, Kind::Doses));
+            assert!(comes(&usual, Kind::Alarms) && comes(&usual, Kind::Codes));
+            assert!(!comes(&usual, Kind::Move) && !comes(&usual, Kind::Needs));
         }
         // Above "Done for today", "Work now" and Free time too.
         let now = at("2026-10-02T11:00");
@@ -752,17 +737,23 @@ mod tests {
         let m = mode(&week(), &[], &free, &health(&now), &now);
         assert_eq!((m.reason.clone(), m.time, m.quiet), (Reason::FreeTime, Time::Leisure, true), "leisure in working hours");
         assert_eq!(m.until.as_ref().map(|z| z.strftime("%H:%M").to_string()), Some("22:00".into()), "until the night's start");
-        // As usual (`notify`): doses, codes, and events' alarms when their event falls in it; nothing else.
-        let (usual, n) = (Notify::usual(), Now::of(&m, false, false));
-        assert!(usual.comes(Kind::Doses, &n) && usual.comes(Kind::Codes, &n) && usual.at(Kind::Alarms, &n) == Cell::Event);
-        assert!(!usual.comes(Kind::Move, &n) && !usual.comes(Kind::Mail, &n));
-        // Only the safe list: neutral and restricted wait whatever their ticks; "Nothing at all", no one.
-        let all_ticked = Matrix { safe: Times::ALL, neutral: Times::ALL, restricted: Times::ALL, stranger: Times::ALL, hidden: Times::ALL };
-        let narrowed = reach_now(all_ticked, &m, false);
-        assert_eq!((narrowed.safe, narrowed.neutral, narrowed.restricted, narrowed.stranger), (Times::ALL, Times::NEVER, Times::NEVER, Times::NEVER));
-        assert_eq!(reach_now(all_ticked, &m, true).safe, Times::NEVER);
-        let working = mode(&week(), &[], &Overrides::default(), &health(&now), &now);
-        assert_eq!(reach_now(all_ticked, &working, true), all_ticked, "outside Free time, the matrix as set");
+        // As usual (`attention`): doses, codes, and events' alarms when their event falls in it; nothing else.
+        let (usual, n) = (Attention::usual(), Now::of(&m));
+        let level = |kind: Kind| usual.level(Row::Own(kind), &n);
+        assert!(level(Kind::Doses) == Level::Now && level(Kind::Codes) == Level::Now && level(Kind::Alarms) == Level::Event);
+        assert!(level(Kind::Move) != Level::Now);
+        // As usual only the safe list: their calls and messages at once, their mail shown, not told; the others wait.
+        assert_eq!((usual.person(Channel::Calls, Person::Safe, false, &n), usual.person(Channel::Mail, Person::Safe, false, &n)), (Level::Now, Level::Quiet));
+        for person in [Person::Neutral, Person::Restricted, Person::Stranger] {
+            assert_eq!(usual.person(Channel::Mail, person, false, &n), Level::Later, "{person:?}");
+        }
+        // Free time is a column now (Q15): a neutral row may come in it.
+        let mut cells = Attention::usual();
+        cells.set(Row::People(Channel::Mail, Person::Neutral), Column::Free, Level::Now).unwrap();
+        assert_eq!(cells.person(Channel::Mail, Person::Neutral, false, &n), Level::Now);
+        // "Nothing at all": the safe wait too, Always through still comes.
+        let nothing = Now { nothing: true, ..n.clone() };
+        assert_eq!((usual.person(Channel::Calls, Person::Safe, false, &nothing), usual.person(Channel::Calls, Person::Safe, true, &nothing)), (Level::Later, Level::Now));
         assert!(nothing_now(&Overrides { free_nothing: Some(true), ..free.clone() }, &FreeTimeSettings::default()));
         assert!(nothing_now(&free, &FreeTimeSettings { nothing: true, ..FreeTimeSettings::default() }));
         // Sleep still comes first: a nap, then the night, which ends it.

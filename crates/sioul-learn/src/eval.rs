@@ -54,19 +54,52 @@ pub struct Numbers {
     pub unsure: Share,
     /// Area under the ROC curve; none without both kinds.
     pub auc: Option<f64>,
+    /// The lowest threshold that calls at most `STRICT` of the ham spam,
+    /// and what it catches there; none without ham.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strict: Option<AtThreshold>,
 }
+
+/// The share of ham a strict threshold may call spam: one in two hundred.
+pub const STRICT: f64 = 0.005;
 
 /// Evaluates `(probability of spam, is spam)` pairs at the two thresholds.
 pub fn evaluate(scored: &[(f64, bool)], threshold_spam: f64, threshold_unsure: f64) -> Numbers {
     let spam = scored.iter().filter(|(_, s)| *s).count() as u64;
     let ham = scored.len() as u64 - spam;
-    let at = |threshold: f64| AtThreshold {
+    let unsure = scored.iter().filter(|&&(p, _)| p >= threshold_unsure && p < threshold_spam).count() as u64;
+    let strict = strict(scored, STRICT).map(|threshold| at(scored, threshold));
+    Numbers { ham, spam, at_spam: at(scored, threshold_spam), at_unsure: at(scored, threshold_unsure), unsure: Share::new(unsure, scored.len() as u64), auc: auc(scored), strict }
+}
+
+/// The lowest threshold at which at most `rate` of the ham is called spam:
+/// just above the score of the ham that would be one too many. None without ham.
+pub fn strict(scored: &[(f64, bool)], rate: f64) -> Option<f64> {
+    let mut ham: Vec<f64> = scored.iter().filter(|(_, spam)| !spam).map(|(p, _)| *p).collect();
+    if ham.is_empty() {
+        return None;
+    }
+    ham.sort_by(|a, b| b.total_cmp(a));
+    let allowed = (rate * ham.len() as f64).floor() as usize;
+    // The (allowed + 1)-th surest ham must stay below: the next number above its score.
+    Some(ham.get(allowed).map_or(0.0, |p| f64::from_bits(p.to_bits() + 1)))
+}
+
+/// What one threshold does to `(probability of spam, is spam)` pairs.
+pub fn at(scored: &[(f64, bool)], threshold: f64) -> AtThreshold {
+    let spam = scored.iter().filter(|(_, s)| *s).count() as u64;
+    let ham = scored.len() as u64 - spam;
+    AtThreshold {
         threshold,
         ham_called_spam: Share::new(scored.iter().filter(|&&(p, s)| !s && p >= threshold).count() as u64, ham),
         spam_caught: Share::new(scored.iter().filter(|&&(p, s)| s && p >= threshold).count() as u64, spam),
-    };
-    let unsure = scored.iter().filter(|&&(p, _)| p >= threshold_unsure && p < threshold_spam).count() as u64;
-    Numbers { ham, spam, at_spam: at(threshold_spam), at_unsure: at(threshold_unsure), unsure: Share::new(unsure, scored.len() as u64), auc: auc(scored) }
+    }
+}
+
+/// The same at each of `thresholds`, so that a threshold can be chosen
+/// (`sioul spam eval`'s grid): what each would set aside, and catch.
+pub fn grid(scored: &[(f64, bool)], thresholds: &[f64]) -> Vec<AtThreshold> {
+    thresholds.iter().map(|&t| at(scored, t)).collect()
 }
 
 /// The area under the ROC curve: the chance a random spam scores above a
@@ -243,5 +276,18 @@ mod tests {
         assert_eq!((numbers.at_unsure.ham_called_spam.count, numbers.at_unsure.spam_caught.count), (2, 2));
         assert_eq!((numbers.unsure.count, numbers.unsure.of), (2, 6));
         assert!(close(numbers.at_spam.spam_caught.fraction(), 1.0 / 3.0));
+        // The grid: each threshold as one of the two would count.
+        let grid = grid(&scored, &[0.5, 0.95, 0.99]);
+        assert_eq!(grid.iter().map(|a| (a.ham_called_spam.count, a.spam_caught.count)).collect::<Vec<_>>(), vec![(2, 2), (1, 1), (0, 1)]);
+        assert_eq!((grid[0], grid[1]), (numbers.at_unsure, numbers.at_spam));
+        // Strict: no ham of three may be called spam (0.5 % of 3 is none): just above the surest ham, 0.96.
+        let strict = numbers.strict.unwrap();
+        assert!(strict.threshold > 0.96 && strict.threshold < 0.961, "{strict:?}");
+        assert_eq!((strict.ham_called_spam.count, strict.spam_caught.count), (0, 1));
+        // Of four hundred ham, two may be (0.5 %): the third surest sets it.
+        let many: Vec<(f64, bool)> = (0..400).map(|k| (f64::from(k) / 400.0, false)).chain([(0.999, true), (0.5, true)]).collect();
+        let threshold = super::strict(&many, STRICT).unwrap();
+        assert_eq!(many.iter().filter(|(p, s)| !s && *p >= threshold).count(), 2, "{threshold}");
+        assert!(super::strict(&[(0.9, true)], STRICT).is_none(), "no ham, no threshold");
     }
 }

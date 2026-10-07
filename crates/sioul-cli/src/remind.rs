@@ -54,7 +54,8 @@ pub(crate) fn watch(s: &Session) -> Result<(), String> {
             reminders::forget_old(&dir);
             forgotten_on = Some(now.date());
         }
-        // What holds now, as the notification matrix says (a slot of time for you is the window's alone).
+        // What holds now, as the matrix of what reaches you says, its layers read
+        // from their files: today's slots of time for you, do-not-disturb.
         let (all, holds) = reminders::gather(&config, &s.tr, &now);
         for reminder in reminders::to_tell(all, &dir, now.timestamp().as_second(), &holds) {
             if let Err(e) = sioul_sync::notify::remind(&reminder.title, &reminder.body, None) {

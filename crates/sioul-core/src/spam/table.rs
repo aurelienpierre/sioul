@@ -221,7 +221,9 @@ impl Table {
 
     /// A message's score from its words (`tokenize::tokens`) and its header
     /// features (`features::features`), with what made it. The table's words
-    /// must be sorted (`sort`): one read from its file is.
+    /// must be sorted (`sort`): one read from its file is. A header feature
+    /// that is missing (`f32::NAN`) stands at the training's mean, which is
+    /// over the messages that had it: it weighs nothing.
     pub fn score(&self, words: &[String], features: &[f32]) -> Score {
         // Each word once, with how often it comes and its score.
         let mut seen: BTreeMap<&str, (usize, f32)> = BTreeMap::new();
@@ -236,7 +238,7 @@ impl Table {
             text += sum / total as f64;
             shares = seen.iter().map(|(word, (count, s))| (word.to_string(), (*count as f64 * (f64::from(*s) - f64::from(self.text_mean)) / total as f64) as f32)).collect();
         }
-        let mut signs: Vec<(usize, f32)> = self.weights.iter().zip(&self.means).zip(features).enumerate().map(|(h, ((w, m), x))| (h, w * (x - m))).collect();
+        let mut signs: Vec<(usize, f32)> = self.weights.iter().zip(&self.means).zip(features).enumerate().map(|(h, ((w, m), x))| (h, if x.is_nan() { 0.0 } else { w * (x - m) })).collect();
         let f = (f64::from(self.bias) + text + signs.iter().map(|(_, c)| f64::from(*c)).sum::<f64>()) as f32;
         let by_share = |a: &f32, b: &f32| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal);
         shares.sort_by(|a, b| by_share(&a.1, &b.1).then_with(|| a.0.cmp(&b.0)));
@@ -488,6 +490,12 @@ mod tests {
         // No word at all: the text is the mean message's, and the bias and the header decide.
         let empty = table.score(&[], &x);
         assert!((empty.f - (-0.5 - 0.5 + 1.5)).abs() < 1e-6 && empty.words.is_empty());
+        // The header feature missing: it stands at its mean and weighs nothing.
+        let mut missing = x;
+        missing[0] = f32::NAN;
+        let unknown = table.score(&words, &missing);
+        assert!((unknown.f - (f - 1.5)).abs() < 1e-5 && unknown.f.is_finite(), "{}", unknown.f);
+        assert_eq!(unknown.signs[0].1, 0.0);
     }
 
     #[test]
