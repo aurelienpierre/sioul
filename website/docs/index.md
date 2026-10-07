@@ -1,6 +1,6 @@
 ---
 title: Admin that adapts to you
-description: Sioul is a personal administrative environment. It fits the demands of work, institutions and money around what a person can give (attention, energy, health and rest first), lets them decide what may reach them and when, and keeps the links between mail, tasks, appointments, papers and payments. Free software, on your own devices, designed as an act of care, from research.
+description: Sioul is a personal administrative environment, trauma-informed and designed from research for the people admin costs most, neurodivergent people among them. It fits the demands of work, institutions and money around what a person can give (attention, energy, health and rest first), lets them decide what may reach them and when, and keeps the links between mail, tasks, appointments, papers and payments. Free software, on your own devices, designed as an act of care, from research.
 ---
 
 # Sioul
@@ -16,6 +16,8 @@ A letter from the tax office, the task it asks for, the appointment, the documen
 **Sioul is a personal administrative environment.** It gathers what modern life scatters across mailboxes, websites, calendars, task lists, folders and banks, and brings forward only what belongs in your attention now. It runs on your own devices.
 
 **It is not a productivity app.** It does not try to make you do more, answer faster or keep up with everything: it tries to make admin ask less of you. It is designed as [an act of care](#an-act-of-care).
+
+**It is made for the people who need it most, from research, not from taste.** Sioul is designed for the people for whom admin costs most: neurodivergent people, autistic or with ADHD, people living with trauma, anxiety, depression or burnout, with an eating disorder, or with an illness that limits their energy. Its design is trauma-informed: safety, predictability and choice come first, nothing surprises or blames you, and everything can be undone. Its choices are firm, and none of them is a matter of taste: each comes from published studies, cited with what they found and how strong their evidence is ([what the research says](dev/research.md)).
 
 ## You decide what gets through
 
@@ -184,13 +186,14 @@ Your Google calendars, contacts and tasks can come too. If you sign in with your
 
 ## Built on research, and on refusals
 
-Each rule in Sioul comes from a chain: what studies observed, why, the rule it gives, what Sioul does, and what it refuses. Five of them:
+Each rule in Sioul comes from a chain: what studies observed, why, the rule it gives, what Sioul does, and what it refuses. Six of them:
 
 - **Capacity changes, and only you know when.** Autistic burnout eases when expectations are lowered (Raymaker et al. 2020); adults with ADHD liked a "brain weather" view, and disliked tools that watch them (Chen, Meng & Nie 2026). So you say how the day is, and nothing is guessed.
 - **Fewer, predictable looks at mail.** Checking mail three times a day lowered stress in a randomised trial; batched notifications helped attention and mood, while none at all made people more anxious (Kushlev & Dunn 2015; Fitz et al. 2019). So mail waits for the hours you chose, and Sioul says when they come.
 - **Starting is the hard part.** Autistic inertia, a difficulty acting on intentions, eases with outside scaffolding (Buckle et al. 2021); with ADHD, help belongs at the point of performance (Barkley 2012). So Sioul picks one small next step, and says why.
 - **Evenings are for recovery.** Detaching from work after hours goes with less exhaustion, and merely expecting work mail in the evening does harm (Wendsche & Lohmann-Haislah 2017; Becker et al. 2021). So work rests outside your working hours.
 - **Progress, never streaks.** Broken streaks lower later engagement, more so when people blame themselves (Silverman & Barasch 2023). So Sioul shows what got done, and never counts what did not.
+- **Safety, trust and choice first.** Trauma-informed computing asks software for safety, trust, collaboration and the person's own choice (Chen et al. 2022). So nothing in Sioul surprises you, every reason is shown, everything can be undone, and nothing is deleted or sent without you.
 
 Sioul also refuses what other software does, each time with the evidence: streaks, trophies and points; counts of what is "overdue"; repeated reminders; scores, charts and calendars of mood, symptoms or energy; guessing your capacity or your mood from your behaviour or from a watch; a schedule that moves things without asking; an AI or a service that sends, books or pays on its own.
 
