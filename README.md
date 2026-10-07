@@ -16,6 +16,14 @@ A letter from the tax office, the task it asks for, the appointment, the documen
 
 ![Sioul's window: the list of places on the left (Porch, Tasks, Mail, Sites, Agenda, Contacts, Notes, Projects, Time, Budgets, Papers, Health); on the right, the Porch, with a one-time code and its Copy button on top, a chat's news, then the new mail sorted into lanes.](website/docs/assets/screens/porch.png)
 
+## You decide what gets through
+
+The world does not get straight to your attention. Mail, calls, messages from other apps, the websites you keep, reminders and doses all pass through the same rules, and you set them. Each kind of time in your day has rules of its own: work, your admin, leisure, meals, sleep, and the free time or the pause you take at the press of a button.
+
+Some things come at once: the code you just asked a website for, a dose, a call from someone you chose. Some wait for their time: a client's mail waits for your working hours, the tax office's for your admin hours, and nobody's work reaches your evening. Some are shown where you look, on the Porch or on your phone's home screen, without a notification. Some never reach you, such as the senders you blocked. Being shown is not being interrupted: only what you allowed may interrupt you.
+
+Most software lets each app decide when it may interrupt you. Sioul turns that around: you set the rules once, and they hold for your mail, calls, messages, sites and reminders, on your computer and on your phone: [what reaches you, and when](https://aurelienpierre.github.io/sioul/guide/notifications.html).
+
 ## Why Sioul exists
 
 Sioul is the working counterpart of a book by the same author, *Design and Engineering, in Spite of Open-Source* ([free, in PDF and EPUB](https://editions.aurelienpierre.com/en/concevoir/)), whose conclusion is that to design is to care. The book states: "A tool serves its user, or it betrays them. There is no in-between." Sioul applies its method where software most often leaves the burden on the person: everyday admin.
@@ -27,14 +35,14 @@ One test for everything added to Sioul: does it take work off the person, rather
 | Most software | Sioul |
 |---|---|
 | Your obligations fill the day; your needs fit around them. | Your needs shape the day; the work fits around them. |
-| Everything shows the moment it arrives. | Only what belongs in your attention now is shown. |
+| Every app decides when it may interrupt you. | You decide what may reach you, and when; the rest waits for its time. |
 | Each kind of thing has its own program, and you keep the links. | Each piece is tied to the others, and Sioul keeps the links. |
 | A missed date becomes overdue work. | The plan starts again from today. Nothing becomes a debt. |
 
-**These are not four interface choices. They are the four rules from which the rest of Sioul follows.**
+**These are not four interface choices. They are the four rules from which the rest of Sioul follows.** Mail, calls, the agenda, tasks, health, budgets and the phone are not separate modules side by side: they are the same four rules, each time applied to one kind of thing.
 
 - **Your needs first, then the work.** You set your meals, your rest and your sleep first; they are kept free, and so is the time to get ready, get there and come back around each event. Each day you can say how it is (clear, haze or fog), and at its end whether it was too much, about right or too empty: the plan learns how much a day holds for you, and never guesses your state from what you do. The work goes in what remains, as one next step with its reason. Nothing is ever overdue.
-- **A porch between the world and your attention.** Mail, the news from the "secure mailboxes" of banks and offices, chats: everything new waits on the Porch, sorted, and shown in the hours you chose. The question is not what has arrived, but what belongs in your attention now. Each message is checked first, genuine or forged; the codes you just asked for come at once.
+- **A porch between the world and your attention.** Mail, the news from the "secure mailboxes" of banks and offices, chats: everything new waits on the Porch, sorted, and shown in the hours you chose. The question is not what has arrived, but what belongs in your attention now. Each message is checked first, genuine or forged; a spam filter of your own, trained on your computer from your mail, judges only strangers' messages, and what looks like spam waits in a folded queue, never announced. The codes you just asked for come at once.
 - **The software keeps the links.** Each case is a project (a tax return, a lease, a client's work): its mail comes to it by itself, and its tasks, events, notes and people are tied to it, on one line of time. You are no longer the glue between a mail program, a calendar, a task list, a folder and a bank's website.
 - **Nothing to be afraid of getting wrong.** No unread counts, badges, red or streaks; new mail makes no sound; ten seconds to undo anything moved, deleted or sent; nothing sent, deleted or paid without you, not even by an AI agent. The words are chosen with the same care: reminders that neither call you ill nor praise you, stopping early said as the ordinary thing it is, no forced cheer, no talking down.
 
@@ -47,7 +55,7 @@ Many neurodivergent people work for themselves, because office life does not fit
 ## What it does
 
 - **The Porch.** New mail from every address, checked (genuine or forged), sorted into lanes, and shown in the hours you chose, with the news of the sites you keep. The codes and links you just asked a site for come at once, quietly.
-- **Hours set in advance**: working hours and hours for your own admin; every other time is leisure; meals and sleep come from Health. Each address, site, budget and task is for one or several of them; the rest waits, out of sight. Who may write to you when is yours to tick, list by list. While you sleep, nothing disturbs but the doses you asked for.
+- **Hours set in advance**: working hours and hours for your own admin; every other time is leisure; meals and sleep come from Health. Each address, site, budget and task is for one or several of them; the rest waits, out of sight. Who may reach you when is yours to set, list by list and time by time. While you sleep, nothing disturbs but what you let through, such as your doses.
 - **One next step.** Tasks that wait for each other are ordered into the one step to take now, with its reason, placed in the hours meant for it. Starting is helped; stopping counts. The day is laid out around your meals and events, a step moved by dragging it, with two half-hours kept for you.
 - **What a day holds.** What a task costs (thinking, feelings, anxiety, body and senses) and what it gives back can be rated, before or after. From the days you describe at their end, the plan learns how much a day holds for you, fills each day a little below it, and says in words why a day holds what it holds: never a number, a gauge or red. Closing the day takes a few taps, every answer optional, and nothing compares what was planned with what was done.
 - **Meals, rest, sleep and medicines.** You set your meals (how many, when, how long, the time to get them ready), naps, bedtime, waking and the time to wind down; their times are kept free, with two notices at most, each once, and each can move for one day without a word asked. Nothing about food, portions or numbers is ever recorded or shown: no "missed", no praise. Each dose is reminded once, on the device you are using; a dose marked on one device is known on the others, and when Sioul cannot know, it says "check first" rather than "not taken". Sioul does not treat anything; it plans around the needs you set: [health](https://aurelienpierre.github.io/sioul/guide/health.html#meals-rest-and-sleep).

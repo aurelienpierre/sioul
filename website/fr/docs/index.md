@@ -1,6 +1,6 @@
 ---
 title: Des démarches qui s’adaptent à vous
-description: "Sioul est un environnement administratif personnel. Il ajuste les exigences du travail, des institutions et de l’argent à ce qu’une personne peut donner (l’attention, l’énergie, la santé et le repos d’abord), et garde les liens entre le courrier, les tâches, les rendez-vous, les papiers et les paiements. Un logiciel libre, sur vos propres appareils, conçu comme un acte de soin, à partir de la recherche."
+description: "Sioul est un environnement administratif personnel. Il ajuste les exigences du travail, des institutions et de l’argent à ce qu’une personne peut donner (l’attention, l’énergie, la santé et le repos d’abord), lui laisse décider de ce qui peut la joindre et quand, et garde les liens entre le courrier, les tâches, les rendez-vous, les papiers et les paiements. Un logiciel libre, sur vos propres appareils, conçu comme un acte de soin, à partir de la recherche."
 ---
 
 # Sioul {#sioul}
@@ -20,6 +20,16 @@ Une lettre des impôts, la tâche qu’elle demande, le rendez-vous, le document
   <figcaption>Le Porche : ce qui est arrivé attend les heures que vous avez choisies ; les codes que vous venez de demander arrivent tout de suite.</figcaption>
 </figure>
 
+## Vous décidez de ce qui passe {#you-decide-what-gets-through}
+
+Le monde n’accède pas directement à votre attention. Le courrier, les appels, les messages des autres applications, les sites que vous gardez, les rappels et les prises passent tous par les mêmes règles, et c’est vous qui les fixez. Chaque moment de votre journée a les siennes : le travail, vos démarches, les loisirs, les repas, le sommeil, et le temps libre ou la pause que vous prenez d’un appui sur un bouton.
+
+Certaines choses arrivent tout de suite : le code que vous venez de demander à un site, une prise, l’appel de quelqu’un que vous avez choisi. D’autres attendent leur moment : le courrier d’un client attend vos heures de travail, celui des impôts vos heures de démarches, et le travail de personne n’atteint votre soirée. D’autres s’affichent là où vous regardez, sous le Porche ou sur l’écran d’accueil de votre téléphone, sans notification. D’autres ne vous joignent jamais, comme les expéditeurs que vous avez bloqués.
+
+Être affiché n’est pas être dérangé. Ce qui attend sous le Porche ne vous demande rien tant que vous ne regardez pas ; seul ce que vous avez permis peut vous interrompre.
+
+La plupart des logiciels laissent chaque application décider quand elle peut vous interrompre. Sioul fait l’inverse : vous fixez les règles une fois, et elles valent pour votre courrier, vos appels, vos messages, vos sites et vos rappels, sur votre ordinateur comme sur votre téléphone ; « Ne pas déranger », mis sur l’un, vaut sur tous. [Ce qui vous joint, et quand](guide/notifications.md)
+
 ## Pourquoi Sioul existe {#why-sioul-exists}
 
 Sioul est la contrepartie en actes d’un livre du même auteur, *La conception et l’ingénierie malgré l’open-source* ([gratuit, en PDF et en EPUB](https://editions.aurelienpierre.com/concevoir/)). Le livre pose : « Un outil sert son utilisateur, ou il le trahit. Il n’y a pas d’entre-deux. » Sioul applique sa méthode là où les logiciels laissent le plus souvent la charge à la personne : les démarches du quotidien.
@@ -31,11 +41,11 @@ Une seule épreuve pour tout ce qu’on ajoute à Sioul : est-ce que cela enl�
 | La plupart des logiciels | Sioul |
 |---|---|
 | Vos obligations remplissent la journée ; vos besoins se logent où ils peuvent. | Vos besoins dessinent la journée ; le travail prend la place qui reste. |
-| Tout s’affiche dès que cela arrive. | Seul s’affiche ce qui a sa place dans votre attention maintenant. |
+| Chaque application décide quand elle peut vous interrompre. | Vous décidez de ce qui peut vous joindre, et quand ; le reste attend son moment. |
 | Chaque type de chose a son programme, et c’est à vous de garder les liens. | Chaque pièce est reliée aux autres, et c’est Sioul qui garde les liens. |
 | Une date manquée devient du travail en retard. | Le plan repart d’aujourd’hui. Rien ne devient une dette. |
 
-**Ce ne sont pas quatre choix d’interface. Ce sont les quatre règles dont découle tout le reste de Sioul.**
+**Ce ne sont pas quatre choix d’interface. Ce sont les quatre règles dont découle tout le reste de Sioul.** Le courrier, les appels, l’agenda, les tâches, la santé, les budgets et le téléphone ne sont pas des modules posés côte à côte : ce sont les quatre mêmes règles, appliquées chaque fois à un type de choses.
 
 ## Au quotidien {#day-to-day}
 
@@ -45,7 +55,7 @@ Vous réglez d’abord vos repas, votre repos et votre sommeil. Ils sont gardés
 
 ### Un porche entre le monde et votre attention {#a-porch-between-the-world-and-your-attention}
 
-Rien de nouveau n’entre directement. Le courrier, les nouvelles des « messageries sécurisées » des banques et des administrations, les discussions : tout attend sous le Porche, trié, et montré aux heures que vous avez choisies. La question n’est pas ce qui est arrivé, mais ce qui a sa place dans votre attention maintenant : un client pendant vos heures de travail, les impôts pendant vos heures de démarches, le travail de personne le soir. Chaque message est d’abord vérifié : authentique ou falsifié. Les codes que vous venez de demander à un site arrivent tout de suite.
+Rien de nouveau n’entre directement : arriver n’est pas entrer. Le courrier, les nouvelles des « messageries sécurisées » des banques et des administrations, les discussions : tout attend sous le Porche, trié, et montré aux heures que vous avez choisies. La question n’est pas ce qui est arrivé, mais ce qui a sa place dans votre attention maintenant. Chaque message est d’abord vérifié : authentique ou falsifié. Même les indésirables sont traités avant de vous atteindre : un filtre à vous, entraîné sur votre ordinateur à partir de votre courrier, ne juge que les messages d’inconnus, et ce qui ressemble à un indésirable attend dans une file repliée, jamais annoncée, que vous ayez le temps d’y regarder. Les codes que vous venez de demander à un site arrivent tout de suite.
 
 ### Sans peur de se tromper {#nothing-to-be-afraid-of-getting-wrong}
 
@@ -53,7 +63,7 @@ Pas de compteur de non-lus, pas de pastilles, pas de rouge, pas de séries ; l
 
 ## Le logiciel garde les liens {#the-software-keeps-the-links}
 
-La plupart des logiciels éparpillent les pièces d’un dossier entre la messagerie, l’agenda, la liste de tâches, vos fichiers et le site de la banque, et vous laissent vous souvenir de ce qui les relie.
+La plupart des logiciels éparpillent les pièces d’un dossier entre la messagerie, l’agenda, la liste de tâches, vos fichiers et le site de la banque, et vous laissent vous souvenir de ce qui les relie. Pourtant, vous ne vous dites jamais « maintenant, j’utilise ma messagerie » ; vous vous dites « maintenant, je m’occupe de ce client ». Sioul est construit de la seconde façon.
 
 Dans Sioul, chaque dossier est un projet : une déclaration d’impôts, un bail, le travail pour un client, toute affaire que vous suivez. Son courrier lui arrive tout seul, par l’expéditeur ou par des mots. Ses tâches, ses événements, ses notes et les personnes concernées lui sont reliés, et chaque tâche, chaque contact, chaque note montre ce qui lui est relié. Le projet pose tout sur une ligne de temps : ce qui vient, puis ce qui s’est passé. Votre propre activité aussi : le courrier d’un client, les tâches, le temps passé, la facture, l’argent attendu et les chiffres pour votre comptable forment une seule chaîne.
 
@@ -89,7 +99,7 @@ Beaucoup de personnes neuroatypiques travaillent à leur compte, parce que la vi
 
     ---
 
-    Heures de travail et heures pour vos démarches ; les loisirs tout le reste du temps ; les repas et le sommeil depuis la page Santé. Chaque adresse, chaque site, chaque budget et chaque tâche appartient à une ou plusieurs d’entre elles ; le reste attend, hors de vue. Pendant le sommeil, rien ne dérange, sauf vos prises.
+    Heures de travail et heures pour vos démarches ; les loisirs tout le reste du temps ; les repas et le sommeil depuis la page Santé ; le temps libre et la pause quand vous les prenez. Chaque adresse, chaque site, chaque budget et chaque tâche appartient à une ou plusieurs d’entre elles ; le reste attend, hors de vue. Pendant le sommeil, rien ne dérange, sauf ce que vous laissez passer, comme vos prises.
 
     [Les heures](guide/hours.md)
 
@@ -193,11 +203,13 @@ Il est fait par une seule personne, au grand jour : aucune assistance n’est 
 1. [Installez Sioul](guide/install.md).
 2. [Faites les premiers pas](guide/first-steps.md) : ajoutez votre courrier, vos agendas et contacts, votre compte Google, les sites que vous consultez.
 3. [Réglez vos heures](guide/hours.md), pour que le travail, les démarches et le repos aient chacun leur temps.
-4. Lisez ensuite la page sur [le Porche](guide/porch.md), où le nouveau courrier attend.
+4. [Voyez ce qui vous joint, et quand](guide/notifications.md), dit en phrases, et changez ce qui ne vous convient pas.
+5. Lisez ensuite la page sur [le Porche](guide/porch.md), où le nouveau courrier attend.
 
 ## Côté technique {#for-technical-readers}
 
 - **Chaque message vérifié à l’arrivée** : SPF, DKIM, DMARC, ARC et DNS inverse, par Sioul lui-même. Le courrier falsifié est mis de côté, avec la raison. Les noms empruntés à des marques sont repérés, même écrits avec des lettres qui se ressemblent ([Vie privée et sécurité](guide/privacy-security.md)).
+- **Un filtre à indésirables à vous** : un classifieur fastText entraîné sur votre ordinateur, quand vous le demandez, à partir de votre propre courrier (les en-têtes et le début de chaque texte, jamais les pièces jointes) ; seule sa table compacte voyage vers votre téléphone, scellée. Il ne juge que le courrier des inconnus, et ne déplace rien sauf si vous le choisissez ([Votre filtre à indésirables](guide/settings.md#your-own-spam-filter)).
 - **Les pièces jointes analysées avant de s’ouvrir**, par l’antivirus de votre système : ClamAV sur Linux et macOS, Microsoft Defender (par AMSI) sur Windows.
 - **Le courrier HTML rendu sûr** : rien de distant ne se charge, rien ne s’exécute.
 - **Clés de sécurité et Bitwarden** : les clés WebAuthn et FIDO2 (une YubiKey) fonctionnent dans les sites que vous gardez. Les identifiants se remplissent depuis Bitwarden, que Sioul lit lui-même et n’écrit jamais.
