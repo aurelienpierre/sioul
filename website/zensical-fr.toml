@@ -46,6 +46,7 @@ nav = [
     ] },
     { "Dans tout Sioul" = [
       { "Les heures : travail, démarches, loisirs, repas, sommeil" = "guide/hours.md" },
+      { "Les notifications et « Ne pas déranger »" = "guide/notifications.md" },
       { "Les pauses : temps libre et pause" = "guide/pauses.md" },
       { "Les appels : qui peut sonner, et quand" = "guide/calls.md" },
       { "Partager entre vos appareils" = "guide/sharing.md" },

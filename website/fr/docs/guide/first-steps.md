@@ -14,7 +14,7 @@ Sioul parle anglais ou français, selon la langue de votre système, sauf si vou
   [![La fenêtre de Sioul : en haut, sur toute la largeur, sa barre de titre, la ligne d’état avec les touches, le bouton des sons, la météo, Temps libre et Pause, puis les boutons de la fenêtre ; à gauche, une étroite colonne d’icônes, Nouveau (un plus), puis les lieux, du Porche à Santé, celui affiché marqué, et trois icônes en bas (Comptes, Paramètres, Tout actualiser) ; à droite, le Porche.](../assets/screens/fr/porch.png){ loading=lazy }](../assets/screens/fr/porch.png "Ouvrir l’image en grand")
 </figure>
 
-**En haut**, sur toute la largeur de la fenêtre, la ligne d’état est sa barre de titre. Elle dit en une phrase ce qui s’est passé en dernier. Après chaque déplacement, suppression ou envoi, « Annuler » y attend dix secondes. Pendant le calme, elle dit quand le travail revient ; une fois les heures du jour finies, elle propose de clore la journée de travail, et le soir la journée. Plus loin se trouvent les touches, [Ne pas déranger](pauses.md#do-not-disturb-on-every-device), le bouton des sons ([des sons pour se concentrer ou se reposer](tasks.md#sounds)), la météo d’un lieu que vous choisissez, et à son extrémité [**Temps libre** et **Pause**](pauses.md).
+**En haut**, sur toute la largeur de la fenêtre, la ligne d’état est sa barre de titre. Elle dit en une phrase ce qui s’est passé en dernier. Après chaque déplacement, suppression ou envoi, « Annuler » y attend dix secondes. Pendant le calme, elle dit quand le travail revient ; une fois les heures du jour finies, elle propose de clore la journée de travail, et le soir la journée. Plus loin se trouvent les touches, [Ne pas déranger](notifications.md#do-not-disturb-on-every-device), le bouton des sons ([des sons pour se concentrer ou se reposer](tasks.md#sounds)), la météo d’un lieu que vous choisissez, et à son extrémité [**Temps libre** et **Pause**](pauses.md).
 
 - **Son extrémité gauche**, au-dessus des lieux, porte le bouton qui affiche le nom des lieux à côté de leur icône, dans une colonne plus large, ou ne garde que leurs icônes (++f9++) : le même choix que **Paramètres ▸ Affichage ▸ Afficher le nom des lieux à côté de leur icône**.
 - **Les boutons de la fenêtre**, réduire, agrandir ou restaurer, et fermer, sont du côté où votre système les met, dans son ordre : KDE Plasma, GNOME et Xfce le disent dans leurs réglages ; à gauche sur un Mac, à droite sous Windows.
@@ -146,4 +146,5 @@ Les rappels peuvent aussi venir fenêtre fermée : dans **Paramètres ▸ Rapp
 - [Le Porche](porch.md), où le nouveau courrier attend.
 - [Les tâches](tasks.md), et l’étape suivante.
 - [Les heures](hours.md), et le calme.
+- [Les notifications et « Ne pas déranger »](notifications.md) : ce que Sioul vous dit et quand, et ce qui attend.
 - [Fonctionne avec](compatibility.md) : les serveurs, les applications et les systèmes avec lesquels Sioul fonctionne, et jusqu’où chacun a été essayé.
