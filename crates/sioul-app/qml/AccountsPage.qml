@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Accounts, in four tabs. Yours: one card per address, each of its services
+// Accounts, in three tabs. Yours: one card per address, each of its services
 // (mail, calendars and contacts, Google) with its server, what its watcher
 // last said, a switch to turn it off (kept, neither synced nor shown), and,
 // for mail, what it is for, its shield, its rank, how far back and how often,
@@ -9,9 +9,9 @@
 // else it has (mail beside calendars, a Nextcloud's apps). Adding one: mail
 // (address, then the server found, then the password, tested before
 // anything is kept), contacts and calendars on a CalDAV/CardDAV server, or
-// Google (signed in on Google's page). Senders: who may write to you and
-// when. Encryption: your keys. Sites are not accounts: they are on the Sites
-// page.
+// Google (signed in on Google's page). Encryption: your keys. Who may reach
+// you, and when, is Settings ▸ What reaches you's (ReachesTab.qml). Sites are
+// not accounts: they are on the Sites page.
 
 pragma ComponentBehavior: Bound
 
@@ -43,11 +43,6 @@ Item {
         }
         return out
     }
-    // Read when their tab is first made.
-    property var senders: []
-    // The channel whose matrix the tab of who may reach you shows: its
-    // setting's key, "reach" (mail), "reach.calls" or "reach.messages".
-    property string reachShown: "reach"
 
     // For the window's images: your accounts in view, or another tab.
     function openFirstSettings() {
@@ -56,20 +51,6 @@ Item {
 
     function showTab(index) {
         tabs.currentIndex = index
-    }
-
-    // Who may reach you, at one channel's matrix ("reach", "reach.calls",
-    // "reach.messages"): from another page (main.qml, openThing).
-    function showReach(key) {
-        tabs.currentIndex = 2
-        page.reachShown = key || "reach"
-    }
-
-    // For the window's images: the tab of who may reach you scrolled, 0 its top, 1 its end.
-    function scrollSenders(to) {
-        const view = sendersLoader.item
-        if (view)
-            view.contentItem.contentY = to * Math.max(0, view.contentItem.contentHeight - view.height)
     }
 
     // The Google panel, its steps unfolded (for captures).
@@ -212,7 +193,7 @@ Item {
             spacing: 6
 
             Repeater {
-                model: ["accounts-tab-yours", "accounts-tab-add", "accounts-tab-senders", "accounts-tab-keys"]
+                model: ["accounts-tab-yours", "accounts-tab-add", "accounts-tab-keys"]
 
                 delegate: Button {
                     id: tab
@@ -999,107 +980,10 @@ Item {
                 }
             }
 
-            // Who may reach you, and when.
-            // Made the first time it is shown: its rows cost seconds on a phone.
-            Loader {
-                id: sendersLoader
-
-                active: tabs.made[2] === true
-                sourceComponent: Component {
-                    ScrollView {
-                        id: sendersScroll
-
-                        contentWidth: availableWidth
-                        clip: true
-                        Component.onCompleted: page.senders = JSON.parse(page.sioul.settings("senders") || "[]")
-
-                        ColumnLayout {
-                            width: Math.min(sendersScroll.availableWidth, 720)
-                            spacing: 8
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: page.sioul.text("senders-help")
-                                wrapMode: Text.Wrap
-                                color: page.theme.muted
-                            }
-                            // The channel whose matrix is shown: mail, calls,
-                            // messages from other apps (one matrix setting each).
-                            Flow {
-                                Layout.fillWidth: true
-                                Layout.topMargin: 6
-                                spacing: 6
-
-                                Repeater {
-                                    model: page.senders.filter(s => s.kind === "matrix")
-
-                                    delegate: Button {
-                                        id: channel
-
-                                        required property var modelData
-
-                                        text: channel.modelData.label
-                                        checkable: true
-                                        checked: page.reachShown === channel.modelData.key
-                                        flat: !checked
-                                        onClicked: {
-                                            page.reachShown = channel.modelData.key
-                                            // A click on the one shown would untick it: it stays shown.
-                                            channel.checked = Qt.binding(() => page.reachShown === channel.modelData.key)
-                                        }
-                                    }
-                                }
-                            }
-                            // The chosen channel's matrix, the four lists, then the
-                            // people and your contacts' categories under their headings.
-                            Repeater {
-                                model: page.senders
-
-                                delegate: ColumnLayout {
-                                    id: senderRow
-
-                                    required property var modelData
-                                    required property int index
-                                    readonly property bool newGroup: senderRow.modelData.group !== "" && (senderRow.index === 0 || page.senders[senderRow.index - 1].group !== senderRow.modelData.group)
-
-                                    visible: senderRow.modelData.kind !== "matrix" || senderRow.modelData.key === page.reachShown
-                                    Layout.fillWidth: true
-                                    Layout.topMargin: senderRow.newGroup ? 18 : 8
-                                    spacing: 3
-
-                                    Label {
-                                        visible: senderRow.newGroup
-                                        Layout.fillWidth: true
-                                        text: senderRow.modelData.group
-                                        font.pixelSize: 17
-                                        font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
-                                        color: page.theme.accent
-                                    }
-                                    SettingRow {
-                                        Layout.fillWidth: true
-                                        setting: senderRow.modelData
-                                        sioul: page.sioul
-                                        theme: page.theme
-                                        onSave: (key, value) => {
-                                            const problem = page.sioul.setSetting(key, JSON.stringify(value))
-                                            if (problem === "")
-                                                page.senders = JSON.parse(page.sioul.settings("senders") || "[]")
-                                            else
-                                                page.sioul.status = problem
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
             // Encryption.
             // Made the first time it is shown: its rows cost seconds on a phone.
             Loader {
-                active: tabs.made[3] === true
+                active: tabs.made[2] === true
                 sourceComponent: Component {
                     ScrollView {
                         id: keysScroll

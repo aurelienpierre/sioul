@@ -17,9 +17,10 @@
 //! - **Say**: this device's table in the switch's file tells the others what
 //!   holds here and whether its system is silenced; the status line, the
 //!   phone's card and the service's notification say where it holds.
-//! - **The list**: "Who may reach you during do-not-disturb", edited in
-//!   Settings ▸ Do not disturb; the mail they send is notified then
-//!   (`mail_gate`), and on a phone Sioul says who is not starred there.
+//! - **The list**: Always through (« Passent toujours »), edited in
+//!   Settings ▸ Do not disturb; its people get through as its rows of the
+//!   matrix of what reaches you say (`sioul_core::attention`), and on a phone
+//!   Sioul says who is not starred there.
 
 use crate::backend::qobject::Sioul;
 use crate::backend::{load_config, mode_json, say, tr};
@@ -41,10 +42,9 @@ fn here_id() -> String {
 }
 
 /// What the reasons' sources say now.
-fn sources(overrides: &Overrides, now: &Zoned) -> Sources {
+fn sources(overrides: &Overrides, blocks: &sioul_core::quiet::Blocks, now: &Zoned) -> Sources {
     let stamp = now.timestamp().as_second();
-    let blocks = blocks(now);
-    let free = overrides.free_from().map(|since| (since, sioul_core::pause::free_until(since, &blocks, now.time_zone())));
+    let free = overrides.free_from().map(|since| (since, sioul_core::pause::free_until(since, blocks, now.time_zone())));
     let sleep = blocks.at(stamp, &["sleep", "nap"]).map(|k| (k.start, k.end));
     let focus = sioul_core::timelog::running().and_then(|r| rules::focus(&r, stamp));
     Sources { paused: overrides.paused_from(), free, sleep, focus }
@@ -65,12 +65,14 @@ pub(crate) fn rest_now() -> (bool, bool) {
     (blocks(&now).at(now.timestamp().as_second(), &["sleep", "nap"]).is_some(), paused)
 }
 
-/// What is read for one look: the settings, the pauses, the switch, and why it holds.
+/// What is read for one look: the settings, the pauses, the switch, why it
+/// holds, and what now is for (the time under do-not-disturb's layer).
 struct Look {
     config: Config,
     overrides: Overrides,
     switch: Switch,
     state: Now,
+    mode: sioul_core::quiet::Mode,
     now: Zoned,
 }
 
@@ -80,38 +82,86 @@ impl Look {
         let now = Zoned::now();
         let overrides = Overrides::load(&Overrides::default_path());
         let switch = Switch::load(&Switch::default_path());
-        let state = rules::now(&config.dnd, &sources(&overrides, &now), switch.latest().as_ref(), now.timestamp().as_second());
-        Look { config, overrides, switch, state, now }
+        let blocks = blocks(&now);
+        let state = rules::now(&config.dnd, &sources(&overrides, &blocks, &now), switch.latest().as_ref(), now.timestamp().as_second());
+        let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &overrides, &blocks, &now);
+        Look { config, overrides, switch, state, mode, now }
     }
 
-    /// What each mode of Sioul's asks of the system now; none: off.
+    /// What each mode of Sioul's asks of the system now; none: off. Whom it
+    /// lets through is the matrix of what reaches you's (`attention::silence_at`):
+    /// at the pause's column; at Free time's ("Nothing at all" holding all but
+    /// Always through); do-not-disturb's at sleep's, or at the time now under
+    /// the switch's or a focus session's layer, as the matrix reads a layer.
+    /// While this phone screens calls, every contact's call goes through the
+    /// mode, Sioul having declined the others already, else the starred; and
+    /// anyone's while "Let every call through" holds.
     fn asks(&self) -> [(Which, Option<Ask>); 3] {
+        use sioul_core::attention::{Column, Now as Moment, Senders};
         let (config, state) = (&self.config, &self.state);
         let gnome = config.pause.gnome;
         let paused = state.has(Why::Paused);
         let free = state.has(Why::FreeTime) && !paused;
-        // Doses in the pause as the notification matrix says (Settings ▸ Reminders and notifications).
-        let pause_doses = sioul_core::notify::Notify::of(config).cell(sioul_core::notify::Kind::Doses, sioul_core::notify::Column::Pause) == sioul_core::notify::Cell::Now;
+        let attention = sioul_core::attention::Attention::of(config);
+        let phone = phone_does();
+        let mode = &self.mode;
+        let through = self.through();
+        let moment = |times: Vec<Column>, dnd: bool, nothing: bool| {
+            let mut moment = Moment::of(mode);
+            moment.times = times;
+            moment.dnd = dnd;
+            moment.nothing = nothing;
+            moment.through = through;
+            moment
+        };
+        let ask = |which: Which, moment: Moment| {
+            let silence = attention.silence_at(&moment, phone);
+            Ask { which, people: silence.calls != Senders::None, doses: silence.doses, desktop: gnome, silence: Some(silence) }
+        };
+        let global = if state.has(Why::Sleep) { vec![Column::Sleep] } else { Moment::of(mode).times };
         [
-            (Which::Paused, paused.then(|| Ask { which: Which::Paused, people: config.pause.people, doses: pause_doses, desktop: gnome })),
-            (Which::FreeTime, free.then(|| Ask { which: Which::FreeTime, people: !sioul_core::pause::nothing_now(&self.overrides, &config.free_time), doses: true, desktop: gnome })),
-            (Which::Global, state.global().then(|| Ask { which: Which::Global, people: config.dnd.people, doses: true, desktop: gnome })),
+            (Which::Paused, paused.then(|| ask(Which::Paused, moment(vec![Column::Pause], false, false)))),
+            (Which::FreeTime, free.then(|| ask(Which::FreeTime, moment(vec![Column::Free], false, sioul_core::pause::nothing_now(&self.overrides, &config.free_time))))),
+            (Which::Global, state.global().then(|| ask(Which::Global, moment(global, state.gates(), false)))),
         ]
+    }
+
+    /// "Let every call through" holds now, as this device knows it.
+    fn through(&self) -> bool {
+        crate::calls::through_now(&self.switch).is_some_and(|t| t.holds(self.now.timestamp().as_millisecond()))
     }
 
     /// What this device asks, in a few words: the background service compares
     /// it with what was applied last, and asks the window's process only on a change.
     fn signature(&self) -> String {
-        self.asks().iter().map(|(which, ask)| format!("{which:?}:{}", ask.as_ref().map_or_else(|| "-".to_string(), |a| format!("{}{}{}", u8::from(a.people), u8::from(a.doses), u8::from(a.desktop))))).collect::<Vec<_>>().join(",")
+        self.asks().iter().map(|(which, ask)| format!("{which:?}:{}", ask.as_ref().map_or_else(|| "-".to_string(), |a| format!("{}{}{}{}", u8::from(a.people), u8::from(a.doses), u8::from(a.desktop), a.silence.map(|s| format!("{:?}{:?}{}{}{}", s.calls, s.messages, u8::from(s.repeat), u8::from(s.conversations), u8::from(s.events))).unwrap_or_default())))).collect::<Vec<_>>().join(",")
     }
 
     /// When to look again by itself: a reason's end, the next night or nap
-    /// when sleep counts (Unix seconds).
+    /// when sleep counts, the time's end while do-not-disturb's layer reads
+    /// it, the end of "Let every call through" (Unix seconds).
     fn next_change(&self) -> Option<i64> {
         let stamp = self.now.timestamp().as_second();
         let night = if self.config.dnd.sleep { blocks(&self.now).kept.iter().filter(|k| (k.kind == "sleep" || k.kind == "nap") && k.start > stamp).map(|k| k.start).min() } else { None };
-        [self.state.next_end(), night].into_iter().flatten().filter(|t| *t > stamp).min()
+        let time = if self.state.gates() { self.mode.until.as_ref().map(|u| u.timestamp().as_second()) } else { None };
+        let through = crate::calls::through_now(&self.switch).filter(|t| t.holds(stamp * 1000) && t.until > 0).map(|t| (t.until + 999) / 1000);
+        [self.state.next_end(), night, time, through].into_iter().flatten().filter(|t| *t > stamp).min()
     }
+}
+
+/// What this phone does itself, for whom Sioul's modes let through: it
+/// screens calls (Sioul holds the role). A computer nothing. Nothing of
+/// the listener, though it may hold other apps' notifications:
+/// Android plays a notification's sound before any listener hears of it
+/// (docs/android.md, "Notifications from other apps", Sound), so a contact's
+/// message let through the mode and then held by Sioul would ring once in a
+/// pause or Free time; the mode is what keeps it silent. Calls differ: the
+/// screening answers before the phone rings.
+fn phone_does() -> sioul_core::attention::Phone {
+    if !cfg!(target_os = "android") {
+        return sioul_core::attention::Phone::default();
+    }
+    sioul_core::attention::Phone { screens: crate::calls::screens_here() }
 }
 
 /// Why do-not-disturb holds now, on every device alike.
@@ -120,11 +170,11 @@ pub(crate) fn now() -> Now {
 }
 
 /// Whether the switch or a focus session holds do-not-disturb now: a layer
-/// of the notification matrix (`hours::notify_now`), which says what waits
-/// then (as usual, the sites' notifications and the suggestions to move;
-/// doses, codes asked for, events' reminders and Health's notices come, and
-/// mail from the people on the list, `mail_gate`). Read again at most every
-/// five seconds: asked at every notification.
+/// of the matrix of what reaches you (`hours::attention_now`), which says
+/// what waits then (as usual, the sites' notifications and the suggestions
+/// to move; doses, codes asked for, events' reminders and Health's notices
+/// come, and Always through). Read again at most every five seconds: asked
+/// at every notification.
 pub(crate) fn holds_others() -> bool {
     static KEPT: Mutex<Option<(Instant, bool)>> = Mutex::new(None);
     if let Ok(kept) = KEPT.lock()
@@ -140,16 +190,14 @@ pub(crate) fn holds_others() -> bool {
     holds
 }
 
-/// During do-not-disturb from the switch or a focus session: the people
-/// whose mail is notified (`People::admits_address`); nobody when the
-/// settings let nobody through. None otherwise: mail as usual (sleep and the
-/// pauses keep their own rules: nothing told).
-pub(crate) fn mail_gate() -> Option<People> {
-    if !holds_others() {
-        return None;
-    }
-    let config = load_config();
-    Some(if config.dnd.people { People::load(&People::default_path()) } else { People::default() })
+/// While do-not-disturb holds from its switch or a focus session (a layer
+/// of the matrix of what reaches you): when it ends, when that is known
+/// (none: until turned off, or a session open-ended); none otherwise.
+pub(crate) fn gate() -> Option<Option<i64>> {
+    let state = now();
+    let gates: Vec<&sioul_core::everywhere::Held> = state.holds.iter().filter(|h| matches!(h.why, Why::Focus | Why::Manual)).collect();
+    let until = if gates.iter().any(|h| h.until.is_none()) { None } else { gates.iter().filter_map(|h| h.until).max() };
+    (!gates.is_empty()).then_some(until)
 }
 
 // ---------------------------------------------------------------- applying
@@ -506,13 +554,18 @@ fn change_here(verb: &str, json: &str) -> String {
                 Err(why) => say("dnd-setup-unreadable", &[("why", why)]),
             }
         }
-        // A contact picked from the address books.
+        // A contact picked from the address books; off the blocked list (Q3).
         "add-contact" => {
             let uid = text("uid");
             match sioul_core::contacts::all().into_iter().find(|c| c.uid == uid) {
-                Some(card) => edit_people(&path, |people| {
-                    people.add(rules::from_contact(&card), region);
-                }),
+                Some(card) => {
+                    let person = rules::from_contact(&card);
+                    let unblocked = unblock(&config, &person);
+                    let said = edit_people(&path, |people| {
+                        people.add(person, region);
+                    });
+                    with_unblocked(said, unblocked)
+                }
                 None => String::new(),
             }
         }
@@ -522,7 +575,8 @@ fn change_here(verb: &str, json: &str) -> String {
             if person.name.is_empty() && person.phones.is_empty() && person.emails.is_empty() {
                 String::new()
             } else {
-                edit_people(&path, |people| match people.people.iter_mut().find(|p| verb == "edit" && p.id == person.id) {
+                let unblocked = unblock(&config, &person);
+                let said = edit_people(&path, |people| match people.people.iter_mut().find(|p| verb == "edit" && p.id == person.id) {
                     Some(known) => {
                         known.name = person.name;
                         known.phones = person.phones;
@@ -531,7 +585,8 @@ fn change_here(verb: &str, json: &str) -> String {
                     None => {
                         people.add(Person { id: String::new(), ..person }, region);
                     }
-                })
+                });
+                with_unblocked(said, unblocked)
             }
         }
         "remove" => edit_people(&path, |people| {
@@ -582,6 +637,23 @@ fn change_here(verb: &str, json: &str) -> String {
     setup_with(said)
 }
 
+/// Someone put on Always through comes off the blocked list: blocked and
+/// Always through exclude each other (docs/attention.md, Q3). Whether they were on it.
+fn unblock(config: &Config, person: &Person) -> bool {
+    sioul_core::porch::unblock_person(config, &person.emails, &person.phones, &person.contact).unwrap_or_else(|e| {
+        eprintln!("sioul: {e}");
+        false
+    })
+}
+
+/// What a change said, and that someone came off the blocked list, when they did.
+fn with_unblocked(said: String, unblocked: bool) -> String {
+    if !unblocked {
+        return said;
+    }
+    [said, tr().text("attention-unblocked", None)].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
+}
+
 /// The list changed; "" said, or why it could not be.
 fn edit_people(path: &std::path::Path, change: impl FnOnce(&mut People)) -> String {
     match rules::change_people(path, change) {
@@ -597,18 +669,25 @@ mod tests {
     #[test]
     fn the_signature_follows_what_is_asked() {
         let look = |paused: bool, manual: bool| {
-            let mut config = Config::default();
-            config.pause.people = true;
+            let config = Config::default();
             let press = manual.then(|| rules::Press { at: 1_000, on: true, until: 0, from: "x".into() });
             let sources = Sources { paused: paused.then_some(1), ..Sources::default() };
             let state = rules::now(&config.dnd, &sources, press.as_ref(), 100);
-            Look { config, overrides: Overrides::default(), switch: Switch::default(), state, now: Zoned::now() }
+            let now = Zoned::now();
+            let mode = sioul_core::quiet::mode(&config.week_hours(), &config.time_off, &Overrides::default(), &sioul_core::quiet::Blocks::default(), &now);
+            Look { config, overrides: Overrides::default(), switch: Switch::default(), state, mode, now }
         };
         let off = look(false, false).signature();
         assert_eq!(off, "Paused:-,FreeTime:-,Global:-");
         assert_ne!(look(false, true).signature(), off);
         assert_ne!(look(true, false).signature(), look(false, true).signature());
         assert_eq!(look(true, true).asks().iter().filter(|(_, a)| a.is_some()).count(), 2, "the pause and the switch, each its own mode");
+        // "Let every call through" pressed: anyone's call through the pause's mode, said in what it asks.
+        let mut through = look(true, false);
+        sioul_core::calls::press(&mut through.switch, "phone", true, 0, Zoned::now().timestamp().as_millisecond());
+        let calls = |look: &Look| look.asks()[0].1.as_ref().and_then(|a| a.silence).map(|s| s.calls);
+        assert_eq!((calls(&through), calls(&look(true, false))), (Some(sioul_core::attention::Senders::Anyone), Some(sioul_core::attention::Senders::Starred)));
+        assert_ne!(through.signature(), look(true, false).signature());
     }
 
     #[test]

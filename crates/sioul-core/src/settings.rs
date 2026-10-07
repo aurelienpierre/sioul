@@ -61,8 +61,6 @@ pub enum Kind {
     Secret,
     /// Nothing to change here: a button to where it is changed (`value`: "needs", the Health page's meals and sleep).
     Link,
-    /// Boxes in a grid: `rows` down, `choices` across; `value` lists those ticked as "row:column".
-    Matrix,
     /// Round buttons in a grid: `rows` down, `choices` across, one per row;
     /// `value` lists each row's as "row:column"; saved a row at a time
     /// (`<key>.<row>`): what Sioul's own spam filter does with each verdict.
@@ -71,9 +69,6 @@ pub enum Kind {
     /// a computer, "Train now" and what the last training found; on a phone,
     /// where its table comes from. Nothing in `value`.
     Spam,
-    /// What each kind of notification does at each time (`grid`,
-    /// `notify::Grid`): saved a row at a time, `notify.<row>`.
-    Notify,
 }
 
 /// One of a setting's choices.
@@ -95,7 +90,7 @@ pub struct Setting {
     pub value: SettingValue,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub choices: Vec<Choice>,
-    /// A grid's rows (`Kind::Matrix`); its columns are the choices.
+    /// A grid's rows (`Kind::Radios`); its columns are the choices.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rows: Vec<Choice>,
     pub min: f64,
@@ -108,9 +103,6 @@ pub struct Setting {
     /// The tab it is in, on a page with tabs (Settings): "look", "hours", "reminders", "files", "invoices".
     #[serde(skip_serializing_if = "String::is_empty")]
     pub section: String,
-    /// The notification matrix, in words (`Kind::Notify`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub grid: Option<crate::notify::Grid>,
 }
 
 struct Builder<'a> {
@@ -125,7 +117,7 @@ impl Builder<'_> {
     fn push(&mut self, key: &str, id: &str, kind: Kind, value: SettingValue) -> &mut Setting {
         let label = self.tr.text(&format!("set-{id}"), None);
         let help = self.tr.text(&format!("set-{id}-help"), None);
-        self.out.push(Setting { key: key.to_string(), kind, label, help, value, choices: Vec::new(), rows: Vec::new(), min: 0.0, max: 0.0, step: 1.0, unit: String::new(), group: self.group.clone(), section: self.section.clone(), grid: None });
+        self.out.push(Setting { key: key.to_string(), kind, label, help, value, choices: Vec::new(), rows: Vec::new(), min: 0.0, max: 0.0, step: 1.0, unit: String::new(), group: self.group.clone(), section: self.section.clone() });
         let last = self.out.len() - 1;
         &mut self.out[last]
     }
@@ -160,7 +152,7 @@ impl Builder<'_> {
     /// A sentence to read, nothing to change.
     fn note(&mut self, about: String, lines: Vec<String>) {
         let key = format!("note.{}", self.out.len());
-        self.out.push(Setting { key, kind: Kind::Note, label: about, help: lines.join("\n"), value: SettingValue::Text(String::new()), choices: Vec::new(), rows: Vec::new(), min: 0.0, max: 0.0, step: 1.0, unit: String::new(), group: self.group.clone(), section: self.section.clone(), grid: None });
+        self.out.push(Setting { key, kind: Kind::Note, label: about, help: lines.join("\n"), value: SettingValue::Text(String::new()), choices: Vec::new(), rows: Vec::new(), min: 0.0, max: 0.0, step: 1.0, unit: String::new(), group: self.group.clone(), section: self.section.clone() });
     }
 
     fn range(setting: &mut Setting, min: f64, max: f64, step: f64, unit: &str) {
@@ -317,22 +309,10 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 b.note(tr.text("unsubscribed-note", None), lines);
             }
         }
-        // Who may reach you, and when, in Accounts ▸ Senders: a matrix per
-        // channel (mail, calls, messages from other apps), the window showing
-        // the one chosen; the four lists; the people placed on them; your
-        // contacts' categories, each on a list or none.
+        // Who is on which list, under Settings ▸ What reaches you ▸ By person
+        // (its grids say when each list reaches you): the four lists; the
+        // people placed on them; your contacts' categories, each on a list or none.
         "senders" => {
-            use crate::reach::{Channel, Column};
-            let reach = crate::reach::Reach::of(&config.reach);
-            for channel in Channel::ALL {
-                let key = if channel == Channel::Mail { "reach".to_string() } else { format!("reach.{}", channel.id()) };
-                let matrix = reach.matrix(channel);
-                let s = b.push(&key, &format!("reach-{}", channel.id()), Kind::Matrix, SettingValue::Texts(Vec::new()));
-                // The blocked last, a row never ticked.
-                s.rows = channel.rows().iter().map(|r| r.id()).chain(std::iter::once("blocked")).map(|id| Choice { value: SettingValue::Text(id.into()), label: tr.text(&format!("sender-list-{id}"), None) }).collect();
-                s.choices = Column::ALL.iter().map(|c| Choice { value: SettingValue::Text(c.id().into()), label: tr.text(&format!("reach-{}", c.id()), None) }).collect();
-                s.value = SettingValue::Texts(channel.rows().iter().flat_map(|r| matrix.row(*r).ids().into_iter().map(move |t| format!("{}:{t}", r.id()))).collect());
-            }
             for (key, id, path) in [
                 ("safe", "safe", config.safe_senders_path()),
                 ("neutral", "neutral", config.neutral_senders_path()),
@@ -499,6 +479,22 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("link.needs", "hours-leisure", Kind::Link, SettingValue::Text("needs".into()));
             let off = config.time_off.iter().map(|t| crate::config::TimeOffValue { from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone() }).collect();
             b.push("time_off", "time-off", Kind::TimeOff, SettingValue::TimeOff(off));
+            // What reaches you, and when (docs/attention.md): the matrix is the tab's own
+            // (`attention::grid`, the window's `reachesView`); these are the switches beside it.
+            b.section = "attention".into();
+            b.group = String::new();
+            // New mail told at the times its row says, once per batch (docs/porch.md, "Notifications").
+            b.push("reminders.mail", "reminders-mail", Kind::Bool, SettingValue::Bool(config.reminders.mail));
+            b.push("reminders.mail_newsletters", "reminders-mail-newsletters", Kind::Bool, SettingValue::Bool(config.reminders.mail_newsletters));
+            // What sites notified, gathered at the gathered times; the Sites row's switch.
+            b.push("reminders.gather", "reminders-gather", Kind::Bool, SettingValue::Bool(config.reminders.gather));
+            // Free time's "Nothing at all": its card's switch.
+            b.push("free_time.nothing", "free-nothing", Kind::Bool, SettingValue::Bool(config.free_time.nothing));
+            // What turns do-not-disturb on, on every device (docs/do-not-disturb.md).
+            b.push("dnd.button", "dnd-button", Kind::Bool, SettingValue::Bool(config.dnd.button));
+            b.push("dnd.focus", "dnd-focus", Kind::Bool, SettingValue::Bool(config.dnd.focus));
+            b.push("dnd.pauses", "dnd-pauses", Kind::Bool, SettingValue::Bool(config.dnd.pauses));
+            b.push("dnd.sleep", "dnd-sleep", Kind::Bool, SettingValue::Bool(config.dnd.sleep));
             // Reminders before dates; with the window closed, the window says (an entry started with the session).
             b.section = "reminders".into();
             b.group = tr.text("set-reminders-group", None);
@@ -518,23 +514,11 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             let s = b.push("reminders.payment_days", "reminders-payment", Kind::Int, SettingValue::Int(i64::from(config.reminders.payment_days)));
             Builder::range(s, 0.0, 10.0, 1.0, "");
             b.push("reminders_closed", "reminders-closed", Kind::Bool, SettingValue::Bool(false));
-            // New mail told at the times it may come, once per batch (docs/porch.md, "Notifications").
-            b.push("reminders.mail", "reminders-mail", Kind::Bool, SettingValue::Bool(config.reminders.mail));
-            b.push("reminders.mail_newsletters", "reminders-mail-newsletters", Kind::Bool, SettingValue::Bool(config.reminders.mail_newsletters));
-            // What sites notified, gathered at set times; real time and calls come at once.
-            b.push("reminders.gather", "reminders-gather", Kind::Bool, SettingValue::Bool(config.reminders.gather));
+            // The times sites and other apps' automatons are gathered at: their cells say "gathered".
             b.push("reminders.gathered", "reminders-gathered", Kind::Words, SettingValue::Texts(config.reminders.gathered_times()));
-            // What each kind of notification does at each time (`notify`, docs/reminders.md): the
-            // grid holds the doses during sleep and a pause too, where two switches used to.
-            b.group = tr.text("set-notify-group", None);
-            let notify = crate::notify::Notify::of(config);
-            let cells = crate::notify::Kind::ALL.iter().flat_map(|k| notify.words(*k).into_iter().map(move |w| format!("{}:{w}", k.id()))).collect();
-            let s = b.push("notify", "notify", Kind::Notify, SettingValue::Texts(cells));
-            s.grid = Some(crate::notify::grid(&notify, tr));
             // The two pauses, set up on a calm day (docs/pauses.md): free time, then the pause.
             b.section = "pauses".into();
             b.group = tr.text("set-free-time-group", None);
-            b.push("free_time.nothing", "free-nothing", Kind::Bool, SettingValue::Bool(config.free_time.nothing));
             b.push("free_time.moves", "free-moves", Kind::Bool, SettingValue::Bool(config.free_time.moves));
             let s = b.push("free_time.latest_after", "free-latest", Kind::Int, SettingValue::Int(i64::from(config.free_time.latest_after)));
             Builder::range(s, 30.0, 360.0, 15.0, "min");
@@ -542,9 +526,8 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.group = tr.text("set-pause-group", None);
             // Said once, where the pause is set up (P5).
             b.note(tr.text("set-pause-about", None), Vec::new());
-            // Doses during a pause, and what else comes then: the grid of Reminders and notifications.
-            b.push("link.notify.pauses", "pause-notify", Kind::Link, SettingValue::Text("settings:notify".into()));
-            b.push("pause.people", "pause-people", Kind::Bool, SettingValue::Bool(config.pause.people));
+            // What comes during a pause, doses included: What reaches you ▸ By time, the pause's card.
+            b.push("link.attention.pause", "pause-attention", Kind::Link, SettingValue::Text("settings:attention.pause".into()));
             b.push("pause.helps", "pause-helps", Kind::Words, SettingValue::Texts(config.pause.helps.clone()));
             b.push("pause.grounding", "pause-grounding", Kind::Text, SettingValue::Text(config.pause.grounding.clone()));
             b.push("pause.breathing", "pause-breathing", Kind::Bool, SettingValue::Bool(config.pause.breathing));
@@ -561,17 +544,6 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 .collect();
             countries.sort_by_cached_key(|c| crate::text::fold(&c.label).into_iter().collect::<String>());
             s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text("set-pause-country-usual", None) }).chain(countries).collect();
-            // Do-not-disturb on every device (docs/do-not-disturb.md): what turns it on, who gets
-            // through; the list of people, this device's line and the phone's own are the tab's (DndSetup.qml).
-            b.section = "dnd".into();
-            b.group = tr.text("set-dnd-group", None);
-            b.push("dnd.button", "dnd-button", Kind::Bool, SettingValue::Bool(config.dnd.button));
-            b.push("dnd.focus", "dnd-focus", Kind::Bool, SettingValue::Bool(config.dnd.focus));
-            b.push("dnd.pauses", "dnd-pauses", Kind::Bool, SettingValue::Bool(config.dnd.pauses));
-            b.push("dnd.sleep", "dnd-sleep", Kind::Bool, SettingValue::Bool(config.dnd.sleep));
-            b.push("dnd.people", "dnd-people", Kind::Bool, SettingValue::Bool(config.dnd.people));
-            // What comes during do-not-disturb, kind by kind: the grid of Reminders and notifications.
-            b.push("link.notify.dnd", "dnd-notify", Kind::Link, SettingValue::Text("settings:notify".into()));
             // Invoices, made from Time and from Projects: who sends them, how they are numbered, where they go.
             b.section = "invoices".into();
             b.group = tr.text("set-invoice-group", None);
@@ -742,8 +714,9 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
             let root = config.case_store_path().ok_or_else(|| format!("{key}: no case store"))?;
             crate::cases::set_routes(&root.join(crate::cases::MANIFEST), id, routes)
         }
-        // A row of the notification matrix, its words: read, checked, written whole.
-        _ if key.starts_with("notify.") => crate::notify::apply(config_path, config, key, value),
+        // A row of the matrix of what reaches you, its words: read, checked, written whole
+        // (`attention::apply`); the older grids' rows ("notify.<kind>", "reach.<row>") land there too.
+        _ if key.starts_with("attention.") || key.starts_with("notify.") || key.starts_with("reach.") => crate::attention::apply(config_path, config, key, value),
         // Sioul's own spam filter: one row of the matrix, an action it knows;
         // the three written (an older `mode` read no more, taken out), so that
         // each row keeps what it meant. Thresholds between 0 and 1, the doubt below the spam.
@@ -812,38 +785,29 @@ mod tests {
         assert_eq!(notes, 1 + 1 + 8, "{porch:?}");
         assert_eq!(keys("porch"), vec!["letters.inbox", "reading.family", "reading.size", "reading.spacing", "known", "filed_words"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
-        // Sioul as a whole: language and looks, your folder, who may write, hours, reminders, invoices.
+        // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices.
         let parameters = keys("parameters");
         assert_eq!(
             parameters,
             vec![
-                "language", "theme", "places_named", "passwords_shown", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.before_event", "reminders.events", "reminders.asked_days",
-                "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "reminders.gathered", "notify", "free_time.nothing", "free_time.moves", "free_time.latest_after", "free_time.movement",
-                "link.notify.pauses", "pause.people", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "dnd.people", "link.notify.dnd", "invoice.name", "invoice.address", "invoice.siret", "invoice.vat", "invoice.prefix",
-                "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate"
+                "language", "theme", "places_named", "passwords_shown", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "free_time.nothing",
+                "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.before_event", "reminders.events", "reminders.asked_days", "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.gathered",
+                "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice.name", "invoice.address", "invoice.siret", "invoice.vat",
+                "invoice.prefix", "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate"
             ]
         );
-        // The notification matrix: every kind, every time, in words; the doses' two switches are its cells now.
-        let notify = for_view("parameters", &config, &tr, &[], None).into_iter().find(|s| s.key == "notify").unwrap();
-        let grid = notify.grid.as_ref().unwrap();
-        assert_eq!((notify.kind, notify.section.as_str(), grid.rows.len(), grid.columns.len()), (Kind::Notify, "reminders", 19, 9));
-        assert!(matches!(&notify.value, SettingValue::Texts(cells) if cells.contains(&"doses:sleep".to_string()) && cells.contains(&"mail:dnd:list".to_string())));
-        assert!(!notify.label.starts_with("set-") && !notify.help.starts_with("set-"));
+        // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.
+        let attention: Vec<Setting> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "attention").collect();
+        assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
+        assert!(attention.iter().all(|s| !s.label.starts_with("set-") && !s.help.starts_with("set-")));
         // Nothing is set in two places: a setting has one owner. The reading
         // panel's own ("Aa" in Notes) are shown in Mail's and the Porch's too,
         // where messages are read, as each lane's are in the Porch's.
         let mut seen: std::collections::BTreeMap<String, &str> = std::collections::BTreeMap::new();
         let keys = |view: &str| keys(view).into_iter().filter(|k| view == "reading" || !k.starts_with("reading.")).collect::<Vec<_>>();
         assert_eq!(keys("reading"), vec!["reading.family", "reading.size", "reading.spacing"]);
-        assert_eq!(keys("senders"), vec!["reach", "reach.calls", "reach.messages", "safe", "neutral", "restricted", "blocked"]);
-        // A matrix per channel: the states down (the blocked last, never), five times and the pause across, as the configuration says or as usual.
-        let senders = for_view("senders", &config, &tr, &[], None);
-        let reach = senders.iter().find(|s| s.key == "reach").unwrap();
-        assert_eq!((reach.rows.len(), reach.choices.len(), reach.label.as_str()), (5, 6, "Mail"));
-        assert_eq!(reach.value, SettingValue::Texts(["safe:work", "safe:admin", "safe:leisure", "safe:meals", "safe:sleep", "safe:pause", "neutral:work", "neutral:admin", "restricted:work", "stranger:work", "stranger:admin"].map(String::from).to_vec()));
-        let calls = senders.iter().find(|s| s.key == "reach.calls").unwrap();
-        assert_eq!(calls.rows.iter().map(|r| r.value.clone()).collect::<Vec<_>>(), ["safe", "neutral", "restricted", "stranger", "hidden", "blocked"].map(|r| SettingValue::Text(r.into())).to_vec());
-        assert_eq!(calls.value, SettingValue::Texts(["safe:work", "safe:admin", "safe:leisure", "safe:meals", "neutral:work", "neutral:admin", "restricted:work", "hidden:work", "hidden:admin"].map(String::from).to_vec()));
+        // Who is on which list; when each list reaches you is the matrix's (What reaches you ▸ By person).
+        assert_eq!(keys("senders"), vec!["safe", "neutral", "restricted", "blocked"]);
         assert_eq!(keys("contacts"), vec!["map.geocode", "map.tiles", "contacts.region"]);
         let regions = for_view("contacts", &config, &tr, &[], None).into_iter().find(|s| s.key == "contacts.region").unwrap().choices;
         assert!(regions.len() > 30 && regions.iter().all(|c| !c.label.starts_with("country-")), "{regions:?}");

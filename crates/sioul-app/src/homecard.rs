@@ -32,7 +32,6 @@ use sioul_core::links::Loaded;
 use sioul_core::plan::Plan;
 use sioul_core::porch::{self, Lane, Senders, Triaged};
 use sioul_core::quiet::{self, Blocks, Mode, Overrides, Reason};
-use sioul_core::reach::Reach;
 use sioul_core::taskview::{self, Filter};
 use sioul_core::today::{Today, Weather};
 use sioul_core::trust::Trust;
@@ -97,7 +96,9 @@ struct Frame {
     porch: Option<PorchLines>,
     /// The next step, in work or admin time.
     step: Option<Step>,
-    /// Codes may show (not asleep, not in a pause).
+    /// Codes may show: as their row of the matrix says (as usual at once,
+    /// asleep too; "On the Porch only" a choice for sleep), never on the
+    /// pause's card, which shows the pause alone.
     codes: bool,
     /// Doses may show: not in a pause; asleep only when doses remind during sleep.
     doses: bool,
@@ -361,8 +362,8 @@ fn summary(tr: &Translator, items: &[Triaged]) -> String {
 }
 
 /// What the Porch shows at `at`, as `backend::compute` makes it: the mail
-/// your lists let through at that time (`mail_in_view`; in free time,
-/// `reach_now`), the Porch open in its hours and in quiet time, closed
+/// the matrix of what reaches you shows at that time (`Attention::mail`,
+/// Free time's "Nothing at all" too), the Porch open in its hours and in quiet time, closed
 /// otherwise with when it opens, resting after a pause until its next hours
 /// (`pauses::porch_rests`). Never "Open it anyway": a moment's choice in the
 /// window, not the card's.
@@ -371,9 +372,12 @@ fn porch_at(m: &Moment, input: &PorchInput, mode: &Mode, at: &Zoned) -> PorchLin
         let until = until.to_zoned(at.time_zone().clone());
         return PorchLines::said(said(m.tr, "home-card-porch-rests", &[("when", when(m.tr, &until, at))]));
     }
-    let reach = pause::reach_now(Reach::of(&m.config.reach).mail, mode, pause::nothing_now(m.overrides, &m.config.free_time));
+    let attention = sioul_core::attention::Attention::of(m.config);
+    let mut moment = sioul_core::attention::Now::of(mode);
+    moment.nothing = mode.free() && pause::nothing_now(m.overrides, &m.config.free_time);
+    let always = sioul_core::everywhere::People::load(&sioul_core::everywhere::People::default_path());
     let area_of = |t: &Triaged| t.card.account.as_deref().and_then(|id| m.config.account(id)).and_then(|a| a.area.as_deref()).and_then(Area::parse).unwrap_or(Area::WORK);
-    let mail: Vec<Triaged> = input.items.iter().filter(|t| mode.time == Time::Any || quiet::mail_in_view(t, &input.senders, &reach, area_of(t), mode.time, mode.week)).cloned().collect();
+    let mail: Vec<Triaged> = input.items.iter().filter(|t| attention.mail(t, &input.senders, &always, area_of(t), &moment).shown).cloned().collect();
     let shown = view::porch(&mail, m.config, input.store.as_ref(), m.tr, at, mode.quiet);
     if !shown.open {
         return PorchLines::said(match window::next_opening(&m.config.windows, at) {
@@ -501,9 +505,9 @@ fn porch_key(m: &Moment, mode: &Mode, at: &Zoned) -> String {
 fn snapshot(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput>, doses: &[Dose]) -> Snapshot {
     let set_up = m.config.every_account().next().is_some();
     let mut made: BTreeMap<String, PorchLines> = BTreeMap::new();
-    // Codes and doses as the notification matrix lets them come at each time (Settings ▸ Reminders and notifications).
-    let notify = sioul_core::notify::Notify::of(m.config);
-    let comes = |kind: sioul_core::notify::Kind, mode: &sioul_core::quiet::Mode| notify.comes(kind, &sioul_core::notify::Now::of(mode, false, false));
+    // Codes and doses as the matrix of what reaches you lets them come at each time.
+    let attention = sioul_core::attention::Attention::of(m.config);
+    let comes = |kind: sioul_core::attention::Kind, mode: &sioul_core::quiet::Mode| attention.level(sioul_core::attention::Row::Own(kind), &sioul_core::attention::Now::of(mode)) == sioul_core::attention::Level::Now;
     let frames = timeline(m)
         .into_iter()
         .enumerate()
@@ -526,9 +530,10 @@ fn snapshot(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput>, do
                 dnd: m.dnd.map(|d| d.line_in(kind, ms(&from), index == 0)).unwrap_or_default(),
                 porch,
                 step: plan.and_then(|p| step_at(m, p, &mode, &from)),
-                codes: comes(sioul_core::notify::Kind::Codes, &mode),
-                // The pause's card shows the pause alone.
-                doses: !mode.paused() && comes(sioul_core::notify::Kind::Doses, &mode),
+                // The pause's card shows the pause alone: a code or a dose
+                // then comes by its own notification, as its row says.
+                codes: !mode.paused() && comes(sioul_core::attention::Kind::Codes, &mode),
+                doses: !mode.paused() && comes(sioul_core::attention::Kind::Doses, &mode),
             }
         })
         .collect();
@@ -830,7 +835,6 @@ pub(crate) fn setting(group: &str, section: &str, on: bool) -> sioul_core::setti
         unit: String::new(),
         group: group.to_string(),
         section: section.to_string(),
-        grid: None,
     }
 }
 
@@ -974,11 +978,12 @@ mod tests {
         assert_eq!((evening.kind.as_str(), evening.status.as_str()), ("leisure", "Leisure until 19:00: what you enjoy."));
         assert!(evening.step.is_none() && evening.porch.is_some());
         // Winding down from 22:00, then the night from bedtime: the sleep's line alone, as the window says it;
-        // doses remind during sleep by default.
+        // doses remind during sleep by default, and codes you asked for come at once asleep too
+        // (docs/attention.md, Q6; before, they waited on the Porch).
         assert_eq!(made.at("2026-10-05T22:15[Europe/Paris]").status, "Winding down: nothing disturbs until tomorrow at 07:00.");
         let night = made.at("2026-10-05T23:30[Europe/Paris]");
         assert_eq!((night.kind.as_str(), night.status.as_str()), ("sleep", "Sleep: nothing disturbs until tomorrow at 07:00."));
-        assert!(night.porch.is_none() && night.step.is_none() && !night.codes && night.doses);
+        assert!(night.porch.is_none() && night.step.is_none() && night.codes && night.doses);
         // Past midnight "tomorrow" is today: a frame ends at each midnight.
         assert!(made.card.frames.iter().any(|f| f.from == at("2026-10-06T00:00[Europe/Paris]").timestamp().as_millisecond()));
         assert_eq!(made.at("2026-10-06T05:00[Europe/Paris]").status, "Sleep: nothing disturbs until 07:00.");
@@ -1159,6 +1164,7 @@ mod tests {
         }
         // Asleep: the dose shows (doses remind during sleep), not in a pause.
         assert!(made.at("2026-10-06T05:00[Europe/Paris]").doses);
+        // Doses silent in sleep, as an older Sioul said it ([reminders] doses_in_sleep, read once to seed the matrix).
         let mut silent = config();
         silent.reminders.doses_in_sleep = false;
         let now = at("2026-10-05T10:00[Europe/Paris]");
@@ -1169,13 +1175,13 @@ mod tests {
         let card = snapshot(&moment, None, None, &doses);
         let night = card.frames.iter().find(|f| f.kind == "sleep").unwrap();
         assert!(!night.doses, "doses during sleep: stay silent");
-        assert!(!night.codes, "as usual, codes wait on the Porch while you sleep");
-        // As the notification matrix says (Settings ▸ Reminders and notifications): doses held in sleep, codes told then.
+        assert!(night.codes, "codes you asked for come at once while you sleep (Q6; before, they waited on the Porch)");
+        // As the matrix of what reaches you says (Settings ▸ What reaches you): doses held in sleep, codes on the Porch only then.
         let mut grid = config();
-        grid.notify = toml::from_str::<Config>("[notify]\ndoses = [\"sleep:later\"]\ncodes = [\"sleep\"]\n").unwrap().notify;
+        grid.attention = toml::from_str::<Config>("[attention]\ndoses = [\"sleep:later\"]\ncodes = [\"sleep:never\"]\n").unwrap().attention;
         let card = snapshot(&Moment { config: &grid, ..moment }, None, None, &doses);
         let night = card.frames.iter().find(|f| f.kind == "sleep").unwrap();
-        assert!(!night.doses && night.codes);
+        assert!(!night.doses && !night.codes);
         // In French, with its typography.
         let fr = make("2026-10-05T10:00[Europe/Paris]", &Overrides::default(), true, "fr", &doses);
         assert_eq!(fr.card.doses[0].check, "Magnesium · 300 mg, 09:45\u{202f}: vérifiez avant de la prendre.");

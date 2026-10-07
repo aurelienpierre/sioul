@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! The header features, version 1: what a message's headers and shape say,
+//! The header features, version 2: what a message's headers and shape say,
 //! as named numbers the SVM weighs beside its words, so that each can be
 //! explained by its name (docs/spam-filter.md, "The header features").
 //!
@@ -11,8 +11,24 @@
 //! the links its text holds (`tokenize::Tokens::links`); never from the order
 //! of the headers. Left out, because they would teach the filter where mail
 //! was collected rather than what it is: To and Cc, the account, dates as
-//! such. Your provider's verdict is one input among the others, its own
-//! (`provider_*`); its headers never reach the words.
+//! such, the provider's own marks.
+//!
+//! A value can be missing (`f32::NAN`): your provider's checks when it wrote
+//! none, or none under a name you trust; the route where it cannot be read.
+//! A missing value stands at the training's mean, which is over the messages
+//! that have it: it weighs nothing (`table::Table::score`). So mail from a
+//! provider that writes no results, or reached through one whose lines are
+//! written another way, is not told apart by that alone.
+//!
+//! Version 2 (from 7 October 2026), measured on a real mailbox: version 1
+//! taught the filter which account a message came to. Only one provider
+//! wrote results that were trusted, so "no results" meant "that other
+//! account", whose share of spam the filter then learned; the count of
+//! `Received` lines and ARC were each provider's own too. Version 2 makes
+//! missing checks missing (not "none"), drops the count of hops, ARC and the
+//! provider's verdict (the Porch applies that verdict itself, as its own
+//! rule), and adds what the message carries wherever it is received: a DKIM
+//! signature, one by the sender's own domain, a bounce address at it.
 //!
 //! The same function runs on the desktop when training and on every device
 //! when sorting: a change of a feature, of its order or of its scale raises
@@ -24,26 +40,31 @@ use crate::headers::RawHeaders;
 use crate::trust::{self, AuthResults, Outcome, Trust};
 
 /// The header features' version, stamped in every table.
-pub const FEATURES: u32 = 1;
+pub const FEATURES: u32 = 2;
 
 /// How many header features there are.
-pub const N: usize = 41;
+pub const N: usize = 35;
 
 /// Each feature's name, in the order of `features`' values.
 pub const NAMES: [&str; N] = [
-    // Authentication, as Sioul's stamp, else your provider's, recorded it: one of pass, fail, none for each.
-    "spf_pass", "spf_fail", "spf_none", "dkim_pass", "dkim_fail", "dkim_none", "dmarc_pass", "dmarc_fail", "dmarc_none", "arc_pass", "arc_fail",
-    // The sender's domain vouches for the message (DMARC, or a signature of its own): `trust::judge_sender`.
-    "aligned",
+    // Authentication as your provider checked it (`provider_results`): pass,
+    // fail, or neither for each check; missing when it wrote no results
+    // under a name you trust. Then the sender's domain vouching for the
+    // message (DMARC, or a signature of its own: `trust::judge_sender`), missing alike.
+    "spf_pass", "spf_fail", "dkim_pass", "dkim_fail", "dmarc_pass", "dmarc_fail", "aligned",
+    // What the message carries itself, the same wherever it is received:
+    // a DKIM signature; one by the sender's own domain (d= the From's
+    // registrable domain); its bounce address (Return-Path) at that domain.
+    "dkim_signed", "dkim_signed_by_sender", "return_path_at_sender",
     // Domains: the Reply-To elsewhere, or at a mail provider anyone uses; the
     // Message-ID made elsewhere; a name shown that names another domain.
     "reply_to_elsewhere", "reply_to_freemail", "message_id_elsewhere", "name_names_domain",
     // Time: the Date ahead of when your provider received it (hours, at most
     // 24), or behind it (hours, at most 72); no Date; no Message-ID.
     "date_ahead_hours", "date_behind_hours", "no_date", "no_message_id",
-    // The route: how many Received lines (at most 20); the sending server
-    // naming itself by a bare address where it entered your provider.
-    "received_hops", "helo_bare_ip",
+    // The route: the sending server naming itself by a bare address where it
+    // entered your provider; missing where that line cannot be read.
+    "helo_bare_ip",
     // The parts: HTML and no text version; images and almost no text; what is attached.
     "html_only", "image_only", "attached_archive", "attached_program", "attached_office", "attached_pdf", "attached_image",
     // How much text it shows (links and spaces aside): under 150 characters, 800, 3 000, more.
@@ -52,8 +73,6 @@ pub const NAMES: [&str; N] = [
     "links", "links_elsewhere",
     // Bulk mail's own headers: gray mail, not spam, as the model weighs them.
     "list_unsubscribe", "list_id", "precedence_bulk",
-    // Your provider's filter: it left a verdict; it says spam; its score (from −20 to 50).
-    "provider_seen", "provider_flagged", "provider_score",
 ];
 
 /// The authentication results the features read: your provider's alone, as
@@ -77,21 +96,27 @@ pub fn index(name: &str) -> Option<usize> {
 /// The header features of a message: its card (headers, parts, text),
 /// its provider's authentication results (`provider_results`),
 /// when its provider received it (IMAP's INTERNALDATE, the Maildir file's
-/// time), the domains of its links (`tokenize::tokens`).
+/// time), the domains of its links (`tokenize::tokens`). A value it cannot
+/// know is `f32::NAN` (see the module).
 pub fn features(card: &Card, auth: Option<&AuthResults>, internal_date: Option<i64>, links: &[String]) -> [f32; N] {
     let headers = &card.headers;
     let from = card.sender_domain().map(registrable).filter(|d| !d.is_empty());
     let flag = |b: bool| if b { 1.0 } else { 0.0 };
-    let three = |outcome: Option<Outcome>| match outcome {
-        Some(Outcome::Pass) => [1.0, 0.0, 0.0],
-        Some(Outcome::Fail | Outcome::SoftFail) => [0.0, 1.0, 0.0],
-        _ => [0.0, 0.0, 1.0],
+    // Pass, fail, neither; both missing without results.
+    let checked = |outcome: Option<Outcome>| match (auth, outcome) {
+        (None, _) => [f32::NAN, f32::NAN],
+        (Some(_), Some(Outcome::Pass)) => [1.0, 0.0],
+        (Some(_), Some(Outcome::Fail | Outcome::SoftFail)) => [0.0, 1.0],
+        (Some(_), _) => [0.0, 0.0],
     };
-    let [spf_pass, spf_fail, spf_none] = three(auth.and_then(|a| a.spf));
-    let [dkim_pass, dkim_fail, dkim_none] = three(auth.and_then(|a| a.dkim));
-    let [dmarc_pass, dmarc_fail, dmarc_none] = three(auth.and_then(|a| a.dmarc));
-    let arc = auth.and_then(|a| a.arc);
-    let aligned = trust::judge_sender(auth, false, card.sender_domain()).0 == Trust::Verified;
+    let [spf_pass, spf_fail] = checked(auth.and_then(|a| a.spf));
+    let [dkim_pass, dkim_fail] = checked(auth.and_then(|a| a.dkim));
+    let [dmarc_pass, dmarc_fail] = checked(auth.and_then(|a| a.dmarc));
+    let aligned = if auth.is_some() { flag(trust::judge_sender(auth, false, card.sender_domain()).0 == Trust::Verified) } else { f32::NAN };
+    // What it carries itself: who signed it, where its bounces go.
+    let at_sender = |domain: &str| from.as_deref().is_some_and(|f| f == registrable(domain));
+    let signers: Vec<String> = headers.all("DKIM-Signature").filter_map(dkim_domain).collect();
+    let bounces = headers.first("Return-Path").and_then(address_domain);
 
     let elsewhere = |domain: &str| from.as_deref() != Some(registrable(domain).as_str());
     let reply = headers.first("Reply-To").and_then(address_domain);
@@ -102,8 +127,7 @@ pub fn features(card: &Card, auth: Option<&AuthResults>, internal_date: Option<i
         (Some(date), Some(received)) => (((date - received) as f32 / 3600.0).clamp(0.0, 24.0), ((received - date) as f32 / 3600.0).clamp(0.0, 72.0)),
         _ => (0.0, 0.0),
     };
-    let hops = headers.all("Received").count().min(20) as f32;
-    let helo_ip = trust::boundary(headers).is_some_and(|b| bare_ip(&b.helo));
+    let helo_ip = trust::boundary(headers).map_or(f32::NAN, |b| flag(bare_ip(&b.helo)));
 
     let shape = &card.shape;
     let kinds: Vec<Kind> = shape.parts.iter().map(|(name, mime)| Kind::of(name, mime)).collect();
@@ -112,13 +136,18 @@ pub fn features(card: &Card, auth: Option<&AuthResults>, internal_date: Option<i
 
     let links_elsewhere = if links.is_empty() { 0.0 } else { links.iter().filter(|d| elsewhere(d)).count() as f32 / links.len() as f32 };
     let precedence = headers.first("Precedence").is_some_and(|p| matches!(p.trim().to_ascii_lowercase().as_str(), "bulk" | "list" | "junk"));
-    let provider = trust::read_spam_verdict(headers);
 
     [
-        spf_pass, spf_fail, spf_none, dkim_pass, dkim_fail, dkim_none, dmarc_pass, dmarc_fail, dmarc_none,
-        flag(arc == Some(Outcome::Pass)),
-        flag(arc == Some(Outcome::Fail)),
-        flag(aligned),
+        spf_pass,
+        spf_fail,
+        dkim_pass,
+        dkim_fail,
+        dmarc_pass,
+        dmarc_fail,
+        aligned,
+        flag(!signers.is_empty()),
+        flag(signers.iter().any(|d| at_sender(d))),
+        flag(bounces.as_deref().is_some_and(at_sender)),
         flag(reply.as_deref().is_some_and(elsewhere)),
         flag(reply.as_deref().is_some_and(|r| crate::lookalike::SHARED.contains(&r))),
         // A Message-ID without a domain was made by no server.
@@ -128,8 +157,7 @@ pub fn features(card: &Card, auth: Option<&AuthResults>, internal_date: Option<i
         behind,
         flag(card.date.is_none()),
         flag(card.message_id.is_none()),
-        hops,
-        flag(helo_ip),
+        helo_ip,
         flag(shape.html && !shape.text),
         flag(kinds.contains(&Kind::Image) && shown < 100),
         has(Kind::Archive),
@@ -146,10 +174,18 @@ pub fn features(card: &Card, auth: Option<&AuthResults>, internal_date: Option<i
         flag(headers.has("List-Unsubscribe")),
         flag(headers.has("List-Id")),
         flag(precedence),
-        flag(provider.is_some()),
-        flag(provider.as_ref().is_some_and(|v| v.flagged)),
-        provider.and_then(|v| v.score).map_or(0.0, |s| s.clamp(-20.0, 50.0)),
     ]
+}
+
+/// The signing domain of a DKIM-Signature (its `d=` tag), lowercase.
+fn dkim_domain(value: &str) -> Option<String> {
+    value
+        .split(';')
+        .find_map(|tag| {
+            let (key, domain) = tag.split_once('=')?;
+            key.trim().eq_ignore_ascii_case("d").then(|| domain.trim().trim_end_matches('.').to_ascii_lowercase())
+        })
+        .filter(|d| !d.is_empty())
 }
 
 /// The domain of a header's first address: "Name <a@b.example>", "a@b.example".
@@ -260,9 +296,10 @@ mod tests {
                    --b\r\nContent-Type: application/octet-stream; name=\"statement.pdf.exe\"\r\nContent-Disposition: attachment; filename=\"statement.pdf.exe\"\r\n\r\nTVqQAAMAAAAEAAAA\r\n--b--\r\n";
         let x = of(raw);
         for (name, want) in [
-            ("spf_fail", 1.0), ("dkim_none", 1.0), ("dmarc_fail", 1.0), ("aligned", 0.0), ("reply_to_elsewhere", 1.0), ("reply_to_freemail", 1.0),
-            ("message_id_elsewhere", 1.0), ("name_names_domain", 1.0), ("no_date", 0.0), ("no_message_id", 0.0), ("received_hops", 2.0), ("helo_bare_ip", 1.0),
-            ("html_only", 1.0), ("attached_program", 1.0), ("attached_pdf", 0.0), ("links", 2.0), ("links_elsewhere", 0.5), ("text_short", 1.0), ("list_unsubscribe", 0.0),
+            ("spf_fail", 1.0), ("dkim_pass", 0.0), ("dkim_fail", 0.0), ("dmarc_fail", 1.0), ("aligned", 0.0), ("dkim_signed", 0.0), ("return_path_at_sender", 0.0),
+            ("reply_to_elsewhere", 1.0), ("reply_to_freemail", 1.0), ("message_id_elsewhere", 1.0), ("name_names_domain", 1.0), ("no_date", 0.0), ("no_message_id", 0.0),
+            ("helo_bare_ip", 1.0), ("html_only", 1.0), ("attached_program", 1.0), ("attached_pdf", 0.0), ("links", 2.0), ("links_elsewhere", 0.5), ("text_short", 1.0),
+            ("list_unsubscribe", 0.0),
         ] {
             assert_eq!(value(&x, name), want, "{name}");
         }
@@ -274,7 +311,10 @@ mod tests {
     fn a_newsletter_is_bulk_not_forged() {
         let raw = "Authentication-Results: sioul-0123456789ab.invalid; spf=pass smtp.mailfrom=news.shop.example; dkim=pass header.d=shop.example; dmarc=pass header.from=shop.example\r\n\
                    X-Spam-Status: No, score=-1.5 required=5.0\r\n\
+                   Return-Path: <bounces@news.shop.example>\r\n\
                    Received: from mail.shop.example (mail.shop.example [203.0.112.9]) by mx.provider.example with ESMTPS\r\n\
+                   DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=esp.example; s=s1; bh=x; b=y\r\n\
+                   DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=Shop.Example; s=s2; bh=x; b=y\r\n\
                    From: Shop <news@shop.example>\r\n\
                    Message-ID: <n-42@mail.shop.example>\r\n\
                    Date: Wed, 07 Oct 2026 07:00:00 +0000\r\n\
@@ -285,16 +325,22 @@ mod tests {
                    New in store. See https://shop.example/new and https://www.shop.example/sale\r\n";
         let x = of(raw);
         for (name, want) in [
-            ("spf_pass", 1.0), ("dkim_pass", 1.0), ("dmarc_pass", 1.0), ("aligned", 1.0), ("message_id_elsewhere", 0.0), ("reply_to_elsewhere", 0.0),
-            ("list_unsubscribe", 1.0), ("list_id", 1.0), ("precedence_bulk", 1.0), ("links", 2.0), ("links_elsewhere", 0.0), ("html_only", 0.0),
-            ("date_ahead_hours", 0.0), ("received_hops", 1.0), ("helo_bare_ip", 0.0),
+            ("spf_pass", 1.0), ("dkim_pass", 1.0), ("dmarc_pass", 1.0), ("aligned", 1.0), ("dkim_signed", 1.0), ("dkim_signed_by_sender", 1.0), ("return_path_at_sender", 1.0),
+            ("message_id_elsewhere", 0.0), ("reply_to_elsewhere", 0.0), ("list_unsubscribe", 1.0), ("list_id", 1.0), ("precedence_bulk", 1.0), ("links", 2.0),
+            ("links_elsewhere", 0.0), ("html_only", 0.0), ("date_ahead_hours", 0.0), ("helo_bare_ip", 0.0),
         ] {
             assert_eq!(value(&x, name), want, "{name}");
         }
         // Received at 08:00, dated 07:00: an hour behind.
         assert_eq!(value(&x, "date_behind_hours"), 1.0);
-        // The provider's verdict, written above the line where the message came in: seen, not spam, its score.
-        assert_eq!((value(&x, "provider_seen"), value(&x, "provider_flagged"), value(&x, "provider_score")), (1.0, 0.0, -1.5));
+        // Its provider's verdict, a spam one or not, is no feature: the Porch applies it as its own rule.
+        let flagged = of(&raw.replace("X-Spam-Status: No, score=-1.5", "X-Spam-Flag: YES\r\nX-Spam-Status: Yes, score=12.5"));
+        let tagged = of(&raw.replace("Subject: This week", "Subject: ***Potentiel-SPAM*** This week"));
+        assert_eq!(flagged.map(f32::to_bits), x.map(f32::to_bits));
+        assert_eq!(tagged.map(f32::to_bits), x.map(f32::to_bits), "the subject's words are the tokenizer's, its tag none of the features'");
+        // Signed by an email service only, its bounces there: carried, not by the sender.
+        let esp = of(&raw.replace("d=Shop.Example", "d=esp.example").replace("bounces@news.shop.example", "bounce@esp.example"));
+        assert_eq!((value(&esp, "dkim_signed"), value(&esp, "dkim_signed_by_sender"), value(&esp, "return_path_at_sender")), (1.0, 0.0, 0.0));
     }
 
     /// Sioul's stamp on top, or not: the features are the same, read from the
@@ -311,7 +357,8 @@ mod tests {
             (features(&card, provider_results(&card.headers, &ids).as_ref(), Some(1_791_360_000), &links), trust::read_auth_results(&card.headers, &ids))
         };
         let ((plain, _), (with_stamp, sioul_first)) = (read(provider), read(&stamped));
-        assert_eq!(plain, with_stamp);
+        // Bit for bit: a missing value (no route here) is NaN in both, which equals nothing.
+        assert_eq!(plain.map(f32::to_bits), with_stamp.map(f32::to_bits));
         assert_eq!((value(&plain, "spf_pass"), value(&plain, "dkim_pass"), value(&plain, "aligned")), (1.0, 1.0, 1.0));
         // What the lanes read differs: Sioul's own checks come first there.
         assert_eq!(sioul_first.map(|r| r.authserv_id).as_deref(), Some("sioul-0123456789ab.invalid"));
@@ -319,15 +366,21 @@ mod tests {
 
     #[test]
     fn nothing_known_says_nothing() {
-        // No results, no Date, no Message-ID: the "none" of each check, and what is missing.
+        // No results: each check missing, not "none" (a provider that writes none is not told apart by it);
+        // no Received line: the route missing; no Date, no Message-ID: said.
         let x = of("From: someone@example.org\r\nSubject: hi\r\n\r\nhello\r\n");
-        assert_eq!((value(&x, "spf_none"), value(&x, "dkim_none"), value(&x, "dmarc_none")), (1.0, 1.0, 1.0));
-        assert_eq!((value(&x, "no_date"), value(&x, "no_message_id"), value(&x, "provider_seen")), (1.0, 1.0, 0.0));
+        for name in ["spf_pass", "spf_fail", "dkim_pass", "dkim_fail", "dmarc_pass", "dmarc_fail", "aligned", "helo_bare_ip"] {
+            assert!(value(&x, name).is_nan(), "{name} missing");
+        }
+        assert_eq!((value(&x, "dkim_signed"), value(&x, "dkim_signed_by_sender"), value(&x, "return_path_at_sender")), (0.0, 0.0, 0.0));
+        assert_eq!((value(&x, "no_date"), value(&x, "no_message_id")), (1.0, 1.0));
         assert_eq!((value(&x, "date_ahead_hours"), value(&x, "date_behind_hours"), value(&x, "links_elsewhere")), (0.0, 0.0, 0.0));
         assert_eq!(names_domain("Jane Doe", Some("example.org")), false);
         assert_eq!(names_domain("example.org team", Some("example.org")), false);
         assert!(names_domain("Amazon.fr Service", Some("example.org")));
         assert!(bare_ip("[IPv6:2001:db8::1]") && bare_ip("192.0.2.1") && !bare_ip("mail.example.org"));
+        assert_eq!(dkim_domain(" v=1; a=rsa-sha256; d=Mail.Example.org.; s=k1").as_deref(), Some("mail.example.org"));
+        assert_eq!(dkim_domain("v=1; s=k1"), None);
         assert_eq!(address_domain("\"Desk\" <Desk@Help.Example.org>").as_deref(), Some("help.example.org"));
     }
 }

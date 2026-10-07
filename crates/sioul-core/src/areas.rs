@@ -5,8 +5,8 @@
 //!
 //! Two axes. Who someone is (a stranger, blocked, or safe, neutral,
 //! restricted: `reach::Who`, from the lists and your address books,
-//! `porch::Senders`) says who may reach you, and a matrix per channel
-//! (`reach::Reach`) when.
+//! `porch::Senders`) says who may reach you, and one matrix
+//! (`attention::Attention`) when.
 //! Areas say what a source (an address, a site, a chat) or a task is for:
 //! work, your own admin, or leisure; and the time says what now is for. Five
 //! times: work and admin (the hours you set), meals and sleep (from Health),
@@ -204,9 +204,9 @@ impl Week {
 /// things the time is for. Admin without hours of its own comes in work
 /// time; work without hours comes in admin's. Leisure, meals and sleep bring
 /// what is for leisure (a chat with friends), nothing else: a meal is a
-/// break, and during sleep nothing notifies anyway, as usual (`notify`);
+/// break, and during sleep nothing notifies anyway, as usual (`attention`);
 /// no task then (`quiet::QuietTasks`). Mail has its own rule, by who wrote
-/// (`quiet::mail_in_view`).
+/// (`attention::Attention::mail`).
 pub fn in_view(area: Area, time: Time, week: Week) -> bool {
     match time {
         Time::Work => area.work || (!week.admin_hours && area.admin),

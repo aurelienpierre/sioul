@@ -1279,7 +1279,8 @@ mod tests {
         let mode = |now: &Zoned| crate::quiet::mode(&[], &[], &crate::quiet::Overrides::default(), &crate::quiet::Blocks::of(&needs, &Days::default(), &[], now), now);
         assert!(mode(&before).sleeps());
         assert!(!mode(&ringing).sleeps());
-        assert!(crate::notify::Notify::usual().comes(crate::notify::Kind::Move, &crate::notify::Now::of(&mode(&ringing), false, false)));
+        let usual = crate::attention::Attention::usual();
+        assert_eq!(usual.level(crate::attention::Row::Own(crate::attention::Kind::Move), &crate::attention::Now::of(&mode(&ringing))), crate::attention::Level::Now);
     }
 
     #[test]

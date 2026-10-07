@@ -55,10 +55,10 @@ fn offer_at(now: &Zoned, mode: &Mode) -> Option<Offer> {
 }
 
 /// What the notice "Work hours are over" offers at `now`: as the status
-/// line, at the times the notification matrix lets it come (as usual, the
-/// status line's own: never at work, asleep, paused or in Free time).
+/// line, at the times the matrix of what reaches you lets it come (as usual,
+/// the status line's own: never at work, asleep, paused or in Free time).
 fn notice_at(now: &Zoned, mode: &Mode) -> Option<Offer> {
-    if !crate::hours::comes(sioul_core::notify::Kind::WorkOver) {
+    if !crate::hours::comes(sioul_core::attention::Kind::WorkOver) {
         return None;
     }
     let (work_end, night, closed_today, reviews) = standing(now);
@@ -286,7 +286,7 @@ fn mark_told(date: Date) {
 /// Each minute: at the end of the day's last work or admin hours, one quiet
 /// notice, "Work hours are over", with "Close the work day"; once, from the
 /// device you are at, within ten minutes of the hours' end; at the times the
-/// notification matrix lets it come (as usual, never while you sleep or
+/// matrix of what reaches you lets it come (as usual, never while you sleep or
 /// work), never during a meeting, nor once the day was closed or its review
 /// given. Off the window's thread.
 pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {

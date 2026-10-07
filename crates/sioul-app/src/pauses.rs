@@ -299,11 +299,11 @@ pub(crate) fn forget(mut sioul: Pin<&mut Sioul>) {
 
 /// The pause's screen (P11–P17), as JSON: your list, the breathing guide and
 /// the grounding line as set up, the numbers of your country; whether doses
-/// still come, as the notification matrix says.
+/// still come, as the matrix of what reaches you says.
 pub(crate) fn screen() -> String {
     let config = load_config();
     let mut screen = pause::screen(&config.pause, config.contacts.region.as_deref(), tr());
-    screen.doses = sioul_core::notify::Notify::of(&config).cell(sioul_core::notify::Kind::Doses, sioul_core::notify::Column::Pause) == sioul_core::notify::Cell::Now;
+    screen.doses = sioul_core::attention::Attention::of(&config).cell(sioul_core::attention::Row::Own(sioul_core::attention::Kind::Doses), sioul_core::attention::Column::Pause) == sioul_core::attention::Level::Now;
     serde_json::to_string(&screen).unwrap_or_default()
 }
 

@@ -42,41 +42,24 @@ label = "Holidays"
 # [quiet]
 # personal = ["joy", "personal", "family", "friends", "leisure"]
 
-# Who may reach you when (docs/porch.md): for each state, the times they come:
-# "work", "admin", "leisure", "meals", "sleep", "pause". Mail's rows here, calls'
-# and other apps' messages' below. These are the defaults; an empty list is
-# never; a messages row left out follows mail's. Accounts ▸ Who may reach you ticks them.
-# [reach]
-# safe = ["work", "admin", "leisure", "meals", "sleep", "pause"]
-# neutral = ["work", "admin"]
-# restricted = ["work"]
-# stranger = ["work", "admin"]
-# [reach.calls]
-# safe = ["work", "admin", "leisure", "meals"]
-# neutral = ["work", "admin"]
-# restricted = ["work"]
-# stranger = []
-# hidden = ["work", "admin"]
-
-# What each kind of notification does at each time (docs/reminders.md, "What
-# comes when"; Settings ▸ Reminders and notifications ▸ When each comes): a row a
-# kind, its columns "work", "admin", "leisure", "meals", "sleep", "pause", "free"
-# (Free time), "slot" (a slot of time for you), "dnd" (do-not-disturb from its
-# switch or a focus session). A bare column: at once; "column:value" another
-# value: "later", "gathered", "event", "never", and for "dnd" on mail and
-# "app-people", "list" or "list-any". A column left out keeps its usual value;
-# some are fixed (doses, codes, an event's alarms, the alarm at waking). Kinds:
-# codes, doses, wake, alarms, before, day-before, dates, needs, move, work-over,
-# time, watch, mail, sites, sites-live, site-calls, app-people, app-automatons,
-# app-at-once. Here, your safe senders' new mail told in Free time, and your
-# do-not-disturb list's whatever who may reach you says:
-# [notify]
-# mail = ["work", "admin", "leisure", "meals", "sleep:later", "pause:later", "free", "slot:later", "dnd:list-any"]
-
-# Doses while you sleep and in a pause, as an older Sioul reads them: the doses'
-# row above says it, and Sioul writes these beside it.
-# [reminders]
-# doses_in_sleep = true
+# What reaches you, and when (docs/attention.md; Settings ▸ What reaches you):
+# one matrix, a row per who on each channel ("mail.", "calls.", "messages." and
+# "always", "safe", "neutral", "restricted", "stranger", "hidden" for calls,
+# "groups" for messages) and per kind of Sioul's own (codes, doses, wake,
+# alarms, before, day-before, dates, needs, move, work-over, time, watch, sites,
+# sites-live, site-calls, app-automatons, app-at-once); its columns "work",
+# "admin", "leisure", "meals", "sleep", "pause", "free" (Free time), "slot" (a
+# slot of time for you), "dnd" (do-not-disturb from its switch or a focus
+# session). A bare column: at once; "column:level" another level: "quiet"
+# (shown, not told), "event", "gathered", "later", "never"; on the "always" row
+# "as" (as their own row) and, on "slot" and "dnd", "through". A row left out
+# keeps its usual cells; some are fixed (doses, codes, an event's alarms, the
+# alarm at waking, the blocked). An older [reach] or [notify] is read once, then
+# replaced by this. Here, your neutral contacts' mail in your leisure too, and
+# the codes you asked for kept on the Porch while you sleep:
+# [attention]
+# "mail.neutral" = ["work", "admin", "leisure", "meals:later", "sleep:later", "pause:later", "free:later", "slot:quiet", "dnd:quiet"]
+# codes = ["work", "admin", "leisure", "meals", "sleep:never", "pause", "free", "slot", "dnd"]
 
 # Sioul's own spam filter (docs/spam-filter.md; Mail ⚙ sets it): what it does
 # with a stranger's message it finds probably spam, maybe spam, probably not
@@ -89,6 +72,13 @@ label = "Holidays"
 # action_ham = "nothing"
 # threshold_spam = 0.95
 # threshold_unsure = 0.5
+
+# An AI agent connected to `sioul mcp` (docs/mcp.md) may use the spam
+# filter's tools: its numbers and worst errors, what it would do, the review
+# queue, a label, the corpus's download and a training run apart. Never a
+# move. Set to false to keep them from agents.
+# [mcp]
+# spam = false
 
 # When offices are open, for tasks that need one. Unset: Monday to Friday, 9:00 to 17:00.
 # [[office_hours]]

@@ -2,17 +2,18 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! What now is for, as the window asks it (docs/areas.md): work, admin,
-//! leisure, a meal, sleep, the pauses; and what each kind of notification
-//! does then, as the notification matrix says (`notify_now`, `comes`; the
-//! matrix is `sioul_core::notify`, set in Settings ▸ Reminders and
-//! notifications). One place for the pages and the notifications; the rule
-//! itself is `sioul_core::quiet::mode`. Health's meals, naps and nights are
-//! read again when its files change, and today's events at most every five
-//! minutes: this is asked often (every list of sites, every notification).
+//! leisure, a meal, sleep, the pauses; and what reaches you then, as the one
+//! matrix says (`attention_now`, `comes`; the model is
+//! `sioul_core::attention`, docs/attention.md). One place for the pages and
+//! the notifications; the rule itself is `sioul_core::quiet::mode`. Health's
+//! meals, naps and nights are read again when its files change, today's
+//! events at most every five minutes, today's slots of time for you when
+//! their file changes: this is asked often (every list of sites, every
+//! notification).
 
 use crate::backend::load_config;
 use jiff::Zoned;
-use sioul_core::notify::{self, Cell, Notify, Now};
+use sioul_core::attention::{Attention, Column, Kind, Level, Now, Row, Slots};
 use sioul_core::quiet::{self, Blocks, Mode, Overrides};
 use sioul_core::reminders::Holds;
 use std::path::Path;
@@ -72,33 +73,74 @@ pub(crate) fn mode_now() -> Mode {
     mode_at(&Zoned::now())
 }
 
-/// In one of today's slots of time for you (docs/capacity.md, G18b): a layer
-/// of the notification matrix, which says what waits there (as usual, new
-/// mail, the sites' notifications and the pause to move).
+/// Today's slots of time for you (docs/capacity.md, G18b), as the window
+/// that laid out the day wrote them (`state/slots.toml`, `capacity::dress`):
+/// every process of this device reads the same, so that Time for you holds
+/// everywhere. Read again when the file changes.
+pub(crate) fn slots() -> Slots {
+    static KEPT: Mutex<Option<(Option<SystemTime>, Slots)>> = Mutex::new(None);
+    let path = Slots::default_path();
+    let stamp = changed(&path);
+    let mut kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((known, slots)) = kept.as_ref()
+        && *known == stamp
+        && stamp.is_some()
+    {
+        return slots.clone();
+    }
+    let slots = Slots::load(&path);
+    *kept = Some((stamp, slots.clone()));
+    slots
+}
+
+/// Whether `at` is in one of today's slots of time for you: a layer of the
+/// matrix, which says what waits there (as usual, new mail's telling, the
+/// sites' notifications, other apps' automatons, the pause to move).
+pub(crate) fn in_slot(at: &Zoned) -> bool {
+    slots().at(at)
+}
+
+/// The same, now.
 pub(crate) fn quiet_slot() -> bool {
-    crate::capacity::in_gain_slot(&Zoned::now())
+    in_slot(&Zoned::now())
 }
 
-/// The time now as the notification matrix reads it (`sioul_core::notify`):
-/// what now is for, a slot of time for you, and do-not-disturb from its
-/// switch or a focus session (docs/do-not-disturb.md).
-pub(crate) fn notify_now() -> Now {
-    Now::of(&mode_now(), quiet_slot(), crate::everywhere::holds_others())
+/// The matrix as set (Settings ▸ What reaches you).
+pub(crate) fn attention() -> Attention {
+    Attention::of(&load_config())
 }
 
-/// What the matrix (Settings ▸ Reminders and notifications) says now of one
-/// kind of notification.
-pub(crate) fn cell(kind: notify::Kind) -> Cell {
-    Notify::of(&load_config()).at(kind, &notify_now())
+/// The moment as the matrix reads it at `now`, in `mode`: the time, a slot
+/// of time for you, do-not-disturb from its switch or a focus session
+/// (docs/do-not-disturb.md), Free time's "Nothing at all", the Porch
+/// resting after a pause.
+pub(crate) fn attention_at(mode: &Mode, now: &Zoned) -> Now {
+    let config = load_config();
+    let overrides = Overrides::load(&Overrides::default_path());
+    let mut moment = Now::of(mode).layers(in_slot(now), crate::everywhere::holds_others());
+    moment.nothing = mode.free() && sioul_core::pause::nothing_now(&overrides, &config.free_time);
+    moment.holds.porch_rests = overrides.porch_rests(now.timestamp().as_second());
+    moment
 }
 
-/// Whether one kind of notification comes now, at once.
-pub(crate) fn comes(kind: notify::Kind) -> bool {
-    cell(kind) == Cell::Now
+/// The moment now.
+pub(crate) fn attention_now() -> Now {
+    let now = Zoned::now();
+    attention_at(&mode_at(&now), &now)
 }
 
-/// Reminders' holds (`reminders::gather`) with this process's layers: a slot
-/// of time for you, which only the window knows, and do-not-disturb.
+/// What the matrix says now of one kind of Sioul's own.
+pub(crate) fn level(kind: Kind) -> Level {
+    attention().level(Row::Own(kind), &attention_now())
+}
+
+/// Whether one kind comes now, at once.
+pub(crate) fn comes(kind: Kind) -> bool {
+    level(kind) == Level::Now
+}
+
+/// Reminders' holds (`reminders::gather`) with this process's layers, the
+/// do-not-disturb it keeps a few seconds rather than reading its files again.
 pub(crate) fn with_layers(mut holds: Holds) -> Holds {
     holds.now.slot = quiet_slot();
     holds.now.dnd = crate::everywhere::holds_others();
@@ -109,7 +151,7 @@ pub(crate) fn with_layers(mut holds: Holds) -> Holds {
 /// cells that may hold it are sleep's and the pause's, your choice. Never
 /// without it: a dose at 05:00 is meant to wake you.
 pub(crate) fn doses_silent() -> bool {
-    !comes(notify::Kind::Doses)
+    !comes(Kind::Doses)
 }
 
 /// When this sleep ends (Unix seconds), while asleep: waking, or a nap's end;
@@ -128,13 +170,13 @@ pub(crate) fn waking() -> Option<i64> {
 /// waking, and are reminded now; the same for a pause holding doses, at
 /// coming back (docs/pauses.md). None otherwise.
 pub(crate) fn woke_from() -> Option<i64> {
-    let notify = Notify::of(&load_config());
-    let held_in = |column: notify::Column| notify.cell(notify::Kind::Doses, column) != Cell::Now;
+    let attention = attention();
+    let held_in = |column: Column| attention.cell(Row::Own(Kind::Doses), column) != Level::Now;
     let now = Zoned::now();
     let stamp = now.timestamp().as_second();
     let overrides = Overrides::load(&Overrides::default_path());
-    let paused = overrides.paused_since.zip(overrides.paused_ended).filter(|(since, ended)| held_in(notify::Column::Pause) && ended > since && *ended <= stamp && stamp - ended < 30 * 60).map(|(since, _)| since);
-    if !held_in(notify::Column::Sleep) {
+    let paused = overrides.paused_since.zip(overrides.paused_ended).filter(|(since, ended)| held_in(Column::Pause) && ended > since && *ended <= stamp && stamp - ended < 30 * 60).map(|(since, _)| since);
+    if !held_in(Column::Sleep) {
         return paused;
     }
     let blocks = blocks(&now);

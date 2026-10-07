@@ -9,7 +9,7 @@ The research behind them: [research/global-pause.md](research/global-pause.md) (
 
 Code:
 - `crates/sioul-core/src/pause.rs`: the settings, the state, the end of work moved, the return, the screen, the numbers;
-- `crates/sioul-core/src/quiet.rs`: the two pauses among the times (`Reason::FreeTime`, `Reason::Paused`, `Reason::Extended`), what may notify (the notification matrix's pause and Free time columns, `notify`);
+- `crates/sioul-core/src/quiet.rs`: the two pauses among the times (`Reason::FreeTime`, `Reason::Paused`, `Reason::Extended`), what may notify (the matrix's pause and Free time columns, `attention`, [attention.md](attention.md));
 - `crates/sioul-core/data/crisis-lines.toml`: the emergency numbers and crisis lines;
 - `crates/sioul-app/src/pauses.rs`: the window's side; `crates/sioul-app/src/dnd.rs`: the system's do-not-disturb;
 - `qml/PauseCover.qml` (the pause's screen), `qml/PauseSetup.qml` (its setup), the buttons in `qml/main.qml`, the offers in `qml/TasksPage.qml`.
@@ -91,7 +91,7 @@ The pause, then sleep, then Free time, then meals, then the hours' own overrides
 
 ### Set up on a calm day (P1), Settings ▸ Pauses
 - **Said once** (P5, O): "Sioul is not an emergency service. It does not watch you. It acts only when you press Pause."
-- **What is held**: everything Sioul shows; **Dose reminders still come** (unless held: the doses' pause cell of the notification matrix, P7, health.md); **Starred contacts get through** on the phone (P9).
+- **What is held**: everything Sioul shows; **Dose reminders still come** (unless held: the doses' pause cell of the matrix, P7, health.md); your Always through people's calls and messages come, the phone's mode letting them through as far as Android can say it (P9, [attention.md](attention.md) §6).
 - **What helps you** (P2, P15): in your words, one thing a line; a line with a link or a file's path opens it from the pause (a playlist, photos, an app's page). Nothing generic is added, no library to browse.
 - **A line for the pause** (P17): one line of yours, shown on the screen; never a counted exercise.
 - **Breathing guide** (P16): off unless switched on; its pace, breaths a minute (6 unless set: G).

@@ -62,7 +62,8 @@
 //! - [`shield`]: the shield of a public address: its mail read first, its tone and topic.
 //! - [`rules`]: the vocabulary of sorting: what a rule may propose.
 //! - [`text`]: text helpers shared by the detectors.
-//! - [`reach`]: who may reach you, on which channel, and when.
+//! - [`reach`]: who reaches you, on which channel, and the clock that says what time it is, ahead.
+//! - [`attention`]: what reaches you, and when: one matrix of who and what by time, its pipeline, its words.
 //! - [`mailnote`]: new mail as a notification, at the times it may come.
 //! - [`letters`]: paper letters: a scan read by OCR, understood, and shown as a card.
 //! - [`voicemail`]: voicemail that the phone operator sends by mail.
@@ -121,8 +122,6 @@
 //! - [`pause`]: the two pauses: Free time, and Paused.
 //! - [`everywhere`]: do-not-disturb on every device.
 //! - [`reminders`]: reminders before dates: one quiet notification for each.
-//! - [`notify`]: what each kind of Sioul's own notifications does at each time: the grid in the settings.
-//! - [`notify`]: what each kind of Sioul's notifications does at each time: a matrix you set.
 //! - [`reviews`]: how each day went, as you said it.
 //! - [`sounds`]: sounds to rest by or to focus with, all made here.
 //!
@@ -163,6 +162,7 @@ pub mod accounts;
 pub mod agenda;
 pub mod appnotes;
 pub mod areas;
+pub mod attention;
 pub mod bank;
 pub mod blocks;
 pub mod budget;
@@ -200,7 +200,6 @@ pub mod mailnote;
 pub mod mailto;
 pub mod money;
 pub mod needs;
-pub mod notify;
 pub mod overlaps;
 pub mod notes;
 pub mod payments;

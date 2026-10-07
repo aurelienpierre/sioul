@@ -8,10 +8,11 @@
 //! notifications helped attention and mood where none at all made people more
 //! anxious (Fitz et al. 2019): what helps is predictability, not silence.
 //!
-//! Mail that comes while it may not (outside its list's times, or at a time
-//! the notification matrix holds new mail: as usual, sleep, a pause, Free
-//! time, a slot of time for you; `notify`) waits; when a time begins in which
-//! some of it may come, one notification says the Porch opens.
+//! Mail that comes while it may not be told (its sender's row of the matrix
+//! of what reaches you says later or shown, not told, now: as usual, sleep,
+//! a pause, Free time, a slot of time for you; `attention`) waits; when a
+//! time begins in which some of it may come, one notification says the
+//! Porch opens. A row that says "not at all" now: never told, on the Porch only.
 //!
 //! Never told: what is set aside (forged, spam, a borrowed name, blocked),
 //! what your own spam filter flagged or moved (the review queue: it waits
@@ -22,7 +23,6 @@
 
 use crate::i18n::Translator;
 use crate::porch::{Lane, Reason, Triaged};
-use crate::quiet::Mode;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -40,11 +40,14 @@ pub struct Letter {
     pub key: String,
     pub sender: String,
     pub subject: String,
+    /// From someone Always through, told through the system's do-not-disturb
+    /// (critical urgency on a computer).
+    pub through: bool,
 }
 
 impl Letter {
     pub fn of(t: &Triaged) -> Letter {
-        Letter { key: key(t), sender: one_line(t.card.sender()), subject: one_line(&t.card.subject) }
+        Letter { key: key(t), sender: one_line(t.card.sender()), subject: one_line(&t.card.subject), through: false }
     }
 }
 
@@ -96,12 +99,27 @@ pub fn never(t: &Triaged, newsletters: bool) -> bool {
     t.reasons.iter().any(|r| matches!(r, Reason::FromYourself | Reason::Blocked)) || read_already(t)
 }
 
-/// The moment as new mail sees it: what now is for, why, whether mail may
-/// be told, and whether a do-not-disturb you switched on lets only some
-/// people through (`gated`). When it changes, a time began: what waited and
-/// may come now is told once (`waited`).
-pub fn moment(mode: &Mode, may: bool, gated: bool) -> String {
-    format!("{}:{:?}:{may}:{gated}", mode.time.id(), mode.reason)
+/// The moment as new mail sees it: what now is for, its columns and layers
+/// in the matrix (a slot of time for you, do-not-disturb from its switch or
+/// a focus session), Free time's "Nothing at all", and whether mail may be
+/// told at all. When it changes, a time began: what waited and may come now
+/// is told once (`waited`).
+pub fn moment(now: &crate::attention::Now, may: bool) -> String {
+    let columns: Vec<&str> = now.times.iter().map(|c| c.id()).collect();
+    format!("{}:{}:{}:{}:{}:{may}", now.time.id(), columns.join("+"), now.slot, now.dnd, now.nothing)
+}
+
+/// What becomes of a new message now, as the matrix says of its sender.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fate {
+    /// Told now.
+    Now,
+    /// Told now, through the system's do-not-disturb: someone Always through.
+    Through,
+    /// It waits for a time in which it is told.
+    Later,
+    /// Never told: its row says "not at all" now; it stays on the Porch.
+    Never,
 }
 
 /// What was done with each new message, by key: told (or never to tell), or
@@ -175,11 +193,10 @@ pub struct Sorted {
 }
 
 /// Sorts the inbox's arrivals of a fetch, as the Porch judged them: those
-/// told now (`now`: a notification may come now, the matrix lets the
-/// sender's list through now as the Porch shows it, and a do-not-disturb
-/// you switched on lets the sender through), those that wait, those never
-/// told. A message the ledger knows is left out: told once.
-pub fn sort(arrivals: &[Triaged], ledger: &Ledger, newsletters: bool, now: impl Fn(&Triaged) -> bool) -> Sorted {
+/// told now, those that wait, those never told (`fate`: what the matrix of
+/// what reaches you says of each now, `attention::Attention::decide`; and
+/// the lanes never told). A message the ledger knows is left out: told once.
+pub fn sort(arrivals: &[Triaged], ledger: &Ledger, newsletters: bool, fate: impl Fn(&Triaged) -> Fate) -> Sorted {
     let mut out = Sorted::default();
     let mut seen = BTreeSet::new();
     for t in arrivals {
@@ -189,10 +206,13 @@ pub fn sort(arrivals: &[Triaged], ledger: &Ledger, newsletters: bool, now: impl 
         }
         if never(t, newsletters) {
             out.never.push(key);
-        } else if now(t) {
-            out.now.push(Letter::of(t));
-        } else {
-            out.later.push(key);
+            continue;
+        }
+        match fate(t) {
+            Fate::Now => out.now.push(Letter::of(t)),
+            Fate::Through => out.now.push(Letter { through: true, ..Letter::of(t) }),
+            Fate::Later => out.later.push(key),
+            Fate::Never => out.never.push(key),
         }
     }
     out
@@ -244,8 +264,12 @@ mod tests {
     use super::*;
     use crate::areas::{Area, Time, Week};
     use crate::porch::{SenderList, Senders};
-    use crate::quiet::Reason as Why;
-    use crate::reach::Reach;
+    use crate::quiet::{Mode, Reason as Why};
+
+    /// Told now or later, as a test's rule says.
+    fn fate(now: bool) -> Fate {
+        if now { Fate::Now } else { Fate::Later }
+    }
 
     /// A message as the Porch judges it, fetched into `account`; `headers` before the subject.
     fn message(account: &str, from: &str, headers: &str, subject: &str, id: &str, senders: &Senders, priority: crate::config::Priority) -> Triaged {
@@ -284,12 +308,12 @@ mod tests {
 
         // In view: the safe sender always; the others as the matrix says (here: the bill and Bob too).
         let ledger = Ledger::default();
-        let sorted = sort(&arrivals, &ledger, false, |t| t.card.from_address.as_deref() != Some("bob@example.org"));
+        let sorted = sort(&arrivals, &ledger, false, |t| fate(t.card.from_address.as_deref() != Some("bob@example.org")));
         assert_eq!(sorted.now.iter().map(|l| l.sender.as_str()).collect::<Vec<_>>(), ["Murena", "Alice"], "{sorted:?}");
         assert_eq!(sorted.later, [key(&bob)], "Bob waits for his list's times");
         assert_eq!(sorted.never.len(), 6, "the newsletter, the code, the forged one, your own, the less important account, the one read already");
         // Newsletters when asked.
-        assert!(sort(&[news.clone()], &ledger, true, |_| true).now.len() == 1);
+        assert!(sort(&[news.clone()], &ledger, true, |_| Fate::Now).now.len() == 1);
 
         // The words: the count in words, the first senders with their subjects.
         let en = Translator::new("en");
@@ -299,7 +323,7 @@ mod tests {
         assert_eq!(batch(&fr, &sorted.now[..1]).0, "Une lettre");
         assert_eq!(batch(&en, &sorted.now[..1]).0, "One letter");
         // Past twelve, digits; three named at most; a message without a subject says so.
-        let many: Vec<Letter> = (0..13).map(|i| Letter { key: i.to_string(), sender: format!("S{i}"), subject: if i == 0 { String::new() } else { format!("T{i}") } }).collect();
+        let many: Vec<Letter> = (0..13).map(|i| Letter { key: i.to_string(), sender: format!("S{i}"), subject: if i == 0 { String::new() } else { format!("T{i}") }, through: false }).collect();
         assert_eq!(batch(&en, &many), ("13 letters".to_string(), "S0, (no subject) · S1, T1 · S2, T2".to_string()));
 
         // Told once, by account and Message-ID: fetched again, nothing; the same message in another account is another.
@@ -313,9 +337,9 @@ mod tests {
         for k in &sorted.later {
             ledger.wait(k, 100);
         }
-        assert!(sort(&arrivals, &ledger, false, |_| true).now.is_empty(), "never twice");
+        assert!(sort(&arrivals, &ledger, false, |_| Fate::Now).now.is_empty(), "never twice");
         let elsewhere = message("work", "Alice <alice@example.org>", "", "Dinner on Friday", "1@example.org", &senders, usual);
-        assert_eq!(sort(&[elsewhere], &ledger, false, |_| true).now.len(), 1);
+        assert_eq!(sort(&[elsewhere], &ledger, false, |_| Fate::Now).now.len(), 1);
         // A message without a Message-ID: its file's unique name, whatever its flags.
         let mut nameless = alice.clone();
         nameless.card.message_id = None;
@@ -324,12 +348,17 @@ mod tests {
         assert_eq!(key(&nameless), key(&flagged));
 
         // Asleep (or in a pause): nothing now, everything in view waits.
-        let asleep = sort(&[bob.clone()], &Ledger::default(), false, |_| false);
+        let asleep = sort(&[bob.clone()], &Ledger::default(), false, |_| Fate::Later);
+        // Its row saying "not at all" now: never told, on the Porch only.
+        assert_eq!(sort(&[bob.clone()], &Ledger::default(), false, |_| Fate::Never).never.len(), 1);
         assert!(asleep.now.is_empty() && asleep.later.len() == 1);
         // A do-not-disturb you switched on: the people it lets through are told, the others wait.
         let gate = |t: &Triaged| t.card.from_address.as_deref() == Some("alice@example.org");
-        let held = sort(&[alice.clone(), bob.clone()], &Ledger::default(), false, gate);
+        let held = sort(&[alice.clone(), bob.clone()], &Ledger::default(), false, |t| fate(gate(t)));
         assert_eq!((held.now.len(), held.now[0].sender.as_str(), held.later.len()), (1, "Alice", 1));
+        // Someone Always through: told through the system's do-not-disturb.
+        let through = sort(&[alice.clone()], &Ledger::default(), false, |_| Fate::Through);
+        assert!(through.now[0].through && !held.now[0].through);
 
         // A time begins: what waited and may come now, told once.
         let waiting = waited(&arrivals, &ledger, false, |_| true);
@@ -352,25 +381,35 @@ mod tests {
 
     #[test]
     fn the_matrix_and_the_moment() {
+        use crate::attention::{Attention, Event, Lane as MailLane, Level, Now, Source};
         let senders = Senders::default();
         let usual = crate::config::Priority::default();
         let stranger = message("work", "Someone <someone@elsewhere.example>", "", "A question", "10@elsewhere.example", &senders, usual);
-        let week = Week { work_hours: true, admin_hours: false, meals: true, sleep: true };
-        let senders = &senders;
-        let in_view = |time: Time| move |t: &Triaged| crate::quiet::mail_in_view(t, senders, &Reach::default().mail, Area::WORK, time, week);
-        // A neutral sender writing to a work address: told in work time, waiting in the evening.
-        assert_eq!(sort(&[stranger.clone()], &Ledger::default(), false, in_view(Time::Work)).now.len(), 1);
-        assert_eq!(sort(&[stranger.clone()], &Ledger::default(), false, in_view(Time::Leisure)).later.len(), 1);
-        // As usual, sleep, the pause and Free time hold mail; work, the evening and meals do not (`notify`).
-        let may_tell = |m: &Mode| crate::notify::Notify::usual().comes(crate::notify::Kind::Mail, &crate::notify::Now::of(m, false, false));
-        assert!(!may_tell(&mode(Time::Sleep, Why::Sleep)) && !may_tell(&mode(Time::Sleep, Why::Paused)) && !may_tell(&mode(Time::Leisure, Why::FreeTime)));
-        assert!(may_tell(&mode(Time::Work, Why::Working)) && may_tell(&mode(Time::Leisure, Why::Evening)) && may_tell(&mode(Time::Meals, Why::Meal)));
+        let attention = Attention::usual();
+        let decided = |t: &Triaged, m: &Mode| attention.decide(&Event::of(Source::Mail { who: senders.who_of(&t.card), always: false, lane: MailLane::Usual }).for_area(Some(Area::WORK)), &Now::of(m));
+        let fate_at = |m: Mode| {
+            let decided = &decided;
+            move |t: &Triaged| match decided(t, &m) {
+                out if out.told => Fate::Now,
+                out if out.level == Level::Never => Fate::Never,
+                _ => Fate::Later,
+            }
+        };
+        // A stranger writing to a work address: told in work time, waiting in the evening.
+        assert_eq!(sort(&[stranger.clone()], &Ledger::default(), false, fate_at(mode(Time::Work, Why::Working))).now.len(), 1);
+        assert_eq!(sort(&[stranger.clone()], &Ledger::default(), false, fate_at(mode(Time::Leisure, Why::Evening))).later.len(), 1);
+        // As usual, sleep, the pause and Free time hold the telling of a safe sender's mail; work, the evening and meals do not.
+        let safe_told = |m: &Mode| attention.decide(&Event::of(Source::Mail { who: crate::reach::Who::Safe, always: false, lane: MailLane::Usual }), &Now::of(m)).told;
+        assert!(!safe_told(&mode(Time::Sleep, Why::Sleep)) && !safe_told(&mode(Time::Sleep, Why::Paused)) && !safe_told(&mode(Time::Leisure, Why::FreeTime)));
+        assert!(safe_told(&mode(Time::Work, Why::Working)) && safe_told(&mode(Time::Leisure, Why::Evening)) && safe_told(&mode(Time::Meals, Why::Meal)));
         // A time beginning is a change of moment; the same moment twice is none.
-        let evening = moment(&mode(Time::Leisure, Why::Evening), true, false);
-        assert_eq!(evening, moment(&mode(Time::Leisure, Why::Evening), true, false));
-        assert_ne!(evening, moment(&mode(Time::Work, Why::Working), true, false));
-        assert_ne!(moment(&mode(Time::Sleep, Why::Sleep), false, false), moment(&mode(Time::Leisure, Why::Evening), true, false), "waking");
-        assert_ne!(moment(&mode(Time::Work, Why::Working), true, true), moment(&mode(Time::Work, Why::Working), true, false), "a do-not-disturb ends");
+        let at = |time: Time, why: Why| Now::of(&mode(time, why));
+        let evening = moment(&at(Time::Leisure, Why::Evening), true);
+        assert_eq!(evening, moment(&at(Time::Leisure, Why::Evening), true));
+        assert_ne!(evening, moment(&at(Time::Work, Why::Working), true));
+        assert_ne!(moment(&at(Time::Sleep, Why::Sleep), false), moment(&at(Time::Leisure, Why::Evening), true), "waking");
+        assert_ne!(moment(&at(Time::Work, Why::Working).layers(false, true), true), moment(&at(Time::Work, Why::Working), true), "a do-not-disturb ends");
+        assert_ne!(moment(&at(Time::Work, Why::Working).layers(true, false), true), moment(&at(Time::Work, Why::Working), true), "a slot of time for you ends");
         // Kept and read back; old marks forgotten.
         let path = std::env::temp_dir().join(format!("sioul-mail-notified-{}.toml", std::process::id()));
         let mut ledger = Ledger::default();

@@ -14,7 +14,7 @@ Sioul is not an emergency service. It does not watch you, and it acts only when 
 
 Press **Free time** and now is leisure, whatever the hour, until you press it again.
 
-- **Who reaches you**: only your safe senders; **Nothing at all**, in the status line's menu, keeps even them away this time. Doses and the codes you asked for still come. What waits, and what still comes: [Notifications](notifications.md#held-for-later).
+- **Who reaches you**: your safe senders' calls and messages, their mail shown without a notification, and your Always through people; **Nothing at all**, in the status line's menu or on Free time's card in What reaches you, keeps even your safe senders away this time. Doses and the codes you asked for still come. What waits, and what still comes: [What reaches you, by time](notifications.md#by-time).
 - **What is offered**: the Tasks page shows "Free time" and, under "If you want:", your own leisure items, in the order you made them. Nothing to finish, no next step, no timer. Movement and exercise are among them unless you turn **Offer movement and exercise** off in [Settings ▸ Pauses](settings.md#pauses); with **Even days** on (for an illness that limits your energy), they are off unless you turn them on.
 - **A focus session** running stops when you press it, and counts; Sioul offers a line on where you stopped.
 - **The night comes first**: Free time ends by itself when your night begins (or at midnight without one), and a nap in it is a nap.
@@ -37,8 +37,7 @@ When Free time takes some of your working hours, the end of today's work moves l
 
 In [Settings ▸ Pauses](settings.md#pauses), take your time:
 
-- **Dose reminders still come**, unless you change it in Settings ▸ Reminders and notifications ▸ [When each comes](notifications.md#when-each-comes) (Doses ▸ Pause ▸ Later): then they wait until you come back, and are reminded once then.
-- **Starred contacts get through**, on the phone: calls and messages from your starred contacts, and anyone calling twice within 15 minutes. Off, no one.
+- **What comes during a pause**: doses, your events' alarms and Sioul's reminders before them, the codes you asked for, and your Always through people's calls and messages; the rest waits until you come back. It is the pause's card in Settings ▸ [What reaches you](notifications.md#by-time); there, **Later** for Doses ▸ Pause makes dose reminders wait until you come back, reminded once then.
 - **What helps you**: in your own words, one thing a line. A line with a link or a file's path opens it from the pause: a playlist, a folder of photos, an app's page.
 - **A line for the pause**: one line of yours, shown on the screen.
 - **Breathing guide**: off unless you turn it on; then a slow shape to breathe with, shown only when you tap it, the breath out longer than the breath in, at the pace you set.
@@ -48,7 +47,7 @@ In [Settings ▸ Pauses](settings.md#pauses), take your time:
 
 ### Press it {#press-it}
 
-**Pause** asks nothing. Everything Sioul shows is held, on all your devices: nothing new on screen, no notification but dose reminders (unless you chose otherwise) and your events' own reminders and alarms ([Notifications](notifications.md#held-for-later)). Free time, if it was on, ends there. A focus session running stops and counts. Today's end of work stays your usual one, even if Free time had moved it: the work of the paused hours goes to later days, never into your evening. The phone itself stays free: calls, other apps, emergency calls.
+**Pause** asks nothing. Everything Sioul shows is held, on all your devices: nothing new on screen, no notification but dose reminders (unless you chose otherwise), your events' own reminders and alarms, the codes you asked for, and your Always through people's calls and messages ([What reaches you, by time](notifications.md#by-time)). Free time, if it was on, ends there. A focus session running stops and counts. Today's end of work stays your usual one, even if Free time had moved it: the work of the paused hours goes to later days, never into your evening. The phone itself stays free: calls, other apps, emergency calls.
 
 On a phone, **Pause** is also among the quick settings, and at a long press on Sioul's icon: both open Sioul on the pause, and never end it. On a locked phone, the quick setting asks to unlock first.
 
@@ -85,7 +84,7 @@ From Free time, **Keep my usual end** turns it into a pause that moves nothing: 
 
 ## Notifications and do-not-disturb {#do-not-disturb-on-every-device}
 
-<span id="silencing-the-phone-and-the-computer"></span>During a pause and in Free time, Sioul's own notifications wait on all your devices, and each device silences itself as far as its system lets it. What waits and what still comes: [Notifications held for later](notifications.md#held-for-later); what each phone and computer does: [Do not disturb on every device](notifications.md#what-each-system-does).
+<span id="silencing-the-phone-and-the-computer"></span>During a pause and in Free time, Sioul's own notifications wait on all your devices, and each device silences itself as far as its system lets it. What waits and what still comes: the pause's and Free time's cards in [What reaches you](notifications.md#by-time); what each phone and computer does: [Do not disturb on every device](notifications.md#what-each-system-does).
 
 ## What Sioul does not do {#what-sioul-does-not-do}
 

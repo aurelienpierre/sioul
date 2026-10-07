@@ -55,6 +55,9 @@ fn words() -> serde_json::Value {
     serde_json::json!({
         "channel": tr().text("events-channel", None),
         "mail": tr().text("mail-channel", None),
+        "mail-through": tr().text("mail-through-channel", None),
+        "alarms": tr().text("alarms-channel", None),
+        "alarms-pause": tr().text("dnd-events-channel", None),
         "open": tr().text("reminder-open", None),
     })
 }
@@ -81,7 +84,7 @@ fn listed(all: &[Reminder], holds: &Holds, now: &Zoned) -> String {
         .filter(|(at, r)| *at < r.until)
         .collect();
     due.sort_by_key(|(at, r)| (*at, r.key.clone()));
-    let list: Vec<serde_json::Value> = due.iter().take(AT_MOST).map(|(at, r)| serde_json::json!({ "key": r.key, "at": at * 1000, "title": r.title, "body": r.body })).collect();
+    let list: Vec<serde_json::Value> = due.iter().take(AT_MOST).map(|(at, r)| serde_json::json!({ "key": r.key, "kind": r.kind, "at": at * 1000, "title": r.title, "body": r.body })).collect();
     let look = (stamp / LOOK_STEP + LOOK_AGAIN / LOOK_STEP) * LOOK_STEP;
     serde_json::json!({ "reminders": list, "look": look * 1000, "words": words() }).to_string()
 }
@@ -136,6 +139,7 @@ pub(crate) fn schedule_from(all: &[Reminder], holds: &Holds, now: &Zoned) {
 pub(crate) fn show(reminder: &Reminder) {
     let json = serde_json::json!({
         "key": reminder.key,
+        "kind": reminder.kind,
         "title": reminder.title,
         "body": reminder.body,
         "event": reminder.target,
@@ -152,9 +156,11 @@ pub(crate) fn show(reminder: &Reminder) {
 
 /// New mail's notification on a phone (`mailnote`), in the quiet "New mail"
 /// channel: one at a time, the next batch in its place; a tap opens the Porch.
+/// `through`: someone Always through is in it, whom the system's
+/// do-not-disturb should let through (a channel that passes, Java's to choose).
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub(crate) fn mail_note(title: &str, body: &str) {
-    let json = serde_json::json!({ "title": title, "body": body, "words": words() });
+pub(crate) fn mail_note(title: &str, body: &str, through: bool) {
+    let json = serde_json::json!({ "title": title, "body": body, "through": through, "words": words() });
     let Ok(text) = CString::new(json.to_string()) else { return };
     #[cfg(target_os = "android")]
     unsafe {
@@ -279,7 +285,7 @@ mod tests {
         // Held during do-not-disturb (the matrix changed): asked again in a quarter of an hour.
         let mut focus = usual(Wait::Nothing);
         focus.now.dnd = true;
-        focus.notify.set(sioul_core::notify::Kind::Before, sioul_core::notify::Column::Dnd, sioul_core::notify::Cell::Later).unwrap();
+        focus.attention.set(sioul_core::attention::Row::Own(sioul_core::attention::Kind::Before), sioul_core::attention::Column::Dnd, sioul_core::attention::Level::Later).unwrap();
         assert_eq!(when(&reminder(stamp - 60, stamp + 3600), &focus, stamp), stamp + AGAIN);
     }
 }

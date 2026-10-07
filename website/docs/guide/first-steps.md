@@ -57,8 +57,8 @@ Sioul on a phone: [Install](install.md#on-android). On a phone, or in a window u
 What differs on a phone:
 
 - **Notifications** come for doses ([Health](health.md#reminders)), the time running ([Time](time.md#where-time-comes-from)), events ([Agenda](agenda.md#reminders)) and new mail at its times ([The Porch](porch.md#new-mail-told-at-its-times)). A code you asked for shows on the Porch; the other reminders do not come there yet.
-- **Calls** can be screened once you let Sioul be Android's "Caller ID & spam app": who may ring, and when, as who may reach you says; the others go to your voicemail ([Calls](calls.md)).
-- **Other apps' notifications** can be held until their time, once you give Sioul Android's notification access: messages from people as who may reach you says, the rest at the gathered times ([Settings](settings.md#other-apps)).
+- **Calls** can be screened once you let Sioul be Android's "Caller ID & spam app": who may ring, and when, as their row in What reaches you says; the others go to your voicemail ([Calls](calls.md)).
+- **Other apps' notifications** can be held until their time, once you give Sioul Android's notification access: messages from people by who wrote them, the rest at the gathered times ([Settings ▸ This phone](settings.md#this-phone)).
 - **Mail** is fetched while Sioul is open: Android stops it in the background.
 - **Sharing**: Sioul is in Android's share sheet, and so is each of your addresses; mail links open in it ([Mail](mail.md#from-other-apps)).
 - **Folders**: a setting's **Choose…** opens Sioul's own list of the phone's folders, with **Allow access to files** when Android has not given Sioul that access yet.
@@ -139,7 +139,7 @@ On a computer, Sioul opens maximized; ++f11++ shows it full screen, and back. It
 
 While its window is open, Sioul keeps each inbox open on the server: a code or a sign-in link you asked a site for reaches you within seconds, as one quiet notification, whatever the hour.
 
-Reminders can also come with the window closed: in **Settings ▸ Reminders and notifications**, tick **With Sioul's window closed**. A small watcher then starts with your session; it fetches no mail.
+Reminders can also come with the window closed: in **Settings ▸ Reminders**, tick **With Sioul's window closed**. A small watcher then starts with your session; it fetches no mail.
 
 ## Next
 

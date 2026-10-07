@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Settings ▸ Do not disturb, under its settings (docs/do-not-disturb.md):
-// what this device's system lets Sioul do, with the pages it needs; the list
-// of people who may reach you during do-not-disturb, the same on every
-// device; on a phone, who on it is starred (Sioul never stars anyone: it
-// opens their contact), and Sioul kept in step in the background.
+// Do-not-disturb's parts (docs/do-not-disturb.md), each where it belongs
+// (`part`): what this device's system lets Sioul do, with the pages it needs
+// (What reaches you ▸ Do not disturb; This phone); the Always through list,
+// the same on every device (What reaches you ▸ Exceptions); on a phone, who
+// on it is starred (Sioul never stars anyone: it opens their contact), and
+// Sioul kept in step in the background (This phone).
 
 pragma ComponentBehavior: Bound
 
@@ -24,6 +25,12 @@ ColumnLayout {
     property var editing: null
     property var found: []
     property string none: ""
+    // Which parts: "device" (this device's system), "list" (Always through),
+    // "phone" (this device's system, the stars and the background), or "all".
+    property string part: "all"
+    readonly property bool deviceShown: setup.part === "all" || setup.part === "device" || setup.part === "phone"
+    readonly property bool listShown: setup.part === "all" || setup.part === "list"
+    readonly property bool phoneShown: setup.shown.android === true && (setup.part === "all" || setup.part === "phone")
 
     function reload() {
         setup.shown = JSON.parse(setup.sioul.dndSetup() || "null") || setup.shown
@@ -49,6 +56,7 @@ ColumnLayout {
 
     // ---------------------------------------------------------------- this device
     Label {
+        visible: setup.deviceShown
         Layout.fillWidth: true
         Layout.topMargin: 18
         text: setup.sioul.text("dnd-setup-here")
@@ -58,7 +66,7 @@ ColumnLayout {
         color: setup.theme.accent
     }
     Repeater {
-        model: [setup.shown.here.line].concat(setup.shown.here.lines || []).filter(l => l !== "")
+        model: setup.deviceShown ? [setup.shown.here.line].concat(setup.shown.here.lines || []).filter(l => l !== "") : []
 
         delegate: Label {
             required property string modelData
@@ -71,6 +79,7 @@ ColumnLayout {
         }
     }
     Flow {
+        visible: setup.deviceShown
         Layout.fillWidth: true
         spacing: 6
 
@@ -90,7 +99,7 @@ ColumnLayout {
     }
     // GNOME: Sioul switches its Do Not Disturb only with this yes, the same as the pauses'.
     WrapCheckBox {
-        visible: (setup.shown.here.offers || []).some(o => o.key === "desktop")
+        visible: setup.deviceShown && (setup.shown.here.offers || []).some(o => o.key === "desktop")
         Layout.fillWidth: true
         text: setup.shown.here.consent || ""
         checked: setup.shown.gnome === true
@@ -99,6 +108,7 @@ ColumnLayout {
 
     // ---------------------------------------------------------------- the list
     Label {
+        visible: setup.listShown && setup.part === "all"
         Layout.fillWidth: true
         Layout.topMargin: 18
         text: setup.sioul.text("dnd-setup-list")
@@ -108,6 +118,7 @@ ColumnLayout {
         color: setup.theme.accent
     }
     Label {
+        visible: setup.listShown
         Layout.fillWidth: true
         text: setup.sioul.text("dnd-setup-list-help")
         textFormat: Text.PlainText
@@ -115,7 +126,7 @@ ColumnLayout {
         color: setup.theme.muted
     }
     Label {
-        visible: setup.shown.problem !== "" || setup.shown.said !== ""
+        visible: setup.listShown && (setup.shown.problem !== "" || setup.shown.said !== "")
         Layout.fillWidth: true
         text: setup.shown.problem !== "" ? setup.shown.problem : setup.shown.said
         textFormat: Text.PlainText
@@ -123,13 +134,13 @@ ColumnLayout {
         color: setup.theme.text
     }
     Label {
-        visible: setup.shown.people.length === 0
+        visible: setup.listShown && setup.shown.people.length === 0
         Layout.fillWidth: true
         text: setup.sioul.text("dnd-setup-empty")
         color: setup.theme.muted
     }
     Repeater {
-        model: setup.shown.people
+        model: setup.listShown ? setup.shown.people : []
 
         delegate: ColumnLayout {
             id: person
@@ -186,6 +197,7 @@ ColumnLayout {
         }
     }
     Flow {
+        visible: setup.listShown
         Layout.fillWidth: true
         Layout.topMargin: 6
         spacing: 6
@@ -205,6 +217,7 @@ ColumnLayout {
     TextField {
         id: search
 
+        visible: setup.listShown
         Layout.fillWidth: true
         placeholderText: setup.sioul.text("dnd-setup-add-contact")
         Accessible.name: setup.sioul.text("dnd-setup-search")
@@ -220,13 +233,13 @@ ColumnLayout {
         }
     }
     Label {
-        visible: setup.none !== "" && search.text.trim().length >= 2
+        visible: setup.listShown && setup.none !== "" && search.text.trim().length >= 2
         Layout.fillWidth: true
         text: setup.none
         color: setup.theme.muted
     }
     Repeater {
-        model: setup.found
+        model: setup.listShown ? setup.found : []
 
         delegate: Button {
             id: contact
@@ -251,7 +264,7 @@ ColumnLayout {
     }
     // Someone written by hand, or changed: a name, numbers and addresses, one per line.
     ColumnLayout {
-        visible: setup.editing !== null
+        visible: setup.listShown && setup.editing !== null
         Layout.fillWidth: true
         spacing: 4
 
@@ -309,7 +322,7 @@ ColumnLayout {
 
     // ---------------------------------------------------------------- on a phone: starred, and in the background
     Label {
-        visible: setup.shown.android === true
+        visible: setup.phoneShown
         Layout.fillWidth: true
         Layout.topMargin: 18
         text: setup.sioul.text("dnd-stars-title")
@@ -319,7 +332,7 @@ ColumnLayout {
         color: setup.theme.accent
     }
     Label {
-        visible: setup.shown.android === true && setup.shown.stars !== undefined
+        visible: setup.phoneShown && setup.shown.stars !== undefined
         Layout.fillWidth: true
         text: setup.shown.stars ? setup.shown.stars.summary : ""
         textFormat: Text.PlainText
@@ -327,7 +340,7 @@ ColumnLayout {
         color: setup.theme.text
     }
     Label {
-        visible: setup.shown.android === true && setup.shown.stars !== undefined && setup.shown.stars.permission === true && setup.shown.stars.missing > 0
+        visible: setup.phoneShown && setup.shown.stars !== undefined && setup.shown.stars.permission === true && setup.shown.stars.missing > 0
         Layout.fillWidth: true
         text: setup.sioul.text("dnd-stars-why")
         textFormat: Text.PlainText
@@ -335,12 +348,12 @@ ColumnLayout {
         color: setup.theme.muted
     }
     Button {
-        visible: setup.shown.android === true && setup.shown.stars !== undefined && setup.shown.stars.permission !== true
+        visible: setup.phoneShown && setup.shown.stars !== undefined && setup.shown.stars.permission !== true
         text: setup.sioul.text("dnd-stars-allow")
         onClicked: setup.act("allow-contacts", {})
     }
     Repeater {
-        model: setup.shown.android === true && setup.shown.stars ? setup.shown.stars.people : []
+        model: setup.phoneShown && setup.shown.stars ? setup.shown.stars.people : []
 
         delegate: RowLayout {
             id: starred
@@ -370,13 +383,13 @@ ColumnLayout {
         }
     }
     Button {
-        visible: setup.shown.android === true
+        visible: setup.phoneShown
         flat: true
         text: setup.sioul.text("dnd-stars-again")
         onClicked: setup.reload()
     }
     Label {
-        visible: setup.shown.android === true
+        visible: setup.phoneShown
         Layout.fillWidth: true
         text: setup.sioul.text("dnd-stars-repeat")
         textFormat: Text.PlainText
@@ -385,7 +398,7 @@ ColumnLayout {
     }
 
     Label {
-        visible: setup.shown.android === true
+        visible: setup.phoneShown
         Layout.fillWidth: true
         Layout.topMargin: 18
         text: setup.sioul.text("dnd-steps-title")
@@ -395,14 +408,14 @@ ColumnLayout {
         color: setup.theme.accent
     }
     WrapCheckBox {
-        visible: setup.shown.android === true
+        visible: setup.phoneShown
         Layout.fillWidth: true
         text: setup.sioul.text("set-dnd-background")
         checked: setup.shown.steps ? setup.shown.steps.on === true : false
         onToggled: setup.act("background", { on: checked })
     }
     Label {
-        visible: setup.shown.android === true
+        visible: setup.phoneShown
         Layout.fillWidth: true
         text: setup.sioul.text("set-dnd-background-help")
         textFormat: Text.PlainText
@@ -410,7 +423,7 @@ ColumnLayout {
         color: setup.theme.muted
     }
     Label {
-        visible: setup.shown.android === true && setup.shown.steps !== undefined
+        visible: setup.phoneShown && setup.shown.steps !== undefined
         Layout.fillWidth: true
         text: setup.shown.steps ? setup.shown.steps.line + " " + setup.shown.steps.battery_line : ""
         textFormat: Text.PlainText
@@ -418,7 +431,7 @@ ColumnLayout {
         color: setup.theme.text
     }
     Button {
-        visible: setup.shown.android === true && setup.shown.steps !== undefined && setup.shown.steps.battery !== true
+        visible: setup.phoneShown && setup.shown.steps !== undefined && setup.shown.steps.battery !== true
         Layout.bottomMargin: 24
         text: setup.sioul.text("dnd-steps-allow")
         onClicked: setup.act("battery", {})

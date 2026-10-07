@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Invented mail for the tests: ham and spam on reserved domains (RFC 2606),
-//! no real person, no real address, no real text. Deterministic: the same
-//! seed, the same mailbox.
+//! Invented mail for the tests, this crate's and the command line's: ham and
+//! spam on reserved domains (RFC 2606), no real person, no real address, no
+//! real text. Deterministic: the same seed, the same mailbox.
 
 use crate::Rng;
 use crate::corpus::{Leaf, Node, Record, Text};
@@ -32,7 +32,7 @@ const NAMES: &[&str] = &["Alice Martin", "Bruno Petit", "Chloe Durand", "David L
 
 /// One invented message, and where it sits.
 #[derive(Debug, Clone)]
-pub(crate) struct Mail {
+pub struct Mail {
     pub account: &'static str,
     pub folder: &'static str,
     pub role: Role,
@@ -73,7 +73,7 @@ fn date_header(seconds: i64) -> String {
 }
 
 /// One message: plain text, sometimes with list headers or a link.
-pub(crate) fn message(rng: &mut Rng, spam: bool, serial: u32, date: i64) -> Vec<u8> {
+pub fn message(rng: &mut Rng, spam: bool, serial: u32, date: i64) -> Vec<u8> {
     let domain = if spam { pick(rng, SPAM_DOMAINS) } else { pick(rng, HAM_DOMAINS) };
     let name = if spam { "Prize Department" } else { pick(rng, NAMES) };
     let local = if spam { "noreply" } else { "contact" };
@@ -101,7 +101,7 @@ pub(crate) fn message(rng: &mut Rng, spam: bool, serial: u32, date: i64) -> Vec<
 const CAMPAIGN: &[&str] = &["vitamins", "supplement", "detox", "slimming", "capsules", "miracle", "keto", "collagen", "booster", "metabolism", "glucose", "formula"];
 
 /// A message of that new campaign: its words, a few common ones, a link.
-pub(crate) fn campaign(rng: &mut Rng, serial: u32, date: i64) -> Vec<u8> {
+pub fn campaign(rng: &mut Rng, serial: u32, date: i64) -> Vec<u8> {
     let pick_words = |rng: &mut Rng, count: usize| (0..count).map(|_| if rng.unit() < 0.8 { pick(rng, CAMPAIGN) } else { pick(rng, COMMON) }).collect::<Vec<_>>().join(" ");
     let subject = pick_words(rng, 4);
     let length = 40 + rng.below(40);
@@ -116,7 +116,7 @@ pub(crate) fn campaign(rng: &mut Rng, serial: u32, date: i64) -> Vec<u8> {
 /// A mailbox over two years: ham in two accounts' inboxes and archives, spam
 /// in their Junk folders, a few spam marked `$Junk` in an inbox and a few ham
 /// rescued from Junk with `$NotJunk`.
-pub(crate) fn mailbox(seed: u64, ham: usize, spam: usize) -> Vec<Mail> {
+pub fn mailbox(seed: u64, ham: usize, spam: usize) -> Vec<Mail> {
     let mut rng = Rng::new(seed);
     let total = ham + spam;
     let mut kinds: Vec<bool> = (0..ham).map(|_| false).chain((0..spam).map(|_| true)).collect();
@@ -146,7 +146,7 @@ pub(crate) fn mailbox(seed: u64, ham: usize, spam: usize) -> Vec<Mail> {
 }
 
 /// The corpus record a download makes of a plain-text message.
-pub(crate) fn record_of(mail: &Mail, uidvalidity: u32, uid: u32) -> Record {
+pub fn record_of(mail: &Mail, uidvalidity: u32, uid: u32) -> Record {
     let raw = String::from_utf8_lossy(&mail.raw).into_owned();
     let (header, body) = raw.split_once("\r\n\r\n").unwrap_or((&raw, ""));
     Record {

@@ -1338,6 +1338,29 @@ pub mod qobject {
         #[qinvokable]
         fn calls_setup(self: &Sioul) -> QString;
 
+        /// Settings ▸ What reaches you, as JSON (`reaches::view`): the moment
+        /// now in sentences, the presets, a card per time, the matrix's grid.
+        #[qinvokable]
+        fn reaches_view(self: &Sioul) -> QString;
+
+        /// A row of the matrix changed (`row`: "mail.safe", "codes"; `words`: its
+        /// words whole, a JSON list): what went wrong, else "".
+        #[qinvokable]
+        fn reaches_set(self: Pin<&mut Sioul>, row: &QString, words: &QString) -> QString;
+
+        /// A preset chosen ("usual", "quieter", "reachable"): what went wrong, else "".
+        #[qinvokable]
+        fn reaches_preset(self: Pin<&mut Sioul>, id: &QString) -> QString;
+
+        /// How someone reaches you, as JSON (`reaches::person`): a card's file or
+        /// UID, or a sender's addresses (a JSON array, or one).
+        #[qinvokable]
+        fn person_sheet(self: &Sioul, key: &QString, addresses: &QString) -> QString;
+
+        /// A change on a person's sheet (`verb`: "list" or "always"): {sheet, line}, as JSON.
+        #[qinvokable]
+        fn person_sheet_change(self: Pin<&mut Sioul>, key: &QString, addresses: &QString, verb: &QString, value: &QString) -> QString;
+
         /// An action of that tab (`calls::setup_change`): the tab again, as JSON.
         #[qinvokable]
         fn calls_setup_change(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
@@ -2049,12 +2072,6 @@ pub(crate) fn mode_now() -> sioul_core::quiet::Mode {
     crate::hours::mode_now()
 }
 
-/// Whether something for `area` comes forward now.
-pub(crate) fn in_view_now(area: sioul_core::areas::Area) -> bool {
-    let mode = mode_now();
-    sioul_core::areas::in_view(area, mode.time, mode.week)
-}
-
 /// Work time or quiet time, as the window shows it.
 /// "Work now" taken back, as Sioul starts or closes; the rest of the overrides kept.
 fn end_work_now() {
@@ -2134,16 +2151,18 @@ fn compute(shared: &Shared) -> Views {
     items.retain(|t| t.card.path.as_ref().is_none_or(|p| !hidden.contains(p)));
     // The phone's home screen card: the Porch as each coming time will show it (homecard.rs).
     crate::homecard::porch_seen(&items, &world.senders, world.store.as_ref());
-    // What the hours are for: codes and the senders you marked safe always; the
-    // rest as its address is for (an address you did not say: work's).
+    // What reaches you now (docs/attention.md): codes and what you sent
+    // yourself always; the rest as its sender's row of the matrix says now
+    // (shown, or shown without a word), Always through whatever their row, and
+    // as its address is for (an address you did not say: work's) but for your
+    // safe senders. No hours set: work and admin together.
     let mode = crate::hours::mode_at(&now);
-    if mode.time != sioul_core::areas::Time::Any {
+    {
         let area_of = |t: &sioul_core::porch::Triaged| t.card.account.as_deref().and_then(|id| world.config.account(id)).and_then(|a| a.area.as_deref()).and_then(sioul_core::areas::Area::parse).unwrap_or(sioul_core::areas::Area::WORK);
-        // Who may write to you when: the matrix of Accounts ▸ Senders.
-        // In free time, only your safe senders, or no one (docs/pauses.md).
-        let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-        let reach = sioul_core::pause::reach_now(sioul_core::reach::Reach::of(&world.config.reach).mail, &mode, sioul_core::pause::nothing_now(&overrides, &world.config.free_time));
-        items.retain(|t| sioul_core::quiet::mail_in_view(t, &world.senders, &reach, area_of(t), mode.time, mode.week));
+        let attention = sioul_core::attention::Attention::of(&world.config);
+        let moment = crate::hours::attention_at(&mode, &now);
+        let always = sioul_core::everywhere::People::load(&sioul_core::everywhere::People::default_path());
+        items.retain(|t| attention.mail(t, &world.senders, &always, area_of(t), &moment).shown);
     }
     // Asleep no project shows: what your senders wrote about one comes among the people you know.
     if mode.sleeps() {
@@ -2589,9 +2608,9 @@ fn learn(qt: &QtThread, shared: &Shared, id: &str) {
 
 /// One quiet notification per verified code among new mail, with a copy button.
 fn notify_codes(qt: &QtThread, files: &[PathBuf]) {
-    // As the notification matrix says (as usual, not while you sleep or pause):
-    // a code not told waits on the Porch (docs/health.md).
-    if !crate::hours::comes(sioul_core::notify::Kind::Codes) {
+    // As the matrix of what reaches you says (as usual, at once at any time;
+    // "On the Porch only" a choice while you sleep): a code not told waits on the Porch.
+    if !crate::hours::comes(sioul_core::attention::Kind::Codes) {
         return;
     }
     let config = load_config();
@@ -4855,6 +4874,63 @@ impl qobject::Sioul {
         QString::from(&crate::calls::setup())
     }
 
+    fn reaches_view(&self) -> QString {
+        QString::from(&crate::reaches::view(self.shared().realtime.load(Ordering::Relaxed)))
+    }
+
+    fn reaches_set(self: Pin<&mut Self>, row: &QString, words: &QString) -> QString {
+        let problem = crate::reaches::set_row(&row.to_string(), &words.to_string());
+        if problem.is_empty() {
+            self.attention_changed();
+        }
+        QString::from(&problem)
+    }
+
+    fn reaches_preset(self: Pin<&mut Self>, id: &QString) -> QString {
+        let problem = crate::reaches::preset(&id.to_string());
+        if problem.is_empty() {
+            self.attention_changed();
+        }
+        QString::from(&problem)
+    }
+
+    fn person_sheet(&self, key: &QString, addresses: &QString) -> QString {
+        QString::from(&crate::reaches::person(&key.to_string(), &addresses.to_string()))
+    }
+
+    fn person_sheet_change(mut self: Pin<&mut Self>, key: &QString, addresses: &QString, verb: &QString, value: &QString) -> QString {
+        let answer = crate::reaches::person_change(&key.to_string(), &addresses.to_string(), &verb.to_string(), &value.to_string());
+        let line = serde_json::from_str::<serde_json::Value>(&answer).ok().and_then(|a| a["line"].as_str().map(str::to_string)).unwrap_or_default();
+        if !line.is_empty() {
+            self.as_mut().set_status(QString::from(&line));
+        }
+        // The lists and the Always through list travel: your other devices told, the pages shown again.
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        show(&qt, &shared);
+        pim::show_pim(&qt, &shared);
+        std::thread::spawn(move || {
+            crate::calls::refresh(true);
+            crate::everywhere::apply();
+            crate::share::exchange(&qt, &shared);
+        });
+        QString::from(&answer)
+    }
+
+    /// The matrix changed (Settings ▸ What reaches you): the phone's calls'
+    /// table and its modes made again, the status line, the pages shown
+    /// again, your other devices told.
+    fn attention_changed(mut self: Pin<&mut Self>) {
+        self.as_mut().set_mode(QString::from(&mode_json()));
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        show(&qt, &shared);
+        work::show_work(&qt, &shared);
+        std::thread::spawn(move || {
+            crate::calls::refresh(true);
+            crate::everywhere::apply();
+            crate::share::exchange(&qt, &shared);
+        });
+    }
+
     fn calls_setup_change(self: Pin<&mut Self>, verb: &QString, json: &QString) -> QString {
         QString::from(&crate::calls::setup_change(&verb.to_string(), &json.to_string()))
     }
@@ -5095,13 +5171,13 @@ impl qobject::Sioul {
         // "rail" shows the places with their icons alone and with their
         // names (main.qml), "pauses" free time and the pause (docs/pauses.md), "blocks" a task pinned to a
         // time and left to the plan again (docs/tasks.md), "unsubscribe" a newsletter open
-        // with its Unsubscribe button (docs/client.md), "reach" who may reach you on each
-        // channel and a contact's list (docs/porch.md), "line" the status line with all it
+        // with its Unsubscribe button (docs/client.md), "attention" what reaches you, by time,
+        // by person, Sioul's own, its exceptions and do not disturb, and a person's sheet
+        // (docs/attention.md), "line" the status line with all it
         // may hold, a new draft deleted and taken back (docs/design.md), "share-panel" the
         // sharing's tab before sharing, its two ways (docs/database.md), "spam" the spam
-        // filter's settings and the words it puts beside mail (docs/spam-filter.md), "notify" the
-        // notification matrix and a cell's choices (docs/reminders.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "reach", "line", "share-panel", "spam", "notify"].contains(&steps.as_str()) && offline()) {
+        // filter's settings and the words it puts beside mail (docs/spam-filter.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "spam"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

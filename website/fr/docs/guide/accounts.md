@@ -1,10 +1,10 @@
 ---
-description: La page Comptes de Sioul – vos adresses et leurs services, ajouter un compte, qui peut vous joindre et quand (courrier, appels, messages des autres applications), et vos clés de chiffrement.
+description: La page Comptes de Sioul – vos adresses et leurs services, ajouter un compte, et vos clés de chiffrement ; qui peut vous joindre et quand est dans les Paramètres, Ce qui vous joint.
 ---
 
 # Les comptes {#accounts}
 
-**Comptes** est l’icône de personne en bas de la colonne de gauche. La page a quatre onglets : **Vos comptes**, **Ajouter un compte**, **Qui peut vous joindre**, **Chiffrement**.
+**Comptes** est l’icône de personne en bas de la colonne de gauche. La page a trois onglets : **Vos comptes**, **Ajouter un compte**, **Chiffrement**. Qui peut vous joindre, et quand, est dans Paramètres ▸ [Ce qui vous joint](notifications.md).
 
 Les sites (messageries sécurisées, discussions) ne sont pas des comptes : ils se créent et se modifient sur la page [Sites](sites.md).
 
@@ -71,57 +71,7 @@ Pas à pas : [Premiers pas](first-steps.md#add-your-mail). Les mots de passe v
 
 ## Qui peut vous joindre {#senders}
 
-<figure markdown="span">
-  [![L’onglet Qui peut vous joindre : trois boutons, Courrier, Appels et Messages, au-dessus d’une grille de cases, les états en lignes (Sûrs, Neutres, Restreints, Inconnus, Numéros masqués pour les appels, et Bloqués, jamais cochés) et les moments en colonnes (Travail, Démarches, Loisirs, Repas, Sommeil, En pause), chaque ligne avec Toujours et Jamais ; puis quatre listes avec des adresses, des numéros et des motifs comme *@example.org ; puis les personnes et les catégories mises sur une liste.](../assets/screens/fr/accounts-senders.png){ loading=lazy }](../assets/screens/fr/accounts-senders.png "Ouvrir l’image en grand")
-  <figcaption>Qui peut vous joindre, et quand.</figcaption>
-</figure>
-
-Qui peut vous joindre, et quand : par courrier, par téléphone, et par les messages des autres applications, quels que soient l’adresse ou le numéro qu’il utilise.
-
-**Cinq états.** Chacun est dans l’un d’eux :
-
-- **Inconnus** : dans aucun de vos carnets d’adresses, ni sur aucune liste.
-- **Sûrs** : les amis, les collègues et la famille que vous choisissez. C’est toujours vous qui y mettez quelqu’un.
-- **Neutres** : toute personne de vos carnets d’adresses, tant que vous n’en décidez pas autrement.
-- **Restreints** : ceux dont vous préférez n’avoir des nouvelles qu’à des moments choisis : un client exigeant, quelqu’un dont le courrier pèse.
-- **Bloqués** : les indésirables et le harcèlement. Jamais, sur aucun canal : leur courrier mis de côté pour de bon, jamais montré, jamais compté, jamais notifié ; leurs appels refusés. Rien n’est supprimé.
-
-Les inconnus comptaient comme neutres. Ils ont maintenant leur propre ligne : leur courrier garde les moments des neutres tant que vous ne la changez pas, et leurs appels sont refusés à tout moment tant que vous ne cochez rien.
-
-**Quand chacun vient** : trois boutons choisissent le canal, **Courrier**, **Appels** ou **Messages** (les SMS et les discussions des autres applications, sur un téléphone) ; la grille au-dessous est celle de ce canal, les états en lignes, les moments en colonnes (Travail, Démarches, Loisirs, Repas, Sommeil : voir [Les heures](hours.md) ; **En pause** : la pause, voir [Les pauses](pauses.md)). Cochez-en autant que vous voulez sur chaque ligne ; **Toujours** et **Jamais**, au bout de la ligne, la cochent ou la décochent tout entière d’un clic. Coché, ils viennent alors. Décoché, le courrier et les messages attendent, jamais perdus, le prochain moment coché, et les appels sont refusés. Les bloqués ont leur ligne aussi, jamais cochée. Sur un téléphone, le nom de chaque ligne se place au-dessus de ses cases. Au départ :
-
-| Courrier | Travail | Démarches | Loisirs | Repas | Sommeil | En pause |
-|---|---|---|---|---|---|---|
-| Sûrs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Neutres | ✓ | ✓ | | | | |
-| Restreints | ✓ | | | | | |
-| Inconnus | ✓ | ✓ | | | | |
-
-| Appels | Travail | Démarches | Loisirs | Repas | Sommeil | En pause |
-|---|---|---|---|---|---|---|
-| Sûrs | ✓ | ✓ | ✓ | ✓ | | |
-| Neutres | ✓ | ✓ | | | | |
-| Restreints | ✓ | | | | | |
-| Inconnus | | | | | | |
-| Numéros masqués | ✓ | ✓ | | | | |
-
-Les messages suivent la grille du courrier, ligne par ligne, tant que vous ne changez pas l’une de leurs lignes. Les numéros masqués sont les appels qui ne montrent aucun numéro : quelqu’un qui cache le sien, et souvent le standard d’un hôpital, d’où leurs sonneries aux heures de travail et de démarches.
-
-Les codes et les liens que vous venez de demander à un site, et ce que vous vous envoyez, arrivent tout de suite, quoi que dise la grille. Pendant le sommeil, rien ne notifie : le courrier coché pour le sommeil se montre au Porche si vous ouvrez Sioul, sans son ni notification. En temps libre, seule la ligne des sûrs compte, à sa case Loisirs ([Les pauses](pauses.md)).
-
-**Quatre listes** : Sûrs, Neutres, Restreints et Bloqués. Chaque ligne est une adresse, un numéro de téléphone (`+33 1 99 00 12 34`, écrit comme vous voulez), ou un motif avec `*` : `*@example.org` pour tout le monde là-bas, `*@*.example.org` pour ses sous-domaines, `+33899*` pour tous les numéros qui commencent ainsi. Partager un serveur ou un domaine avec quelqu’un d’autre ne fait jamais bloquer personne.
-
-Le courrier d’un expéditeur neutre ou restreint, ou d’un inconnu, ne vient qu’à une adresse faite pour le moment présent (l’adresse du travail aux heures de travail, une adresse personnelle aux heures de démarches et aux loisirs) ; quand les deux ne se rencontrent jamais, sa ligne décide seule, pour que rien n’attende pour toujours.
-
-**Les personnes sur une liste** : chacune de celles que vous avez mises sur une liste depuis leur fiche dans [Contacts](contacts.md), avec un choix : **Comme le disent ses catégories**, **Sûr**, **Neutre**, **Restreint** ou **Bloqué**. La fiche décide pour toutes ses adresses et tous ses numéros, ceux ajoutés plus tard aussi.
-
-**Les catégories de vos contacts** : une ligne pour chaque catégorie qu’ont vos contacts (Amis, Famille, Clients…), avec un choix : **Aucune liste**, **Sûr**, **Neutre**, **Restreint** ou **Bloqué**. Toute personne dont la fiche est dans la catégorie la suit, à chacune de ses adresses et chacun de ses numéros. Rien ne va sur une liste tout seul, famille et amis compris.
-
-**De la personne au groupe** : le choix propre à une personne passe d’abord (son adresse ou son numéro, puis sa fiche), puis les catégories de sa fiche, puis un domaine ou le début d’un numéro ; puis, neutres : toute personne de vos carnets d’adresses, et toute personne que vous avez laissée entrer depuis le filtre d’accueil ; toutes les autres sont inconnues. Un ami peut donc être neutre alors que la catégorie Amis est sûre, et un collègue dans Amis reste sûr dans un domaine marqué restreint. Quand un même niveau donne deux réponses (une personne dans deux catégories mises sur deux listes), bloqué l’emporte, puis restreint, puis neutre, puis sûr.
-
-Le courrier falsifié est jugé à part, avant les listes : un message falsifié est mis de côté même quand il se réclame de l’adresse d’un expéditeur sûr, et pesé comme celui d’un inconnu.
-
-Depuis un message, **Son courrier** met l’adresse de l’expéditeur sur l’une des quatre listes, ou la rend à **Comme le disent ses catégories**. Depuis la fiche d’un contact, **Sa liste** le fait pour la personne, toutes ses adresses et tous ses numéros.
+Qui peut vous joindre, et quand, par courrier, par téléphone et par les messages des autres applications, et qui est sur quelle liste (sûrs, neutres, restreints, bloqués, avec des adresses, des numéros, des motifs comme `*@example.org`, les personnes mises sur une liste et les catégories de vos contacts) : Paramètres ▸ **Ce qui vous joint** ▸ **Par personne** ([Ce qui vous joint, et quand](notifications.md#by-person)). Pour une personne, sa fiche, depuis sa fiche de contact ou un message : **Comment … vous joint** ([La fiche d’une personne](notifications.md#a-persons-sheet)). Ce à quoi sert chaque adresse reste sur sa carte, plus haut : le courrier d’une adresse pour un autre moment attend ce moment.
 
 ## Chiffrement {#encryption}
 

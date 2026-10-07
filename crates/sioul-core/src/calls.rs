@@ -11,11 +11,17 @@
 //! (`calls/table.json`): who each number is (by `phones::key`), the floors
 //! that always ring, "Let every call through" as your devices last said it,
 //! and the coming days cut into **frames**, each with whether each row of the
-//! Calls matrix rings then (`reach`). Java decides in this order: the floors
-//! (an emergency number or its callback; a day after you call an emergency
-//! number; the people on your do-not-disturb list); your blocked numbers,
-//! refused; "Let every call through"; a second call within 15 minutes, which
-//! rings; then the frame for now. No table, or past its frames: it rings.
+//! Calls rows of the matrix of what reaches you rings then (`attention`):
+//! the times, Free time's cells, and the layers (today's slots of time for
+//! you, do-not-disturb from its switch or a focus session). Java decides in
+//! this order: the floors (an emergency number or its callback; a day after
+//! you call an emergency number); your blocked numbers, refused; "Let every
+//! call through"; a second call within 15 minutes, which rings; then the
+//! frame for now. No table, or past its frames: it rings. Always through
+//! (`everywhere::People`) is no floor any more: its people's numbers are
+//! written as rows of their own ("always-safe", their own row read where
+//! Always through says "as their list"), never a blocked one: blocked beats
+//! Always through (docs/attention.md, Q3).
 //!
 //! A refused call goes to your voicemail and is written to **the list of calls
 //! held** (`calls/held.jsonl`, Java's), which the Porch shows calmly, at the
@@ -28,10 +34,11 @@
 //! its own (`calls/through-here.json`) that Java reads at once and Rust
 //! carries into the switch (`merge_local`).
 
+use crate::attention::{self, Attention, Level, Person};
 use crate::everywhere::{Device, People, Switch};
 use crate::i18n::Translator;
 use crate::phones::{self, Region};
-use crate::reach::{Channel, Clock, Moment, Reach};
+use crate::reach::{Channel, Clock, Who};
 use jiff::Zoned;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -158,7 +165,8 @@ pub struct Prefix {
 pub struct Floors {
     /// Emergency numbers and the emergency services' callback numbers, every country's.
     pub emergency: Vec<String>,
-    /// The numbers of the people on your do-not-disturb list.
+    /// Numbers that ring whatever else says, the blocked's aside: none written
+    /// since Always through has rows of its own; kept for the Java that reads it.
     pub people: Vec<String>,
 }
 
@@ -186,35 +194,96 @@ impl Through {
 pub struct Frame {
     pub from: i64,
     pub until: i64,
-    /// "work", "admin", "leisure", "meals", "sleep", "pause": for the list's words.
+    /// "work", "admin", "leisure", "meals", "sleep", "pause", "free"; a layer
+    /// above them, "slot", "dnd": for the list's words.
     pub column: String,
-    /// "safe", "neutral", "restricted", "stranger", "hidden" → rings.
+    /// `ROWS` → rings.
     pub ring: BTreeMap<String, bool>,
 }
 
-/// The column a moment is said by: the pause, else the time's (work when work
-/// and admin are both open, or no hours are set).
-pub fn column(moment: &Moment) -> &'static str {
-    moment.columns().first().map_or("", |c| c.id())
+/// The rows a frame says, as Java looks a caller up: the states, hidden
+/// numbers, and Always through read against each state ("always-neutral":
+/// someone on the list whose own row is neutral).
+pub const ROWS: [&str; 9] = ["safe", "neutral", "restricted", "stranger", "hidden", "always-safe", "always-neutral", "always-restricted", "always-stranger"];
+
+/// A frame's row: its person, on the Always through list or not.
+fn person_of(row: &str) -> (Person, bool) {
+    let (always, own) = match row.strip_prefix("always-") {
+        Some(own) => (true, own),
+        None => (false, row),
+    };
+    (Person::read(own).unwrap_or(Person::Stranger), always)
 }
 
-/// The frames from `from` to `until`, each with whether each row of the
-/// Calls matrix rings then: the clock's own frames (`reach::Clock::frames`).
-pub fn frames(reach: &Reach, clock: &Clock, from: &Zoned, until: &Zoned) -> Vec<Frame> {
-    clock
-        .frames(from, until)
-        .into_iter()
-        .map(|f| Frame {
-            from: f.start.saturating_mul(1000),
-            until: f.end.saturating_mul(1000),
-            column: column(&f.moment).to_string(),
-            ring: Channel::Calls.rows().iter().map(|row| (row.id().to_string(), reach.allows_row(Channel::Calls, *row, &f.moment))).collect(),
-        })
-        .collect()
+/// What holds on top of the clock's times, ahead (docs/attention.md, §1.6):
+/// today's slots of time for you (`attention::Slots`), and do-not-disturb
+/// from its switch or a focus session, from, and until when (none: until
+/// turned off; the table is written again when it changes).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Layers {
+    pub slots: Vec<(i64, i64)>,
+    pub dnd: Option<(i64, Option<i64>)>,
+}
+
+/// The column a moment is said by: a layer that holds, else the time's (the
+/// pause, sleep, Free time, the hours; work when work and admin are both
+/// open, or no hours are set).
+fn column_of(now: &attention::Now) -> &'static str {
+    if now.dnd {
+        "dnd"
+    } else if now.slot {
+        "slot"
+    } else {
+        now.times.first().map_or("", |c| c.id())
+    }
+}
+
+/// The frames from `from` to `until`, each with whether each row rings then
+/// (`ROWS`): the clock's own frames (`reach::Clock::frames`), cut where a
+/// layer begins or ends; two in a row that say the same are one.
+pub fn frames(attention: &Attention, clock: &Clock, layers: &Layers, from: &Zoned, until: &Zoned) -> Vec<Frame> {
+    let mut out: Vec<Frame> = Vec::new();
+    for f in clock.frames(from, until) {
+        let mut cuts = vec![f.start, f.end];
+        let edges = layers.slots.iter().flat_map(|&(a, b)| [a, b]).chain(layers.dnd.iter().flat_map(|&(a, b)| [Some(a), b]).flatten());
+        cuts.extend(edges.filter(|t| *t > f.start && *t < f.end));
+        cuts.sort_unstable();
+        cuts.dedup();
+        for pair in cuts.windows(2) {
+            let (start, end) = (pair[0], pair[1]);
+            let slot = layers.slots.iter().any(|&(a, b)| a <= start && start < b);
+            let dnd = layers.dnd.is_some_and(|(a, b)| a <= start && b.is_none_or(|b| start < b));
+            let now = attention::Now::of_moment(&f.moment).layers(slot, dnd);
+            let ring: BTreeMap<String, bool> = ROWS
+                .iter()
+                .map(|row| {
+                    let (person, always) = person_of(row);
+                    (row.to_string(), attention.person(Channel::Calls, person, always, &now) == Level::Now)
+                })
+                .collect();
+            let column = column_of(&now).to_string();
+            let (from_ms, until_ms) = (start.saturating_mul(1000), end.saturating_mul(1000));
+            match out.last_mut() {
+                Some(last) if last.until == from_ms && last.column == column && last.ring == ring => last.until = until_ms,
+                _ => out.push(Frame { from: from_ms, until: until_ms, column, ring }),
+            }
+        }
+    }
+    out
+}
+
+/// The numbers of the people Always through, each as a row of its own read
+/// against who the number is (`judge`: "always-safe"), whole numbers only;
+/// never a blocked number: blocked beats Always through.
+pub fn always_numbers(people: &People, region: Option<&Region>, judge: &dyn Fn(&str) -> Who) -> Vec<(String, String)> {
+    people_keys(people, region).into_iter().filter_map(|key| match judge(&key) {
+        Who::Blocked => None,
+        who => Some((key, format!("always-{}", who.id()))),
+    }).collect()
 }
 
 /// What a table is made of.
-pub struct Made<'a> {
+pub struct Made {
     /// When (ms).
     pub made: i64,
     pub region: Option<&'static Region>,
@@ -222,8 +291,8 @@ pub struct Made<'a> {
     pub numbers: Vec<(String, String)>,
     /// The lists' prefixes ("+3346571*") and who they make a number (`porch::Senders::prefixes`), in the order ties are decided.
     pub prefixes: Vec<(String, String)>,
-    /// The do-not-disturb list.
-    pub people: &'a People,
+    /// The Always through list's numbers, as rows of their own (`always_numbers`): after `numbers`, they win.
+    pub always: Vec<(String, String)>,
     pub through: Option<Through>,
     pub frames: Vec<Frame>,
 }
@@ -234,6 +303,12 @@ pub fn table(made: Made) -> Table {
     for (key, who) in made.numbers {
         if !key.is_empty() && !who.is_empty() && who != "stranger" {
             numbers.insert(key, who);
+        }
+    }
+    // Always through: its people's numbers, as their rows; the blocked kept blocked.
+    for (key, row) in made.always {
+        if !key.is_empty() && numbers.get(&key).is_none_or(|who| who != "blocked") {
+            numbers.insert(key, row);
         }
     }
     // The longest first; at one length, as given (blocked before restricted before neutral before safe).
@@ -247,7 +322,7 @@ pub fn table(made: Made) -> Table {
         numbers,
         prefixes,
         phone_contacts: "neutral".to_string(),
-        floors: Floors { emergency: emergency_keys(made.region), people: people_keys(made.people, made.region) },
+        floors: Floors { emergency: emergency_keys(made.region), people: Vec::new() },
         through: made.through,
         frames: made.frames,
         repeat_minutes: REPEAT_MINUTES,
@@ -790,7 +865,8 @@ fn line(calls: &[&Held], column: &str, date: jiff::civil::Date, messages: &BTree
     };
     let ids: Vec<String> = calls.iter().map(|h| h.id()).collect();
     let message = ids.iter().find_map(|id| messages.get(id)).cloned();
-    let row = if first.hidden { "hidden" } else if name.is_none() { "stranger" } else { first.who.as_str() };
+    // Someone Always through, declined: their own row held them ("always-neutral": as the neutral).
+    let row = if first.hidden { "hidden" } else if name.is_none() { "stranger" } else { first.who.trim_start_matches("always-") };
     let mut why_args = crate::i18n::args();
     why_args.set("context", context_words);
     let why = match row {
@@ -813,7 +889,7 @@ fn line(calls: &[&Held], column: &str, date: jiff::civil::Date, messages: &BTree
 /// "while you slept", "during work": what the time was, in a few words.
 fn context(tr: &Translator, column: &str) -> String {
     match column {
-        "work" | "admin" | "leisure" | "meals" | "sleep" | "pause" => tr.text(&format!("calls-context-{column}"), None),
+        "work" | "admin" | "leisure" | "meals" | "sleep" | "pause" | "free" | "slot" | "dnd" => tr.text(&format!("calls-context-{column}"), None),
         _ => tr.text("calls-context-any", None),
     }
 }
@@ -915,10 +991,12 @@ mod tests {
     }
 
     /// A table as Java reads it: Monday 5 October 2026, work 09:00–17:00, then
-    /// leisure, the night from 22:00; the usual Calls matrix.
+    /// leisure, the night from 22:00; the usual Calls matrix. The carer and
+    /// a blocked number are on the Always through list.
     fn decision_table() -> Table {
         let mut people = People::default();
-        people.add(Person { name: "Carer".into(), phones: vec!["01 99 00 00 09".into()], ..Person::default() }, fr());
+        people.add(Person { name: "Carer".into(), phones: vec!["01 99 00 00 09".into(), "01 99 00 00 04".into()], ..Person::default() }, fr());
+        let blocked = |key: &str| if key == "+33199000004" { Who::Blocked } else { Who::Stranger };
         let work = (ms("2026-10-05T09:00[Europe/Paris]"), ms("2026-10-05T17:00[Europe/Paris]"));
         let leisure = (work.1, ms("2026-10-05T22:00[Europe/Paris]"));
         let sleep = (leisure.1, ms("2026-10-06T07:00[Europe/Paris]"));
@@ -932,13 +1010,13 @@ mod tests {
                 ("+33199000004".into(), "blocked".into()),
             ],
             prefixes: vec![("+3346571*".into(), "blocked".into())],
-            people: &people,
+            always: always_numbers(&people, fr(), &blocked),
             through: None,
             frames: vec![
-                frame(ms("2026-10-05T00:00[Europe/Paris]"), work.0, "sleep", &[]),
-                frame(work.0, work.1, "work", &["safe", "neutral", "restricted", "hidden"]),
-                frame(leisure.0, leisure.1, "leisure", &["safe"]),
-                frame(sleep.0, sleep.1, "sleep", &[]),
+                frame(ms("2026-10-05T00:00[Europe/Paris]"), work.0, "sleep", &["always-stranger"]),
+                frame(work.0, work.1, "work", &["safe", "neutral", "restricted", "hidden", "always-stranger"]),
+                frame(leisure.0, leisure.1, "leisure", &["safe", "always-stranger"]),
+                frame(sleep.0, sleep.1, "sleep", &["always-stranger"]),
             ],
         })
     }
@@ -989,7 +1067,10 @@ mod tests {
         }
         assert_eq!(said(&Incoming { system_emergency: true, ..call("17", "23:00") }).1, "emergency");
         assert_eq!(said(&call("17", "23:00")).0, true, "a short code Android does not call an emergency number: a stranger");
-        assert_eq!(said(&call("01 99 00 00 09", "23:00")).1, "people");
+        // Always through: their own row, at night too; blocked beats it (before: the list's floor rang it).
+        assert_eq!(said(&call("01 99 00 00 09", "23:00")), (false, "matrix", "always-stranger".to_string()));
+        assert_eq!(said(&call("01 99 00 00 04", "23:00")).1, "blocked");
+        assert!(t.floors.people.is_empty(), "no floor before the blocked any more");
         // A day after you call an emergency number, every call rings, the blocked too; not after.
         let called = ms("2026-10-05T03:00[Europe/Paris]");
         assert_eq!(said(&Incoming { emergency_at: called, ..call("01 99 00 00 04", "23:00") }).1, "after-emergency");
@@ -1019,15 +1100,16 @@ mod tests {
         .unwrap();
         let needs = Needs { meals_on: true, naps_on: true, sleep_on: true, ..Needs::default() };
         let clock = Clock::new(&config, crate::quiet::Overrides::default(), needs, Days::default(), Vec::new());
-        let reach = Reach::default();
+        let attention = Attention::usual();
+        let none = Layers::default();
         let from = at("2026-10-05T00:00[Europe/Paris]");
         let until = at("2026-10-06T00:00[Europe/Paris]");
-        let frames = frames(&reach, &clock, &from, &until);
+        let frames = frames(&attention, &clock, &none, &from, &until);
         // From midnight to midnight, end to end.
         assert_eq!(frames.first().unwrap().from, from.timestamp().as_millisecond());
         assert_eq!(frames.last().unwrap().until, until.timestamp().as_millisecond());
         assert!(frames.windows(2).all(|w| w[0].until == w[1].from), "{frames:?}");
-        let table = Table { frames, ..table(Made { made: 0, region: fr(), numbers: Vec::new(), prefixes: Vec::new(), people: &People::default(), through: None, frames: Vec::new() }) };
+        let table = Table { frames, ..table(Made { made: 0, region: fr(), numbers: Vec::new(), prefixes: Vec::new(), always: Vec::new(), through: None, frames: Vec::new() }) };
         let at_ = |time: &str| table.frame_at(ms(&format!("2026-10-05T{time}[Europe/Paris]"))).unwrap();
         // The usual Calls matrix: safe all but sleep and the pause; neutral work and admin; restricted work; strangers never; hidden work and admin.
         for (time, column, ringing) in [
@@ -1043,18 +1125,34 @@ mod tests {
             assert_eq!(f.column, column, "{time}");
             let rings: Vec<&str> = ["safe", "neutral", "restricted", "stranger", "hidden"].into_iter().filter(|r| f.ring[*r]).collect();
             assert_eq!(rings, ringing, "{time}");
+            assert!(f.ring["always-stranger"], "Always through rings at any time: {time}");
         }
+        // The layers (Q11): do-not-disturb's switch from 18:00 to 19:00 sends the safe to voicemail, Always through rings;
+        // a slot of time for you holds no call.
+        let (dnd_from, dnd_until) = (at("2026-10-05T18:00[Europe/Paris]").timestamp().as_second(), at("2026-10-05T19:00[Europe/Paris]").timestamp().as_second());
+        let layers = Layers { slots: vec![(dnd_until + 600, dnd_until + 1800)], dnd: Some((dnd_from, Some(dnd_until))) };
+        let table = Table { frames: super::frames(&attention, &clock, &layers, &from, &until), ..table.clone() };
+        let at_ = |time: &str| table.frame_at(ms(&format!("2026-10-05T{time}[Europe/Paris]"))).unwrap();
+        assert_eq!((at_("18:30").column.as_str(), at_("18:30").ring["safe"], at_("18:30").ring["always-safe"]), ("dnd", false, true));
+        assert_eq!((at_("17:30").column.as_str(), at_("17:30").ring["safe"]), ("leisure", true));
+        assert_eq!((at_("19:15").column.as_str(), at_("19:15").ring["safe"]), ("slot", true));
+        // Free time as cells: the safe ring in it, the others not; "Nothing at all", only Always through.
+        let free = crate::quiet::Overrides { free_since: Some(at("2026-10-05T10:00[Europe/Paris]").timestamp().as_second()), free_nothing: Some(true), ..crate::quiet::Overrides::default() };
+        let clock_free = Clock::new(&config, free, Needs { meals_on: true, naps_on: true, sleep_on: true, ..Needs::default() }, Days::default(), Vec::new());
+        let table = Table { frames: super::frames(&attention, &clock_free, &none, &from, &until), ..table.clone() };
+        let f = table.frame_at(ms("2026-10-05T11:00[Europe/Paris]")).unwrap();
+        assert_eq!((f.column.as_str(), f.ring["safe"], f.ring["always-neutral"]), ("free", false, true));
         // The night the clocks go back (25 October 2026): no gap, no overlap, 25 hours that day.
         let from = at("2026-10-25T00:00[Europe/Paris]");
         let until = at("2026-10-26T00:00[Europe/Paris]");
-        let frames = super::frames(&reach, &clock, &from, &until);
+        let frames = super::frames(&attention, &clock, &none, &from, &until);
         assert!(frames.windows(2).all(|w| w[0].until == w[1].from));
         assert_eq!(frames.last().unwrap().until - frames.first().unwrap().from, 25 * 3_600_000);
         // In the pause: the pause's column to the end, nobody ringing.
         let paused = crate::quiet::Overrides { paused_since: Some(from.timestamp().as_second()), ..crate::quiet::Overrides::default() };
         let clock = Clock::new(&config, paused, Needs::default(), Days::default(), Vec::new());
-        let frames = super::frames(&reach, &clock, &from, &until);
-        assert!(frames.iter().all(|f| f.column == "pause" && f.ring.values().all(|r| !r)), "{frames:?}");
+        let frames = super::frames(&attention, &clock, &none, &from, &until);
+        assert!(frames.iter().all(|f| f.column == "pause" && f.ring.iter().all(|(row, r)| *r == row.starts_with("always-"))), "{frames:?}");
         assert_eq!(frames.last().unwrap().until, until.timestamp().as_millisecond());
     }
 
@@ -1077,12 +1175,14 @@ mod tests {
         let mut people = People::default();
         people.add(Person { name: "Alice".into(), phones: vec!["01 99 00 00 01".into(), "3114".into()], ..Person::default() }, fr());
         assert_eq!(people_keys(&people, fr()), vec!["+33199000001".to_string()], "a short code is nobody's");
+        assert_eq!(always_numbers(&people, fr(), &|_| Who::Neutral), vec![("+33199000001".to_string(), "always-neutral".to_string())]);
+        assert!(always_numbers(&people, fr(), &|_| Who::Blocked).is_empty(), "blocked beats Always through");
         // 0639 is Mayotte's plan: its own country code, as phones reads it.
         assert_eq!(phones::key("06 39 98 00 01", fr()), "+262639980001");
     }
 
     fn frame(from: i64, until: i64, column: &str, ringing: &[&str]) -> Frame {
-        Frame { from, until, column: column.into(), ring: ["safe", "neutral", "restricted", "stranger", "hidden"].iter().map(|r| (r.to_string(), ringing.contains(r))).collect() }
+        Frame { from, until, column: column.into(), ring: ROWS.iter().map(|r| (r.to_string(), ringing.contains(r))).collect() }
     }
 
     #[test]
@@ -1094,17 +1194,17 @@ mod tests {
             region: fr(),
             numbers: vec![("+33639980002".into(), "safe".into()), ("+33199001234".into(), "blocked".into()), ("+33199009999".into(), "stranger".into()), (String::new(), "safe".into())],
             prefixes: vec![("+33465711*".into(), "blocked".into()), ("+3346571*".into(), "safe".into()), ("+334657112*".into(), "neutral".into()), ("*".into(), "blocked".into())],
-            people: &people,
+            always: always_numbers(&people, fr(), &|_| Who::Safe),
             through: Some(Through { pressed: 5, on: true, until: 0 }),
             frames: vec![frame(0, 1_000, "work", &["safe", "neutral", "restricted", "hidden"]), frame(1_000, 2_000, "sleep", &[])],
         };
         let table = table(made(42));
         assert_eq!(table.v, VERSION);
-        assert_eq!(table.numbers.len(), 2, "strangers and empty keys are not written: {:?}", table.numbers);
-        assert_eq!(table.numbers["+33199001234"], "blocked");
+        assert_eq!(table.numbers.len(), 3, "strangers and empty keys are not written: {:?}", table.numbers);
+        assert_eq!((table.numbers["+33199001234"].as_str(), table.numbers["+33199000001"].as_str()), ("blocked", "always-safe"));
         // Prefixes without their star, the longest first; a bare star is nothing.
         assert_eq!(table.prefixes.iter().map(|p| (p.prefix.as_str(), p.who.as_str())).collect::<Vec<_>>(), [("+334657112", "neutral"), ("+33465711", "blocked"), ("+3346571", "safe")]);
-        assert_eq!(table.floors.people, vec!["+33199000001".to_string()]);
+        assert!(table.floors.people.is_empty());
         assert!(table.floors.emergency.contains(&"+33800112112".to_string()));
         assert_eq!(table.region.as_ref().map(|r| (r.calling.as_str(), r.trunk.as_str(), r.digits)), Some(("33", "0", [10, 10])));
         assert_eq!(table.region.as_ref().unwrap().overseas.get("692").map(String::as_str), Some("262"));
@@ -1241,6 +1341,10 @@ mod tests {
         let hidden = &lines_en[3];
         assert!(hidden.hidden && hidden.number.is_empty() && hidden.dial.is_empty());
         assert!(lines_en[1].known);
+        assert_eq!(lines_en[1].why, "Calls from your neutral contacts go to voicemail while you slept.");
+        // Someone Always through, declined (their row as their own, which held them then): said as their own row.
+        let always = [held(ms("2026-10-07T06:40[Europe/Paris]"), "+33639980002", "always-neutral", "sleep")];
+        assert_eq!(lines(&always, &Seen::default(), &BTreeMap::new(), &l)[0].why, "Calls from your neutral contacts go to voicemail while you slept.");
         // Seen: gone; the others stay.
         let mut seen = Seen::default();
         seen.add(&stranger.ids, now.timestamp().as_millisecond());
@@ -1313,7 +1417,7 @@ mod tests {
             .iter()
             .map(|k| k.to_string())
             .collect();
-            keys.extend(["work", "admin", "leisure", "meals", "sleep", "pause"].iter().map(|c| format!("calls-context-{c}")));
+            keys.extend(["work", "admin", "leisure", "meals", "sleep", "pause", "free", "slot", "dnd"].iter().map(|c| format!("calls-context-{c}")));
             keys.extend(["safe", "neutral", "restricted", "stranger", "hidden"].iter().map(|r| format!("calls-why-{r}")));
             for key in keys {
                 let mut args = crate::i18n::args();

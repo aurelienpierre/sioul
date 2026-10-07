@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! The spam filter's tokenizer, version 1: what a message says, as the words
+//! The spam filter's tokenizer, version 2: what a message says, as the words
 //! the language model learns on the desktop and the table scores on every
 //! device.
 //!
@@ -17,6 +17,11 @@
 //!
 //! The steps, in order:
 //! 1. **The text:** the subject, a blank line, the body (HTML mail as its visible text).
+//!    A mark your provider put at the start of the subject (`***Potentiel-SPAM***`,
+//!    `[SPAM]`, `{Spam?}`) is taken off first (`without_provider_tags`): it is
+//!    the provider's verdict, not the sender's words, and a model that read it
+//!    would learn to copy the provider (version 2: a provider may tag nearly
+//!    every message it sets aside).
 //! 2. **Normalization** (`normalize`): invisible characters out (zero-width
 //!    spaces and joiners would otherwise split or hide words); NFKC; letters
 //!    borrowed from other scripts folded into the Latin ones they mimic, in
@@ -50,7 +55,7 @@ use regex::{Captures, Regex};
 use std::sync::LazyLock;
 
 /// The tokenizer's version, stamped in every table (`table.rs`).
-pub const TOKENIZER: u32 = 1;
+pub const TOKENIZER: u32 = 2;
 
 /// What the tokenizer read in a message.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -66,12 +71,34 @@ pub struct Tokens {
 
 /// The words of a message, and the domains its links point to.
 pub fn tokens(subject: &str, body: &str) -> Tokens {
+    let subject = without_provider_tags(subject);
     let text = normalize(&format!("{subject}\n\n{body}"));
     let text = clean(&text);
     let mut links = Vec::new();
     let text = placeholders(&text, &mut links);
     let words = split(&text).into_iter().filter_map(word).collect();
     Tokens { words, links }
+}
+
+// 1. The text.
+
+/// A provider's mark, at the start of a subject: a word of spam (spam,
+/// junk, pourriel, indésirable) between stars, brackets, braces or
+/// parentheses, with what goes with it ("***Potentiel-SPAM***", "[SPAM?]",
+/// "{Spam}", "(Indésirable)"), or "SPAM:".
+static PROVIDER_TAG: LazyLock<Regex> = LazyLock::new(|| {
+    let word = r"(?:spam|junk|pourriel|ind[ée]sirable)";
+    Regex::new(&format!(r"(?i)^\s*(?:\*{{2,}}[^*]{{0,40}}?{word}[^*]{{0,40}}?\*{{2,}}|\[[^\]]{{0,40}}?{word}[^\]]{{0,40}}?\]|\{{[^}}]{{0,40}}?{word}[^}}]{{0,40}}?\}}|\([^)]{{0,40}}?{word}[^)]{{0,40}}?\)|{word}\s*:)\s*"))
+        .expect("a valid pattern")
+});
+
+/// The subject without the marks a provider put at its start (`PROVIDER_TAG`), as many as there are.
+pub fn without_provider_tags(subject: &str) -> &str {
+    let mut rest = subject;
+    while let Some(found) = PROVIDER_TAG.find(rest).filter(|m| m.end() > 0) {
+        rest = &rest[found.end()..];
+    }
+    rest
 }
 
 // 2. Normalization.
@@ -733,6 +760,26 @@ mod tests {
 
     fn words(text: &str) -> Vec<String> {
         tokens("", text).words
+    }
+
+    /// A provider's mark is no word of the message; the same words elsewhere stay.
+    #[test]
+    fn providers_marks_are_taken_off() {
+        for (subject, rest) in [
+            ("***Potentiel-SPAM*** Votre colis", "Votre colis"),
+            ("***Possible-SPAM***Votre colis", "Votre colis"),
+            ("**SPAM** [SPAM?] {Spam} Offer", "Offer"),
+            ("[POURRIEL] (Indésirable) SPAM: hello", "hello"),
+            ("  [Junk mail]   hello", "hello"),
+            ("[Ham] hello", "[Ham] hello"),
+            ("Re: spam filters [SPAM]", "Re: spam filters [SPAM]"),
+            ("Spammers again", "Spammers again"),
+            ("", ""),
+        ] {
+            assert_eq!(without_provider_tags(subject), rest, "{subject}");
+        }
+        assert_eq!(tokens("***Potentiel-SPAM*** Facture", "").words, tokens("Facture", "").words);
+        assert!(tokens("Spam filters", "").words.len() == 2, "a subject about spam keeps its words");
     }
 
     #[test]

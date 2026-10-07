@@ -3,16 +3,30 @@
 
 //! `sioul spam`: the spam filter learned on this computer (crates/sioul-learn).
 //!
-//! `fetch` downloads the training corpus, `train` trains on demand, `eval`
-//! tests the table in place, `status` says where all stands: numbers only,
-//! never a message. `import` brings outside training material (JSON lines,
+//! `fetch` downloads the training corpus, `train` trains on demand (a trial
+//! with `--no-replace`), `eval` tests the table in place, `status` says
+//! where all stands, `dry-run` says what the filter would do now with the
+//! mail in each inbox, `review` lists the review queue, `label` says a
+//! message is spam or not, `job` follows what runs apart. Each says it in
+//! lines, or as JSON with `--json` (`report`). A message is listed by its
+//! sender's address and its subject, masked as the MCP masks them; never by
+//! its text. `import` brings outside training material (JSON lines,
 //! docs/spam-filter.md, "Outside material"), kept apart, never shared, and
 //! takes it away. `why` names a message's words: it is for you, in your
-//! terminal, and the MCP server offers none of this (docs/ai.md).
+//! terminal; the MCP server offers none of it (docs/ai.md).
+//!
+//! The MCP's spam tools (`mcp/spam.rs`) say the same through `report`; its
+//! long ones start `sioul spam fetch|train --job <id>` apart (`jobs`).
+
+pub(crate) mod jobs;
+pub(crate) mod report;
 
 use crate::Session;
 use clap::Subcommand;
-use sioul_learn::{Cancel, Dirs, LearnError, Progress, Stage, corpus, eval, external, train};
+use report::Report;
+use sioul_core::spam::Action;
+use sioul_core::spam::labels::Label;
+use sioul_learn::{Cancel, Dirs, Progress, Stage, external, train};
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
@@ -23,6 +37,12 @@ pub(crate) enum SpamCommand {
     Fetch {
         #[arg(long)]
         account: Option<String>,
+        /// What it did, as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Runs as the job of this id (`sioul spam job`): where it stands goes to its file.
+        #[arg(long, hide = true)]
+        job: Option<String>,
     },
     /// Brings the corpus up to date, then trains the filter; the table is
     /// replaced only if it sets aside no more ham than the one in place.
@@ -30,11 +50,98 @@ pub(crate) enum SpamCommand {
         /// Train on the corpus as it is, without downloading first.
         #[arg(long)]
         no_fetch: bool,
+        /// A trial: train and say what it would do, changing nothing (the
+        /// table, the one before, the language model, the last training's summary).
+        #[arg(long)]
+        no_replace: bool,
+        /// Also list the test's worst errors, this many of each kind, with
+        /// the counts by account and folder and the numbers at other thresholds.
+        #[arg(long, value_parser = clap::value_parser!(u64).range(0..=500))]
+        errors: Option<u64>,
+        #[command(flatten)]
+        settings: SettingsArgs,
+        /// What it did, as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Runs as the job of this id (`sioul spam job`): where it stands goes to its file.
+        #[arg(long, hide = true)]
+        job: Option<String>,
     },
-    /// Tests the table in place on the newest fifth of the corpus: numbers only.
-    Eval,
-    /// What the corpus holds, the outside material, the last training, the table.
-    Status,
+    /// Tests the table in place on the newest fifth of the corpus: its
+    /// numbers, by account and folder, at other thresholds, and its worst errors.
+    Eval {
+        /// The worst errors listed, this many of each kind: ham called spam
+        /// (the surest first), then spam missed (the least sure first).
+        #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(u64).range(0..=500))]
+        errors: u64,
+        #[arg(long)]
+        json: bool,
+    },
+    /// What the corpus holds, the outside material, the table, the last training, the jobs.
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
+    /// What your filter would do now with the mail in each inbox, as if it
+    /// came now: counts per verdict and action, the messages it would move
+    /// and those it would flag. Nothing is moved.
+    DryRun {
+        /// Only this account's inbox.
+        #[arg(long)]
+        account: Option<String>,
+        /// Messages listed at most, in each list.
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        #[command(flatten)]
+        matrix: MatrixArgs,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Each header feature's mean over the corpus, by account and label: those
+    /// that tell an account apart rather than spam from ham. Numbers only.
+    Features {
+        /// Only the mail of this sender's domain (or one under it).
+        #[arg(long)]
+        domain: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// The review queue: what your filter flagged or moved, waiting for your word.
+    Review {
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Says a message is spam or not, as the window's Spam and Not spam do,
+    /// in this device's label log (every device and the next training read
+    /// it). It only labels: `--move` also does the window's act on the server.
+    Label {
+        /// The message: its file, or its Message-ID (mid:…).
+        message: String,
+        /// spam, or ham (not spam).
+        #[arg(value_parser = ["spam", "ham"])]
+        label: String,
+        /// The window's act too: the keyword on the server, and the move
+        /// (spam into the Junk folder; not spam out of it, back to the inbox).
+        #[arg(long = "move", overrides_with = "no_move")]
+        moving: bool,
+        /// Only the label (the default).
+        #[arg(long)]
+        no_move: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// A job run apart (an agent's download or training): where it stands,
+    /// then its result. Without an id, the jobs kept.
+    Job {
+        id: Option<String>,
+        /// Asks it to stop at its next step.
+        #[arg(long, requires = "id")]
+        stop: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Imports outside training material: one JSON object per line
     /// (gzipped or not), with `label` ("spam" or "ham"), `date` (RFC 3339 or
     /// Unix seconds), `subject` and `text`; `from`, `headers`, `html` and
@@ -57,18 +164,92 @@ pub(crate) enum SpamCommand {
     Why { file: PathBuf },
 }
 
+/// fastText's and the SVM's settings for one training, instead of the
+/// defaults; recorded in what the training says (`trained.toml` when it replaces the table).
+#[derive(clap::Args, Debug, Clone, Default)]
+pub(crate) struct SettingsArgs {
+    /// fastText's threads (the computer's cores).
+    #[arg(long)]
+    threads: Option<u32>,
+    /// The word vectors' dimension (100).
+    #[arg(long)]
+    dim: Option<u32>,
+    /// fastText's passes over the corpus (5).
+    #[arg(long)]
+    epochs: Option<u32>,
+    /// The character n-grams' hash buckets (200000).
+    #[arg(long)]
+    bucket: Option<u32>,
+    /// The shortest character n-grams (3).
+    #[arg(long)]
+    minn: Option<u32>,
+    /// The longest character n-grams (6; 0: none).
+    #[arg(long)]
+    maxn: Option<u32>,
+    /// The SVM's cost, fixed (else chosen among 0.01, 0.1, 1 and 10).
+    #[arg(long)]
+    c: Option<f64>,
+    /// How much more calling ham spam costs the SVM than missing spam (5).
+    #[arg(long)]
+    ham_weight: Option<f64>,
+}
+
+impl SettingsArgs {
+    fn settings(&self) -> report::Settings {
+        report::Settings { threads: self.threads, dim: self.dim, epochs: self.epochs, bucket: self.bucket, minn: self.minn, maxn: self.maxn, c: self.c, ham_weight: self.ham_weight }
+    }
+}
+
+/// What a dry run tries instead of your settings: an action for a verdict, a threshold.
+#[derive(clap::Args, Debug, Clone, Default)]
+pub(crate) struct MatrixArgs {
+    /// What to do with probable spam: move, flag or nothing.
+    #[arg(long, value_parser = ["move", "flag", "nothing"])]
+    spam: Option<String>,
+    /// What to do with maybe spam.
+    #[arg(long, value_parser = ["move", "flag", "nothing"])]
+    unsure: Option<String>,
+    /// What to do with probable ham.
+    #[arg(long, value_parser = ["move", "flag", "nothing"])]
+    ham: Option<String>,
+    /// Probably spam from this probability on (0 to 1).
+    #[arg(long)]
+    threshold_spam: Option<f32>,
+    /// Maybe spam from this probability on (0 to 1), never above the other.
+    #[arg(long)]
+    threshold_unsure: Option<f32>,
+}
+
 pub(crate) fn run(s: &Session, command: SpamCommand) -> Result<(), String> {
     let dirs = Dirs::standard();
     match command {
-        SpamCommand::Fetch { account } => fetch(s, &dirs, account.as_deref()),
-        SpamCommand::Train { no_fetch } => {
-            if !no_fetch {
-                fetch(s, &dirs, None)?;
-            }
-            learn(s, &dirs)
+        SpamCommand::Fetch { account, json, job } => long(s, json, job.as_deref(), |progress, cancel| report::fetch(s, &dirs, account.as_deref(), progress, cancel)),
+        SpamCommand::Train { no_fetch, no_replace, errors, settings, json, job } => {
+            let ask = report::TrainAsk { fetch: !no_fetch, replace: !no_replace, errors: errors.map(|n| n as usize), settings: settings.settings() };
+            long(s, json, job.as_deref(), |progress, cancel| report::train(s, &dirs, &ask, progress, cancel))
         }
-        SpamCommand::Eval => evaluate(s, &dirs),
-        SpamCommand::Status => status(s, &dirs),
+        SpamCommand::Eval { errors, json } => long(s, json, None, |progress, cancel| report::eval(s, &dirs, errors as usize, progress, cancel)),
+        SpamCommand::Status { json } => say(report::status(s, &dirs)?, json),
+        SpamCommand::DryRun { account, limit, matrix, json } => {
+            let action = |text: &Option<String>| text.as_deref().and_then(Action::read);
+            let ask = report::DryAsk {
+                account,
+                limit,
+                spam: action(&matrix.spam),
+                unsure: action(&matrix.unsure),
+                ham: action(&matrix.ham),
+                threshold_spam: matrix.threshold_spam,
+                threshold_unsure: matrix.threshold_unsure,
+            };
+            say(report::dry_run(s, &ask)?, json)
+        }
+        SpamCommand::Features { domain, json } => say(report::features(s, &dirs, domain.as_deref())?, json),
+        SpamCommand::Review { limit, json } => say(report::review(s, limit)?, json),
+        SpamCommand::Label { message, label, moving, no_move: _, json } => {
+            let label = if label == "spam" { Label::Spam } else { Label::Ham };
+            say(report::label(s, &dirs, &message, label, moving)?, json)
+        }
+        SpamCommand::Job { id, stop, json } => say(report::job(s, id.as_deref(), stop)?, json),
         SpamCommand::Import { file, source, remove } => match (file, remove) {
             (_, Some(source)) => remove_source(s, &dirs, &source),
             (Some(file), None) => import(s, &dirs, &file, source.as_deref()),
@@ -78,7 +259,46 @@ pub(crate) fn run(s: &Session, command: SpamCommand) -> Result<(), String> {
     }
 }
 
-/// Progress on one line that rewrites itself in a terminal; stages on lines of their own.
+/// A report printed: its lines, or its data as JSON.
+fn say(report: Report, json: bool) -> Result<(), String> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report.data).map_err(|e| e.to_string())?);
+    } else {
+        for line in &report.lines {
+            println!("{line}");
+        }
+    }
+    Ok(())
+}
+
+/// A long command: its progress on standard error (one line per step or
+/// folder when piped), its report at the end; or, as a job (`--job`), its
+/// progress and its end written into the job's file, stopping when asked.
+fn long(s: &Session, json: bool, job: Option<&str>, work: impl FnOnce(&mut dyn FnMut(&Progress), &Cancel) -> Result<Report, String>) -> Result<(), String> {
+    match job {
+        Some(id) => {
+            let mut running = jobs::Running::open(id)?;
+            let cancel = running.cancel();
+            let outcome = {
+                let mut see = |p: &Progress| running.see(s, p);
+                work(&mut see, &cancel)
+            };
+            let failed = outcome.as_ref().err().cloned();
+            running.finish(outcome.map(|report| (report.lines, report.data)))?;
+            failed.map_or(Ok(()), Err)
+        }
+        None => {
+            let mut shown = Shown::new();
+            let outcome = work(&mut |p| shown.show(s, p), &Cancel::new());
+            shown.end();
+            say(outcome?, json)
+        }
+    }
+}
+
+/// Progress on one line that rewrites itself in a terminal; stages on lines
+/// of their own. Piped (to a file, a program, an agent), one line per step
+/// and per folder downloaded, at its end, never a carriage return.
 struct Shown {
     stage: Option<Stage>,
     detail: String,
@@ -99,13 +319,17 @@ impl Shown {
             if self.stage != Some(p.stage) && p.stage != Stage::Corpus {
                 let _ = writeln!(err, "{}", s.tr.text(&format!("spam-stage-{}", p.stage.as_str()), None));
             }
+            // The download's first word: about how many messages are to come.
+            if p.stage == Stage::Corpus && p.detail.is_empty() && p.total > 0 {
+                let _ = writeln!(err, "{}", s.say("spam-fetch-estimate", &[("n", p.total.to_string())]));
+            }
             self.stage = Some(p.stage);
             self.detail = p.detail.clone();
         }
-        if self.terminal && p.total > 0 {
+        if self.terminal && p.total > 0 && !(p.stage == Stage::Corpus && p.detail.is_empty()) {
             let what = if p.detail.is_empty() { String::new() } else { format!("{}: ", crate::one_line(&p.detail)) };
             let _ = write!(err, "\r{what}{} / {}   ", p.done, p.total);
-        } else if !self.terminal && p.stage == Stage::Corpus && p.total > 0 && p.done == p.total {
+        } else if !self.terminal && p.stage == Stage::Corpus && !p.detail.is_empty() && p.total > 0 && p.done == p.total {
             let _ = writeln!(err, "{}: {} / {}", crate::one_line(&p.detail), p.done, p.total);
         }
     }
@@ -115,177 +339,6 @@ impl Shown {
             eprintln!();
         }
     }
-}
-
-fn fetch(s: &Session, dirs: &Dirs, only: Option<&str>) -> Result<(), String> {
-    let accounts: Vec<_> = s.config.accounts.iter().filter(|a| a.syncs() && only.is_none_or(|id| a.id == id)).cloned().collect();
-    if accounts.is_empty() {
-        return Err(match only {
-            Some(id) => s.say("account-unknown", &[("id", id.to_string())]),
-            None => s.tr.text("sync-nothing", None),
-        });
-    }
-    let mut shown = Shown::new();
-    let update = corpus::update(&accounts, &|a| sioul_sync::secret::password(a), dirs, &corpus::free_space, &mut |p| shown.show(s, p), &Cancel::new());
-    shown.end();
-    for (account, detail) in &update.failed {
-        eprintln!("{}", s.say("spam-account-failed", &[("account", account.clone()), ("detail", crate::one_line(detail))]));
-    }
-    println!("{}", s.say("spam-fetch-added", &[("n", update.added.to_string())]));
-    if let Some(held) = update.held {
-        println!("{}", s.say("spam-held", &[("free", (held.free >> 20).to_string())]));
-    }
-    Ok(())
-}
-
-fn learn(s: &Session, dirs: &Dirs) -> Result<(), String> {
-    let options = train::Options::of(&s.config);
-    let mut shown = Shown::new();
-    let result = train::train(dirs, &train::trusted_ids(&s.config), &options, &mut |p| shown.show(s, p), &Cancel::new());
-    shown.end();
-    let summary = result.map_err(|e| failure(s, &e, &options))?;
-    print_summary(s, &summary);
-    Ok(())
-}
-
-/// A training's failure, in words.
-fn failure(s: &Session, e: &LearnError, options: &train::Options) -> String {
-    match e {
-        LearnError::Cancelled => s.tr.text("spam-stopped", None),
-        LearnError::TooFew { ham, spam } => s.say("spam-too-few", &[("ham", ham.to_string()), ("spam", spam.to_string()), ("least", options.least_of_each.to_string())]),
-        LearnError::Disk(detail) => s.say("spam-disk", &[("detail", detail.clone())]),
-        LearnError::Fold(detail) => s.say("spam-fold", &[("detail", detail.clone())]),
-        LearnError::NoTable(_) => s.tr.text("spam-no-table", None),
-        other => s.say("spam-error", &[("detail", other.to_string())]),
-    }
-}
-
-fn print_summary(s: &Session, summary: &train::Summary) {
-    let outcome = match summary.reason.as_str() {
-        "no-table" => s.tr.text("spam-replaced-no-table", None),
-        "unreadable" => s.tr.text("spam-replaced-unreadable", None),
-        "nothing-new" => s.tr.text("spam-replaced-nothing-new", None),
-        reason => {
-            let c = summary.compared.unwrap_or_default();
-            let pairs = [("n", (c.ham + c.spam).to_string()), ("new", c.new_ham_lost.to_string()), ("old", c.current_ham_lost.to_string())];
-            s.say(if reason == "worse" { "spam-kept-worse" } else { "spam-replaced-no-worse" }, &pairs)
-        }
-    };
-    println!("{outcome}");
-    if let Some(refit) = &summary.refit {
-        println!("{}", s.say("spam-refit", &[("n", (refit.ham + refit.spam).to_string())]));
-    }
-    print_labels(s, &summary.labels);
-    for (account, c) in &summary.accounts {
-        println!(
-            "{}",
-            s.say(
-                "spam-account-counts",
-                &[
-                    ("account", account.clone()),
-                    ("trainham", c.train_ham.to_string()),
-                    ("trainspam", c.train_spam.to_string()),
-                    ("testham", c.test_ham.to_string()),
-                    ("testspam", c.test_spam.to_string()),
-                ]
-            )
-        );
-    }
-    print_numbers(s, &summary.test, summary.split.test_from);
-    for (source, outside) in &summary.outside {
-        let pairs = [
-            ("source", crate::one_line(source)),
-            ("trainham", outside.train_ham.to_string()),
-            ("trainspam", outside.train_spam.to_string()),
-            ("heldham", outside.held_ham.to_string()),
-            ("heldspam", outside.held_spam.to_string()),
-        ];
-        println!("{}", s.say("spam-outside-learned", &pairs));
-        if let Some(baseline) = &outside.baseline {
-            print_measured(s, baseline);
-        }
-    }
-    if let Some(current) = summary.current.as_ref().filter(|c| c.ham + c.spam > 0) {
-        println!("{}", s.say("spam-current", &[("n", (current.ham + current.spam).to_string())]));
-        print_numbers(s, current, summary.compared.map_or(summary.split.test_from, |c| c.since));
-    }
-    let m = &summary.model;
-    println!(
-        "{}",
-        s.say(
-            "spam-model",
-            &[("vocabulary", m.vocabulary.to_string()), ("dim", m.dim.to_string()), ("c", decimal(s, m.c, 2)), ("seconds", decimal(s, summary.seconds, 0)), ("bytes", (m.table_bytes >> 10).to_string())]
-        )
-    );
-}
-
-fn print_labels(s: &Session, l: &sioul_learn::labels::Summary) {
-    println!(
-        "{}",
-        s.say(
-            "spam-labels",
-            &[
-                ("ham", l.ham.to_string()),
-                ("spam", l.spam.to_string()),
-                ("folder", l.by_folder.to_string()),
-                ("junk", l.by_junk_folder.to_string()),
-                ("keyword", l.by_keyword.to_string()),
-                ("log", l.by_log.to_string()),
-                ("ambiguous", l.ambiguous.to_string()),
-            ]
-        )
-    );
-    if l.moved > 0 {
-        println!("{}", s.say("spam-labels-moved", &[("n", l.moved.to_string())]));
-    }
-}
-
-fn print_numbers(s: &Session, n: &eval::Numbers, since: i64) {
-    println!("{}", s.say("spam-tested", &[("ham", n.ham.to_string()), ("spam", n.spam.to_string()), ("since", day(s, since))]));
-    print_measured(s, n);
-}
-
-/// The numbers at both thresholds, the share unsure, the AUC.
-fn print_measured(s: &Session, n: &eval::Numbers) {
-    for (at, what) in [(&n.at_spam, "spam-what-set-aside"), (&n.at_unsure, "spam-what-unsure")] {
-        println!(
-            "{}",
-            s.say(
-                "spam-at-threshold",
-                &[
-                    ("threshold", decimal(s, at.threshold, 2)),
-                    ("what", s.tr.text(what, None)),
-                    ("ham", percent(s, at.ham_called_spam.fraction())),
-                    ("hamlow", percent(s, at.ham_called_spam.low)),
-                    ("hamhigh", percent(s, at.ham_called_spam.high)),
-                    ("spam", percent(s, at.spam_caught.fraction())),
-                    ("spamlow", percent(s, at.spam_caught.low)),
-                    ("spamhigh", percent(s, at.spam_caught.high)),
-                ]
-            )
-        );
-    }
-    println!("{}", s.tr.text("spam-intervals", None));
-    println!("{}", s.say("spam-unsure-share", &[("share", percent(s, n.unsure.fraction()))]));
-    if let Some(auc) = n.auc {
-        println!("{}", s.say("spam-auc", &[("auc", decimal(s, auc, 4))]));
-    }
-}
-
-fn evaluate(s: &Session, dirs: &Dirs) -> Result<(), String> {
-    let options = train::Options::of(&s.config);
-    let mut shown = Shown::new();
-    let result = train::evaluate(dirs, &train::trusted_ids(&s.config), &options, &mut |p| shown.show(s, p), &Cancel::new());
-    shown.end();
-    let evaluation = result.map_err(|e| failure(s, &e, &options))?;
-    println!("{}", s.say("spam-table", &[("date", day(s, evaluation.table.trained_at)), ("ham", evaluation.table.ham.to_string()), ("spam", evaluation.table.spam.to_string())]));
-    print_labels(s, &evaluation.labels);
-    print_numbers(s, &evaluation.numbers, evaluation.split.test_from);
-    for (source, numbers) in &evaluation.outside {
-        println!("{}", s.say("spam-outside-baseline", &[("source", crate::one_line(source)), ("ham", numbers.ham.to_string()), ("spam", numbers.spam.to_string())]));
-        print_measured(s, numbers);
-    }
-    Ok(())
 }
 
 /// Imports a file of outside material: counts only, never a message.
@@ -313,54 +366,7 @@ fn remove_source(s: &Session, dirs: &Dirs, source: &str) -> Result<(), String> {
 
 /// A source's name, counts and dates, as the strings take them.
 fn outside_pairs(s: &Session, source: &str, counts: &external::Counts) -> [(&'static str, String); 5] {
-    [("source", crate::one_line(source)), ("ham", counts.ham.to_string()), ("spam", counts.spam.to_string()), ("first", day(s, counts.first)), ("last", day(s, counts.last))]
-}
-
-fn status(s: &Session, dirs: &Dirs) -> Result<(), String> {
-    let corpus = corpus::status(dirs);
-    if corpus.accounts.is_empty() {
-        println!("{}", s.tr.text("spam-corpus-empty", None));
-    }
-    for account in &corpus.accounts {
-        let records: u64 = account.folders.iter().map(|f| f.records).sum();
-        let size = decimal(s, account.bytes as f64 / f64::from(1u32 << 20), 1);
-        println!("{}", s.say("spam-corpus-account", &[("account", account.id.clone()), ("records", records.to_string()), ("size", size), ("folders", account.folders.len().to_string())]));
-        for folder in &account.folders {
-            let name = crate::one_line(&sioul_core::folders::decode_utf7(&folder.name));
-            println!("  {}", s.say("spam-corpus-folder", &[("folder", name), ("server", folder.on_server.to_string()), ("records", folder.records.to_string())]));
-        }
-    }
-    if let Some(at) = corpus.last_run {
-        println!("{}", s.say("spam-corpus-last", &[("date", day(s, at))]));
-    }
-    if let Some(held) = corpus.held {
-        println!("{}", s.say("spam-held", &[("free", (held.free >> 20).to_string())]));
-    }
-    for (account, detail) in &corpus.errors {
-        println!("{}", s.say("spam-account-failed", &[("account", account.clone()), ("detail", crate::one_line(detail))]));
-    }
-    // Outside material: what each source holds, kept apart, never shared.
-    for source in external::sources(dirs) {
-        let mut pairs = outside_pairs(s, &source.name, &source.counts).to_vec();
-        pairs.push(("size", decimal(s, source.bytes as f64 / f64::from(1u32 << 20), 1)));
-        println!("{}", s.say("spam-outside", &pairs));
-    }
-    // Whether your providers' own spam flags still count, as Sioul reads them now: totals only.
-    for (account, v) in corpus::verdicts(&dirs).map_err(|e| e.to_string())? {
-        println!(
-            "{}",
-            s.say("spam-verdicts", &[("account", account), ("records", v.records.to_string()), ("with", v.with_header.to_string()), ("read", v.read.to_string()), ("flagged", v.flagged.to_string())])
-        );
-    }
-    match sioul_learn::train::last(dirs) {
-        Some(summary) => {
-            println!();
-            println!("{}", s.say("spam-last-training", &[("date", day(s, summary.trained_at))]));
-            print_summary(s, &summary);
-        }
-        None => println!("{}", s.tr.text("spam-never-trained", None)),
-    }
-    Ok(())
+    [("source", crate::one_line(source)), ("ham", counts.ham.to_string()), ("spam", counts.spam.to_string()), ("first", report::day(s, counts.first)), ("last", report::day(s, counts.last))]
 }
 
 fn why(s: &Session, dirs: &Dirs, file: &std::path::Path) -> Result<(), String> {
@@ -370,7 +376,7 @@ fn why(s: &Session, dirs: &Dirs, file: &std::path::Path) -> Result<(), String> {
     let trusted = s.config.account_of(file).and_then(|a| sources.iter().find(|src| src.account.as_deref() == Some(a.id.as_str()))).map(|src| src.trusted_ids.clone()).unwrap_or_default();
     let received = std::fs::metadata(file).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64);
     let why = train::why(dirs, &raw, &trusted, received).map_err(|detail| s.say("spam-why-none", &[("detail", detail)]))?;
-    println!("{}", s.say("spam-why-score", &[("p", decimal(s, why.p, 3)), ("f", decimal(s, why.f, 3))]));
+    println!("{}", s.say("spam-why-score", &[("p", report::decimal(s, why.p, 3)), ("f", report::decimal(s, why.f, 3))]));
     println!("{}", s.tr.text("spam-why-words", None));
     for (word, share) in &why.words {
         println!("  {:<24} {}", crate::one_line(word), signed(s, *share));
@@ -382,23 +388,7 @@ fn why(s: &Session, dirs: &Dirs, file: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// A number with this language's decimal separator.
-fn decimal(s: &Session, value: f64, places: usize) -> String {
-    format!("{value:.places$}").replace('.', &s.tr.text("decimal-separator", None))
-}
-
 fn signed(s: &Session, value: f64) -> String {
-    let text = decimal(s, value, 3);
+    let text = report::decimal(s, value, 3);
     if value >= 0.0 { format!("+{text}") } else { text }
-}
-
-/// A fraction as a percentage: "0.4 %" in this language's way.
-fn percent(s: &Session, fraction: f64) -> String {
-    s.say("spam-percent", &[("n", decimal(s, fraction * 100.0, 1))])
-}
-
-/// A day, in this language's way, with its year when not this year's; a dash for an unknown date.
-fn day(s: &Session, seconds: i64) -> String {
-    let today = jiff::Zoned::now().date();
-    jiff::Timestamp::from_second(seconds).ok().filter(|_| seconds > 0).map(|t| s.tr.day_in(t.to_zoned(jiff::tz::TimeZone::system()).date(), today)).unwrap_or_else(|| "—".to_string())
 }

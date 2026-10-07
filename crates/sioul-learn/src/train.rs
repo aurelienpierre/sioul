@@ -40,11 +40,18 @@
 //!    Platt on forward folds over all of it (each fifth scored by an SVM that
 //!    learned the fifths before it), folded and tested the same way. That is
 //!    the table written; the numbers said are those of steps 5 to 7.
+//!
+//! A trial (`Options::replace` false: `sioul spam train --no-replace`, the
+//! MCP's spam_train unless asked) stops after step 8's comparison: it says
+//! what the table in place would become, and changes nothing of the filter,
+//! the table, the one before, the language model nor `trained.toml`.
+//! `train_with` also says what the test said message by message (`detail`).
 
 use crate::corpus::{self, KEEP_FREE, Place, Record};
+use crate::detail::{self, Detail, Origin, Tested};
 use crate::eval::{self, Numbers};
 use crate::external;
-use crate::labels::{self, Copy, Label};
+use crate::labels::{self, Copy, Evidence, Label};
 use crate::platt::{self, Platt};
 use crate::spamcore::{self as spam, N, Table};
 use crate::svm::{self, HAM, Problem, SPAM};
@@ -83,6 +90,9 @@ pub struct Options {
     pub threshold_unsure: f64,
     /// Fewer messages of a kind than this: no training.
     pub least_of_each: u64,
+    /// The table in place may be replaced (when no worse). False: a trial,
+    /// which changes nothing of the filter and says what it would do.
+    pub replace: bool,
 }
 
 impl Default for Options {
@@ -101,6 +111,7 @@ impl Default for Options {
             threshold_spam: 0.95,
             threshold_unsure: 0.5,
             least_of_each: 20,
+            replace: true,
         }
     }
 }
@@ -137,6 +148,10 @@ pub struct Summary {
     /// The numbers, on the newest 20 %, of the model learned from the oldest
     /// 80 % (`model`): what decided the replacement.
     pub test: Numbers,
+    /// The same, ham an inbox holds since less than `detail::UNSETTLED_DAYS`
+    /// left out: its label may not be settled (spam nobody looked at yet).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test_settled: Option<Numbers>,
     /// The table in place before, on the test messages it never learned from
     /// (those after its training: `compared`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -150,6 +165,11 @@ pub struct Summary {
     /// Outside material learned from, by source (`external`): what each gave, and its baseline.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub outside: BTreeMap<String, Outside>,
+    /// A trial (`Options::replace` false): nothing was replaced nor written;
+    /// `reason` says what the comparison found ("worse": the table in place
+    /// would have stayed).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub trial: bool,
 }
 
 /// An outside source in a training: its oldest 80 % learned from, its
@@ -211,7 +231,8 @@ pub struct Counts {
     pub test_spam: u64,
 }
 
-/// The model learned from the oldest 80 %, whose numbers `test` gives.
+/// The model learned from the oldest 80 %, whose numbers `test` gives, and
+/// how it was asked to learn (`Options`: the command line's overrides too).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ModelSummary {
     pub dim: u32,
@@ -221,6 +242,15 @@ pub struct ModelSummary {
     pub minn: u32,
     pub maxn: u32,
     pub epochs: u32,
+    /// Words seen fewer times were left out.
+    #[serde(default)]
+    pub min_count: u32,
+    /// fastText's threads.
+    #[serde(default)]
+    pub threads: u32,
+    /// The SVM's costs it chose from.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub costs: Vec<f64>,
     /// The SVM's cost chosen, and the validation AUC each cost had.
     pub c: f64,
     pub validation_auc: BTreeMap<String, f64>,
@@ -233,6 +263,10 @@ pub struct ModelSummary {
     pub fold_error: f64,
     /// The size of the table written (the refit), or that would have been.
     pub table_bytes: u64,
+    /// The classifier's weight on each header feature, standardized (its
+    /// pull for one deviation of the feature): what the header facts learned.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub header_weights: BTreeMap<String, f64>,
 }
 
 /// The last training's summary; none before the first.
@@ -264,8 +298,15 @@ struct Message {
     label: Label,
     date: i64,
     account: String,
+    /// Your own mail: the copy learned from, and what decided its label.
+    place: Option<Place>,
+    evidence: Option<Evidence>,
     /// Outside material: its source (an index into the training's sources); none for your own mail.
     source: Option<usize>,
+    /// Outside material: its rank in its source, as `external::read_all` reads it (`detail`).
+    ordinal: u64,
+    /// Ham in an inbox, too young for its label to be settled (`detail::unsettled`).
+    unsettled: bool,
     /// Its header features are known (your own mail); outside material's are not: set to the mean.
     known: bool,
     features: [f32; N],
@@ -290,7 +331,16 @@ const LINE_WORDS: usize = 1000;
 /// Trains on the corpus as it is (see the module's steps). The table is
 /// replaced only when no worse; `trained.toml` says what happened.
 pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Options, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Summary, LearnError> {
+    train_with(dirs, trusted, options, 0, progress, cancel).map(|(summary, _)| summary)
+}
+
+/// `train`, and what its test said message by message (`detail`): the test
+/// messages counted by account and folder, the grid of thresholds, and up
+/// to `errors` errors of each kind, your own mail's and each outside
+/// source's, as the model learned from the oldest 80 % judged them.
+pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Options, errors: usize, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<(Summary, Detail), LearnError> {
     let started = std::time::Instant::now();
+    let started_at = now();
     let check = || if cancel.cancelled() { Err(LearnError::Cancelled) } else { Ok(()) };
 
     // Labels: a first pass over the corpus, keeping only what deciding needs.
@@ -371,7 +421,21 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
                 length += text.len() as u64 + 1;
             }
             let l = &labeled[index];
-            messages[index] = Some(Message { label: l.label, date: l.date, account: l.place.account.clone(), source: None, known: true, features, offset, length, words: words.len() as u64 });
+            messages[index] = Some(Message {
+                label: l.label,
+                date: l.date,
+                account: l.place.account.clone(),
+                place: Some(l.place.clone()),
+                evidence: Some(l.evidence),
+                source: None,
+                ordinal: 0,
+                unsettled: detail::unsettled(l.label, l.role, l.date, started_at),
+                known: true,
+                features,
+                offset,
+                length,
+                words: words.len() as u64,
+            });
             offset += length;
             done += 1;
             if done % 500 == 0 {
@@ -379,7 +443,11 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
             }
         })?;
         // Outside material after your own mail, in the same file: its words teach the language model too.
+        let mut ranks: HashMap<String, u64> = HashMap::new();
         external::read_all(dirs, |source, message| {
+            let rank = ranks.entry(source.to_string()).or_default();
+            let ordinal = *rank;
+            *rank += 1;
             if failure.is_some() || yours(&message) {
                 return;
             }
@@ -394,7 +462,21 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
                 length += text.len() as u64 + 1;
             }
             let source = sources.iter().position(|s| s == source);
-            outside_messages.push(Message { label: message.label, date: message.date, account: String::new(), source, known: false, features: [0.0; N], offset, length, words: words.len() as u64 });
+            outside_messages.push(Message {
+                label: message.label,
+                date: message.date,
+                account: String::new(),
+                place: None,
+                evidence: None,
+                source,
+                ordinal,
+                unsettled: false,
+                known: false,
+                features: [0.0; N],
+                offset,
+                length,
+                words: words.len() as u64,
+            });
             offset += length;
             done += 1;
             if done % 500 == 0 {
@@ -438,16 +520,19 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
     let vectors = message_vectors(&language, &token_path, &messages, options.threads.max(1) as usize, progress, cancel)?;
     check()?;
 
-    // Your own mail: oldest 80 % to learn, newest 20 % to test; each outside
-    // source alike, by its own dates, its newest 20 % held out (the
+    // Your own mail: each account's ham, and its spam, oldest 80 % to learn,
+    // newest 20 % to test (`newest_fifths`); each outside source alike, its
+    // ham and its spam, by their own dates, the newest 20 % held out (the
     // baseline). The test and held-out messages' words kept for their scores.
     let by_date = |ids: &mut Vec<usize>| ids.sort_by_key(|&i| (messages[i].date, i));
     let mut order: Vec<usize> = (0..messages.len()).collect();
     by_date(&mut order);
     let newest_fifth = |source: Option<usize>| -> (Vec<usize>, Vec<usize>) {
-        let mut ids: Vec<usize> = order.iter().copied().filter(|&i| messages[i].source == source).collect();
-        let tested = ids.split_off(ids.len() - (ids.len() as f64 * 0.2).round() as usize);
-        (ids, tested)
+        let ids: Vec<usize> = order.iter().copied().filter(|&i| messages[i].source == source).collect();
+        let (mut learned, mut tested) = newest_fifths(&ids, |i| (messages[i].account.as_str(), messages[i].label == Label::Spam));
+        by_date(&mut learned);
+        by_date(&mut tested);
+        (learned, tested)
     };
     let (mut train_ids, test_ids) = newest_fifth(None);
     let mut held: Vec<Vec<usize>> = Vec::with_capacity(sources.len());
@@ -527,10 +612,15 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
     let new_scored: Vec<(f64, bool)> = test_ids.iter().enumerate().map(|(row, &i)| (f64::from(table.score(&test_words[row], &messages[i].features).p), messages[i].label == Label::Spam)).collect();
     drop(test_x);
     let test = eval::evaluate(&new_scored, options.threshold_spam, options.threshold_unsure);
+    // The same, ham an inbox holds since less than a month left out: it may be spam nobody has looked at.
+    let settled: Vec<(f64, bool)> = test_ids.iter().zip(&new_scored).filter(|&(&i, _)| !messages[i].unsettled).map(|(_, &s)| s).collect();
+    let test_settled = Some(eval::evaluate(&settled, options.threshold_spam, options.threshold_unsure));
     // Each outside source's held-out part: the baseline, its header features at the table's means (they weigh nothing).
     let lacking = lacking(&table);
+    let mut tested: Vec<Tested> = test_ids.iter().zip(&new_scored).map(|(&i, &(p, _))| tested_of(&messages[i], p, &sources)).collect();
     for (s, name) in sources.iter().enumerate() {
         let scored: Vec<(f64, bool)> = held[s].iter().zip(&held_words[s]).map(|(&i, words)| (f64::from(table.score(words, &lacking).p), messages[i].label == Label::Spam)).collect();
+        tested.extend(held[s].iter().zip(&scored).map(|(&i, &(p, _))| tested_of(&messages[i], p, &sources)));
         let counts = outside.entry(name.clone()).or_default();
         counts.held_ham = scored.iter().filter(|(_, spam)| !spam).count() as u64;
         counts.held_spam = scored.len() as u64 - counts.held_ham;
@@ -538,6 +628,9 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
         counts.train_spam -= counts.held_spam;
         counts.baseline = (!scored.is_empty()).then(|| eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure));
     }
+    // Message by message: counted by account and folder, the grid, and the worst errors, read again.
+    let detail = detail::of(dirs, &tested, options.threshold_spam, options.threshold_unsure, errors)?;
+    drop(tested);
     progress(&Progress { stage: Stage::Evaluation, done: test_ids.len() as u64, total: test_ids.len() as u64, detail: String::new() });
 
     // The table in place, on the same messages: those of them it never
@@ -570,6 +663,8 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
     check()?;
 
     // Kept: the same model learned again from every message, the newest month included, and written.
+    // A trial stops here: nothing of the filter changes.
+    let replaced = replaced && options.replace;
     let mut table_bytes = table.to_bytes().len() as u64;
     let refit = if replaced {
         let refits = 6u64;
@@ -612,6 +707,9 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
             minn: options.minn,
             maxn: options.maxn,
             epochs: options.epochs,
+            min_count: options.min_count,
+            threads: options.threads,
+            costs: options.costs.clone(),
             c,
             validation_auc,
             ham_weight: options.ham_weight,
@@ -620,16 +718,49 @@ pub fn train(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Opt
             calibration_scores,
             fold_error,
             table_bytes,
+            header_weights: (0..N).map(|h| (spam::NAMES[h].to_string(), model.w[dim + h])).collect(),
         },
         test,
+        test_settled,
         current: current_numbers,
         compared,
         refit,
         outside,
+        trial: !options.replace,
     };
-    let text = toml::to_string(&summary).map_err(|e| io_error(&dirs.trained(), e))?;
-    corpus::write_whole(&dirs.trained(), text.as_bytes())?;
-    Ok(summary)
+    // What the settings say of the last training: never a trial's.
+    if options.replace {
+        let text = toml::to_string(&summary).map_err(|e| io_error(&dirs.trained(), e))?;
+        corpus::write_whole(&dirs.trained(), text.as_bytes())?;
+    }
+    Ok((summary, detail))
+}
+
+/// A test message as `detail` takes it: where it is, its label, how likely spam.
+fn tested_of(message: &Message, p: f64, sources: &[String]) -> Tested {
+    let origin = match (&message.place, message.source) {
+        (Some(place), _) => Origin::Own { place: place.clone(), evidence: message.evidence.unwrap_or(Evidence::Folder) },
+        (None, source) => Origin::Outside { source: source.and_then(|s| sources.get(s)).cloned().unwrap_or_default(), ordinal: message.ordinal },
+    };
+    Tested { p, label: message.label, date: message.date, origin, unsettled: message.unsettled }
+}
+
+/// The oldest 80 % and the newest 20 % of each group of `ids` (in time
+/// order): an account's ham, its spam; an outside source's. Every group is
+/// on both sides, so that a group whose mail all came late (a provider that
+/// keeps spam a month) is learned from too, and none is told apart by when it came.
+pub(crate) fn newest_fifths<'a>(ids: &[usize], group: impl Fn(usize) -> (&'a str, bool)) -> (Vec<usize>, Vec<usize>) {
+    let mut groups: BTreeMap<(&str, bool), Vec<usize>> = BTreeMap::new();
+    for &i in ids {
+        groups.entry(group(i)).or_default().push(i);
+    }
+    let (mut learned, mut tested) = (Vec::new(), Vec::new());
+    for (_, mut ids) in groups {
+        let newest = ids.split_off(ids.len() - (ids.len() as f64 * 0.2).round() as usize);
+        learned.extend(ids);
+        tested.extend(newest);
+    }
+    (learned, tested)
 }
 
 /// The test's numbers the table carries, for the settings of every device.
@@ -698,18 +829,25 @@ impl Rows<'_> {
     }
 
     /// The mean and the deviation of each column over some messages; the
-    /// header features' over those that have them (your own mail).
+    /// header features' over those that have them (your own mail), each
+    /// over the messages where it is known (not missing: `f32::NAN`).
     fn standardization(&self, ids: &[usize]) -> (Vec<f64>, Vec<f64>) {
         standardization(|k| self.raw(ids[k]).collect(), |k| self.messages[ids[k]].known, ids.len(), self.width(), self.dim)
     }
 
     /// Some messages' rows, standardized, one after the other; a message's
-    /// header features it does not have (outside material) at the mean: 0.
+    /// header features it does not have (outside material), or that are
+    /// missing, at the mean: 0.
     fn standardized(&self, ids: &[usize], mean: &[f64], deviation: &[f64]) -> Vec<f32> {
         ids.iter()
             .flat_map(|&i| {
                 let known = self.messages[i].known;
-                self.raw(i).zip(mean).zip(deviation).enumerate().map(move |(c, ((x, m), s))| if *s > 0.0 && (known || c < self.dim) { ((x - m) / s) as f32 } else { 0.0 }).collect::<Vec<f32>>()
+                self.raw(i)
+                    .zip(mean)
+                    .zip(deviation)
+                    .enumerate()
+                    .map(move |(c, ((x, m), s))| if *s > 0.0 && (known || c < self.dim) && !x.is_nan() { ((x - m) / s) as f32 } else { 0.0 })
+                    .collect::<Vec<f32>>()
             })
             .collect()
     }
@@ -722,23 +860,25 @@ impl Rows<'_> {
 /// The mean and the deviation (population) of `width` columns over `n` rows,
 /// in two passes, rows made one at a time; 0 for a column that never changes.
 /// The columns from `dim` on (the header features) only over the rows that
-/// have them (`known`); without any, 0.
+/// have them (`known`); without any, 0. A missing value (NaN) counts in neither.
 fn standardization(row: impl Fn(usize) -> Vec<f64>, known: impl Fn(usize) -> bool, n: usize, width: usize, dim: usize) -> (Vec<f64>, Vec<f64>) {
-    let counted = |column: usize, k: usize| column < dim || known(k);
-    let counts: Vec<f64> = (0..width).map(|c| (0..n).filter(|&k| counted(c, k)).count().max(1) as f64).collect();
+    let counted = |column: usize, k: usize, x: f64| (column < dim || known(k)) && !x.is_nan();
+    let mut counts = vec![0usize; width];
     let mut mean = vec![0.0; width];
     for k in 0..n {
-        for (c, (m, x)) in mean.iter_mut().zip(row(k)).enumerate() {
-            if counted(c, k) {
+        for (c, ((m, x), count)) in mean.iter_mut().zip(row(k)).zip(counts.iter_mut()).enumerate() {
+            if counted(c, k, x) {
                 *m += x;
+                *count += 1;
             }
         }
     }
+    let counts: Vec<f64> = counts.iter().map(|&c| c.max(1) as f64).collect();
     mean.iter_mut().zip(&counts).for_each(|(m, n)| *m /= n);
     let mut deviation = vec![0.0; width];
     for k in 0..n {
         for (c, ((d, x), m)) in deviation.iter_mut().zip(row(k)).zip(&mean).enumerate() {
-            if counted(c, k) {
+            if counted(c, k, x) {
                 *d += (x - m) * (x - m);
             }
         }
@@ -1022,12 +1162,31 @@ pub struct Evaluation {
     pub table: spam::Meta,
     /// Each outside source's newest 20 %, the baseline, apart.
     pub outside: BTreeMap<String, Numbers>,
+    /// The test messages that came after the table was trained: it never
+    /// learned from them. The table a training writes learned from every
+    /// message before it, the newest fifth included: on the others, it is
+    /// judged on what it was taught. None when none came since.
+    pub unseen: Option<Unseen>,
+}
+
+/// The numbers on the test messages the table in place never learned from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Unseen {
+    /// When the table was trained: only later messages count.
+    pub since: i64,
+    pub numbers: Numbers,
 }
 
 /// Tests the table in place on the newest fifth of the corpus as it is now,
 /// without training: aggregate numbers only (`sioul spam eval`). New mail
 /// since the training makes it a test of how the table holds up.
 pub fn evaluate(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Options, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<Evaluation, LearnError> {
+    evaluate_with(dirs, trusted, options, 0, progress, cancel).map(|(evaluation, _)| evaluation)
+}
+
+/// `evaluate`, and what the test said message by message (`detail`), with
+/// up to `errors` errors of each kind (`sioul spam eval --errors`).
+pub fn evaluate_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Options, errors: usize, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<(Evaluation, Detail), LearnError> {
     let table = Table::read(&dirs.table()).map_err(LearnError::NoTable)?;
     let mut copies = Vec::new();
     corpus::read_all(dirs, |record| copies.push(Copy::of(&record)))?;
@@ -1036,11 +1195,15 @@ pub fn evaluate(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &
     if cancel.cancelled() {
         return Err(LearnError::Cancelled);
     }
+    // The newest fifth of each account's ham and of its spam, as a training tests on (`newest_fifths`).
     labeled.sort_by(|a, b| (a.date, &a.key).cmp(&(b.date, &b.key)));
-    let test_count = (labeled.len() as f64 * 0.2).round() as usize;
-    let tested = labeled.split_off(labeled.len() - test_count);
-    let wanted: HashMap<Place, usize> = tested.iter().enumerate().map(|(i, l)| (l.place.clone(), i)).collect();
-    let mut scored: Vec<Option<(f64, bool)>> = vec![None; tested.len()];
+    let all: Vec<usize> = (0..labeled.len()).collect();
+    let (_, newest) = newest_fifths(&all, |i| (labeled[i].place.account.as_str(), labeled[i].label == Label::Spam));
+    let newest: HashSet<usize> = newest.into_iter().collect();
+    let (tested_labels, labeled): (Vec<(usize, labels::Labeled)>, Vec<(usize, labels::Labeled)>) = labeled.into_iter().enumerate().partition(|(i, _)| newest.contains(i));
+    let (tested_labels, labeled): (Vec<labels::Labeled>, Vec<labels::Labeled>) = (tested_labels.into_iter().map(|(_, l)| l).collect(), labeled.into_iter().map(|(_, l)| l).collect());
+    let wanted: HashMap<Place, usize> = tested_labels.iter().enumerate().map(|(i, l)| (l.place.clone(), i)).collect();
+    let mut scored: Vec<Option<(f64, bool)>> = vec![None; tested_labels.len()];
     let mut done = 0u64;
     corpus::read_all(dirs, |record| {
         let Some(&i) = wanted.get(&record.place()) else { return };
@@ -1048,41 +1211,59 @@ pub fn evaluate(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &
             return;
         }
         let (words, features) = read_message(&record, trusted);
-        scored[i] = Some((f64::from(table.score(&words, &features).p), tested[i].label == Label::Spam));
+        scored[i] = Some((f64::from(table.score(&words, &features).p), tested_labels[i].label == Label::Spam));
         done += 1;
         if done % 500 == 0 {
-            progress(&Progress { stage: Stage::Evaluation, done, total: tested.len() as u64, detail: String::new() });
+            progress(&Progress { stage: Stage::Evaluation, done, total: tested_labels.len() as u64, detail: String::new() });
         }
     })?;
     if cancel.cancelled() {
         return Err(LearnError::Cancelled);
     }
+    // Message by message, for the detail; then the numbers, and those of the messages it never learned from.
+    let since = table.meta.trained_at;
+    let mut tested: Vec<Tested> = tested_labels
+        .iter()
+        .zip(&scored)
+        .filter_map(|(l, scored)| scored.map(|(p, _)| Tested { p, label: l.label, date: l.date, origin: Origin::Own { place: l.place.clone(), evidence: l.evidence }, unsettled: detail::unsettled(l.label, l.role, l.date, now()) }))
+        .collect();
+    let unseen: Vec<(f64, bool)> = tested.iter().filter(|t| t.date > since).map(|t| (t.p, t.label == Label::Spam)).collect();
+    let unseen = (!unseen.is_empty()).then(|| Unseen { since, numbers: eval::evaluate(&unseen, options.threshold_spam, options.threshold_unsure) });
     let scored: Vec<(f64, bool)> = scored.into_iter().flatten().collect();
     let split = Split {
         test_ham: scored.iter().filter(|(_, s)| !s).count() as u64,
         test_spam: scored.iter().filter(|(_, s)| *s).count() as u64,
-        test_from: tested.first().map_or(0, |l| l.date),
+        test_from: tested_labels.first().map_or(0, |l| l.date),
         ..Split::default()
     };
     // Each outside source's newest fifth, as a training holds it out: the baseline.
-    let own_keys: HashSet<String> = labeled.iter().chain(&tested).map(|l| l.key.clone()).collect();
-    let mut sources: BTreeMap<String, Vec<external::Message>> = BTreeMap::new();
+    let own_keys: HashSet<String> = labeled.iter().chain(&tested_labels).map(|l| l.key.clone()).collect();
+    let mut sources: BTreeMap<String, Vec<(u64, external::Message)>> = BTreeMap::new();
+    let mut ranks: HashMap<String, u64> = HashMap::new();
     external::read_all(dirs, |source, message| {
+        let rank = ranks.entry(source.to_string()).or_default();
+        let ordinal = *rank;
+        *rank += 1;
         if !message.message_id().is_some_and(|id| own_keys.contains(&id)) {
-            sources.entry(source.to_string()).or_default().push(message);
+            sources.entry(source.to_string()).or_default().push((ordinal, message));
         }
     })?;
     let lacking = lacking(&table);
-    let outside = sources
-        .into_iter()
-        .map(|(name, mut messages)| {
-            messages.sort_by_key(|m| m.date);
-            let held = messages.split_off(messages.len() - (messages.len() as f64 * 0.2).round() as usize);
-            let scored: Vec<(f64, bool)> = held.iter().map(|m| (f64::from(table.score(&m.words(), &lacking).p), m.label == Label::Spam)).collect();
-            (name, eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure))
-        })
-        .collect();
-    Ok(Evaluation { labels: label_summary, split, numbers: eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure), table: table.meta, outside })
+    let mut outside = BTreeMap::new();
+    for (name, mut messages) in sources {
+        // Its ham and its spam, each its newest fifth, as a training holds them out.
+        messages.sort_by_key(|(_, m)| m.date);
+        let all: Vec<usize> = (0..messages.len()).collect();
+        let (_, newest) = newest_fifths(&all, |i| ("", messages[i].1.label == Label::Spam));
+        let newest: HashSet<usize> = newest.into_iter().collect();
+        let held: Vec<(u64, external::Message)> = messages.into_iter().enumerate().filter(|(i, _)| newest.contains(i)).map(|(_, m)| m).collect();
+        let scored: Vec<(f64, bool)> = held.iter().map(|(_, m)| (f64::from(table.score(&m.words(), &lacking).p), m.label == Label::Spam)).collect();
+        tested.extend(held.iter().zip(&scored).map(|((ordinal, m), &(p, _))| Tested { p, label: m.label, date: m.date, origin: Origin::Outside { source: name.clone(), ordinal: *ordinal }, unsettled: false }));
+        outside.insert(name, eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure));
+    }
+    let detail = detail::of(dirs, &tested, options.threshold_spam, options.threshold_unsure, errors)?;
+    let numbers = eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure);
+    Ok((Evaluation { labels: label_summary, split, numbers, table: table.meta, outside, unseen }, detail))
 }
 
 /// What weighed in one message's verdict. It names words of the message: for
@@ -1311,12 +1492,71 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    /// A trial (`--no-replace`) says what the table would become and changes
+    /// nothing of the filter; asked for errors, it gives the worst of each
+    /// kind with their cards read again. `evaluate_with` says the same of the
+    /// table in place, and apart the numbers of the messages it never learned from.
+    #[test]
+    fn a_trial_changes_nothing_and_names_its_errors() {
+        let root = scratch("trial");
+        let dirs = Dirs::under(&root);
+        corpus::store(&dirs, &records(&synthetic::mailbox(31, 300, 200))).unwrap();
+        // No table yet: a trial would write one, and writes nothing.
+        let trial = Options { replace: false, ..small() };
+        let (summary, detail) = train_with(&dirs, &trusted(), &trial, 5, &mut |_| {}, &Cancel::new()).unwrap();
+        assert!(summary.trial && !summary.replaced && summary.reason == "no-table" && summary.refit.is_none(), "{} {}", summary.reason, summary.replaced);
+        assert!(!dirs.table().exists() && !dirs.language().exists() && !dirs.trained().exists() && last(&dirs).is_none());
+        assert_eq!(std::fs::read_dir(&dirs.cache).unwrap().count(), 0, "the tokenized corpus is gone");
+        assert_eq!((summary.model.threads, summary.model.min_count, summary.model.costs.len()), (1, 2, 4), "how it was asked to learn");
+        let tested: u64 = detail.by_account.values().map(|c| c.ham.total() + c.spam.total()).sum();
+        assert_eq!(tested, summary.split.test_ham + summary.split.test_spam);
+        assert_eq!(detail.grid.len(), detail::GRID.len());
+        assert!(detail.errors.ham_called_spam.len() <= 5 && detail.errors.spam_missed.len() <= 5);
+        for w in detail.errors.ham_called_spam.iter().chain(&detail.errors.spam_missed) {
+            assert!(w.card.is_some() && !w.outside && !w.account.is_empty(), "{w:?}");
+        }
+        assert!(detail.errors.ham_called_spam.windows(2).all(|w| w[0].p >= w[1].p), "the surest first");
+        assert!(detail.errors.spam_missed.windows(2).all(|w| w[0].p <= w[1].p), "the least sure first");
+        // Trained for good: written, and trained.toml says it.
+        let kept = train(&dirs, &trusted(), &small(), &mut |_| {}, &Cancel::new()).unwrap();
+        assert!(kept.replaced && !kept.trial && last(&dirs).is_some_and(|l| !l.trial));
+        let in_place = std::fs::read(dirs.table()).unwrap();
+        // The newest fifth was learned from by the table in place: nothing unseen.
+        let (evaluation, detail) = evaluate_with(&dirs, &trusted(), &small(), 3, &mut |_| {}, &Cancel::new()).unwrap();
+        assert!(evaluation.unseen.is_none(), "{:?}", evaluation.unseen);
+        assert!(detail.errors.ham_called_spam.len() <= 3 && detail.errors.spam_missed.len() <= 3);
+        // Mail since the table's training: tested apart.
+        let mut rng = crate::Rng::new(31);
+        let soon = now() + 3600;
+        let newer: Vec<Record> = (0..40u32)
+            .map(|k| {
+                let spam = k % 2 == 0;
+                let date = soon + i64::from(k) * 60;
+                let (folder, role) = if spam { ("Junk", sioul_core::folders::Role::Junk) } else { ("INBOX", sioul_core::folders::Role::Inbox) };
+                let mail = synthetic::Mail { account: "home", folder, role, flags: vec![], date, raw: synthetic::message(&mut rng, spam, 80_000 + k, date) };
+                synthetic::record_of(&mail, 1, 20_000 + k)
+            })
+            .collect();
+        corpus::store(&dirs, &newer).unwrap();
+        let (evaluation, _) = evaluate_with(&dirs, &trusted(), &small(), 0, &mut |_| {}, &Cancel::new()).unwrap();
+        let unseen = evaluation.unseen.expect("mail since the training");
+        assert_eq!(unseen.since, Table::read(&dirs.table()).unwrap().meta.trained_at);
+        assert_eq!(unseen.numbers.ham + unseen.numbers.spam, 40);
+        // A trial with a table in place: compared, never replaced.
+        let (second, _) = train_with(&dirs, &trusted(), &trial, 0, &mut |_| {}, &Cancel::new()).unwrap();
+        assert!(second.trial && !second.replaced && second.compared.is_some(), "{second:?}");
+        assert_eq!(std::fs::read(dirs.table()).unwrap(), in_place, "the table in place stays");
+        assert!(!dirs.previous_table().exists());
+        assert_eq!(last(&dirs).map(|l| l.trained_at), Some(kept.trained_at), "trained.toml stays the last training's");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     /// Outside material's header features, which it does not have, stand at
     /// the mean of your own mail's: standardized, exactly 0, whatever is
     /// written there; the mean and the deviation are your own mail's alone.
     #[test]
     fn what_outside_material_lacks_weighs_nothing() {
-        let message = |known: bool, x: f32| Message { label: Label::Ham, date: 0, account: String::new(), source: (!known).then_some(0), known, features: [x; N], offset: 0, length: 0, words: 0 };
+        let message = |known: bool, x: f32| Message { label: Label::Ham, date: 0, account: String::new(), place: None, evidence: None, source: (!known).then_some(0), ordinal: 0, unsettled: false, known, features: [x; N], offset: 0, length: 0, words: 0 };
         let messages = vec![message(true, 1.0), message(true, 3.0), message(false, 1000.0)];
         let vectors = vec![1.0, 2.0, 3.0];
         let rows = Rows { vectors: &vectors, messages: &messages, dim: 1 };
@@ -1433,14 +1673,15 @@ mod tests {
 
     /// Lays out an invented profile for trying `sioul spam` by hand, in the
     /// folder `SIOUL_LEARN_DEMO` names: a configuration with two invented
-    /// accounts, an invented corpus, one invented spam (`spam.eml`). Point
+    /// accounts (IMAP: never fetch with them, `--no-fetch`; no password is
+    /// kept), an invented corpus, one invented spam (`spam.eml`). Point
     /// XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME and XDG_CACHE_HOME at its
     /// config, data, state and cache folders.
     #[test]
     #[ignore]
     fn write_an_invented_profile() {
         let Some(root) = std::env::var_os("SIOUL_LEARN_DEMO").map(PathBuf::from) else { return };
-        let config = "[[account]]\nid = \"home\"\naddress = \"owner@example.org\"\nhost = \"imap.example.org\"\ntrusted_authserv_ids = [\"mx.example.org\"]\n\n[[account]]\nid = \"work\"\naddress = \"owner@example.com\"\nhost = \"imap.example.com\"\n\n[spam]\nthreshold_spam = 0.9\nthreshold_unsure = 0.5\n";
+        let config = "[[account]]\nid = \"home\"\nkind = \"imap\"\naddress = \"owner@example.org\"\nhost = \"imap.example.org\"\ntrusted_authserv_ids = [\"mx.example.org\"]\n\n[[account]]\nid = \"work\"\nkind = \"imap\"\naddress = \"owner@example.com\"\nhost = \"imap.example.com\"\n\n[spam]\nthreshold_spam = 0.9\nthreshold_unsure = 0.5\n";
         std::fs::create_dir_all(root.join("config/sioul")).unwrap();
         std::fs::write(root.join("config/sioul/config.toml"), config).unwrap();
         let dirs = Dirs { data: root.join("data/sioul/spam"), state: root.join("state/sioul/spam"), cache: root.join("cache/sioul/spam") };
@@ -1466,5 +1707,9 @@ mod tests {
         let rows = [vec![1.0, 4.0], vec![3.0, 6.0], vec![5.0, 0.0]];
         let (mean, deviation) = standardization(|k| rows[k].clone(), |k| k < 2, rows.len(), 2, 1);
         assert_eq!((mean, deviation), (vec![3.0, 5.0], vec![(8.0f64 / 3.0).sqrt(), 1.0]));
+        // A missing value counts in neither: the mean and deviation of those known.
+        let rows = [vec![1.0, 4.0], vec![3.0, f64::NAN], vec![5.0, 6.0]];
+        let (mean, deviation) = standardization(|k| rows[k].clone(), |_| true, rows.len(), 2, 1);
+        assert_eq!((mean[1], deviation[1]), (5.0, 1.0));
     }
 }

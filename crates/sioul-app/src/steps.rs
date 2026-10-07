@@ -185,13 +185,15 @@ fn next_step(in_use: bool, asleep: bool) -> i64 {
 }
 
 /// Whether mail is fetched at this step: at its rhythm, not while you sleep
-/// or pause unless the notification matrix lets new mail come then (as
-/// usual, nothing is told then; it comes when Sioul opens or after), and
-/// only when new mail is notified at all.
+/// or pause unless the matrix of what reaches you tells some mail then (as
+/// usual, nothing is told then, your safe senders' and Always through's
+/// shown, not told; it comes when Sioul opens or after), and only when new
+/// mail is notified at all.
 fn mail_due(config: &Config, now: i64, last: i64, asleep: bool, paused: bool) -> bool {
-    use sioul_core::notify::{Cell, Column, Kind, Notify};
-    let notify = Notify::of(config);
-    let held = |column: Column| matches!(notify.cell(Kind::Mail, column), Cell::Later | Cell::Never);
+    use sioul_core::attention::{Attention, Column, Level, Row, persons};
+    use sioul_core::reach::Channel;
+    let attention = Attention::of(config);
+    let held = |column: Column| !persons(Channel::Mail).iter().any(|p| attention.cell(Row::People(Channel::Mail, *p), column) == Level::Now);
     let resting = (asleep && held(Column::Sleep)) || (paused && held(Column::Pause));
     config.reminders.mail && !resting && now - last >= MAIL_EVERY - 30 && config.accounts.iter().any(sioul_core::config::Account::syncs)
 }

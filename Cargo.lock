@@ -4239,6 +4239,7 @@ version = "0.0.2"
 dependencies = [
  "clap",
  "jiff",
+ "libc",
  "rpassword",
  "serde",
  "serde_json",

@@ -28,8 +28,9 @@ use sioul_core::calls::{self as rules, Held, Seen, Through};
 use sioul_core::config::Config;
 use sioul_core::everywhere::{self as switches, People, Switch};
 use sioul_core::porch::{Senders, Standing};
+use sioul_core::attention::{Attention, Person};
 use sioul_core::quiet::Overrides;
-use sioul_core::reach::{Channel, Clock, Moment, Reach, Row, Who};
+use sioul_core::reach::{Clock, Who};
 use sioul_core::voicemail::{self, Voicemail};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -87,7 +88,7 @@ fn forget_state() {
 }
 
 /// Whether this phone screens calls now: Sioul holds the role.
-fn screens_here() -> bool {
+pub(crate) fn screens_here() -> bool {
     cfg!(target_os = "android") && state()["held"] == true
 }
 
@@ -114,6 +115,9 @@ fn inputs(config: &Config, now: &Zoned) -> Inputs {
         Overrides::default_path(),
         sioul_core::health::Health::default_path(),
         sioul_core::needs::Days::default_path(),
+        sioul_core::attention::Slots::default_path(),
+        // A focus session: do-not-disturb while it counts, when set so (a layer of the frames).
+        sioul_core::timelog::folder().join("running.toml"),
         path(rules::THROUGH_HERE),
     ];
     (now.date(), files.iter().map(|f| changed(f)).collect())
@@ -196,12 +200,14 @@ fn named(switch: &mut Switch, here: &str) {
     own.name = if own.kind == "phone" { String::new() } else { crate::devices::name() };
 }
 
-/// The table: who each number is, the floors, "Let every call through", and
-/// the frames from today's midnight, four days on (from midnight, so that a
-/// table made a minute later says the same and is not written again).
+/// The table: who each number is (the Always through list's as rows of their
+/// own, never a blocked one), the floors, "Let every call through", and the
+/// frames from today's midnight, four days on (from midnight, so that a
+/// table made a minute later says the same and is not written again), with
+/// the matrix's layers: today's slots of time for you, do-not-disturb.
 fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
     let senders = Senders::load(config);
-    let reach = Reach::load(config);
+    let attention = Attention::of(config);
     let clock = if crate::steps::in_service() {
         // The background service reads no calendar (a phone's battery): the meals
         // are not pushed past the day's events there; the window's next look does it.
@@ -213,24 +219,34 @@ fn make(config: &Config, switch: &Switch, now: &Zoned) -> rules::Table {
     };
     let from = now.date().to_zoned(now.time_zone().clone()).unwrap_or_else(|_| now.clone());
     let until = from.checked_add(jiff::Span::new().days(rules::TABLE_DAYS)).unwrap_or_else(|_| now.clone());
-    // The do-not-disturb list lets its people through only while its setting says so.
-    let people = if config.dnd.people { People::load(&People::default_path()) } else { People::default() };
+    // Always through: its people's numbers, read against who each number is; blocked beats it.
+    let people = People::load(&People::default_path());
+    let always = rules::always_numbers(&people, senders.region(), &|key| senders.judge_number(key).who);
     rules::table(rules::Made {
         made: now.timestamp().as_millisecond(),
         region: senders.region(),
         numbers: senders.numbers().into_iter().map(|(key, who)| (key, who.id().to_string())).collect(),
         prefixes: senders.prefixes().into_iter().map(|(prefix, who)| (prefix, who.id().to_string())).collect(),
-        people: &people,
+        always,
         through: rules::through_of(switch),
-        frames: rules::frames(&reach, &clock, &from, &until),
+        frames: rules::frames(&attention, &clock, &layers(), &from, &until),
     })
+}
+
+/// What holds on top of the times, ahead: today's slots of time for you
+/// (`state/slots.toml`), and do-not-disturb from its switch or a focus
+/// session, from when, until when (none: until turned off; the table is
+/// written again at each change, `everywhere::apply`).
+fn layers() -> rules::Layers {
+    let since = jiff::Timestamp::now().as_second();
+    rules::Layers { slots: crate::hours::slots().slots, dnd: crate::everywhere::gate().map(|until| (since, until)) }
 }
 
 // ---------------------------------------------------------------- "Let every call through"
 
 /// "Let every call through" as this device knows it: the shared switch, and
 /// on the phone its notification's own press, the later of the two.
-fn through_now(switch: &Switch) -> Option<Through> {
+pub(crate) fn through_now(switch: &Switch) -> Option<Through> {
     let shared = rules::through_of(switch);
     let local: Option<Through> = if cfg!(target_os = "android") { rules::read_json(&path(rules::THROUGH_HERE)) } else { None };
     match (shared, local) {
@@ -312,7 +328,8 @@ fn who_now(senders: &Senders, held: &Held) -> Option<Who> {
 }
 
 /// The Porch's list of calls declined (CallsSection.qml): {lines}; each line
-/// shown at the times its caller may reach you, by phone or in writing.
+/// shown at the times its caller's Calls row lets them through (a row that
+/// rings at no time at all, in work and admin time: `Attention::listed`).
 pub(crate) fn view() -> String {
     if !phone() {
         return json!({ "lines": [] }).to_string();
@@ -324,12 +341,12 @@ pub(crate) fn view() -> String {
     let config = load_config();
     let now = Zoned::now();
     let senders = Senders::load(&config);
-    let reach = Reach::load(&config);
-    let overrides = Overrides::load(&Overrides::default_path());
-    let moment = Moment::of(&crate::hours::mode_at(&now), sioul_core::pause::nothing_now(&overrides, &config.free_time));
+    let attention = Attention::of(&config);
+    let moment = crate::hours::attention_now();
+    let always = People::load(&People::default_path());
     let shows = |h: &Held| match who_now(&senders, h) {
-        None => reach.allows_row(Channel::Calls, Row::Hidden, &moment) || reach.allows(Channel::Mail, Who::Stranger, &moment),
-        Some(who) => reach.allows(Channel::Calls, who, &moment) || reach.allows(Channel::Mail, who, &moment),
+        None => attention.listed(Person::Hidden, false, &moment),
+        Some(who) => attention.listed(Person::of(who), always.admits_number(&h.key, senders.region()), &moment),
     };
     let name_of = |key: &str| {
         let judged = senders.judge_number(key);
@@ -481,21 +498,19 @@ pub(crate) fn act(verb: &str, json: &str) -> String {
 
 // ---------------------------------------------------------------- Settings ▸ Calls
 
-/// Settings ▸ Calls (CallsSetup.qml): {android, state, moment, people,
-/// dnd_people}; the table made at once when the role was just given.
+/// Settings ▸ Calls (CallsSetup.qml): {android, state, moment}; the table
+/// made at once when the role was just given. Who rings when is What
+/// reaches you's (its Calls rows, Always through).
 pub(crate) fn setup() -> String {
     forget_state();
     let state = state();
     if state["held"] == true && !path(rules::TABLE).is_file() {
         std::thread::spawn(|| refresh(true));
     }
-    let config = load_config();
     json!({
         "android": cfg!(target_os = "android"),
         "state": state,
         "moment": moment(),
-        "people": People::load(&People::default_path()).people.len(),
-        "dnd_people": config.dnd.people,
     })
     .to_string()
 }

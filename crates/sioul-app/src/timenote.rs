@@ -133,9 +133,9 @@ fn post(window: Option<(&QtThread, &Arc<Shared>)>) -> Option<Note> {
     let running = timelog::running();
     let title = running.as_ref().map(|r| title_now(&mut shown.named, &r.task, window.map(|(_, shared)| shared))).unwrap_or_default();
     let note = note_of(running.as_ref(), &title, Timestamp::now().as_second(), tr(), &TimeZone::system());
-    // At a time the notification matrix says "Not at all" for it (as usual, never), the
+    // At a time the matrix of what reaches you says "Not at all" for it (as usual, never), the
     // note is taken away until that time ends; the session runs on.
-    let note = note.filter(|_| crate::hours::comes(sioul_core::notify::Kind::Time));
+    let note = note.filter(|_| crate::hours::comes(sioul_core::attention::Kind::Time));
     if shown.note.as_ref() != Some(&note) {
         put(&mut shown, note.as_ref(), window);
         shown.note = Some(note.clone());

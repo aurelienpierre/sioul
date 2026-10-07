@@ -11,10 +11,13 @@
 //! what could not be.
 //!
 //! - **Android**: a mode of Sioul's own for each ("Pause", "Free time",
-//!   "Do not disturb (Sioul)"),
-//!   letting through starred contacts and repeat callers (or nobody), alarms,
-//!   and Sioul's dose reminders (android/package/src/com/aurelienpierre/sioul/
-//!   PauseMode.java). Needs Android's "Do Not Disturb access".
+//!   "Do not disturb (Sioul)"), letting through what the matrix of what
+//!   reaches you lets through then, as far as Android can say it
+//!   (`Ask::silence`: calls and messages from nobody, starred contacts,
+//!   contacts or anyone, repeat callers, priority conversations), alarms,
+//!   and Sioul's dose reminders and an event's alarms on channels that pass
+//!   (android/package/src/com/aurelienpierre/sioul/PauseMode.java). Needs
+//!   Android's "Do Not Disturb access".
 //! - **Plasma**: its notification server's inhibition, held while the pause
 //!   lasts (sioul-sync's dnd.rs); it ends with Sioul's process.
 //! - **GNOME**: only the person's own switch exists; Sioul turns it on and off
@@ -80,6 +83,13 @@ pub(crate) struct Ask {
     /// GNOME: the person's yes, given in the pause's settings, for Sioul to
     /// switch on GNOME's own Do Not Disturb, and off again after. Ignored elsewhere.
     pub desktop: bool,
+    /// Android: what the matrix of what reaches you lets through this mode
+    /// (`attention::Silence`): calls and messages from nobody, starred
+    /// contacts, contacts or anyone; a second call; important conversations;
+    /// an event's alarms on a channel that passes. Given to Java beside
+    /// `people` and `doses`, which say the same as far as today's Java reads.
+    #[serde(default)]
+    pub silence: Option<sioul_core::attention::Silence>,
 }
 
 /// What was done, in words for the screen.
@@ -194,6 +204,14 @@ enum Said {
     PhoneCallback(Option<String>),
     /// Silenced, with these exceptions as the mode is set (read back from Android).
     PhoneOn(Senders),
+    /// Silenced, with these exceptions as the mode is set (read back from
+    /// Android): who may call, who may write, a second call within 15
+    /// minutes, the conversations marked priority in Android.
+    PhoneLets { calls: Senders, messages: Senders, repeat: bool, conversations: bool },
+    /// Android 10: no priority conversations to let through.
+    PhoneNoConversations,
+    /// An event's alarms during the mode: through (their channel passes), or silenced (changed in Android's settings).
+    PhoneEvents(bool),
     /// Silenced as the mode of this name is set in Android's settings, otherwise than Sioul set it.
     PhoneAsSet(String),
     /// The mode is set otherwise in Android's settings than the pause asks.
@@ -235,11 +253,62 @@ enum Said {
     OwnHeld { doses: bool },
 }
 
-/// Who gets through the phone's mode, as Sioul sets it.
+/// Who gets through the phone's mode, as Sioul sets it (`attention::Senders`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Senders {
     Starred,
     Nobody,
+    Contacts,
+    Anyone,
+}
+
+impl Senders {
+    fn of(senders: sioul_core::attention::Senders) -> Senders {
+        match senders {
+            sioul_core::attention::Senders::None => Senders::Nobody,
+            sioul_core::attention::Senders::Starred => Senders::Starred,
+            sioul_core::attention::Senders::Contacts => Senders::Contacts,
+            sioul_core::attention::Senders::Anyone => Senders::Anyone,
+        }
+    }
+}
+
+/// "calls from your contacts, messages from starred contacts, repeat
+/// callers and priority conversations": what a phone's mode lets through.
+fn lets(tr: &Translator, calls: Senders, messages: Senders, repeat: bool, conversations: bool) -> String {
+    let from = |senders: Senders| match senders {
+        Senders::Starred => tr.text("dnd-phone-from-starred", None),
+        Senders::Contacts => tr.text("dnd-phone-from-contacts", None),
+        Senders::Anyone => tr.text("dnd-phone-from-anyone", None),
+        Senders::Nobody => String::new(),
+    };
+    let with = |key: &str, senders: Senders| {
+        let mut args = i18n::args();
+        args.set("from", from(senders));
+        tr.text(key, Some(&args))
+    };
+    let mut parts = Vec::new();
+    if calls == messages && calls != Senders::Nobody {
+        parts.push(with("dnd-phone-lets-both", calls));
+    } else {
+        if calls != Senders::Nobody {
+            parts.push(with("dnd-phone-lets-calls", calls));
+        }
+        if messages != Senders::Nobody {
+            parts.push(with("dnd-phone-lets-messages", messages));
+        }
+    }
+    if repeat {
+        parts.push(tr.text("dnd-phone-lets-repeat", None));
+    }
+    if conversations {
+        parts.push(tr.text("dnd-phone-lets-conversations", None));
+    }
+    let Some(last) = parts.pop() else { return tr.text("dnd-phone-nobody", None) };
+    let what = if parts.is_empty() { last } else { format!("{} {} {last}", parts.join(", "), tr.text("word-and", None)) };
+    let mut args = i18n::args();
+    args.set("what", what);
+    tr.text("dnd-phone-lets", Some(&args))
 }
 
 /// What becomes of a dose reminder during the pause, on the phone.
@@ -274,6 +343,11 @@ fn sentence(said: &Said, tr: &Translator) -> String {
         Said::PhoneCallback(None) => tr.text("dnd-phone-callback-unknown", None),
         Said::PhoneOn(Senders::Starred) => tr.text("dnd-phone-starred", None),
         Said::PhoneOn(Senders::Nobody) => tr.text("dnd-phone-nobody", None),
+        Said::PhoneOn(senders) => lets(tr, *senders, *senders, true, false),
+        Said::PhoneLets { calls, messages, repeat, conversations } => lets(tr, *calls, *messages, *repeat, *conversations),
+        Said::PhoneNoConversations => tr.text("dnd-phone-no-conversations", None),
+        Said::PhoneEvents(true) => tr.text("dnd-phone-events", None),
+        Said::PhoneEvents(false) => tr.text("dnd-phone-events-blocked", None),
         Said::PhoneAsSet(name) => with("dnd-phone-as-set", &[("name", name.as_str())]),
         Said::PhoneSetThere => tr.text("dnd-phone-set-there", None),
         Said::PhoneThrough { alarms, doses } => {
@@ -491,11 +565,78 @@ mod answers {
     use super::*;
     use serde_json::Value;
 
-    /// ZenPolicy's PEOPLE_TYPE_STARRED, PEOPLE_TYPE_NONE; STATE_ALLOW, STATE_DISALLOW.
+    /// ZenPolicy's PEOPLE_TYPE_ANYONE, _CONTACTS, _STARRED, _NONE; STATE_ALLOW,
+    /// STATE_DISALLOW; CONVERSATION_SENDERS_ANYONE, _IMPORTANT, _NONE.
+    const ANYONE: i64 = 1;
+    const CONTACTS: i64 = 2;
     const STARRED: i64 = 3;
     const NONE: i64 = 4;
     const ALLOW: i64 = 1;
     const DISALLOW: i64 = 2;
+    const CONVERSATIONS_ANY: i64 = 1;
+    const CONVERSATIONS_IMPORTANT: i64 = 2;
+    const CONVERSATIONS_NONE: i64 = 3;
+
+    /// What a mode lets through, as asked or as Android has it: who may call,
+    /// who may write, a second call, the conversations marked priority (none:
+    /// not said, Android 10 having none).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct Lets {
+        calls: Senders,
+        messages: Senders,
+        repeat: bool,
+        conversations: Option<bool>,
+    }
+
+    impl Lets {
+        /// As the mode asks it: the matrix's (`Ask::silence`), else the older "people".
+        fn asked(ask: &Ask) -> Lets {
+            match ask.silence {
+                Some(s) => Lets { calls: Senders::of(s.calls), messages: Senders::of(s.messages), repeat: s.repeat, conversations: Some(s.conversations) },
+                None => {
+                    let who = if ask.people { Senders::Starred } else { Senders::Nobody };
+                    Lets { calls: who, messages: who, repeat: ask.people, conversations: Some(false) }
+                }
+            }
+        }
+
+        /// As Java read the mode back from Android; none when a part is not one Sioul sets.
+        fn read(rule: &Value) -> Option<Lets> {
+            let senders = |value: &Value| match value.as_i64() {
+                Some(ANYONE) => Some(Senders::Anyone),
+                Some(CONTACTS) => Some(Senders::Contacts),
+                Some(STARRED) => Some(Senders::Starred),
+                Some(NONE) => Some(Senders::Nobody),
+                _ => None,
+            };
+            let repeat = match rule["repeat"].as_i64() {
+                Some(ALLOW) => true,
+                Some(DISALLOW) => false,
+                _ => return None,
+            };
+            let conversations = match rule["conversations"].as_i64() {
+                Some(CONVERSATIONS_ANY | CONVERSATIONS_IMPORTANT) => Some(true),
+                Some(CONVERSATIONS_NONE) => Some(false),
+                _ => None,
+            };
+            Some(Lets { calls: senders(&rule["calls"])?, messages: senders(&rule["messages"])?, repeat, conversations })
+        }
+
+        /// Whether `read` is this, as far as Android says it.
+        fn holds(&self, read: &Lets) -> bool {
+            self.calls == read.calls && self.messages == read.messages && self.repeat == read.repeat && (read.conversations.is_none() || read.conversations == self.conversations)
+        }
+
+        /// In words: today's two sentences where they fit, else the parts.
+        fn said(&self) -> Said {
+            let conversations = self.conversations.unwrap_or(false);
+            match (self.calls, self.messages, self.repeat, conversations) {
+                (Senders::Starred, Senders::Starred, true, false) => Said::PhoneOn(Senders::Starred),
+                (Senders::Nobody, Senders::Nobody, false, false) => Said::PhoneOn(Senders::Nobody),
+                (calls, messages, repeat, conversations) => Said::PhoneLets { calls, messages, repeat, conversations },
+            }
+        }
+    }
 
     /// `can`: {api, access, …}; `callback`, the number emergency services
     /// call back from in the person's country, where one is known.
@@ -509,12 +650,17 @@ mod answers {
         if answer["access"] != true {
             return Done { said: vec![Said::PhoneNeedsAccess], offers: vec!["access", "starred"], ..Done::default() };
         }
-        Done { on: true, said: vec![Said::PhoneCan, Said::PhoneCallback(callback)], offers: vec!["starred"], ..Done::default() }
+        let mut said = vec![Said::PhoneCan, Said::PhoneCallback(callback)];
+        // Android 10: no priority conversations, said where the modes are set up.
+        if answer["api"].as_i64().is_some_and(|api| api < 30) {
+            said.push(Said::PhoneNoConversations);
+        }
+        Done { on: true, said, offers: vec!["starred"], ..Done::default() }
     }
 
-    /// `enter`: {access, too_old, error, rule: {name, calls, messages,
-    /// repeat, alarms}, doses, already, disabled, turned_off}; `name`, the
-    /// mode's name as Sioul gives it.
+    /// `enter`: {api, access, too_old, error, rule: {name, calls, messages,
+    /// repeat, alarms, conversations (Android 11 and later)}, doses, events,
+    /// already, disabled, turned_off}; `name`, the mode's name as Sioul gives it.
     pub(super) fn entered(ask: &Ask, answer: &Value, name: &str) -> Done {
         if answer.is_null() {
             return Done { said: vec![Said::PhoneNoAnswer], retry: true, ..Done::default() };
@@ -536,19 +682,17 @@ mod answers {
         if answer["turned_off"] == true {
             return Done::said(false, vec![Said::PhoneTurnedOff]);
         }
-        let (calls, messages, repeat) = (rule["calls"].as_i64(), rule["messages"].as_i64(), rule["repeat"].as_i64());
-        let senders = match (calls, messages, repeat) {
-            (Some(STARRED), Some(STARRED), Some(ALLOW)) => Some(Senders::Starred),
-            (Some(NONE), Some(NONE), Some(DISALLOW)) => Some(Senders::Nobody),
-            _ => None,
-        };
-        let asked = if ask.people { Senders::Starred } else { Senders::Nobody };
-        let mut said = match senders {
-            Some(senders) if senders == asked => vec![Said::PhoneOn(senders)],
+        let asked = Lets::asked(ask);
+        let mut said = match Lets::read(rule) {
+            Some(read) if asked.holds(&read) => vec![read.said()],
             // Changed in Android's settings (its modes, from Android 15): said as it is.
-            Some(senders) => vec![Said::PhoneOn(senders), Said::PhoneSetThere],
+            Some(read) => vec![read.said(), Said::PhoneSetThere],
             None => vec![Said::PhoneAsSet(named)],
         };
+        // Android 10 has no priority conversations: Always through's come as messages there.
+        if asked.conversations == Some(true) && answer["api"].as_i64().is_some_and(|api| api < 30) {
+            said.push(Said::PhoneNoConversations);
+        }
         let alarms = match rule["alarms"].as_i64() {
             Some(ALLOW) => Some(true),
             Some(DISALLOW) => Some(false),
@@ -560,6 +704,10 @@ mod answers {
             (true, false) => Doses::Blocked,
         };
         said.push(Said::PhoneThrough { alarms, doses });
+        // An event's alarms, asked through by the matrix and said by a Java that knows them.
+        if ask.silence.is_some_and(|s| s.events) && answer.get("events").is_some() {
+            said.push(Said::PhoneEvents(answer["events"] == true));
+        }
         if answer["already"] == true {
             said.push(Said::PhoneAlready);
         }
@@ -639,14 +787,23 @@ mod phone {
                 Which::Paused => tr.text("dnd-trigger-pause", None),
                 Which::Global => tr.text("dnd-trigger-global", None),
             };
-            let asked = serde_json::json!({
+            let mut asked = serde_json::json!({
                 "kind": ask.which.key(),
                 "name": ask.which.name(tr),
                 "trigger": trigger,
                 "people": ask.people,
                 "doses": ask.doses,
                 "channel": tr.text("dnd-doses-channel", None),
+                "events_channel": tr.text("dnd-events-channel", None),
             });
+            // What the matrix lets through this mode (docs/attention.md, §3.3), beside
+            // "people" and "doses": {calls, messages: "none" | "starred" | "contacts" |
+            // "anyone", repeat, conversations, alarms, doses, events}.
+            if let (Some(silence), Some(fields)) = (ask.silence, asked.as_object_mut())
+                && let Ok(serde_json::Value::Object(said)) = serde_json::to_value(silence)
+            {
+                fields.extend(said);
+            }
             answers::entered(ask, &call("enter", &asked.to_string()), &ask.which.name(tr))
         }
 
@@ -1188,7 +1345,7 @@ mod tests {
     use std::time::Instant;
 
     fn ask(which: Which) -> Ask {
-        Ask { which, people: true, doses: true, desktop: true }
+        Ask { which, people: true, doses: true, desktop: true, silence: None }
     }
 
     /// A platform that counts its calls and answers as told.
@@ -1538,8 +1695,8 @@ mod tests {
     #[test]
     fn plasma_settings_say_whether_critical_notifications_show() {
         use super::desktop::{kconfig, shows_doses};
-        // The owner's own file, as read on 6 October 2026.
-        let owners = "[Applications][code]\nSeen=true\n\n[DoNotDisturb]\nWhenScreenSharing=false\n\n[Notifications]\nCriticalInDndMode=false\nLowPriorityPopups=false\n";
+        // A file as Plasma writes it, critical notifications hidden in do-not-disturb.
+        let owners = "[DoNotDisturb]\nWhenScreenSharing=false\n\n[Notifications]\nCriticalInDndMode=false\nLowPriorityPopups=false\n";
         assert_eq!(kconfig(owners, "[Notifications]", "CriticalInDndMode"), Some("false"));
         assert_eq!(kconfig(owners, "[Applications][com.aurelienpierre.Sioul]", "ShowPopupsInDndMode"), None);
         assert!(!shows_doses(Some("false"), None, None));
@@ -1619,7 +1776,32 @@ mod tests {
         // Set otherwise in Android's settings (Android 15's modes): said as it is.
         let edited = serde_json::json!({ "access": true, "rule": { "calls": 2, "messages": 4, "repeat": 1, "alarms": 2 }, "doses": true });
         let report = answers::entered(&ask(Which::Paused), &edited, "Pause").report(&en);
-        assert!(report.line.starts_with("Your phone is silenced as its “Pause” mode is set in Android's settings. Alarms are silenced too"), "{report:?}");
+        assert_eq!(report.line, "Your phone is silenced, except calls from your contacts and repeat callers. That mode is set otherwise in Android's settings, which win. Alarms are silenced too, as that mode is set. Dose reminders still show.");
+        // A part Sioul never sets (unset): the mode named, as set there.
+        let unset = serde_json::json!({ "access": true, "rule": { "calls": 0, "messages": 4, "repeat": 1, "alarms": 2 }, "doses": true });
+        assert!(entered(&ask(Which::Paused), unset).line.starts_with("Your phone is silenced as its “Pause” mode is set in Android's settings. Alarms are silenced too"));
+        // The matrix's own (docs/attention.md, §3.3): this phone screens calls, so its contacts' calls
+        // ring through the mode; messages from the starred; priority conversations; an event's alarms.
+        use sioul_core::attention::{Senders as Matrix, Silence};
+        let silence = Silence { calls: Matrix::Contacts, messages: Matrix::Starred, repeat: true, conversations: true, alarms: true, doses: true, events: true };
+        let matrix = Ask { silence: Some(silence), ..ask(Which::Paused) };
+        let read = serde_json::json!({ "api": 31, "access": true, "rule": { "calls": 2, "messages": 3, "repeat": 1, "alarms": 1, "conversations": 2 }, "doses": true, "events": true });
+        assert_eq!(entered(&matrix, read).line, "Your phone is silenced, except calls from your contacts, messages from starred contacts, repeat callers and priority conversations. Alarms and dose reminders still come. Your events' alarms ring too.");
+        // Android 10: no priority conversations (none read back), said; an older Java: no word of events.
+        let ten = serde_json::json!({ "api": 29, "access": true, "rule": { "calls": 2, "messages": 3, "repeat": 1, "alarms": 1 }, "doses": true });
+        assert_eq!(entered(&matrix, ten).line, "Your phone is silenced, except calls from your contacts, messages from starred contacts and repeat callers. This phone's Android has no priority conversations (they came with Android 11): the conversations that always get through come here as messages do. Alarms and dose reminders still come.");
+        // Everyone, and an event alarms' channel changed by the person.
+        let anyone = Ask { silence: Some(Silence { calls: Matrix::Anyone, messages: Matrix::Anyone, ..silence }), ..ask(Which::FreeTime) };
+        let read = serde_json::json!({ "api": 35, "access": true, "rule": { "calls": 1, "messages": 1, "repeat": 1, "alarms": 1, "conversations": 2, "channels": 1 }, "doses": true, "events": false });
+        assert_eq!(entered(&anyone, read).line, "Your phone is silenced, except calls and messages from anyone, repeat callers and priority conversations. Alarms and dose reminders still come. Your events' alarms are silenced too: their channel was changed in Android's settings.");
+        // Nothing let through by the matrix: from everyone, as before.
+        let none = Ask { silence: Some(Silence { calls: Matrix::None, messages: Matrix::None, repeat: false, conversations: false, ..silence }), ..ask(Which::FreeTime) };
+        let read = serde_json::json!({ "api": 31, "access": true, "rule": { "calls": 4, "messages": 4, "repeat": 2, "alarms": 1, "conversations": 3 }, "doses": true, "events": true });
+        assert!(entered(&none, read).line.starts_with("Your phone's calls and messages are silenced, from everyone. Alarms and dose reminders still come."));
+        // Priority conversations alone (the starred no more): asked so, said so.
+        let read = serde_json::json!({ "api": 31, "access": true, "rule": { "calls": 4, "messages": 4, "repeat": 2, "alarms": 1, "conversations": 2 }, "doses": true });
+        let alone = Ask { silence: Some(Silence { conversations: true, ..none.silence.unwrap() }), ..ask(Which::Paused) };
+        assert!(entered(&alone, read).line.starts_with("Your phone is silenced, except priority conversations. Alarms"));
         // No access: said, with Android's page offered, and asked again later.
         let done = answers::entered(&ask(Which::Paused), &serde_json::json!({ "access": false }), "Pause");
         assert!(done.retry && done.offers == vec!["access"]);
@@ -1645,6 +1827,11 @@ mod tests {
         // Where no callback number is known, none is said.
         let can = answers::can(&serde_json::json!({ "access": true }), sioul_core::pause::callback("GB")).report(&en);
         assert!(can.line.ends_with("Emergency services may call back from a number you do not know: a second call within 15 minutes gets through."), "{can:?}");
+        // Android 10, said where the modes are set up; Android 12, nothing more.
+        let can = answers::can(&serde_json::json!({ "api": 29, "access": true }), None).report(&en);
+        assert!(can.line.ends_with("This phone's Android has no priority conversations (they came with Android 11): the conversations that always get through come here as messages do."), "{can:?}");
+        let can = answers::can(&serde_json::json!({ "api": 31, "access": true }), None).report(&en);
+        assert!(!can.line.contains("priority"), "{can:?}");
     }
 
     #[test]
@@ -1669,6 +1856,14 @@ mod tests {
             Said::PhoneCallback(None),
             Said::PhoneOn(Senders::Starred),
             Said::PhoneOn(Senders::Nobody),
+            Said::PhoneOn(Senders::Contacts),
+            Said::PhoneLets { calls: Senders::Contacts, messages: Senders::Starred, repeat: true, conversations: true },
+            Said::PhoneLets { calls: Senders::Anyone, messages: Senders::Anyone, repeat: false, conversations: false },
+            Said::PhoneLets { calls: Senders::Nobody, messages: Senders::Contacts, repeat: false, conversations: true },
+            Said::PhoneLets { calls: Senders::Nobody, messages: Senders::Nobody, repeat: false, conversations: false },
+            Said::PhoneNoConversations,
+            Said::PhoneEvents(true),
+            Said::PhoneEvents(false),
             Said::PhoneAsSet("Pause".into()),
             Said::PhoneNoAnswer,
             Said::PhoneDisabled("Pause".into()),
@@ -1717,6 +1912,10 @@ mod tests {
         }
         let fr = Translator::new("fr");
         assert_eq!(sentence(&Said::PhoneOn(Senders::Starred), &fr), "Les appels et messages de votre téléphone sont en silence, sauf ceux des contacts favoris et les appels répétés.");
+        assert_eq!(
+            sentence(&Said::PhoneLets { calls: Senders::Contacts, messages: Senders::Starred, repeat: true, conversations: true }, &fr),
+            "Votre téléphone est en silence, sauf les appels de vos contacts, les messages des contacts favoris, les appels répétés et les conversations prioritaires."
+        );
         assert_eq!(Which::Paused.name(&fr), "En pause");
         assert_eq!(Which::FreeTime.name(&fr), "Temps libre");
         assert_eq!(Which::Global.name(&fr), "Ne pas déranger (Sioul)");

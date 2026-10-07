@@ -8,11 +8,11 @@ Sur un téléphone Android, Sioul peut filtrer vos appels. Un appel de quelqu’
 
 ## Le mettre en place {#setting-it-up}
 
-1. **Paramètres ▸ Appels** (sur le téléphone) dit ce que Sioul fait des appels, ce qu’il ne fait jamais, et ce qui sonne toujours.
+1. **Paramètres ▸ Ce téléphone** (sur le téléphone) dit ce que Sioul fait des appels, ce qu’il ne fait jamais, et ce qui sonne toujours.
 2. **Laisser Sioul filtrer les appels** : Android demande « Définir Sioul comme appli numéro de l’appelant et spam par défaut ? ». Répondez oui. Cela ne donne à Sioul aucune autre autorisation. Pour arrêter plus tard : **Applications par défaut d’Android** sur la même page, puis « Aucune ».
 3. **Autoriser la lecture des contacts**, si Android ne l’a pas encore demandé : sans elle, Android fait sonner les appels de vos contacts sans demander à Sioul, et Sioul ne filtre que les autres.
-4. **Qui peut vous appeler, et quand** : Comptes ▸ Qui peut vous joindre ▸ Appels. Chaque ligne (vos contacts sûrs, neutres et restreints, les numéros absents de vos contacts, les numéros masqués) sonne aux moments cochés pour elle : travail, démarches, loisirs, repas, sommeil, la pause. Les autres vont sur votre messagerie.
-5. **Les personnes qui doivent toujours passer** (une aidante, le cabinet de votre médecin) : mettez-les sur votre liste « Ne pas déranger », Paramètres ▸ Ne pas déranger.
+4. **Qui peut vous appeler, et quand** : Paramètres ▸ Ce qui vous joint ▸ Par personne ▸ **Appels** ([Ce qui vous joint, et quand](notifications.md#by-person)). Chaque ligne (vos contacts sûrs, neutres et restreints, les numéros absents de vos contacts, les numéros masqués) sonne aux moments que dit sa ligne, à travers le travail, les démarches, les loisirs, les repas, le sommeil, la pause, le temps libre, et les deux couches, du temps pour vous et « Ne pas déranger ». Les autres vont sur la messagerie.
+5. **Les personnes qui doivent toujours passer** (une aidante, le cabinet de votre médecin) : mettez-les dans votre liste Passent toujours, dans Ce qui vous joint ▸ Exceptions, ou depuis leur fiche, **Comment … vous joint** ([La fiche d’une personne](notifications.md#a-persons-sheet)). Leurs appels sonnent à tout moment, sommeil et pauses compris, sauf si vous les avez bloquées.
 6. **Où vont les appels refusés** : **Vérifier \*#67#** et **Vérifier \*#61#** ouvrent l’application Téléphone avec le code tapé ; c’est vous qui appuyez sur appeler. La plupart des opérateurs envoient les appels refusés sur la messagerie.
 
 L’annonce de votre messagerie peut demander d’envoyer plutôt un SMS.
@@ -24,11 +24,11 @@ Android 9 ne laisse aucune application filtrer les appels, et Sioul ne peut pas 
 - Les numéros d’urgence, et les secours qui rappellent (en France depuis le 0 800 112 112, ou depuis le numéro d’urgence lui-même).
 - Tous les appels pendant un jour après que vous avez appelé un numéro d’urgence, si Android montre à Sioul votre appel sortant (ce qui ne peut pas s’essayer sans en appeler un).
 - Un deuxième appel du même numéro en moins de 15 minutes, sauf si vous l’avez bloqué.
-- Les personnes de votre liste « Ne pas déranger ».
+- Les personnes qui passent toujours, sauf si vous les avez bloquées.
 - Tous les appels tant que **Laisser passer tous les appels** est activé, sauf les numéros que vous avez bloqués.
 - Tout appel que Sioul ne peut pas trancher à temps.
 
-« Ne pas déranger » est à part : tant qu’il est activé (une pause, le temps libre, son interrupteur, ou le vôtre), seuls les contacts favoris et un deuxième appel en moins de 15 minutes sonnent, quoi que Sioul laisse passer.
+« Ne pas déranger » vient ensuite : tant que l’un des modes de Sioul est activé (une pause, le temps libre, son interrupteur), les appels que Sioul laisse sonner le traversent, ceux de vos contacts tant que ce téléphone filtre les appels, et un deuxième appel en moins de 15 minutes. Votre propre « Ne pas déranger », réglé dans Android, laisse passer qui vous y avez choisi ([Ce que fait chaque système](notifications.md#what-each-system-does)).
 
 ## Laisser passer tous les appels {#let-every-call-through}
 
@@ -36,10 +36,10 @@ Quand vous attendez un appel. Sur la notification du téléphone « Sioul tien
 
 ## Ensuite, sur le Porche {#afterwards-on-the-porch}
 
-« Pendant votre sommeil : un numéro absent de vos contacts a appelé à 09:30. » Chaque appel attend que son auteur puisse vous joindre, jamais compté, sans pastille. Dessous : **Répondre par SMS**, **Rappeler**, **Ajouter aux contacts**, **Bloquer**, **Pourquoi ?**, **Vu**. Sioul ne voit pas votre messagerie, alors il le dit : « Un message a peut-être été laissé. » Le journal d’appels du téléphone liste aussi chaque appel refusé, avec le nom de Sioul.
+« Pendant votre sommeil : un numéro absent de vos contacts a appelé à 09:30. » Chaque appel attend que la ligne Appels de son auteur le laisse vous joindre, ou vos moments de travail et de démarches pour une ligne qui ne sonne jamais ; jamais compté, sans pastille. Dessous : **Répondre par SMS**, **Rappeler**, **Ajouter aux contacts**, **Bloquer**, **Pourquoi ?**, **Vu**. Sioul ne voit pas votre messagerie, alors il le dit : « Un message a peut-être été laissé. » Le journal d’appels du téléphone liste aussi chaque appel refusé, avec le nom de Sioul.
 
 Chez Free, réglez votre messagerie pour recevoir chaque message par courriel avec son fichier son (Espace Abonné : Messagerie vocale ▸ Notification, avec fichier audio) : la ligne dit alors « Un message a été laissé (0:42). » avec **Écouter**. Le courriel reste dans votre courrier.
 
 ## Ce que Sioul ne fait jamais {#what-sioul-never-does}
 
-Il ne décroche jamais, n’enregistre jamais un appel, n’écoute jamais, et n’envoie aucun numéro nulle part : aucun serveur, aucune recherche. Les SMS ne sont pas filtrés : « Ne pas déranger » les garde silencieux aux moments choisis, et les numéros bloqués d’Android arrêtent les appels et les SMS d’un numéro dans toutes les applications.
+Il ne décroche jamais, n’enregistre jamais un appel, n’écoute jamais, et n’envoie aucun numéro nulle part : aucun serveur, aucune recherche. Les SMS sont retenus comme les messages des autres applications, selon qui écrit, quand Sioul a l’accès aux notifications d’Android ([Les notifications des autres applications, sur un téléphone](notifications.md#other-apps-on-a-phone)) ; les numéros bloqués d’Android arrêtent les appels et les SMS d’un numéro dans toutes les applications.

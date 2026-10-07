@@ -41,7 +41,7 @@ Archiver, supprimer et mettre aux indésirables se font tout de suite, avec **An
 
 Ce que vous marquez **Indésirable**, ou **Pas indésirable** dans le dossier des indésirables, apprend à votre propre filtre à son prochain apprentissage ([plus bas](#your-own-spam-filter)).
 
-Un clic droit sur un message (ou son ⋮, ou la touche Menu) donne le reste : marquer comme lu ou non lu, suivre, **Déplacer vers…**, **Voir la source**, bloquer l’expéditeur, **Son courrier** (comme le disent ses catégories, sûr, neutre, restreint, bloqué), **Garder comme contrat…**.
+Un clic droit sur un message (ou son ⋮, ou la touche Menu) donne le reste : marquer comme lu ou non lu, suivre, **Déplacer vers…**, **Voir la source**, bloquer l’expéditeur, **Comment cette personne vous joint…** (sa liste, Passe toujours, ce qui vous joint de sa part : [La fiche d’une personne](notifications.md#a-persons-sheet)), **Garder comme contrat…**.
 
 Ouvrir un message le marque comme lu, comme le fait tout logiciel de courrier.
 
@@ -63,7 +63,7 @@ Une lettre d’information ou le message d’une liste qui dit comment la quitte
 
 Le bouton reste en retrait, estompé, sur un message falsifié, mis de côté comme indésirable, hostile, dans les indésirables, ou d’un expéditeur que Sioul ne peut pas vérifier : y répondre dirait à son expéditeur que votre adresse est lue, ou toucherait quelqu’un d’autre. Son info-bulle, ou un toucher sur un téléphone, dit pourquoi.
 
-Une liste quittée montre **Abonnement arrêté**, et depuis quand. Si ses messages continuent d’arriver, bloquez l’expéditeur : ⋮ ▸ **Son courrier** ▸ **Bloqué**. Les listes quittées sont dans le ⚙ de la page Courrier, sous **Listes quittées**, sur cet appareil.
+Une liste quittée montre **Abonnement arrêté**, et depuis quand. Si ses messages continuent d’arriver, bloquez l’expéditeur : ⋮ ▸ **Comment cette personne vous joint…** ▸ **Bloqué**. Les listes quittées sont dans le ⚙ de la page Courrier, sous **Listes quittées**, sur cet appareil.
 
 ### Les invitations {#invitations}
 

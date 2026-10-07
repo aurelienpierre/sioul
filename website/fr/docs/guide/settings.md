@@ -1,5 +1,5 @@
 ---
-description: Les paramètres de Sioul – langue et couleurs, vos heures, rappels et notifications, votre dossier et le partage, factures ; et les réglages propres à chaque page, là où ils s’appliquent.
+description: Les paramètres de Sioul – langue et couleurs, vos heures, ce qui vous joint et quand, les rappels, les pauses, sur un téléphone ce qui le règle, votre dossier et le partage, factures ; et les réglages propres à chaque page, là où ils s’appliquent.
 ---
 
 # Les paramètres {#settings}
@@ -8,7 +8,7 @@ description: Les paramètres de Sioul – langue et couleurs, vos heures, rappel
 
 Chaque réglage dit en une phrase ce qu’il change, et s’enregistre tout de suite. Rien à confirmer, rien à appliquer.
 
-La page Paramètres a sept onglets ; un téléphone en ajoute deux, **Appels** et **Autres applications**.
+La page Paramètres a sept onglets ; un téléphone en ajoute un, **Ce téléphone**.
 
 ## Affichage {#display}
 
@@ -32,7 +32,11 @@ La page Paramètres a sept onglets ; un téléphone en ajoute deux, **Appels**
 
 Chaque jour de chaque semaine est actif ou non, avec une plage horaire ou plusieurs : **+** en ajoute une, **×** en retire une. Ce que chaque type d’heures apporte, et ce qui attend : [Les heures](hours.md).
 
-## Rappels et notifications {#reminders-and-notifications}
+## Ce qui vous joint {#what-reaches-you}
+
+Un seul endroit pour quand chaque chose vous joint : le courrier, les appels et les messages des autres applications selon qui les écrit, les notifications de Sioul selon ce qu’elles sont, à chaque moment de votre journée. En haut, ce qui vaut maintenant, en phrases, et **Partir de** : **Comme Sioul le fait maintenant**, **Plus calme** ou **Plus joignable**. Puis cinq vues : **Par moment**, une carte par moment en phrases, **Changer…** ouvrant ses lignes ; **Par personne**, les grilles du courrier, des appels et des messages, **Me dire le nouveau courrier**, **Avec les lettres d’information**, et qui est sur quelle liste ; **Celles de Sioul**, les codes, les prises, les rappels, les avis de Santé, vos sites et les autres applications, avec **Notifications des sites regroupées** ; **Exceptions**, les personnes qui passent toujours et chaque conversation, application ou site qui a un choix à lui ; **Ne pas déranger**, ce qui le met (**L’interrupteur dans la ligne d’état**, **Pendant que je me concentre sur une tâche**, **Pendant les pauses**, **Pendant mon sommeil**), ce qui tient pendant ce temps, ce que fait chaque appareil. **Rien du tout**, pour le temps libre, est sur sa carte. Voir [Ce qui vous joint, et quand](notifications.md).
+
+## Rappels {#reminders}
 
 Chaque rappel vient une fois, en notification discrète, sans son, jamais répété. Se souvenir « le 30 » de ce qui était prévu est ce qui échoue le plus souvent, avec l’autisme et avec le TDAH (Landsiedel, Williams & Abbot-Smith 2017 ; Altgassen, Kretschmer & Kliegel 2014), et les rappels aident là où c’est la mémoire qui fait défaut (Jamieson et al. 2014).
 
@@ -42,28 +46,22 @@ Chaque rappel vient une fois, en notification discrète, sans son, jamais répé
 - **Une attente finie** : quand une attente après une étape faite est finie (une réponse due), une fois, quand le travail est là.
 - **Paiements prévus : jours travaillés avant** : au début du travail, tant de jours travaillés avant un paiement prévu (une facture, un impôt) ; 0 pour aucun. Le rappel dit si le compte le tiendra.
 - **Fenêtre de Sioul fermée** : votre session lance un petit veilleur qui dit les rappels quand la fenêtre est fermée ; rien d’autre ne tourne, aucun courrier n’est relevé. Il faut pour cela la commande `sioul` installée à côté de Sioul ([Installer](install.md#into-your-application-menu)). Pas encore sous Windows.
-- **Nouveau courrier : notifier aux heures où il peut venir** : une seule notification discrète pour chaque lot de courrier qui peut vous joindre maintenant, et une quand le courrier qui attendait peut venir : « Le Porche ouvre : trois lettres vous attendent. » Activé d’origine. Voir [Ce que Sioul vous dit](notifications.md#what-sioul-tells-you-and-when).
-- **Avec les lettres d’information** : les lettres d’information et les listes de diffusion, rangées sur le Porche, sont dites aussi. Les expéditeurs automatiques (une facture de no-reply) le sont de toute façon. Désactivé d’origine.
-- **Notifications des sites regroupées**, et **Regroupées à** : ce que vos sites notifient attend, puis vient en une seule notification à ces moments-là : 09:00, 13:00 et 18:00, sauf si vous en réglez d’autres. Sur un téléphone, les notifications des automates des autres applications reviennent alors. Voir [Les heures de regroupement](notifications.md#the-gathered-times).
-- **Quand chacune vient** : une grille de ce que fait chaque sorte de notification à chaque moment, les sortes en lignes, les moments en colonnes (vos heures, le sommeil, les pauses, un moment de temps pour vous, « Ne pas déranger ») : tout de suite, plus tard, aux heures de regroupement, si son événement tombe dans ce moment, pas du tout ; pendant « Ne pas déranger », votre liste. Les prises pendant le sommeil et une pause sont de ses cases. Certaines cases sont fixes, pour votre sécurité. Voir [Quand chacune vient](notifications.md#when-each-comes).
+- **Regroupées à** : ce que vos sites notifient attend, puis vient en une seule notification à ces moments-là : 09:00, 13:00 et 18:00, sauf si vous en réglez d’autres. Sur un téléphone, les notifications des automates des autres applications reviennent alors. Voir [Les heures de regroupement](notifications.md#the-gathered-times).
 
-Les prises de médicaments sont rappelées depuis la page [Santé](health.md), et les papiers à renouveler depuis [Papiers](papers.md). Sur un téléphone, les prises, les événements et le nouveau courrier sont dits ; les autres rappels viennent sur un ordinateur ([Sur un téléphone](first-steps.md#on-a-phone)). Ce qui vient quand, et ce qui attend : [Les notifications et « Ne pas déranger »](notifications.md).
+Quand chaque rappel peut venir, et le nouveau courrier, c’est [Ce qui vous joint](#what-reaches-you). Les prises de médicaments sont rappelées depuis la page [Santé](health.md), et les papiers à renouveler depuis [Papiers](papers.md). Sur un téléphone, les prises, les événements et le nouveau courrier sont dits ; les autres rappels viennent sur un ordinateur ([Sur un téléphone](first-steps.md#on-a-phone)).
 
 ## Pauses {#pauses}
 
-Le temps libre et la pause, préparés un jour calme : qui vous joint en temps libre, jusqu’où la fin du travail peut se décaler, si le mouvement est proposé ; pour la pause, vos contacts favoris, ce qui vous aide, votre ligne, le guide de respiration, ce que tient le reste de la journée ensuite, de quel pays sont les numéros, et ce que peut le mode Ne pas déranger de cet appareil ([Ce que fait chaque système](notifications.md#what-each-system-does)) ; **Essayer l’écran de pause**. Voir [Les pauses](pauses.md).
+Le temps libre et la pause, préparés un jour calme : jusqu’où la fin du travail peut se décaler, si le mouvement est proposé ; pour la pause, ce qui vous aide, votre ligne, le guide de respiration, ce que tient le reste de la journée ensuite, de quel pays sont les numéros ; **Ce qui vient pendant une pause**, sa carte dans Ce qui vous joint ; **Essayer l’écran de pause**. **Rien du tout**, pour le temps libre, est sur sa carte dans [Ce qui vous joint](#what-reaches-you). Voir [Les pauses](pauses.md).
 
-## Ne pas déranger {#do-not-disturb}
+## Ce téléphone {#this-phone}
 
-Un seul « Ne pas déranger » pour tous vos appareils : **L’interrupteur dans la ligne d’état** ; ce qui l’active de soi-même, **Pendant que je me concentre sur une tâche**, **Pendant les pauses**, **Pendant mon sommeil** ; **Les personnes de ma liste passent**, et la liste, la même sur tous vos appareils ; ce que le système de cet appareil laisse faire à Sioul ; sur un téléphone, qui, sur votre liste, y est en favori, et **Garder ce téléphone à jour en arrière-plan**. Ce qui vient pendant ce temps, sorte par sorte : **Quand chacune vient**, dans Rappels et notifications. Voir [Ne pas déranger sur tous vos appareils](notifications.md#do-not-disturb-on-every-device).
+Sur un téléphone, ce qui le règle, rien de ce qui décide quand (c’est [Ce qui vous joint](#what-reaches-you)) :
 
-## Appels {#calls}
-
-Sur un téléphone : Sioul comme appli numéro de l’appelant et spam d’Android, pour qu’un appel de quelqu’un qui ne peut pas vous joindre maintenant aille sur votre messagerie ; ce que Sioul fait des appels, ce qu’il ne fait jamais, et ce qui sonne toujours ; la lecture des contacts ; où va un appel refusé ; les SMS. Voir [Les appels](calls.md).
-
-## Autres applications {#other-apps}
-
-Sur un téléphone, les notifications des autres applications retenues jusqu’à leur heure, comme votre courrier : les messages des personnes selon [qui peut vous joindre](accounts.md#senders), les notifications des automates aux heures de regroupement. L’accès (l’**Accès aux notifications** d’Android, en deux étapes pour Sioul installé depuis un fichier), **Retenir les notifications des autres applications jusqu’à leur heure**, les applications qui ont sonné avant que Sioul les retienne, avec **Rendre silencieux**, et un choix pour chaque application, conversation et site. Voir [Les notifications des autres applications, sur un téléphone](notifications.md#other-apps-on-a-phone).
+- **Les appels** : Sioul comme appli numéro de l’appelant et spam d’Android, pour qu’un appel dont la ligne dit plus tard aille sur votre messagerie ; ce que Sioul fait des appels, ce qu’il ne fait jamais, et ce qui sonne toujours ; la lecture des contacts ; où va un appel refusé ; les SMS. Voir [Les appels](calls.md).
+- **Les autres applications** : l’**Accès aux notifications** d’Android (en deux étapes pour Sioul installé depuis un fichier), **Retenir les notifications des autres applications jusqu’à leur heure**, les applications qui ont sonné avant que Sioul les retienne, avec **Rendre silencieux**. Le choix propre à chaque application, conversation et site est dans Ce qui vous joint ▸ Exceptions. Voir [Les notifications des autres applications, sur un téléphone](notifications.md#other-apps-on-a-phone).
+- **« Ne pas déranger » sur ce téléphone** : l’accès « Ne pas déranger » d’Android, dont les modes de Sioul ont besoin, et ce que chaque mode laisse passer ; **En favori sur ce téléphone**, qui, parmi les personnes qui passent toujours, n’y est pas en favori ; **Garder ce téléphone à jour en arrière-plan**, et **Autoriser en arrière-plan**. Voir [Ce que fait chaque système](notifications.md#what-each-system-does).
+- **Alarmes et notifications** : les pages d’Android pour les alarmes exactes, dont les rappels, les prises et le réveil ont besoin pour venir à l’heure, et pour les notifications de Sioul.
 
 ## Votre dossier et le partage {#your-folder-and-sharing}
 

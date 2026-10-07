@@ -57,8 +57,8 @@ Sioul sur un téléphone : [Installer](install.md#on-android). Sur un téléph
 Ce qui change sur un téléphone :
 
 - **Les notifications** viennent pour les prises de médicaments ([La santé](health.md#reminders)), le temps qui court ([Le temps](time.md#where-time-comes-from)), les événements ([L’agenda](agenda.md#reminders)) et le nouveau courrier à ses heures ([Le Porche](porch.md#new-mail-told-at-its-times)). Un code que vous avez demandé s’affiche sur le Porche ; les autres rappels n’y viennent pas encore.
-- **Les appels** peuvent être filtrés une fois que vous laissez Sioul être « l’appli numéro de l’appelant et spam » d’Android : qui peut sonner, et quand, selon qui peut vous joindre ; les autres vont sur votre messagerie ([Les appels](calls.md)).
-- **Les notifications des autres applications** peuvent être retenues jusqu’à leur heure, une fois que vous donnez à Sioul l’accès aux notifications d’Android : les messages des personnes selon qui peut vous joindre, le reste aux heures de regroupement ([Paramètres](settings.md#other-apps)).
+- **Les appels** peuvent être filtrés une fois que vous laissez Sioul être « l’appli numéro de l’appelant et spam » d’Android : qui peut sonner, et quand, comme le dit sa ligne dans Ce qui vous joint ; les autres vont sur votre messagerie ([Les appels](calls.md)).
+- **Les notifications des autres applications** peuvent être retenues jusqu’à leur heure, une fois que vous donnez à Sioul l’accès aux notifications d’Android : les messages des personnes selon qui les écrit, le reste aux heures de regroupement ([Paramètres ▸ Ce téléphone](settings.md#this-phone)).
 - **Le courrier** est relevé tant que Sioul est ouvert : Android l’arrête en arrière-plan.
 - **Le partage** : Sioul est dans le menu de partage d’Android, et chacune de vos adresses aussi ; les liens de courrier s’ouvrent dedans ([Le courrier](mail.md#from-other-apps)).
 - **Les dossiers** : le **Choisir…** d’un réglage ouvre la liste des dossiers du téléphone, propre à Sioul, avec **Autoriser l’accès aux fichiers** quand Android n’a pas encore donné cet accès à Sioul.
@@ -139,7 +139,7 @@ Sur un ordinateur, Sioul s’ouvre agrandi ; ++f11++ le met en plein écran, e
 
 Tant que sa fenêtre est ouverte, Sioul garde chaque boîte de réception ouverte sur le serveur : un code ou un lien de connexion que vous avez demandé à un site vous parvient en quelques secondes, en une seule notification discrète, à n’importe quelle heure.
 
-Les rappels peuvent aussi venir fenêtre fermée : dans **Paramètres ▸ Rappels et notifications**, cochez **Fenêtre de Sioul fermée**. Un petit programme de veille démarre alors avec votre session ; il ne relève pas le courrier.
+Les rappels peuvent aussi venir fenêtre fermée : dans **Paramètres ▸ Rappels**, cochez **Fenêtre de Sioul fermée**. Un petit programme de veille démarre alors avec votre session ; il ne relève pas le courrier.
 
 ## Ensuite {#next}
 

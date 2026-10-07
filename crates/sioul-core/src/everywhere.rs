@@ -61,8 +61,9 @@ pub struct DndSettings {
     /// While you sleep: the night from winding down, and naps.
     #[serde(default)]
     pub sleep: bool,
-    /// The people on the list get through (on a phone, as starred contacts);
-    /// otherwise nobody (repeat callers neither).
+    /// The people on the list got through (on a phone, as starred contacts);
+    /// otherwise nobody. Always through's do-not-disturb cells now
+    /// (`attention`), read from here once to seed them.
     #[serde(default = "yes")]
     pub people: bool,
     /// Android: this device keeps in step in the background (its own, never shared).
@@ -664,6 +665,32 @@ impl People {
     }
 }
 
+/// Someone blocked comes off Always through (docs/attention.md, Q3: blocked
+/// beats Always through, and putting someone on one list takes them off the
+/// other): their address and number taken off the people on the list, the
+/// person of their card (`card`, its UID) taken off whole; a person left with
+/// nothing to reach them by goes. Whether the list changed.
+pub fn take_off(people: &mut People, addresses: &[String], numbers: &[String], card: &str, region: Option<&crate::phones::Region>) -> bool {
+    let keys: Vec<String> = numbers.iter().map(|n| crate::phones::key(n, region)).filter(|k| crate::phones::is_whole(k)).collect();
+    let card = card.trim();
+    let mut gone: Vec<String> = Vec::new();
+    let mut changed = false;
+    for person in &mut people.people {
+        let before = (person.emails.len(), person.phones.len());
+        person.emails.retain(|e| !addresses.iter().any(|a| address_key(a) == address_key(e)));
+        person.phones.retain(|n| !keys.contains(&crate::phones::key(n, region)));
+        let whole = !card.is_empty() && person.contact == card;
+        if whole || before != (person.emails.len(), person.phones.len()) {
+            changed = true;
+            if whole || (person.emails.is_empty() && person.phones.is_empty()) {
+                gone.push(person.id.clone());
+            }
+        }
+    }
+    people.people.retain(|p| !gone.contains(&p.id));
+    changed
+}
+
 /// The list changed under its lock, read again first: what the sharing
 /// brought meanwhile stays. A file that does not read is left alone, an error.
 pub fn change_people(path: &Path, change: impl FnOnce(&mut People)) -> Result<People, String> {
@@ -959,6 +986,23 @@ mod tests {
         assert_eq!(people.people[0].emails, vec!["Alice@Example.org", "alice@work.example"]);
         assert_eq!(people.people[0].name, "Alice", "the name kept");
         assert!(people.remove(&alice) && people.people.is_empty());
+    }
+
+    #[test]
+    fn someone_blocked_comes_off_the_list() {
+        let fr = crate::phones::region_named("FR");
+        let mut people = People::default();
+        let alice = people.add(Person { name: "Alice".into(), phones: vec!["04 65 71 23 45".into()], emails: vec!["alice@example.org".into(), "alice@work.example".into()], ..Person::default() }, fr);
+        people.add(Person { name: "Bob".into(), emails: vec!["bob@example.org".into()], contact: "uid-bob".into(), ..Person::default() }, fr);
+        // One address blocked: that address off, the person kept by the rest.
+        assert!(take_off(&mut people, &["Alice <ALICE@example.org>".into()], &[], "", fr));
+        assert_eq!(people.people.iter().find(|p| p.id == alice).map(|p| p.emails.clone()), Some(vec!["alice@work.example".to_string()]));
+        // Nothing of theirs: nothing changes.
+        assert!(!take_off(&mut people, &["carol@example.org".into()], &["+33 1 99 00 00 01".into()], "", fr));
+        // Their card blocked: the person off whole; the last ways to reach someone gone: the person too.
+        assert!(take_off(&mut people, &[], &[], "uid-bob", fr));
+        assert!(take_off(&mut people, &["alice@work.example".into()], &["+33465712345".into()], "", fr));
+        assert!(people.people.is_empty());
     }
 
     #[test]

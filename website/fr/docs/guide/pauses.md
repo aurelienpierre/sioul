@@ -14,7 +14,7 @@ Sioul n’est pas un service d’urgence. Il ne vous surveille pas, et n’agit 
 
 Appuyez sur **Temps libre** : le moment présent devient des loisirs, quelle que soit l’heure, jusqu’à ce que vous appuyiez de nouveau.
 
-- **Qui vous joint** : vos expéditeurs sûrs seulement ; **Rien du tout**, dans le menu de la ligne d’état, les tient eux aussi à l’écart cette fois-ci. Les rappels de prises et les codes demandés viennent toujours. Ce qui attend, et ce qui vient quand même : [Les notifications](notifications.md#held-for-later).
+- **Qui vous joint** : les appels et les messages de vos expéditeurs sûrs, leur courrier affiché sans notification, et les personnes qui passent toujours ; **Rien du tout**, dans le menu de la ligne d’état ou sur la carte du temps libre dans Ce qui vous joint, tient même vos expéditeurs sûrs à l’écart cette fois-ci. Les rappels de prises et les codes demandés viennent toujours. Ce qui attend, et ce qui vient quand même : [Ce qui vous joint, par moment](notifications.md#by-time).
 - **Ce qui est proposé** : la page Tâches affiche « Temps libre » et, sous « Si vous voulez : », vos propres loisirs, dans l’ordre où vous les avez créés. Rien à finir, pas d’étape suivante, pas de minuteur. Le mouvement et l’exercice en font partie, sauf si vous désactivez **Proposer le mouvement et l’exercice** dans [Paramètres ▸ Pauses](settings.md#pauses) ; avec **Des journées égales** (pour une maladie qui limite votre énergie), ils n’en font pas partie, sauf si vous les activez.
 - **Une séance de concentration** en cours s’arrête quand vous appuyez, et compte ; Sioul propose une ligne sur où vous en êtes.
 - **La nuit d’abord** : le temps libre finit tout seul quand votre nuit commence (ou à minuit, sans nuit réglée), et une sieste pendant ce temps reste une sieste.
@@ -37,8 +37,7 @@ Quand le temps libre prend une part de vos heures de travail, la fin du travail 
 
 Dans [Paramètres ▸ Pauses](settings.md#pauses), prenez votre temps :
 
-- **Les rappels de prises viennent toujours**, sauf si vous le changez dans Paramètres ▸ Rappels et notifications ▸ [Quand chacune vient](notifications.md#when-each-comes) (Prises ▸ En pause ▸ Plus tard) : ils attendent alors votre retour, et sont rappelés une fois à ce moment-là.
-- **Les contacts favoris passent**, sur le téléphone : appels et messages de vos contacts favoris, et de quiconque appelle deux fois en 15 minutes. Désactivé, personne.
+- **Ce qui vient pendant une pause** : les prises, les alarmes de vos événements et les rappels de Sioul avant eux, les codes demandés, et les appels et les messages des personnes qui passent toujours ; le reste attend votre retour. C’est la carte de la pause dans Paramètres ▸ [Ce qui vous joint](notifications.md#by-time) ; là, **Plus tard** pour Prises ▸ En pause fait attendre les rappels de prises jusqu’à votre retour, rappelés une fois à ce moment-là.
 - **Ce qui vous aide** : avec vos mots, une chose par ligne. Une ligne avec un lien ou le chemin d’un fichier l’ouvre depuis la pause : une playlist, un dossier de photos, la page d’une application.
 - **Une ligne pour la pause** : une ligne à vous, montrée à l’écran.
 - **Guide de respiration** : désactivé, sauf si vous l’activez ; c’est alors une forme lente pour respirer avec elle, montrée seulement quand vous la touchez, l’expiration plus longue que l’inspiration, au rythme que vous réglez.
@@ -48,7 +47,7 @@ Dans [Paramètres ▸ Pauses](settings.md#pauses), prenez votre temps :
 
 ### Appuyer {#press-it}
 
-**Pause** ne demande rien. Tout ce que Sioul affiche est mis en attente, sur tous vos appareils : rien de nouveau à l’écran, aucune notification, sauf les rappels de prises (si vous ne l’avez pas réglé autrement) et les rappels et alarmes de vos événements ([Les notifications](notifications.md#held-for-later)). Le temps libre, s’il était en cours, prend fin. Une séance de concentration en cours s’arrête, et compte. La fin du travail du jour reste la fin habituelle, même si le temps libre l’avait décalée : le travail des heures en pause va aux jours suivants, jamais sur votre soirée. Le téléphone lui-même reste libre : appels, autres applications, appels d’urgence.
+**Pause** ne demande rien. Tout ce que Sioul affiche est mis en attente, sur tous vos appareils : rien de nouveau à l’écran, aucune notification, sauf les rappels de prises (si vous ne l’avez pas réglé autrement), les rappels et alarmes de vos événements, les codes demandés, et les appels et les messages des personnes qui passent toujours ([Ce qui vous joint, par moment](notifications.md#by-time)). Le temps libre, s’il était en cours, prend fin. Une séance de concentration en cours s’arrête, et compte. La fin du travail du jour reste la fin habituelle, même si le temps libre l’avait décalée : le travail des heures en pause va aux jours suivants, jamais sur votre soirée. Le téléphone lui-même reste libre : appels, autres applications, appels d’urgence.
 
 Sur un téléphone, **Pause** est aussi parmi les réglages rapides, et dans un appui long sur l’icône de Sioul : tous deux ouvrent Sioul sur la pause, et n’y mettent jamais fin. Sur un téléphone verrouillé, le réglage rapide demande d’abord de le déverrouiller.
 
@@ -85,7 +84,7 @@ Depuis le temps libre, **Garder ma fin habituelle** en fait une pause qui ne dé
 
 ## Les notifications et « Ne pas déranger » {#do-not-disturb-on-every-device}
 
-<span id="silencing-the-phone-and-the-computer"></span>Pendant une pause et le temps libre, les notifications de Sioul attendent sur tous vos appareils, et chaque appareil se met en silence autant que son système le permet. Ce qui attend et ce qui vient quand même : [Les notifications gardées pour plus tard](notifications.md#held-for-later) ; ce que fait chaque téléphone et chaque ordinateur : [Ne pas déranger sur tous vos appareils](notifications.md#what-each-system-does).
+<span id="silencing-the-phone-and-the-computer"></span>Pendant une pause et le temps libre, les notifications de Sioul attendent sur tous vos appareils, et chaque appareil se met en silence autant que son système le permet. Ce qui attend et ce qui vient quand même : les cartes de la pause et du temps libre dans [Ce qui vous joint](notifications.md#by-time) ; ce que fait chaque téléphone et chaque ordinateur : [Ne pas déranger sur tous vos appareils](notifications.md#what-each-system-does).
 
 ## Ce que Sioul ne fait pas {#what-sioul-does-not-do}
 

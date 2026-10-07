@@ -941,7 +941,7 @@ impl Senders {
     /// the card's categories; else the longest prefix on a list; else neutral
     /// when a card holds it; else a stranger. A number Sioul cannot read, or
     /// none (a hidden number), is a stranger here: calls give hidden numbers
-    /// their own row (`reach::Row::Hidden`).
+    /// their own row (`attention::Person::Hidden`).
     pub fn judge_number(&self, number: &str) -> Judged {
         let region = self.region();
         let Some(key) = number_key(number, region).filter(|k| !k.contains('*')) else {
@@ -1033,7 +1033,50 @@ pub fn set_standing(config: &crate::config::Config, entry: &str, standing: Stand
         SenderList::remove_entry(path, &entry, region)?;
     }
     let path = list_paths(config).into_iter().find(|(s, _)| *s == standing).map(|(_, p)| p).unwrap_or_default();
-    SenderList::add_entry(&path, &entry, region)
+    SenderList::add_entry(&path, &entry, region)?;
+    // Blocked beats Always through, and one list takes them off the other (docs/attention.md, Q3).
+    if standing == Standing::Blocked {
+        let people = crate::everywhere::People::default_path();
+        if people.exists() {
+            let (addresses, numbers, card) = match &entry {
+                Entry::Address(address) => (vec![address.clone()], Vec::new(), String::new()),
+                Entry::Number(key) => (Vec::new(), vec![key.clone()], String::new()),
+                Entry::Card(uid) => (Vec::new(), Vec::new(), uid.clone()),
+                Entry::Category(_) => (Vec::new(), Vec::new(), String::new()),
+            };
+            // The block holds whatever the list's file says: one that does not read is left alone.
+            if let Err(e) = crate::everywhere::change_people(&people, |list| {
+                crate::everywhere::take_off(list, &addresses, &numbers, &card, region);
+            }) {
+                eprintln!("sioul: {e}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Someone put on Always through comes off the blocked list (docs/attention.md,
+/// Q3: one list takes them off the other): their addresses', numbers' and
+/// card's own lines there taken out. Whether any was.
+pub fn unblock_person(config: &crate::config::Config, addresses: &[String], numbers: &[String], card: &str) -> Result<bool, String> {
+    let region = crate::reach::region(config);
+    let path = config.blocked_senders_path();
+    let before = std::fs::read_to_string(&path).unwrap_or_default();
+    // An address as written ("Alice <alice@example.org>", "mailto:…"): its address part.
+    let address = |a: &str| {
+        let a = a.trim();
+        let inner = a.rsplit_once('<').map_or(a, |(_, rest)| rest.trim_end_matches('>'));
+        inner.trim().trim_start_matches("mailto:").to_string()
+    };
+    let mut entries: Vec<Entry> = addresses.iter().filter_map(|a| Entry::read(&address(a), region)).filter(|e| matches!(e, Entry::Address(_))).collect();
+    entries.extend(numbers.iter().filter_map(|n| number_key(n, region)).filter(|k| !k.contains('*')).map(Entry::Number));
+    if !card.trim().is_empty() {
+        entries.push(Entry::Card(card.trim().to_string()));
+    }
+    for entry in &entries {
+        SenderList::remove_entry(&path, entry, region)?;
+    }
+    Ok(std::fs::read_to_string(&path).unwrap_or_default() != before)
 }
 
 /// Takes an entry's own line out of every list: its card, its categories,

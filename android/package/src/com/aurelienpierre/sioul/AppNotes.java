@@ -13,6 +13,7 @@ import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ShortcutInfo;
@@ -38,9 +39,11 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -60,7 +63,9 @@ import java.util.Map;
  * included, handed to Rust in memory on a thread of its own; Rust answers how
  * long it waits, and Android holds it that long (snoozeNotification): it
  * comes back whole, with its own tap and actions, alerting as its channel
- * says. Nothing is ever cancelled, answered, marked as read, kept or logged.
+ * says. Nothing is ever cancelled, answered, marked as read, kept or logged;
+ * of a conversation, only where its page is in Android (its app, shortcut
+ * and channel, a week), for the Other apps tab to open it.
  * Never asked about: Sioul's own, ongoing ones (a call, music, a download),
  * those that cannot be cleared.
  *
@@ -107,14 +112,19 @@ public final class AppNotes extends NotificationListenerService
 
     /**
      * Rust's question (android/main.cpp), from the window's process: the
-     * access, Android's pages for it and for each app's or channel's
-     * notifications, the contacts' permission. Any thread.
+     * access, Android's pages for it and for each app's, channel's or
+     * conversation's notifications, the contacts' permission, what Android
+     * says of the conversations seen lately. Any thread.
      */
     static String call(Context context, String verb, String json)
     {
         try {
             JSONObject asked = json == null || json.isEmpty() ? new JSONObject() : new JSONObject(json);
             switch (verb) {
+            case "conversations":
+                return conversations(context).toString();
+            case "open-conversation":
+                return openConversation(context, asked) ? "true" : "false";
             case "access":
                 return granted(context) ? "true" : "false";
             case "restricted":
@@ -174,6 +184,203 @@ public final class AppNotes extends NotificationListenerService
             Log.w(TAG, "Notes: no page " + page.getAction() + ": " + e);
             return false;
         }
+    }
+
+    // ---------------------------------------------------------------- conversations marked important
+
+    /**
+     * What Android says of each conversation seen lately, by Rust's key for it
+     * (crates/sioul-core/src/appnotes.rs, `talk_key` of its app and its
+     * shortcut): its app, its shortcut and its channel, so that the Other
+     * apps tab can open its page in Android, where a conversation set to
+     * Always through is marked important (priority), which Sioul's modes let
+     * through (PauseMode). This phone's alone, in Sioul's private storage,
+     * never shared; forgotten after a week unseen, as the tab forgets its name.
+     */
+    private static final String TALKS = "sioul-conversations";
+    private static final long TALK_KEPT_MS = 8L * 24 * 3600 * 1000;
+    private static final int TALKS_AT_MOST = 300;
+    /** Written again at most this often when nothing changed: not at each message. */
+    private static final long TALK_AGAIN_MS = 24L * 3600 * 1000;
+    /** Android's list of conversations (Settings ▸ Notifications ▸ Conversations), Android 11 and later. */
+    private static final String CONVERSATIONS_PAGE = "android.settings.CONVERSATION_SETTINGS";
+
+    /** Written by the listener's process, read by the window's. */
+    @SuppressWarnings("deprecation")
+    private static SharedPreferences talks(Context context)
+    {
+        return context.getSharedPreferences(TALKS, Context.MODE_PRIVATE | Context.MODE_MULTI_PROCESS);
+    }
+
+    /**
+     * A conversation's key as Rust's `talk_key` makes it: FNV-1a (64 bits)
+     * of its app, U+001F and its id, in hexadecimal. Pure, checked on a JVM
+     * against Rust's values.
+     */
+    static String talkKey(String pkg, String id)
+    {
+        long hash = 0xcbf29ce484222325L;
+        for (byte b : (pkg + "\u001f" + id).getBytes(StandardCharsets.UTF_8)) {
+            hash ^= b & 0xff;
+            hash *= 0x100000001b3L;
+        }
+        return String.format(Locale.ROOT, "%016x", hash);
+    }
+
+    /**
+     * The keys to forget among those kept (each a JSON text with its time
+     * "at"): those unseen for a week, then the oldest past the most kept.
+     * Pure, checked on a JVM.
+     */
+    static List<String> forgotten(Map<String, ?> kept, long now)
+    {
+        List<String> gone = new ArrayList<>();
+        List<Map.Entry<String, Long>> left = new ArrayList<>();
+        for (Map.Entry<String, ?> entry : kept.entrySet()) {
+            long at = 0;
+            try {
+                at = new JSONObject(String.valueOf(entry.getValue())).optLong("at", 0);
+            } catch (JSONException e) {
+                // Not one of ours: forgotten.
+            }
+            if (at <= 0 || now - at > TALK_KEPT_MS)
+                gone.add(entry.getKey());
+            else
+                left.add(new java.util.AbstractMap.SimpleEntry<>(entry.getKey(), at));
+        }
+        if (left.size() > TALKS_AT_MOST) {
+            left.sort((a, b) -> Long.compare(a.getValue(), b.getValue()));
+            for (int i = 0; i < left.size() - TALKS_AT_MOST; i++)
+                gone.add(left.get(i).getKey());
+        }
+        return gone;
+    }
+
+    /**
+     * A conversation seen (the listener, on its worker thread): its app, its
+     * shortcut, the channel it was posted on (its parent's when Android gave
+     * it a channel of its own), whether Android takes it as a conversation,
+     * whether it is marked important there, and whether it has a page of its
+     * own there yet (customized once). Written when something changed, or
+     * once a day.
+     */
+    private static void remember(Context context, String pkg, String shortcut, String channel, NotificationChannel given, boolean conversation, long now)
+    {
+        boolean important = false;
+        boolean own = false;
+        String parent = channel;
+        if (given != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            important = given.isImportantConversation();
+            own = given.getConversationId() != null;
+            if (given.getParentChannelId() != null)
+                parent = given.getParentChannelId();
+        }
+        String key = talkKey(pkg, shortcut);
+        SharedPreferences talks = talks(context);
+        try {
+            String before = talks.getString(key, null);
+            if (before != null) {
+                JSONObject was = new JSONObject(before);
+                boolean same = pkg.equals(was.optString("package")) && shortcut.equals(was.optString("shortcut")) && parent.equals(was.optString("channel"))
+                    && conversation == was.optBoolean("conversation") && important == was.optBoolean("important") && own == was.optBoolean("own");
+                if (same && now - was.optLong("at", 0) < TALK_AGAIN_MS)
+                    return;
+            }
+            JSONObject seen = new JSONObject().put("package", pkg).put("shortcut", shortcut).put("channel", parent)
+                .put("conversation", conversation).put("important", important).put("own", own).put("at", now);
+            SharedPreferences.Editor edit = talks.edit().putString(key, seen.toString());
+            if (before == null)
+                for (String old : forgotten(talks.getAll(), now))
+                    if (!old.equals(key))
+                        edit.remove(old);
+            edit.apply();
+        } catch (JSONException | RuntimeException e) {
+            Log.w(TAG, "Notes: a conversation not kept: " + e);
+        }
+    }
+
+    /** One conversation as kept, by Rust's key; null when not seen lately. */
+    private static JSONObject talk(Context context, String key)
+    {
+        String kept = key.isEmpty() ? null : talks(context).getString(key, null);
+        try {
+            return kept == null ? null : new JSONObject(kept);
+        } catch (JSONException e) {
+            return null;
+        }
+    }
+
+    /**
+     * What Android says of the conversations seen lately, for the Other apps
+     * tab: {api, conversations: {key: {important, page}}}: marked important
+     * there; `page`, Android takes it as a conversation, whose page Sioul
+     * can open (Android 11 and later).
+     */
+    static JSONObject conversations(Context context) throws JSONException
+    {
+        JSONObject known = new JSONObject();
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, ?> entry : talks(context).getAll().entrySet()) {
+            try {
+                JSONObject seen = new JSONObject(String.valueOf(entry.getValue()));
+                if (now - seen.optLong("at", 0) > TALK_KEPT_MS)
+                    continue;
+                boolean page = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && seen.optBoolean("conversation");
+                known.put(entry.getKey(), new JSONObject().put("important", seen.optBoolean("important")).put("page", page));
+            } catch (JSONException e) {
+                // Not one of ours.
+            }
+        }
+        return new JSONObject().put("api", Build.VERSION.SDK_INT).put("conversations", known);
+    }
+
+    /**
+     * Which of Android's pages a conversation is opened at, in order, the
+     * next one when a page does not open: "conversation", its own page
+     * (where Priority is), once Android gave it one; "conversations", the
+     * list of conversations, where one not changed yet shows among the
+     * recent ones; "app", the app's notifications. Pure, checked on a JVM.
+     */
+    static String[] pages(int api, boolean conversation, boolean own, boolean channel)
+    {
+        if (api < 30 || !conversation)
+            return new String[] { "app" };
+        if (own && channel)
+            return new String[] { "conversation", "conversations", "app" };
+        return channel ? new String[] { "conversations", "conversation", "app" } : new String[] { "conversations", "app" };
+    }
+
+    /**
+     * A conversation's page in Android: {key} (Rust's key for it), or
+     * {package, shortcut, channel}. False when no page opened.
+     */
+    private static boolean openConversation(Context context, JSONObject asked)
+    {
+        JSONObject seen = talk(context, asked.optString("key", ""));
+        String pkg = seen != null ? seen.optString("package") : asked.optString("package", "");
+        String shortcut = seen != null ? seen.optString("shortcut") : asked.optString("shortcut", "");
+        String channel = seen != null ? seen.optString("channel") : asked.optString("channel", "");
+        boolean conversation = seen == null ? !shortcut.isEmpty() : seen.optBoolean("conversation");
+        boolean own = seen != null && seen.optBoolean("own");
+        if (pkg.isEmpty())
+            return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && open(context, new Intent(CONVERSATIONS_PAGE));
+        for (String page : pages(Build.VERSION.SDK_INT, conversation && !shortcut.isEmpty(), own, !channel.isEmpty())) {
+            Intent intent;
+            switch (page) {
+            case "conversation":
+                intent = new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, pkg)
+                    .putExtra(Settings.EXTRA_CHANNEL_ID, channel).putExtra(Settings.EXTRA_CONVERSATION_ID, shortcut);
+                break;
+            case "conversations":
+                intent = new Intent(CONVERSATIONS_PAGE);
+                break;
+            default:
+                intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, pkg);
+            }
+            if (open(context, intent))
+                return true;
+        }
+        return false;
     }
 
     // ---------------------------------------------------------------- the listener
@@ -370,6 +577,9 @@ public final class AppNotes extends NotificationListenerService
         out.put("channel", channel);
         NotificationChannel given = ranking == null ? null : ranking.getChannel();
         out.put("channel_name", given == null || given.getName() == null ? "" : given.getName().toString());
+        // Its page in Android, for the tab: where a conversation Always through is marked important.
+        if (!shortcut.trim().isEmpty())
+            remember(this, sbn.getPackageName(), shortcut.trim(), channel, given, conversation, System.currentTimeMillis());
         boolean alerted = ranking != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
             && ranking.getLastAudiblyAlertedMillis() > 0 && System.currentTimeMillis() - ranking.getLastAudiblyAlertedMillis() < ALERTED_MS;
         out.put("alerted", alerted);

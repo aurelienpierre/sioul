@@ -467,10 +467,30 @@ pub fn verdicts(dirs: &Dirs) -> Result<BTreeMap<String, Verdicts>, LearnError> {
     Ok(accounts)
 }
 
+/// Where a message is kept in the corpus, by its Message-ID (bare, as the
+/// label log writes it): each copy's place and its folder's role, account
+/// after account. For a label said of a message no longer stored here
+/// (`sioul spam label mid:…`): its place on the server is what the label
+/// log names it by.
+pub fn copies_of(dirs: &Dirs, message_id: &str) -> Result<Vec<(Place, Role)>, LearnError> {
+    let wanted = sioul_core::mailindex::bare_id(message_id);
+    let mut found = Vec::new();
+    if wanted.is_empty() {
+        return Ok(found);
+    }
+    read_all(dirs, |record| {
+        // The Message-ID's text first, before the header block is parsed.
+        if record.header.contains(wanted.as_str()) && crate::labels::message_id(&record.header_bytes()).is_some_and(|id| id == wanted) {
+            found.push((record.place(), record.role));
+        }
+    })?;
+    Ok(found)
+}
+
 /// Writes records as a download would: grouped per account and folder,
-/// appended, their state saved (tests).
-#[cfg(test)]
-pub(crate) fn store(dirs: &Dirs, records: &[Record]) -> Result<(), LearnError> {
+/// appended, their state saved (tests: this crate's and the command line's).
+#[doc(hidden)]
+pub fn store(dirs: &Dirs, records: &[Record]) -> Result<(), LearnError> {
     let mut groups: BTreeMap<(String, String), Vec<Record>> = BTreeMap::new();
     for record in records {
         groups.entry((record.account.clone(), record.folder.clone())).or_default().push(record.clone());

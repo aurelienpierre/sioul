@@ -41,7 +41,7 @@ Archiving, deleting and junking happen at once, with **Undo** in the status line
 
 What you mark **Junk**, or **Not junk** in the junk folder, teaches your own spam filter at its next training ([below](#your-own-spam-filter)).
 
-A right click on a message (or its ⋮, or the Menu key) gives the rest: mark as read or unread, flag, **Move to…**, **Show the source**, block the sender, **Their mail** (as their categories say, safe, neutral, restricted, blocked), **Keep as a contract…**.
+A right click on a message (or its ⋮, or the Menu key) gives the rest: mark as read or unread, flag, **Move to…**, **Show the source**, block the sender, **How they reach you…** (their list, Always through, what reaches you from them: [A person's sheet](notifications.md#a-persons-sheet)), **Keep as a contract…**.
 
 Opening a message marks it read, as any mail program does.
 
@@ -63,7 +63,7 @@ A newsletter or a list's message that says how to leave it has **Unsubscribe** a
 
 The button rests, dimmed, on mail that is forged, set aside as spam, hostile, in the junk, or from a sender Sioul cannot verify: answering such mail would tell its sender that your address is read, or reach someone else. Its tip, or a tap on a phone, says why.
 
-A list you left shows **Unsubscribed**, and when. If its mail keeps coming, block the sender: ⋮ ▸ **Their mail** ▸ **Blocked**. The lists you left are in the Mail page's ⚙, under **Lists you left**, on this device.
+A list you left shows **Unsubscribed**, and when. If its mail keeps coming, block the sender: ⋮ ▸ **How they reach you…** ▸ **Blocked**. The lists you left are in the Mail page's ⚙, under **Lists you left**, on this device.
 
 ### Invitations
 

@@ -2,10 +2,10 @@
 // Copyright © 2026 Aurélien Pierre
 
 // The pauses' setup, under their settings (Settings ▸ Pauses, docs/pauses.md):
-// what this device's do-not-disturb can do, said plainly, with the system's
-// pages it needs (access, starred contacts, Plasma's notifications) and, on
-// GNOME, the consent for Sioul to switch its Do Not Disturb; a try-out of
-// the pause's screen, which holds nothing; the last pause forgotten.
+// a try-out of the pause's screen, which holds nothing; the last pause
+// forgotten. What this device's do-not-disturb can do, with the system's
+// pages it needs, is What reaches you ▸ Do not disturb's and This phone's
+// (DndSetup.qml); shown here only when `deviceShown`.
 
 pragma ComponentBehavior: Bound
 
@@ -24,6 +24,9 @@ ColumnLayout {
     // The pause's screen as it will be, nothing held.
     signal tried
 
+    // What this device's do-not-disturb can do, said here too.
+    property bool deviceShown: true
+
     function reload() {
         setup.report = JSON.parse(setup.sioul.pauseSetup() || "null") || setup.report
     }
@@ -33,6 +36,7 @@ ColumnLayout {
     onVisibleChanged: if (visible) setup.reload()
 
     Label {
+        visible: setup.deviceShown
         Layout.fillWidth: true
         Layout.topMargin: 18
         text: setup.sioul.text("pause-setup-dnd")
@@ -42,7 +46,7 @@ ColumnLayout {
         color: setup.theme.accent
     }
     Label {
-        visible: setup.report.line !== ""
+        visible: setup.deviceShown && setup.report.line !== ""
         Layout.fillWidth: true
         text: setup.report.line
         textFormat: Text.PlainText
@@ -51,6 +55,7 @@ ColumnLayout {
     }
     // The system's own pages it needs: each a button.
     Flow {
+        visible: setup.deviceShown
         Layout.fillWidth: true
         spacing: 6
 
@@ -73,7 +78,7 @@ ColumnLayout {
     }
     // GNOME: Sioul switches its Do Not Disturb only with this yes, and back after.
     WrapCheckBox {
-        visible: setup.report.offers.some(o => o.key === "desktop")
+        visible: setup.deviceShown && setup.report.offers.some(o => o.key === "desktop")
         Layout.fillWidth: true
         text: setup.report.consent
         checked: setup.report.gnome
