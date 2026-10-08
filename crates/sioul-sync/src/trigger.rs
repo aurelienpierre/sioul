@@ -285,8 +285,9 @@ mod tests {
         std::fs::write(roots.state.join(".health-state.toml.lock"), "").unwrap();
         std::fs::write(roots.data.join("drafts").join(".draft.eml.123-1.sioul.tmp"), "half").unwrap();
         assert!(Stamps::of(&stores).changed(&before).is_empty());
-        // A setting, a draft, a medicine: saves.
-        std::fs::write(roots.config.join("config.toml"), "language = \"en\"\n").unwrap();
+        // A setting, a draft, a medicine: saves. The setting longer than before:
+        // Windows may give two writes a few milliseconds apart the same time.
+        std::fs::write(roots.config.join("config.toml"), "language = \"en\"\n# saved\n").unwrap();
         std::fs::write(roots.data.join("drafts").join("draft.eml"), "Subject: lease\n").unwrap();
         std::fs::write(roots.data.join("health.toml"), "[[medicine]]\nid = \"levo\"\n").unwrap();
         let mut now = Stamps::of(&stores);

@@ -755,6 +755,11 @@ mod tests {
     impl ThrowawayHome {
         fn new(name: &str) -> Option<ThrowawayHome> {
             let gpg = Gnupg::find().ok()?.program;
+            // Git for Windows' gpg (the one CI finds) is an MSYS build: it reads
+            // a Windows folder as a relative path. Gpg4win's would do.
+            if cfg!(windows) && gpg.components().any(|c| c.as_os_str().eq_ignore_ascii_case("usr")) {
+                return None;
+            }
             // Short: GnuPG's sockets may live in it, 108 bytes at most.
             let dir = std::env::temp_dir().join(format!("sg-{name}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
