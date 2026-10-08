@@ -85,6 +85,10 @@ jobs:
           modules: ${{ env.QT_MODULES }}
           cache: true
           aqtsource: ${{ env.AQT_SOURCE }}
+          # py7zr, aqt's own unpacker, stopped on Windows where two Qt archives
+          # write into one folder (6.11.3's qtlocation beside qtdeclarative: "Specified
+          # path is bad"); the runner's 7-Zip unpacks them.
+          extra: '--external 7z'
       - name: Tell CXX-Qt which Qt
         shell: bash
         run: echo "QMAKE=${QT_ROOT_DIR}/bin/qmake.exe" >> "$GITHUB_ENV"
