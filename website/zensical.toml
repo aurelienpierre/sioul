@@ -97,6 +97,7 @@ nav = [
       { "OpenPGP on a security key" = "dev/research/openpgp-card.md" },
       # colour: the sites' colours.
       { "Colours on the screen" = "dev/research/colour.md" },
+      { "Devices of calls in sites" = "dev/research/calls.md" },
     ] },
     { "Building" = [
       { "Building and running" = "dev/building.md" },

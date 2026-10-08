@@ -41,7 +41,7 @@ Sur un téléphone, la page Sites liste vos sites et ouvre chacun dans votre nav
 
 ## Un site ouvert {#a-site-open}
 
-Quand un site est ouvert, une rangée au-dessus de lui porte : retour, recharger, **Temps réel** (ses notifications tout de suite), **Couper ses sons**, **Remplir l’identifiant** (depuis Bitwarden, plus bas) et le menu du site, ⋮.
+Quand un site est ouvert, une rangée au-dessus de lui porte : retour, recharger, **Temps réel** (ses notifications tout de suite), le bouton caméra tant que le site a un appel ([Les appels](#calls)), **Couper ses sons**, **Remplir l’identifiant** (depuis Bitwarden, plus bas) et le menu du site, ⋮.
 
 ## Le menu d’un site {#a-sites-menu}
 
@@ -78,7 +78,15 @@ Un courriel venu du domaine d’un site («  vous avez un nouveau message da
 
 ## Les appels {#calls}
 
-Les discussions, les appels vidéo et les sites de rencontre ont le micro et la caméra. Quand un appel commence, Sioul demande les périphériques choisis dans **Périphériques d’appel…**, et fait passer le son de l’appel par le haut-parleur choisi. **Partager dans l’appel** vous laisse choisir tout un écran, une fenêtre, ou rien. Quand un site demande le micro alors qu’il est coupé, la ligne d’état le dit, avec l’endroit où l’activer. L’endroit où vous êtes n’est jamais donné à aucun site.
+Les discussions, les appels vidéo et les sites de rencontre ont le micro et la caméra. Un appel commence avec la caméra et le micro choisis dans **Périphériques d’appel…**, et fait passer son son par le haut-parleur choisi, dès le tout premier appel d’un site.
+
+Tant qu’un site a un appel, un bouton caméra apparaît dans la rangée au-dessus de lui, à côté de **Couper ses sons**. Il ouvre les listes des caméras, des micros et des haut-parleurs. Un choix vaut tout de suite dans chaque appel ouvert dans Sioul, dès que le nouveau périphérique s’est ouvert, sans couper l’appel, et il reste pour les appels suivants. Les appels dans une fenêtre surgissante, ou dans un cadre d’un autre site, changent aussi. Pendant un appel, un périphérique que vous choisissez dans le menu du site lui-même reste pour cet appel ; ce menu peut encore nommer l’ancien périphérique après un changement dans Sioul.
+
+**Celui du système** suit votre système : sous Linux, choisir un autre micro ou haut-parleur par défaut dans les réglages du son de votre bureau déplace tout de suite un appel qui utilise celui du système. Un appel sur un périphérique que vous avez nommé, dans Sioul ou dans le site, y reste.
+
+Quand un périphérique ne peut pas s’ouvrir, parce qu’un autre programme le tient ou qu’il est débranché, la ligne au-dessus du site le dit, et l’appel garde le périphérique qu’il avait.
+
+**Partager dans l’appel** vous laisse choisir tout un écran, une fenêtre, ou rien. Quand un site demande le micro alors qu’il est coupé, la ligne d’état le dit, avec l’endroit où l’activer. L’endroit où vous êtes n’est jamais donné à aucun site.
 
 <!-- colour: the sites' colours (docs/colour.md). -->
 ## Les couleurs {#colours}
@@ -191,7 +199,7 @@ En octobre 2026, d’après la documentation de chaque application.
     13. Avec un compte chez Rambox, Shift ou Wavebox.
     14. Avec un compte Mozilla.
 
-**Les autres applications.** Franz (Windows, macOS, Linux) marche comme Ferdium et Rambox : chaque service dans un conteneur à lui, environ 75 services tout faits, le remplissage par 1Password avec sa formule Pro, un interrupteur qui coupe tous les services, et pas d’heures pour les notifications. Station n’a plus de site pour son produit ; sa dernière version stable date du 1er décembre 2024. Choisir la caméra, le micro et le haut-parleur des appels, ce que fait Sioul, est laissé hors des tableaux : la documentation des autres applications ne dit pas comment elles le font.
+**Les autres applications.** Franz (Windows, macOS, Linux) marche comme Ferdium et Rambox : chaque service dans un conteneur à lui, environ 75 services tout faits, le remplissage par 1Password avec sa formule Pro, un interrupteur qui coupe tous les services, et pas d’heures pour les notifications. Station n’a plus de site pour son produit ; sa dernière version stable date du 1er décembre 2024. Choisir la caméra, le micro et le haut-parleur des appels, et les changer pendant un appel, ce que fait Sioul, est laissé hors des tableaux : la documentation des autres applications ne dit pas comment elles le font.
 
 ??? info "Sources (en anglais)"
     - Ferdium : sa page d’accueil, <https://ferdium.org/>, lu le 8 octobre 2026.
@@ -261,7 +269,7 @@ En octobre 2026, d’après la documentation de chaque application.
 - **Les adresses** : un site ne s’épingle qu’à une adresse `https://` : Sioul refuse toute autre, car la connexion à un site ne doit jamais circuler en clair.
 - **Les clés de sécurité** : WebAuthn par la propre demande de Qt WebEngine (le code FIDO de Chromium, par USB HID). Sous Linux, cela marche avec un Qt WebEngine construit avec udev et les règles de systemd pour les clés, sans règle à ajouter ; le Flatpak a besoin de `--device=all`. Un script d’une ligne retire `PublicKeyCredential.getClientCapabilities()` de chaque page, car Qt 6.10 et 6.11 n’y répondent jamais (QTBUG-149575) et les sites attendraient sans fin. Sous Windows, la boîte de dialogue de Windows prend la clé.
 - **Les couleurs** : l’image de chaque site passe par un shader qui cherche chaque pixel dans une table faite pour l’écran : 33 × 33 × 33 entrées des valeurs linéaires de l’écran, puis sa courbe de tons en 1 024 entrées, en demi-flottants, faites avec Little CMS d’après le profil ICC de l’écran (les atomes X11 `_ICC_PROFILE`, attribués aux écrans grâce à colord) ; les couleurs plus calmes limitent doucement la chroma en OKLCh avant cela. À un code 8 bits près de la transformation de Little CMS elle-même. Le détail : [colour.md](https://aurelienpierre.github.io/sioul/dev/colour.html).
-- **Les périphériques d’appel** : un script dans chaque page demande la caméra et le micro que vous avez choisis par leur nom (`getUserMedia` avec un `deviceId` idéal), et envoie chaque son vers le haut-parleur que vous avez choisi (`setSinkId`) ; une page n’apprend ces noms qu’une fois qu’un micro ou une caméra lui est permis.
+- **Les périphériques d’appel** : un script tourne dans chaque page et chaque cadre d’un site. Pour chaque appel, il donne à la page une piste relais pour sa caméra et une pour son micro (le `MediaStreamTrackGenerator` de Chromium, nourri par le vrai périphérique au travers d’un `MediaStreamTrackProcessor`). Un changement remplace ce qui nourrit le relais, jamais les pistes de l’appel lui-même : le bouton muet du site, son indicateur de voix, ses effets et le raccrochage marchent toujours. Les périphériques sont demandés par leur nom, puisque les identifiants du navigateur sont propres à chaque site. Avant qu’un site ait eu droit à un périphérique, il n’en connaît pas les noms : l’appel passe au périphérique choisi juste après cette première permission, avant que la page le voie. Le haut-parleur est donné, par `setSinkId`, à chaque élément et chaque contexte audio par lesquels la page joue un son. Un site qui n’a droit ni au micro ni à la caméra ne reçoit jamais les noms. C’est vérifié avec les faux périphériques de Chromium, dans un bac à sable où aucune vraie caméra et aucun vrai micro ne peuvent s’ouvrir.
 - **Les icônes** : le `<link rel="icon">` du site lui-même, le plus grand, sinon `/favicon.ico`, par HTTPS seulement, redirections comprises ; gardées une semaine dans `~/.cache/sioul/favicons/`.
 - **Les notifications** : gardées dans `~/.local/state/sioul/site-notices.toml`, les 200 plus récentes, 300 caractères chacune ; ce qui vous joint et quand suit [Ce qui vous joint, et quand](notifications.md).
 - **Bitwarden, comme le font ses propres clients** : la clé principale est faite à partir de votre mot de passe principal par PBKDF2-SHA256 ou Argon2id, comme le dit votre compte, les réglages du serveur tenus dans les bornes de Bitwarden lui-même (PBKDF2, de 5 000 à 2 000 000 d’itérations ; Argon2id, au moins 2 passes, de 16 à 1 024 Mio, de 1 à 16 voies), pour qu’un serveur ne puisse pas rendre votre mot de passe moins cher à deviner. La connexion envoie une empreinte du mot de passe, jamais le mot de passe. La clé de l’utilisateur s’ouvre par des clés étirées par HKDF ; chaque élément AES-256-CBC est vérifié par son HMAC-SHA256 avant que quoi que ce soit soit déchiffré, et les éléments des comptes plus récents sont lus aussi (COSE : XChaCha20-Poly1305, AES-256-GCM) ; la clé d’une organisation passe par votre clé RSA (RSA-OAEP).

@@ -210,7 +210,7 @@ Sur Ubuntu 24.04 et suivants, l’AppImage fait tourner les sites sans le bac à
 - Des attentes changées sur un téléphone par DAVx⁵, pour confirmer ce que dit son code ; ce que gardent Thunderbird et les applications d’Apple.
 - Une invitation acceptée sur un serveur qui envoie lui-même les invitations (Nextcloud, Google, iCloud).
 - Google lui-même, et GitHub lui-même depuis la correction du 6 octobre 2026.
-- Une clé de sécurité sur GitHub, Google et Proton dans les sites ; un appel avec le micro et la caméra ; un PDF montré par un site.
+- Une clé de sécurité sur GitHub, Google et Proton dans les sites ; un appel avec le micro et la caméra, et leur changement pendant un vrai appel sur Jitsi, Google Meet ou Teams ; un PDF montré par un site.
 - Un site qui garde sa connexion dans sa page, comme Discord, qui reste connecté après la fermeture de Sioul.
 - Bitwarden sur votre propre serveur ou Vaultwarden.
 - Windows et macOS, lancés par une personne.

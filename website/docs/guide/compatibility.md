@@ -210,7 +210,7 @@ Worth trying, and welcome in [GitHub issues](https://github.com/aurelienpierre/s
 - Waits changed on a phone through DAVx⁵, to confirm what its code says; what Thunderbird and Apple's apps keep.
 - An invitation accepted on a server that sends invitations itself (Nextcloud, Google, iCloud).
 - Google itself, and GitHub itself since the fix of 6 October 2026.
-- A security key on GitHub, Google and Proton in Sites; a call with the microphone and the camera; a PDF a site shows.
+- A security key on GitHub, Google and Proton in Sites; a call with the microphone and the camera, and changing them during a real call on Jitsi, Google Meet or Teams; a PDF a site shows.
 - A site that keeps its login inside its page, such as Discord, staying logged in after Sioul quits.
 - Bitwarden on your own server or Vaultwarden.
 - Windows and macOS, run by a person.
