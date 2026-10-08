@@ -149,7 +149,7 @@ fn spam_fixture(root: &Path, mail: &Path) {
     let mut words = scored("winner lottery prize casino jackpot claim reward congratulations bonus", 40.0);
     words.extend(scored("invoice budget", 200.0));
     words.extend(scored("voucher discount", -200.0));
-    let meta = table::Meta { trained_at: TABLE_TRAINED, ham: 40, spam: 30, test_ham: 8, test_spam: 6, metrics: Default::default(), device: "desk".into() };
+    let meta = table::Meta { trained_at: TABLE_TRAINED, ham: 40, spam: 30, test_ham: 8, test_spam: 6, metrics: Default::default(), device: "desk".into(), lexicon: None };
     let table = table::Table {
         tokenizer: tokenize::TOKENIZER,
         features: features::FEATURES,
@@ -712,14 +712,14 @@ fn masks() {
     for plain in ["06 12 34 56 78", "SIRET 732 829 320 00074", "order 4222222222222", "FR76 3000 6000 0112 3456 7890 188", "NIR 1 85 05 2A 006 084 36"] {
         assert_eq!(mask::text(plain), plain);
     }
-    let (subject, body) = mask::message("Your security code", "Your security code is: 482 913.\nOr sign in at https://bank.example/login?c=482913 now.");
+    let (subject, body) = mask::message(sioul_core::words::Words::builtin_ref(), "Your security code", "Your security code is: 482 913.\nOr sign in at https://bank.example/login?c=482913 now.");
     assert_eq!(subject, "Your security code");
     assert_eq!(body, "Your security code is: [code hidden].\nOr sign in at [link hidden] now.");
-    let (subject, body) = mask::message("G-482913 is your verification code", "");
+    let (subject, body) = mask::message(sioul_core::words::Words::builtin_ref(), "G-482913 is your verification code", "");
     assert_eq!((subject.as_str(), body.as_str()), ("[code hidden] is your verification code", ""));
-    let (subject, body) = mask::message("Your temporary password", "Your temporary password is Xy7-kd2.");
+    let (subject, body) = mask::message(sioul_core::words::Words::builtin_ref(), "Your temporary password", "Your temporary password is Xy7-kd2.");
     assert!(!subject.contains("Xy7") && !body.contains("Xy7") && body.contains("password"), "{subject} / {body}");
-    let (_, body) = mask::message("Welcome", "Reset your password here: https://site.example/reset/abc");
+    let (_, body) = mask::message(sioul_core::words::Words::builtin_ref(), "Welcome", "Reset your password here: https://site.example/reset/abc");
     assert_eq!(body, "Reset your password here: [link hidden]");
 }
 
@@ -734,27 +734,27 @@ fn every_secret_of_a_message() {
         ("Your verification code\n4\n8\n2\n9\n1\n3\n", "9\n1"),
         ("Your verification code is 4821 and your backup verification code is 7730", "7730"),
     ] {
-        let (_, masked) = mask::message("Sign in", body);
+        let (_, masked) = mask::message(sioul_core::words::Words::builtin_ref(), "Sign in", body);
         assert!(masked.contains("[code hidden]") && !masked.contains(gone), "{body:?} → {masked:?}");
     }
     // The digits of a code printed with letters, alone elsewhere.
-    let (subject, body) = mask::message("G-482913 is your verification code", "Enter 482913 to go on.");
+    let (subject, body) = mask::message(sioul_core::words::Words::builtin_ref(), "G-482913 is your verification code", "Enter 482913 to go on.");
     assert!(!subject.contains("482913") && !body.contains("482913"), "{subject} / {body}");
     // Quoted in a reply.
-    let (_, body) = mask::message("Re: question", "Thanks!\n\n> Your security code is 551 204.\n> It is valid for 10 minutes.");
+    let (_, body) = mask::message(sioul_core::words::Words::builtin_ref(), "Re: question", "Thanks!\n\n> Your security code is 551 204.\n> It is valid for 10 minutes.");
     assert!(!body.contains("551") && body.contains("[code hidden]"), "{body}");
     // Far down a long text, past what `detect` reads at once.
     let long = format!("{}\nYour verification code is 663 812.", "A long newsletter line, read and read again. ".repeat(200));
-    let (_, body) = mask::message("News", &long);
+    let (_, body) = mask::message(sioul_core::words::Words::builtin_ref(), "News", &long);
     assert!(!body.contains("663") && body.contains("[code hidden]"), "the code at {}", long.len());
     // A code, then a password further on: the password's message is kept whole.
-    let (_, body) = mask::message("Your access", "Your login code is 482913. Your temporary password is Kq-77zz.");
+    let (_, body) = mask::message(sioul_core::words::Words::builtin_ref(), "Your access", "Your login code is 482913. Your temporary password is Kq-77zz.");
     assert!(!body.contains("Kq-77zz") && !body.contains("482913"), "{body}");
     // An address to confirm: its link as good as a code, however written.
-    let (_, body) = mask::message("Confirm your email", "Click HTTPS://shop.example/confirm?t=abc123, or www.shop.example/c/abc123, or shop.example/c/abc123.");
+    let (_, body) = mask::message(sioul_core::words::Words::builtin_ref(), "Confirm your email", "Click HTTPS://shop.example/confirm?t=abc123, or www.shop.example/c/abc123, or shop.example/c/abc123.");
     assert_eq!(body, "Click [link hidden], or [link hidden], or [link hidden].");
     // An ordinary message keeps its links and its numbers.
-    let (_, body) = mask::message("Lunch", "See https://example.org/menu, table 4821, 12 345 €.");
+    let (_, body) = mask::message(sioul_core::words::Words::builtin_ref(), "Lunch", "See https://example.org/menu, table 4821, 12 345 €.");
     assert_eq!(body, "See https://example.org/menu, table 4821, 12 345 €.");
 }
 

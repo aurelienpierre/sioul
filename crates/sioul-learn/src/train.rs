@@ -66,6 +66,8 @@ use crate::{Cancel, Dirs, LearnError, Progress, Stage, io_error, now};
 use serde::{Deserialize, Serialize};
 use sioul_core::card::Card;
 use sioul_core::config::Config;
+use sioul_core::spam::tokenize::Lexicon;
+use sioul_core::words::SpamWords;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{BufReader, BufWriter, Seek, Write};
 use std::path::{Path, PathBuf};
@@ -103,6 +105,10 @@ pub struct Options {
     pub replace: bool,
     /// Which model learns.
     pub model: Model,
+    /// The tokenizer's words (the spam lists of the languages in use and your
+    /// changes, `[words]`): it reads the messages with them, and the table
+    /// keeps them (`spam::Meta::lexicon`).
+    pub lexicon: SpamWords,
 }
 
 /// Which model learns: fastText's classifier (the filter's), or the
@@ -159,15 +165,18 @@ impl Default for Options {
             least_of_each: 20,
             replace: true,
             model: Model::default(),
+            lexicon: sioul_core::words::Words::builtin_ref().spam.clone(),
         }
     }
 }
 
 impl Options {
-    /// The defaults, with your thresholds (`[spam]`, read as the Porch reads them).
+    /// The defaults, with your thresholds (`[spam]`, read as the Porch reads
+    /// them) and the tokenizer's words of your languages and changes (`[words]`).
     pub fn of(config: &Config) -> Options {
         let (spam, unsure) = config.spam.thresholds();
-        Options { threshold_spam: f64::from(spam), threshold_unsure: f64::from(unsure), ..Options::default() }
+        let lexicon = sioul_core::words::Words::of(config).spam.clone();
+        Options { threshold_spam: f64::from(spam), threshold_unsure: f64::from(unsure), lexicon, ..Options::default() }
     }
 }
 
@@ -459,6 +468,7 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
     let mut outside_messages: Vec<Message> = Vec::new();
     // Your own messages, then the outside material's.
     let tokens_total = labeled.len() as u64 + (ham + spam) - (label_summary.ham + label_summary.spam);
+    let lexicon = Lexicon::cached(&options.lexicon);
     {
         let file = std::fs::File::create(&token_path).map_err(|e| io_error(&token_path, e))?;
         let mut out = BufWriter::new(file);
@@ -473,7 +483,7 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
             if messages[index].is_some() {
                 return;
             }
-            let (words, features) = read_message(&record, trusted);
+            let (words, features) = read_message(&record, trusted, &lexicon);
             let mut length = 0u64;
             for line in words.chunks(LINE_WORDS) {
                 let text = line.join(" ");
@@ -514,7 +524,7 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
             if failure.is_some() || yours(&message) {
                 return;
             }
-            let words = message.words();
+            let words = message.words(&lexicon);
             let mut length = 0u64;
             for line in words.chunks(LINE_WORDS) {
                 let text = line.join(" ");
@@ -664,7 +674,7 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
     progress(&Progress { stage: Stage::Evaluation, done: test_ids.len() as u64, total: test_ids.len() as u64, detail: String::new() });
 
     // The table in place, on the test messages it never learned from.
-    let (current_numbers, compared, replaced, reason) = against_current(dirs, test_ids, &test_words, &messages, &new_scored, options);
+    let (current_numbers, compared, replaced, reason) = against_current(dirs, test_ids, &test_words, &messages, &new_scored, options)?;
     check()?;
 
     // Kept: the same model learned again from every message, the newest month included, and written.
@@ -872,8 +882,14 @@ pub(crate) fn metrics(test: &Numbers) -> BTreeMap<String, f64> {
 /// learned from (it learned from every message before its training), so
 /// that both are judged on mail they never saw; then whether the new table
 /// takes its place (`replacement`), and why. `test_words` and `new_scored`
-/// are in `test_ids`' order.
-pub(crate) fn against_current(dirs: &Dirs, test_ids: &[usize], test_words: &[Vec<String>], messages: &[Message], new_scored: &[(f64, bool)], options: &Options) -> (Option<Numbers>, Option<Compared>, bool, &'static str) {
+/// are in `test_ids`' order, read with this training's words
+/// (`Options::lexicon`). Each table reads with its own words: when those of
+/// the table in place (`Table::lexicon`: its own, or the built-in French and
+/// English ones when it keeps none) are not this training's, its test
+/// messages are read again from the corpus with them, and one that can no
+/// longer be read is left out for both tables; a change of words never makes
+/// the table in place look worse than it is.
+pub(crate) fn against_current(dirs: &Dirs, test_ids: &[usize], test_words: &[Vec<String>], messages: &[Message], new_scored: &[(f64, bool)], options: &Options) -> Result<(Option<Numbers>, Option<Compared>, bool, &'static str), LearnError> {
     let current = match Table::read(&dirs.table()) {
         Ok(current) => Ok(Some(current)),
         Err(_) if !dirs.table().exists() => Ok(None),
@@ -882,9 +898,24 @@ pub(crate) fn against_current(dirs: &Dirs, test_ids: &[usize], test_words: &[Vec
     let (current_numbers, compared) = match &current {
         Ok(Some(current)) => {
             let since = current.meta.trained_at;
-            let unseen: Vec<usize> = (0..test_ids.len()).filter(|&row| messages[test_ids[row]].date > since).collect();
+            let mut unseen: Vec<usize> = (0..test_ids.len()).filter(|&row| messages[test_ids[row]].date > since).collect();
+            let lexicon = current.lexicon();
+            let own_words: Option<HashMap<usize, Vec<String>>> = if lexicon.words == options.lexicon || unseen.is_empty() {
+                None
+            } else {
+                let wanted: HashMap<Place, usize> = unseen.iter().filter_map(|&row| Some((messages[test_ids[row]].place.clone()?, row))).collect();
+                let mut read: HashMap<usize, Vec<String>> = HashMap::new();
+                corpus::read_all(dirs, |record| {
+                    if let Some(&row) = wanted.get(&record.place()) {
+                        read.entry(row).or_insert_with(|| words_of_record(&record, &lexicon));
+                    }
+                })?;
+                unseen.retain(|row| read.contains_key(row));
+                Some(read)
+            };
+            let words = |row: usize| own_words.as_ref().and_then(|own| own.get(&row)).unwrap_or(&test_words[row]);
             let label = |row: usize| messages[test_ids[row]].label == Label::Spam;
-            let theirs: Vec<(f64, bool)> = unseen.iter().map(|&row| (f64::from(current.score(&test_words[row], &messages[test_ids[row]].features).p), label(row))).collect();
+            let theirs: Vec<(f64, bool)> = unseen.iter().map(|&row| (f64::from(current.score(words(row), &messages[test_ids[row]].features).p), label(row))).collect();
             let ours: Vec<(f64, bool)> = unseen.iter().map(|&row| new_scored[row]).collect();
             let compared = Compared { since, ham: theirs.iter().filter(|(_, s)| !s).count() as u64, spam: theirs.iter().filter(|(_, s)| *s).count() as u64, new_ham_lost: eval::evaluate(&ours, options.threshold_spam, options.threshold_unsure).at_spam.ham_called_spam.count, current_ham_lost: 0 };
             let numbers = eval::evaluate(&theirs, options.threshold_spam, options.threshold_unsure);
@@ -898,7 +929,7 @@ pub(crate) fn against_current(dirs: &Dirs, test_ids: &[usize], test_words: &[Vec
         (Ok(Some(_)), Some(c)) => replacement(c.new_ham_lost, c.current_ham_lost, c.ham + c.spam),
         (Ok(Some(_)), None) => (true, "no-table"),
     };
-    (current_numbers, compared, replaced, reason)
+    Ok((current_numbers, compared, replaced, reason))
 }
 
 /// Whether the new table replaces the one in place, and why, from the ham
@@ -920,22 +951,34 @@ pub(crate) fn replacement(new_ham_lost: u64, current_ham_lost: u64, compared: u6
 /// the whole message when it was fetched, as the Porch reads the stamp the
 /// sync writes on it; beside a signature, their failures unknown when made
 /// long after it came: `corpus::Checked::reading`), your provider's second.
-pub(crate) fn read_message(record: &Record, trusted: &BTreeMap<String, Vec<String>>) -> (Vec<String>, [f32; N]) {
+/// The words are read with `lexicon` (a training's, or the table's own).
+pub(crate) fn read_message(record: &Record, trusted: &BTreeMap<String, Vec<String>>, lexicon: &Lexicon) -> (Vec<String>, [f32; N]) {
     let Some(card) = spam::card_of(record) else { return (Vec::new(), [0.0; N]) };
     let own = record.checked.as_ref().and_then(|c| c.reading(record.date, sioul_core::spam::features::signed(&card.headers)));
-    features_of(&card, trusted.get(&record.account).map_or(&[][..], Vec::as_slice), (record.date > 0).then_some(record.date), own)
+    features_of(&card, trusted.get(&record.account).map_or(&[][..], Vec::as_slice), (record.date > 0).then_some(record.date), own, lexicon)
 }
 
 /// A card's words and header features; `own`, Sioul's checks kept apart
 /// from it (a corpus record's), else those its headers carry (Sioul's stamp
-/// first, your provider's second: `features::auth_results`).
-pub(crate) fn features_of(card: &Card, trusted: &[String], internal_date: Option<i64>, own: Option<sioul_core::trust::AuthResults>) -> (Vec<String>, [f32; N]) {
-    let tokens = spam::tokens(&card.subject, &card.excerpt);
+/// first, your provider's second: `features::auth_results`); its words read
+/// with `lexicon`.
+pub(crate) fn features_of(card: &Card, trusted: &[String], internal_date: Option<i64>, own: Option<sioul_core::trust::AuthResults>, lexicon: &Lexicon) -> (Vec<String>, [f32; N]) {
+    let tokens = spam::tokens_with(lexicon, &card.subject, &card.excerpt);
     let auth = own.or_else(|| sioul_core::spam::features::auth_results(&card.headers, trusted));
     let features = spam::features(card, auth.as_ref(), internal_date, &tokens.links);
-    // fastText splits on whitespace: a word never holds any.
-    let words = tokens.words.into_iter().filter(|w| !w.is_empty() && !w.contains(char::is_whitespace)).collect();
-    (words, features)
+    (kept(tokens.words), features)
+}
+
+/// A record's words alone, read with `lexicon` as `read_message` reads them:
+/// what the table in place reads of a test message when its words are not
+/// the training's (`against_current`).
+fn words_of_record(record: &Record, lexicon: &Lexicon) -> Vec<String> {
+    spam::card_of(record).map(|card| kept(spam::tokens_with(lexicon, &card.subject, &card.excerpt).words)).unwrap_or_default()
+}
+
+/// The words fastText can learn: it splits on whitespace, so a word never holds any.
+fn kept(words: Vec<String>) -> Vec<String> {
+    words.into_iter().filter(|w| !w.is_empty() && !w.contains(char::is_whitespace)).collect()
 }
 
 /// The classifier's rows: each message's vector, then its header features.
@@ -1270,6 +1313,7 @@ fn fold(language: &fasttext::FastText, model: &svm::Model, mean: &[f64], deviati
             test_spam: split.test_spam,
             metrics: BTreeMap::new(),
             device: sioul_sync::lease::host_name(),
+            lexicon: Some(options.lexicon.clone()),
         },
     }
 }
@@ -1311,6 +1355,8 @@ pub fn evaluate(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &
 /// up to `errors` errors of each kind (`sioul spam eval --errors`).
 pub fn evaluate_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options: &Options, errors: usize, progress: &mut dyn FnMut(&Progress), cancel: &Cancel) -> Result<(Evaluation, Detail), LearnError> {
     let table = Table::read(&dirs.table()).map_err(LearnError::NoTable)?;
+    // Every message read with the table's own words.
+    let lexicon = table.lexicon();
     let mut copies = Vec::new();
     corpus::read_all(dirs, |record| copies.push(Copy::of(&record)))?;
     let (mut labeled, label_summary) = labels::decide(copies, &labels::read_log(dirs), &labels::read_moved(dirs), &labels::read_flagged(dirs));
@@ -1333,7 +1379,7 @@ pub fn evaluate_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, optio
         if scored[i].is_some() || cancel.cancelled() {
             return;
         }
-        let (words, features) = read_message(&record, trusted);
+        let (words, features) = read_message(&record, trusted, &lexicon);
         scored[i] = Some((f64::from(table.score(&words, &features).p), tested_labels[i].label == Label::Spam));
         done += 1;
         if done % 500 == 0 {
@@ -1380,7 +1426,7 @@ pub fn evaluate_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, optio
         let (_, newest) = newest_fifths(&all, |i| ("", messages[i].1.label == Label::Spam));
         let newest: HashSet<usize> = newest.into_iter().collect();
         let held: Vec<(u64, external::Message)> = messages.into_iter().enumerate().filter(|(i, _)| newest.contains(i)).map(|(_, m)| m).collect();
-        let scored: Vec<(f64, bool)> = held.iter().map(|(_, m)| (f64::from(table.score(&m.words(), &lacking).p), m.label == Label::Spam)).collect();
+        let scored: Vec<(f64, bool)> = held.iter().map(|(_, m)| (f64::from(table.score(&m.words(&lexicon), &lacking).p), m.label == Label::Spam)).collect();
         tested.extend(held.iter().zip(&scored).map(|((ordinal, m), &(p, _))| Tested { p, label: m.label, date: m.date, origin: Origin::Outside { source: name.clone(), ordinal: *ordinal }, unsettled: false }));
         outside.insert(name, eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure));
     }
@@ -1408,7 +1454,7 @@ pub struct Why {
 pub fn why(dirs: &Dirs, raw: &[u8], trusted: &[String], internal_date: Option<i64>) -> Result<Why, String> {
     let table = Table::read(&dirs.table())?;
     let card = Card::from_bytes(raw).ok_or_else(|| "not a message".to_string())?;
-    let (words, features) = features_of(&card, trusted, internal_date, None);
+    let (words, features) = features_of(&card, trusted, internal_date, None, &table.lexicon());
     let score = table.score(&words, &features);
     // Each word's and each feature's share of the score, the most toward spam first, as the Porch says why (`spam::Why::of`).
     let words = score.words.iter().filter(|(_, s)| *s > 0.0).take(5).map(|(w, s)| (w.clone(), f64::from(*s))).collect();
@@ -1439,12 +1485,112 @@ mod tests {
         Options { epochs: Model::Centroid.epochs(), model: Model::Centroid, ..small() }
     }
 
+    /// Your words reach the training: the spam lists of your languages, and your changes.
+    #[test]
+    fn options_read_your_words() {
+        let config: Config = toml::from_str("[words]\nlanguages = [\"en\"]\n[words.spam.provider_tags]\nadd = [\"verdächtig\"]\n").unwrap();
+        let lexicon = Options::of(&config).lexicon;
+        assert!(lexicon.provider_tags.iter().any(|t| t == "verdächtig"), "{lexicon:?}");
+        assert!(lexicon.elisions.is_empty(), "no French elisions in English alone");
+        assert_eq!(Options::default().lexicon, sioul_core::words::Words::builtin_ref().spam);
+    }
+
     fn trusted() -> BTreeMap<String, Vec<String>> {
         ["home", "work"].into_iter().map(|a| (a.to_string(), vec!["mx.example.net".to_string()])).collect()
     }
 
     fn records(mail: &[synthetic::Mail]) -> Vec<Record> {
         mail.iter().enumerate().map(|(i, m)| synthetic::record_of(m, 1, i as u32 + 1)).collect()
+    }
+
+    /// The comparison with the table in place, as a training makes it.
+    fn compared_with_current(dirs: &Dirs, test_ids: &[usize], test_words: &[Vec<String>], messages: &[Message], new_scored: &[(f64, bool)], options: &Options) -> (Option<Numbers>, Option<Compared>, bool, &'static str) {
+        against_current(dirs, test_ids, test_words, messages, new_scored, options).unwrap()
+    }
+
+    /// The table in place is judged on the newest messages read with its own
+    /// words (`Table::lexicon`), never with the new training's: a change of
+    /// words would make it look worse than it is. Here the new training's
+    /// words drop the very words the table in place knows spam by.
+    #[test]
+    fn the_table_in_place_reads_with_its_own_words() {
+        let root = scratch("own-words");
+        let dirs = Dirs::under(&root);
+        // Ten ham and ten spam, all after the table in place was trained.
+        let mail = |i: u32| {
+            let spam = i % 2 == 0;
+            let (subject, body) = if spam { ("lottery jackpot", "You won the lottery jackpot, claim the jackpot prize now") } else { ("rehearsal notes", "The rehearsal notes for the concert, see you at the rehearsal") };
+            let date = 1_790_000_000 + i64::from(i) * 3600;
+            let stamp = jiff::Timestamp::from_second(date).unwrap().strftime("%a, %d %b %Y %H:%M:%S +0000").to_string();
+            let raw = format!("From: Someone <s{i}@example.org>\r\nTo: owner@example.org\r\nSubject: {subject}\r\nDate: {stamp}\r\nMessage-ID: <{i}@example.org>\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{body}\r\n");
+            let (folder, role) = if spam { ("Junk", sioul_core::folders::Role::Junk) } else { ("INBOX", sioul_core::folders::Role::Inbox) };
+            synthetic::Mail { account: "home", folder, role, flags: Vec::new(), date, raw: raw.into_bytes() }
+        };
+        let mails: Vec<synthetic::Mail> = (0..20).map(mail).collect();
+        let records = records(&mails);
+        corpus::store(&dirs, &records).unwrap();
+        // The table in place, made before the words existed (none kept: the built-in ones).
+        let builtin = Lexicon::builtin();
+        let word = |w: &str| spam::word_hash(&spam::tokens_with(&builtin, "", w).words[0]);
+        let mut table = Table {
+            tokenizer: spam::TOKENIZER,
+            features: spam::FEATURES,
+            dim: 16,
+            minn: 3,
+            maxn: 6,
+            bucket: 8,
+            words: vec![(word("lottery"), 400.0), (word("jackpot"), 400.0), (word("rehearsal"), -400.0)],
+            buckets: vec![0.0; 8],
+            weights: Vec::new(),
+            means: Vec::new(),
+            bias: 0.0,
+            text_mean: 0.0,
+            platt_a: -1.0,
+            platt_b: 0.0,
+            meta: spam::Meta { trained_at: 1_780_000_000, ..spam::Meta::default() },
+        };
+        table.sort();
+        table.write(&dirs.table()).unwrap();
+        // The new training's words: "lottery" and "jackpot" dropped, as stop words.
+        let mut lexicon = Options::default().lexicon;
+        lexicon.stop_words.extend(["lottery".to_string(), "jackpot".to_string()]);
+        let options = Options { lexicon: lexicon.clone(), ..small() };
+        let ours = Lexicon::cached(&lexicon);
+        let trusted = BTreeMap::new();
+        let messages: Vec<Message> = records
+            .iter()
+            .zip(&mails)
+            .map(|(record, m)| Message {
+                label: if m.role == sioul_core::folders::Role::Junk { Label::Spam } else { Label::Ham },
+                date: m.date,
+                account: record.account.clone(),
+                place: Some(record.place()),
+                evidence: None,
+                source: None,
+                ordinal: 0,
+                unsettled: false,
+                known: true,
+                features: read_message(record, &trusted, &builtin).1,
+                offset: 0,
+                length: 0,
+                words: 0,
+            })
+            .collect();
+        let test_ids: Vec<usize> = (0..messages.len()).collect();
+        let test_words: Vec<Vec<String>> = records.iter().map(|r| read_message(r, &trusted, &ours).0).collect();
+        let new_scored: Vec<(f64, bool)> = messages.iter().map(|m| (0.0, m.label == Label::Spam)).collect();
+        // What the table in place says of them, each read with its own words, and with the new ones.
+        let read_with = |lexicon: &Lexicon| {
+            let scored: Vec<(f64, bool)> = records.iter().zip(&messages).map(|(r, m)| (f64::from(table.score(&read_message(r, &trusted, lexicon).0, &m.features).p), m.label == Label::Spam)).collect();
+            eval::evaluate(&scored, options.threshold_spam, options.threshold_unsure)
+        };
+        let (own, misread) = (read_with(&builtin), read_with(&ours));
+        assert_eq!(own.at_spam.spam_caught.count, 10, "its own words: every spam caught");
+        assert_ne!(own, misread, "the new words would make it look otherwise");
+        let (current, compared, _, _) = compared_with_current(&dirs, &test_ids, &test_words, &messages, &new_scored, &options);
+        assert_eq!(current.as_ref(), Some(&own), "the table in place read with its own words");
+        assert_eq!(compared.map(|c| (c.ham, c.spam)), Some((10, 10)));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Invented ham and spam: each model tells them apart, Platt rises, the
@@ -1487,6 +1633,7 @@ mod tests {
         assert_eq!((written.meta.ham + written.meta.spam, written.meta.test_ham + written.meta.test_spam), (800, 160));
         assert_eq!(written.meta.metrics.get("auc").copied(), summary.test.auc);
         assert!(!written.meta.device.is_empty());
+        assert_eq!(written.meta.lexicon.as_ref(), Some(&options.lexicon), "the table keeps the words it read with");
         // In order, every stage; the tokenized corpus is gone.
         let firsts: Vec<Stage> = stages.iter().fold(Vec::new(), |mut seen, s| {
             if seen.last() != Some(s) {
@@ -1842,26 +1989,27 @@ mod tests {
         record.checked = Some(corpus::Checked { at: record.date + 3600, results: stamp.into(), whole: true, gone: false });
         let ids = vec!["sioul-0123456789ab.invalid".to_string(), "mx.example.net".to_string()];
         let trusted: BTreeMap<String, Vec<String>> = [(record.account.clone(), ids.clone())].into();
-        let (words, trained) = read_message(&record, &trusted);
+        let lexicon = Lexicon::builtin();
+        let (words, trained) = read_message(&record, &trusted, &lexicon);
         let stored = Card::from_bytes(&[stamp.as_bytes(), &mail.raw].concat()).unwrap();
-        let (sorted_words, sorted) = features_of(&stored, &ids, Some(record.date), None);
+        let (sorted_words, sorted) = features_of(&stored, &ids, Some(record.date), None, &lexicon);
         assert_eq!(words, sorted_words, "the same words");
         assert_eq!(trained.map(f32::to_bits), sorted.map(f32::to_bits), "the same header features");
         let value = |x: &[f32; N], name: &str| x[spam::NAMES.iter().position(|n| *n == name).unwrap()];
         assert_eq!((value(&trained, "spf_fail"), value(&trained, "dkim_pass"), value(&trained, "dmarc_pass")), (1.0, 1.0, 1.0));
         // Without checks of its own (none made yet): the provider's, none here: missing.
-        let unchecked = read_message(&Record { checked: None, ..record.clone() }, &trusted).1;
+        let unchecked = read_message(&Record { checked: None, ..record.clone() }, &trusted, &lexicon).1;
         assert!(value(&unchecked, "spf_fail").is_nan() && value(&unchecked, "dkim_pass").is_nan());
         // Checked a year after it came: the failure unknown (no word), the passes as they were.
         record.checked.as_mut().unwrap().at = record.date + 365 * 86_400;
-        let (_, old) = read_message(&record, &trusted);
+        let (_, old) = read_message(&record, &trusted, &lexicon);
         assert_eq!((value(&old, "spf_fail"), value(&old, "spf_pass"), value(&old, "dkim_pass"), value(&old, "dmarc_pass")), (0.0, 0.0, 1.0, 1.0));
         // The same check of an unsigned message: nothing of its own expired, its failure holds.
         let unsigned = Record { checked: record.checked.clone(), ..synthetic::record_of(&synthetic::mailbox(41, 3, 3)[0], 1, 1) };
-        assert_eq!(value(&read_message(&unsigned, &trusted).1, "spf_fail"), 1.0);
+        assert_eq!(value(&read_message(&unsigned, &trusted, &lexicon).1, "spf_fail"), 1.0);
         // Its server no longer had it: nothing of Sioul's, the provider's (none here).
         record.checked = Some(corpus::Checked { at: record.date + 3600, gone: true, ..corpus::Checked::default() });
-        assert!(value(&read_message(&record, &trusted).1, "dkim_pass").is_nan());
+        assert!(value(&read_message(&record, &trusted, &lexicon).1, "dkim_pass").is_nan());
     }
 
     /// A training on invented mail, your filter's word in its logs as your

@@ -71,25 +71,31 @@ impl Kind {
         }
     }
 
-    /// The kind a payment's label, a mail's subject or a sender's name suggests.
-    pub fn guess(text: &str) -> Option<Kind> {
+    /// The kind a payment's label, a mail's subject or a sender's name
+    /// suggests, by the words and brands of each kind (`words::ContractKinds`:
+    /// the language packs' words, the country packs' brands, yours), the
+    /// kinds tried in this order.
+    pub fn guess(words: &crate::words::Words, text: &str) -> Option<Kind> {
         let folded: String = crate::text::fold(text).into_iter().collect();
-        let has = |words: &[&str]| words.iter().any(|w| folded.split(|c: char| !c.is_alphanumeric()).any(|word| word == *w) || (w.contains(' ') && folded.contains(w)));
-        let kind = if has(&["loyer", "rent", "bail"]) {
+        let has = |list: &[String]| {
+            list.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && (folded.split(|c: char| !c.is_alphanumeric()).any(|word| word == w) || (w.contains(' ') && folded.contains(&w))))
+        };
+        let k = &words.contracts.kinds;
+        let kind = if has(&k.rent) {
             Kind::Rent
-        } else if has(&["electricite", "gaz", "edf", "engie", "totalenergies", "energy", "electricity"]) {
+        } else if has(&k.energy) {
             Kind::Energy
-        } else if has(&["mutuelle", "complementaire sante", "prevoyance"]) {
+        } else if has(&k.health) {
             Kind::Health
-        } else if has(&["assurance", "insurance", "maif", "macif", "matmut", "axa", "allianz", "groupama", "mma", "maaf"]) {
+        } else if has(&k.insurance) {
             Kind::Insurance
-        } else if has(&["free", "orange", "sfr", "bouygues", "sosh", "red", "internet", "box", "mobile", "forfait", "phone"]) {
+        } else if has(&k.telecom) {
             Kind::Telecom
-        } else if has(&["ovh", "gandi", "o2switch", "hebergement", "hosting", "hetzner", "infomaniak", "domaine", "domain"]) {
+        } else if has(&k.hosting) {
             Kind::Hosting
-        } else if has(&["abonnement", "subscription", "netflix", "spotify", "deezer", "disney", "canal", "adobe", "claude", "anthropic", "openai", "chatgpt", "github", "icloud", "proton"]) {
+        } else if has(&k.subscription) {
             Kind::Subscription
-        } else if has(&["banque", "bank", "carte", "frais bancaires"]) {
+        } else if has(&k.bank) {
             Kind::Bank
         } else {
             return None;
@@ -282,16 +288,22 @@ mod tests {
 
     #[test]
     fn kinds_guessed() {
-        assert_eq!(Kind::guess("Loyer octobre"), Some(Kind::Rent));
-        assert_eq!(Kind::guess("EDF électricité"), Some(Kind::Energy));
-        assert_eq!(Kind::guess("Free Mobile"), Some(Kind::Telecom));
-        assert_eq!(Kind::guess("MAIF assurance habitation"), Some(Kind::Insurance));
-        assert_eq!(Kind::guess("Mutuelle"), Some(Kind::Health));
-        assert_eq!(Kind::guess("Claude Pro"), Some(Kind::Subscription));
-        assert_eq!(Kind::guess("OVH hébergement"), Some(Kind::Hosting));
-        assert_eq!(Kind::guess("Boulangerie"), None);
+        let words = crate::words::Words::builtin();
+        let guess = |text: &str| Kind::guess(&words, text);
+        assert_eq!(guess("Loyer octobre"), Some(Kind::Rent));
+        assert_eq!(guess("EDF électricité"), Some(Kind::Energy));
+        assert_eq!(guess("Free Mobile"), Some(Kind::Telecom));
+        assert_eq!(guess("MAIF assurance habitation"), Some(Kind::Insurance));
+        assert_eq!(guess("Mutuelle"), Some(Kind::Health));
+        assert_eq!(guess("Abonnement annuel"), Some(Kind::Subscription));
+        assert_eq!(guess("Exemple hébergement"), Some(Kind::Hosting));
+        assert_eq!(guess("Boulangerie"), None);
         // A word inside another is not it: "redevance" is not RED.
-        assert_eq!(Kind::guess("redevance"), None);
+        assert_eq!(guess("redevance"), None);
+        // A brand of your own subscriptions, added in [words].
+        assert_eq!(guess("Exemplestream Premium"), None);
+        let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n[words.contracts.kinds.subscription]\nadd = [\"Exemplestream\"]\n").unwrap();
+        assert_eq!(Kind::guess(&crate::words::Words::of(&config), "Exemplestream Premium"), Some(Kind::Subscription));
     }
 
     #[test]

@@ -151,7 +151,7 @@ pub(super) fn mail_shown(s: &Session, shield: Option<&Shield>, key: &Path, subje
         return (s.tr.text("hostile-subject", None), String::new());
     }
     let excerpt = maildir::read_one(key).map(|card| card.excerpt).unwrap_or_default();
-    (mask::message(subject, &excerpt).0, detail.to_string())
+    (mask::message(&sioul_core::words::Words::of(&s.config), subject, &excerpt).0, detail.to_string())
 }
 
 // What came, and mail.
@@ -181,13 +181,14 @@ pub fn porch(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     lines.extend(shown.closed.iter().chain([&shown.summary, &shown.status]).filter(|l| !l.is_empty()).cloned());
     let mut lanes = Vec::new();
+    let looked = sioul_core::words::Words::of(&s.config);
     for lane in &shown.lanes {
         lines.push(String::new());
         lines.push(lane.title.clone());
         let with_reason = matches!(lane.key.as_str(), "screener" | "set-aside");
         let mut rows = Vec::new();
         for item in lane.items.iter().take(limit) {
-            let (subject, preview) = masked_item(item, by_key.get(&item.key).copied());
+            let (subject, preview) = masked_item(&looked, item, by_key.get(&item.key).copied());
             let reason = item.reasons.last().filter(|_| with_reason).map_or(String::new(), |r| format!(" ({r})"));
             let address = if item.address.is_empty() || item.hidden { String::new() } else { format!(" <{}>", item.address) };
             lines.push(format!("  · {}{address} ({}) · {subject} · {}{reason}", item.sender, item.trust, item.date));
@@ -210,12 +211,12 @@ pub fn porch(s: &Session, args: &Args) -> Result<Answer, String> {
 }
 
 /// A Porch item's subject and preview, masked; nothing of hostile mail, no preview of rude mail.
-fn masked_item(item: &view::ItemView, judged: Option<&Triaged>) -> (String, String) {
+fn masked_item(looked: &sioul_core::words::Words, item: &view::ItemView, judged: Option<&Triaged>) -> (String, String) {
     if item.hidden {
         return (item.subject.clone(), String::new());
     }
     let excerpt = judged.map_or(item.preview.as_str(), |t| t.card.excerpt.as_str());
-    let (subject, text) = mask::message(&item.subject, excerpt);
+    let (subject, text) = mask::message(looked, &item.subject, excerpt);
     if item.preview.is_empty() {
         return (subject, String::new());
     }
@@ -254,6 +255,7 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
     let words = words(&query);
     let index = mail_index(&s.config);
     let shield = Shield::of(&s.config);
+    let looked = sioul_core::words::Words::of(&s.config);
     // The words are looked for in what the agent is shown, masked: a code or
     // an account number is never found again by searching for its digits,
     // and hostile mail to a shielded address by none of its words.
@@ -267,7 +269,7 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
             return false;
         }
         let card = maildir::read_one(&m.path);
-        let (subject, excerpt) = mask::message(&m.subject, card.as_ref().map_or("", |c| c.excerpt.as_str()));
+        let (subject, excerpt) = mask::message(&looked, &m.subject, card.as_ref().map_or("", |c| c.excerpt.as_str()));
         holds(&format!("{subject} {} {}", m.from, m.address), &words) || (in_text && holds(&format!("{subject} {excerpt}"), &words))
     };
     let mut found: Vec<(&String, &MailRef)> = index
@@ -391,7 +393,7 @@ fn message_answer(s: &Session, path: &Path, t: &Triaged, store: Option<&CaseStor
     let encrypted = card.headers.first("Content-Type").is_some_and(|v| v.trim().to_ascii_lowercase().starts_with("multipart/encrypted"));
     let body = if hostile || encrypted { String::new() } else { card.full_text().unwrap_or_default() };
     let (body, total) = head(&body);
-    let (subject, text) = if hostile { (s.tr.text("hostile-subject", None), String::new()) } else { mask::message(&card.subject, &body) };
+    let (subject, text) = if hostile { (s.tr.text("hostile-subject", None), String::new()) } else { mask::message(&sioul_core::words::Words::of(&s.config), &card.subject, &body) };
     let text = given(&text, total);
     let address = card.from_address.clone().unwrap_or_default();
     let sender = if hostile {
@@ -643,7 +645,7 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
             let place = if event.location.is_empty() { String::new() } else { format!(" · {}", event.location) };
             let gone = if event.cancelled { "× " } else { "" };
             lines.push(format!("  {}  {gone}{}{place}  <{uri}>", event.when, event.summary));
-            let (_, notes) = mask::message("", &event.notes);
+            let (_, notes) = mask::message(&sioul_core::words::Words::of(&s.config), "", &event.notes);
             events.push(json!({
                 "uri": uri, "uid": event.uid, "when": event.when, "start": instant(event.start), "summary": event.summary, "location": event.location,
                 "notes": notes, "calendar": event.calendar, "all_day": event.all_day, "recurring": event.recurring, "cancelled": event.cancelled,
@@ -695,7 +697,7 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
     // With the bank accounts' movements, read from the exports beside the file.
     let bank = bank::Bank::load(&root);
     let ledger = match &bank {
-        Ok(bank) => ledger.with_bank(bank),
+        Ok(bank) => ledger.with_bank(bank, &sioul_core::words::Words::of(&s.config)),
         Err(_) => ledger,
     };
     let today = Zoned::now().date();
@@ -722,7 +724,7 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
             let balance = account.balance.map(|(date, amount)| s.say("bank-balance", &[("amount", s.tr.money(amount)), ("date", s.tr.day_in(date, today))])).unwrap_or_default();
             accounts.push(json!({ "name": name, "balance": balance }));
         }
-        findings = bank::watch(bank, &ledger, today).findings.iter().map(|f| finding_text(s, f, today)).collect();
+        findings = bank::watch(bank, &ledger, today, &sioul_core::words::Words::of(&s.config).bank.filler).findings.iter().map(|f| finding_text(s, f, today)).collect();
     }
     if !accounts.is_empty() || !findings.is_empty() {
         lines.push(String::new());

@@ -3,21 +3,25 @@
 
 //! Text helpers shared by the detectors.
 //!
-//! Comparisons ignore case and French accents, so "Réinitialiser" matches
-//! "reinitialiser". Folding maps one character to exactly one character, so a
+//! Comparisons ignore case and accents (French, Spanish, Italian, German,
+//! Portuguese and Nordic ones), so "Réinitialiser" matches "reinitialiser" and
+//! "lunedì" "lunedi". Folding maps one character to exactly one character, so a
 //! position found in the folded text is valid in the original text too: codes
 //! are matched on folded text and copied from the original.
 
 /// Lowercases one character and strips its accent, one character out for one in.
 pub fn fold_char(c: char) -> char {
     match c {
-        'à' | 'â' | 'ä' | 'á' | 'À' | 'Â' | 'Ä' | 'Á' | 'æ' | 'Æ' => 'a',
+        // One character for one, so that positions in the folded text are those
+        // of the text (codes.rs); "ß" stays, as it would become two.
+        'à' | 'â' | 'ä' | 'á' | 'ã' | 'å' | 'À' | 'Â' | 'Ä' | 'Á' | 'Ã' | 'Å' | 'æ' | 'Æ' => 'a',
         'ç' | 'Ç' => 'c',
         'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'e',
-        'î' | 'ï' | 'í' | 'Î' | 'Ï' | 'Í' => 'i',
-        'ô' | 'ö' | 'ó' | 'Ô' | 'Ö' | 'Ó' | 'œ' | 'Œ' => 'o',
+        'î' | 'ï' | 'í' | 'ì' | 'Î' | 'Ï' | 'Í' | 'Ì' => 'i',
+        'ñ' | 'Ñ' => 'n',
+        'ô' | 'ö' | 'ó' | 'ò' | 'õ' | 'ø' | 'Ô' | 'Ö' | 'Ó' | 'Ò' | 'Õ' | 'Ø' | 'œ' | 'Œ' => 'o',
         'ù' | 'û' | 'ü' | 'ú' | 'Ù' | 'Û' | 'Ü' | 'Ú' => 'u',
-        'ÿ' | 'Ÿ' => 'y',
+        'ÿ' | 'ý' | 'Ÿ' | 'Ý' => 'y',
         // Typographic apostrophes and non-breaking spaces are the norm in French mail.
         '\u{2019}' | '\u{2018}' => '\'',
         '\u{a0}' | '\u{202f}' => ' ',
@@ -153,6 +157,10 @@ mod tests {
     fn folding_ignores_case_and_accents() {
         assert!(contains_word("Réinitialiser votre mot de passe", "reinitialiser votre mot de passe"));
         assert!(contains_word("CODE D\u{2019}ACCÈS", "code d'acces"));
+        // Other languages' letters, one for one; "ß" stays, as it would become two.
+        assert_eq!(fold("Año Lunedì Ørsted Åre São Ýmir").into_iter().collect::<String>(), "ano lunedi orsted are sao ymir");
+        assert_eq!(fold("Straße").len(), "Straße".chars().count());
+        assert!(contains_word("Código de verificación", "codigo de verificacion"));
     }
 
     #[test]

@@ -62,6 +62,7 @@
 //! - [`shield`]: the shield of a public address: its mail read first, its tone and topic.
 //! - [`rules`]: the vocabulary of sorting: what a rule may propose.
 //! - [`text`]: text helpers shared by the detectors.
+//! - [`words`]: the words the detectors look for: shipped packs by language and country, and your changes.
 //! - [`reach`]: who reaches you, on which channel, and the clock that says what time it is, ahead.
 //! - [`attention`]: what reaches you, and when: one matrix of who and what by time, its pipeline, its words.
 //! - [`mailnote`]: new mail as a notification, at the times it may come.
@@ -245,3 +246,4 @@ pub mod voicemail;
 pub mod weather;
 pub mod wearable;
 pub mod window;
+pub mod words;

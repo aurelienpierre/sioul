@@ -153,6 +153,13 @@ impl Builder<'_> {
         }
     }
 
+    /// A row whose words are given rather than found by an id (the words tab's).
+    fn said(&mut self, key: &str, kind: Kind, label: String, help: String, value: SettingValue) -> &mut Setting {
+        self.out.push(Setting { key: key.to_string(), kind, label, help, value, choices: Vec::new(), rows: Vec::new(), min: 0.0, max: 0.0, step: 1.0, unit: String::new(), group: self.group.clone(), section: self.section.clone() });
+        let last = self.out.len() - 1;
+        &mut self.out[last]
+    }
+
     /// A sentence to read, nothing to change.
     fn note(&mut self, about: String, lines: Vec<String>) {
         let key = format!("note.{}", self.out.len());
@@ -195,9 +202,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             "people" | "screener" => {
                 b.push("known", "known", Kind::Senders, known());
             }
+            // The automatic senders' words are in Settings ▸ Words, with the others (docs/words.md).
             "filed" => {
-                let words = config.filed_words.clone().unwrap_or_else(|| crate::porch::AUTOMATIC.iter().map(|w| w.to_string()).collect());
-                b.push("filed_words", "filed-words", Kind::Words, SettingValue::Texts(words));
+                b.push("link.words.senders", "filed-words", Kind::Link, SettingValue::Text("settings:words.senders.automatic".into()));
             }
             _ => {}
         }
@@ -431,8 +438,10 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("planning.gain_slots", "planning-gain-slots", Kind::Bool, SettingValue::Bool(config.planning.gain_slots()));
             // What a task is for, by its categories (docs/areas.md): the hours it comes in.
             b.group = tr.text("set-task-areas-group", None);
-            b.push("quiet.work", "quiet-work", Kind::Words, SettingValue::Texts(config.quiet.work_categories()));
-            b.push("quiet.personal", "quiet-personal", Kind::Words, SettingValue::Texts(config.quiet.personal_categories()));
+            // Your lists, else those of the languages in use (`words.tasks`).
+            let tasks = &crate::words::Words::of(config).tasks;
+            b.push("quiet.work", "quiet-work", Kind::Words, SettingValue::Texts(tasks.work.clone()));
+            b.push("quiet.personal", "quiet-personal", Kind::Words, SettingValue::Texts(tasks.personal.clone()));
             // GitHub, last and off: its issues and reviews as tasks, once asked.
             b.group = tr.text("set-code-group", None);
             b.push("github.enabled", "github", Kind::Bool, SettingValue::Bool(config.github.enabled));
@@ -505,6 +514,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("dnd.focus", "dnd-focus", Kind::Bool, SettingValue::Bool(config.dnd.focus));
             b.push("dnd.pauses", "dnd-pauses", Kind::Bool, SettingValue::Bool(config.dnd.pauses));
             b.push("dnd.sleep", "dnd-sleep", Kind::Bool, SettingValue::Bool(config.dnd.sleep));
+            // The words Sioul looks for (docs/words.md): a tab of their own (`WordsTab.qml`).
+            b.section = "words".into();
+            words_rows(&mut b, config);
             // Reminders before dates; with the window closed, the window says (an entry started with the session).
             b.section = "reminders".into();
             b.group = tr.text("set-reminders-group", None);
@@ -578,6 +590,235 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
     b.out
 }
 
+/// The words tab's lines (docs/words.md, Settings ▸ Words, `WordsTab.qml`):
+/// each in a family of lines (`words-family-<family>`), named by its id
+/// (`words-line-<id>`, and `words-line-<id>-help`: what its words do), with
+/// the lists it shows (`words-list-<list>`, dots and underscores as dashes).
+/// Only the words that say what a thing is: the grammar around them (months,
+/// "your … code", stop words) stays in the packs.
+pub const WORD_LINES: &[(&str, &str, &[&str])] = &[
+    ("mail", "codes", &["codes.code", "codes.password", "codes.reset", "codes.link", "codes.confirm", "codes.not_yours", "codes.promo"]),
+    ("mail", "senders", &["senders.automatic"]),
+    ("mail", "replies", &["replies.reply", "replies.forward", "quotes.openings", "quotes.wrote"]),
+    ("mail", "folders", &["folders.sent", "folders.drafts", "folders.junk", "folders.trash", "folders.archive"]),
+    ("mail", "brands", &["brands.brands", "brands.shared"]),
+    ("money", "payments", &["payments.bill", "payments.paid", "payments.received", "payments.order", "payments.refund", "payments.not_payments"]),
+    ("money", "bank", &["bank.filler", "accounts.between"]),
+    (
+        "money",
+        "letters",
+        &[
+            "letters.senders",
+            "letters.kinds.formal_notice",
+            "letters.kinds.tax_notice",
+            "letters.kinds.decision",
+            "letters.kinds.reminder",
+            "letters.kinds.appointment",
+            "letters.kinds.bill",
+            "letters.kinds.acknowledgment",
+            "letters.kinds.attestation",
+            "letters.kinds.contract",
+        ],
+    ),
+    (
+        "money",
+        "papers",
+        &[
+            "papers.kinds.passport",
+            "papers.kinds.identity",
+            "papers.kinds.residence",
+            "papers.kinds.driving",
+            "papers.kinds.health_cover",
+            "papers.kinds.health_card",
+            "papers.kinds.tax_notice",
+            "papers.kinds.rent_receipt",
+            "papers.kinds.bank_details",
+            "papers.kinds.payslip",
+            "papers.kinds.warranty",
+            "papers.kinds.insurance",
+            "papers.kinds.certificate",
+        ],
+    ),
+    (
+        "money",
+        "contracts",
+        &[
+            "contracts.kinds.rent",
+            "contracts.kinds.energy",
+            "contracts.kinds.health",
+            "contracts.kinds.insurance",
+            "contracts.kinds.telecom",
+            "contracts.kinds.hosting",
+            "contracts.kinds.subscription",
+            "contracts.kinds.bank",
+        ],
+    ),
+    ("phone", "approvals", &["approvals.phrases", "approvals.asks", "approvals.asked_about", "approvals.channels"]),
+    ("phone", "calls", &["calls.ringing", "calls.missed"]),
+    ("phone", "voicemail", &["voicemail.operators"]),
+    (
+        "tasks",
+        "tasks",
+        &[
+            "tasks.optional",
+            "tasks.joy",
+            "tasks.movement",
+            "capture.kind_verbs.call",
+            "capture.kind_verbs.write",
+            "capture.kind_verbs.online",
+            "capture.kind_verbs.out",
+            "capture.kind_verbs.read",
+            "capture.kind_verbs.think",
+            "capture.kind_verbs.make",
+            "capture.kind_words.call",
+            "capture.kind_words.write",
+            "capture.kind_words.online",
+            "capture.kind_words.out",
+            "capture.kind_words.read",
+            "capture.kind_words.think",
+            "capture.kind_words.make",
+        ],
+    ),
+    ("tasks", "spam", &["spam.provider_tags"]),
+    ("tasks", "shield", &["shield.threats", "shield.insults", "shield.rude", "shield.topics.work", "shield.topics.support", "shield.topics.press", "shield.topics.thanks", "shield.topics.donation"]),
+];
+
+/// Whether a list is one of the words tab's.
+fn word_list(path: &str) -> bool {
+    WORD_LINES.iter().any(|(_, _, lists)| lists.contains(&path))
+}
+
+/// A named list's entries as the tab shows them, one per chip: "Name: word, word".
+fn named_chips(entries: &[(String, Vec<String>)]) -> Vec<String> {
+    entries.iter().map(|(name, words)| if words.is_empty() { name.clone() } else { format!("{name}: {}", words.join(", ")) }).collect()
+}
+
+/// The chips of a named list read back: the name, then its words after a
+/// colon, separated by commas. A body named alone ("CAF") is looked for by
+/// its name; a brand needs its domains, or every sender naming it would be
+/// set aside.
+fn named_entries(path: &str, chips: &[String]) -> Result<Vec<(String, Vec<String>)>, String> {
+    let mut out = Vec::new();
+    for chip in chips {
+        let (name, words) = match chip.split_once(':') {
+            Some((name, words)) => (name.trim().to_string(), words.split(',').map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect::<Vec<_>>()),
+            None => (chip.trim().to_string(), Vec::new()),
+        };
+        if name.is_empty() {
+            continue;
+        }
+        let words = match (words.is_empty(), path) {
+            (true, "brands.brands") => return Err(format!("{name}: write its domains after a colon (\"{name}: example.org\")")),
+            (true, _) => vec![crate::words::folded(&name)],
+            (false, _) => words,
+        };
+        out.push((name, words));
+    }
+    Ok(out)
+}
+
+/// A named list of a tree of lists (the packs alone, or with your changes).
+fn names_at(tree: &crate::words::Node, path: &str) -> Vec<(String, Vec<String>)> {
+    match tree.get(path) {
+        Some(crate::words::Node::Table(entries)) => entries
+            .iter()
+            .filter_map(|(name, node)| match node {
+                crate::words::Node::List(words) => Some((name.clone(), words.clone())),
+                crate::words::Node::Table(_) => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Names joined as a sentence says them: "French and English", "French, English and German".
+fn and_list(tr: &Translator, names: &[String]) -> String {
+    let and = tr.text("word-and", None);
+    match names {
+        [] => String::new(),
+        [one] => one.clone(),
+        [first @ .., last] => format!("{} {and} {last}", first.join(", ")),
+    }
+}
+
+/// The words tab (docs/words.md): the languages and countries read, ticked;
+/// then each line (`WORD_LINES`) as a group of its own: a note (`words.about.<line>`,
+/// its family's name in `unit`) saying what its words do, how many there are
+/// and how many you changed, then its lists as Sioul uses them (the packs, your
+/// changes, and an older whole list that still wins: `filed_words`), each a
+/// row of words (`words.<list>`; a named list's entries as "Name: word, word"),
+/// your own words first.
+fn words_rows(b: &mut Builder, config: &Config) {
+    let tr = b.tr;
+    let words = crate::words::Words::of(config);
+    let compared = crate::words::compared(config);
+    b.group = String::new();
+    let s = b.push("words.languages", "words-languages", Kind::Picks, SettingValue::Texts(words.languages.clone()));
+    s.choices = crate::words::available_languages().iter().map(|code| Choice { value: SettingValue::Text(code.to_string()), label: tr.text(&format!("words-language-{code}"), None) }).collect();
+    let s = b.push("words.countries", "words-countries", Kind::Picks, SettingValue::Texts(words.countries.clone()));
+    s.choices = crate::words::available_countries()
+        .iter()
+        .map(|code| Choice { value: SettingValue::Text(code.to_string()), label: tr.text(&format!("country-{}", code.to_ascii_lowercase()), None) })
+        .collect();
+    let languages: Vec<String> = words.languages.iter().map(|code| tr.text(&format!("words-language-{code}-in"), None)).collect();
+    let languages = and_list(tr, &languages);
+    let same = |a: &str, b: &str| crate::words::folded(a) == crate::words::folded(b);
+    for (family, line, lists) in WORD_LINES {
+        b.group = tr.text(&format!("words-line-{line}"), None);
+        let (mut count, mut added, mut removed) = (0usize, 0usize, 0usize);
+        let mut rows: Vec<(&str, Vec<String>, bool)> = Vec::new();
+        for path in lists.iter().copied() {
+            if crate::words::MAPS.contains(&path) {
+                let now = names_at(&compared.yours, path);
+                let before = names_at(&compared.shipped, path);
+                count += now.len();
+                for (name, words) in &now {
+                    match before.iter().find(|(n, _)| same(n, name)) {
+                        None => added += 1,
+                        Some((_, shipped)) => {
+                            added += usize::from(words.iter().any(|w| !shipped.iter().any(|s| same(s, w))));
+                            removed += usize::from(shipped.iter().any(|s| !words.iter().any(|w| same(s, w))));
+                        }
+                    }
+                }
+                removed += before.iter().filter(|(n, _)| !now.iter().any(|(name, _)| same(n, name))).count();
+                // Your own names first, then the packs'.
+                let (yours, shipped): (Vec<(String, Vec<String>)>, Vec<(String, Vec<String>)>) = now.into_iter().partition(|(name, _)| !before.iter().any(|(n, _)| same(n, name)));
+                rows.push((path, named_chips(&yours.into_iter().chain(shipped).collect::<Vec<_>>()), true));
+            } else {
+                // The automatic senders' older whole list still wins while written (`words::older_settings`).
+                let now = if path == "senders.automatic" { words.senders.automatic.clone() } else { compared.yours.list(path).to_vec() };
+                let before = compared.shipped.list(path);
+                count += now.len();
+                added += now.iter().filter(|w| !before.iter().any(|s| same(s, w))).count();
+                removed += before.iter().filter(|s| !now.iter().any(|w| same(s, w))).count();
+                // Your own words first, then the packs'.
+                let (yours, shipped): (Vec<String>, Vec<String>) = now.into_iter().partition(|w| !before.iter().any(|s| same(s, w)));
+                rows.push((path, yours.into_iter().chain(shipped).collect(), false));
+            }
+        }
+        let mut args = tr.counted(count);
+        args.set("languages", languages.clone());
+        let mut said = vec![tr.text("words-line-count", Some(&args))];
+        if added > 0 {
+            said.push(tr.text("words-line-added", Some(&tr.counted(added))));
+        }
+        if removed > 0 {
+            said.push(tr.text("words-line-removed", Some(&tr.counted(removed))));
+        }
+        let about = format!("words.about.{line}");
+        let help = tr.text(&format!("words-line-{line}-help"), None);
+        let family = tr.text(&format!("words-family-{family}"), None);
+        let s = b.said(&about, Kind::Note, help, said.join(" · "), SettingValue::Text(String::new()));
+        s.unit = family;
+        for (path, now, named) in rows {
+            let label = tr.text(&format!("words-list-{}", path.replace(['.', '_'], "-")), None);
+            let help = if named { tr.text(&format!("words-named-{}", path.replace(['.', '_'], "-")), None) } else { String::new() };
+            b.said(&format!("words.{path}"), Kind::Words, label, help, SettingValue::Texts(now));
+        }
+    }
+}
+
 /// The countries numbers written without one can be read as: as the system
 /// says first (its locale's, else the language's), then each one by name.
 fn phone_regions(tr: &Translator) -> Vec<Choice> {
@@ -623,6 +864,48 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
     // the last entry of a list taken away is an empty list of any kind.
     let none = matches!(value, SettingValue::Ints(list) if list.is_empty());
     match key {
+        // The words Sioul looks for (docs/words.md): the languages and countries read;
+        // a line of the words tab back to the packs; one of its lists as you want it,
+        // written as its difference from the packs (`words::write_list`, `write_names`).
+        "words.languages" | "words.countries" => {
+            let values: &[String] = match value {
+                SettingValue::Texts(values) => values,
+                _ if none => &[],
+                _ => return Err(format!("{key}: a list expected")),
+            };
+            if key == "words.languages" && values.is_empty() {
+                return Err(format!("{key}: Sioul reads at least one language"));
+            }
+            crate::words::write_setting(config_path, &key["words.".len()..], values)
+        }
+        _ if key.starts_with("words.reset.") => {
+            let line = &key["words.reset.".len()..];
+            let (_, _, lists) = WORD_LINES.iter().find(|(_, id, _)| *id == line).ok_or_else(|| format!("{key}: no such line"))?;
+            if lists.contains(&"senders.automatic") && config.filed_words.is_some() {
+                set_value(config_path, "filed_words", &SettingValue::Text(String::new()))?;
+            }
+            crate::words::reset_lists(config_path, lists)
+        }
+        // `filed_words`, the automatic senders' older whole list, as a window
+        // before the words tab writes it: as the tab writes it now.
+        _ if key == "filed_words" || key.strip_prefix("words.").is_some_and(word_list) => {
+            let path = if key == "filed_words" { "senders.automatic" } else { &key["words.".len()..] };
+            let wanted: &[String] = match value {
+                SettingValue::Texts(values) => values,
+                _ if none => &[],
+                _ => return Err(format!("{key}: a list expected")),
+            };
+            // The older whole list goes: the difference says it from now on.
+            if path == "senders.automatic" && config.filed_words.is_some() {
+                set_value(config_path, "filed_words", &SettingValue::Text(String::new()))?;
+            }
+            let shipped = crate::words::compared(config).shipped;
+            if crate::words::MAPS.contains(&path) {
+                crate::words::write_names(config_path, path, &named_entries(path, wanted)?, &names_at(&shipped, path))
+            } else {
+                crate::words::write_list(config_path, path, wanted, shipped.list(path))
+            }
+        }
         // Secrets go to the keyring (the window's to do), never into the configuration.
         "ai_key" | "github_token" => Err(format!("{key}: kept in the system keyring, never in the configuration")),
         "tasks.kind" => {
@@ -787,16 +1070,17 @@ mod tests {
         assert_eq!(keys("accounts"), vec!["ai_key"]);
         assert_eq!(keys("tasks"), vec!["office_hours", "tasks.kind", "tasks.estimate", "tasks.list", "tasks.blocks", "tasks.block_alarms", "planning.start", "planning.window_days", "planning.even_days", "planning.gain_slots", "quiet.work", "quiet.personal", "github.enabled"]);
         assert_eq!(for_view("tasks", &config, &tr, &[("acct/plan".into(), "Plan".into())], None).iter().find(|s| s.key == "tasks.list").unwrap().choices.len(), 2);
-        assert_eq!(for_view("lane:filed", &config, &tr, &[], None)[0].kind, Kind::Words);
+        assert_eq!(for_view("lane:filed", &config, &tr, &[], None)[0].kind, Kind::Link);
         // The Porch: its letters and its own sorting; every lane said once, none with another page's settings.
         let porch = for_view("porch", &config, &tr, &[], None);
         let notes = porch.iter().filter(|s| s.kind == Kind::Note).count();
         // Where the hours went, the order, then public, people, screener, filed, less important, the review queue, set aside, hostile.
         assert_eq!(notes, 1 + 1 + 8, "{porch:?}");
-        assert_eq!(keys("porch"), vec!["letters.inbox", "porch.calls", "reading.family", "reading.size", "reading.spacing", "known", "filed_words"]);
+        assert_eq!(keys("porch"), vec!["letters.inbox", "porch.calls", "reading.family", "reading.size", "reading.spacing", "known", "link.words.senders"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
-        // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices.
-        let parameters = keys("parameters");
+        // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices;
+        // the words tab apart (`the_words_tab`).
+        let parameters: Vec<String> = keys("parameters").into_iter().filter(|k| !k.starts_with("words.")).collect();
         assert_eq!(
             parameters,
             vec![
@@ -831,6 +1115,64 @@ mod tests {
         for view in ["notes", "mail", "account:a", "tasks", "porch", "parameters", "sites", "contacts", "agenda"] {
             assert!(for_view(view, &config, &tr, &[], None).iter().all(|s| !s.label.starts_with("set-") && !s.help.starts_with("set-")), "{view}: a sentence is missing");
         }
+    }
+
+    /// The words tab: the languages and countries ticked, then each line's
+    /// note and lists, every word said in both languages; the automatic
+    /// senders' older whole list shown as it wins, then written as a
+    /// difference; a named list's chips read back; a line taken back.
+    #[test]
+    fn the_words_tab() {
+        let dir = std::env::temp_dir().join(format!("sioul-words-tab-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "filed_words = [\"noreply\", \"robot\"]\n\n[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n").unwrap();
+        let config = Config::load(&path).unwrap();
+        for language in ["en", "fr"] {
+            let rows: Vec<Setting> = for_view("parameters", &config, &Translator::new(language), &[], None).into_iter().filter(|s| s.section == "words").collect();
+            assert_eq!((rows[0].key.as_str(), rows[1].key.as_str()), ("words.languages", "words.countries"));
+            assert!(rows[..2].iter().all(|s| !s.choices.is_empty() && s.choices.iter().all(|c| !c.label.starts_with("words-") && !c.label.starts_with("country-"))), "{language}");
+            for (_, line, lists) in WORD_LINES {
+                let note = rows.iter().find(|s| s.key == format!("words.about.{line}")).unwrap_or_else(|| panic!("{line}"));
+                let said = [&note.label, &note.help, &note.unit, &note.group];
+                assert!(said.iter().all(|w| !w.is_empty() && !w.starts_with("words-")), "{language}: {line}: {note:?}");
+                for list in lists.iter() {
+                    let row = rows.iter().find(|s| s.key == format!("words.{list}")).unwrap_or_else(|| panic!("{list}"));
+                    assert!(row.kind == Kind::Words && !row.label.starts_with("words-") && !row.help.starts_with("words-"), "{language}: {list}: {row:?}");
+                }
+            }
+        }
+        let rows = for_view("parameters", &config, &Translator::new("en"), &[], None);
+        let row = |key: &str| rows.iter().find(|s| s.key == key).cloned().unwrap();
+        // The older whole list as it wins, your own words first.
+        assert_eq!(row("words.senders.automatic").value, SettingValue::Texts(vec!["robot".into(), "noreply".into()]));
+        assert!(row("words.about.senders").help.contains("added"), "{:?}", row("words.about.senders"));
+        apply(&path, &config, "words.senders.automatic", &SettingValue::Texts(vec!["noreply".into(), "no-reply".into(), "robot".into()])).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("filed_words") && text.contains("[words.senders.automatic]"), "{text}");
+        let config = Config::load(&path).unwrap();
+        let mut automatic = crate::words::Words::of(&config).senders.automatic.clone();
+        automatic.sort();
+        assert_eq!(automatic, ["no-reply", "noreply", "robot"]);
+        // A brand of yours, with its domains; one without them refused.
+        let SettingValue::Texts(mut chips) = row("words.brands.brands").value else { panic!("brands") };
+        chips.push("Ma Banque: mabanque.example, mabanque.fr".into());
+        apply(&path, &config, "words.brands.brands", &SettingValue::Texts(chips.clone())).unwrap();
+        let config = Config::load(&path).unwrap();
+        assert!(crate::words::Words::of(&config).brands.brands.iter().any(|(n, d)| n == "Ma Banque" && d.len() == 2));
+        chips.push("Sans Domaine".into());
+        assert!(apply(&path, &config, "words.brands.brands", &SettingValue::Texts(chips)).is_err());
+        // One language at least; then lines taken back to the packs.
+        assert!(apply(&path, &config, "words.languages", &serde_json::from_str("[]").unwrap()).is_err());
+        apply(&path, &config, "words.languages", &SettingValue::Texts(vec!["en".into()])).unwrap();
+        apply(&path, &config, "words.reset.senders", &SettingValue::Bool(true)).unwrap();
+        apply(&path, &config, "words.reset.brands", &SettingValue::Bool(true)).unwrap();
+        let config = Config::load(&path).unwrap();
+        assert_eq!(crate::words::languages(&config), ["en"]);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("senders") && !text.contains("brands"), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

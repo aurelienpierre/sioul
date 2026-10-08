@@ -11,59 +11,6 @@
 //! prototype per family of lookalike letters. A brand named by a sender
 //! outside its own domains is an impersonation.
 
-/// Brands and public services, by the words of their name, and their domains
-/// (a sender in one of them or below it is genuine).
-const BRANDS: &[(&str, &[&str])] = &[
-    ("Amazon", &["amazon.fr", "amazon.com", "amazon.de", "amazon.co.uk", "amazon.it", "amazon.es", "primevideo.com", "amazonaws.com"]),
-    ("Prime Video", &["primevideo.com", "amazon.fr", "amazon.com"]),
-    ("PayPal", &["paypal.com", "paypal.fr", "paypal.de", "paypal.co.uk", "paypal.it", "paypal.es", "paypal.nl", "paypal.be"]),
-    ("Netflix", &["netflix.com"]),
-    ("Spotify", &["spotify.com"]),
-    ("Disney+", &["disneyplus.com", "disney.com"]),
-    ("Apple", &["apple.com", "icloud.com", "itunes.com"]),
-    ("iCloud", &["apple.com", "icloud.com"]),
-    ("Microsoft", &["microsoft.com", "outlook.com", "office.com", "office365.com", "microsoftonline.com", "microsoft"]),
-    ("Outlook", &["microsoft.com", "outlook.com"]),
-    ("Google", &["google.com", "gmail.com", "youtube.com"]),
-    ("Gmail", &["google.com", "gmail.com"]),
-    ("Ameli", &["ameli.fr", "assurance-maladie.fr"]),
-    ("Assurance Maladie", &["ameli.fr", "assurance-maladie.fr"]),
-    ("Impots", &["impots.gouv.fr", "dgfip.finances.gouv.fr", "finances.gouv.fr"]),
-    ("DGFiP", &["impots.gouv.fr", "dgfip.finances.gouv.fr", "finances.gouv.fr"]),
-    ("Finances Publiques", &["impots.gouv.fr", "dgfip.finances.gouv.fr", "finances.gouv.fr"]),
-    ("CAF", &["caf.fr"]),
-    ("ANTAI", &["antai.gouv.fr"]),
-    ("ANTS", &["ants.gouv.fr"]),
-    ("France Travail", &["francetravail.fr", "pole-emploi.fr"]),
-    ("Pole Emploi", &["francetravail.fr", "pole-emploi.fr"]),
-    ("URSSAF", &["urssaf.fr"]),
-    ("FranceConnect", &["franceconnect.gouv.fr"]),
-    ("La Poste", &["laposte.fr", "laposte.net", "labanquepostale.fr", "colissimo.fr"]),
-    ("Banque Postale", &["labanquepostale.fr"]),
-    ("Colissimo", &["colissimo.fr", "laposte.fr"]),
-    ("Chronopost", &["chronopost.fr"]),
-    ("DHL", &["dhl.com", "dhl.fr", "dhl.de"]),
-    ("UPS", &["ups.com"]),
-    ("FedEx", &["fedex.com"]),
-    ("Free Mobile", &["free-mobile.fr", "free.fr"]),
-    ("Freebox", &["free.fr", "freebox.fr"]),
-    ("Orange", &["orange.fr", "orange.com", "orange-business.com"]),
-    ("SFR", &["sfr.fr"]),
-    ("Bouygues Telecom", &["bouyguestelecom.fr"]),
-    ("EDF", &["edf.fr", "edf.com"]),
-    ("Engie", &["engie.fr", "engie.com"]),
-    ("TotalEnergies", &["totalenergies.fr", "totalenergies.com"]),
-    ("Credit Agricole", &["credit-agricole.fr", "ca-paris.fr"]),
-    // Some brands own their top-level domain: mabanque.bnpparibas, teams.mail.microsoft.
-    ("BNP Paribas", &["bnpparibas.com", "bnpparibas.fr", "bnpparibas"]),
-    ("Societe Generale", &["societegenerale.fr", "societegenerale.com"]),
-    ("LCL", &["lcl.fr"]),
-    ("Caisse d'Epargne", &["caisse-epargne.fr"]),
-    ("Banque Populaire", &["banquepopulaire.fr"]),
-    ("Credit Mutuel", &["creditmutuel.fr"]),
-    ("Boursorama", &["boursorama.com", "boursobank.com", "boursorama.fr"]),
-];
-
 /// A display name claiming a brand, or one of your own domains, that its address does not belong to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Impersonation {
@@ -71,31 +18,14 @@ pub struct Impersonation {
     pub domain: String,
 }
 
-/// Mail providers whose domain is shared by millions: an address there makes the
-/// domain nobody's own to impersonate.
-pub(crate) const SHARED: &[&str] = &[
-    "gmail.com", "googlemail.com", "outlook.com", "outlook.fr", "hotmail.com", "hotmail.fr", "live.com", "live.fr", "msn.com",
-    "yahoo.com", "yahoo.fr", "ymail.com", "icloud.com", "me.com", "mac.com", "proton.me", "protonmail.com", "pm.me",
-    "murena.io", "e.email", "gmx.com", "gmx.fr", "gmx.de", "gmx.net", "free.fr", "orange.fr", "wanadoo.fr", "sfr.fr",
-    "laposte.net", "bbox.fr", "aol.com", "mail.com", "zoho.com", "tutanota.com", "tuta.io", "posteo.de", "mailbox.org",
-    "fastmail.com", "fastmail.fm", "disroot.org", "riseup.net",
-];
-
-/// Words a fake "your provider" name wraps a domain in: "janedoe.example Mail Admin".
-const SERVICE_WORDS: &[&str] = &[
-    "admin", "administrator", "administrateur", "support", "mail", "email", "webmail", "service", "services", "team",
-    "equipe", "security", "securite", "account", "accounts", "compte", "notification", "notifications", "noreply",
-    "no", "reply", "help", "helpdesk", "desk", "it", "server", "serveur", "postmaster", "system", "systeme", "info",
-    "infos", "alert", "alerts", "alerte", "update", "billing", "facturation", "domain", "domaine", "hosting",
-    "hebergement", "on", "for", "of", "de", "du", "des", "pour", "the", "le", "la", "les", "your", "votre", "via",
-];
-
-/// The domains of your own addresses that can be impersonated (not shared providers').
-pub fn own_domains<'a>(addresses: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+/// The domains of your own addresses that can be impersonated: not those of
+/// mail providers millions share (`shared`, `words::BrandWords::shared`),
+/// where an address makes the domain nobody's own.
+pub fn own_domains<'a>(shared: &[String], addresses: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     let mut domains: Vec<String> = addresses
         .into_iter()
         .filter_map(|a| a.rsplit_once('@').map(|(_, d)| d.to_ascii_lowercase()))
-        .filter(|d| !SHARED.contains(&d.as_str()))
+        .filter(|d| !shared.iter().any(|s| s.trim().eq_ignore_ascii_case(d)))
         .collect();
     domains.sort();
     domains.dedup();
@@ -103,20 +33,24 @@ pub fn own_domains<'a>(addresses: impl IntoIterator<Item = &'a str>) -> Vec<Stri
 }
 
 /// Whether a sender's display name claims a brand, or one of `own` (your domains),
-/// from outside its domains.
-pub fn impersonation(name: Option<&str>, domain: Option<&str>, own: &[String]) -> Option<Impersonation> {
+/// from outside its domains. `brands`: the brands and public services, by the
+/// words of their name, and their domains (a sender in one of them or below
+/// it is genuine), and the words a fake "your provider" name wraps a domain in
+/// ("janedoe.example Mail Admin"; `words::BrandWords`).
+pub fn impersonation(brands: &crate::words::BrandWords, name: Option<&str>, domain: Option<&str>, own: &[String]) -> Option<Impersonation> {
     let name = name?;
     let domain = domain?.to_ascii_lowercase();
     let words: Vec<String> = words(name).iter().map(|w| skeleton(w)).collect();
-    let inside = |domains: &[&str]| domains.iter().any(|d| domain == *d || domain.ends_with(&format!(".{d}")));
-    let brand = BRANDS
+    let inside = |domains: &[String]| domains.iter().map(|d| d.trim().to_ascii_lowercase()).any(|d| !d.is_empty() && (domain == d || domain.ends_with(&format!(".{d}"))));
+    let brand = brands
+        .brands
         .iter()
         .filter(|(brand, _)| names(&words, brand))
         .find(|(_, domains)| !inside(domains))
         .map(|(brand, _)| Impersonation { brand: brand.to_string(), domain: domain.clone() });
     brand.or_else(|| {
         own.iter()
-            .find(|mine| !inside(&[mine.as_str()]) && claims_own(&words, mine))
+            .find(|mine| !inside(std::slice::from_ref(mine)) && claims_own(&brands.service_words, &words, mine))
             .map(|mine| Impersonation { brand: mine.clone(), domain: domain.clone() })
     })
 }
@@ -124,10 +58,10 @@ pub fn impersonation(name: Option<&str>, domain: Option<&str>, own: &[String]) -
 /// A name made of nothing but your domain and service words: "janedoe",
 /// "Mail Admin janedoe.example". Your own name in full ("Jane Doe") is not
 /// your domain run together, and a name with any other word is someone's.
-fn claims_own(words: &[String], domain: &str) -> bool {
+fn claims_own(service_words: &[String], words: &[String], domain: &str) -> bool {
     let labels: Vec<String> = domain.split('.').map(skeleton).collect();
     let main = &labels[0];
-    let generic: Vec<String> = SERVICE_WORDS.iter().map(|w| skeleton(w)).collect();
+    let generic: Vec<String> = service_words.iter().map(|w| skeleton(w)).collect();
     words.iter().any(|w| w == main) && words.iter().all(|w| labels.contains(w) || generic.contains(w))
 }
 
@@ -177,6 +111,26 @@ fn prototype(c: char) -> char {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// With the packs built in (French and English, France).
+    fn impersonation(name: Option<&str>, domain: Option<&str>, own: &[String]) -> Option<Impersonation> {
+        super::impersonation(&crate::words::Words::builtin().brands, name, domain, own)
+    }
+
+    fn own_domains<'a>(addresses: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+        super::own_domains(&crate::words::Words::builtin().brands.shared, addresses)
+    }
+
+    #[test]
+    fn a_brand_of_yours_added() {
+        let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"en\"]\ncountries = []\n[words.brands.brands]\nadd = { \"Banque Exemple\" = [\"banque-exemple.example\"] }\n").unwrap();
+        let yours = crate::words::Words::of(&config);
+        assert!(impersonation(Some("Banque Exemple"), Some("phish.example"), &[]).is_none());
+        assert!(super::impersonation(&yours.brands, Some("Banque Exemple Sécurité"), Some("phish.example"), &[]).is_some());
+        assert!(super::impersonation(&yours.brands, Some("Banque Exemple"), Some("mail.banque-exemple.example"), &[]).is_none());
+        // Without France's names, its public bodies are no brands.
+        assert!(super::impersonation(&yours.brands, Some("Assurance Maladie"), Some("remboursement.example"), &[]).is_none());
+    }
 
     #[test]
     fn borrowed_names_are_caught() {

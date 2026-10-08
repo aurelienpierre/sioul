@@ -1,0 +1,163 @@
+# Words Sioul looks for in German (docs/words.md): the lists whose wording is public and stable.
+# Read folded: capitals and accents do not matter. Whole words, except where a list says otherwise.
+# Letters, papers, bank exports and payments in German wait for real examples: a guessed legal phrase does more harm than none.
+# Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
+
+language = "de"
+checked = "2026-10-08"
+
+
+# One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
+[codes]
+# Names a code: a code right beside it is taken.
+code = [
+    "bestätigungscode", "sicherheitscode", "verifizierungscode", "verifikationscode", "anmeldecode", "zugangscode",
+    "aktivierungscode", "einmalcode", "einmal-code", "einmalpasswort", "einmal-passwort", "tan", "sms-tan", "mobile-tan",
+]
+# Points at a code without naming it: counts only in a message about signing in.
+pointing = ["folgenden code", "folgender code", "diesen code", "code unten", "den code ein", "geben sie den code", "gib den code"]
+# Says the message is about signing in or checking who you are, somewhere in it.
+sign_in = [
+    "anmelden", "anmeldung", "einloggen", "login", "log-in", "registrierung", "bestätigen", "verifizieren", "verifizierung",
+    "identität", "authentifizierung",
+]
+# Words between "your" and "code" that make it no secret of yours.
+not_yours = ["promo", "rabatt", "gutschein", "geschenk", "tracking", "wlan", "wifi", "post", "kunden"]
+# A shop's code: the message hands over no secret.
+promo = ["rabatt", "gutschein", "aktionscode", "rabattcode", "gutscheincode", "% rabatt"]
+# Hands a password over.
+password = ["temporäres passwort", "vorläufiges passwort", "ihr passwort lautet", "ihr neues passwort lautet", "dein passwort lautet", "ihr kennwort lautet"]
+# A password reset.
+reset = ["passwort zurücksetzen", "kennwort zurücksetzen", "passwort vergessen", "kennwort vergessen", "neues passwort festlegen", "neues passwort erstellen"]
+# A link that signs you in.
+link = ["anmeldelink", "login-link", "magic link", "mit diesem link anmelden", "über diesen link anmelden"]
+# What a sign-in link's message is about, in its subject or first lines.
+intents = ["anmelden", "anmeldung", "einloggen", "login", "log-in"]
+# What may be said to expire or to work once: the link, its button, the code.
+link_words = ["link", "schaltfläche", "button", "code"]
+# Says something expires or is valid.
+validity = ["läuft ab", "abgelaufen", "gültig", "ablauf"]
+# Lines that answer a request of yours; a newsletter does not write them.
+request = [
+    "falls sie das nicht waren", "wenn sie das nicht waren", "falls du das nicht warst", "wenn sie dies nicht angefordert haben",
+    "falls sie dies nicht angefordert haben", "können sie diese e-mail ignorieren", "kannst du diese e-mail ignorieren",
+    "ignorieren sie diese e-mail",
+]
+# An address or an account to confirm.
+confirm = [
+    "e-mail-adresse bestätigen", "bestätigen sie ihre e-mail", "bestätige deine e-mail", "konto aktivieren",
+    "konto bestätigen", "registrierung bestätigen",
+]
+# Grammar: hands a code over, the code right after.
+giving = ["ihr code", "dein code"]
+# Grammar: whose code, a few words before "code".
+owners = ["ihr", "dein"]
+# Grammar: says a code is yours, right after it ("123456 ist Ihr Code").
+owned_after = ["ist ihr", "ist dein"]
+# Grammar: may stand between a phrase and its code.
+linking = ["ist", "lautet"]
+# A link or a code that works once.
+once = ["nur einmal", "einmalig", "einmal verwendbar", "einmal gültig"]
+# Words before a validity ("gültig 10 Minuten").
+expiry_context = ["gültig", "läuft", "innerhalb"]
+# The word for a code itself.
+noun = ["code"]
+# Starts of a unit of minutes, after a number.
+unit_minutes = ["min"]
+# Starts of a unit of hours, after a number.
+unit_hours = ["stund", "std"]
+# Starts of a unit of days, after a number.
+unit_days = ["tag"]
+
+# Other apps' notifications that hand a code over or ask for an approval now (appnotes.rs): never held.
+[approvals]
+# Asks you to approve a sign-in, a payment or an operation now.
+phrases = [
+    "anmeldung bestätigen", "anmeldung genehmigen", "anmeldung freigeben", "zahlung freigeben", "zahlung bestätigen",
+    "zahlung genehmigen", "transaktion bestätigen", "transaktion freigeben", "auftrag freigeben", "anmeldeversuch",
+    "neue anmeldung", "versuchen sie sich anzumelden",
+]
+# "Is this you?": counts only beside what it is about (`asked_about`).
+asks = ["sind sie das", "waren sie das", "bist du das", "warst du das"]
+# What such a question is about.
+asked_about = ["anmeldung", "anmelden", "login", "neues gerät", "zahlung", "kauf", "transaktion", "konto"]
+# Words in the name of a notification channel for codes or sign-ins.
+channels = ["sicherheit", "anmeldung", "bestätigung", "verifizierung", "authentifizierung"]
+
+# Automatic senders (porch.rs): an address holding one of these is filed.
+[senders]
+automatic = ["keine-antwort", "keineantwort", "nicht-antworten", "nichtantworten"]
+
+# Prefixes of a subject already answered or forwarded (compose.rs).
+[replies]
+forward = ["wg:", "wtr:"]
+reply = ["aw:"]
+
+# A message's quoted history (reading.rs): lines that open it, its header names, its attribution.
+[quotes]
+# Lines that open a forwarded or answered message, before its headers.
+openings = ["---------- weitergeleitete nachricht ---------", "-----ursprüngliche nachricht-----", "anfang der weitergeleiteten nachricht:"]
+# Header names of a quoted message.
+header_names = ["von", "gesendet", "an", "betreff", "datum", "kopie", "antwort an"]
+# The first header of a quoted block.
+from_names = ["von"]
+# One of these makes a block of headers a quoted message.
+enough_names = ["betreff", "datum", "gesendet"]
+# Endings of an attribution line.
+wrote = ["schrieb:", "hat geschrieben:"]
+# Starts of an attribution line broken over two lines.
+attribution_starts = ["Am"]
+
+# Mail folders by their names, when the server does not say what each is for (folders.rs).
+[folders]
+sent = ["gesendet", "gesendete elemente", "gesendete objekte", "gesendete nachrichten"]
+drafts = ["entwürfe", "entwurf"]
+junk = ["junk-e-mail", "unerwünscht", "unerwünschte e-mails"]
+trash = ["papierkorb", "gelöschte elemente", "gelöschte objekte", "gelöscht"]
+archive = ["archiv"]
+
+# Quick capture: one typed line makes a task (capture.rs).
+[capture]
+today = ["heute"]
+tomorrow = ["morgen"]
+next_week = ["nächste woche"]
+in = ["in"]
+unit_days = ["tag", "tage", "tagen"]
+unit_weeks = ["woche", "wochen"]
+# Ordinal suffixes of a day ("3. Oktober").
+ordinals = ["."]
+
+# Day names (full only: "so", "do" are words).
+[capture.weekdays]
+monday = ["montag"]
+tuesday = ["dienstag"]
+wednesday = ["mittwoch"]
+thursday = ["donnerstag"]
+friday = ["freitag"]
+saturday = ["samstag", "sonnabend"]
+sunday = ["sonntag"]
+
+# Month names, by month number.
+[capture.months]
+1 = ["januar", "jänner", "jan"]
+2 = ["februar", "feb"]
+3 = ["märz", "mär"]
+4 = ["april", "apr"]
+5 = ["mai"]
+6 = ["juni", "jun"]
+7 = ["juli", "jul"]
+8 = ["august", "aug"]
+9 = ["september", "sep", "sept"]
+10 = ["oktober", "okt"]
+11 = ["november", "nov"]
+12 = ["dezember", "dez"]
+
+# The spam filter's tokenizer (spam/tokenize.rs). A table keeps the words it was trained with: a change here counts from the next training.
+[spam]
+# Month names in dates, which become _DATE_.
+months = ["januar", "februar", "marz", "april", "mai", "juni", "juli", "august", "september", "oktober", "november", "dezember", "okt", "dez"]
+
+# Reading scans (sioul-sync's ocr.rs).
+[ocr]
+# Tesseract's names of this language's models.
+tesseract = ["deu"]

@@ -132,6 +132,7 @@ pub(crate) fn view() -> String {
         })
         .collect();
     let tied: Vec<&str> = contracts.list.iter().map(|c| c.preset.as_str()).filter(|p| !p.is_empty()).collect();
+    let looked = sioul_core::words::Words::of(&load_config());
     let suggestions = ledger
         .as_ref()
         .map(|l| {
@@ -139,7 +140,7 @@ pub(crate) fn view() -> String {
                 .iter()
                 .filter(|p| p.amount.cents() < 0 && !p.estimate && p.until.is_none_or(|u| u >= today))
                 .filter(|p| p.id.as_deref().is_some_and(|id| !tied.contains(&id)))
-                .map(|p| Suggestion { preset: p.id.clone().unwrap_or_default(), title: p.label.clone(), cost: cost_of(Some(l), p.id.as_deref().unwrap_or("")), kind: Kind::guess(&p.label).unwrap_or_default().id() })
+                .map(|p| Suggestion { preset: p.id.clone().unwrap_or_default(), title: p.label.clone(), cost: cost_of(Some(l), p.id.as_deref().unwrap_or("")), kind: Kind::guess(&looked, &p.label).unwrap_or_default().id() })
                 .collect()
         })
         .unwrap_or_default();
@@ -256,6 +257,7 @@ pub(crate) fn letter(id: &str) -> String {
 
 /// What a mail says of a contract, to start the form: who sent it, its subject, the kind they suggest.
 pub(crate) fn from_card(subject: &str, from: &str) -> String {
-    let kind = Kind::guess(subject).or_else(|| Kind::guess(from)).unwrap_or_default();
+    let looked = sioul_core::words::Words::of(&load_config());
+    let kind = Kind::guess(&looked, subject).or_else(|| Kind::guess(&looked, from)).unwrap_or_default();
     serde_json::json!({ "title": subject, "party": from, "kind": kind.id(), "notice_days": kind.usual_notice() }).to_string()
 }

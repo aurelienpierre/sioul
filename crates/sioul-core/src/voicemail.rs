@@ -2,16 +2,18 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Voicemail the operator sends by e-mail (docs/android.md, "Calls";
-//! docs/research/call-screening.md, 5.4). Free Mobile, set to, mails each
-//! message left on your voicemail: "un email vous notifiant le numéro
-//! appelant, la date et la durée du message", and with the sound, "en pièce
-//! jointe … sous forme de fichier son (.wav)" (assistance.free.fr, article
-//! 940; the Freebox line likewise, article 572). Its exact words, sender and
-//! file name are not published: read tolerantly. A message is one when it
-//! comes from Free's domains and either carries a sound, or says voicemail
-//! with a caller (or a hidden one) and a length; the caller's number, when
-//! the message was left and how long it lasts are read from its subject and
-//! text, the time from its Date when the text gives none.
+//! docs/research/call-screening.md, 5.4). Some operators, set to, mail each
+//! message left on your voicemail: the caller's number, the date and the
+//! length of the message, and the sound as an attachment (research 5.4
+//! quotes one operator's help pages). Their exact words, senders and file
+//! names are not published: read tolerantly. Only the operators' domains you
+//! name are read (`words::VoicemailWords::operators`; none in the packs, so
+//! nothing is read until you name yours), with the words of the languages in
+//! use. A message is one when it comes from those domains and either carries
+//! a sound, or says voicemail with a caller (or a hidden one) and a length;
+//! the caller's number, when the message was left and how long it lasts are
+//! read from its subject and text, the time from its Date when the text
+//! gives none.
 //!
 //! Each is then linked to the call Sioul refused (`link`): the same number,
 //! left within half an hour after it. Sioul plays its sound on demand
@@ -20,12 +22,11 @@
 
 use crate::calls::Held;
 use crate::phones::{self, Region};
+use crate::words::VoicemailWords;
 use mail_parser::{MessageParser, MimeHeaders};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Free's own domains: Free Mobile, the Freebox, their mail servers.
-pub const FREE_DOMAINS: [&str; 4] = ["free-mobile.fr", "free.fr", "freebox.fr", "proxad.net"];
 /// A voicemail is linked to a call refused at most this long before it (seconds).
 pub const LINK_BEFORE: i64 = 30 * 60;
 /// … or this long after it: clocks differ (seconds).
@@ -49,17 +50,26 @@ pub struct Voicemail {
     pub sound: Option<u32>,
 }
 
-/// Whether an address is Free's own (a subdomain too).
-pub fn from_free(address: &str) -> bool {
-    let address = address.trim().to_ascii_lowercase();
-    let Some((_, domain)) = address.rsplit_once('@') else { return false };
-    FREE_DOMAINS.iter().any(|d| domain == *d || domain.ends_with(&format!(".{d}")))
+/// The operators' domains, lowercase, without an "@" before them.
+fn domains(operators: &[String]) -> Vec<String> {
+    operators.iter().map(|d| d.trim().trim_start_matches('@').to_ascii_lowercase()).filter(|d| !d.is_empty()).collect()
 }
 
-/// A quick look at a mail's head before reading it whole: a "From" with
-/// Free's name in it, on its line or the lines that continue it. Voicemail
-/// mails carry their sound: most mail never is.
-pub fn may_be(raw: &[u8]) -> bool {
+/// Whether an address is one of the operators' (`operators`: their domains; a subdomain too).
+pub fn from_operator(operators: &[String], address: &str) -> bool {
+    let address = address.trim().to_ascii_lowercase();
+    let Some((_, domain)) = address.rsplit_once('@') else { return false };
+    domains(operators).iter().any(|d| domain == d || domain.ends_with(&format!(".{d}")))
+}
+
+/// A quick look at a mail's head before reading it whole: a "From" with one
+/// of the operators' domains in it, on its line or the lines that continue
+/// it. Voicemail mails carry their sound: most mail never is.
+pub fn may_be(operators: &[String], raw: &[u8]) -> bool {
+    let domains = domains(operators);
+    if domains.is_empty() {
+        return false;
+    }
     let end = raw.windows(4).position(|w| w == b"\r\n\r\n").or_else(|| raw.windows(2).position(|w| w == b"\n\n")).unwrap_or(raw.len().min(16 * 1024));
     let head = String::from_utf8_lossy(&raw[..end]).to_ascii_lowercase();
     let mut in_from = false;
@@ -67,27 +77,33 @@ pub fn may_be(raw: &[u8]) -> bool {
         if !line.starts_with([' ', '\t']) {
             in_from = line.starts_with("from:");
         }
-        if in_from && (line.contains("free") || line.contains("proxad")) {
+        if in_from && domains.iter().any(|d| line.contains(d.as_str())) {
             return true;
         }
     }
     false
 }
 
-/// Accents and case aside, for the words looked for.
+/// Accents and case aside, for the words looked for; spaces kept (" du ").
 fn folded(text: &str) -> String {
     crate::text::fold(text).into_iter().collect::<String>().to_lowercase()
 }
 
-/// The voicemail a mail is, if it is one. `zone` reads the time its text
-/// gives (French time, as Free writes it); `region`, numbers without a
+/// Whether a folded text holds one of a list's words, folded.
+fn holds(list: &[String], text: &str) -> bool {
+    list.iter().map(|w| folded(w)).any(|w| !w.trim().is_empty() && text.contains(&w))
+}
+
+/// The voicemail a mail is, if it is one, read with `words` (the operators'
+/// domains, the words of the languages in use). `zone` reads the time its
+/// text gives (the operator's local time); `region`, numbers without a
 /// country; `trusted`, the authserv-ids of the provider that delivered it
-/// (`config::Source::trusted_ids`): a mail its own checks find forged in
-/// Free's name is never one.
-pub fn read(raw: &[u8], path: &Path, region: Option<&Region>, zone: &jiff::tz::TimeZone, trusted: &[String]) -> Option<Voicemail> {
+/// (`config::Source::trusted_ids`): a mail its own checks find forged in an
+/// operator's name is never one.
+pub fn read(words: &VoicemailWords, raw: &[u8], path: &Path, region: Option<&Region>, zone: &jiff::tz::TimeZone, trusted: &[String]) -> Option<Voicemail> {
     let message = MessageParser::default().parse(raw)?;
     let from = message.from()?.first()?.address()?.to_ascii_lowercase();
-    if !from_free(&from) {
+    if !from_operator(&words.operators, &from) {
         return None;
     }
     let auth = crate::trust::read_auth_results(&crate::headers::RawHeaders::parse(raw), trusted);
@@ -104,13 +120,12 @@ pub fn read(raw: &[u8], path: &Path, region: Option<&Region>, zone: &jiff::tz::T
     }
     let found = message.attachments().enumerate().find(|(_, part)| is_sound(part)).map(|(i, part)| (i as u32, part.attachment_name().unwrap_or("").to_string()));
     let sound = found.as_ref().map(|(i, _)| *i);
-    let text = format!("{subject}\n{body}");
-    let words = folded(&text);
-    let says_voicemail = ["message vocal", "messages vocaux", "messagerie vocale", "repondeur", "nouveau message", "voicemail", "voice message"].iter().any(|w| words.contains(w));
-    let hidden = said_hidden(&words);
+    let text = folded(&format!("{subject}\n{body}"));
+    let says_voicemail = holds(&words.words, &text);
+    let hidden = holds(&words.hidden, &text);
     // The subject, the text, else the sound's own name ("0199001234_20261006.wav").
-    let number = caller(&subject, region).or_else(|| caller(&body, region)).or_else(|| found.as_ref().and_then(|(_, name)| caller(name, region)));
-    let seconds = duration(&words);
+    let number = caller(words, &subject, region).or_else(|| caller(words, &body, region)).or_else(|| found.as_ref().and_then(|(_, name)| caller(words, name, region)));
+    let seconds = duration(&words.duration, &text);
     // A notice without its sound counts when it says voicemail, who, and how long.
     if sound.is_none() && !(says_voicemail && (number.is_some() || hidden) && seconds.is_some()) {
         return None;
@@ -136,15 +151,11 @@ fn is_sound(part: &mail_parser::MessagePart) -> bool {
     by_type || by_name
 }
 
-/// The caller hid their number, as the mail says it.
-fn said_hidden(words: &str) -> bool {
-    ["numero masque", "numero prive", "numero inconnu", "appelant inconnu", "appel masque", "anonyme", "hidden number", "withheld", "private number", "unknown caller", "unknown number"].iter().any(|w| words.contains(w))
-}
-
 /// The caller's number in a text: the numbers written in it, the one after
-/// words that name a caller first ("de la part du", "appelant", "from"), never
-/// one after words that name your own line ("votre ligne", "your number").
-fn caller(text: &str, region: Option<&Region>) -> Option<(String, String)> {
+/// words that name a caller first (`caller_leads`: "de la part du",
+/// "appelant", "from"), never one after words that name your own line
+/// (`own_line`: "votre ligne", "your number").
+fn caller(words: &VoicemailWords, text: &str, region: Option<&Region>) -> Option<(String, String)> {
     let mut found: Vec<(i32, String, String)> = Vec::new();
     let chars: Vec<char> = text.chars().collect();
     let mut i = 0;
@@ -177,8 +188,8 @@ fn caller(text: &str, region: Option<&Region>) -> Option<(String, String)> {
             continue;
         }
         let before: String = folded(&chars[begin.saturating_sub(32)..begin].iter().collect::<String>());
-        let score = if ["part du", "part de", "appelant", "appele par", "from", "caller", "numero :", "numero:", "de :", "de:", " du ", " de "].iter().any(|w| before.contains(w)) { 2 } else { 1 };
-        let score = if ["votre ligne", "votre numero", "sur la ligne", "your line", "your number"].iter().any(|w| before.contains(w)) { 0 } else { score };
+        let score = if holds(&words.caller_leads, &before) { 2 } else { 1 };
+        let score = if holds(&words.own_line, &before) { 0 } else { score };
         found.push((score, written, key));
     }
     found.into_iter().enumerate().max_by_key(|(order, (score, _, _))| (*score, -(*order as i64))).filter(|(_, (score, _, _))| *score > 0).map(|(_, (_, written, key))| (written, key))
@@ -250,9 +261,10 @@ fn left_at(text: &str, zone: &jiff::tz::TimeZone) -> Option<i64> {
 }
 
 /// How long the message lasts: "Durée : 42 secondes", "durée du message :
-/// 0:42", "1 min 05 s", "duration: 42 s". Read after the word that says it.
-fn duration(words: &str) -> Option<u32> {
-    let at = ["duree", "duration", "length", "longueur"].iter().filter_map(|w| words.find(w).map(|i| i + w.len())).min()?;
+/// 0:42", "1 min 05 s", "duration: 42 s". Read after the word that says it
+/// (`said`, its first in the folded text `words`).
+fn duration(said: &[String], words: &str) -> Option<u32> {
+    let at = said.iter().map(|w| folded(w)).filter(|w| !w.trim().is_empty()).filter_map(|w| words.find(&w).map(|i| i + w.len())).min()?;
     let rest: String = words[at..].chars().take(48).collect();
     let rest = rest.trim_start_matches(|c: char| !c.is_ascii_digit());
     let mut numbers: Vec<(u32, String)> = Vec::new();
@@ -322,7 +334,13 @@ mod tests {
 
     const WAV: &str = "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=";
 
-    /// A mail as Free might send it: `from`, `subject`, a text body, a sound or none.
+    /// The operator of these tests, invented, added as you would add yours.
+    fn words() -> VoicemailWords {
+        let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n[words.voicemail.operators]\nadd = [\"operator-mobile.example\", \"operator.example\"]\n").unwrap();
+        crate::words::Words::of(&config).voicemail.clone()
+    }
+
+    /// A mail as an operator might send it: `from`, `subject`, a text body, a sound or none.
     fn mail(from: &str, subject: &str, body: &str, sound: Option<(&str, &str)>) -> Vec<u8> {
         let mut raw = format!("From: {from}\r\nTo: someone@example.org\r\nSubject: {subject}\r\nDate: Tue, 06 Oct 2026 09:33:00 +0200\r\nMIME-Version: 1.0\r\n");
         match sound {
@@ -349,13 +367,17 @@ mod tests {
     }
 
     fn read_it(raw: &[u8]) -> Option<Voicemail> {
-        read(raw, Path::new("/mail/cur/1"), phones::region_named("FR"), &paris(), &["mx.example.net".to_string()])
+        read(&words(), raw, Path::new("/mail/cur/1"), phones::region_named("FR"), &paris(), &["mx.example.net".to_string()])
+    }
+
+    fn may_be(raw: &[u8]) -> bool {
+        super::may_be(&words().operators, raw)
     }
 
     #[test]
-    fn free_s_voicemail_with_its_sound() {
+    fn an_operator_s_voicemail_with_its_sound() {
         let raw = mail(
-            "Free Mobile <messagerie@free-mobile.fr>",
+            "Operator Mobile <messagerie@operator-mobile.example>",
             "Nouveau message vocal de 01 99 00 12 34",
             "Bonjour,\r\nVous avez reçu un nouveau message vocal sur votre ligne 06 39 98 00 01 de la part du 01 99 00 12 34 le 06/10/2026 à 09:31.\r\nDurée du message : 42 secondes.\r\n",
             Some(("audio/x-wav", "message.wav")),
@@ -371,7 +393,7 @@ mod tests {
     fn read_tolerantly_whatever_the_words() {
         // The number in the text only, after the subscriber's own line; the length as 0:42; the time with seconds.
         let raw = mail(
-            "Messagerie Vocale <voicemail@mobile.free.fr>",
+            "Messagerie Vocale <voicemail@mobile.operator.example>",
             "Vous avez un nouveau message",
             "Votre ligne : 06 39 98 00 01\nAppelant : +33 1 99 00 56 78\nDate : 06/10/2026 09:40:05\nDurée : 0:42\n",
             Some(("application/octet-stream", "0199005678_20261006094005.wav")),
@@ -381,50 +403,56 @@ mod tests {
         assert_eq!(v.at, at("2026-10-06T09:40:05[Europe/Paris]"));
         assert_eq!((v.seconds, v.sound), (Some(42), Some(0)));
         // A hidden caller, minutes and seconds, the time as "9h05", the date in the subject's year form.
-        let raw = mail("Free <noreply@free.fr>", "Message vocal", "Un message vocal de numéro masqué le 07/10/26 à 9h05. Durée : 1 min 05 s.", Some(("audio/wav", "message.wav")));
+        let raw = mail("Operator <noreply@operator.example>", "Message vocal", "Un message vocal de numéro masqué le 07/10/26 à 9h05. Durée : 1 min 05 s.", Some(("audio/wav", "message.wav")));
         let v = read_it(&raw).unwrap();
         assert!(v.hidden && v.key.is_empty() && v.number.is_empty());
         assert_eq!(v.at, at("2026-10-07T09:05[Europe/Paris]"));
         assert_eq!(v.seconds, Some(65));
         // No time in the words: the mail's Date.
-        let raw = mail("Free Mobile <messagerie@free-mobile.fr>", "Message vocal de 0199004321", "Écoutez la pièce jointe.", Some(("audio/x-wav", "m.wav")));
+        let raw = mail("Operator Mobile <messagerie@operator-mobile.example>", "Message vocal de 0199004321", "Écoutez la pièce jointe.", Some(("audio/x-wav", "m.wav")));
         let v = read_it(&raw).unwrap();
         assert_eq!((v.key.as_str(), v.at, v.seconds), ("+33199004321", at("2026-10-06T09:33[Europe/Paris]"), None));
         // A notice without its sound ("simple" mode): who, when, how long; nothing to play.
-        let raw = mail("Free Mobile <messagerie@free-mobile.fr>", "Nouveau message vocal", "Nouveau message vocal de la part du 01 99 00 12 34 le 06/10/2026 à 09:31. Durée : 12 s.", None);
+        let raw = mail("Operator Mobile <messagerie@operator-mobile.example>", "Nouveau message vocal", "Nouveau message vocal de la part du 01 99 00 12 34 le 06/10/2026 à 09:31. Durée : 12 s.", None);
         let v = read_it(&raw).unwrap();
         assert_eq!((v.key.as_str(), v.seconds, v.sound), ("+33199001234", Some(12), None));
         // The number in the sound's name only, after its time stamp: the stamp is no number.
-        let raw = mail("Free Mobile <messagerie@free-mobile.fr>", "Nouveau message vocal", "Vous avez un nouveau message.", Some(("audio/x-wav", "20261006093100_0199005555.wav")));
+        let raw = mail("Operator Mobile <messagerie@operator-mobile.example>", "Nouveau message vocal", "Vous avez un nouveau message.", Some(("audio/x-wav", "20261006093100_0199005555.wav")));
         assert_eq!(read_it(&raw).unwrap().key, "+33199005555");
         // English words, a numeric date the other way round.
-        let raw = mail("Free Mobile <voicemail@free-mobile.fr>", "New voicemail", "You have a new voice message from +33 4 65 71 12 34 on 2026-10-06 at 09:31. Duration: 42 s", Some(("audio/x-wav", "vm.wav")));
+        let raw = mail("Operator Mobile <voicemail@operator-mobile.example>", "New voicemail", "You have a new voice message from +33 4 65 71 12 34 on 2026-10-06 at 09:31. Duration: 42 s", Some(("audio/x-wav", "vm.wav")));
         let v = read_it(&raw).unwrap();
         assert_eq!((v.key.as_str(), v.at, v.seconds), ("+33465711234", at("2026-10-06T09:31[Europe/Paris]"), Some(42)));
     }
 
     #[test]
     fn other_mail_is_not_voicemail() {
-        // Forged in Free's name, as the provider's own checks say: never.
+        // Forged in the operator's name, as the provider's own checks say: never.
         let forged = mail(
-            "Free Mobile <messagerie@free-mobile.fr>\r\nAuthentication-Results: mx.example.net; dmarc=fail (p=reject) header.from=free-mobile.fr",
+            "Operator Mobile <messagerie@operator-mobile.example>\r\nAuthentication-Results: mx.example.net; dmarc=fail (p=reject) header.from=operator-mobile.example",
             "Nouveau message vocal de 01 99 00 12 34",
             "Durée : 42 secondes.",
             Some(("audio/x-wav", "message.wav")),
         );
         assert!(read_it(&forged).is_none());
-        // Not Free's: never, whatever it says or carries.
-        let raw = mail("Free Mobile <messagerie@free-mobile.example>", "Nouveau message vocal de 01 99 00 12 34", "Durée : 42 secondes.", Some(("audio/x-wav", "message.wav")));
+        // Not the operator's: never, whatever it says or carries.
+        let raw = mail("Operator Mobile <messagerie@operator-mobile.example.net>", "Nouveau message vocal de 01 99 00 12 34", "Durée : 42 secondes.", Some(("audio/x-wav", "message.wav")));
         assert!(read_it(&raw).is_none());
-        assert!(!from_free("x@freemobile.fr") && from_free("a@free-mobile.fr") && from_free("a@smtp.free.fr") && !from_free("a@notfree.fr"));
-        // Free's invoice, its code changed: no sound, no caller with a length.
-        let raw = mail("Free Mobile <noreply@free-mobile.fr>", "Votre facture Free Mobile", "Votre facture de 19,99 € est disponible. Ligne 06 39 98 00 01.", None);
+        let ops = words().operators;
+        assert!(!from_operator(&ops, "x@operatormobile.example") && from_operator(&ops, "a@operator-mobile.example") && from_operator(&ops, "a@smtp.operator.example") && !from_operator(&ops, "a@notoperator.example"));
+        // No operator named (the packs name none): nothing is voicemail.
+        let raw = mail("Operator Mobile <messagerie@operator-mobile.example>", "Nouveau message vocal de 01 99 00 12 34", "Durée : 42 secondes.", Some(("audio/x-wav", "message.wav")));
+        let builtin = crate::words::Words::builtin();
+        assert!(super::read(&builtin.voicemail, &raw, Path::new("/m"), phones::region_named("FR"), &paris(), &[]).is_none());
+        assert!(!super::may_be(&builtin.voicemail.operators, &raw));
+        // The operator's invoice, its code changed: no sound, no caller with a length.
+        let raw = mail("Operator Mobile <noreply@operator-mobile.example>", "Votre facture mobile", "Votre facture de 19,99 € est disponible. Ligne 06 39 98 00 01.", None);
         assert!(read_it(&raw).is_none());
-        let raw = mail("Free Mobile <noreply@free-mobile.fr>", "Votre code de messagerie vocale a été modifié", "Le code de votre messagerie vocale a été modifié le 06/10/2026 à 09:31.", None);
+        let raw = mail("Operator Mobile <noreply@operator-mobile.example>", "Votre code de messagerie vocale a été modifié", "Le code de votre messagerie vocale a été modifié le 06/10/2026 à 09:31.", None);
         assert!(read_it(&raw).is_none());
         // The quick look reads the head only; a From folded on two lines is one.
         assert!(!may_be(b"From: Jane <jane@example.org>\r\nSubject: free tickets\r\n\r\nfree\r\n"));
-        assert!(may_be(b"From: =?UTF-8?Q?Messagerie_vocale?=\r\n <messagerie@free-mobile.fr>\r\nSubject: x\r\n\r\nbody\r\n"));
+        assert!(may_be(b"From: =?UTF-8?Q?Messagerie_vocale?=\r\n <messagerie@operator-mobile.example>\r\nSubject: x\r\n\r\nbody\r\n"));
         assert!(!may_be(b"From: Jane\r\n <jane@example.org>\r\nX-Note: free\r\n\r\nbody\r\n"));
     }
 

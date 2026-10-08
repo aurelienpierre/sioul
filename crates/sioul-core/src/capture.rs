@@ -5,7 +5,8 @@
 //! the title is shown as chips before the task is made, so nothing is misread
 //! silently (docs/tasks.md).
 //!
-//! At the end of the line, in English or French, in any order:
+//! At the end of the line, in the languages in use (`words::CaptureWords`;
+//! English and French built in), in any order:
 //! - **the day to start**: "today", "tomorrow", "friday", "next week",
 //!   "in 3 days", "30/10", "30 oct", "2026-10-30" ("aujourd'hui", "demain",
 //!   "vendredi", "semaine prochaine", "dans 3 jours", "30 octobre");
@@ -19,9 +20,11 @@
 //! "@réfléchir", "@faire") the task's kind, as does "@" and the name of a
 //! kind you added ("@errand"). Without one, a first word that says it
 //! plainly gives it: "Call the bank" is a call, "Remplir le formulaire" a
-//! form online. A kind you took away is never given.
+//! form online. A kind you took away is never given. Words are compared
+//! folded: capitals and accents aside ("fevrier", "Écrire").
 
 use crate::tasks::TaskEdit;
+use crate::words::{CaptureWords, TaskKinds, folded};
 use jiff::Span;
 use jiff::civil::{Date, Weekday};
 use serde::Serialize;
@@ -44,36 +47,34 @@ pub struct Captured {
     pub chips: Vec<Chip>,
 }
 
-fn weekday(word: &str) -> Option<Weekday> {
-    Some(match word {
-        "monday" | "mon" | "lundi" | "lun" => Weekday::Monday,
-        "tuesday" | "tue" | "mardi" => Weekday::Tuesday,
-        "wednesday" | "wed" | "mercredi" | "mer" => Weekday::Wednesday,
-        "thursday" | "thu" | "jeudi" | "jeu" => Weekday::Thursday,
-        "friday" | "fri" | "vendredi" | "ven" => Weekday::Friday,
-        "saturday" | "sat" | "samedi" | "sam" => Weekday::Saturday,
-        "sunday" | "sun" | "dimanche" | "dim" => Weekday::Sunday,
-        _ => return None,
+/// Whether a folded word or phrase is one of a list's, folded, its spaces made one.
+fn said(list: &[String], phrase: &str) -> bool {
+    list.iter().any(|p| {
+        let p = folded(p);
+        !p.is_empty() && p.split_whitespace().collect::<Vec<_>>().join(" ") == phrase
     })
 }
 
-fn month(word: &str) -> Option<i8> {
+fn weekday(w: &CaptureWords, word: &str) -> Option<Weekday> {
+    let d = &w.weekdays;
+    [
+        (&d.monday, Weekday::Monday),
+        (&d.tuesday, Weekday::Tuesday),
+        (&d.wednesday, Weekday::Wednesday),
+        (&d.thursday, Weekday::Thursday),
+        (&d.friday, Weekday::Friday),
+        (&d.saturday, Weekday::Saturday),
+        (&d.sunday, Weekday::Sunday),
+    ]
+    .into_iter()
+    .find(|(list, _)| said(list, word))
+    .map(|(_, day)| day)
+}
+
+/// A month by one of its names (`CaptureWords::months`, by number), a dot after it or not.
+fn month(w: &CaptureWords, word: &str) -> Option<i8> {
     let word = word.trim_end_matches('.');
-    Some(match word {
-        "january" | "jan" | "janvier" | "janv" => 1,
-        "february" | "feb" | "février" | "fevrier" | "fév" | "fev" | "févr" => 2,
-        "march" | "mar" | "mars" => 3,
-        "april" | "apr" | "avril" | "avr" => 4,
-        "may" | "mai" => 5,
-        "june" | "jun" | "juin" => 6,
-        "july" | "jul" | "juillet" | "juil" => 7,
-        "august" | "aug" | "août" | "aout" => 8,
-        "september" | "sep" | "sept" | "septembre" => 9,
-        "october" | "oct" | "octobre" => 10,
-        "november" | "nov" | "novembre" => 11,
-        "december" | "dec" | "décembre" | "decembre" | "déc" => 12,
-        _ => return None,
-    })
+    w.months.iter().find(|(_, names)| said(names, word)).and_then(|(number, _)| number.trim().parse().ok()).filter(|m| (1..=12).contains(m))
 }
 
 /// None past what a calendar holds ("in 99999999 days"), where `Span::days` would panic.
@@ -88,28 +89,42 @@ fn next_date(today: Date, month: i8, day: i8, year: Option<i16>) -> Option<Date>
     if year.is_none() && date < today { Date::new(today.year() + 1, month, day).ok() } else { Some(date) }
 }
 
-/// A day, as typed: one to three words, French or English.
+/// A day, as typed: one to three words, in the languages in use (`words::current`).
 pub fn parse_day(text: &str, today: Date) -> Option<Date> {
-    let lower = text.trim().to_lowercase().replace('\u{2019}', "'");
+    parse_day_with(&crate::words::current().capture, text, today)
+}
+
+/// A day, as typed, read with these words.
+pub fn parse_day_with(w: &CaptureWords, text: &str, today: Date) -> Option<Date> {
+    let lower = folded(text);
     let words: Vec<&str> = lower.split_whitespace().collect();
+    let phrase = words.join(" ");
+    if said(&w.today, &phrase) {
+        return Some(today);
+    }
+    if said(&w.tomorrow, &phrase) {
+        return add_days(today, 1);
+    }
+    if said(&w.next_week, &phrase) {
+        let to_monday = 7 - i64::from(today.weekday().to_monday_zero_offset());
+        return add_days(today, to_monday);
+    }
+    if let [first, n, unit] = words.as_slice()
+        && said(&w.in_, first)
+    {
+        let n: i64 = n.parse().ok()?;
+        let days = if said(&w.unit_days, unit) {
+            n
+        } else if said(&w.unit_weeks, unit) {
+            n.checked_mul(7)?
+        } else {
+            return None;
+        };
+        return add_days(today, days);
+    }
     match words.as_slice() {
-        ["today" | "aujourd'hui" | "auj"] => return Some(today),
-        ["tomorrow" | "demain"] => return add_days(today, 1),
-        ["next", "week"] | ["semaine", "prochaine"] => {
-            let to_monday = 7 - i64::from(today.weekday().to_monday_zero_offset());
-            return add_days(today, to_monday);
-        }
-        ["in" | "dans", n, unit] => {
-            let n: i64 = n.parse().ok()?;
-            let days = match *unit {
-                "day" | "days" | "jour" | "jours" => n,
-                "week" | "weeks" | "semaine" | "semaines" => n.checked_mul(7)?,
-                _ => return None,
-            };
-            return add_days(today, days);
-        }
         [word] => {
-            if let Some(day) = weekday(word) {
+            if let Some(day) = weekday(w, word) {
                 // The next one: a Friday said on a Friday is a week away.
                 let ahead = (i64::from(day.to_monday_zero_offset()) - i64::from(today.weekday().to_monday_zero_offset()) + 7) % 7;
                 return add_days(today, if ahead == 0 { 7 } else { ahead });
@@ -130,11 +145,18 @@ pub fn parse_day(text: &str, today: Date) -> Option<Date> {
             if words.len() == 3 && year.is_none() {
                 return None;
             }
-            let number = |w: &str| w.trim_end_matches("er").trim_end_matches("st").trim_end_matches("nd").trim_end_matches("rd").trim_end_matches("th").parse::<i8>().ok();
-            if let (Some(day), Some(m)) = (number(a), month(b)) {
+            // "1er", "2nd": the day's ordinal suffixes off (`CaptureWords::ordinals`).
+            let number = |word: &str| {
+                let mut word = word;
+                for suffix in w.ordinals.iter().map(|o| folded(o)).filter(|o| !o.is_empty()) {
+                    word = word.trim_end_matches(suffix.as_str());
+                }
+                word.parse::<i8>().ok()
+            };
+            if let (Some(day), Some(m)) = (number(a), month(w, b)) {
                 return next_date(today, m, day, year);
             }
-            if let (Some(m), Some(day)) = (month(a), number(b)) {
+            if let (Some(m), Some(day)) = (month(w, a), number(b)) {
                 return next_date(today, m, day, year);
             }
         }
@@ -157,30 +179,35 @@ pub fn parse_minutes(text: &str) -> Option<u32> {
 
 /// Reads one typed line. `cases` are the case ids a "#word" may name; any
 /// other "#word" is a tag (CATEGORIES). `kinds` are your kinds, id and name;
-/// empty, Sioul's.
+/// empty, Sioul's. The words are those in use (`words::current`).
 pub fn capture(line: &str, today: Date, cases: &[String], kinds: &[(String, String)]) -> Captured {
+    capture_with(&crate::words::current().capture, line, today, cases, kinds)
+}
+
+/// `capture`, read with these words.
+pub fn capture_with(w: &CaptureWords, line: &str, today: Date, cases: &[String], kinds: &[(String, String)]) -> Captured {
     let mut edit = TaskEdit::default();
     let mut chips: Vec<Chip> = Vec::new();
     let mut words: Vec<String> = line.split_whitespace().map(str::to_string).collect();
     let chip = |kind: &str, text: &str, value: String| Chip { kind: kind.into(), text: text.into(), value };
 
     // "@day" anywhere.
-    words.retain(|w| {
-        let Some(day) = w.strip_prefix('@').and_then(|d| parse_day(d, today)) else { return true };
+    words.retain(|word| {
+        let Some(day) = word.strip_prefix('@').and_then(|d| parse_day_with(w, d, today)) else { return true };
         if edit.start.is_empty() {
             edit.start = day.to_string();
-            chips.push(chip("start", w, day.to_string()));
+            chips.push(chip("start", word, day.to_string()));
             return false;
         }
         true
     });
 
     // "@kind" anywhere.
-    words.retain(|w| {
-        let Some(kind) = w.strip_prefix('@').and_then(|k| named_kind(k, kinds)) else { return true };
+    words.retain(|word| {
+        let Some(kind) = word.strip_prefix('@').and_then(|k| named_kind(&w.kind_words, k, kinds)) else { return true };
         if edit.kind.is_empty() {
             edit.kind = kind.clone();
-            chips.push(chip("kind", w, kind));
+            chips.push(chip("kind", word, kind));
             return false;
         }
         true
@@ -213,7 +240,7 @@ pub fn capture(line: &str, today: Date, cases: &[String], kinds: &[(String, Stri
             let open = words.iter().rposition(|w| w.starts_with('{'));
             if let Some(open) = open {
                 let typed = words[open..].join(" ");
-                if let Some(day) = parse_day(typed.trim_start_matches('{').trim_end_matches('}'), today) {
+                if let Some(day) = parse_day_with(w, typed.trim_start_matches('{').trim_end_matches('}'), today) {
                     edit.due = day.to_string();
                     chips.push(chip("due", &typed, day.to_string()));
                     words.truncate(open);
@@ -224,7 +251,7 @@ pub fn capture(line: &str, today: Date, cases: &[String], kinds: &[(String, Stri
         if edit.start.is_empty() {
             let found = (1..=3usize).rev().filter(|&n| n <= words.len()).find_map(|n| {
                 let typed = words[words.len() - n..].join(" ");
-                parse_day(&typed, today).map(|day| (n, typed, day))
+                parse_day_with(w, &typed, today).map(|day| (n, typed, day))
             });
             // A lone number is part of the title ("Room 12"), not a day.
             if let Some((n, typed, day)) = found.filter(|(n, typed, _)| *n > 1 || typed.contains(['/', '-', '.']) || !typed.chars().all(|c| c.is_ascii_digit())) {
@@ -239,7 +266,7 @@ pub fn capture(line: &str, today: Date, cases: &[String], kinds: &[(String, Stri
     chips.reverse();
     edit.title = words.join(" ");
     if edit.kind.is_empty()
-        && let Some(kind) = words.first().and_then(|w| guess_kind(w)).filter(|k| kinds.is_empty() || kinds.iter().any(|(id, _)| id == k))
+        && let Some(kind) = words.first().and_then(|first| guess_kind(&w.kind_verbs, first)).filter(|k| kinds.is_empty() || kinds.iter().any(|(id, _)| id == k))
     {
         edit.kind = kind.to_string();
         chips.push(chip("kind", "", kind.to_string()));
@@ -247,10 +274,10 @@ pub fn capture(line: &str, today: Date, cases: &[String], kinds: &[(String, Stri
     Captured { edit, chips }
 }
 
-/// The kind a word after "@" names: one of Sioul's, in English or French,
-/// while you keep it; else one of yours, by its id or its name.
-fn named_kind(word: &str, kinds: &[(String, String)]) -> Option<String> {
-    if let Some(kind) = kind_word(word).filter(|k| kinds.is_empty() || kinds.iter().any(|(id, _)| id == k)) {
+/// The kind a word after "@" names: one of Sioul's (`kind_words`, in the
+/// languages in use) while you keep it; else one of yours, by its id or its name.
+fn named_kind(kind_words: &TaskKinds, word: &str, kinds: &[(String, String)]) -> Option<String> {
+    if let Some(kind) = kind_in(kind_words, word).filter(|k| kinds.is_empty() || kinds.iter().any(|(id, _)| id == k)) {
         return Some(kind.to_string());
     }
     let fold = |s: &str| crate::text::fold(s).into_iter().filter(|c| !c.is_whitespace()).collect::<String>();
@@ -258,35 +285,27 @@ fn named_kind(word: &str, kinds: &[(String, String)]) -> Option<String> {
     kinds.iter().find(|(id, label)| *id == wanted || fold(label) == wanted).map(|(id, _)| id.clone())
 }
 
-/// A word naming a kind, after "@", in English or French.
-fn kind_word(word: &str) -> Option<&'static str> {
-    let folded: String = crate::text::fold(word).into_iter().collect();
-    Some(match folded.as_str() {
-        "call" | "phone" | "appel" | "appeler" | "telephone" | "tel" => "call",
-        "write" | "mail" | "email" | "letter" | "ecrire" | "courriel" | "lettre" => "write",
-        "online" | "web" | "form" | "enligne" | "en-ligne" | "formulaire" | "site" => "online",
-        "out" | "errand" | "dehors" | "course" | "courses" | "sortie" => "out",
-        "read" | "lire" | "lecture" => "read",
-        "think" | "decide" | "reflechir" | "decider" => "think",
-        "make" | "do" | "build" | "faire" | "fabriquer" => "make",
-        _ => return None,
-    })
+/// The kind of Sioul's (`tasks::KINDS`) whose words hold `word`, folded.
+fn kind_in(kinds: &TaskKinds, word: &str) -> Option<&'static str> {
+    let word = folded(word);
+    [
+        ("call", &kinds.call),
+        ("write", &kinds.write),
+        ("online", &kinds.online),
+        ("out", &kinds.out),
+        ("read", &kinds.read),
+        ("think", &kinds.think),
+        ("make", &kinds.make),
+    ]
+    .into_iter()
+    .find(|(_, list)| said(list, &word))
+    .map(|(kind, _)| kind)
 }
 
-/// The kind a first word says plainly; none for a word that could be several
-/// ("ask", "demander": a call or a message?).
-fn guess_kind(word: &str) -> Option<&'static str> {
-    let folded: String = crate::text::fold(word.trim_end_matches([',', '.', ':', ';'])).into_iter().collect();
-    Some(match folded.as_str() {
-        "call" | "phone" | "ring" | "appeler" | "rappeler" | "telephoner" => "call",
-        "write" | "email" | "mail" | "reply" | "answer" | "ecrire" | "envoyer" | "repondre" | "relancer" => "write",
-        "fill" | "submit" | "pay" | "book" | "order" | "register" | "renew" | "declare" | "remplir" | "payer" | "reserver" | "commander" | "declarer" | "simuler" | "renouveler" => "online",
-        "go" | "buy" | "pick" | "visit" | "aller" | "acheter" | "recuperer" | "passer" => "out",
-        "read" | "review" | "reread" | "lire" | "relire" => "read",
-        "think" | "decide" | "choose" | "reflechir" | "decider" | "choisir" => "think",
-        "make" | "build" | "fix" | "repair" | "cook" | "clean" | "fabriquer" | "reparer" | "cuisiner" | "nettoyer" | "ranger" => "make",
-        _ => return None,
-    })
+/// The kind a first word says plainly (`kind_verbs`); none for a word that
+/// could be several ("ask", "demander": a call or a message?).
+fn guess_kind(kind_verbs: &TaskKinds, word: &str) -> Option<&'static str> {
+    kind_in(kind_verbs, word.trim_end_matches([',', '.', ':', ';']))
 }
 
 #[cfg(test)]
@@ -358,5 +377,26 @@ mod tests {
         assert_eq!((tagged.edit.title.as_str(), tagged.edit.start.as_str()), ("Prepare the tomorrow meeting notes", "2026-10-05"));
         assert_eq!(tagged.edit.categories, vec!["health"]);
         assert_eq!(capture("Book room 12", today(), &cases, &[]).edit.title, "Book room 12");
+    }
+
+    /// Words added in your configuration: German days, a German "in", a German verb.
+    #[test]
+    fn your_words_are_read() {
+        let config: crate::config::Config = toml::from_str(
+            "[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n[words.capture.tomorrow]\nadd = [\"morgen\"]\n[words.capture.weekdays.friday]\nadd = [\"Freitag\"]\n[words.capture.in]\nadd = [\"in\"]\n[words.capture.unit_days]\nadd = [\"Tagen\"]\n[words.capture.months]\nadd = { 3 = [\"März\"] }\n[words.capture.kind_verbs.call]\nadd = [\"anrufen\"]\n",
+        )
+        .unwrap();
+        let yours = crate::words::Words::of(&config);
+        let day = |text: &str| parse_day_with(&yours.capture, text, today()).map(|d| d.to_string());
+        assert_eq!(day("morgen").as_deref(), Some("2026-10-04"));
+        assert_eq!(day("FREITAG").as_deref(), Some("2026-10-09"));
+        assert_eq!(day("in 3 Tagen").as_deref(), Some("2026-10-06"));
+        assert_eq!(day("3 märz").as_deref(), Some("2027-03-03"));
+        assert_eq!(day("3 marz").as_deref(), Some("2027-03-03"), "accents aside");
+        assert_eq!(capture_with(&yours.capture, "Anrufen Bank morgen", today(), &[], &[]).edit.kind, "call");
+        assert_eq!(parse_day("morgen", today()), None, "not in the packs");
+        assert_eq!(capture("Anrufen Bank", today(), &[], &[]).edit.kind, "");
+        // Accents typed or not, as before.
+        assert_eq!((day("fevrier 2").as_deref(), day("2 févr.").as_deref(), day("Aout 15").as_deref()), (Some("2027-02-02"), Some("2027-02-02"), Some("2027-08-15")));
     }
 }

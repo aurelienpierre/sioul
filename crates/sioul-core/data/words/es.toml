@@ -1,0 +1,172 @@
+# Words Sioul looks for in Spanish (docs/words.md): the lists whose wording is public and stable.
+# Read folded: capitals and accents do not matter. Whole words, except where a list says otherwise.
+# Letters, papers, bank exports and payments in Spanish wait for real examples: a guessed legal phrase does more harm than none.
+# Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
+
+language = "es"
+checked = "2026-10-08"
+
+
+# One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
+[codes]
+# Names a code: a code right beside it is taken.
+code = [
+    "código de verificación", "código de seguridad", "código de confirmación", "código de acceso",
+    "código de inicio de sesión", "código de autenticación", "código de activación", "código de un solo uso",
+    "contraseña de un solo uso", "clave de un solo uso", "código otp", "código de validación",
+]
+# Points at a code without naming it: counts only in a message about signing in.
+pointing = ["el siguiente código", "este código", "introduce el código", "ingresa el código", "usa el código", "copia el código"]
+# Says the message is about signing in or checking who you are, somewhere in it.
+sign_in = [
+    "iniciar sesión", "inicio de sesión", "acceder", "registro", "verificar", "verificación", "confirmar", "identidad",
+    "autenticación",
+]
+# Words between "your" and "code" that make it no secret of yours.
+not_yours = [
+    "postal", "promocional", "descuento", "cupón", "regalo", "pedido", "cliente", "seguimiento", "reserva", "wifi", "iban",
+    "swift", "bic",
+]
+# A shop's code: the message hands over no secret.
+promo = ["descuento", "cupón", "promoción", "código promocional", "% de descuento"]
+# Hands a password over.
+password = ["contraseña temporal", "contraseña provisional", "tu contraseña es", "tu nueva contraseña es", "su contraseña es", "su nueva contraseña es"]
+# A password reset.
+reset = [
+    "restablecer tu contraseña", "restablecer la contraseña", "restablecer su contraseña", "restablecimiento de contraseña",
+    "olvidaste tu contraseña", "crea una nueva contraseña", "crear una nueva contraseña",
+]
+# A link that signs you in.
+link = ["enlace de inicio de sesión", "enlace mágico", "inicia sesión con este enlace", "enlace de acceso"]
+# What a sign-in link's message is about, in its subject or first lines.
+intents = ["iniciar sesión", "inicio de sesión", "acceder", "acceso"]
+# What may be said to expire or to work once: the link, its button, the code.
+link_words = ["enlace", "botón", "código", "vínculo"]
+# Says something expires or is valid.
+validity = ["caduca", "caducará", "expira", "expirará", "válido", "vence"]
+# Lines that answer a request of yours; a newsletter does not write them.
+request = [
+    "si no lo solicitaste", "si no has solicitado", "si no solicitaste", "si no fuiste tú", "si no ha solicitado",
+    "puedes ignorar este correo", "puede ignorar este correo", "ignora este mensaje", "ignore este mensaje",
+]
+# An address or an account to confirm.
+confirm = [
+    "confirma tu correo", "confirma tu dirección de correo", "verifica tu correo electrónico", "verifica tu correo",
+    "activa tu cuenta", "confirma tu cuenta", "confirma tu registro", "confirme su correo",
+]
+# Grammar: hands a code over, the code right after.
+giving = ["tu código", "su código"]
+# Grammar: whose code, a few words before "code".
+owners = ["tu", "su"]
+# Grammar: says a code is yours, right after it ("123456 es tu código").
+owned_after = ["es tu", "es su"]
+# Grammar: may stand between a phrase and its code.
+linking = ["es"]
+# A link or a code that works once.
+once = ["una sola vez", "un solo uso", "de un solo uso"]
+# Words before a validity ("válido durante 10 minutos").
+expiry_context = ["válido", "caduca", "expira", "durante", "dentro de"]
+# The word for a code itself.
+noun = ["código"]
+# Starts of a unit of minutes, after a number.
+unit_minutes = ["min"]
+# Starts of a unit of hours, after a number.
+unit_hours = ["hora"]
+# Starts of a unit of days, after a number.
+unit_days = ["día"]
+
+# Other apps' notifications that hand a code over or ask for an approval now (appnotes.rs): never held.
+[approvals]
+# Asks you to approve a sign-in, a payment or an operation now.
+phrases = [
+    "aprueba el inicio de sesión", "aprobar el inicio de sesión", "confirma el inicio de sesión", "autoriza el pago",
+    "autorizar el pago", "confirma el pago", "confirmar el pago", "aprueba la compra", "confirma la operación",
+    "autoriza la operación", "intento de inicio de sesión", "nuevo inicio de sesión",
+]
+# "Is this you?": counts only beside what it is about (`asked_about`).
+asks = ["eres tú", "fuiste tú", "es usted", "fue usted"]
+# What such a question is about.
+asked_about = ["inicio de sesión", "iniciar sesión", "nuevo dispositivo", "pago", "compra", "operación", "cuenta"]
+# Words in the name of a notification channel for codes or sign-ins.
+channels = ["seguridad", "verificación", "inicio de sesión", "autenticación"]
+
+# Automatic senders (porch.rs): an address holding one of these is filed.
+[senders]
+automatic = ["no-responder", "noresponder", "no-contestar", "nocontestar"]
+
+# Prefixes of a subject already answered or forwarded (compose.rs).
+[replies]
+forward = ["rv:", "reenviado:"]
+reply = ["re:"]
+
+# A message's quoted history (reading.rs): lines that open it, its header names, its attribution.
+[quotes]
+# Lines that open a forwarded or answered message, before its headers.
+openings = ["---------- mensaje reenviado ---------", "-----mensaje original-----", "inicio del mensaje reenviado:"]
+# Header names of a quoted message.
+header_names = ["de", "enviado", "enviado el", "para", "asunto", "fecha", "cc", "responder a"]
+# The first header of a quoted block.
+from_names = ["de"]
+# One of these makes a block of headers a quoted message.
+enough_names = ["asunto", "fecha", "enviado", "enviado el"]
+# Endings of an attribution line.
+wrote = ["escribió:"]
+# Starts of an attribution line broken over two lines.
+attribution_starts = ["El"]
+
+# Mail folders by their names, when the server does not say what each is for (folders.rs).
+[folders]
+sent = ["enviados", "elementos enviados", "correo enviado", "mensajes enviados"]
+drafts = ["borradores", "borrador"]
+junk = ["correo no deseado", "no deseado"]
+trash = ["papelera", "elementos eliminados", "correo eliminado", "eliminados"]
+archive = ["archivo", "archivados"]
+
+# Quick capture: one typed line makes a task (capture.rs).
+[capture]
+today = ["hoy"]
+tomorrow = ["mañana"]
+next_week = ["próxima semana", "la próxima semana", "la semana que viene"]
+in = ["en"]
+unit_days = ["día", "días"]
+unit_weeks = ["semana", "semanas"]
+# Ordinal suffixes of a day ("1º").
+ordinals = ["º"]
+
+# Day names.
+[capture.weekdays]
+monday = ["lunes"]
+tuesday = ["martes"]
+wednesday = ["miércoles"]
+thursday = ["jueves"]
+friday = ["viernes"]
+saturday = ["sábado"]
+sunday = ["domingo"]
+
+# Month names, by month number.
+[capture.months]
+1 = ["enero", "ene"]
+2 = ["febrero", "feb"]
+3 = ["marzo", "mar"]
+4 = ["abril", "abr"]
+5 = ["mayo", "may"]
+6 = ["junio", "jun"]
+7 = ["julio", "jul"]
+8 = ["agosto", "ago"]
+9 = ["septiembre", "setiembre", "sep", "sept"]
+10 = ["octubre", "oct"]
+11 = ["noviembre", "nov"]
+12 = ["diciembre", "dic"]
+
+# The spam filter's tokenizer (spam/tokenize.rs). A table keeps the words it was trained with: a change here counts from the next training.
+[spam]
+# Month names in dates, which become _DATE_.
+months = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "setiembre", "octubre",
+    "noviembre", "diciembre", "ene", "abr", "ago", "dic",
+]
+
+# Reading scans (sioul-sync's ocr.rs).
+[ocr]
+# Tesseract's names of this language's models.
+tesseract = ["spa"]

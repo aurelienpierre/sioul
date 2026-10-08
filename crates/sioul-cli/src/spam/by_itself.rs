@@ -85,6 +85,7 @@ pub(crate) fn every_minute(s: &Session) {
         loop {
             std::thread::sleep(Duration::from_secs(60));
             let config = sioul_core::config::Config::load(&path).unwrap_or_default();
+            sioul_core::words::set_current(sioul_core::words::Words::of(&config));
             let session = Session { config, config_path: path.clone(), tr: sioul_core::i18n::Translator::new(&language) };
             let (dirs, now) = (Dirs::standard(), jiff::Timestamp::now().as_second());
             let focus = sioul_core::timelog::running().is_some();

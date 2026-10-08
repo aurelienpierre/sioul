@@ -245,6 +245,7 @@ pub(crate) fn keep_checked(file: &Path, name: &str, subject: &str) -> Result<(St
     let wallet = wallet()?;
     let kept = wallet.keep_file(file, name)?;
     let title = Path::new(name).file_stem().map(|s| s.to_string_lossy().replace(['_', '-'], " ")).unwrap_or_default();
-    let kind = Kind::guess(name).or_else(|| Kind::guess(subject)).unwrap_or_default();
+    let looked = sioul_core::words::Words::of(&load_config());
+    let kind = Kind::guess(&looked, name).or_else(|| Kind::guess(&looked, subject)).unwrap_or_default();
     Ok((wallet.root.join(&kept).display().to_string(), title, kind.id()))
 }

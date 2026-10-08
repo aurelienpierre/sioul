@@ -140,7 +140,7 @@ impl Hiding {
             let domain = address.rsplit_once('@').map(|(_, d)| d.to_string()).unwrap_or_default();
             return Some(Envelope { from: s.say("hostile-someone-at", &[("domain", domain)]), subject: s.tr.text("hostile-subject", None), hidden: true });
         }
-        let (subject, _) = mask::message(&card.subject, &card.excerpt);
+        let (subject, _) = mask::message(&sioul_core::words::Words::of(&s.config), &card.subject, &card.excerpt);
         Some(Envelope { from: one_line(&address), subject: one_line(&subject), hidden: false })
     }
 }
@@ -486,7 +486,7 @@ fn wrong_listed(s: &Session, hiding: &Hiding, w: &Wrong, learned_before: Option<
             if hiding.senders.who_of(card) == sioul_core::reach::Who::Blocked {
                 return None;
             }
-            let (subject, _) = mask::message(&card.subject, &card.excerpt);
+            let (subject, _) = mask::message(&sioul_core::words::Words::of(&s.config), &card.subject, &card.excerpt);
             Envelope { from: one_line(card.from_address.as_deref().unwrap_or_default()), subject: one_line(&subject), hidden: false }
         }
         Some(card) => hiding.envelope(s, &w.account, card)?,

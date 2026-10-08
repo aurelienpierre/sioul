@@ -12,6 +12,7 @@
 //! that a company's share capital in the legal footer is never it.
 
 use crate::text::{find_word, fold};
+use crate::words::MoneyWords;
 use serde::Deserialize;
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Neg, Sub};
@@ -98,40 +99,19 @@ pub struct Amount {
 /// Currency marks, longest first so "EUR" is not read as something shorter.
 const CURRENCIES: &[(&str, &str)] = &[("EUR", "EUR"), ("USD", "USD"), ("GBP", "GBP"), ("CHF", "CHF"), ("CAD", "CAD"), ("€", "EUR"), ("$", "USD"), ("£", "GBP")];
 
-/// Words after which the amount a message is about usually comes.
-const KEYWORDS: &[&str] = &[
-    "total", "montant", "amount", "vous avez recu", "you received", "you've got", "paiement de",
-    "payment of", "payout of", "versement de", "somme de", "a ete preleve", "charged", "prelevement de",
-];
-
-/// The amount a message is about.
-pub fn find_amount(text: &str) -> Option<Amount> {
+/// The amount a message is about: the first after a word after which it
+/// usually comes (`MoneyWords::keywords`: "total", "you received"), else the first.
+pub fn find_amount(words: &MoneyWords, text: &str) -> Option<Amount> {
     let chars: Vec<char> = text.chars().collect();
     let amounts = all_amounts(&chars);
     let folded = fold(text);
-    let after = KEYWORDS.iter().filter_map(|k| find_word(&folded, k, 0)).min();
+    let after = words.keywords.iter().filter_map(|k| find_word(&folded, k, 0)).min();
     after
         .and_then(|k| amounts.iter().find(|a| a.start >= k))
         .or_else(|| amounts.first())
         .map(|a| a.amount.clone())
 }
 
-/// Sentences that state the payment itself; the amount follows them.
-const STATED: &[&str] = &[
-    "vous avez recu un paiement de", "vous avez paye", "vous avez autorise un paiement de", "vous avez envoye un paiement de",
-    "vous avez envoye", "paiement de", "montant de", "versement de", "virement de", "remboursement de",
-    "you received a payment of", "you received", "you've got", "you paid", "you sent a payment of", "you sent",
-    "payment of", "payout of", "refund of", "charged",
-];
-
-/// Labels of the line that holds what was paid in the end.
-const TOTALS: &[&str] = &["total", "montant total", "total ttc", "total paye", "montant paye", "montant debite", "amount paid", "total paid", "total charged"];
-
-/// Lines of the legal footer: their amounts (a share capital) are never a payment.
-const LEGAL: &[&str] = &[
-    "capital", "rcs", "siret", "siren", "tva intra", "siege social", "societe en commandite", "registered office",
-    "company number", "share capital",
-];
 
 /// An amount found in a message, where it was, and what follows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,8 +127,10 @@ pub struct Found {
 /// 3. the amount on the total's line, or on the line after its label (receipts set them in a table);
 /// 4. the last amount above zero, the way receipts end with what was paid.
 ///
-/// Lines of the legal footer are skipped, so a share capital is never read as a payment.
-pub fn payment_amount(subject: &str, text: &str) -> Option<Found> {
+/// Lines of the legal footer are skipped, so a share capital is never read
+/// as a payment. The words: `MoneyWords` (the sentences that state a
+/// payment, the labels of the total's line, the legal footer's words).
+pub fn payment_amount(words: &MoneyWords, subject: &str, text: &str) -> Option<Found> {
     let in_subject = line_amounts(subject);
     let distinct: Vec<&Amount> = in_subject.iter().map(|(a, _)| a).fold(Vec::new(), |mut v, a| {
         if !v.contains(&a) {
@@ -159,34 +141,35 @@ pub fn payment_amount(subject: &str, text: &str) -> Option<Found> {
     if distinct.len() == 1 {
         return Some(Found { amount: distinct[0].clone(), after: String::new() });
     }
-    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).filter(|l| !is_legal(l)).collect();
-    stated(&lines).or_else(|| total(&lines)).or_else(|| last(&lines))
+    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).filter(|l| !is_legal(words, l)).collect();
+    stated(words, &lines).or_else(|| total(words, &lines)).or_else(|| last(&lines))
 }
 
 /// The amount stated by a sentence ("Vous avez payé 387,00 € à…"), with what follows it.
-pub fn stated_amount(text: &str) -> Option<Found> {
-    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).filter(|l| !is_legal(l)).collect();
-    stated(&lines)
+pub fn stated_amount(words: &MoneyWords, text: &str) -> Option<Found> {
+    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).filter(|l| !is_legal(words, l)).collect();
+    stated(words, &lines)
 }
 
-fn is_legal(line: &str) -> bool {
+fn is_legal(words: &MoneyWords, line: &str) -> bool {
     let folded = fold(line);
-    LEGAL.iter().any(|w| find_word(&folded, w, 0).is_some())
+    words.legal.iter().any(|w| find_word(&folded, w, 0).is_some())
 }
 
-fn stated(lines: &[&str]) -> Option<Found> {
+fn stated(words: &MoneyWords, lines: &[&str]) -> Option<Found> {
     lines.iter().find_map(|line| {
         let folded = fold(line);
-        let at = STATED.iter().filter_map(|p| find_word(&folded, p, 0)).min()?;
+        let at = words.stated.iter().filter_map(|p| find_word(&folded, p, 0)).min()?;
         line_amounts_after(line, at).into_iter().next()
     })
 }
 
-fn total(lines: &[&str]) -> Option<Found> {
+fn total(words: &MoneyWords, lines: &[&str]) -> Option<Found> {
     lines.iter().enumerate().find_map(|(i, line)| {
         let folded: String = fold(line).into_iter().collect();
         let label = folded.trim_start_matches(|c: char| !c.is_alphanumeric());
-        let is_total = TOTALS.iter().any(|t| label.starts_with(t)) && !label.starts_with("total partiel");
+        let starts = |list: &[String]| list.iter().map(|t| crate::words::folded(t)).any(|t| !t.is_empty() && label.starts_with(&t));
+        let is_total = starts(&words.totals) && !starts(&words.subtotal);
         if !is_total {
             return None;
         }
@@ -355,6 +338,16 @@ fn grouped_digits(whole: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::words::Words;
+
+    /// The readers with the packs built in (French and English).
+    fn find_amount(text: &str) -> Option<Amount> {
+        super::find_amount(&Words::builtin().money, text)
+    }
+
+    fn payment_amount(subject: &str, text: &str) -> Option<Found> {
+        super::payment_amount(&Words::builtin().money, subject, text)
+    }
 
     fn amount(text: &str) -> (i64, &'static str) {
         let a = find_amount(text).unwrap();

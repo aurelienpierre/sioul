@@ -76,6 +76,7 @@ impl Server {
             Err(_) if !self.config_path.exists() => Config::default(),
             Err(e) => return Err(format!("Sioul's configuration cannot be read; the person can mend it: {e}")),
         };
+        sioul_core::words::set_current(sioul_core::words::Words::of(&config));
         Ok(Session { config, config_path: self.config_path.clone(), tr: Translator::new(&self.language) })
     }
 

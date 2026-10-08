@@ -23,7 +23,7 @@ fn the_porch_sorts_a_morning() {
     let known = KnownSenders::parse(&std::fs::read_to_string(root.join("known-senders.txt")).unwrap());
     let ids = vec!["mx.example.net".to_string()];
     let senders = porch::Senders::default();
-    let ctx = Context { cases: Some(&store), known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+    let ctx = Context { cases: Some(&store), known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
     let triaged: Vec<_> = maildir::read_messages(&root.join("porch")).into_iter().map(|c| porch::triage(c, &ctx)).collect();
     let find = |part: &str| triaged.iter().find(|t| t.card.subject.contains(part)).unwrap();
 
@@ -63,7 +63,7 @@ fn what_you_send_yourself_comes_in() {
     let senders = porch::Senders::default();
     let ids = vec!["mx.example.net".to_string()];
     let own = vec!["me@example.org".to_string(), "me@work.example".to_string()];
-    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &own, spam: None };
+    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &own, spam: None };
     let mail = |auth: &str| {
         // The provider's spam flag, above the line where the message came in: its own.
         let raw = format!("Authentication-Results: mx.example.net; dkim={auth} header.d=example.org; spf={auth} smtp.mailfrom=example.org; dmarc={auth} header.from=example.org\r\nX-Spam-Flag: YES\r\nReceived: from mail.example.org (mail.example.org [203.0.112.20]) by mx.example.net with ESMTPS\r\nFrom: Me <me@example.org>\r\nTo: me@work.example\r\nSubject: The scan\r\nMessage-ID: <scan@example.org>\r\n\r\nThe file.\r\n");
@@ -88,7 +88,7 @@ fn codes_sent_with_bulk_headers_come_at_once() {
     let known = KnownSenders::default();
     let senders = porch::Senders::default();
     let ids = vec!["mx.example.net".to_string()];
-    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
     let triaged: Vec<_> = maildir::read_messages(&fixtures().join("porch-bulk")).into_iter().map(|c| porch::triage(c, &ctx)).collect();
     assert_eq!(triaged.len(), 7);
     assert!(triaged.iter().all(|t| t.card.is_list), "every one carries bulk headers");
@@ -128,7 +128,7 @@ fn mail_said_not_spam_leaves_set_aside() {
     let known = KnownSenders::default();
     let senders = porch::Senders::default();
     let ids = vec!["mx.example.net".to_string()];
-    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+    let ctx = Context { cases: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
     let raw = "Authentication-Results: mx.example.net; dkim=pass header.d=lottery.test; spf=pass smtp.mailfrom=lottery.test; dmarc=pass header.from=lottery.test\r\n\
                X-Spam-Flag: YES\r\n\
                Received: from mail.lottery.test (mail.lottery.test [203.0.112.40]) by mx.example.net with ESMTPS\r\n\

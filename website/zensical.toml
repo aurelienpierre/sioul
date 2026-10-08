@@ -98,6 +98,7 @@ nav = [
       { "Android" = "dev/android.md" },
       { "Architecture" = "dev/architecture.md" },
       { "Languages" = "dev/i18n.md" },
+      { "The words Sioul looks for" = "dev/words.md" },
     ] },
     # Made from the code's comments: rustdoc and javadoc with build.sh --api,
     # the QML page by tools/qml-docs.py at every build.

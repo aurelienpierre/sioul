@@ -232,6 +232,7 @@ fn scan(search: &Search, generation: u64, hidden: &BTreeSet<PathBuf>) -> Option<
         return None;
     }
     let trusted = trusted(&config);
+    let looked = sioul_core::words::Words::of(&config);
     let titles: BTreeMap<String, (String, Vec<Folder>)> = config.accounts.iter().filter(|a| a.syncs()).map(|a| (a.id.clone(), (account_title(a), mailbox::folders(&a.id)))).collect();
     // Twins aside first, then the newest made into rows.
     let light: Vec<Hit> = found
@@ -257,7 +258,7 @@ fn scan(search: &Search, generation: u64, hidden: &BTreeSet<PathBuf>) -> Option<
             let (account, folders) = titles.get(&hit.account)?;
             let folder = folders.iter().find(|f| f.name == hit.folder)?;
             let ids = trusted.get(&hit.account).map(Vec::as_slice).unwrap_or_default();
-            hit.row.item = view::mail_item(&card, folder.role, false, &maildir::flags_of(&path), ids, tr());
+            hit.row.item = view::mail_item(&card, folder.role, false, &maildir::flags_of(&path), ids, &looked, tr());
             hit.row.place = say("search-place", &[("folder", folder_title(folder, folders)), ("account", account.clone())]);
             Some(hit)
         })
@@ -287,8 +288,8 @@ fn empty_item(path: &Path) -> view::MailItem {
 }
 
 /// A message its server found, as a row.
-fn server_hit(found: &Found, account: &Account, folders: &[Folder], trusted: &[String]) -> Option<Hit> {
-    let mut item = view::mail_item(&found.card, found.folder.role, false, &found.flags, trusted, tr());
+fn server_hit(found: &Found, account: &Account, folders: &[Folder], trusted: &[String], looked: &sioul_core::words::Words) -> Option<Hit> {
+    let mut item = view::mail_item(&found.card, found.folder.role, false, &found.flags, trusted, looked, tr());
     item.key = found.place().key();
     Some(Hit {
         date: found.date().unwrap_or(0),
@@ -332,6 +333,7 @@ fn ask_servers(qt: &QtThread, shared: &Arc<Shared>, search: &Search, generation:
     let earliest = mailsearch::earliest(search).and_then(|d| d.to_zoned(jiff::tz::TimeZone::system()).ok()).map(|z| z.timestamp().as_second());
     let trusted = trusted(&config);
     let judge = senders(search, &config).map(Arc::new);
+    let words = sioul_core::words::Words::of(&config);
     for account in config.accounts.into_iter().filter(Account::syncs) {
         let all = mailbox::folders(&account.id);
         let folders: Vec<Folder> = searched(search, &account, &all).into_iter().filter(|f| needs_server(&account, f, earliest)).collect();
@@ -350,11 +352,12 @@ fn ask_servers(qt: &QtThread, shared: &Arc<Shared>, search: &Search, generation:
         let (qt, shared, search) = (qt.clone(), Arc::clone(shared), search.clone());
         let ids = trusted.get(&account.id).cloned().unwrap_or_default();
         let judge = judge.clone();
+        let looked = words.clone();
         std::thread::spawn(move || {
             let here: BTreeMap<String, BTreeSet<(u32, u32)>> = folders.iter().map(|f| (f.name.clone(), sioul_sync::search::kept_uids(&account, f))).collect();
             let answer = secret::password(&account).and_then(|p| sioul_sync::search::search(&account, &p, &search, &folders, &here, PER_SERVER, judge.as_deref()));
             let part = match answer {
-                Ok(outcome) => ServerPart::Found { hits: outcome.found.iter().filter_map(|f| server_hit(f, &account, &all, &ids)).collect(), more: outcome.more },
+                Ok(outcome) => ServerPart::Found { hits: outcome.found.iter().filter_map(|f| server_hit(f, &account, &all, &ids, &looked)).collect(), more: outcome.more },
                 Err(e) => ServerPart::Failed(e.sentence(tr(), &account_title(&account))),
             };
             with_state(|s| {
@@ -586,6 +589,7 @@ pub(crate) fn bring(qt: &QtThread, shared: &Arc<Shared>, key: &str) {
     };
     crate::backend::set_status(qt, tr().text("search-bringing", None));
     let trusted = trusted(&config).remove(&account.id).unwrap_or_default();
+    let looked = sioul_core::words::Words::of(&config);
     let (qt, shared, key) = (qt.clone(), Arc::clone(shared), key.to_string());
     std::thread::spawn(move || {
         let brought = secret::password(&account).and_then(|p| sioul_sync::search::bring(&account, &p, &place));
@@ -594,7 +598,7 @@ pub(crate) fn bring(qt: &QtThread, shared: &Arc<Shared>, key: &str) {
                 let folders = mailbox::folders(&account.id);
                 let row = maildir::read_one(&path).and_then(|card| {
                     let folder = folders.iter().find(|f| f.name == place.folder)?;
-                    let mut item = view::mail_item(&card, folder.role, false, &maildir::flags_of(&path), &trusted, tr());
+                    let mut item = view::mail_item(&card, folder.role, false, &maildir::flags_of(&path), &trusted, &looked, tr());
                     item.key = path.display().to_string();
                     Some(Hit {
                         date: card.date.unwrap_or(0),

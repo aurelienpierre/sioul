@@ -1,0 +1,499 @@
+# Words Sioul looks for in French (docs/words.md): a list for each thing it recognises.
+# Read folded: capitals and accents do not matter. Whole words, except where a list says otherwise.
+# Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
+
+language = "fr"
+checked = "2026-10-08"
+
+
+# One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
+[codes]
+# Names a code: a code right beside it is taken.
+code = [
+    "verification code", "confirmation code", "authentication code", "login code", "passcode", "otp", "validation code",
+    "activation code", "2fa", "verification pin", "code de verification", "code de securite", "code de confirmation",
+    "code d'authentification", "code d'acces", "code de connexion", "code d'activation", "code a usage unique",
+    "mot de passe a usage unique", "code temporaire", "code de validation", "code d'identification",
+    "double authentification", "authentification a deux facteurs",
+]
+# Points at a code without naming it ("enter the code below"): counts only in a message about signing in.
+pointing = [
+    "code suivant", "ce code", "code ci-dessous", "code ci dessous", "saisissez le code", "entrez le code",
+    "utilisez le code", "indiquez le code", "renseignez le code", "copiez le code",
+]
+# Says the message is about signing in or checking who you are, somewhere in it.
+sign_in = [
+    "login", "verification", "authentication", "connexion", "connecter", "connectez", "identifier", "identification",
+    "verifier", "confirmer", "identite", "authentifier", "authentification", "inscription",
+]
+# Words between "your" and "code" that make it no secret of yours ("your zip code").
+not_yours = [
+    "promo", "coupon", "gift", "voucher", "client", "swift", "bic", "iban", "wifi", "wi-fi", "promotionnel", "cadeau",
+    "avantage", "reduction", "parrainage", "suivi", "colis", "commande", "adherent", "membre", "produit", "article",
+    "erreur", "vestimentaire", "porte", "portail", "immeuble", "casier", "banque", "guichet", "naf", "ape", "insee",
+    "fiscal", "tva", "pays", "region", "departement", "commune",
+]
+# A shop's code: the message hands over no secret.
+promo = ["promo", "coupon", "voucher", "gift code", "reduction", "bon d'achat", "code avantage", "code cadeau"]
+# Hands a password over.
+password = [
+    "mot de passe provisoire", "mot de passe temporaire", "votre mot de passe est", "votre nouveau mot de passe est",
+    "votre nouveau mot de passe :", "votre nouveau mot de passe:", "voici votre mot de passe",
+    "voici votre nouveau mot de passe", "mot de passe initial", "voici vos identifiants", "vos identifiants sont",
+    "vos identifiants :", "vos identifiants:", "vos identifiants de connexion sont", "vos identifiants de connexion :",
+]
+# A password reset.
+reset = [
+    "reinitialiser votre mot de passe", "reinitialisation de votre mot de passe", "reinitialisation du mot de passe",
+    "mot de passe oublie", "lien de reinitialisation", "definir votre mot de passe", "definissez votre mot de passe",
+    "choisir un nouveau mot de passe", "choisissez un nouveau mot de passe", "creer votre mot de passe",
+    "creez votre mot de passe",
+]
+# A link that signs you in.
+link = [
+    "lien de connexion", "lien magique", "se connecter avec ce lien", "cliquez pour vous connecter",
+    "lien pour vous connecter", "lien pour se connecter", "confirmez votre connexion", "confirmer votre connexion",
+    "validez votre connexion", "valider votre connexion",
+]
+# What a sign-in link's message is about, in its subject or first lines.
+intents = ["login", "connexion", "vous connecter", "se connecter", "connectez-vous"]
+# What may be said to expire or to work once: the link, its button, the code.
+link_words = ["code", "lien", "bouton"]
+# Says something expires or is valid.
+validity = ["expire", "expiration", "valable", "valide", "expirera", "expirer"]
+# Lines that answer a request of yours ("if you did not ask for this"); a newsletter does not write them.
+request = [
+    "si vous n'avez pas demande", "si vous n'etes pas a l'origine", "si ce n'est pas vous", "si vous n'avez pas essaye",
+    "si vous n'avez pas fait cette demande", "ignorez ce message", "ignorer ce message", "ignorez cet e-mail",
+    "ignorez cet email", "ignorer cet e-mail", "ignorer cet email", "ignorez ce mail", "changez-le", "modifiez-le",
+    "a votre premiere connexion", "lors de votre premiere connexion", "des votre premiere connexion",
+]
+# An address or an account to confirm.
+confirm = [
+    "confirmez votre adresse", "confirmer votre adresse", "verifiez votre adresse", "confirmez votre e-mail",
+    "confirmer votre e-mail", "confirmez votre email", "confirmer votre email", "verifiez votre e-mail",
+    "verifier votre e-mail", "verifiez votre email", "verifier votre email", "verifier votre adresse",
+    "validez votre adresse", "valider votre adresse", "activez votre compte", "activer votre compte",
+    "confirmez votre compte", "confirmer votre compte", "confirmez votre inscription", "confirmer votre inscription",
+]
+# Grammar: hands a code over, the code right after ("your code: K7Q-2M9").
+giving = ["votre code", "ton code"]
+# Grammar: whose code, a few words before "code" ("your Instagram code").
+owners = ["votre", "ton"]
+# Grammar: says a code is yours, right after it ("123456 is your code").
+owned_after = ["est votre", "est ton"]
+# Grammar: may stand between a phrase and its code ("is").
+linking = ["est"]
+# A link or a code that works once.
+once = ["une seule fois", "usage unique", "qu'une fois"]
+# Words before a validity ("valid 10 minutes").
+expiry_context = ["valable", "expire", "pendant", "dans"]
+# The word for a code itself.
+noun = ["code"]
+# Starts of a unit of minutes, after a number.
+unit_minutes = ["min"]
+# Starts of a unit of hours, after a number.
+unit_hours = ["heure"]
+# Starts of a unit of days, after a number.
+unit_days = ["jour"]
+
+# Other apps' notifications that hand a code over or ask for an approval now (appnotes.rs): never held.
+[approvals]
+# Asks you to approve a sign-in, a payment or an operation now.
+phrases = [
+    "confirmez qu'il s'agit de vous", "confirmez votre identite", "demande de connexion", "tentative de connexion",
+    "nouvelle connexion", "validez votre connexion", "valider votre connexion", "validez la connexion",
+    "validez votre paiement", "valider votre paiement", "validez le paiement", "validez votre achat", "validez l'achat",
+    "validez votre operation", "valider votre operation", "validez l'operation", "validez cette operation",
+    "confirmez votre paiement", "confirmez le paiement", "confirmez votre operation", "confirmez l'operation",
+    "authentifiez", "authentification forte", "authentification requise", "approuvez la connexion",
+    "approuver la connexion", "approuvez le paiement",
+]
+# "Is this you?": counts only beside what it is about (`asked_about`).
+asks = ["est-ce bien vous", "c'est bien vous", "est-ce vous", "c'etait vous"]
+# What such a question is about.
+asked_about = ["login", "transaction", "connexion", "connecter", "nouvel appareil", "paiement", "achat", "operation", "compte"]
+# Words in the name of a notification channel for codes or sign-ins.
+channels = [
+    "otp", "2fa", "verification", "verification code", "authentication", "authentification", "login", "connexion",
+    "connexions",
+]
+
+# Amounts in mail and letters (money.rs).
+[money]
+# Words after which the amount a message is about comes.
+keywords = ["total", "montant", "vous avez recu", "paiement de", "versement de", "somme de", "a ete preleve", "prelevement de"]
+# Sentences that state a payment; the amount follows them.
+stated = [
+    "vous avez recu un paiement de", "vous avez paye", "vous avez envoye", "paiement de", "montant de", "versement de",
+    "virement de", "remboursement de",
+]
+# Labels of the line that holds what was paid.
+totals = ["total", "montant total", "total ttc", "total paye", "montant paye", "montant debite"]
+# Lines of a legal footer: their amounts (a share capital) are never a payment.
+legal = ["capital", "siege social", "societe en commandite"]
+# Labels of a subtotal, which is not the total.
+subtotal = ["total partiel"]
+
+# Mail about money: a payment made or received, a bill, an order, a refund (payments.rs).
+[payments]
+# Subjects about money that are not a payment.
+not_payments = [
+    "black friday", "paiement en plusieurs fois", "mandat", "expediee", "expedie", "a ete livree", "en cours de livraison",
+]
+# Money given back.
+refund = ["remboursement", "vous a rembourse"]
+# A payment you made.
+paid = [
+    "vous avez paye", "paiement effectue", "votre paiement a bien ete", "reglement de votre facture",
+    "prelevement effectue", "a ete preleve", "avons preleve", "confirmation de paiement", "paiement accepte",
+    "merci pour votre paiement", "abonnement a ete renouvele",
+]
+# Money that came in.
+received = [
+    "vous avez recu un paiement", "paiement recu", "vous avez recu un virement", "vous avez recu un don", "nouveau don",
+    "virement recu",
+]
+# A merchant's order confirmation.
+order = [
+    "commande confirmee", "commande est validee", "commande validee", "confirmation de commande",
+    "merci pour votre commande", "merci pour votre achat",
+]
+# A bill to pay.
+bill = [
+    "votre facture", "facture disponible", "nouvelle facture", "avis d'echeance", "montant a regler", "a regler avant",
+    "a payer avant", "sera preleve", "prochain prelevement", "sera debite",
+]
+# The label above who was paid, in a receipt.
+to = ["beneficiaire", "marchand", "vendeur"]
+# The label above who paid, in a receipt.
+from = ["envoye par"]
+# Words before the party's name, after an amount ("de Jean").
+leads = ["de la part de", "de", "à", "chez"]
+# A subject naming an order…
+order_words = ["commande"]
+# …and saying it is confirmed.
+confirmed_words = ["confirmee", "validee"]
+
+# Bank and payment-processor exports (bank.rs).
+[bank]
+# Words that name nothing in a movement's label.
+filler = [
+    "via", "les", "des", "une", "pour", "par", "sur", "aux", "avec", "dans", "est", "pas", "que", "qui", "vos", "votre",
+    "nos", "notre", "son", "ses", "leur", "chez", "sans", "entre", "prlv", "sepa", "vir", "virement", "prelevement",
+    "paiement", "carte", "achat", "retrait", "debit", "credit", "ref", "reference",
+]
+# Statuses of rows left out: pending, refused, cancelled.
+skipped = ["en attente", "refuse", "annule", "echoue"]
+# A balance impact that says the row moves no money.
+memo = ["memo"]
+
+# A CSV export's columns, found by their names (a name starting with one of these; `name`, `net`, `kind`, `status`, `impact`, `balance`, `time`, `currency` and `id` are exact names).
+[bank.columns]
+date = ["date", "cree"]
+label = ["libelle", "label", "description", "intitule", "detail", "operation", "nature"]
+name = ["nom"]
+net = ["net"]
+amount = ["montant", "somme"]
+debit = ["debit"]
+credit = ["credit"]
+kind = ["type"]
+status = ["status", "etat", "statut"]
+impact = ["impact sur le solde"]
+balance = ["balance", "solde"]
+time = ["heure"]
+currency = ["devise"]
+id = ["id", "transaction id", "numero de transaction", "id de transaction"]
+
+# Lines above a CSV export's header: its balance, its day, its account.
+[bank.above]
+balance = ["solde"]
+date = ["date"]
+account = ["numero", "compte"]
+
+# Money moved between your own accounts (accounts.rs).
+[accounts]
+# What a payment processor writes for money moved to or from a bank.
+between = [
+    "virement standard", "virement bancaire", "virement vers", "retrait", "approvisionnement", "transfert vers",
+    "versement vers",
+]
+
+# Paper letters, read by OCR (letters.rs).
+[letters]
+# Sent registered…
+registered = ["recommande", "lettre recommandee", "lrar"]
+# …with an acknowledgment of receipt.
+registered_receipt = ["accuse de reception", "avec ar", "lrar", "avis de reception"]
+# A line that asks for an amount.
+asks = ["a payer", "a regler", "reste du", "montant du", "somme due", "montant total", "total a payer", "somme de", "montant de"]
+# Ordinal suffixes of a day ("1er", "1st").
+ordinals = ["er"]
+# Words before a date by which something is asked.
+deadline = ["avant le", "au plus tard le", "date limite", "echeance", "jusqu au", "payable avant"]
+# Words before a delay ("dans un délai de deux mois").
+delay_words = ["delai"]
+# The word between a delay's word and its number.
+delay_of = ["de"]
+# Units of a delay.
+unit_months = ["mois"]
+unit_days = ["jours", "jour"]
+unit_weeks = ["semaines", "semaine"]
+# Says a delay counts from the letter's own date.
+from_letter = ["date du present", "date de la presente"]
+# The word before an appointment's time.
+at = ["a"]
+# Labels of your number with them.
+references = [
+    "numero allocataire", "numero fiscal", "numero de dossier", "n dossier", "reference", "ref",
+    "numero de securite sociale", "numero client",
+]
+
+# What a letter is, the gravest first (the order is the code's).
+[letters.kinds]
+formal_notice = ["mise en demeure"]
+tax_notice = ["avis d impot", "avis d imposition", "impot sur le revenu", "taxe fonciere", "taxe d habitation"]
+decision = ["voies et delais de recours", "delais et voies de recours", "voies de recours", "decision"]
+decision_appeal = ["recours", "contester"]
+reminder = ["relance", "rappel", "dernier avis", "second avis"]
+appointment = ["convocation", "vous etes convoque", "vous etes convoquee", "rendez vous"]
+bill = ["facture", "avis des sommes a payer", "titre executoire", "montant a payer", "somme a payer"]
+acknowledgment = ["accuse de reception", "nous avons bien recu"]
+attestation = ["attestation", "certificat"]
+contract = ["contrat", "avenant", "conditions generales"]
+
+# Month names in dates, by month number.
+[letters.months]
+1 = ["janvier", "janv"]
+2 = ["fevrier", "fevr", "fev"]
+3 = ["mars"]
+4 = ["avril", "avr"]
+5 = ["mai"]
+6 = ["juin"]
+7 = ["juillet", "juil"]
+8 = ["aout"]
+9 = ["septembre", "sept"]
+10 = ["octobre", "oct"]
+11 = ["novembre", "nov"]
+12 = ["decembre", "dec"]
+
+# Numbers written as words, in delays.
+[letters.numbers]
+1 = ["un", "une"]
+2 = ["deux"]
+3 = ["trois"]
+4 = ["quatre"]
+5 = ["cinq"]
+6 = ["six"]
+8 = ["huit"]
+10 = ["dix"]
+15 = ["quinze"]
+30 = ["trente"]
+
+# Delays said in words, by their days.
+[letters.fixed_delays]
+8 = ["sous huitaine"]
+15 = ["sous quinzaine"]
+
+# The papers wallet: the kind a file's name or a mail's subject suggests (papers.rs).
+
+[papers.kinds]
+passport = ["passeport"]
+identity = ["carte nationale", "carte d identite", "cni"]
+residence = ["titre de sejour", "carte de sejour"]
+driving = ["permis de conduire"]
+health_cover = ["complementaire sante solidaire", "css", "mutuelle"]
+health_card = ["carte vitale", "attestation de droits"]
+tax_notice = ["avis d impot", "avis d imposition", "avis impot"]
+rent_receipt = ["quittance"]
+bank_details = ["rib", "releve d identite bancaire", "iban"]
+payslip = ["bulletin de paie", "bulletin de salaire", "fiche de paie"]
+warranty = ["garantie", "facture d achat"]
+insurance = ["assurance"]
+certificate = ["attestation", "certificat"]
+
+# Contracts and subscriptions: the kind a label, a subject or a sender suggests (contracts.rs).
+
+[contracts.kinds]
+rent = ["loyer", "bail"]
+energy = ["electricite", "gaz"]
+health = ["mutuelle", "complementaire sante", "prevoyance"]
+insurance = ["assurance"]
+telecom = ["internet", "box", "mobile", "forfait"]
+hosting = ["hebergement", "domaine"]
+subscription = ["abonnement"]
+bank = ["banque", "carte", "frais bancaires"]
+
+# Senders who borrow a name (lookalike.rs).
+[brands]
+# Words a fake "your provider" name wraps a domain in.
+service_words = [
+    "admin", "administrateur", "support", "mail", "email", "webmail", "service", "services", "equipe", "securite",
+    "compte", "notification", "notifications", "noreply", "no", "reply", "helpdesk", "it", "serveur", "postmaster",
+    "systeme", "info", "infos", "alerte", "facturation", "domaine", "hebergement", "on", "de", "du", "des", "pour", "le",
+    "la", "les", "votre", "via",
+]
+
+# Voicemail an operator sends by mail (voicemail.rs).
+[voicemail]
+# Says the mail is a voicemail.
+words = ["message vocal", "messages vocaux", "messagerie vocale", "repondeur", "nouveau message"]
+# Says the caller hid their number.
+hidden = ["numero masque", "numero prive", "numero inconnu", "appelant inconnu", "appel masque", "anonyme"]
+# Words before the caller's number (matched inside the text, spaces included).
+caller_leads = ["part du", "part de", "appelant", "appele par", "numero :", "numero:", "de :", "de:", " du ", " de "]
+# Words before your own line's number.
+own_line = ["votre ligne", "votre numero", "sur la ligne"]
+# The word before a message's length.
+duration = ["duree", "longueur"]
+
+# The shield of a public address: its mail's tone and topic (shield.rs).
+[shield]
+# Threats and incitement: one is enough to set a message aside.
+threats = [
+    "suicide toi", "suicide-toi", "va crever", "creve", "va mourir", "je vais te retrouver", "je sais ou tu habites",
+    "tu vas le regretter", "tu vas regretter", "je vais te tuer", "je vais te defoncer", "on va te retrouver",
+]
+# Insults: aimed at someone, they make a message hostile.
+insults = [
+    "connard", "connasse", "conne", "salaud", "salope", "encule", "enfoire", "ordure", "pourriture", "cretin", "debile",
+    "abruti", "fdp", "fils de pute", "ta gueule", "ferme la", "ferme-la", "va te faire foutre", "va te faire voir",
+    "pauvre type", "pauvre con", "minable", "bouffon", "guignol", "escroc", "sale type", "degage", "tocard", "batard",
+    "raclure", "sous-merde",
+]
+# Swearing and contempt: rude, not hostile on their own.
+rude = [
+    "incompetent", "merde", "putain", "bordel", "stupide", "nul", "nulle", "naze", "pourri", "ridicule", "honte",
+    "lamentable", "foutage de gueule", "se fout de",
+]
+# Words saying the message speaks to you.
+you = ["tu", "toi", "te", "t'", "ton", "ta", "tes", "vous", "votre", "vos"]
+
+# Each topic's words: work comes first.
+[shield.topics]
+work = [
+    "freelance", "consulting", "consultant", "mission", "budget", "collaboration", "interview", "poste", "offre", "emploi",
+    "recrutement", "recruteur", "contrat", "prestation", "devis", "tarif", "tjm", "proposition", "partenariat",
+    "opportunite", "entretien", "salaire", "projet", "collaborer",
+]
+support = [
+    "bug", "crash", "version", "plugin", "erreur", "probleme", "aide", "comment faire", "plantage", "plante", "installer",
+    "mise a jour", "fonctionnalite",
+]
+press = ["article", "podcast", "magazine", "media", "reportage", "journaliste", "presse", "medias", "chronique"]
+thanks = ["merci", "reconnaissant", "reconnaissante", "bravo", "felicitations"]
+donation = ["donation", "sponsor", "don", "soutien financier", "faire un don"]
+
+# Words of your tasks' categories.
+[tasks]
+# Categories of movement and exercise, left out of Free time's offers when movement is off (pause.rs).
+movement = [
+    "sport", "sports", "exercice", "mouvement", "marche", "course", "yoga", "natation", "vélo", "randonnée", "gym",
+    "fitness", "dance", "danse",
+]
+# Categories that stay in view in quiet time, when [quiet] personal is unset.
+personal = ["perso", "famille", "amis", "loisirs", "santé"]
+# Categories that are work, never in view in quiet time, when [quiet] work is unset.
+work = ["travail", "pro", "client", "boulot"]
+# Categories that are leisure, among the personal ones (areas.rs).
+leisure = ["famille", "amis", "loisirs"]
+# Categories that are yours, outside work, before your settings are read (areas.rs).
+usual_personal = ["perso", "santé"]
+# A notes folder of these names holds the Pause's sounds.
+sounds_folders = ["sons"]
+
+# Quick capture: one typed line makes a task (capture.rs).
+[capture]
+# Today.
+today = ["aujourd'hui", "auj"]
+# Tomorrow.
+tomorrow = ["demain"]
+# Next week.
+next_week = ["semaine prochaine"]
+# "in 3 days".
+in = ["dans"]
+# Days, after "in" and a number.
+unit_days = ["jour", "jours"]
+# Weeks, after "in" and a number.
+unit_weeks = ["semaine", "semaines"]
+# Ordinal suffixes of a day.
+ordinals = ["er"]
+
+# Day names.
+[capture.weekdays]
+monday = ["lundi", "lun"]
+tuesday = ["mardi"]
+wednesday = ["mercredi", "mer"]
+thursday = ["jeudi", "jeu"]
+friday = ["vendredi", "ven"]
+saturday = ["samedi", "sam"]
+sunday = ["dimanche", "dim"]
+
+# Month names, by month number.
+[capture.months]
+1 = ["janvier", "janv"]
+2 = ["février", "fév", "févr"]
+3 = ["mars"]
+4 = ["avril", "avr"]
+5 = ["mai"]
+6 = ["juin"]
+7 = ["juillet", "juil"]
+8 = ["août"]
+9 = ["sept", "septembre"]
+10 = ["octobre"]
+11 = ["novembre"]
+12 = ["dec", "décembre"]
+
+# Words after "@" that name a task's kind.
+[capture.kind_words]
+call = ["appel", "appeler", "telephone", "tel"]
+write = ["mail", "email", "ecrire", "courriel", "lettre"]
+online = ["web", "enligne", "en-ligne", "formulaire", "site"]
+out = ["dehors", "course", "courses", "sortie"]
+read = ["lire", "lecture"]
+think = ["reflechir", "decider"]
+make = ["faire", "fabriquer"]
+
+# A first word that says a task's kind plainly.
+[capture.kind_verbs]
+call = ["appeler", "rappeler", "telephoner"]
+write = ["email", "mail", "reply", "ecrire", "envoyer", "repondre", "relancer"]
+online = ["remplir", "payer", "reserver", "commander", "declarer", "simuler", "renouveler"]
+out = ["aller", "acheter", "recuperer", "passer"]
+read = ["lire", "relire"]
+think = ["reflechir", "decider", "choisir"]
+make = ["fabriquer", "reparer", "cuisiner", "nettoyer", "ranger"]
+
+# The spam filter's tokenizer (spam/tokenize.rs). A table keeps the words it was trained with: a change here counts from the next training.
+[spam]
+# Month names in dates, which become _DATE_.
+months = [
+    "dec", "fev", "avr", "mai", "jui", "aou", "janvier", "fevrier", "mars", "avril", "juin", "juillet", "aout",
+    "septembre", "octobre", "novembre", "decembre",
+]
+# Key names in keyboard shortcuts, which become _SHORTCUT_.
+keys = [
+    "tab", "ctrl", "shift", "maj", "alt", "altgr", "cmd", "clic", "del", "suppr", "pageup", "pagedown", "fn", "numlock",
+    "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+]
+# Elided articles and pronouns split off a word and dropped ("l'information").
+elisions = ["l", "d", "j", "m", "n", "s", "t", "c", "qu", "lorsqu", "puisqu", "jusqu", "quelqu"]
+# Number words, which become _NUMBER_; not "un", mostly an article (a stop word), nor "neuf" ("new").
+number_words = ["zero", "six", "deux", "trois", "quatre", "cinq", "sept", "huit", "dix", "onze", "douze"]
+# Words dropped.
+stop_words = [
+    "ca", "au", "aux", "que", "ce", "cette", "ces", "cettes", "cela", "ceci", "le", "la", "les", "de", "du", "un", "une",
+    "des", "toi", "moi", "eux", "te", "qu", "mon", "ma", "mes", "ta", "tes", "sa", "ses", "leur", "leurs", "votre", "vos",
+    "lui", "est", "la_bas", "ici", "bien", "parfois", "certain", "certains", "certaine", "certaines", "quelque",
+    "quelques", "nombreux", "nombreuses", "peu", "plusieurs", "beaucoup", "tout", "toute", "tous", "toutes", "aucun",
+    "aucune", "comme", "si", "en", "dans", "or", "ou", "et", "alors", "parce", "seulement", "ni", "car", "tres", "donc",
+    "pas", "mais", "meme", "aussi", "avec", "je", "tu", "il", "elle", "nous", "vous", "ils", "elles", "pour", "sur", "par",
+    "se", "ai", "suis", "ci_dessus", "ci_dessous", "lequel", "duquel", "auquel", "laquelle", "lesquels", "lesquelles",
+    "auxquels", "auxquelles", "desquels", "desquelles", "desquel", "quelquefois", "toujours", "est_a_dire", "http",
+    "https", "oh", "ah", "ha", "heh", "re", "eh", "huh", "uh", "wow", "ow", "dang", "um", "yay", "ugh", "hehe", "hehehe",
+]
+
+# Reading scans (sioul-sync's ocr.rs).
+[ocr]
+# Tesseract's names of this language's models.
+tesseract = ["fra"]

@@ -280,22 +280,22 @@ fn file_name(name: Option<&str>, index: usize) -> String {
     if device { format!("_{clean}") } else { clean.to_string() }
 }
 
-/// Lines that open a forwarded or answered message, before its headers.
-const OPENINGS: &[&str] = &[
-    "---------- forwarded message ---------",
-    "---------- message transféré ---------",
-    "-----original message-----",
-    "-----message d'origine-----",
-    "begin forwarded message:",
-    "début du message réexpédié :",
-    "début du message transféré :",
-];
-
-/// Header names a repeated header block uses, French and English.
-const HEADER_NAMES: &[&str] = &["from", "de", "sent", "envoyé", "date", "to", "à", "cc", "subject", "objet", "reply-to", "répondre à"];
-
-/// Cuts a message's text into parts (see `Part`).
+/// Cuts a message's text into parts (see `Part`), its quoted history read
+/// with the words in use (`words::current`).
 pub fn parts(text: &str) -> Vec<Part> {
+    parts_with(&crate::words::current().quotes, text)
+}
+
+/// Whether one of a list's words, folded, is what `test` asks of a folded text.
+fn any_folded(list: &[String], test: impl Fn(&str) -> bool) -> bool {
+    list.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && test(&w))
+}
+
+/// Cuts a message's text into parts with these words (`words::Quotes`): the
+/// lines that open a forwarded or answered message, the header names of a
+/// repeated header block, the endings of an attribution, in any language
+/// your correspondents' mail programs write them.
+pub fn parts_with(q: &crate::words::Quotes, text: &str) -> Vec<Part> {
     let lines: Vec<&str> = text.lines().collect();
     let mut parts: Vec<Part> = Vec::new();
     let mut i = 0;
@@ -304,18 +304,19 @@ pub fn parts(text: &str) -> Vec<Part> {
     while i < lines.len() {
         let line = lines[i];
         let lower = line.trim().to_lowercase();
-        if OPENINGS.iter().any(|o| lower.starts_with(o)) || is_separator(&lower) && header_block_at(&lines, i + 1).is_some() {
+        let folded = crate::words::folded(line);
+        if any_folded(&q.openings, |o| folded.starts_with(o)) || is_separator(&lower) && header_block_at(q, &lines, i + 1).is_some() {
             i += 1;
             continue;
         }
-        if let Some((fields, next)) = header_block_at(&lines, i) {
+        if let Some((fields, next)) = header_block_at(q, &lines, i) {
             parts.push(Part::Headers { fields });
             quoted_below = quoted_below.saturating_add(1);
             i = next;
             continue;
         }
-        if is_attribution(&lines, i) {
-            take_previous_line_into_attribution(&mut parts, line);
+        if is_attribution(q, &lines, i) {
+            take_previous_line_into_attribution(q, &mut parts, line);
             i += 1;
             continue;
         }
@@ -395,42 +396,43 @@ fn is_separator(lower: &str) -> bool {
 }
 
 /// "Name: value", with a header name, possibly with a space before the colon.
-fn header_field(line: &str) -> Option<(String, String)> {
+fn header_field(q: &crate::words::Quotes, line: &str) -> Option<(String, String)> {
     let (name, value) = line.split_once(':')?;
-    let key = name.trim().trim_start_matches(['*', '>', ' ']).trim().to_lowercase();
-    HEADER_NAMES.contains(&key.as_str()).then(|| (name.trim().trim_matches('*').trim().to_string(), value.trim().to_string()))
+    let key = crate::words::folded(name.trim().trim_start_matches(['*', '>', ' ']));
+    any_folded(&q.header_names, |n| n == key).then(|| (name.trim().trim_matches('*').trim().to_string(), value.trim().to_string()))
 }
 
 /// A block of repeated headers starting at `i`: at least a sender and a subject
 /// or a date among consecutive "Name: value" lines. Returns them and the line after.
-fn header_block_at(lines: &[&str], i: usize) -> Option<(Vec<(String, String)>, usize)> {
-    let first = header_field(lines.get(i)?)?;
-    if !["from", "de"].contains(&first.0.to_lowercase().as_str()) {
+fn header_block_at(q: &crate::words::Quotes, lines: &[&str], i: usize) -> Option<(Vec<(String, String)>, usize)> {
+    let first = header_field(q, lines.get(i)?)?;
+    let first_name = crate::words::folded(&first.0);
+    if !any_folded(&q.from_names, |n| n == first_name) {
         return None;
     }
     let mut fields = vec![first];
     let mut j = i + 1;
-    while let Some(field) = lines.get(j).and_then(|l| header_field(l)) {
+    while let Some(field) = lines.get(j).and_then(|l| header_field(q, l)) {
         fields.push(field);
         j += 1;
     }
-    let names: Vec<String> = fields.iter().map(|(n, _)| n.to_lowercase()).collect();
-    let enough = names.iter().any(|n| ["subject", "objet", "date", "sent", "envoyé"].contains(&n.as_str()));
+    let names: Vec<String> = fields.iter().map(|(n, _)| crate::words::folded(n)).collect();
+    let enough = names.iter().any(|name| any_folded(&q.enough_names, |n| n == name));
     (fields.len() >= 2 && enough).then_some((fields, j))
 }
 
 /// "On Thu, 1 Oct 2026, Jean wrote:" or "Le jeu. 1 oct. 2026, Jean a écrit :",
 /// right before a quote.
-fn is_attribution(lines: &[&str], i: usize) -> bool {
-    let line = lines[i].trim_end();
-    let ends = ["wrote:", "a écrit :", "a écrit:", "a écrit\u{a0}:", "a écrit\u{202f}:", "schrieb:"].iter().any(|e| line.ends_with(e));
+fn is_attribution(q: &crate::words::Quotes, lines: &[&str], i: usize) -> bool {
+    let line = crate::words::folded(lines[i]);
+    let ends = any_folded(&q.wrote, |e| line.ends_with(e));
     let next = lines[i + 1..].iter().find(|l| !l.trim().is_empty());
     ends && next.is_some_and(|l| quote_depth(l).0 > 0)
 }
 
 /// Gmail cuts long attributions in two: "Le jeu. 1 oct. 2026 à 12:03, Jean <" and
 /// "jean@example.org> a écrit :". The first half is taken back from the text.
-fn take_previous_line_into_attribution(parts: &mut Vec<Part>, line: &str) {
+fn take_previous_line_into_attribution(q: &crate::words::Quotes, parts: &mut Vec<Part>, line: &str) {
     let mut attribution = line.trim().to_string();
     if let Some(Part::Text { text } | Part::Signature { text }) = parts.last_mut() {
         let trimmed = text.trim_end_matches('\n');
@@ -438,7 +440,8 @@ fn take_previous_line_into_attribution(parts: &mut Vec<Part>, line: &str) {
             Some((before, last)) => (before.to_string(), last.to_string()),
             None => (String::new(), trimmed.to_string()),
         };
-        if (last.starts_with("Le ") || last.starts_with("On ")) && !last.trim_end().ends_with('.') {
+        let starts = q.attribution_starts.iter().map(|s| s.trim()).any(|s| !s.is_empty() && last.starts_with(&format!("{s} ")));
+        if starts && !last.trim_end().ends_with('.') {
             attribution = format!("{} {attribution}", last.trim());
             *text = before;
         }
@@ -484,6 +487,16 @@ mod tests {
         assert_eq!(fields.len(), 4);
         let forward = "Pour info.\n\n---------- Forwarded message ---------\nFrom: Shop <shop@example.org>\nDate: Thu, 1 Oct 2026\nSubject: Order\nTo: <jean@example.org>\n\nYour order is confirmed.\n";
         assert_eq!(kinds(&parts(forward)), ["text", "headers", "quote1"]);
+        // A German mail program's forward, once its words are added.
+        let german = "Siehe unten.\n\n---------- Weitergeleitete Nachricht ---------\nVon: Shop <shop@example.org>\nDatum: Do., 1. Okt. 2026\nBetreff: Bestellung\nAn: <jean@example.org>\n\nIhre Bestellung ist bestätigt.\n";
+        let builtin = crate::words::Words::builtin();
+        assert_eq!(kinds(&parts_with(&builtin.quotes, german)), ["text"]);
+        let mut q = builtin.quotes.clone();
+        q.openings.push("---------- Weitergeleitete Nachricht ---------".into());
+        q.header_names.extend(["Von", "Datum", "Betreff", "An"].map(String::from));
+        q.from_names.push("Von".into());
+        q.enough_names.extend(["Betreff", "Datum"].map(String::from));
+        assert_eq!(kinds(&parts_with(&q, german)), ["text", "headers", "quote1"]);
     }
 
     #[test]

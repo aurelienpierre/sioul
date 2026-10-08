@@ -203,6 +203,7 @@ fn fold(model: &fasttext::FastText, scalars: &[f32], sigmoid: Platt, options: &O
             test_spam: split.test_spam,
             metrics: BTreeMap::new(),
             device: sioul_sync::lease::host_name(),
+            lexicon: Some(options.lexicon.clone()),
         },
     }
 }
@@ -288,7 +289,7 @@ pub(crate) fn train(dirs: &Dirs, read: train::Read, options: &Options, word_ngra
 
     // The table in place, on the test messages it never learned from.
     let test_words: Vec<Vec<String>> = test_ids.iter().map(|&i| words[i].clone()).collect();
-    let (current, compared, replaced, reason) = train::against_current(dirs, &test_ids, &test_words, &messages, &new_scored, options);
+    let (current, compared, replaced, reason) = train::against_current(dirs, &test_ids, &test_words, &messages, &new_scored, options)?;
     check()?;
 
     // Kept: calibrated and learned again from every message, the newest month included, and written.

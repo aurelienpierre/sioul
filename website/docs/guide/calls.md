@@ -38,7 +38,7 @@ When you expect a call. On the phone's notification "Sioul keeps your devices in
 
 "While you slept, a number not in your contacts called at 09:30." Each call waits until its caller's Calls row lets them reach you, or until your work and admin time for a row that never rings; never counted, no badge, never a notification. Under it: **Text back**, **Call back** and **Seen**; its **⋮** (or a long press, a right click, the Menu key) holds **Add to contacts**, **Block**, **How they reach you…** and **Why?**. When the same number called again and that call rang, the line says so: you may have spoken already. Sioul cannot see your voicemail, so it says: "They may have left a message." The phone's own call history lists every declined call too, with Sioul's name.
 
-With Free, set your voicemail to mail you each message with its sound (your subscriber area: Messagerie vocale ▸ Notification, with the audio file): the line then says "They left a message (0:42)." with **Listen**. The mail stays in your mail.
+If your operator can mail you each message with its sound (Free can: your subscriber area, Messagerie vocale ▸ Notification, with the audio file), name the domain its mail comes from in Settings ▸ Words ▸ **Voicemail by mail** ([Settings](settings.md#words)): the line then says "They left a message (0:42)." with **Listen**. The mail stays in your mail.
 
 ### On your computers {#on-your-computers}
 

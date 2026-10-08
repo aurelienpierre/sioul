@@ -449,17 +449,11 @@ pub fn today_level(overrides: &Overrides, today: Date, weather: crate::today::We
 
 // ---------------------------------------------------------------- what is offered
 
-/// Categories of movement and exercise, in English and French: left out of
-/// Free time's offers when movement is off (GP8).
-pub const MOVEMENT: &[&str] = &[
-    "sport", "sports", "exercise", "exercice", "movement", "mouvement", "walk", "marche", "run", "running", "course", "yoga", "swim", "natation", "bike", "vélo", "cycling", "hike", "randonnée", "gym", "fitness", "dance", "danse",
-];
-
-/// Whether a task is movement or exercise, by its categories.
+/// Whether a task is movement or exercise, by its categories (`words.tasks.movement`,
+/// the words in use: sport, walk, yoga…): left out of Free time's offers when
+/// movement is off (GP8).
 pub fn is_movement(task: &crate::tasks::Task) -> bool {
-    let fold = |s: &str| crate::text::fold(s.trim()).into_iter().collect::<String>();
-    let words: Vec<String> = MOVEMENT.iter().map(|w| fold(w)).collect();
-    task.categories.iter().any(|c| words.contains(&fold(c)))
+    crate::words::named_in(&task.categories, &crate::words::current().tasks.movement)
 }
 
 // ---------------------------------------------------------------- the screen

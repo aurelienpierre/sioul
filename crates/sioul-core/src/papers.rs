@@ -128,37 +128,40 @@ impl Kind {
         }
     }
 
-    /// The kind a file's name or a mail's subject suggests: "avis_impot_2026.pdf" → a tax notice.
-    pub fn guess(text: &str) -> Option<Kind> {
+    /// The kind a file's name or a mail's subject suggests: "avis_impot_2026.pdf"
+    /// → a tax notice, by the words of each kind (`words::PaperKinds`), the
+    /// kinds tried in this order.
+    pub fn guess(words: &crate::words::Words, text: &str) -> Option<Kind> {
         // Folded, punctuation as spaces: "Avis_d'impôt-2026.pdf" → "avis d impot 2026 pdf".
-        let folded: String = crate::text::fold(text).into_iter().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");
-        let padded = format!(" {folded} ");
-        let has = |words: &[&str]| words.iter().any(|w| padded.contains(&format!(" {w} ")));
-        let kind = if has(&["passeport", "passport"]) {
+        let plain = |text: &str| crate::text::fold(text).into_iter().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");
+        let padded = format!(" {} ", plain(text));
+        let has = |list: &[String]| list.iter().map(|w| plain(w)).any(|w| !w.is_empty() && padded.contains(&format!(" {w} ")));
+        let k = &words.papers.kinds;
+        let kind = if has(&k.passport) {
             Kind::Passport
-        } else if has(&["carte nationale", "carte d identite", "cni", "identity card", "id card"]) {
+        } else if has(&k.identity) {
             Kind::Identity
-        } else if has(&["titre de sejour", "residence permit", "carte de sejour"]) {
+        } else if has(&k.residence) {
             Kind::Residence
-        } else if has(&["permis de conduire", "driving licence", "driver"]) {
+        } else if has(&k.driving) {
             Kind::Driving
-        } else if has(&["complementaire sante solidaire", "css", "mutuelle", "health cover"]) {
+        } else if has(&k.health_cover) {
             Kind::HealthCover
-        } else if has(&["carte vitale", "attestation de droits", "health card"]) {
+        } else if has(&k.health_card) {
             Kind::HealthCard
-        } else if has(&["avis d impot", "avis d imposition", "avis impot", "tax notice", "tax assessment"]) {
+        } else if has(&k.tax_notice) {
             Kind::TaxNotice
-        } else if has(&["quittance", "rent receipt"]) {
+        } else if has(&k.rent_receipt) {
             Kind::RentReceipt
-        } else if has(&["rib", "releve d identite bancaire", "bank details", "iban"]) {
+        } else if has(&k.bank_details) {
             Kind::BankDetails
-        } else if has(&["bulletin de paie", "bulletin de salaire", "fiche de paie", "payslip"]) {
+        } else if has(&k.payslip) {
             Kind::Payslip
-        } else if has(&["garantie", "warranty", "facture d achat"]) {
+        } else if has(&k.warranty) {
             Kind::Warranty
-        } else if has(&["assurance", "insurance"]) {
+        } else if has(&k.insurance) {
             Kind::Insurance
-        } else if has(&["attestation", "certificat", "certificate"]) {
+        } else if has(&k.certificate) {
             Kind::Certificate
         } else {
             return None;
@@ -397,15 +400,15 @@ mod tests {
 
     #[test]
     fn guessed_from_names() {
-        assert_eq!(Kind::guess("avis_impot_2026.pdf"), Some(Kind::TaxNotice));
-        assert_eq!(Kind::guess("Votre quittance de loyer — septembre"), Some(Kind::RentReceipt));
-        assert_eq!(Kind::guess("RIB Ma Banque.pdf"), Some(Kind::BankDetails));
-        assert_eq!(Kind::guess("Attestation de droits à l'Assurance Maladie"), Some(Kind::HealthCard));
-        assert_eq!(Kind::guess("Passeport.jpg"), Some(Kind::Passport));
-        assert_eq!(Kind::guess("holiday.jpg"), None);
-        assert_eq!(Kind::guess("Carte d'identité recto.jpg"), Some(Kind::Identity));
-        assert_eq!(Kind::guess("Votre avis d’impôt 2026 est disponible"), Some(Kind::TaxNotice));
-        assert_eq!(Kind::guess("cassis.pdf"), None, "a word inside another is not it: css");
+        assert_eq!(Kind::guess(&crate::words::Words::builtin(), "avis_impot_2026.pdf"), Some(Kind::TaxNotice));
+        assert_eq!(Kind::guess(&crate::words::Words::builtin(), "Votre quittance de loyer — septembre"), Some(Kind::RentReceipt));
+        assert_eq!(Kind::guess(&crate::words::Words::builtin(), "RIB Ma Banque.pdf"), Some(Kind::BankDetails));
+        assert_eq!(Kind::guess(&crate::words::Words::builtin(), "Attestation de droits à l'Assurance Maladie"), Some(Kind::HealthCard));
+        assert_eq!(Kind::guess(&crate::words::Words::builtin(), "Passeport.jpg"), Some(Kind::Passport));
+        assert_eq!(Kind::guess(&crate::words::Words::builtin(), "holiday.jpg"), None);
+        assert_eq!(Kind::guess(&crate::words::Words::builtin(), "Carte d'identité recto.jpg"), Some(Kind::Identity));
+        assert_eq!(Kind::guess(&crate::words::Words::builtin(), "Votre avis d’impôt 2026 est disponible"), Some(Kind::TaxNotice));
+        assert_eq!(Kind::guess(&crate::words::Words::builtin(), "cassis.pdf"), None, "a word inside another is not it: css");
     }
 
     #[test]

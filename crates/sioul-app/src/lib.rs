@@ -254,6 +254,12 @@ pub fn run() -> i32 {
     unsafe { cxx_qt_init_crate_sioul_app() };
     // Mail, keys, drafts and caches are kept in folders that are yours alone.
     sioul_core::config::make_private_dirs();
+    // A configuration from before the words Sioul looks for keeps reading
+    // French, English and France's names, said once in it; one made later is
+    // left to its interface's language (docs/words.md).
+    if let Err(e) = sioul_core::words::keep_first_once(&backend::config_path(), &sioul_core::config::data_dir().join("words-first-start")) {
+        eprintln!("Sioul: the words' first start: {e}");
+    }
     // A mail link clicked (`sioul-app mailto:…`), or Sioul started again:
     // handed to the Sioul of this profile already open, if one is, which
     // opens the draft or comes forward; else this one opens, and listens for

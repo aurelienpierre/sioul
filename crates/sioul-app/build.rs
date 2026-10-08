@@ -62,6 +62,7 @@ fn main() {
         "qml/AttentionGrid.qml",
         "qml/LevelMark.qml",
         "qml/ReachesTab.qml",
+        "qml/WordsTab.qml",
         "qml/PersonSheet.qml",
         "qml/PhoneSetup.qml",
         "qml/MoveDialog.qml",

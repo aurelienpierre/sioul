@@ -305,10 +305,10 @@ pub fn answer(original: &Path, kind: DraftKind, account: &str, own: &[String]) -
     draft.original = Some(original.to_path_buf());
     match kind {
         DraftKind::Forward => {
-            draft.subject = prefixed(&subject, "Fwd:", &["fwd:", "fw:", "tr:"]);
+            draft.subject = prefixed(&subject, "Fwd:", &crate::words::current().replies.forward);
         }
         DraftKind::Reply | DraftKind::ReplyAll => {
-            draft.subject = prefixed(&subject, "Re:", &["re:", "ré:", "aw:"]);
+            draft.subject = prefixed(&subject, "Re:", &crate::words::current().replies.reply);
             draft.in_reply_to = message_id;
             draft.references = references;
             draft.to = to_answer.into_iter().filter(|e| address_of(e).is_none_or(|a| !mine(&a))).collect();
@@ -346,10 +346,12 @@ pub fn phrase(name: &str) -> String {
     if name.contains(special) { format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\"")) } else { name.to_string() }
 }
 
-/// "Re: Subject", once only: "Re: Re: Re:" helps nobody.
-fn prefixed(subject: &str, prefix: &str, known: &[&str]) -> String {
-    let lower = subject.trim_start().to_lowercase();
-    if known.iter().any(|k| lower.starts_with(k)) { subject.trim().to_string() } else { format!("{prefix} {}", subject.trim()) }
+/// "Re: Subject", once only: "Re: Re: Re:" helps nobody. `known`: the
+/// prefixes your correspondents' mail programs write (`words::Replies`:
+/// "TR:", "AW:"…), capitals and accents aside.
+fn prefixed(subject: &str, prefix: &str, known: &[String]) -> String {
+    let lower = crate::words::folded(subject);
+    if known.iter().map(|k| crate::words::folded(k)).any(|k| !k.is_empty() && lower.starts_with(&k)) { subject.trim().to_string() } else { format!("{prefix} {}", subject.trim()) }
 }
 
 /// CommonMark with tables and strikethrough, as HTML. A line break typed in a
@@ -935,7 +937,11 @@ mod tests {
         assert_eq!(split_addresses("a@example.org; Jane <j@example.org>,"), vec!["a@example.org", "Jane <j@example.org>"]);
         assert_eq!(address_of("Jane <j@example.org>").as_deref(), Some("j@example.org"));
         assert_eq!(address_of("not an address"), None);
-        assert_eq!(prefixed("RE: x", "Re:", &["re:"]), "RE: x");
+        assert_eq!(prefixed("RE: x", "Re:", &["re:".to_string()]), "RE: x");
+        // A German forward, once its prefix is added; accents and capitals aside.
+        assert_eq!(prefixed("WG: Termin", "Fwd:", &crate::words::Words::builtin().replies.forward), "Fwd: WG: Termin");
+        assert_eq!(prefixed("WG: Termin", "Fwd:", &["wg:".to_string()]), "WG: Termin");
+        assert_eq!(prefixed("RÉ : x", "Re:", &["ré :".to_string()]), "RÉ : x");
         assert_eq!(mime_of("Bail.PDF"), "application/pdf");
     }
 

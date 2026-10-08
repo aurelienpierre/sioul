@@ -1,0 +1,463 @@
+# Words Sioul looks for in English (docs/words.md): a list for each thing it recognises.
+# Read folded: capitals and accents do not matter. Whole words, except where a list says otherwise.
+# Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
+
+language = "en"
+checked = "2026-10-08"
+
+
+# One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
+[codes]
+# Names a code: a code right beside it is taken.
+code = [
+    "verification code", "security code", "confirmation code", "authentication code", "login code", "log-in code",
+    "sign-in code", "sign in code", "signin code", "one-time code", "one time code", "one-time password",
+    "one time password", "single-use code", "passcode", "otp", "validation code", "access code", "activation code", "2fa",
+    "two-factor", "two factor", "2-step verification", "two-step verification", "verification pin", "one-time pin",
+]
+# Points at a code without naming it ("enter the code below"): counts only in a message about signing in.
+pointing = ["following code", "code below", "this code", "enter the code", "use the code", "copy the code", "type the code"]
+# Says the message is about signing in or checking who you are, somewhere in it.
+sign_in = [
+    "sign in", "sign-in", "signin", "log in", "log-in", "login", "sign into", "log into", "signing in", "logging in",
+    "sign up", "sign-up", "verify", "verification", "confirm", "identity", "authenticate", "authentication",
+    "identification",
+]
+# Words between "your" and "code" that make it no secret of yours ("your zip code").
+not_yours = [
+    "zip", "postal", "post", "postcode", "area", "country", "dialing", "dialling", "promo", "promotional", "promotion",
+    "discount", "coupon", "gift", "voucher", "referral", "invite", "invitation", "tracking", "booking", "reservation",
+    "order", "customer", "client", "member", "membership", "product", "item", "error", "source", "dress", "tax", "vat",
+    "bank", "sort", "swift", "bic", "iban", "routing", "door", "gate", "building", "lockbox", "wifi", "wi-fi", "parking",
+    "locker", "article", "region",
+]
+# A shop's code: the message hands over no secret.
+promo = ["promo", "discount", "coupon", "voucher", "gift code", "% off"]
+# Hands a password over.
+password = [
+    "temporary password", "initial password", "your password is", "your new password is", "your new password:",
+    "here is your password", "here is your new password", "here are your login details", "your login details are",
+    "your login details:",
+]
+# A password reset.
+reset = [
+    "reset your password", "password reset", "reset password", "reset link", "forgot your password", "forgotten password",
+    "choose a new password", "set a new password", "create a new password", "set your password", "create your password",
+]
+# A link that signs you in.
+link = [
+    "sign-in link", "sign in link", "signin link", "login link", "log in link", "log-in link", "magic link",
+    "connection link", "click to sign in", "click to log in", "link to sign in", "link to log in",
+    "sign in with this link", "log in with this link", "this link will sign you in", "this link will log you in",
+    "confirm your login", "confirm your sign-in", "confirm your sign in", "verify your login", "verify your sign-in",
+    "verify your sign in",
+]
+# What a sign-in link's message is about, in its subject or first lines.
+intents = ["sign in", "sign-in", "signin", "log in", "log-in", "login", "sign into", "log into", "signing in", "logging in"]
+# What may be said to expire or to work once: the link, its button, the code.
+link_words = ["link", "button", "code"]
+# Says something expires or is valid.
+validity = ["expire", "expires", "expired", "expiration", "valid"]
+# Lines that answer a request of yours ("if you did not ask for this"); a newsletter does not write them.
+request = [
+    "if you did not request", "if you didn't request", "if you did not ask", "if you didn't ask", "if this wasn't you",
+    "if this was not you", "if it wasn't you", "if you did not try", "if you didn't try",
+    "if you did not make this request", "if you didn't make this request", "you can safely ignore", "you can ignore this",
+    "ignore this email", "ignore this e-mail", "ignore this message", "change it after", "change it when you",
+    "at your first login", "at your first sign-in", "when you first sign in",
+]
+# An address or an account to confirm.
+confirm = [
+    "confirm your email", "verify your email", "confirm your e-mail", "verify your e-mail", "confirm your address",
+    "verify your address", "activate your account", "confirm your account", "confirm your registration",
+    "confirm your subscription", "verify your account", "validate your email", "validate your e-mail",
+]
+# Grammar: hands a code over, the code right after ("your code: K7Q-2M9").
+giving = ["your code"]
+# Grammar: whose code, a few words before "code" ("your Instagram code").
+owners = ["your"]
+# Grammar: says a code is yours, right after it ("123456 is your code").
+owned_after = ["is your"]
+# Grammar: may stand between a phrase and its code ("is").
+linking = ["is"]
+# A link or a code that works once.
+once = ["used once", "only once", "use once", "single use", "single-use", "one-time use", "one time use"]
+# Words before a validity ("valid 10 minutes").
+expiry_context = ["valid", "expire", "during", "within", "for"]
+# The word for a code itself.
+noun = ["code"]
+# Starts of a unit of minutes, after a number.
+unit_minutes = ["min"]
+# Starts of a unit of hours, after a number.
+unit_hours = ["hour"]
+# Starts of a unit of days, after a number.
+unit_days = ["day"]
+
+# Other apps' notifications that hand a code over or ask for an approval now (appnotes.rs): never held.
+[approvals]
+# Asks you to approve a sign-in, a payment or an operation now.
+phrases = [
+    "approve this sign-in", "approve sign-in", "approve the sign-in", "approve your sign-in", "approve login",
+    "approve the login", "approve your login", "approve this login", "approve the payment", "approve your payment",
+    "approve this payment", "approve the purchase", "approve this purchase", "approve the transaction",
+    "approve this transaction", "are you trying to sign in", "trying to sign in", "trying to log in", "confirm it's you",
+    "confirm it is you", "verify it's you", "verify it is you", "confirm your identity", "sign-in request",
+    "sign in request", "login request", "login attempt", "sign-in attempt", "new sign-in", "new login", "3-d secure",
+    "3d secure", "strong authentication", "authenticate the payment", "confirm the payment", "confirm your payment",
+    "confirm the transaction",
+]
+# "Is this you?": counts only beside what it is about (`asked_about`).
+asks = ["is it you", "is this you", "was this you", "was it you"]
+# What such a question is about.
+asked_about = [
+    "sign in", "sign-in", "signing in", "log in", "login", "logging in", "new device", "payment", "purchase",
+    "transaction", "account", "operation",
+]
+# Words in the name of a notification channel for codes or sign-ins.
+channels = [
+    "otp", "2fa", "mfa", "one-time", "one time", "verification", "verification code", "verification codes",
+    "authentication", "sign-in", "sign in", "login", "log-in", "logins",
+]
+
+# Amounts in mail and letters (money.rs).
+[money]
+# Words after which the amount a message is about comes.
+keywords = ["total", "amount", "you received", "you've got", "payment of", "payout of", "charged"]
+# Sentences that state a payment; the amount follows them.
+stated = [
+    "you received a payment of", "you received", "you've got", "you paid", "you sent", "payment of", "payout of",
+    "refund of", "charged",
+]
+# Labels of the line that holds what was paid.
+totals = ["total", "amount paid", "total paid", "total charged"]
+# Lines of a legal footer: their amounts (a share capital) are never a payment.
+legal = ["capital", "registered office", "company number", "share capital"]
+
+# Mail about money: a payment made or received, a bill, an order, a refund (payments.rs).
+[payments]
+# Subjects about money that are not a payment.
+not_payments = ["black friday", "mandate", "has shipped", "shipped", "out for delivery", "delivered"]
+# Money given back.
+refund = ["refund", "has refunded", "refunded"]
+# A payment you made.
+paid = [
+    "you paid", "your receipt", "payment confirmation", "payment successful", "thank you for your payment",
+    "subscription has been renewed",
+]
+# Money that came in.
+received = ["you received a payment", "payment received", "new donation", "payout"]
+# A merchant's order confirmation.
+order = ["order confirmed", "order confirmation", "thank you for your order", "thank you for your purchase"]
+# A bill to pay.
+bill = ["your invoice", "new invoice", "invoice", "your bill"]
+# The label above who was paid, in a receipt.
+to = ["payment to", "paid to", "merchant", "seller"]
+# The label above who paid, in a receipt.
+from = ["payment from", "sent by"]
+# Words before the party's name, after an amount ("de Jean").
+leads = ["from", "to"]
+# A subject naming an order…
+order_words = ["order"]
+# …and saying it is confirmed.
+confirmed_words = ["confirmed"]
+
+# Bank and payment-processor exports (bank.rs).
+[bank]
+# Words that name nothing in a movement's label.
+filler = [
+    "the", "and", "for", "from", "with", "your", "our", "you", "its", "this", "that", "are", "was", "not", "but", "all",
+    "any", "per", "via", "off", "out", "sepa", "payment", "transfer", "card", "purchase", "debit", "credit", "ref",
+    "reference",
+]
+# Statuses of rows left out: pending, refused, cancelled.
+skipped = ["pending", "denied", "cancel", "reversed", "failed"]
+# A balance impact that says the row moves no money.
+memo = ["memo"]
+
+# A CSV export's columns, found by their names (a name starting with one of these; `name`, `net`, `kind`, `status`, `impact`, `balance`, `time`, `currency` and `id` are exact names).
+[bank.columns]
+date = ["date", "created"]
+label = ["label", "description", "detail", "operation", "nature"]
+name = ["name"]
+net = ["net"]
+amount = ["amount"]
+debit = ["debit"]
+credit = ["credit"]
+kind = ["type"]
+status = ["status"]
+impact = ["balance impact"]
+balance = ["balance"]
+time = ["time"]
+currency = ["currency"]
+id = ["id", "transaction id"]
+
+# Lines above a CSV export's header: its balance, its day, its account.
+[bank.above]
+date = ["date"]
+account = ["account"]
+
+# Money moved between your own accounts (accounts.rs).
+[accounts]
+# What a payment processor writes for money moved to or from a bank.
+between = ["payout", "withdrawal", "transfer to bank", "bank deposit"]
+
+# Paper letters, read by OCR (letters.rs).
+[letters]
+# A line that asks for an amount.
+asks = ["amount due", "total due"]
+# Ordinal suffixes of a day ("1er", "1st").
+ordinals = ["st", "nd", "rd", "th"]
+# Words before a date by which something is asked.
+deadline = ["no later than", "due date", "due by", "by", "before"]
+# Words before a delay ("dans un délai de deux mois").
+delay_words = ["within"]
+# Units of a delay.
+unit_months = ["months", "month"]
+unit_days = ["days", "day"]
+unit_weeks = ["weeks", "week"]
+# Says a delay counts from the letter's own date.
+from_letter = ["date of this"]
+# The word before an appointment's time.
+at = ["at"]
+# Labels of your number with them.
+references = ["reference", "ref", "account number"]
+
+# What a letter is, the gravest first (the order is the code's).
+[letters.kinds]
+decision = ["decision"]
+reminder = ["reminder"]
+appointment = ["appointment"]
+bill = ["invoice"]
+acknowledgment = ["we have received"]
+
+# Month names in dates, by month number.
+[letters.months]
+1 = ["january", "jan"]
+2 = ["february", "feb"]
+3 = ["march", "mar"]
+4 = ["april", "apr"]
+5 = ["may"]
+6 = ["june", "jun"]
+7 = ["july", "jul"]
+8 = ["august", "aug"]
+9 = ["sept", "september", "sep"]
+10 = ["oct", "october"]
+11 = ["nov", "november"]
+12 = ["dec", "december"]
+
+# Numbers written as words, in delays.
+[letters.numbers]
+1 = ["one"]
+2 = ["two"]
+3 = ["three"]
+4 = ["four"]
+5 = ["five"]
+6 = ["six"]
+8 = ["eight"]
+10 = ["ten"]
+15 = ["fifteen"]
+30 = ["thirty"]
+
+# The papers wallet: the kind a file's name or a mail's subject suggests (papers.rs).
+
+[papers.kinds]
+passport = ["passport"]
+identity = ["identity card", "id card"]
+residence = ["residence permit"]
+driving = ["driving licence", "driver"]
+health_cover = ["health cover"]
+health_card = ["health card"]
+tax_notice = ["tax notice", "tax assessment"]
+rent_receipt = ["rent receipt"]
+bank_details = ["rib", "bank details", "iban"]
+payslip = ["payslip"]
+warranty = ["warranty"]
+insurance = ["insurance"]
+certificate = ["certificate"]
+
+# Contracts and subscriptions: the kind a label, a subject or a sender suggests (contracts.rs).
+
+[contracts.kinds]
+rent = ["rent"]
+energy = ["energy", "electricity"]
+insurance = ["insurance"]
+telecom = ["internet", "box", "mobile", "phone"]
+hosting = ["hosting", "domain"]
+subscription = ["subscription"]
+bank = ["bank"]
+
+# Senders who borrow a name (lookalike.rs).
+[brands]
+# Words a fake "your provider" name wraps a domain in.
+service_words = [
+    "admin", "administrator", "support", "mail", "email", "webmail", "service", "services", "team", "security", "account",
+    "accounts", "notification", "notifications", "noreply", "no", "reply", "help", "helpdesk", "desk", "it", "server",
+    "postmaster", "system", "info", "infos", "alert", "alerts", "update", "billing", "domain", "hosting", "on", "for",
+    "of", "the", "your", "via",
+]
+
+# Voicemail an operator sends by mail (voicemail.rs).
+[voicemail]
+# Says the mail is a voicemail.
+words = ["voicemail", "voice message"]
+# Says the caller hid their number.
+hidden = ["hidden number", "withheld", "private number", "unknown caller", "unknown number"]
+# Words before the caller's number (matched inside the text, spaces included).
+caller_leads = ["from", "caller"]
+# Words before your own line's number.
+own_line = ["your line", "your number"]
+# The word before a message's length.
+duration = ["duration", "length"]
+
+# The shield of a public address: its mail's tone and topic (shield.rs).
+[shield]
+# Threats and incitement: one is enough to set a message aside.
+threats = [
+    "kill yourself", "kys", "kill you", "i will find you", "watch your back", "you will regret", "you'll regret",
+    "hope you die", "go die", "you deserve to die", "i know where you live",
+]
+# Insults: aimed at someone, they make a message hostile.
+insults = [
+    "asshole", "bastard", "bitch", "cunt", "dickhead", "motherfucker", "fuck you", "fuck off", "piece of shit", "scumbag",
+    "scum", "loser", "moron", "imbecile", "prick", "wanker", "twat", "screw you", "go to hell", "shut up", "pathetic",
+    "clown", "fraud", "con artist",
+]
+# Swearing and contempt: rude, not hostile on their own.
+rude = [
+    "fuck", "fucking", "shit", "bullshit", "crap", "damn", "idiot", "stupid", "dumb", "garbage", "trash", "useless",
+    "incompetent", "ridiculous",
+]
+# Words saying the message speaks to you.
+you = ["you", "your", "you're", "u"]
+
+# Each topic's words: work comes first.
+[shield.topics]
+work = [
+    "job", "position", "hiring", "hire", "recruit", "recruiting", "recruiter", "contract", "freelance", "consulting",
+    "consultant", "mission", "quote", "rate", "day rate", "budget", "proposal", "collaboration", "partnership",
+    "opportunity", "interview", "salary", "project",
+]
+support = [
+    "bug", "crash", "crashes", "error", "issue", "problem", "help", "how to", "install", "update", "version", "plugin",
+    "feature",
+]
+press = ["journalist", "press", "article", "podcast", "magazine", "media"]
+thanks = ["thank you", "thanks", "grateful", "gratitude", "love your work"]
+donation = ["donation", "donate", "sponsor"]
+
+# Words of your tasks' categories.
+[tasks]
+# Categories that make a task optional: never proposed, never scheduled (plan.rs).
+optional = ["joy", "someday"]
+# Categories of what you do for joy (the Tasks page's own fold).
+joy = ["joy"]
+# Categories of movement and exercise, left out of Free time's offers when movement is off (pause.rs).
+movement = [
+    "sport", "sports", "exercise", "movement", "walk", "run", "running", "yoga", "swim", "bike", "cycling", "hike", "gym",
+    "fitness", "dance",
+]
+# Categories that stay in view in quiet time, when [quiet] personal is unset.
+personal = ["joy", "personal", "family", "friends", "leisure", "health"]
+# Categories that are work, never in view in quiet time, when [quiet] work is unset.
+work = ["work", "pro", "client"]
+# Categories that are leisure, among the personal ones (areas.rs).
+leisure = ["joy", "family", "friends", "leisure", "fun"]
+# Categories that are yours, outside work, before your settings are read (areas.rs).
+usual_personal = ["personal", "health"]
+# A notes folder of these names holds the Pause's sounds.
+sounds_folders = ["sounds"]
+
+# Quick capture: one typed line makes a task (capture.rs).
+[capture]
+# Today.
+today = ["today"]
+# Tomorrow.
+tomorrow = ["tomorrow"]
+# Next week.
+next_week = ["next week"]
+# "in 3 days".
+in = ["in"]
+# Days, after "in" and a number.
+unit_days = ["day", "days"]
+# Weeks, after "in" and a number.
+unit_weeks = ["week", "weeks"]
+# Ordinal suffixes of a day.
+ordinals = ["st", "nd", "rd", "th"]
+
+# Day names.
+[capture.weekdays]
+monday = ["monday", "mon"]
+tuesday = ["tuesday", "tue"]
+wednesday = ["wednesday", "wed"]
+thursday = ["thursday", "thu"]
+friday = ["friday", "fri"]
+saturday = ["saturday", "sat"]
+sunday = ["sunday", "sun"]
+
+# Month names, by month number.
+[capture.months]
+1 = ["january", "jan"]
+2 = ["february", "feb"]
+3 = ["march", "mar"]
+4 = ["april", "apr"]
+5 = ["may"]
+6 = ["june", "jun"]
+7 = ["july", "jul"]
+8 = ["august", "aug"]
+9 = ["september", "sep"]
+10 = ["october", "oct"]
+11 = ["november", "nov"]
+12 = ["december", "dec"]
+
+# Words after "@" that name a task's kind.
+[capture.kind_words]
+call = ["call", "phone", "telephone"]
+write = ["write", "mail", "email", "letter"]
+online = ["online", "web", "form", "site"]
+out = ["out", "errand"]
+read = ["read"]
+think = ["think", "decide"]
+make = ["make", "do", "build"]
+
+# A first word that says a task's kind plainly.
+[capture.kind_verbs]
+call = ["call", "phone", "ring"]
+write = ["write", "email", "mail", "reply", "answer"]
+online = ["fill", "submit", "pay", "book", "order", "register", "renew", "declare"]
+out = ["go", "buy", "pick", "visit"]
+read = ["read", "review", "reread"]
+think = ["think", "decide", "choose"]
+make = ["make", "build", "fix", "repair", "cook", "clean"]
+
+# The spam filter's tokenizer (spam/tokenize.rs). A table keeps the words it was trained with: a change here counts from the next training.
+[spam]
+# Month names in dates, which become _DATE_.
+months = [
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec", "january", "february", "march",
+    "april", "june", "july", "august", "september", "october", "november", "december",
+]
+# Key names in keyboard shortcuts, which become _SHORTCUT_.
+keys = [
+    "tab", "ctrl", "shift", "alt", "altgr", "command", "cmd", "option", "menu", "click", "up", "down", "left", "right",
+    "top", "bottom", "enter", "return", "del", "home", "end", "pageup", "pagedown", "fn", "insert", "numlock", "scroll",
+    "drag", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+]
+# Number words, which become _NUMBER_; not "one", mostly a pronoun (a stop word).
+number_words = ["zero", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"]
+# Words dropped.
+stop_words = [
+    "it", "it's", "that", "this", "these", "those", "that'll", "that's", "there", "here", "the", "an", "one", "any", "all",
+    "none", "such", "to", "which", "whose", "much", "many", "several", "few", "little", "always", "never", "sometimes",
+    "my", "mine", "your", "yours", "their", "theirs", "his", "hers", "its", "us", "you", "he", "she", "her", "them", "we",
+    "our", "also", "like", "get", "with", "in", "but", "so", "just", "and", "only", "because", "of", "as", "very", "from",
+    "other", "if", "then", "however", "maybe", "now", "really", "actually", "something", "everything", "later", "sooner",
+    "late", "soon", "probably", "guess", "perhaps", "still", "though", "even", "definitely", "indeed", "for", "some",
+    "everytime", "every", "on", "at", "by", "out", "they", "than", "up", "well", "ok", "me", "please", "either", "both",
+    "lot", "yet", "too", "each", "far", "again", "http", "https", "oh", "ah", "ha", "heh", "re", "eh", "huh", "uh", "wow",
+    "ow", "dang", "um", "yay", "ugh", "hehe", "hehehe",
+]
+
+# Reading scans (sioul-sync's ocr.rs).
+[ocr]
+# Tesseract's names of this language's models.
+tesseract = ["eng"]

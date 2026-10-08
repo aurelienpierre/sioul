@@ -1,0 +1,78 @@
+# Names of France that Sioul looks for (docs/words.md): its public bodies, its brands, its banks' services.
+# Read folded: capitals and accents do not matter. Whole words, except where a list says otherwise.
+# Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
+
+country = "FR"
+checked = "2026-10-08"
+
+
+# Other apps' notifications that hand a code over or ask for an approval now (appnotes.rs): never held.
+[approvals]
+# Asks you to approve a sign-in, a payment or an operation now.
+phrases = ["certicode", "securipass", "secur'pass", "pass securite"]
+
+# Amounts in mail and letters (money.rs).
+[money]
+# Lines of a legal footer: their amounts (a share capital) are never a payment.
+legal = ["rcs", "siret", "siren", "tva intra"]
+
+# Paper letters, read by OCR (letters.rs).
+
+# Bodies that write to everyone: the name shown, then the words their letters carry.
+[letters.senders]
+CAF = ["caisse d allocations familiales", "caf"]
+"Assurance Maladie" = ["assurance maladie", "cpam", "caisse primaire d assurance maladie"]
+"Finances publiques" = ["finances publiques", "dgfip", "centre des finances publiques", "service des impots", "tresor public"]
+Urssaf = ["urssaf"]
+"France Travail" = ["france travail", "pole emploi"]
+MDPH = ["maison departementale des personnes handicapees", "mdph"]
+"Préfecture" = ["prefecture", "prefet"]
+Tribunal = ["tribunal judiciaire", "tribunal administratif", "tribunal de proximite", "tribunal"]
+"Commissaire de justice" = ["commissaire de justice", "huissier de justice", "huissier"]
+"Hôpital" = ["centre hospitalier", "hopital", "chu", "clinique"]
+Mairie = ["mairie", "hotel de ville"]
+"Assurance retraite" = ["agirc arrco", "carsat", "assurance retraite"]
+
+# Contracts and subscriptions: the kind a label, a subject or a sender suggests (contracts.rs).
+
+[contracts.kinds]
+energy = ["edf", "engie", "totalenergies"]
+insurance = ["maif", "macif", "matmut", "axa", "allianz", "groupama", "mma", "maaf"]
+telecom = ["free", "orange", "sfr", "bouygues", "sosh", "red"]
+
+# Senders who borrow a name (lookalike.rs).
+
+# Brands and public services, and their domains: a sender naming one from elsewhere is set aside.
+[brands.brands]
+Ameli = ["ameli.fr", "assurance-maladie.fr"]
+"Assurance Maladie" = ["ameli.fr", "assurance-maladie.fr"]
+Impots = ["impots.gouv.fr", "dgfip.finances.gouv.fr", "finances.gouv.fr"]
+DGFiP = ["impots.gouv.fr", "dgfip.finances.gouv.fr", "finances.gouv.fr"]
+"Finances Publiques" = ["impots.gouv.fr", "dgfip.finances.gouv.fr", "finances.gouv.fr"]
+CAF = ["caf.fr"]
+ANTAI = ["antai.gouv.fr"]
+ANTS = ["ants.gouv.fr"]
+"France Travail" = ["francetravail.fr", "pole-emploi.fr"]
+"Pole Emploi" = ["francetravail.fr", "pole-emploi.fr"]
+URSSAF = ["urssaf.fr"]
+FranceConnect = ["franceconnect.gouv.fr"]
+"La Poste" = ["laposte.fr", "laposte.net", "labanquepostale.fr", "colissimo.fr"]
+"Banque Postale" = ["labanquepostale.fr"]
+Colissimo = ["colissimo.fr", "laposte.fr"]
+Chronopost = ["chronopost.fr"]
+"Free Mobile" = ["free-mobile.fr", "free.fr"]
+Freebox = ["free.fr", "freebox.fr"]
+Orange = ["orange.fr", "orange.com", "orange-business.com"]
+SFR = ["sfr.fr"]
+"Bouygues Telecom" = ["bouyguestelecom.fr"]
+EDF = ["edf.fr", "edf.com"]
+Engie = ["engie.fr", "engie.com"]
+TotalEnergies = ["totalenergies.fr", "totalenergies.com"]
+"Credit Agricole" = ["credit-agricole.fr", "ca-paris.fr"]
+"BNP Paribas" = ["bnpparibas.com", "bnpparibas.fr", "bnpparibas"]
+"Societe Generale" = ["societegenerale.fr", "societegenerale.com"]
+LCL = ["lcl.fr"]
+"Caisse d'Epargne" = ["caisse-epargne.fr"]
+"Banque Populaire" = ["banquepopulaire.fr"]
+"Credit Mutuel" = ["creditmutuel.fr"]
+Boursorama = ["boursorama.com", "boursobank.com", "boursorama.fr"]

@@ -619,7 +619,8 @@ pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, 
     let events = crate::agenda::occurrences(stamp - 86_400, stamp + 9 * 86_400);
     let tasks = crate::tasks::all(now.time_zone());
     let store = config.case_store_path();
-    let ledger = store.as_deref().and_then(|root| Ledger::load_with_bank(root).ok());
+    let looked = crate::words::Words::of(config);
+    let ledger = store.as_deref().and_then(|root| Ledger::load_with_bank(root, &looked).ok());
     let cases = store.as_deref().and_then(|root| crate::cases::CaseStore::load(root).ok()).map(|s| s.cases).unwrap_or_default();
     let overrides = crate::quiet::Overrides::load(&crate::quiet::Overrides::default_path());
     // Meals and sleep as Health keeps them: while you sleep, nothing is told.
@@ -627,7 +628,7 @@ pub fn gather(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Reminder>, 
     let situation = crate::quiet::Situation::now(config, &overrides, &blocks, now, tr, &cases);
     let papers = store.as_deref().and_then(|root| crate::papers::Wallet::load(root).ok()).map(|w| w.papers).unwrap_or_default();
     let contracts = store.as_deref().and_then(|root| crate::contracts::Contracts::load(root).ok()).map(|c| c.list).unwrap_or_default();
-    let money = store.as_deref().and_then(|root| crate::bank::Bank::load(root).ok()).filter(|b| !b.movements.is_empty() || !b.accounts.is_empty()).zip(ledger.as_ref()).map(|(bank, ledger)| crate::bank::watch(&bank, ledger, now.date()));
+    let money = store.as_deref().and_then(|root| crate::bank::Bank::load(root).ok()).filter(|b| !b.movements.is_empty() || !b.accounts.is_empty()).zip(ledger.as_ref()).map(|(bank, ledger)| crate::bank::watch(&bank, ledger, now.date(), &looked.bank.filler));
     let reminders = all(config, tr, now, &events, &tasks, ledger.as_ref(), &papers, &contracts, money.as_ref(), |t| situation.quiet_tasks.keeps(t));
     (reminders, Holds::of(config, &situation.mode, &blocks, stamp))
 }

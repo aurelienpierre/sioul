@@ -1526,15 +1526,17 @@ pub(crate) fn memo_url() -> String {
     crate::backend::file_url(&file)
 }
 
-/// Your recordings to rest by: the sounds in a `sounds` folder of the notes,
-/// as JSON [{"title", "url"}].
+/// Your recordings to rest by: the sounds in a `sounds` folder of the notes
+/// (its names in the languages in use: `words.tasks.sounds_folders`), as
+/// JSON [{"title", "url"}].
 pub(crate) fn calm_sounds(shared: &Shared) -> String {
     let loaded = loaded(shared);
     let Some(vault) = loaded.vault.as_ref() else { return "[]".into() };
+    let names = sioul_core::words::current().tasks.sounds_folders.clone();
     let rows: Vec<serde_json::Value> = vault
         .notes
         .iter()
-        .filter(|n| n.kind == notes::NoteKind::Audio && n.folder().split('/').any(|f| f.eq_ignore_ascii_case("sounds") || f.eq_ignore_ascii_case("sons")))
+        .filter(|n| n.kind == notes::NoteKind::Audio && n.folder().split('/').any(|f| sioul_core::words::is_named(f, &names)))
         .map(|n| serde_json::json!({ "title": n.title, "url": crate::backend::file_url(&vault.root.join(&n.path)) }))
         .collect();
     crate::backend::json(&rows)

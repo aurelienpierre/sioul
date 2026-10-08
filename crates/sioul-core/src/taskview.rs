@@ -541,7 +541,9 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
     let mut done: Vec<&Task> = cx.tasks.iter().filter(|t| t.status == Status::Completed && t.completed.is_some_and(|c| c >= from) && cx.filter.wants(t)).collect();
     done.sort_by_key(|t| std::cmp::Reverse(t.completed));
     view.done_week = done.iter().map(|t| card(cx, t)).collect();
-    let joyful = |t: &Task| t.categories.iter().any(|c| c.eq_ignore_ascii_case("joy"));
+    // What you do for joy (`words.tasks.joy`).
+    let joy = crate::words::current().tasks.joy.clone();
+    let joyful = |t: &Task| crate::words::named_in(&t.categories, &joy);
     view.joy = cx
         .plan
         .order
@@ -649,7 +651,7 @@ pub fn list(cx: &Context, by: &str, done: bool, query: &str) -> ListView {
         let mut rows: Vec<&Task> = Vec::new();
         outline(root, &ordered, &position, &mut rows, &mut placed, 0);
         let optional = cx.planned(&root.uid).is_some_and(|p| p.optional);
-        let joyful = rows.iter().any(|t| t.categories.iter().any(|c| c.eq_ignore_ascii_case("joy")));
+        let joyful = rows.iter().any(|t| crate::words::named_in(&t.categories, &crate::words::current().tasks.joy));
         let (id, title) = match by {
             _ if optional && joyful => (OPTIONAL_JOY.to_string(), cx.tr.text("task-group-joy", None)),
             _ if optional => (OPTIONAL_SOMEDAY.to_string(), cx.tr.text("task-group-someday", None)),

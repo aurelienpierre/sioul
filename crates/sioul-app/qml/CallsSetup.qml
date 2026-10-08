@@ -205,6 +205,12 @@ ColumnLayout {
     Note {
         text: setup.sioul.text("calls-setup-free")
     }
+    // Where the operator is named: Settings ▸ Words ▸ Voicemail by mail (docs/words.md).
+    Button {
+        flat: true
+        text: setup.sioul.text("calls-setup-voicemail-words")
+        onClicked: setup.sioul.reminderOpened("settings:words.voicemail.operators", "", "")
+    }
 
     // ---------------------------------------------------------------- texts, and Android's own list
     Heading {

@@ -1,0 +1,2762 @@
+{
+ "about": "The word lists of Sioul's recognisers as the code held them on 8 October 2026 (v0.0.3), less a person's own words that left the shipped packs; the packs en, fr, FR and international merged must give each list back (crates/sioul-core/src/words.rs, its tests).",
+ "lists": {
+  "codes.code": [
+   "verification code",
+   "security code",
+   "confirmation code",
+   "authentication code",
+   "login code",
+   "log-in code",
+   "sign-in code",
+   "sign in code",
+   "signin code",
+   "one-time code",
+   "one time code",
+   "one-time password",
+   "one time password",
+   "single-use code",
+   "passcode",
+   "otp",
+   "validation code",
+   "access code",
+   "activation code",
+   "2fa",
+   "two-factor",
+   "two factor",
+   "2-step verification",
+   "two-step verification",
+   "verification pin",
+   "one-time pin",
+   "code de verification",
+   "code de securite",
+   "code de confirmation",
+   "code d'authentification",
+   "code d'acces",
+   "code de connexion",
+   "code d'activation",
+   "code a usage unique",
+   "mot de passe a usage unique",
+   "code temporaire",
+   "code de validation",
+   "code d'identification",
+   "double authentification",
+   "authentification a deux facteurs"
+  ],
+  "codes.pointing": [
+   "following code",
+   "code below",
+   "this code",
+   "enter the code",
+   "use the code",
+   "copy the code",
+   "type the code",
+   "code suivant",
+   "ce code",
+   "code ci-dessous",
+   "code ci dessous",
+   "saisissez le code",
+   "entrez le code",
+   "utilisez le code",
+   "indiquez le code",
+   "renseignez le code",
+   "copiez le code"
+  ],
+  "codes.sign_in": [
+   "sign in",
+   "sign-in",
+   "signin",
+   "log in",
+   "log-in",
+   "login",
+   "sign into",
+   "log into",
+   "signing in",
+   "logging in",
+   "sign up",
+   "sign-up",
+   "verify",
+   "verification",
+   "confirm",
+   "identity",
+   "authenticate",
+   "authentication",
+   "connexion",
+   "connecter",
+   "connectez",
+   "identifier",
+   "identification",
+   "verifier",
+   "verification",
+   "confirmer",
+   "identite",
+   "authentifier",
+   "authentification",
+   "inscription"
+  ],
+  "codes.not_yours": [
+   "zip",
+   "postal",
+   "post",
+   "postcode",
+   "area",
+   "country",
+   "dialing",
+   "dialling",
+   "promo",
+   "promotional",
+   "promotion",
+   "discount",
+   "coupon",
+   "gift",
+   "voucher",
+   "referral",
+   "invite",
+   "invitation",
+   "tracking",
+   "booking",
+   "reservation",
+   "order",
+   "customer",
+   "client",
+   "member",
+   "membership",
+   "product",
+   "item",
+   "error",
+   "source",
+   "dress",
+   "tax",
+   "vat",
+   "bank",
+   "sort",
+   "swift",
+   "bic",
+   "iban",
+   "routing",
+   "door",
+   "gate",
+   "building",
+   "lockbox",
+   "wifi",
+   "wi-fi",
+   "parking",
+   "locker",
+   "promotionnel",
+   "cadeau",
+   "avantage",
+   "reduction",
+   "parrainage",
+   "suivi",
+   "colis",
+   "commande",
+   "adherent",
+   "membre",
+   "produit",
+   "article",
+   "erreur",
+   "vestimentaire",
+   "porte",
+   "portail",
+   "immeuble",
+   "casier",
+   "banque",
+   "guichet",
+   "naf",
+   "ape",
+   "insee",
+   "fiscal",
+   "tva",
+   "pays",
+   "region",
+   "departement",
+   "commune"
+  ],
+  "codes.promo": [
+   "promo",
+   "discount",
+   "coupon",
+   "voucher",
+   "gift code",
+   "% off",
+   "reduction",
+   "bon d'achat",
+   "code avantage",
+   "code cadeau"
+  ],
+  "codes.password": [
+   "temporary password",
+   "initial password",
+   "your password is",
+   "your new password is",
+   "your new password:",
+   "here is your password",
+   "here is your new password",
+   "here are your login details",
+   "your login details are",
+   "your login details:",
+   "mot de passe provisoire",
+   "mot de passe temporaire",
+   "votre mot de passe est",
+   "votre nouveau mot de passe est",
+   "votre nouveau mot de passe :",
+   "votre nouveau mot de passe:",
+   "voici votre mot de passe",
+   "voici votre nouveau mot de passe",
+   "mot de passe initial",
+   "voici vos identifiants",
+   "vos identifiants sont",
+   "vos identifiants :",
+   "vos identifiants:",
+   "vos identifiants de connexion sont",
+   "vos identifiants de connexion :"
+  ],
+  "codes.reset": [
+   "reset your password",
+   "password reset",
+   "reset password",
+   "reset link",
+   "forgot your password",
+   "forgotten password",
+   "choose a new password",
+   "set a new password",
+   "create a new password",
+   "set your password",
+   "create your password",
+   "reinitialiser votre mot de passe",
+   "reinitialisation de votre mot de passe",
+   "reinitialisation du mot de passe",
+   "mot de passe oublie",
+   "lien de reinitialisation",
+   "definir votre mot de passe",
+   "definissez votre mot de passe",
+   "choisir un nouveau mot de passe",
+   "choisissez un nouveau mot de passe",
+   "creer votre mot de passe",
+   "creez votre mot de passe"
+  ],
+  "codes.link": [
+   "sign-in link",
+   "sign in link",
+   "signin link",
+   "login link",
+   "log in link",
+   "log-in link",
+   "magic link",
+   "connection link",
+   "click to sign in",
+   "click to log in",
+   "link to sign in",
+   "link to log in",
+   "sign in with this link",
+   "log in with this link",
+   "this link will sign you in",
+   "this link will log you in",
+   "confirm your login",
+   "confirm your sign-in",
+   "confirm your sign in",
+   "verify your login",
+   "verify your sign-in",
+   "verify your sign in",
+   "lien de connexion",
+   "lien magique",
+   "se connecter avec ce lien",
+   "cliquez pour vous connecter",
+   "lien pour vous connecter",
+   "lien pour se connecter",
+   "confirmez votre connexion",
+   "confirmer votre connexion",
+   "validez votre connexion",
+   "valider votre connexion"
+  ],
+  "codes.intents": [
+   "sign in",
+   "sign-in",
+   "signin",
+   "log in",
+   "log-in",
+   "login",
+   "sign into",
+   "log into",
+   "signing in",
+   "logging in",
+   "connexion",
+   "vous connecter",
+   "se connecter",
+   "connectez-vous"
+  ],
+  "codes.link_words": [
+   "link",
+   "button",
+   "code",
+   "lien",
+   "bouton"
+  ],
+  "codes.validity": [
+   "expire",
+   "expires",
+   "expired",
+   "expiration",
+   "valid",
+   "valable",
+   "valide",
+   "expirera",
+   "expirer"
+  ],
+  "codes.request": [
+   "if you did not request",
+   "if you didn't request",
+   "if you did not ask",
+   "if you didn't ask",
+   "if this wasn't you",
+   "if this was not you",
+   "if it wasn't you",
+   "if you did not try",
+   "if you didn't try",
+   "if you did not make this request",
+   "if you didn't make this request",
+   "you can safely ignore",
+   "you can ignore this",
+   "ignore this email",
+   "ignore this e-mail",
+   "ignore this message",
+   "si vous n'avez pas demande",
+   "si vous n'etes pas a l'origine",
+   "si ce n'est pas vous",
+   "si vous n'avez pas essaye",
+   "si vous n'avez pas fait cette demande",
+   "ignorez ce message",
+   "ignorer ce message",
+   "ignorez cet e-mail",
+   "ignorez cet email",
+   "ignorer cet e-mail",
+   "ignorer cet email",
+   "ignorez ce mail",
+   "change it after",
+   "change it when you",
+   "at your first login",
+   "at your first sign-in",
+   "when you first sign in",
+   "changez-le",
+   "modifiez-le",
+   "a votre premiere connexion",
+   "lors de votre premiere connexion",
+   "des votre premiere connexion"
+  ],
+  "codes.confirm": [
+   "confirm your email",
+   "verify your email",
+   "confirm your e-mail",
+   "verify your e-mail",
+   "confirm your address",
+   "verify your address",
+   "activate your account",
+   "confirm your account",
+   "confirm your registration",
+   "confirm your subscription",
+   "verify your account",
+   "validate your email",
+   "validate your e-mail",
+   "confirmez votre adresse",
+   "confirmer votre adresse",
+   "verifiez votre adresse",
+   "confirmez votre e-mail",
+   "confirmer votre e-mail",
+   "confirmez votre email",
+   "confirmer votre email",
+   "verifiez votre e-mail",
+   "verifier votre e-mail",
+   "verifiez votre email",
+   "verifier votre email",
+   "verifier votre adresse",
+   "validez votre adresse",
+   "valider votre adresse",
+   "activez votre compte",
+   "activer votre compte",
+   "confirmez votre compte",
+   "confirmer votre compte",
+   "confirmez votre inscription",
+   "confirmer votre inscription"
+  ],
+  "codes.giving": [
+   "your code",
+   "votre code",
+   "ton code"
+  ],
+  "codes.owners": [
+   "your",
+   "votre",
+   "ton"
+  ],
+  "codes.owned_after": [
+   "is your",
+   "est votre",
+   "est ton"
+  ],
+  "codes.linking": [
+   "is",
+   "est"
+  ],
+  "codes.once": [
+   "used once",
+   "only once",
+   "use once",
+   "single use",
+   "single-use",
+   "one-time use",
+   "one time use",
+   "une seule fois",
+   "usage unique",
+   "qu'une fois"
+  ],
+  "codes.expiry_context": [
+   "valid",
+   "valable",
+   "expire",
+   "pendant",
+   "during",
+   "within",
+   "dans",
+   "for"
+  ],
+  "codes.noun": [
+   "code"
+  ],
+  "codes.unit_minutes": [
+   "min"
+  ],
+  "codes.unit_hours": [
+   "heure",
+   "hour"
+  ],
+  "codes.unit_days": [
+   "day",
+   "jour"
+  ],
+  "approvals.phrases": [
+   "approve this sign-in",
+   "approve sign-in",
+   "approve the sign-in",
+   "approve your sign-in",
+   "approve login",
+   "approve the login",
+   "approve your login",
+   "approve this login",
+   "approve the payment",
+   "approve your payment",
+   "approve this payment",
+   "approve the purchase",
+   "approve this purchase",
+   "approve the transaction",
+   "approve this transaction",
+   "are you trying to sign in",
+   "trying to sign in",
+   "trying to log in",
+   "confirm it's you",
+   "confirm it is you",
+   "verify it's you",
+   "verify it is you",
+   "confirm your identity",
+   "sign-in request",
+   "sign in request",
+   "login request",
+   "login attempt",
+   "sign-in attempt",
+   "new sign-in",
+   "new login",
+   "3-d secure",
+   "3d secure",
+   "strong authentication",
+   "authenticate the payment",
+   "confirm the payment",
+   "confirm your payment",
+   "confirm the transaction",
+   "confirmez qu'il s'agit de vous",
+   "confirmez votre identite",
+   "demande de connexion",
+   "tentative de connexion",
+   "nouvelle connexion",
+   "validez votre connexion",
+   "valider votre connexion",
+   "validez la connexion",
+   "validez votre paiement",
+   "valider votre paiement",
+   "validez le paiement",
+   "validez votre achat",
+   "validez l'achat",
+   "validez votre operation",
+   "valider votre operation",
+   "validez l'operation",
+   "validez cette operation",
+   "confirmez votre paiement",
+   "confirmez le paiement",
+   "confirmez votre operation",
+   "confirmez l'operation",
+   "authentifiez",
+   "authentification forte",
+   "authentification requise",
+   "approuvez la connexion",
+   "approuver la connexion",
+   "approuvez le paiement",
+   "certicode",
+   "securipass",
+   "secur'pass",
+   "pass securite"
+  ],
+  "approvals.asks": [
+   "is it you",
+   "is this you",
+   "was this you",
+   "was it you",
+   "est-ce bien vous",
+   "c'est bien vous",
+   "est-ce vous",
+   "c'etait vous"
+  ],
+  "approvals.asked_about": [
+   "sign in",
+   "sign-in",
+   "signing in",
+   "log in",
+   "login",
+   "logging in",
+   "new device",
+   "payment",
+   "purchase",
+   "transaction",
+   "account",
+   "connexion",
+   "connecter",
+   "nouvel appareil",
+   "paiement",
+   "achat",
+   "operation",
+   "compte"
+  ],
+  "approvals.channels": [
+   "otp",
+   "2fa",
+   "mfa",
+   "one-time",
+   "one time",
+   "verification",
+   "verification code",
+   "verification codes",
+   "authentication",
+   "authentification",
+   "sign-in",
+   "sign in",
+   "login",
+   "log-in",
+   "logins",
+   "connexion",
+   "connexions"
+  ],
+  "money.keywords": [
+   "total",
+   "montant",
+   "amount",
+   "vous avez recu",
+   "you received",
+   "you've got",
+   "paiement de",
+   "payment of",
+   "payout of",
+   "versement de",
+   "somme de",
+   "a ete preleve",
+   "charged",
+   "prelevement de"
+  ],
+  "money.stated": [
+   "vous avez recu un paiement de",
+   "vous avez paye",
+   "vous avez envoye",
+   "paiement de",
+   "montant de",
+   "versement de",
+   "virement de",
+   "remboursement de",
+   "you received a payment of",
+   "you received",
+   "you've got",
+   "you paid",
+   "you sent",
+   "payment of",
+   "payout of",
+   "refund of",
+   "charged"
+  ],
+  "money.totals": [
+   "total",
+   "montant total",
+   "total ttc",
+   "total paye",
+   "montant paye",
+   "montant debite",
+   "amount paid",
+   "total paid",
+   "total charged"
+  ],
+  "money.legal": [
+   "capital",
+   "rcs",
+   "siret",
+   "siren",
+   "tva intra",
+   "siege social",
+   "societe en commandite",
+   "registered office",
+   "company number",
+   "share capital"
+  ],
+  "money.subtotal": [
+   "total partiel"
+  ],
+  "payments.not_payments": [
+   "black friday",
+   "paiement en plusieurs fois",
+   "mandat",
+   "mandate",
+   "expediee",
+   "expedie",
+   "a ete livree",
+   "en cours de livraison",
+   "has shipped",
+   "shipped",
+   "out for delivery",
+   "delivered"
+  ],
+  "payments.refund": [
+   "remboursement",
+   "vous a rembourse",
+   "refund",
+   "has refunded",
+   "refunded"
+  ],
+  "payments.paid": [
+   "vous avez paye",
+   "paiement effectue",
+   "votre paiement a bien ete",
+   "reglement de votre facture",
+   "prelevement effectue",
+   "a ete preleve",
+   "avons preleve",
+   "confirmation de paiement",
+   "paiement accepte",
+   "merci pour votre paiement",
+   "abonnement a ete renouvele",
+   "you paid",
+   "your receipt",
+   "payment confirmation",
+   "payment successful",
+   "thank you for your payment",
+   "subscription has been renewed"
+  ],
+  "payments.received": [
+   "vous avez recu un paiement",
+   "paiement recu",
+   "vous avez recu un virement",
+   "vous avez recu un don",
+   "nouveau don",
+   "virement recu",
+   "you received a payment",
+   "payment received",
+   "new donation",
+   "payout"
+  ],
+  "payments.order": [
+   "commande confirmee",
+   "commande est validee",
+   "commande validee",
+   "confirmation de commande",
+   "merci pour votre commande",
+   "merci pour votre achat",
+   "order confirmed",
+   "order confirmation",
+   "thank you for your order",
+   "thank you for your purchase"
+  ],
+  "payments.bill": [
+   "votre facture",
+   "facture disponible",
+   "nouvelle facture",
+   "avis d'echeance",
+   "montant a regler",
+   "a regler avant",
+   "a payer avant",
+   "sera preleve",
+   "prochain prelevement",
+   "sera debite",
+   "your invoice",
+   "new invoice",
+   "invoice",
+   "your bill"
+  ],
+  "payments.to": [
+   "payment to",
+   "paid to",
+   "beneficiaire",
+   "marchand",
+   "merchant",
+   "vendeur",
+   "seller"
+  ],
+  "payments.from": [
+   "payment from",
+   "envoye par",
+   "sent by"
+  ],
+  "payments.leads": [
+   "de la part de",
+   "de",
+   "from",
+   "à",
+   "to",
+   "chez"
+  ],
+  "payments.order_words": [
+   "commande",
+   "order"
+  ],
+  "payments.confirmed_words": [
+   "confirmee",
+   "validee",
+   "confirmed"
+  ],
+  "bank.filler": [
+   "the",
+   "and",
+   "for",
+   "from",
+   "with",
+   "your",
+   "our",
+   "you",
+   "its",
+   "this",
+   "that",
+   "are",
+   "was",
+   "not",
+   "but",
+   "all",
+   "any",
+   "per",
+   "via",
+   "off",
+   "out",
+   "les",
+   "des",
+   "une",
+   "pour",
+   "par",
+   "sur",
+   "aux",
+   "avec",
+   "dans",
+   "est",
+   "pas",
+   "que",
+   "qui",
+   "vos",
+   "votre",
+   "nos",
+   "notre",
+   "son",
+   "ses",
+   "leur",
+   "chez",
+   "sans",
+   "entre",
+   "prlv",
+   "sepa",
+   "vir",
+   "virement",
+   "prelevement",
+   "paiement",
+   "carte",
+   "achat",
+   "retrait",
+   "payment",
+   "transfer",
+   "card",
+   "purchase",
+   "debit",
+   "credit",
+   "ref",
+   "reference"
+  ],
+  "bank.columns.date": [
+   "date",
+   "created",
+   "cree"
+  ],
+  "bank.columns.label": [
+   "libelle",
+   "label",
+   "description",
+   "intitule",
+   "detail",
+   "operation",
+   "nature"
+  ],
+  "bank.columns.name": [
+   "name",
+   "nom"
+  ],
+  "bank.columns.net": [
+   "net"
+  ],
+  "bank.columns.amount": [
+   "montant",
+   "amount",
+   "somme"
+  ],
+  "bank.columns.debit": [
+   "debit"
+  ],
+  "bank.columns.credit": [
+   "credit"
+  ],
+  "bank.columns.kind": [
+   "type"
+  ],
+  "bank.columns.status": [
+   "status",
+   "etat",
+   "statut"
+  ],
+  "bank.columns.impact": [
+   "impact sur le solde",
+   "balance impact"
+  ],
+  "bank.columns.balance": [
+   "balance",
+   "solde"
+  ],
+  "bank.columns.time": [
+   "time",
+   "heure"
+  ],
+  "bank.columns.currency": [
+   "currency",
+   "devise"
+  ],
+  "bank.columns.id": [
+   "id",
+   "transaction id",
+   "numero de transaction",
+   "id de transaction"
+  ],
+  "bank.above.balance": [
+   "solde"
+  ],
+  "bank.above.date": [
+   "date"
+  ],
+  "bank.above.account": [
+   "numero",
+   "compte",
+   "account"
+  ],
+  "bank.skipped": [
+   "pending",
+   "en attente",
+   "refuse",
+   "denied",
+   "annule",
+   "cancel",
+   "reversed",
+   "failed",
+   "echoue"
+  ],
+  "bank.memo": [
+   "memo"
+  ],
+  "accounts.between": [
+   "payout",
+   "virement standard",
+   "virement bancaire",
+   "virement vers",
+   "retrait",
+   "withdrawal",
+   "transfer to bank",
+   "bank deposit",
+   "approvisionnement",
+   "transfert vers",
+   "versement vers"
+  ],
+  "letters.senders.CAF": [
+   "caisse d allocations familiales",
+   "caf"
+  ],
+  "letters.senders.Assurance Maladie": [
+   "assurance maladie",
+   "cpam",
+   "caisse primaire d assurance maladie"
+  ],
+  "letters.senders.Finances publiques": [
+   "finances publiques",
+   "dgfip",
+   "centre des finances publiques",
+   "service des impots",
+   "tresor public"
+  ],
+  "letters.senders.Urssaf": [
+   "urssaf"
+  ],
+  "letters.senders.France Travail": [
+   "france travail",
+   "pole emploi"
+  ],
+  "letters.senders.MDPH": [
+   "maison departementale des personnes handicapees",
+   "mdph"
+  ],
+  "letters.senders.Préfecture": [
+   "prefecture",
+   "prefet"
+  ],
+  "letters.senders.Tribunal": [
+   "tribunal judiciaire",
+   "tribunal administratif",
+   "tribunal de proximite",
+   "tribunal"
+  ],
+  "letters.senders.Commissaire de justice": [
+   "commissaire de justice",
+   "huissier de justice",
+   "huissier"
+  ],
+  "letters.senders.Hôpital": [
+   "centre hospitalier",
+   "hopital",
+   "chu",
+   "clinique"
+  ],
+  "letters.senders.Mairie": [
+   "mairie",
+   "hotel de ville"
+  ],
+  "letters.senders.Assurance retraite": [
+   "agirc arrco",
+   "carsat",
+   "assurance retraite"
+  ],
+  "letters.kinds.formal_notice": [
+   "mise en demeure"
+  ],
+  "letters.kinds.tax_notice": [
+   "avis d impot",
+   "avis d imposition",
+   "impot sur le revenu",
+   "taxe fonciere",
+   "taxe d habitation"
+  ],
+  "letters.kinds.decision": [
+   "voies et delais de recours",
+   "delais et voies de recours",
+   "voies de recours",
+   "decision"
+  ],
+  "letters.kinds.decision_appeal": [
+   "recours",
+   "contester"
+  ],
+  "letters.kinds.reminder": [
+   "relance",
+   "rappel",
+   "dernier avis",
+   "second avis",
+   "reminder"
+  ],
+  "letters.kinds.appointment": [
+   "convocation",
+   "vous etes convoque",
+   "vous etes convoquee",
+   "rendez vous",
+   "appointment"
+  ],
+  "letters.kinds.bill": [
+   "facture",
+   "avis des sommes a payer",
+   "titre executoire",
+   "montant a payer",
+   "somme a payer",
+   "invoice"
+  ],
+  "letters.kinds.acknowledgment": [
+   "accuse de reception",
+   "nous avons bien recu",
+   "we have received"
+  ],
+  "letters.kinds.attestation": [
+   "attestation",
+   "certificat"
+  ],
+  "letters.kinds.contract": [
+   "contrat",
+   "avenant",
+   "conditions generales"
+  ],
+  "letters.registered": [
+   "recommande",
+   "lettre recommandee",
+   "lrar"
+  ],
+  "letters.registered_receipt": [
+   "accuse de reception",
+   "avec ar",
+   "lrar",
+   "avis de reception"
+  ],
+  "letters.asks": [
+   "a payer",
+   "a regler",
+   "reste du",
+   "montant du",
+   "somme due",
+   "montant total",
+   "total a payer",
+   "somme de",
+   "montant de",
+   "amount due",
+   "total due"
+  ],
+  "letters.months.1": [
+   "janvier",
+   "janv",
+   "january",
+   "jan"
+  ],
+  "letters.months.2": [
+   "fevrier",
+   "fevr",
+   "fev",
+   "february",
+   "feb"
+  ],
+  "letters.months.3": [
+   "mars",
+   "march",
+   "mar"
+  ],
+  "letters.months.4": [
+   "avril",
+   "avr",
+   "april",
+   "apr"
+  ],
+  "letters.months.5": [
+   "mai",
+   "may"
+  ],
+  "letters.months.6": [
+   "juin",
+   "june",
+   "jun"
+  ],
+  "letters.months.7": [
+   "juillet",
+   "juil",
+   "july",
+   "jul"
+  ],
+  "letters.months.8": [
+   "aout",
+   "august",
+   "aug"
+  ],
+  "letters.months.9": [
+   "septembre",
+   "sept",
+   "september",
+   "sep"
+  ],
+  "letters.months.10": [
+   "octobre",
+   "oct",
+   "october"
+  ],
+  "letters.months.11": [
+   "novembre",
+   "nov",
+   "november"
+  ],
+  "letters.months.12": [
+   "decembre",
+   "dec",
+   "december"
+  ],
+  "letters.ordinals": [
+   "er",
+   "st",
+   "nd",
+   "rd",
+   "th"
+  ],
+  "letters.numbers.1": [
+   "un",
+   "une",
+   "one"
+  ],
+  "letters.numbers.2": [
+   "deux",
+   "two"
+  ],
+  "letters.numbers.3": [
+   "trois",
+   "three"
+  ],
+  "letters.numbers.4": [
+   "quatre",
+   "four"
+  ],
+  "letters.numbers.5": [
+   "cinq",
+   "five"
+  ],
+  "letters.numbers.6": [
+   "six"
+  ],
+  "letters.numbers.8": [
+   "huit",
+   "eight"
+  ],
+  "letters.numbers.10": [
+   "dix",
+   "ten"
+  ],
+  "letters.numbers.15": [
+   "quinze",
+   "fifteen"
+  ],
+  "letters.numbers.30": [
+   "trente",
+   "thirty"
+  ],
+  "letters.deadline": [
+   "avant le",
+   "au plus tard le",
+   "date limite",
+   "echeance",
+   "jusqu au",
+   "payable avant",
+   "no later than",
+   "due date",
+   "due by",
+   "by",
+   "before"
+  ],
+  "letters.delay_words": [
+   "delai",
+   "within"
+  ],
+  "letters.delay_of": [
+   "de"
+  ],
+  "letters.unit_months": [
+   "mois",
+   "months",
+   "month"
+  ],
+  "letters.unit_days": [
+   "jours",
+   "days",
+   "day",
+   "jour"
+  ],
+  "letters.unit_weeks": [
+   "semaines",
+   "weeks",
+   "semaine",
+   "week"
+  ],
+  "letters.fixed_delays.8": [
+   "sous huitaine"
+  ],
+  "letters.fixed_delays.15": [
+   "sous quinzaine"
+  ],
+  "letters.from_letter": [
+   "date du present",
+   "date de la presente",
+   "date of this"
+  ],
+  "letters.at": [
+   "a",
+   "at"
+  ],
+  "letters.references": [
+   "numero allocataire",
+   "numero fiscal",
+   "numero de dossier",
+   "n dossier",
+   "reference",
+   "ref",
+   "numero de securite sociale",
+   "numero client",
+   "account number"
+  ],
+  "papers.kinds.passport": [
+   "passeport",
+   "passport"
+  ],
+  "papers.kinds.identity": [
+   "carte nationale",
+   "carte d identite",
+   "cni",
+   "identity card",
+   "id card"
+  ],
+  "papers.kinds.residence": [
+   "titre de sejour",
+   "residence permit",
+   "carte de sejour"
+  ],
+  "papers.kinds.driving": [
+   "permis de conduire",
+   "driving licence",
+   "driver"
+  ],
+  "papers.kinds.health_cover": [
+   "complementaire sante solidaire",
+   "css",
+   "mutuelle",
+   "health cover"
+  ],
+  "papers.kinds.health_card": [
+   "carte vitale",
+   "attestation de droits",
+   "health card"
+  ],
+  "papers.kinds.tax_notice": [
+   "avis d impot",
+   "avis d imposition",
+   "avis impot",
+   "tax notice",
+   "tax assessment"
+  ],
+  "papers.kinds.rent_receipt": [
+   "quittance",
+   "rent receipt"
+  ],
+  "papers.kinds.bank_details": [
+   "rib",
+   "releve d identite bancaire",
+   "bank details",
+   "iban"
+  ],
+  "papers.kinds.payslip": [
+   "bulletin de paie",
+   "bulletin de salaire",
+   "fiche de paie",
+   "payslip"
+  ],
+  "papers.kinds.warranty": [
+   "garantie",
+   "warranty",
+   "facture d achat"
+  ],
+  "papers.kinds.insurance": [
+   "assurance",
+   "insurance"
+  ],
+  "papers.kinds.certificate": [
+   "attestation",
+   "certificat",
+   "certificate"
+  ],
+  "contracts.kinds.rent": [
+   "loyer",
+   "rent",
+   "bail"
+  ],
+  "contracts.kinds.energy": [
+   "electricite",
+   "gaz",
+   "edf",
+   "engie",
+   "totalenergies",
+   "energy",
+   "electricity"
+  ],
+  "contracts.kinds.health": [
+   "mutuelle",
+   "complementaire sante",
+   "prevoyance"
+  ],
+  "contracts.kinds.insurance": [
+   "assurance",
+   "insurance",
+   "maif",
+   "macif",
+   "matmut",
+   "axa",
+   "allianz",
+   "groupama",
+   "mma",
+   "maaf"
+  ],
+  "contracts.kinds.telecom": [
+   "free",
+   "orange",
+   "sfr",
+   "bouygues",
+   "sosh",
+   "red",
+   "internet",
+   "box",
+   "mobile",
+   "forfait",
+   "phone"
+  ],
+  "contracts.kinds.hosting": [
+   "hebergement",
+   "hosting",
+   "domaine",
+   "domain"
+  ],
+  "contracts.kinds.subscription": [
+   "abonnement",
+   "subscription"
+  ],
+  "contracts.kinds.bank": [
+   "banque",
+   "bank",
+   "carte",
+   "frais bancaires"
+  ],
+  "senders.automatic": [
+   "no-reply",
+   "noreply",
+   "no_reply",
+   "donotreply",
+   "do-not-reply",
+   "notification",
+   "ne-pas-repondre",
+   "ne_pas_repondre",
+   "nepasrepondre",
+   "mailer-daemon",
+   "postmaster"
+  ],
+  "replies.forward": [
+   "fwd:",
+   "fw:",
+   "tr:"
+  ],
+  "replies.reply": [
+   "re:",
+   "ré:",
+   "aw:"
+  ],
+  "quotes.openings": [
+   "---------- forwarded message ---------",
+   "---------- message transféré ---------",
+   "-----original message-----",
+   "-----message d'origine-----",
+   "begin forwarded message:",
+   "début du message réexpédié :",
+   "début du message transféré :"
+  ],
+  "quotes.header_names": [
+   "from",
+   "de",
+   "sent",
+   "envoyé",
+   "date",
+   "to",
+   "à",
+   "cc",
+   "subject",
+   "objet",
+   "reply-to",
+   "répondre à"
+  ],
+  "quotes.from_names": [
+   "from",
+   "de"
+  ],
+  "quotes.enough_names": [
+   "subject",
+   "objet",
+   "date",
+   "sent",
+   "envoyé"
+  ],
+  "quotes.wrote": [
+   "wrote:",
+   "a écrit :",
+   "a écrit:",
+   "a écrit :",
+   "a écrit :",
+   "schrieb:"
+  ],
+  "quotes.attribution_starts": [
+   "Le",
+   "On"
+  ],
+  "folders.sent": [
+   "sent",
+   "sent items",
+   "sent messages",
+   "sent mail",
+   "envoyés",
+   "envoyes",
+   "éléments envoyés",
+   "messages envoyés"
+  ],
+  "folders.drafts": [
+   "drafts",
+   "draft",
+   "brouillons",
+   "brouillon"
+  ],
+  "folders.junk": [
+   "junk",
+   "spam",
+   "junk e-mail",
+   "junk email",
+   "bulk mail",
+   "courrier indésirable",
+   "indésirables",
+   "pourriels"
+  ],
+  "folders.trash": [
+   "trash",
+   "deleted items",
+   "deleted messages",
+   "bin",
+   "corbeille",
+   "éléments supprimés"
+  ],
+  "folders.archive": [
+   "archive",
+   "archives"
+  ],
+  "brands.brands.Amazon": [
+   "amazon.fr",
+   "amazon.com",
+   "amazon.de",
+   "amazon.co.uk",
+   "amazon.it",
+   "amazon.es",
+   "primevideo.com",
+   "amazonaws.com"
+  ],
+  "brands.brands.Prime Video": [
+   "primevideo.com",
+   "amazon.fr",
+   "amazon.com"
+  ],
+  "brands.brands.PayPal": [
+   "paypal.com",
+   "paypal.fr",
+   "paypal.de",
+   "paypal.co.uk",
+   "paypal.it",
+   "paypal.es",
+   "paypal.nl",
+   "paypal.be"
+  ],
+  "brands.brands.Netflix": [
+   "netflix.com"
+  ],
+  "brands.brands.Spotify": [
+   "spotify.com"
+  ],
+  "brands.brands.Disney+": [
+   "disneyplus.com",
+   "disney.com"
+  ],
+  "brands.brands.Apple": [
+   "apple.com",
+   "icloud.com",
+   "itunes.com"
+  ],
+  "brands.brands.iCloud": [
+   "apple.com",
+   "icloud.com"
+  ],
+  "brands.brands.Microsoft": [
+   "microsoft.com",
+   "outlook.com",
+   "office.com",
+   "office365.com",
+   "microsoftonline.com",
+   "microsoft"
+  ],
+  "brands.brands.Outlook": [
+   "microsoft.com",
+   "outlook.com"
+  ],
+  "brands.brands.Google": [
+   "google.com",
+   "gmail.com",
+   "youtube.com"
+  ],
+  "brands.brands.Gmail": [
+   "google.com",
+   "gmail.com"
+  ],
+  "brands.brands.Ameli": [
+   "ameli.fr",
+   "assurance-maladie.fr"
+  ],
+  "brands.brands.Assurance Maladie": [
+   "ameli.fr",
+   "assurance-maladie.fr"
+  ],
+  "brands.brands.Impots": [
+   "impots.gouv.fr",
+   "dgfip.finances.gouv.fr",
+   "finances.gouv.fr"
+  ],
+  "brands.brands.DGFiP": [
+   "impots.gouv.fr",
+   "dgfip.finances.gouv.fr",
+   "finances.gouv.fr"
+  ],
+  "brands.brands.Finances Publiques": [
+   "impots.gouv.fr",
+   "dgfip.finances.gouv.fr",
+   "finances.gouv.fr"
+  ],
+  "brands.brands.CAF": [
+   "caf.fr"
+  ],
+  "brands.brands.ANTAI": [
+   "antai.gouv.fr"
+  ],
+  "brands.brands.ANTS": [
+   "ants.gouv.fr"
+  ],
+  "brands.brands.France Travail": [
+   "francetravail.fr",
+   "pole-emploi.fr"
+  ],
+  "brands.brands.Pole Emploi": [
+   "francetravail.fr",
+   "pole-emploi.fr"
+  ],
+  "brands.brands.URSSAF": [
+   "urssaf.fr"
+  ],
+  "brands.brands.FranceConnect": [
+   "franceconnect.gouv.fr"
+  ],
+  "brands.brands.La Poste": [
+   "laposte.fr",
+   "laposte.net",
+   "labanquepostale.fr",
+   "colissimo.fr"
+  ],
+  "brands.brands.Banque Postale": [
+   "labanquepostale.fr"
+  ],
+  "brands.brands.Colissimo": [
+   "colissimo.fr",
+   "laposte.fr"
+  ],
+  "brands.brands.Chronopost": [
+   "chronopost.fr"
+  ],
+  "brands.brands.DHL": [
+   "dhl.com",
+   "dhl.fr",
+   "dhl.de"
+  ],
+  "brands.brands.UPS": [
+   "ups.com"
+  ],
+  "brands.brands.FedEx": [
+   "fedex.com"
+  ],
+  "brands.brands.Free Mobile": [
+   "free-mobile.fr",
+   "free.fr"
+  ],
+  "brands.brands.Freebox": [
+   "free.fr",
+   "freebox.fr"
+  ],
+  "brands.brands.Orange": [
+   "orange.fr",
+   "orange.com",
+   "orange-business.com"
+  ],
+  "brands.brands.SFR": [
+   "sfr.fr"
+  ],
+  "brands.brands.Bouygues Telecom": [
+   "bouyguestelecom.fr"
+  ],
+  "brands.brands.EDF": [
+   "edf.fr",
+   "edf.com"
+  ],
+  "brands.brands.Engie": [
+   "engie.fr",
+   "engie.com"
+  ],
+  "brands.brands.TotalEnergies": [
+   "totalenergies.fr",
+   "totalenergies.com"
+  ],
+  "brands.brands.Credit Agricole": [
+   "credit-agricole.fr",
+   "ca-paris.fr"
+  ],
+  "brands.brands.BNP Paribas": [
+   "bnpparibas.com",
+   "bnpparibas.fr",
+   "bnpparibas"
+  ],
+  "brands.brands.Societe Generale": [
+   "societegenerale.fr",
+   "societegenerale.com"
+  ],
+  "brands.brands.LCL": [
+   "lcl.fr"
+  ],
+  "brands.brands.Caisse d'Epargne": [
+   "caisse-epargne.fr"
+  ],
+  "brands.brands.Banque Populaire": [
+   "banquepopulaire.fr"
+  ],
+  "brands.brands.Credit Mutuel": [
+   "creditmutuel.fr"
+  ],
+  "brands.brands.Boursorama": [
+   "boursorama.com",
+   "boursobank.com",
+   "boursorama.fr"
+  ],
+  "brands.shared": [
+   "gmail.com",
+   "googlemail.com",
+   "outlook.com",
+   "outlook.fr",
+   "hotmail.com",
+   "hotmail.fr",
+   "live.com",
+   "live.fr",
+   "msn.com",
+   "yahoo.com",
+   "yahoo.fr",
+   "ymail.com",
+   "icloud.com",
+   "me.com",
+   "mac.com",
+   "proton.me",
+   "protonmail.com",
+   "pm.me",
+   "murena.io",
+   "e.email",
+   "gmx.com",
+   "gmx.fr",
+   "gmx.de",
+   "gmx.net",
+   "free.fr",
+   "orange.fr",
+   "wanadoo.fr",
+   "sfr.fr",
+   "laposte.net",
+   "bbox.fr",
+   "aol.com",
+   "mail.com",
+   "zoho.com",
+   "tutanota.com",
+   "tuta.io",
+   "posteo.de",
+   "mailbox.org",
+   "fastmail.com",
+   "fastmail.fm",
+   "disroot.org",
+   "riseup.net"
+  ],
+  "brands.service_words": [
+   "admin",
+   "administrator",
+   "administrateur",
+   "support",
+   "mail",
+   "email",
+   "webmail",
+   "service",
+   "services",
+   "team",
+   "equipe",
+   "security",
+   "securite",
+   "account",
+   "accounts",
+   "compte",
+   "notification",
+   "notifications",
+   "noreply",
+   "no",
+   "reply",
+   "help",
+   "helpdesk",
+   "desk",
+   "it",
+   "server",
+   "serveur",
+   "postmaster",
+   "system",
+   "systeme",
+   "info",
+   "infos",
+   "alert",
+   "alerts",
+   "alerte",
+   "update",
+   "billing",
+   "facturation",
+   "domain",
+   "domaine",
+   "hosting",
+   "hebergement",
+   "on",
+   "for",
+   "of",
+   "de",
+   "du",
+   "des",
+   "pour",
+   "the",
+   "le",
+   "la",
+   "les",
+   "your",
+   "votre",
+   "via"
+  ],
+  "calls.missed": [
+   "missed call",
+   "missed voice call",
+   "missed video call",
+   "missed audio call",
+   "appel manque",
+   "appel vocal manque",
+   "appel video manque",
+   "appel audio manque",
+   "llamada perdida",
+   "videollamada perdida",
+   "llamada de voz perdida",
+   "verpasster anruf",
+   "verpasster videoanruf",
+   "chiamata persa",
+   "videochiamata persa"
+  ],
+  "calls.ringing": [
+   "incoming call",
+   "incoming voice call",
+   "incoming video call",
+   "is calling",
+   "calling you",
+   "voice call",
+   "video call",
+   "appel entrant",
+   "vous appelle",
+   "appel vocal",
+   "appel video",
+   "llamada entrante",
+   "eingehender anruf",
+   "chiamata in arrivo"
+  ],
+  "voicemail.operators": [],
+  "voicemail.words": [
+   "message vocal",
+   "messages vocaux",
+   "messagerie vocale",
+   "repondeur",
+   "nouveau message",
+   "voicemail",
+   "voice message"
+  ],
+  "voicemail.hidden": [
+   "numero masque",
+   "numero prive",
+   "numero inconnu",
+   "appelant inconnu",
+   "appel masque",
+   "anonyme",
+   "hidden number",
+   "withheld",
+   "private number",
+   "unknown caller",
+   "unknown number"
+  ],
+  "voicemail.caller_leads": [
+   "part du",
+   "part de",
+   "appelant",
+   "appele par",
+   "from",
+   "caller",
+   "numero :",
+   "numero:",
+   "de :",
+   "de:",
+   " du ",
+   " de "
+  ],
+  "voicemail.own_line": [
+   "votre ligne",
+   "votre numero",
+   "sur la ligne",
+   "your line",
+   "your number"
+  ],
+  "voicemail.duration": [
+   "duree",
+   "duration",
+   "length",
+   "longueur"
+  ],
+  "shield.threats": [
+   "kill yourself",
+   "kys",
+   "kill you",
+   "i will find you",
+   "watch your back",
+   "you will regret",
+   "you'll regret",
+   "hope you die",
+   "go die",
+   "you deserve to die",
+   "i know where you live",
+   "suicide toi",
+   "suicide-toi",
+   "va crever",
+   "creve",
+   "va mourir",
+   "je vais te retrouver",
+   "je sais ou tu habites",
+   "tu vas le regretter",
+   "tu vas regretter",
+   "je vais te tuer",
+   "je vais te defoncer",
+   "on va te retrouver"
+  ],
+  "shield.insults": [
+   "asshole",
+   "bastard",
+   "bitch",
+   "cunt",
+   "dickhead",
+   "motherfucker",
+   "fuck you",
+   "fuck off",
+   "piece of shit",
+   "scumbag",
+   "scum",
+   "loser",
+   "moron",
+   "imbecile",
+   "prick",
+   "wanker",
+   "twat",
+   "screw you",
+   "go to hell",
+   "shut up",
+   "pathetic",
+   "clown",
+   "fraud",
+   "con artist",
+   "connard",
+   "connasse",
+   "conne",
+   "salaud",
+   "salope",
+   "encule",
+   "enfoire",
+   "ordure",
+   "pourriture",
+   "cretin",
+   "debile",
+   "abruti",
+   "imbecile",
+   "fdp",
+   "fils de pute",
+   "ta gueule",
+   "ferme la",
+   "ferme-la",
+   "va te faire foutre",
+   "va te faire voir",
+   "pauvre type",
+   "pauvre con",
+   "minable",
+   "bouffon",
+   "guignol",
+   "escroc",
+   "sale type",
+   "degage",
+   "tocard",
+   "batard",
+   "raclure",
+   "sous-merde"
+  ],
+  "shield.rude": [
+   "fuck",
+   "fucking",
+   "shit",
+   "bullshit",
+   "crap",
+   "damn",
+   "idiot",
+   "stupid",
+   "dumb",
+   "garbage",
+   "trash",
+   "useless",
+   "incompetent",
+   "ridiculous",
+   "merde",
+   "putain",
+   "bordel",
+   "idiot",
+   "stupide",
+   "nul",
+   "nulle",
+   "naze",
+   "pourri",
+   "incompetent",
+   "ridicule",
+   "honte",
+   "lamentable",
+   "foutage de gueule",
+   "se fout de"
+  ],
+  "shield.you": [
+   "you",
+   "your",
+   "you're",
+   "u",
+   "tu",
+   "toi",
+   "te",
+   "t'",
+   "ton",
+   "ta",
+   "tes",
+   "vous",
+   "votre",
+   "vos"
+  ],
+  "shield.topics.work": [
+   "job",
+   "position",
+   "hiring",
+   "hire",
+   "recruit",
+   "recruiting",
+   "recruiter",
+   "contract",
+   "freelance",
+   "consulting",
+   "consultant",
+   "mission",
+   "quote",
+   "rate",
+   "day rate",
+   "budget",
+   "proposal",
+   "collaboration",
+   "partnership",
+   "opportunity",
+   "interview",
+   "salary",
+   "project",
+   "poste",
+   "offre",
+   "emploi",
+   "recrutement",
+   "recruteur",
+   "contrat",
+   "prestation",
+   "devis",
+   "tarif",
+   "tjm",
+   "proposition",
+   "partenariat",
+   "opportunite",
+   "entretien",
+   "salaire",
+   "projet",
+   "collaborer",
+   "mission"
+  ],
+  "shield.topics.support": [
+   "bug",
+   "crash",
+   "crashes",
+   "error",
+   "issue",
+   "problem",
+   "help",
+   "how to",
+   "install",
+   "update",
+   "version",
+   "plugin",
+   "feature",
+   "erreur",
+   "probleme",
+   "aide",
+   "comment faire",
+   "plantage",
+   "plante",
+   "installer",
+   "mise a jour",
+   "fonctionnalite"
+  ],
+  "shield.topics.press": [
+   "journalist",
+   "press",
+   "article",
+   "podcast",
+   "magazine",
+   "media",
+   "reportage",
+   "journaliste",
+   "presse",
+   "medias",
+   "chronique"
+  ],
+  "shield.topics.thanks": [
+   "thank you",
+   "thanks",
+   "grateful",
+   "gratitude",
+   "love your work",
+   "merci",
+   "reconnaissant",
+   "reconnaissante",
+   "bravo",
+   "felicitations"
+  ],
+  "shield.topics.donation": [
+   "donation",
+   "donate",
+   "sponsor",
+   "don",
+   "soutien financier",
+   "faire un don"
+  ],
+  "tasks.optional": [
+   "joy",
+   "someday"
+  ],
+  "tasks.joy": [
+   "joy"
+  ],
+  "tasks.movement": [
+   "sport",
+   "sports",
+   "exercise",
+   "exercice",
+   "movement",
+   "mouvement",
+   "walk",
+   "marche",
+   "run",
+   "running",
+   "course",
+   "yoga",
+   "swim",
+   "natation",
+   "bike",
+   "vélo",
+   "cycling",
+   "hike",
+   "randonnée",
+   "gym",
+   "fitness",
+   "dance",
+   "danse"
+  ],
+  "tasks.personal": [
+   "joy",
+   "personal",
+   "family",
+   "friends",
+   "leisure",
+   "health",
+   "perso",
+   "famille",
+   "amis",
+   "loisirs",
+   "santé"
+  ],
+  "tasks.work": [
+   "work",
+   "travail",
+   "pro",
+   "client",
+   "boulot"
+  ],
+  "tasks.leisure": [
+   "joy",
+   "family",
+   "friends",
+   "leisure",
+   "fun",
+   "famille",
+   "amis",
+   "loisirs"
+  ],
+  "tasks.usual_personal": [
+   "personal",
+   "perso",
+   "health",
+   "santé"
+  ],
+  "tasks.sounds_folders": [
+   "sounds",
+   "sons"
+  ],
+  "capture.weekdays.monday": [
+   "monday",
+   "mon",
+   "lundi",
+   "lun"
+  ],
+  "capture.weekdays.tuesday": [
+   "tuesday",
+   "tue",
+   "mardi"
+  ],
+  "capture.weekdays.wednesday": [
+   "wednesday",
+   "wed",
+   "mercredi",
+   "mer"
+  ],
+  "capture.weekdays.thursday": [
+   "thursday",
+   "thu",
+   "jeudi",
+   "jeu"
+  ],
+  "capture.weekdays.friday": [
+   "friday",
+   "fri",
+   "vendredi",
+   "ven"
+  ],
+  "capture.weekdays.saturday": [
+   "saturday",
+   "sat",
+   "samedi",
+   "sam"
+  ],
+  "capture.weekdays.sunday": [
+   "sunday",
+   "sun",
+   "dimanche",
+   "dim"
+  ],
+  "capture.months.1": [
+   "january",
+   "jan",
+   "janvier",
+   "janv"
+  ],
+  "capture.months.2": [
+   "february",
+   "feb",
+   "février",
+   "fevrier",
+   "fév",
+   "fev",
+   "févr"
+  ],
+  "capture.months.3": [
+   "march",
+   "mar",
+   "mars"
+  ],
+  "capture.months.4": [
+   "april",
+   "apr",
+   "avril",
+   "avr"
+  ],
+  "capture.months.5": [
+   "may",
+   "mai"
+  ],
+  "capture.months.6": [
+   "june",
+   "jun",
+   "juin"
+  ],
+  "capture.months.7": [
+   "july",
+   "jul",
+   "juillet",
+   "juil"
+  ],
+  "capture.months.8": [
+   "august",
+   "aug",
+   "août",
+   "aout"
+  ],
+  "capture.months.9": [
+   "september",
+   "sep",
+   "sept",
+   "septembre"
+  ],
+  "capture.months.10": [
+   "october",
+   "oct",
+   "octobre"
+  ],
+  "capture.months.11": [
+   "november",
+   "nov",
+   "novembre"
+  ],
+  "capture.months.12": [
+   "december",
+   "dec",
+   "décembre",
+   "decembre",
+   "déc"
+  ],
+  "capture.kind_words.call": [
+   "call",
+   "phone",
+   "appel",
+   "appeler",
+   "telephone",
+   "tel"
+  ],
+  "capture.kind_words.write": [
+   "write",
+   "mail",
+   "email",
+   "letter",
+   "ecrire",
+   "courriel",
+   "lettre"
+  ],
+  "capture.kind_words.online": [
+   "online",
+   "web",
+   "form",
+   "enligne",
+   "en-ligne",
+   "formulaire",
+   "site"
+  ],
+  "capture.kind_words.out": [
+   "out",
+   "errand",
+   "dehors",
+   "course",
+   "courses",
+   "sortie"
+  ],
+  "capture.kind_words.read": [
+   "read",
+   "lire",
+   "lecture"
+  ],
+  "capture.kind_words.think": [
+   "think",
+   "decide",
+   "reflechir",
+   "decider"
+  ],
+  "capture.kind_words.make": [
+   "make",
+   "do",
+   "build",
+   "faire",
+   "fabriquer"
+  ],
+  "capture.kind_verbs.call": [
+   "call",
+   "phone",
+   "ring",
+   "appeler",
+   "rappeler",
+   "telephoner"
+  ],
+  "capture.kind_verbs.write": [
+   "write",
+   "email",
+   "mail",
+   "reply",
+   "answer",
+   "ecrire",
+   "envoyer",
+   "repondre",
+   "relancer"
+  ],
+  "capture.kind_verbs.online": [
+   "fill",
+   "submit",
+   "pay",
+   "book",
+   "order",
+   "register",
+   "renew",
+   "declare",
+   "remplir",
+   "payer",
+   "reserver",
+   "commander",
+   "declarer",
+   "simuler",
+   "renouveler"
+  ],
+  "capture.kind_verbs.out": [
+   "go",
+   "buy",
+   "pick",
+   "visit",
+   "aller",
+   "acheter",
+   "recuperer",
+   "passer"
+  ],
+  "capture.kind_verbs.read": [
+   "read",
+   "review",
+   "reread",
+   "lire",
+   "relire"
+  ],
+  "capture.kind_verbs.think": [
+   "think",
+   "decide",
+   "choose",
+   "reflechir",
+   "decider",
+   "choisir"
+  ],
+  "capture.kind_verbs.make": [
+   "make",
+   "build",
+   "fix",
+   "repair",
+   "cook",
+   "clean",
+   "fabriquer",
+   "reparer",
+   "cuisiner",
+   "nettoyer",
+   "ranger"
+  ],
+  "capture.today": [
+   "today",
+   "aujourd'hui",
+   "auj"
+  ],
+  "capture.tomorrow": [
+   "tomorrow",
+   "demain"
+  ],
+  "capture.next_week": [
+   "next week",
+   "semaine prochaine"
+  ],
+  "capture.in": [
+   "in",
+   "dans"
+  ],
+  "capture.unit_days": [
+   "day",
+   "days",
+   "jour",
+   "jours"
+  ],
+  "capture.unit_weeks": [
+   "week",
+   "weeks",
+   "semaine",
+   "semaines"
+  ],
+  "capture.ordinals": [
+   "er",
+   "st",
+   "nd",
+   "rd",
+   "th"
+  ],
+  "spam.provider_tags": [
+   "spam",
+   "junk",
+   "pourriel",
+   "indésirable"
+  ],
+  "spam.months": [
+   "jan",
+   "feb",
+   "mar",
+   "apr",
+   "may",
+   "jun",
+   "jul",
+   "aug",
+   "sep",
+   "oct",
+   "nov",
+   "dec",
+   "fev",
+   "avr",
+   "mai",
+   "jui",
+   "aou",
+   "janvier",
+   "fevrier",
+   "mars",
+   "avril",
+   "juin",
+   "juillet",
+   "aout",
+   "septembre",
+   "octobre",
+   "novembre",
+   "decembre",
+   "january",
+   "february",
+   "march",
+   "april",
+   "june",
+   "july",
+   "august",
+   "september",
+   "october",
+   "november",
+   "december"
+  ],
+  "spam.keys": [
+   "tab",
+   "ctrl",
+   "shift",
+   "maj",
+   "alt",
+   "altgr",
+   "command",
+   "cmd",
+   "option",
+   "menu",
+   "click",
+   "clic",
+   "up",
+   "down",
+   "left",
+   "right",
+   "top",
+   "bottom",
+   "enter",
+   "return",
+   "del",
+   "suppr",
+   "home",
+   "end",
+   "pageup",
+   "pagedown",
+   "fn",
+   "insert",
+   "numlock",
+   "scroll",
+   "drag",
+   "f1",
+   "f2",
+   "f3",
+   "f4",
+   "f5",
+   "f6",
+   "f7",
+   "f8",
+   "f9",
+   "f10",
+   "f11",
+   "f12"
+  ],
+  "spam.elisions": [
+   "l",
+   "d",
+   "j",
+   "m",
+   "n",
+   "s",
+   "t",
+   "c",
+   "qu",
+   "lorsqu",
+   "puisqu",
+   "jusqu",
+   "quelqu"
+  ],
+  "spam.number_words": [
+   "zero",
+   "two",
+   "three",
+   "four",
+   "five",
+   "six",
+   "seven",
+   "eight",
+   "nine",
+   "ten",
+   "eleven",
+   "twelve",
+   "deux",
+   "trois",
+   "quatre",
+   "cinq",
+   "sept",
+   "huit",
+   "dix",
+   "onze",
+   "douze"
+  ],
+  "spam.stop_words": [
+   "it",
+   "it's",
+   "that",
+   "this",
+   "these",
+   "those",
+   "that'll",
+   "that's",
+   "there",
+   "here",
+   "the",
+   "an",
+   "one",
+   "any",
+   "all",
+   "none",
+   "such",
+   "to",
+   "which",
+   "whose",
+   "much",
+   "many",
+   "several",
+   "few",
+   "little",
+   "always",
+   "never",
+   "sometimes",
+   "my",
+   "mine",
+   "your",
+   "yours",
+   "their",
+   "theirs",
+   "his",
+   "hers",
+   "its",
+   "us",
+   "you",
+   "he",
+   "she",
+   "her",
+   "them",
+   "we",
+   "our",
+   "also",
+   "like",
+   "get",
+   "with",
+   "in",
+   "but",
+   "so",
+   "just",
+   "and",
+   "only",
+   "because",
+   "of",
+   "as",
+   "very",
+   "from",
+   "other",
+   "if",
+   "then",
+   "however",
+   "maybe",
+   "now",
+   "really",
+   "actually",
+   "something",
+   "everything",
+   "later",
+   "sooner",
+   "late",
+   "soon",
+   "probably",
+   "guess",
+   "perhaps",
+   "still",
+   "though",
+   "even",
+   "definitely",
+   "indeed",
+   "for",
+   "some",
+   "everytime",
+   "every",
+   "on",
+   "at",
+   "by",
+   "out",
+   "they",
+   "than",
+   "up",
+   "well",
+   "ok",
+   "me",
+   "please",
+   "either",
+   "both",
+   "lot",
+   "yet",
+   "too",
+   "each",
+   "far",
+   "again",
+   "ca",
+   "au",
+   "aux",
+   "que",
+   "ce",
+   "cette",
+   "ces",
+   "cettes",
+   "cela",
+   "ceci",
+   "le",
+   "la",
+   "les",
+   "de",
+   "du",
+   "un",
+   "une",
+   "des",
+   "toi",
+   "moi",
+   "eux",
+   "te",
+   "qu",
+   "mon",
+   "ma",
+   "mes",
+   "ta",
+   "tes",
+   "sa",
+   "ses",
+   "leur",
+   "leurs",
+   "votre",
+   "vos",
+   "lui",
+   "est",
+   "la_bas",
+   "ici",
+   "bien",
+   "parfois",
+   "certain",
+   "certains",
+   "certaine",
+   "certaines",
+   "quelque",
+   "quelques",
+   "nombreux",
+   "nombreuses",
+   "peu",
+   "plusieurs",
+   "beaucoup",
+   "tout",
+   "toute",
+   "tous",
+   "toutes",
+   "aucun",
+   "aucune",
+   "comme",
+   "si",
+   "en",
+   "dans",
+   "or",
+   "ou",
+   "et",
+   "alors",
+   "parce",
+   "seulement",
+   "ni",
+   "car",
+   "tres",
+   "donc",
+   "pas",
+   "mais",
+   "meme",
+   "aussi",
+   "avec",
+   "je",
+   "tu",
+   "il",
+   "elle",
+   "nous",
+   "vous",
+   "ils",
+   "elles",
+   "pour",
+   "sur",
+   "par",
+   "se",
+   "ai",
+   "suis",
+   "ci_dessus",
+   "ci_dessous",
+   "lequel",
+   "duquel",
+   "auquel",
+   "laquelle",
+   "lesquels",
+   "lesquelles",
+   "auxquels",
+   "auxquelles",
+   "desquels",
+   "desquelles",
+   "desquel",
+   "quelquefois",
+   "toujours",
+   "est_a_dire",
+   "http",
+   "https",
+   "oh",
+   "ah",
+   "ha",
+   "heh",
+   "re",
+   "eh",
+   "huh",
+   "uh",
+   "wow",
+   "ow",
+   "dang",
+   "um",
+   "yay",
+   "ugh",
+   "hehe",
+   "hehehe"
+  ],
+  "ocr.languages": [
+   "fra",
+   "eng"
+  ]
+ }
+}

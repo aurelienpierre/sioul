@@ -9,6 +9,7 @@
 
 use serde_json::Value;
 use sioul_core::codes::{self, CodeKind};
+use sioul_core::words::Words;
 
 const CODE: &str = "[code hidden]";
 const LINK: &str = "[link hidden]";
@@ -20,9 +21,11 @@ const PASSWORD: &str = "[This message gives a password: its words stay in Sioul'
 /// written, spaced or not; every link hidden, as good as the code (a reset,
 /// a sign-in link, an address to confirm); a password's message kept whole
 /// from the agent, as where the password sits is not known. Then the numbers
-/// `text` hides.
-pub fn message(subject: &str, body: &str) -> (String, String) {
-    let found = secrets(subject, body);
+/// `text` hides. `words`: what the codes detector looks for, as the
+/// configuration makes it (`Words::of`), so that a code it finds in the
+/// window is hidden from the agent too.
+pub fn message(words: &Words, subject: &str, body: &str) -> (String, String) {
+    let found = secrets(words, subject, body);
     if found.kinds.is_empty() {
         return (text(subject), text(body));
     }
@@ -32,7 +35,7 @@ pub fn message(subject: &str, body: &str) -> (String, String) {
         found.codes.iter().fold(text, |text, code| hide_code(&text, code))
     };
     if found.kinds.contains(&CodeKind::Password) {
-        let own = secrets(subject, "").kinds.contains(&CodeKind::Password);
+        let own = secrets(words, subject, "").kinds.contains(&CodeKind::Password);
         return (if own { PASSWORD.to_string() } else { self::text(&hide(subject)) }, PASSWORD.to_string());
     }
     (self::text(&hide(subject)), self::text(&hide(body)))
@@ -57,12 +60,12 @@ const OVERLAP: usize = 200;
 /// around it, in a text where codes printed apart ("4 8 2 9 1 3") are joined
 /// too; and the rest is read piece by piece with every digit blanked, so that
 /// a password or a link further on is not hidden behind a code.
-fn secrets(subject: &str, body: &str) -> Secrets {
+fn secrets(words: &Words, subject: &str, body: &str) -> Secrets {
     let chars: Vec<char> = format!("{subject}\n{body}").chars().collect();
     let mut found = Secrets::default();
     let joined = squeezed(&chars);
     for text in [&chars, &joined] {
-        for code in codes_in(text) {
+        for code in codes_in(words, text) {
             if !found.codes.contains(&code) {
                 found.codes.push(code);
             }
@@ -76,7 +79,7 @@ fn secrets(subject: &str, body: &str) -> Secrets {
     loop {
         let end = (start + PIECE).min(blank.len());
         let piece: String = blank[start..end].iter().collect();
-        if let Some(kind) = codes::detect(&piece, "").map(|s| s.kind)
+        if let Some(kind) = codes::detect(&words.codes, &piece, "").map(|s| s.kind)
             && !found.kinds.contains(&kind)
         {
             found.kinds.push(kind);
@@ -97,7 +100,7 @@ const BEFORE: [usize; 4] = [250, 170, 90, 30];
 const AFTER: usize = 170;
 
 /// The codes a text holds, as `codes::detect` reads them.
-fn codes_in(chars: &[char]) -> Vec<String> {
+fn codes_in(words: &Words, chars: &[char]) -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
     for at in (0..chars.len()).filter(|&i| could_be_code(chars, i)) {
         let end = (at + AFTER).min(chars.len());
@@ -107,7 +110,7 @@ fn codes_in(chars: &[char]) -> Vec<String> {
             let mut piece = found.iter().fold(piece, |piece, code| hide_code(&piece, code));
             let mut new = false;
             for _ in 0..4 {
-                let Some(code) = codes::detect(&piece, "").and_then(|s| s.code) else { break };
+                let Some(code) = codes::detect(&words.codes, &piece, "").and_then(|s| s.code) else { break };
                 piece = hide_code(&piece, &code);
                 if !found.contains(&code) {
                     found.push(code);

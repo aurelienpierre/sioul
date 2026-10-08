@@ -712,6 +712,23 @@ SioulWindow {
         return find(parametersPage)
     }
 
+    // Settings ▸ Words (WordsTab.qml), once its tab was shown: the demo steps open its lines.
+    function wordsTab(): var {
+        const find = item => {
+            if (!item)
+                return null
+            if (item.objectName === "wordsTab")
+                return item
+            for (let i = 0; i < item.children.length; i++) {
+                const found = find(item.children[i])
+                if (found)
+                    return found
+            }
+            return null
+        }
+        return find(parametersPage)
+    }
+
     // How someone reaches you (PersonSheet.qml, made the first time): a
     // contact's card by its file or UID, or a sender's addresses (a JSON array).
     function openPersonSheet(key, addresses) {
@@ -902,7 +919,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "calls": grabber.callsSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -2451,6 +2468,50 @@ SioulWindow {
                 () => personSheet.item.close(),
                 () => window.close()
             ]
+            // Settings ▸ Words (docs/words.md): the lines, a line's page, a word
+            // added and one taken away, a brand of your own, back to the defaults,
+            // German read too, and the way there from the Filed lane's ⚙.
+            readonly property var wordsSteps: [
+                () => window.showParameters("words"),
+                () => {},
+                () => {},
+                () => grabber.save("words-lines"),
+                () => parametersPage.scrollBy(0.5),
+                () => {},
+                () => grabber.save("words-lines-more"),
+                () => window.showParameters("words.folders.trash"),
+                () => {},
+                () => {},
+                () => grabber.save("words-folders"),
+                () => grabber.changeWords("words.folders.trash", ["Papierkorb"], ["bin"]),
+                () => {},
+                () => {},
+                () => grabber.save("words-folders-changed"),
+                () => window.showParameters("words.brands.brands"),
+                () => {},
+                () => {},
+                () => grabber.save("words-brands"),
+                () => grabber.changeWords("words.brands.brands", ["Ma Banque: mabanque.example"], []),
+                () => {},
+                () => {},
+                () => grabber.save("words-brands-changed"),
+                () => parametersPage.save("words.reset.brands", true),
+                () => {},
+                () => {},
+                () => grabber.save("words-brands-reset"),
+                () => {
+                    parametersPage.save("words.languages", ["fr", "en", "de"])
+                    window.wordsTab().show("")
+                },
+                () => {},
+                () => {},
+                () => grabber.save("words-german"),
+                () => sioul.reminderOpened("settings:words.senders.automatic", "", ""),
+                () => {},
+                () => {},
+                () => grabber.save("words-senders"),
+                () => window.close()
+            ]
             // A second computer: the folder already sealed (one passphrase), then joined.
             readonly property var shareJoin: [
                 () => window.page = 12,
@@ -2910,6 +2971,13 @@ SioulWindow {
                 },
                 () => window.close()
             ]
+
+            // A list of Settings ▸ Words changed as a person would: words added, others taken away.
+            function changeWords(key, added, removed) {
+                const row = parametersPage.rows.find(r => r.key === key)
+                if (row)
+                    parametersPage.save(key, row.value.filter(w => removed.indexOf(w) < 0).concat(added))
+            }
 
             function save(name) {
                 frame.grabToImage(result => result.saveToFile(grabber.folder + "/" + name + ".png"))
