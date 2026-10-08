@@ -33,9 +33,13 @@ pub struct Entry {
     /// `PHONE` or `COMPUTER`.
     #[serde(default)]
     pub kind: String,
-    /// The Sioul that wrote it.
+    /// The Sioul that wrote it: its version ("0.0.3") and the commit it was
+    /// built from (`sioul_core::build::COMMIT`); an older Sioul's entry says
+    /// its version alone, or neither, and reads all the same.
     #[serde(default)]
     pub version: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub commit: String,
     /// Its last start: Sioul opened; on a phone, Sioul back on the screen, or
     /// one of its reminders handled while it was not.
     #[serde(default)]
@@ -97,6 +101,12 @@ impl Entry {
         if wrote.is_some() {
             self.wrote = wrote;
         }
+    }
+
+    /// The build that wrote it, in words: "0.0.3 (eff8661abcde)"; its version
+    /// alone from an older Sioul; "" when unsaid.
+    pub fn build(&self) -> String {
+        sioul_core::build::described(&self.version, &self.commit)
     }
 
     /// What the doses read of it (`sioul_core::health::Said`).
@@ -256,6 +266,35 @@ mod tests {
         let without = serde_json::json!({ "id": id, "started": 1_000, "closed": 2_000 }).to_string();
         std::fs::write(file_of(&folder, &id), crate::share::seal(&KEY, &bound(&id), without.as_bytes())).unwrap();
         assert!(all(&folder, &KEY).0.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Each entry says the build that wrote it (docs/database.md, "Devices");
+    /// one written before the field came, by an older Sioul, reads all the same.
+    #[test]
+    fn an_entry_says_its_build_and_an_older_one_still_reads() {
+        let dir = scratch("build");
+        let (folder, state) = (dir.join("shared"), dir.join("state"));
+        let id = uuid::Uuid::new_v4().to_string();
+        let vault = Some((folder.as_path(), &KEY));
+        change(&own_path(&state), vault, |e| {
+            e.id = id.clone();
+            e.version = sioul_core::build::VERSION.into();
+            e.commit = sioul_core::build::COMMIT.into();
+            e.start(1_000);
+        })
+        .unwrap();
+        let (entries, _) = all(&folder, &KEY);
+        assert_eq!((entries[0].version.as_str(), entries[0].commit.as_str()), (sioul_core::build::VERSION, sioul_core::build::COMMIT));
+        assert_eq!(entries[0].build(), sioul_core::build::DESCRIBED);
+        assert!(!std::fs::read_to_string(file_of(&folder, &id)).unwrap().contains(sioul_core::build::COMMIT), "sealed: the server never learns it");
+        // An older Sioul's entry: its version alone, no commit; one older still, neither.
+        for (plain, said) in [(serde_json::json!({ "id": id, "version": "0.0.2", "started": 1_000, "working": true }), "0.0.2"), (serde_json::json!({ "id": id, "started": 1_000, "working": true }), "")] {
+            std::fs::write(file_of(&folder, &id), crate::share::seal(&KEY, &bound(&id), plain.to_string().as_bytes())).unwrap();
+            let (entries, unread) = all(&folder, &KEY);
+            assert!(unread.is_empty() && entries[0].working && entries[0].commit.is_empty(), "{entries:?}");
+            assert_eq!(entries[0].build(), said);
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

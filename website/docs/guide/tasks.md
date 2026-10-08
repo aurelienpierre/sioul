@@ -231,27 +231,27 @@ While you sleep ([Hours](hours.md#sleep): the night from winding down to waking,
 
 ### What it costs, and what it gives back {#what-it-costs-and-what-it-gives-back}
 
-Five sliders, in a task's form and in an event's: **Thinking it asks**, **Feelings it stirs**, **Anxiety it raises**, **Body and senses**, and **What it gives back**, each from 0 to 10, as you feel it.
+Four tiles, in a task's form and in an event's, two by two (one under the other on a phone): **Thinking**, **Feelings**, **Worry** and **Body and senses**, then **Gives back** under them. Each takes a number from 0 to 10, as you feel it, and asks a question in small print about what counts:
 
-- Each says **Not rated** until you touch it: tap or drag along it, or use the arrow keys (the first press gives 5; Home gives 0, End 10). 0 is a rating, not a blank. **×**, or Delete, clears it.
-- Words under each slider say what 0, 5 and 10 mean:
+| Tile | What it asks |
+|---|---|
+| **Thinking** | Deciding, many things to hold in mind, something new to learn? |
+| **Feelings** | Talking to someone, being judged or disappointing someone, a painful reminder? |
+| **Worry** | A deadline, an answer you wait for, a risk of getting it wrong? |
+| **Body and senses** | Moving, standing, noise, crowds, screens, travel? |
+| **Gives back** | Will it give you anything back: rest, joy, meaning? |
 
-  | | 0 | 5 | 10 |
-  |---|---|---|---|
-  | **Thinking it asks** | on autopilot | steady focus | all my focus |
-  | **Feelings it stirs** | nothing to hide or carry | feelings to hold in | a lot to hide or carry |
-  | **Anxiety it raises** | no dread | dread before or after | dread long before and after |
-  | **Body and senses** | nothing physical or sensory | some standing, noise or light that tires | exhausting: crowds, noise, long standing |
-  | **What it gives back** | gave nothing back | some rest, pleasure or pride | left me clearly restored, glad or proud |
+- **A tap sets a value.** Each gauge has a small cell for 0, then ten cells for 1 to 10: tap the one you mean. Tap it again and the tile is **unsaid** again. 0 is a rating, not a blank: it says *nothing*.
+- **With the keyboard**, Tab goes from tile to tile; a digit gives 0 to 9, **+** or **=** gives 10, the arrows go up or down by one, and Delete clears.
+- **A word beside each number** says what it means, as on the scale used to rate effort in sport and in pacing: *nothing*, *very light*, *light*, *moderate* (3 and 4), *hard* (5 and 6), *very hard* (7 to 9), *the most*. What gives back goes from *nothing* through *a little*, *some*, *a good deal* and *a lot* to *the most*.
+- **What you said before.** When you said how this task went the last times, or tasks of its kind ([How was it?](#how-was-it)), the unsaid tiles show those values faintly, and a line says where they come from. **Looks right** takes them all; a tap on a tile sets that one alone. Nothing faint is kept until you choose it.
+- Each value is kept as you give it. Once a cost is rated, **What it takes** follows the ratings, shown rather than chosen: *light* when no cost is above 3, *the usual* up to 6, *heavy* from 7; *it gives back* when the gain is 5 or more and no cost is above 3. That is how the plan counts the heavy tasks a day can hold ([How is today?](#how-is-today)).
 
-- A rating is kept when you let go, not while you drag. On a phone, a drag sideways moves the slider; a drag up or down scrolls the page.
-- Once a cost is rated, **What it takes** follows the ratings, shown rather than chosen: *light* when no cost is above 3, *the usual* up to 6, *heavy* from 7; *it gives back* when the gain is 5 or more and no cost is above 3. That is how the plan counts the heavy tasks a day can hold ([How is today?](#how-is-today)).
-
-Feelings count when you have to hide or carry them, not only when they are sad; anxiety counts the dread before and after, not only during; the body and the senses count standing, noise, light and crowds ([what the research says](../dev/research.md)).
+Feelings count when you have to hide or carry them, not only when they are sad; worry counts the dread before and after, not only during; the body and the senses count standing, noise, light and crowds. The questions ask about what stirs feelings rather than which feeling it is, for whoever finds feelings hard to name ([what the research says](../dev/research.md)).
 
 ### How was it? {#how-was-it}
 
-When a task is done, the status line offers **How was it?** for a moment; a done task's details offer it too. It opens the same five sliders, what you foresaw shown as pale marks ("foreseen: 7"). Only what you move is kept, as felt, beside what you foresaw; the rest stays blank, never copied from the forecast. Ignore it and nothing changes: it is never asked again, never counted.
+When a task is done, the status line offers **How was it?** for a moment; a done task's details offer it too. It opens the same tiles, a thin mark on each gauge where you foresaw it. Only what you tap is kept, as felt, beside what you foresaw; the rest stays unsaid, never copied from the forecast, and nothing faint is offered there. Ignore it and nothing changes: it is never asked again, never counted.
 
 ### Offices have hours {#offices-have-hours}
 

@@ -7,8 +7,11 @@
 // notification access and its two steps for an app installed from a file;
 // holding on or off; the gathered times; what rang before Sioul held it,
 // each with Android's page to make it silent. What reaches you ▸ Exceptions
-// ("lists"): each app, conversation and site seen, with its choice. On a
-// computer, one sentence: this is the phone's.
+// ("lists"): each app and conversation by time, a row of the matrix of what
+// reaches you (AttentionGrid.qml: as usual, at once, gathered or held at each
+// time), then each app, conversation and site seen, with its choice. On a
+// computer, one sentence: this is the phone's; in Exceptions, the rows by
+// time set on the phone, by name, changed here as there.
 
 pragma ComponentBehavior: Bound
 
@@ -21,13 +24,16 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
-    // appnotes.rs's `setup`: {android, access, restricted, contacts, hold, times, heard, rang, apps, conversations, sites}.
-    property var shown: ({ android: false, access: false, restricted: false, contacts: false, hold: null, times: "", heard: "", rang: [], apps: [], conversations: [], sites: [] })
+    // appnotes.rs's `setup`: {android, access, restricted, contacts, hold, times, heard, rang, apps, conversations, sites, grid, more}.
+    property var shown: ({ android: false, access: false, restricted: false, contacts: false, hold: null, times: "", heard: "", rang: [], apps: [], conversations: [], sites: [], grid: { columns: [], marks: [], rows: [] }, more: false })
 
     // "phone" (this phone's setup), "lists" (each app, conversation, site), or "all".
     property string part: "all"
     readonly property bool phonePart: setup.shown.android && (setup.part === "all" || setup.part === "phone")
     readonly property bool listsPart: setup.shown.android && (setup.part === "all" || setup.part === "lists")
+    // A computer, in Exceptions: the rows by time set on the phone, when there are some.
+    readonly property bool computerPart: !setup.shown.android && setup.part === "lists" && setup.shown.grid !== undefined && setup.shown.grid.rows.length > 0
+    readonly property bool byTime: setup.listsPart || setup.computerPart
 
     function reload() {
         setup.shown = JSON.parse(setup.sioul.appNotesSetup() || "null") || setup.shown
@@ -230,6 +236,57 @@ ColumnLayout {
         }
     }
 
+    // ---------------------------------------------------------------- by time
+    // Each app and conversation a row of the matrix (attention.rs, its
+    // sources' rows): a press on a mark opens its choices in words, saved at
+    // once, the row whole ("attention.app.<package>").
+    Label {
+        visible: setup.byTime
+        text: setup.sioul.text("appnotes-by-time")
+        Layout.fillWidth: true
+        Layout.topMargin: 18
+        font.pixelSize: 17
+        font.weight: Font.DemiBold
+        wrapMode: Text.Wrap
+        color: setup.theme.accent
+    }
+    Label {
+        visible: setup.byTime
+        text: setup.sioul.text(setup.computerPart ? "appnotes-by-time-computer" : "appnotes-by-time-help")
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: setup.theme.muted
+    }
+    AttentionGrid {
+        visible: setup.byTime && setup.shown.grid.rows.length > 0
+        Layout.fillWidth: true
+        // As wide as the page, never wider: on a phone the times' names stand upright.
+        Layout.preferredWidth: 0
+        setting: ({ grid: setup.shown.grid })
+        sioul: setup.sioul
+        theme: setup.theme
+        onSave: (key, value) => setup.act("row", { key: key, words: value })
+    }
+    Label {
+        visible: setup.listsPart && setup.shown.more === true
+        text: setup.sioul.text("appnotes-by-time-more")
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: setup.theme.muted
+    }
+    Label {
+        visible: setup.listsPart
+        text: setup.sioul.text("appnotes-by-time-limits")
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: setup.theme.muted
+    }
+
     // ---------------------------------------------------------------- apps, conversations, sites
     Label {
         visible: setup.listsPart
@@ -267,6 +324,15 @@ ColumnLayout {
                 sioul: setup.sioul
                 theme: setup.theme
                 onSave: (key, value) => setup.act("set", { key: key, value: value })
+            }
+            // Its row by time, in one sentence.
+            Label {
+                Layout.fillWidth: true
+                text: app.modelData.times || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: setup.theme.muted
             }
             SettingRow {
                 Layout.fillWidth: true

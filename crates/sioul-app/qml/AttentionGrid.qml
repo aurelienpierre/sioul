@@ -29,6 +29,8 @@ ColumnLayout {
 
     // Where a row is saved: "attention." and its id ("attention.mail.safe").
     property string prefix: "attention."
+    // The legend's "fixed" mark: shown only where a row has a fixed cell.
+    readonly property bool anyFixed: grid.rows.some(r => r.cells.some(c => (c.locked || "") !== ""))
 
     readonly property var matrix: grid.setting.grid || ({ columns: [], marks: [], rows: [] })
     readonly property var columns: grid.matrix.columns
@@ -370,6 +372,7 @@ ColumnLayout {
             }
         }
         RowLayout {
+            visible: grid.anyFixed
             spacing: 5
 
             LevelMark {

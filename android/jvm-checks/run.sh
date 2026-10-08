@@ -25,7 +25,21 @@
 #   conversation's key against Rust's (AppNotes.talkKey), the conversations
 #   forgotten, Android's pages for a conversation;
 # - HeardCheck: the phone's own do-not-disturb heard both ways
-#   (DndHeard.decide), a mode's kind, a mode the phone holds.
+#   (DndHeard.decide), a mode's kind, a mode the phone holds;
+# - CardCheck: the full card on the home screen (HomeCardToday.Lines.of):
+#   today's date and weather at a time, the Porch's lines, Now's, when it
+#   draws again, a card of version 2, an older Java meeting version 3; with
+#   SIOUL_CARD_SAMPLE, the card Rust's homecard::tests::the_file_java_reads
+#   wrote there.
+# - MessagesCheck: what the listener says for your computers
+#   (PhoneMessages.notice, PhoneMessages.message), under the names
+#   phonemsgs.rs's `Extra` reads: visibility, times, pictures by their type.
+# - TextsCheck (texts): the texts read from the provider and a part's result
+#   (Texts.sms, Texts.mms, TextSend.line) on stand-in rows, as texts.rs reads them.
+# - AttachmentsCheck: a mail attachment handed to another app (Attachments:
+#   its content:// address and the way back, its type, ACTION_VIEW read
+#   only, the question where to save), and the provider's folders and the
+#   manifest, read from the repository (its root as the property sioul.root).
 # Then javadoc as the website's strict build runs it (website/build.sh
 # --strict --api): the comments' HTML and references, every warning an error.
 #
@@ -42,7 +56,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck MessagesCheck TextsCheck AttachmentsCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 
@@ -142,7 +156,7 @@ sed "s|^|  |" "$work/javac.log"
 
 failed=()
 for check in "${checks[@]}"; do
-    if ! java -cp "$json_jar:$work/out:$android_jar" "com.aurelienpierre.sioul.$check" > "$work/$check.log" 2>&1; then
+    if ! java -Dsioul.root="$root" -cp "$json_jar:$work/out:$android_jar" "com.aurelienpierre.sioul.$check" > "$work/$check.log" 2>&1; then
         failed+=("$check")
     fi
     sed -e "s|^$check: ||" -e "s|^|  $check: |" "$work/$check.log"

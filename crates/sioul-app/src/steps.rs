@@ -232,8 +232,41 @@ fn fetch_mail(config: &Config) -> bool {
     any
 }
 
+/// The background service's notification as things stand now (StepService;
+/// docs/android.md, "In the background"): {title, text, calls}. Its title,
+/// what now is for and until when; its text, do-not-disturb on or off, then
+/// the calls, screened or every call ringing; `calls`, the words of its
+/// buttons (`calls::words`). And when what now is for ends (Unix seconds).
+pub(crate) fn note() -> (serde_json::Value, Option<i64>) {
+    let (title, dnd, until) = crate::everywhere::note();
+    let calls = crate::calls::words();
+    let calls_line = match (calls["screening"] == true, calls["through"] == true) {
+        (false, _) => String::new(),
+        (true, true) => calls["line"].as_str().unwrap_or_default().to_string(),
+        (true, false) => tr().text("steps-note-calls-screened", None),
+    };
+    let text = [dnd, calls_line].into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ");
+    let at = jiff::Timestamp::now().as_millisecond();
+    (serde_json::json!({ "at": at, "title": title, "text": text, "calls": calls }), until)
+}
+
+/// The notification's words told to the background service at once
+/// (StepService.call "note"; after each apply in Sioul's own process: a press
+/// of the switch, the phone's own do-not-disturb heard, the tile, a mode's
+/// end, another device's change, the calls' switch, the window's minute), so
+/// that it says the state now without waiting for its next step. Java shows
+/// them only when they changed, and never words older than those shown: no
+/// copy kept here, which the service's own steps would make stale. Nothing
+/// on a computer, nor from the service's own process, whose step says it.
+pub(crate) fn tell_note() {
+    if !cfg!(target_os = "android") || in_service() {
+        return;
+    }
+    java("note", &note().0.to_string());
+}
+
 /// One step of the background service (see the module's words): its answer
-/// for Java, {next (seconds), folder, own, line, title, channel, stop}.
+/// for Java, {next (seconds), folder, own, title, text, channel, calls, stop}.
 fn step(reason: &str) -> serde_json::Value {
     let config = load_config();
     let Some((own, vault)) = crate::share::vault() else { return serde_json::json!({ "stop": true }) };
@@ -254,9 +287,16 @@ fn step(reason: &str) -> serde_json::Value {
     // and the calls' table first, and sent at once, the sync app not waited for.
     let pressed = reason == "calls";
     let calls = if pressed { Some(crate::calls::step(true)) } else { None };
-    // A press heard from this phone's own do-not-disturb (DndReceiver): sent at once too.
-    let fetch_first = reason != "folder" && reason != "heard" && !pressed && (in_use || !asleep);
+    // A press heard from this phone's own do-not-disturb (DndReceiver): sent at once too; and
+    // a message's line for your computers (`phonemsgs`, the listener's "messages").
+    let fetch_first = reason != "folder" && reason != "heard" && reason != "messages" && !pressed && (in_use || !asleep);
     if let Some(Err(e)) = crate::share::exchange_here(fetch_first) {
+        eprintln!("sioul: steps: {e}");
+    }
+    // texts: the requests this exchange brought, decided and sent now, their outcomes shared at once.
+    if crate::texts::phone_step()
+        && let Some(Err(e)) = crate::share::exchange_here(false)
+    {
         eprintln!("sioul: steps: {e}");
     }
     // The calls' table as your devices' news left it, and the notification's words for them.
@@ -269,6 +309,8 @@ fn step(reason: &str) -> serde_json::Value {
         java("poke", "{}");
         *poked = (signature, line.clone());
     }
+    // The notification's words shown now, before mail, which may take a while.
+    java("note", &note().0.to_string());
     // 3. Mail at its rhythm, then what waited and may come now.
     let now = jiff::Timestamp::now().as_second();
     if mail_due(&config, now, MAILED.load(Ordering::Relaxed), asleep, paused) {
@@ -280,14 +322,18 @@ fn step(reason: &str) -> serde_json::Value {
         // What waited and may come now ("The Porch opens"), at the mail's rhythm.
         crate::mailnote::tick();
     }
-    let next = next_step(in_use, asleep);
+    // The notification's words now; the next step no later than the end of what now is for,
+    // so that its title changes with the time.
+    let (note, until) = note();
+    let next = until.map(|u| u - now + 1).filter(|s| *s > 0).map_or(next_step(in_use, asleep), |s| s.min(next_step(in_use, asleep)));
     let words = words();
     serde_json::json!({
         "next": next,
         "folder": folder.display().to_string(),
         "own": own,
-        "line": line,
-        "title": words["title"],
+        "at": note["at"],
+        "title": note["title"],
+        "text": note["text"],
         "channel": words["channel"],
         "calls": calls,
         "stop": false,

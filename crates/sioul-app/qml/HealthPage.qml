@@ -13,8 +13,8 @@
 // medicines and the prescriptions are the page's content, after the day:
 // under its list, or in a column of their own on a wide window, which the
 // week keeps too (MedicinesSection.qml); their forms open from there. What
-// is set once (the usual meals and night, the watch, the pauses, where the
-// errands go) is behind the ⚙. Nothing counts what was not done.
+// is set once (the usual meals and night, the pauses, where the errands go)
+// is behind the ⚙. Nothing counts what was not done.
 
 pragma ComponentBehavior: Bound
 
@@ -30,7 +30,7 @@ Item {
     required property var window
 
     // The page's view (`health::page`): the week of the day shown, and what only today says.
-    property var shown: ({ week: { monday: "", today: "", from_minute: 420, to_minute: 1380, days: [] }, missed: [], shared_note: "", reminded_there: "", watch: null, later: 15, any: true, medicines: [], prescriptions: [] })
+    property var shown: ({ week: { monday: "", today: "", from_minute: 420, to_minute: 1380, days: [] }, missed: [], shared_note: "", reminded_there: "", later: 15, any: true, medicines: [], prescriptions: [] })
     // The medicines, the prescriptions and the week's days, taken from the view
     // only when they change: the view comes again each minute, and their rows
     // and timelines stay as they are.
@@ -57,9 +57,15 @@ Item {
     // (HealthTimeline.qml): on a phone it takes the page, the list behind it,
     // until "Done" or Back.
     property bool readable: false
-    readonly property bool canGoBack: page.readable
+    // What a doctor or a pharmacist is shown, open over the window (ShowMedicines.qml).
+    property bool professionalOpen: false
+    // Back closes it first, then folds the readable timeline.
+    readonly property bool canGoBack: page.readable || page.professionalOpen
     function back() {
-        page.readable = false
+        if (page.professionalOpen)
+            professional.close()
+        else
+            page.readable = false
     }
     // For the window's pictures: opened readable, as a long press opens it.
     function showReadable(on) {
@@ -155,6 +161,21 @@ Item {
 
     function editPrescription(prescription) {
         prescriptionForm.now().edit(prescription)
+    }
+
+    // A prescription's medicines (its id), or all those taken now (""),
+    // read-only over the whole window, for a doctor or a pharmacist.
+    function showProfessional(id) {
+        professional.now().show(page.sioul.healthForProfessional(id))
+    }
+
+    // The view, for the window's pictures; closed.
+    function professionalView() {
+        return professional.now()
+    }
+
+    function closeProfessional() {
+        professional.close()
     }
 
     // Fetched at the pharmacy today: the next visit is counted from today.
@@ -581,6 +602,7 @@ Item {
         onOpenMedicine: medicine => page.editMedicine(medicine)
         onOpenPrescription: prescription => page.editPrescription(prescription)
         onFetched: id => page.fetched(id)
+        onShowProfessional: id => page.showProfessional(id)
     }
 
     // The day's list: its whole-day events and errands, then its meals, naps,
@@ -880,20 +902,6 @@ Item {
                         Medicines {}
                     }
                 }
-
-                // Today: what the watch says, once one is set up; made after the
-                // rest, the medicines above it first, so that it does not move.
-                Loader {
-                    active: scroll.day !== null && scroll.day.today && page.shown.watch !== null && page.shown.watch.any && (page.wide || medicinesHere.status === Loader.Ready)
-                    visible: active
-                    Layout.fillWidth: true
-                    asynchronous: true
-                    sourceComponent: WatchPanel {
-                        sioul: page.sioul
-                        theme: page.theme
-                        watch: page.shown.watch
-                    }
-                }
                 Item {
                     Layout.preferredHeight: page.theme.gap
                 }
@@ -1098,6 +1106,20 @@ Item {
                 sioul: page.sioul
                 theme: page.theme
                 onSaved: page.reload()
+            }
+        }
+    }
+
+    // What a doctor or a pharmacist is shown, made the first time.
+    Later {
+        id: professional
+
+        sourceComponent: Component {
+            ShowMedicines {
+                sioul: page.sioul
+                theme: page.theme
+                onOpened: page.professionalOpen = true
+                onClosed: page.professionalOpen = false
             }
         }
     }

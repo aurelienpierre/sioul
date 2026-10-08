@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: LGPL-3.0-or-later -->
+<!-- Breeze's weather-showers-scattered-night-symbolic (crates/sioul-app/icons/COPYING-ICONS), made by
+     tools/make-weather-drawables.py for the card on the home screen: white,
+     tinted by the card's layout in its text colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path android:pathData="m37 16c-0-4.5-4.3-8-9-8-7.6175 0-10.588 6.6-8.3574 12.279-3.0422-1.0619-6.6426 1.0945-6.6426 4.7207 0 2.7614 2.2386 5 5 5h18c3.866 0 7-3.134 7-7 0-3.5-2.5858-6.4601-7-7z"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="2"
+        android:strokeLineJoin="bevel" />
+    <path android:pathData="m16 42 5-7"
+        android:fillColor="#ffffff"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="2"
+        android:strokeLineJoin="bevel" />
+    <group android:translateX="16" android:translateY="0">
+        <path android:pathData="m16 42 5-7"
+            android:fillColor="#ffffff"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2"
+            android:strokeLineJoin="bevel" />
+    </group>
+    <path android:pathData="m14 21.5a14 14 0 0 1 2-17 12 12 0 0 0-2.5 23"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="2"
+        android:strokeLineJoin="bevel" />
+</vector>

@@ -4,7 +4,7 @@
 //! Health and well-being, for the window: the page (a day, or its week, at a
 //! glance: meals, naps, the night and the doses, each day's own changes; the
 //! medicines and the prescriptions), its settings (the usual meals and nights,
-//! the watch, the pauses), and the minute tick that reminds a dose once, quietly,
+//! the pauses), and the minute tick that reminds a dose once, quietly,
 //! and turns refills and renewals into tasks in a list your phone has. The
 //! rest goes to no server, except sealed to your other computers when you
 //! share with them (docs/database.md).
@@ -17,7 +17,7 @@ use jiff::tz::TimeZone;
 use jiff::{Span, Timestamp, Zoned};
 use serde::{Deserialize, Serialize};
 use sioul_core::doses::{Answer, Answered, DoseRecords, Given, State};
-use sioul_core::health::{ChatLimit, Doubt, ErrandKind, Health, HealthState, Medicine, Movement, Named, Peer, Prescription, Problem, Schedule};
+use sioul_core::health::{ChatLimit, Doubt, ErrandKind, Health, HealthState, Medicine, Movement, Named, Peer, Prescription, Problem, Schedule, Take, TakeProblem};
 use sioul_core::i18n::Translator;
 use sioul_core::needs::{DayEdit, DayProblem, Days, Kept, Needs};
 use sioul_core::tasks::TaskEdit;
@@ -56,7 +56,7 @@ fn hhmm(text: &str) -> String {
 /// days or hours, in words ("every other day at 08:00, from Sunday 4 October").
 fn words(schedule: &Schedule) -> String {
     match schedule {
-        Schedule::Day { times } => {
+        Schedule::Day { times, .. } => {
             let mut times: Vec<String> = times.iter().map(|t| hhmm(t)).collect();
             times.sort();
             times.dedup();
@@ -117,12 +117,53 @@ struct OffButton {
 struct MedicineRow {
     #[serde(flatten)]
     medicine: Medicine,
-    /// Its times, "08:00 · 20:00"; every few days or hours, in words.
+    /// Its times, "08:00 · 20:00"; each take with its amount when they
+    /// differ, "08:00 · 1 tablet, 20:00 · 2 tablets"; every few days or
+    /// hours, in words.
     when: String,
+    /// What the page says beside its name: its dose; "" when each take says its own.
+    amount: String,
+    /// Its name, generic name and strength: "Thyrolan — levothyroxine 75 µg" (`Medicine::precise`).
+    precise: String,
+    /// All of it in a line, for a prescription's entry: "Thyrolan — levothyroxine 75 µg · 07:30 · 1 tablet".
+    line: String,
+    /// Its form's dose: the amount most takes have (`Medicine::usual`).
+    usual: String,
+    /// Its takes at set times each day, in time order, for its form: each
+    /// take's own amount only when it differs from `usual` ("" otherwise).
+    takes: Vec<Take>,
     /// "until Monday 26 October"; "" for as long as it goes.
     ends: String,
     /// Paused, or past its last day: listed all the same, quieter.
     quiet: bool,
+}
+
+/// What a medicine says of its takes: each with its amount when they differ
+/// ("08:00 · 1 tablet, 20:00 · 2 tablets"), else its times, or its schedule in words.
+fn when_of(medicine: &Medicine) -> String {
+    match &medicine.schedule {
+        Schedule::Day { amounts, .. } if !amounts.is_empty() => medicine.takes_line(),
+        schedule => words(schedule),
+    }
+}
+
+/// A medicine as the page and its forms read it.
+fn medicine_row(m: &Medicine, today: Date) -> MedicineRow {
+    let usual = m.usual();
+    let each = matches!(&m.schedule, Schedule::Day { amounts, .. } if !amounts.is_empty());
+    let when = when_of(m);
+    let amount = if each { String::new() } else { m.dose.clone() };
+    MedicineRow {
+        precise: m.precise(),
+        line: [m.precise(), when.clone(), amount.clone()].into_iter().filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" · "),
+        when,
+        amount,
+        takes: m.takes().into_iter().map(|t| Take { amount: if t.amount == usual { String::new() } else { t.amount }, time: t.time }).collect(),
+        usual,
+        ends: m.until.map(|day| say("health-until", &[("day", tr().day_in(day, today))])).unwrap_or_default(),
+        quiet: m.paused || m.until.is_some_and(|day| day < today),
+        medicine: m.clone(),
+    }
 }
 
 /// A prescription as the page lists it, and as its form reads it.
@@ -134,24 +175,21 @@ struct PrescriptionRow {
     /// October", "renew by Thursday 4 February 2027" (its last valid day).
     next: Vec<String>,
     /// The medicines that come with it, unless its title names them all:
-    /// "for Levothyroxine and Magnesium"; "" when none or named.
+    /// "for Levothyroxine and Magnesium"; "" when none or named, or when
+    /// `lines` says them.
     covers: String,
+    /// Its medicines precisely, a line each, when one has a generic name or
+    /// a strength: "Thyrolan — levothyroxine 75 µg · 07:30 · 1 tablet".
+    lines: Vec<String>,
     /// Fetched at the pharmacy today: its button says so.
     fetched_today: bool,
+    /// The medicines tied to it, in the order they were added: its form's rows.
+    medicines: Vec<MedicineRow>,
 }
 
 /// The medicines, in the order they were added (a row keeps its place).
 fn medicine_rows(health: &Health, today: Date) -> Vec<MedicineRow> {
-    health
-        .medicines
-        .iter()
-        .map(|m| MedicineRow {
-            when: words(&m.schedule),
-            ends: m.until.map(|day| say("health-until", &[("day", tr().day_in(day, today))])).unwrap_or_default(),
-            quiet: m.paused || m.until.is_some_and(|day| day < today),
-            medicine: m.clone(),
-        })
-        .collect()
+    health.medicines.iter().map(|m| medicine_row(m, today)).collect()
 }
 
 /// What comes for a prescription, on a day.
@@ -177,10 +215,15 @@ fn coming(errands: &[sioul_core::health::Errand], p: &Prescription, today: Date)
     next
 }
 
-/// The medicines tied to a prescription (`Medicine::prescription`), unless its
-/// title already names them all ("Levothyroxine 75 µg" for Levothyroxine).
+/// The medicines tied to a prescription (`Medicine::prescription`), in the order they were added.
+fn tied<'a>(health: &'a Health, p: &'a Prescription) -> impl Iterator<Item = &'a Medicine> {
+    health.medicines.iter().filter(|m| m.prescription.as_deref() == Some(p.id.as_str()))
+}
+
+/// The medicines tied to a prescription, unless its title already names
+/// them all ("Levothyroxine 75 µg" for Levothyroxine).
 fn covered(health: &Health, p: &Prescription) -> Vec<String> {
-    let named: Vec<String> = health.medicines.iter().filter(|m| m.prescription.as_deref() == Some(p.id.as_str())).map(|m| m.name.clone()).collect();
+    let named: Vec<String> = tied(health, p).map(|m| m.name.clone()).collect();
     let title = p.title.to_lowercase();
     if named.iter().all(|name| title.contains(&name.to_lowercase())) { Vec::new() } else { named }
 }
@@ -192,8 +235,11 @@ fn prescription_rows(health: &Health, today: Date) -> Vec<PrescriptionRow> {
         .prescriptions
         .iter()
         .map(|p| {
-            let covers = covered(health, p);
+            let precise = tied(health, p).any(|m| !m.generic.trim().is_empty() || !m.strength.trim().is_empty());
+            let lines = if precise { tied(health, p).map(|m| medicine_row(m, today).line).collect() } else { Vec::new() };
+            let covers = if precise { Vec::new() } else { covered(health, p) };
             PrescriptionRow {
+                lines,
                 next: coming(&errands, p, today)
                     .into_iter()
                     .map(|(what, day)| {
@@ -207,6 +253,7 @@ fn prescription_rows(health: &Health, today: Date) -> Vec<PrescriptionRow> {
                     .collect(),
                 covers: if covers.is_empty() { String::new() } else { say("health-covers", &[("names", listed(&covers))]) },
                 fetched_today: p.last_refill == Some(today),
+                medicines: tied(health, p).map(|m| medicine_row(m, today)).collect(),
                 prescription: p.clone(),
             }
         })
@@ -225,8 +272,6 @@ struct PageView {
     shared_note: String,
     /// Reminders come on another computer, the one you are at: said, by its name.
     reminded_there: String,
-    /// The watch: what it says of today and the week.
-    watch: WatchView,
     /// The minutes "Later" moves a block by.
     later: u32,
     /// Anything set at all (meals, naps, the night, a medicine): else the page says where to set them.
@@ -237,7 +282,7 @@ struct PageView {
 }
 
 /// The page's settings (⚙), what is set once: the pauses, where the errands
-/// go, the watch's folder and offers (the usual meals and night: `needs_page`).
+/// go (the usual meals and night: `needs_page`).
 #[derive(Serialize)]
 struct SettingsView {
     movement: Movement,
@@ -245,7 +290,6 @@ struct SettingsView {
     /// Where the errands go, and the lists they can go to: {id, name}.
     errands_list: String,
     lists: Vec<serde_json::Value>,
-    watch: WatchView,
 }
 
 /// Monday to Sunday, the hours the timeline shows (minutes from midnight,
@@ -367,148 +411,6 @@ struct ContextItem {
     to_minute: i64,
 }
 
-/// The watch, as the page shows it: words ready, curves for today.
-#[derive(Serialize, Default)]
-struct WatchView {
-    /// Any data at all.
-    any: bool,
-    /// "Last data: today at 14:05", or nothing yet.
-    synced: String,
-    folder: String,
-    offers: bool,
-    steps: String,
-    resting: String,
-    slept: String,
-    battery: String,
-    week: String,
-    heart_rate: Vec<(i64, u8)>,
-    stress: Vec<(i64, u8)>,
-    battery_curve: Vec<(i64, u8)>,
-    /// The day's span on the curves: from midnight, 24 hours.
-    from: i64,
-}
-
-fn watch_view(health: &Health) -> WatchView {
-    let now = Zoned::now();
-    let zone = now.time_zone().clone();
-    let s = sioul_core::wearable::summary(&sioul_core::wearable::folder(), now.date(), &zone);
-    let hm = |at: i64| Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
-    let hours = |minutes: u32| say("watch-hours", &[("h", (minutes / 60).to_string()), ("m", format!("{:02}", minutes % 60))]);
-    // "2 081" in French, "2,081" in English: the language's own separator.
-    let separator = tr().text("thousands-separator", None);
-    let grouped = |n: u32| {
-        let digits = n.to_string();
-        let mut out = String::new();
-        for (i, c) in digits.chars().enumerate() {
-            if i > 0 && (digits.len() - i) % 3 == 0 {
-                out.push_str(&separator);
-            }
-            out.push(c);
-        }
-        out
-    };
-    WatchView {
-        any: s.newest > 0,
-        synced: if s.newest > 0 { say("watch-synced", &[("when", Timestamp::from_second(s.newest).map(|t| tr().when(&t.to_zoned(zone.clone()))).unwrap_or_default())]) } else { String::new() },
-        folder: health.watch_folder.clone(),
-        offers: health.watch_offers,
-        steps: if s.steps_today > 0 { say("watch-steps", &[("steps", grouped(s.steps_today))]) } else { String::new() },
-        resting: match (s.resting_hr, s.resting_hr_usual) {
-            (Some(rest), Some(usual)) => say("watch-resting-usual", &[("bpm", rest.to_string()), ("usual", usual.to_string())]),
-            (Some(rest), None) => say("watch-resting", &[("bpm", rest.to_string())]),
-            _ => String::new(),
-        },
-        slept: if s.slept_minutes > 0 { say("watch-slept", &[("time", hours(s.slept_minutes)), ("from", hm(s.slept_from)), ("to", hm(s.slept_to))]) } else { String::new() },
-        battery: s.body_battery.map(|b| say("watch-battery", &[("level", b.to_string())])).unwrap_or_default(),
-        week: if s.week_sleep_minutes > 0 || s.week_steps > 0 { say("watch-week", &[("sleep", hours(s.week_sleep_minutes)), ("steps", grouped(s.week_steps))]) } else { String::new() },
-        heart_rate: s.heart_rate_curve,
-        stress: s.stress_curve,
-        battery_curve: s.battery_curve,
-        from: now.date().to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second()),
-    }
-}
-
-/// What the watch says of this morning, for the Tasks page: "short-night", "strain", or "".
-pub(crate) fn morning_word() -> String {
-    let now = Zoned::now();
-    match sioul_core::wearable::morning(&sioul_core::wearable::folder(), now.date(), now.time_zone()) {
-        Some(sioul_core::wearable::Morning::ShortNight) => "short-night".into(),
-        Some(sioul_core::wearable::Morning::Strain) => "strain".into(),
-        None => String::new(),
-    }
-}
-
-/// When the watch's files were last looked for, and the watches seen then.
-static WATCH_LOOKED: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
-static WATCHES_SEEN: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
-
-/// The watch's files brought in: from your folder and from a watch the
-/// desktop shows, every quarter of an hour at most, at once when a watch appears.
-fn watch_tick(qt: &QtThread, shared: &Arc<Shared>) {
-    let health = load();
-    let mounted = sioul_core::wearable::mounted_watches();
-    let appeared = WATCHES_SEEN.lock().is_ok_and(|seen| mounted.iter().any(|m| !seen.contains(m)));
-    let now = Timestamp::now().as_second();
-    if !appeared && now - WATCH_LOOKED.load(std::sync::atomic::Ordering::Relaxed) < 900 {
-        return;
-    }
-    WATCH_LOOKED.store(now, std::sync::atomic::Ordering::Relaxed);
-    if let Ok(mut seen) = WATCHES_SEEN.lock() {
-        *seen = mounted.clone();
-    }
-    let mut sources = mounted;
-    if !health.watch_folder.trim().is_empty() {
-        sources.push(sioul_core::config::expand_home(health.watch_folder.trim()));
-    }
-    let zone = jiff::tz::TimeZone::system();
-    let new: usize = sources.iter().map(|s| sioul_core::wearable::import(s, &sioul_core::wearable::folder(), &zone).unwrap_or(0)).sum();
-    if new > 0 {
-        let mut args = tr().counted(new);
-        // A number, as the sentence chooses "One file" or "3 files" by it.
-        args.set("count", new);
-        tell(qt, shared, tr().text("watch-imported", Some(&args)));
-        crate::work::show_work(qt, shared);
-    }
-}
-
-fn offers_path() -> std::path::PathBuf {
-    sioul_core::config::state_dir().join("watch-offers.json")
-}
-
-/// At a breakpoint (a task done, a focus session ended): one gentle offer,
-/// when the watch has something to say and the limits allow it.
-pub(crate) fn watch_offer(qt: &QtThread, focus_minutes: u32) {
-    let health = load();
-    let folder = sioul_core::wearable::folder();
-    if !health.watch_offers || !folder.join("imported.json").exists() {
-        return;
-    }
-    let now = Zoned::now();
-    let mut memory: sioul_core::wearable::Memory = std::fs::read_to_string(offers_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-    // Quiet for the watch: a time the matrix of what reaches you drops its offers (as usual, all but work).
-    let quiet = !crate::hours::comes(sioul_core::attention::Kind::Watch);
-    let moment = sioul_core::wearable::Moment { now: now.timestamp().as_second(), hour: now.hour() as u8, quiet, breakpoint: true, focus_minutes };
-    let Some(offer) = sioul_core::wearable::offer(&folder, &moment, &memory, now.time_zone(), now.date()) else { return };
-    sioul_core::wearable::offered(&mut memory, offer, moment.now, now.date());
-    let _ = std::fs::create_dir_all(sioul_core::config::state_dir());
-    let _ = std::fs::write(offers_path(), serde_json::to_string(&memory).unwrap_or_default());
-    let key = match offer {
-        sioul_core::wearable::Offer::Move => "move",
-        sioul_core::wearable::Offer::Pause => "pause",
-        sioul_core::wearable::Offer::LowReserve => "low-reserve",
-        sioul_core::wearable::Offer::Walk => "walk",
-    };
-    let action: Option<(String, Box<dyn FnOnce() + Send>)> = (offer == sioul_core::wearable::Offer::LowReserve).then(|| {
-        let qt = qt.clone();
-        // "Done for today" opens the end of the work day's review first (docs/reviews.md).
-        let close: Box<dyn FnOnce() + Send> = Box::new(move || {
-            let _ = qt.queue(|mut sioul| sioul.as_mut().reminder_opened(QString::from("review"), QString::default(), QString::from("work")));
-        });
-        (tr().text("watch-offer-low-reserve-action", None), close)
-    });
-    let _ = sioul_sync::notify::remind(&tr().text(&format!("watch-offer-{key}"), None), &tr().text(&format!("watch-offer-{key}-text"), None), action);
-}
-
 /// The list the errands go to: the one chosen, else your usual list, else the
 /// first list on a server (so the phone has them), else one on this computer.
 fn errands_list(health: &Health) -> Option<String> {
@@ -572,7 +474,6 @@ pub(crate) fn page() -> String {
         .filter(|t| !t.is_empty())
         .collect::<Vec<_>>()
         .join(" "),
-        watch: watch_view(&health),
         later: needs.later,
         medicines: medicine_rows(&health, now.date()),
         prescriptions: prescription_rows(&health, now.date()),
@@ -588,7 +489,6 @@ pub(crate) fn settings_view() -> String {
         chats: health.chats.clone(),
         errands_list: errands_list(&health).unwrap_or_default(),
         lists: sioul_core::tasks::lists().into_iter().filter(|c| !c.read_only).map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()), "local": c.account == sioul_core::vdir::LOCAL })).collect(),
-        watch: watch_view(&health),
     })
 }
 
@@ -785,7 +685,7 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
                 let Some((id, due)) = key.rsplit_once('@') else { continue };
                 let (Some(medicine), Ok(due)) = (health.medicines.iter().find(|m| m.id == id), due.parse::<i64>()) else { continue };
                 if due >= start && due < next && !doses.iter().any(|d| &d.0 == key) {
-                    doses.push((key.clone(), due, medicine.name.clone(), medicine.dose.clone()));
+                    doses.push((key.clone(), due, medicine.short_name(), health.amount_of(key, &zone).unwrap_or_default()));
                 }
             }
         }
@@ -966,11 +866,26 @@ pub(crate) fn missed() -> String {
 /// A medicine as its form gives it.
 #[derive(Deserialize)]
 struct MedicineEdit {
+    /// Its brand name, or your own word for it; "" when its generic name says it.
+    #[serde(default)]
     name: String,
+    /// The generic name of its molecule (INN), and its strength: optional.
+    #[serde(default)]
+    generic: String,
+    #[serde(default)]
+    strength: String,
+    /// "2026-03-02", the day it was first taken; "" when not known.
+    #[serde(default)]
+    since: String,
+    /// Its usual amount: each take's when it says none.
     #[serde(default)]
     dose: String,
     /// "day", "days", "hours".
     every: String,
+    /// At set times each day: each take, its time and its own amount ("" for the usual).
+    #[serde(default)]
+    takes: Vec<Take>,
+    /// The times alone, as the form gave them before takes had rows.
     #[serde(default)]
     times: Vec<String>,
     #[serde(default)]
@@ -997,37 +912,72 @@ fn answer(result: Result<String, String>) -> String {
     }
 }
 
+/// Why takes could not be set, in words; with the medicine's name in a
+/// prescription's form, where several are.
+fn take_problem(problem: &TakeProblem, name: Option<&str>, words: &Translator) -> String {
+    let id = match problem {
+        TakeProblem::None => "health-no-take",
+        TakeProblem::Unreadable(_) => "health-take-unreadable",
+        TakeProblem::Twice(_) => "health-take-twice",
+    };
+    let mut pairs = vec![];
+    if let TakeProblem::Unreadable(time) | TakeProblem::Twice(time) = problem {
+        pairs.push(("time", time.clone()));
+    }
+    match name {
+        Some(name) => {
+            pairs.push(("name", name.to_string()));
+            said(words, &format!("{id}-of"), &pairs)
+        }
+        None => said(words, id, &pairs),
+    }
+}
+
+/// A medicine made (`id` empty) or changed in `health`, as its form gives
+/// it: its id, or what is wrong, nothing changed then.
+fn apply_medicine(health: &mut Health, id: &str, edit: MedicineEdit, now: &Zoned, words: &Translator) -> Result<String, String> {
+    // Its name, else its generic name: reminders always have one, and so does an older Sioul.
+    let name = if edit.name.trim().is_empty() { edit.generic.trim() } else { edit.name.trim() }.to_string();
+    if name.is_empty() {
+        return Err(words.text("health-no-name", None));
+    }
+    let day = |text: &str| text.trim().parse::<Date>().ok();
+    let id = if id.is_empty() { health.new_id(&name) } else { id.to_string() };
+    let mut medicine = Medicine {
+        id: id.clone(),
+        name,
+        generic: edit.generic.trim().to_string(),
+        strength: edit.strength.trim().to_string(),
+        since: day(&edit.since),
+        dose: edit.dose.trim().to_string(),
+        schedule: Schedule::Day { times: Vec::new(), amounts: Default::default() },
+        prescription: Some(edit.prescription).filter(|p| !p.is_empty()),
+        until: day(&edit.until),
+        paused: edit.paused,
+    };
+    match edit.every.as_str() {
+        "days" => medicine.schedule = Schedule::Days { days: edit.days.max(1), time: edit.time.trim().to_string(), from: day(&edit.from).unwrap_or(now.date()) },
+        "hours" => {
+            let from = edit.from.trim().parse::<jiff::civil::DateTime>().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()).map_or(now.timestamp().as_second(), |z| z.timestamp().as_second());
+            medicine.schedule = Schedule::Hours { hours: edit.hours.max(1), from };
+        }
+        _ => {
+            let takes: Vec<Take> = if edit.takes.is_empty() { edit.times.iter().filter(|t| !t.trim().is_empty()).map(|t| Take { time: t.clone(), amount: String::new() }).collect() } else { edit.takes };
+            medicine.set_takes(&edit.dose, &takes).map_err(|problem| take_problem(&problem, None, words))?;
+        }
+    }
+    match health.medicines.iter_mut().find(|m| m.id == id) {
+        Some(slot) => *slot = medicine,
+        None => health.medicines.push(medicine),
+    }
+    Ok(id)
+}
+
 /// A medicine made (`id` empty) or changed; returns {"id"} or {"error"}.
 pub(crate) fn save_medicine(id: &str, edit: &str) -> String {
     let result = serde_json::from_str::<MedicineEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
-        if edit.name.trim().is_empty() {
-            return Err(tr().text("health-no-name", None));
-        }
-        let now = Zoned::now();
-        let day = |text: &str| text.trim().parse::<Date>().ok();
-        let schedule = match edit.every.as_str() {
-            "days" => Schedule::Days { days: edit.days.max(1), time: edit.time.trim().to_string(), from: day(&edit.from).unwrap_or(now.date()) },
-            "hours" => {
-                let from = edit.from.trim().parse::<jiff::civil::DateTime>().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()).map_or(now.timestamp().as_second(), |z| z.timestamp().as_second());
-                Schedule::Hours { hours: edit.hours.max(1), from }
-            }
-            _ => Schedule::Day { times: edit.times.iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect() },
-        };
         let mut health = load();
-        let id = if id.is_empty() { health.new_id(&edit.name) } else { id.to_string() };
-        let medicine = Medicine {
-            id: id.clone(),
-            name: edit.name.trim().to_string(),
-            dose: edit.dose.trim().to_string(),
-            schedule,
-            prescription: Some(edit.prescription).filter(|p| !p.is_empty()),
-            until: day(&edit.until),
-            paused: edit.paused,
-        };
-        match health.medicines.iter_mut().find(|m| m.id == id) {
-            Some(slot) => *slot = medicine,
-            None => health.medicines.push(medicine),
-        }
+        let id = apply_medicine(&mut health, id, edit, &Zoned::now(), tr())?;
         save(&health).map(|()| id)
     });
     answer(result)
@@ -1047,32 +997,249 @@ struct PrescriptionEdit {
     last_refill: String,
     #[serde(default)]
     note: String,
+    /// Its medicines, row by row; none given: they stay as they are.
+    #[serde(default)]
+    medicines: Option<Vec<PrescribedEdit>>,
 }
 
-/// A prescription made (`id` empty) or changed; returns {"id"} or {"error"}.
+/// A medicine as a row of its prescription's form gives it.
+#[derive(Deserialize)]
+struct PrescribedEdit {
+    /// "" for one added in the form.
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    /// The generic name of its molecule (INN), and its strength: optional.
+    #[serde(default)]
+    generic: String,
+    #[serde(default)]
+    strength: String,
+    /// Its usual amount: each take's when it says none.
+    #[serde(default)]
+    dose: String,
+    /// Its takes, at set times each day (a medicine taken every few days or
+    /// hours keeps its own schedule: its form changes it).
+    #[serde(default)]
+    takes: Vec<Take>,
+    /// Taken out in the form: the medicine goes when the form is saved.
+    #[serde(default)]
+    removed: bool,
+}
+
+/// A prescription made (`id` empty) or changed in `health`, with its
+/// medicines as its rows give them: made, changed, taken out. Every row is
+/// read before anything changes: what does not save changes nothing. Its id,
+/// or what is wrong.
+fn apply_prescription(health: &mut Health, id: &str, edit: PrescriptionEdit, words: &Translator) -> Result<String, String> {
+    if edit.title.trim().is_empty() {
+        return Err(words.text("health-no-name", None));
+    }
+    let id = if id.is_empty() { health.new_id(&edit.title) } else { id.to_string() };
+    let mut made: Vec<Medicine> = Vec::new();
+    let mut gone: Vec<String> = Vec::new();
+    for row in edit.medicines.iter().flatten() {
+        if row.removed {
+            gone.extend(Some(row.id.clone()).filter(|id| !id.is_empty()));
+            continue;
+        }
+        // Its name, else its generic name.
+        let name = if row.name.trim().is_empty() { row.generic.trim() } else { row.name.trim() };
+        // A row added and left as it came: nothing to take.
+        if row.id.is_empty() && name.is_empty() && row.dose.trim().is_empty() && row.strength.trim().is_empty() && row.takes.iter().all(|t| t.amount.trim().is_empty()) {
+            continue;
+        }
+        if name.is_empty() {
+            return Err(words.text("health-medicine-no-name", None));
+        }
+        let mut medicine = health.medicines.iter().find(|m| !row.id.is_empty() && m.id == row.id).cloned().unwrap_or_else(|| Medicine {
+            id: row.id.clone(),
+            name: String::new(),
+            dose: String::new(),
+            schedule: Schedule::Day { times: Vec::new(), amounts: Default::default() },
+            prescription: None,
+            until: None,
+            paused: false,
+            generic: String::new(),
+            strength: String::new(),
+            since: None,
+        });
+        medicine.name = name.to_string();
+        medicine.generic = row.generic.trim().to_string();
+        medicine.strength = row.strength.trim().to_string();
+        medicine.prescription = Some(id.clone());
+        if matches!(medicine.schedule, Schedule::Day { .. }) {
+            medicine.set_takes(&row.dose, &row.takes).map_err(|problem| take_problem(&problem, Some(name), words))?;
+        } else {
+            medicine.dose = row.dose.trim().to_string();
+        }
+        made.push(medicine);
+    }
+    let prescription = Prescription {
+        id: id.clone(),
+        title: edit.title.trim().to_string(),
+        prescriber: edit.prescriber.trim().to_string(),
+        until: edit.until.trim().parse().ok(),
+        refill_days: Some(edit.refill_days).filter(|d| *d > 0),
+        last_refill: edit.last_refill.trim().parse().ok(),
+        note: edit.note.trim().to_string(),
+    };
+    match health.prescriptions.iter_mut().find(|p| p.id == id) {
+        Some(slot) => *slot = prescription,
+        None => health.prescriptions.push(prescription),
+    }
+    health.medicines.retain(|m| !gone.contains(&m.id));
+    for mut medicine in made {
+        if medicine.id.is_empty() {
+            medicine.id = health.new_id(&medicine.name);
+        }
+        match health.medicines.iter_mut().find(|m| m.id == medicine.id) {
+            Some(slot) => *slot = medicine,
+            None => health.medicines.push(medicine),
+        }
+    }
+    Ok(id)
+}
+
+/// A prescription made (`id` empty) or changed, with its medicines; returns {"id"} or {"error"}.
 pub(crate) fn save_prescription(id: &str, edit: &str) -> String {
     let result = serde_json::from_str::<PrescriptionEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
-        if edit.title.trim().is_empty() {
-            return Err(tr().text("health-no-name", None));
-        }
         let mut health = load();
-        let id = if id.is_empty() { health.new_id(&edit.title) } else { id.to_string() };
-        let prescription = Prescription {
-            id: id.clone(),
-            title: edit.title.trim().to_string(),
-            prescriber: edit.prescriber.trim().to_string(),
-            until: edit.until.trim().parse().ok(),
-            refill_days: Some(edit.refill_days).filter(|d| *d > 0),
-            last_refill: edit.last_refill.trim().parse().ok(),
-            note: edit.note.trim().to_string(),
-        };
-        match health.prescriptions.iter_mut().find(|p| p.id == id) {
-            Some(slot) => *slot = prescription,
-            None => health.prescriptions.push(prescription),
-        }
+        let id = apply_prescription(&mut health, id, edit, tr())?;
         save(&health).map(|()| id)
     });
     answer(result)
+}
+
+/// What a doctor or a pharmacist is shown, read-only, at arm's length
+/// (`qml/ShowMedicines.qml`): a prescription's medicines, or all those taken now.
+#[derive(Serialize, Debug, PartialEq)]
+struct ForProfessional {
+    /// The prescription's title, or "Current medicines".
+    title: String,
+    /// Who prescribed it and until when it is valid; for all, the day shown.
+    about: Vec<String>,
+    medicines: Vec<Shown>,
+    /// No medicine to show, said; "" otherwise.
+    empty: String,
+}
+
+/// One medicine, for a professional.
+#[derive(Serialize, Debug, PartialEq)]
+struct Shown {
+    /// Its generic name and strength, first: "levothyroxine 75 µg"; its name
+    /// and strength when no generic name is given.
+    molecule: String,
+    /// Its brand name, or your word for it, when it is not the generic name.
+    brand: String,
+    /// Each take, its time and amount ("07:30 — 1 tablet"); every few days
+    /// or hours in words, with the amount.
+    takes: Vec<String>,
+    /// "Taken since Monday 2 March, 7 months"; "" when not known.
+    since: String,
+    /// "Prescribed by Dr Elena Varga", when the medicine's prescription says
+    /// who, and the view is not that prescription's (it says so above).
+    prescriber: String,
+    /// "Until Wednesday 28 October", "Paused for now".
+    notes: Vec<String>,
+}
+
+/// How long since `since`, in words: days, then weeks, months, years.
+fn how_long(since: Date, today: Date, words: &Translator) -> String {
+    let days = since.until(today).map_or(0, |s| i64::from(s.get_days())).max(0);
+    let (id, n) = if days == 0 {
+        return String::new();
+    } else if days < 14 {
+        ("health-pro-days", days)
+    } else if days < 61 {
+        ("health-pro-weeks", days / 7)
+    } else if days < 730 {
+        ("health-pro-months", days * 12 / 365)
+    } else {
+        ("health-pro-years", days / 365)
+    };
+    words.text(id, Some(&words.counted(usize::try_from(n).unwrap_or(0))))
+}
+
+/// A prescription's medicines (`prescription`, its id), or those taken now
+/// ("": not paused, not past their last day), for a professional, in your
+/// language; the generic names as typed (international).
+fn for_professional_of(health: &Health, prescription: &str, today: Date, words: &Translator) -> ForProfessional {
+    let p = health.prescriptions.iter().find(|p| p.id == prescription);
+    let medicines: Vec<&Medicine> = match p {
+        Some(p) => tied(health, p).collect(),
+        None => health.medicines.iter().filter(|m| !m.paused && m.until.is_none_or(|day| day >= today)).collect(),
+    };
+    let shown = medicines
+        .into_iter()
+        .map(|m| {
+            let (generic, strength) = (m.generic.trim(), m.strength.trim());
+            let first = if generic.is_empty() { m.name.trim() } else { generic };
+            let molecule = [first, strength].into_iter().filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ");
+            let brand = if generic.is_empty() || m.name.trim().to_lowercase() == generic.to_lowercase() { String::new() } else { m.name.trim().to_string() };
+            let takes = match &m.schedule {
+                Schedule::Day { .. } => m.takes().into_iter().map(|t| if t.amount.is_empty() { t.time } else { format!("{} — {}", t.time, t.amount) }).collect(),
+                schedule => vec![[words_of(schedule, words), m.dose.trim().to_string()].into_iter().filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" — ")],
+            };
+            let since = m
+                .since
+                .map(|day| match how_long(day, today, words) {
+                    long if long.is_empty() => said(words, "health-pro-since-day", &[("day", words.day_in(day, today))]),
+                    long => said(words, "health-pro-since", &[("day", words.day_in(day, today)), ("long", long)]),
+                })
+                .unwrap_or_default();
+            let prescriber = match (p, m.prescription.as_deref().and_then(|id| health.prescriptions.iter().find(|p| p.id == id))) {
+                (None, Some(of)) if !of.prescriber.trim().is_empty() => said(words, "health-pro-prescribed-by", &[("name", of.prescriber.trim().to_string())]),
+                _ => String::new(),
+            };
+            let mut notes: Vec<String> = m.until.map(|day| said(words, "health-pro-until", &[("day", words.day_in(day, today))])).into_iter().collect();
+            if m.paused {
+                notes.push(words.text("health-pause", None));
+            }
+            Shown { molecule, brand, takes, since, prescriber, notes }
+        })
+        .collect::<Vec<_>>();
+    let about = match p {
+        Some(p) => [
+            Some(p.prescriber.trim()).filter(|w| !w.is_empty()).map(|name| said(words, "health-pro-prescribed-by", &[("name", name.to_string())])),
+            p.until.map(|day| said(words, "health-pro-valid-until", &[("day", words.day_in(day, today))])),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
+        None => vec![said(words, "health-pro-as-of", &[("day", format!("{} {}", words.day(today), today.year()))])],
+    };
+    ForProfessional {
+        title: p.map_or_else(|| words.text("health-pro-current", None), |p| p.title.clone()),
+        about,
+        empty: if shown.is_empty() { words.text("health-pro-none", None) } else { String::new() },
+        medicines: shown,
+    }
+}
+
+/// When a medicine taken every few days or hours is taken, in `words`; at set times, its times.
+fn words_of(schedule: &Schedule, words: &Translator) -> String {
+    // Numbers as numbers: "every other day" is chosen by the number 2.
+    let mut args = sioul_core::i18n::args();
+    match schedule {
+        Schedule::Days { days, time, from } => {
+            args.set("days", *days);
+            args.set("time", time.clone());
+            args.set("from", words.day(*from));
+            words.text("health-every-days", Some(&args))
+        }
+        Schedule::Hours { hours, .. } => {
+            args.set("hours", *hours);
+            words.text("health-pro-every-hours", Some(&args))
+        }
+        Schedule::Day { .. } => self::words(schedule),
+    }
+}
+
+/// "Show to a doctor or pharmacist": a prescription's medicines (its id), or
+/// all those taken now (""), as JSON (`ForProfessional`).
+pub(crate) fn for_professional(prescription: &str) -> String {
+    json(&for_professional_of(&load(), prescription, Zoned::now().date(), tr()))
 }
 
 /// A medicine or a prescription taken out; returns what went wrong, else "".
@@ -1820,6 +1987,9 @@ pub(crate) struct DeviceRow {
     off: bool,
     /// Silent for a week: "Forget this device".
     forget: bool,
+    /// The Sioul it runs, as its entry says it: "Sioul 0.0.3 (eff8661abcde)", said
+    /// calmly when older than this device's; "" when its entry does not say.
+    build: String,
 }
 
 /// Your other devices, as this one knows them, for Settings: nothing red, no counts.
@@ -1867,7 +2037,14 @@ fn device_rows_of(peers: &[Peer], kept: &Peers, now: i64, words: &Translator) ->
                 args.set("minutes", peer.ahead / 60);
                 notes.push(words.text("share-device-ahead", Some(&args)));
             }
-            DeviceRow { id: peer.id.clone(), name, state, notes, off, forget: !counted && !off }
+            // The build it runs (docs/database.md, "Devices"): an older one said, calmly.
+            let build = match entry.map(|e| (e.build(), sioul_core::build::older(&e.version, sioul_core::build::VERSION))) {
+                Some((build, _)) if build.is_empty() => String::new(),
+                Some((build, true)) => said(words, "share-device-build-older", &[("build", build), ("here", sioul_core::build::DESCRIBED.to_string())]),
+                Some((build, false)) => said(words, "share-device-build", &[("build", build)]),
+                None => String::new(),
+            };
+            DeviceRow { id: peer.id.clone(), name, state, notes, off, forget: !counted && !off, build }
         })
         .collect();
     rows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -2005,8 +2182,7 @@ fn state_held() -> std::sync::MutexGuard<'static, ()> {
     STATE.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// One tick at a time: a slow one (a watch's files, a shared folder) is not
-/// overtaken by the next.
+/// One tick at a time: a slow one (a shared folder) is not overtaken by the next.
 static TICKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// A dose not taken, said afterwards: asked no more. Returns what went wrong, else "".
@@ -2124,8 +2300,8 @@ pub(crate) fn dose_info(key: &str) -> String {
         _ => 0,
     };
     serde_json::json!({
-        "name": medicine.name,
-        "dose": medicine.dose,
+        "name": medicine.short_name(),
+        "dose": health.amount_of(key, now.time_zone()).unwrap_or_else(|| medicine.dose.clone()),
         "due": if due.date() == now.date() { due.strftime("%H:%M").to_string() } else { format!("{} {}", tr().weekday_short(due.date()), due.strftime("%H:%M")) },
         "now": now.strftime("%H:%M").to_string(),
         // Every few hours: the next dose comes that many hours after the one taken.
@@ -2187,11 +2363,6 @@ pub(crate) fn set_setting(key: &str, value: &str) -> String {
         "chats.minutes" => health.chats.minutes = number(),
         "chats.locked_minutes" => health.chats.locked_minutes = number(),
         "errands_list" => health.errands_list = value.trim().to_string(),
-        "watch_folder" => {
-            health.watch_folder = crate::backend::local_path(value.trim()).display().to_string();
-            WATCH_LOOKED.store(0, std::sync::atomic::Ordering::Relaxed);
-        }
-        "watch_offers" => health.watch_offers = value == "true",
         _ => return say("setting-unknown-key", &[("key", key.to_string())]),
     }
     save(&health).err().unwrap_or_default()
@@ -2568,7 +2739,6 @@ pub(crate) fn save_needs(edit: &str) -> String {
 /// or a renewal coming becomes a task in a list kept on this computer.
 pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     let Some(_ticking) = crate::backend::one_at_a_time(&TICKING) else { return };
-    watch_tick(qt, shared);
     let health = load();
     if health.medicines.is_empty() && health.prescriptions.is_empty() {
         // No medicines: the pause to move, meals and rest, from the computer you are at.
@@ -2767,15 +2937,18 @@ mod tests {
         let day = |text: &str| text.parse::<Date>().unwrap();
         let today = day("2026-10-06");
         assert_eq!((hhmm("8:00"), hhmm(" 18:30 "), hhmm("noon"), hhmm("25:00")), ("08:00".into(), "18:30".into(), "noon".into(), "25:00".into()));
-        assert_eq!(words(&Schedule::Day { times: vec!["20:00".into(), "8:00".into(), "08:00".into()] }), "08:00 · 20:00");
+        assert_eq!(words(&Schedule::Day { times: vec!["20:00".into(), "8:00".into(), "08:00".into()], amounts: Default::default() }), "08:00 · 20:00");
         let medicine = |id: &str, prescription: Option<&str>| Medicine {
             id: id.into(),
             name: id.into(),
             dose: String::new(),
-            schedule: Schedule::Day { times: vec!["07:30".into()] },
+            schedule: Schedule::Day { times: vec!["07:30".into()], amounts: Default::default() },
             prescription: prescription.map(Into::into),
             until: None,
             paused: false,
+            generic: String::new(),
+            strength: String::new(),
+            since: None,
         };
         let health = Health {
             prescriptions: vec![
@@ -2796,6 +2969,187 @@ mod tests {
         assert!(coming(&errands, &health.prescriptions[2], today).is_empty());
         assert_eq!(covered(&health, &health.prescriptions[0]), ["Magnesium", "Iron"]);
         assert!(covered(&health, &health.prescriptions[1]).is_empty() && covered(&health, &health.prescriptions[2]).is_empty());
+    }
+
+    fn take(time: &str, amount: &str) -> Take {
+        Take { time: time.into(), amount: amount.into() }
+    }
+
+    fn prescription_edit(medicines: serde_json::Value) -> PrescriptionEdit {
+        serde_json::from_value(serde_json::json!({ "title": "Thyroid and iron", "prescriber": "Dr Martin", "refill_days": 30, "medicines": medicines })).unwrap()
+    }
+
+    /// The prescription's form: its medicines as rows, each with its takes;
+    /// a row added, changed, taken out; what cannot be saved changes nothing.
+    #[test]
+    fn a_prescriptions_medicines_and_their_takes_saved_from_its_form() {
+        let english = Translator::new("en");
+        let now: Zoned = "2026-10-08T09:00[Europe/Paris]".parse().unwrap();
+        let mut health = Health::default();
+        // Levothyroxine made on its own form first, every morning.
+        let levo: MedicineEdit = serde_json::from_value(serde_json::json!({ "name": "Levothyroxine", "dose": "75 µg", "every": "day", "takes": [{ "time": "07:30", "amount": "" }] })).unwrap();
+        let levo = apply_medicine(&mut health, "", levo, &now, &english).unwrap();
+        // A new prescription with three medicines: Levothyroxine tied to it, two added there; and a row left empty.
+        let rows = serde_json::json!([
+            { "id": levo, "name": "Levothyroxine", "dose": "75 µg", "takes": [{ "time": "07:30", "amount": "" }] },
+            { "id": "", "name": "Iron", "dose": "1 tablet", "takes": [{ "time": "08:00", "amount": "" }, { "time": "13:00", "amount": "" }, { "time": "20:00", "amount": "2 tablets" }] },
+            { "id": "", "name": "Magnesium", "dose": "300 mg", "takes": [{ "time": "21:30", "amount": "" }, { "time": "12:30", "amount": "150 mg" }] },
+            { "id": "", "name": "", "dose": "", "takes": [{ "time": "08:00", "amount": "" }] },
+        ]);
+        let id = apply_prescription(&mut health, "", prescription_edit(rows), &english).unwrap();
+        assert_eq!(health.prescriptions.len(), 1);
+        assert_eq!(health.medicines.iter().map(|m| (m.name.as_str(), m.prescription.as_deref())).collect::<Vec<_>>(), [("Levothyroxine", Some(id.as_str())), ("Iron", Some(id.as_str())), ("Magnesium", Some(id.as_str()))]);
+        let iron = health.medicines.iter().find(|m| m.name == "Iron").unwrap().clone();
+        assert_eq!(iron.takes(), [take("08:00", "1 tablet"), take("13:00", "1 tablet"), take("20:00", "2 tablets")]);
+        // A medicine like any other: on the page, its prescription form's rows, the doses.
+        let today = now.date();
+        assert_eq!(tied(&health, &health.prescriptions[0]).map(|m| m.name.as_str()).collect::<Vec<_>>(), ["Levothyroxine", "Iron", "Magnesium"]);
+        let row = medicine_row(&iron, today);
+        assert_eq!((row.when.as_str(), row.amount.as_str(), row.usual.as_str()), ("08:00 · 1 tablet, 13:00 · 1 tablet, 20:00 · 2 tablets", "", "1 tablet"));
+        assert_eq!(row.takes, [take("08:00", ""), take("13:00", ""), take("20:00", "2 tablets")], "the form says a take's own amount only where it differs");
+        let levo_row = medicine_row(&health.medicines[0], today);
+        assert_eq!((levo_row.when.as_str(), levo_row.amount.as_str()), ("07:30", "75 µg"));
+        let start = now.date().to_zoned(now.time_zone().clone()).unwrap();
+        let end = start.checked_add(Span::new().days(1)).unwrap();
+        let doses: Vec<(String, String, String)> = health.doses(&start, &end).into_iter().map(|d| (d.at.strftime("%H:%M").to_string(), d.name, d.dose)).collect();
+        let expected = [("07:30", "Levothyroxine", "75 µg"), ("08:00", "Iron", "1 tablet"), ("12:30", "Magnesium", "150 mg"), ("13:00", "Iron", "1 tablet"), ("20:00", "Iron", "2 tablets"), ("21:30", "Magnesium", "300 mg")];
+        assert_eq!(doses, expected.map(|(a, b, c)| (a.to_string(), b.to_string(), c.to_string())));
+        // Two takes at one time: said with the medicine's name, and nothing changes.
+        let before = health.clone();
+        let twice = serde_json::json!([{ "id": iron.id, "name": "Iron", "dose": "1 tablet", "takes": [{ "time": "08:00", "amount": "" }, { "time": "8:00", "amount": "2 tablets" }] }]);
+        assert_eq!(apply_prescription(&mut health, &id, prescription_edit(twice), &english), Err("Iron: two takes at 08:00. Keep one, with its amount.".into()));
+        let unnamed = serde_json::json!([{ "id": "", "name": " ", "dose": "5 mg", "takes": [{ "time": "08:00", "amount": "" }] }]);
+        assert!(apply_prescription(&mut health, &id, prescription_edit(unnamed), &english).is_err());
+        let none = serde_json::json!([{ "id": iron.id, "name": "Iron", "dose": "1 tablet", "takes": [] }]);
+        assert_eq!(apply_prescription(&mut health, &id, prescription_edit(none), &english), Err("Iron: add a take, the time it is taken each day.".into()));
+        assert_eq!(health, before);
+        // Iron taken out of the form: gone, with its doses; the others as they were. A form
+        // without its rows (none given) leaves the medicines alone.
+        let out = serde_json::json!([{ "id": levo, "name": "Levothyroxine", "dose": "75 µg", "takes": [{ "time": "07:30", "amount": "" }] }, { "id": iron.id, "removed": true }]);
+        apply_prescription(&mut health, &id, prescription_edit(out), &english).unwrap();
+        assert_eq!(health.medicines.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(), ["Levothyroxine", "Magnesium"]);
+        assert!(health.doses(&start, &end).iter().all(|d| d.name != "Iron"));
+        let kept = health.clone();
+        let plain: PrescriptionEdit = serde_json::from_value(serde_json::json!({ "title": "Thyroid and iron", "refill_days": 30 })).unwrap();
+        apply_prescription(&mut health, &id, plain, &english).unwrap();
+        assert_eq!(health.medicines, kept.medicines);
+        // A medicine every few hours, in a row: its name and dose change, its schedule stays.
+        let hours: MedicineEdit = serde_json::from_value(serde_json::json!({ "name": "Antibiotic", "dose": "500 mg", "every": "hours", "hours": 8, "from": "2026-10-08T08:00", "prescription": id })).unwrap();
+        let antibiotic = apply_medicine(&mut health, "", hours, &now, &english).unwrap();
+        let schedule = health.medicines.iter().find(|m| m.id == antibiotic).unwrap().schedule.clone();
+        let rename = serde_json::json!([{ "id": antibiotic, "name": "Amoxicillin", "dose": "1 g", "takes": [] }]);
+        apply_prescription(&mut health, &id, prescription_edit(rename), &english).unwrap();
+        let changed = health.medicines.iter().find(|m| m.id == antibiotic).unwrap();
+        assert_eq!((changed.name.as_str(), changed.dose.as_str(), &changed.schedule), ("Amoxicillin", "1 g", &schedule));
+        // Its own form: takes as rows, a time that does not read said; the times as typed before still read.
+        let typed: MedicineEdit = serde_json::from_value(serde_json::json!({ "name": "Zinc", "every": "day", "times": ["12:00", " 18:00"] })).unwrap();
+        let zinc = apply_medicine(&mut health, "", typed, &now, &english).unwrap();
+        assert_eq!(health.medicines.iter().find(|m| m.id == zinc).unwrap().takes(), [take("12:00", ""), take("18:00", "")]);
+        let wrong: MedicineEdit = serde_json::from_value(serde_json::json!({ "name": "Zinc", "every": "day", "takes": [{ "time": "noon", "amount": "" }] })).unwrap();
+        assert_eq!(apply_medicine(&mut health, &zinc, wrong, &now, &english), Err("“noon” is not a time of day.".into()));
+    }
+
+    /// A take's own amount wherever a dose is said: the Porch, the home
+    /// screen's card, the reminder (desktop and phone: `named`), the day's list.
+    #[test]
+    fn a_takes_own_amount_is_said_wherever_its_dose_is() {
+        let dir = std::env::temp_dir().join(format!("sioul-takes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("health.toml");
+        let mut iron = Medicine { id: "iron".into(), name: "Iron".into(), dose: String::new(), schedule: Schedule::Day { times: Vec::new(), amounts: Default::default() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None };
+        iron.set_takes("1 tablet", &[take("08:00", ""), take("20:00", "2 tablets")]).unwrap();
+        Health { medicines: vec![iron], ..Health::default() }.save(&path).unwrap();
+        let health = Health::load(&path);
+        let english = Translator::new("en");
+        let at = |text: &str| text.parse::<Zoned>().unwrap();
+        let alone = Knowledge { record_lost: None, peers: Vec::new() };
+        let state = HealthState::default();
+        // The Porch at 20:01: the evening's take, 2 tablets.
+        let evening = at("2026-10-08T20:01[Europe/Paris]");
+        let porch = serde_json::to_value(porch_doses(&health, &state, &DoseRecords::default(), "desk-id", &alone, &evening, false, true, &english)).unwrap();
+        let due: Vec<(&str, &str)> = porch["due"].as_array().unwrap().iter().map(|d| (d["time"].as_str().unwrap(), d["dose"].as_str().unwrap())).collect();
+        assert_eq!(due, [("20:00", "2 tablets")]);
+        // The home screen's card at 07:00: both, each with its amount.
+        let card = doses_for_card(&health, &state, &DoseRecords::default(), true, &alone, &at("2026-10-08T07:00[Europe/Paris]"));
+        assert_eq!(card.iter().map(|d| (d.time.as_str(), d.name.as_str())).collect::<Vec<_>>(), [("08:00", "Iron · 1 tablet"), ("20:00", "Iron · 2 tablets")]);
+        // The reminder's words, the phone's alarms' and the day's list: each dose its take's amount.
+        let doses = health.doses(&at("2026-10-08T00:00[Europe/Paris]"), &at("2026-10-09T00:00[Europe/Paris]"));
+        assert_eq!(doses.iter().map(named).collect::<Vec<_>>(), ["Iron · 1 tablet", "Iron · 2 tablets"]);
+        // The late dose's question: its take's amount.
+        assert_eq!(health.amount_of(&doses[1].key, evening.time_zone()).as_deref(), Some("2 tablets"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A medicine's generic name and strength, saved from both forms and read
+    /// back; said precisely on the page; and the view a doctor or a pharmacist
+    /// reads: the generic name and strength first, then the brand, the takes,
+    /// how long, who prescribed it; a prescription's, or all those taken now.
+    #[test]
+    fn a_doctor_or_pharmacist_reads_the_generic_name_first() {
+        let english = Translator::new("en");
+        let now: Zoned = "2026-10-08T09:00[Europe/Paris]".parse().unwrap();
+        let today = now.date();
+        let mut health = Health::default();
+        let rows = serde_json::json!([
+            { "id": "", "name": "Thyrolan", "generic": "levothyroxine", "strength": "75 µg", "dose": "1 tablet", "takes": [{ "time": "07:30", "amount": "" }] },
+            { "id": "", "name": " ", "generic": "metformin", "strength": "500 mg per tablet", "dose": "1 tablet", "takes": [{ "time": "08:00", "amount": "" }, { "time": "20:00", "amount": "2 tablets" }] },
+        ]);
+        let edit: PrescriptionEdit = serde_json::from_value(serde_json::json!({ "title": "Thyroid and sugar", "prescriber": "Dr Martin", "until": "2027-02-04", "medicines": rows })).unwrap();
+        let id = apply_prescription(&mut health, "", edit, &english).unwrap();
+        // No name given: the generic name is its name, for reminders and an older Sioul.
+        let fields: Vec<(&str, &str, &str)> = health.medicines.iter().map(|m| (m.name.as_str(), m.generic.as_str(), m.strength.as_str())).collect();
+        assert_eq!(fields, [("Thyrolan", "levothyroxine", "75 µg"), ("metformin", "metformin", "500 mg per tablet")]);
+        // Its own form: since a week, every eight hours.
+        let antibiotic: MedicineEdit = serde_json::from_value(serde_json::json!({ "name": "Amoxi", "generic": "amoxicillin", "strength": "500 mg", "dose": "1 capsule", "every": "hours", "hours": 8, "from": "2026-10-08T08:00", "since": "2026-10-01" })).unwrap();
+        apply_medicine(&mut health, "", antibiotic, &now, &english).unwrap();
+        // Paused, and past its last day: not taken now.
+        let mut paused = health.medicines[0].clone();
+        (paused.id, paused.name, paused.paused, paused.prescription) = ("zinc".into(), "Zinc".into(), true, None);
+        let mut over = health.medicines[0].clone();
+        (over.id, over.name, over.prescription, over.until) = ("iron".into(), "Iron".into(), None, Some("2026-10-01".parse().unwrap()));
+        health.medicines.extend([paused, over]);
+        // Written and read back, as they were.
+        let again: Health = toml::from_str(&toml::to_string(&health).unwrap()).unwrap();
+        assert_eq!(again, health);
+        // Nothing given, nothing to call it: said.
+        let nameless: MedicineEdit = serde_json::from_value(serde_json::json!({ "name": "", "generic": " ", "every": "day", "takes": [{ "time": "08:00" }] })).unwrap();
+        assert_eq!(apply_medicine(&mut health.clone(), "", nameless, &now, &english), Err("A name is needed.".into()));
+        // On the page, precisely; the reminders keep the short name.
+        let levo = medicine_row(&health.medicines[0], today);
+        assert_eq!((levo.precise.as_str(), levo.line.as_str()), ("Thyrolan — levothyroxine 75 µg", "Thyrolan — levothyroxine 75 µg · 07:30 · 1 tablet"));
+        assert_eq!(medicine_row(&health.medicines[1], today).precise, "metformin 500 mg per tablet");
+        let start = now.date().to_zoned(now.time_zone().clone()).unwrap();
+        let end = start.checked_add(Span::new().days(1)).unwrap();
+        assert_eq!(health.doses(&start, &end).iter().find(|d| d.at.hour() == 7).map(|d| d.name.as_str()), Some("Thyrolan"));
+        // The prescription's view: who and until when above, the generic names first.
+        let view = for_professional_of(&health, &id, today, &english);
+        assert_eq!(view.title, "Thyroid and sugar");
+        assert_eq!(view.about, ["Prescribed by Dr Martin", "Valid until Thursday 4 February 2027"]);
+        let levo = &view.medicines[0];
+        assert_eq!((levo.molecule.as_str(), levo.brand.as_str(), levo.takes.clone(), levo.prescriber.as_str()), ("levothyroxine 75 µg", "Thyrolan", vec!["07:30 — 1 tablet".to_string()], ""));
+        let metformin = &view.medicines[1];
+        assert_eq!((metformin.molecule.as_str(), metformin.brand.as_str()), ("metformin 500 mg per tablet", ""), "its name is its generic name: said once");
+        assert_eq!(metformin.takes, ["08:00 — 1 tablet", "20:00 — 2 tablets"]);
+        assert_eq!(view.medicines.len(), 2, "the antibiotic is not on it");
+        // All those taken now: neither the paused one nor the one past its last day.
+        let all = for_professional_of(&health, "", today, &english);
+        assert_eq!((all.title.as_str(), all.about.clone()), ("Current medicines", vec!["As of Thursday 8 October 2026".to_string()]));
+        assert_eq!(all.medicines.iter().map(|m| m.molecule.as_str()).collect::<Vec<_>>(), ["levothyroxine 75 µg", "metformin 500 mg per tablet", "amoxicillin 500 mg"]);
+        assert_eq!(all.medicines[0].prescriber, "Prescribed by Dr Martin");
+        let amoxicillin = &all.medicines[2];
+        assert_eq!((amoxicillin.takes.clone(), amoxicillin.since.as_str(), amoxicillin.brand.as_str()), (vec!["every 8 hours — 1 capsule".to_string()], "Taken since Thursday 1 October, 7 days", "Amoxi"));
+        // A paused medicine in its prescription's view: said.
+        health.medicines[1].paused = true;
+        assert_eq!(for_professional_of(&health, &id, today, &english).medicines[1].notes, ["Paused for now"]);
+        // In French, the generic names as typed.
+        let french = for_professional_of(&health, "", today, &Translator::new("fr"));
+        assert_eq!(french.title, "Médicaments en cours");
+        assert_eq!(french.medicines[1].since, "Pris depuis le jeudi 1er octobre, 7 jours");
+        assert_eq!(french.medicines[0].molecule, "levothyroxine 75 µg");
+        // Nothing to show: said.
+        assert_eq!(for_professional_of(&Health::default(), "", today, &english).empty, "No medicine to show.");
+        assert_eq!((how_long("2024-01-01".parse().unwrap(), today, &english), how_long("2026-06-01".parse().unwrap(), today, &english), how_long(today, today, &english)), ("2 years".into(), "4 months".into(), String::new()));
     }
 
     /// The Porch's doses at a desktop, on a health file written for the test

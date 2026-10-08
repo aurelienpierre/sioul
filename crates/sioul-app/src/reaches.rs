@@ -68,7 +68,7 @@ fn kinds(phone: bool) -> Vec<Kind> {
     if phone {
         out.push(Wake);
     }
-    out.extend([Alarms, Before, DayBefore, Dates, Needs, Move, WorkOver, Watch]);
+    out.extend([Alarms, Before, DayBefore, Dates, Needs, Move, WorkOver]);
     if phone {
         out.extend([AppAutomatons, AppAtOnce]);
     } else {
@@ -949,6 +949,11 @@ fn person_with(someone: &Someone, note: String) -> String {
         // Their calls of the month, from every phone sharing its own, rang or declined.
         "calls_title": text("calls-history-title"),
         "calls": if who == Who::Blocked { Vec::new() } else { crate::calls::history(&someone.phones()) },
+        // Their messages of the week, from the phones that share them.
+        "texts_title": text("phonemsgs-history-title"),
+        "texts": if who == Who::Blocked { Vec::new() } else { crate::phonemsgs::history(&someone.phones()) },
+        // texts: their conversation on the Texts page, when texts are read here ("" otherwise).
+        "texts_id": crate::texts::conversation_of(&someone.phones()),
     })
     .to_string()
 }

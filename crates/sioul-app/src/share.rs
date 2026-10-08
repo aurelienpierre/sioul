@@ -156,12 +156,14 @@ fn part_words(part: &str) -> (String, String) {
         "settings" => (text("share-part-settings"), text("share-part-settings-carries")),
         "senders" => (text("share-part-senders"), text("share-part-senders-carries")),
         "calls" => (text("share-part-calls"), text("share-part-calls-carries")),
+        "phone-messages" => (text("share-part-phone-messages"), text("share-part-phone-messages-carries")),
+        // texts: SMS phase (b).
+        "texts" => (text("share-part-texts"), text("share-part-texts-carries")),
         "spam" => (text("share-part-spam"), text("share-part-spam-carries")),
         "health" => (text("share-part-health"), text("share-part-health-carries")),
         "time" => (text("share-part-time"), text("share-part-time-carries")),
         "drafts" => (text("share-part-drafts"), text("share-part-drafts-carries")),
         "projects" => (text("share-part-projects"), text("share-part-projects-carries")),
-        "watch" => (text("share-part-watch"), text("share-part-watch-carries")),
         "lists" => (text("share-part-lists"), text("share-part-lists-carries")),
         "notes" => (text("share-part-notes"), text("share-part-notes-carries")),
         "papers" => (text("share-part-papers"), text("share-part-papers-carries")),
@@ -355,6 +357,12 @@ struct Status {
     servers: Vec<ServerAccount>,
     /// Sioul keeps the folder in step with a server itself here.
     mirrored: bool,
+    /// This device's build, in words: "This device: Sioul 0.0.3 (eff8661abcde)."
+    build: String,
+    /// "Send everything again" shown: sharing is on (not found on a server, it says why nothing went).
+    can_again: bool,
+    /// What it did last, in words; "" before it was pressed.
+    again: String,
 }
 
 /// Files gone at once from a folder of notes or papers, held until you say.
@@ -459,12 +467,21 @@ pub(crate) fn status(folder: &str) -> String {
                 (0, 0) => tr().text("share-part-quiet", None),
                 (sent, received) => [(sent, "share-part-sent"), (received, "share-part-received")].iter().filter(|(at, _)| *at > 0).map(|(at, id)| say(id, &[("when", when(*at))])).collect::<Vec<_>>().join(" "),
             };
+            // texts: what this device keeps of them, as other parts say what they carry.
+            let last = match (id, last.is_empty()) {
+                ("texts", false) => [last, crate::texts::kept_words()].join(" ").trim().to_string(),
+                _ => last,
+            };
             Part { id, name, carries, on: shared, refused, last }
         })
         .collect();
     let devices = if on { crate::health::device_rows() } else { Vec::new() };
     let backup = backup(on && mirror.is_none(), &path);
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some() })
+    let build = say("share-build", &[("build", sioul_core::build::DESCRIBED.to_string())]);
+    // Pressed while the folder is not found on a server, it says why nothing went.
+    let can_again = on;
+    let again = if on { again_line(&sioul_sync::remote::Sending::load(&memory_path()).again, &sioul_sync::remote::State::load(&memory_path()).host()) } else { String::new() };
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, devices, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again })
 }
 
 fn problem_text(code: &str) -> String {
@@ -687,6 +704,13 @@ pub(crate) fn stop() -> String {
                     sioul_sync::remote::forget(&memory, &folder);
                     let _ = std::fs::remove_dir_all(sioul_sync::remote::mirror_of(&memory));
                 });
+            } else if sending_on(&here) {
+                // Beside a sync app: its entry saying it left sent too, then forgotten.
+                let (memory, leaving) = (memory_path(), here.clone());
+                std::thread::spawn(move || {
+                    send_to_server(&leaving, false);
+                    sioul_sync::remote::forget(&memory, &folder);
+                });
             } else {
                 sioul_sync::remote::forget(&memory_path(), &folder);
             }
@@ -780,8 +804,17 @@ pub(crate) fn closing() {
     // Sioul keeping the folder itself: that last word goes up, off the window's
     // thread; a computer quitting waits a few seconds for it, a phone none
     // (its background step sends it).
-    if mirrored().is_some() {
-        let going = std::thread::spawn(move || mirror_step(&here, false, false));
+    let going = if mirrored().is_some() {
+        Some(std::thread::spawn(move || mirror_step(&here, false, false)))
+    } else if sending_on(&here) {
+        // Beside a sync app: the same, sent to the server too.
+        Some(std::thread::spawn(move || {
+            send_to_server(&here, false);
+        }))
+    } else {
+        None
+    };
+    if let Some(going) = going {
         let until = std::time::Instant::now() + std::time::Duration::from_secs(if cfg!(target_os = "android") { 0 } else { 5 });
         while !going.is_finished() && std::time::Instant::now() < until {
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -876,6 +909,23 @@ fn ask_carriers() {
         std::thread::spawn(|| mirror_step(&here(), false, false));
         return;
     }
+    // Beside a sync app: this device's files sent first, then the sync app
+    // asked, off the caller's thread. Asked before, it could find the server
+    // a version behind the phone's file and bring that older copy down
+    // (eDrive: a size that differs, docs/database.md, "Sent to the server too").
+    let here = here();
+    if sending_on(&here) {
+        std::thread::spawn(move || {
+            send_to_server(&here, false);
+            ask_carriers_only();
+        });
+        return;
+    }
+    ask_carriers_only();
+}
+
+/// The sync apps asked to look now, and nothing else.
+fn ask_carriers_only() {
     #[cfg(target_os = "android")]
     for (package, receiver, action) in CARRIERS {
         let text = |s: &str| std::ffi::CString::new(s).unwrap_or_default();
@@ -935,6 +985,9 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
     // A phone's calls copied into its own log first (the background step's, a dose's alarm's).
     crate::calls::before_exchange();
+    crate::phonemsgs::before_exchange();
+    // texts: the phone's step (read, decide, send), the clock, the trims.
+    crate::texts::before_exchange();
     let mirror = mirrored().is_some();
     // Sioul keeping the folder itself: the server looked through now, no sync app to wait for.
     if mirror && fetch_first {
@@ -998,7 +1051,25 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
         }
         remember(&outcome.problems, jiff::Timestamp::now().as_second());
         // Inside a reminder's own session, the sync app is asked once it is down (`devices::receiver`).
-        if outcome.sent > 0 && !crate::devices::in_receiver() {
+        let ask = outcome.sent > 0 && !crate::devices::in_receiver();
+        // Beside a sync app, this device's files sent to the server too, then
+        // the sync app asked to look (it finds them there as here): the
+        // background step and an alarm wait for it; a button pressed does not
+        // (Android waits eight seconds for its answer).
+        if sending_on(&here) {
+            let here = here.clone();
+            let go = move || {
+                send_to_server(&here, false);
+                if ask {
+                    ask_carriers_only();
+                }
+            };
+            if fetch_first || crate::steps::in_service() {
+                go();
+            } else {
+                std::thread::spawn(go);
+            }
+        } else if ask {
             ask_carriers();
         }
     }
@@ -1015,9 +1086,29 @@ fn remember(problems: &[String], now: i64) {
     }
 }
 
+/// An exchange wanted now (a button, a dose answered, a switch, the
+/// minute's tick), run by the one worker off the window's thread
+/// (`worker`); asked while one runs, another follows it. A shared file
+/// saved, seen by the watcher (`watcher`), wants one too, after a pause.
 pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
+    start_worker(qt, shared);
+    want(|soon, now| soon.ask(now));
+}
+
+/// The minute's scheduled exchange: left out when one started less than 50
+/// seconds ago (a save's), which did its work (`trigger::Soon::tick`).
+pub(crate) fn exchange_tick(qt: &QtThread, shared: &Arc<Shared>) {
+    start_worker(qt, shared);
+    want(|soon, now| soon.tick(now));
+}
+
+/// One exchange, on the worker's thread: the server's news first (Sioul
+/// keeping the folder, or the backup), then the exchange, then this
+/// device's files sent to the server (Sioul keeping the folder, or beside
+/// the sync app), the pages read again when changes came in.
+fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
-    std::thread::spawn(move || {
+    {
         // Sioul keeping the folder itself: the server looked through first; else
         // the other devices' files from the server too, when due, before they are read.
         let mirror = mirrored().is_some();
@@ -1026,11 +1117,17 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
         } else {
             fetch_from_server(&here(), false);
         }
-        let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
+        // A metered or slow connection: full rounds wait (`share::set_frugal`).
+        share::set_frugal(&memory_path(), frugal_now());
+        // Waits for one running (a dose's alarm, Sioul closing): what was asked is never dropped.
+        let busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let here = here();
         let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return };
         // A phone's calls copied into its own log first, so that they go now (`calls`).
         crate::calls::before_exchange();
+        crate::phonemsgs::before_exchange();
+        // texts: the phone's step (read, decide, send), the clock, the trims.
+        crate::texts::before_exchange();
         let stores = stores_here(&here);
         let now = jiff::Timestamp::now();
         let memory = memory_path();
@@ -1059,12 +1156,25 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
             }
             Err(e) => (false, false, vec![e], 0),
         };
+        // Whatever was written while the exchange ran (the exchange itself,
+        // what runs before it, the minute's other work) is never taken for a
+        // save (`watcher`): a change it did not carry goes at the next one.
+        if let Ok(mut watched) = WATCHED.lock() {
+            *watched = Some(sioul_sync::trigger::Stamps::of(&stores));
+        }
+        drop(busy);
         // What was marked here goes up now, not at the sync app's next look:
-        // Sioul keeping the folder itself sends it, its entry with it.
+        // Sioul keeping the folder itself sends it, its entry with it; beside
+        // a sync app, Sioul sends this device's files too, then the sync app
+        // is asked to look: it finds them there as they are here.
         if mirror {
+            send_texts(&here);
             mirror_step(&here, false, false);
-        } else if sent > 0 {
-            nudge(&qt, &shared, 60, false);
+        } else {
+            send_to_server(&here, false);
+            if sent > 0 {
+                nudge(&qt, &shared, 60, false);
+            }
         }
         // On a phone nobody reads the status line: what each exchange did goes to its
         // log (adb logcat), counts and problems only, never what was exchanged.
@@ -1093,7 +1203,288 @@ pub(crate) fn exchange(qt: &QtThread, shared: &Arc<Shared>) {
             crate::pim::show_pim(&qt, &shared);
             crate::work::show_work(&qt, &shared);
         }
+    }
+}
+
+// ---------------------------------------------------------------- shared as soon as it is saved
+
+/// What wants an exchange (`sioul_sync::trigger::Soon`), and the worker waiting on it.
+static SOON: Mutex<sioul_sync::trigger::Soon> = Mutex::new(sioul_sync::trigger::Soon::new());
+static SOON_WAKE: std::sync::Condvar = std::sync::Condvar::new();
+/// The window's handles, once an exchange was first asked: the worker and the watcher run from then on.
+static WORKER: std::sync::OnceLock<(QtThread, Arc<Shared>)> = std::sync::OnceLock::new();
+/// The shared files as the watcher last saw them (`sioul_sync::trigger::Stamps`).
+static WATCHED: Mutex<Option<sioul_sync::trigger::Stamps>> = Mutex::new(None);
+
+fn now_ms() -> i64 {
+    jiff::Timestamp::now().as_millisecond()
+}
+
+/// An exchange wanted, as `change` says (asked now, or a save seen): the worker woken.
+fn want(change: impl FnOnce(&mut sioul_sync::trigger::Soon, i64)) {
+    let mut soon = SOON.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    change(&mut soon, now_ms());
+    SOON_WAKE.notify_all();
+}
+
+/// The worker and the watcher, started once, with the window's handles.
+fn start_worker(qt: &QtThread, shared: &Arc<Shared>) {
+    if WORKER.set((qt.clone(), Arc::clone(shared))).is_ok() {
+        std::thread::spawn(worker);
+        std::thread::spawn(watcher);
+    }
+}
+
+/// The one thread that runs the window's exchanges, each when it is due
+/// (docs/database.md, "Sent as soon as it is saved"): asked, at once; saves
+/// seen, two seconds after the last, five after the first at most. What is
+/// wanted while one runs makes the next. One that fails (a panic) never stops
+/// the next ones.
+fn worker() {
+    let Some((qt, shared)) = WORKER.get() else { return };
+    loop {
+        {
+            let mut soon = SOON.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            loop {
+                let now = now_ms();
+                match soon.due() {
+                    Some(due) if due <= now => {
+                        soon.take(now);
+                        break;
+                    }
+                    Some(due) => soon = SOON_WAKE.wait_timeout(soon, std::time::Duration::from_millis((due - now) as u64)).unwrap_or_else(std::sync::PoisonError::into_inner).0,
+                    None => soon = SOON_WAKE.wait(soon).unwrap_or_else(std::sync::PoisonError::into_inner),
+                }
+            }
+        }
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| exchange_now(qt, shared)));
+        give_back_memory();
+    }
+}
+
+/// What an exchange held a moment (the memory of every line it knows, read
+/// and parsed: tens of megabytes with thousands of texts) given back to the
+/// system after it, where the C library keeps freed memory for itself
+/// (glibc): the window's footprint stays its own, not its largest exchange's.
+fn give_back_memory() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        unsafe extern "C" {
+            fn malloc_trim(pad: usize) -> std::ffi::c_int;
+        }
+        // SAFETY: glibc's own, asked to return the free pages of its heaps; nothing of Rust's is touched.
+        unsafe {
+            malloc_trim(0);
+        }
+    }
+}
+
+/// Every two seconds, the shared files looked at (their size and time, the
+/// notes and papers folders left out): one changed since, by whatever wrote
+/// it, wants an exchange after a pause. Not while an exchange runs (what it
+/// writes is taken in after it, `exchange_now`); on a phone, only while Sioul
+/// is on its screen: in the background, what writes exchanges itself
+/// (`exchange_here`).
+fn watcher() {
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let shown = SHOWN.load(std::sync::atomic::Ordering::Relaxed);
+        let here = share::Here::load(&state_dir());
+        if !shown || here.folder_path().is_none() || key().is_none() {
+            if let Ok(mut watched) = WATCHED.lock() {
+                *watched = None;
+            }
+            continue;
+        }
+        let _quiet = match BUSY.try_lock() {
+            Ok(held) => held,
+            Err(std::sync::TryLockError::Poisoned(held)) => held.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => continue,
+        };
+        let now = sioul_sync::trigger::Stamps::of(&stores_here(&here));
+        let Ok(mut watched) = WATCHED.lock() else { continue };
+        if watched.as_ref().is_some_and(|before| !now.changed(before).is_empty()) {
+            want(|soon, at| soon.saved(at));
+        }
+        *watched = Some(now);
+    }
+}
+
+// ---------------------------------------------------------------- sent beside the sync app
+
+/// Sending this device's own files beside the sync app is on here: the
+/// backup found the folder on a server, and neither switch is off.
+fn sending_on(here: &share::Here) -> bool {
+    let Some(folder) = here.folder_path() else { return false };
+    let state = sioul_sync::remote::State::load(&memory_path());
+    state.mode != sioul_sync::remote::MIRROR && state.confirmed_for(&folder) && state.sending()
+}
+
+/// This device's own files sent to the server beside the sync app
+/// (`sioul_sync::remote::send`, docs/database.md, "Sent to the server too"):
+/// those changed since they went, each over what is there; with `again`,
+/// each compared with the server's copy, whatever was sent before. Never on
+/// the window's thread. Said in a phone's log, counts and a code only.
+fn send_to_server(here: &share::Here, again: bool) -> Option<sioul_sync::remote::Pulled> {
+    let folder = here.folder_path()?;
+    if mirrored().is_some() || here.id.is_empty() {
+        return None;
+    }
+    let memory = memory_path();
+    let now = jiff::Timestamp::now().as_second();
+    let state = sioul_sync::remote::State::load(&memory);
+    if !state.confirmed_for(&folder) {
+        if again {
+            sioul_sync::remote::Sending::note_again(&memory, now, "not-confirmed");
+        }
+        return None;
+    }
+    let config = load_config();
+    let Some(login) = config.accounts.iter().find(|a| a.id == state.account).and_then(login_of) else {
+        if again {
+            sioul_sync::remote::Sending::note_again(&memory, now, &format!("no-account-for:{}", state.host()));
+        }
+        return None;
+    };
+    let sealed = share::own_sealed(&memory, &here.id);
+    // The texts to send first, on their own lane: never behind a large file.
+    send_texts(here);
+    let sent = sioul_sync::remote::send(&memory, &folder, &here.id, &login, &sealed, now, again, metered());
+    if sent.sent > 0 || sent.held > 0 || again || sent.problem.as_deref().is_some_and(|p| p != "off" && !p.starts_with("waiting:")) {
+        let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
+        let detail = sent.failure.as_ref().map(|f| format!("; {}", failure_words(f))).unwrap_or_default();
+        log_send(match &sent.problem {
+            None => format!("{at} sent to {}: {} sent, {} there already, {} records longer there left as they are, {} paced, {} bytes{}", state.host(), sent.sent, sent.same, sent.longer, sent.paced, sent.bytes, if sent.differ.is_empty() { String::new() } else { format!("; otherwise there: {}", sent.differ.join("; ")) }),
+            Some(why) => format!("{at} send to {} stopped: {}{detail}", state.host(), backup_words(why)),
+        });
+    }
+    Some(sent)
+}
+
+/// A send's failure in words for the log (English, as the log is): "records:
+/// timeout after 216 s, 1081344 of 2530934 bytes sent (timeout: global)".
+fn failure_words(f: &sioul_sync::remote::Failure) -> String {
+    let file = if f.file.is_empty() { String::new() } else { format!("{}: ", f.file) };
+    let bytes = if f.total > 0 { format!(", {} of {} bytes handed to the network", f.sent, f.total) } else { String::new() };
+    format!("{file}{} after {} s{bytes} ({})", f.kind, f.seconds, f.words)
+}
+
+/// A send's words in the log, on every system (a computer's too: its
+/// journal): what went, or why not, the same line never twice in a row.
+fn log_send(line: String) {
+    static SAID: Mutex<String> = Mutex::new(String::new());
+    if let Ok(mut said) = SAID.lock() {
+        if *said == line {
+            return;
+        }
+        said.clone_from(&line);
+    }
+    eprintln!("sioul: backup: {line}");
+}
+
+/// The connection is metered (NetworkManager: yes, or guessed yes), asked at
+/// most every five minutes; on a phone, not known here (measured instead:
+/// `Sending::slow`).
+fn metered() -> bool {
+    static ASKED: Mutex<(i64, bool)> = Mutex::new((0, false));
+    if cfg!(target_os = "android") {
+        return false;
+    }
+    let now = jiff::Timestamp::now().as_second();
+    let Ok(mut asked) = ASKED.lock() else { return false };
+    if now - asked.0 >= 300 {
+        *asked = (now, sioul_sync::power::read().metered == Some(true));
+    }
+    asked.1
+}
+
+/// The connection metered or measured slow: the sharing's full rounds wait
+/// (`share::set_frugal`), large files go at most every ten minutes.
+fn frugal_now() -> bool {
+    metered() || sioul_sync::remote::Sending::load(&memory_path()).slow()
+}
+
+/// This device's texts to send copied into the sharing folder as a small
+/// file of their own, when the part "texts" is shared here, then sent to
+/// the server on their own lane (Sioul keeping the folder itself, or beside
+/// the sync app): a request reaches the phone within its quarter of an hour
+/// whatever the records' size (docs/database.md, "Sent to the server too").
+fn send_texts(here: &share::Here) {
+    let Some(folder) = here.folder_path() else { return };
+    if here.id.is_empty() || !here.shares(sioul_core::texts::PART, &load_config()) {
+        return;
+    }
+    let source = sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::SEND, &here.id);
+    if let Err(e) = sioul_sync::remote::place_texts(&folder, &here.id, &source) {
+        eprintln!("sioul: texts: {e}");
+    }
+    let memory = memory_path();
+    let state = sioul_sync::remote::State::load(&memory);
+    if !state.confirmed_for(&folder) || !(state.mode == sioul_sync::remote::MIRROR || state.sending()) {
+        return;
+    }
+    let config = load_config();
+    let Some(login) = config.accounts.iter().find(|a| a.id == state.account).and_then(login_of) else { return };
+    let sent = sioul_sync::remote::send_urgent(&memory, &folder, &here.id, &login, jiff::Timestamp::now().as_second());
+    if sent.sent > 0 || sent.failure.is_some() {
+        let at = jiff::Timestamp::now().to_zoned(jiff::tz::TimeZone::system()).strftime("%H:%M:%S").to_string();
+        log_send(match &sent.failure {
+            None => format!("{at} texts to send sent to {}", state.host()),
+            Some(f) => format!("{at} texts to send not sent to {}: {}", state.host(), failure_words(f)),
+        });
+    }
+}
+
+/// A text was just written to send (`texts`): its small file placed and sent
+/// now, off the caller's thread, not at the next exchange.
+pub(crate) fn texts_now() {
+    std::thread::spawn(|| send_texts(&here()));
+}
+
+/// Where the other devices' texts to send are found beside the records'
+/// copy: the sharing folder's small files (`texts/send/<id>.jsonl`, carried
+/// by the sync app, or kept in step by Sioul itself), and those fetched from
+/// its server (`remote::overlay`). Each a root holding `send/`.
+pub(crate) fn texts_copies() -> Vec<PathBuf> {
+    let here = share::Here::load(&state_dir());
+    let Some(folder) = attached(&here) else { return Vec::new() };
+    let mut out = vec![folder.join(sioul_core::texts::FOLDER)];
+    out.extend(sioul_sync::remote::overlay(&folder).map(|cache| cache.join(sioul_core::texts::FOLDER)));
+    out
+}
+
+/// "Send everything again" (Settings ▸ Your folder and sharing): this
+/// device's files sent to the server again, each one the server lacks or
+/// holds otherwise, whatever was sent before; then the others' news fetched,
+/// and an exchange. For when a sync app was late, or the server lost files.
+/// Off the window's thread; what it did is said in the panel (`Status::again`).
+pub(crate) fn send_again(qt: &QtThread, shared: &Arc<Shared>) {
+    let (qt, shared) = (qt.clone(), Arc::clone(shared));
+    std::thread::spawn(move || {
+        let here = here();
+        let memory = memory_path();
+        let now = jiff::Timestamp::now().as_second();
+        match (mirrored(), here.folder_path()) {
+            (Some(state), Some(folder)) => match load_config().accounts.iter().find(|a| a.id == state.account).and_then(login_of) {
+                Some(login) => {
+                    sioul_sync::remote::again_mirror(&memory, &folder, &here.id, &login, now);
+                }
+                None => sioul_sync::remote::Sending::note_again(&memory, now, &format!("no-account-for:{}", state.host())),
+            },
+            (None, Some(_)) => {
+                send_to_server(&here, true);
+                fetch_from_server(&here, true);
+            }
+            _ => {}
+        }
+        exchange(&qt, &shared);
     });
+}
+
+/// This device's own files sent to the server beside the sync app, or not:
+/// this device's own choice, never shared. "" when kept, else why not.
+pub(crate) fn set_send(on: bool) -> String {
+    sioul_sync::remote::State::choose(&memory_path(), |state| state.send = (!on).then_some(false)).err().unwrap_or_default()
 }
 
 // ---------------------------------------------------------------- kept in step by Sioul itself
@@ -1416,12 +1807,110 @@ struct Backup {
     given: String,
     /// Found under the same seal.
     found: bool,
+    /// The second switch: this device's own files sent there too, beside the sync app.
+    send: bool,
+    /// Its words, with the server's name when it is known.
+    send_switch: String,
+    /// Where the sending stands, in words: when last, or why not.
+    send_line: String,
 }
 
 fn backup(on: bool, folder: &Path) -> Backup {
     let state = sioul_sync::remote::State::load(&memory_path());
     let line = if on { backup_line(&state, folder) } else { String::new() };
-    Backup { shown: on, line, on: state.fetching(), given: state.given.clone(), found: state.confirmed_for(folder) }
+    let host = state.host();
+    let send_switch = if host.is_empty() { tr().text("share-send-switch-none", None) } else { say("share-send-switch", &[("host", host)]) };
+    let send_line = if on && state.fetching() { send_line(&state, &sioul_sync::remote::Sending::load(&memory_path()), folder) } else { String::new() };
+    Backup { shown: on, line, on: state.fetching(), given: state.given.clone(), found: state.confirmed_for(folder), send: state.sending(), send_switch, send_line }
+}
+
+/// A send's code in words, for the panel: "network" → "the server could not be reached".
+fn why_words(code: &str) -> String {
+    tr().text(
+        match code {
+            "login" => "share-backup-why-login",
+            "tls" => "share-backup-why-tls",
+            "network" => "share-backup-why-network",
+            "disk" => "share-backup-why-disk",
+            "quota" => "share-backup-why-quota",
+            _ => "share-backup-why-server",
+        },
+        None,
+    )
+}
+
+/// Where sending this device's files beside the sync app stands, in words.
+fn send_line(state: &sioul_sync::remote::State, sending: &sioul_sync::remote::Sending, folder: &Path) -> String {
+    let host = state.host();
+    if !state.sending() {
+        return if host.is_empty() { String::new() } else { say("share-send-off", &[("host", host)]) };
+    }
+    if !state.confirmed_for(folder) {
+        return tr().text("share-send-waiting", None);
+    }
+    let (code, _) = sending.said.split_once(':').unwrap_or((sending.said.as_str(), ""));
+    let line = match (code, sending.last) {
+        ("", 0) => say("share-send-soon", &[("host", host)]),
+        ("", last) => say("share-send-on", &[("host", host), ("when", when(last))]),
+        (code, 0) => say("share-send-failing-never", &[("host", host), ("why", why_words(code))]),
+        (code, last) => say("share-send-failing", &[("host", host), ("when", when(last)), ("why", why_words(code))]),
+    };
+    // What failed, in detail: which file, how far it went, when it is tried again.
+    match sending.failure.as_ref().filter(|_| !sending.said.is_empty()) {
+        Some(failure) => [line, failure_line(failure, sending.next_try())].join(" "),
+        None => line,
+    }
+}
+
+/// A failed send in detail, in words: "Your records did not go at 19:24:
+/// 1.1 MB of 2.5 MB went in 216 s, slower than Sioul waits for. Tried again at 19:39."
+fn failure_line(failure: &sioul_sync::remote::Failure, next: i64) -> String {
+    let size = |bytes: u64| sioul_core::view::size(tr(), usize::try_from(bytes).unwrap_or(usize::MAX));
+    let detail = match failure.kind.as_str() {
+        "timeout" => say("share-send-detail-timeout", &[("total", size(failure.total)), ("seconds", failure.seconds.to_string())]),
+        "stalled" => say("share-send-detail-stalled", &[("total", size(failure.total))]),
+        "network" if failure.sent > 0 => say("share-send-detail-cut", &[("total", size(failure.total))]),
+        "out-of-time" => tr().text("share-send-detail-out-of-time", None),
+        "unreachable" | "network" => tr().text("share-send-detail-unreachable", None),
+        kind => format!("{}.", why_words(kind)),
+    };
+    let file = match failure.file.as_str() {
+        "records" => "share-send-file-records",
+        "entry" => "share-send-file-entry",
+        "notes" => "share-send-file-notes",
+        "claim" => "share-send-file-claim",
+        "texts" => "share-send-file-texts",
+        "sealed" => "share-send-file-sealed",
+        _ => "",
+    };
+    let next = if next > 0 { say("share-send-next", &[("when", when(next))]) } else { String::new() };
+    let said = if file.is_empty() { say("share-send-failure", &[("when", when(failure.at)), ("detail", detail)]) } else { say("share-send-failure-file", &[("file", tr().text(file, None)), ("when", when(failure.at)), ("detail", detail)]) };
+    [said, next].join(" ").trim().to_string()
+}
+
+/// What "Send everything again" did, in words: "Sent 14 files to cloud.example.org at 10:42.", or why not.
+fn again_line(again: &sioul_sync::remote::Again, host: &str) -> String {
+    if again.at == 0 {
+        return String::new();
+    }
+    let (code, about) = again.said.split_once(':').unwrap_or((again.said.as_str(), ""));
+    let host = if about.is_empty() { host.to_string() } else { about.to_string() };
+    let at = when(again.at);
+    let counted = |id: &str, count: usize| {
+        let mut args = sioul_core::i18n::args();
+        args.set("count", count as i64);
+        args.set("host", host.clone());
+        args.set("when", at.clone());
+        tr().text(id, Some(&args))
+    };
+    match code {
+        "" if again.sent > 0 => counted("share-send-again-sent", again.sent),
+        "" => counted("share-send-again-same", again.same),
+        "off" => tr().text("share-send-again-off", None),
+        "not-confirmed" | "mirror" | "no-seal" | "seal-gone" | "seal-differs" => tr().text("share-send-again-not-found", None),
+        "no-account-for" => say("share-send-again-no-account", &[("host", host)]),
+        code => say("share-send-again-failed", &[("host", host), ("when", at), ("why", why_words(code))]),
+    }
 }
 
 /// Where the backup stands, in words: from where, and since when, or why not.
@@ -1514,6 +2003,24 @@ mod tests {
             let words = server_problem(code);
             assert!(!words.is_empty() && !words.contains("share-"), "{code}: {words}");
         }
+    }
+
+    /// A send that failed, said in words, whichever way it failed: the file,
+    /// how long it tried, when it is tried again; never a message's key.
+    #[test]
+    fn a_failed_send_is_said_in_words() {
+        use sioul_sync::remote::Failure;
+        let at = jiff::Timestamp::now().as_second();
+        let timeout = Failure { kind: "timeout".into(), file: "records".into(), seconds: 216, sent: 1_081_344, total: 2_530_934, words: "timeout: global".into(), at };
+        let line = failure_line(&timeout, at + 60);
+        assert!(line.contains("216") && !line.contains("share-"), "{line}");
+        for kind in ["stalled", "network", "unreachable", "out-of-time", "tls", "login", "quota", "server"] {
+            for file in ["records", "entry", "notes", "claim", "texts", "sealed", ""] {
+                let line = failure_line(&Failure { kind: kind.into(), file: file.into(), ..timeout.clone() }, 0);
+                assert!(!line.is_empty() && !line.contains("share-"), "{kind} {file}: {line}");
+            }
+        }
+        assert_eq!(failure_words(&timeout), "records: timeout after 216 s, 1081344 of 2530934 bytes handed to the network (timeout: global)");
     }
 
     #[test]

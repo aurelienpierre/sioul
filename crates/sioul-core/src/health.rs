@@ -34,20 +34,12 @@ pub struct Health {
     /// ("account/id"), so your phone has them; "" for your usual list.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub errands_list: String,
-    /// A folder your watch's files come to (Gadgetbridge's exports, Garmin's
-    /// export ZIPs); "" for none. A watch the desktop shows is read besides.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub watch_folder: String,
-    /// Offers from the watch (a walk, a pause): on unless you say.
-    #[serde(default = "yes", skip_serializing_if = "is_true")]
-    pub watch_offers: bool,
+    // `watch_folder` and `watch_offers`, which Sioul wrote until 8 October 2026
+    // (a Garmin watch's files, taken out: docs/health.md), are read and left
+    // aside, as any key it does not know.
     /// Meals, naps and the night: times kept free, set first (`needs`).
     #[serde(default)]
     pub needs: crate::needs::Needs,
-}
-
-fn is_true(value: &bool) -> bool {
-    *value
 }
 
 /// A prescription: what it is for, who wrote it, until when it is valid,
@@ -76,6 +68,8 @@ pub struct Prescription {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Medicine {
     pub id: String,
+    /// Its brand name, or your own word for it: what reminders say. Never
+    /// empty once saved (its generic name stands in), as Sioul 0.0.3 reads it.
     pub name: String,
     /// "1000 IU", "1 tablet".
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -90,14 +84,36 @@ pub struct Medicine {
     /// Stopped for now: no reminder.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub paused: bool,
+    /// The generic name of its molecule, as typed (the INN, "levothyroxine"):
+    /// what a doctor or a pharmacist reads, whatever the brand. Written only
+    /// when given; Sioul 0.0.3 drops it at its next save.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub generic: String,
+    /// Its strength ("75 µg", "500 mg per tablet"), apart from a take's
+    /// amount ("1 tablet"). Written only when given, as `generic`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub strength: String,
+    /// The day it was first taken, when known: how long it has been taken.
+    /// Written only when given, as `generic`.
+    #[serde(default, deserialize_with = "crate::budget::dates::optional", skip_serializing_if = "Option::is_none")]
+    pub since: Option<Date>,
 }
 
 /// When a medicine is taken.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "every", rename_all = "kebab-case")]
 pub enum Schedule {
-    /// At these times each day: "12:00", "18:00".
-    Day { times: Vec<String> },
+    /// At these times each day: "12:00", "18:00", each a take.
+    Day {
+        times: Vec<String>,
+        /// Each take's own amount, by its time ("20:00" = "2 tablets"), only
+        /// when the takes' amounts differ: then it holds every take's, and the
+        /// medicine's `dose` holds them all in one line for an older Sioul,
+        /// which reads the times alone (`Medicine::set_takes`). Empty: every
+        /// take is the medicine's `dose`, and the file reads as before.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        amounts: BTreeMap<String, String>,
+    },
     /// Every `days` days at `time`, counted from `from` ("every other day from tomorrow").
     Days {
         days: u32,
@@ -116,13 +132,25 @@ fn time_of(text: &str) -> Option<Time> {
     Time::new(hour.trim().parse().ok()?, minute.trim().parse().ok()?, 0, 0).ok()
 }
 
+/// "8:00" → "08:00": a take's time as `amounts` keys it; none when it does not read.
+pub fn hhmm(text: &str) -> Option<String> {
+    time_of(text).map(|t| format!("{:02}:{:02}", t.hour(), t.minute()))
+}
+
 impl Schedule {
     /// The doses from `start` (included) to `end` (excluded), in order.
     pub fn doses(&self, start: &Zoned, end: &Zoned) -> Vec<Zoned> {
+        self.timed(start, end).into_iter().map(|(at, _)| at).collect()
+    }
+
+    /// The same, each with the time of day it is set for, at set times each
+    /// day (its take: a change of hour can move the dose itself, 02:30 to
+    /// 03:30); none for the others.
+    fn timed(&self, start: &Zoned, end: &Zoned) -> Vec<(Zoned, Option<Time>)> {
         let zone = start.time_zone().clone();
         let mut out = Vec::new();
         match self {
-            Schedule::Day { times } => {
+            Schedule::Day { times, .. } => {
                 let mut times: Vec<Time> = times.iter().filter_map(|t| time_of(t)).collect();
                 times.sort();
                 let mut day = start.date();
@@ -132,7 +160,7 @@ impl Schedule {
                             && &at >= start
                             && &at < end
                         {
-                            out.push(at);
+                            out.push((at, Some(*time)));
                         }
                     }
                     let Ok(next) = day.tomorrow() else { break };
@@ -154,7 +182,7 @@ impl Schedule {
                         && &at >= start
                         && &at < end
                     {
-                        out.push(at);
+                        out.push((at, None));
                     }
                     let Ok(next) = day.checked_add(Span::new().days(i64::from(*days))) else { break };
                     day = next;
@@ -172,13 +200,131 @@ impl Schedule {
                 }
                 while at < end.timestamp().as_second() {
                     if let Ok(t) = Timestamp::from_second(at) {
-                        out.push(t.to_zoned(zone.clone()));
+                        out.push((t.to_zoned(zone.clone()), None));
                     }
                     at += step;
                 }
             }
         }
         out
+    }
+}
+
+/// A take of a medicine at set times each day: its time ("08:00") and its
+/// amount ("1 tablet"; "" when none is said).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Take {
+    pub time: String,
+    #[serde(default)]
+    pub amount: String,
+}
+
+/// Why takes could not be set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TakeProblem {
+    /// No take at all: a medicine at set times would never fall due.
+    None,
+    /// A time that does not read, as written.
+    Unreadable(String),
+    /// Two takes at the same time: one dose, whose amount would be lost.
+    Twice(String),
+}
+
+impl Medicine {
+    /// What reminders, the day's list and a phone's card call it: its name,
+    /// else (a file written by hand) its generic name.
+    pub fn short_name(&self) -> String {
+        if self.name.trim().is_empty() { self.generic.trim().to_string() } else { self.name.trim().to_string() }
+    }
+
+    /// What it is, precisely, for whoever prescribes or hands it out: its
+    /// name, then its generic name and strength ("Thyrolan — levothyroxine
+    /// 75 µg"); the generic name alone when it is the name ("levothyroxine
+    /// 75 µg"); the name and strength without a generic name.
+    pub fn precise(&self) -> String {
+        let (name, generic, strength) = (self.name.trim(), self.generic.trim(), self.strength.trim());
+        let molecule = [generic, strength].into_iter().filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ");
+        if generic.is_empty() {
+            [name, strength].into_iter().filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ")
+        } else if name.is_empty() || name.to_lowercase() == generic.to_lowercase() {
+            molecule
+        } else {
+            format!("{name} — {molecule}")
+        }
+    }
+
+    /// The amount said with a dose set for `time` of the day: the take's own
+    /// when the takes differ (none when that take has none), else the
+    /// medicine's dose.
+    pub fn amount_at(&self, time: Time) -> String {
+        match &self.schedule {
+            Schedule::Day { amounts, .. } if !amounts.is_empty() => amounts.iter().find(|(at, _)| time_of(at) == Some(time)).map(|(_, amount)| amount.clone()).unwrap_or_default(),
+            _ => self.dose.clone(),
+        }
+    }
+
+    /// Its takes, at set times each day, in time order, each with its amount
+    /// (`amount_at`); a time that does not read is left out, as it never falls
+    /// due. None for the other kinds.
+    pub fn takes(&self) -> Vec<Take> {
+        let Schedule::Day { times, .. } = &self.schedule else { return Vec::new() };
+        let mut set: Vec<Time> = times.iter().filter_map(|t| time_of(t)).collect();
+        set.sort();
+        set.dedup();
+        set.into_iter().map(|time| Take { time: format!("{:02}:{:02}", time.hour(), time.minute()), amount: self.amount_at(time) }).collect()
+    }
+
+    /// The amount most of its takes have, the earliest first on a tie: what
+    /// its form shows as its dose, each take saying its own only when it
+    /// differs. Its dose when the takes do not differ.
+    pub fn usual(&self) -> String {
+        let takes = self.takes();
+        if !matches!(&self.schedule, Schedule::Day { amounts, .. } if !amounts.is_empty()) || takes.is_empty() {
+            return self.dose.clone();
+        }
+        let count = |amount: &str| takes.iter().filter(|t| t.amount == amount).count();
+        let most = takes.iter().map(|t| count(&t.amount)).max().unwrap_or(0);
+        takes.iter().find(|t| count(&t.amount) == most).map(|t| t.amount.clone()).unwrap_or_default()
+    }
+
+    /// Its takes in a line, in time order: "08:00 · 1 tablet, 20:00 · 2
+    /// tablets" ("12:00" alone for a take with no amount). What an older
+    /// Sioul says with each dose when the takes differ (`set_takes`).
+    pub fn takes_line(&self) -> String {
+        self.takes().into_iter().map(|t| if t.amount.is_empty() { t.time } else { format!("{} · {}", t.time, t.amount) }).collect::<Vec<_>>().join(", ")
+    }
+
+    /// Takes it at set times each day: `takes`, each with its own amount, or
+    /// `usual` when it says none. The same amount for all: that is its dose,
+    /// and `amounts` stays empty (the file as an older Sioul writes it).
+    /// Amounts that differ: `amounts` holds every take's, and its dose is the
+    /// whole line (`takes_line`), so that an older Sioul, which reads the
+    /// times alone, says every take's amount with each dose rather than one
+    /// that is wrong for some. The times are what they say, whatever the amounts.
+    pub fn set_takes(&mut self, usual: &str, takes: &[Take]) -> Result<(), TakeProblem> {
+        let mut set: Vec<(Time, String)> = Vec::new();
+        for take in takes {
+            let time = time_of(&take.time).ok_or_else(|| TakeProblem::Unreadable(take.time.trim().to_string()))?;
+            if set.iter().any(|(t, _)| *t == time) {
+                return Err(TakeProblem::Twice(format!("{:02}:{:02}", time.hour(), time.minute())));
+            }
+            let own = take.amount.trim();
+            set.push((time, if own.is_empty() { usual.trim() } else { own }.to_string()));
+        }
+        if set.is_empty() {
+            return Err(TakeProblem::None);
+        }
+        set.sort();
+        let times: Vec<String> = set.iter().map(|(t, _)| format!("{:02}:{:02}", t.hour(), t.minute())).collect();
+        if set.iter().all(|(_, amount)| *amount == set[0].1) {
+            self.dose = set[0].1.clone();
+            self.schedule = Schedule::Day { times, amounts: BTreeMap::new() };
+        } else {
+            let amounts = times.iter().zip(&set).filter(|(_, (_, amount))| !amount.is_empty()).map(|(time, (_, amount))| (time.clone(), amount.clone())).collect();
+            self.schedule = Schedule::Day { times, amounts };
+            self.dose = self.takes_line();
+        }
+        Ok(())
     }
 }
 
@@ -255,22 +401,44 @@ impl Health {
         crate::cases::new_id(name, &taken)
     }
 
-    /// Every dose from `start` to `end`, of the medicines taken then.
+    /// Every dose from `start` to `end`, of the medicines taken then, each
+    /// with its take's amount (`Medicine::amount_at`).
     pub fn doses(&self, start: &Zoned, end: &Zoned) -> Vec<Dose> {
         let mut out: Vec<Dose> = self
             .medicines
             .iter()
             .filter(|m| !m.paused)
             .flat_map(|m| {
-                m.schedule
-                    .doses(start, end)
-                    .into_iter()
-                    .filter(|at| m.until.is_none_or(|until| at.date() <= until))
-                    .map(|at| Dose { key: format!("{}@{}", m.id, at.timestamp().as_second()), medicine: m.id.clone(), name: m.name.clone(), dose: m.dose.clone(), at })
+                m.schedule.timed(start, end).into_iter().filter(|(at, _)| m.until.is_none_or(|until| at.date() <= until)).map(|(at, set)| Dose {
+                    key: format!("{}@{}", m.id, at.timestamp().as_second()),
+                    medicine: m.id.clone(),
+                    name: m.short_name(),
+                    dose: set.map_or_else(|| m.dose.clone(), |time| m.amount_at(time)),
+                    at,
+                })
             })
             .collect();
         out.sort_by(|a, b| a.at.cmp(&b.at).then(a.name.cmp(&b.name)));
         out
+    }
+
+    /// The amount of the dose `key` (`<medicine>@<Unix seconds>`), as its
+    /// reminder said it: its take's, found at its time; else (a dose the
+    /// schedule no longer has, moved or changed since) the amount at its time
+    /// of day on this clock. None for a medicine no longer here.
+    pub fn amount_of(&self, key: &str, zone: &jiff::tz::TimeZone) -> Option<String> {
+        let (id, due) = key.rsplit_once('@')?;
+        let due = Timestamp::from_second(due.parse().ok()?).ok()?.to_zoned(zone.clone());
+        let medicine = self.medicines.iter().find(|m| m.id == id)?;
+        let end = due.checked_add(Span::new().seconds(1)).ok()?;
+        match medicine.schedule.timed(&due, &end).into_iter().next() {
+            Some((_, Some(time))) => Some(medicine.amount_at(time)),
+            Some((_, None)) => Some(medicine.dose.clone()),
+            None => Some(match medicine.schedule {
+                Schedule::Day { .. } => medicine.amount_at(Time::new(due.hour(), due.minute(), 0, 0).ok()?),
+                _ => medicine.dose.clone(),
+            }),
+        }
     }
 
     /// A dose taken at `at` (Unix seconds): for a medicine taken every few
@@ -809,7 +977,7 @@ mod tests {
 
     #[test]
     fn doses_by_the_day_the_days_and_the_hours() {
-        let noon_and_six = Schedule::Day { times: vec!["18:00".into(), "12:00".into()] };
+        let noon_and_six = Schedule::Day { times: vec!["18:00".into(), "12:00".into()], amounts: BTreeMap::new() };
         let doses = noon_and_six.doses(&at("2026-10-03T13:00[Europe/Paris]"), &at("2026-10-05T00:00[Europe/Paris]"));
         let shown: Vec<String> = doses.iter().map(|z| z.strftime("%d %H:%M").to_string()).collect();
         assert_eq!(shown, vec!["03 18:00", "04 12:00", "04 18:00"]);
@@ -826,7 +994,7 @@ mod tests {
     #[test]
     fn every_few_hours_the_hours_between_doses_are_kept() {
         let eight = || Health {
-            medicines: vec![Medicine { id: "antibiotic".into(), name: "Antibiotic".into(), dose: String::new(), schedule: Schedule::Hours { hours: 8, from: at("2026-10-05T08:00[Europe/Paris]").timestamp().as_second() }, prescription: None, until: None, paused: false }],
+            medicines: vec![Medicine { id: "antibiotic".into(), name: "Antibiotic".into(), dose: String::new(), schedule: Schedule::Hours { hours: 8, from: at("2026-10-05T08:00[Europe/Paris]").timestamp().as_second() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None }],
             ..Health::default()
         };
         let times = |health: &Health| -> Vec<String> { health.doses(&at("2026-10-05T12:00[Europe/Paris]"), &at("2026-10-06T12:00[Europe/Paris]")).iter().map(|d| d.at.strftime("%H:%M").to_string()).collect() };
@@ -851,7 +1019,7 @@ mod tests {
         // On time to the second: nothing to move.
         assert_eq!(eight().taken_at(&key, at("2026-10-05T08:00[Europe/Paris]").timestamp().as_second()), None);
         // Medicines at set times keep them: being ready for something.
-        let mut daily = Health { medicines: vec![Medicine { schedule: Schedule::Day { times: vec!["08:00".into()] }, ..eight().medicines[0].clone() }], ..Health::default() };
+        let mut daily = Health { medicines: vec![Medicine { schedule: Schedule::Day { times: vec!["08:00".into()], amounts: BTreeMap::new() }, ..eight().medicines[0].clone() }], ..Health::default() };
         assert_eq!(daily.taken_at(&key, at("2026-10-05T09:30[Europe/Paris]").timestamp().as_second()), None);
     }
 
@@ -1062,7 +1230,7 @@ mod tests {
     #[test]
     fn reminded_once_never_counted() {
         let health = Health {
-            medicines: vec![Medicine { id: "vitamin-d".into(), name: "Vitamin D".into(), dose: "1000 IU".into(), schedule: Schedule::Day { times: vec!["12:00".into()] }, prescription: None, until: None, paused: false }],
+            medicines: vec![Medicine { id: "vitamin-d".into(), name: "Vitamin D".into(), dose: "1000 IU".into(), schedule: Schedule::Day { times: vec!["12:00".into()], amounts: BTreeMap::new() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None }],
             ..Health::default()
         };
         let mut state = HealthState::default();
@@ -1101,6 +1269,25 @@ mod tests {
     }
 
     #[test]
+    fn the_watch_s_old_keys_are_read_and_left_aside() {
+        // As Sioul wrote it while it read a Garmin watch's files (until 8 October 2026).
+        let dir = std::env::temp_dir().join(format!("sioul-health-watch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("health.toml");
+        let older = "errands_list = \"local/errands\"\nwatch_folder = \"~/Garmin\"\nwatch_offers = false\n\n[[medicine]]\nid = \"iron\"\nname = \"Iron\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\"]\n";
+        std::fs::write(&path, older).unwrap();
+        let health = Health::load(&path);
+        assert_eq!((health.errands_list.as_str(), health.medicines.len()), ("local/errands", 1), "read as before");
+        assert!(!dir.join("health.toml.unreadable").exists(), "never taken for a file that does not read");
+        health.save(&path).unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(!written.contains("watch"), "{written}");
+        assert_eq!(Health::load(&path), health);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_file_that_no_longer_reads_is_kept_aside() {
         let dir = std::env::temp_dir().join(format!("sioul-health-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -1128,9 +1315,9 @@ mod tests {
     fn todays_doses_until_marked() {
         let health = Health {
             medicines: vec![
-                Medicine { id: "levo".into(), name: "Levothyroxine".into(), dose: "75 µg".into(), schedule: Schedule::Day { times: vec!["07:30".into()] }, prescription: None, until: None, paused: false },
-                Medicine { id: "iron".into(), name: "Iron".into(), dose: String::new(), schedule: Schedule::Day { times: vec!["12:00".into(), "21:00".into()] }, prescription: None, until: None, paused: false },
-                Medicine { id: "zinc".into(), name: "Zinc".into(), dose: String::new(), schedule: Schedule::Day { times: vec!["09:00".into(), "23:50".into()] }, prescription: None, until: None, paused: false },
+                Medicine { id: "levo".into(), name: "Levothyroxine".into(), dose: "75 µg".into(), schedule: Schedule::Day { times: vec!["07:30".into()], amounts: BTreeMap::new() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None },
+                Medicine { id: "iron".into(), name: "Iron".into(), dose: String::new(), schedule: Schedule::Day { times: vec!["12:00".into(), "21:00".into()], amounts: BTreeMap::new() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None },
+                Medicine { id: "zinc".into(), name: "Zinc".into(), dose: String::new(), schedule: Schedule::Day { times: vec!["09:00".into(), "23:50".into()], amounts: BTreeMap::new() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None },
             ],
             ..Health::default()
         };
@@ -1174,5 +1361,223 @@ mod tests {
         assert!(state.chat_minute(&limit, &now), "the second minute reaches the limit");
         assert!(state.chats_covered(&at("2026-10-03T20:29[Europe/Paris]")));
         assert!(!state.chats_covered(&at("2026-10-03T20:31[Europe/Paris]")), "back after the time chosen");
+    }
+
+    /// A medicine as Sioul 0.0.3 reads and writes it, before takes had
+    /// amounts of their own: the fields it knows, the others dropped at its
+    /// next save.
+    mod older {
+        use jiff::civil::Date;
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct Health {
+            #[serde(rename = "medicine", default)]
+            pub medicines: Vec<Medicine>,
+        }
+
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct Medicine {
+            pub id: String,
+            pub name: String,
+            #[serde(default, skip_serializing_if = "String::is_empty")]
+            pub dose: String,
+            pub schedule: Schedule,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub prescription: Option<String>,
+            #[serde(default, deserialize_with = "crate::budget::dates::optional", skip_serializing_if = "Option::is_none")]
+            pub until: Option<Date>,
+            #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+            pub paused: bool,
+        }
+
+        #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+        #[serde(tag = "every", rename_all = "kebab-case")]
+        pub enum Schedule {
+            Day {
+                times: Vec<String>,
+            },
+            Days {
+                days: u32,
+                time: String,
+                #[serde(deserialize_with = "crate::budget::dates::required")]
+                from: Date,
+            },
+            Hours {
+                hours: u32,
+                from: i64,
+            },
+        }
+    }
+
+    fn take(time: &str, amount: &str) -> Take {
+        Take { time: time.into(), amount: amount.into() }
+    }
+
+    fn at_set_times(id: &str, name: &str) -> Medicine {
+        Medicine { id: id.into(), name: name.into(), dose: String::new(), schedule: Schedule::Day { times: Vec::new(), amounts: BTreeMap::new() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None }
+    }
+
+    /// The doses of a day: time, name and amount, in order.
+    fn day_of(health: &Health, day: &str) -> Vec<(String, String, String)> {
+        let start = at(&format!("{day}T00:00[Europe/Paris]"));
+        let end = start.checked_add(Span::new().days(1)).unwrap();
+        health.doses(&start, &end).into_iter().map(|d| (d.at.strftime("%H:%M").to_string(), d.name, d.dose)).collect()
+    }
+
+    fn said(rows: &[(&str, &str, &str)]) -> Vec<(String, String, String)> {
+        rows.iter().map(|(a, b, c)| (a.to_string(), b.to_string(), c.to_string())).collect()
+    }
+
+    #[test]
+    fn each_take_its_time_and_its_own_amount() {
+        // The same amount at every take: the medicine's dose, the file as before.
+        let mut same = at_set_times("zinc", "Zinc");
+        same.set_takes("1 tablet", &[take("20:00", ""), take("8:00", "1 tablet")]).unwrap();
+        assert_eq!(same.dose, "1 tablet");
+        assert_eq!(same.schedule, Schedule::Day { times: vec!["08:00".into(), "20:00".into()], amounts: BTreeMap::new() });
+        assert!(!toml::to_string(&Health { medicines: vec![same.clone()], ..Health::default() }).unwrap().contains("amounts"));
+        // 1 tablet at 08:00, 2 at 20:00: each take its own; the form's dose, the most usual.
+        let mut iron = at_set_times("iron", "Iron");
+        iron.set_takes("1 tablet", &[take("08:00", ""), take("20:00", "2 tablets")]).unwrap();
+        assert_eq!(iron.takes(), [take("08:00", "1 tablet"), take("20:00", "2 tablets")]);
+        assert_eq!(iron.usual(), "1 tablet");
+        assert_eq!(iron.takes_line(), "08:00 · 1 tablet, 20:00 · 2 tablets");
+        assert_eq!(iron.dose, iron.takes_line(), "what an older Sioul says with each dose");
+        let health = Health { medicines: vec![iron.clone(), same], ..Health::default() };
+        assert_eq!(day_of(&health, "2026-10-08"), said(&[("08:00", "Iron", "1 tablet"), ("08:00", "Zinc", "1 tablet"), ("20:00", "Iron", "2 tablets"), ("20:00", "Zinc", "1 tablet")]));
+        // The doses fall due as they would with one amount for all: the same keys, the same times.
+        let plain = Health { medicines: vec![Medicine { schedule: Schedule::Day { times: vec!["08:00".into(), "20:00".into()], amounts: BTreeMap::new() }, ..iron.clone() }], ..Health::default() };
+        let keys = |h: &Health| h.doses(&at("2026-10-08T00:00[Europe/Paris]"), &at("2026-10-10T00:00[Europe/Paris]")).into_iter().filter(|d| d.medicine == "iron").map(|d| (d.key, d.at)).collect::<Vec<_>>();
+        assert_eq!(keys(&health), keys(&plain));
+        // A take with no amount among others: none said for it, never another's.
+        let mut some = at_set_times("d", "Vitamin D");
+        some.set_takes("", &[take("08:00", ""), take("20:00", "2 drops")]).unwrap();
+        assert_eq!(some.takes(), [take("08:00", ""), take("20:00", "2 drops")]);
+        assert_eq!(some.dose, "08:00, 20:00 · 2 drops");
+        assert_eq!(some.usual(), "", "the earliest on a tie");
+        // What cannot be set: no take, a time that does not read, two takes at one time.
+        assert_eq!(at_set_times("x", "X").set_takes("", &[]), Err(TakeProblem::None));
+        assert_eq!(at_set_times("x", "X").set_takes("", &[take(" 8h ", "")]), Err(TakeProblem::Unreadable("8h".into())));
+        assert_eq!(at_set_times("x", "X").set_takes("", &[take("08:00", "1"), take("8:00", "2")]), Err(TakeProblem::Twice("08:00".into())));
+        // Set again alike: the amounts go, the dose is the one amount again.
+        iron.set_takes("2 tablets", &[take("08:00", ""), take("20:00", "")]).unwrap();
+        assert_eq!((iron.dose.as_str(), iron.takes()), ("2 tablets", vec![take("08:00", "2 tablets"), take("20:00", "2 tablets")]));
+    }
+
+    #[test]
+    fn a_prescription_with_three_medicines_and_several_takes_each() {
+        let mut levo = at_set_times("levo", "Levothyroxine");
+        levo.set_takes("75 µg", &[take("07:30", "")]).unwrap();
+        let mut iron = at_set_times("iron", "Iron");
+        iron.set_takes("1 tablet", &[take("08:00", ""), take("13:00", ""), take("20:00", "2 tablets")]).unwrap();
+        let mut magnesium = at_set_times("magnesium", "Magnesium");
+        magnesium.set_takes("300 mg", &[take("12:30", "150 mg"), take("21:30", "")]).unwrap();
+        let mut health = Health {
+            prescriptions: vec![Prescription { id: "dr".into(), title: "Thyroid and iron".into(), refill_days: Some(30), last_refill: Some("2026-10-01".parse().unwrap()), ..Prescription::default() }],
+            medicines: vec![levo, iron, magnesium],
+            ..Health::default()
+        };
+        for medicine in &mut health.medicines {
+            medicine.prescription = Some("dr".into());
+        }
+        assert_eq!(
+            day_of(&health, "2026-10-08"),
+            said(&[("07:30", "Levothyroxine", "75 µg"), ("08:00", "Iron", "1 tablet"), ("12:30", "Magnesium", "150 mg"), ("13:00", "Iron", "1 tablet"), ("20:00", "Iron", "2 tablets"), ("21:30", "Magnesium", "300 mg")])
+        );
+        // Written and read again: the same.
+        let again: Health = toml::from_str(&toml::to_string(&health).unwrap()).unwrap();
+        assert_eq!(again, health);
+        // One taken out: the others fall due as before.
+        health.medicines.retain(|m| m.id != "iron");
+        assert_eq!(day_of(&health, "2026-10-08"), said(&[("07:30", "Levothyroxine", "75 µg"), ("12:30", "Magnesium", "150 mg"), ("21:30", "Magnesium", "300 mg")]));
+        assert_eq!(health.errands().len(), 1, "its pharmacy, as before");
+    }
+
+    #[test]
+    fn an_older_file_reads_as_before() {
+        // As Sioul 0.0.3 writes a medicine: no amounts.
+        let text = "[[medicine]]\nid = \"iron\"\nname = \"Iron\"\ndose = \"1 tablet\"\n\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\", \"20:00\"]\n";
+        let health: Health = toml::from_str(text).unwrap();
+        assert_eq!(health.medicines[0].takes(), [take("08:00", "1 tablet"), take("20:00", "1 tablet")]);
+        assert_eq!(day_of(&health, "2026-10-08"), said(&[("08:00", "Iron", "1 tablet"), ("20:00", "Iron", "1 tablet")]));
+        // Written again by this Sioul: what 0.0.3 reads, field for field.
+        let written = toml::to_string(&health).unwrap();
+        assert!(!written.contains("amounts"), "{written}");
+        assert_eq!(toml::from_str::<older::Health>(&written).unwrap(), toml::from_str::<older::Health>(text).unwrap());
+    }
+
+    #[test]
+    fn an_older_sioul_reads_the_times_and_says_every_amount() {
+        let mut iron = at_set_times("iron", "Iron");
+        iron.set_takes("1 tablet", &[take("08:00", ""), take("20:00", "2 tablets")]).unwrap();
+        let health = Health { medicines: vec![iron], ..Health::default() };
+        let written = toml::to_string(&health).unwrap();
+        // Sioul 0.0.3 reads the file: the same times, and the whole line as the dose of each.
+        let old: older::Health = toml::from_str(&written).unwrap();
+        assert_eq!(old.medicines[0].schedule, older::Schedule::Day { times: vec!["08:00".into(), "20:00".into()] });
+        assert_eq!(old.medicines[0].dose, "08:00 · 1 tablet, 20:00 · 2 tablets");
+        // It saves it again, dropping the amounts: the doses fall due as they did, each saying the whole line.
+        let back: Health = toml::from_str(&toml::to_string(&old).unwrap()).unwrap();
+        assert_eq!(back.medicines[0].schedule, Schedule::Day { times: vec!["08:00".into(), "20:00".into()], amounts: BTreeMap::new() });
+        let (start, end) = (at("2026-10-08T00:00[Europe/Paris]"), at("2026-10-10T00:00[Europe/Paris]"));
+        let due = |h: &Health| h.doses(&start, &end).into_iter().map(|d| (d.key, d.at)).collect::<Vec<_>>();
+        assert_eq!(due(&back), due(&health));
+        assert!(back.doses(&start, &end).iter().all(|d| d.dose == "08:00 · 1 tablet, 20:00 · 2 tablets"));
+    }
+
+    #[test]
+    fn a_take_moved_by_the_change_of_hour_keeps_its_amount() {
+        // 02:30 does not exist in Paris on 29 March 2026: the dose comes at 03:30, its amount with it.
+        let mut night = at_set_times("night", "Night drops");
+        night.set_takes("1 drop", &[take("02:30", "3 drops"), take("08:00", "")]).unwrap();
+        let health = Health { medicines: vec![night], ..Health::default() };
+        assert_eq!(day_of(&health, "2026-03-29"), said(&[("03:30", "Night drops", "3 drops"), ("08:00", "Night drops", "1 drop")]));
+        let zone = jiff::tz::TimeZone::get("Europe/Paris").unwrap();
+        let doses = health.doses(&at("2026-03-29T00:00[Europe/Paris]"), &at("2026-03-30T00:00[Europe/Paris]"));
+        assert_eq!(health.amount_of(&doses[0].key, &zone).as_deref(), Some("3 drops"));
+        assert_eq!(health.amount_of(&doses[1].key, &zone).as_deref(), Some("1 drop"));
+        // A dose the schedule no longer has: the amount at its time of day; a medicine gone: none.
+        assert_eq!(health.amount_of(&format!("night@{}", at("2026-03-30T02:30[Europe/Paris]").timestamp().as_second() + 60), &zone).as_deref(), Some(""));
+        assert_eq!(health.amount_of("gone@1800000000", &zone), None);
+    }
+
+    /// A medicine's generic name, strength and first day: written only when
+    /// given, read back, said precisely for a professional; reminders keep
+    /// the short name. Sioul 0.0.3 reads the file, its doses the same.
+    #[test]
+    fn generic_name_and_strength_written_only_when_given() {
+        let mut levo = at_set_times("levo", "Thyrolan");
+        levo.set_takes("1 tablet", &[take("07:30", "")]).unwrap();
+        // None given: the file as before.
+        let plain = toml::to_string(&Health { medicines: vec![levo.clone()], ..Health::default() }).unwrap();
+        assert!(!plain.contains("generic") && !plain.contains("strength") && !plain.contains("since"), "{plain}");
+        assert_eq!(levo.precise(), "Thyrolan");
+        levo.generic = "levothyroxine".into();
+        levo.strength = "75 µg".into();
+        levo.since = Some("2026-03-02".parse().unwrap());
+        let health = Health { medicines: vec![levo.clone()], ..Health::default() };
+        let written = toml::to_string(&health).unwrap();
+        let again: Health = toml::from_str(&written).unwrap();
+        assert_eq!(again, health, "read back as written");
+        assert_eq!(levo.precise(), "Thyrolan — levothyroxine 75 µg");
+        assert_eq!(levo.short_name(), "Thyrolan");
+        // The name is the generic name: said once.
+        assert_eq!(Medicine { name: "Levothyroxine".into(), ..levo.clone() }.precise(), "levothyroxine 75 µg");
+        // Reminders, the day's list, the card: the short name, the take's amount.
+        assert_eq!(day_of(&health, "2026-10-08"), said(&[("07:30", "Thyrolan", "1 tablet")]));
+        // Sioul 0.0.3 reads it: the same name and times; the new fields dropped at its save, the doses the same.
+        let old: older::Health = toml::from_str(&written).unwrap();
+        assert_eq!((old.medicines[0].name.as_str(), old.medicines[0].dose.as_str()), ("Thyrolan", "1 tablet"));
+        let back: Health = toml::from_str(&toml::to_string(&old).unwrap()).unwrap();
+        assert_eq!((back.medicines[0].generic.as_str(), back.medicines[0].strength.as_str(), back.medicines[0].since), ("", "", None));
+        let (start, end) = (at("2026-10-08T00:00[Europe/Paris]"), at("2026-10-10T00:00[Europe/Paris]"));
+        let due = |h: &Health| h.doses(&start, &end).into_iter().map(|d| (d.key, d.at, d.name, d.dose)).collect::<Vec<_>>();
+        assert_eq!(due(&back), due(&health));
+        // Written by hand with a generic name and no name: the generic name stands in.
+        let by_hand = "[[medicine]]\nid = \"m\"\nname = \"\"\ngeneric = \"metformin\"\nstrength = \"500 mg\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\"]\n";
+        let hand: Health = toml::from_str(by_hand).unwrap();
+        assert_eq!((hand.medicines[0].short_name().as_str(), hand.medicines[0].precise().as_str()), ("metformin", "metformin 500 mg"));
+        assert_eq!(day_of(&hand, "2026-10-08")[0].1, "metformin");
     }
 }

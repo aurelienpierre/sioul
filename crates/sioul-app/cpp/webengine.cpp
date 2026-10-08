@@ -9,12 +9,14 @@
 // the Sites page imports it, not each time Sioul starts. As Sioul quits, the
 // sites' pages are closed as a browser closes its tabs (sioul_close_sites).
 
+#include <QColorSpace>
 #include <QCoreApplication>
 #include <QEventLoop>
 #include <QJSValue>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
+#include <QSurfaceFormat>
 #include <QTimer>
 
 extern "C" void sioul_start_web_engine()
@@ -24,6 +26,15 @@ extern "C" void sioul_start_web_engine()
     if (api != QSGRendererInterface::OpenGL && api != QSGRendererInterface::Vulkan && api != QSGRendererInterface::Metal
         && api != QSGRendererInterface::Direct3D11)
         QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+#ifdef Q_OS_MACOS
+    // colour: Sioul's windows say that their numbers are sRGB, so that macOS
+    // converts them to the screen, sites included; without it, Qt hands them
+    // to the screen as they are, too saturated on a wide-gamut one
+    // (docs/colour.md). Untested: no Mac was at hand.
+    QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+    format.setColorSpace(QColorSpace::SRgb);
+    QSurfaceFormat::setDefaultFormat(format);
+#endif
 }
 
 // Sioul has quit, its windows gone: each site's page is closed as a browser

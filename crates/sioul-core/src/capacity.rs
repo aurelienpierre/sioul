@@ -207,10 +207,54 @@ impl FeltIndex {
         Rates { costs, gain: value(&|d: &Demands| d.gain), word: Level::of_energy(&task.energy) }
     }
 
+    /// What was felt before, shown faintly in a task's form for what it
+    /// leaves unsaid (docs/capacity.md, "The form"): value by value, the
+    /// median of the last five felt after the same item, else after tasks of
+    /// its kind, rounded. Never its own forecast: the form is where the
+    /// forecast is said.
+    pub fn proposal(&self, task: &Task) -> Proposal {
+        let item = self.items.get(&item_key(task)).map(Vec::as_slice).unwrap_or(&[]);
+        let kind = if task.kind.is_empty() { &[][..] } else { self.kinds.get(&task.kind).map(Vec::as_slice).unwrap_or(&[]) };
+        let (mut from_item, mut from_kind) = (false, false);
+        let mut value = |pick: &dyn Fn(&Demands) -> Option<u8>| -> Option<u8> {
+            if let Some(median) = FeltIndex::median(item, pick) {
+                from_item = true;
+                return Some(rounded(median));
+            }
+            let median = FeltIndex::median(kind, pick)?;
+            from_kind = true;
+            Some(rounded(median))
+        };
+        let values = Demands {
+            cognitive: value(&|d: &Demands| d.cognitive),
+            emotional: value(&|d: &Demands| d.emotional),
+            anxiety: value(&|d: &Demands| d.anxiety),
+            body: value(&|d: &Demands| d.body),
+            gain: value(&|d: &Demands| d.gain),
+        };
+        let from = match (from_item, from_kind) {
+            (true, true) => "both",
+            (true, false) => "item",
+            (false, true) => "kind",
+            (false, false) => "",
+        };
+        Proposal { values, from }
+    }
+
     /// Whether anything was said after any task.
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
+}
+
+/// What a task's form shows faintly for its unsaid costs and gain
+/// (`FeltIndex::proposal`): nothing is kept until "Looks right" or a tap.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct Proposal {
+    pub values: Demands,
+    /// Where they come from: "item" (the same task, or tasks of the same
+    /// title), "kind" (tasks of its kind), "both"; "" when there are none.
+    pub from: &'static str,
 }
 
 /* ---------- Time: the estimate corrected by your own record ---------- */
@@ -1285,6 +1329,30 @@ mod tests {
         // Nothing felt at all: the forecast.
         assert_eq!(FeltIndex::default().rates(&new).costs[2], Some(9.0));
         assert_eq!(index.rates(&new).level(), Level::Usual, "felt: usual, though forecast heavy");
+    }
+
+    #[test]
+    fn proposals_come_from_what_was_felt_never_from_the_forecast() {
+        // The same call felt twice (worry 3, then 4: a median of 3.5), its gain once; another call felt for thinking.
+        let old = felt_task("old", "Call the bank", "call", rated(None, None, Some(9), None, None), &[("2026-09-01", rated(None, None, Some(3), None, Some(6))), ("2026-09-08", rated(None, None, Some(4), None, None))]);
+        let school = felt_task("school", "Call the school", "call", Demands::default(), &[("2026-09-02", rated(Some(2), None, Some(8), None, None))]);
+        let new = felt_task("new", "call the bank", "call", rated(Some(7), None, Some(9), None, None), &[]);
+        let index = FeltIndex::of(&[old, school, new.clone()]);
+        // Worry and gain from the same call (3.5 rounded up, not the kind's 8); thinking from calls; never the forecast's 7 or 9.
+        let proposal = index.proposal(&new);
+        assert_eq!(proposal.values, rated(Some(2), None, Some(4), None, Some(6)));
+        assert_eq!(proposal.from, "both");
+        // Another call, never felt: calls as felt (worry: 3, 8, 4, a median of 4).
+        let plumber = felt_task("plumber", "Call the plumber", "call", Demands::default(), &[]);
+        assert_eq!(index.proposal(&plumber), Proposal { values: rated(Some(2), None, Some(4), None, Some(6)), from: "kind" });
+        // Another kind, another title: nothing to propose.
+        let letter = felt_task("letter", "Write to the school", "write", rated(Some(5), None, None, None, None), &[]);
+        assert_eq!(index.proposal(&letter), Proposal::default());
+        // Felt for its title, without a kind: from the item alone.
+        let bare = felt_task("bare", "Call the bank", "", Demands::default(), &[]);
+        assert_eq!(index.proposal(&bare).from, "item");
+        assert_eq!(index.proposal(&bare).values.cognitive, None, "no kind, nothing from calls");
+        assert_eq!(serde_json::to_value(index.proposal(&bare)).unwrap(), serde_json::json!({ "values": { "cognitive": null, "emotional": null, "anxiety": 4, "body": null, "gain": 6 }, "from": "item" }));
     }
 
     fn done(uid: &str, estimate: u32, first: Option<u32>, on: &str, area: &str) -> Task {

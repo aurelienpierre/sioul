@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<!-- colour: the shader of the sites' colours (qml/ColourEffect.qml, docs/colour.md): baked by tools/make-shaders.sh. -->
+<qresource prefix="/sioul/shaders">
+    <file>colour.frag.qsb</file>
+</qresource>
+</RCC>

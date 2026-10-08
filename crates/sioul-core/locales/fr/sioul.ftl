@@ -1014,10 +1014,10 @@ pgp-for-security-key = Chiffré pour votre clé de sécurité
 seckey-generic = Clé de sécurité
 seckey-unsupported = Cette version de Sioul ne peut pas utiliser de clé de sécurité.
 seckey-no-service = Sioul ne peut pas joindre les clés de sécurité : le service des cartes à puce ne fonctionne pas. { $hint }
-seckey-hint-fedora = Sous Fedora : sudo systemctl enable --now pcscd.socket
-seckey-hint-debian = Sous Debian et Ubuntu : sudo apt install pcscd
-seckey-hint-arch = Sous Arch Linux : sudo pacman -S pcsclite ccid, puis sudo systemctl enable --now pcscd.socket
-seckey-hint-suse = Sous openSUSE : sudo zypper install pcsc-lite pcsc-ccid, puis sudo systemctl enable --now pcscd.socket
+seckey-hint-fedora = Sous Fedora, ceci le démarre : `sudo systemctl enable --now pcscd.socket`
+seckey-hint-debian = Sous Debian et Ubuntu, ceci l’installe : `sudo apt install pcscd`
+seckey-hint-arch = Sous Arch Linux, ceci l’installe, puis le démarre : `sudo pacman -S pcsclite ccid` `sudo systemctl enable --now pcscd.socket`
+seckey-hint-suse = Sous openSUSE, ceci l’installe, puis le démarre : `sudo zypper install pcsc-lite pcsc-ccid` `sudo systemctl enable --now pcscd.socket`
 seckey-hint-linux = Installez pcsc-lite et son pilote CCID, puis démarrez pcscd.
 seckey-hint-flatpak = Démarrez le service des cartes à puce de votre système (pcscd), puis réessayez.
 seckey-hint-windows = Démarrez le service Carte à puce dans les Services de Windows.
@@ -1025,7 +1025,7 @@ seckey-hint-macos = Rebranchez la clé.
 seckey-absent-sign = Pour signer, branchez votre clé de sécurité.
 seckey-absent-open = Pour l’ouvrir, branchez votre clé de sécurité.
 seckey-absent = Branchez votre clé de sécurité.
-seckey-busy = Un autre programme garde votre clé de sécurité pour lui seul : GnuPG, sans doute.
+seckey-busy = Un autre programme garde votre clé de sécurité pour lui seul : GnuPG, sans doute. Pour que GnuPG et Sioul la partagent durablement, ajoutez cette ligne à scdaemon.conf, dans le dossier de GnuPG (~/.gnupg) : `pcsc-shared`
 seckey-wrong-pin = { $n ->
     [one] Code PIN faux. Il reste un essai : une erreur de plus verrouille la clé.
    *[other] Code PIN faux. Il reste { $n } essais.
@@ -1034,8 +1034,8 @@ seckey-tries-left = { $n ->
     [one] Il reste un essai : une erreur de plus verrouille la clé.
    *[other] Il reste { $n } essais.
 }
-seckey-blocked = Votre clé de sécurité est verrouillée après trois codes PIN faux. Son code PIN d’administration, ou son code de réinitialisation, la déverrouille : dans GnuPG (gpg --card-edit, puis admin, puis passwd) ou dans YubiKey Manager (ykman openpgp access unblock-pin). Sioul ne demande jamais le code PIN d’administration.
-seckey-touch-missed = La clé n’a pas été touchée à temps.
+seckey-blocked = Votre clé de sécurité est verrouillée après trois codes PIN faux. Sioul ne demande jamais le code PIN d’administration : lui, ou le code de réinitialisation, la déverrouille hors de Sioul, dans YubiKey Manager ou dans GnuPG (là, admin, puis passwd) : `ykman openpgp access unblock-pin` `gpg --card-edit`
+seckey-touch-missed = Votre clé de sécurité a attendu un toucher, qui n’est pas venu à temps. Réessayez, et quand Sioul le dit, gardez le doigt sur la clé une seconde ou deux.
 seckey-removed-sign = La clé est partie avant d’avoir fini. Rien n’a été envoyé ; le message est dans les brouillons.
 seckey-removed = La clé est partie avant d’avoir fini.
 seckey-not-openpgp = La clé branchée ne contient aucune clé OpenPGP.
@@ -1048,19 +1048,34 @@ seckey-mismatch = La clé trouvée n’est pas celle de votre clé de sécurité
 seckey-mismatch-revoked = Cette clé a été révoquée : Sioul ne s’en servira pas.
 seckey-mismatch-use = La clé trouvée ne laisse pas les clés de votre clé de sécurité faire ce à quoi elles servent : elle n’a pas été gardée.
 seckey-mismatch-invalid = La clé trouvée ne peut pas être lue sans risque ({ $detail }) : elle n’a pas été gardée.
-seckey-expired = Votre clé a expiré le { $date } : le courrier ne peut plus être signé avec elle, ni chiffré pour vous, avant qu’elle soit renouvelée. Renouvelez-la avec GnuPG : gpg --quick-set-expire { $fingerprint } 2y, puis gpg --quick-set-expire { $fingerprint } 2y "*" pour ses sous-clés ; chaque commande demande le code PIN et un toucher. Puis choisissez Chercher une version plus récente.
-seckey-expires-soon = Votre clé expire le { $date }. Renouvelez-la avec GnuPG (gpg --quick-set-expire { $fingerprint } 2y, puis gpg --quick-set-expire { $fingerprint } 2y "*" pour ses sous-clés), puis choisissez Chercher une version plus récente.
+seckey-expired = Votre clé a expiré le { $date } : le courrier ne peut plus être signé avec elle, ni chiffré pour vous, avant que GnuPG la renouvelle, depuis Comptes ▸ Chiffrement.
+seckey-expires-soon = Votre clé expire le { $date }. GnuPG la renouvelle, depuis Comptes ▸ Chiffrement.
 seckey-valid-until = Valable jusqu’au { $date }.
+seckey-part-expired-primary = Sa clé principale ({ $fingerprint }) a expiré le { $date } : toute la clé compte comme expirée, et rien ne peut être signé avec elle.
+seckey-part-expired-sign = Sa sous-clé de signature ({ $fingerprint }) a expiré le { $date } : le courrier ne peut plus être signé avec elle.
+seckey-part-expired-encrypt = Sa sous-clé de chiffrement ({ $fingerprint }) a expiré le { $date } : personne ne peut plus vous chiffrer avec elle.
+seckey-part-expired-auth = Sa sous-clé d’authentification ({ $fingerprint }) a expiré le { $date } : elle ne peut plus vous connecter ailleurs (SSH, par exemple).
+seckey-part-expired-other = Sa sous-clé ({ $fingerprint }) a expiré le { $date }.
+seckey-part-primary = clé principale
+seckey-part-sign = sous-clé de signature
+seckey-part-encrypt = sous-clé de chiffrement
+seckey-part-auth = sous-clé d’authentification
+seckey-part-other = sous-clé
+seckey-part-until = { $part } jusqu’au { $date }
+seckey-part-forever = { $part } sans fin
+seckey-subkeys-renew = Renouveler pour deux ans les renouvelle avec sa clé principale. À la main, nommez chaque sous-clé : le « * » de GnuPG laisse telles quelles celles déjà expirées.
+seckey-renew-incomplete = GnuPG a renouvelé la clé, mais pas toute. { $parts } Elle n’a pas été gardée comme renouvelée : renouvelez-la de nouveau, ou à la main.
 seckey-sign-in-window = Ce message est signé avec votre clé de sécurité : envoyez-le depuis sa fenêtre dans Sioul, qui demande le code PIN de la clé.
 seckey-cannot-sign = Votre clé de sécurité ne peut pas signer pour cette adresse maintenant.
 seckey-released = GnuPG a laissé partir votre clé de sécurité. Il la reprendra la prochaine fois qu’il en aura besoin, et redemandera alors son code PIN.
 seckey-release-no-gnupg = Sioul n’a pas trouvé ici gpgconf, l’outil de GnuPG. Débranchez votre clé de sécurité puis rebranchez-la : GnuPG la laisse alors partir.
-seckey-release-sandboxed = Dans son Flatpak, Sioul ne peut pas joindre GnuPG. Lancez gpgconf --kill scdaemon dans un terminal, ou débranchez votre clé de sécurité puis rebranchez-la.
+seckey-release-sandboxed = Dans son Flatpak, Sioul ne peut pas joindre GnuPG. Débranchez votre clé de sécurité puis rebranchez-la, ou lancez ceci dans un terminal : `gpgconf --kill scdaemon`
 seckey-release-failed = GnuPG n’a pas laissé partir la clé ({ $detail }). Débranchez votre clé de sécurité puis rebranchez-la.
 seckey-reading = Lecture de votre clé de sécurité…
 seckey-signing = Signature avec votre clé de sécurité…
 seckey-opening = Ouverture avec votre clé de sécurité…
-seckey-touch = Touchez votre clé de sécurité : elle clignote.
+seckey-touch = Touchez votre clé de sécurité maintenant, et gardez le doigt dessus une seconde ou deux : elle attend environ 15 secondes.
+seckey-touch-maybe = Si votre clé demande un toucher, touchez-la maintenant et gardez le doigt dessus une seconde ou deux : elle attend environ 15 secondes.
 seckey-pin = Code PIN de votre clé de sécurité
 seckey-pin-each = Votre clé de sécurité demande son code PIN pour chaque signature.
 seckey-pin-field = Code PIN
@@ -1082,7 +1097,28 @@ seckey-found-decrypt = { $label }{ $holder }. Elle déchiffre ({ $decrypt }). Si
 seckey-look-for-it = La chercher
 seckey-lookup-tells = Sioul regarde à l’adresse écrite sur la clé, dans l’annuaire de clés de votre domaine, puis sur keys.openpgp.org : cela dit à ces serveurs que quelqu’un cherche votre clé.
 seckey-import-file = Importer un fichier…
-seckey-export-hint = Avec GnuPG : gpg --export --armor { $fingerprint } > cle.asc
+seckey-import-gnupg = Importer depuis GnuPG
+seckey-gnupg-reading = GnuPG est interrogé sur le certificat de votre clé…
+seckey-gnupg-missing = Sioul n’a pas trouvé GnuPG ici. Là où GnuPG détient votre clé, la commande sous À la main écrit son certificat dans un fichier, pour Importer un fichier….
+seckey-gnupg-sandboxed = Dans son Flatpak, Sioul ne peut pas joindre GnuPG. Dans un terminal, la commande sous À la main écrit le certificat de votre clé dans un fichier, pour Importer un fichier….
+seckey-gnupg-no-key = GnuPG ne détient ici aucune clé { $fingerprint }. Cherchez-la sur les serveurs, ou écrivez-la dans un fichier là où GnuPG l’a (À la main), pour Importer un fichier….
+seckey-gnupg-failed = GnuPG ne l’a pas fait ({ $detail }).
+seckey-source-gnupg = Son certificat vient de GnuPG, le { $date }.
+seckey-renew = Renouveler pour deux ans
+seckey-renewing = GnuPG renouvelle votre clé pour deux ans, puis ses sous-clés.
+seckey-gnupg-pin = Tapez le code PIN de votre clé de sécurité dans la fenêtre de GnuPG.
+seckey-gnupg-then-touch = Puis touchez la clé, et gardez le doigt dessus une seconde ou deux : elle attend environ 15 secondes.
+seckey-gnupg-touch-missed = Votre clé de sécurité a attendu un toucher, qui n’est pas venu à temps : GnuPG s’est arrêté. Réessayez, et quand Sioul le dit, gardez le doigt sur la clé une seconde ou deux.
+seckey-renewed = Renouvelée : { $parts }. Les autres voient les nouvelles dates une fois qu’ils ont de nouveau votre clé : Envoyez-la à keys.openpgp.org, ou vos messages la portent.
+seckey-renew-unknown = GnuPG ne connaît pas encore cette clé de sécurité ici. Branchez-la et lancez ceci une fois, puis choisissez de nouveau Renouveler pour deux ans ; ou renouvelez-la à la main : `gpg --card-status`
+seckey-send = L’envoyer à keys.openpgp.org
+seckey-send-tells = Votre clé publique va sur keys.openpgp.org, où chacun peut la trouver par son empreinte ; votre clé privée reste sur la clé de sécurité. keys.openpgp.org envoie ensuite un lien à chaque adresse que la clé nomme : une adresse n’est trouvable qu’une fois son lien ouvert.
+seckey-send-confirm = L’envoyer
+seckey-sending = Envoi de votre clé publique à keys.openpgp.org…
+seckey-sent-mailed = keys.openpgp.org a votre clé. Il a envoyé un lien à { $addresses } : ouvrez chacun pour rendre cette adresse trouvable.
+seckey-sent-published = keys.openpgp.org a votre clé, et la trouve par { $addresses }.
+seckey-sent-no-address = keys.openpgp.org a votre clé, trouvable par son empreinte seulement : le certificat que Sioul détient ne nomme aucune adresse. Importez-la depuis GnuPG, avec ses adresses, puis envoyez-la de nouveau.
+seckey-by-hand = À la main, dans un terminal (puis Importer depuis GnuPG, ou Importer un fichier…) :
 seckey-looking = Recherche de la partie publique de votre clé de sécurité…
 seckey-not-found = Sa partie publique n’a été trouvée nulle part : ni à l’adresse écrite sur la clé, ni dans l’annuaire de clés de votre domaine, ni sur keys.openpgp.org. Importez-la depuis un fichier.
 seckey-kept = Trouvée : { $names }. Elle correspond à votre clé de sécurité, qui signe désormais pour { $addresses } et ouvre ce qui lui est chiffré.
@@ -1094,6 +1130,7 @@ seckey-touch-both = Elle demande un toucher pour signer et pour ouvrir.
 seckey-touch-sign = Elle demande un toucher pour signer.
 seckey-touch-open = Elle demande un toucher pour ouvrir.
 seckey-touch-none = Elle ne demande aucun toucher.
+seckey-touch-unknown = Elle demande peut-être un toucher : Sioul n’a pas pu le lire, et le dit quand il s’adresse à la clé.
 seckey-signs-for = Signe pour { $addresses }.
 seckey-signs-for-none = Ne signe pour aucune de vos adresses ; ouvre ce qui lui est chiffré.
 seckey-newer = Chercher une version plus récente
@@ -1481,6 +1518,18 @@ set-invoice-folder = Les factures vont dans
 set-invoice-folder-help = Le dossier de leurs PDF ; « Documents/Factures » dans votre dossier personnel s’il est vide.
 set-invoice-rate = Une heure coûte
 set-invoice-rate-help = Le tarif quand un projet ne fixe pas le sien.
+## Réglages ▸ Agents d’IA : ce qu’un agent connecté avec `sioul mcp` peut utiliser (docs/ai.md, docs/mcp.md)
+set-ai-agents-group = Ce que les agents d’IA peuvent utiliser
+set-ai-agents-note = Un agent d’IA que vous connectez avec sioul mcp (Claude Code, Claude Desktop, tout client MCP) lit ce que vous lui ouvrez ici, et y ajoute des tâches, des évènements, des notes, des liens et des brouillons. Ce qu’il lit part chez le fournisseur de son modèle. Il n’envoie, ne supprime et ne paie jamais rien, et ne voit jamais un mot de passe, un code ni un numéro de compte entier.
+set-mcp-outside-projects = Ce qui n’est dans aucun projet
+set-mcp-outside-projects-help = Le reste du courrier du Porche, les tâches et les notes d’aucun projet, l’agenda, les contacts, les messages et les appels du téléphone, les papiers, les contrats et les budgets qu’aucun projet n’utilise. Ouvert, pour qu’un agent connecté serve tout de suite ; fermez-le si vous voulez que les agents ne voient que les projets que vous ouvrez plus bas.
+set-mcp-texts = SMS
+set-mcp-texts-help = Désactivé tant que vous ne l’activez pas, car les SMS portent les mots d’autres personnes. Activé, un agent lit et cherche les SMS que cet ordinateur garde de votre téléphone, codes masqués, et écrit des brouillons qui attendent dans la page des SMS jusqu’à ce que vous les envoyiez vous-même ; jamais à un groupe, jamais un SMS envoyé. Pour ouvrir vos SMS, Sioul lit la clé de partage dans le trousseau de cet ordinateur, et seulement alors ; la clé ne parvient jamais à l’agent.
+set-mcp-spam = Les outils de votre filtre à indésirables
+set-mcp-spam-help = Un agent peut faire tourner, tester et juger votre propre filtre à indésirables : il voit l’expéditeur et le sujet du courrier qu’il liste, jamais un texte, et une étiquette qu’il donne change ce que le filtre signale sur chaque appareil. Sur les ordinateurs.
+set-ai-projects-group = Projets ouverts aux agents d’IA
+set-ai-projects-note = Chaque projet est fermé aux agents jusqu’à ce que vous l’ouvriez, ici ou sur sa page. Ouvert, un agent lit son courrier, ses tâches, ses notes, son temps, ses factures et ses lettres, et y ajoute.
+set-ai-projects-none = Pas encore de projet. Chaque projet que vous créez commence fermé aux agents.
 set-theme = Couleurs
 set-theme-help = Claires ou sombres, ou comme celles du système. Les icônes suivent au prochain démarrage.
 set-theme-system = Celles du système
@@ -1813,6 +1862,8 @@ project-time-noted = { $time } noté
 project-invoice = Facture { $number }
 project-no-title = Un projet a besoin d’un nom.
 project-gone = Ce projet n’existe plus.
+project-ai = Ouvert aux agents d’IA
+project-ai-help = Un agent que vous connectez avec sioul mcp lit alors le courrier, les tâches, les notes, le temps, les factures et les lettres de ce projet, et y ajoute des tâches, des notes, des liens et des brouillons ; ce qu’il lit part chez le fournisseur de son modèle. Fermé, il n’en voit rien.
 invoice-nothing = Aucun temps facturable n’attend d’être facturé.
 invoice-gone = Cette facture n’existe plus.
 invoice-folder-name = Factures
@@ -2074,6 +2125,59 @@ health-valid-until = valable jusqu’au { $day }
 health-until = jusqu’au { $day }
 health-covers = pour { $names }
 health-no-name = Un nom est nécessaire.
+health-field-brand = Nom commercial, ou votre mot
+health-field-brand-hint = Comme sur la boîte, ou comme vous l’appelez
+health-field-generic = DCI (dénomination commune internationale)
+health-field-generic-hint = lévothyroxine
+health-field-strength = Dosage
+health-field-strength-hint = 75 µg, 500 mg par comprimé
+health-field-since = Pris depuis le
+health-row-precise = DCI et dosage
+health-pro-show = Montrer à un médecin ou un pharmacien
+health-pro-current = Médicaments en cours
+health-pro-as-of = Au { $day }
+health-pro-prescribed-by = Prescrit par { $name }
+health-pro-valid-until = Valable jusqu’au { $day }
+health-pro-until = Jusqu’au { $day }
+health-pro-since = Pris depuis le { $day }, { $long }
+health-pro-since-day = Pris depuis le { $day }
+health-pro-days = { $n ->
+    [one] 1 jour
+   *[other] { $n } jours
+}
+health-pro-weeks = { $n ->
+    [one] 1 semaine
+   *[other] { $n } semaines
+}
+health-pro-months = { $n ->
+    [one] 1 mois
+   *[other] { $n } mois
+}
+health-pro-years = { $n ->
+    [one] 1 an
+   *[other] { $n } ans
+}
+health-pro-every-hours = { $hours ->
+    [1] toutes les heures
+   *[other] toutes les { $hours } heures
+}
+health-pro-none = Aucun médicament à montrer.
+health-no-take = Ajoutez une prise : l’heure où il se prend chaque jour.
+health-no-take-of = { $name } : ajoutez une prise, l’heure où il se prend chaque jour.
+health-take-unreadable = « { $time } » n’est pas une heure.
+health-take-unreadable-of = { $name } : « { $time } » n’est pas une heure.
+health-take-twice = Deux prises à { $time }. Gardez-en une, avec sa quantité.
+health-take-twice-of = { $name } : deux prises à { $time }. Gardez-en une, avec sa quantité.
+health-medicine-no-name = Chaque médicament a besoin de son nom.
+health-field-takes = Prises
+health-add-take = Ajouter une prise
+health-take-hour = Heure de la prise
+health-take-minute = Minute de la prise
+health-take-amount-hint = Sa propre quantité
+health-take-remove = Retirer cette prise
+health-row-removed = { $name } est retiré à l’enregistrement : plus de rappels pour lui.
+health-keep-it = Le garder
+health-row-other-schedule = { $when } ; sa propre fiche change quand il se prend.
 health-taken = Pris
 health-errand-refill = Pharmacie : { $title }
 health-errand-renew = Médecin : renouveler l’ordonnance de { $title }
@@ -2147,6 +2251,11 @@ weather-tomorrow-morning = Demain matin
 weather-tomorrow-afternoon = Demain après-midi
 weather-tomorrow-evening = Demain soir
 weather-tomorrow-night = La nuit suivante
+# La carte de l’écran d’accueil du téléphone : la prochaine de chaque partie de la journée, dans l’ordre (weather.rs, `card`).
+weather-part-morning = Matin
+weather-part-afternoon = Après-midi
+weather-part-evening = Soir
+weather-part-night = Nuit
 weather-rain-chance = { $chance } %
 weather-clear = Ciel dégagé
 weather-mainly-clear = Plutôt dégagé
@@ -2459,6 +2568,7 @@ settings-tab-hours = Heures
 settings-tab-reminders = Rappels
 settings-tab-files = Votre dossier et le partage
 settings-tab-invoices = Factures
+settings-tab-ai = Agents d’IA
 ui-refresh-all = Tout actualiser : courrier, agenda, tâches, contacts (F5)
 ui-refreshing = Actualisation…
 # La colonne des lieux, à gauche de la fenêtre.
@@ -2553,40 +2663,10 @@ sounds-rain = La pluie
 sounds-wind = Le vent dans les arbres
 sounds-crickets = Les grillons la nuit
 sounds-storm = Un orage au loin
-watch-title = Votre montre
-watch-none = Rien d’une montre pour l’instant. Choisissez le dossier où arrivent ses fichiers (les exports de Gadgetbridge, ou les ZIP d’export de Garmin), ou branchez votre montre : quand le bureau montre son dossier GARMIN, Sioul le lit. Rien ne quitte cet appareil ; aucun compte Garmin n’est utilisé.
-watch-folder = Ses fichiers arrivent dans
-watch-folder-choose = Choisir un dossier…
-watch-offers = Des propositions douces entre deux tâches (une pause, une marche)
-watch-synced = Dernières données : { $when }.
-watch-steps = { $steps } pas aujourd’hui
-watch-resting = Fréquence cardiaque au repos { $bpm } bpm
-watch-resting-usual = Fréquence cardiaque au repos { $bpm } bpm (d’habitude { $usual })
-watch-slept = Dormi { $time }, { $from }–{ $to }
-watch-hours = { $h } h { $m }
-watch-battery = Body Battery { $level }
-watch-week = Cette semaine, une nuit : { $sleep } ; un jour : { $steps } pas
-watch-curves = Aujourd’hui : fréquence cardiaque, stress selon Garmin, Body Battery
-watch-imported = { $count ->
-        [one] Un fichier de la montre lu.
-       *[other] { $count } fichiers de la montre lus.
-    }
-watch-offer-move = Cinq minutes debout ?
-watch-offer-move-text = Avant la suite. Aller jusqu’à la fenêtre compte.
-watch-offer-pause = Le temps d’une courte pause ?
-watch-offer-pause-text = Se lever, regarder loin, souffler lentement. Cinq minutes.
-watch-offer-low-reserve = Votre réserve est basse.
-watch-offer-low-reserve-text = Remettre le reste à demain et finir la journée ?
-watch-offer-low-reserve-action = Fini pour aujourd’hui
-watch-offer-walk = De la place pour marcher ?
-watch-offer-walk-text = Vingt minutes, tranquillement, dehors, si vous voulez.
-watch-morning-short-night = Une nuit courte. Des séances plus courtes aujourd’hui, et la tâche la plus dure tôt, ou demain ?
-watch-morning-strain = Votre corps lutte peut-être contre quelque chose. Une journée plus légère ?
-watch-morning-lighter = Une journée plus légère
 
 ## Partage entre vos appareils (Paramètres)
 share-title = Entre vos appareils
-share-help = Le courrier, les contacts, l’agenda et les tâches sur un serveur rejoignent déjà vos autres appareils. Le reste peut voyager par un dossier que votre synchronisation transporte (Nextcloud, Dropbox, Syncthing), scellé par une phrase de passe, pour que son serveur ne le lise jamais : ce que Sioul garde sur cet appareil (réglages, qui peut vous écrire, temps, brouillons, factures, santé, montre, listes gardées ici) et, quand aucune synchronisation ne les transporte, vos notes, vos projets et vos papiers.
+share-help = Le courrier, les contacts, l’agenda et les tâches sur un serveur rejoignent déjà vos autres appareils. Le reste peut voyager par un dossier que votre synchronisation transporte (Nextcloud, Dropbox, Syncthing), scellé par une phrase de passe, pour que son serveur ne le lise jamais : ce que Sioul garde sur cet appareil (réglages, qui peut vous écrire, temps, brouillons, factures, santé, listes gardées ici) et, quand aucune synchronisation ne les transporte, vos notes, vos projets et vos papiers.
 share-off = Pas de partage : tout reste sur cet appareil.
 share-on = Partagé par { $folder }.
 share-others = { $count ->
@@ -2647,6 +2727,11 @@ share-part-senders = Expéditeurs
 share-part-senders-carries = Qui est sur quelle liste, et comment les listes le nomment (connus, bloqués, sûrs, neutres, restreints : adresses, numéros, fiches), les personnes qui passent toujours, ce que le bouclier a lu, les clés publiques des autres.
 share-part-calls = Appels
 share-part-calls-carries = Les appels filtrés par vos téléphones : quand, le numéro, qui c’était selon vos listes, le moment de la journée, s’il a sonné ou est allé sur votre messagerie, et pourquoi ; et les appels marqués Vu. Scellés. Jamais l’appel d’un numéro que vous avez bloqué, jamais le son d’un message : il vient avec votre courrier.
+share-part-phone-messages = Messages de votre téléphone
+share-part-phone-messages-carries = Tirés des notifications des applications que vous choisissez sur votre téléphone (Réglages ▸ Ce téléphone ▸ Sur vos ordinateurs ; son application de SMS, sauf avis contraire) : qui a écrit, quand, dans quelle conversation, et les mots, ou seulement qui et quand ; et les messages marqués Vu. Scellés, gardés une semaine. Jamais un code, jamais une image, jamais le message d’un expéditeur bloqué. Désactivé tant que vous ne l’activez pas : sur votre téléphone pour les envoyer, sur un ordinateur pour les y montrer.
+# texts: the sharing's part for texts (SMS phase b).
+share-part-texts = SMS
+share-part-texts-carries = Les SMS de votre téléphone, tout l’historique avec les images, sons et vidéos des messages multimédias, lus sur le téléphone et gardés sur vos ordinateurs comme une archive qui ne fait que grandir ; les SMS que vous écrivez sur un ordinateur pour que votre téléphone les envoie, et ce qu’il est advenu de chacun. Scellés, sur chaque appareil aussi : la copie d’un ordinateur ne s’ouvre qu’avec votre clé de partage. Désactivé tant que vous ne l’activez pas : sur votre téléphone, et sur chaque ordinateur qui doit les lire ou les écrire.
 share-part-spam = Filtre à indésirables
 share-part-spam-carries = La table que fait l’apprentissage sur votre ordinateur, pour que chaque appareil juge le courrier pareil, et ce que vous avez dit indésirable ou pas sur chaque appareil (quel message, où et quand ; jamais un mot de lui), pour qu’aucun appareil ne signale à nouveau ce que vous avez corrigé sur un autre : scellés. Jamais le courrier dont il a appris, ni les mots qu’il a appris.
 share-part-health = Santé
@@ -2657,8 +2742,6 @@ share-part-drafts = Brouillons et factures
 share-part-drafts-carries = Les courriels en cours d’écriture, les factures faites.
 share-part-projects = Projets et argent
 share-part-projects-carries = De votre dossier de notes : les projets et leurs routes de courrier, les budgets, les comptes et mouvements bancaires, les contrats.
-share-part-watch = Montre
-share-part-watch-carries = Les journées de votre montre.
 share-part-lists = Listes gardées ici
 share-part-lists-carries = Les agendas et contacts gardés sur cet appareil seulement.
 share-part-notes = Notes
@@ -2772,6 +2855,47 @@ share-server-unreachable = { $host } n’a pas pu être joint : réessayez plu
 share-server-error = { $host } a répondu par une erreur : réessayez plus tard.
 share-server-sealed-meanwhile = Un autre appareil a commencé à partager dans ce dossier au même moment : recommencez, avec la phrase de passe choisie là-bas.
 share-backup-why-quota = son espace est plein
+share-send-switch = Envoyer aussi les changements de cet appareil directement à { $host }
+share-send-switch-none = Envoyer aussi les changements de cet appareil directement au serveur
+share-send-help = Juste après chaque changement, Sioul envoie lui-même là-bas les fichiers de cet appareil, à côté de votre application de synchronisation : vos autres appareils les ont en quelques secondes, même quand elle tarde. Seulement les fichiers de cet appareil, jamais ceux des autres ; que l’application de synchronisation les envoie de nouveau ne change rien.
+share-send-on = Envoyé directement à { $host }, la dernière fois à { $when }.
+share-send-soon = Trouvé sur { $host } : les fichiers de cet appareil y partent au prochain échange.
+share-send-failing = Envoyé directement à { $host } jusqu’à { $when } ; plus depuis : { $why }. Nouvel essai au prochain changement.
+share-send-failing-never = Pas encore envoyé à { $host } : { $why }. Nouvel essai au prochain changement.
+share-send-waiting = Envoyé directement dès que ce dossier est trouvé sur les serveurs de vos comptes.
+share-send-off = Les changements de cet appareil vont à { $host } par votre application de synchronisation seulement : éteint sur cet appareil.
+share-send-failure = Le dernier essai, à { $when }, n’est pas passé : { $detail }
+share-send-failure-file = À { $when }, l’envoi n’est pas passé ({ $file }) : { $detail }
+share-send-file-records = les enregistrements de cet appareil
+share-send-file-entry = l’entrée de cet appareil parmi vos appareils
+share-send-file-notes = les notes de cet appareil aux autres
+share-send-file-claim = une des revendications de cet appareil
+share-send-file-texts = les textos à envoyer de cet appareil
+share-send-file-sealed = une note ou un papier scellé
+share-send-detail-timeout = { $total } ne sont pas passés en { $seconds } s : plus lentement que ce que Sioul attend.
+share-send-detail-stalled = plus rien n’a bougé pendant une demi-minute ({ $total }).
+share-send-detail-cut = la connexion a lâché en chemin ({ $total }).
+share-send-detail-out-of-time = l’envoi a manqué de temps.
+share-send-detail-unreachable = le serveur n’a pas pu être joint.
+share-send-next = Nouvel essai à { $when }.
+share-send-again = Tout renvoyer
+share-send-again-help = Envoie chaque fichier de cet appareil que le serveur n’a pas, ou a autrement, quoi qu’il ait été envoyé avant, puis va chercher ceux des autres. Pour une application de synchronisation en retard, ou un serveur qui a perdu des fichiers.
+share-send-again-sending = Envoi des fichiers de cet appareil…
+share-send-again-sent = { $count ->
+    [one] Un fichier envoyé à { $host } à { $when }.
+   *[other] { $count } fichiers envoyés à { $host } à { $when }.
+}
+share-send-again-same = { $count ->
+    [one] Rien à envoyer : { $host } avait déjà le fichier de cet appareil, vérifié à { $when }.
+   *[other] Rien à envoyer : { $host } avait déjà les { $count } fichiers de cet appareil, vérifié à { $when }.
+}
+share-send-again-off = Rien n’a été envoyé : l’envoi au serveur est éteint sur cet appareil.
+share-send-again-not-found = Rien n’a été envoyé : ce dossier n’est pas encore trouvé sur un serveur de vos comptes.
+share-send-again-no-account = Rien n’a été envoyé : aucun de vos comptes n’est sur { $host }.
+share-send-again-failed = Envoi à { $host } impossible à { $when } : { $why }.
+share-build = Cet appareil : Sioul { $build }.
+share-device-build = Sioul { $build }.
+share-device-build-older = Sioul { $build }, plus ancien que celui de cet appareil ({ $here }) : le mettre à jour là-bas, quand vous pouvez, garde les deux pareils.
 
 ## Rappels avant les dates
 reminder-event = { $when } · { $what }
@@ -2926,40 +3050,54 @@ task-energy-rest = Ça recharge (une marche, de la musique)
 task-field-before = Avant : y aller, se préparer
 task-field-after = Après : revenir
 task-margins-hint = Gardé libre dans le plan autour, jamais compté comme une pause.
-task-field-cognitive = Réflexion demandée
-task-field-emotional = Émotions remuées
-task-field-anxiety = Anxiété suscitée
-task-field-body = Corps et sens
-task-field-gain = Ce que ça apporte
 task-rating-unsaid = —
-# Une note en curseur : non dite tant qu’aucune valeur n’est donnée (RatingSlider.qml).
-rating-none = Non noté
-rating-clear = Effacer la note
-# Ce qui était prévu, à côté d’une note ressentie pas encore donnée.
+# Ce que ça coûte et ce que ça apporte, en tuiles (CostTiles.qml) : un nom, une jauge de 0 à 10, un mot, une question.
+tile-cognitive = Réflexion
+tile-emotional = Émotions
+tile-anxiety = Inquiétude
+tile-body = Corps et sens
+tile-gain = Ce que ça apporte
+# Des questions concrètes, jamais une catégorie seule : les émotions demandées par ce qui les remue, pour qui a du mal à les nommer.
+tile-cognitive-ask = Décider, beaucoup de choses à garder en tête, quelque chose de nouveau à apprendre ?
+tile-emotional-ask = Parler à quelqu’un, le regard des autres, la peur de décevoir, un souvenir douloureux ?
+tile-anxiety-ask = Une échéance, une réponse que vous attendez, le risque de vous tromper ?
+tile-body-ask = Bouger, rester debout, le bruit, la foule, les écrans, un trajet ?
+tile-gain-ask = Est-ce que ça vous apportera quelque chose : du repos, de la joie, du sens ?
+tile-gain-felt-ask = Est-ce que ça vous a apporté quelque chose : du repos, de la joie, du sens ?
+# Les mots de la jauge, d’après la CR10 de Borg : un mot à des nombres fixes, un nombre entre deux prend celui d’en dessous (docs/capacity.md, « The form »).
+tile-cost-0 = rien
+tile-cost-1 = très léger
+tile-cost-2 = léger
+tile-cost-3 = modéré
+tile-cost-5 = lourd
+tile-cost-7 = très lourd
+tile-cost-10 = au maximum
+tile-gain-0 = rien
+tile-gain-1 = un peu
+tile-gain-3 = modérément
+tile-gain-5 = nettement
+tile-gain-7 = beaucoup
+tile-gain-10 = pleinement
+tile-unsaid = non noté
+# Ce qu’un lecteur d’écran dit d’une tuile : « Réflexion : 3, modéré », « Réflexion : non noté ».
+tile-said = { $name } : { $value }, { $word }
+tile-said-none = { $name } : non noté
+tile-proposed-value = En pâle : { $value }, d’après les fois précédentes.
+tile-keys = Un appui sur une case donne sa valeur ; le même appui l’efface. Au clavier : 0 à 9, + ou = pour 10, les flèches, Suppr pour effacer.
+# Des valeurs pâles, d’après les fois précédentes (FeltIndex::proposal) ; « C’est bien ça » les prend toutes.
+tile-looks-right = C’est bien ça
+tile-proposed-item = En pâle : comment cette tâche s’est passée les dernières fois. Un appui sur une tuile ne règle que celle-là.
+tile-proposed-kind = En pâle : comment les tâches de ce type se sont passées. Un appui sur une tuile ne règle que celle-là.
+tile-proposed-both = En pâle : comment cette tâche et celles de son type se sont passées. Un appui sur une tuile ne règle que celle-là.
+# Ce qui était prévu, dit à côté d’une note ressentie (« Comment ça s’est passé ? »).
 rating-foreseen = prévu : { $value }
-# Les mots sous chaque curseur, à 0, 5 et 10 (docs/research/capacity-budget.md, critères 2, 3, 5 ; wellbeing-gain.md, G1).
-rating-cognitive-0 = sans y penser
-rating-cognitive-5 = attention soutenue
-rating-cognitive-10 = toute ma concentration
-rating-emotional-0 = rien à cacher ni à porter
-rating-emotional-5 = des émotions à contenir
-rating-emotional-10 = beaucoup à cacher ou à porter
-rating-anxiety-0 = aucune appréhension
-rating-anxiety-5 = appréhension avant ou après
-rating-anxiety-10 = angoisse bien avant et après
-rating-gain-0 = ne m’a rien apporté
-rating-gain-5 = un peu de repos, de plaisir ou de fierté
-rating-gain-10 = m’a nettement apporté repos, joie ou fierté
-rating-body-0 = rien de physique ni de sensoriel
-rating-body-5 = debout, bruit ou lumière qui fatiguent un peu
-rating-body-10 = épuisant : foule, bruit, longue station debout
-# Ce que ça coûte, dès qu’un coût est noté : calculé, pas choisi (« Lourd, d’après les curseurs »).
-task-energy-computed = { $level }, d’après les curseurs
+# Ce que ça coûte, dès qu’un coût est noté : calculé, pas choisi (« Lourd, d’après les notes »).
+task-energy-computed = { $level }, d’après les notes
 # Les détails d’une tâche, puis son formulaire.
 ui-details = Détails
 # Après une tâche faite, si vous voulez le dire (FeltRatings.qml) : jamais redemandé, jamais compté.
 felt-ask = Comment ça s’est passé ?
-felt-hint = Les marques pâles sont ce que vous aviez prévu. Notez ce que vous voulez dire ; le reste demeure en blanc.
+felt-hint = Les fines marques sont ce que vous aviez prévu. Touchez ce que vous voulez dire ; le reste demeure en blanc.
 felt-kept = Gardé comme vous l’avez ressenti, à côté de ce que vous aviez prévu.
 # « Qu’est-ce qui rend cela difficile ? » : l’appréhension ou l’ennui, deux minutes proposées ; rien ne démarre sans vous.
 task-hard-two = Deux minutes suffisent pour commencer.
@@ -3246,6 +3384,18 @@ set-passwords-shown = Afficher les mots de passe pendant la saisie
 set-passwords-shown-help = Chaque champ de mot de passe, de phrase de passe ou de clé montre ce que vous tapez dès le départ, sur cet appareil ; l’œil au bout de chaque champ l’affiche ou le masque à tout moment.
 set-places-named = Afficher le nom des lieux à côté de leur icône
 set-places-named-help = Les lieux, à gauche de la fenêtre, montrent leur nom à côté de leur icône, dans une colonne plus large : certaines personnes lisent plus facilement des mots que des icônes. Sans ce réglage, leurs icônes seules, et le nom de chacun quand le pointeur s’y arrête, ou par un appui long sur un écran tactile.
+# colour: the sites in the screen's own colours, and calmer colours (docs/colour.md).
+set-screen-colours = Couleurs adaptées à l’écran
+set-screen-colours-help = Les sites s’affichent dans les couleurs propres à cet écran, lues dans son profil de couleurs, pour qu’un écran à gamut large ne les rende pas plus criardes qu’elles ne sont.
+set-calmer-colours = Couleurs plus calmes sur les sites
+set-calmer-colours-help = Les couleurs vives des sites sont adoucies. Les gris et les teintes douces restent tels quels.
+set-calmer-colours-off = Non
+set-calmer-colours-little = Un peu
+set-calmer-colours-more = Davantage
+colour-said-converted = Le profil de cet écran est utilisé : « { $profile } ».
+colour-said-converted-unnamed = Le profil de cet écran est utilisé.
+colour-said-desktop = Votre bureau adapte déjà les couleurs à l’écran : rien de plus à faire.
+colour-said-plain = Cet écran n’a pas de profil : les couleurs s’affichent telles quelles.
 bitwarden-factor-7 = Clé de sécurité (YubiKey, FIDO2)
 bitwarden-code-7 = Deuxième étape : votre clé de sécurité.
 bitwarden-key-use = Utiliser la clé de sécurité
@@ -3527,6 +3677,17 @@ list-read-only-mark = (lecture seule)
 import-bad-key = « { $key } » ne peut pas être une clé : les clés nomment des fichiers, donc ni « / », ni « \ », ni « : » dedans.
 antivirus-hint-windows = Sécurité Windows ▸ Protection contre les virus et menaces
 antivirus-hint-packages = ClamAV, depuis les paquets de votre système
+antivirus-hint-phone = ouvrez-le sur un ordinateur qui en a un
+ui-attachments-phone = Un téléphone n’a pas d’antivirus que Sioul puisse appeler : les pièces jointes n’y sont donc pas vérifiées. Chacune s’ouvre dans l’application que vous choisissez, qui peut lire ce fichier et rien d’autre de Sioul. Les programmes et les installeurs ne s’ouvrent jamais depuis un courriel.
+ui-save-as = Enregistrer…
+papers-keep-help-phone = Gardée dans le portefeuille de papiers sans vérification : un téléphone n’a pas d’antivirus que Sioul puisse appeler. Vous dites ce que c’est.
+attachment-phone-opened = { $name } s’ouvre dans l’application que vous choisissez. Il n’a pas été vérifié : un téléphone n’a pas d’antivirus que Sioul puisse appeler.
+attachment-phone-no-app = Aucune application de ce téléphone n’ouvre { $name }. Vous pouvez l’enregistrer parmi vos fichiers.
+attachment-phone-not-opened = { $name } n’a pas pu être confié à une autre application ({ $detail }).
+attachment-phone-where = Choisissez où enregistrer { $name }.
+attachment-phone-saved = { $name } est enregistré. Il n’a pas été vérifié : un téléphone n’a pas d’antivirus que Sioul puisse appeler.
+attachment-phone-not-saved = { $name } n’a pas été enregistré.
+attachment-phone-save-failed = { $name } n’a pas pu être enregistré ({ $detail }).
 ocr-hint-windows = Tesseract (github.com/UB-Mannheim/tesseract) et Poppler
 ocr-hint-packages = Tesseract et Poppler, depuis les paquets de votre système
 google-page-granted = Sioul a l’accès. Vous pouvez fermer cet onglet.
@@ -3974,6 +4135,12 @@ dnd-steps-battery-ok = Android laisse Sioul fonctionner en arrière-plan.
 dnd-steps-allow = Autoriser en arrière-plan
 dnd-steps-channel = Appareils à jour
 dnd-steps-note = Sioul tient vos appareils à jour
+# The background service's notification, as things stand now (steps::note): its title, what now is for.
+steps-note-time = { $time } jusqu’à { $until }
+steps-note-time-open = { $time }
+# Its text: do-not-disturb off; the calls screened.
+steps-note-dnd-off = Ne pas déranger est désactivé.
+steps-note-calls-screened = Les appels sont filtrés.
 
 ## La carte sur l’écran d’accueil d’un téléphone (docs/android.md, « The card on the home screen »).
 home-card-work = Travail jusqu’à { $until }.
@@ -4006,8 +4173,17 @@ home-card-time-range = { $start } – { $end }
 home-card-until-day = Jusqu’au { $day }
 home-card-event-plain = Un événement
 home-card-agenda-empty = Rien dans vos agendas pour le mois à venir.
+# La carte complète, à partir de la version 3 : aujourd’hui d’abord (la date, la météo), puis les lignes du Porche, puis Maintenant.
+home-card-weather-choose = Choisissez un lieu pour la météo dans Sioul : touchez la météo dans sa ligne d’état.
+home-card-weather-credit = Météo : Open-Meteo.com
+home-card-reminder-plain = Un rappel attend dans Sioul.
+home-card-calls-plain = Un appel a été refusé : il est sur le Porche.
+home-card-overlap = Aujourd’hui, deux événements en même temps : { $first } et { $second }.
+home-card-overlap-plain = Aujourd’hui, deux événements en même temps.
+home-card-stopped = Où vous en étiez : { $text }
+home-card-stopped-plain = Votre ligne sur où vous en étiez attend dans Sioul.
 set-home-card-details = Détails sur l’écran d’accueil
-set-home-card-details-help = La carte de Sioul sur l’écran d’accueil de ce téléphone liste les derniers messages du Porche, avec leur expéditeur, leur objet et leur première ligne, les prochains événements de vos agendas avec leur titre, un code que vous venez de demander à un site, une prise prévue, et le titre de la prochaine étape. Sans ce réglage, elle ne dit que ce à quoi sert ce moment, que du courrier attend, l’heure des événements sans leur titre, et qu’une prochaine étape attend : pour un téléphone dont d’autres voient l’écran d’accueil. Ce téléphone seulement.
+set-home-card-details-help = Les cartes de Sioul sur l’écran d’accueil de ce téléphone nomment ce qu’elles montrent : une prise prévue, un code que vous venez de demander à un site, vos rappels, un appel refusé, le titre de la prochaine étape ; les derniers messages du Porche, avec leur expéditeur, leur objet et leur première ligne ; les prochains événements, avec leur titre. Sans ce réglage, elles ne nomment rien : la date, la météo et ce à quoi sert ce moment, puis qu’un code, un rappel ou du courrier attend, l’heure des événements sans leur titre, et qu’une prochaine étape attend : pour un téléphone dont d’autres voient l’écran d’accueil. Ce téléphone seulement.
 
 # Quitter une liste de diffusion depuis un message (Reader.qml, unsubscribe.rs) : un clic, dix secondes pour annuler.
 unsubscribe-label = Se désabonner
@@ -4067,6 +4243,8 @@ appnotes-why-gathered-held = D’un automate : retenue jusqu’à { $when }, u
 appnotes-why-never = Retenue pour de bon.
 appnotes-why-never-held = Retenue pour de bon : bloqué, ou une conversation réglée sur « Jamais ».
 appnotes-why-again = Retenue encore et encore, à quelques minutes d’intervalle, à son retour : laissée passer plutôt que retenue une fois de plus.
+appnotes-why-times = Comme vous l’avez choisi pour ce moment : laissée passer.
+appnotes-why-times-held = Comme vous l’avez choisi pour ce moment : retenue jusqu’à { $when }.
 appnotes-title = Notifications des autres applications
 appnotes-does = Sioul retient les notifications des autres applications jusqu’à leur moment, et laisse passer ce qui peut venir maintenant. Les messages entre personnes (SMS, discussions, courrier) suivent leurs lignes dans Paramètres ▸ Ce qui vous joint ▸ Par personne (Messages ; Courrier pour une application de courrier), comme votre courrier ; les notifications des automates (boutiques, actualités, réseaux sociaux, les sites de votre navigateur) viennent aux heures de regroupement.
 appnotes-never = Sioul ne garde ni n’envoie jamais ce qu’elles disent, ne répond jamais, ne marque rien comme lu, et ne touche jamais aux accusés de lecture ni à « en train d’écrire » : les applications et les personnes qui y sont n’en voient rien. Une notification retenue revient entière, avec son propre toucher et ses actions ; aucune n’est jamais supprimée.
@@ -4090,6 +4268,12 @@ appnotes-open-app = Ses notifications dans Android
 appnotes-apps = Applications
 appnotes-apps-none = Aucune application n’a notifié depuis que Sioul peut les voir.
 appnotes-apps-help = Une application dont les notifications ne peuvent pas attendre (un trajet, une livraison à votre porte, l’application d’un médecin ou d’une pharmacie) : réglez-la sur Tout de suite. Chaque application dit pourquoi sa dernière notification est venue ou attend.
+# Other apps by time: each app and conversation a row of the matrix of what reaches you.
+appnotes-by-time = Autres applications, selon le moment
+appnotes-by-time-help = Chaque application et chaque conversation vient comme d’habitude à chaque moment, ou tout de suite, aux heures de regroupement, ou reste retenue jusqu’à un moment qui la laisse passer. Le choix d’une conversation l’emporte sur celui de son application. Rien ne change pour une application tant que vous n’avez rien choisi pour elle.
+appnotes-by-time-limits = Ce qu’Android permet : le premier son d’une notification joue avant que Sioul la voie ; rendez donc silencieuse une application retenue à certains moments (Paramètres ▸ Ce téléphone, Rendre silencieux). Pendant une pause, le temps libre ou « Ne pas déranger », le mode de Sioul décide de ce qui sonne : ce qui passe alors s’affiche sans son, sauf une conversation prioritaire ou un contact favori.
+appnotes-by-time-computer = Réglé sur votre téléphone, où les notifications des autres applications sont retenues. Changé ici, cela rejoint votre téléphone avec vos réglages.
+appnotes-by-time-more = Les conversations pour lesquelles vous avez choisi, et les dix vues en dernier, s’affichent ici ; les autres à leur arrivée.
 appnotes-kind-usual = Notification par notification
 appnotes-kind-people = Messages entre personnes
 appnotes-kind-automaton = Un automate : regroupées
@@ -4110,7 +4294,7 @@ appnotes-sites = Sites, depuis votre navigateur
 appnotes-site-gathered = Regroupées
 appnotes-site-at-once = Tout de suite
 appnotes-always = Viennent toujours, à toute heure : les appels et les alarmes ; ce qui est en cours (musique, appel, navigation, téléchargement) ; les rappels et événements que vous avez mis dans d’autres applications ; les codes, et les connexions ou paiements à approuver ; les notifications de Sioul.
-appnotes-privacy = Sioul lit les mots de chaque notification des applications que vous le laissez voir, sur ce téléphone seulement, pour décider. Il garde le nom des applications, conversations et sites vus, et quand ce qu’il a retenu revient ; jamais ce qu’elles disaient. Rien de tout cela n’atteint vos autres appareils.
+appnotes-privacy = Sioul lit les mots de chaque notification des applications que vous le laissez voir, sur ce téléphone seulement, pour décider. Il garde le nom des applications, conversations et sites vus, et quand ce qu’il a retenu revient ; jamais ce qu’elles disaient. Rien de tout cela n’atteint vos autres appareils, sauf les messages des applications que vous envoyez à vos ordinateurs, plus bas, tant que cette partie de votre partage est activée.
 appnotes-contacts-off = Pour savoir qui a écrit quand une application donne un numéro ou un contact, Sioul lit vos contacts (il ne les modifie jamais).
 appnotes-contacts-ask = Lire les contacts
 appnotes-heard = Android a passé une notification à Sioul pour la dernière fois { $when }.
@@ -4467,6 +4651,22 @@ attention-level-now-always = Tout de suite, quoi que dise leur liste
 attention-level-never-codes = Sur le Porche seulement
 attention-level-never-mail = Dans sa file, sans notification
 attention-level-later-calls = Messagerie, listé plus tard
+# A source's own row (an app's, a conversation's, on a phone): the values its cells take.
+attention-source-now = Tout de suite
+attention-source-gathered = Aux heures de regroupement
+attention-source-later = Retenues
+attention-source-as = Comme d’habitude
+attention-source-help = « Comme d’habitude » suit la ligne propre à la notification : qui écrit, un automate, une application réglée sur Tout de suite. Le choix d’une conversation l’emporte sur celui de son application.
+attention-source-group-apps = Applications
+attention-source-group-conversations = Conversations
+# A source's row in one sentence: "At once: Work and Do not disturb; held: Leisure; as usual the rest of the time."
+attention-source-usual = Comme d’habitude à chaque moment.
+attention-source-said = { $parts }.
+attention-source-said-join = {" ; "}
+attention-source-said-now = tout de suite : { $columns }
+attention-source-said-gathered = aux heures de regroupement : { $columns }
+attention-source-said-later = retenues : { $columns }
+attention-source-said-as = comme d’habitude le reste du temps
 attention-group-mail = Courrier
 attention-group-calls = Appels
 attention-group-messages = Messages
@@ -4513,8 +4713,6 @@ attention-row-work-over = Les heures de travail sont finies
 attention-row-work-over-help = Avec Clore la journée de travail, dans les dix minutes après la fin de vos heures ; aucun pendant une réunion.
 attention-row-time = Le temps qui court
 attention-row-time-help = La notification du minuteur de concentration pendant une séance : retirée à un moment où elle ne vient pas, remise ensuite.
-attention-row-watch = Les propositions de la montre
-attention-row-watch-help = Une proposition douce d’après les données de votre montre, après une tâche faite ou une séance finie.
 attention-row-sites = Notifications des sites, regroupées
 attention-row-sites-help = Ce que vos sites notifient, en une seule notification aux heures de regroupement, pour les sites de ces heures-là.
 attention-row-sites-live = Un site en temps réel
@@ -4545,6 +4743,131 @@ attention-unblocked = Retiré de votre liste des bloqués : bloqué et Passent
 calls-context-free = pendant votre temps libre
 calls-context-slot = pendant votre temps pour vous
 calls-context-dnd = pendant « Ne pas déranger »
+# The phone's messages on your computers (docs/android.md, "Messages on your computers"; docs/porch.md, "From your phone").
+phonemsgs-title = De votre téléphone
+phonemsgs-context-any = ces derniers temps
+phonemsgs-who-someone = quelqu’un
+phonemsgs-picture = une image
+phonemsgs-with-picture = { $text } (avec une image)
+phonemsgs-no-words = un message sans mots
+phonemsgs-code = Un code est arrivé de { $who } à { $time }. Il reste sur votre téléphone.
+phonemsgs-code-day = { $day }, un code est arrivé de { $who } à { $time }. Il reste sur votre téléphone.
+phonemsgs-head = { $context }, { $who } a écrit :
+phonemsgs-head-app = { $context }, { $who } a écrit sur { $app } :
+phonemsgs-head-on = { $context }, { $who } a écrit à { $phone } :
+phonemsgs-head-app-on = { $context }, { $who } a écrit sur { $app }, à { $phone } :
+phonemsgs-head-group = { $context }, dans { $group } :
+phonemsgs-head-group-app = { $context }, dans { $group } sur { $app } :
+phonemsgs-head-group-on = { $context }, dans { $group }, sur { $phone } :
+phonemsgs-head-group-app-on = { $context }, dans { $group } sur { $app }, sur { $phone } :
+phonemsgs-withheld = Ses mots restent sur votre téléphone : { $app } n’envoie que qui et quand.
+phonemsgs-history-title = Ses messages de la semaine
+phonemsgs-history-line = { $when } : { $text }
+phonemsgs-history-app = { $when }, sur { $app } : { $text }
+phonemsgs-history-code = { $when } : un code, qui reste sur votre téléphone.
+phonemsgs-history-withheld = { $when } : un message sur { $app } ; ses mots restent sur votre téléphone.
+phonemsgs-seen-said = Marqué vu : cette ligne quitte le Porche de chacun de vos appareils. La notification de votre téléphone reste telle quelle.
+phonemsgs-blocked-said = Bloqué : ses appels vont sur votre messagerie, et ses messages attendent pour de bon sur votre téléphone, jamais sur vos ordinateurs.
+phonemsgs-block-title = Bloquer ce numéro ?
+phonemsgs-block-ask = { $number } rejoint votre liste de numéros bloqués : ses appels vont sur votre messagerie, ses messages attendent pour de bon sur votre téléphone, et rien de lui n’atteint vos ordinateurs.
+phonemsgs-send-off = Pas sur vos ordinateurs
+phonemsgs-send-who = Qui et quand
+phonemsgs-send-words = Qui, quand et les mots
+phonemsgs-setup-title = Sur vos ordinateurs
+phonemsgs-setup-help = Cette partie du partage activée, ce téléphone envoie à vos ordinateurs les messages qu’apportent ses notifications, scellés, pour les applications que vous choisissez : qui a écrit, quand, et les mots, coupés à 1 000 caractères. Un ordinateur les montre sur son Porche une fois la partie activée là aussi, aux moments où leur expéditeur peut vous joindre, jamais en notification. Ils sont gardés une semaine.
+phonemsgs-setup-never = Jamais envoyés : les codes et les validations (une ligne dit qu’un code est arrivé, et qu’il reste sur votre téléphone), les images (dites « une image »), les messages d’un expéditeur bloqué, les notifications qu’une application marque secrètes, celles en cours, celles de Sioul. Vu sur un ordinateur retire la ligne partout ; il ne touche jamais à la notification de votre téléphone et ne marque jamais rien comme lu.
+phonemsgs-setup-part = Messages de votre téléphone
+phonemsgs-setup-no-sharing = Mettez d’abord en place votre partage (Réglages ▸ Votre dossier et le partage) : les messages passent par lui.
+phonemsgs-setup-apps = Par application
+phonemsgs-setup-apps-help = L’application de SMS du téléphone envoie ses mots, sauf avis contraire ; toute autre application n’envoie rien tant que vous ne la choisissez pas.
+phonemsgs-setup-sms = L’application de SMS du téléphone
+phonemsgs-setup-none = Aucune application n’a envoyé de notification depuis que Sioul peut les voir.
+# texts: SMS phase (b), texts read and sent through your phone (docs/texts.md). States of a text sent from a computer.
+texts-waiting = En attente de votre téléphone.
+texts-waiting-since = En attente de votre téléphone (dernier partage à { $time }).
+texts-sending = Votre téléphone l’envoie.
+texts-sent-at = Envoyé à { $time }.
+texts-delivered-at = Remis à { $time }.
+texts-failed = Pas envoyé : { $why }. Votre téléphone ne réessaiera pas.
+texts-why-radio-off = la radio du téléphone était coupée
+texts-why-no-service = le téléphone n’avait pas de réseau
+texts-why-limit = Android vous demande sur le téléphone avant d’envoyer plus de SMS
+texts-why-no-sim = aucune carte SIM n’a pu l’envoyer
+texts-why-other = Android l’a refusé
+texts-expired = Pas envoyé : il a attendu votre téléphone plus de 15 minutes.
+texts-refused-short-number = Pas envoyé d’ici : un numéro court peut coûter de l’argent. Envoyez-le depuis votre téléphone.
+texts-refused-several = Pas envoyé d’ici : un SMS à plusieurs personnes est un message multimédia. Envoyez-le depuis votre téléphone.
+texts-refused-empty = Pas envoyé : il n’a pas de mots.
+texts-refused-too-long = Pas envoyé : il dépasse 1 600 caractères.
+texts-refused-before-mark = Pas envoyé : votre téléphone a commencé un nouveau registre après qu’il a été écrit. Renvoyez-le si vous voulez toujours qu’il parte.
+texts-refused-other = Pas envoyé d’ici.
+texts-clocks = Pas envoyé : l’horloge de votre téléphone et celle de cet ordinateur diffèrent de plus de deux minutes.
+texts-doubt = Votre téléphone ne l’a peut-être pas envoyé : regardez dans ses messages avant de le renvoyer.
+# texts: the Texts page, and Settings ▸ This phone ▸ Texts (SMS phase b).
+texts-page-title = SMS
+texts-page-off = Vos SMS s’affichent ici une fois la partie SMS du partage activée, sur cet appareil et sur votre téléphone (Réglages ▸ Votre dossier et le partage).
+texts-page-no-phone = Aucun téléphone ne partage ses SMS avec cet ordinateur : activez la partie SMS sur votre téléphone, dans Réglages ▸ Ce téléphone ▸ SMS.
+texts-page-never = Les brouillons, les SMS qui ont échoué ou attendent de partir, et les messages multimédias encore à télécharger restent dans l’application de messages de votre téléphone : Android ne les montre qu’à elle.
+texts-page-back = Conversations
+texts-page-shared = Dernier partage de votre téléphone à { $time }.
+texts-page-empty = Pas encore de SMS ici. Ils arrivent à mesure que votre téléphone les partage.
+texts-search-none = Aucun SMS ne contient ces mots.
+texts-again = Renvoyer
+texts-write = Un SMS, envoyé par votre téléphone
+texts-agent-draft = Écrit par un agent d’IA, pas envoyé
+texts-agent-draft-use = L’utiliser
+texts-agent-draft-discard = Supprimer le brouillon
+texts-agent-draft-waits = Un brouillon d’un agent d’IA attend ici.
+texts-send = Envoyer
+texts-group-read-only = Un SMS à plusieurs personnes est un message multimédia : répondez depuis votre téléphone.
+texts-parts = { $count ->
+    [one] Un SMS ({ $characters } caractères)
+   *[other] { $count } SMS ({ $characters } caractères)
+}
+texts-parts-unicode = { $count ->
+    [one] Un SMS ({ $characters } caractères ; des accents ou des signes qui prennent plus de place)
+   *[other] { $count } SMS ({ $characters } caractères ; des accents ou des signes qui prennent plus de place)
+}
+texts-setup-title = SMS
+texts-setup-help = La partie SMS du partage activée, ce téléphone lit tous ses SMS pour vos ordinateurs, scellés, par lots, et envoie ceux que vous y écrivez. L’application de messages de votre téléphone en reste le registre : Sioul ne devient jamais votre application de SMS, ne marque jamais un SMS comme lu et n’en efface aucun.
+texts-setup-why-read = Lire vos SMS : pour que vos ordinateurs les montrent.
+texts-setup-why-receive = Être averti d’un nouveau SMS : pour qu’il atteigne vos ordinateurs en une minute ou deux.
+texts-setup-why-send = Envoyer des SMS : ceux que vous écrivez sur un ordinateur, chacun une fois.
+texts-setup-why-sims = Le nom de vos cartes SIM : pour qu’un SMS parte de la bonne.
+texts-setup-given = Autorisé.
+texts-setup-not-given = Pas encore autorisé.
+texts-setup-ask = Autoriser dans Android…
+texts-sheet-open = SMS avec cette personne…
+texts-part-picture = Une image ({ $size })
+texts-part-sound = Un son ({ $size })
+texts-part-video = Une vidéo ({ $size })
+texts-part-card = Une fiche de contact ({ $size })
+texts-part-file = Un fichier ({ $size })
+texts-part-text = Un fichier texte ({ $size })
+texts-part-too-big = Trop gros pour venir ici ({ $size }) : il est sur votre téléphone.
+texts-part-not-downloaded = Votre téléphone ne l’a pas téléchargé.
+texts-part-coming = En route depuis votre téléphone ({ $size }).
+texts-open = Ouvrir
+texts-save = Enregistrer…
+texts-saved = Enregistré.
+texts-not-saved = Pas enregistré.
+texts-deleted-on-phone = Effacé sur votre téléphone, gardé ici.
+texts-kept = { $count ->
+    [one] Garde un SMS et { $size } de médias ici.
+   *[other] Garde { $count } SMS et { $size } de médias ici.
+}
+texts-setup-holds = { $count ->
+    [one] Votre téléphone a un SMS et { $size } de médias. Il part vers vos ordinateurs par lots de 500 SMS, les médias après leurs SMS.
+   *[other] Votre téléphone a { $count } SMS et { $size } de médias. Ils partent vers vos ordinateurs par lots de 500 SMS, les médias après leurs SMS.
+}
+texts-setup-progress = { $done } SMS sur { $count } et { $done_size } de médias sur { $size } sont partis vers vos ordinateurs ; le reste suit à chaque échange.
+texts-setup-done = { $count ->
+    [one] Le SMS de votre téléphone et { $done_size } de médias sont sur vos ordinateurs.
+   *[other] Les { $count } SMS de votre téléphone et { $done_size } de médias sont sur vos ordinateurs.
+}
+texts-setup-cap = Plus gros fichier envoyé à vos ordinateurs
+texts-setup-cap-help = Une image, un son ou une vidéo plus gros reste sur votre téléphone, et la page le dit. Les messages multimédias sont petits : les opérateurs les limitent entre quelques centaines de kilo-octets et quelques mégaoctets.
+texts-setup-cap-value = { $size }
 mail-through-channel = Courrier des personnes qui passent toujours
 alarms-channel = Alarmes des événements
 dnd-events-channel = Alarmes des événements pendant une pause
@@ -4818,7 +5141,6 @@ attention-what-needs = les avis de Santé pour les repas, les siestes et la nuit
 attention-what-move = la pause pour bouger
 attention-what-work-over = « Les heures de travail sont finies »
 attention-what-time = le temps qui court
-attention-what-watch = les propositions de votre montre
 attention-what-sites = les notifications de vos sites
 attention-what-sites-live = les sites en temps réel
 attention-what-site-calls = les appels dans vos sites

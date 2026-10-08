@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- The folders Qt's FileProvider (AndroidManifest.xml, "${applicationId}.qtprovider")
+     may lend a file of to another app, one file at a time, to read: Qt's own
+     four (qtbase, src/android/templates/res/xml/qtprovider_paths.xml, which
+     this file replaces in the APK), for the files Sioul opens through Qt
+     (papers, notes, letters), and the attachments' folder of the cache, where
+     Rust writes a mail's attachment before it opens in the app you choose
+     (Attachments.java; docs/client.md, "Antivirus"). Not the rest of the
+     cache, nor the device's root. Checked by android/jvm-checks
+     (AttachmentsCheck) and Rust's attachments::tests. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- For getFilesDirectory() -->
+    <files-path name="files_path" path="/"/>
+    <!-- For getExternalStorageDirectory() -->
+    <external-path name="external_path" path="/"/>
+    <!-- For getExternalFilesDir() -->
+    <external-files-path name="external_files_path" path="/"/>
+    <!-- For getExternalCacheDir() -->
+    <external-cache-path name="external_cache_path" path="/"/>
+    <!-- Mail attachments: getCacheDir()/sioul/attachments, XDG_CACHE_HOME/sioul/attachments for Rust -->
+    <cache-path name="attachments" path="sioul/attachments/"/>
+</paths>

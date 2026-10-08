@@ -21,8 +21,8 @@ Everything Sioul keeps is in plain files, in your own folders, readable by other
 | What | Where, on Linux |
 |---|---|
 | Settings, the senders you let in, safe, neutral, restricted or blocked | `~/.config/sioul/` |
-| Mail (one Maildir per address), calendars and contacts (one file per item), drafts, time spent, invoices, medicines, your watch's days | `~/.local/share/sioul/` |
-| Where each fetch stopped, where the Porch was closed, the doses you marked and each dose's record, the sites' news, the log of an AI agent's calls, what the AI said of a protected address's mail, the calls your phones screened (a month of them) | `~/.local/state/sioul/` |
+| Mail (one Maildir per address), calendars and contacts (one file per item), drafts, time spent, invoices, medicines, your phone's texts and their media (all of them, sealed) and those written for it to send | `~/.local/share/sioul/` |
+| Where each fetch stopped, where the Porch was closed, the doses you marked and each dose's record, the sites' news, the log of an AI agent's calls, what the AI said of a protected address's mail, the calls your phones screened (a month of them), the messages your phone's notifications brought for the apps you send to your computers (a week of them) | `~/.local/state/sioul/` |
 | Your own spam filter: what its training read of your mail, the language model it learned, its table; what you said is spam or not | `~/.local/share/sioul/spam/`, `~/.local/state/sioul/spam/` |
 | Notes, projects, budgets, papers, scanned letters | your notes folder, wherever you chose it |
 
@@ -68,7 +68,7 @@ An attachment is checked before it opens or is saved, by your system's own antiv
 
 When a threat is found, nothing opens, and the copy is deleted. A program, a script, a shortcut or an installer is never started from a mail, even checked: save it if you trust it. On Windows and macOS, a file you open or save from a mail carries your system's mark that it came from the Internet, so that Office opens it in Protected View and macOS checks it before it runs. The attachments of mail set aside are not opened at all.
 
-Without an antivirus, Sioul does not refuse: it says the file will not be checked, asks before opening it (**Open it unchecked**), and says how to get one. A phone has no antivirus for Sioul to ask: attachments are not checked there, and Sioul asks each time.
+Without an antivirus, Sioul does not refuse: it says the file will not be checked, asks before opening it (**Open it unchecked**), and says how to get one. A phone has no antivirus for Sioul to ask: attachments are not checked there, and Sioul says so rather than asking each time. The app you choose reads that one file and nothing else of Sioul's, and Android's installers never open.
 
 ### Your own spam filter {#your-own-spam-filter}
 
@@ -106,13 +106,13 @@ The subject of an encrypted message stays readable, as in most mail programs tod
 
 ### Between your devices {#between-your-devices}
 
-Each device keeps its own data. What must travel between your computers and your phone goes through a folder your own sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…), sealed on your device before it is written there, with a key made from your passphrase. There is no server of ours in between. The folder's server sees which device wrote, when and how much, and the size of each sealed note or paper; never what. Nothing that happens in that folder, a file damaged or deleted, can take data away from your devices. How it works, what it protects and what it cannot hide: [Sharing between your devices](sharing.md).
+Each device keeps its own data. What must travel between your computers and your phone goes through a folder your own sync app carries (Nextcloud, Dropbox, Syncthing, Google Drive, OneDrive…), sealed on your device before it is written there, with a key made from your passphrase. There is no server of ours in between. The folder's server sees which device wrote, when and how much, and the size of each sealed note or paper; never what. Nothing that happens in that folder, a file damaged or deleted, can take data away from your devices. A notification's words travel only if you turn on **Messages from your phone**, for the apps you choose, a week at most ([On your computers](notifications.md#messages-on-your-computers)). How it works, what it protects and what it cannot hide: [Sharing between your devices](sharing.md).
 
 ### AI, only if you ask {#ai-only-if-you-ask}
 
 Sioul connects no AI by itself.
 
-An AI agent you connect, such as Claude Code, can read what Sioul keeps on this device and prepare tasks, events, notes and drafts. It cannot send, delete, move money or read a password, and one-time codes, card numbers and bank account numbers are hidden from it; the company behind it receives what it reads. It can also run your own spam filter's tools, which read your mail servers without changing anything there; you can keep these tools from agents. See [Using an AI agent](ai-agent.md).
+An AI agent you connect, such as Claude Code, can read what you open to it on this device and prepare tasks, events, notes and drafts: each project is closed to agents until you open it, and things in no project can be closed too ([Choosing what an agent sees](ai-agent.md#choosing-what-an-agent-sees)). It cannot send, delete, move money or read a password, and one-time codes, card numbers and bank account numbers are hidden from it; the company behind it receives what it reads. It can also run your own spam filter's tools, which read your mail servers without changing anything there; you can keep these tools from agents. See [Using an AI agent](ai-agent.md).
 
 For an address you protect against harassment, **Let the AI read it first** is off unless you turn it on. Then Sioul sends Anthropic, with your own key, each message in that address's inbox, from anyone, those already there included: its subject and the first 4,000 characters of its text, **unmasked**. Unlike what an agent is given, nothing is hidden there: a code or an account number in such a message reaches Anthropic too. See [the Porch](porch.md#a-public-address-protected).
 
@@ -158,7 +158,7 @@ Saying where protection stops is part of it:
 - **The folder between your devices tells a little.** Its server sees which device wrote, when and how much ([details](sharing.md#what-it-protects-and-what-it-cannot-hide)).
 - **A phone has fewer protections.** On Android there is no antivirus to check attachments and no security key, and sites open in your browser.
 - **Look-alike domains are not caught yet**, only borrowed names, and the list of brands is fixed: mostly French services and large platforms.
-- **An AI agent you connect reads what Sioul keeps** on that device, except passwords, codes, account numbers, medicines and doses, and the company behind it receives what it reads.
+- **An AI agent you connect reads what you open to it** on that device (the projects you open, and things in no project unless you close them), never passwords, codes, account numbers, medicines and doses, and the company behind it receives what it reads.
 - **The AI reading of a protected address sends each message's start as it is**: its subject and first 4,000 characters, codes and account numbers included.
 - **Some protections are not yet tried on real hardware**: the antivirus on Windows, security keys with a real key, in the sites and for your OpenPGP key ([For technical readers](#for-technical-readers)).
 - **The Windows and macOS packages are not signed yet**: your system warns the first time ([Install](install.md)).

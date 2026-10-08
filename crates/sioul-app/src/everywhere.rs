@@ -274,12 +274,55 @@ fn apply_once() {
             None => String::new(),
         };
     });
+    // The background service's notification says the state now, within a second: told once
+    // this device's table is written (its words read it; before, they would say a state
+    // between two), before the card and the calls' table, which may take longer.
+    crate::steps::tell_note();
     crate::homecard::dnd_seen(moment());
     // On a phone, Android's alarm comes back at the next end, Sioul closed or not.
     crate::steps::next(look.next_change());
     // The calls' table follows the pauses, the times and the switch at once (`calls::refresh`:
     // written again only when what it is made of changed, or every ten minutes).
     crate::calls::refresh(false);
+}
+
+/// The background service's notification in words (`steps::note`): its
+/// title, what now is for and until when ("Leisure until 22:00"); then
+/// do-not-disturb here, as the status line says it while it holds, what this
+/// device's own still holds while Sioul's is off, else that it is off. And
+/// when what now is for ends (Unix seconds), for the service's next step.
+pub(crate) fn note() -> (String, String, Option<i64>) {
+    let look = Look::now();
+    let tr = tr();
+    let moment = moment_of(&look);
+    let dnd = if moment["on"] == true {
+        moment["line"].as_str().unwrap_or_default().to_string()
+    } else if moment["system_on"] == true {
+        moment["system_line"].as_str().unwrap_or_default().to_string()
+    } else {
+        String::new()
+    };
+    let dnd = if dnd.is_empty() { tr.text("steps-note-dnd-off", None) } else { dnd };
+    // What now is for as the window has it, meals moved past events, in every process alike
+    // (the service's own look leaves the events aside): the title never changes with the process.
+    let mode = crate::hours::mode_at(&look.now);
+    let times: Vec<String> = sioul_core::attention::Now::of(&mode).times.iter().map(|c| sioul_core::attention::column_label(tr, *c)).collect();
+    let time = match times.as_slice() {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} {} {}", rest.join(", "), tr.text("word-and", None), last.to_lowercase()),
+    };
+    let until = if mode.paused() { None } else { mode.until.clone() };
+    let mut args = sioul_core::i18n::args();
+    args.set("time", time);
+    let title = match &until {
+        Some(until) => {
+            args.set("until", sioul_core::quiet::until_text(tr, until, &look.now));
+            tr.text("steps-note-time", Some(&args))
+        }
+        None => tr.text("steps-note-time-open", Some(&args)),
+    };
+    (title, dnd, until.map(|u| u.timestamp().as_second()))
 }
 
 /// What this device asks of its system now, in a few words, and the status

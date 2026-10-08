@@ -142,12 +142,20 @@ Item {
     // Your security keys, read again when keys change; what the setup says now;
     // the key a lookup is for ("" for the one the setup read).
     property var securityKeys: ({ cards: [] })
-    property var keySetup: ({ state: "", line: "", tries: "", warm: false, action: "", fingerprint: "" })
+    property var keySetup: ({ state: "", line: "", tries: "", warm: false, action: "", fingerprint: "", ident: "", commands: [] })
     property string lookingFor: ""
+    // The key "Send it to keys.openpgp.org" is about, once its sentence is shown.
+    property string publishing: ""
 
     function lookFor(ident) {
         page.lookingFor = ident
         page.sioul.findSecurityKeyCertificate(ident)
+    }
+
+    // "Send it to keys.openpgp.org": first what goes public, in a sentence; sent on "Send it" only.
+    function askToSend(ident) {
+        page.publishing = ident
+        page.keySetup = { state: "publish", line: page.sioul.text("seckey-send-tells"), tries: "", warm: false, action: "", fingerprint: "", ident: ident, commands: [] }
     }
 
     // Your OpenPGP keys and others', read again when they change.
@@ -1112,9 +1120,21 @@ Item {
                                                 Layout.topMargin: 4
                                                 spacing: 8
 
+                                                // Expired or expiring, GnuPG here able to: its own pinentry asks the PIN.
+                                                Button {
+                                                    visible: knownKey.modelData.renewable === true
+                                                    highlighted: true
+                                                    text: page.sioul.text("seckey-renew")
+                                                    onClicked: page.sioul.renewSecurityKey(knownKey.modelData.ident)
+                                                }
                                                 Button {
                                                     text: page.sioul.text("seckey-newer")
                                                     onClicked: page.lookFor(knownKey.modelData.ident)
+                                                }
+                                                Button {
+                                                    flat: true
+                                                    text: page.sioul.text("seckey-import-gnupg")
+                                                    onClicked: page.sioul.importSecurityKeyFromGnupg(knownKey.modelData.ident)
                                                 }
                                                 Button {
                                                     flat: true
@@ -1123,6 +1143,11 @@ Item {
                                                         certificatePicker.forKey = knownKey.modelData.ident
                                                         certificatePicker.open()
                                                     }
+                                                }
+                                                Button {
+                                                    flat: true
+                                                    text: page.sioul.text("seckey-send")
+                                                    onClicked: page.askToSend(knownKey.modelData.ident)
                                                 }
                                                 Button {
                                                     visible: knownKey.modelData.pin_held
@@ -1135,6 +1160,17 @@ Item {
                                                     text: page.sioul.text("seckey-stop")
                                                     onClicked: page.sioul.stopUsingSecurityKey(knownKey.modelData.ident)
                                                 }
+                                            }
+                                            // The same by hand, each command to copy.
+                                            CommandText {
+                                                visible: (knownKey.modelData.by_hand || []).length > 0
+                                                Layout.fillWidth: true
+                                                Layout.topMargin: 2
+                                                sioul: page.sioul
+                                                theme: page.theme
+                                                text: page.sioul.text("seckey-by-hand") + " " + (knownKey.modelData.by_hand || []).map(c => "`" + c + "`").join(" ")
+                                                color: page.theme.muted
+                                                pixelSize: 13
                                             }
                                         }
                                     }
@@ -1150,11 +1186,12 @@ Item {
                                             implicitWidth: 18
                                             implicitHeight: 18
                                         }
-                                        Label {
+                                        // Its commands, if any, to copy (no smart card service, a locked key).
+                                        CommandText {
                                             Layout.fillWidth: true
+                                            sioul: page.sioul
+                                            theme: page.theme
                                             text: page.keySetup.line || ""
-                                            textFormat: Text.PlainText
-                                            wrapMode: Text.Wrap
                                             color: page.keySetup.warm ? page.theme.warm : page.theme.text
                                         }
                                     }
@@ -1166,18 +1203,8 @@ Item {
                                         color: page.theme.muted
                                         font.pixelSize: 13
                                     }
-                                    Label {
-                                        visible: (page.keySetup.state === "found" || page.keySetup.state === "missing") && !!page.keySetup.fingerprint
-                                        Layout.fillWidth: true
-                                        text: page.sioul.textWith("seckey-export-hint", "fingerprint", page.keySetup.fingerprint || "")
-                                        textFormat: Text.PlainText
-                                        wrapMode: Text.WrapAnywhere
-                                        font.family: page.theme.mono
-                                        font.pixelSize: 12
-                                        color: page.theme.muted
-                                    }
                                     Flow {
-                                        visible: page.keySetup.state === "found" || page.keySetup.state === "missing" || page.keySetup.state === "problem"
+                                        visible: page.keySetup.state === "found" || page.keySetup.state === "missing" || page.keySetup.state === "problem" || page.keySetup.state === "publish" || page.keySetup.action === "publish" || page.keySetup.action === "renew-offer"
                                         Layout.fillWidth: true
                                         spacing: 8
 
@@ -1187,13 +1214,39 @@ Item {
                                             text: page.sioul.text("seckey-look-for-it")
                                             onClicked: page.lookFor("")
                                         }
+                                        // Also after GnuPG could not: once it can, or from a file written by hand.
                                         Button {
-                                            visible: page.keySetup.state === "found" || page.keySetup.state === "missing"
+                                            visible: page.keySetup.state === "found" || page.keySetup.state === "missing" || (page.keySetup.state === "problem" && !!page.keySetup.fingerprint)
+                                            text: page.sioul.text("seckey-import-gnupg")
+                                            onClicked: page.sioul.importSecurityKeyFromGnupg(page.lookingFor)
+                                        }
+                                        Button {
+                                            visible: page.keySetup.state === "found" || page.keySetup.state === "missing" || (page.keySetup.state === "problem" && !!page.keySetup.fingerprint)
                                             text: page.sioul.text("seckey-import-file")
                                             onClicked: {
                                                 certificatePicker.forKey = page.lookingFor
                                                 certificatePicker.open()
                                             }
+                                        }
+                                        // What goes public was said: sent on this press only.
+                                        Button {
+                                            visible: page.keySetup.state === "publish"
+                                            highlighted: true
+                                            text: page.sioul.text("seckey-send-confirm")
+                                            onClicked: page.sioul.sendSecurityKeyToKeysOpenpgp(page.publishing)
+                                        }
+                                        // A part of the key expired: renewed from here, each subkey named.
+                                        Button {
+                                            visible: page.keySetup.action === "renew-offer"
+                                            highlighted: true
+                                            text: page.sioul.text("seckey-renew")
+                                            onClicked: page.sioul.renewSecurityKey(page.keySetup.ident)
+                                        }
+                                        // Renewed: others have the new date once it is sent.
+                                        Button {
+                                            visible: page.keySetup.action === "publish"
+                                            text: page.sioul.text("seckey-send")
+                                            onClicked: page.askToSend(page.keySetup.ident)
                                         }
                                         Button {
                                             visible: page.keySetup.action === "release"
@@ -1201,21 +1254,39 @@ Item {
                                             text: page.sioul.text("seckey-release")
                                             onClicked: {
                                                 const answer = JSON.parse(page.sioul.letGnupgRelease() || "{}")
-                                                page.keySetup = { state: answer.done ? "working" : "problem", line: answer.line || "", tries: "", warm: !answer.done, action: answer.done ? "" : "retry", fingerprint: "" }
+                                                page.keySetup = { state: answer.done ? "working" : "problem", line: answer.line || "", tries: "", warm: !answer.done, action: answer.done ? "" : "retry", fingerprint: "", ident: "", commands: [] }
                                                 if (answer.done)
                                                     page.sioul.readSecurityKey()
                                             }
                                         }
+                                        // A touch missed while GnuPG renewed the key: renewed again on this press.
                                         Button {
-                                            visible: page.keySetup.action === "retry" || page.keySetup.action === "release" || page.keySetup.action === "lookup"
+                                            visible: page.keySetup.action === "retry" || page.keySetup.action === "release" || page.keySetup.action === "lookup" || page.keySetup.action === "renew"
                                             text: page.sioul.text("seckey-try-again")
-                                            onClicked: page.keySetup.action === "lookup" ? page.lookFor(page.lookingFor) : page.sioul.readSecurityKey()
+                                            onClicked: {
+                                                if (page.keySetup.action === "lookup")
+                                                    page.lookFor(page.lookingFor)
+                                                else if (page.keySetup.action === "renew")
+                                                    page.sioul.renewSecurityKey(page.keySetup.ident)
+                                                else
+                                                    page.sioul.readSecurityKey()
+                                            }
                                         }
                                         Button {
                                             flat: true
                                             text: page.sioul.text("seckey-not-now")
-                                            onClicked: page.keySetup = { state: "", line: "", tries: "", warm: false, action: "", fingerprint: "" }
+                                            onClicked: page.keySetup = { state: "", line: "", tries: "", warm: false, action: "", fingerprint: "", ident: "", commands: [] }
                                         }
+                                    }
+                                    // What the buttons do, by hand, each command to copy.
+                                    CommandText {
+                                        visible: (page.keySetup.commands || []).length > 0 && page.keySetup.state !== "working"
+                                        Layout.fillWidth: true
+                                        sioul: page.sioul
+                                        theme: page.theme
+                                        text: page.sioul.text("seckey-by-hand") + " " + (page.keySetup.commands || []).map(c => "`" + c + "`").join(" ")
+                                        color: page.theme.muted
+                                        pixelSize: 13
                                     }
                                     Button {
                                         visible: page.keySetup.state === "" || page.keySetup.state === "done"

@@ -56,6 +56,13 @@ Panel {
     readonly property var costs: ["cognitive", "emotional", "anxiety", "body"]
     // What its list does not keep (Google Tasks): greyed, never hidden.
     readonly property var limited: panel.detail && panel.detail.limited ? panel.detail.limited : []
+    // Its natural width, which the page gives it beside the list (TasksPage.qml):
+    // its fields at about 70 characters of the body font, a readable line, or
+    // its tiles side by side, whichever is wider; no cap of its own
+    // (docs/qt-quick.md, "An editing card's width").
+    readonly property real naturalWidth: Math.ceil(Math.max(70 * body.averageCharacterWidth, ratingsTop.naturalWidth)) + panel.leftPadding + panel.rightPadding + 12
+    // The costs' tiles (for the window's tests and pictures).
+    readonly property alias costTiles: ratingsTop
 
     function keeps(field) {
         return panel.limited.indexOf(field) < 0
@@ -263,6 +270,12 @@ Panel {
         panel.change("demands", demands)
     }
 
+    // Several at once ("Looks right": what was felt before, for what was unsaid), in one save.
+    function changeRatings(values) {
+        const demands = Object.assign({ cognitive: null, emotional: null, anxiety: null, body: null, gain: null }, panel.detail.edit.demands, values)
+        panel.change("demands", demands)
+    }
+
     // What it takes, from its ratings once a cost is said (the plan's rule,
     // docs/tasks.md): light up to 3, the usual from 4 to 6, heavy from 7; it
     // gives back with a gain of 5 or more and no cost above 3. "" when no cost
@@ -300,11 +313,11 @@ Panel {
             add("task-field-before", panel.minutesText(e.margins.before))
         if (e.margins && e.margins.after > 0)
             add("task-field-after", panel.minutesText(e.margins.after))
-        const named = { cognitive: "task-field-cognitive", emotional: "task-field-emotional", anxiety: "task-field-anxiety", body: "task-field-body", gain: "task-field-gain" }
+        // Each cost said, as its tile says it: "Worry: 7, very hard".
         for (const name of panel.costs.concat(["gain"])) {
             const value = panel.rating(name)
             if (value !== null)
-                add(named[name], value + " / 10")
+                rows.push({ label: ratingsTop.title(name), value: value + ", " + ratingsTop.word(name, value) })
         }
         const level = panel.level()
         if (level !== "")
@@ -388,6 +401,12 @@ Panel {
         function onTasksChanged() {
             panel.reload()
         }
+    }
+
+    FontMetrics {
+        id: body
+
+        font: panel.font
     }
 
     ScrollView {
@@ -1112,71 +1131,25 @@ Panel {
                     currentIndex: panel.detail && panel.detail.edit.margins ? Math.max(0, panel.marginMinutes.indexOf(panel.detail.edit.margins.after)) : 0
                     onActivated: index => panel.changeMargin("after", panel.marginMinutes[index])
                 }
-                // What it costs, and what it gives back: 0 to 10 each, as you feel it;
-                // unsaid until said, never 0 by default. Saved as the hand lets go.
-                RatingSlider {
+                // What it costs, and what it gives back: four tiles and a row, 0 to 10
+                // each, unsaid until said (CostTiles.qml); each value saved as it is
+                // given, "Looks right" saving the faint ones at once.
+                CostTiles {
                     id: ratingsTop
 
                     Layout.columnSpan: 2
                     Layout.fillWidth: true
                     Layout.topMargin: 4
-                    sioul: panel.sioul
-                    theme: panel.theme
-                    enabled: panel.canEdit && panel.keeps("costs")
-                    opacity: panel.keeps("costs") ? 1 : 0.45
-                    label: panel.sioul.text("task-field-cognitive")
-                    words: [panel.sioul.text("rating-cognitive-0"), panel.sioul.text("rating-cognitive-5"), panel.sioul.text("rating-cognitive-10")]
-                    value: panel.rating("cognitive")
-                    onEdited: given => panel.changeRating("cognitive", given)
-                }
-                RatingSlider {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    sioul: panel.sioul
-                    theme: panel.theme
-                    enabled: panel.canEdit && panel.keeps("costs")
-                    opacity: panel.keeps("costs") ? 1 : 0.45
-                    label: panel.sioul.text("task-field-emotional")
-                    words: [panel.sioul.text("rating-emotional-0"), panel.sioul.text("rating-emotional-5"), panel.sioul.text("rating-emotional-10")]
-                    value: panel.rating("emotional")
-                    onEdited: given => panel.changeRating("emotional", given)
-                }
-                RatingSlider {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    sioul: panel.sioul
-                    theme: panel.theme
-                    enabled: panel.canEdit && panel.keeps("costs")
-                    opacity: panel.keeps("costs") ? 1 : 0.45
-                    label: panel.sioul.text("task-field-anxiety")
-                    words: [panel.sioul.text("rating-anxiety-0"), panel.sioul.text("rating-anxiety-5"), panel.sioul.text("rating-anxiety-10")]
-                    value: panel.rating("anxiety")
-                    onEdited: given => panel.changeRating("anxiety", given)
-                }
-                RatingSlider {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    sioul: panel.sioul
-                    theme: panel.theme
-                    enabled: panel.canEdit && panel.keeps("costs")
-                    opacity: panel.keeps("costs") ? 1 : 0.45
-                    label: panel.sioul.text("task-field-body")
-                    words: [panel.sioul.text("rating-body-0"), panel.sioul.text("rating-body-5"), panel.sioul.text("rating-body-10")]
-                    value: panel.rating("body")
-                    onEdited: given => panel.changeRating("body", given)
-                }
-                RatingSlider {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
                     Layout.bottomMargin: 4
                     sioul: panel.sioul
                     theme: panel.theme
                     enabled: panel.canEdit && panel.keeps("costs")
                     opacity: panel.keeps("costs") ? 1 : 0.45
-                    label: panel.sioul.text("task-field-gain")
-                    words: [panel.sioul.text("rating-gain-0"), panel.sioul.text("rating-gain-5"), panel.sioul.text("rating-gain-10")]
-                    value: panel.rating("gain")
-                    onEdited: given => panel.changeRating("gain", given)
+                    values: panel.detail && panel.detail.edit.demands ? panel.detail.edit.demands : ({})
+                    proposed: panel.detail && panel.detail.proposed ? panel.detail.proposed.values : ({})
+                    proposedFrom: panel.detail && panel.detail.proposed ? panel.detail.proposed.from : ""
+                    onEdited: (name, value) => panel.changeRating(name, value)
+                    onTaken: values => panel.changeRatings(values)
                 }
                 Label {
                     text: panel.sioul.text("task-field-case")

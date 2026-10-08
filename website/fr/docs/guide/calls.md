@@ -32,7 +32,7 @@ Android 9 ne laisse aucune application filtrer les appels, et Sioul ne peut pas 
 
 ## Laisser passer tous les appels {#let-every-call-through}
 
-Quand vous attendez un appel. Sur la notification du téléphone « Sioul tient vos appareils à jour » : **Laisser sonner 1 h**, ou **Laisser sonner** jusqu’à ce que vous l’arrêtiez ; **Filtrer à nouveau** y met fin. Dans la fenêtre, le bouton du téléphone dans la ligne d’état, sur chacun de vos appareils : un clic laisse sonner tous les appels pendant une heure ; un clic droit, ou un appui long, choisit jusqu’à quand.
+Quand vous attendez un appel. Sur la notification discrète de Sioul sur le téléphone, celle qui dit ce qu’est le moment (son canal : « Appareils à jour ») : **Laisser sonner 1 h**, ou **Laisser sonner** jusqu’à ce que vous l’arrêtiez ; **Filtrer à nouveau** y met fin. Dans la fenêtre, le bouton du téléphone dans la ligne d’état, sur chacun de vos appareils : un clic laisse sonner tous les appels pendant une heure ; un clic droit, ou un appui long, choisit jusqu’à quand.
 
 ## Ensuite, sur le Porche {#afterwards-on-the-porch}
 

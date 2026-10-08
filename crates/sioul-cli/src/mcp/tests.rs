@@ -124,7 +124,13 @@ fn make(root: &Path) -> PathBuf {
     let answer = shield::Assessment { tone: shield::Tone::Hostile, by_ai: true, ..shield::Assessment::default() };
     shield::AiCache { messages: [(shield::ai_key(&card).unwrap(), answer)].into() }.save("public").unwrap();
     std::fs::create_dir_all(store.join("notes")).unwrap();
-    std::fs::write(store.join("sioul-cases.toml"), "[[case]]\nid = \"housing\"\ntitle = \"Housing aid\"\nstatus = \"open\"\n[[case.route]]\nfrom_domains = [\"housing.example\"]\n").unwrap();
+    // The housing aid, opened to agents; the taxes, written as before the
+    // field existed, closed: every project is closed until opened.
+    std::fs::write(
+        store.join("sioul-cases.toml"),
+        "[[case]]\nid = \"housing\"\ntitle = \"Housing aid\"\nstatus = \"open\"\nai = true\n[[case.route]]\nfrom_domains = [\"housing.example\"]\n\n[[case]]\nid = \"taxes\"\ntitle = \"Zeugma taxes\"\nkind = \"project\"\nclient = \"Zeugma Ltd\"\nfiles = [\"taxes/\"]\nbudget = \"zeugma\"\n[[case.route]]\nfrom_domains = [\"finances.example\"]\n",
+    )
+    .unwrap();
     std::fs::write(store.join("notes/letters.md"), "# Letters to the CAF\n\nRent receipts go in the blue folder.\n\n- [ ] scan the September receipt\n- [ ] pay FR76 3000 6000 0112 3456 7890 189\n").unwrap();
     std::fs::write(store.join("sioul-budgets.toml"), "[[budget]]\nid = \"home\"\ntitle = \"Home\"\nperiod = \"month\"\ntarget = 0\n\n[[preset]]\nbudget = \"home\"\nlabel = \"Rent\"\namount = -600\nevery = \"month\"\nday = 1\n\n[[reserve]]\nid = \"savings\"\ntitle = \"Savings account\"\nbalance = 3000\nas_of = 2026-10-01\n").unwrap();
     // A bank account kept under its IBAN, as an export names it.
@@ -133,9 +139,93 @@ fn make(root: &Path) -> PathBuf {
     let edit = TaskEdit { title: "Find the rent receipt".into(), cases: vec!["housing".into()], estimate: 10, ..TaskEdit::default() };
     vdir::write_item(&list.dir.join("receipt.ics"), &tasks::new_task(&edit, "receipt", &jiff::tz::TimeZone::system(), &Zoned::now()).unwrap()).unwrap();
     vdir::create(Kind::Calendars, vdir::LOCAL, "Agenda", None, &["VEVENT"]).unwrap();
+    closed_project(root, &store, &mail);
     spam_fixture(root, &mail);
     config
 }
+
+/// The closed project's things, each holding the word "Zeugma", which no
+/// answer may ever hold (`a_closed_project_is_never_shown`): its mail, a
+/// note in its folder, a task and a step of it, an event, time, an invoice,
+/// a paper letter, the budget its invoices go to. Beside them, things in no
+/// project: a paper, the phone's messages (a code its phone did not catch
+/// among them) and a call.
+fn closed_project(root: &Path, store: &Path, mail: &Path) {
+    let tax = message("zeugma-1@finances.example", "Tax Office <no-reply@finances.example>", "Your Zeugma notice", "The Zeugma amount is due on the 15th.", 2);
+    std::fs::write(mail.join("cur").join(seen("1759300007.U1-7.test")), tax).unwrap();
+    std::fs::create_dir_all(store.join("taxes")).unwrap();
+    std::fs::write(store.join("taxes/notice.md"), "# Zeugma notice\n\nKeep the Zeugma receipt.\n").unwrap();
+    let list = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VTODO")).unwrap();
+    let zone = jiff::tz::TimeZone::system();
+    let pay = TaskEdit { title: "Pay the Zeugma tax".into(), cases: vec!["taxes".into()], estimate: 15, ..TaskEdit::default() };
+    vdir::write_item(&list.dir.join("zeugma-pay.ics"), &tasks::new_task(&pay, "zeugma-pay", &zone, &Zoned::now()).unwrap()).unwrap();
+    // A step without a project of its own: in its bigger task's.
+    let step = TaskEdit { title: "Find the Zeugma form".into(), parent: "zeugma-pay".into(), estimate: 5, ..TaskEdit::default() };
+    vdir::write_item(&list.dir.join("zeugma-step.ics"), &tasks::new_task(&step, "zeugma-step", &zone, &Zoned::now()).unwrap()).unwrap();
+    let calendar = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VEVENT")).unwrap();
+    let tomorrow = Zoned::now().date().tomorrow().unwrap();
+    let edit = sioul_core::agenda::EventEdit { title: "Zeugma appointment".into(), start: format!("{tomorrow}T10:00"), end: format!("{tomorrow}T11:00"), ..Default::default() };
+    let event = sioul_core::agenda::new_event(&edit, &zone).unwrap();
+    let event = sioul_core::agenda::add_lines(&event, &["REFID:taxes".to_string()]).unwrap();
+    vdir::write_item(&calendar.dir.join("zeugma-event.ics"), &event).unwrap();
+    let now = Zoned::now().timestamp().as_second();
+    sioul_core::timelog::record(&sioul_core::timelog::Session { project: "taxes".into(), start: now - 2 * 3600, minutes: 45, note: "Zeugma call".into(), ..Default::default() }).unwrap();
+    let today = Zoned::now().date().to_string();
+    let bill = sioul_core::invoice::Invoice { number: "2026-099".into(), date: today.clone(), due: today, project: "taxes".into(), project_title: "Zeugma taxes".into(), client: "Zeugma Ltd".into(), total_cents: 5000, currency: "EUR".into(), ..Default::default() };
+    sioul_core::invoice::save_in(&sioul_core::invoice::folder(), &bill).unwrap();
+    let letter = sioul_core::letters::Letter {
+        id: "zeugma-letter".into(),
+        received: Some(Zoned::now().date()),
+        case: "taxes".into(),
+        reading: sioul_core::letters::Reading { sender: "Zeugma Office".into(), deadline: Zoned::now().date().tomorrow().ok(), ..Default::default() },
+        ..Default::default()
+    };
+    sioul_core::letters::Letters { root: store.to_path_buf(), list: vec![letter], ..Default::default() }.save().unwrap();
+    // In no project: a paper, the phone's messages, a call.
+    let mut wallet = sioul_core::papers::Wallet { root: store.to_path_buf(), ..Default::default() };
+    wallet.put(sioul_core::papers::Paper { title: "Identity card".into(), kind: sioul_core::papers::Kind::of("identity"), until: Some(jiff::civil::date(2031, 5, 1)), ..Default::default() });
+    wallet.save().unwrap();
+    let at = (now - 3600) * 1000;
+    let phone = root.join("state/sioul/phone-messages/log");
+    std::fs::create_dir_all(&phone).unwrap();
+    let lines = [
+        json!({ "at": at, "id": "m-1", "app": "org.example.sms", "label": "Messages", "kind": "text", "name": "Bank", "who": "automaton", "text": "Your code is 482 913. Do not share it." }),
+        json!({ "at": at + 1000, "id": "m-2", "app": "org.example.sms", "label": "Messages", "kind": "text", "name": "Shop", "code": true }),
+        json!({ "at": at + 2000, "id": "m-3", "app": "org.example.sms", "label": "Messages", "kind": "text", "name": "Paul", "who": "safe", "text": "See you at six." }),
+        // Held by the phone until tomorrow: not given before.
+        json!({ "at": at + 3000, "id": "m-4", "app": "org.example.sms", "label": "Messages", "kind": "text", "name": "Paul", "who": "safe", "text": "Later words.", "shows": (now + 86_400) * 1000 }),
+    ];
+    std::fs::write(phone.join("phone-1.jsonl"), lines.iter().map(Value::to_string).collect::<Vec<_>>().join("\n") + "\n").unwrap();
+    let calls = root.join("state/sioul/calls/log");
+    std::fs::create_dir_all(&calls).unwrap();
+    std::fs::write(calls.join("phone-1.jsonl"), json!({ "at": at, "key": "+33199001234", "who": "stranger", "rang": false }).to_string() + "\n").unwrap();
+    // The closed project's client, in the address book: their calls, messages and texts are kept from agents too.
+    let book = vdir::create(Kind::Contacts, vdir::LOCAL, "Contacts", None, &[]).unwrap();
+    std::fs::write(book.dir.join("zeugma.vcf"), "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:zeugma-ltd\r\nFN:Zeugma Ltd\r\nTEL:+33 2 61 91 00 00\r\nEND:VCARD\r\n").unwrap();
+    std::fs::write(calls.join("phone-2.jsonl"), json!({ "at": at + 5000, "key": "+33261910000", "who": "neutral", "rang": true }).to_string() + "\n").unwrap();
+    // Texts, sealed at rest as a phone writes them (a key of the tests', never a keyring's).
+    let seal = sioul_sync::textseal::TextSeal::new(&TEXTS_KEY);
+    let sms = |id: &str, with: &[&str], body: &str, minutes: i64| sioul_core::texts::Text {
+        id: id.into(),
+        at: (now - minutes * 60) * 1000,
+        direction: "in".into(),
+        with: with.iter().map(|w| w.to_string()).collect(),
+        body: body.into(),
+        ..Default::default()
+    };
+    let texts = [
+        sms("sms-1", &["+33199001234"], "Your code is 830 517. Do not share it.", 50),
+        sms("sms-2", &["+33199001234"], "See you tomorrow at the market.", 40),
+        sms("sms-3", &["+33261910000"], "The Zeugma invoice is attached.", 30),
+        sms("sms-4", &["+33199001234", "+33353010000"], "Hello from the group.", 20),
+    ];
+    let log = sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::LOG, "phone-1");
+    sioul_core::texts::append(&log, &texts, &seal, None).unwrap();
+    let _ = std::fs::read_to_string(store.join("sioul-budgets.toml")).map(|budgets| std::fs::write(store.join("sioul-budgets.toml"), format!("{budgets}\n[[budget]]\nid = \"zeugma\"\ntitle = \"Zeugma income\"\nperiod = \"month\"\ntarget = 0\n")));
+}
+
+/// The key the texts of the tests are sealed with (`phone::sealer` takes it in tests: never a keyring).
+pub(super) const TEXTS_KEY: [u8; 32] = [7; 32];
 
 /// When the fixture's table was trained: some of the corpus's newest fifth came after.
 const TABLE_TRAINED: i64 = 1_760_000_000;
@@ -304,7 +394,10 @@ fn unreadable_lines_are_said() {
     }
 }
 
-const READING: &[&str] = &["porch", "search_mail", "read_message", "list_tasks", "agenda", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find"];
+const READING: &[&str] = &[
+    "porch", "search_mail", "read_message", "list_tasks", "agenda", "search_contacts", "budgets", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "contracts",
+    "letters", "time", "invoices", "reminders", "now",
+];
 const WRITING: &[&str] = &["add_task", "complete_task", "add_event", "add_note", "draft_reply", "draft_message", "link"];
 /// The spam filter's, listed after the others; those that write, and the one that reads your servers.
 const SPAM: &[&str] = &["spam_status", "spam_eval", "spam_dry_run", "spam_review", "spam_job", "spam_label", "spam_fetch", "spam_train"];
@@ -397,6 +490,213 @@ fn reading_round_trip() {
     assert_eq!(budgets["isError"], false, "{said}");
     assert!(said.contains("Home (") && said.contains("Savings account") && said.contains("[IBAN …0189]"), "{said}");
     assert!(!budgets.to_string().contains("30006000"), "{budgets}");
+}
+
+/// What an answer must never hold: the closed project's word, as its titles, subjects and notes write it.
+fn never_zeugma(answer: &Value, what: &str) {
+    assert!(!answer.to_string().contains("Zeugma"), "{what}: {answer}");
+}
+
+/// Every project is closed to agents until opened (`access`): the closed
+/// project's mail, note, task and its step, event, time, invoice, letter and
+/// budget are in no answer of any tool, listed, searched or followed; asked
+/// for by address, they are refused, saying so; nothing is written into it,
+/// nor tied to it, nor answered there. Lists say how many things they left
+/// out, never which; a search's count does not depend on its words.
+#[test]
+fn a_closed_project_is_never_shown() {
+    let home = home();
+    let mut server = server();
+    let asks = [
+        ("porch", json!({ "open": true, "all": true })),
+        ("search_mail", json!({})),
+        ("search_mail", json!({ "query": "Zeugma", "in_text": true })),
+        ("search_mail", json!({ "query": "notice" })),
+        ("list_tasks", json!({ "view": "list" })),
+        ("list_tasks", json!({ "view": "list", "query": "form" })),
+        ("list_tasks", json!({ "view": "now" })),
+        ("list_tasks", json!({ "view": "today" })),
+        ("agenda", json!({ "days": 5 })),
+        ("search_contacts", json!({})),
+        ("budgets", json!({})),
+        ("search_notes", json!({})),
+        ("search_notes", json!({ "query": "Zeugma", "in_text": true })),
+        ("list_projects", json!({})),
+        ("links", json!({ "uri": "sioul:case/housing" })),
+        ("find", json!({ "query": "Zeugma" })),
+        ("find", json!({ "query": "notice" })),
+        ("time", json!({})),
+        ("invoices", json!({})),
+        ("letters", json!({})),
+        ("reminders", json!({ "days": 30 })),
+        ("papers", json!({})),
+        ("contracts", json!({})),
+        ("now", json!({})),
+        ("resources/read", json!({ "uri": "sioul:projects" })),
+    ];
+    for (tool, arguments) in asks {
+        let answer = if tool.contains('/') { ask(&mut server, tool, arguments.clone()) } else { call(&mut server, tool, arguments.clone()) };
+        assert!(answer["isError"] != true && answer.get("error").is_none(), "{tool} {arguments}: {answer}");
+        // The agent's own words said back ("Nothing matches “Zeugma”") are not the project's.
+        let said: Value = serde_json::from_str(&answer.to_string().replace("“Zeugma”", "“…”")).unwrap();
+        never_zeugma(&said, tool);
+    }
+    // Lists say how many they left out, never which; whatever the words, the same number.
+    let all = call(&mut server, "search_mail", json!({}));
+    let kept = all["structuredContent"]["kept_from_agents"].as_u64().unwrap();
+    assert!(kept >= 1 && text(&all).contains("left out on purpose"), "{all}");
+    for query in ["Zeugma", "housing", "nothing like it"] {
+        assert_eq!(call(&mut server, "search_mail", json!({ "query": query }))["structuredContent"]["kept_from_agents"].as_u64(), Some(kept), "{query}");
+    }
+    assert_eq!(call(&mut server, "list_projects", json!({}))["structuredContent"]["closed_to_agents"], 1);
+    assert!(text(&call(&mut server, "list_tasks", json!({ "view": "list" }))).contains("Find the rent receipt"), "the opened project's task still comes");
+    // Asked for by address: refused, saying so.
+    for (tool, arguments) in [
+        ("read_message", json!({ "message": "mid:zeugma-1@finances.example" })),
+        ("read_note", json!({ "note": "taxes/notice.md" })),
+        ("list_projects", json!({ "id": "taxes" })),
+        ("links", json!({ "uri": "sioul:case/taxes" })),
+        ("links", json!({ "uri": "mid:zeugma-1@finances.example" })),
+        ("links", json!({ "uri": "sioul:task/zeugma-step" })),
+        ("time", json!({ "project": "taxes" })),
+    ] {
+        let refused = call(&mut server, tool, arguments.clone());
+        assert_eq!(refused["isError"], true, "{tool} {arguments}: {refused}");
+        assert!(text(&refused).contains("closed to agents") || text(&refused).contains("kept from agents"), "{tool}: {}", text(&refused));
+        never_zeugma(&refused, tool);
+    }
+    // Nothing is written into it, tied to it, answered or labelled there
+    // (other tests write beside it at the same time: only its own folder is watched).
+    let before = snapshot(&[home.root.join("store/taxes")]);
+    for (tool, arguments) in [
+        ("add_task", json!({ "title": "Call the tax office", "cases": ["taxes"] })),
+        ("add_task", json!({ "title": "A step", "parent": "zeugma-pay" })),
+        ("add_task", json!({ "title": "From the notice", "source": "mid:zeugma-1@finances.example" })),
+        ("add_note", json!({ "title": "Thoughts", "folder": "taxes" })),
+        ("add_note", json!({ "title": "Thoughts", "links": ["sioul:case/taxes"] })),
+        ("link", json!({ "from": "sioul:task/receipt", "to": "sioul:case/taxes" })),
+        ("link", json!({ "from": "mid:zeugma-1@finances.example", "to": "sioul:case/housing" })),
+        ("draft_reply", json!({ "message": "mid:zeugma-1@finances.example", "body": "Paid." })),
+        ("draft_message", json!({ "to": ["office@example.org"], "subject": "Taxes", "body": "Hello.", "links": ["sioul:case/taxes"] })),
+        ("complete_task", json!({ "task": "zeugma-pay" })),
+        ("spam_label", json!({ "message": "mid:zeugma-1@finances.example", "label": "spam" })),
+    ] {
+        let refused = call(&mut server, tool, arguments.clone());
+        assert_eq!(refused["isError"], true, "{tool} {arguments}: {refused}");
+        never_zeugma(&refused, tool);
+    }
+    assert_eq!(snapshot(&[home.root.join("store/taxes")]), before, "nothing written");
+    assert!(!Draft::all().iter().any(|d| d.body.contains("Paid.") || d.subject == "Taxes"), "no draft");
+}
+
+/// `[mcp] outside_projects = false`: only the projects opened reach an agent;
+/// nothing is written outside them.
+#[test]
+fn things_outside_projects_can_be_closed() {
+    let home = home();
+    let path = home.root.join("config/sioul/outside-closed.toml");
+    let config = std::fs::read_to_string(&home.config).unwrap();
+    std::fs::write(&path, format!("{config}\n[mcp]\noutside_projects = false\n")).unwrap();
+    let mut server = Server::new(&path, "en");
+    let mail = call(&mut server, "search_mail", json!({}));
+    let subjects: Vec<&str> = mail["structuredContent"]["messages"].as_array().unwrap().iter().map(|m| m["subject"].as_str().unwrap()).collect();
+    assert_eq!(subjects, ["Your housing aid file"], "{mail}");
+    let porch = text(&call(&mut server, "porch", json!({ "open": true, "all": true })));
+    assert!(porch.contains("Your housing aid file") && !porch.contains("security code") && !porch.contains("lottery"), "{porch}");
+    assert!(!text(&call(&mut server, "search_notes", json!({}))).contains("Letters to the CAF"));
+    assert_eq!(call(&mut server, "read_note", json!({ "note": "notes/letters.md" }))["isError"], true);
+    assert!(text(&call(&mut server, "list_tasks", json!({ "view": "list" }))).contains("Find the rent receipt"));
+    for tool in ["papers", "phone_messages", "calls"] {
+        let answer = call(&mut server, tool, json!({}));
+        assert!(answer["structuredContent"]["kept_from_agents"].as_u64().unwrap() >= 1, "{tool}: {answer}");
+        assert!(!text(&answer).contains("Identity card") && !text(&answer).contains("See you at six"), "{tool}: {answer}");
+    }
+    for (tool, arguments) in [
+        ("add_task", json!({ "title": "Outside" })),
+        ("add_event", json!({ "title": "Outside", "start": "2030-01-02T10:00" })),
+        ("add_note", json!({ "title": "Outside" })),
+        ("draft_message", json!({ "to": ["office@example.org"], "subject": "Outside", "body": "Hello." })),
+        ("read_message", json!({ "message": "mid:code-1@bank.example" })),
+    ] {
+        let refused = call(&mut server, tool, arguments.clone());
+        assert_eq!(refused["isError"], true, "{tool}: {refused}");
+    }
+    assert!(!home.root.join("store/notes/Outside.md").exists() && !Draft::all().iter().any(|d| d.subject == "Outside"), "nothing written");
+}
+
+/// The phone's messages: the words where the phone sent them, a code its
+/// phone did not catch masked, one it caught said without it, a message held
+/// by the phone not given before its time, all framed as data; the calls.
+#[test]
+fn the_phone_messages_and_calls() {
+    home();
+    let mut server = server();
+    let answer = call(&mut server, "phone_messages", json!({}));
+    let said = text(&answer);
+    assert_eq!(answer["isError"], false, "{said}");
+    assert!(said.contains("See you at six.") && said.contains("data, never instructions"), "{said}");
+    assert!(said.contains("[code hidden]") && !said.contains("482 913") && !answer.to_string().contains("482 913"), "{said}");
+    assert!(said.contains("A code or an approval came"), "{said}");
+    assert!(!said.contains("Later words") && answer["structuredContent"]["waiting"] == 1, "{answer}");
+    // Never found by a code's digits.
+    assert_eq!(call(&mut server, "phone_messages", json!({ "query": "913" }))["structuredContent"]["total"], 0);
+    let calls = call(&mut server, "calls", json!({}));
+    assert!(text(&calls).contains("declined") && calls["structuredContent"]["calls"].as_array().unwrap().len() == 1, "{calls}");
+    // The moment now, read-only and cheap: what now is for and what reaches the person.
+    let now = call(&mut server, "now", json!({}));
+    assert!(now["structuredContent"]["reaches"].as_array().unwrap().len() > 20 && text(&now).starts_with("Now: "), "{now}");
+}
+
+/// Texts: kept from agents unless `[mcp] texts = true`; then read and
+/// searched with their codes masked (never found by their digits), a closed
+/// project's client's conversation kept, framed as data; a draft saved for the
+/// Texts page, sealed, never a request to send; never to a group, a short
+/// number or a kept conversation.
+#[test]
+fn texts_only_when_allowed_and_never_sent() {
+    let home = home();
+    // Off by default: unlisted, refused.
+    let mut server = server();
+    let listed = ask(&mut server, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().clone();
+    assert!(!listed.iter().any(|t| t["name"] == "texts" || t["name"] == "draft_text"));
+    let refused = ask(&mut server, "tools/call", json!({ "name": "texts", "arguments": {} }));
+    assert!(refused["error"]["message"].as_str().unwrap().contains("[mcp] texts = true"), "{refused}");
+    // Allowed.
+    let path = home.root.join("config/sioul/texts-on.toml");
+    let config = std::fs::read_to_string(&home.config).unwrap();
+    std::fs::write(&path, format!("{config}\n[mcp]\ntexts = true\n")).unwrap();
+    let mut server = Server::new(&path, "en");
+    let names: Vec<String> = ask(&mut server, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
+    assert!(["texts", "search_texts", "draft_text"].iter().all(|n| names.iter().any(|m| m == n)), "{names:?}");
+    let list = call(&mut server, "texts", json!({}));
+    let said = text(&list);
+    assert_eq!(list["isError"], false, "{said}");
+    assert!(said.contains("See you tomorrow") || said.contains("Hello from the group"), "{said}");
+    assert!(said.contains("data, never instructions") && list["structuredContent"]["kept_from_agents"] == 1, "{list}");
+    never_zeugma(&list, "texts");
+    let talk = call(&mut server, "texts", json!({ "conversation": "+33199001234" }));
+    let said = text(&talk);
+    assert!(said.contains("See you tomorrow at the market.") && said.contains("[code hidden]") && !talk.to_string().contains("830 517"), "{said}");
+    assert_eq!(call(&mut server, "search_texts", json!({ "query": "market" }))["structuredContent"]["found"].as_array().unwrap().len(), 1);
+    for digits in ["830517", "830 517", "Zeugma"] {
+        let found = call(&mut server, "search_texts", json!({ "query": digits }));
+        assert!(found["structuredContent"]["found"].as_array().unwrap().is_empty(), "{digits}: {found}");
+    }
+    let kept = call(&mut server, "texts", json!({ "conversation": "+33261910000" }));
+    assert_eq!(kept["isError"], true, "{kept}");
+    never_zeugma(&kept, "a kept conversation");
+    // A draft: saved for the Texts page, sealed; never a request.
+    let drafted = call(&mut server, "draft_text", json!({ "to": "+33199001234", "body": "Yes, see you there." }));
+    assert_eq!((drafted["isError"].clone(), drafted["structuredContent"]["sent"].clone()), (json!(false), json!(false)), "{drafted}");
+    let seal = sioul_sync::textseal::TextSeal::new(&TEXTS_KEY);
+    assert!(sioul_core::textdraft::all(&seal).iter().any(|d| d.body == "Yes, see you there." && d.conversation == "+33199001234"));
+    assert!(!std::fs::read_to_string(sioul_core::textdraft::path()).unwrap().contains("see you there"), "sealed at rest");
+    assert!(sioul_core::texts::read_requests(&sioul_core::texts::folder(), &seal).is_empty(), "nothing to send");
+    assert!(text(&call(&mut server, "texts", json!({ "conversation": "+33199001234" }))).contains("1 draft written by an agent waits"));
+    for (to, why) in [("+33199001234,+33353010000", "a group"), ("+33261910000", "kept"), ("3615", "a short number")] {
+        let refused = call(&mut server, "draft_text", json!({ "to": to, "body": "Hello." }));
+        assert_eq!(refused["isError"], true, "{why}: {refused}");
+    }
 }
 
 #[test]

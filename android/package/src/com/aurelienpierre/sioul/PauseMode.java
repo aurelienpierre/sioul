@@ -676,10 +676,21 @@ final class PauseMode
         return said;
     }
 
-    /** At a restart or an update: the phone's state found, not heard; the next change counts from what holds then. */
-    static void forgetSeen(Context context)
+    /**
+     * At a restart or an update: the phone's state found, not heard, noted as
+     * seen, so that the next change counts from what holds now (forgetting it
+     * made the first change after each update a "first sight", never heard).
+     * Without the access, nothing is known: forgotten.
+     */
+    static void noteSeen(Context context)
     {
-        kept(context).edit().remove(SEEN).commit();
+        SharedPreferences kept = kept(context);
+        int filter = tooOld() || !accessGranted(context) ? NotificationManager.INTERRUPTION_FILTER_UNKNOWN : notifications(context).getCurrentInterruptionFilter();
+        Boolean noted = DndHeard.noted(filter);
+        if (noted == null)
+            kept.edit().remove(SEEN).commit();
+        else
+            kept.edit().putBoolean(SEEN, noted).commit();
     }
 
     /** Whether Sioul's do-not-disturb holds on this phone, as Rust last said (the tile). */
@@ -688,11 +699,17 @@ final class PauseMode
         return kept(context).getBoolean(SIOUL_ON, false);
     }
 
-    /** Rust's word at each apply: {on}, Sioul's do-not-disturb here; the tile shown again when it changed. */
+    /**
+     * Rust's word at each apply: {on}, Sioul's do-not-disturb here; the tile
+     * shown again when it changed. The phone's state noted when none was ever
+     * seen (a first install): the next change is heard.
+     */
     private static void flags(Context context, JSONObject said)
     {
         boolean on = said.optBoolean("on", false);
         SharedPreferences kept = kept(context);
+        if (!kept.contains(SEEN))
+            noteSeen(context);
         if (kept.contains(SIOUL_ON) && kept.getBoolean(SIOUL_ON, false) == on)
             return;
         kept.edit().putBoolean(SIOUL_ON, on).commit();

@@ -46,6 +46,7 @@
 //! - [`backend`](backend/index.html): the object behind the window, `Sioul`, and the work it runs off the window's thread.
 //! - [`desktop`](desktop/index.html): the desktop's icon theme, and where the desktop puts a window's buttons.
 //! - [`hours`](hours/index.html): what now is for (work, admin, leisure, a meal, sleep), as the pages and notifications ask it.
+//! - [`colour`](colour/index.html): the sites in the screen's own colours, and calmer colours (on computers).
 //!
 //! ## Mail
 //!
@@ -104,16 +105,22 @@
 //! - [`steps`](steps/index.html): the phone in the background: a service that keeps your devices in step.
 //! - [`homecard`](homecard/index.html): the card on the phone's home screen.
 //! - [`calls`](calls/index.html): calls screened on a phone.
+//! - [`attachments`](attachments/index.html): mail attachments opened in the app you choose and saved where you choose, without an antivirus to call.
 //! - [`appnotes`](appnotes/index.html): other apps' notifications on a phone: now, or how long they wait.
 //! - [`reaches`](reaches/index.html): Settings ▸ What reaches you in words, and a person's sheet.
 
 mod alarms;
 mod appnotes;
+// Mail attachments on a phone: opened in the app you choose, saved where you choose (docs/client.md, "Antivirus").
+mod attachments;
 mod backend;
 mod bank;
 mod blocks;
 mod calls;
 mod capacity;
+// colour: the sites in the screen's own colours, and calmer colours (docs/colour.md); computers only.
+#[cfg(not(target_os = "android"))]
+mod colour;
 mod contracts;
 mod crypto;
 mod desktop;
@@ -138,6 +145,9 @@ mod map;
 mod outside;
 mod papers;
 mod pauses;
+mod phonemsgs;
+// texts: SMS phase (b).
+mod texts;
 mod pim;
 mod projects;
 // Settings ▸ What reaches you, in words, and a person's sheet (docs/attention.md).
@@ -304,7 +314,7 @@ pub fn run() -> i32 {
     let mut app = QGuiApplication::new();
     if let Some(mut app) = app.as_mut() {
         app.as_mut().set_application_name(&QString::from("Sioul"));
-        app.as_mut().set_application_version(&QString::from(env!("CARGO_PKG_VERSION")));
+        app.as_mut().set_application_version(&QString::from(sioul_core::build::DESCRIBED));
     }
     // SAFETY: the application exists; called once, on the main thread.
     unsafe { sioul_warm_up() };

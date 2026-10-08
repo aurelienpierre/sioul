@@ -113,6 +113,14 @@ Panel {
         }
     }
 
+    // The attachments unfolded, and the reading scrolled to its end, where they are (the window's images).
+    function showAttachments() {
+        reader.attachmentsShown = true
+        const flick = readingScroll.contentItem as Flickable
+        if (flick !== null)
+            flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+    }
+
     function attachmentIcon(kind) {
         return { "pdf": "application-pdf", "image": "image-x-generic", "text": "text-x-generic", "document": "x-office-document",
                  "archive": "package-x-generic", "calendar": "view-calendar-day" }[kind] || "mail-attachment"
@@ -673,7 +681,8 @@ Panel {
                         Label {
                             visible: reader.attachmentsShown && reader.reading !== null && reader.reading.can_open
                             Layout.fillWidth: true
-                            text: reader.sioul.text("ui-attachments-scan")
+                            // A phone has no antivirus Sioul can call: said, never a scan claimed.
+                            text: reader.sioul.attachmentsUnscanned() ? reader.sioul.text("ui-attachments-phone") : reader.sioul.text("ui-attachments-scan")
                             wrapMode: Text.Wrap
                             color: reader.theme.muted
                             font.pixelSize: 13
@@ -712,13 +721,14 @@ Panel {
                                 }
                                 Button {
                                     visible: reader.reading !== null && reader.reading.can_open
-                                    text: reader.sioul.text("ui-save")
+                                    // On a phone, Android asks where.
+                                    text: reader.sioul.attachmentsUnscanned() ? reader.sioul.text("ui-save-as") : reader.sioul.text("ui-save")
                                     onClicked: reader.sioul.saveAttachment(reader.key, attached.modelData.index)
                                 }
                                 Button {
                                     visible: reader.reading !== null && reader.reading.can_open
                                     text: reader.sioul.text("papers-keep")
-                                    Accessible.description: reader.sioul.text("papers-keep-help")
+                                    Accessible.description: reader.sioul.attachmentsUnscanned() ? reader.sioul.text("papers-keep-help-phone") : reader.sioul.text("papers-keep-help")
                                     onClicked: reader.sioul.keepAttachmentAsPaper(reader.key, attached.modelData.index)
                                 }
                             }

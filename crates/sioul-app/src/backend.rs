@@ -136,6 +136,11 @@ pub mod qobject {
         #[qinvokable]
         fn keep_attachment_as_paper(self: Pin<&mut Sioul>, key: &QString, index: i32);
 
+        /// Whether attachments open here without an antivirus check: a phone has
+        /// none Sioul can call (`attachments`); the Reader says so.
+        #[qinvokable]
+        fn attachments_unscanned(self: &Sioul) -> bool;
+
         /// The papers wallet, as JSON (`papers::view`).
         #[qinvokable]
         fn papers(self: &Sioul) -> QString;
@@ -556,6 +561,19 @@ pub mod qobject {
         #[qinvokable]
         fn import_security_key_certificate(self: Pin<&mut Sioul>, ident: &QString, url: &QString);
 
+        /// "Import from GnuPG": the key's certificate as your GnuPG keeps it;
+        /// `ident` empty for the key just read.
+        #[qinvokable]
+        fn import_security_key_from_gnupg(self: Pin<&mut Sioul>, ident: &QString);
+
+        /// "Renew for two years": GnuPG renews the key, its pinentry asking the PIN.
+        #[qinvokable]
+        fn renew_security_key(self: Pin<&mut Sioul>, ident: &QString);
+
+        /// "Send it to keys.openpgp.org", pressed once its sentence was read.
+        #[qinvokable]
+        fn send_security_key_to_keys_openpgp(self: Pin<&mut Sioul>, ident: &QString);
+
         /// "Forget the PIN now".
         #[qinvokable]
         fn forget_security_key_pin(self: Pin<&mut Sioul>);
@@ -709,7 +727,8 @@ pub mod qobject {
         #[qinvokable]
         fn uri_of(self: &Sioul, kind: &QString, id: &QString) -> QString;
 
-        /// Whether a file, by its name, path or address, is one the desktop would start: a program, a script, an installer.
+        /// Whether a file, by its name, path or address, is one the desktop would start: a program, a script, an installer
+        /// (on a phone, Android's installers too).
         #[qinvokable]
         fn is_program(self: &Sioul, name: &QString) -> bool;
 
@@ -788,6 +807,11 @@ pub mod qobject {
         /// A prescription made (`id` empty) or changed (JSON); returns {"id"} or {"error"}.
         #[qinvokable]
         fn save_prescription(self: Pin<&mut Sioul>, id: &QString, edit: &QString) -> QString;
+
+        /// "Show to a doctor or pharmacist": a prescription's medicines (its
+        /// id), or all those taken now (""), as JSON, read-only.
+        #[qinvokable]
+        fn health_for_professional(self: &Sioul, prescription: &QString) -> QString;
 
         /// A medicine or a prescription taken out; returns what went wrong, else "".
         #[qinvokable]
@@ -1183,6 +1207,18 @@ pub mod qobject {
         #[qinvokable]
         fn set_share_backup(self: Pin<&mut Sioul>, on: bool) -> QString;
 
+        /// This device's own files sent to that server too, beside the sync
+        /// app, or not, on this device (docs/database.md, "Sent to the server
+        /// too"); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_share_send(self: Pin<&mut Sioul>, on: bool) -> QString;
+
+        /// "Send everything again": this device's files sent to the server
+        /// again, whatever was sent before, then the others' fetched; off the
+        /// window's thread, said in the panel's status (docs/database.md).
+        #[qinvokable]
+        fn share_send_again(self: Pin<&mut Sioul>);
+
         /// The sharing folder's place on the server, given by hand
         /// ("Documents/Sioul", or its address; "" to look for it by itself),
         /// looked at off the window's thread; returns what went wrong, else "".
@@ -1441,6 +1477,17 @@ pub mod qobject {
         /// Settings ▸ Calls, on a phone, as JSON (`calls::setup`).
         #[qinvokable]
         fn calls_setup(self: &Sioul) -> QString;
+
+        /// The phone's messages on your computers (`phonemsgs::call`): "view"
+        /// (the Porch's section), "seen", "unseen", "block", "setup" (the
+        /// phone's tab), "set", "part"; their JSON.
+        #[qinvokable]
+        fn phone_messages(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
+
+        /// texts: read and sent through your phone (`texts::call`): "view",
+        /// "conversation", "send", "again", "parts", "media", "save-media", "close", "setup", "ask", "part", "cap"; their JSON.
+        #[qinvokable]
+        fn texts(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
 
         /// Settings ▸ What reaches you, as JSON (`reaches::view`): the moment
         /// now in sentences, the presets, a card per time, the matrix's grid.
@@ -2057,7 +2104,8 @@ pub(crate) fn coalesced(shared: &Arc<Shared>, which: fn(&Shared) -> &Job, work: 
 pub(crate) fn reading_json() -> String {
     let config = load_config();
     let reading = config.reading;
-    serde_json::json!({ "family": reading.family, "size": reading.size, "spacing": reading.spacing, "theme": config.theme.unwrap_or_default(), "places_named": config.places_named }).to_string()
+    // colour: and the sites' colours, as Settings ▸ Display has them (SitesPage.qml, docs/colour.md).
+    serde_json::json!({ "family": reading.family, "size": reading.size, "spacing": reading.spacing, "theme": config.theme.unwrap_or_default(), "places_named": config.places_named, "screen_colours": config.screen_colours.unwrap_or(true), "calmer_colours": config.calmer_colours.unwrap_or_default() }).to_string()
 }
 
 /// What the Porch and the budgets read: the configuration and its lists.
@@ -2139,8 +2187,8 @@ pub(crate) fn offline() -> bool {
     std::env::var_os("SIOUL_DEMO").is_some()
 }
 
-/// Where the forecast is kept between fetches.
-fn weather_cache() -> PathBuf {
+/// Where the forecast is kept between fetches (the phone's card reads it too, `homecard`).
+pub(crate) fn weather_cache() -> PathBuf {
     config::state_dir().join("weather.json")
 }
 
@@ -2176,6 +2224,8 @@ pub(crate) fn update_weather(qt: &QtThread, shared: &Arc<Shared>) {
                 let _ = std::fs::create_dir_all(config::state_dir());
                 let _ = std::fs::write(weather_cache(), text);
             }
+            // The phone's card shows it too, hour by hour.
+            crate::homecard::weather_seen();
             let line = shown(&forecast);
             let _ = qt.queue(move |mut sioul| sioul.as_mut().set_forecast(QString::from(&line)));
         }
@@ -2863,7 +2913,10 @@ impl Afterwards {
 }
 
 /// Writes an attachment to the cache, has the antivirus check it, then opens or
-/// saves it; a threat, or no antivirus, and the copy is deleted.
+/// saves it; a threat, or no antivirus, and the copy is deleted. On a phone,
+/// which has no antivirus Sioul can call, nothing is scanned and nothing
+/// claims it: the attachment opens in the app you choose, or Android asks
+/// where to save it (`attachments`).
 fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i32, afterwards: Afterwards, unchecked: bool) {
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
@@ -2877,9 +2930,11 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
             return;
         };
         let name = one_file_name(&name);
+        let phone = crate::attachments::phone();
         // A program is never started from a mail, checked or not: an antivirus
-        // may not know a new one yet. Saved, it is yours to run.
-        if afterwards != Afterwards::Save && sioul_core::links::is_program(&name) {
+        // may not know a new one yet. Saved, it is yours to run. On a phone,
+        // Android's installers too.
+        if afterwards != Afterwards::Save && crate::attachments::kept_closed(&name, phone) {
             set_status(&qt, say("attachment-program", &[("name", name)]));
             return;
         }
@@ -2890,21 +2945,29 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
             return;
         }
         mark_from_mail(&file);
-        set_status(&qt, say("scan-running", &[("name", name.clone())]));
+        if !phone {
+            set_status(&qt, say("scan-running", &[("name", name.clone())]));
+        }
         // Keyed anew each session: a file cannot be made to pass for one found clean.
         static KEYS: OnceLock<std::collections::hash_map::RandomState> = OnceLock::new();
         let content = std::hash::BuildHasher::hash_one(KEYS.get_or_init(Default::default), &bytes);
         let known_clean = shared.clean.lock().is_ok_and(|c| c.contains(&content));
-        // Opened without a check: you said so, knowing no antivirus is here.
-        let verdict = if known_clean || unchecked { Verdict::Clean } else { antivirus::scan(&file) };
+        // Opened without a check: you said so, knowing no antivirus is here; or a phone, which has none.
+        let verdict = match crate::attachments::check(phone, known_clean, unchecked) {
+            crate::attachments::Check::Scan => antivirus::scan(&file),
+            crate::attachments::Check::Skip | crate::attachments::Check::Unchecked => Verdict::Clean,
+        };
         let line = match verdict {
             Verdict::Clean => {
                 if !unchecked
+                    && !phone
                     && let Ok(mut clean) = shared.clean.lock()
                 {
                     clean.insert(content);
                 }
                 match afterwards {
+                    // Android's own app for it, which you choose; the words say it was not checked.
+                    Afterwards::Open if phone => crate::attachments::open(&file, &name),
                     Afterwards::Open => {
                         let url = file_url(&file);
                         let _ = qt.queue(move |sioul| sioul.open_url(QString::from(&url)));
@@ -2921,6 +2984,8 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
                             Err(e) => say("scan-error", &[("name", name), ("detail", e)]),
                         }
                     }
+                    // Android's question where: a phone's downloads are not Sioul's to write.
+                    Afterwards::Save if phone => crate::attachments::save(&qt, &file, &name),
                     Afterwards::Save => {
                         let target = free_path(&downloads(), &name);
                         let saved = std::fs::create_dir_all(downloads()).and_then(|()| std::fs::copy(&file, &target));
@@ -3114,13 +3179,21 @@ impl qobject::Sioul {
     }
 
     fn open_attachment(mut self: Pin<&mut Self>, key: &QString, index: i32) {
-        self.as_mut().set_status(QString::from(&tr().text("scan-running-any", None)));
+        if !crate::attachments::phone() {
+            self.as_mut().set_status(QString::from(&tr().text("scan-running-any", None)));
+        }
         checked_attachment(&self.qt_thread(), &self.shared(), key.to_string(), index, Afterwards::Open, false);
     }
 
     fn save_attachment(mut self: Pin<&mut Self>, key: &QString, index: i32) {
-        self.as_mut().set_status(QString::from(&tr().text("scan-running-any", None)));
+        if !crate::attachments::phone() {
+            self.as_mut().set_status(QString::from(&tr().text("scan-running-any", None)));
+        }
         checked_attachment(&self.qt_thread(), &self.shared(), key.to_string(), index, Afterwards::Save, false);
+    }
+
+    fn attachments_unscanned(&self) -> bool {
+        crate::attachments::phone()
     }
 
     fn attachment_unchecked(self: Pin<&mut Self>, key: &QString, index: i32, what: i32) {
@@ -3128,7 +3201,9 @@ impl qobject::Sioul {
     }
 
     fn keep_attachment_as_paper(mut self: Pin<&mut Self>, key: &QString, index: i32) {
-        self.as_mut().set_status(QString::from(&tr().text("scan-running-any", None)));
+        if !crate::attachments::phone() {
+            self.as_mut().set_status(QString::from(&tr().text("scan-running-any", None)));
+        }
         checked_attachment(&self.qt_thread(), &self.shared(), key.to_string(), index, Afterwards::Paper, false);
     }
 
@@ -3822,6 +3897,18 @@ impl qobject::Sioul {
         securitykey::import_certificate(&self.qt_thread(), &ident.to_string(), &url.to_string());
     }
 
+    fn import_security_key_from_gnupg(self: Pin<&mut Self>, ident: &QString) {
+        securitykey::import_from_gnupg(&self.qt_thread(), &ident.to_string());
+    }
+
+    fn renew_security_key(self: Pin<&mut Self>, ident: &QString) {
+        securitykey::renew(&self.qt_thread(), &ident.to_string());
+    }
+
+    fn send_security_key_to_keys_openpgp(self: Pin<&mut Self>, ident: &QString) {
+        securitykey::send_to_keys_openpgp(&self.qt_thread(), &ident.to_string());
+    }
+
     fn forget_security_key_pin(mut self: Pin<&mut Self>) {
         let line = securitykey::forget_pin();
         self.as_mut().set_status(QString::from(&line));
@@ -3971,7 +4058,7 @@ impl qobject::Sioul {
     }
 
     fn is_program(&self, name: &QString) -> bool {
-        sioul_core::links::is_program(&name.to_string())
+        crate::attachments::kept_closed(&name.to_string(), crate::attachments::phone())
     }
 
     fn first_frame(&self) {
@@ -4317,6 +4404,8 @@ impl qobject::Sioul {
         let _ = std::fs::remove_file(weather_cache());
         self.as_mut().set_forecast(QString::default());
         update_weather(&self.qt_thread(), &self.shared());
+        // The phone's card: no place, where to choose one; a new place, its forecast once fetched.
+        crate::homecard::weather_seen();
     }
 
     fn health_page(&self) -> QString {
@@ -4329,6 +4418,10 @@ impl qobject::Sioul {
 
     fn save_prescription(self: Pin<&mut Self>, id: &QString, edit: &QString) -> QString {
         QString::from(&crate::health::save_prescription(&id.to_string(), &edit.to_string()))
+    }
+
+    fn health_for_professional(&self, prescription: &QString) -> QString {
+        QString::from(&crate::health::for_professional(&prescription.to_string()))
     }
 
     fn remove_health(self: Pin<&mut Self>, id: &QString) -> QString {
@@ -4811,7 +4904,7 @@ impl qobject::Sioul {
         // works in the background, and nobody looks at its pages then).
         if *self.as_ref().away() {
             if Zoned::now().minute() % 5 == 0 {
-                crate::share::exchange(&self.qt_thread(), &self.shared());
+                crate::share::exchange_tick(&self.qt_thread(), &self.shared());
             }
             return;
         }
@@ -4836,8 +4929,9 @@ impl qobject::Sioul {
             shared.planned_day.store(day, Ordering::Relaxed);
             work::show_work(&self.qt_thread(), &shared);
         }
-        // What changed here goes to your other computers, theirs comes in.
-        crate::share::exchange(&self.qt_thread(), &self.shared());
+        // What changed here goes to your other computers, theirs comes in
+        // (left out when a save's exchange just did it: `share::exchange_tick`).
+        crate::share::exchange_tick(&self.qt_thread(), &self.shared());
         crate::share::nudge_tick(&self.qt_thread(), &self.shared());
         // Invoices stay with the computer that makes them: its claim renewed,
         // off the window's thread (it reads and writes the sharing folder).
@@ -5060,6 +5154,25 @@ impl qobject::Sioul {
         QString::from(&crate::calls::setup())
     }
 
+    fn phone_messages(self: Pin<&mut Self>, verb: &QString, json: &QString) -> QString {
+        let (answer, shared) = crate::phonemsgs::call(&verb.to_string(), &json.to_string());
+        // Seen, a number blocked, the part switched: your other devices told at once.
+        if shared {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&answer)
+    }
+
+    // texts: SMS phase (b).
+    fn texts(self: Pin<&mut Self>, verb: &QString, json: &QString) -> QString {
+        let (answer, shared) = crate::texts::call(&verb.to_string(), &json.to_string());
+        // A text to send, the part switched: your phone told at once.
+        if shared {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&answer)
+    }
+
     fn reaches_view(&self) -> QString {
         QString::from(&crate::reaches::view(self.shared().realtime.load(Ordering::Relaxed)))
     }
@@ -5256,6 +5369,25 @@ impl qobject::Sioul {
         for row in rows.iter_mut().filter(|r| r.key == "passwords_shown") {
             row.value = config::SettingValue::Bool(work::view_flag(&self.shared(), "passwords-shown"));
         }
+        // colour: what this screen gets, said under its switch; neither line on a
+        // phone, whose sites open in the browser (docs/colour.md).
+        if cfg!(target_os = "android") {
+            rows.retain(|r| r.key != "screen_colours" && r.key != "calmer_colours");
+        }
+        #[cfg(not(target_os = "android"))]
+        for row in rows.iter_mut().filter(|r| r.key == "screen_colours") {
+            use crate::colour::Said;
+            let said = match crate::colour::said() {
+                Said::Converted(name) if !name.is_empty() => say("colour-said-converted", &[("profile", name)]),
+                Said::Converted(_) => tr().text("colour-said-converted-unnamed", None),
+                Said::Desktop => tr().text("colour-said-desktop", None),
+                Said::Plain => tr().text("colour-said-plain", None),
+                Said::Off | Said::Unknown => String::new(),
+            };
+            if !said.is_empty() {
+                row.help = format!("{} {said}", row.help);
+            }
+        }
         // The phone's home screen card: its details, this device's own (homecard.rs).
         if crate::homecard::has_setting()
             && let Some(at) = rows.iter().position(|r| r.key == "passwords_shown")
@@ -5300,7 +5432,8 @@ impl qobject::Sioul {
         {
             pim::nudge(&shared, &account);
         }
-        if key.starts_with("reading.") || key == "theme" || key == "places_named" {
+        // colour: the sites' colours travel with the reading's settings (docs/colour.md).
+        if key.starts_with("reading.") || key == "theme" || key == "places_named" || key == "screen_colours" || key == "calmer_colours" {
             self.as_mut().set_reading(QString::from(&reading_json()));
         }
         if key.contains("fetch_minutes") {
@@ -5354,6 +5487,7 @@ impl qobject::Sioul {
         // closes the day with its review (docs/reviews.md), "site-open", "site-quit" and
         // "site-during" open the test site, close its pages and the window
         // (tools/check-sites.py quit), "site-share" shares its screen (tools/check-sites.py share),
+        // colour: "site-colour" takes its pictures in the screen's colours (tools/check-colour.py),
         // "rail" shows the places with their icons alone and with their
         // names (main.qml), "pauses" free time and the pause (docs/pauses.md), "blocks" a task pinned to a
         // time and left to the plan again (docs/tasks.md), "unsubscribe" a newsletter open
@@ -5361,16 +5495,28 @@ impl qobject::Sioul {
         // by person, Sioul's own, its exceptions and do not disturb, and a person's sheet
         // (docs/attention.md), "line" the status line with all it
         // may hold, a new draft deleted and taken back (docs/design.md), "share-panel" the
-        // sharing's tab before sharing, its two ways (docs/database.md), "spam" the spam
+        // sharing's tab before sharing, its two ways (docs/database.md), "share-send" sharing
+        // started in the profile, the build, the send's switch and "Send everything again"
+        // (docs/database.md), "spam" the spam
         // filter's settings and the words it puts beside mail (docs/spam-filter.md), "mail-search" the
         // search by conditions, its results, a selection held over a folder (docs/client.md), "mail-filters"
         // the mail filters in Mail's ⚙, their editor, a run's preview, a search made a filter, "security-key"
         // the setup of the demo's software security key and a message signed at Send with it (docs/client.md),
         // "calls" the calls a phone declined on a computer's Porch and a person's calls of the month (docs/porch.md),
         // "words" Settings ▸ Words, a line's lists changed and taken back (docs/words.md),
-        // "movetask" one of the demo's tasks moved to its other list (docs/tasks.md),
+        // "health-gpg" a prescription's medicines and their takes as rows, and the security key's
+        // GnuPG steps as buttons with their commands to copy (docs/health.md, docs/client.md),
+        // "movetask" one of the demo's tasks moved to its other list (docs/tasks.md), "compose"
+        // the writing window, an answer and a new message, its drafts made and deleted (docs/building.md),
+        // "texts" the Texts page, its conversations and a text's states (docs/texts.md),
+        // "ai" Settings ▸ AI agents, a project opened to agents on its page, an agent's text
+        // draft in the Texts page used, nothing sent (docs/mcp.md),
+        // "health" the Health page, its week, its settings (⚙), a block's menu and its change
+        // for one day, closed unsaved (docs/health.md), "tiles" the costs as tiles in a task's
+        // form, an event's and "How was it?", at three widths (docs/capacity.md), "attachments"
+        // a message's attachments unfolded, a phone's words with "phone", nothing opened (docs/client.md),
         // on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "spam", "mail-search", "mail-filters", "security-key", "calls", "words", "movetask"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -5488,6 +5634,17 @@ impl qobject::Sioul {
         QString::from(&problem)
     }
 
+    fn set_share_send(self: Pin<&mut Self>, on: bool) -> QString {
+        let problem = crate::share::set_send(on);
+        // Switched on: what changed here goes with the next exchange, now.
+        if problem.is_empty() && on {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&problem)
+    }
+    fn share_send_again(self: Pin<&mut Self>) {
+        crate::share::send_again(&self.qt_thread(), &self.shared());
+    }
     fn share_backup_place(self: Pin<&mut Self>, place: &QString) -> QString {
         let problem = crate::share::set_backup_place(&place.to_string());
         if problem.is_empty() {

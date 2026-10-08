@@ -31,6 +31,19 @@ the Junk folder, waiting in the Porch's review queue (docs/spam-filter.md).
 --calls (or SIOUL_DEMO_CALLS=1) adds the calls a phone of yours screened, as
 the sharing brings its log to a computer: the Porch lists those it declined,
 and the doctor's sheet her calls of the month (docs/porch.md, "Calls declined").
+--phone-messages (or SIOUL_DEMO_PHONE_MESSAGES=1) adds the messages a phone's
+notifications brought, as the sharing brings its log to a computer, with the
+part "Messages from your phone" on here: the Porch's "From your phone" says
+them, and the doctor's sheet her messages of the week (docs/porch.md, "From
+your phone").
+--texts (or SIOUL_DEMO_TEXTS=1) adds the texts a phone read and those written
+here for it to send, as the sharing's part "Texts" brings them, written plain
+and marked as the demo's stand-ins (crates/sioul-app/src/texts.rs, `Seal`):
+the Texts page lists their conversations and says each text's state
+(docs/texts.md).
+--compose (or SIOUL_DEMO_COMPOSE=1) adds a message to answer on a phone's
+width: a subject of more than sixty characters, replies asked to two
+addresses, a copy to a third (SIOUL_GRAB_STEPS=compose, docs/building.md).
 
 DIR must be new, empty, or a demo profile made by this script: it is then
 emptied first."""
@@ -979,6 +992,34 @@ Commandez les vôtres : https://print-orders.test/cartes"""), auth="none", extra
     ]
 
 
+def compose_mail(clock: Clock) -> list[Mail]:
+    """A message to answer on a phone's width (SIOUL_GRAB_STEPS=compose): a
+    subject of more than sixty characters, replies asked to two addresses
+    (Reply-To), a copy to a third. Answered to all, the writing window holds a
+    To of two addresses, a Cc and a long "Re: …"."""
+    c = clock
+    desk = (t("Fernhill Library front desk", "Accueil de la Médiathèque des Fougères"), f"{t('desk', 'accueil')}@{W.library}")
+    return [
+        Mail("work", c.ago(hours=3), W.iris,
+             t("Fernhill Library website: the opening hours, the children's corner and the launch date",
+               "Site de la Médiathèque des Fougères : les horaires, le coin des enfants et la date de mise en ligne"), t(
+            """Hello Noa,
+
+Could you tell us when the new site goes live? The front desk would like to announce it in the newsletter, with the opening hours and the children's corner.
+
+Please answer us both: the front desk writes the newsletter.
+
+Iris""",
+            """Bonjour Noa,
+
+Pourriez-vous nous dire quand le nouveau site sera en ligne ? L'accueil voudrait l'annoncer dans la lettre d'information, avec les horaires et le coin des enfants.
+
+Répondez-nous à tous les deux : c'est l'accueil qui écrit la lettre.
+
+Iris"""), cc=[W.oskar], flags="S", key="compose-long", extra=[f"Reply-To: {address(*W.iris)}, {address(*desk)}"]),
+    ]
+
+
 def spam_table(clock: Clock) -> bytes:
     """Sioul's own spam filter's table for the demo, written by hand in its
     file's format (crates/sioul-core/src/spam/table.rs): no fastText, no word of
@@ -1057,6 +1098,138 @@ def write_calls(p: Profile):
         call(c.at(c.today, "12:40"), "", "hidden", "meals"),
     ]
     p.write(p.state / "calls" / "log" / "demo-phone.jsonl", "".join(lines))
+
+
+def write_phone_messages(p: Profile):
+    """The messages a phone's notifications brought, as its log reaches a
+    computer through the sharing (crates/sioul-core/src/phonemsgs.rs, `Line`;
+    the phone's name in the sharing invented), and the part switched on here
+    (share/here.toml): a text from the doctor while you slept, a pharmacy's,
+    a service's, a code said without it, a chat's whose words stayed on the
+    phone. Fiction numbers: ARCEP's 01 99 00 and 04 65 71."""
+    c = p.clock
+
+    def line(moment: datetime, name: str, who: str, text: str = "", key: str = "", talk: str = "", kind: str = "text", **more) -> str:
+        at = unix(moment) * 1000
+        fields = {"at": at, "id": f"{at}-{talk or name}", "app": "foundation.e.message" if kind == "text" else "org.thoughtcrime.securesms", "label": "Message" if kind == "text" else "Signal", "kind": kind}
+        fields.update({k: v for k, v in {"talk": talk, "name": name, "key": key, "who": who, "text": text}.items() if v})
+        fields.update(more)
+        fields["shows"] = at
+        return json.dumps(fields, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+    doctor = "+33465714770"
+    lines = [
+        line(c.at(c.day(-1), "23:10"), "Dr Elena Varga", "safe", t("Could you call me back tomorrow morning? Nothing worrying.", "Pourriez-vous me rappeler demain matin ? Rien d’inquiétant."), doctor, "doctor"),
+        line(c.at(c.today, "09:41"), t("Linden Pharmacy", "Pharmacie des Tilleuls"), "stranger", t("Your prescription is ready. We are open until 19:30.", "Votre ordonnance est prête. Nous sommes ouverts jusqu’à 19 h 30."), "+33199001234", "pharmacy"),
+        line(c.at(c.today, "10:15"), "AMELI", "automaton", t("Your certificate is available in your account.", "Votre attestation est disponible dans votre compte.")),
+        line(c.at(c.today, "11:05"), t("My Bank", "Ma Banque"), "", code=True),
+        line(c.at(c.today, "13:02"), "Sam", "neutral", "", "", "sam", kind="chat", withheld=True),
+    ]
+    p.write(p.state / "phone-messages" / "log" / "demo-phone.jsonl", "".join(lines))
+    p.write(p.state / "share" / "here.toml", '[parts]\n"phone-messages" = true\n')
+
+
+def parcel_png() -> bytes:
+    """A parcel on a relay point's counter, as a courier photographs it: a taped box on a grey counter."""
+    def pixel(x: int, y: int):
+        if 50 <= x < 190 and 40 <= y < 140:
+            if 112 <= x < 128 or 84 <= y < 94:
+                return (214, 196, 150)  # the tape
+            shade = 12 if x > 170 or y > 128 else 0
+            return (176 - shade, 128 - shade, 78 - shade)
+        if y >= 140:
+            return (150, 150, 146)
+        return (232, 230, 224)
+    return png(240, 180, pixel)
+
+
+def write_texts(p: Profile):
+    """texts: the texts a phone read for this computer, and those written here
+    for it to send, with what became of them (crates/sioul-core/src/texts.rs,
+    `Text`, `Request`, `Outcome`), as the demo's stand-ins ("demo:" and the
+    plain line, which the demo profile alone reads; a media file kept plain):
+    the doctor's, a pharmacy's answered and delivered, one deleted on the
+    phone, a courier's multimedia message with its picture and a video left
+    on the phone, a text that waited too long and one waiting for the phone,
+    and a week's conversation with Priya from the choir.
+    Fiction numbers: ARCEP's 01 99 00 and 04 65 71."""
+    import hashlib
+    c = p.clock
+
+    def line(fields: dict) -> str:
+        return "demo:" + json.dumps(fields, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+    def text(id: str, moment: datetime, box: str, number: str, body: str, thread: str) -> str:
+        return line({"id": id, "at": unix(moment) * 1000, "thread": thread, "box": box, "with": [number], "body": body, "sub": 1})
+
+    doctor, pharmacy, courier = "+33465714770", "+33199001234", "+33465710042"
+    log = [
+        text("sms-101", c.at(c.day(-1), "23:10"), "in", doctor, t("Could you call me back tomorrow morning? Nothing worrying.", "Pourriez-vous me rappeler demain matin ? Rien d’inquiétant."), "3"),
+        text("sms-102", c.at(c.today, "08:05"), "out", doctor, t("Of course, I will call at nine.", "Bien sûr, j’appelle à neuf heures."), "3"),
+        text("sms-103", c.at(c.today, "09:41"), "in", pharmacy, t("Your prescription is ready. We are open until 19:30.", "Votre ordonnance est prête. Nous sommes ouverts jusqu’à 19 h 30."), "5"),
+        text("sms-104", c.at(c.today, "10:03"), "out", pharmacy, t("Thank you, I will come by tonight.", "Merci, je passe ce soir."), "5"),
+        text("sms-105", c.at(c.today, "11:20"), "in", courier, t("Your parcel is at the relay point until Saturday.", "Votre colis est au point relais jusqu’à samedi."), "6"),
+        text("sms-106", c.at(c.day(-1), "18:30"), "in", pharmacy, t("Reminder: the pharmacy closes early on Thursday.", "Rappel : la pharmacie ferme plus tôt jeudi."), "5"),
+        line({"id": "sms-106", "at": unix(c.at(c.day(-1), "18:30")) * 1000, "box": "in", "with": [pharmacy], "deleted": unix(c.at(c.today, "07:00")) * 1000}),
+    ]
+    # The courier's multimedia message: its picture kept here (the demo's media are plain), its video left on the phone.
+    picture = parcel_png()
+    digest = hashlib.sha256(picture).hexdigest()
+    p.write(p.data / "texts" / "media" / digest, picture)
+    log.append(line({"id": "mms-21", "at": unix(c.at(c.today, "11:22")) * 1000, "thread": "6", "box": "in", "with": [courier],
+                     "body": t("Here is your parcel at the counter.", "Voici votre colis au comptoir."), "sub": 1, "picture": True,
+                     "parts": [{"seq": -1, "ct": "application/smil", "text": "<smil/>", "state": "text"},
+                               {"seq": 0, "ct": "image/png", "name": t("parcel.png", "colis.png"), "size": len(picture), "hash": digest, "state": "here"},
+                               {"seq": 1, "ct": "video/mp4", "name": t("counter.mp4", "comptoir.mp4"), "size": 31_457_280, "state": "too-big"},
+                               {"seq": 2, "ct": "text/plain", "text": t("Here is your parcel at the counter.", "Voici votre colis au comptoir."), "state": "text"}]}))
+    # A long conversation with Priya from the choir, over the last week: the thread's days and its length.
+    priya = "+262639989046"
+    week = [
+        (-6, "18:02", "in", "Did you get the new score for the winter concert?", "Tu as reçu la nouvelle partition pour le concert d’hiver ?"),
+        (-6, "18:20", "out", "Yes, this morning. The second page is hard for the altos.", "Oui, ce matin. La deuxième page est difficile pour les altos."),
+        (-6, "18:21", "in", "It is for everyone. We can work on it on Thursday.", "Pour tout le monde. On peut la travailler jeudi."),
+        (-5, "08:45", "in", "Rehearsal moved to the small hall, the big one is booked.", "La répétition passe dans la petite salle, la grande est réservée."),
+        (-5, "09:10", "out", "Noted. Same time?", "Noté. Même heure ?"),
+        (-5, "09:12", "in", "Same time, half past seven.", "Même heure, sept heures et demie."),
+        (-4, "19:05", "in", "Can you bring the music stands from the cupboard?", "Tu peux apporter les pupitres du placard ?"),
+        (-4, "19:30", "out", "I will take three. I have no room for more on the bike.", "J’en prends trois. Je n’ai pas plus de place sur le vélo."),
+        (-4, "19:31", "in", "Three is fine, Hugo brings the rest.", "Trois, c’est bien, Hugo apporte le reste."),
+        (-3, "12:15", "out", "I found a recording of the piece, slower than ours.", "J’ai trouvé un enregistrement du morceau, plus lent que le nôtre."),
+        (-3, "12:40", "in", "Send me the link, I will listen tonight.", "Envoie-moi le lien, j’écoute ce soir."),
+        (-3, "12:41", "out", "It is in the choir's mail, under Tuesday.", "Il est dans le courrier de la chorale, à mardi."),
+        (-3, "21:50", "in", "Listened. Their tempo is better for the breathing.", "Écouté. Leur tempo est meilleur pour la respiration."),
+        (-2, "07:55", "in", "Coffee before rehearsal? The café by the hall opens at seven.", "Un café avant la répétition ? Le café près de la salle ouvre à sept heures."),
+        (-2, "08:30", "out", "Gladly, at a quarter past seven.", "Avec plaisir, à sept heures et quart."),
+        (-2, "22:10", "in", "Good evening tonight. The altos sounded much surer.", "Bonne soirée ce soir. Les altos étaient bien plus sûres."),
+        (-2, "22:14", "out", "Thank you for your patience with the second page.", "Merci pour ta patience avec la deuxième page."),
+        (-1, "10:02", "in", "The concert programme is printed. I have yours.", "Le programme du concert est imprimé. J’ai le tien."),
+        (-1, "10:20", "out", "Keep it until Thursday, please.", "Garde-le jusqu’à jeudi, s’il te plaît."),
+        (-1, "17:45", "in", "Of course. Do not forget the black folder.", "Bien sûr. N’oublie pas la pochette noire."),
+        (0, "08:12", "in", "Thursday we start with the warm-up at seven sharp.", "Jeudi on commence l’échauffement à sept heures pile."),
+        (0, "08:30", "out", "I will be there. Thank you for organising everything.", "Je serai là. Merci de tout organiser."),
+    ]
+    for n, (day, hour, box, english, french) in enumerate(week):
+        log.append(text(f"sms-{140 + n}", c.at(c.day(day), hour), box, priya, t(english, french), "9"))
+    p.write(p.data / "texts" / "log" / "demo-phone.jsonl", "".join(log))
+    answered, expired, waiting = "a" * 32, "b" * 32, "c" * 32
+    requests = [
+        line({"key": answered, "phone": "demo-phone", "to": pharmacy, "body": t("Thank you, I will come by tonight.", "Merci, je passe ce soir."), "sub": -1, "written": unix(c.at(c.today, "10:02")) * 1000}),
+        line({"key": expired, "phone": "demo-phone", "to": courier, "body": t("Thank you, I will pick it up on Friday.", "Merci, je le récupère vendredi."), "sub": -1, "written": unix(c.ago(minutes=50)) * 1000}),
+        line({"key": waiting, "phone": "demo-phone", "to": courier, "body": t("Is the relay point open on Saturday morning?", "Le point relais est-il ouvert samedi matin ?"), "sub": -1, "written": unix(c.ago(minutes=1)) * 1000}),
+    ]
+    p.write(p.data / "texts" / "send" / "demo-desk.jsonl", "".join(requests))
+    outcomes = [
+        line({"key": answered, "state": "handed", "at": unix(c.at(c.today, "10:03")) * 1000}),
+        line({"key": answered, "state": "sent", "at": unix(c.at(c.today, "10:03")) * 1000, "row": "sms-104"}),
+        line({"key": answered, "state": "delivered", "at": unix(c.at(c.today, "10:04")) * 1000}),
+        line({"key": expired, "state": "expired", "at": unix(c.ago(minutes=30)) * 1000}),
+    ]
+    p.write(p.data / "texts" / "outcome" / "demo-phone.jsonl", "".join(outcomes))
+    # An AI agent's draft for the doctor, waiting in the Texts page, never sent
+    # (crates/sioul-core/src/textdraft.rs; docs/mcp.md, "Texts"): this device's alone.
+    p.write(p.state / "texts" / "drafts.jsonl", line({"id": "d" * 32, "to": doctor, "conversation": doctor,
+                                                     "body": t("I can call at nine tomorrow, if that suits you.", "Je peux appeler demain à neuf heures, si cela vous convient."),
+                                                     "written": unix(c.ago(minutes=5)) * 1000}))
 
 
 def account_id(key: str) -> str:
@@ -2066,16 +2239,22 @@ last_refill = {c.day(-9)}
 
 [[medicine]]
 id = "levothyroxine"
-name = {toml_string(t("Levothyroxine", "Lévothyroxine"))}
-dose = "75 µg"
+name = "Thyrolan"
+generic = {toml_string(t("levothyroxine", "lévothyroxine"))}
+strength = "75 µg"
+since = {c.day(-430)}
+dose = {toml_string(t("1 tablet", "1 comprimé"))}
 prescription = "levothyroxine"
 schedule = {{ every = "day", times = ["07:30"] }}
 
 [[medicine]]
 id = "magnesium"
 name = {toml_string(t("Magnesium", "Magnésium"))}
-dose = {toml_string(t("1 tablet", "1 comprimé"))}
-schedule = {{ every = "day", times = ["12:30", "20:00"] }}
+generic = {toml_string(t("magnesium lactate", "lactate de magnésium"))}
+strength = {toml_string(t("48 mg per tablet", "48 mg par comprimé"))}
+since = {c.day(-12)}
+dose = {toml_string(t("12:30 · 1 tablet, 20:00 · 2 tablets", "12:30 · 1 comprimé, 20:00 · 2 comprimés"))}
+schedule = {{ every = "day", times = ["12:30", "20:00"], amounts = {{ "12:30" = {toml_string(t("1 tablet", "1 comprimé"))}, "20:00" = {toml_string(t("2 tablets", "2 comprimés"))} }} }}
 until = {c.day(20)}
 
 [movement]
@@ -2137,7 +2316,8 @@ def write_weather(p: Profile):
     c = p.clock
     hour0 = c.now.replace(minute=0, second=0)
     hours = []
-    for i in range(40):
+    # Three days of hours and nine of days, as Sioul asks Open-Meteo (weather.rs, `query`).
+    for i in range(72):
         moment = hour0 + timedelta(hours=i)
         h = moment.hour
         day = 8 <= h < 19
@@ -2149,7 +2329,12 @@ def write_weather(p: Profile):
         elif 10 <= h <= 12:
             code, rain = 3, 15
         hours.append({"at": unix(moment), "temperature": round(temperature, 1), "rain": rain, "code": code, "day": day})
-    p.write(p.state / "weather.json", json.dumps({"fetched": unix(c.now), "hours": hours}))
+    # The days, from today: an autumn week, rain on the third and the sixth.
+    days = []
+    for i in range(9):
+        code, rain = [(61, 40), (2, 10), (63, 80), (3, 20), (1, 0), (61, 60), (0, 0), (2, 10), (3, 15)][i]
+        days.append({"date": (c.now + timedelta(days=i)).date().isoformat(), "code": code, "low": 7.0 + i % 3, "high": 15.0 + (i * 7) % 5, "rain": rain})
+    p.write(p.state / "weather.json", json.dumps({"fetched": unix(c.now), "hours": hours, "days": days}))
 
 
 def write_site_news(p: Profile):
@@ -2262,6 +2447,11 @@ rate = 50.0
 currency = "EUR"
 payment = {toml_string(t("IBAN FR76 0000 0000 0000 0000 0000 000, within 30 days.", "IBAN FR76 0000 0000 0000 0000 0000 000, à 30 jours."))}
 
+# Other apps by time, set on the phone and shared with the settings (docs/attention.md,
+# §1.3): the chat app let through during work, held otherwise.
+[attention]
+"app.org.example.chat" = ["work", "admin:later", "leisure:later", "meals:later", "sleep:later", "pause:later", "free:later", "slot:later", "dnd:later", "name=Chat"]
+
 # The camera, microphone and speaker of calls in sites: the system's own.
 [calls]
 {hours if p.hours else ""}
@@ -2369,6 +2559,12 @@ def main():
                         help="Sioul's own spam filter: a table made by hand, strangers' messages in its review queue (SIOUL_DEMO_SPAM=1 too)")
     parser.add_argument("--calls", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_CALLS")),
                         help="the calls a phone of yours screened, as the sharing brings them: the Porch lists those it declined (SIOUL_DEMO_CALLS=1 too)")
+    parser.add_argument("--phone-messages", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_PHONE_MESSAGES")),
+                        help="the messages a phone's notifications brought, as the sharing brings them, and their part on here (SIOUL_DEMO_PHONE_MESSAGES=1 too)")
+    parser.add_argument("--texts", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_TEXTS")),
+                        help="texts: the texts a phone read and those written here for it, as the part Texts brings them (SIOUL_DEMO_TEXTS=1 too)")
+    parser.add_argument("--compose", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_COMPOSE")),
+                        help="a message to answer on a phone's width: a long subject, replies to two addresses, a copy to a third (SIOUL_DEMO_COMPOSE=1 too)")
     args = parser.parse_args()
     LANG = args.language
     W = World()
@@ -2379,7 +2575,7 @@ def main():
     prepare(root)
     clock = Clock(now)
     profile = Profile(root, clock, args.notes_at or str(root / "notes"), not args.no_hours)
-    mails = the_mail(clock) + (spam_mail(clock) if args.spam else [])
+    mails = the_mail(clock) + (spam_mail(clock) if args.spam else []) + (compose_mail(clock) if args.compose else [])
     write_config(profile)
     write_mail(profile, mails)
     if args.spam:
@@ -2388,6 +2584,10 @@ def main():
     write_contacts(profile)
     if args.calls:
         write_calls(profile)
+    if args.phone_messages:
+        write_phone_messages(profile)
+    if args.texts:
+        write_texts(profile)
     write_calendars(profile, mails)
     write_notes(profile, mails)
     sessions = write_time(profile)

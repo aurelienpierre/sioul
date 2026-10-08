@@ -3,11 +3,10 @@
 
 // The Health page's settings (its ⚙), set once or rarely, made the first
 // time they open: where the pharmacy and renewal errands go, the usual
-// meals, naps and night, the watch's folder and offers, the pause to move,
-// the limit on chats. The medicines and the prescriptions are the page's
-// content, changed there (MedicinesSection.qml), as is a day that differs,
-// that day only. On the right of the window, all of a phone's; Escape or a
-// click outside closes it.
+// meals, naps and night, the pause to move, the limit on chats. The
+// medicines and the prescriptions are the page's content, changed there
+// (MedicinesSection.qml), as is a day that differs, that day only. On the
+// right of the window, all of a phone's; Escape or a click outside closes it.
 
 pragma ComponentBehavior: Bound
 
@@ -21,7 +20,7 @@ Popup {
     required property var sioul
     required property var theme
     // As the backend gives it (`health::settings_view`).
-    property var shown: ({ movement: { enabled: true, minutes: 45 }, chats: { enabled: false, minutes: 60, locked_minutes: 30 }, errands_list: "", lists: [], watch: null })
+    property var shown: ({ movement: { enabled: true, minutes: 45 }, chats: { enabled: false, minutes: 60, locked_minutes: 30 }, errands_list: "", lists: [] })
 
     // Something changed that the page shows (the usual meals, naps and night): it reads its days again.
     signal changed
@@ -65,6 +64,15 @@ Popup {
     }
 
     onOpened: if (panel.toNeeds) panel.scrollToNeeds()
+
+    // The panel's end brought into view: the night's last rows, the pause to
+    // move and the limit on chats (the window's pictures).
+    function showEnd() {
+        panel.toNeeds = false
+        const flick = scroll.contentItem as Flickable
+        if (flick)
+            flick.contentY = Math.max(0, column.implicitHeight - flick.height)
+    }
 
     Connections {
         target: needs
@@ -169,17 +177,6 @@ Popup {
                 sioul: panel.sioul
                 theme: panel.theme
                 onChanged: panel.changed()
-            }
-
-            // The watch: where its files come from, whether it may offer a pause.
-            WatchPanel {
-                Layout.fillWidth: true
-                Layout.topMargin: 10
-                part: "settings"
-                sioul: panel.sioul
-                theme: panel.theme
-                watch: panel.shown.watch
-                onSetting: (key, value) => panel.setting(key, value)
             }
 
             // A pause to move, while focusing.

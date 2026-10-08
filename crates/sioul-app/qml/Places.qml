@@ -92,10 +92,14 @@ Item {
 
                 // In the order of their keys, Ctrl+1 to Ctrl+0; the papers'
                 // page came after the others, its place is by the budgets.
+                // texts: Texts, on a computer, under Mail (TextsPage.qml),
+                // which says how to turn texts on when they are not read here
+                // yet; a phone has its own SMS app.
                 model: [
                     { page: 0, name: "ui-porch", iconName: "mail-folder-inbox" },
                     { page: 1, name: "ui-tasks", iconName: "view-calendar-tasks" },
                     { page: 2, name: "ui-mail", iconName: "mail-message" },
+                    { page: 14, name: "texts-page-title", iconName: "im-user" },
                     { page: 3, name: "ui-sites", iconName: "sioul-web" },
                     { page: 4, name: "ui-agenda", iconName: "view-calendar" },
                     { page: 5, name: "ui-contacts", iconName: "user-properties" },
@@ -105,7 +109,7 @@ Item {
                     { page: 9, name: "ui-budgets", iconName: "wallet-open" },
                     { page: 13, name: "ui-papers", iconName: "view-certificate" },
                     { page: 10, name: "ui-health", iconName: "love" }
-                ]
+                ].filter(place => place.page !== 14 || Qt.platform.os !== "android")
 
                 delegate: RailButton {
                     id: placeButton
@@ -118,7 +122,7 @@ Item {
                     iconName: placeButton.modelData.iconName
                     name: column.sioul.text(placeButton.modelData.name)
                     // The first ten pages' keys.
-                    keys: placeButton.modelData.page <= 9 ? "Ctrl+" + (placeButton.modelData.page + 1) % 10 : ""
+                    keys: placeButton.modelData.page >= 0 && placeButton.modelData.page <= 9 ? "Ctrl+" + (placeButton.modelData.page + 1) % 10 : ""
                     named: column.named
                     place: true
                     current: column.window.page === placeButton.modelData.page

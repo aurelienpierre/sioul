@@ -1,5 +1,5 @@
 ---
-description: La santé dans Sioul – les repas, le repos et le sommeil gardés libres avant tout travail et changés pour un jour d’un geste, des médicaments rappelés une fois et discrètement sur l’appareil où vous êtes, jamais « pas pris » quand Sioul ne peut pas savoir, les ordonnances et leurs démarches, une montre lue dans ses propres fichiers, des journées égales pour une maladie qui limite l’énergie ; aucun score, rien en rouge, rien sur la nourriture.
+description: La santé dans Sioul – les repas, le repos et le sommeil gardés libres avant tout travail et changés pour un jour d’un geste, des médicaments rappelés une fois et discrètement sur l’appareil où vous êtes, jamais « pas pris » quand Sioul ne peut pas savoir, les ordonnances et leurs démarches, des journées égales pour une maladie qui limite l’énergie ; aucun score, rien en rouge, rien sur la nourriture.
 ---
 
 # La santé {#health}
@@ -15,7 +15,7 @@ La page Santé met d’abord les besoins de votre journée. Vos repas, vos repos
 
 ## Protégé par défaut {#what-is-protected}
 
-- **Sur vos appareils seulement.** Vos médicaments, vos prises, vos repas, vos nuits et les journées de votre montre restent sur vos appareils, dans des fichiers que vous seul pouvez lire là. Il n’y a pas de serveur de Sioul, et Sioul ne passe jamais par le compte du fabricant de la montre.
+- **Sur vos appareils seulement.** Vos médicaments, vos prises, vos repas et vos nuits restent sur vos appareils, dans des fichiers que vous seul pouvez lire là. Il n’y a pas de serveur de Sioul.
 - **Scellé entre vos appareils.** Vos appareils n’échangent les prises que par un dossier que votre propre application de synchronisation transporte, scellé : le dossier et son serveur n’en peuvent rien lire ([Le partage](sharing.md)).
 - **Un seul rappel, d’un seul appareil.** Seul l’appareil où vous êtes vous fait le rappel, pour qu’une prise ne soit pas rappelée deux fois ; et quand Sioul ne peut pas savoir si une prise a été prise sur un autre appareil, il le dit plutôt que « pas pris », parce qu’un médicament pris deux fois peut faire du mal.
 - **Discret sur un écran verrouillé.** Un avis pour un repas ou un repos ne montre que son nom et son heure, pour pouvoir se lire sur un écran verrouillé ou un bureau partagé.
@@ -43,15 +43,19 @@ Si des prises étaient prévues pendant que Sioul était fermé, la question à 
 
 ## Les médicaments {#medicines}
 
-Sur la page, après la journée (sous sa liste, ou à côté sur un écran large), **Ajouter un médicament** : son **Nom**, sa **Dose** (« un comprimé »), et **Quand** :
+Sur la page, après la journée (sous sa liste, ou à côté sur un écran large), **Ajouter un médicament** : son **Nom commercial, ou votre mot** pour lui, que disent les rappels ; si vous voulez, sa **DCI (dénomination commune internationale)**, la molécule (« lévothyroxine »), et son **Dosage** (« 75 µg », « 500 mg par comprimé »), que lit un médecin ou un pharmacien ; sa **Dose** à chaque prise (« 1 comprimé ») ; et **Quand** :
 
-- **À heures fixes chaque jour** : « 08:00, 20:00 » ;
+- **À heures fixes chaque jour** : ses **Prises**, une ligne chacune, l’heure et la minute choisies dans de courtes listes (la touche Tab et les flèches les atteignent aussi). **Ajouter une prise** ajoute une ligne ; le bouton en bout de ligne la retire. Une prise n’a sa propre quantité que si elle diffère de la dose : pour un comprimé à 08:00 et deux à 20:00, écrivez « 1 comprimé » comme dose et « 2 comprimés » sur la ligne de 20:00 ;
 - **Tous les quelques jours**, à une heure donnée, à partir d’un jour donné : « un jour sur deux à 08:00 » ;
 - **Toutes les quelques heures**, à partir d’une heure donnée : « toutes les 6 heures, à partir de 18:30 ».
 
-Puis **Jusqu’au** : un jour, ou aussi longtemps que le traitement dure ; l’**Ordonnance** d’où il vient ; **En pause pour l’instant**.
+Puis **Jusqu’au** : un jour, ou aussi longtemps que le traitement dure ; **Pris depuis le**, si vous savez quand il a commencé ; l’**Ordonnance** d’où il vient ; **En pause pour l’instant**.
 
-Chaque médicament y est alors listé avec sa dose et ses heures (« 07:30 », « 12:30 · 20:00 »), et jusqu’à quand ; en pause, ou passé son dernier jour, un peu plus discret. **Modifier** rouvre sa fiche, où **Le retirer** l’enlève après une question. Si les prises du jour ont été prises, c’est la liste de la journée qui le dit, pas celle-ci.
+Chaque médicament y est alors listé avec son nom, sa DCI et son dosage (« Thyrolan — lévothyroxine 75 µg »), sa dose et ses heures (« 07:30 », « 12:30 · 20:00 »), ou chaque prise avec sa propre quantité quand elles diffèrent (« 08:00 · 1 comprimé, 20:00 · 2 comprimés »), et jusqu’à quand ; en pause, ou passé son dernier jour, un peu plus discret. **Modifier** rouvre sa fiche, où **Le retirer** l’enlève après une question. Si les prises du jour ont été prises, c’est la liste de la journée qui le dit, pas celle-ci. Chaque prise dit sa quantité partout où elle paraît : la liste de la journée, son rappel, le Porche, l’écran d’accueil de votre téléphone ; ceux-ci gardent le nom court.
+
+### Montrer à un médecin ou un pharmacien {#show-to-a-doctor-or-pharmacist}
+
+À la pharmacie ou chez un médecin, **Montrer à un médecin ou un pharmacien**, sous vos médicaments, remplit l’écran de tous ceux que vous prenez en ce moment ; sur une ordonnance, de ses médicaments. En grands caractères, à lire à bout de bras, un médicament par bloc : sa DCI et son dosage d’abord, puis le nom sur la boîte, chaque prise avec son heure et sa quantité, depuis combien de temps vous le prenez, qui l’a prescrit. Rien ne s’y modifie : un seul bouton, **Fermer**, et le bouton Retour le ferme aussi, si bien que rien ne change si quelqu’un le touche.
 
 ### Aujourd’hui {#today}
 
@@ -113,6 +117,8 @@ Aucun nombre, aucun score, aucune couleur. Sous chaque jour passé, sur cette pa
 
 Sur la page, sous vos médicaments, **Ajouter une ordonnance** : ce qu’elle prescrit, qui l’a écrite, jusqu’à quand elle est valable, combien de jours la pharmacie donne à la fois, et la date du dernier retrait. Chacune est ensuite listée avec qui l’a écrite, le prochain passage à la pharmacie et le jour où la renouveler, en mots (« pharmacie à partir du mardi 27 octobre · à renouveler d’ici le jeudi 4 février 2027 »), et les médicaments qui viennent avec elle ; **Modifier** la rouvre.
 
+Ses médicaments sont aussi dans sa fiche, une ligne chacun : le nom, la dose, et les prises, chacune avec son heure et sa propre quantité quand elle diffère, comme dans la fiche d’un médicament. **Ajouter un médicament** ajoute une ligne ; une ligne laissée vide n’est pas gardée. Le bouton en bout de ligne retire le médicament : ajouté là, il part aussitôt ; enregistré avant, la ligne dit qu’il part à l’enregistrement, sans plus de rappels, et **Le garder** le remet. Un médicament pris tous les quelques jours ou toutes les quelques heures dit quand, en mots ; sa propre fiche le change. Un médicament créé là est comme les autres : listé sur la page, rappelé, ses prises dans la journée. Si quelque chose ne peut pas être enregistré (une ligne sans nom, deux prises à la même heure), la fiche dit quel médicament, et rien ne change.
+
 Sioul crée alors les démarches, une fois chacune :
 
 - deux jours avant que les médicaments ne manquent, une tâche « Pharmacie : … » ;
@@ -122,20 +128,6 @@ Elles vont dans la liste que vous choisissez sous **Les démarches vont dans**, 
 
 !!! note "Ces démarches sont des tâches"
     Les titres des démarches nomment le médicament, et elles vont dans votre liste de tâches, sur votre serveur d’agenda quand la liste s’y trouve. Choisissez une liste « sur cet appareil seulement » si vous préférez les garder ici.
-
-## Votre montre {#your-watch}
-
-Ce qu’une montre Garmin a mesuré, lu dans ses propres fichiers, jamais par un compte Garmin : rien ne part vers un serveur.
-
-**Pour la régler**, dans le ⚙ de la page Santé, **Ses fichiers arrivent dans** : un dossier où arrivent les exports de Gadgetbridge (l’application compagnon libre pour Android) ou les fichiers d’export de Garmin. Ou branchez la montre : quand votre bureau montre son dossier `GARMIN`, Sioul le lit.
-
-La page d’aujourd’hui dit alors, sous la liste de la journée, en mots : quand la montre a donné des données pour la dernière fois, les pas du jour, la fréquence cardiaque au repos et sa valeur habituelle, le sommeil de la nuit dernière (sa durée et ses heures), Body Battery, les moyennes de la semaine ; puis les courbes du jour, sobres. Pas d’objectif, pas de série, pas de score, et pas de couleur en guise de note.
-
-**Où c’est gardé** : ce que la montre a mesuré est gardé dans un petit fichier par jour, dans le dossier de données de Sioul, lisible par vous seul. Il ne va vers vos autres appareils que par le partage de Sioul, scellé, une fois **Montre** activé là ([Le partage](sharing.md)).
-
-**Des propositions douces entre deux tâches**, actives sauf si vous les décochez : une pause après une longue période sans bouger, une courte pause, une marche quand il y a de la place pour elle, ou finir la journée quand la réserve est basse. Seulement à un arrêt naturel (une tâche faite, une séance de concentration finie), jamais pendant le calme, six par jour au plus, et une proposition refusée attend plus longtemps avant de revenir, à chaque fois. Une notification à ce sujet ne dit aucun chiffre.
-
-Le matin, la page Tâches peut dire une ligne, jamais une notification : après une nuit courte, « Des séances plus courtes aujourd’hui, et la tâche la plus dure tôt, ou demain ? » ; quand la fréquence cardiaque au repos est bien au-dessus de l’habitude, « Votre corps lutte peut-être contre quelque chose. Une journée plus légère ? ». Chacune vient avec **Une journée plus légère**, qui règle [la météo du jour](tasks.md#how-is-today) sur brume ou brouillard.
 
 ## Bouger {#moving}
 
@@ -155,7 +147,7 @@ Ce que tient une journée s’apprend des journées que vous avez dites de trop,
 
 ## Où tout est gardé {#where-it-is-kept}
 
-Sur cet appareil, dans des fichiers des dossiers propres à Sioul que vous seul pouvez lire : ce que vous saisissez, les jours qui sortent de l’ordinaire, les prises marquées, chaque prise arrivée à son heure avec les réponses de vos appareils, et un petit fichier par jour pour votre montre. Ils ne vont nulle part, sauf si vous partagez entre vos appareils : ils voyagent alors scellés, par votre propre dossier synchronisé ([Le partage](sharing.md)). Les démarches sont l’exception : ce sont des tâches, et elles vont dans votre liste de tâches.
+Sur cet appareil, dans des fichiers des dossiers propres à Sioul que vous seul pouvez lire : ce que vous saisissez, les jours qui sortent de l’ordinaire, les prises marquées, et chaque prise arrivée à son heure avec les réponses de vos appareils. Ils ne vont nulle part, sauf si vous partagez entre vos appareils : ils voyagent alors scellés, par votre propre dossier synchronisé ([Le partage](sharing.md)). Les démarches sont l’exception : ce sont des tâches, et elles vont dans votre liste de tâches.
 
 ## Pour aller plus loin {#going-further}
 
@@ -165,7 +157,7 @@ Sur un téléphone avec Sioul pour Android : sous la nuit, dans les réglages 
 
 ### Ce qu’un agent d’IA voit {#what-an-ai-agent-sees}
 
-Un agent d’IA que vous connectez ([Avec un agent d’IA](ai-agent.md)) n’a aucun outil qui lise cette page : ni vos médicaments, ni vos prises, ni vos repas, ni vos nuits, ni votre montre. Il voit en revanche les démarches, puisque ce sont des tâches de votre liste, avec le médicament dans leur titre.
+Un agent d’IA que vous connectez ([Avec un agent d’IA](ai-agent.md)) n’a aucun outil qui lise cette page : ni vos médicaments, ni vos prises, ni vos repas, ni vos nuits. Il voit en revanche les démarches, puisque ce sont des tâches de votre liste, avec le médicament dans leur titre.
 
 ## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
 
@@ -181,7 +173,7 @@ Ce que la recherche peut dire, et ce qu’elle ne peut pas dire : les preuves 
 
 En octobre 2026, d’après la documentation de chaque application. Ce tableau compare ce que fait chaque application, pas à quel point elle aide qui que ce soit.
 
-✓ documenté ; **en partie**, avec une note ; ✗ introuvable dans la documentation de l’application (pour Sioul : pas fait) ; ? pas confirmé ; — sans objet. La colonne de Sioul a été vérifiée dans son code. Gadgetbridge, l’application compagnon libre pour Android dont Sioul lit les exports, n’a pas de colonne : ce n’est pas un outil pour planifier sa santé.
+✓ documenté ; **en partie**, avec une note ; ✗ introuvable dans la documentation de l’application (pour Sioul : pas fait) ; ? pas confirmé ; — sans objet. La colonne de Sioul a été vérifiée dans son code.
 
 **Pour tout le monde**
 
@@ -199,7 +191,7 @@ En octobre 2026, d’après la documentation de chaque application. Ce tableau c
 | Une pause pour bouger après être resté assis | ✓¹⁹ | ✗ | ✗ | ✓²⁰ | ✗²¹ | ✗ |
 | Planifie pour une maladie qui limite l’énergie | ✓²² | ✗ | ✗ | ✗ | ✓²³ | en partie²⁴ |
 | Montre un score, un anneau ou une série | ✗²⁵ | en partie²⁶ | ✗ | ✓ | ✓ | en partie²⁷ |
-| Lit une montre | ✓²⁸ | ✗ | ✗ | ✓ | ✓²⁹ | ✓³⁰ |
+| Lit une montre | ✗²⁸ | ✗ | ✗ | ✓ | ✓²⁹ | ✓³⁰ |
 
 1. Une fois, discrètement, sur l’appareil où vous êtes ; sur un téléphone par le réveil d’Android, même quand Sioul était arrêté.
 2. Par choix : un seul rappel ; la prise attend ensuite sur le Porche jusqu’à ce que vous répondiez, que la journée finisse ou que douze heures passent.
@@ -228,7 +220,7 @@ En octobre 2026, d’après la documentation de chaque application. Ce tableau c
 25. Par choix : ni objectif, ni score, ni série, rien en rouge.
 26. Des progrès quotidiens, hebdomadaires et mensuels.
 27. Un « energy score », la moyenne des niveaux d’énergie que vous avez saisis ce jour-là.
-28. Les propres fichiers d’une montre Garmin, sans compte Garmin.
+28. Retiré le 8 octobre 2026 : les chiffres de santé d’une montre ne sont pas démontrés exacts, et Garmin n’offre aucun moyen officiel de les lire.
 29. Son propre bracelet, fabriqué par Polar.
 30. Par Apple Health, Google Fit ou Fitbit.
 
@@ -256,11 +248,10 @@ D’autres en font plus par endroits : Apple rappelle de nouveau tant qu’une
     - **Apple Health**, les guides d’utilisation de l’iPhone et de l’Apple Watch sur les médicaments, les horaires de sommeil, le sommeil et l’activité quotidienne, et sa page Santé : <https://support.apple.com/guide/iphone/track-your-medications-iph811670c81/ios>, <https://support.apple.com/guide/iphone/learn-more-about-your-medications-iph2fcefa8d6/ios>, <https://support.apple.com/guide/watch/medications-apd3dd24d78b/watchos>, <https://support.apple.com/guide/watch/set-up-sleep-schedules-apd830528336/watchos>, <https://support.apple.com/guide/watch/track-your-sleep-crpxel1lvun9/watchos>, <https://support.apple.com/guide/watch/track-daily-activity-apd3bf6d85a6/watchos>, <https://www.apple.com/ios/health/>
     - **Visible**, sa page d’accueil, sa FAQ, son article sur le Morning Stability Score et son aide sur le POTS : <https://www.makevisible.com/>, <https://www.makevisible.com/faqs>, <https://www.makevisible.com/blog/introducing-the-morning-stability-score>, <https://help.makevisible.com/en/articles/10632758-can-i-use-visible-if-i-have-pots>
     - **Bearable**, sa page d’accueil, son aide sur la saisie des données, et sa propre description dans l’App Store d’Apple : <https://bearable.app/>, <https://bearable.app/support/howto/configure-and-enter-data-into-bearable/>, <https://apps.apple.com/us/app/bearable-symptom-tracker/id1482581097>
-    - **Gadgetbridge**, sa page d’accueil : <https://gadgetbridge.org/>
 
 ## Côté technique {#for-technical-readers}
 
-**Les fichiers.** `health.toml` (ce que vous saisissez) et `health-days.toml` (les jours qui sortent de l’ordinaire) dans le dossier de données de Sioul (`~/.local/share/sioul/` sous Linux) ; `health-state.toml` (les prises marquées, les rappels donnés, les démarches faites, les minutes de discussion) et `health-doses.toml` (chaque prise arrivée à son heure, et la réponse de chaque appareil) dans son dossier d’état (`~/.local/state/sioul/`) ; les journées de la montre dans `watch/<jour>.json` du dossier de données, un petit fichier par jour. Sous Linux et macOS, chacun est écrit en entier à côté de sa place, puis déplacé à sa place, lisible par vous seul (mode 0600), dans des dossiers que vous seul pouvez ouvrir (0700), quelle que soit la valeur par défaut du système ; sous Windows, dans les dossiers propres à votre profil.
+**Les fichiers.** `health.toml` (ce que vous saisissez) et `health-days.toml` (les jours qui sortent de l’ordinaire) dans le dossier de données de Sioul (`~/.local/share/sioul/` sous Linux) ; `health-state.toml` (les prises marquées, les rappels donnés, les démarches faites, les minutes de discussion) et `health-doses.toml` (chaque prise arrivée à son heure, et la réponse de chaque appareil) dans son dossier d’état (`~/.local/state/sioul/`). Sous Linux et macOS, chacun est écrit en entier à côté de sa place, puis déplacé à sa place, lisible par vous seul (mode 0600), dans des dossiers que vous seul pouvez ouvrir (0700), quelle que soit la valeur par défaut du système ; sous Windows, dans les dossiers propres à votre profil.
 
 **Les prises comme registres.** Chaque prise qui arrive à son heure est un registre que vos appareils partagent. L’appareil qui la voit arriver l’ouvre ; le premier qui note votre réponse l’écrit, avec l’heure à laquelle vous l’avez prise. Chaque appareil n’écrit que ses propres entrées : le partage n’a jamais deux appareils qui s’écrasent l’un l’autre ; les réponses sont fusionnées à la lecture, la plus ancienne d’abord, et les réponses qui diffèrent sont toutes gardées. Les registres sont gardés neuf jours.
 
@@ -272,9 +263,7 @@ D’autres en font plus par endroits : Apple rappelle de nouveau tant qu’une
 
 **Sur un téléphone Android.** Les prises des deux jours qui viennent (48 heures) sont confiées au réveil d’Android comme alarmes exactes, qui réveillent Sioul à chacune, même quand il était arrêté ; Sioul demande d’abord à votre application de synchronisation de regarder, quand elle offre un moyen de le faire. Sans l’autorisation des alarmes exactes, un rappel peut arriver jusqu’à une heure en retard, et la page le dit. Le canal « Doses » a l’importance par défaut d’Android.
 
-**La montre.** Les fichiers FIT de Garmin sont lus avec `fitparser`, une bibliothèque libre (MIT), jamais avec le SDK de Garmin, dont la licence interdit le copyleft ; depuis un dossier (les exports de Gadgetbridge, les ZIP d’export de Garmin, des ZIP dans des ZIP) ou le dossier `GARMIN` de la montre (stockage de masse, le montage MTP de GNOME, KDE avec kio-fuse) ; chaque fichier une fois, d’après le numéro de série de la montre et l’heure du fichier ; Body Battery gardé seulement entre 0 et 100. Rien ne va chez Garmin, ni nulle part ailleurs que sur vos propres appareils.
-
-**Scellé entre vos appareils.** La partie **Santé** du partage de Sioul porte les quatre fichiers de santé, fusionnés entrée par entrée ; la partie **Montre**, les journées de la montre et la mémoire de ses propositions. Les deux sont scellées comme toute partie : XChaCha20-Poly1305 (un nonce aléatoire de 192 bits chacun), chaque enregistrement lié à l’appareil qui l’a écrit, à sa place et à son heure, sous une clé tirée de votre phrase de passe (12 caractères au moins) par Argon2id (64 Mio, trois passes), et gardée sous forme de clé dérivée dans le trousseau de chaque appareil ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)).
+**Scellé entre vos appareils.** La partie **Santé** du partage de Sioul porte les quatre fichiers de santé, fusionnés entrée par entrée, scellés comme toute partie : XChaCha20-Poly1305 (un nonce aléatoire de 192 bits chacun), chaque enregistrement lié à l’appareil qui l’a écrit, à sa place et à son heure, sous une clé tirée de votre phrase de passe (12 caractères au moins) par Argon2id (64 Mio, trois passes), et gardée sous forme de clé dérivée dans le trousseau de chaque appareil ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)).
 
 **Des journées égales.** Le plan est fait une première fois pour voir la charge de la semaine, événements compris, puis de nouveau avec chaque jour tenu à la moyenne de la semaine sur chaque coût, jamais au-dessus de 85 % de son budget ([les notes de conception, en anglais](https://aurelienpierre.github.io/sioul/dev/capacity.html)).
 

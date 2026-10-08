@@ -23,7 +23,10 @@ The Settings page has a tab for each of the sections below, from **Display** to 
 - **Colours**: light, dark, or as the system has them. The icons follow at the next start.
 - **Show the places' names beside their icons**: the places on the left of the window show their names beside their icons, in a wider column, for whoever reads words more easily than icons. Without it, their icons alone; each one's name shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen. It travels with your settings to your other devices, when you [share them](sharing.md). The button at the left end of the title bar, over the places, or ++f9++, changes it too.
 - **Show passwords as you type**: every password, passphrase and key field shows what you type from the start, on this device. Without it, the eye at the end of each field shows or hides what you typed, at any time.
-- **Details on the home screen** (on a phone): Sioul's card on the phone's home screen lists the latest messages on the Porch, with their sender, subject and first line, the coming events of your calendars with their titles, a code you just asked a site for, a dose due, and the next step's title ([First steps](first-steps.md#on-a-phone)). Turned off, it says only what now is for, that mail waits, the events' times without their titles, and that a next step waits: for a phone whose home screen others see. This phone only.
+<!-- colour: the sites' colours (docs/colour.md). -->
+- **Colours for this screen** (on a computer): sites are shown in your screen's own colours, read from its colour profile, so that a wide-gamut screen does not make them louder than they are. A sentence under it says what this screen gets: its profile's name, or that your desktop already adapts colours (on Wayland, on macOS), or that the screen has no profile. On unless you turn it off. [Sites](sites.md#colours) says more.
+- **Calmer colours on sites** (on a computer): Off, A little, More. Loud colours on websites are softened, greys and soft tints stay as they are. Every site follows it at once.
+- **Details on the home screen** (on a phone): Sioul's cards on the phone's home screen name what they show: a dose due, a code you just asked a site for, your reminders, a call declined, the next step's title; the latest messages on the Porch, with their sender, subject and first line; the coming events of your calendars, with their titles ([First steps](first-steps.md#on-a-phone)). Turned off, they name nothing: the date, the weather and what now is for, then that a code, a reminder or mail waits, the events' times without their titles, and that a next step waits: for a phone whose home screen others see. This phone only.
 
 ## Hours
 
@@ -75,6 +78,8 @@ On a phone, what sets it up, nothing that decides when (that is [What reaches yo
 
 - **Calls**: Sioul as Android's caller ID & spam app, so that a call whose row says later goes to your voicemail; what Sioul does with calls, what it never does, and what always rings; reading the contacts; where a declined call goes; texts. See [Calls](calls.md).
 - **Other apps**: Android's **Notification access** (two steps for Sioul installed from a file), **Hold other apps' notifications until their time**, the apps that rang before Sioul held them, with **Make it silent**. Each app, conversation and site's own choice is in What reaches you ▸ Exceptions. See [Other apps' notifications, on a phone](notifications.md#other-apps-on-a-phone).
+- **On your computers**: the part **Messages from your phone**, off until you turn it on, and for each app whether its messages go to your computers' Porch: not at all, who and when, or the words too (the SMS app's words unless you say otherwise). See [On your computers](notifications.md#messages-on-your-computers).
+- **Texts**: what Sioul does with your texts once you allow it, each permission with what it is for, **Allow in Android…**, the part **Texts**, how many texts and how much media your phone holds and how much has gone to your computers, and the largest media file brought there. See [Texts](texts.md).
 - **Do not disturb on this phone**: Android's Do Not Disturb access, which Sioul's modes need, and what each mode lets through; **Starred on this phone**, who of your Always through people is not starred there; **Keep this phone in step in the background**, and **Allow in the background**. See [What each system does](notifications.md#what-each-system-does).
 - **Alarms and notifications**: Android's pages for exact alarms, which reminders, doses and the alarm at waking need to come on time, and for Sioul's own notifications.
 
@@ -110,7 +115,7 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | [Contacts](contacts.md#the-contacts-settings) | address books, the map |
 | [Notes](notes.md#new-notes) | where new notes go |
 | [Sites](sites.md#logins-from-bitwarden) | your Bitwarden account |
-| [Health](health.md#your-watch) | your watch's folder, gentle offers |
+| [Health](health.md#meals-rest-and-sleep) | where the errands go, the usual meals, naps and night, the pause to move, the limit on chats |
 
 The ⚙ opens them on the page's right, the page staying beside them: two fifths of the window and a little more, from 520 to 760 pixels; on a phone, over the whole screen. Escape or a click outside closes them.
 

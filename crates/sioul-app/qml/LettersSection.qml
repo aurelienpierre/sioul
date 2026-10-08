@@ -47,12 +47,13 @@ ColumnLayout {
         font.weight: Font.DemiBold
         color: section.theme.text
     }
-    Label {
+    // What installs the reader: its command, if any, to copy.
+    CommandText {
         visible: section.shown.missing !== ""
         Layout.fillWidth: true
+        sioul: section.sioul
+        theme: section.theme
         text: section.sioul.textWith("letters-no-ocr", "hint", section.shown.missing)
-        wrapMode: Text.Wrap
-        textFormat: Text.PlainText
         color: section.theme.warm
     }
     Label {

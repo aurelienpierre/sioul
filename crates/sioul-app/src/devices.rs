@@ -92,7 +92,9 @@ fn write(change: impl FnOnce(&mut Entry)) {
         entry.id = id;
         entry.name = name();
         entry.kind = kind().into();
-        entry.version = env!("CARGO_PKG_VERSION").into();
+        // The build that writes it (docs/database.md, "Devices"): which code each device runs.
+        entry.version = sioul_core::build::VERSION.into();
+        entry.commit = sioul_core::build::COMMIT.into();
         entry.doses = doses;
         change(entry);
     });

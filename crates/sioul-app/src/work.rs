@@ -269,8 +269,6 @@ struct TasksShown {
     /// "Monday. The plan starts with: …", once work is back, on its day.
     first_step: String,
     first_step_task: String,
-    /// What the watch says of this morning ("short-night", "strain"), else "".
-    morning: String,
     /// The next date asked within a week: the time budget until then, else "".
     budget: String,
     /// Today laid out: events at their times, today's steps in the gaps.
@@ -488,7 +486,6 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
             quiet: desk.quiet,
             first_step: first.0,
             first_step_task: first.1,
-            morning: crate::health::morning_word(),
             budget: desk.next_budget(),
             day: today_laid_out(&desk, &shared),
             free: crate::pauses::offers(&desk.loaded.tasks, desk.filter.quiet.as_ref(), crate::hours::mode_now().free()),
@@ -723,9 +720,12 @@ pub(crate) fn new_form(shared: &Shared, from: &str, key: &str, start: f64, list:
     let shaped = Task { categories: edit.categories.clone(), cases: edit.cases.clone(), list_id: list_id.clone(), ..Task::default() };
     let area_tags = sioul_core::areas::TaskAreas::of_config(&config, &loaded.cases).by_tags(&shaped).id();
     let source = if from.is_empty() { String::new() } else { loaded.world().describe(&loaded.world().canonical(from)).title };
+    // What was felt after tasks of its title or its kind, faint in its form.
+    let proposed = sioul_core::capacity::FeltIndex::of(&loaded.tasks).proposal(&Task { title: edit.title.clone(), kind: edit.kind.clone(), ..Task::default() });
     serde_json::json!({
         "card": null,
         "edit": edit,
+        "proposed": proposed,
         "steps": [],
         "steps_total": "",
         "waits_for": [],
@@ -925,6 +925,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         limited: Vec<&'static str>,
         /// Its date asked within three weeks: the time budget until then.
         budget: String,
+        /// What was felt after it, or tasks of its kind, before: faint in its form.
+        proposed: sioul_core::capacity::Proposal,
     }
     let config = load_config();
     let limited = tasks::lists()
@@ -938,7 +940,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         Some(date) if task.status.is_open() && date >= today && date <= soon && desk.plan.items.get(uid).is_some_and(|p| !p.optional) => desk.budget_line(date),
         _ => String::new(),
     };
-    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget })
+    let proposed = sioul_core::capacity::FeltIndex::of(&loaded.tasks).proposal(task);
+    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed })
 }
 
 /// Saves the task form; an empty UID makes a new task in `list`. Returns {"uid"} or {"error"}.
@@ -1033,8 +1036,6 @@ pub(crate) fn set_status(qt: &QtThread, shared: &Arc<Shared>, uid: &str, status:
     // "How was it?" offered on the status line, after the line that says it is done.
     let done = uid.to_string();
     let _ = qt.queue(move |mut sioul| sioul.as_mut().task_done(QString::from(&done)));
-    // A task done is a breakpoint: the watch may have a gentle offer.
-    crate::health::watch_offer(qt, 0);
     line
 }
 
@@ -1256,11 +1257,8 @@ pub(crate) fn focus_stop(qt: &QtThread, shared: &Arc<Shared>, done: bool, note: 
     let kept = tr().text("focus-stopped", Some(&args));
     if done {
         let effect = set_status(qt, shared, &running.task, "completed");
-        // A breakpoint: the watch may have a gentle offer.
-        crate::health::watch_offer(qt, session.minutes);
         return format!("{kept} {effect}");
     }
-    crate::health::watch_offer(qt, session.minutes);
     tell(qt, shared, kept.clone());
     show_work(qt, shared);
     kept

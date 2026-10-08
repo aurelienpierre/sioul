@@ -312,9 +312,15 @@ fn open_into(folder: &Path, key: &[u8; 32], hash: &str, target: &Path) -> Result
 /// again by another device) stays.
 pub fn sweep(folder: &Path, mine: &mut BTreeMap<String, i64>, used: &BTreeSet<String>, now_ms: i64) {
     let unused = UNUSED_DAYS * 86_400_000;
+    // Said used again at most once a day: the time counts in months, and the
+    // memory holding it is written only when it changes (a computer's held
+    // 25 MB, rewritten at every exchange for these times alone, 8 October 2026).
+    let day = 86_400_000;
     mine.retain(|name, last| {
         if used.contains(name) {
-            *last = now_ms;
+            if now_ms - *last >= day {
+                *last = now_ms;
+            }
             return true;
         }
         if now_ms - *last < unused {

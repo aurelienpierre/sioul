@@ -37,6 +37,18 @@ ColumnLayout {
     // (docs/database.md, "Kept in step by Sioul itself"); started off the window's thread.
     property bool byServer: false
     property bool starting: false
+    // "Send everything again" pressed, its answer not read yet, and what it said before.
+    property bool sending: false
+    property string againBefore: ""
+
+    // "Send everything again", off the window's thread: what it did is read a few seconds later.
+    function sendAgain() {
+        panel.sending = true
+        panel.againBefore = panel.status.again || ""
+        sentAgain.tries = 0
+        panel.sioul.shareSendAgain()
+        sentAgain.restart()
+    }
 
     function listHistory() {
         panel.sioul.shareHistory(historyFilter.text)
@@ -391,6 +403,16 @@ ColumnLayout {
                 font.pixelSize: 13
                 color: panel.theme.muted
             }
+            // The Sioul it runs, as its entry says: an older one said calmly.
+            Label {
+                visible: text !== ""
+                Layout.fillWidth: true
+                text: device.modelData.build || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
+            }
             RowLayout {
                 visible: device.modelData.off || device.modelData.forget
                 spacing: 6
@@ -415,6 +437,17 @@ ColumnLayout {
                 }
             }
         }
+    }
+    // This device's own build (docs/building.md, "Which build").
+    Label {
+        visible: (panel.status.build || "") !== ""
+        Layout.topMargin: 6
+        Layout.fillWidth: true
+        text: panel.status.build || ""
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: panel.theme.muted
     }
     // The other devices' files fetched from the server too (docs/database.md,
     // "Fetched from the server too"): where it stands, this device's switch,
@@ -504,6 +537,100 @@ ColumnLayout {
 
         interval: 4000
         onTriggered: panel.reload()
+    }
+    // This device's own files sent to that server too, beside the sync app
+    // (docs/database.md, "Sent to the server too"): the switch, and where it stands.
+    RowLayout {
+        visible: panel.backup.shown === true && panel.backup.on === true
+        Layout.fillWidth: true
+        spacing: 8
+
+        Switch {
+            Layout.alignment: Qt.AlignTop
+            checked: panel.backup.send === true
+            Accessible.name: panel.backup.send_switch || ""
+            onToggled: {
+                panel.problem = panel.sioul.setShareSend(checked)
+                panel.reload()
+                lookAgain.restart()
+            }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 1
+
+            Label {
+                Layout.fillWidth: true
+                text: panel.backup.send_switch || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: panel.theme.text
+            }
+            Label {
+                Layout.fillWidth: true
+                text: panel.sioul.text("share-send-help")
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
+            }
+            Label {
+                visible: text !== ""
+                Layout.fillWidth: true
+                text: panel.backup.send_line || ""
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.text
+            }
+        }
+    }
+    // "Send everything again": for a sync app late, or a server that lost
+    // files; what it did, said under it once done.
+    RowLayout {
+        visible: panel.status.can_again === true
+        Layout.fillWidth: true
+        spacing: 8
+
+        Button {
+            id: sendAgain
+
+            text: panel.sioul.text("share-send-again")
+            onClicked: panel.sendAgain()
+        }
+        Label {
+            Layout.fillWidth: true
+            text: panel.sending ? panel.sioul.text("share-send-again-sending") : panel.sioul.text("share-send-again-help")
+            wrapMode: Text.Wrap
+            font.pixelSize: 13
+            color: panel.theme.muted
+        }
+    }
+    Label {
+        visible: panel.status.can_again === true && text !== "" && !panel.sending
+        Layout.fillWidth: true
+        text: panel.status.again || ""
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: panel.theme.text
+    }
+    // Sent off the window's thread, after any send running: read again every
+    // three seconds until its answer comes, a minute at most.
+    Timer {
+        id: sentAgain
+
+        property int tries: 0
+
+        interval: 3000
+        repeat: true
+        onTriggered: {
+            sentAgain.tries += 1
+            panel.reload()
+            if ((panel.status.again || "") !== panel.againBefore || sentAgain.tries >= 20) {
+                panel.sending = false
+                sentAgain.stop()
+            }
+        }
     }
     // What travels from this device: each part's switch, what it carries, when it last exchanged.
     Label {

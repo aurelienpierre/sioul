@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: LGPL-3.0-or-later -->
+<!-- Breeze's weather-snow-day-symbolic (crates/sioul-app/icons/COPYING-ICONS), made by
+     tools/make-weather-drawables.py for the card on the home screen: white,
+     tinted by the card's layout in its text colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path android:pathData="m1 19h5"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="2"
+        android:strokeLineJoin="bevel" />
+    <group android:rotation="36" android:pivotX="17" android:pivotY="19">
+        <path android:pathData="m1 19h5"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2"
+            android:strokeLineJoin="bevel" />
+    </group>
+    <group android:rotation="72" android:pivotX="17" android:pivotY="19">
+        <path android:pathData="m1 19h5"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2"
+            android:strokeLineJoin="bevel" />
+    </group>
+    <group android:rotation="108" android:pivotX="17" android:pivotY="19">
+        <path android:pathData="m1 19h5"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2"
+            android:strokeLineJoin="bevel" />
+    </group>
+    <group android:rotation="-36" android:pivotX="17" android:pivotY="19">
+        <path android:pathData="m1 19h5"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2"
+            android:strokeLineJoin="bevel" />
+    </group>
+    <path android:pathData="m9.4 23.83a9 9 0 0 1 9.94-13.52"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="2"
+        android:strokeLineJoin="bevel" />
+    <path android:pathData="m12 32.5 0.86052 1.5h1.7376l-0.90486 1.5 0.90486 1.5h-1.7284l-0.86965 1.4937-0.84804-1.5h-1.75l0.90485-1.5-0.90485-1.5h1.7333z"
+        android:fillColor="#ffffff" />
+    <group android:translateX="8" android:translateY="0">
+        <path android:pathData="m12 32.5 0.86052 1.5h1.7376l-0.90486 1.5 0.90486 1.5h-1.7284l-0.86965 1.4937-0.84804-1.5h-1.75l0.90485-1.5-0.90485-1.5h1.7333z"
+            android:fillColor="#ffffff" />
+    </group>
+    <group android:translateX="16" android:translateY="0">
+        <path android:pathData="m12 32.5 0.86052 1.5h1.7376l-0.90486 1.5 0.90486 1.5h-1.7284l-0.86965 1.4937-0.84804-1.5h-1.75l0.90485-1.5-0.90485-1.5h1.7333z"
+            android:fillColor="#ffffff" />
+    </group>
+    <group android:translateX="24" android:translateY="0">
+        <path android:pathData="m12 32.5 0.86052 1.5h1.7376l-0.90486 1.5 0.90486 1.5h-1.7284l-0.86965 1.4937-0.84804-1.5h-1.75l0.90485-1.5-0.90485-1.5h1.7333z"
+            android:fillColor="#ffffff" />
+    </group>
+    <group android:translateX="-4" android:translateY="5.5">
+        <path android:pathData="m12 32.5 0.86052 1.5h1.7376l-0.90486 1.5 0.90486 1.5h-1.7284l-0.86965 1.4937-0.84804-1.5h-1.75l0.90485-1.5-0.90485-1.5h1.7333z"
+            android:fillColor="#ffffff" />
+    </group>
+    <group android:translateX="4" android:translateY="5.5">
+        <path android:pathData="m12 32.5 0.86052 1.5h1.7376l-0.90486 1.5 0.90486 1.5h-1.7284l-0.86965 1.4937-0.84804-1.5h-1.75l0.90485-1.5-0.90485-1.5h1.7333z"
+            android:fillColor="#ffffff" />
+    </group>
+    <group android:translateX="12" android:translateY="5.5">
+        <path android:pathData="m12 32.5 0.86052 1.5h1.7376l-0.90486 1.5 0.90486 1.5h-1.7284l-0.86965 1.4937-0.84804-1.5h-1.75l0.90485-1.5-0.90485-1.5h1.7333z"
+            android:fillColor="#ffffff" />
+    </group>
+    <group android:translateX="20" android:translateY="5.5">
+        <path android:pathData="m12 32.5 0.86052 1.5h1.7376l-0.90486 1.5 0.90486 1.5h-1.7284l-0.86965 1.4937-0.84804-1.5h-1.75l0.90485-1.5-0.90485-1.5h1.7333z"
+            android:fillColor="#ffffff" />
+    </group>
+    <path android:pathData="m27 31 h 5 a 7 7 0 0 0 0.95 -13.92 a 9 9 0 0 0 -8.95-8.08 a 9 9 0 0 0 -8.36 12.31 a 5 5 0 1 0 -1.63 9.69h2 z"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="2"
+        android:strokeLineJoin="bevel" />
+</vector>

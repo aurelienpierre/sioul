@@ -53,6 +53,12 @@ pub struct Case {
     /// "personal" for a matter of yours outside work (a garden, a trip): it stays in view in quiet time.
     #[serde(default)]
     pub area: Option<String>,
+    /// Open to AI agents (`ai = true`): an agent connected with `sioul mcp`
+    /// reads its things and writes into it (`consent`, docs/ai.md). Every
+    /// project is closed until you open it: a manifest written before the
+    /// field existed opens none.
+    #[serde(default)]
+    pub ai: bool,
 }
 
 impl Case {
@@ -80,6 +86,9 @@ pub struct CaseEdit {
     /// "personal", or "" for work and admin.
     #[serde(default)]
     pub area: String,
+    /// Open to AI agents; unsaid (a form that does not show it), the file's value stays.
+    #[serde(default)]
+    pub ai: Option<bool>,
 }
 
 impl CaseEdit {
@@ -93,6 +102,7 @@ impl CaseEdit {
             rate: case.rate.unwrap_or(0.0),
             budget: case.budget.clone().unwrap_or_default(),
             area: case.area.clone().unwrap_or_default(),
+            ai: Some(case.ai),
         }
     }
 }
@@ -155,10 +165,42 @@ pub fn save_case(manifest: &Path, id: &str, edit: &CaseEdit) -> Result<String, S
     } else {
         case.remove("rate");
     }
+    if let Some(open) = edit.ai {
+        write_ai(case, open);
+    }
     let temporary = manifest.with_extension("toml.new");
     std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
     std::fs::rename(&temporary, manifest).map_err(|e| fail(e.to_string()))?;
     Ok(id)
+}
+
+/// A project open to AI agents says so (`ai = true`); a closed one says
+/// nothing, as every project is closed until opened.
+fn write_ai(case: &mut toml_edit::Table, open: bool) {
+    if open {
+        case["ai"] = toml_edit::value(true);
+    } else {
+        case.remove("ai");
+    }
+}
+
+/// Opens a project to AI agents, or closes it, in the manifest, in place:
+/// its other fields and the file's comments stay. The sharing carries the
+/// project's entry, so the choice holds on every device.
+pub fn set_ai(manifest: &Path, case_id: &str, open: bool) -> Result<(), String> {
+    use toml_edit::{DocumentMut, Item};
+    let fail = |e: String| format!("{}: {e}", manifest.display());
+    let text = std::fs::read_to_string(manifest).map_err(|e| fail(e.to_string()))?;
+    let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+    let case = doc
+        .get_mut("case")
+        .and_then(Item::as_array_of_tables_mut)
+        .and_then(|cases| cases.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(case_id)))
+        .ok_or_else(|| fail(format!("no project {case_id}")))?;
+    write_ai(case, open);
+    let temporary = manifest.with_extension("toml.new");
+    std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
+    std::fs::rename(&temporary, manifest).map_err(|e| fail(e.to_string()))
 }
 
 /// A route matches when every list it fills has at least one match.
@@ -481,6 +523,30 @@ mod tests {
         assert_eq!((store.cases[0].routes[0].from_domains.clone(), store.cases[0].routes[0].subject_contains.clone()), (vec!["finances.example".to_string()], vec!["avis".to_string()]));
         assert_eq!(store.cases[1].title, "Bill");
         assert!(std::fs::read_to_string(&path).unwrap().starts_with("# My cases."));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn projects_are_closed_to_agents_until_opened() {
+        let dir = std::env::temp_dir().join(format!("sioul-ai-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(MANIFEST);
+        // A manifest written before the field: every project closed.
+        std::fs::write(&path, "# Mine.\n[[case]]\nid = \"taxes\"\ntitle = \"Taxes\"\n\n[[case]]\nid = \"lumen\"\ntitle = \"Studio Lumen\"\nkind = \"project\"\n").unwrap();
+        assert!(CaseStore::load(&dir).unwrap().cases.iter().all(|c| !c.ai));
+        set_ai(&path, "lumen", true).unwrap();
+        let store = CaseStore::load(&dir).unwrap();
+        assert_eq!(store.cases.iter().map(|c| (c.id.as_str(), c.ai)).collect::<Vec<_>>(), [("taxes", false), ("lumen", true)]);
+        assert!(std::fs::read_to_string(&path).unwrap().starts_with("# Mine."));
+        // A form that does not say it keeps it; one that does changes it.
+        save_case(&path, "lumen", &CaseEdit { title: "Studio Lumen".into(), kind: "project".into(), ..CaseEdit::default() }).unwrap();
+        assert!(CaseStore::load(&dir).unwrap().get("lumen").unwrap().ai);
+        assert_eq!(CaseEdit::of(CaseStore::load(&dir).unwrap().get("lumen").unwrap()).ai, Some(true));
+        save_case(&path, "lumen", &CaseEdit { title: "Studio Lumen".into(), ai: Some(false), ..CaseEdit::default() }).unwrap();
+        assert!(!CaseStore::load(&dir).unwrap().get("lumen").unwrap().ai);
+        // Closed writes nothing: absent is closed.
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("ai ="));
+        assert!(set_ai(&path, "nowhere", true).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

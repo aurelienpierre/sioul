@@ -1,33 +1,40 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! The card on a phone's home screen (docs/android.md, "The card on the home
-//! screen"): on top, one short line each, what now is for, do-not-disturb, a
-//! code you asked for, the next step when it is the time for one, a dose due;
-//! under them, a list that scrolls: the latest messages the Porch shows
-//! (sender, date, subject, a line of the text, the account's colour), then
-//! the coming appointments, day by day, each in its calendar's colour. Never
-//! a count. Android draws it (android/package/src/com/aurelienpierre/sioul/
-//! HomeCard.java, its rows HomeCardRows.java), without Qt: Sioul writes what
-//! it says in a small file of its own (`home-card.json`, in its state folder)
-//! and tells Android to draw it again.
+//! The cards on a phone's home screen (docs/android.md, "The card on the
+//! home screen"). The full card: today first, the date and the weather (now,
+//! the next four hours, the next morning, afternoon, evening and night, then
+//! the next seven days); then what the Porch has for you that is not mail
+//! (today's doses due, a code you asked for, reminders of dates, waits,
+//! payments and papers, do-not-disturb's line, the calls declined, two events
+//! at once); then Now: the next step when it is the time for one, and where
+//! you stopped. The mail card and the agenda card list the latest messages
+//! the Porch shows (sender, date, subject, a line of the text, the account's
+//! colour) and the coming appointments, day by day, each in its calendar's
+//! colour. Never a count. Android draws them (android/package/src/com/
+//! aurelienpierre/sioul/HomeCard.java, the lists' rows HomeCardRows.java),
+//! without Qt: Sioul writes what they say in a small file of its own
+//! (`home-card.json`, in its state folder) and tells Android to draw them again.
 //!
 //! Android freezes Sioul in the background, so the card is given ahead, in
 //! frames: one per change of time until the end of tomorrow (work, admin, a
 //! meal, winding down, sleep, waking, the Porch's hours, midnight), each with
-//! its own words, the Porch's mail as it lets mail through then, and the next
-//! step as the plan stands then. The messages and the events are written
+//! its own words, the Porch's mail as it lets mail through then, the
+//! reminders and calls it lets show then, and the next step as the plan
+//! stands then. The weather is given hour by hour, from the forecast kept
+//! (40 hours and more ahead, `weather::card`), each hour with its own "now",
+//! next hours and parts of the day. The messages and the events are written
 //! once, each word that changes at midnight with until when it holds ("14:05",
 //! then "yesterday"; "Tomorrow, Thu 8 Oct", then "Today, Thu 8 Oct"). Java
-//! shows the frame for now, leaves out the events over, and draws again at
-//! the next change. Rust writes the card when the Porch is computed (mail
-//! fetched), when the plan is made, when the agenda is read again (an event
-//! changed), at the window's minute when a frame ended (midnight among them)
-//! or five minutes went by, and when Sioul is put away; outside the window,
-//! where Rust runs already (a dose's alarm, its "Taken"), it writes the
-//! doses' lines alone. Nothing here fetches anything. Elsewhere than on
-//! Android nothing is written, unless SIOUL_HOME_CARD is set (to read the
-//! file on a computer).
+//! shows the frame and the hour for now, leaves out the events over, and draws
+//! again at the next change. Rust writes the card when the Porch is computed
+//! (mail fetched), when the plan is made, when the agenda is read again (an
+//! event changed), when a forecast or the reminders change, at the window's
+//! minute when a frame ended (midnight among them) or five minutes went by,
+//! and when Sioul is put away; outside the window, where Rust runs already (a
+//! dose's alarm, its "Taken"), it writes the doses' lines alone. Nothing here
+//! fetches anything. Elsewhere than on Android nothing is written, unless
+//! SIOUL_HOME_CARD is set (to read the file on a computer).
 
 use crate::backend::{load_config, tr};
 use jiff::civil::Date;
@@ -43,9 +50,11 @@ use sioul_core::links::Loaded;
 use sioul_core::plan::Plan;
 use sioul_core::porch::{self, Lane, Senders, Triaged};
 use sioul_core::quiet::{self, Blocks, Mode, Overrides, Reason};
+use sioul_core::reminders::Reminder;
 use sioul_core::taskview::{self, Filter};
 use sioul_core::today::{Today, Weather};
 use sioul_core::trust::Trust;
+use sioul_core::weather::{self as forecast, DaySlot, Forecast, Slot};
 use sioul_core::{pause, view, window};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -55,6 +64,14 @@ use std::sync::{Arc, Mutex};
 /// The card's file, in Sioul's state folder; Java reads it there
 /// (`files/state/sioul/`, android/main.cpp's XDG folders).
 const FILE: &str = "home-card.json";
+/// The file's version: 3 from the full card made around today (October 2026).
+/// Its frames are named "times": an older Sioul's Java reads "frames", finds
+/// none, and says `beyond` until Sioul opens. This Java reads both.
+const VERSION: u32 = 3;
+/// The reminders the card holds, at most, soonest first (Java shows a few).
+const REMINDERS: usize = 12;
+/// A forecast older than this is not shown: Sioul was not opened for a day.
+const FORECAST_KEPT: i64 = 24 * 3600;
 /// A tap on the card, kept by Java (HomeCardOpener.java) for the window.
 const OPENED: &str = "home-card-opened";
 /// The flag, among the task pages' (`work::WorkState`), that turns the details off.
@@ -90,8 +107,12 @@ pub(crate) struct Snapshot {
     stale: Vec<Label>,
     /// Said once the last frame is over: Sioul was not opened for that long.
     beyond: String,
-    /// The list's headings: "Mail", "Agenda".
+    /// The lists' headings: "Mail", "Agenda".
     words: Words,
+    /// Today, first on the full card: the date, the weather.
+    today: TodayLines,
+    /// The frames, from now to the end of tomorrow (`VERSION`: "times").
+    #[serde(rename = "times")]
     frames: Vec<Frame>,
     /// Every message a frame lists (`PorchLines::mail` points here), newest first.
     mail: Vec<Mail>,
@@ -101,6 +122,83 @@ pub(crate) struct Snapshot {
     codes: Vec<Code>,
     /// Today's doses due and not marked, from their time on.
     doses: Vec<DoseLine>,
+    /// The reminders of dates, waits, payments, papers, contracts and the
+    /// money watch, each from its time while it makes sense, soonest first;
+    /// each frame says which it shows (`Frame::reminders`).
+    reminders: Vec<ReminderLine>,
+    /// The calls declined, in the Porch's words; each frame says which it lists.
+    calls: Vec<String>,
+    /// Two events at once, today's and tomorrow's, each said on its own day
+    /// until both are over.
+    overlaps: Vec<Timed>,
+    /// Where you stopped, the line you left, until you say it is done: "Where
+    /// you stopped: …"; details off, that it waits; "" none.
+    stopped: String,
+}
+
+/// Today, as the full card begins.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct TodayLines {
+    /// "Thursday 8 October" until midnight, then "Friday 9 October".
+    date: Vec<Label>,
+    /// Said instead of the weather: no place chosen yet (where to choose
+    /// one), or no forecast yet; "" with the weather.
+    line: String,
+    weather: Option<WeatherLines>,
+}
+
+/// The weather at the place chosen, from the forecast kept.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct WeatherLines {
+    /// Hour by hour, from the hour under way to the end of the forecast or of tomorrow.
+    hours: Vec<WeatherHour>,
+    /// The forecast's days, each from its midnight to the next: Java shows
+    /// the seven after today.
+    days: Vec<WeatherDay>,
+    /// "Weather: Open-Meteo.com", small, as its licence asks (CC BY 4.0).
+    credit: String,
+}
+
+/// One hour of the card's weather: what it says while the hour lasts.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct WeatherHour {
+    from: i64,
+    until: i64,
+    /// "Now": its icon, "14°", "70 %".
+    now: Slot,
+    /// The next four hours, on the same row as now.
+    next: Vec<Slot>,
+    /// The next morning, afternoon, evening and night, in order.
+    parts: Vec<Slot>,
+}
+
+/// One day of the forecast, from its midnight to the next (Unix ms).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct WeatherDay {
+    from: i64,
+    until: i64,
+    #[serde(flatten)]
+    day: DaySlot,
+}
+
+/// A reminder, as the card says it, from its time while it makes sense.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct ReminderLine {
+    /// "Rent · €650 · Planned for Friday 10 October; the account will hold
+    /// it."; details off, "A reminder waits in Sioul."
+    line: String,
+    from: i64,
+    until: i64,
+    /// What a tap opens: its task, budget, paper or contract ("sioul:task/…").
+    open: String,
+}
+
+/// A line said from a time until another (Unix ms).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct Timed {
+    line: String,
+    from: i64,
+    until: i64,
 }
 
 /// The list's headings, in the person's language.
@@ -134,6 +232,20 @@ struct Frame {
     doses: bool,
     /// The agenda shows: not in a pause, whose card shows the pause alone.
     events: bool,
+    /// The reminders shown then, their places in `Snapshot::reminders`: as
+    /// the row of dates of the matrix of what reaches you lets them come
+    /// (work's in work's times only); none asleep, in a pause or in free time
+    /// as usual. Java shows each from its time.
+    reminders: Vec<usize>,
+    /// The calls declined listed then, their places in `Snapshot::calls`: at
+    /// the times their callers may reach you, as the Porch lists them.
+    calls: Vec<usize>,
+    /// Two events at once may show: not asleep, in a pause or in free time.
+    overlaps: bool,
+    /// Where you stopped shows: with the next step, in work or admin time.
+    stopped: bool,
+    /// Under the status line: "Sioul is not set up yet."; "" otherwise.
+    note: String,
 }
 
 /// The Porch's part of a frame, as written.
@@ -292,6 +404,31 @@ pub(crate) struct AgendaInput {
     calendars: bool,
     /// The day they were read for: read again the next day.
     read_on: Date,
+    /// Two events at once set aside for good (`overlaps::SetAside`): not said.
+    aside: BTreeSet<String>,
+}
+
+/// The weather the card is made with: whether a place is chosen, and the
+/// forecast kept (`backend::update_weather`).
+#[derive(Default)]
+pub(crate) struct WeatherInput {
+    place: bool,
+    forecast: Option<Forecast>,
+}
+
+/// The calls declined as the Porch lists them at a time (`calls::for_card`):
+/// their lines, seen from the time given, as the moment given lets their callers through.
+type CallsAt<'a> = &'a dyn Fn(&sioul_core::attention::Now, &Zoned) -> Vec<String>;
+
+/// What the full card is made from besides the Porch, the plan, the agenda and the doses.
+#[derive(Default)]
+struct More<'a> {
+    weather: WeatherInput,
+    /// Every reminder, told or not (`reminders::all`); the events' left out here.
+    reminders: &'a [Reminder],
+    calls: Option<CallsAt<'a>>,
+    /// Where you stopped: the line left.
+    stopped: Option<String>,
 }
 
 /// What a card is made from, besides the Porch and the plan.
@@ -378,6 +515,110 @@ fn when(tr: &Translator, at: &Zoned, from: &Zoned) -> String {
     } else {
         tr.when(at)
     }
+}
+
+/// "Jeudi 8 octobre": a heading's first letter a capital, whatever the language writes.
+fn capital(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
+}
+
+/// Today's date, as the full card begins: "Thursday 8 October" until
+/// midnight, then "Friday 9 October" until the next (the frames end then).
+fn date_labels(tr: &Translator, now: &Zoned) -> Vec<Label> {
+    let mut labels = Vec::new();
+    let mut day = now.date();
+    for _ in 0..2 {
+        let Some(midnight) = day.tomorrow().ok().and_then(|d| d.to_zoned(now.time_zone().clone()).ok()) else { break };
+        labels.push(Label { until: ms(&midnight), text: capital(&tr.day(day)) });
+        day = midnight.date();
+    }
+    labels
+}
+
+/// Today, as the full card begins: the date, then the weather at the place
+/// chosen, hour by hour from the hour under way until `end` (the last frame's)
+/// or the forecast's end, and its days. No place: where to choose one. No
+/// forecast, or one older than a day: that none is there yet. The weather is
+/// no detail: shown with the details off too.
+fn today_lines(m: &Moment, weather: &WeatherInput, end: i64) -> TodayLines {
+    let date = date_labels(m.tr, m.now);
+    if !weather.place {
+        return TodayLines { date, line: m.tr.text("home-card-weather-choose", None), weather: None };
+    }
+    let now = m.now.timestamp().as_second();
+    let Some(kept) = weather.forecast.as_ref().filter(|f| now - f.fetched < FORECAST_KEPT && f.hours.iter().any(|h| h.at + 3600 > now)) else {
+        return TodayLines { date, line: m.tr.text("weather-none", None), weather: None };
+    };
+    let zone = m.now.time_zone().clone();
+    let hours = kept
+        .hours
+        .iter()
+        .filter(|h| h.at + 3600 > now && h.at * 1000 < end)
+        .filter_map(|h| {
+            let at = Timestamp::from_second(h.at).ok()?.to_zoned(zone.clone());
+            let view = forecast::card(kept, &at, m.tr)?;
+            Some(WeatherHour { from: h.at * 1000, until: (h.at + 3600) * 1000, now: view.now?, next: view.hours, parts: view.parts })
+        })
+        .collect();
+    let days = forecast::days(kept, m.tr)
+        .into_iter()
+        .filter_map(|day| {
+            let from = day.date.to_zoned(zone.clone()).ok()?;
+            let until = day.date.tomorrow().ok()?.to_zoned(zone.clone()).ok()?;
+            Some(WeatherDay { from: ms(&from), until: ms(&until), day })
+        })
+        .collect();
+    TodayLines { date, line: String::new(), weather: Some(WeatherLines { hours, days, credit: m.tr.text("home-card-weather-credit", None) }) }
+}
+
+/// The reminders the card says: those of dates, waits, payments, papers,
+/// contracts and the money watch, from their time while they make sense
+/// (the events' come as Android's notifications, and on the agenda card),
+/// soonest first, in one line each: what, then when or why. Details off,
+/// none named. Each with whether it is work's (it waits while work rests).
+fn reminder_lines(tr: &Translator, all: &[Reminder], details: bool, now: i64) -> Vec<(ReminderLine, bool)> {
+    use sioul_core::reminders::Kind;
+    let mut kept: Vec<&Reminder> = all.iter().filter(|r| !matches!(r.kind, Kind::Event | Kind::Before | Kind::Alarm) && r.until > now).collect();
+    kept.sort_by(|a, b| (a.at, &a.key).cmp(&(b.at, &b.key)));
+    kept.into_iter()
+        .take(REMINDERS)
+        .map(|r| {
+            let parts: Vec<&str> = match r.kind {
+                // "Call the CAF · Asked for Friday 30 October".
+                Kind::Asked => vec![&r.body, &r.title],
+                // A paper's and the money watch's titles say it; their bodies are advice, on the Porch.
+                Kind::Paper | Kind::Money => vec![&r.title],
+                _ => vec![&r.title, &r.body],
+            };
+            let line = if details { parts.into_iter().map(str::trim).filter(|p| !p.is_empty()).collect::<Vec<_>>().join(" · ") } else { tr.text("home-card-reminder-plain", None) };
+            (ReminderLine { line, from: r.at * 1000, until: r.until * 1000, open: r.target.clone() }, r.work)
+        })
+        .collect()
+}
+
+/// Two events at once today and tomorrow, each said on its own day until
+/// both are over, as the Porch says today's (`overlaps`): the time to get
+/// there and back counted; those set aside for good left out.
+fn overlap_lines(m: &Moment, input: &AgendaInput) -> Vec<Timed> {
+    let zone = m.now.time_zone().clone();
+    let now = m.now.timestamp().as_second();
+    let day_of = |at: i64| Timestamp::from_second(at).ok().map(|t| t.to_zoned(zone.clone()).date());
+    let tomorrow = m.now.date().tomorrow().ok();
+    sioul_core::overlaps::overlaps(&input.events)
+        .into_iter()
+        .filter(|o| !input.aside.contains(&o.key) && o.first.end.max(o.second.end) > now)
+        .filter_map(|o| {
+            let day = day_of(o.second.start)?;
+            if day != m.now.date() && Some(day) != tomorrow {
+                return None;
+            }
+            let from = day.to_zoned(zone.clone()).ok()?;
+            let title = |e: &Occurrence| if e.summary.trim().is_empty() { m.tr.text("agenda-untitled", None) } else { e.summary.trim().to_string() };
+            let line = if m.details { said(m.tr, "home-card-overlap", &[("first", title(&o.first)), ("second", title(&o.second))]) } else { m.tr.text("home-card-overlap-plain", None) };
+            Some(Timed { line, from: ms(&from), until: o.first.end.max(o.second.end) * 1000 })
+        })
+        .collect()
 }
 
 /// The changes of time from now to the end of tomorrow (Health's meals and
@@ -640,14 +881,19 @@ fn agenda_lines(m: &Moment, input: &AgendaInput) -> Option<AgendaLines> {
     Some(AgendaLines { empty: m.tr.text("home-card-agenda-empty", None), days, events })
 }
 
+/// Whether a step is for this time: work or admin time (or no hours set),
+/// never asleep, in a pause, in free time, at leisure or during a meal.
+fn time_for_a_step(mode: &Mode) -> bool {
+    matches!(mode.time, Time::Work | Time::Admin | Time::Several(_) | Time::Any) && !mode.sleeps() && !mode.paused() && !mode.free()
+}
+
 /// The next step at `at`, as Now would pick it then: only in work or admin
 /// time (or with no hours set), never asleep, in a pause, in free time, at
 /// leisure or during a meal; offices open or not then, "Not now" and the
 /// day's weather today, a new day starting clean. The page's own filters
 /// (one kind, one category) are the page's, not the card's.
 fn step_at(m: &Moment, input: &PlanInput, mode: &Mode, at: &Zoned) -> Option<Step> {
-    let time_for_it = matches!(mode.time, Time::Work | Time::Admin | Time::Several(_) | Time::Any);
-    if !time_for_it || mode.sleeps() || mode.paused() || mode.free() {
+    if !time_for_a_step(mode) {
         return None;
     }
     let situation = quiet::Situation::now(m.config, m.overrides, m.blocks, at, m.tr, &input.loaded.cases);
@@ -745,8 +991,15 @@ fn porch_key(m: &Moment, mode: &Mode, at: &Zoned) -> String {
     format!("{}|{open}|{opens}|{}|{}", mode.time.id(), m.overrides.porch_rests(stamp), at.date())
 }
 
-/// The card, from now to the end of tomorrow.
+/// The card, from now to the end of tomorrow, with no weather, reminder,
+/// call or line left on where you stopped.
+#[cfg(test)]
 fn snapshot(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput>, agenda: Option<&AgendaInput>, doses: &[Dose]) -> Snapshot {
+    snapshot_with(m, porch, plan, agenda, doses, &More::default())
+}
+
+/// The card, from now to the end of tomorrow.
+fn snapshot_with(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput>, agenda: Option<&AgendaInput>, doses: &[Dose], more: &More) -> Snapshot {
     let set_up = m.config.every_account().next().is_some();
     let mut made: BTreeMap<String, PorchMade> = BTreeMap::new();
     // Each message written once, its place given to every frame that lists it.
@@ -761,9 +1014,35 @@ fn snapshot(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput>, ag
         mail.len() - 1
     };
     // Codes and doses as the matrix of what reaches you lets them come at each time.
+    use sioul_core::attention::{Event, Kind as Own, Level, Now, Row};
     let attention = sioul_core::attention::Attention::of(m.config);
-    let comes = |kind: sioul_core::attention::Kind, mode: &sioul_core::quiet::Mode| attention.level(sioul_core::attention::Row::Own(kind), &sioul_core::attention::Now::of(mode)) == sioul_core::attention::Level::Now;
-    let frames = timeline(m)
+    let comes = |kind: Own, mode: &Mode| attention.level(Row::Own(kind), &Now::of(mode)) == Level::Now;
+    // A reminder shows when its row lets it come or be seen then: not while it
+    // waits for a later time (sleep, a pause, free time, work's while work rests).
+    let reminders = reminder_lines(m.tr, more.reminders, m.details, m.now.timestamp().as_second());
+    let shows = |work: bool, mode: &Mode| !matches!(attention.decide(&Event::own(Own::Dates).for_area(work.then_some(Area::WORK)), &Now::of(mode)).level, Level::Later | Level::Never);
+    // Each call's line written once, in the Porch's words as seen from each frame's start.
+    let mut calls: Vec<String> = Vec::new();
+    let mut listed_calls: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut call_at = |mode: &Mode, from: &Zoned| -> Vec<usize> {
+        let Some(lines_at) = more.calls else { return Vec::new() };
+        if mode.paused() {
+            return Vec::new();
+        }
+        let lines = listed_calls.entry(format!("{}|{}|{}", kind(mode), mode.time.id(), from.date())).or_insert_with(|| lines_at(&Now::of(mode), from)).clone();
+        let lines = if m.details || lines.is_empty() { lines } else { vec![m.tr.text("home-card-calls-plain", None)] };
+        lines
+            .into_iter()
+            .map(|line| match calls.iter().position(|c| *c == line) {
+                Some(at) => at,
+                None => {
+                    calls.push(line);
+                    calls.len() - 1
+                }
+            })
+            .collect()
+    };
+    let frames: Vec<Frame> = timeline(m)
         .into_iter()
         .enumerate()
         .map(|(index, (from, until, mode))| {
@@ -777,6 +1056,7 @@ fn snapshot(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput>, ag
                 porch.map(|p| made.entry(porch_key(m, &mode, &from)).or_insert_with(|| porch_at(m, p, &mode, &from)).clone())
             };
             let kind = kind(&mode);
+            let step = plan.and_then(|p| step_at(m, p, &mode, &from));
             Frame {
                 from: ms(&from),
                 until: ms(&until),
@@ -784,29 +1064,41 @@ fn snapshot(m: &Moment, porch: Option<&PorchInput>, plan: Option<&PlanInput>, ag
                 status: status(m, &mode, &from),
                 dnd: m.dnd.map(|d| d.line_in(kind, ms(&from), index == 0)).unwrap_or_default(),
                 porch: porch.map(|p| PorchLines { line: p.line, mail: p.mail.iter().map(&mut place).collect() }),
-                step: plan.and_then(|p| step_at(m, p, &mode, &from)),
                 // The pause's card shows the pause alone: a code or a dose
                 // then comes by its own notification, as its row says.
-                codes: !mode.paused() && comes(sioul_core::attention::Kind::Codes, &mode),
-                doses: !mode.paused() && comes(sioul_core::attention::Kind::Doses, &mode),
+                codes: !mode.paused() && comes(Own::Codes, &mode),
+                doses: !mode.paused() && comes(Own::Doses, &mode),
                 events: !mode.paused(),
+                reminders: reminders.iter().enumerate().filter(|(_, (_, work))| !mode.paused() && shows(*work, &mode)).map(|(at, _)| at).collect(),
+                calls: call_at(&mode, &from),
+                overlaps: !rests,
+                stopped: !rests && time_for_a_step(&mode),
+                note: if set_up || rests { String::new() } else { m.tr.text("home-card-setup", None) },
+                step,
             }
         })
         .collect();
     let made = ms(m.now);
+    let end = frames.last().map_or(made, |f| f.until);
+    let stopped = more.stopped.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(|text| if m.details { said(m.tr, "home-card-stopped", &[("text", text.to_string())]) } else { m.tr.text("home-card-stopped-plain", None) });
     Snapshot {
-        v: 2,
+        v: VERSION,
         made,
         details: m.details,
         stale_after: made + FRESH_MS,
         stale: labels(m.tr, m.now),
         beyond: m.tr.text("home-card-beyond", None),
         words: Words { mail: m.tr.text("home-card-mail", None), agenda: m.tr.text("home-card-agenda", None) },
+        today: today_lines(m, &more.weather, end),
         frames,
         mail,
         agenda: agenda.and_then(|a| agenda_lines(m, a)),
         codes: porch.map(|p| codes(m, p)).unwrap_or_default(),
         doses: dose_lines(m.tr, doses, m.details),
+        reminders: reminders.into_iter().map(|(line, _)| line).collect(),
+        calls,
+        overlaps: agenda.map(|a| overlap_lines(m, a)).unwrap_or_default(),
+        stopped: stopped.unwrap_or_default(),
     }
 }
 
@@ -929,9 +1221,45 @@ fn agenda_input(now: &Zoned) -> Option<Arc<AgendaInput>> {
         .filter(|e| !removed.contains(std::path::Path::new(&e.key)) && !skipped.contains(&(PathBuf::from(&e.key), e.start)))
         .collect();
     let calendars = !sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).is_empty();
-    let input = Arc::new(AgendaInput { events, calendars, read_on: now.date() });
+    let aside = sioul_core::overlaps::SetAside::load(&sioul_core::overlaps::SetAside::default_path()).keys;
+    let input = Arc::new(AgendaInput { events, calendars, read_on: now.date(), aside });
     *kept = Some(Arc::clone(&input));
     Some(input)
+}
+
+/// The reminders as last gathered (`remind::tick`, each minute), the events' left out.
+static REMINDED: Mutex<Option<Arc<Vec<Reminder>>>> = Mutex::new(None);
+
+/// The reminders the window just gathered, told or not (`reminders::gather`):
+/// the card follows when those it may say changed.
+pub(crate) fn reminders_seen(all: &[Reminder]) {
+    if !on() {
+        return;
+    }
+    use sioul_core::reminders::Kind;
+    let kept: Vec<Reminder> = all.iter().filter(|r| !matches!(r.kind, Kind::Event | Kind::Before | Kind::Alarm)).cloned().collect();
+    let mut seen = REMINDED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if seen.as_deref() == Some(&kept) {
+        return;
+    }
+    *seen = Some(Arc::new(kept));
+    drop(seen);
+    soon(false);
+}
+
+/// A forecast fetched, or the place changed (`backend::update_weather`): the card follows.
+pub(crate) fn weather_seen() {
+    if on() {
+        soon(false);
+    }
+}
+
+/// The weather as the card says it: the place chosen, the forecast kept.
+fn weather_input() -> WeatherInput {
+    let config = load_config();
+    let place = config.weather.place.as_deref().is_some_and(|p| !p.trim().is_empty()) && config.weather.latitude.is_some() && config.weather.longitude.is_some();
+    let forecast = place.then(|| std::fs::read_to_string(crate::backend::weather_cache()).ok().and_then(|t| serde_json::from_str(&t).ok())).flatten();
+    WeatherInput { place, forecast }
 }
 
 /// The window's minute: the card written again when its first frame ended,
@@ -990,7 +1318,7 @@ pub(crate) fn dnd_seen(moment: serde_json::Value) {
 /// frame from now on as `Dnd::line_in` says it, a frame cut where it ends
 /// (Unix ms `now`). Whether anything changed.
 fn patch_dnd(card: &mut serde_json::Value, dnd: Option<&Dnd>, now: i64) -> bool {
-    let Some(frames) = card["frames"].as_array_mut() else { return false };
+    let Some(frames) = frames_of(card) else { return false };
     let before = frames.clone();
     // Cut the frame its end falls in: its line goes there.
     if let Some(end) = dnd.and_then(|d| d.until).filter(|u| *u > 0).map(|u| u * 1000)
@@ -1008,6 +1336,12 @@ fn patch_dnd(card: &mut serde_json::Value, dnd: Option<&Dnd>, now: i64) -> bool 
         frame["dnd"] = dnd.map(|d| d.line_in(&kind, from, index == current)).unwrap_or_default().into();
     }
     *frames != before
+}
+
+/// A written card's frames: "times" from version 3, "frames" before.
+fn frames_of(card: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
+    let key = if card["v"].as_u64().is_some_and(|v| v >= 3) { "times" } else { "frames" };
+    card[key].as_array_mut()
 }
 
 /// Asked again while being made: once more after. Drawn when asked so once.
@@ -1057,7 +1391,11 @@ fn refresh(tell: bool) {
     let dnd = DND.lock().unwrap_or_else(std::sync::PoisonError::into_inner).as_ref().and_then(Dnd::of);
     let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: tr(), details, dnd: dnd.as_ref() };
     let agenda = agenda_input(&now);
-    let card = snapshot(&moment, Some(&porch), Some(&plan), agenda.as_deref(), &doses);
+    let reminded = REMINDED.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone().unwrap_or_default();
+    let calls = crate::calls::for_card();
+    let stopped = sioul_core::stopped::Stopped::load(&sioul_core::stopped::Stopped::default_path()).map(|s| s.text);
+    let more = More { weather: weather_input(), reminders: &reminded, calls: calls.as_deref(), stopped };
+    let card = snapshot_with(&moment, Some(&porch), Some(&plan), agenda.as_deref(), &doses, &more);
     let said = content(&card);
     let Ok(text) = serde_json::to_string(&card) else { return };
     let _writing = WRITING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -1130,7 +1468,7 @@ pub(crate) fn mail_came() {
 /// that say nothing of the Porch (asleep, a pause, free time) left so. Whether
 /// anything changed.
 fn patch_mail(card: &mut serde_json::Value, m: &Moment, input: &PorchInput) -> bool {
-    if card["v"] != 2 {
+    if card["v"] != VERSION {
         return false;
     }
     let before = card.clone();
@@ -1139,7 +1477,7 @@ fn patch_mail(card: &mut serde_json::Value, m: &Moment, input: &PorchInput) -> b
     let mut made: BTreeMap<String, PorchMade> = BTreeMap::new();
     let mut mail: Vec<Mail> = Vec::new();
     let mut placed: BTreeMap<String, usize> = BTreeMap::new();
-    let Some(frames) = card["frames"].as_array_mut() else { return false };
+    let Some(frames) = frames_of(card) else { return false };
     for frame in frames.iter_mut().filter(|f| f["porch"].is_object()) {
         let Some(from) = frame["from"].as_i64().and_then(|at| Timestamp::from_millisecond(at).ok()).map(|t| t.to_zoned(zone.clone())) else { continue };
         let mode = quiet::mode(&hours, &m.config.time_off, m.overrides, m.blocks, &from);
@@ -1168,8 +1506,9 @@ fn patch_mail(card: &mut serde_json::Value, m: &Moment, input: &PorchInput) -> b
 /// A tap on the card, kept by Java (HomeCardOpener.java) and taken once, as
 /// main.qml's `openThing` takes it {kind, uri, key}: the Porch; a message, on
 /// the Porch in its Reader ("card-mail", its file); Now on a step ("now", the
-/// task's address); the Agenda; an event in it ("event", its file). One older
-/// than five minutes is let go.
+/// task's address); the Agenda; an event in it ("event", its file); what a
+/// reminder is about (its task, budget, paper or contract). One older than
+/// five minutes is let go.
 pub(crate) fn opened() -> Option<(&'static str, String, String)> {
     let path = sioul_core::config::state_dir().join(OPENED);
     let text = std::fs::read_to_string(&path).ok()?;
@@ -1178,8 +1517,10 @@ pub(crate) fn opened() -> Option<(&'static str, String, String)> {
 }
 
 /// A tap as Java writes it: {"open": "porch" | "now" | "mail" | "agenda" |
-/// "event", "uid", "key", "at" (Unix ms)}. A message or an event without its
-/// file opens its page. The file is the window's to check, as for any link.
+/// "event" | "reminder", "uid", "key", "at" (Unix ms)}. A message or an event
+/// without its file opens its page; a reminder, what it is about ("key": its
+/// address, `sioul:task/…`), else the Porch. The file is the window's to
+/// check, as for any link.
 fn tap(text: &str, now: i64) -> Option<(&'static str, String, String)> {
     let tap: serde_json::Value = serde_json::from_str(text).ok()?;
     let at = tap["at"].as_i64()?;
@@ -1194,7 +1535,25 @@ fn tap(text: &str, now: i64) -> Option<(&'static str, String, String)> {
         "mail" => Some(("porch", String::new(), String::new())),
         "event" if !key.is_empty() => Some(("event", String::new(), key)),
         "event" | "agenda" => Some(("agenda", String::new(), String::new())),
+        "reminder" => Some(reminder_opens(&key)),
         _ => None,
+    }
+}
+
+/// What a reminder's tap opens, as a reminder's notification does on a
+/// computer (`remind::tick`): its task, its budget, its paper, its contract;
+/// anything else, the Porch.
+fn reminder_opens(target: &str) -> (&'static str, String, String) {
+    if let Some(uid) = target.strip_prefix("sioul:task/") {
+        ("task", target.to_string(), uid.to_string())
+    } else if target.starts_with("sioul:budget/") {
+        ("budget", target.to_string(), String::new())
+    } else if let Some(id) = target.strip_prefix("sioul:paper/") {
+        ("paper", target.to_string(), id.to_string())
+    } else if let Some(id) = target.strip_prefix("sioul:contract/") {
+        ("contract", target.to_string(), id.to_string())
+    } else {
+        ("porch", String::new(), String::new())
     }
 }
 
@@ -1230,6 +1589,7 @@ mod tests {
     use sioul_core::config::Priority;
     use sioul_core::needs::{Days, Needs};
     use sioul_core::plan::Settings;
+    use sioul_core::reminders;
     use sioul_core::tasks::Task;
 
     /// Monday to Friday 09:00–17:00 at work, Tuesday 17:30–18:30 for admin.
@@ -1338,7 +1698,7 @@ mod tests {
                 ..Occurrence::default()
             })
             .collect();
-        AgendaInput { events, calendars: true, read_on: Date::constant(2026, 10, 5) }
+        AgendaInput { events, calendars: true, read_on: Date::constant(2026, 10, 5), aside: BTreeSet::new() }
     }
 
     /// A dentist tomorrow, a whole day on Monday next week, a trip over three days, a call that was cancelled.
@@ -1374,7 +1734,8 @@ mod tests {
     /// Every word the card can show in `frame`, in one text: its lines, its
     /// messages, its step, the agenda's days and events.
     fn words(card: &Snapshot, frame: &Frame) -> String {
-        let mut out = vec![frame.status.clone()];
+        let mut out = vec![frame.status.clone(), frame.note.clone(), card.today.line.clone()];
+        out.extend(card.today.date.iter().map(|l| l.text.clone()));
         if let Some(p) = &frame.porch {
             out.push(p.line.clone());
             for mail in p.mail.iter().map(|at| &card.mail[*at]) {
@@ -1657,7 +2018,7 @@ mod tests {
         let far = events_of(&[("Far away", "2026-11-20T10:00[Europe/Paris]", "2026-11-20T11:00[Europe/Paris]", false, None, false)]);
         assert!(snapshot(&moment, None, None, Some(&far), &[]).agenda.unwrap().events.is_empty());
         // No calendar at all: no agenda on the card.
-        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date() };
+        let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: BTreeSet::new() };
         assert!(snapshot(&moment, None, None, Some(&none), &[]).agenda.is_none());
         // In French, as the phone's agenda says it.
         let fr = make("2026-10-05T10:00[Europe/Paris]", &Overrides::default(), true, "fr", &[]);
@@ -1830,15 +2191,17 @@ mod tests {
     /// The names HomeCard.java and HomeCardRows.java read, each where they
     /// read it: a name changed here and not there would leave the card blank.
     /// With SIOUL_CARD_SAMPLE set, the card is written there too (in French
-    /// with SIOUL_CARD_SAMPLE_FR), to check the Java's rows on a computer.
+    /// with SIOUL_CARD_SAMPLE_FR), to check the Java's rows on a computer:
+    /// Thursday 8 October 2026 at 09:20, with the weather, reminders, a call,
+    /// two events at once and a line on where you stopped.
     #[test]
     fn the_file_java_reads() {
-        let doses = [dose("Magnesium · 300 mg", "09:45", "2026-10-05T09:45[Europe/Paris]", 0)];
-        let made = make("2026-10-05T10:00[Europe/Paris]", &Overrides::default(), true, "en", &doses);
-        let json = serde_json::to_value(&made.card).unwrap();
+        let doses = [dose("Magnesium · 300 mg", "09:45", "2026-10-08T09:45[Europe/Paris]", 0)];
+        let made = full("2026-10-08T09:20[Europe/Paris]", true, "en", &doses);
+        let json = serde_json::to_value(&made).unwrap();
         for (variable, language) in [("SIOUL_CARD_SAMPLE", "en"), ("SIOUL_CARD_SAMPLE_FR", "fr")] {
             if let Some(path) = std::env::var_os(variable) {
-                let card = make("2026-10-05T10:00[Europe/Paris]", &Overrides::default(), true, language, &doses).card;
+                let card = full("2026-10-08T09:20[Europe/Paris]", true, language, &doses);
                 std::fs::write(path, serde_json::to_string_pretty(&card).unwrap()).unwrap();
             }
         }
@@ -1847,7 +2210,9 @@ mod tests {
         }
         assert!(json["details"].is_boolean() && json["beyond"].is_string());
         assert!(json["stale"][0]["until"].is_i64() && json["stale"][0]["text"].is_string());
-        let frame = &json["frames"][0];
+        // Version 3: the frames under "times", none under "frames" (an older Java says `beyond`).
+        assert!(json["frames"].is_null());
+        let frame = &json["times"][0];
         for key in ["from", "until"] {
             assert!(frame[key].is_i64(), "{key}");
         }
@@ -1856,7 +2221,31 @@ mod tests {
         for key in ["title", "why", "uid"] {
             assert!(frame["step"][key].is_string(), "{key}");
         }
-        assert!(json["v"] == 2 && json["words"]["mail"].is_string() && json["words"]["agenda"].is_string());
+        assert!(frame["reminders"][0].is_u64() && frame["calls"][0].is_u64() && frame["overlaps"].is_boolean() && frame["stopped"].is_boolean() && frame["note"].is_string());
+        assert!(json["v"] == 3 && json["words"]["mail"].is_string() && json["words"]["agenda"].is_string());
+        // Today (HomeCard.java): the date's wordings, the weather hour by hour, the days, the credit.
+        let today = &json["today"];
+        assert!(today["date"][0]["until"].is_i64() && today["date"][0]["text"].is_string() && today["line"].is_string());
+        let hour = &today["weather"]["hours"][0];
+        assert!(hour["from"].is_i64() && hour["until"].is_i64());
+        for slot in [&hour["now"], &hour["next"][0], &hour["parts"][0]] {
+            for key in ["label", "icon", "temperature", "rain", "words"] {
+                assert!(slot[key].is_string(), "{key}");
+            }
+        }
+        let day = &today["weather"]["days"][0];
+        assert!(day["from"].is_i64() && day["until"].is_i64());
+        for key in ["label", "icon", "high", "low", "rain", "words"] {
+            assert!(day[key].is_string(), "{key}");
+        }
+        assert!(today["weather"]["credit"].is_string());
+        // What the Porch has (HomeCard.java).
+        for key in ["line", "open"] {
+            assert!(json["reminders"][0][key].is_string(), "{key}");
+        }
+        assert!(json["reminders"][0]["from"].is_i64() && json["reminders"][0]["until"].is_i64());
+        assert!(json["calls"][0].is_string() && json["stopped"].is_string());
+        assert!(json["overlaps"][0]["line"].is_string() && json["overlaps"][0]["from"].is_i64() && json["overlaps"][0]["until"].is_i64());
         // The messages (HomeCardRows.java).
         let mail = &json["mail"][0];
         for key in ["key", "sender", "subject", "text"] {
@@ -1880,7 +2269,7 @@ mod tests {
         assert!(json["doses"][0]["line"].is_string() && json["doses"][0]["check"].is_string());
         assert!(frame["dnd"].is_string());
         // Asleep: no Porch, no step, written as null (Java's optJSONObject).
-        let night = serde_json::to_value(made.at("2026-10-05T23:30[Europe/Paris]")).unwrap();
+        let night = serde_json::to_value(Made { card: made }.at("2026-10-08T23:30[Europe/Paris]")).unwrap();
         assert!(night["porch"].is_null() && night["step"].is_null());
     }
 
@@ -1927,10 +2316,10 @@ mod tests {
         assert!(card.frames[1..].iter().all(|f| f.dnd.is_empty()));
         // Without the window (a receiver alone): the card on disk gets its lines, a frame cut at its end.
         let mut written = serde_json::to_value(card_with(None)).unwrap();
-        let before = written["frames"].as_array().unwrap().len();
+        let before = written["times"].as_array().unwrap().len();
         let stamp = now.timestamp().as_millisecond();
         assert!(patch_dnd(&mut written, Some(&dnd), stamp));
-        let frames = written["frames"].as_array().unwrap().clone();
+        let frames = written["times"].as_array().unwrap().clone();
         assert_eq!(frames.len(), before + 1, "cut at 15:00");
         let shown = |when: &str| {
             let t = at(when).timestamp().as_millisecond();
@@ -1941,7 +2330,230 @@ mod tests {
         // Said again the same: nothing changes; switched off: the lines go.
         assert!(!patch_dnd(&mut written, Some(&dnd), stamp));
         assert!(patch_dnd(&mut written, None, stamp));
-        assert!(written["frames"].as_array().unwrap().iter().all(|f| f["dnd"] == ""));
+        assert!(written["times"].as_array().unwrap().iter().all(|f| f["dnd"] == ""));
+        // A card an older Sioul wrote (version 2, its frames under "frames"): its lines said again all the same.
+        let mut older = serde_json::json!({ "v": 2, "frames": [{ "from": 0, "until": i64::MAX, "kind": "work", "dnd": "" }] });
+        assert!(patch_dnd(&mut older, Some(&lasting), stamp));
+        assert_eq!(older["frames"][0]["dnd"], line);
+    }
+
+    /// Open-Meteo's answer for Geneva, asked on Thursday 8 October 2026 at 09:29 (weather.rs's tests).
+    const SAVED: &str = include_str!("../../sioul-core/tests/fixtures/weather/open-meteo.json");
+
+    /// The forecast kept, fetched a minute before `now`.
+    fn forecast_at(now: &Zoned) -> Forecast {
+        forecast::parse(SAVED, now.timestamp().as_second() - 60).unwrap()
+    }
+
+    /// A reminder of `kind`, due at `at` until `until` (Paris times).
+    fn reminder(kind: reminders::Kind, key: &str, at_: &str, until: &str, title: &str, body: &str, target: &str, work: bool) -> Reminder {
+        Reminder { key: key.into(), kind, at: at(at_).timestamp().as_second(), until: at(until).timestamp().as_second(), title: title.into(), body: body.into(), target: target.into(), work, starts: None }
+    }
+
+    /// A date asked for a work task, a payment, a paper from tomorrow, and an
+    /// event's reminder before it (the agenda card's and Android's: not said here).
+    fn some_reminders() -> Vec<Reminder> {
+        use reminders::Kind;
+        vec![
+            reminder(Kind::Asked, "asked:form", "2026-10-08T09:00[Europe/Paris]", "2026-10-31T00:00[Europe/Paris]", "Asked for Friday 30 October", "Call the CAF about the housing aid", "sioul:task/form", true),
+            reminder(Kind::Payment, "payment:rent", "2026-10-08T09:00[Europe/Paris]", "2026-10-10T00:00[Europe/Paris]", "Rent · €650", "Planned for Friday 9 October; the account will hold it.", "sioul:budget/home", false),
+            reminder(Kind::Paper, "paper:passport", "2026-10-09T09:00[Europe/Paris]", "2026-11-02T00:00[Europe/Paris]", "Passport: valid until Sunday 1 November", "Renewing takes weeks (an appointment, then the making): a step now?", "sioul:paper/passport", false),
+            reminder(Kind::Before, "before:dentist", "2026-10-08T10:45[Europe/Paris]", "2026-10-08T11:00[Europe/Paris]", "11:00 · Dentist, in 15 minutes", "", "/calendars/me/personal/event-0.ics", false),
+        ]
+    }
+
+    /// The calls declined as the Porch would list them: one, from the night
+    /// before, its caller let through in work and leisure time, not asleep.
+    fn some_calls(moment: &sioul_core::attention::Now, at_: &Zoned) -> Vec<String> {
+        use sioul_core::attention::Column;
+        if moment.is(Column::Sleep) || moment.is(Column::Pause) {
+            return Vec::new();
+        }
+        let day = if at_.date() == Date::constant(2026, 10, 8) { "While you slept" } else { "Yesterday, while you slept" };
+        vec![format!("{day}, Marie Dupont called at 07:40.")]
+    }
+
+    /// The full card at `now` (a Thursday, 8 October 2026), as a phone shows it:
+    /// the weather at a place chosen, the reminders, a call declined, two events
+    /// at once at 11:00 and on Friday, a line left on where you stopped.
+    fn full(now: &str, details: bool, language: &str, doses: &[Dose]) -> Snapshot {
+        let now = at(now);
+        let config = config();
+        let tr = Translator::new(language);
+        let blocks = blocks(&now);
+        let overrides = Overrides::default();
+        let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details, dnd: None };
+        let agenda = events_of(&[
+            ("Dentist", "2026-10-08T11:00[Europe/Paris]", "2026-10-08T12:00[Europe/Paris]", false, None, false),
+            ("School meeting", "2026-10-08T11:30[Europe/Paris]", "2026-10-08T12:30[Europe/Paris]", false, None, false),
+            ("Choir", "2026-10-09T19:00[Europe/Paris]", "2026-10-09T20:30[Europe/Paris]", false, None, false),
+            ("Neighbours' party", "2026-10-09T20:00[Europe/Paris]", "2026-10-09T23:00[Europe/Paris]", false, None, false),
+            ("Trip to the sea", "2026-10-14T00:00[Europe/Paris]", "2026-10-17T00:00[Europe/Paris]", true, None, false),
+        ]);
+        let reminded = some_reminders();
+        let more = More { weather: WeatherInput { place: true, forecast: Some(forecast_at(&now)) }, reminders: &reminded, calls: Some(&some_calls), stopped: Some("Halfway through the CAF's form, page 2".into()) };
+        snapshot_with(&moment, Some(&porch_input(&now)), Some(&plan_input(&now)), Some(&agenda), doses, &more)
+    }
+
+    #[test]
+    fn today_comes_first_hour_by_hour() {
+        let card = full("2026-10-08T09:20[Europe/Paris]", true, "en", &[]);
+        let ms = |text: &str| at(text).timestamp().as_millisecond();
+        // The date, then tomorrow's from midnight: the frames end with tomorrow.
+        let dates: Vec<(i64, &str)> = card.today.date.iter().map(|l| (l.until, l.text.as_str())).collect();
+        assert_eq!(dates, [(ms("2026-10-09T00:00[Europe/Paris]"), "Thursday 8 October"), (ms("2026-10-10T00:00[Europe/Paris]"), "Friday 9 October")]);
+        assert_eq!(card.today.line, "");
+        let weather = card.today.weather.as_ref().unwrap();
+        assert_eq!(weather.credit, "Weather: Open-Meteo.com");
+        // Hour by hour from the hour under way to the end of the last frame (Saturday's midnight).
+        assert_eq!(weather.hours.first().unwrap().from, ms("2026-10-08T09:00[Europe/Paris]"));
+        assert_eq!(weather.hours.last().unwrap().until, card.frames.last().unwrap().until);
+        assert!(weather.hours.windows(2).all(|w| w[0].until == w[1].from), "no hole between the hours");
+        // Each hour says its own now, its next four hours, its next parts of the day; every
+        // hour of every frame has its four (the forecast holds three days).
+        assert!(weather.hours.iter().all(|h| h.next.len() == 4 && h.parts.len() == 4), "{:#?}", weather.hours.iter().map(|h| (h.from, h.next.len(), h.parts.len())).collect::<Vec<_>>());
+        let hour = |text: &str| weather.hours.iter().find(|h| h.from <= ms(text) && ms(text) < h.until).unwrap();
+        let morning = hour("2026-10-08T09:20[Europe/Paris]");
+        assert_eq!((morning.now.temperature.as_str(), morning.now.rain.as_str()), ("16°", "98 %"));
+        assert_eq!(morning.next.iter().map(|s| s.label.as_str()).collect::<Vec<_>>(), ["10:00", "11:00", "12:00", "13:00"]);
+        assert_eq!(morning.parts.iter().map(|s| s.label.as_str()).collect::<Vec<_>>(), ["Afternoon", "Evening", "Night", "Morning"]);
+        let afternoon = hour("2026-10-08T14:30[Europe/Paris]");
+        assert_eq!((afternoon.now.temperature.as_str(), afternoon.next[0].label.as_str()), ("14°", "15:00"));
+        // The afternoon's last hours are among the four: the evening comes first.
+        assert_eq!(afternoon.parts.iter().map(|s| s.label.as_str()).collect::<Vec<_>>(), ["Evening", "Night", "Morning", "Afternoon"]);
+        let late = hour("2026-10-09T22:10[Europe/Paris]");
+        assert_eq!(late.next.iter().map(|s| s.label.as_str()).collect::<Vec<_>>(), ["23:00", "00:00", "01:00", "02:00"]);
+        // The days, each from its midnight to the next: Java shows the seven after today.
+        assert_eq!(weather.days.len(), 9);
+        assert_eq!((weather.days[1].from, weather.days[1].until), (ms("2026-10-09T00:00[Europe/Paris]"), ms("2026-10-10T00:00[Europe/Paris]")));
+        assert_eq!((weather.days[1].day.label.as_str(), weather.days[1].day.high.as_str(), weather.days[1].day.low.as_str()), ("Fri", "17°", "13°"));
+        // In French, the heading with its capital.
+        let fr = full("2026-10-08T09:20[Europe/Paris]", true, "fr", &[]);
+        assert_eq!(fr.today.date[0].text, "Jeudi 8 octobre");
+        assert_eq!(fr.today.weather.as_ref().unwrap().credit, "Météo\u{202f}: Open-Meteo.com");
+        // Details off: the weather is no detail, said all the same.
+        let plain = full("2026-10-08T09:20[Europe/Paris]", false, "en", &[]);
+        assert_eq!(plain.today, card.today);
+    }
+
+    #[test]
+    fn no_place_no_weather() {
+        let now = at("2026-10-08T09:20[Europe/Paris]");
+        let config = config();
+        let tr = Translator::new("en");
+        let blocks = blocks(&now);
+        let overrides = Overrides::default();
+        let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
+        let with = |weather: WeatherInput| snapshot_with(&moment, None, None, None, &[], &More { weather, ..More::default() }).today;
+        // No place chosen: no weather part, one quiet line saying where to choose it.
+        let none = with(WeatherInput::default());
+        assert_eq!((none.weather.is_none(), none.line.as_str()), (true, "Choose a place for the weather in Sioul: tap the weather in its status line."));
+        assert_eq!(none.date[0].text, "Thursday 8 October");
+        // A place, but no forecast yet, or one kept from two days ago: none yet.
+        for forecast in [None, Some(forecast::parse(SAVED, now.timestamp().as_second() - 2 * 86_400).unwrap())] {
+            let shown = with(WeatherInput { place: true, forecast });
+            assert_eq!((shown.weather.is_none(), shown.line.as_str()), (true, "No forecast yet."));
+        }
+        // In French, with its typography.
+        let fr = Translator::new("fr");
+        let moment = Moment { tr: &fr, ..moment };
+        let said = snapshot_with(&moment, None, None, None, &[], &More::default()).today.line;
+        assert_eq!(said, "Choisissez un lieu pour la météo dans Sioul\u{202f}: touchez la météo dans sa ligne d’état.");
+    }
+
+    #[test]
+    fn the_porch_lines_but_no_mail() {
+        let card = full("2026-10-08T09:20[Europe/Paris]", true, "en", &[dose("Magnesium · 300 mg", "09:45", "2026-10-08T09:45[Europe/Paris]", 0)]);
+        let made = Made { card };
+        let card = &made.card;
+        // The reminders of dates, waits, payments and papers, soonest first; never an event's (Android tells those).
+        let lines: Vec<&str> = card.reminders.iter().map(|r| r.line.as_str()).collect();
+        assert_eq!(lines, ["Call the CAF about the housing aid · Asked for Friday 30 October", "Rent · €650 · Planned for Friday 9 October; the account will hold it.", "Passport: valid until Sunday 1 November"]);
+        assert_eq!((card.reminders[0].open.as_str(), card.reminders[2].from), ("sioul:task/form", at("2026-10-09T09:00[Europe/Paris]").timestamp().as_millisecond()));
+        // At work, all three (Java shows each from its time); in the evening, work's
+        // date waits for work; asleep, none; their row says so.
+        assert_eq!(made.at("2026-10-08T10:00[Europe/Paris]").reminders, [0, 1, 2]);
+        assert_eq!(made.at("2026-10-08T17:30[Europe/Paris]").reminders, [1, 2]);
+        assert!(made.at("2026-10-08T23:30[Europe/Paris]").reminders.is_empty());
+        // The call declined, as the Porch lists it, said from each day.
+        let work = made.at("2026-10-08T10:00[Europe/Paris]");
+        assert_eq!(card.calls[work.calls[0]], "While you slept, Marie Dupont called at 07:40.");
+        assert_eq!(card.calls[made.at("2026-10-09T10:00[Europe/Paris]").calls[0]], "Yesterday, while you slept, Marie Dupont called at 07:40.");
+        assert!(made.at("2026-10-08T23:30[Europe/Paris]").calls.is_empty());
+        // Two events at once: today's, then Friday's on Friday; never asleep.
+        let overlaps: Vec<(&str, i64)> = card.overlaps.iter().map(|o| (o.line.as_str(), o.from)).collect();
+        assert_eq!(
+            overlaps,
+            [
+                ("Today, two events at once: Dentist and School meeting.", at("2026-10-08T00:00[Europe/Paris]").timestamp().as_millisecond()),
+                ("Today, two events at once: Choir and Neighbours' party.", at("2026-10-09T00:00[Europe/Paris]").timestamp().as_millisecond()),
+            ]
+        );
+        assert_eq!(card.overlaps[0].until, at("2026-10-08T12:30[Europe/Paris]").timestamp().as_millisecond());
+        assert!(work.overlaps && !made.at("2026-10-08T23:30[Europe/Paris]").overlaps);
+        // Now: the step and where you stopped, in work time; not in the evening.
+        assert_eq!(card.stopped, "Where you stopped: Halfway through the CAF's form, page 2");
+        assert!(work.stopped && work.step.is_some());
+        assert!(!made.at("2026-10-08T17:30[Europe/Paris]").stopped);
+        // Nothing of the mail on the full card: its lines name no sender and no subject
+        // (the mail card lists them, from the same file).
+        for frame in &card.frames {
+            let shown = full_card_words(card, frame);
+            for mail in ["Marie Dupont <", "Dinner on Saturday", "The photos", "Paul", "Léa", "A question"] {
+                assert!(!shown.contains(mail), "{mail} on the full card: {shown}");
+            }
+        }
+        assert!(!card.mail.is_empty(), "the mail card's messages are still written");
+        // Details off: none named.
+        let plain = full("2026-10-08T09:20[Europe/Paris]", false, "en", &[]);
+        assert!(plain.reminders.iter().all(|r| r.line == "A reminder waits in Sioul."));
+        assert_eq!(plain.calls, ["A call was declined: it is on the Porch."]);
+        assert_eq!(plain.overlaps[0].line, "Today, two events at once.");
+        assert_eq!(plain.stopped, "Your line on where you stopped waits in Sioul.");
+        let all = serde_json::to_string(&serde_json::json!([plain.reminders, plain.calls, plain.overlaps, plain.stopped])).unwrap();
+        for private in ["CAF", "Rent", "Passport", "Marie", "Dentist", "Choir", "Halfway"] {
+            assert!(!all.contains(private), "{private} shown with the details off: {all}");
+        }
+        // In French.
+        let fr = full("2026-10-08T09:20[Europe/Paris]", true, "fr", &[]);
+        assert_eq!(fr.overlaps[0].line, "Aujourd’hui, deux événements en même temps\u{202f}: Dentist et School meeting.");
+        assert_eq!(fr.stopped, "Où vous en étiez\u{202f}: Halfway through the CAF's form, page 2");
+        // In a pause: none of it.
+        let now = at("2026-10-08T10:00[Europe/Paris]");
+        let config = config();
+        let tr = Translator::new("en");
+        let blocks = blocks(&now);
+        let paused = Overrides { paused_since: Some(now.timestamp().as_second() - 60), ..Overrides::default() };
+        let moment = Moment { now: &now, config: &config, overrides: &paused, blocks: &blocks, tr: &tr, details: true, dnd: None };
+        let reminded = some_reminders();
+        let card = snapshot_with(&moment, None, None, None, &[], &More { reminders: &reminded, calls: Some(&some_calls), stopped: Some("Halfway".into()), ..More::default() });
+        assert!(card.frames.iter().all(|f| f.reminders.is_empty() && f.calls.is_empty() && !f.overlaps && !f.stopped));
+    }
+
+    /// Every word the full card can show in `frame` (HomeCard.java): today, the
+    /// status line, the Porch's lines, Now.
+    fn full_card_words(card: &Snapshot, frame: &Frame) -> String {
+        let mut out: Vec<String> = card.today.date.iter().map(|l| l.text.clone()).collect();
+        out.extend([card.today.line.clone(), frame.status.clone(), frame.dnd.clone(), frame.note.clone(), card.stopped.clone()]);
+        out.extend(card.codes.iter().flat_map(|c| [c.line.clone(), c.warning.clone()]));
+        out.extend(card.doses.iter().flat_map(|d| [d.line.clone(), d.check.clone()]));
+        out.extend(frame.reminders.iter().map(|at| card.reminders[*at].line.clone()));
+        out.extend(frame.calls.iter().map(|at| card.calls[*at].clone()));
+        out.extend(card.overlaps.iter().map(|o| o.line.clone()));
+        out.extend(frame.step.iter().map(|s| s.title.clone()));
+        out.join("\n")
+    }
+
+    #[test]
+    fn a_reminders_tap_opens_what_it_is_about() {
+        let now = 1_791_300_000_000;
+        let none = String::new;
+        let tap_on = |key: &str| tap(&format!(r#"{{"open":"reminder","key":"{key}","at":{now}}}"#), now);
+        assert_eq!(tap_on("sioul:task/form"), Some(("task", "sioul:task/form".to_string(), "form".to_string())));
+        assert_eq!(tap_on("sioul:budget/home"), Some(("budget", "sioul:budget/home".to_string(), none())));
+        assert_eq!(tap_on("sioul:paper/passport"), Some(("paper", "sioul:paper/passport".to_string(), "passport".to_string())));
+        assert_eq!(tap_on("sioul:contract/box"), Some(("contract", "sioul:contract/box".to_string(), "box".to_string())));
+        assert_eq!(tap_on(""), Some(("porch", none(), none())));
     }
 
     #[test]

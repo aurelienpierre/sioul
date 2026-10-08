@@ -231,27 +231,27 @@ Pendant le sommeil ([Les heures](hours.md#sleep) : la nuit, du moment de se d�
 
 ### Ce qu’elle demande, et ce qu’elle apporte {#what-it-costs-and-what-it-gives-back}
 
-Cinq curseurs, dans le formulaire d’une tâche et dans celui d’un événement : **Réflexion demandée**, **Émotions remuées**, **Anxiété suscitée**, **Corps et sens**, et **Ce que ça apporte**, chacun de 0 à 10, comme vous le ressentez.
+Quatre tuiles, dans le formulaire d’une tâche et dans celui d’un événement, deux par deux (l’une sous l’autre sur un téléphone) : **Réflexion**, **Émotions**, **Inquiétude** et **Corps et sens**, puis **Ce que ça apporte** en dessous. Chacune prend un nombre de 0 à 10, comme vous le ressentez, et pose en petit une question sur ce qui compte :
 
-- Chacun dit **Non noté** tant que vous n’y touchez pas : touchez-le ou faites-le glisser, ou utilisez les flèches du clavier (le premier appui donne 5 ; Début donne 0, Fin 10). 0 est une note, pas un blanc. **×**, ou Suppr, l’efface.
-- Des mots sous chaque curseur disent ce que valent 0, 5 et 10 :
+| Tuile | Ce qu’elle demande |
+|---|---|
+| **Réflexion** | Décider, beaucoup de choses à garder en tête, quelque chose de nouveau à apprendre ? |
+| **Émotions** | Parler à quelqu’un, le regard des autres, la peur de décevoir, un souvenir douloureux ? |
+| **Inquiétude** | Une échéance, une réponse que vous attendez, le risque de vous tromper ? |
+| **Corps et sens** | Bouger, rester debout, le bruit, la foule, les écrans, un trajet ? |
+| **Ce que ça apporte** | Est-ce que ça vous apportera quelque chose : du repos, de la joie, du sens ? |
 
-  | | 0 | 5 | 10 |
-  |---|---|---|---|
-  | **Réflexion demandée** | sans y penser | attention soutenue | toute ma concentration |
-  | **Émotions remuées** | rien à cacher ni à porter | des émotions à contenir | beaucoup à cacher ou à porter |
-  | **Anxiété suscitée** | aucune appréhension | appréhension avant ou après | angoisse bien avant et après |
-  | **Corps et sens** | rien de physique ni de sensoriel | debout, bruit ou lumière qui fatiguent un peu | épuisant : foule, bruit, longue station debout |
-  | **Ce que ça apporte** | ne m’a rien apporté | un peu de repos, de plaisir ou de fierté | m’a nettement apporté repos, joie ou fierté |
+- **Un appui donne une valeur.** Chaque jauge a une petite case pour 0, puis dix cases pour 1 à 10 : touchez celle que vous voulez dire. Touchez-la encore et la tuile dit de nouveau **non noté**. 0 est une note, pas un blanc : il dit *rien*.
+- **Au clavier**, Tab passe d’une tuile à l’autre ; un chiffre donne 0 à 9, **+** ou **=** donne 10, les flèches montent ou descendent d’un cran, et Suppr efface.
+- **Un mot à côté de chaque nombre** dit ce qu’il vaut, comme sur l’échelle qui sert à noter l’effort dans le sport et dans la gestion de l’énergie : *rien*, *très léger*, *léger*, *modéré* (3 et 4), *lourd* (5 et 6), *très lourd* (7 à 9), *au maximum*. Ce que ça apporte va de *rien* à *pleinement*, en passant par *un peu*, *modérément*, *nettement* et *beaucoup*.
+- **Ce que vous avez dit avant.** Si vous avez dit comment cette tâche s’est passée les dernières fois, ou des tâches de son type ([Comment ça s’est passé ?](#how-was-it)), les tuiles non notées montrent ces valeurs en pâle, et une ligne dit d’où elles viennent. **C’est bien ça** les prend toutes ; un appui sur une tuile ne règle que celle-là. Rien de pâle n’est gardé tant que vous ne l’avez pas choisi.
+- Chaque valeur est gardée dès que vous la donnez. Dès qu’un coût est noté, **Ce que ça coûte** suit les notes, montré plutôt que choisi : *léger* quand aucun coût ne dépasse 3, *comme d’habitude* jusqu’à 6, *lourd* à partir de 7 ; *ça recharge* quand l’apport est de 5 ou plus et qu’aucun coût ne dépasse 3. C’est ainsi que le plan compte les tâches lourdes qu’un jour peut tenir ([Comment est aujourd’hui ?](#how-is-today)).
 
-- Une note est gardée quand vous lâchez le curseur, pas pendant que vous le faites glisser. Sur un téléphone, glisser de côté déplace le curseur ; glisser vers le haut ou le bas fait défiler la page.
-- Dès qu’un coût est noté, **Ce que ça coûte** suit les notes, montré plutôt que choisi : *léger* quand aucun coût ne dépasse 3, *comme d’habitude* jusqu’à 6, *lourd* à partir de 7 ; *ça recharge* quand l’apport est de 5 ou plus et qu’aucun coût ne dépasse 3. C’est ainsi que le plan compte les tâches lourdes qu’un jour peut tenir ([Comment est aujourd’hui ?](#how-is-today)).
-
-Les émotions comptent quand il faut les cacher ou les porter, pas seulement quand elles sont tristes ; l’anxiété compte l’appréhension avant et après, pas seulement pendant ; le corps et les sens comptent la station debout, le bruit, la lumière et la foule ([ce que dit la recherche, en anglais](https://aurelienpierre.github.io/sioul/dev/research.html)).
+Les émotions comptent quand il faut les cacher ou les porter, pas seulement quand elles sont tristes ; l’inquiétude compte l’appréhension avant et après, pas seulement pendant ; le corps et les sens comptent la station debout, le bruit, la lumière et la foule. Les questions demandent ce qui remue les émotions plutôt que de quelle émotion il s’agit, pour qui a du mal à les nommer ([ce que dit la recherche, en anglais](https://aurelienpierre.github.io/sioul/dev/research.html)).
 
 ### Comment ça s’est passé ? {#how-was-it}
 
-Quand une tâche est faite, la ligne d’état propose **Comment ça s’est passé ?** un moment ; les détails d’une tâche faite le proposent aussi. Cela ouvre les mêmes cinq curseurs, ce que vous aviez prévu en marques pâles (« prévu : 7 »). Seul ce que vous déplacez est gardé, comme ressenti, à côté de ce que vous aviez prévu ; le reste demeure en blanc, jamais recopié de la prévision. Ignorez-le et rien ne change : ce n’est jamais redemandé, jamais compté.
+Quand une tâche est faite, la ligne d’état propose **Comment ça s’est passé ?** un moment ; les détails d’une tâche faite le proposent aussi. Cela ouvre les mêmes tuiles, une fine marque sur chaque jauge là où vous l’aviez prévu. Seul ce que vous touchez est gardé, comme ressenti, à côté de ce que vous aviez prévu ; le reste demeure non noté, jamais recopié de la prévision, et rien de pâle n’y est proposé. Ignorez-le et rien ne change : ce n’est jamais redemandé, jamais compté.
 
 ### Les bureaux ont des horaires {#offices-have-hours}
 

@@ -138,6 +138,9 @@ pub mod secret;
 pub mod securitykey;
 pub mod send;
 pub mod share;
+pub mod trigger;
+// texts: their lines sealed at rest (SMS phase b, docs/texts.md).
+pub mod textseal;
 pub mod shield_ai;
 pub mod unsubscribe;
 pub mod verify;

@@ -132,7 +132,6 @@
 //!
 //! - [`health`]: prescriptions, medicines and when to take them, pauses to move, a limit on chats.
 //! - [`doses`]: each dose that fell due, as a record your devices share.
-//! - [`wearable`]: a watch's own record of the body: Garmin's FIT files.
 //!
 //! ## Contacts and calendars
 //!
@@ -169,12 +168,14 @@ pub mod attention;
 pub mod bank;
 pub mod blocks;
 pub mod budget;
+pub mod build;
 pub mod calls;
 pub mod capabilities;
 pub mod capacity;
 pub mod capture;
 pub mod card;
 pub mod cases;
+pub mod consent;
 pub mod codes;
 pub mod compose;
 pub mod config;
@@ -208,6 +209,7 @@ pub mod overlaps;
 pub mod notes;
 pub mod payments;
 pub mod pgp;
+pub mod phonemsgs;
 pub mod phones;
 pub mod plan;
 pub mod places;
@@ -232,8 +234,11 @@ pub mod sites;
 pub mod state;
 pub mod stopped;
 pub mod taskview;
+// texts: SMS phase (b), read and sent through the phone (docs/texts.md).
+pub mod texts;
 pub mod tasks;
 pub mod text;
+pub mod textdraft;
 pub mod threads;
 pub mod timelog;
 pub mod timereport;
@@ -244,6 +249,5 @@ pub mod vdir;
 pub mod view;
 pub mod voicemail;
 pub mod weather;
-pub mod wearable;
 pub mod window;
 pub mod words;

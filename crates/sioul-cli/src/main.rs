@@ -64,7 +64,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[derive(Parser)]
-#[command(name = "sioul", version, about = "Calm admin: the Porch, cases and admin windows.")]
+// `sioul --version`: the version and the commit it was built from (docs/building.md, "Which build").
+#[command(name = "sioul", version = sioul_core::build::DESCRIBED, about = "Calm admin: the Porch, cases and admin windows.")]
 struct Cli {
     /// Configuration file (default: ~/.config/sioul/config.toml).
     #[arg(long, global = true)]

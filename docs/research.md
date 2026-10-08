@@ -12,9 +12,9 @@ Sioul is designed for the people for whom admin costs most. Each group below has
 - **Anxiety**: avoidance as mood repair (4), uncertainty (5), admin anxiety (30), unexpected calls (34).
 - **Depression**: shame and guilt (23), timing (24), valued activities as a dose (27), daylight and time outdoors (33).
 - **Burnout and exhaustion**: autistic burnout (19), detachment from work (21), unfinished tasks (22), recovery (26).
-- **ME/CFS, long COVID and other illnesses that limit energy**: pacing within the energy envelope (25), the crash after exertion (33).
+- **ME/CFS, long COVID and other illnesses that limit energy**: pacing within the energy envelope (25), the crash after exertion (33), the sides of what an activity costs (36).
 - **Eating disorders and irregular eating**: meals by the clock, set by the person (28).
-- **Everyone who knows admin anxiety**: administrative burden (3), avoidance (4), admin anxiety and its routes (30).
+- **Everyone who knows admin anxiety**: administrative burden (3), avoidance (4), admin anxiety and its routes (30), worry as a cost of its own (36).
 - **People who work for themselves**: the admin it adds (31).
 
 ## The findings
@@ -86,6 +86,12 @@ Sioul is designed for the people for whom admin costs most. Each group below has
 34. **The phone is the hardest channel, and an expected call is easier than a surprise.** 78 % of autistic adults avoid the phone where they can, and 61 % avoid voicemail too (Doherty et al. 2022); people with admin anxiety find the telephone the hardest channel (Holkar, Evans & Langston 2018); intolerance of uncertainty and anxiety go together in autism (r = 0.62: Jenkinson, Milne & Thompson 2020); text reminders keep appointments as well as calls do (Gurol-Urganci et al. 2013). No study tests call screening itself: the case rests on stated preferences and a plausible mechanism. **Rule**: on a phone, calls follow the same rules as mail: a call that may not reach you now is declined plainly and goes to voicemail, and the Porch says afterwards who called; Sioul never answers and never listens; the emergency services calling back, and a second call within fifteen minutes, always ring ([attention.md](attention.md); detail: [call-screening.md](research/call-screening.md), criteria CS1–CS21).
 35. **A spam filter learns best from one's own mail, and the labels one gives matter more than the model.** Filters trained on other people's mail did about a hundred times worse than filters learning inside one mailbox, in the blind tests of the TREC spam tracks (Cormack 2008; Sculley & Wachman 2007); labelling about 1 % of one's mail near the threshold gave 20 to 150 times less missed spam than the provider's own filter (Cormack & Mojdeh 2009); and a pass of SPF, DKIM or DMARC is almost no evidence, since 89 % of unwanted mail passes (Cloudflare 2023). **Rule**: Sioul's filter learns on your computer, from your own mail and your own word; it judges strangers' mail only, never people you know, codes or projects; until you choose, it moves nothing ([spam-filter.md](spam-filter.md); detail: [research/spam-filter.md](research/spam-filter.md)).
 
+36. **What an activity costs has several sides, and a rating needs words.**
+   - NICE's guideline for ME/CFS says that energy management "includes all types of activity (cognitive, physical, emotional and social)", and asks that the plan weigh the "effect of environmental factors, including sensory stimulation" (NICE NG206, 2021, recommendations 1.11.2 and 1.11.3; the ME Association reproduces the section in full). Thinking, feelings, and the body and the senses are three of those sides.
+   - Admin adds worry: its burden weighs more on people with ADHD, anxiety or chronic pain (finding 3: Christensen et al. 2020; Bell et al. 2023), and dread runs before and after the task itself ([capacity-budget.md](research/capacity-budget.md), criterion 2).
+   - A single rating from 0 to 10, with words at fixed numbers, is Borg's CR10 scale (Borg 1982). Session-RPE rates a whole training session on it, and the rating times the minutes tracked a heart-rate load closely (Foster et al. 2001).
+   - **Rule**: four costs, thinking, feelings, worry, and body and senses, and a gain, each from 0 to 10 and unsaid until said; CR10's words beside the number; in each, a concrete question, feelings asked about through what stirs them. Built: [capacity.md](capacity.md#the-form).
+
 ## Sources
 - Kushlev & Dunn (2015), Checking email less frequently reduces stress, *Computers in Human Behavior* 43.
 - Fitz, Kushlev, Jagannathan, Lewis, Paliwal & Ariely (2019), Batching smartphone notifications can improve well-being, *Computers in Human Behavior* 101.
@@ -137,7 +143,7 @@ Sioul is designed for the people for whom admin costs most. Each group below has
 - Kluger & DeNisi (1996), The effects of feedback interventions on performance, *Psychological Bulletin* 119(2).
 - Kirby, Day & Sagar (2019), The "flow" of compassion: a meta-analysis of the fears of compassion scales and psychological functioning, *Clinical Psychology Review* 70.
 - Rules 24 to 28, and the details of rules 32 to 35: the full references, with their DOIs, are in the notes they link to.
-- Findings 9 and 29 to 35, with their DOIs; "(abstract only)" marks a source read at its abstract, the others were read in full or, for the older ones, in the notes that cite them:
+- Findings 9 and 29 to 36, with their DOIs; "(abstract only)" marks a source read at its abstract, the others were read in full or, for the older ones, in the notes that cite them:
   - Adams, Cartmell, Foster, Foxwell, Holker, Pearson, Stewart, Cowling & Kitching (2019), Understanding self-employment for people with disabilities and health conditions, Department for Work and Pensions Research Report 974. https://assets.publishing.service.gov.uk/media/5cc70e12ed915d5dc8d3cfcf/understanding-self-employment-for-people-with-disabilities-and-health-conditions.pdf
   - American Psychiatric Association (2013), *Diagnostic and Statistical Manual of Mental Disorders*, 5th edition (DSM-5). doi:10.1176/appi.books.9780890425596 (the criteria read as quoted by the US National Center for PTSD, https://www.ptsd.va.gov/professional/treat/essentials/dsm5_ptsd.asp, and by de la Peña, Pan, Thai & Alisso 2020, *Brain Sciences* 10(5), doi:10.3390/brainsci10050292)
   - Appelman, Charlton, Goulding et al. (2024), Muscle abnormalities worsen after post-exertional malaise in long COVID, *Nature Communications* 15. doi:10.1038/s41467-023-44432-3
@@ -145,6 +151,7 @@ Sioul is designed for the people for whom admin costs most. Each group below has
   - Beauchaine, Ben-David & Bos (2020), ADHD, financial distress, and suicide in adulthood: a population study, *Science Advances* 6(40). doi:10.1126/sciadv.aba1551
   - Bell, Christensen, Herd & Moynihan (2023), Health in citizen-state interactions: how physical and mental health problems shape experiences of administrative burden and reduce take-up, *Public Administration Review* 83(2). doi:10.1111/puar.13568
   - Bond, Braverman & Evans (2019), The benefits assault course: making the UK benefits system more accessible for people with mental health problems, Money and Mental Health Policy Institute (report, not peer-reviewed). https://www.moneyandmentalhealth.org/publications/benefits/
+  - Borg (1982), Psychophysical bases of perceived exertion, *Medicine & Science in Sports & Exercise* 14(5). doi:10.1249/00005768-198205000-00012 (abstract only)
   - Burns, Saxena, Vetter, Phillips, Lane & Cain (2021), Time spent in outdoor light is associated with mood, sleep, and circadian rhythm-related outcomes: a cross-sectional and longitudinal study in over 400,000 UK Biobank participants, *Journal of Affective Disorders* 295. doi:10.1016/j.jad.2021.08.056
   - Chen, McDonald, Zou, Tseng, Roundy, Tamersoy, Schaub, Ristenpart & Dell (2022), Trauma-informed computing (above). doi:10.1145/3491102.3517475
   - Cloudflare (2023), Phishing threats report. https://www.cloudflare.com/press-releases/2023/cloudflare-harnesses-the-power-of-its-global-network-to-identify-top
@@ -153,6 +160,7 @@ Sioul is designed for the people for whom admin costs most. Each group below has
   - Davies, Melinek, Livesey, Killick, Sam, Romualdez, Pellicano & Remington (2025), "I did what I could to earn some money and be of use": a qualitative exploration of autistic people's journeys to career success and fulfilment, *Autism* 29(4). doi:10.1177/13623613241292177
   - Doherty, Neilson, O'Sullivan, Carravallah, Johnson, Cullen & Shaw (2022), Barriers to healthcare and self-reported adverse outcomes for autistic adults: a cross-sectional study, *BMJ Open* 12(2). doi:10.1136/bmjopen-2021-056904
   - Evans (2003), Studying the studies: an overview of recent research into taxation operating costs, *eJournal of Tax Research* 1(1). https://web.archive.org/web/20110218203518id_/http://www.atax.unsw.edu.au/ejtr/content/issues/previous/full_edition_v1n1.pdf
+  - Foster, Florhaug, Franklin, Gottschall, Hrovatin, Parker, Doleshal & Dodge (2001), A new approach to monitoring exercise training, *Journal of Strength and Conditioning Research* 15(1). PubMed 11708692 (abstract only)
   - Gurol-Urganci, de Jongh, Vodopivec-Jamsek, Atun & Car (2013), Mobile phone messaging reminders for attendance at healthcare appointments, *Cochrane Database of Systematic Reviews* (12). doi:10.1002/14651858.CD007458.pub3
   - Holkar, Evans & Langston (2018), Access essentials: giving people with mental health problems equal access to vital services, Money and Mental Health Policy Institute (report, not peer-reviewed). https://www.moneyandmentalhealth.org/publications/accessessentials/
   - Howard & Sedgewick (2021), "Anything but the phone!": communication mode preferences in the autism community, *Autism* 25(8). doi:10.1177/13623613211014995
@@ -164,7 +172,9 @@ Sioul is designed for the people for whom admin costs most. Each group below has
   - Lerner, Verheul & Thurik (2019), Entrepreneurship and attention deficit/hyperactivity disorder: a large-scale study involving the clinical condition of ADHD, *Small Business Economics* 53(2). doi:10.1007/s11187-018-0061-1
   - Löthberg, Hirvikoski, Girdler, Bölte & Jonsson (2024), Support in daily living for young adults with neurodevelopmental conditions in Sweden: a qualitative description of current practice, *Journal of Autism and Developmental Disorders* 54(8). doi:10.1007/s10803-023-06014-6
   - McQueenie, Ellis, Williamson & Wilson (2024), Attention-deficit/hyperactivity disorder and serial missed appointments in general practice, *PLOS Mental Health* 1(2). doi:10.1371/journal.pmen.0000045 (abstract only)
+  - ME Association, Energy management: NICE guideline NG206, section 1.11, reproduced in full. https://meassociation.org.uk/nice-guidelines/items/energy-management/ (read 8 October 2026)
   - Milanez & Bratta (2019), Taxation and the future of work: how tax systems influence choice of employment form, OECD Taxation Working Papers 41. doi:10.1787/20f7164a-en
+  - NICE (2021), Myalgic encephalomyelitis (or encephalopathy)/chronic fatigue syndrome: diagnosis and management, NICE guideline NG206, recommendations 1.11.2 and 1.11.3. https://www.nice.org.uk/guidance/ng206/chapter/Recommendations (read 8 October 2026)
   - Nijp, Beckers, Geurts, Tucker & Kompier (2012), Systematic review on the association between employee worktime control and work–non-work balance, health and well-being, and job-related outcomes, *Scandinavian Journal of Work, Environment & Health* 38(4). doi:10.5271/sjweh.3307
   - Pagán (2009), Self-employment among people with disabilities: evidence for Europe, *Disability & Society* 24(2). doi:10.1080/09687590802652504 (abstract only)
   - Paris, Lodestone, Houser & Lewis (2025), "Shutdowns are like you're stuck on the blue screen of death": a metaphor analysis of autistic shutdowns, *Autism in Adulthood* 8(4). doi:10.1089/aut.2024.0193

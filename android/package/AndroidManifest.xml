@@ -49,6 +49,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- texts: your phone's texts read for your computers, and sent from them
+         (docs/texts.md; Texts.java, TextSend.java), asked in Settings ▸ This
+         phone ▸ Texts. Never the SMS role. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- The sync apps asked to look for changes now rather than at their next
          round (crates/sioul-app/src/share.rs, android/main.cpp): Murena's
          eDrive, which carries the sharing folder on /e/OS, every half hour. -->
@@ -114,7 +121,12 @@
              plugged in, as for Sioul's start; nothing else is opened by it. -->
         <profileable android:shell="true" />
 
-        <!-- Files handed to other apps ("Open with…"), through Qt's provider. -->
+        <!-- Files handed to other apps ("Open with…"), through Qt's provider:
+             a file of Sioul's lent to the one app that opens it, to read, one
+             file at a time; the folders it may lend from are res/xml/
+             qtprovider_paths.xml, Qt's own and the mail attachments' folder of
+             the cache (Attachments.java). One FileProvider only: with two, Qt
+             would hand every other file to the one that is not its own. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.qtprovider"
@@ -304,6 +316,17 @@
                 <data android:scheme="mailto" />
             </intent-filter>
         </activity>
+        <!-- "Save…" beside a mail attachment (AttachmentSave.java; docs/
+             client.md, "Antivirus"): Android's own question where to save it,
+             asked by this activity, never shown itself, then the copy there.
+             Started by Sioul alone. -->
+        <activity
+            android:name="com.aurelienpierre.sioul.AttachmentSave"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:exported="false" />
         <!-- Reminders before events (package/src/com/aurelienpierre/sioul/
              EventAlarms.java, EventReceiver.java; docs/android.md, "Events"):
              a reminder's time and the daily look, sent by Android's alarm
@@ -408,6 +431,28 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:taskAffinity=""
             android:excludeFromRecents="true"
+            android:exported="false" />
+        <!-- texts: Android's question for the texts' permissions (TextsAsk.java), never shown itself;
+             a new text heard after the SMS app had it (Texts.Heard, sent by the system alone);
+             a text's parts sent and delivered (TextSend.Result), both in the background service's process. -->
+        <activity
+            android:name="com.aurelienpierre.sioul.TextsAsk"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:exported="false" />
+        <receiver
+            android:name="com.aurelienpierre.sioul.Texts$Heard"
+            android:process=":steps"
+            android:permission="android.permission.BROADCAST_SMS"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.aurelienpierre.sioul.TextSend$Result"
+            android:process=":steps"
             android:exported="false" />
         <!-- Other apps' notifications held until their time (docs/android.md,
              "Notifications from other apps"; AppNotes.java): Android's

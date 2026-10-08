@@ -209,6 +209,11 @@ Item {
         eventDialog.now().accept()
     }
 
+    // For the window's pictures: the event form's costs and gain in view.
+    function showEventRatings() {
+        eventDialog.now().showRatings()
+    }
+
     // A new event made from something else: a message, a task.
     function makeFrom(text, note, link) {
         eventDialog.now().makeFrom(text, note, link, page.iso(new Date()))

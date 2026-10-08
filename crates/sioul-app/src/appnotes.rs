@@ -133,6 +133,9 @@ fn gate() -> Option<Option<i64>> {
 /// One notification decided (`AppNotes.decide`): {"hold": milliseconds (0:
 /// it comes now), "why"}. What it says is read here and dropped; the ledger
 /// keeps its key hashed, its app's and conversation's names, and its time.
+/// Only for the apps you send to your computers, while that part of the
+/// sharing is on, its messages also go, sealed (`phonemsgs::note`; "shared":
+/// a line was written, Java asks for a step soon).
 fn decide(json: &str) -> String {
     let Ok(posted) = serde_json::from_str::<Posted>(json) else { return "null".into() };
     let config = load_config();
@@ -155,7 +158,13 @@ fn decide(json: &str) -> String {
     // What reaches you when (Settings ▸ What reaches you); Free time's "Nothing at all".
     let attention = sioul_core::attention::Attention::of(&config);
     let nothing = sioul_core::pause::nothing_now(&sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path()), &config.free_time);
-    let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also };
+    // Its own rows in the matrix, when set: its conversation's, then its app's.
+    let conversation = match &kind {
+        Kind::People(talk) => talk.conversation.as_ref().map(|c| c.key.clone()).unwrap_or_default(),
+        _ => String::new(),
+    };
+    let sources = sioul_core::attention::source_rows(&posted.package, &conversation);
+    let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also, sources: &sources };
     let hash = appnotes::key_hash(&posted.key);
     let path = Ledger::default_path();
     let decision = sioul_core::filelock::with_lock(&path, || {
@@ -185,8 +194,10 @@ fn decide(json: &str) -> String {
         }
         decision
     });
+    // The phone's messages on your computers: its lines written when its app sends them (`phonemsgs`).
+    let shared = crate::phonemsgs::note(json, &posted, &kind, who, admitted, &decision);
     let hold = decision.until.map_or(0, |until| (until - stamp).max(1) * 1000);
-    json!({ "hold": hold, "why": decision.why.id() }).to_string()
+    json!({ "hold": hold, "why": decision.why.id(), "shared": shared }).to_string()
 }
 
 /// What Android holds for Sioul now, worked out again (`AppNotes.review`):
@@ -217,7 +228,8 @@ fn review(json: &str) -> String {
         for key in &keys {
             let hash = appnotes::key_hash(key);
             let Some(held) = ledger.held.get(&hash).cloned() else { continue };
-            let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also };
+            let sources = sioul_core::attention::source_rows(&held.app, &held.conversation);
+            let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|until| Gate { until }), slot_at: &slot, nothing, also: &also, sources: &sources };
             let until = appnotes::again(&held, &choices, &ask).until.unwrap_or(stamp);
             if (until - held.until).abs() > 60 {
                 if let Some(kept) = ledger.held.get_mut(&hash) {
@@ -297,6 +309,38 @@ fn row(key: &str, kind: &str, label: &str, help: &str, value: Value, choices: Ve
     })
 }
 
+/// The table of other apps by time (What reaches you ▸ Exceptions): each app
+/// seen lately a row of the matrix, by name, and the apps' rows set that this
+/// device has not seen (a computer's, set on the phone: by the name written
+/// with them); then the conversations chosen for (a row or a way through)
+/// and the ten seen last ("Title · App"), never a wall of them. Whether
+/// some were left out. `AttentionGrid.qml` draws it.
+fn by_time(attention: &sioul_core::attention::Attention, ledger: &Ledger, choices: &Choices) -> (Value, bool) {
+    use sioul_core::attention::{APP_ROW, CONVERSATION_ROW, SourceLine};
+    let tr = tr();
+    let apps_group = tr.text("attention-source-group-apps", None);
+    let talks_group = tr.text("attention-source-group-conversations", None);
+    let mut apps: Vec<SourceLine> = ledger.apps.iter().map(|(package, seen)| SourceLine { id: format!("{APP_ROW}{package}"), label: seen.label.clone(), group: apps_group.clone(), group_id: "app-rows".into() }).collect();
+    // Set elsewhere (on the phone, for a computer), or no longer seen here: by the name written with it.
+    for id in attention.sources().keys().filter(|id| id.starts_with(APP_ROW)) {
+        if !apps.iter().any(|a| &a.id == id) {
+            let name = attention.source_name(id);
+            let label = if name.is_empty() { id[APP_ROW.len()..].to_string() } else { name.to_string() };
+            apps.push(SourceLine { id: id.clone(), label, group: apps_group.clone(), group_id: "app-rows".into() });
+        }
+    }
+    apps.sort_by_cached_key(|a| sioul_core::text::fold(&a.label).into_iter().collect::<String>());
+    let mut talks: Vec<(&String, &appnotes::SeenTalk)> = ledger.conversations.iter().collect();
+    talks.sort_by_key(|(_, t)| -t.seen);
+    let total = talks.len();
+    let chosen = |key: &str| choices.conversation.contains_key(key) || attention.source(&format!("{CONVERSATION_ROW}{key}")).is_some();
+    let talks: Vec<(&String, &appnotes::SeenTalk)> = talks.into_iter().enumerate().filter(|(i, (key, _))| *i < 10 || chosen(key)).map(|(_, t)| t).collect();
+    let more = talks.len() < total;
+    let mut lines = apps;
+    lines.extend(talks.into_iter().map(|(key, seen)| SourceLine { id: format!("{CONVERSATION_ROW}{key}"), label: format!("{} · {}", seen.title, seen.label), group: talks_group.clone(), group_id: "conversation-rows".into() }));
+    (serde_json::to_value(sioul_core::attention::source_grid(attention, tr, &lines)).unwrap_or(Value::Null), more)
+}
+
 /// "09:00, 13:00 and 18:00".
 fn times_in_words(times: &[String]) -> String {
     let times: Vec<String> = appnotes::times_of(times).iter().map(|t| t.strftime("%H:%M").to_string()).collect();
@@ -338,6 +382,8 @@ pub(crate) fn setup() -> String {
         }
     }
     let kinds: Vec<(Value, String)> = AppKind::ALL.iter().map(|k| (json!(k.id()), text(&format!("appnotes-kind-{}", k.id())))).collect();
+    let attention = sioul_core::attention::Attention::of(&config);
+    let (grid, more) = by_time(&attention, &ledger, &choices);
     let mut apps: Vec<(&String, &appnotes::SeenApp)> = ledger.apps.iter().collect();
     apps.sort_by_cached_key(|(_, a)| sioul_core::text::fold(&a.label).into_iter().collect::<String>());
     let apps: Vec<Value> = apps
@@ -347,6 +393,8 @@ pub(crate) fn setup() -> String {
             let why = appnotes::why_text(tr, &seen.why, seen.until, &now);
             json!({
                 "package": package,
+                // Its own row of the matrix, in one sentence: "At once: Work; held: Leisure…".
+                "times": sioul_core::attention::source_sentence(&attention, tr, &format!("{}{package}", sioul_core::attention::APP_ROW)),
                 "kind": row(&format!("app.{package}.kind"), "choice", &seen.label, &why, json!(chosen.kind.id()), kinds.clone()),
                 "area": row(&format!("app.{package}.area"), "areas", &text("appnotes-area"), "", json!(chosen.area.map(Area::id).unwrap_or_default()), Vec::new()),
             })
@@ -389,6 +437,8 @@ pub(crate) fn setup() -> String {
         "apps": apps,
         "conversations": conversations,
         "sites": sites,
+        "grid": grid,
+        "more": more,
     })
     .to_string()
 }
@@ -419,6 +469,20 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
             java(verb, json);
         }
         "contacts" => crate::steps::ask_contacts(),
+        // A row of the table by time: its words whole ("attention.app.<package>", nine words), an app's name with them.
+        "row" => {
+            let key = asked["key"].as_str().unwrap_or_default();
+            let mut words: Vec<String> = asked["words"].as_array().map(|w| w.iter().filter_map(|w| w.as_str().map(str::to_string)).collect()).unwrap_or_default();
+            if let Some(package) = key.strip_prefix("attention.").and_then(|id| id.strip_prefix(sioul_core::attention::APP_ROW))
+                && let Some(seen) = Ledger::load(&Ledger::default_path()).apps.get(package)
+            {
+                words.push(format!("{}{}", sioul_core::attention::NAME, seen.label));
+            }
+            let config = load_config();
+            if let Err(e) = sioul_core::attention::apply(&crate::backend::config_path(), &config, key, &sioul_core::config::SettingValue::Texts(words)) {
+                eprintln!("Notes: {e}");
+            }
+        }
         _ => {}
     }
     setup()
@@ -488,6 +552,44 @@ mod tests {
         assert!(choices.site.is_empty());
         set(&mut choices, &ledger, "hold", &json!(false));
         assert!(!choices.hold);
+    }
+
+    /// The table of other apps by time: each app seen, by name, and an app's row
+    /// set elsewhere by the name written with it; the conversations chosen for
+    /// and the ten seen last, never more; each row's cells as set or as usual.
+    #[test]
+    fn the_table_by_time() {
+        let mut ledger = Ledger::default();
+        ledger.apps.insert("com.discord".into(), appnotes::SeenApp { label: "Discord".into(), ..Default::default() });
+        ledger.apps.insert("org.example.news".into(), appnotes::SeenApp { label: "Actualités".into(), ..Default::default() });
+        for i in 0..14 {
+            ledger.conversations.insert(format!("c{i:02}"), appnotes::SeenTalk { app: "com.discord".into(), label: "Discord".into(), title: format!("Salon {i}"), group: true, seen: i });
+        }
+        let mut choices = Choices::default();
+        choices.conversation.insert("c00".into(), appnotes::TalkChoice { through: Through::Always, ..Default::default() });
+        let mut attention = sioul_core::attention::Attention::usual();
+        attention.set_source("app.com.discord", sioul_core::attention::Column::Work, sioul_core::attention::Level::Now).unwrap();
+        attention.set_source("app.org.example.chat", sioul_core::attention::Column::Leisure, sioul_core::attention::Level::Later).unwrap();
+        attention.name_source("app.org.example.chat", "Chat");
+        attention.set_source("conversation.c01", sioul_core::attention::Column::Sleep, sioul_core::attention::Level::Later).unwrap();
+        let (grid, more) = by_time(&attention, &ledger, &choices);
+        let ids: Vec<&str> = grid["rows"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap()).collect();
+        let labels: Vec<&str> = grid["rows"].as_array().unwrap().iter().map(|r| r["label"].as_str().unwrap()).collect();
+        assert_eq!(&ids[..3], ["app.org.example.news", "app.org.example.chat", "app.com.discord"], "by name: Actualités, Chat, Discord");
+        assert_eq!(&labels[..3], ["Actualités", "Chat", "Discord"]);
+        // The ten seen last, and the two chosen for among the older ones.
+        let talks: Vec<&str> = ids.iter().filter(|id| id.starts_with("conversation.")).copied().collect();
+        assert_eq!(talks.len(), 12);
+        assert!(talks.contains(&"conversation.c00") && talks.contains(&"conversation.c01") && !talks.contains(&"conversation.c02") && talks[0] == "conversation.c13");
+        assert!(more, "two conversations left out");
+        let discord = &grid["rows"][2];
+        assert_eq!(discord["cells"][0]["value"], "now");
+        assert_eq!(discord["cells"][1]["value"], "as");
+        assert_eq!(discord["choices"].as_array().unwrap().len(), 4);
+        assert_eq!(grid["columns"].as_array().unwrap().len(), 9);
+        // Nothing seen, nothing set: no table.
+        let (none, more) = by_time(&sioul_core::attention::Attention::usual(), &Ledger::default(), &Choices::default());
+        assert!(none["rows"].as_array().unwrap().is_empty() && !more);
     }
 
     #[test]

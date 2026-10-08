@@ -38,7 +38,7 @@ The page follows the clock: the line at the current hour moves with it, and toda
 
 - **Before** and **After**: the time to get ready and get there, and to come back ([below](#time-around-an-event)).
 - **Remind**: when Sioul reminds you of it: as usual (a quarter of an hour before it and its time to get there, unless you change it in [Settings](settings.md#reminders)), not this one, or 5 minutes to 2 hours before. See [Reminders](#reminders).
-- How much the event asks of you, and what it gives back: five sliders from 0 to 10, **Thinking it asks**, **Feelings it stirs**, **Anxiety it raises**, **Body and senses** and **What it gives back**, with words under each at 0, 5 and 10 (as for [a task](tasks.md#what-it-costs-and-what-it-gives-back)). Each says **Not rated** until you touch it; **×** clears it. Your plan counts them ([below](#your-day-around-your-events)).
+- How much the event asks of you, and what it gives back: the same tiles as [a task's](tasks.md#what-it-costs-and-what-it-gives-back), **Thinking**, **Feelings**, **Worry**, **Body and senses** and **Gives back**, each from 0 to 10, with a word beside the number and a question in small print. A tap on a cell gives its value, the same tap clears it; each tile stays **unsaid** until you tap it. Your plan counts them ([below](#your-day-around-your-events)).
 
 An event opens on the right with its day, its time, its place, its calendar, and whether it repeats. Its notes, who organised it and its guests are folded under **More**. It opens the same way from a link (a task's tie, the day on the Tasks page), its days shown; its menu (right click, or a long press on a touch screen) offers **Details** first, then **Edit**.
 
@@ -89,7 +89,7 @@ Another, half an hour before work ends, on the last working day before an event:
 
 ## On a phone {#on-a-phone}
 
-On Android, Sioul syncs your calendars itself and keeps its own copy of them: your phone's calendar app shows the same events only through its own sync (DAVx⁵, say). Reminders come while Sioul is closed: Sioul hands the coming ones to Android ahead of time, and Android wakes it at each one's time, so that Sioul checks the event still stands. The home screen card lists your coming events; with **Details on the home screen** off, it shows their times without their titles ([Settings](settings.md#display)). If your phone's calendar app also rings an event's own alarms, turn one of the two off, so that you hear them once; Sioul's own reminder before an event never rings there.
+On Android, Sioul syncs your calendars itself and keeps its own copy of them: your phone's calendar app shows the same events only through its own sync (DAVx⁵, say). Reminders come while Sioul is closed: Sioul hands the coming ones to Android ahead of time, and Android wakes it at each one's time, so that Sioul checks the event still stands. Sioul's agenda card on the home screen ("Sioul — Agenda") lists your coming events; with **Details on the home screen** off, it shows their times without their titles ([Settings](settings.md#display)). If your phone's calendar app also rings an event's own alarms, turn one of the two off, so that you hear them once; Sioul's own reminder before an event never rings there.
 
 ## The Agenda settings
 

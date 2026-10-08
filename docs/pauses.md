@@ -60,7 +60,7 @@ The pause, then sleep, then Free time, then meals, then the hours' own overrides
 ### Who reaches you
 - **Your safe senders only**, quietly, at the times you ticked for them; neutral and restricted senders wait whatever their ticks (GP5; the Free time column of the attention model, [attention.md](attention.md)). Codes and links you just asked for, and what you send yourself, come at once, as in every quiet time. (R)
 - **"Nothing at all"** (GP6): a setting, and a switch in the status line's menu for this free time: not even your safe senders; doses and codes still come. (R)
-- **Notifications**: doses, codes you asked for and your events' own alarms; reminders before dates, sites, meal notices, the pause to move, the watch's offers and the work day's notice wait, as usual (`notify`, its Free time column; `reminders::Holds`). (R: GP5; which notices wait is G)
+- **Notifications**: doses, codes you asked for and your events' own alarms; reminders before dates, sites, meal notices, the pause to move and the work day's notice wait, as usual (`notify`, its Free time column; `reminders::Holds`). (R: GP5; which notices wait is G)
 - **The phone** lets your starred contacts through, unless "Nothing at all" (do-not-disturb, below). (O)
 - **One sentence says it**, the status line's: "Free time: only your safe senders, doses and codes reach you. Work comes back when you do." (GP5, GP16) (R)
 

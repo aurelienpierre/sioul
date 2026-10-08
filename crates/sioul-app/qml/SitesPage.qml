@@ -17,6 +17,8 @@ import QtQuick.Effects
 import QtQuick.Layouts
 import QtMultimedia
 import QtWebEngine
+// colour: ScreenColours, a type of Sioul's own module (cpp/screencolours.h).
+import com.aurelienpierre.sioul
 
 Item {
     id: page
@@ -126,6 +128,20 @@ Item {
     })`
     // Chats covered: their daily time used (Health page), until it comes back.
     property bool chatsCovered: page.sioul.chatsCovered()
+
+    // colour: Settings ▸ Display's two lines, for every site and pop-up: the
+    // screen's own colours, and calmer colours (cpp/screencolours.cpp, docs/colour.md).
+    readonly property var colourSettings: page.sioul.reading ? JSON.parse(page.sioul.reading) : ({})
+    Binding {
+        target: ScreenColours
+        property: "screenConversion"
+        value: page.colourSettings.screen_colours !== false
+    }
+    Binding {
+        target: ScreenColours
+        property: "calmer"
+        value: ({ "little": 1, "more": 2 })[page.colourSettings.calmer_colours] || 0
+    }
 
     // A minute in a chat, counted while you look at it; covered, then back after their time.
     Timer {
@@ -1022,6 +1038,10 @@ Item {
                             sourceComponent: WebEngineView {
                                 profile: page.profile
                                 url: holder.startUrl
+                                // colour: the page in the screen's own colours, calmer when asked; drawn
+                                // as it is when that changes nothing (ColourEffect.qml, docs/colour.md).
+                                layer.enabled: visible && ScreenColours.revision >= 0 && ScreenColours.active(Screen.name)
+                                layer.effect: ColourEffect {}
                                 // Sharing the screen in a call: Qt WebEngine refuses every
                                 // capture without it, after the choice even; the site's
                                 // switch and the choice still decide (`shareScreen`).

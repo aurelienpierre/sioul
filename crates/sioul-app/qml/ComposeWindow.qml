@@ -22,6 +22,8 @@ SioulWindow {
 
     required property var sioul
     required property string draftId
+    // The window's pictures at a phone's size (main.qml's `phoneGrab`): 412 × 891, as the main window.
+    property bool phoneSize: false
     property var draft: JSON.parse(compose.sioul.draft(compose.draftId) || "null")
     property bool previewing: false
     property bool copiesShown: compose.draft !== null && (compose.draft.cc !== "" || compose.draft.bcc !== "")
@@ -36,6 +38,17 @@ SioulWindow {
     readonly property bool expired: compose.protection.expired !== undefined && compose.protection.expired !== ""
     // "Attaching 2 files…" while files shared from another application are copied (outside.rs).
     property string attaching: compose.draft && compose.draft.attaching ? compose.draft.attaching : ""
+    // Under the text: files still coming, until they are there, unless something stops
+    // sending; else the last save or what stops sending; else how to write in Markdown.
+    readonly property string said: compose.attaching !== "" && !compose.problem ? compose.attaching : (compose.note !== "" ? compose.note : compose.sioul.text("ui-markdown-hint"))
+    // Whose keys are missing to encrypt: "No key for …".
+    readonly property string keysMissing: compose.protection.missing.length > 0 ? compose.sioul.textWith("ui-no-key-for", "addresses", compose.protection.missing.join(", ")) : ""
+    // Too narrow for the buttons under the text in one row with a little of the note
+    // beside them (a phone): the note goes on a line of its own, the buttons on two
+    // rows, Delete and Send on the right of the second. Every button is a fixed
+    // width in a layout: in one row they would widen the whole window's column past
+    // the screen, the fields and the text with it.
+    readonly property bool narrow: frame.width - 2 * compose.theme.gap < actions.implicitWidth + discardButton.implicitWidth + sendButton.implicitWidth + 3 * 8 + 48
 
     signal finished(string id)
 
@@ -145,6 +158,7 @@ SioulWindow {
     // "Write" from a contact: the address already there.
     function prefill(recipients) {
         to.text = recipients
+        to.cursorPosition = 0
         compose.save()
         subject.forceActiveFocus()
     }
@@ -163,16 +177,21 @@ SioulWindow {
         compose.save()
     }
 
-    width: 760
-    height: 680
-    minimumWidth: 480
-    minimumHeight: 420
+    width: compose.phoneSize ? 412 : 760
+    height: compose.phoneSize ? 891 : 680
+    // A phone's screen sets the size (Android shows the window maximised): no minimum
+    // wider than it, as for the main window.
+    minimumWidth: Qt.platform.os === "android" || compose.phoneSize ? 0 : 480
+    minimumHeight: Qt.platform.os === "android" || compose.phoneSize ? 0 : 420
     visible: true
     title: subject.text !== "" ? subject.text : (compose.draft ? compose.draft.title : "")
 
 
     Component.onCompleted: {
         compose.reloadAttachments()
+        // Long addresses and subjects show their start: a field set shows its end.
+        for (const field of [to, cc, bcc, subject])
+            field.cursorPosition = 0
         // An answer starts in the text, above the quote; anything else with whom it goes to.
         if (compose.draft && compose.draft.to !== "") {
             body.forceActiveFocus()
@@ -401,6 +420,8 @@ SioulWindow {
 
             // Attachments: those you added, and those a forward carries.
             Flow {
+                id: attachmentsFlow
+
                 Layout.fillWidth: true
                 spacing: 6
                 visible: attachments.count > 0
@@ -415,7 +436,8 @@ SioulWindow {
 
                         required property var modelData
 
-                        width: chipRow.implicitWidth + 16
+                        // As wide as its name, never wider than the window: a long name is cut in its middle.
+                        width: Math.min(chipRow.implicitWidth + 16, attachmentsFlow.width)
                         height: chipRow.implicitHeight + 8
                         radius: compose.theme.radius
                         color: compose.theme.surface
@@ -424,7 +446,11 @@ SioulWindow {
                         RowLayout {
                             id: chipRow
 
-                            anchors.centerIn: parent
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
                             spacing: 6
 
                             Icon {
@@ -432,8 +458,10 @@ SioulWindow {
                                 size: 16
                             }
                             Label {
+                                Layout.fillWidth: true
                                 text: chip.modelData.name + (chip.modelData.size ? "  ·  " + chip.modelData.size : "")
                                 textFormat: Text.PlainText
+                                elide: Text.ElideMiddle
                                 color: compose.theme.text
                                 font.pixelSize: 13
                             }
@@ -477,11 +505,13 @@ SioulWindow {
                     onToggled: autosave.restart()
                 }
                 Label {
-                    visible: compose.protection.missing.length > 0
+                    visible: compose.keysMissing !== "" && !compose.narrow
                     Layout.fillWidth: true
-                    text: compose.sioul.textWith("ui-no-key-for", "addresses", compose.protection.missing.join(", "))
+                    text: compose.keysMissing
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
+                    // Squeezed to nothing, a text is drawn whole: never over the button.
+                    clip: true
                     color: encrypt.checked ? compose.theme.warm : compose.theme.muted
                     font.pixelSize: 13
                 }
@@ -494,6 +524,16 @@ SioulWindow {
                         compose.sioul.pgpLookup(compose.draftId)
                     }
                 }
+            }
+            // On a narrow window, whose keys are missing on a line of their own, under the boxes.
+            Label {
+                visible: compose.narrow && compose.keysMissing !== "" && (compose.protection.can_sign || compose.protection.can_encrypt || encrypt.checked || compose.expired)
+                Layout.fillWidth: true
+                text: compose.keysMissing
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: encrypt.checked ? compose.theme.warm : compose.theme.muted
+                font.pixelSize: 13
             }
             // The security key that signs for this address has expired: when, and how to renew it,
             // said once you ask to sign, not in every message.
@@ -528,86 +568,126 @@ SioulWindow {
                 }
             }
 
-            RowLayout {
+            // On a narrow window (a phone), the note on a line of its own above the buttons:
+            // one line, or three when it says what stops sending.
+            Label {
+                visible: compose.narrow
                 Layout.fillWidth: true
-                spacing: 8
+                text: compose.said
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                maximumLineCount: compose.problem ? 3 : 1
+                elide: Text.ElideRight
+                color: compose.problem ? compose.theme.warm : compose.theme.muted
+                font.pixelSize: 13
+            }
 
-                Button {
-                    text: compose.sioul.text("ui-attach")
-                    icon.name: "mail-attachment"
-                    icon.color: compose.theme.text
-                    onClicked: picker.open()
-                }
-                // A paper of the wallet, attached: an identity card, the last tax notice, a rent receipt.
-                Button {
-                    id: paperButton
+            // The buttons: one row, the note between them; on a narrow window two rows,
+            // Attach, A paper and Preview, then Delete and Send on the right.
+            GridLayout {
+                Layout.fillWidth: true
+                columns: compose.narrow ? 1 : 2
+                columnSpacing: 8
+                rowSpacing: 8
 
-                    property var papers: []
+                RowLayout {
+                    id: actions
 
-                    text: compose.sioul.text("papers-attach")
-                    onClicked: {
-                        const shown = JSON.parse(compose.sioul.papers())
-                        paperButton.papers = shown.families.flatMap(f => f.papers).filter(p => p.file_there)
-                        paperMenu.popup(paperButton, 0, paperButton.height)
+                    spacing: 8
+
+                    Button {
+                        text: compose.sioul.text("ui-attach")
+                        icon.name: "mail-attachment"
+                        icon.color: compose.theme.text
+                        onClicked: picker.open()
                     }
+                    // A paper of the wallet, attached: an identity card, the last tax notice, a rent receipt.
+                    Button {
+                        id: paperButton
 
-                    SioulMenu {
-                        id: paperMenu
+                        property var papers: []
 
-                        MenuItem {
-                            visible: paperButton.papers.length === 0
-                            height: visible ? implicitHeight : 0
-                            enabled: false
-                            text: compose.sioul.text("papers-none-to-attach")
+                        text: compose.sioul.text("papers-attach")
+                        onClicked: {
+                            const shown = JSON.parse(compose.sioul.papers())
+                            paperButton.papers = shown.families.flatMap(f => f.papers).filter(p => p.file_there)
+                            paperMenu.popup(paperButton, 0, paperButton.height)
                         }
-                        // One list of lines: a Repeater's lines land out of order in a
-                        // menu once their model changes, and it changes at each click.
-                        Instantiator {
-                            model: paperButton.papers
 
-                            delegate: MenuItem {
-                                id: paperLine
+                        SioulMenu {
+                            id: paperMenu
 
-                                required property var modelData
-
-                                // An old one says so: "less than three months old" is often asked.
-                                // "&" marks a shortcut in a menu: "&&" is one.
-                                text: (paperLine.modelData.standing === "old" || paperLine.modelData.standing === "ended" ? paperLine.modelData.title + " — " + paperLine.modelData.line : paperLine.modelData.title).replace(/&/g, "&&")
-                                // Its path made an address as the file dialog's are: "#", "%" in a
-                                // name stay in it, and Windows' "C:\…" is read back whole.
-                                onTriggered: compose.attach([compose.theme.fileUrl(paperLine.modelData.file)])
+                            MenuItem {
+                                visible: paperButton.papers.length === 0
+                                height: visible ? implicitHeight : 0
+                                enabled: false
+                                text: compose.sioul.text("papers-none-to-attach")
                             }
-                            onObjectAdded: (index, object) => paperMenu.insertItem(index + 1, object)
-                            onObjectRemoved: (index, object) => paperMenu.removeItem(object)
+                            // One list of lines: a Repeater's lines land out of order in a
+                            // menu once their model changes, and it changes at each click.
+                            Instantiator {
+                                model: paperButton.papers
+
+                                delegate: MenuItem {
+                                    id: paperLine
+
+                                    required property var modelData
+
+                                    // An old one says so: "less than three months old" is often asked.
+                                    // "&" marks a shortcut in a menu: "&&" is one.
+                                    text: (paperLine.modelData.standing === "old" || paperLine.modelData.standing === "ended" ? paperLine.modelData.title + " — " + paperLine.modelData.line : paperLine.modelData.title).replace(/&/g, "&&")
+                                    // Its path made an address as the file dialog's are: "#", "%" in a
+                                    // name stay in it, and Windows' "C:\…" is read back whole.
+                                    onTriggered: compose.attach([compose.theme.fileUrl(paperLine.modelData.file)])
+                                }
+                                onObjectAdded: (index, object) => paperMenu.insertItem(index + 1, object)
+                                onObjectRemoved: (index, object) => paperMenu.removeItem(object)
+                            }
                         }
                     }
+                    Button {
+                        flat: true
+                        text: compose.previewing ? compose.sioul.text("ui-edit") : compose.sioul.text("ui-preview")
+                        onClicked: compose.previewing = !compose.previewing
+                    }
                 }
-                Button {
-                    flat: true
-                    text: compose.previewing ? compose.sioul.text("ui-edit") : compose.sioul.text("ui-preview")
-                    onClicked: compose.previewing = !compose.previewing
-                }
-                Label {
+                RowLayout {
                     Layout.fillWidth: true
-                    // Files still coming are said until they are there, unless something stops sending.
-                    text: compose.attaching !== "" && !compose.problem ? compose.attaching : (compose.note !== "" ? compose.note : compose.sioul.text("ui-markdown-hint"))
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
-                    color: compose.problem ? compose.theme.warm : compose.theme.muted
-                    font.pixelSize: 13
-                }
-                Button {
-                    flat: true
-                    text: compose.sioul.text("ui-discard")
-                    onClicked: compose.discard()
-                }
-                Button {
-                    text: compose.sioul.text("ui-send")
-                    icon.name: "mail-send"
-                    icon.color: compose.theme.accentText
-                    highlighted: true
-                    enabled: keyBand.said.state !== "working" && keyBand.said.state !== "touch"
-                    onClicked: compose.send()
+                    spacing: 8
+
+                    // Delete and Send on the right, on a narrow window.
+                    Item {
+                        visible: compose.narrow
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        visible: !compose.narrow
+                        Layout.fillWidth: true
+                        text: compose.said
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        // Squeezed to nothing, a text is drawn whole: never over the buttons.
+                        clip: true
+                        color: compose.problem ? compose.theme.warm : compose.theme.muted
+                        font.pixelSize: 13
+                    }
+                    Button {
+                        id: discardButton
+
+                        flat: true
+                        text: compose.sioul.text("ui-discard")
+                        onClicked: compose.discard()
+                    }
+                    Button {
+                        id: sendButton
+
+                        text: compose.sioul.text("ui-send")
+                        icon.name: "mail-send"
+                        icon.color: compose.theme.accentText
+                        highlighted: true
+                        enabled: keyBand.said.state !== "working" && keyBand.said.state !== "touch"
+                        onClicked: compose.send()
+                    }
                 }
             }
         }

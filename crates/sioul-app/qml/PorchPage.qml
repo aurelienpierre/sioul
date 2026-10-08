@@ -658,6 +658,14 @@ Item {
                     theme: page.theme
                     window: page.window
                 }
+                // What your phone's notifications brought, on a computer, each at a time its
+                // sender may reach you (PhoneMessagesSection.qml, docs/porch.md, "From your phone").
+                PhoneMessagesSection {
+                    Layout.fillWidth: true
+                    sioul: page.sioul
+                    theme: page.theme
+                    window: page.window
+                }
 
                 // Money, in the window: the week's payments, and whether the account holds them.
                 RowLayout {

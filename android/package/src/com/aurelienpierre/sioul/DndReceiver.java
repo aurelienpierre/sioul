@@ -29,7 +29,12 @@ import android.util.Log;
  * ACTION_AUTOMATIC_ZEN_RULE_STATUS_CHANGED; both are protected broadcasts,
  * which only the system sends, so this receiver stays not exported. Decided
  * in Java (DndHeard), the library loaded only for a press; a change heard
- * while Sioul's own settles is looked at again once it did. Also Sioul's
+ * while Sioul's own settles is looked at again once it did. The notification
+ * listener, while bound, hears every change too (AppNotes,
+ * onInterruptionFilterChanged) and forwards it here (HEARD): whichever word
+ * comes first is decided, the other finds nothing new. Each decision is
+ * logged, without anything of the person's. The state found at a restart or
+ * an update is noted, so that the next change counts from it. Also Sioul's
  * switch pressed on its quick-settings tile (DndTile).
  */
 public final class DndReceiver extends BroadcastReceiver
@@ -37,9 +42,22 @@ public final class DndReceiver extends BroadcastReceiver
     static final String APPLY = "com.aurelienpierre.sioul.action.DND_APPLY";
     /** Sioul's switch pressed on its quick-settings tile (DndTile). */
     static final String TOGGLE = "com.aurelienpierre.sioul.action.DND_TOGGLE";
+    /**
+     * The phone's interruption filter changed, as Sioul's notification listener
+     * heard it (AppNotes.onInterruptionFilterChanged, in its own process):
+     * decided here as Android's own broadcast is, whichever comes first.
+     */
+    static final String HEARD = "com.aurelienpierre.sioul.action.DND_HEARD";
     private static final int CODE = 0x5138;
     /** A look again waits this long at most, the broadcast held open meanwhile. */
     private static final long WAIT_MS = 5_000;
+    /** Looked at again at most this often while Sioul's own changes follow each other. */
+    private static final int LOOKS = 3;
+    /**
+     * One decision at a time in this process: Android's broadcast and the
+     * listener's word of one change, decided together, would both see it new.
+     */
+    private static final Object DECIDING = new Object();
 
     /** Do-not-disturb as the reasons say now, applied here (Rust); its answer, "" when none. */
     static native String nativeApply();
@@ -60,8 +78,8 @@ public final class DndReceiver extends BroadcastReceiver
         switch (action) {
         case Intent.ACTION_BOOT_COMPLETED:
         case Intent.ACTION_MY_PACKAGE_REPLACED:
-            // The phone's state found, not heard: the next change counts from what holds then.
-            PauseMode.forgetSeen(app);
+            // The phone's state found, not heard: noted, so that the next change counts from what holds now.
+            PauseMode.noteSeen(app);
             later(goAsync(), "applied", () -> {
                 DoseAlarms.load(app);
                 nativeApply();
@@ -83,6 +101,10 @@ public final class DndReceiver extends BroadcastReceiver
         case NotificationManager.ACTION_AUTOMATIC_ZEN_RULE_STATUS_CHANGED:
             heard(app, intent, goAsync());
             return;
+        case HEARD:
+            // The listener's word: the filter, as Android's broadcast says it.
+            heard(app, new Intent(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED), goAsync());
+            return;
         default:
             return;
         }
@@ -96,18 +118,34 @@ public final class DndReceiver extends BroadcastReceiver
         final int status = intent.getIntExtra(NotificationManager.EXTRA_AUTOMATIC_ZEN_RULE_STATUS, NotificationManager.AUTOMATIC_RULE_STATUS_UNKNOWN);
         later(held, "heard", () -> {
             String kind = PauseMode.kindOfRule(app, id);
-            String said = PauseMode.decide(app, action, status, kind, id);
-            if (said.startsWith(DndHeard.LATER)) {
+            String said = decided(app, action, status, kind, id);
+            for (int look = 1; look < LOOKS && said.startsWith(DndHeard.LATER); look++) {
                 long wait = Math.min(WAIT_MS, Long.parseLong(said.substring(DndHeard.LATER.length())));
                 Thread.sleep(Math.max(0, wait));
-                said = PauseMode.decide(app, action, status, kind, id);
+                said = decided(app, action, status, kind, id);
             }
+            Log.i(DoseAlarms.TAG, "Do not disturb: " + (NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED.equals(action) ? "the filter" : "a mode's status " + status)
+                                  + " heard: " + (said.isEmpty() ? "nothing for Sioul" : said) + ".");
             if (!"on".equals(said) && !"off".equals(said))
                 return;
             Log.i(DoseAlarms.TAG, "Do not disturb: the phone's own turned " + said + ", heard.");
             DoseAlarms.load(app);
             nativeHeard("{\"on\":" + "on".equals(said) + "}");
         });
+    }
+
+    /** One decision (PauseMode.decide), never two at once in this process. */
+    private static String decided(Context app, String action, int status, String kind, String id)
+    {
+        synchronized (DECIDING) {
+            return PauseMode.decide(app, action, status, kind, id);
+        }
+    }
+
+    /** The listener's word of a change (AppNotes, in its own process): decided in Sioul's own. */
+    static void forward(Context context)
+    {
+        context.sendBroadcast(new Intent(context, DndReceiver.class).setAction(HEARD));
     }
 
     /** Work that may wait, on a thread of its own, the broadcast held open meanwhile. */

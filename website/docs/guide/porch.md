@@ -128,7 +128,7 @@ Then the text, made safe:
 - HTML mail keeps its paragraphs, lists, bold text and links. Nothing else is shown: no images, no styles, no scripts. Nothing loads from the network, nothing runs.
 - Earlier messages that a reply quotes are folded under **Show the earlier messages**. A signature is dimmed.
 - Every link shows its full address under the message before it opens: while the pointer is on it, or after a first tap on a touch screen.
-- **Attachments** are folded, one line each with their kind, name and size. Opening or saving one runs the antivirus first; if the device has none, Sioul says so and asks before opening. A program is never started from a mail. See [Mail, Attachments](mail.md#attachments).
+- **Attachments** are folded, one line each with their kind, name and size. Opening or saving one runs the antivirus first; if the computer has none, Sioul says so and asks before opening. A phone has none Sioul can call: there Sioul says the file is not checked. A program is never started from a mail. See [Mail, Attachments](mail.md#attachments).
 
 From the message: reply, forward, archive, delete, and the rest, as on the [Mail](mail.md) page. A newsletter has **Unsubscribe** too ([Mail](mail.md#unsubscribing)).
 
@@ -151,6 +151,7 @@ When there is something, a few lines come before the lanes:
 - **Today's doses not marked yet**, from their time on, whether a notification reminded you or not: each with its time, its name and **Taken** (more than half an hour late, **Taken…** asks when you took it). Whatever your hours: a dose is not mail. Each stays until you mark it, the day ends or twelve hours have passed; while you sleep with doses kept silent, they wait for your waking. When another device may know more, the doubt is said under the dose: check before taking it. See [Health](health.md#reminders).
 - **Doses due while Sioul was closed**, neither marked nor reminded anywhere: **Taken…** (when you took it) or **Not taken**. When another device may know more, the doubt is said under the dose. See [Health](health.md#reminders).
 - **Calls Sioul declined**, on your phone and on your other devices, each at a time its caller may reach you: "While you slept, a number not in your contacts called at 09:30.", with **Text back**, **Call back**, **Listen** when Free mailed the voicemail. See [Calls](calls.md#afterwards-on-the-porch).
+- **From your phone**, on a computer, when you send your phone's messages there: who wrote, when and what, at a time they may reach you, with **Text back**, **Call back** and **Seen**. See [What reaches you](notifications.md#messages-on-your-computers).
 - **"*The site* has news"**: what the websites you keep in Sioul notified, waiting for you. Opening the site clears its news. See [Sites](sites.md).
 - **Paper letters** you scanned, each as a card: who, what, how much, by when. See [Papers and letters](papers.md#paper-letters).
 - **This week's payments**, in one line: "This week: Electricity €62 (Mon). The account holds them." When something about money needs a look, it says so, without a count. See [Budgets](budgets.md#the-bank-watch).

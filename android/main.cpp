@@ -60,6 +60,8 @@ extern "C" char *sioul_wake_next(const char *zone, bool fetch);
 extern "C" void sioul_string_free(char *text);
 // Something shared to Sioul, or the files copied for it (crates/sioul-app/src/outside.rs).
 extern "C" void sioul_handed();
+// A mail attachment saved where you chose, or not (crates/sioul-app/src/attachments.rs): JSON.
+extern "C" void sioul_attachment_saved(const char *json);
 // At an event's reminder, and the coming ones in the phone's zone
 // (crates/sioul-app/src/eventalarms.rs): JSON, given back to sioul_string_free.
 extern "C" char *sioul_event_decide(const char *key);
@@ -718,6 +720,15 @@ extern "C" void sioul_android_mail_shortcuts(const char *json)
 extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_ShareActivity_nativeHanded(JNIEnv *, jclass)
 {
     sioul_handed();
+}
+
+// AttachmentSave.java's side: a mail attachment copied where Android's
+// question answered, or not ({path, name, saved, shown} or {…, problem});
+// Rust says it in the status line. From a thread of Java's, while Sioul's
+// window runs (Java catches the link error otherwise).
+extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_AttachmentSave_nativeSaved(JNIEnv *env, jclass, jstring json)
+{
+    sioul_attachment_saved(utf8(env, json).constData());
 }
 
 // Sioul away (in the back, the screen off): what the window draws with (its

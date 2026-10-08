@@ -165,11 +165,11 @@ SioulWindow {
     }
 
     // Each page's name, by its place in the pages' stack.
-    readonly property var pageNames: ["ui-porch", "ui-tasks", "ui-mail", "ui-sites", "ui-agenda", "ui-contacts", "ui-notes", "ui-projects", "ui-time", "ui-budgets", "ui-health", "ui-accounts", "ui-parameters", "ui-papers"]
+    readonly property var pageNames: ["ui-porch", "ui-tasks", "ui-mail", "ui-sites", "ui-agenda", "ui-contacts", "ui-notes", "ui-projects", "ui-time", "ui-budgets", "ui-health", "ui-accounts", "ui-parameters", "ui-papers", "texts-page-title"]
     // Each page is made when it is first shown, then kept: the window opens
     // with the Porch alone, and a page asked for (a link, "New") is made
     // before it is used, as the page is set first.
-    property var made: sioul.grabFolder() !== "" ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true }) : ({ 0: true })
+    property var made: sioul.grabFolder() !== "" ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true }) : ({ 0: true })
     onPageChanged: {
         window.placesOpen = false
         if (window.made[window.page] !== true) {
@@ -181,10 +181,10 @@ SioulWindow {
     // Each page's file, read the first time it is made (setSource, for their
     // required properties): what it imports (maps, PDFs, sites, sounds) is
     // loaded then, not as the window opens. Android has its own Sites page.
-    readonly property var pageFiles: ["PorchPage.qml", "TasksPage.qml", "MailPage.qml", Qt.platform.os === "android" ? "android/SitesPage.qml" : "SitesPage.qml", "AgendaPage.qml", "ContactsPage.qml", "NotesPage.qml", "ProjectsPage.qml", "TimePage.qml", "BudgetsPage.qml", "HealthPage.qml", "AccountsPage.qml", "ParametersPage.qml", "PapersPage.qml"]
+    readonly property var pageFiles: ["PorchPage.qml", "TasksPage.qml", "MailPage.qml", Qt.platform.os === "android" ? "android/SitesPage.qml" : "SitesPage.qml", "AgendaPage.qml", "ContactsPage.qml", "NotesPage.qml", "ProjectsPage.qml", "TimePage.qml", "BudgetsPage.qml", "HealthPage.qml", "AccountsPage.qml", "ParametersPage.qml", "PapersPage.qml", "TextsPage.qml"]
     onMadeChanged: window.makePages()
     function makePages() {
-        const loaders = [porchPageLoader, tasksPageLoader, mailPageLoader, sitesPageLoader, agendaPageLoader, contactsPageLoader, notesPageLoader, projectsPageLoader, timePageLoader, budgetsPageLoader, healthPageLoader, accountsPageLoader, parametersPageLoader, papersPageLoader]
+        const loaders = [porchPageLoader, tasksPageLoader, mailPageLoader, sitesPageLoader, agendaPageLoader, contactsPageLoader, notesPageLoader, projectsPageLoader, timePageLoader, budgetsPageLoader, healthPageLoader, accountsPageLoader, parametersPageLoader, papersPageLoader, textsPageLoader]
         for (let i = 0; i < loaders.length; i++) {
             if (window.made[i] !== true || loaders[i].status !== Loader.Null)
                 continue
@@ -210,6 +210,8 @@ SioulWindow {
     readonly property var accountsPage: accountsPageLoader.item
     readonly property var parametersPage: parametersPageLoader.item
     readonly property var papersPage: papersPageLoader.item
+    // texts: the Texts page, a computer's only (a phone has its own SMS app).
+    readonly property var textsPage: textsPageLoader.item
     // The page in view; on a phone, a page showing one thing it opened
     // (a message, a task) says so (canGoBack) and closes it (back()).
     readonly property var shownPage: pages.children[window.page] ? pages.children[window.page].item : null
@@ -657,7 +659,7 @@ SioulWindow {
         }
         if (window.composer === null)
             window.composer = Qt.createComponent("ComposeWindow.qml")
-        const opened = window.composer.createObject(null, { draftId: id, sioul: sioul, theme: theme })
+        const opened = window.composer.createObject(null, { draftId: id, sioul: sioul, theme: theme, phoneSize: window.phoneGrab })
         window.drafts = window.drafts.concat([opened])
         opened.finished.connect(() => {
             window.drafts = window.drafts.filter(w => w !== opened)
@@ -682,6 +684,7 @@ SioulWindow {
         id: theme
 
         compact: window.compact
+        touch: Qt.platform.os === "android" || window.phoneGrab
         // SIOUL_THEME=dark or light forces one, for the window's images.
         // SIOUL_THEME for the window's images, else the setting, else the system's colours.
         readonly property string chosen: sioul.forcedTheme() || (sioul.reading ? JSON.parse(sioul.reading).theme : "")
@@ -735,6 +738,19 @@ SioulWindow {
         if (personSheet.item === null)
             personSheet.setSource("PersonSheet.qml", { sioul: sioul, theme: theme })
         personSheet.item.ask(key, addresses)
+    }
+
+    // texts: the Texts page (TextsPage.qml), at a conversation by its id when
+    // one is given; a phone has its own SMS app, where the conversation opens.
+    function openTexts(id) {
+        if (Qt.platform.os === "android") {
+            if (id !== "")
+                Qt.openUrlExternally("sms:" + id)
+            return
+        }
+        window.page = 14
+        if (id !== "" && window.textsPage)
+            window.textsPage.select(id)
     }
 
     // Settings, at one of them: the hours, from the Porch.
@@ -919,7 +935,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "watch": grabber.watch, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "share-panel": grabber.sharePanel, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "attachments": grabber.attachmentSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -991,6 +1007,42 @@ SioulWindow {
                 () => grabber.save("line-narrow"),
                 () => window.close()
             ]
+            // The writing window (SIOUL_GRAB_STEPS=compose; the runner's `phone` at a
+            // phone's width, what passes its right edge said in the log): an answer to
+            // all of a message with a long subject, two addresses to answer and a copy
+            // (make-demo.py --compose; else the first message), then in preview; a new
+            // message, then written and deleted. On a demo profile: it makes drafts.
+            readonly property var composeSteps: [
+                () => window.page = 2,
+                () => {
+                    mailPage.openSubject(grabber.demoFrench ? "date de mise en ligne" : "the launch date")
+                    if (mailPage.openKey === "")
+                        mailPage.openFirst()
+                },
+                () => window.compose("reply-all", mailPage.openKey),
+                () => {},
+                () => grabber.saveDraft("compose-reply"),
+                () => {
+                    if (window.drafts.length > 0)
+                        window.drafts[0].previewing = true
+                },
+                () => grabber.saveDraft("compose-reply-preview"),
+                () => grabber.closeDrafts(),
+                () => window.compose("new", ""),
+                () => {},
+                () => grabber.saveDraft("compose-new"),
+                () => {
+                    if (window.drafts.length > 0)
+                        window.drafts[0].fill("Ana Lima <ana.lima@example.org>, Bruno Costa <bruno.costa@example.org>", grabber.demoFrench ? "Les horaires d’hiver de la médiathèque, le coin des enfants et la lettre" : "The library's winter hours, the children's corner and the newsletter", "")
+                },
+                () => grabber.saveDraft("compose-new-saved"),
+                () => {
+                    if (window.drafts.length > 0)
+                        window.drafts[0].discard()
+                },
+                () => {},
+                () => window.close()
+            ]
             // The places (SIOUL_GRAB_STEPS=rail): the column of icons, a tip, the
             // keyboard's focus, the names asked for, hidden (New's menu then at the
             // page's corner), a short window scrolled. On a demo profile: it changes
@@ -1004,7 +1056,8 @@ SioulWindow {
                 () => {},
                 () => grabber.saveWindow("rail-tip"),
                 () => window.sayRailTip(places.shown.repeater.itemAt(2), false, 0),
-                () => places.shown.repeater.itemAt(4).forceActiveFocus(Qt.TabFocusReason),
+                // The agenda's place (Texts comes before it on a computer).
+                () => places.shown.repeater.itemAt(Qt.platform.os === "android" ? 4 : 5).forceActiveFocus(Qt.TabFocusReason),
                 () => {},
                 () => grabber.saveWindow("rail-focus"),
                 () => {
@@ -1024,7 +1077,8 @@ SioulWindow {
                 () => window.height = 540,
                 () => {},
                 () => grabber.save("rail-short"),
-                () => places.shown.repeater.itemAt(11).forceActiveFocus(Qt.TabFocusReason),
+                // The last place.
+                () => places.shown.repeater.itemAt(places.shown.repeater.count - 1).forceActiveFocus(Qt.TabFocusReason),
                 () => {},
                 () => grabber.saveWindow("rail-short-end"),
                 // The setting, in Settings ▸ Display.
@@ -1213,6 +1267,19 @@ SioulWindow {
                 () => sitesPage.open("test-chat")
             ]
             readonly property var siteQuit: grabber.siteOpen.concat(Array(8).fill(() => {}), [() => window.close()])
+            // colour: the test site in the screen's colours, then calmer too, then
+            // neither (tools/check-colour.py reads the patches back from each picture).
+            readonly property var siteColour: grabber.siteOpen.concat(Array(5).fill(() => {}), [
+                () => grabber.save("colour-screen"),
+                () => sioul.setSetting("calmer_colours", JSON.stringify("little")),
+                () => {},
+                () => grabber.save("colour-calmer"),
+                () => sioul.setSetting("screen_colours", "false"),
+                () => sioul.setSetting("calmer_colours", JSON.stringify("")),
+                () => {},
+                () => grabber.save("colour-plain"),
+                () => window.close()
+            ])
             // Sharing the screen from the test site (tools/check-sites.py share): Qt
             // WebEngine's screen capture off (as Sioul had it), then on, then the site's
             // switch off; each time the page asks, the first screen chosen as you would.
@@ -1414,8 +1481,122 @@ SioulWindow {
             ]
             // A new task's full form (New ▸ A task, then Add ▾ ▸ A task from a
             // note), made once its title is given; the costs and the gain as
-            // sliders in its panel, then in an event's form. With SIOUL_GRAB_PHONE,
+            // tiles in its panel, then in an event's form. With SIOUL_GRAB_PHONE,
             // a phone's. On a scratch profile: it makes tasks and saves ratings.
+            // The costs as tiles (CostTiles.qml) at the window's least width, 1100
+            // and 1600 (a phone's with SIOUL_GRAB_PHONE): a new task's tiles, unsaid
+            // then rated; the same task as one felt before, its faint values; an
+            // event's form; "How was it?" with the forecast's marks. Each width in
+            // the log, with the panel's width and the tiles' columns. On a demo
+            // profile: it makes tasks and events, rates them and keeps how one felt.
+            readonly property var tilesSteps: {
+                const french = grabber.demoFrench
+                const felt = french ? "Appeler la banque" : "Call the bank"
+                const fresh = french ? "Écrire à l’école" : "Write to the school"
+                const widths = window.phoneGrab ? [412] : [window.minimumWidth, 1100, 1600]
+                // The event's form, over the window: the overlay's one child narrower than it.
+                const saveEvent = name => {
+                    const over = frame.Overlay.overlay
+                    for (const item of over.children)
+                        if (item.visible && item.width < over.width) {
+                            item.grabToImage(result => result.saveToFile(grabber.folder + "/" + name + ".png"))
+                            console.warn("tiles: " + name + ": the form " + Math.round(item.width) + " wide")
+                            if (window.phoneGrab)
+                                grabber.overflow(name, item)
+                        }
+                }
+                const tiles = name => {
+                    const t = tasksPage.panel.costTiles
+                    console.warn("tiles: " + name + ": window " + window.width + ", panel " + Math.round(tasksPage.panel.width) + ", tiles " + Math.round(t.width) + " in " + t.columns + " column(s), words " + (t.beside ? "beside the gauges" : "above them"))
+                }
+                const steps = [
+                    () => window.page = 1,
+                    () => {},
+                    // A task felt before: made, its worry foreseen at 8, done, how it went kept.
+                    () => window.newThing("task"),
+                    () => {},
+                    () => tasksPage.panel.confirmTitle(felt),
+                    () => {},
+                    () => {},
+                    () => {
+                        const found = JSON.parse(sioul.searchTasks(felt, "") || "[]")
+                        grabber.doneUid = found.length > 0 ? found[0].uid : ""
+                        tasksPage.panel.rate("anxiety", 8)
+                    },
+                    () => {},
+                    () => sioul.setTaskStatus(grabber.doneUid, "completed"),
+                    () => {},
+                    () => console.warn("tiles: how it felt kept: " + (sioul.setFelt(grabber.doneUid, JSON.stringify({ cognitive: 2, emotional: null, anxiety: 3, body: null, gain: 6 })) || "yes")),
+                    () => tasksPage.closePanel(),
+                    () => {}
+                ]
+                for (const w of widths) {
+                    const name = "tiles-" + w
+                    steps.push(
+                        () => {
+                            window.width = w
+                            window.height = window.phoneGrab ? 891 : 1000
+                            window.page = 1
+                        },
+                        () => {},
+                        // A new task: its tiles unsaid, then two given.
+                        () => window.newThing("task"),
+                        () => {},
+                        () => tasksPage.panel.confirmTitle(fresh),
+                        () => {},
+                        () => {},
+                        () => tasksPage.panel.showRatings(),
+                        () => {},
+                        () => {
+                            grabber.save(name + "-task")
+                            tiles(name + "-task")
+                        },
+                        () => {
+                            tasksPage.panel.rate("anxiety", 7)
+                            tasksPage.panel.rate("gain", 0)
+                        },
+                        () => {},
+                        () => {},
+                        () => tasksPage.panel.showRatings(),
+                        () => grabber.save(name + "-task-rated"),
+                        () => tasksPage.closePanel(),
+                        // The task felt before, made again: its faint values.
+                        () => window.newThing("task"),
+                        () => {},
+                        () => tasksPage.panel.confirmTitle(felt),
+                        () => {},
+                        () => {},
+                        () => tasksPage.panel.showRatings(),
+                        () => {},
+                        () => {
+                            grabber.save(name + "-proposed")
+                            console.warn("tiles: " + name + "-proposed: faint " + JSON.stringify(tasksPage.panel.costTiles.proposed) + " from " + tasksPage.panel.costTiles.proposedFrom)
+                        },
+                        () => tasksPage.closePanel(),
+                        // An event's form, its costs in view.
+                        () => {
+                            window.page = 4
+                            agendaPage.newEvent(agendaPage.today())
+                        },
+                        () => agendaPage.fillEvent(french ? "Rendez-vous à la mairie" : "Town hall appointment", "10:00", "11:00", ""),
+                        () => agendaPage.showEventRatings(),
+                        () => {},
+                        () => {},
+                        () => saveEvent(name + "-event"),
+                        () => agendaPage.saveEvent(),
+                        // "How was it?" on the task felt before: its forecast as marks.
+                        () => window.page = 1,
+                        () => window.howWasIt(grabber.doneUid),
+                        () => {},
+                        () => {},
+                        () => grabber.savePopup(howWasItForm.item, name + "-felt"),
+                        () => howWasItForm.item.close(),
+                        () => {}
+                    )
+                }
+                steps.push(() => window.close())
+                return steps
+            }
             readonly property var taskForm: [
                 () => window.page = 1,
                 () => {},
@@ -1497,7 +1678,7 @@ SioulWindow {
                 () => {},
                 () => grabber.save("taskdetails-hard"),
                 () => console.warn("taskform: a focus session after the answer: " + (sioul.focusSession !== "" ? "yes" : "no")),
-                // Done: "How was it?" on the status line; its five sliders; a felt rating kept.
+                // Done: "How was it?" on the status line; its five tiles; a felt rating kept.
                 () => {
                     const found = JSON.parse(sioul.searchTasks(grabber.demoFrench ? "Appeler la banque" : "Call the bank", "") || "[]")
                     grabber.doneUid = found.length > 0 ? found[0].uid : ""
@@ -1594,18 +1775,6 @@ SioulWindow {
                 () => grabber.save("sites-wide"),
                 () => sitesPage.narrow = true,
                 () => grabber.save("sites-narrow"),
-                () => window.close()
-            ]
-            // A watch's day read from its folder: the Health page, then the Tasks page's morning.
-            readonly property var watch: [
-                () => sioul.refreshMode(),
-                () => {},
-                () => {},
-                () => window.page = 10,
-                () => {},
-                () => grabber.save("health-watch"),
-                () => window.page = 1,
-                () => grabber.save("tasks-morning"),
                 () => window.close()
             ]
             // Reminders with the window closed: the session's entry written and the watcher started; then stopped.
@@ -2307,6 +2476,31 @@ SioulWindow {
                 () => grabber.save("share-panel-server-down"),
                 () => window.close()
             ]
+            // This device's files sent to the server beside the sync app
+            // (SIOUL_GRAB_STEPS=share-send), on a demo profile, which reaches no
+            // server: sharing started in a folder of the profile; the build,
+            // the switch and "Send everything again", then what it said.
+            readonly property var shareSend: [
+                () => {
+                    window.page = 12
+                    parametersPage.section = "files"
+                },
+                () => sioul.status = sioul.startSharing("~/Documents/Sioul", "quiet harbour at dawn", "quiet harbour at dawn"),
+                () => {},
+                () => {},
+                () => parametersPage.share.reload(),
+                () => parametersPage.scrollBy(0.2),
+                () => {},
+                () => grabber.save("share-send"),
+                () => parametersPage.share.sendAgain(),
+                () => {},
+                () => {},
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.save("share-send-again"),
+                () => window.close()
+            ]
             // The search by conditions (SIOUL_GRAB_STEPS=mail-search), on a demo
             // profile: automatic mail of both addresses arrived in the last three
             // weeks, its column in the folders' place, the results with where each
@@ -2473,6 +2667,97 @@ SioulWindow {
                 () => personSheet.item.close(),
                 () => window.close()
             ]
+            // texts: the Texts page (docs/texts.md) at the window's widths (1100,
+            // the narrowest, 1600): the list, a conversation, the sending states
+            // and a picture, a long thread and further back, an agent's draft, a
+            // search and one that finds nothing, the page before texts are read here.
+            readonly property var textsSteps: [
+                () => window.openTexts(""),
+                () => {},
+                () => {},
+                () => grabber.saveChecked("texts-list"),
+                () => window.textsPage.select("+33199001234"),
+                () => {},
+                () => {},
+                () => grabber.saveChecked("texts-conversation"),
+                () => window.textsPage.select("+33465710042"),
+                () => {},
+                () => {},
+                () => grabber.saveChecked("texts-states"),
+                () => window.textsPage.select("+262639989046"),
+                () => {},
+                () => {},
+                () => grabber.saveChecked("texts-long"),
+                () => window.textsPage.scrollBack(),
+                () => {},
+                () => grabber.saveChecked("texts-long-back"),
+                () => window.textsPage.select("+33465714770"),
+                () => {},
+                () => {},
+                () => grabber.saveChecked("texts-draft"),
+                () => window.textsPage.search(sioul.text("texts-page-title") === "SMS" ? "colis" : "parcel"),
+                () => {},
+                () => grabber.saveChecked("texts-search"),
+                () => window.textsPage.search("xyzzy"),
+                () => {},
+                () => grabber.saveChecked("texts-search-none"),
+                () => window.textsPage.search(""),
+                () => window.width = 680,
+                () => window.textsPage.close(),
+                () => {},
+                () => grabber.saveChecked("texts-narrow-list"),
+                () => window.textsPage.select("+33465710042"),
+                () => {},
+                () => {},
+                () => grabber.saveChecked("texts-narrow-thread"),
+                () => window.width = 1600,
+                () => {},
+                () => {},
+                () => grabber.saveChecked("texts-wide"),
+                () => window.textsPage.select("+262639989046"),
+                () => {},
+                () => {},
+                () => grabber.saveChecked("texts-wide-long"),
+                () => {
+                    window.width = 1100
+                    window.textsPage.showNotSetUp()
+                },
+                () => {},
+                () => grabber.saveChecked("texts-off"),
+                () => window.close()
+            ]
+            // What AI agents may use (docs/mcp.md): Settings ▸ AI agents, the first
+            // project closed then opened on its page, the tab again; the Texts page
+            // with an agent's draft (make-demo.py --texts), used: its words in the box, nothing sent.
+            readonly property var aiSteps: [
+                () => window.showParameters("ai"),
+                () => {},
+                () => grabber.save("ai-settings"),
+                () => window.page = 7,
+                () => projectsPage.openFirst(),
+                () => {},
+                () => grabber.save("ai-project-closed"),
+                () => projectsPage.saveRoutes("case." + projectsPage.openId + ".ai", true),
+                () => {},
+                () => grabber.save("ai-project-open"),
+                () => window.showParameters("ai"),
+                () => {},
+                () => grabber.save("ai-settings-open"),
+                () => window.openTexts(""),
+                () => {},
+                () => {},
+                () => grabber.save("ai-texts-list"),
+                () => window.textsPage.select("+33465714770"),
+                () => {},
+                () => {},
+                () => grabber.save("ai-texts-draft"),
+                () => window.textsPage.useDraft(0),
+                () => {},
+                () => {},
+                () => grabber.save("ai-texts-used"),
+                () => window.textsPage.close(),
+                () => window.close()
+            ]
             // Settings ▸ Words (docs/words.md): the lines, a line's page, a word
             // added and one taken away, a brand of your own, back to the defaults,
             // German read too, and the way there from the Filed lane's ⚙.
@@ -2559,6 +2844,21 @@ SioulWindow {
                 () => unchecked.item.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/no-antivirus.png")),
                 () => window.close()
             ]
+            // A message's attachments, unfolded in the Reader: the words and buttons of a
+            // computer, and of a phone with "phone" (no antivirus to call, "Save…"); nothing opened.
+            readonly property var attachmentSteps: [
+                () => window.page = 2,
+                () => {},
+                () => mailPage.searchWith([{ field: "attachment", test: "exists", value: "" }], false),
+                () => {},
+                () => mailPage.searchFormShown = false,
+                () => mailPage.openFirst(),
+                () => {},
+                () => mailPage.showAttachments(),
+                () => mailPage.showAttachments(),
+                () => grabber.save("attachments"),
+                () => window.close()
+            ]
             // A project's billable time written as a spreadsheet, then the Time page.
             readonly property var exportCsv: [
                 () => sioul.status = sioul.exportTimeCsv("studio", "2026-10-01", "2026-10-31", "file://" + grabber.folder + "/studio%20octobre.csv"),
@@ -2594,6 +2894,9 @@ SioulWindow {
                 () => healthPage.showNeeds(),
                 () => {},
                 () => grabber.savePopup(healthPage.settingsPanel(), "health-settings"),
+                () => healthPage.settingsPanel().showEnd(),
+                () => {},
+                () => grabber.savePopup(healthPage.settingsPanel(), "health-settings-end"),
                 () => healthPage.closeSettings(),
                 // Dinner's menu, then its times for today only.
                 () => healthPage.showMenu("meal:2"),
@@ -2738,6 +3041,56 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.save("seckey-sending"),
+                () => window.close()
+            ]
+            // A prescription's medicines as rows, each with its takes, a row added; a
+            // medicine's own form with its takes; the page saying each take's amount.
+            // Then the security key's GnuPG steps as buttons, their commands by hand,
+            // and what goes public before keys.openpgp.org (docs/health.md, docs/client.md).
+            readonly property var healthGpgSteps: [
+                () => window.page = 10,
+                () => {},
+                () => healthPage.editPrescription(healthPage.prescriptions[0]),
+                () => {},
+                () => {},
+                () => grabber.savePopup(healthPage.openPopup(), "health-prescription-form"),
+                () => healthPage.openPopup().addMedicine(),
+                () => {},
+                () => {},
+                () => grabber.savePopup(healthPage.openPopup(), "health-prescription-added"),
+                () => healthPage.closePopups(),
+                () => healthPage.editMedicine(healthPage.medicines.find(m => m.takes && m.takes.some(t => t.amount !== "")) || healthPage.medicines[0]),
+                () => {},
+                () => {},
+                () => grabber.savePopup(healthPage.openPopup(), "health-medicine-form"),
+                () => healthPage.closePopups(),
+                () => healthPage.showMedicines(),
+                () => {},
+                () => grabber.save("health-takes"),
+                // What a doctor or a pharmacist is shown: all taken now, then the prescription's.
+                () => healthPage.showProfessional(""),
+                () => {},
+                () => {},
+                () => grabber.savePopup(healthPage.professionalView(), "health-professional"),
+                () => healthPage.closeProfessional(),
+                () => healthPage.showProfessional(healthPage.prescriptions[0].id),
+                () => {},
+                () => {},
+                () => grabber.savePopup(healthPage.professionalView(), "health-professional-prescription"),
+                () => healthPage.closeProfessional(),
+                () => window.page = 11,
+                () => accountsPage.showTab(2),
+                () => sioul.readSecurityKey(),
+                () => {},
+                () => grabber.save("seckey-gnupg-found"),
+                () => sioul.importSecurityKeyFromGnupg(""),
+                () => {},
+                () => grabber.save("seckey-gnupg-kept"),
+                () => accountsPage.askToSend(accountsPage.securityKeys.cards[0].ident),
+                () => grabber.save("seckey-send-ask"),
+                () => sioul.sendSecurityKeyToKeysOpenpgp(accountsPage.securityKeys.cards[0].ident),
+                () => {},
+                () => grabber.save("seckey-sent"),
                 () => window.close()
             ]
             readonly property var pgp: [
@@ -2990,9 +3343,17 @@ SioulWindow {
                     grabber.overflow(name)
             }
 
+            // texts: a picture and, at any width, what passes the window's edge, said in the log.
+            function saveChecked(name) {
+                grabber.save(name)
+                if (!window.phoneGrab)
+                    grabber.overflow(name)
+            }
+
             // A phone's pictures: what passes the window's right edge, said in the log,
             // the deepest items only (their containers pass it with them). `root`: a
-            // pop-up's own item, which the window's content leaves out.
+            // pop-up's own item, which the window's content leaves out, or the content
+            // of the writing window (as wide as this one at a phone's size).
             function overflow(name, root) {
                 const from = root || window.contentItem
                 const limit = window.width + 1
@@ -3053,9 +3414,13 @@ SioulWindow {
                     grabber.overflow(name, popup.contentItem.parent)
             }
 
+            // The writing window's picture; at a phone's size, what passes its right edge too.
             function saveDraft(name) {
-                if (window.drafts.length > 0)
-                    window.drafts[0].grab(grabber.folder + "/" + name + ".png")
+                if (window.drafts.length === 0)
+                    return
+                window.drafts[0].grab(grabber.folder + "/" + name + ".png")
+                if (window.phoneGrab)
+                    grabber.overflow(name, window.drafts[0].contentItem)
             }
 
             function closeDrafts() {
@@ -3114,6 +3479,11 @@ SioulWindow {
     Connections {
         target: personSheet.item
         ignoreUnknownSignals: true
+
+        // texts: a person's conversation on the Texts page.
+        function onTextsAsked(id) {
+            window.openTexts(id)
+        }
 
         function onChanged() {
             if (contactsPage.openKey !== "")
@@ -3179,7 +3549,8 @@ SioulWindow {
             unchecked.index = index
             unchecked.what = what
             unchecked.active = true
-            unchecked.item.ask(name, sioul.textArgs("scan-ask", JSON.stringify({ name: name, hint: hint })), what === 0 ? sioul.text("scan-open-anyway") : sioul.text("scan-save-anyway"))
+            // The hint's command to copy; the file's name, from a message, never one.
+            unchecked.item.ask(name, sioul.textArgs("scan-ask", JSON.stringify({ name: name.replace(/`/g, "\u02cb"), hint: hint })), what === 0 ? sioul.text("scan-open-anyway") : sioul.text("scan-save-anyway"), true)
         }
         function onComposeRequested(id) {
             window.openDraft(id)
@@ -3453,6 +3824,9 @@ SioulWindow {
                     }
                     Loader {
                         id: papersPageLoader
+                    }
+                    Loader {
+                        id: textsPageLoader
                     }
                 }
 

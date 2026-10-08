@@ -405,6 +405,13 @@ Item {
             page.openKey = page.listItems[0].key
     }
 
+    // The message open with its attachments unfolded and in view, for the window's images.
+    function showAttachments() {
+        const shown = readerLoader.item as Reader
+        if (shown !== null)
+            shown.showAttachments()
+    }
+
     // The page's settings, open or not, scrolled to one of them, and their picture: for the window's images.
     function openSettings(open) {
         mailSettings.show(open)

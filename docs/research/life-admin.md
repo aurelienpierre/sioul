@@ -160,7 +160,7 @@ The column "In Sioul" says where Sioul stood on 4 October 2026; the feature docs
 | **A running time cushion** before a date asked | Time made visible (finding 18 of [research.md](../research.md)) | built ([tasks.md](../tasks.md)) |
 | **Voice memo to tasks**: a memo transcribed on this computer and proposed as task lines | The cost of capture decides whether thoughts are kept (Todoist's reviewers, in [tasks.md](tasks.md)) | partly: memos are recorded as audio only |
 | **A crisis plan as a private note**: a template the person fills and holds, on this computer only, never proposed, never read by an AI, sent nowhere | Safety-planning interventions lowered suicidal behaviour, RR 0.57 (Nuij et al. 2021) | not built |
-| **Watch data as a hint**: the watch's readings shown beside the day's weather, never changing the plan by itself | Tools that seem to watch are rejected (Chen, Meng & Nie 2026); tracking is work (Rudberg Selin et al. 2026) | built: the watch's readings on the Health page, and a morning line on the Tasks page that offers a lighter day; the plan never changes by itself ([health.md](../health.md), "Your watch"; [wearables.md](wearables.md)) |
+| **Watch data as a hint**: the watch's readings shown beside the day's weather, never changing the plan by itself | Tools that seem to watch are rejected (Chen, Meng & Nie 2026); tracking is work (Rudberg Selin et al. 2026) | built, then taken out on 8 October 2026: the watch's health figures are not shown to be accurate, and Garmin has no official interface, only unofficial connectors that risk being blocked ([health.md](../health.md), "Your watch"; [wearables.md](wearables.md)) |
 
 ## 4. What to refuse, and why
 | Refused | Seen in | Evidence or reason |

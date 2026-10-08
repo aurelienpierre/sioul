@@ -35,6 +35,13 @@ cxx-qt-lib.workspace = true
 [target.'cfg(not(target_os = "android"))'.dependencies]
 sioul-learn = { path = "../sioul-learn" }
 
+# colour: Little CMS reads the screen's colour profile for the sites' colours
+# (colour.rs, docs/colour.md). Linux only, where Sioul converts (on X11); its
+# own sources built in ("static"), so that no build needs the system's library.
+[target.'cfg(target_os = "linux")'.dependencies.lcms2]
+version = "6.2"
+features = ["static"]
+
 # The training's thread below the window's, on Linux (each thread its own priority there).
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

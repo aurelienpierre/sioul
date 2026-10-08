@@ -6,7 +6,8 @@
 // (Sioul as Android's caller ID & spam app, the contacts, where a declined
 // call goes, texts; CallsSetup.qml); other apps' notifications (the access
 // in two steps, holding, the apps that rang before Sioul held them;
-// AppNotesSetup.qml); Do Not Disturb's access and its modes, who of your
+// AppNotesSetup.qml); what they send to your computers
+// (PhoneMessagesSetup.qml); Do Not Disturb's access and its modes, who of your
 // Always through people is starred here, keeping in step in the background,
 // the battery (DndSetup.qml); exact alarms and Sioul's own notifications.
 
@@ -61,6 +62,17 @@ ColumnLayout {
         sioul: phone.sioul
         theme: phone.theme
         part: "phone"
+    }
+    PhoneMessagesSetup {
+        Layout.fillWidth: true
+        sioul: phone.sioul
+        theme: phone.theme
+    }
+    // texts: reading and sending texts for your computers.
+    TextsSetup {
+        Layout.fillWidth: true
+        sioul: phone.sioul
+        theme: phone.theme
     }
     DndSetup {
         Layout.fillWidth: true

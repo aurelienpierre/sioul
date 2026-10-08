@@ -55,7 +55,6 @@ New to Rust, Qt Quick, CXX-Qt, Fluent or Android? [Start here](start-here.md) ma
 | Unicode normalisation: names of notes, the spam filter's words | `icu_normalizer` | Unicode-3.0 |
 | The spam filter: its tokenizer's patterns; its language model, trained on computers (`sioul-learn`) | `regex`; `fasttext` | MIT or Apache-2.0; MIT |
 | Phone numbers | Sioul's own table (`sioul_core::phones`) | — |
-| A watch's own files (Garmin's FIT), and the ZIPs exports come in | `fitparser`, `zip` | MIT |
 | Each system's folders (Windows, macOS) | `directories` | MIT or Apache-2.0 |
 | The free space on a disk | `rustix` (Unix), `windows` | Apache-2.0 (with LLVM exception) or MIT; MIT or Apache-2.0 |
 | Translations | `fluent-bundle`, `unic-langid` | Apache-2.0 or MIT |

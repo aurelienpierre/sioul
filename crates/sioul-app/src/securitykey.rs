@@ -6,7 +6,10 @@
 //! key in, its PIN, a touch, what went wrong, in words), signing at Send
 //! before the ten seconds of "Undo", opening a message on "Open with your
 //! security key", the PIN held in memory for fifteen quiet minutes, the key's
-//! setup in Accounts ▸ Encryption, and "Let GnuPG release it".
+//! setup in Accounts ▸ Encryption, and "Let GnuPG release it"; GnuPG's own
+//! steps as buttons there ("Import from GnuPG", "Renew for two years") and
+//! "Send it to keys.openpgp.org", each run on its press only, its command
+//! kept under "By hand" to copy.
 //!
 //! Nothing here touches the key unless you asked: a message shown is never
 //! opened with it, and no lookup runs by itself. A demo profile never reaches
@@ -18,7 +21,7 @@ use cxx_qt_lib::QString;
 use sioul_core::compose::Draft;
 use sioul_core::pgp::{self, Keys, Place};
 use sioul_core::securitykey::{self, CardAccess, CardError, CardInfo, KnownCard, NoReaders, Password, PinMemory, Purpose, Readers, Remedy, SoftCard, SoftReaders, Touch};
-use sioul_sync::securitykey::{Looked, Released};
+use sioul_sync::securitykey::{Gnupg, GnupgProblem, GnupgStep, Looked, Released};
 use sioul_sync::send::BuildError;
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -102,6 +105,10 @@ struct Band {
     action: &'static str,
     /// The key's fingerprint, for `gpg --export` in the setup's hint.
     fingerprint: String,
+    /// The key it is about ("0006:12345678"): "Send it to keys.openpgp.org" after a renewal.
+    ident: String,
+    /// The commands that do by hand what the buttons do, to copy ("By hand").
+    commands: Vec<String>,
 }
 
 fn tell_band(qt: &QtThread, context: &str, band: Band) {
@@ -210,6 +217,10 @@ fn watch_pin() {
     std::thread::spawn(|| {
         loop {
             std::thread::sleep(LOOK_EVERY);
+            // While Sioul's own GnuPG works with a key, no look: the next turn.
+            if !sioul_sync::securitykey::may_look() {
+                continue;
+            }
             let present = readers().present();
             let Ok(mut memory) = PIN.lock() else { break };
             memory.expire(Instant::now());
@@ -309,8 +320,9 @@ fn sign_now(qt: &QtThread, shared: &Arc<Shared>, id: &str, typed: Option<Passwor
     };
     let Some(pin) = pin else { return ask_pin(qt, id, &info, Purpose::Sign) };
     working(qt, id, "seckey-signing");
-    let (touch_qt, context) = (qt.clone(), id.to_string());
-    let touch = move || tell_band(&touch_qt, &context, Band { state: "touch", line: tr().text("seckey-touch", None), ..Band::default() });
+    // Said at the moment the key is asked, when it may wait for a touch: hold it a second or two.
+    let (touch_qt, context, line) = (qt.clone(), id.to_string(), touch_line(info.sign.as_ref()));
+    let touch = move || tell_band(&touch_qt, &context, Band { state: "touch", line: line.clone(), ..Band::default() });
     let access = CardAccess::new(readers(), &pin, &touch);
     match sioul_sync::send::build_draft(&account, &draft, tr(), Some(&access)) {
         Ok(outgoing) => {
@@ -323,8 +335,16 @@ fn sign_now(qt: &QtThread, shared: &Arc<Shared>, id: &str, typed: Option<Passwor
             keep_taken(&ident, &pin, &access, &info);
             failed(qt, id, error, Purpose::Sign, typed.is_some());
         }
-        Err(other) => problem_line(qt, id, other.into_sync(tr()).sentence(tr(), &account.id), ""),
+        // A server's words, never read as a command to copy (the band shows backticked commands as such).
+        Err(other) => problem_line(qt, id, other.into_sync(tr()).sentence(tr(), &account.id).replace('`', "'"), ""),
     }
+}
+
+/// What the band says when the key's slot may wait for a touch, its setting
+/// read from the key this session (`Touch::words`): "If your key asks for a
+/// touch…" when it could not be read.
+fn touch_line(slot: Option<&securitykey::SlotInfo>) -> String {
+    slot.map_or(Touch::Unknown, |s| s.touch).words(tr()).unwrap_or_else(|| tr().text("seckey-touch-maybe", None))
 }
 
 /// Opens a message encrypted to your security key ("Open with your security
@@ -357,8 +377,8 @@ fn open_now(qt: &QtThread, shared: &Arc<Shared>, key: &str, typed: Option<Passwo
     };
     let Some(pin) = pin else { return ask_pin(qt, key, &info, Purpose::Open) };
     working(qt, key, "seckey-opening");
-    let (touch_qt, context) = (qt.clone(), key.to_string());
-    let touch = move || tell_band(&touch_qt, &context, Band { state: "touch", line: tr().text("seckey-touch", None), ..Band::default() });
+    let (touch_qt, context, line) = (qt.clone(), key.to_string(), touch_line(info.decrypt.as_ref()));
+    let touch = move || tell_band(&touch_qt, &context, Band { state: "touch", line: line.clone(), ..Band::default() });
     let access = CardAccess::new(readers(), &pin, &touch);
     let passphrase = |fingerprint: &pgp::Fingerprint| sioul_sync::secret::pgp_passphrase(&fingerprint.to_hex());
     let unlock = pgp::Unlock::new(&passphrase, pgp::SessionKeys::global()).with_card(&access);
@@ -400,20 +420,34 @@ fn wait_for(qt: &QtThread, shared: &Arc<Shared>, context: &str, ident: &str, pur
                 }
                 return problem_line(&qt, &context, CardError::Absent.sentence(tr(), purpose), "retry");
             }
+            // While Sioul's own GnuPG works with a key, no look: the next turn.
+            if !sioul_sync::securitykey::may_look() {
+                continue;
+            }
             // A key is opened only when the readers change: another key plugged in is left alone.
             let present = readers().present().ok();
             if present == seen {
                 continue;
             }
             seen = present;
-            if securitykey::cards(readers()).is_ok_and(|cards| cards.iter().any(|c| c.ident.eq_ignore_ascii_case(&ident))) {
-                if let Ok(mut waiting) = WAITING.lock() {
-                    waiting.remove(&context);
+            match key_in(readers(), &ident) {
+                Ok(_) => {
+                    if let Ok(mut waiting) = WAITING.lock() {
+                        waiting.remove(&context);
+                    }
+                    return match purpose {
+                        Purpose::Sign => sign_now(&qt, &shared, &context, typed),
+                        _ => open_now(&qt, &shared, &context, typed),
+                    };
                 }
-                return match purpose {
-                    Purpose::Sign => sign_now(&qt, &shared, &context, typed),
-                    _ => open_now(&qt, &shared, &context, typed),
-                };
+                // Plugged in, but GnuPG holds it: said, with "Let GnuPG release it", rather than waited for in vain.
+                Err(CardError::Busy) => {
+                    if let Ok(mut waiting) = WAITING.lock() {
+                        waiting.remove(&context);
+                    }
+                    return problem_line(&qt, &context, CardError::Busy.sentence(tr(), purpose), "release");
+                }
+                Err(_) => {}
             }
         }
     });
@@ -471,10 +505,11 @@ pub(crate) fn read_for_setup(qt: &QtThread) {
                 let Some(info) = found.iter().find(|c| !known.iter().any(|k| k.ident == c.ident)).or(found.first()).cloned() else { return };
                 let line = describe(&info);
                 let fingerprint = fingerprint_of(&info);
+                let commands = vec![sioul_sync::securitykey::export_command(&fingerprint)];
                 if let Ok(mut setup) = SETUP.lock() {
                     *setup = Some(info);
                 }
-                tell_band(&qt, SETUP_BAND, Band { state: "found", line, fingerprint, ..Band::default() });
+                tell_band(&qt, SETUP_BAND, Band { state: "found", line, fingerprint, commands, ..Band::default() });
             }
             Err(error) => {
                 let action = if error.remedy() == Remedy::Release { "release" } else { "retry" };
@@ -491,9 +526,30 @@ fn fingerprint_of(info: &CardInfo) -> String {
 
 /// The key to look up a certificate for: the one the setup read, else a key
 /// known already ("Look for a newer version"), from what Sioul kept of it.
-fn card_for_lookup(ident: &str) -> Option<CardInfo> {
+fn card_for_lookup(ident: &str) -> Result<CardInfo, CardError> {
     let read = SETUP.lock().ok().and_then(|s| s.clone()).filter(|c| ident.is_empty() || c.ident.eq_ignore_ascii_case(ident));
-    read.or_else(|| securitykey::known_cards().into_iter().find(|c| c.ident.eq_ignore_ascii_case(ident)).map(|known| as_info(&known)))
+    let known = || securitykey::known_cards().into_iter().find(|c| c.ident.eq_ignore_ascii_case(ident)).map(|known| as_info(&known));
+    match read.or_else(known) {
+        Some(info) => Ok(info),
+        // Neither read nor known: the key itself, which GnuPG may hold (offered to release).
+        None => key_in(readers(), ident),
+    }
+}
+
+/// The key `ident` as it says itself ("": the first one), read without its PIN.
+fn key_in(readers: &dyn Readers, ident: &str) -> Result<CardInfo, CardError> {
+    securitykey::cards(readers)?.into_iter().find(|c| ident.is_empty() || c.ident.eq_ignore_ascii_case(ident)).ok_or(CardError::Absent)
+}
+
+/// What the setup's band says when the key could not be read: a key another
+/// program holds offers "Let GnuPG release it", never a dead end; one not
+/// plugged in, "Try again".
+fn setup_problem(error: &CardError, words: &sioul_core::i18n::Translator) -> Band {
+    let action = match error.remedy() {
+        Remedy::Release => "release",
+        _ => "retry",
+    };
+    Band { state: "problem", line: error.sentence(words, Purpose::Read), warm: true, action, ..Band::default() }
 }
 
 /// What Sioul kept of a key, as the key would say it (fingerprints, no public parts).
@@ -526,7 +582,10 @@ fn your_addresses() -> Vec<String> {
 pub(crate) fn look_for_certificate(qt: &QtThread, ident: &str) {
     let (qt, ident) = (qt.clone(), ident.to_string());
     std::thread::spawn(move || {
-        let Some(info) = card_for_lookup(&ident) else { return problem_line(&qt, SETUP_BAND, CardError::Absent.sentence(tr(), Purpose::Read), "") };
+        let info = match card_for_lookup(&ident) {
+            Ok(info) => info,
+            Err(error) => return tell_band(&qt, SETUP_BAND, setup_problem(&error, tr())),
+        };
         working(&qt, SETUP_BAND, "seckey-looking");
         let looked = if offline() {
             // A demo profile stays off the network: its own key's certificate, as if found.
@@ -540,7 +599,11 @@ pub(crate) fn look_for_certificate(qt: &QtThread, ident: &str) {
         match looked {
             Ok(Looked::Found { cert, check, source }) => adopt(&qt, &info, &cert, &check, &source),
             Ok(Looked::Mismatch(why)) => problem_line(&qt, SETUP_BAND, why.sentence(tr()), ""),
-            Ok(Looked::NotFound) => tell_band(&qt, SETUP_BAND, Band { state: "missing", line: tr().text("seckey-not-found", None), fingerprint: fingerprint_of(&info), ..Band::default() }),
+            Ok(Looked::NotFound) => {
+                let fingerprint = fingerprint_of(&info);
+                let commands = vec![sioul_sync::securitykey::export_command(&fingerprint)];
+                tell_band(&qt, SETUP_BAND, Band { state: "missing", line: tr().text("seckey-not-found", None), fingerprint, commands, ..Band::default() })
+            }
             Err(error) => problem_line(&qt, SETUP_BAND, error.sentence(tr(), ""), "lookup"),
         }
     });
@@ -548,7 +611,10 @@ pub(crate) fn look_for_certificate(qt: &QtThread, ident: &str) {
 
 /// "Import a file…": the key's certificate from `gpg --export`, checked, kept.
 pub(crate) fn import_certificate(qt: &QtThread, ident: &str, url: &str) {
-    let Some(info) = card_for_lookup(ident) else { return problem_line(qt, SETUP_BAND, CardError::Absent.sentence(tr(), Purpose::Read), "") };
+    let info = match card_for_lookup(ident) {
+        Ok(info) => info,
+        Err(error) => return tell_band(qt, SETUP_BAND, setup_problem(&error, tr())),
+    };
     let path = local_path(url);
     match std::fs::read(&path) {
         Ok(bytes) => match securitykey::certificate_in(&bytes, &info) {
@@ -562,34 +628,197 @@ pub(crate) fn import_certificate(qt: &QtThread, ident: &str, url: &str) {
 /// The certificate found is the key's: kept, the key made yours for the
 /// addresses it names among yours, and said.
 fn adopt(qt: &QtThread, info: &CardInfo, cert: &securitykey::Certificate, check: &securitykey::CertCheck, source: &str) {
+    match keep(info, cert, check, source) {
+        Ok(kept) => {
+            // A part expired: renewed from here, where GnuPG can, or by hand, each subkey named.
+            let (action, commands) = if kept.expired && renewable() { ("renew-offer", kept.commands) } else if kept.expired { ("", kept.commands) } else { ("", Vec::new()) };
+            tell_band(qt, SETUP_BAND, Band { state: "done", line: kept.line, warm: kept.warm, action, ident: info.ident.clone(), commands, ..Band::default() });
+            let _ = qt.queue(|mut sioul| sioul.as_mut().keys_changed());
+        }
+        Err(e) => problem_line(qt, SETUP_BAND, e, ""),
+    }
+}
+
+/// What keeping a certificate says, and what it offers.
+struct Kept {
+    line: String,
+    warm: bool,
+    /// A part of it expired: said exactly, with a way to renew it.
+    expired: bool,
+    /// The commands that renew it by hand, each subkey named.
+    commands: Vec<String>,
+}
+
+
+/// The certificate kept for the key, the key made yours for the addresses it
+/// names among yours: what to say, and whether warmly.
+fn keep(info: &CardInfo, cert: &securitykey::Certificate, check: &securitykey::CertCheck, source: &str) -> Result<Kept, String> {
     let yours = your_addresses();
     let named: Vec<String> = check.addresses.iter().filter(|a| yours.contains(a)).cloned().collect();
     // A certificate naming no address at all (keys.openpgp.org gives none
     // until you confirm one) still signs your mail; one naming others' does not.
     let addresses = if check.addresses.is_empty() { yours } else { named };
-    match securitykey::adopt(info, cert, source, addresses.clone(), now_unix()) {
-        Ok(_) => {
-            let names = cert.userids().map(|u| String::from_utf8_lossy(u.userid().value()).to_string()).collect::<Vec<_>>().join(", ");
-            let mut line = if check.addresses.is_empty() {
-                tr().text("seckey-kept-no-address", None)
-            } else if addresses.is_empty() {
-                say("seckey-kept-not-yours", &[("names", names)])
-            } else {
-                say("seckey-kept", &[("names", names), ("addresses", addresses.join(", "))])
-            };
-            let mut warm = addresses.is_empty();
-            if let Some((expiry, late)) = securitykey::expiry_line(tr(), check.expires, &check.cert, now_unix()) {
-                line = format!("{line} {expiry}");
-                warm |= late;
-            }
-            if let Ok(mut setup) = SETUP.lock() {
-                *setup = None;
-            }
-            tell_band(qt, SETUP_BAND, Band { state: "done", line, warm, ..Band::default() });
-            let _ = qt.queue(|mut sioul| sioul.as_mut().keys_changed());
-        }
-        Err(e) => problem_line(qt, SETUP_BAND, e, ""),
+    securitykey::adopt(info, cert, source, addresses.clone(), now_unix())?;
+    let names = cert.userids().map(|u| String::from_utf8_lossy(u.userid().value()).to_string()).collect::<Vec<_>>().join(", ");
+    let mut line = if check.addresses.is_empty() {
+        tr().text("seckey-kept-no-address", None)
+    } else if addresses.is_empty() {
+        say("seckey-kept-not-yours", &[("names", names)])
+    } else {
+        say("seckey-kept", &[("names", names), ("addresses", addresses.join(", "))])
+    };
+    let mut warm = addresses.is_empty();
+    let (expiry, late, expired) = securitykey::expiry_words(tr(), cert, check.expires, now_unix());
+    if !expiry.is_empty() {
+        line = format!("{line} {expiry}");
+        warm |= late;
     }
+    if let Ok(mut setup) = SETUP.lock() {
+        *setup = None;
+    }
+    Ok(Kept { line, warm, expired, commands: sioul_sync::securitykey::renew_commands(&check.cert, &securitykey::subkeys_of(cert)) })
+}
+
+/// What GnuPG did not do, in words, and what to do then.
+fn gnupg_sentence(problem: &GnupgProblem, fingerprint: &str) -> String {
+    match problem {
+        GnupgProblem::Missing => tr().text("seckey-gnupg-missing", None),
+        GnupgProblem::Sandboxed => tr().text("seckey-gnupg-sandboxed", None),
+        GnupgProblem::NoSuchKey => say("seckey-gnupg-no-key", &[("fingerprint", fingerprint.to_string())]),
+        GnupgProblem::TouchMissed => tr().text("seckey-gnupg-touch-missed", None),
+        // Its own words, never read as a command to copy.
+        GnupgProblem::Failed(detail) => say("seckey-gnupg-failed", &[("detail", detail.replace('`', "'"))]),
+    }
+}
+
+/// GnuPG here, or why not; in a demo, none: the demo's key stands in.
+fn gnupg() -> Result<Gnupg, GnupgProblem> {
+    if offline() { Err(GnupgProblem::Missing) } else { Gnupg::find() }
+}
+
+/// "Import from GnuPG": the key's certificate as your GnuPG keeps it
+/// (`gpg --export --armor`), checked against the key, kept. A demo profile
+/// takes its own key's certificate, as if GnuPG had it.
+pub(crate) fn import_from_gnupg(qt: &QtThread, ident: &str) {
+    let (qt, ident) = (qt.clone(), ident.to_string());
+    std::thread::spawn(move || {
+        let info = match card_for_lookup(&ident) {
+            Ok(info) => info,
+            Err(error) => return tell_band(&qt, SETUP_BAND, setup_problem(&error, tr())),
+        };
+        working(&qt, SETUP_BAND, "seckey-gnupg-reading");
+        let fingerprint = fingerprint_of(&info);
+        let exported = match demo().filter(|_| offline()) {
+            Some(demo) => Ok(demo.certificate.clone()),
+            None => gnupg().and_then(|g| g.export(&fingerprint)),
+        };
+        match exported {
+            Ok(bytes) => match securitykey::certificate_in(&bytes, &info) {
+                Ok((cert, check)) => adopt(&qt, &info, &cert, &check, "gnupg"),
+                Err(why) => problem_line(&qt, SETUP_BAND, why.sentence(tr()), ""),
+            },
+            Err(problem) => {
+                let commands = vec![sioul_sync::securitykey::export_command(&fingerprint)];
+                tell_band(&qt, SETUP_BAND, Band { state: "problem", line: gnupg_sentence(&problem, &fingerprint), warm: true, fingerprint, commands, ..Band::default() });
+            }
+        }
+    });
+}
+
+/// Whether GnuPG is here to renew a key: never on a phone, in a Flatpak, or
+/// a demo. Whether it holds the key is asked only on "Renew for two years":
+/// GnuPG is never run behind your back, nor the security key woken for it.
+fn renewable() -> bool {
+    gnupg().is_ok()
+}
+
+/// "Renew for two years": GnuPG renews the key, then its subkeys
+/// (`gpg --quick-set-expire`, its own pinentry asking the security key's PIN,
+/// and a touch); the certificate it then holds is checked and kept here.
+pub(crate) fn renew(qt: &QtThread, ident: &str) {
+    let (qt, ident) = (qt.clone(), ident.to_string());
+    std::thread::spawn(move || {
+        let Some(known) = securitykey::known_cards().into_iter().find(|c| c.ident.eq_ignore_ascii_case(&ident)) else { return problem_line(&qt, SETUP_BAND, CardError::Absent.sentence(tr(), Purpose::Read), "") };
+        let info = as_info(&known);
+        let subkeys = Keys::load().cert(&known.cert).map(securitykey::subkeys_of).unwrap_or_default();
+        let commands: Vec<String> = sioul_sync::securitykey::renew_commands(&known.cert, &subkeys);
+        // The key GnuPG renews with is the one that certifies: on a security key, its signing key.
+        let touch = known.touch_sign;
+        tell_band(&qt, SETUP_BAND, Band { state: "working", line: tr().text("seckey-renewing", None), ident: ident.clone(), ..Band::default() });
+        let watch = |step: GnupgStep| tell_band(&qt, SETUP_BAND, Band { state: "working", line: renew_line(step, touch, tr()), ident: ident.clone(), ..Band::default() });
+        let renewed = gnupg().and_then(|g| {
+            g.renew(&known.cert, "2y", &watch)?;
+            g.export(&known.cert)
+        });
+        let failed = |line: String, action: &'static str| tell_band(&qt, SETUP_BAND, Band { state: "problem", line, warm: true, action, ident: ident.clone(), commands: commands.clone(), ..Band::default() });
+        match renewed {
+            Ok(bytes) => match securitykey::certificate_in(&bytes, &info) {
+                // Read again, part by part: a part still expired is said, and nothing is kept as renewed.
+                Ok((cert, _)) if !securitykey::expired_parts(tr(), &securitykey::parts(&cert), now_unix()).is_empty() => {
+                    let still = securitykey::expired_parts(tr(), &securitykey::parts(&cert), now_unix()).join(" ");
+                    failed(say("seckey-renew-incomplete", &[("parts", still)]), "renew");
+                }
+                Ok((cert, check)) => match keep(&info, &cert, &check, "gnupg") {
+                    Ok(_) => {
+                        let parts = securitykey::parts_until(tr(), &securitykey::parts(&cert));
+                        tell_band(&qt, SETUP_BAND, Band { state: "done", line: say("seckey-renewed", &[("parts", parts)]), action: "publish", ident: ident.clone(), ..Band::default() });
+                        let _ = qt.queue(|mut sioul| sioul.as_mut().keys_changed());
+                    }
+                    Err(e) => failed(e, ""),
+                },
+                Err(why) => failed(why.sentence(tr()), ""),
+            },
+            // GnuPG does not know the card yet: `gpg --card-status` teaches it.
+            Err(GnupgProblem::NoSuchKey) => failed(tr().text("seckey-renew-unknown", None), ""),
+            // The key waited for a touch in vain: said plainly, and tried again on a press.
+            Err(GnupgProblem::TouchMissed) => failed(gnupg_sentence(&GnupgProblem::TouchMissed, &known.cert), "renew"),
+            Err(problem) => failed(gnupg_sentence(&problem, &known.cert), ""),
+        }
+    });
+}
+
+/// What the setup says while GnuPG renews the key: its pinentry open, the PIN
+/// typed there (then a touch, when the key may ask for one); the key's turn,
+/// to touch it now and hold the finger a second or two, as long as GnuPG works
+/// (`Touch::words`); else that GnuPG renews it.
+fn renew_line(step: GnupgStep, touch: Touch, tr: &sioul_core::i18n::Translator) -> String {
+    match (step, touch.words(tr)) {
+        (GnupgStep::Pin, Some(_)) => format!("{} {}", tr.text("seckey-gnupg-pin", None), tr.text("seckey-gnupg-then-touch", None)),
+        (GnupgStep::Pin, None) => tr.text("seckey-gnupg-pin", None),
+        (GnupgStep::Card, Some(words)) => words,
+        (GnupgStep::Card, None) => tr.text("seckey-renewing", None),
+    }
+}
+
+/// "Send it to keys.openpgp.org", pressed after the sentence that says what
+/// goes public: the certificate Sioul keeps for the key, its public part only,
+/// sent; keys.openpgp.org then mails each address it names a link. A demo
+/// profile sends nothing, and says what would come.
+pub(crate) fn send_to_keys_openpgp(qt: &QtThread, ident: &str) {
+    let (qt, ident) = (qt.clone(), ident.to_string());
+    std::thread::spawn(move || {
+        let Some(known) = securitykey::known_cards().into_iter().find(|c| c.ident.eq_ignore_ascii_case(&ident)) else { return problem_line(&qt, SETUP_BAND, CardError::Absent.sentence(tr(), Purpose::Read), "") };
+        let Some(armored) = pgp::export_public(&known.cert) else { return problem_line(&qt, SETUP_BAND, tr().text("seckey-not-found", None), "") };
+        working(&qt, SETUP_BAND, "seckey-sending");
+        let sent = if offline() {
+            Ok(sioul_sync::securitykey::Published { fingerprint: known.cert.clone(), mailed: known.addresses.clone(), published: Vec::new() })
+        } else {
+            sioul_sync::securitykey::send_to_keys_openpgp(armored.as_bytes(), tr().language())
+        };
+        match sent {
+            Ok(published) => {
+                let line = if !published.mailed.is_empty() {
+                    say("seckey-sent-mailed", &[("addresses", published.mailed.join(", "))])
+                } else if !published.published.is_empty() {
+                    say("seckey-sent-published", &[("addresses", published.published.join(", "))])
+                } else {
+                    tr().text("seckey-sent-no-address", None)
+                };
+                tell_band(&qt, SETUP_BAND, Band { state: "done", line, ..Band::default() });
+            }
+            Err(error) => problem_line(&qt, SETUP_BAND, error.sentence(tr(), ""), ""),
+        }
+    });
 }
 
 /// "Stop using this security key": it leaves Sioul's list, its certificate
@@ -623,6 +852,11 @@ struct KnownView {
     touch: String,
     /// Its PIN is held now.
     pin_held: bool,
+    /// Expired or expiring, and GnuPG here can renew it: "Renew for two years".
+    renewable: bool,
+    /// The commands that do by hand what its buttons do, to copy ("By hand"):
+    /// its certificate written into a file; expired or expiring, its renewal.
+    by_hand: Vec<String>,
 }
 
 /// Your security keys, as JSON {cards: […]}, for Accounts ▸ Encryption.
@@ -637,13 +871,15 @@ pub(crate) fn known_view() -> String {
             let title = if name.is_empty() { card.label(tr()) } else { format!("{}, {name}", card.label(tr())) };
             let source = match card.source.as_str() {
                 "file" => say("seckey-source-file", &[("date", securitykey::full_date(tr(), card.checked))]),
+                "gnupg" => say("seckey-source-gnupg", &[("date", securitykey::full_date(tr(), card.checked))]),
                 url => say("seckey-source", &[("source", host_of(url)), ("date", securitykey::full_date(tr(), card.checked))]),
             };
-            let (expiry, late) = keys
-                .cert(&card.cert)
-                .and_then(|cert| securitykey::expiry_line(tr(), securitykey::expiry_of(cert, &[&card.sign, &card.decrypt]), &card.cert, now_unix()))
-                .unwrap_or_default();
+            let cert = keys.cert(&card.cert);
+            let (expiry, late, _) = cert.map(|cert| securitykey::expiry_words(tr(), cert, securitykey::expiry_of(cert, &[&card.sign, &card.decrypt]), now_unix())).unwrap_or_default();
+            let subkeys = cert.map(securitykey::subkeys_of).unwrap_or_default();
+            let unknown = (card.touch_sign == Touch::Unknown && !card.sign.is_empty()) || (card.touch_decrypt == Touch::Unknown && !card.decrypt.is_empty());
             let touch = match (card.touch_sign.asked() && !card.sign.is_empty(), card.touch_decrypt.asked() && !card.decrypt.is_empty()) {
+                _ if unknown => "seckey-touch-unknown",
                 (true, true) => "seckey-touch-both",
                 (true, false) => "seckey-touch-sign",
                 (false, true) => "seckey-touch-open",
@@ -658,6 +894,9 @@ pub(crate) fn known_view() -> String {
                 late,
                 touch: tr().text(touch, None),
                 pin_held: holder.as_deref().is_some_and(|h| h.eq_ignore_ascii_case(&card.ident)),
+                // GnuPG asked only for a key that needs it.
+                renewable: late && renewable(),
+                by_hand: std::iter::once(sioul_sync::securitykey::export_command(&card.cert)).chain(if late { sioul_sync::securitykey::renew_commands(&card.cert, &subkeys) } else { Vec::new() }).collect(),
             }
         })
         .collect();
@@ -680,5 +919,42 @@ mod tests {
         assert_eq!(holder_name(""), "");
         assert_eq!(host_of("https://keys.openpgp.org/vks/v1/by-fingerprint/ABC"), "keys.openpgp.org");
         assert_eq!(host_of("https://openpgpkey.example.org/.well-known/openpgpkey/example.org/hu/x?l=jane"), "openpgpkey.example.org");
+    }
+
+    /// What the setup says while GnuPG renews the key, step by step: the PIN
+    /// in GnuPG's window, then the touch held a second or two, for as long as
+    /// GnuPG works; "If your key asks for a touch…" when its setting did not
+    /// read; nothing of a touch for a key that asks none.
+    /// A key GnuPG holds for itself, met while adding or renewing it: the band
+    /// says so and offers "Let GnuPG release it", with the line that lets
+    /// both share it for good; never a dead end. With software keys only.
+    #[test]
+    fn a_key_gnupg_holds_offers_to_release_it() {
+        let tr = sioul_core::i18n::Translator::new("en");
+        let held = SoftReaders { cards: std::sync::Mutex::new(Vec::new()), busy: 1, failure: None };
+        assert_eq!(key_in(&held, "0006:12345678").map(|c| c.ident), Err(CardError::Busy));
+        assert_eq!(key_in(&held, "").map(|c| c.ident), Err(CardError::Busy), "the last step of adding it, the key not read yet");
+        let band = setup_problem(&CardError::Busy, &tr);
+        assert_eq!((band.state, band.action, band.warm), ("problem", "release", true));
+        assert!(band.line.starts_with("Another program holds your security key") && band.line.ends_with("`pcsc-shared`"), "{}", band.line);
+        // Not plugged in: tried again, nothing to release.
+        assert_eq!(key_in(&SoftReaders::with(Vec::new()), "").map(|c| c.ident), Err(CardError::Absent));
+        assert_eq!(setup_problem(&CardError::Absent, &tr).action, "retry");
+    }
+
+    #[test]
+    fn the_renewal_says_the_pin_then_the_touch() {
+        let tr = sioul_core::i18n::Translator::new("en");
+        let pin_then_touch = renew_line(GnupgStep::Pin, Touch::On, &tr);
+        assert!(pin_then_touch.contains("PIN") && pin_then_touch.contains("hold your finger"), "{pin_then_touch}");
+        let touch = renew_line(GnupgStep::Card, Touch::On, &tr);
+        assert!(touch.starts_with("Touch your security key now") && touch.contains("15 seconds"), "{touch}");
+        assert_eq!(renew_line(GnupgStep::Card, Touch::Fixed, &tr), touch);
+        assert!(renew_line(GnupgStep::Card, Touch::Unknown, &tr).starts_with("If your key asks for a touch"));
+        assert!(!renew_line(GnupgStep::Pin, Touch::Off, &tr).contains("touch"));
+        assert_eq!(renew_line(GnupgStep::Card, Touch::Off, &tr), tr.text("seckey-renewing", None));
+        // In French too.
+        let fr = sioul_core::i18n::Translator::new("fr");
+        assert!(renew_line(GnupgStep::Card, Touch::On, &fr).starts_with("Touchez votre clé de sécurité"));
     }
 }

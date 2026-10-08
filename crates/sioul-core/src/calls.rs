@@ -795,7 +795,7 @@ pub fn read_held(path: &Path) -> Vec<Held> {
 
 /// Every line of a file of JSON lines that reads; a line cut by a crash, or
 /// written by a later Sioul in a shape this one does not know, is passed over.
-fn read_lines<T: serde::de::DeserializeOwned>(path: &Path) -> Vec<T> {
+pub(crate) fn read_lines<T: serde::de::DeserializeOwned>(path: &Path) -> Vec<T> {
     std::fs::read_to_string(path).unwrap_or_default().lines().filter(|l| !l.trim().is_empty()).filter_map(|l| serde_json::from_str(l).ok()).collect()
 }
 
@@ -807,13 +807,13 @@ pub fn own_file(root: &Path, folder: &str, device: &str) -> PathBuf {
 }
 
 /// A device's name as a file's: letters, digits, `-` and `_`.
-fn file_safe(device: &str) -> String {
+pub(crate) fn file_safe(device: &str) -> String {
     let safe: String = device.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
     if safe.is_empty() { "this-device".to_string() } else { safe }
 }
 
 /// Every device's file of a shared folder (`*.jsonl`), each with its device's name, by name.
-fn device_files(folder: &Path) -> Vec<(String, PathBuf)> {
+pub(crate) fn device_files(folder: &Path) -> Vec<(String, PathBuf)> {
     let mut files: Vec<(String, PathBuf)> = std::fs::read_dir(folder)
         .into_iter()
         .flatten()
@@ -870,7 +870,7 @@ pub fn carry_into(own: &Path, java: &[Held], region: Option<&Region>, now_ms: i6
 
 /// Adds lines at the end of a file of this device's own, made yours alone
 /// (0600, in a 0700 folder, on Unix). The caller holds its lock.
-fn append_private(path: &Path, text: &str) -> Result<(), String> {
+pub(crate) fn append_private(path: &Path, text: &str) -> Result<(), String> {
     use std::io::Write;
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(folder) = path.parent() {
@@ -890,7 +890,7 @@ fn append_private(path: &Path, text: &str) -> Result<(), String> {
 /// A file of the calls' kept but for the lines `drop` names: written beside
 /// under a hidden name (yours alone), then put in place, under its lock.
 /// Returns how many lines went.
-fn rewrite_lines(path: &Path, drop: impl Fn(&str) -> bool) -> Result<usize, String> {
+pub(crate) fn rewrite_lines(path: &Path, drop: impl Fn(&str) -> bool) -> Result<usize, String> {
     crate::filelock::with_lock(path, || {
         let Ok(text) = std::fs::read_to_string(path) else { return Ok(0) };
         let (kept, gone): (Vec<&str>, Vec<&str>) = text.lines().filter(|l| !l.trim().is_empty()).partition(|l| !drop(l));
@@ -1088,7 +1088,7 @@ pub fn lines(calls: &[Held], seen: &Seen, messages: &BTreeMap<String, Message>, 
     groups.into_iter().map(|(device, _, column, date, group)| line(&group, calls, device, column, date, messages, l)).collect()
 }
 
-fn local(at_ms: i64, now: &Zoned) -> Zoned {
+pub(crate) fn local(at_ms: i64, now: &Zoned) -> Zoned {
     jiff::Timestamp::from_millisecond(at_ms).map_or_else(|_| now.clone(), |t| t.to_zoned(now.time_zone().clone()))
 }
 
@@ -1106,7 +1106,7 @@ fn rang_after<'a>(calls: &'a [Held], group: &[&Held], date: jiff::civil::Date, l
 
 /// "Monday 5 October", "yesterday", "today": a day, as the lines say it before
 /// a capital is put to the sentence.
-fn day_words(tr: &Translator, date: jiff::civil::Date, today: jiff::civil::Date) -> String {
+pub(crate) fn day_words(tr: &Translator, date: jiff::civil::Date, today: jiff::civil::Date) -> String {
     if date == today {
         tr.text("calls-day-today", None)
     } else if today.yesterday().is_ok_and(|y| y == date) {
@@ -1193,7 +1193,7 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
 }
 
 /// "while you slept", "during work": what the time was, in a few words.
-fn context(tr: &Translator, column: &str) -> String {
+pub(crate) fn context(tr: &Translator, column: &str) -> String {
     match column {
         "work" | "admin" | "leisure" | "meals" | "sleep" | "pause" | "free" | "slot" | "dnd" => tr.text(&format!("calls-context-{column}"), None),
         _ => tr.text("calls-context-any", None),

@@ -1,5 +1,5 @@
 ---
-description: Health in Sioul - meals, rest and sleep kept free before any work and changed for one day in a tap, medicines reminded once and quietly on the device you use, never "not taken" when Sioul cannot know, prescriptions and their errands, a watch read from its own files, even days for an illness that limits energy; no score, nothing in red, nothing about food.
+description: Health in Sioul - meals, rest and sleep kept free before any work and changed for one day in a tap, medicines reminded once and quietly on the device you use, never "not taken" when Sioul cannot know, prescriptions and their errands, even days for an illness that limits energy; no score, nothing in red, nothing about food.
 ---
 
 # Health
@@ -15,7 +15,7 @@ Health keeps your day's needs first. Your meals, rests and nights are set once a
 
 ## Protected by default {#what-is-protected}
 
-- **On your devices only.** Your medicines, doses, meals, nights and your watch's days stay on your devices, in files that only you can read there. There is no server of Sioul's, and Sioul never goes through the watch maker's account.
+- **On your devices only.** Your medicines, doses, meals and nights stay on your devices, in files that only you can read there. There is no server of Sioul's.
 - **Sealed between your devices.** Your devices exchange doses only through a folder your own sync app carries, sealed: the folder and its server can read nothing of it ([Sharing](sharing.md)).
 - **One reminder, from one device.** Only the device you are using reminds you, so a dose is not reminded twice; and when Sioul cannot know whether a dose was taken on another device, it says so rather than "not taken", because a dose taken twice can harm.
 - **Discreet on a lock screen.** A notice about a meal or a rest shows only its name and its time, so that it can be read on a lock screen or a shared desk.
@@ -43,15 +43,19 @@ If doses were due while Sioul was closed, the question about them comes above th
 
 ## Medicines {#medicines}
 
-On the page, after the day (under its list, or beside it on a wide screen), **Add a medicine**: its **Name**, its **Dose** ("one tablet"), and **When**:
+On the page, after the day (under its list, or beside it on a wide screen), **Add a medicine**: its **Brand name, or your word** for it, which reminders say; if you like, its **Generic name (INN)**, the molecule ("levothyroxine"), and its **Strength** ("75 µg", "500 mg per tablet"), which a doctor or a pharmacist reads; its **Dose** for each take ("1 tablet"); and **When**:
 
-- **At set times each day**: "08:00, 20:00";
+- **At set times each day**: its **Takes**, one row each, with the hour and the minute picked from short lists (Tab and the arrow keys reach them too). **Add a take** adds a row; the button at the end of a row takes it out. A take has its own amount only when it differs from the dose: for one tablet at 08:00 and two at 20:00, write "1 tablet" as the dose and "2 tablets" in the 20:00 row;
 - **Every few days**, at a time, from a day: "every other day at 08:00";
 - **Every few hours**, from a time: "every 6 hours, from 18:30".
 
-Then **Until** a day, or for as long as it goes; the **Prescription** it comes from; **Paused for now**.
+Then **Until** a day, or for as long as it goes; **Taken since**, if you know when it started; the **Prescription** it comes from; **Paused for now**.
 
-Each medicine is then listed there with its dose and its times ("07:30", "12:30 · 20:00"), and until when; one paused, or past its last day, a little quieter. **Edit** opens its form again, where **Take it out** removes it after one question. Whether today's doses were taken is said in the day's list, not here.
+Each medicine is then listed there with its name, generic name and strength ("Thyrolan — levothyroxine 75 µg"), its dose and its times ("07:30", "12:30 · 20:00"), or each take with its own amount when they differ ("08:00 · 1 tablet, 20:00 · 2 tablets"), and until when; one paused, or past its last day, a little quieter. **Edit** opens its form again, where **Take it out** removes it after one question. Whether today's doses were taken is said in the day's list, not here. Each dose says its take's amount wherever it shows: the day's list, its reminder, the Porch, your phone's home screen; those keep the short name.
+
+### Show to a doctor or pharmacist {#show-to-a-doctor-or-pharmacist}
+
+At the pharmacy or with a doctor, **Show to a doctor or pharmacist**, under your medicines, fills the screen with all those you take now; on a prescription, with its medicines. Large type, to read at arm's length, one medicine a block: its generic name and strength first, then the name on the box, each take with its time and amount, how long you have taken it, who prescribed it. It is read-only: one button, **Close**, and Back closes it too, so nothing changes if someone taps it.
 
 ### Today {#today}
 
@@ -113,6 +117,8 @@ No number, no score, no colour. Under each day before, on this page, the words y
 
 On the page, under your medicines, **Add a prescription**: what it is for, who wrote it, until when it is valid, how many days the pharmacy gives at a time, and when it was last fetched. Each is then listed with who wrote it, the next visit to the pharmacy and the day to renew it by, in words ("pharmacy from Tuesday 27 October · renew by Thursday 4 February 2027"), and the medicines that come with it; **Edit** opens it again.
 
+Its medicines are in its form too, a row each: the name, the dose, and the takes, each with its time and its own amount when it differs, as in a medicine's own form. **Add a medicine** adds a row; a row left empty is not kept. The button at the end of a row takes the medicine out: one added there goes at once; one saved before says that it goes when you save, with no more reminders for it, and **Keep it** puts it back. A medicine taken every few days or hours shows when, in words; its own form changes that. A medicine made there is like any other: listed on the page, reminded, its doses in the day. If something cannot be saved (a row without a name, two takes at one time), the form says which medicine, and nothing changes.
+
 Then Sioul makes the errands, once each:
 
 - two days before the medicines run out, a task "Pharmacy: …";
@@ -122,20 +128,6 @@ They go into the list you choose under **Errands go to**, in the page's settings
 
 !!! note "Errands are tasks"
     The errands' titles name the medicine, and they go to your task list, on your calendar server when the list is there. Choose a list on this device only if you would rather keep them here.
-
-## Your watch {#your-watch}
-
-What a Garmin watch measured, read from its own files, never through a Garmin account: nothing goes to a server.
-
-**To set it up**, in the Health page's ⚙, **Its files come to**: a folder where Gadgetbridge's exports (the open companion app for Android) or Garmin's export files arrive. Or plug the watch in: when your desktop shows its `GARMIN` folder, Sioul reads it.
-
-Today's page then says, under the day's list, in words: when the watch last gave data, the day's steps, the resting heart rate with its usual, last night's sleep (its length and its hours), Body Battery, the week's averages; then today's curves, plain. No goal, no streak, no score, and no colour as a grade.
-
-**Where it is kept**: what the watch measured is kept in one small file a day, in Sioul's own data folder, readable by you only. It goes to your other devices only through Sioul's sharing, sealed, once you switch **Watch** on there ([Sharing](sharing.md)).
-
-**Gentle offers between tasks**, on unless you untick them: a pause after sitting long, a short break, a walk when there is room for one, or calling it a day when the reserve is low. Only at a natural stop (a task done, a focus session ended), never in quiet time, at most six a day, and an offer you declined rests longer each time. A notification about it says no number.
-
-In the morning, the Tasks page may say one line, never a notification: after a short night, "Shorter sessions today, and the hardest task early, or tomorrow?"; when the resting heart rate stands well above its usual, "Your body may be fighting something. A lighter day?". Each comes with **A lighter day**, which sets [the day's weather](tasks.md#how-is-today) to haze or fog.
 
 ## Moving {#moving}
 
@@ -155,7 +147,7 @@ What a day holds is learned from the days you said were too much, about right or
 
 ## Where it is kept {#where-it-is-kept}
 
-On this device, in files of Sioul's own folders that only you can read: what you enter, the days that differ, the doses marked, each dose that fell due with the answers your devices gave, and one small file a day for your watch. They go nowhere, unless you share between your devices: then they travel sealed, through your own synced folder ([Sharing](sharing.md)). The errands are the exception: they are tasks, and go to your task list.
+On this device, in files of Sioul's own folders that only you can read: what you enter, the days that differ, the doses marked, and each dose that fell due with the answers your devices gave. They go nowhere, unless you share between your devices: then they travel sealed, through your own synced folder ([Sharing](sharing.md)). The errands are the exception: they are tasks, and go to your task list.
 
 ## Going further {#going-further}
 
@@ -165,7 +157,7 @@ On a phone with Sioul for Android: under the night in the page's settings (⚙),
 
 ### What an AI agent sees {#what-an-ai-agent-sees}
 
-An AI agent you connect ([Using an AI agent](ai-agent.md)) has no tool that reads this page: not your medicines, your doses, your meals, your nights nor your watch. It does see the errands, since they are tasks in your list, with the medicine in their titles.
+An AI agent you connect ([Using an AI agent](ai-agent.md)) has no tool that reads this page: not your medicines, your doses, your meals nor your nights. It does see the errands, since they are tasks in your list, with the medicine in their titles.
 
 ## Why it works this way {#why-it-works-this-way}
 
@@ -181,7 +173,7 @@ What the research can and cannot say: the strong evidence supports regular eatin
 
 As of October 2026, from each app's own documentation. This compares what each app does, not how well it helps anyone.
 
-✓ documented; **partly**, with a note; ✗ not found in the app's own documentation (for Sioul: not built); ? not confirmed; — not applicable. Sioul's column was checked against its code. Gadgetbridge, the free companion app for Android whose exports Sioul reads, has no column: it is not a health planner.
+✓ documented; **partly**, with a note; ✗ not found in the app's own documentation (for Sioul: not built); ? not confirmed; — not applicable. Sioul's column was checked against its code.
 
 **For everyone**
 
@@ -199,7 +191,7 @@ As of October 2026, from each app's own documentation. This compares what each a
 | A pause to move after sitting | ✓¹⁹ | ✗ | ✗ | ✓²⁰ | ✗²¹ | ✗ |
 | Plans for an illness that limits energy | ✓²² | ✗ | ✗ | ✗ | ✓²³ | partly²⁴ |
 | Shows a score, a ring or a streak | ✗²⁵ | partly²⁶ | ✗ | ✓ | ✓ | partly²⁷ |
-| Reads a watch | ✓²⁸ | ✗ | ✗ | ✓ | ✓²⁹ | ✓³⁰ |
+| Reads a watch | ✗²⁸ | ✗ | ✗ | ✓ | ✓²⁹ | ✓³⁰ |
 
 1. Once, quietly, on the device you are using; on a phone through Android's alarm clock, even when Sioul was stopped.
 2. By choice: one reminder; the dose then waits on the Porch until you answer, the day ends or twelve hours pass.
@@ -228,7 +220,7 @@ As of October 2026, from each app's own documentation. This compares what each a
 25. By choice: no goal, no score, no streak, nothing in red.
 26. Daily, weekly and monthly progress.
 27. An "energy score", the average of the energy levels you entered that day.
-28. A Garmin watch's own files, without a Garmin account.
+28. Taken out on 8 October 2026: a watch's health figures are not shown to be accurate, and Garmin offers no official way to read them.
 29. Its own band, made by Polar.
 30. Through Apple Health, Google Fit or Fitbit.
 
@@ -256,11 +248,10 @@ Others do more in places: Apple reminds again until a dose is logged, with alert
     - **Apple Health**, Apple's iPhone and Apple Watch user guides on medications, sleep schedules, sleep and daily activity, and its Health page: <https://support.apple.com/guide/iphone/track-your-medications-iph811670c81/ios>, <https://support.apple.com/guide/iphone/learn-more-about-your-medications-iph2fcefa8d6/ios>, <https://support.apple.com/guide/watch/medications-apd3dd24d78b/watchos>, <https://support.apple.com/guide/watch/set-up-sleep-schedules-apd830528336/watchos>, <https://support.apple.com/guide/watch/track-your-sleep-crpxel1lvun9/watchos>, <https://support.apple.com/guide/watch/track-daily-activity-apd3bf6d85a6/watchos>, <https://www.apple.com/ios/health/>
     - **Visible**, its home page, its FAQ, its article on the Morning Stability Score and its help on POTS: <https://www.makevisible.com/>, <https://www.makevisible.com/faqs>, <https://www.makevisible.com/blog/introducing-the-morning-stability-score>, <https://help.makevisible.com/en/articles/10632758-can-i-use-visible-if-i-have-pots>
     - **Bearable**, its home page, its help on entering data, and its own description in Apple's App Store: <https://bearable.app/>, <https://bearable.app/support/howto/configure-and-enter-data-into-bearable/>, <https://apps.apple.com/us/app/bearable-symptom-tracker/id1482581097>
-    - **Gadgetbridge**, its home page: <https://gadgetbridge.org/>
 
 ## For technical readers {#for-technical-readers}
 
-**Files.** `health.toml` (what you enter) and `health-days.toml` (the days that differ) in Sioul's data folder (`~/.local/share/sioul/` on Linux); `health-state.toml` (doses marked, reminders given, errands made, chat minutes) and `health-doses.toml` (each dose that fell due, and each device's answer) in its state folder (`~/.local/state/sioul/`); the watch's days in `watch/<day>.json` in the data folder, one small file a day. On Linux and macOS, each is written whole beside its place, then moved into it, readable by you only (mode 0600), in folders only you can open (0700), whatever the system's default; on Windows, in your profile's own folders.
+**Files.** `health.toml` (what you enter) and `health-days.toml` (the days that differ) in Sioul's data folder (`~/.local/share/sioul/` on Linux); `health-state.toml` (doses marked, reminders given, errands made, chat minutes) and `health-doses.toml` (each dose that fell due, and each device's answer) in its state folder (`~/.local/state/sioul/`). On Linux and macOS, each is written whole beside its place, then moved into it, readable by you only (mode 0600), in folders only you can open (0700), whatever the system's default; on Windows, in your profile's own folders.
 
 **Doses as records.** Each dose that falls due is a record your devices share. The device that sees it fall due opens it; the first to capture your answer writes it, with when you took it. Each device writes only its own entries, so the sharing never has two devices overwriting one another; answers are merged when read, the earliest first, and answers that differ are all kept. Records are kept nine days.
 
@@ -272,9 +263,7 @@ Others do more in places: Apple reminds again until a dose is logged, with alert
 
 **On an Android phone.** The next two days of doses (48 hours) are given to Android's alarm clock as exact alarms, which wake Sioul at each one, even when it was stopped; Sioul asks your sync app to look first, when the app offers a way. Without permission for exact alarms, a reminder can come up to an hour late, and the page says so. The "Doses" channel has Android's default importance.
 
-**The watch.** Garmin's FIT files are read with `fitparser`, a free library (MIT), never Garmin's own SDK, whose licence forbids copyleft; from a folder (Gadgetbridge's exports, Garmin's export ZIPs, ZIPs inside ZIPs) or the watch's `GARMIN` folder (mass storage, GNOME's MTP mount, KDE with kio-fuse); each file once, by the watch's serial number and the file's time; Body Battery kept only between 0 and 100. Nothing goes to Garmin, nor anywhere but your own devices.
-
-**Sealed between devices.** The **Health** part of Sioul's sharing carries the four health files, merged entry by entry; the **Watch** part, the watch's days and the offers' memory. Both are sealed as every part is: XChaCha20-Poly1305 (a random 192-bit nonce each), each record bound to the device that wrote it, its place and its time, under a key made from your passphrase (12 characters at least) by Argon2id (64 MiB, three passes), and kept as the derived key in each device's keyring ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)).
+**Sealed between devices.** The **Health** part of Sioul's sharing carries the four health files, merged entry by entry, sealed as every part is: XChaCha20-Poly1305 (a random 192-bit nonce each), each record bound to the device that wrote it, its place and its time, under a key made from your passphrase (12 characters at least) by Argon2id (64 MiB, three passes), and kept as the derived key in each device's keyring ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)).
 
 **Even days.** The plan is made once to see the week's load, events included, then again with each day held to the week's mean on each cost, never above 85 % of its budget ([What a day holds](../dev/capacity.md)).
 
