@@ -250,40 +250,13 @@ const MAIL_APPS: &[&str] = &[
 /// Firefox's browsers post every site's notification on this one channel, the site in the sub-text.
 const FIREFOX_SITES: &str = "mozac.feature.webnotifications.generic.channel";
 
-/// What asks for an approval now: a sign-in, a payment, an identity to
-/// confirm. Read folded (case and accents aside), as whole words.
-const APPROVALS: &[&str] = &[
-    "approve this sign-in", "approve sign-in", "approve the sign-in", "approve your sign-in", "approve login", "approve the login", "approve your login",
-    "approve this login", "approve the payment", "approve your payment", "approve this payment", "approve the purchase", "approve this purchase",
-    "approve the transaction", "approve this transaction", "are you trying to sign in",
-    "trying to sign in", "trying to log in", "confirm it's you", "confirm it is you", "verify it's you", "verify it is you", "confirm your identity",
-    "sign-in request", "sign in request", "login request", "login attempt", "sign-in attempt", "new sign-in", "new login", "3-d secure", "3d secure",
-    "strong authentication", "authenticate the payment", "confirm the payment", "confirm your payment", "confirm the transaction",
-    "confirmez qu'il s'agit de vous", "confirmez votre identite", "demande de connexion",
-    "tentative de connexion", "nouvelle connexion", "validez votre connexion", "valider votre connexion", "validez la connexion",
-    "validez votre paiement", "valider votre paiement", "validez le paiement", "validez votre achat", "validez l'achat", "validez votre operation",
-    "valider votre operation", "validez l'operation", "validez cette operation", "confirmez votre paiement", "confirmez le paiement",
-    "confirmez votre operation", "confirmez l'operation", "authentifiez", "authentification forte", "authentification requise",
-    "approuvez la connexion", "approuver la connexion", "approuvez le paiement", "certicode", "securipass", "secur'pass", "pass securite",
-];
-
-/// "Is this you?": a sign-in's question only beside what it is about (a
-/// friend's "is this you on the photo?" is none).
-const ASKS: &[&str] = &["is it you", "is this you", "was this you", "was it you", "est-ce bien vous", "c'est bien vous", "est-ce vous", "c'etait vous"];
-/// What such a question is about.
-const ASKED_ABOUT: &[&str] = &[
-    "sign in", "sign-in", "signing in", "log in", "login", "logging in", "new device", "payment", "purchase", "transaction", "account",
-    "connexion", "connecter", "nouvel appareil", "paiement", "achat", "operation", "compte",
-];
-
-/// A channel named for codes or sign-ins (Proton Mail's "login" channel): its notifications are never held.
-const CODE_CHANNELS: &[&str] = &[
-    "otp", "2fa", "mfa", "one-time", "one time", "verification", "verification code", "verification codes", "authentication", "authentification",
-    "sign-in", "sign in", "login", "log-in", "logins", "connexion", "connexions",
-];
-
-/// Whether a notification hands over a code or asks for an approval now.
-pub fn is_code(p: &Posted) -> bool {
+/// Whether a notification hands over a code or asks for an approval now:
+/// a code as mail gives one (`codes::detect`); words asking for an approval
+/// (a sign-in, a payment, an identity to confirm); "is this you?" beside what
+/// it is about (a friend's "is this you on the photo?" is none); a channel
+/// named for codes or sign-ins (Proton Mail's "login" channel). Read folded
+/// (case and accents aside), as whole words (`words::Approvals`).
+pub fn is_code(p: &Posted, words: &crate::words::Words) -> bool {
     if p.redacted {
         return true;
     }
@@ -291,16 +264,17 @@ pub fn is_code(p: &Posted) -> bool {
     body.extend(p.lines.iter().map(String::as_str));
     body.extend(p.messages.iter().map(|m| m.text.as_str()));
     let body = body.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n");
-    if crate::codes::detect(&p.title, &body).is_some() {
+    if crate::codes::detect(&words.codes, &p.title, &body).is_some() {
         return true;
     }
     let folded: Vec<char> = crate::text::fold(&format!("{}\n{body}", p.title)).into_iter().map(|c| if c == '\n' { ' ' } else { c }).collect();
-    let said = |phrases: &[&str]| phrases.iter().any(|phrase| crate::text::find_word(&folded, phrase, 0).is_some());
-    if said(APPROVALS) || (said(ASKS) && said(ASKED_ABOUT)) {
+    let said = |phrases: &[String]| phrases.iter().any(|phrase| crate::text::find_word(&folded, phrase, 0).is_some());
+    let approvals = &words.approvals;
+    if said(&approvals.phrases) || (said(&approvals.asks) && said(&approvals.asked_about)) {
         return true;
     }
     let channel: Vec<char> = crate::text::fold(&format!("{} {}", p.channel.replace(['_', '.'], " "), p.channel_name));
-    CODE_CHANNELS.iter().any(|word| crate::text::find_word(&channel, word, 0).is_some())
+    approvals.channels.iter().any(|word| crate::text::find_word(&channel, word, 0).is_some())
 }
 
 /// A browser's site the notification is from, as its host: Chromium's
@@ -451,11 +425,11 @@ fn is_user(p: &Posted, sender: &Person) -> bool {
 
 /// What a notification is (`Kind`), as its app and Android say it, and as
 /// the person chose for its app and site (`Choices`).
-pub fn classify(p: &Posted, choices: &Choices) -> Kind {
+pub fn classify(p: &Posted, choices: &Choices, words: &crate::words::Words) -> Kind {
     if p.package == OWN || p.ongoing || p.full_screen || p.summary || UNTOUCHED.contains(&p.category.as_str()) {
         return Kind::Untouched;
     }
-    if is_code(p) {
+    if is_code(p, words) {
         return Kind::Code;
     }
     let app = choices.app(&p.package);
@@ -1302,6 +1276,15 @@ pub fn why_text(tr: &Translator, why: &str, until: i64, now: &Zoned) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a notification is, with the packs built in (French and English).
+    fn classify(p: &Posted, choices: &Choices) -> Kind {
+        super::classify(p, choices, crate::words::Words::builtin_ref())
+    }
+
+    fn is_code(p: &Posted) -> bool {
+        super::is_code(p, crate::words::Words::builtin_ref())
+    }
     use crate::attention::{Column, Person, Row};
     use crate::needs::{Days, Needs};
     use crate::quiet::{Blocks, Overrides};
@@ -1469,6 +1452,10 @@ mod tests {
         let asked = |text: &str| is_code(&Posted { title: "Alice".into(), text: text.into(), ..Posted::default() });
         assert!(asked("Is this you signing in from Lyon?") && asked("Est-ce bien vous qui tentez une connexion ?"));
         assert!(!asked("Is this you on the photo? Haha") && !asked("C'est bien vous sur la photo ?"));
+        // Your words: a German bank's approval, once its words are added.
+        let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n[words.approvals.phrases]\nadd = [\"Zahlung freigeben\"]\n").unwrap();
+        let german = Posted { title: "Bank".into(), text: "Bitte Zahlung freigeben in der App.".into(), ..Posted::default() };
+        assert!(!is_code(&german) && super::is_code(&german, &crate::words::Words::of(&config)));
         // Never held: a call, an alarm, what runs, a summary, a reminder you set, Sioul's own.
         for json in [
             r#"{"package":"com.whatsapp","category":"call","title":"Jeanne"}"#,

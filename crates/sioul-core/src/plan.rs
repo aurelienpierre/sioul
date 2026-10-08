@@ -458,18 +458,17 @@ pub struct Planned {
     pub level: &'static str,
     /// Minutes the plan gives it on its first day: all of it, or the part that fits.
     pub on_start: u32,
-    /// Tagged `joy` or `someday`, or a step of such a task: never proposed, never scheduled.
+    /// Tagged optional (`words.tasks.optional`: "joy", "someday"), or a step
+    /// of such a task: never proposed, never scheduled.
     pub optional: bool,
 }
 
-/// The tags that make a task optional (`Planned::optional`).
-pub const OPTIONAL_TAGS: &[&str] = &["joy", "someday"];
-
-/// Whether a task's own tags make it optional, or it gives back rather than
-/// takes (its word, or its costs rated light with a gain of 5 or more). A
-/// date asked makes it a duty all the same: planned, as a light step.
+/// Whether a task's own tags make it optional (`words.tasks.optional`, the
+/// words in use: "joy", "someday"), or it gives back rather than takes (its
+/// word, or its costs rated light with a gain of 5 or more). A date asked
+/// makes it a duty all the same: planned, as a light step.
 pub fn is_optional(task: &Task) -> bool {
-    (crate::capacity::level_of(task) == crate::demands::Level::Rest && task.due.is_empty()) || task.categories.iter().any(|c| OPTIONAL_TAGS.iter().any(|t| c.eq_ignore_ascii_case(t)))
+    (crate::capacity::level_of(task) == crate::demands::Level::Rest && task.due.is_empty()) || crate::words::named_in(&task.categories, &crate::words::current().tasks.optional)
 }
 
 /// The whole plan.

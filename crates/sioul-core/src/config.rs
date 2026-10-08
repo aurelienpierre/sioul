@@ -48,7 +48,9 @@ pub struct Config {
     /// Where new notes go in the case store.
     #[serde(default)]
     pub notes_folder: Option<String>,
-    /// Words that make a sender automatic, its mail filed: "no-reply", "notification"…
+    /// Words that make a sender automatic, its mail filed: "no-reply",
+    /// "notification"… The whole list, as older settings wrote it; now
+    /// `[words.senders.automatic]` (`words`), which wins once written.
     #[serde(default)]
     pub filed_words: Option<Vec<String>>,
     /// How long text reads: the family, size and line spacing of notes, mail and task notes.
@@ -71,6 +73,11 @@ pub struct Config {
     /// Contacts: the country of phone numbers written without one.
     #[serde(default)]
     pub contacts: ContactSettings,
+    /// The words Sioul looks for (`[words]`, docs/words.md): the languages and
+    /// countries whose packs are read, and your changes to each list
+    /// (`words::Words::of`), kept as written.
+    #[serde(default)]
+    pub words: toml::Table,
     /// Reminders before dates: events, dates asked, waits, payments (docs/reminders.md).
     #[serde(default)]
     pub reminders: ReminderSettings,
@@ -227,25 +234,19 @@ pub struct TimeOff {
     pub label: String,
 }
 
-/// What quiet time keeps: the categories of tasks that are yours (family, friends, leisure).
+/// What quiet time keeps: the categories of tasks that are yours (family,
+/// friends, leisure). Read through the word lists (`words::TaskWords`:
+/// `personal`, `work`), which these settings replace while written.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct QuietSettings {
-    /// Task categories that stay in view in quiet time; "joy", "personal", "family", "friends", "leisure" when unsaid.
+    /// Task categories that stay in view in quiet time; the languages' own
+    /// (`words.tasks.personal`: "joy", "personal", "family"…) when unsaid.
     #[serde(default)]
     pub personal: Option<Vec<String>>,
-    /// Task categories that are work: never in view in quiet time; "work", "travail", "pro", "client" when unsaid.
+    /// Task categories that are work: never in view in quiet time; the
+    /// languages' own (`words.tasks.work`: "work", "travail", "pro"…) when unsaid.
     #[serde(default)]
     pub work: Option<Vec<String>>,
-}
-
-impl QuietSettings {
-    pub fn personal_categories(&self) -> Vec<String> {
-        self.personal.clone().unwrap_or_else(|| ["joy", "personal", "family", "friends", "leisure", "health", "perso", "famille", "amis", "loisirs", "santé"].iter().map(|s| s.to_string()).collect())
-    }
-
-    pub fn work_categories(&self) -> Vec<String> {
-        self.work.clone().unwrap_or_else(|| ["work", "travail", "pro", "client", "boulot"].iter().map(|s| s.to_string()).collect())
-    }
 }
 
 impl Config {
@@ -959,8 +960,8 @@ pub struct Source {
     pub priority: Priority,
     /// A public address whose mail is read first (`shield`).
     pub shielded: bool,
-    /// Words that make a sender automatic: the configuration's `filed_words`.
-    pub filed_words: Vec<String>,
+    /// The words looked for, as the configuration makes them (`words::Words::of`).
+    pub words: std::sync::Arc<crate::words::Words>,
     /// Sioul's own spam filter, one for every account; none, no learned verdict.
     pub spam: Option<crate::spam::Filter>,
 }
@@ -1067,6 +1068,7 @@ impl Config {
     pub fn mail_sources(&self) -> Vec<Source> {
         let own = sioul_authserv_id();
         let spam = crate::spam::Filter::of(self);
+        let words = crate::words::Words::of(self);
         self.accounts
             .iter()
             .filter(|a| a.kind != AccountKind::Portal)
@@ -1077,7 +1079,7 @@ impl Config {
                 trusted_ids: std::iter::once(own.clone()).chain(a.trusted_authserv_ids.iter().cloned()).collect(),
                 priority: a.priority,
                 shielded: a.shield,
-                filed_words: self.filed_words.clone().unwrap_or_default(),
+                words: words.clone(),
                 spam: Some(spam.clone()),
             })
             .collect()
@@ -1767,7 +1769,7 @@ fn filter_table(filter: &crate::rules::Filter) -> Result<Table, String> {
     Ok(table)
 }
 
-fn read_document(path: &Path) -> Result<DocumentMut, String> {
+pub(crate) fn read_document(path: &Path) -> Result<DocumentMut, String> {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::from("# Sioul configuration (examples/config.toml explains each setting).\n"),
@@ -1779,7 +1781,7 @@ fn read_document(path: &Path) -> Result<DocumentMut, String> {
 /// Writes next to the file, then renames, so a crash never leaves half a
 /// configuration. A configuration that is a link (kept in a dotfiles folder)
 /// is written where it points, the link kept.
-fn write_document(path: &Path, doc: &DocumentMut) -> Result<(), String> {
+pub(crate) fn write_document(path: &Path, doc: &DocumentMut) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     let target = std::fs::canonicalize(path).ok().filter(|_| path.is_symlink());
     let path = target.as_deref().unwrap_or(path);

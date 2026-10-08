@@ -94,27 +94,30 @@ pub fn preferred(folders: &[Folder], role: Role) -> Option<&Folder> {
     folders.iter().find(|f| f.role == role && f.special).or_else(|| folders.iter().find(|f| f.role == role))
 }
 
-/// Names providers give their folders, lowercase, when they do not say what for.
-const ROLE_NAMES: &[(Role, &[&str])] = &[
-    (Role::Sent, &["sent", "sent items", "sent messages", "sent mail", "envoyés", "envoyes", "éléments envoyés", "messages envoyés"]),
-    (Role::Drafts, &["drafts", "draft", "brouillons", "brouillon"]),
-    (Role::Junk, &["junk", "spam", "junk e-mail", "junk email", "bulk mail", "courrier indésirable", "indésirables", "pourriels"]),
-    (Role::Trash, &["trash", "deleted items", "deleted messages", "bin", "corbeille", "éléments supprimés"]),
-    (Role::Archive, &["archive", "archives"]),
-];
-
-/// What a folder is for: the server's word first, else its name.
+/// What a folder is for: the server's word first, else its name, as the
+/// words in use name folders (`words::current`: the configuration's).
 pub fn role_of(name: &str, special: Option<Role>) -> Role {
+    role_in(&crate::words::current().folders, name, special)
+}
+
+/// What a folder is for: the server's word first, else its name among the
+/// names providers give their folders when they do not say what for
+/// (`words::FolderWords`), capitals and accents aside.
+pub fn role_in(names: &crate::words::FolderWords, name: &str, special: Option<Role>) -> Role {
     if name.eq_ignore_ascii_case("INBOX") {
         return Role::Inbox;
     }
     if let Some(role) = special {
         return role;
     }
-    let display = decode_utf7(name).to_lowercase();
+    let display = decode_utf7(name);
     // The last level of the name: "INBOX.Sent", "[Gmail]/Sent Mail".
-    let leaf = display.rsplit(['.', '/']).next().unwrap_or(&display).trim();
-    ROLE_NAMES.iter().find(|(_, names)| names.contains(&leaf)).map_or(Role::Other, |(role, _)| *role)
+    let leaf = crate::words::folded(display.rsplit(['.', '/']).next().unwrap_or(&display));
+    let named = |list: &[String]| list.iter().any(|n| crate::words::folded(n) == leaf);
+    [(Role::Sent, &names.sent), (Role::Drafts, &names.drafts), (Role::Junk, &names.junk), (Role::Trash, &names.trash), (Role::Archive, &names.archive)]
+        .into_iter()
+        .find(|(_, list)| named(list))
+        .map_or(Role::Other, |(role, _)| role)
 }
 
 /// A folder from what the server lists.
@@ -295,6 +298,12 @@ mod tests {
         assert_eq!(folder("Projets/2026", Some("/"), None).local, ".Projets.2026");
         assert_eq!(folder("v1.2: notes", None, None).local, ".v1%2E2%3A notes");
         assert_eq!(folder("Clients", Some("/"), None).role, Role::Other);
+        // Your names: a German server's bin, added in [words]; accents and capitals aside.
+        let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"en\"]\n[words.folders.trash]\nadd = [\"Papierkorb\"]\n").unwrap();
+        let yours = crate::words::Words::of(&config);
+        assert_eq!(role_in(&yours.folders, "INBOX.Papierkorb", None), Role::Trash);
+        assert_eq!(role_in(&crate::words::Words::builtin().folders, "INBOX.Papierkorb", None), Role::Other);
+        assert_eq!(role_in(&yours.folders, "ÉLÉMENTS ENVOYES", None), Role::Sent);
         // Never the Maildir itself or its parent, never an empty level.
         assert_eq!(folder("/", Some("/"), None).local, ".%00.%00");
         assert_eq!(folder("INBOX.", Some("."), None).local, ".%00");

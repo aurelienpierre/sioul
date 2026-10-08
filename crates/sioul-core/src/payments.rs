@@ -7,11 +7,14 @@
 //! the payment is stated at the top, and footers say things like "vous avez
 //! reçu ce message". A detection only proposes a budget line; nothing counts
 //! until a rule, or you, says so (docs/accounting.md). Newsletters, activity
-//! reports and shipping notices are not payments.
+//! reports and shipping notices are not payments. The words looked for are
+//! the `payments` and `money` lists of the word packs in use, with your
+//! changes (`words::Payments`, docs/words.md).
 
 use crate::card::Card;
 use crate::money::{self, Amount};
 use crate::text::{find_word, fold};
+use crate::words::Words;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -61,93 +64,46 @@ pub struct Payment {
 /// Characters of the text read: the payment is stated at the top.
 const READ: usize = 2500;
 
-/// Subjects that are about money without being a payment.
-const NOT_PAYMENTS: &[&str] = &[
-    "rapport d'activite", "activity report", "black friday", "paiement en plusieurs fois", "mandat", "mandate",
-    "expediee", "expedie",
-    "a ete livree", "en cours de livraison", "has shipped", "shipped", "out for delivery", "delivered",
-];
-
-/// The phrases of each kind, in the order they are tried: a receipt "pour votre
-/// paiement" must not be read as a payment received, nor the settlement of a bill as the bill.
-const KINDS: &[(PaymentKind, &[&str])] = &[
-    (PaymentKind::Refund, &["remboursement", "vous a rembourse", "refund", "has refunded", "refunded"]),
-    (
-        PaymentKind::Paid,
-        &[
-            "vous avez paye", "recu pour votre paiement", "recu de votre paiement", "vous avez autorise un paiement",
-            "vous avez envoye un paiement", "paiement effectue", "votre paiement a bien ete", "reglement de votre facture",
-            "prelevement effectue", "a ete preleve", "avons preleve", "confirmation de paiement", "paiement accepte",
-            "merci pour votre paiement",
-            "abonnement a ete renouvele", "you paid", "you sent a payment", "receipt for your payment", "your receipt",
-            "payment confirmation", "payment successful", "thank you for your payment", "subscription has been renewed",
-        ],
-    ),
-    (
-        PaymentKind::Received,
-        &[
-            "vous avez recu un paiement", "paiement recu", "vous avez recu de l'argent", "vous avez recu un virement",
-            "vous avez recu un don", "nouveau don", "virement recu", "vous a envoye un paiement", "you received a payment",
-            "you've got money", "you've received money", "payment received", "new donation", "sent you a payment",
-            "sent you money", "payout",
-        ],
-    ),
-    (
-        PaymentKind::Order,
-        &[
-            "commande confirmee", "commande est validee", "commande validee", "confirmation de commande",
-            "merci pour votre commande", "merci pour votre achat", "order confirmed", "order confirmation",
-            "thank you for your order", "thank you for your purchase",
-        ],
-    ),
-    (
-        PaymentKind::Bill,
-        &[
-            "votre facture", "facture disponible", "nouvelle facture", "avis d'echeance", "montant a regler",
-            "a regler avant", "a payer avant", "sera preleve", "prochain prelevement", "sera debite", "your invoice",
-            "new invoice", "invoice", "your bill",
-        ],
-    ),
-];
-
-/// What a message says about money, if it says something.
-pub fn detect(card: &Card) -> Option<Payment> {
+/// What a message says about money, if it says something: subjects about
+/// money that are no payment left out (`Payments::not_payments`), then the
+/// phrases of each kind, tried in this order: a refund, a payment made,
+/// money received, an order, a bill (a receipt "pour votre paiement" must not
+/// be read as a payment received, nor the settlement of a bill as the bill).
+pub fn detect(words: &Words, card: &Card) -> Option<Payment> {
     if card.is_list {
         return None;
     }
     let subject = fold(&card.subject);
-    if NOT_PAYMENTS.iter().any(|p| find_word(&subject, p, 0).is_some()) {
+    if words.payments.not_payments.iter().any(|p| find_word(&subject, p, 0).is_some()) {
         return None;
     }
     let start: String = card.excerpt.chars().take(READ).collect();
-    let kind = kind_in(&subject).or_else(|| order_subject(&subject)).or_else(|| kind_in(&fold(&start)))?;
-    Some(read(card, kind, &start))
+    let kind = kind_in(words, &subject).or_else(|| order_subject(words, &subject)).or_else(|| kind_in(words, &fold(&start)))?;
+    Some(read(words, card, kind, &start))
 }
 
 /// The amount and the party, for a message known to be about money (a rule says so).
 /// The party comes from the sentence stating the payment, else from a receipt's
 /// label ("Paiement à" and the name under it), else it is the sender.
-pub fn read(card: &Card, kind: PaymentKind, start: &str) -> Payment {
-    let found = money::payment_amount(&card.subject, start);
-    let party = money::stated_amount(start)
-        .and_then(|f| party(&f.after))
-        .or_else(|| labelled_party(start, kind))
+pub fn read(words: &Words, card: &Card, kind: PaymentKind, start: &str) -> Payment {
+    let found = money::payment_amount(&words.money, &card.subject, start);
+    let party = money::stated_amount(&words.money, start)
+        .and_then(|f| party(&words.payments.leads, &f.after))
+        .or_else(|| labelled_party(words, start, kind))
         .unwrap_or_else(|| card.sender().to_string());
     let amount = found.map(|f| Amount { money: f.amount.money.abs(), currency: f.amount.currency });
     Payment { kind, amount, party }
 }
 
 /// Receipts set who was paid, or who paid, under a label: "Paiement à" then "Exemple Web".
-fn labelled_party(text: &str, kind: PaymentKind) -> Option<String> {
-    const TO: &[&str] = &["paiement a", "payment to", "paid to", "beneficiaire", "marchand", "merchant", "vendeur", "seller"];
-    const FROM: &[&str] = &["paiement de", "payment from", "envoye par", "sent by"];
-    let labels = if kind.is_credit() { FROM } else { TO };
+fn labelled_party(words: &Words, text: &str, kind: PaymentKind) -> Option<String> {
+    let labels: Vec<String> = if kind.is_credit() { &words.payments.from } else { &words.payments.to }.iter().map(|w| crate::words::folded(w)).collect();
     let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
     lines.windows(2).find_map(|pair| {
         let label: String = fold(pair[0]).into_iter().collect();
         let label = label.trim_end_matches([':', ' ', '\u{a0}', '\u{202f}']);
         let name = pair[1];
-        (labels.contains(&label) && name.chars().count() <= 60 && !name.contains('@')).then(|| name.to_string())
+        (labels.iter().any(|l| l == label) && name.chars().count() <= 60 && !name.contains('@')).then(|| name.to_string())
     })
 }
 
@@ -156,22 +112,28 @@ pub fn start(card: &Card) -> String {
     card.excerpt.chars().take(READ).collect()
 }
 
-fn kind_in(folded: &[char]) -> Option<PaymentKind> {
-    KINDS.iter().find(|(_, phrases)| phrases.iter().any(|p| find_word(folded, p, 0).is_some())).map(|(kind, _)| *kind)
+fn kind_in(words: &Words, folded: &[char]) -> Option<PaymentKind> {
+    let p = &words.payments;
+    [(PaymentKind::Refund, &p.refund), (PaymentKind::Paid, &p.paid), (PaymentKind::Received, &p.received), (PaymentKind::Order, &p.order), (PaymentKind::Bill, &p.bill)]
+        .into_iter()
+        .find(|(_, phrases)| phrases.iter().any(|w| find_word(folded, w, 0).is_some()))
+        .map(|(kind, _)| kind)
 }
 
 /// "Commande FR000000 confirmée": the order and its confirmation, apart.
-fn order_subject(folded: &[char]) -> Option<PaymentKind> {
-    let order = ["commande", "order"].iter().any(|w| find_word(folded, w, 0).is_some());
-    let confirmed = ["confirmee", "validee", "confirmed"].iter().any(|w| find_word(folded, w, 0).is_some());
-    (order && confirmed).then_some(PaymentKind::Order)
+fn order_subject(words: &Words, folded: &[char]) -> Option<PaymentKind> {
+    let said = |list: &[String]| list.iter().any(|w| find_word(folded, w, 0).is_some());
+    (said(&words.payments.order_words) && said(&words.payments.confirmed_words)).then_some(PaymentKind::Order)
 }
 
 /// Who the payment went to or came from, in what follows its amount: "à Exemple
 /// Retail.", "en faveur de SHOP", "de Jean Exemple (jean@example.org)".
-fn party(after: &str) -> Option<String> {
-    const LEADS: &[&str] = &["en faveur de ", "de la part de ", "de ", "from ", "à ", "to ", "chez "];
-    let rest = LEADS.iter().find_map(|lead| after.strip_prefix(lead))?.trim();
+/// `leads`: the words before the name (`Payments::leads`), the longest tried
+/// first ("de la part de" before "de"), a space after each.
+fn party(leads: &[String], after: &str) -> Option<String> {
+    let mut leads: Vec<&str> = leads.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    leads.sort_by_key(|l| std::cmp::Reverse(l.chars().count()));
+    let rest = leads.iter().find_map(|lead| after.strip_prefix(lead).and_then(|r| r.strip_prefix(' ')))?.trim();
     // A payer known only by an address: "de (shop@example.org)".
     let inside = rest.strip_prefix(['(', '<']).and_then(|r| r.split([')', '>']).next());
     let name = inside.unwrap_or_else(|| rest.split(['(', '<', ',', '\n']).next().unwrap_or("")).trim().trim_end_matches('.').trim();
@@ -182,6 +144,12 @@ fn party(after: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// What mail says about money, with the packs built in and one payment
+    /// processor's wording added, as its users add it (`words::with_processor`).
+    fn detect(card: &Card) -> Option<Payment> {
+        super::detect(&crate::words::with_processor(), card)
+    }
+
     fn card(from: &str, subject: &str, body: &str) -> Card {
         let raw = format!("From: {from}\r\nSubject: {subject}\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{body}\r\n");
         Card::from_bytes(raw.as_bytes()).unwrap()
@@ -191,6 +159,17 @@ mod tests {
 
     fn cents(p: &Payment) -> Option<i64> {
         p.amount.as_ref().map(|a| a.money.cents())
+    }
+
+    /// A processor's own wording is no shipped word: its authorisation is read once added.
+    #[test]
+    fn a_processors_wording_once_added() {
+        let authorised = card("Pay Exemple <service@pay.example>", "SHOP: 23,98 € EUR", "Vous avez autorisé un paiement de 23,98 € EUR en faveur de SHOP");
+        assert_eq!(super::detect(&crate::words::Words::builtin(), &authorised), None);
+        assert_eq!(detect(&authorised).map(|p| (p.kind, p.party)), Some((PaymentKind::Paid, "SHOP".to_string())));
+        // A receipt in plain words is read with the packs alone.
+        let paid = card("Shop <shop@example.org>", "Votre paiement", "Vous avez payé 387,00 € à Exemple Retail.");
+        assert_eq!(super::detect(&crate::words::Words::builtin(), &paid).map(|p| p.kind), Some(PaymentKind::Paid));
     }
 
     #[test]

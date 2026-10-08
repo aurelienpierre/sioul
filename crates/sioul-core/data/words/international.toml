@@ -1,0 +1,92 @@
+# Words Sioul looks for whatever languages you read (docs/words.md): mail programs' and apps' words, brands of every country, shared mail providers.
+# Read folded: capitals and accents do not matter. Whole words, except where a list says otherwise.
+# Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
+
+checked = "2026-10-08"
+
+
+# Automatic senders (porch.rs): an address holding one of these is filed.
+[senders]
+automatic = [
+    "no-reply", "noreply", "no_reply", "donotreply", "do-not-reply", "notification", "ne-pas-repondre", "ne_pas_repondre",
+    "nepasrepondre", "mailer-daemon", "postmaster",
+]
+
+# Prefixes of a subject already answered or forwarded (compose.rs): no second one is added.
+[replies]
+forward = ["fwd:", "fw:", "tr:"]
+reply = ["re:", "aw:"]
+
+# A message's quoted history (reading.rs): lines that open it, its header names, its attribution.
+[quotes]
+# Lines that open a forwarded or answered message, before its headers.
+openings = [
+    "---------- forwarded message ---------", "---------- message transféré ---------", "-----original message-----",
+    "-----message d'origine-----", "begin forwarded message:", "début du message réexpédié :",
+    "début du message transféré :",
+]
+# Header names of a quoted message.
+header_names = ["from", "de", "sent", "envoyé", "date", "to", "à", "cc", "subject", "objet", "reply-to", "répondre à"]
+# The first header of a quoted block.
+from_names = ["from", "de"]
+# One of these makes a block of headers a quoted message.
+enough_names = ["subject", "objet", "date", "sent", "envoyé"]
+# Endings of an attribution line ("Jane wrote:").
+wrote = ["wrote:", "a écrit :", "a écrit:", "schrieb:"]
+# Starts of an attribution line broken over two lines.
+attribution_starts = ["Le", "On"]
+
+# Mail folders by their names, when the server does not say what each is for (folders.rs).
+[folders]
+sent = ["sent", "sent items", "sent messages", "sent mail", "envoyés", "éléments envoyés", "messages envoyés"]
+drafts = ["drafts", "draft", "brouillons", "brouillon"]
+junk = ["junk", "spam", "junk e-mail", "junk email", "bulk mail", "courrier indésirable", "indésirables", "pourriels"]
+trash = ["trash", "deleted items", "deleted messages", "bin", "corbeille", "éléments supprimés"]
+archive = ["archive", "archives"]
+
+# Senders who borrow a name (lookalike.rs).
+[brands]
+# Mail providers whose domains millions share: an address there is nobody's own domain.
+shared = [
+    "gmail.com", "googlemail.com", "outlook.com", "outlook.fr", "hotmail.com", "hotmail.fr", "live.com", "live.fr",
+    "msn.com", "yahoo.com", "yahoo.fr", "ymail.com", "icloud.com", "me.com", "mac.com", "proton.me", "protonmail.com",
+    "pm.me", "murena.io", "e.email", "gmx.com", "gmx.fr", "gmx.de", "gmx.net", "free.fr", "orange.fr", "wanadoo.fr",
+    "sfr.fr", "laposte.net", "bbox.fr", "aol.com", "mail.com", "zoho.com", "tutanota.com", "tuta.io", "posteo.de",
+    "mailbox.org", "fastmail.com", "fastmail.fm", "disroot.org", "riseup.net",
+]
+
+# Brands and public services, and their domains: a sender naming one from elsewhere is set aside.
+[brands.brands]
+Amazon = ["amazon.fr", "amazon.com", "amazon.de", "amazon.co.uk", "amazon.it", "amazon.es", "primevideo.com", "amazonaws.com"]
+"Prime Video" = ["primevideo.com", "amazon.fr", "amazon.com"]
+PayPal = ["paypal.com", "paypal.fr", "paypal.de", "paypal.co.uk", "paypal.it", "paypal.es", "paypal.nl", "paypal.be"]
+Netflix = ["netflix.com"]
+Spotify = ["spotify.com"]
+"Disney+" = ["disneyplus.com", "disney.com"]
+Apple = ["apple.com", "icloud.com", "itunes.com"]
+iCloud = ["apple.com", "icloud.com"]
+Microsoft = ["microsoft.com", "outlook.com", "office.com", "office365.com", "microsoftonline.com", "microsoft"]
+Outlook = ["microsoft.com", "outlook.com"]
+Google = ["google.com", "gmail.com", "youtube.com"]
+Gmail = ["google.com", "gmail.com"]
+DHL = ["dhl.com", "dhl.fr", "dhl.de"]
+UPS = ["ups.com"]
+FedEx = ["fedex.com"]
+
+# A site's notification that someone calls now (sites.rs); a missed call can wait.
+[calls]
+missed = [
+    "missed call", "missed voice call", "missed video call", "missed audio call", "appel manque", "appel vocal manque",
+    "appel video manque", "appel audio manque", "llamada perdida", "videollamada perdida", "llamada de voz perdida",
+    "verpasster anruf", "verpasster videoanruf", "chiamata persa", "videochiamata persa",
+]
+ringing = [
+    "incoming call", "incoming voice call", "incoming video call", "is calling", "calling you", "voice call", "video call",
+    "appel entrant", "vous appelle", "appel vocal", "appel video", "llamada entrante", "eingehender anruf",
+    "chiamata in arrivo",
+]
+
+# The spam filter's tokenizer (spam/tokenize.rs). A table keeps the words it was trained with: a change here counts from the next training.
+[spam]
+# A provider's spam mark at the start of a subject, taken off before anything reads it.
+provider_tags = ["spam", "junk", "pourriel", "indésirable"]

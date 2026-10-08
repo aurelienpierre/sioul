@@ -47,12 +47,25 @@
 //!    single characters and Virtual Secretary's stop words out; its French and
 //!    English suffix stemmer.
 //!
+//! The words these steps look for (a provider's marks, month and key names,
+//! elisions, number words, stop words) are a `Lexicon`: the spam lists of the
+//! language packs in use, and your changes (`words::SpamWords`). A table keeps
+//! the lexicon it was trained with (`table::Meta::lexicon`) and every device
+//! reads each message with it (`tokens_with`), so a change of words counts
+//! from the next training, on every device at once; a table made before
+//! 8 October 2026 keeps none and reads with the packs built in, French and
+//! English, which are the words that made it. A change of words does not
+//! raise `TOKENIZER`; a change of a step still does. The modifier keys of a
+//! shortcut, the ordinal suffixes, the units and the stemmer stay in code.
+//!
 //! Where this port departs from Virtual Secretary on purpose, the line says so
 //! ("Virtual Secretary …"). Tests: `tests` below, on Virtual Secretary's own
 //! inputs (`src/tests/test-patterns.py`).
 
+use crate::words::SpamWords;
 use regex::{Captures, Regex};
-use std::sync::LazyLock;
+use std::collections::HashSet;
+use std::sync::{Arc, LazyLock, Mutex};
 
 /// The tokenizer's version, stamped in every table (`table.rs`).
 pub const TOKENIZER: u32 = 2;
@@ -69,36 +82,128 @@ pub struct Tokens {
     pub links: Vec<String>,
 }
 
-/// The words of a message, and the domains its links point to.
+/// The words the tokenizer looks for (`words::SpamWords`) and the patterns
+/// made from them (see the module).
+pub struct Lexicon {
+    /// The words, as given.
+    pub words: SpamWords,
+    provider_tag: Regex,
+    passes: Vec<Pass>,
+    elisions: HashSet<String>,
+    number_words: HashSet<String>,
+    stop_words: HashSet<String>,
+}
+
+impl std::fmt::Debug for Lexicon {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Lexicon").field("words", &self.words).finish_non_exhaustive()
+    }
+}
+
+/// A list's words as the steps write the text (`normalize`: lowercase, no
+/// accents, ASCII), without empty ones.
+fn normalized(list: &[String]) -> Vec<String> {
+    list.iter().map(|w| normalize(w).trim().to_string()).filter(|w| !w.is_empty()).collect()
+}
+
+/// An alternation of words, each escaped, the longest first; one that never
+/// matches when there is none (an empty alternation would match anywhere).
+fn alternatives(words: &[String]) -> String {
+    let escaped: Vec<String> = words.iter().map(|w| regex::escape(w)).collect();
+    let escaped: Vec<&str> = escaped.iter().map(String::as_str).collect();
+    if escaped.is_empty() { r"[^\s\S]".to_string() } else { longest_first(&escaped) }
+}
+
+impl Lexicon {
+    /// The patterns made from these words.
+    pub fn new(words: &SpamWords) -> Lexicon {
+        // A provider's mark is read in the subject as written: each word lowercase
+        // (the pattern ignores case), and without its accents ("indesirable").
+        let mut marks: Vec<String> = Vec::new();
+        for mark in words.provider_tags.iter().map(|w| w.trim().to_lowercase()).filter(|w| !w.is_empty()) {
+            let bare = crate::words::folded(&mark);
+            marks.push(mark);
+            marks.push(bare);
+        }
+        let months = alternatives(&normalized(&words.months));
+        // Any single letter after a modifier, as Virtual Secretary read it.
+        let keys = format!("{}|[a-z]", alternatives(&normalized(&words.keys)));
+        Lexicon {
+            words: words.clone(),
+            provider_tag: provider_tag(&alternatives(&marks)),
+            passes: passes(&months, &keys),
+            elisions: normalized(&words.elisions).into_iter().collect(),
+            number_words: normalized(&words.number_words).into_iter().collect(),
+            stop_words: normalized(&words.stop_words).into_iter().collect(),
+        }
+    }
+
+    /// The packs built in, French and English (`words::Words::builtin`):
+    /// the words of every table that keeps none.
+    pub fn builtin() -> Arc<Lexicon> {
+        static BUILTIN: LazyLock<Arc<Lexicon>> = LazyLock::new(|| Arc::new(Lexicon::new(&crate::words::Words::builtin_ref().spam)));
+        Arc::clone(&BUILTIN)
+    }
+
+    /// The lexicon of these words, made once: its patterns take a moment, and
+    /// a device reads with one table's words at a time.
+    pub fn cached(words: &SpamWords) -> Arc<Lexicon> {
+        type Cache = Mutex<Vec<(SpamWords, Arc<Lexicon>)>>;
+        static CACHE: LazyLock<Cache> = LazyLock::new(|| Mutex::new(Vec::new()));
+        let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, found)) = cache.iter().find(|(w, _)| w == words) {
+            return Arc::clone(found);
+        }
+        let made = Arc::new(Lexicon::new(words));
+        cache.insert(0, (words.clone(), Arc::clone(&made)));
+        cache.truncate(4);
+        made
+    }
+
+    /// The subject without the marks a provider put at its start, as many as there are.
+    pub fn without_provider_tags<'a>(&self, subject: &'a str) -> &'a str {
+        let mut rest = subject;
+        while let Some(found) = self.provider_tag.find(rest).filter(|m| m.end() > 0) {
+            rest = &rest[found.end()..];
+        }
+        rest
+    }
+}
+
+/// The words of a message, and the domains its links point to, read with
+/// the packs built in (`Lexicon::builtin`).
 pub fn tokens(subject: &str, body: &str) -> Tokens {
-    let subject = without_provider_tags(subject);
+    tokens_with(&Lexicon::builtin(), subject, body)
+}
+
+/// The words of a message, and the domains its links point to, read with
+/// `lexicon` (a table's own: `table::Table::lexicon`).
+pub fn tokens_with(lexicon: &Lexicon, subject: &str, body: &str) -> Tokens {
+    let subject = lexicon.without_provider_tags(subject);
     let text = normalize(&format!("{subject}\n\n{body}"));
     let text = clean(&text);
     let mut links = Vec::new();
-    let text = placeholders(&text, &mut links);
-    let words = split(&text).into_iter().filter_map(word).collect();
+    let text = placeholders(lexicon, &text, &mut links);
+    let words = split(lexicon, &text).into_iter().filter_map(|w| word(lexicon, w)).collect();
     Tokens { words, links }
 }
 
 // 1. The text.
 
-/// A provider's mark, at the start of a subject: a word of spam (spam,
-/// junk, pourriel, indésirable) between stars, brackets, braces or
-/// parentheses, with what goes with it ("***Potentiel-SPAM***", "[SPAM?]",
-/// "{Spam}", "(Indésirable)"), or "SPAM:".
-static PROVIDER_TAG: LazyLock<Regex> = LazyLock::new(|| {
-    let word = r"(?:spam|junk|pourriel|ind[ée]sirable)";
+/// A provider's mark, at the start of a subject: one of its words (`marks`,
+/// an alternation: spam, junk, pourriel, indésirable) between stars,
+/// brackets, braces or parentheses, with what goes with it
+/// ("***Potentiel-SPAM***", "[SPAM?]", "{Spam}", "(Indésirable)"), or "SPAM:".
+fn provider_tag(marks: &str) -> Regex {
+    let word = format!("(?:{marks})");
     Regex::new(&format!(r"(?i)^\s*(?:\*{{2,}}[^*]{{0,40}}?{word}[^*]{{0,40}}?\*{{2,}}|\[[^\]]{{0,40}}?{word}[^\]]{{0,40}}?\]|\{{[^}}]{{0,40}}?{word}[^}}]{{0,40}}?\}}|\([^)]{{0,40}}?{word}[^)]{{0,40}}?\)|{word}\s*:)\s*"))
         .expect("a valid pattern")
-});
+}
 
-/// The subject without the marks a provider put at its start (`PROVIDER_TAG`), as many as there are.
+/// The subject without the marks a provider put at its start, read with the
+/// packs built in (`Lexicon::without_provider_tags`).
 pub fn without_provider_tags(subject: &str) -> &str {
-    let mut rest = subject;
-    while let Some(found) = PROVIDER_TAG.find(rest).filter(|m| m.end() > 0) {
-        rest = &rest[found.end()..];
-    }
-    rest
+    Lexicon::builtin().without_provider_tags(subject)
 }
 
 // 2. Normalization.
@@ -405,11 +510,11 @@ fn unit(head: &str, unit: &str, with: &'static str) -> Pass {
     Pass::new(&format!(r"(?i){BEFORE}(?P<m>{head}{AMOUNT} ?{unit}){END}"), with)
 }
 
-static PASSES: LazyLock<Vec<Pass>> = LazyLock::new(|| {
+/// The placeholders' passes, in Virtual Secretary's order; `months` and
+/// `keys`, a lexicon's month and key names as alternations.
+fn passes(months: &str, keys: &str) -> Vec<Pass> {
     let link = r"[A-Za-z0-9\-_\.~:/\[\]@!\$&'\(\)\*\+,;=%]";
     let host = r"[A-Za-z0-9\-_\.~]+";
-    let months = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|fev|avr|mai|jui|aou|janvier|fevrier|mars|avril|juin|juillet|aout|septembre|octobre|novembre|decembre|january|february|march|april|june|july|august|september|october|november|december";
-    let keys = "tab|ctrl|shift|maj|alt|altgr|command|cmd|option|menu|click|clic|up|down|left|right|top|bottom|enter|return|del|suppr|home|end|pageup|pagedown|fn|insert|numlock|scroll|drag|f1|f2|f3|f4|f5|f6|f7|f8|f9|f10|f11|f12|[a-z]";
     vec![
         // Addresses and handles, before anything splits them at the @.
         Pass::new(r"(?P<m>[0-9A-Za-z_\-\+\.]*@[0-9A-Za-z_\-\+\.]+|user\-?[0-9]+)", " _USER_ "),
@@ -466,13 +571,13 @@ static PASSES: LazyLock<Vec<Pass>> = LazyLock::new(|| {
         // Dashes inside words, as n-grams are written: "e-mail" → "e_mail".
         Pass::new(r"[0-9A-Za-z_](?P<m>[\-_=]+)[0-9A-Za-z_]", "_"),
     ]
-});
+}
 
 /// The placeholders, in Virtual Secretary's order; then its last cleanups: a
 /// colon is a space (C++ members), a backslash nothing (LaTeX).
-fn placeholders(text: &str, links: &mut Vec<String>) -> String {
+fn placeholders(lexicon: &Lexicon, text: &str, links: &mut Vec<String>) -> String {
     let mut text = text.to_string();
-    for pass in PASSES.iter() {
+    for pass in &lexicon.passes {
         text = pass.apply(&text, links);
     }
     text.replace(':', " ").replace('\\', "")
@@ -520,8 +625,8 @@ fn word_byte(b: u8) -> bool {
 /// The words of the text: runs of letters, digits and underscores; a dot or a
 /// comma between two of them kept ("2.5", "1,000", "e.g"), an apostrophe
 /// between two letters ("don't", "aujourd'hui"); French elisions split off
-/// and dropped ("l'information", "qu'il").
-fn split(text: &str) -> Vec<&str> {
+/// and dropped ("l'information", "qu'il": `Lexicon::elisions`).
+fn split<'a>(lexicon: &Lexicon, text: &'a str) -> Vec<&'a str> {
     let bytes = text.as_bytes();
     let mut words = Vec::new();
     let mut start: Option<usize> = None;
@@ -540,7 +645,7 @@ fn split(text: &str) -> Vec<&str> {
         match (inside, start) {
             (true, None) => start = Some(i),
             (false, Some(s)) => {
-                words.extend(elided(&text[s..i]));
+                words.extend(elided(lexicon, &text[s..i]));
                 start = None;
             }
             _ => {}
@@ -549,15 +654,13 @@ fn split(text: &str) -> Vec<&str> {
     words
 }
 
-/// French articles and pronouns elided before a vowel or a mute h: split off.
-const ELISIONS: &[&str] = &["l", "d", "j", "m", "n", "s", "t", "c", "qu", "lorsqu", "puisqu", "jusqu", "quelqu"];
-
-/// A word without its elided articles and pronouns: "l'information" →
-/// "information", "qu'aujourd'hui" → "aujourd'hui".
-fn elided(mut word: &str) -> Option<&str> {
+/// A word without its elided articles and pronouns, before a vowel or a
+/// mute h (the lexicon's elisions): "l'information" → "information",
+/// "qu'aujourd'hui" → "aujourd'hui".
+fn elided<'a>(lexicon: &Lexicon, mut word: &'a str) -> Option<&'a str> {
     while let Some((head, rest)) = word.split_once('\'') {
         let vowel = rest.bytes().next().is_some_and(|b| b"aeiouyh".contains(&b));
-        if !(vowel && ELISIONS.contains(&head)) {
+        if !(vowel && lexicon.elisions.contains(head)) {
             break;
         }
         word = rest;
@@ -575,38 +678,11 @@ pub const PLACEHOLDERS: &[&str] = &[
     "_APERTURE_", "_PIXELS_", "_ORDINAL_", "_PRICE_", "_RESOLUTION_", "_NUMBER_", "_HASH_",
 ];
 
-/// Number words, English and French, as Virtual Secretary's `REPLACEMENTS`;
-/// without "one" and "un", which are mostly a pronoun and an article (both
-/// on its stop lists), nor "neuf" ("new").
-const NUMBER_WORDS: &[&str] = &[
-    "zero", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "deux", "trois", "quatre", "cinq",
-    "sept", "huit", "dix", "onze", "douze",
-];
-
-/// Virtual Secretary's stop words (`language.py`: English, French, lone
-/// punctuation and interjections), as the steps above write them: accents
-/// stripped, dashes as underscores, elided words without their article ("est"
-/// for "c'est"). Single characters are left out with every word of one.
-const STOP_WORDS: &[&str] = &[
-    // English.
-    "it", "it's", "that", "this", "these", "those", "that'll", "that's", "there", "here", "the", "an", "one", "any", "all", "none", "such",
-    "to", "which", "whose", "much", "many", "several", "few", "little", "always", "never", "sometimes", "my", "mine", "your", "yours",
-    "their", "theirs", "his", "hers", "its", "us", "you", "he", "she", "her", "them", "we", "our", "also", "like", "get", "with", "in",
-    "but", "so", "just", "and", "only", "because", "of", "as", "very", "from", "other", "if", "then", "however", "maybe", "now", "really",
-    "actually", "something", "everything", "later", "sooner", "late", "soon", "probably", "guess", "perhaps", "still", "though", "even",
-    "definitely", "indeed", "for", "some", "everytime", "every", "on", "at", "by", "out", "they", "than", "up", "well", "ok", "me",
-    "please", "either", "both", "lot", "yet", "too", "each", "far", "again",
-    // French.
-    "ca", "au", "aux", "que", "ce", "cette", "ces", "cettes", "cela", "ceci", "le", "la", "les", "de", "du", "un", "une", "des", "toi",
-    "moi", "eux", "te", "qu", "mon", "ma", "mes", "ta", "tes", "sa", "ses", "leur", "leurs", "votre", "vos", "lui", "est", "la_bas", "ici",
-    "bien", "parfois", "certain", "certains", "certaine", "certaines", "quelque", "quelques", "nombreux", "nombreuses", "peu", "plusieurs",
-    "beaucoup", "tout", "toute", "tous", "toutes", "aucun", "aucune", "comme", "si", "en", "dans", "or", "ou", "et", "alors", "parce",
-    "seulement", "ni", "car", "tres", "donc", "pas", "mais", "meme", "aussi", "avec", "je", "tu", "il", "elle", "nous", "vous", "ils",
-    "elles", "pour", "sur", "par", "se", "ai", "suis", "ci_dessus", "ci_dessous", "lequel", "duquel", "auquel", "laquelle", "lesquels",
-    "lesquelles", "auxquels", "auxquelles", "desquels", "desquelles", "desquel", "quelquefois", "toujours", "est_a_dire",
-    // Interjections and the like.
-    "http", "https", "oh", "ah", "ha", "heh", "re", "eh", "huh", "uh", "wow", "ow", "dang", "um", "yay", "ugh", "hehe", "hehehe",
-];
+// The number words and the stop words are the lexicon's (`Lexicon`): the
+// packs' Virtual Secretary `REPLACEMENTS` and stop words (`language.py`), as
+// the steps above write them (accents stripped, dashes as underscores, elided
+// words without their article: "est" for "c'est"). Single characters are
+// left out with every word of one.
 
 /// Virtual Secretary's `HASH_PATTERN_FAST`, `^[0-9a-f]{6,}$`, took words made
 /// of the letters a to f ("decade", "facade") for hashes: a digit is asked here.
@@ -621,7 +697,7 @@ static NUMBER: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// One word as the model learns it, or none (`normalize_token`).
-fn word(token: &str) -> Option<String> {
+fn word(lexicon: &Lexicon, token: &str) -> Option<String> {
     let token = token.trim_matches(|c: char| "?!#=+-,:;'\"^*./`()[]{}& \n\r\t<>".contains(c));
     if token.is_empty() {
         return None;
@@ -629,7 +705,7 @@ fn word(token: &str) -> Option<String> {
     if PLACEHOLDERS.contains(&token) {
         return Some(token.to_string());
     }
-    if NUMBER_WORDS.contains(&token) {
+    if lexicon.number_words.contains(token) {
         return Some("_NUMBER_".into());
     }
     // Words joined by dashes, written with underscores, are n-grams; others lose
@@ -642,7 +718,7 @@ fn word(token: &str) -> Option<String> {
     if !compound && NUMBER.is_match(token) {
         return Some("_NUMBER_".into());
     }
-    if token.len() < 2 || STOP_WORDS.contains(&token) {
+    if token.len() < 2 || lexicon.stop_words.contains(token) {
         return None;
     }
     let joined = token.replace('_', "");
@@ -755,7 +831,7 @@ mod tests {
     /// The placeholders a text holds once read, in order.
     fn placed(text: &str) -> Vec<String> {
         let mut links = Vec::new();
-        placeholders(&clean(&normalize(text)), &mut links).split_whitespace().filter(|w| w.starts_with('_') && w.ends_with('_') && w.len() > 2).map(str::to_string).collect()
+        placeholders(&Lexicon::builtin(), &clean(&normalize(text)), &mut links).split_whitespace().filter(|w| w.starts_with('_') && w.ends_with('_') && w.len() > 2).map(str::to_string).collect()
     }
 
     fn words(text: &str) -> Vec<String> {
@@ -833,7 +909,7 @@ mod tests {
         }
         assert!(placed("21").is_empty());
         // Hash or number, per word (test-patterns.py's first lines).
-        let one = |w: &str| word(w).unwrap_or_default();
+        let one = |w: &str| word(&Lexicon::builtin(), w).unwrap_or_default();
         assert_eq!([one("2045"), one("e62fabc2"), one("2.5"), one("4.999.23")], ["_NUMBER_", "_HASH_", "_NUMBER_", "_NUMBER_"]);
         // In a text, five numbers or more in a row are one long number, as in Virtual Secretary.
         assert_eq!(words("2045 e62fabc2 2.5 4.999.23"), ["_NUMBER_", "_HASH_", "_HASH_"]);
@@ -914,5 +990,36 @@ mod tests {
         assert!(t.words.iter().all(|w| w.is_ascii() && !w.contains(' ')), "{:?}", t.words);
         assert_eq!(t.words, ["offr", "exclusiv", "bonjor", "gagnez", "_PRICE_", "cliquez", "_URL_", "suit"]);
         assert_eq!(t.links, ["promo.example"]);
+    }
+
+    /// A lexicon reads with its own words, written as the text is (accents
+    /// off, lowercase); the packs built in do not know them.
+    #[test]
+    fn a_lexicon_reads_with_its_own_words() {
+        let mut words = crate::words::Words::builtin_ref().spam.clone();
+        words.provider_tags.push("Verdächtig".into());
+        words.stop_words.push("Rechnung".into());
+        words.number_words.push("drei".into());
+        words.months.push("März".into());
+        words.elisions.retain(|e| e != "l");
+        let lexicon = Lexicon::new(&words);
+        let read = |subject: &str, body: &str| tokens_with(&lexicon, subject, body).words;
+        let builtin = |subject: &str, body: &str| tokens(subject, body).words;
+        assert_eq!(read("[VERDÄCHTIG] Angebot", ""), read("Angebot", ""));
+        assert_eq!(read("(verdachtig) Angebot", ""), read("Angebot", ""));
+        assert_ne!(builtin("[VERDÄCHTIG] Angebot", ""), builtin("Angebot", ""));
+        assert_eq!(read("", "Rechnung drei"), ["_NUMBER_"]);
+        assert_eq!(builtin("", "Rechnung drei").len(), 2);
+        assert!(read("", "am 3 März 2026").contains(&"_DATE_".to_string()));
+        assert!(!builtin("", "am 3 März 2026").contains(&"_DATE_".to_string()));
+        assert_ne!(read("", "l'information"), builtin("", "l'information"));
+        assert_eq!(read("[SPAM] Offre", ""), builtin("Offre", ""), "the built-in marks stay");
+        // No words at all: nothing taken off, nothing dropped, nothing breaks.
+        let empty = Lexicon::new(&SpamWords::default());
+        assert_eq!(empty.without_provider_tags("[SPAM] Offre"), "[SPAM] Offre");
+        let unknown = tokens_with(&empty, "", "the 3 mars 2026, ctrl+x").words;
+        assert!(unknown.contains(&"the".to_string()) && unknown.contains(&"_SHORTCUT_".to_string()) && !unknown.contains(&"_DATE_".to_string()), "{unknown:?}");
+        // The same words give the same lexicon, made once.
+        assert!(Arc::ptr_eq(&Lexicon::cached(&words), &Lexicon::cached(&words.clone())));
     }
 }

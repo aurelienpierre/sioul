@@ -816,7 +816,7 @@ impl Loaded {
         let mail_roots: Vec<PathBuf> = config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap).map(|a| a.maildir_path()).collect();
         let budget = root
             .as_deref()
-            .and_then(|r| crate::budget::Ledger::load_with_bank(r).ok())
+            .and_then(|r| crate::budget::Ledger::load_with_bank(r, &crate::words::Words::of(config)).ok())
             .map(|ledger| {
                 let budgets: Vec<(String, String)> = ledger.budgets.iter().map(|b| (b.id.clone(), b.title.clone())).collect();
                 ledger

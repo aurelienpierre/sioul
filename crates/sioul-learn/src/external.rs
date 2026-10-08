@@ -83,10 +83,11 @@ impl Message {
     }
 
     /// Its words, as the Porch reads a message: the subject, the text, the
-    /// HTML read as text when there is no text or only a stand-in.
-    pub fn words(&self) -> Vec<String> {
+    /// HTML read as text when there is no text or only a stand-in; read with
+    /// `lexicon` (a training's, or the table's own).
+    pub fn words(&self, lexicon: &crate::spamcore::Lexicon) -> Vec<String> {
         let excerpt = self.rebuilt(b"").map(|card| card.excerpt).unwrap_or_else(|| self.text.clone());
-        crate::spamcore::tokens(&self.subject, &excerpt).words.into_iter().filter(|w| !w.is_empty() && !w.contains(char::is_whitespace)).collect()
+        crate::spamcore::tokens_with(lexicon, &self.subject, &excerpt).words.into_iter().filter(|w| !w.is_empty() && !w.contains(char::is_whitespace)).collect()
     }
 
     /// The message as the Porch would read it: its sender, its subject, its
@@ -458,7 +459,8 @@ mod tests {
         assert_eq!(kept[3].text.chars().count(), TEXT_CHARS, "cut to what the Porch reads");
         assert_eq!(kept[2].message_id().as_deref(), Some("n1@example.org"));
         // Its words, as the Porch reads them: the HTML read as text when there is no text.
-        assert!(kept[2].words().iter().any(|w| w.starts_with("note")), "{:?}", kept[2].words());
+        let words = kept[2].words(&crate::spamcore::Lexicon::builtin());
+        assert!(words.iter().any(|w| w.starts_with("note")), "{words:?}");
         assert_eq!(sources(&dirs).iter().map(|s| (s.name.as_str(), s.counts.ham, s.counts.spam)).collect::<Vec<_>>(), [("old-filter", 3, 1)]);
         #[cfg(unix)]
         {

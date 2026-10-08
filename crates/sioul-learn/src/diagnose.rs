@@ -52,7 +52,8 @@ pub fn feature_means(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, domai
                 return;
             }
         }
-        let (_, features) = train::read_message(&record, trusted);
+        // The header features only: the words read do not count.
+        let (_, features) = train::read_message(&record, trusted, &crate::spamcore::Lexicon::builtin());
         let group = sums.entry((record.account.clone(), label == Label::Spam)).or_insert((0, [0.0; N], [0; N]));
         group.0 += 1;
         for (h, x) in features.iter().enumerate() {

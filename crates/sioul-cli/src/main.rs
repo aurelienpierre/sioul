@@ -331,6 +331,8 @@ fn main() -> ExitCode {
         Config::default()
     });
     let language = cli.language.clone().or_else(|| config.language.clone()).unwrap_or_else(session_language);
+    // The words this program looks for (`words::current`: a server's folder names).
+    sioul_core::words::set_current(sioul_core::words::Words::of(&config));
     let session = Session { tr: Translator::new(&language), config, config_path };
     let result = match cli.command {
         Command::Porch { maildir, open, all } => porch_command(&session, &maildir, open, all),
@@ -391,7 +393,7 @@ fn sources(config: &Config, maildirs: &[PathBuf]) -> Vec<Source> {
         return config.mail_sources();
     }
     let ids = config.all_trusted_ids();
-    maildirs.iter().map(|m| Source { account: None, address: None, folder: m.clone(), trusted_ids: ids.clone(), priority: Default::default(), shielded: false, filed_words: Vec::new(), spam: Some(sioul_core::spam::Filter::of(config)) }).collect()
+    maildirs.iter().map(|m| Source { account: None, address: None, folder: m.clone(), trusted_ids: ids.clone(), priority: Default::default(), shielded: false, words: sioul_core::words::Words::of(config), spam: Some(sioul_core::spam::Filter::of(config)) }).collect()
 }
 
 pub(crate) fn load_store(config: &Config) -> Option<CaseStore> {
@@ -530,14 +532,15 @@ fn card_command(s: &Session, file: &Path) -> Result<(), String> {
     let known = KnownSenders::load(&s.config.known_senders_path());
     let senders = porch::Senders::load(&s.config);
     let ids = s.config.all_trusted_ids();
-    let own = sioul_core::lookalike::own_domains(s.config.accounts.iter().filter_map(|a| a.address.as_deref()));
+    let own = sioul_core::lookalike::own_domains(&sioul_core::words::Words::of(&s.config).brands.shared, s.config.accounts.iter().filter_map(|a| a.address.as_deref()));
     let auth = trust::read_auth_results(&card.headers, &ids);
     let spam = trust::read_spam_verdict(&card.headers);
     let route: Vec<String> = trust::route_ips(&card.headers).iter().map(ToString::to_string).collect();
     let own_addresses = porch::own_addresses(&s.config.mail_sources());
     // Sioul's own spam filter, as the Porch asks it.
     let filter = sioul_core::spam::Filter::of(&s.config);
-    let ctx = Context { cases: store.as_ref(), known: &known, senders: &senders, trusted_ids: &ids, now: Some(Timestamp::now().as_second()), priority: Default::default(), own_domains: &own, shielded: false, assessments: None, filed_words: &[], own_addresses: &own_addresses, spam: Some(&filter) };
+    let words = sioul_core::words::Words::of(&s.config);
+    let ctx = Context { cases: store.as_ref(), known: &known, senders: &senders, trusted_ids: &ids, now: Some(Timestamp::now().as_second()), priority: Default::default(), own_domains: &own, shielded: false, assessments: None, words: Some(&words), own_addresses: &own_addresses, spam: Some(&filter) };
     let t = porch::triage(card, &ctx);
     println!("From      {} <{}>", one_line(t.card.sender()), one_line(t.card.from_address.as_deref().unwrap_or("?")));
     println!("Subject   {}", one_line(&t.card.subject));
@@ -608,7 +611,7 @@ fn budgets_command(s: &Session, file: Option<PathBuf>, maildirs: &[PathBuf]) -> 
     let ledger = Ledger::load_file(&path)?;
     // With the bank accounts' movements, read from the exports beside the file.
     let ledger = match path.parent().map(sioul_core::bank::Bank::load) {
-        Some(Ok(bank)) => ledger.with_bank(&bank),
+        Some(Ok(bank)) => ledger.with_bank(&bank, &sioul_core::words::Words::of(&s.config)),
         _ => ledger,
     };
     let today = Zoned::now().date();
@@ -646,7 +649,7 @@ fn print_mail_lines(s: &Session, ledger: &Ledger, maildirs: &[PathBuf]) {
     // Every message, the ones the Porch was closed on included: payments are not news.
     let items = porch::gather(&sources(&s.config, maildirs), store.as_ref(), &known, &senders, &PorchState::default(), now.timestamp().as_second());
     let ignored = MoneyState::load(&MoneyState::default_path()).ignored;
-    let lines = budget::mail_lines(ledger, &items, &ignored);
+    let lines = budget::mail_lines(ledger, &items, &ignored, &sioul_core::words::Words::of(&s.config));
     let shown = view::budgets(ledger, &lines, &s.tr, now.date());
     if shown.mail.is_empty() {
         return;

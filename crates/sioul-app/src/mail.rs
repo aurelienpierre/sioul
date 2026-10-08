@@ -271,7 +271,7 @@ pub(crate) fn views(shared: &Shared) -> MailViews {
         let sent = (config.mail.threads && !matches!(folder.role, Role::Sent | Role::Drafts)).then(|| {
             folders.iter().filter(|f| f.role == Role::Sent).flat_map(|f| maildir::read_messages(&account.maildir_path().join(&f.local))).collect::<Vec<Card>>()
         });
-        Some(json(&view::folder(account, folder, cards, &trusted, open.all, &open.query, tr(), now, sent)))
+        Some(json(&view::folder(account, folder, cards, &trusted, &sioul_core::words::Words::of(&config), open.all, &open.query, tr(), now, sent)))
     });
     let rows: Vec<DraftRow> = Draft::all().iter().filter(|d| !drafts.contains(&d.id)).map(draft_row).collect();
     let mode = crate::backend::mode_now();

@@ -277,7 +277,7 @@ mod tests {
         let known = SenderList::parse("alice@example.org");
         let trusted = ["mx.example.net".to_string()];
         let own = ["me@example.net".to_string()];
-        let ctx = crate::porch::Context { cases: None, known: &known, senders, trusted_ids: &trusted, now: None, priority, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &own, spam: None };
+        let ctx = crate::porch::Context { cases: None, known: &known, senders, trusted_ids: &trusted, now: None, priority, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &own, spam: None };
         let mut card = crate::card::Card::from_bytes(raw.as_bytes()).unwrap();
         card.account = Some(account.to_string());
         card.path = Some(PathBuf::from(format!("/mail/{account}/new/1759400000.U1-{}.sioul", fnv(id) % 10_000)));

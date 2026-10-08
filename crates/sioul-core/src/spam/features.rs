@@ -78,6 +78,19 @@ pub const FEATURES: u32 = 4;
 /// How many header features there are.
 pub const N: usize = 35;
 
+/// Mail providers whose domains millions share, for `reply_to_freemail`.
+/// Part of what a table learned, so versioned with `FEATURES`: never the
+/// words you change (`words::BrandWords::shared` holds the same list as
+/// shipped on 8 October 2026, and may grow; this one may not, unless
+/// `FEATURES` rises).
+const FREE_MAIL: &[&str] = &[
+    "gmail.com", "googlemail.com", "outlook.com", "outlook.fr", "hotmail.com", "hotmail.fr", "live.com", "live.fr", "msn.com",
+    "yahoo.com", "yahoo.fr", "ymail.com", "icloud.com", "me.com", "mac.com", "proton.me", "protonmail.com", "pm.me",
+    "murena.io", "e.email", "gmx.com", "gmx.fr", "gmx.de", "gmx.net", "free.fr", "orange.fr", "wanadoo.fr", "sfr.fr",
+    "laposte.net", "bbox.fr", "aol.com", "mail.com", "zoho.com", "tutanota.com", "tuta.io", "posteo.de", "mailbox.org",
+    "fastmail.com", "fastmail.fm", "disroot.org", "riseup.net",
+];
+
 /// Each feature's name, in the order of `features`' values.
 pub const NAMES: [&str; N] = [
     // Authentication as Sioul checked it, else your provider (`auth_results`):
@@ -278,7 +291,7 @@ pub fn features(card: &Card, auth: Option<&AuthResults>, internal_date: Option<i
         flag(signers.iter().any(|d| at_sender(d))),
         flag(bounces.as_deref().is_some_and(at_sender)),
         flag(reply.as_deref().is_some_and(elsewhere)),
-        flag(reply.as_deref().is_some_and(|r| crate::lookalike::SHARED.contains(&r))),
+        flag(reply.as_deref().is_some_and(|r| FREE_MAIL.contains(&r))),
         // A Message-ID without a domain was made by no server.
         flag(message_id.as_ref().is_some_and(|d| d.as_deref().is_none_or(elsewhere))),
         flag(name_names),

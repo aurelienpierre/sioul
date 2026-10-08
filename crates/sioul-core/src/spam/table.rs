@@ -54,7 +54,7 @@
 //! | 8 | FNV-1a 64 of every byte before it |
 
 use super::features;
-use super::tokenize::TOKENIZER;
+use super::tokenize::{Lexicon, TOKENIZER};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -90,6 +90,11 @@ pub struct Meta {
     /// The device it was trained on, as the sharing's devices name it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub device: String,
+    /// The tokenizer's words it was trained with (`tokenize::Lexicon`), which
+    /// it reads every message with; none in a table made before 8 October
+    /// 2026, which reads with the packs built in (`Table::lexicon`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lexicon: Option<crate::words::SpamWords>,
 }
 
 /// How a table scores a message (see the module's documentation).
@@ -229,6 +234,12 @@ fn sorted(mut words: Vec<(u64, f32)>) -> Vec<(u64, f32)> {
 }
 
 impl Table {
+    /// The words it reads every message with (`tokenize::tokens_with`): its
+    /// own, or the packs built in when it keeps none (made before 8 October 2026).
+    pub fn lexicon(&self) -> Arc<Lexicon> {
+        self.meta.lexicon.as_ref().map_or_else(Lexicon::builtin, Lexicon::cached)
+    }
+
     /// Its kind: no header weights, the classifier's, which reads the header
     /// facts as words; else the centroid's.
     pub fn kind(&self) -> Kind {
@@ -541,7 +552,7 @@ mod tests {
             text_mean: 0.5,
             platt_a: -2.0,
             platt_b: 0.0,
-            meta: Meta { trained_at: 1_791_000_000, ham: 900, spam: 100, test_ham: 225, test_spam: 25, metrics: BTreeMap::from([("auc".to_string(), 0.99)]), device: "desk".into() },
+            meta: Meta { trained_at: 1_791_000_000, ham: 900, spam: 100, test_ham: 225, test_spam: 25, metrics: BTreeMap::from([("auc".to_string(), 0.99)]), device: "desk".into(), lexicon: None },
         };
         table.sort();
         table
@@ -674,6 +685,28 @@ mod tests {
         assert_eq!(Table::read(&previous(&path)).unwrap().bias, -0.5);
         assert_eq!(Table::cached(&path).map(|t| t.bias), Some(1.0));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A table keeps the tokenizer's words it was trained with, and reads with
+    /// them; one made before reads with the packs built in.
+    #[test]
+    fn a_table_keeps_its_words() {
+        let builtin = crate::words::Words::builtin_ref().spam.clone();
+        let mut words = builtin.clone();
+        words.provider_tags.push("verdächtig".into());
+        let table = Table { meta: Meta { lexicon: Some(words.clone()), ..small().meta }, ..small() };
+        let back = Table::from_bytes(&table.to_bytes()).unwrap();
+        assert_eq!(back.meta.lexicon.as_ref(), Some(&words));
+        assert_eq!(back.lexicon().words, words);
+        assert_eq!(back.lexicon().without_provider_tags("[VERDÄCHTIG] Rechnung"), "Rechnung");
+        assert_eq!(back.lexicon().without_provider_tags("[Verdachtig] Rechnung"), "Rechnung");
+        let older = small();
+        assert!(!String::from_utf8_lossy(&older.to_bytes()).contains("lexicon"), "a table without words writes none");
+        let older = Table::from_bytes(&older.to_bytes()).unwrap();
+        assert!(older.meta.lexicon.is_none());
+        assert_eq!(older.lexicon().words, builtin);
+        assert_eq!(older.lexicon().without_provider_tags("[VERDÄCHTIG] Rechnung"), "[VERDÄCHTIG] Rechnung");
+        assert_eq!(older.lexicon().without_provider_tags("[SPAM] Rechnung"), "Rechnung");
     }
 
     /// A table this Sioul refuses (another device's, made by a newer Sioul)

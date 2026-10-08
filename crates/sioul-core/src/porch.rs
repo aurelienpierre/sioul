@@ -1172,8 +1172,9 @@ pub struct Context<'a> {
     pub shielded: bool,
     /// What an AI made of shielded mail, under `shield::ai_key`, when you allowed it (read with `shield::reading`).
     pub assessments: Option<&'a std::collections::BTreeMap<String, crate::shield::Assessment>>,
-    /// Words that make a sender automatic (filed); empty for the usual ones (`AUTOMATIC`).
-    pub filed_words: &'a [String],
+    /// The words looked for (codes, automatic senders, brands…), as your
+    /// configuration makes them (`words::Words::of`); none, the built-in ones.
+    pub words: Option<&'a crate::words::Words>,
     /// Your own addresses, every account's: what you send yourself is let in.
     pub own_addresses: &'a [String],
     /// Sioul's own spam filter (`Source::spam`); none, no learned verdict.
@@ -1236,17 +1237,21 @@ fn sealers(trusted_ids: &[String], own_domains: &[String]) -> Vec<String> {
     trusted_ids.iter().map(|id| id.trim().to_ascii_lowercase()).filter(|id| id.contains('.') && !id.ends_with(".invalid")).chain(own_domains.iter().cloned()).collect()
 }
 
-/// Automatic senders, as Virtual Secretary's notification filter lists them.
-pub const AUTOMATIC: &[&str] = &[
-    "no-reply", "noreply", "no_reply", "donotreply", "do-not-reply", "notification",
-    "ne-pas-repondre", "ne_pas_repondre", "nepasrepondre", "mailer-daemon", "postmaster",
-];
+impl Context<'_> {
+    /// The words looked for: the configuration's, else the built-in ones.
+    pub fn words(&self) -> &crate::words::Words {
+        match self.words {
+            Some(words) => words,
+            None => crate::words::Words::builtin_ref(),
+        }
+    }
+}
 
 /// Gives one message its lane and its reasons.
 pub fn triage(card: Card, ctx: &Context) -> Triaged {
     let auth = trust::read_auth_results(&card.headers, ctx.trusted_ids);
     // Bulk headers never rule a code out: they only narrow where it is read (`codes::detect_message`).
-    let detected = codes::detect_message(&card);
+    let detected = codes::detect_message(&ctx.words().codes, &card);
     // A proof counts for the domain of the address shown, never for another one.
     // A mailing list excuses a DMARC failure (it rewrites what it relays), but
     // no list relays your codes: a code failing DMARC is forged, list headers or not.
@@ -1356,7 +1361,7 @@ fn set_aside(card: &Card, ctx: &Context, trust: Trust, sender: Sender, protected
     if ctx.from_yourself(card, trust) {
         return None;
     }
-    let borrowed = (!sender.knows).then(|| lookalike::impersonation(card.from_name.as_deref(), card.sender_domain(), ctx.own_domains)).flatten();
+    let borrowed = (!sender.knows).then(|| lookalike::impersonation(&ctx.words().brands, card.from_name.as_deref(), card.sender_domain(), ctx.own_domains)).flatten();
     if let Some(fake) = borrowed {
         return Some((Lane::SetAside, Reason::Impersonation { brand: fake.brand, domain: fake.domain }));
     }
@@ -1396,7 +1401,9 @@ fn in_case(card: &Card, ctx: &Context, unproven: bool) -> Option<(Lane, Reason)>
 
 fn filed(card: &Card, ctx: &Context) -> Option<(Lane, Reason)> {
     let address = card.from_address.as_deref().unwrap_or("");
-    let automatic = if ctx.filed_words.is_empty() { AUTOMATIC.iter().any(|a| address.contains(a)) } else { ctx.filed_words.iter().any(|a| address.contains(a.as_str())) };
+    // Automatic senders, as Virtual Secretary's notification filter listed them first (`words::SenderWords`).
+    let address = crate::words::folded(address);
+    let automatic = ctx.words().senders.automatic.iter().map(|a| crate::words::folded(a)).any(|a| !a.is_empty() && address.contains(&a));
     let reason = if card.is_list { Reason::Newsletter } else { Reason::Automatic };
     (card.is_list || automatic).then_some((Lane::Filed, reason))
 }
@@ -1421,7 +1428,7 @@ pub fn gather(sources: &[Source], cases: Option<&CaseStore>, known: &SenderList,
         .iter()
         .flat_map(|src| {
             let account = src.account.as_deref();
-            let ctx = Context { cases, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains, shielded: src.shielded, assessments: Some(&assessments), filed_words: &src.filed_words, own_addresses: &own_addresses, spam: src.spam.as_ref() };
+            let ctx = Context { cases, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains, shielded: src.shielded, assessments: Some(&assessments), words: Some(&src.words), own_addresses: &own_addresses, spam: src.spam.as_ref() };
             // An account the Porch was never closed on shows its first window only:
             // all your mail is kept, the Porch is not an archive.
             let fresh = account.is_some_and(|a| !state.done.contains_key(a));
@@ -1568,7 +1575,7 @@ pub fn judge(paths: &[PathBuf], sources: &[Source], cases: Option<&CaseStore>, k
             let src = sources.iter().find(|src| path.starts_with(&src.folder))?;
             let mut card = maildir::read_one(path).filter(|card| senders.who_of(card) != crate::reach::Who::Blocked)?;
             card.account = src.account.clone();
-            let ctx = Context { cases, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains: &own, shielded: src.shielded, assessments: assessments.as_ref(), filed_words: &src.filed_words, own_addresses: &own_addresses, spam: src.spam.as_ref() };
+            let ctx = Context { cases, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains: &own, shielded: src.shielded, assessments: assessments.as_ref(), words: Some(&src.words), own_addresses: &own_addresses, spam: src.spam.as_ref() };
             Some(triage(card, &ctx))
         })
         .collect::<Vec<_>>();
@@ -1576,9 +1583,11 @@ pub fn judge(paths: &[PathBuf], sources: &[Source], cases: Option<&CaseStore>, k
     judged
 }
 
-/// The domains of the sources' own addresses (see `lookalike::own_domains`).
+/// The domains of the sources' own addresses (see `lookalike::own_domains`),
+/// with the sources' words (the same for every source of a configuration).
 fn own_domains(sources: &[Source]) -> Vec<String> {
-    lookalike::own_domains(sources.iter().filter_map(|s| s.address.as_deref()))
+    let words = sources.first().map_or_else(crate::words::Words::builtin, |s| s.words.clone());
+    lookalike::own_domains(&words.brands.shared, sources.iter().filter_map(|s| s.address.as_deref()))
 }
 
 /// The sources' own addresses.
@@ -1636,7 +1645,7 @@ mod tests {
         let raw = format!("From: {from}\r\nSubject: Votre abonnement\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\n\r\nVotre abonnement a été renouvelé : 69,90 €.\r\n");
         let card = Card::from_bytes(raw.as_bytes()).unwrap();
         let senders = Senders { blocked: blocked.clone(), ..Senders::default() };
-        triage(card, &Context { cases: None, known, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None })
+        triage(card, &Context { cases: None, known, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None })
     }
 
     #[test]
@@ -1663,7 +1672,7 @@ mod tests {
         assert_eq!(normalize("two words@x"), None);
         // A safe sender skips the screener; a forged message from them is still set aside.
         let none = SenderList::default();
-        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let card = |from: &str| Card::from_bytes(format!("From: {from}\r\nSubject: Hello\r\n\r\nHi.\r\n").as_bytes()).unwrap();
         assert_eq!(triage(card("Jane <jane@example.org>"), &ctx).lane, Lane::People);
         assert_eq!(triage(card("Someone <someone@elsewhere.example>"), &ctx).lane, Lane::Screener);
@@ -1874,7 +1883,7 @@ mod tests {
     fn an_account_ranked_below_waits_folded() {
         let none = SenderList::default();
         let raw = "From: Social <notify@social.example>\r\nSubject: Someone liked your post\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\n\r\nHello.\r\n";
-        let low = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Below, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+        let low = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Below, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let t = triage(Card::from_bytes(raw.as_bytes()).unwrap(), &low);
         assert_eq!((t.lane.clone(), t.reasons.last()), (Lane::Low, Some(&Reason::LowPriority)));
         let summary = summarise(&[t]);
@@ -1896,7 +1905,7 @@ mod tests {
     fn a_code_set_aside_is_not_offered() {
         let none = SenderList::default();
         let raw = "From: PayPal <service@unrelated.example>\r\nSubject: Your security code\r\n\r\nYour security code is 482913.\r\n";
-        let ctx = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+        let ctx = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let t = triage(Card::from_bytes(raw.as_bytes()).unwrap(), &ctx);
         assert_eq!(t.lane, Lane::SetAside);
         assert!(!t.reasons.iter().any(|r| matches!(r, Reason::UnverifiedCode(_))), "{:?}", t.reasons);
@@ -1913,7 +1922,7 @@ mod tests {
         std::fs::File::options().write(true).open(&path).unwrap().set_modified(arrived).unwrap();
         let now = i64::try_from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()).unwrap();
         let none = SenderList::default();
-        let ctx = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: Some(now), priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+        let ctx = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: Some(now), priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let t = triage(maildir::read_one(&path).unwrap(), &ctx);
         assert!(t.code.is_none() && t.lane != Lane::RightNow, "{:?}", t.lane);
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1933,7 +1942,7 @@ mod tests {
         let none = SenderList::default();
         let taxes = Case { id: "taxes".into(), title: "Taxes".into(), routes: vec![Route { from_domains: vec!["finances.example".into()], ..Route::default() }], ..Case::default() };
         let store = CaseStore { root: PathBuf::from("."), cases: vec![taxes], ties: Default::default() };
-        let ctx = Context { cases: Some(&store), known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+        let ctx = Context { cases: Some(&store), known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let stranger = triage(flagged("Prize <win@lottery.test>", "You won", "Claim it."), &ctx);
         assert_eq!((stranger.lane.clone(), stranger.reasons.last()), (Lane::SetAside, Some(&Reason::Spam { source: "SpamAssassin", score: None })));
         assert!(stranger.reasons.last().is_some_and(Reason::is_spam));
@@ -1990,7 +1999,7 @@ mod tests {
         assert_eq!(usual.class(crate::spam::score(&made, &calm, &[]).p), Class::Ham);
         let senders = Senders { safe: SenderList::parse("jane@example.org"), ..Senders::default() };
         let none = SenderList::default();
-        let ctx = |filter| Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: filter };
+        let ctx = |filter| Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: filter };
         // Until you choose: spam and doubts flagged, in the review queue, never notified; the rest in its lane.
         let t = triage(spam.clone(), &ctx(Some(&usual)));
         assert!(t.lane == Lane::Review && matches!(t.reasons.last(), Some(Reason::LearnedSpam { p }) if *p >= 0.95), "{:?} {:?}", t.lane, t.reasons);
@@ -2052,10 +2061,10 @@ mod tests {
         store(4, "old@lottery.test", at - 10 * 86_400, "");
         let moved = |id: &str| Moved { at, account: "home".into(), folder: "INBOX".into(), uidvalidity: 1, uid: 9, message_id: Some(id.into()), class: crate::spam::Class::Spam };
         let log = vec![moved("moved@lottery.test"), moved("marked@lottery.test"), moved("old@lottery.test")];
-        let src = Source { account: Some("home".into()), address: None, folder: root.clone(), trusted_ids: Vec::new(), priority: Priority::Average, shielded: false, filed_words: Vec::new(), spam: None };
+        let src = Source { account: Some("home".into()), address: None, folder: root.clone(), trusted_ids: Vec::new(), priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
         let none = SenderList::default();
         let senders = Senders::default();
-        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let found = moved_items(&src, &ctx, std::slice::from_ref(&junk), &log, &[]);
         // Only the one moved and still unmarked; not another's junk, not one stored before the move.
         assert_eq!(found.iter().map(|t| t.card.message_id.clone().unwrap_or_default()).collect::<Vec<_>>(), ["moved@lottery.test"]);
@@ -2078,7 +2087,7 @@ mod tests {
         let by_sender = Case { id: "jane".into(), title: "With Jane".into(), routes: vec![Route { from_addresses: vec!["jane@example.org".into()], ..Route::default() }], ..Case::default() };
         let by_subject = Case { id: "trip".into(), title: "The trip".into(), routes: vec![Route { subject_contains: vec!["the trip".into()], ..Route::default() }], ..Case::default() };
         let store = CaseStore { root: PathBuf::from("."), cases: vec![by_sender, by_subject], ties: Default::default() };
-        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &ids, now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None };
+        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &ids, now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let mail = |from: &str, results: &str, above: &str, subject: &str| {
             let raw = format!("{above}Authentication-Results: mx.provider.example; {results}\r\nFrom: {from}\r\nSubject: {subject}\r\n\r\n{subject}?\r\n");
             Card::from_bytes(raw.as_bytes()).unwrap()

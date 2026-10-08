@@ -137,7 +137,7 @@ fn decide(json: &str) -> String {
     let Ok(posted) = serde_json::from_str::<Posted>(json) else { return "null".into() };
     let config = load_config();
     let choices = Choices::load(&Choices::default_path());
-    let kind = appnotes::classify(&posted, &choices);
+    let kind = appnotes::classify(&posted, &choices, &sioul_core::words::Words::of(&config));
     let now = Zoned::now();
     let stamp = now.timestamp().as_second();
     let gate = gate();

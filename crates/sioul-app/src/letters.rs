@@ -41,7 +41,9 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
     std::thread::spawn(move || {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
-        let (Some(inbox), Some(root)) = (inbox(), load_config().case_store_path()) else { return };
+        let config = load_config();
+        let looked = sioul_core::words::Words::of(&config);
+        let (Some(inbox), Some(root)) = (inbox(), config.case_store_path()) else { return };
         let Ok(entries) = std::fs::read_dir(&inbox) else { return };
         let Ok(mut letters) = Letters::load(&root) else { return };
         let known: Vec<String> = letters.list.iter().map(|l| l.source.clone()).collect();
@@ -60,9 +62,9 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             let id = format!("{received}-{:08x}", source.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193)));
             let work = sioul_core::config::cache_dir().join("ocr").join(&id);
             let mut letter = Letter { id: id.clone(), file: path.strip_prefix(&root).map_or_else(|_| path.display().to_string(), |p| p.to_string_lossy().replace('\\', "/")), source, received: Some(received), status: "new".into(), ..Letter::default() };
-            match sioul_sync::ocr::text_of(&path, &work) {
+            match sioul_sync::ocr::text_of(&path, &work, &looked.ocr.tesseract) {
                 Ok(text) => {
-                    letter.reading = sioul_core::letters::read(&text, received);
+                    letter.reading = sioul_core::letters::read(&looked, &text, received);
                     letter.case = sioul_core::letters::case_of(&text, &letter.reading.sender, &cases).unwrap_or_default();
                     let _ = letters.save_text(&id, &text);
                     if let Ok(mut missing) = MISSING.lock() {

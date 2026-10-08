@@ -3,7 +3,8 @@
 
 //! Paper letters (docs/porch.md, "Paper letters"): a scan, a phone photo or a
 //! PDF dropped in a folder (by you, or a helper who opens the post), read by
-//! OCR, then understood by rules: who sent it, what it is, the amount, and the
+//! OCR, then understood by rules (the `letters` word lists, docs/words.md):
+//! who sent it, what it is, the amount, and the
 //! date by which something is asked, as a date, legal delays included ("dans
 //! un délai de deux mois à compter de la notification"). It waits outside like
 //! mail, and comes as a card in the Porch's window, with a task for its date
@@ -18,6 +19,7 @@
 //! (`letters/<id>.txt`), the scans filed in `letters/<year>/`.
 
 use crate::money::Money;
+use crate::words::{LetterWords, Words};
 use jiff::ToSpan;
 use jiff::civil::Date;
 use serde::Serialize;
@@ -72,28 +74,14 @@ fn plain(text: &str) -> String {
     format!(" {} ", words.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
-fn has(plain: &str, phrases: &[&str]) -> bool {
-    phrases.iter().any(|p| plain.contains(&format!(" {p} ")))
+/// Whether a plain text holds one of the phrases, each as `plain` writes it, whole words.
+fn has(text: &str, phrases: &[String]) -> bool {
+    phrases.iter().any(|p| {
+        let p = plain(p);
+        let p = p.trim();
+        !p.is_empty() && text.contains(&format!(" {p} "))
+    })
 }
-
-/// Bodies that write to everyone, by the words their letters carry.
-const SENDERS: &[(&[&str], &str)] = &[
-    (&["caisse d allocations familiales", "caf"], "CAF"),
-    (&["assurance maladie", "cpam", "caisse primaire d assurance maladie"], "Assurance Maladie"),
-    (&["finances publiques", "dgfip", "centre des finances publiques", "service des impots", "tresor public"], "Finances publiques"),
-    (&["urssaf"], "Urssaf"),
-    (&["france travail", "pole emploi"], "France Travail"),
-    (&["maison departementale des personnes handicapees", "mdph"], "MDPH"),
-    (&["prefecture", "prefet"], "Préfecture"),
-    (&["tribunal judiciaire", "tribunal administratif", "tribunal de proximite", "tribunal"], "Tribunal"),
-    (&["commissaire de justice", "huissier de justice", "huissier"], "Commissaire de justice"),
-    (&["centre hospitalier", "hopital", "chu", "clinique"], "Hôpital"),
-    (&["la banque postale"], "La Banque Postale"),
-    (&["mairie", "hotel de ville"], "Mairie"),
-    (&["edf", "electricite de france"], "EDF"),
-    (&["engie"], "Engie"),
-    (&["agirc arrco", "carsat", "assurance retraite"], "Assurance retraite"),
-];
 
 /// What a letter says, by rules.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -114,20 +102,25 @@ pub struct Reading {
     pub reference: String,
 }
 
-const MONTHS: &[(&str, i8)] = &[
-    ("janvier", 1), ("fevrier", 2), ("mars", 3), ("avril", 4), ("mai", 5), ("juin", 6), ("juillet", 7), ("aout", 8), ("septembre", 9), ("octobre", 10), ("novembre", 11), ("decembre", 12),
-    ("janv", 1), ("fevr", 2), ("fev", 2), ("avr", 4), ("juil", 7), ("sept", 9), ("oct", 10), ("nov", 11), ("dec", 12),
-    ("january", 1), ("february", 2), ("march", 3), ("april", 4), ("may", 5), ("june", 6), ("july", 7), ("august", 8), ("september", 9), ("october", 10), ("november", 11), ("december", 12),
-    ("jan", 1), ("feb", 2), ("mar", 3), ("apr", 4), ("jun", 6), ("jul", 7), ("aug", 8), ("sep", 9),
-];
+/// A list's words as `plain` writes them, without empty ones.
+fn normal(list: &[String]) -> Vec<String> {
+    list.iter().map(|w| plain(w).trim().to_string()).filter(|w| !w.is_empty()).collect()
+}
+
+/// Named lists by their number ("10" → the names of October), as `plain` writes them.
+fn numbered(list: &crate::words::Named) -> Vec<(i64, Vec<String>)> {
+    list.iter().filter_map(|(n, names)| Some((n.trim().parse().ok()?, normal(names)))).collect()
+}
 
 /// The dates written in a plain text, with where each starts (in words):
 /// "15 novembre 2026", "1er octobre 2026", "15/11/2026", "15.11.26", "November 15, 2026".
-fn dates(words: &[&str]) -> Vec<(usize, Date)> {
+fn dates(lw: &LetterWords, words: &[&str]) -> Vec<(usize, Date)> {
     let mut out = Vec::new();
-    let month = |w: &str| MONTHS.iter().find(|(name, _)| *name == w).map(|(_, m)| *m);
+    let months = numbered(&lw.months);
+    let ordinals = normal(&lw.ordinals);
+    let month = |w: &str| months.iter().find(|(_, names)| names.iter().any(|n| n == w)).and_then(|(m, _)| i8::try_from(*m).ok());
     let year = |w: &str| w.parse::<i16>().ok().filter(|y| (1990..=2100).contains(y));
-    let day = |w: &str| w.trim_end_matches("er").trim_end_matches("st").trim_end_matches("nd").trim_end_matches("rd").trim_end_matches("th").parse::<i8>().ok().filter(|d| (1..=31).contains(d));
+    let day = |w: &str| ordinals.iter().fold(w, |w, suffix| w.trim_end_matches(suffix.as_str())).parse::<i8>().ok().filter(|d| (1..=31).contains(d));
     let mut i = 0;
     while i < words.len() {
         // 15 novembre 2026
@@ -161,76 +154,68 @@ fn dates(words: &[&str]) -> Vec<(usize, Date)> {
     out
 }
 
-fn number_word(w: &str) -> Option<i64> {
-    match w {
-        "un" | "une" | "one" => Some(1),
-        "deux" | "two" => Some(2),
-        "trois" | "three" => Some(3),
-        "quatre" | "four" => Some(4),
-        "cinq" | "five" => Some(5),
-        "six" => Some(6),
-        "huit" | "eight" => Some(8),
-        "dix" | "ten" => Some(10),
-        "quinze" | "fifteen" => Some(15),
-        "trente" | "thirty" => Some(30),
-        _ => w.parse().ok().filter(|n: &i64| *n > 0 && *n <= 366),
-    }
+/// A number written as a word (`LetterWords::numbers`) or in digits, up to a year's days.
+fn number_word(numbers: &[(i64, Vec<String>)], w: &str) -> Option<i64> {
+    numbers.iter().find(|(_, names)| names.iter().any(|n| n == w)).map(|(n, _)| *n).or_else(|| w.parse().ok().filter(|n: &i64| *n > 0 && *n <= 366))
 }
 
 /// Reads a letter's text. `received` is the day it came (its scan's day):
-/// a delay counted from the notification counts from there.
-pub fn read(text: &str, received: Date) -> Reading {
+/// a delay counted from the notification counts from there. The words
+/// looked for are the `letters` lists of the word packs in use, with your
+/// changes (`words::LetterWords`): bodies, kinds, months, delays…
+pub fn read(looked: &Words, text: &str, received: Date) -> Reading {
+    let lw = &looked.letters;
     let mut reading = Reading::default();
     let all = plain(text);
     let words: Vec<&str> = all.split_whitespace().collect();
     // Who: a known body in the first lines, else the first line of the letterhead.
     let head: String = text.lines().map(str::trim).filter(|l| !l.is_empty()).take(25).collect::<Vec<_>>().join("\n");
     let head_plain = plain(&head);
-    reading.sender = SENDERS.iter().find(|(words, _)| has(&head_plain, words)).or_else(|| SENDERS.iter().find(|(words, _)| has(&all, words))).map(|(_, name)| name.to_string()).unwrap_or_else(|| text.lines().map(str::trim).find(|l| l.chars().filter(|c| c.is_alphabetic()).count() >= 3).unwrap_or("").chars().take(60).collect());
+    reading.sender = lw.senders.iter().find(|(_, phrases)| has(&head_plain, phrases)).or_else(|| lw.senders.iter().find(|(_, phrases)| has(&all, phrases))).map(|(name, _)| name.clone()).unwrap_or_else(|| text.lines().map(str::trim).find(|l| l.chars().filter(|c| c.is_alphabetic()).count() >= 3).unwrap_or("").chars().take(60).collect());
     // What it is, the gravest first.
-    reading.kind = if has(&all, &["mise en demeure"]) {
+    let k = &lw.kinds;
+    reading.kind = if has(&all, &k.formal_notice) {
         Kind::FormalNotice
-    } else if has(&all, &["avis d impot", "avis d imposition", "impot sur le revenu", "taxe fonciere", "taxe d habitation"]) {
+    } else if has(&all, &k.tax_notice) {
         Kind::TaxNotice
-    } else if has(&all, &["voies et delais de recours", "delais et voies de recours", "voies de recours", "decision"]) && has(&all, &["recours", "contester"]) {
+    } else if has(&all, &k.decision) && has(&all, &k.decision_appeal) {
         Kind::Decision
-    } else if has(&all, &["relance", "rappel", "dernier avis", "second avis", "reminder"]) {
+    } else if has(&all, &k.reminder) {
         Kind::Reminder
-    } else if has(&all, &["convocation", "vous etes convoque", "vous etes convoquee", "rendez vous", "appointment"]) {
+    } else if has(&all, &k.appointment) {
         Kind::Appointment
-    } else if has(&all, &["facture", "avis des sommes a payer", "titre executoire", "montant a payer", "somme a payer", "invoice"]) {
+    } else if has(&all, &k.bill) {
         Kind::Bill
-    } else if has(&all, &["accuse de reception", "nous avons bien recu", "we have received"]) {
+    } else if has(&all, &k.acknowledgment) {
         Kind::Acknowledgment
-    } else if has(&all, &["attestation", "certificat"]) {
+    } else if has(&all, &k.attestation) {
         Kind::Attestation
-    } else if has(&all, &["contrat", "avenant", "conditions generales"]) {
+    } else if has(&all, &k.contract) {
         Kind::Contract
     } else {
         Kind::Other
     };
-    reading.registered = has(&all, &["recommande", "lettre recommandee", "lrar"]) && has(&all, &["accuse de reception", "avec ar", "lrar", "avis de reception"]);
+    reading.registered = has(&all, &lw.registered) && has(&all, &lw.registered_receipt);
     // The amount: on a line that asks for it, else the first one after a word that names one.
-    let asks = ["a payer", "a regler", "reste du", "montant du", "somme due", "montant total", "total a payer", "somme de", "montant de", "amount due", "total due"];
     reading.amount = text
         .lines()
-        .find(|line| has(&plain(line), &asks))
-        .and_then(|line| crate::money::find_amount(line))
-        .or_else(|| crate::money::find_amount(text))
+        .find(|line| has(&plain(line), &lw.asks))
+        .and_then(|line| crate::money::find_amount(&looked.money, line))
+        .or_else(|| crate::money::find_amount(&looked.money, text))
         .map(|a| Money(a.money.cents().abs()));
-    let found = dates(&words);
+    let found = dates(lw, &words);
     // Its own date: the first date in the head, at its start ("Paris, le 3 octobre 2026").
     let head_words = head_plain.split_whitespace().count();
     reading.dated = found.iter().find(|(at, _)| *at < head_words.min(80)).map(|(_, d)| *d);
-    // The deadline: a date after a word that asks by when.
-    let before = [&["avant", "le"][..], &["au", "plus", "tard", "le"], &["date", "limite"], &["echeance"], &["jusqu", "au"], &["payable", "avant"], &["no", "later", "than"], &["due", "date"], &["due", "by"], &["by"], &["before"]];
+    // The deadline: a date after words that ask by when, in the lists' order.
+    let before: Vec<Vec<String>> = lw.deadline.iter().map(|p| plain(p).split_whitespace().map(str::to_string).collect::<Vec<_>>()).filter(|run| !run.is_empty()).collect();
     'dates: for (at, date) in &found {
-        for words_before in before {
+        for words_before in &before {
             let n = words_before.len();
             // The asking words within the six words before the date.
             let start = at.saturating_sub(6 + n);
             for k in start..*at {
-                if k + n <= words.len() && words[k..k + n] == *words_before && date >= &received.checked_sub(30.days()).unwrap_or(received) {
+                if k + n <= words.len() && words[k..k + n].iter().zip(words_before).all(|(a, b)| *a == b) && date >= &received.checked_sub(30.days()).unwrap_or(received) {
                     reading.deadline = Some(*date);
                     reading.why = words[k..(*at + 3).min(words.len())].join(" ");
                     break 'dates;
@@ -240,26 +225,29 @@ pub fn read(text: &str, received: Date) -> Reading {
     }
     // A delay: "dans un délai de deux mois à compter de la notification", "sous huitaine".
     if reading.deadline.is_none() {
+        let numbers = numbered(&lw.numbers);
+        let (delay_words, delay_of) = (normal(&lw.delay_words), normal(&lw.delay_of));
+        let (months, days, weeks) = (normal(&lw.unit_months), normal(&lw.unit_days), normal(&lw.unit_weeks));
+        let fixed: Vec<(i64, Vec<String>)> = lw.fixed_delays.iter().filter_map(|(n, phrases)| Some((n.trim().parse().ok()?, phrases))).flat_map(|(n, phrases)| phrases.iter().map(move |p| (n, plain(p).split_whitespace().map(str::to_string).collect::<Vec<_>>()))).filter(|(_, run)| !run.is_empty()).collect();
+        let from_letter = normal(&lw.from_letter);
+        let is = |list: &[String], w: &str| list.iter().any(|x| x == w);
         for (i, w) in words.iter().enumerate() {
-            let span = match *w {
-                "delai" | "within" if i + 3 < words.len() => {
-                    let (n, unit) = if words[i + 1] == "de" { (number_word(words[i + 2]), words.get(i + 3)) } else { (number_word(words[i + 1]), words.get(i + 2)) };
-                    match (n, unit.copied()) {
-                        (Some(n), Some("mois" | "months" | "month")) => Some(n.months()),
-                        (Some(n), Some("jours" | "days" | "day" | "jour")) => Some(n.days()),
-                        (Some(n), Some("semaines" | "weeks" | "semaine" | "week")) => Some((n * 7).days()),
-                        _ => None,
-                    }
+            let span = if is(&delay_words, w) && i + 3 < words.len() {
+                let (n, unit) = if is(&delay_of, words[i + 1]) { (number_word(&numbers, words[i + 2]), words.get(i + 3)) } else { (number_word(&numbers, words[i + 1]), words.get(i + 2)) };
+                match (n, unit.copied()) {
+                    (Some(n), Some(unit)) if is(&months, unit) => Some(n.months()),
+                    (Some(n), Some(unit)) if is(&days, unit) => Some(n.days()),
+                    (Some(n), Some(unit)) if is(&weeks, unit) => Some((n * 7).days()),
+                    _ => None,
                 }
-                "sous" if words.get(i + 1) == Some(&"huitaine") => Some(8.days()),
-                "sous" if words.get(i + 1) == Some(&"quinzaine") => Some(15.days()),
-                _ => None,
+            } else {
+                fixed.iter().find(|(_, run)| words[i..].iter().zip(run).filter(|(a, b)| **a == b.as_str()).count() == run.len()).map(|(n, _)| n.days())
             };
             let Some(span) = span else { continue };
             // From the notification or the reception: the day it came; from the letter: its date.
             let rest = words[i..(i + 14).min(words.len())].join(" ");
-            let from_letter = rest.contains("date du present") || rest.contains("date de la presente") || rest.contains("date of this");
-            let base = if from_letter { reading.dated.unwrap_or(received) } else { received };
+            let from_the_letter = from_letter.iter().any(|p| rest.contains(p.as_str()));
+            let base = if from_the_letter { reading.dated.unwrap_or(received) } else { received };
             if let Ok(date) = base.checked_add(span) {
                 reading.deadline = Some(date);
                 reading.why = words[i.saturating_sub(2)..(i + 10).min(words.len())].join(" ");
@@ -271,8 +259,9 @@ pub fn read(text: &str, received: Date) -> Reading {
     if reading.kind == Kind::Appointment
         && let Some((at, date)) = found.iter().find(|(_, d)| *d >= received)
     {
+        let at_words = normal(&lw.at);
         let after: Vec<&str> = words[(*at + 3).min(words.len())..(*at + 9).min(words.len())].to_vec();
-        let time = after.iter().position(|w| *w == "a" || *w == "at").and_then(|k| {
+        let time = after.iter().position(|w| at_words.iter().any(|a| a == w)).and_then(|k| {
             let hour = after.get(k + 1)?.trim_end_matches('h').parse::<i8>().ok().filter(|h| (0..24).contains(h))?;
             let minute = after.get(k + 2).filter(|w| **w == "h").and_then(|_| after.get(k + 3)).or_else(|| after.get(k + 2)).and_then(|m| m.parse::<i8>().ok()).filter(|m| (0..60).contains(m)).unwrap_or(0);
             Some((hour, minute))
@@ -284,7 +273,7 @@ pub fn read(text: &str, received: Date) -> Reading {
         reading.why = as_written(text, &reading.why);
     }
     // Your number with them, as written on its line: "Référence : 2026-ASAP-01234".
-    let labels = ["numero allocataire", "numero fiscal", "numero de dossier", "n dossier", "reference", "ref", "numero de securite sociale", "numero client", "account number"];
+    let labels = normal(&lw.references);
     'lines: for line in text.lines() {
         let folded = plain(line);
         if !labels.iter().any(|l| folded.contains(&format!(" {l} "))) {
@@ -510,6 +499,11 @@ pub fn case_of(text: &str, sender: &str, cases: &[crate::cases::Case]) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A letter read with the packs built in (French and English, France).
+    fn read(text: &str, received: Date) -> Reading {
+        super::read(&Words::builtin(), text, received)
+    }
 
     fn day(text: &str) -> Date {
         text.parse().unwrap()

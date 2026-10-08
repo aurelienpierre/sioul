@@ -233,27 +233,32 @@ pub struct TaskAreas {
 }
 
 impl TaskAreas {
-    /// The usual words, in English and French.
+    /// The usual words: those in use (`words::current`; the packs built in,
+    /// French and English, until a configuration is read).
     pub fn usual() -> TaskAreas {
-        let words = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        TaskAreas::usual_in(&crate::words::current().tasks)
+    }
+
+    /// The usual words of these lists: work, leisure, and what is yours outside work.
+    pub fn usual_in(words: &crate::words::TaskWords) -> TaskAreas {
         TaskAreas {
-            work_categories: words(&["work", "travail", "pro", "client", "boulot"]),
-            leisure_categories: words(&["joy", "family", "friends", "leisure", "fun", "famille", "amis", "loisirs"]),
-            personal_categories: words(&["personal", "perso", "health", "santé"]),
+            work_categories: words.work.clone(),
+            leisure_categories: words.leisure.clone(),
+            personal_categories: words.usual_personal.clone(),
             work_cases: Vec::new(),
             personal_cases: Vec::new(),
         }
     }
 
     /// As your settings say: the categories of work and those that are yours
-    /// (`[quiet]`: leisure among them goes to leisure), and your projects' areas.
+    /// (`[quiet]`, else the languages' own: `words.tasks`; leisure among them
+    /// goes to leisure), and your projects' areas.
     pub fn of_config(config: &crate::config::Config, cases: &[crate::cases::Case]) -> TaskAreas {
-        let usual = TaskAreas::usual();
-        let fold = |s: &str| crate::text::fold(s.trim()).into_iter().collect::<String>();
-        let leisure: Vec<String> = usual.leisure_categories.iter().map(|c| fold(c)).collect();
-        let (leisure_categories, personal_categories): (Vec<String>, Vec<String>) = config.quiet.personal_categories().into_iter().partition(|c| leisure.contains(&fold(c)));
+        let words = crate::words::Words::of(config);
+        let leisure: Vec<String> = words.tasks.leisure.iter().map(|c| crate::words::folded(c)).collect();
+        let (leisure_categories, personal_categories): (Vec<String>, Vec<String>) = words.tasks.personal.iter().cloned().partition(|c| leisure.contains(&crate::words::folded(c)));
         TaskAreas {
-            work_categories: config.quiet.work_categories(),
+            work_categories: words.tasks.work.clone(),
             leisure_categories,
             personal_categories,
             work_cases: cases.iter().filter(|c| c.client.is_some() || c.area.as_deref() == Some("work")).map(|c| c.id.clone()).collect(),

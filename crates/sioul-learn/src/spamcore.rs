@@ -20,7 +20,7 @@ pub(crate) use sioul_core::spam::features::{FEATURES, N, NAMES, all_header_words
 #[cfg(test)]
 pub(crate) use sioul_core::spam::table::ngram_buckets;
 pub(crate) use sioul_core::spam::table::{Meta, Table, word_hash};
-pub(crate) use sioul_core::spam::tokenize::{TOKENIZER, tokens};
+pub(crate) use sioul_core::spam::tokenize::{Lexicon, TOKENIZER, tokens_with};
 use sioul_core::card::Card;
 
 /// The Porch's card for a corpus record, made by `Card::from_bytes` from the

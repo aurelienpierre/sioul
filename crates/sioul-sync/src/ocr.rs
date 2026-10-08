@@ -27,8 +27,21 @@ fn runs(name: &str) -> bool {
     crate::command(program(name)).arg("--version").output().is_ok()
 }
 
-/// How to install what reads scans here, in one line, in your language.
-pub fn install_hint() -> String {
+/// How to install what reads scans here, in one line, in your language:
+/// Tesseract, its models of the languages `wanted` ("fra", English being
+/// in every Tesseract), and Poppler.
+pub fn install_hint(wanted: &[String]) -> String {
+    // SUSE names its models by the language's English name.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let models = |prefix: &str| {
+        let names: Vec<String> = wanted.iter().map(|l| l.trim()).filter(|l| !l.is_empty() && *l != "eng").map(|l| match prefix {
+            "tesseract-ocr-traineddata-" => format!("{prefix}{}", match l { "fra" => "french", "deu" => "german", "spa" => "spanish", "ita" => "italian", other => other }),
+            _ => format!("{prefix}{l}"),
+        }).collect();
+        if names.is_empty() { String::new() } else { format!(" {}", names.join(" ")) }
+    };
+    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    let _ = wanted;
     #[cfg(windows)]
     {
         crate::translator().text("ocr-hint-windows", None)
@@ -42,32 +55,33 @@ pub fn install_hint() -> String {
         let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default().to_ascii_lowercase();
         let like = |name: &str| release.lines().any(|l| (l.starts_with("id=") || l.starts_with("id_like=")) && l.contains(name));
         if like("fedora") || like("rhel") {
-            "sudo dnf install tesseract tesseract-langpack-fra poppler-utils".to_string()
+            format!("sudo dnf install tesseract{} poppler-utils", models("tesseract-langpack-"))
         } else if like("debian") || like("ubuntu") {
-            "sudo apt install tesseract-ocr tesseract-ocr-fra poppler-utils".to_string()
+            format!("sudo apt install tesseract-ocr{} poppler-utils", models("tesseract-ocr-"))
         } else if like("arch") {
-            "sudo pacman -S tesseract tesseract-data-fra poppler".to_string()
+            format!("sudo pacman -S tesseract{} poppler", models("tesseract-data-"))
         } else if like("suse") {
-            "sudo zypper install tesseract-ocr tesseract-ocr-traineddata-french poppler-tools".to_string()
+            format!("sudo zypper install tesseract-ocr{} poppler-tools", models("tesseract-ocr-traineddata-"))
         } else {
             crate::translator().text("ocr-hint-packages", None)
         }
     }
 }
 
-/// The languages Tesseract has among those wanted ("fra+eng"), else what it has.
-fn languages() -> String {
+/// The languages Tesseract has among those wanted ("fra+eng": the models of
+/// the languages you read, `words::OcrWords::tesseract`), else English.
+fn languages(wanted: &[String]) -> String {
     let out = crate::command(program("tesseract")).arg("--list-langs").output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
     let have: Vec<&str> = out.lines().skip(1).map(str::trim).collect();
-    let wanted: Vec<&str> = ["fra", "eng"].into_iter().filter(|l| have.contains(l)).collect();
+    let wanted: Vec<&str> = wanted.iter().map(|l| l.trim()).filter(|l| have.contains(l)).collect();
     if wanted.is_empty() { "eng".into() } else { wanted.join("+") }
 }
 
-fn tesseract(image: &Path) -> Result<String, Unread> {
+fn tesseract(image: &Path, wanted: &[String]) -> Result<String, Unread> {
     if !runs("tesseract") {
-        return Err(Unread::Missing(install_hint()));
+        return Err(Unread::Missing(install_hint(wanted)));
     }
-    let out = crate::command(program("tesseract")).arg(image).arg("stdout").args(["-l", &languages()]).output().map_err(|e| Unread::Failed(e.to_string()))?;
+    let out = crate::command(program("tesseract")).arg(image).arg("stdout").args(["-l", &languages(wanted)]).output().map_err(|e| Unread::Failed(e.to_string()))?;
     if !out.status.success() {
         return Err(Unread::Failed(String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("").to_string()));
     }
@@ -75,14 +89,15 @@ fn tesseract(image: &Path) -> Result<String, Unread> {
 }
 
 /// A scan's text: a PDF's own, else read from its pages; an image's, read.
-/// `work` is a folder for the pages while they are read (emptied after).
-pub fn text_of(file: &Path, work: &Path) -> Result<String, Unread> {
+/// `work` is a folder for the pages while they are read (emptied after);
+/// `wanted`, Tesseract's models to read them with ("fra", "eng").
+pub fn text_of(file: &Path, work: &Path, wanted: &[String]) -> Result<String, Unread> {
     let extension = file.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     if extension != "pdf" {
-        return tesseract(file);
+        return tesseract(file, wanted);
     }
     if !runs("pdftotext") {
-        return Err(Unread::Missing(install_hint()));
+        return Err(Unread::Missing(install_hint(wanted)));
     }
     let own = crate::command(program("pdftotext")).args(["-layout"]).arg(file).arg("-").output().map_err(|e| Unread::Failed(e.to_string()))?;
     let text = String::from_utf8_lossy(&own.stdout).to_string();
@@ -93,13 +108,13 @@ pub fn text_of(file: &Path, work: &Path) -> Result<String, Unread> {
     // pictures of your letter go afterwards, whether they could be read or not.
     let _ = std::fs::remove_dir_all(work);
     std::fs::create_dir_all(work).map_err(|e| Unread::Failed(e.to_string()))?;
-    let read = pages_read(file, work);
+    let read = pages_read(file, work, wanted);
     let _ = std::fs::remove_dir_all(work);
     read
 }
 
 /// A PDF's pages made images in `work`, then read in their order.
-fn pages_read(file: &Path, work: &Path) -> Result<String, Unread> {
+fn pages_read(file: &Path, work: &Path, wanted: &[String]) -> Result<String, Unread> {
     let made = crate::command(program("pdftoppm")).args(["-r", "300", "-png"]).arg(file).arg(work.join("page")).output().map_err(|e| Unread::Failed(e.to_string()))?;
     if !made.status.success() {
         return Err(Unread::Failed(String::from_utf8_lossy(&made.stderr).lines().last().unwrap_or("").to_string()));
@@ -108,7 +123,7 @@ fn pages_read(file: &Path, work: &Path) -> Result<String, Unread> {
     pages.sort();
     let mut out = String::new();
     for page in pages {
-        out.push_str(&tesseract(&page)?);
+        out.push_str(&tesseract(&page, wanted)?);
         out.push('\n');
     }
     Ok(out)
@@ -132,8 +147,9 @@ mod tests {
         );
         let made = std::process::Command::new("python3").arg("-c").arg(script).status().unwrap();
         assert!(made.success());
-        let text = text_of(&image, &dir.join("pages")).unwrap();
-        let reading = sioul_core::letters::read(&text, "2026-10-02".parse().unwrap());
+        let words = sioul_core::words::Words::builtin();
+        let text = text_of(&image, &dir.join("pages"), &words.ocr.tesseract).unwrap();
+        let reading = sioul_core::letters::read(&words, &text, "2026-10-02".parse().unwrap());
         assert_eq!(reading.sender, "CAF", "{text}");
         assert_eq!(reading.deadline, Some("2026-12-02".parse().unwrap()), "{text}");
         let _ = std::fs::remove_dir_all(&dir);

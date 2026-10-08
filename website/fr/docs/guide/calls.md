@@ -38,7 +38,7 @@ Quand vous attendez un appel. Sur la notification du téléphone « Sioul tien
 
 « Pendant votre sommeil, un numéro absent de vos contacts a appelé à 09:30. » Chaque appel attend que la ligne Appels de son auteur le laisse vous joindre, ou vos moments de travail et de démarches pour une ligne qui ne sonne jamais ; jamais compté, sans pastille, jamais notifié. Dessous : **Répondre par SMS**, **Rappeler** et **Vu** ; son **⋮** (ou un appui long, un clic droit, la touche Menu) contient **Ajouter aux contacts**, **Bloquer**, **Comment cette personne vous joint…** et **Pourquoi ?**. Quand le même numéro a rappelé et que cet appel a sonné, la ligne le dit : vous vous êtes peut-être déjà parlé. Sioul ne voit pas votre messagerie, alors il le dit : « Un message a peut-être été laissé. » Le journal d’appels du téléphone liste aussi chaque appel refusé, avec le nom de Sioul.
 
-Chez Free, réglez votre messagerie pour recevoir chaque message par courriel avec son fichier son (Espace Abonné : Messagerie vocale ▸ Notification, avec fichier audio) : la ligne dit alors « Un message a été laissé (0:42). » avec **Écouter**. Le courriel reste dans votre courrier.
+Si votre opérateur peut vous envoyer chaque message par courriel avec son fichier son (Free le peut : Espace Abonné, Messagerie vocale ▸ Notification, avec fichier audio), nommez le domaine d’où viennent ses courriels dans Paramètres ▸ Mots ▸ **Messagerie vocale par courriel** ([Paramètres](settings.md#words)) : la ligne dit alors « Un message a été laissé (0:42). » avec **Écouter**. Le courriel reste dans votre courrier.
 
 ### Sur vos ordinateurs {#on-your-computers}
 

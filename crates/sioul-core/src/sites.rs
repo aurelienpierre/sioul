@@ -124,17 +124,18 @@ impl Site {
 }
 
 /// Whether a site's notification rings: someone calling now, in the words
-/// chats use. A call waits for nobody; a missed one can.
+/// chats use (`words::current`: the configuration's). A call waits for
+/// nobody; a missed one can.
 pub fn is_call(title: &str, text: &str) -> bool {
+    is_call_with(&crate::words::current().calls, title, text)
+}
+
+/// `is_call` with these words: a missed call can wait, video or voice
+/// ("Missed video call", "Appel vidéo manqué"); one ringing cannot.
+pub fn is_call_with(words: &crate::words::CallWords, title: &str, text: &str) -> bool {
     let said: String = format!("{title} {text}").chars().map(crate::text::fold_char).collect();
-    // A missed call can wait, video or voice: "Missed video call", "Appel vidéo manqué".
-    let missed = [
-        "missed call", "missed voice call", "missed video call", "missed audio call", "appel manque", "appel vocal manque", "appel video manque",
-        "appel audio manque", "llamada perdida", "videollamada perdida", "llamada de voz perdida", "verpasster anruf", "verpasster videoanruf",
-        "chiamata persa", "videochiamata persa",
-    ];
-    let ringing = ["incoming call", "incoming voice call", "incoming video call", "is calling", "calling you", "voice call", "video call", "appel entrant", "vous appelle", "appel vocal", "appel video", "llamada entrante", "eingehender anruf", "chiamata in arrivo"];
-    !missed.iter().any(|m| said.contains(m)) && ringing.iter().any(|r| said.contains(r))
+    let any = |list: &[String]| list.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && said.contains(&w));
+    !any(&words.missed) && any(&words.ringing)
 }
 
 /// Every site, in the order of the configuration: `[[site]]`, and those an
@@ -215,6 +216,11 @@ mod tests {
         assert!(!is_call("Appel manqué", "Camille"), "a missed call can wait");
         assert!(!is_call("Missed video call", "Camille") && !is_call("Appel vidéo manqué", "Camille"), "a missed video call too");
         assert!(!is_call("Camille", "Did you call the bank?"));
+        // Your words: a Dutch chat's ring, once added.
+        let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n[words.calls.ringing]\nadd = [\"Inkomende oproep\"]\n").unwrap();
+        let yours = crate::words::Words::of(&config);
+        assert!(is_call_with(&yours.calls, "Inkomende oproep", "Camille"));
+        assert!(!is_call_with(&crate::words::Words::builtin().calls, "Inkomende oproep", "Camille"));
     }
 
     #[test]

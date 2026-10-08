@@ -513,17 +513,31 @@ pub(crate) fn history(numbers: &[String]) -> Vec<String> {
     rules::history(&calls, &keys, &lister)
 }
 
-/// The voicemails Free mailed lately, from every account's inbox: each folder
-/// listed again only when it changed (a letter came, or was read), each
-/// letter read once (by its file's name); never the sound itself, kept in memory.
+/// The voicemails your operators mailed lately (`[words.voicemail]`: their
+/// domains, none until you name yours), from every account's inbox: each
+/// folder listed again only when it changed (a letter came, or was read),
+/// each letter read once (by its file's name) while the words stay the same;
+/// never the sound itself, kept in memory.
 fn voicemails(config: &Config, region: Option<&'static sioul_core::phones::Region>) -> Vec<Voicemail> {
     type Folder = (Option<SystemTime>, Vec<Voicemail>);
     static FOLDERS: Mutex<BTreeMap<PathBuf, Folder>> = Mutex::new(BTreeMap::new());
     static LETTERS: Mutex<BTreeMap<String, Option<Voicemail>>> = Mutex::new(BTreeMap::new());
+    static READ_WITH: Mutex<Option<sioul_core::words::VoicemailWords>> = Mutex::new(None);
+    let words = sioul_core::words::Words::of(config).voicemail.clone();
+    if words.operators.iter().all(|d| d.trim().is_empty()) {
+        return Vec::new();
+    }
     let zone = jiff::tz::TimeZone::system();
     let oldest = SystemTime::now().checked_sub(Duration::from_secs(u64::try_from((rules::LISTED_DAYS + 1) * 86_400).unwrap_or(0))).unwrap_or(SystemTime::UNIX_EPOCH);
     let mut folders = FOLDERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut letters = LETTERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Other words: every letter read again.
+    let mut read_with = READ_WITH.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if read_with.as_ref() != Some(&words) {
+        folders.clear();
+        letters.clear();
+        *read_with = Some(words.clone());
+    }
     let mut found = Vec::new();
     for source in config.mail_sources() {
         for folder in [source.folder.join("new"), source.folder.join("cur")] {
@@ -544,7 +558,7 @@ fn voicemails(config: &Config, region: Option<&'static sioul_core::phones::Regio
                     }
                     let file = entry.path();
                     let unique = format!("{}/{}", source.account.as_deref().unwrap_or(""), sioul_core::maildir::unique_part(&name));
-                    let read = letters.entry(unique).or_insert_with(|| read_voicemail(&file, &source.trusted_ids, region, &zone));
+                    let read = letters.entry(unique).or_insert_with(|| read_voicemail(&words, &file, &source.trusted_ids, region, &zone));
                     if let Some(v) = read {
                         here.push(Voicemail { path: file.clone(), ..v.clone() });
                     }
@@ -562,16 +576,16 @@ fn voicemails(config: &Config, region: Option<&'static sioul_core::phones::Regio
     found
 }
 
-fn read_voicemail(file: &Path, trusted: &[String], region: Option<&'static sioul_core::phones::Region>, zone: &jiff::tz::TimeZone) -> Option<Voicemail> {
+fn read_voicemail(words: &sioul_core::words::VoicemailWords, file: &Path, trusted: &[String], region: Option<&'static sioul_core::phones::Region>, zone: &jiff::tz::TimeZone) -> Option<Voicemail> {
     use std::io::Read;
-    // The head first: most letters are not Free's, and some are large.
+    // The head first: most letters are not an operator's, and some are large.
     let mut head = Vec::with_capacity(16 * 1024);
     std::fs::File::open(file).ok()?.take(16 * 1024).read_to_end(&mut head).ok()?;
-    if !voicemail::may_be(&head) {
+    if !voicemail::may_be(&words.operators, &head) {
         return None;
     }
     let raw = std::fs::read(file).ok()?;
-    voicemail::read(&raw, file, region, zone, trusted)
+    voicemail::read(words, &raw, file, region, zone, trusted)
 }
 
 /// A voicemail's sound written where the player reads it: its address

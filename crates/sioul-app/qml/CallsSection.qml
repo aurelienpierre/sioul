@@ -8,7 +8,7 @@
 // said plainly ("They may have left a message"), and what you may do: text
 // back or call back (the phone's own apps, or on a computer the system's app
 // for such links, KDE Connect handing them to your phone; else copy the
-// number: nothing is sent by Sioul), listen to the voicemail Free mailed,
+// number: nothing is sent by Sioul), listen to the voicemail your operator mailed,
 // and "Seen", which takes a line away on every device, with ten seconds to
 // undo; the rest in the line's menu (⋮, a right click, a long press, the Menu
 // key or Shift+F10): add to your contacts (Android's form on a phone, Sioul's

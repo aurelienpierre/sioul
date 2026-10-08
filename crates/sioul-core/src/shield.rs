@@ -10,12 +10,14 @@
 //! - **its topic**: work (a job, a mission, a quote), a question about your
 //!   software, the press, thanks, or other; work comes first.
 //!
-//! The reading is made of word lists, in French and English, matched on whole
+//! The reading is made of word lists (`words::ShieldWords`: the languages in
+//! use, French and English built in, and your changes), matched on whole
 //! words with case and accents ignored; an insult near "you" weighs more,
 //! and shouting adds to it. When you allow it, an AI reads the message too
 //! (`ai_prompt`), more finely; its answer is kept and takes precedence.
 
 use crate::text::{find_word, fold};
+use crate::words::ShieldWords;
 use serde::{Deserialize, Serialize};
 
 /// How a message speaks.
@@ -61,56 +63,6 @@ pub struct Assessment {
     pub by_ai: bool,
 }
 
-/// Threats and incitement: one is enough to set a message aside.
-const THREATS: &[&str] = &[
-    "kill yourself", "kys", "kill you", "i will find you", "watch your back", "you will regret", "you'll regret", "hope you die", "go die",
-    "you deserve to die", "i know where you live", "suicide toi", "suicide-toi", "va crever", "creve", "va mourir", "je vais te retrouver",
-    "je sais ou tu habites", "tu vas le regretter", "tu vas regretter", "je vais te tuer", "je vais te defoncer", "on va te retrouver",
-];
-
-/// Insults: aimed at someone, they make a message hostile.
-const INSULTS: &[&str] = &[
-    "asshole", "bastard", "bitch", "cunt", "dickhead", "motherfucker", "fuck you", "fuck off", "piece of shit", "scumbag", "scum", "loser",
-    "moron", "imbecile", "prick", "wanker", "twat", "screw you", "go to hell", "shut up", "pathetic", "clown", "fraud", "con artist",
-    "connard", "connasse", "conne", "salaud", "salope", "encule", "enfoire", "ordure", "pourriture", "cretin", "debile", "abruti", "imbecile",
-    "fdp", "fils de pute", "ta gueule", "ferme la", "ferme-la", "va te faire foutre", "va te faire voir", "pauvre type", "pauvre con", "minable",
-    "bouffon", "guignol", "escroc", "sale type", "degage", "tocard", "batard", "raclure", "sous-merde",
-];
-
-/// Swearing and contempt: rude, but not hostile on their own.
-const RUDE: &[&str] = &[
-    "fuck", "fucking", "shit", "bullshit", "crap", "damn", "idiot", "stupid", "dumb", "garbage", "trash", "useless", "incompetent", "ridiculous",
-    "merde", "putain", "bordel", "idiot", "stupide", "nul", "nulle", "naze", "pourri", "incompetent", "ridicule", "honte", "lamentable",
-    "foutage de gueule", "se fout de",
-];
-
-/// Words saying the message speaks to you.
-const YOU: &[&str] = &["you", "your", "you're", "u", "tu", "toi", "te", "t'", "ton", "ta", "tes", "vous", "votre", "vos"];
-
-/// Topics, with the words that say them.
-const TOPICS: &[(Topic, &[&str])] = &[
-    (
-        Topic::Work,
-        &[
-            "job", "position", "hiring", "hire", "recruit", "recruiting", "recruiter", "contract", "freelance", "consulting", "consultant", "mission",
-            "quote", "rate", "day rate", "budget", "proposal", "collaboration", "partnership", "opportunity", "interview", "salary", "project",
-            "poste", "offre", "emploi", "recrutement", "recruteur", "contrat", "prestation", "devis", "tarif", "tjm", "proposition", "partenariat",
-            "opportunite", "entretien", "salaire", "projet", "collaborer", "mission",
-        ],
-    ),
-    (
-        Topic::Support,
-        &[
-            "bug", "crash", "crashes", "error", "issue", "problem", "help", "how to", "install", "compile", "build", "module", "raw", "export",
-            "update", "version", "plugin", "feature", "erreur", "probleme", "aide", "comment faire", "plantage", "plante", "installer",
-            "mise a jour", "fonctionnalite",
-        ],
-    ),
-    (Topic::Press, &["journalist", "press", "article", "podcast", "magazine", "media", "reportage", "journaliste", "presse", "medias", "chronique"]),
-    (Topic::Thanks, &["thank you", "thanks", "grateful", "gratitude", "love your work", "merci", "reconnaissant", "reconnaissante", "bravo", "felicitations"]),
-    (Topic::Donation, &["donation", "donate", "sponsor", "liberapay", "paypal", "don", "soutien financier", "faire un don"]),
-];
-
 /// Where `phrase` appears as whole words in `folded`, every time.
 fn positions(folded: &[char], phrase: &str) -> Vec<usize> {
     let mut out = Vec::new();
@@ -122,12 +74,16 @@ fn positions(folded: &[char], phrase: &str) -> Vec<usize> {
     out
 }
 
-/// Whether a word saying "you" stands within a few words of `at`.
-fn near_you(folded: &[char], at: usize) -> bool {
+/// Whether a word saying "you" (`you`) stands within a few words of `at`;
+/// an elided one ("t'") anywhere it is written, the word after it joined.
+fn near_you(you: &[String], folded: &[char], at: usize) -> bool {
     let start = at.saturating_sub(40);
     let end = (at + 40).min(folded.len());
     let window = &folded[start..end];
-    YOU.iter().any(|w| find_word(window, w, 0).is_some() || (w.ends_with('\'') && window.windows(2).any(|p| p[0] == 't' && p[1] == '\'')))
+    you.iter().any(|w| {
+        let elided: Vec<char> = fold(w.trim());
+        find_word(window, w, 0).is_some() || (w.trim().ends_with('\'') && !elided.is_empty() && window.windows(elided.len()).any(|p| p == elided.as_slice()))
+    })
 }
 
 /// Shouting: most letters in capitals, over a real length of text.
@@ -136,28 +92,35 @@ fn shouts(text: &str) -> bool {
     letters.len() >= 40 && letters.iter().filter(|c| c.is_uppercase()).count() * 10 >= letters.len() * 6
 }
 
-/// Reads a message's subject and text: its tone and its topic.
+/// Reads a message's subject and text: its tone and its topic, with the
+/// words in use (`words::current`).
 pub fn assess(subject: &str, text: &str) -> Assessment {
+    assess_with(&crate::words::current().shield, subject, text)
+}
+
+/// `assess` with these words. Each word counts once, however many lists
+/// (languages) hold it.
+pub fn assess_with(lists: &ShieldWords, subject: &str, text: &str) -> Assessment {
     let whole = format!("{subject}\n{text}");
     let folded = fold(&whole);
     let mut score = 0.0f32;
     let mut words = Vec::new();
-    for threat in THREATS {
+    for threat in &lists.threats {
         if !positions(&folded, threat).is_empty() {
             score += 3.0;
             words.push(threat.to_string());
         }
     }
-    for insult in INSULTS {
+    for insult in &lists.insults {
         for at in positions(&folded, insult) {
-            score += if near_you(&folded, at) { 3.0 } else { 1.5 };
+            score += if near_you(&lists.you, &folded, at) { 3.0 } else { 1.5 };
             if !words.iter().any(|w| w == insult) {
                 words.push(insult.to_string());
             }
         }
     }
     let mut rude = 0.0f32;
-    for word in RUDE {
+    for word in &lists.rude {
         let found = positions(&folded, word).len();
         if found > 0 {
             rude += found as f32;
@@ -180,9 +143,10 @@ pub fn assess(subject: &str, text: &str) -> Assessment {
         Tone::Calm
     };
     // The topic most spoken of; work wins a tie, as it matters most.
-    let topic = TOPICS
-        .iter()
-        .map(|(topic, keys)| (keys.iter().map(|k| positions(&folded, k).len()).sum::<usize>(), *topic))
+    let t = &lists.topics;
+    let topic = [(Topic::Work, &t.work), (Topic::Support, &t.support), (Topic::Press, &t.press), (Topic::Thanks, &t.thanks), (Topic::Donation, &t.donation)]
+        .into_iter()
+        .map(|(topic, keys)| (keys.iter().map(|k| positions(&folded, k).len()).sum::<usize>(), topic))
         .filter(|(n, _)| *n > 0)
         .max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)))
         .map_or(Topic::Other, |(_, t)| t);
@@ -304,6 +268,18 @@ mod tests {
         // Whole words only: "connard" is not in "connaissance", "con" never counts.
         assert_eq!(assess("Merci", "Merci pour la connaissance partagée, c'est un contact précieux.").tone, Tone::Calm);
         assert_eq!(assess("Merci", "Merci pour vos articles, quelle reconnaissance !").topic, Topic::Thanks);
+    }
+
+    /// Your words: a German insult and a topic of your own work, once added.
+    #[test]
+    fn your_words_are_read() {
+        let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n[words.shield.insults]\nadd = [\"Mistkerl\"]\n[words.shield.you]\nadd = [\"du\"]\n[words.shield.topics.support]\nadd = [\"pixelmill\"]\n").unwrap();
+        let yours = crate::words::Words::of(&config);
+        assert_eq!(assess_with(&yours.shield, "Hallo", "Du bist ein Mistkerl.").tone, Tone::Hostile);
+        assert_eq!(assess("Hallo", "Du bist ein Mistkerl.").tone, Tone::Calm, "not in the packs");
+        assert_eq!(assess_with(&yours.shield, "pixelmill", "Une question sur pixelmill.").topic, Topic::Support);
+        // "t'" said before a verb, as the packs read it.
+        assert_eq!(assess("Toi", "T'es qu'un connard.").tone, Tone::Hostile);
     }
 
     #[test]

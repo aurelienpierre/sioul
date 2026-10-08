@@ -2262,7 +2262,7 @@ mod tests {
         let known = crate::porch::SenderList::default();
         let trusted = ["mx.example.net".to_string()];
         let own = ["me@example.net".to_string()];
-        let ctx = crate::porch::Context { cases: None, known: &known, senders, trusted_ids: &trusted, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &own, spam: None };
+        let ctx = crate::porch::Context { cases: None, known: &known, senders, trusted_ids: &trusted, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &own, spam: None };
         crate::porch::triage(crate::card::Card::from_bytes(raw.as_bytes()).unwrap(), &ctx)
     }
 

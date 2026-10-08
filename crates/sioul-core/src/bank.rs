@@ -102,15 +102,16 @@ fn fnv(text: &str) -> u64 {
     text.bytes().fold(0xcbf2_9ce4_8422_2325u64, |hash, b| (hash ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3))
 }
 
-/// Reads an export, whatever its form.
-pub fn read(text: &str) -> Result<Statement, String> {
+/// Reads an export, whatever its form. `words`: a CSV's column names, the
+/// statuses of rows left out, the lines above its header (`words::BankWords`).
+pub fn read(words: &crate::words::BankWords, text: &str) -> Result<Statement, String> {
     let head: String = text.chars().take(2000).collect::<String>().to_ascii_uppercase();
     let mut statement = if head.contains("<OFX>") || head.contains("OFXHEADER") {
         read_ofx(text)
     } else if head.contains("CAMT.053") || head.contains("<BKTOCSTMR") {
         read_camt(text)?
     } else {
-        read_csv(text)?
+        read_csv(words, text)?
     };
     // Ids made where the bank gives none: the same movement read twice keeps its id.
     let mut seen: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
@@ -272,7 +273,7 @@ struct Columns {
 /// write it: "Solde (EUROS) ;1 234,56" under "Date ;03/10/2026"), or one on each row
 /// (PayPal). Net amounts, fees deducted, when given; rows in another currency
 /// than most of the file's, and those refused, cancelled or pending, left out.
-fn read_csv(text: &str) -> Result<Statement, String> {
+fn read_csv(words: &crate::words::BankWords, text: &str) -> Result<Statement, String> {
     let text = text.trim_start_matches('\u{feff}');
     let separator = if text.lines().take(15).map(|l| l.matches(';').count()).sum::<usize>() >= text.lines().take(15).map(|l| l.matches(',').count()).sum::<usize>() / 2 { ';' } else { ',' };
     let cells = |line: &str| -> Vec<String> {
@@ -298,20 +299,22 @@ fn read_csv(text: &str) -> Result<Statement, String> {
         let row = cells(line);
         let Some(columns) = header else {
             let names: Vec<String> = row.iter().map(|c| fold(c)).collect();
-            let find = |words: &[&str]| names.iter().position(|n| words.iter().any(|w| n.starts_with(w)));
-            let exact = |words: &[&str]| names.iter().position(|n| words.iter().any(|w| n == w));
-            let date = find(&["date", "created", "cree"]);
-            let label = find(&["libelle", "label", "description", "intitule", "detail", "operation", "nature"]).or_else(|| exact(&["name", "nom"]));
+            // A column found by the start of its name; `exact`, by its whole name.
+            let find = |list: &[String]| names.iter().position(|n| list.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && n.starts_with(&w)));
+            let exact = |list: &[String]| names.iter().position(|n| list.iter().any(|w| crate::words::folded(w) == *n));
+            let columns = &words.columns;
+            let date = find(&columns.date);
+            let label = find(&columns.label).or_else(|| exact(&columns.name));
             // Net of fees first (PayPal, Stripe), else the amount.
-            let amount = exact(&["net"]).or_else(|| find(&["montant", "amount", "somme"]));
-            let (debit, credit) = (find(&["debit"]), find(&["credit"]));
+            let amount = exact(&columns.net).or_else(|| find(&columns.amount));
+            let (debit, credit) = (find(&columns.debit), find(&columns.credit));
             if let (Some(date), Some(label)) = (date, label)
                 && (amount.is_some() || debit.is_some() || credit.is_some())
                 && row.len() >= 3
             {
-                let kind = exact(&["type"]).filter(|k| *k != label);
+                let kind = exact(&columns.kind).filter(|k| *k != label);
                 // Stripe's Description beside its Type; PayPal's Name.
-                let label = if names.get(label).is_some_and(|n| n.starts_with("description")) { label } else { exact(&["name", "nom"]).unwrap_or(label) };
+                let label = if names.get(label).is_some_and(|n| n.starts_with("description")) { label } else { exact(&columns.name).unwrap_or(label) };
                 header = Some(Columns {
                     date,
                     label,
@@ -319,23 +322,24 @@ fn read_csv(text: &str) -> Result<Statement, String> {
                     debit,
                     credit,
                     kind,
-                    status: exact(&["status", "etat", "statut"]),
-                    impact: exact(&["impact sur le solde", "balance impact"]),
-                    balance: exact(&["balance", "solde"]),
-                    time: exact(&["time", "heure"]),
-                    currency: exact(&["currency", "devise"]),
-                    id: exact(&["id", "transaction id", "numero de transaction", "id de transaction"]),
+                    status: exact(&columns.status),
+                    impact: exact(&columns.impact),
+                    balance: exact(&columns.balance),
+                    time: exact(&columns.time),
+                    currency: exact(&columns.currency),
+                    id: exact(&columns.id),
                 });
                 continue;
             }
             // Above the header: an account, a balance, its day.
             let first = names.first().cloned().unwrap_or_default();
             let second = row.get(1).cloned().unwrap_or_default();
-            if first.starts_with("solde") {
+            let starts = |list: &[String]| list.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && first.starts_with(&w));
+            if starts(&words.above.balance) {
                 pre_balance = parse_amount(&second);
-            } else if first.starts_with("date") {
+            } else if starts(&words.above.date) {
                 pre_date = parse_date(&second);
-            } else if (first.starts_with("numero") || first.starts_with("compte") || first.starts_with("account")) && statement.account.is_empty() {
+            } else if starts(&words.above.account) && statement.account.is_empty() {
                 statement.account = second;
             }
             continue;
@@ -374,11 +378,11 @@ fn read_csv(text: &str) -> Result<Statement, String> {
         }
         if let Some(col) = c.status {
             let status = fold(row.get(col).map_or("", String::as_str));
-            if ["pending", "en attente", "refuse", "denied", "annule", "cancel", "reversed", "failed", "echoue"].iter().any(|w| status.starts_with(w)) {
+            if words.skipped.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && status.starts_with(&w)) {
                 continue;
             }
         }
-        if c.impact.and_then(|i| row.get(i)).is_some_and(|v| fold(v).starts_with("memo")) {
+        if c.impact.and_then(|i| row.get(i)).is_some_and(|v| words.memo.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && fold(v).starts_with(&w))) {
             continue;
         }
         let amount = match (c.amount, c.debit, c.credit) {
@@ -585,42 +589,38 @@ impl Watch {
     }
 }
 
-/// Words that name nothing: "the", "pour", and what every bank line says
-/// ("PRLV SEPA", "CARTE", "VIREMENT"). "Choir, the year's fee" is not "CB
-/// BAKERY OF THE PORT".
-const FILLER: &[&str] = &[
-    "the", "and", "for", "from", "with", "your", "our", "you", "its", "this", "that", "are", "was", "not", "but", "all", "any", "per", "via", "off", "out",
-    "les", "des", "une", "pour", "par", "sur", "aux", "avec", "dans", "est", "pas", "que", "qui", "vos", "votre", "nos", "notre", "son", "ses", "leur", "chez", "sans", "entre",
-    "prlv", "sepa", "vir", "virement", "prelevement", "paiement", "carte", "achat", "retrait", "payment", "transfer", "card", "purchase", "debit", "credit", "ref", "reference",
-];
-
-/// The words of a label that can name a payment: folded, three letters at least, no number, no filler.
-pub(crate) fn words(text: &str) -> Vec<String> {
+/// The words of a label that can name a payment: folded, three letters at
+/// least, no number, none of `filler`: the words that name nothing, "the",
+/// "pour", and what every bank line says ("PRLV SEPA", "CARTE", "VIREMENT";
+/// `words::BankWords::filler`). "Choir, the year's fee" is not "CB BAKERY OF THE PORT".
+pub(crate) fn words(filler: &[String], text: &str) -> Vec<String> {
+    let filler: Vec<String> = filler.iter().map(|w| crate::words::folded(w)).collect();
     crate::text::fold(text)
         .into_iter()
         .map(|c| if c.is_alphanumeric() { c } else { ' ' })
         .collect::<String>()
         .split_whitespace()
-        .filter(|w| w.len() >= 3 && !w.chars().all(|c| c.is_ascii_digit()) && !FILLER.contains(w))
+        .filter(|w| w.len() >= 3 && !w.chars().all(|c| c.is_ascii_digit()) && !filler.iter().any(|f| f == w))
         .map(str::to_string)
         .collect()
 }
 
 /// Whether a movement stands for a payment expected on `date`: a word of the
 /// payment's name in the movement's, or the same amount within days.
-pub(crate) fn matches(movement: &Movement, label: &[String], amount: Money, date: Date) -> bool {
+pub(crate) fn matches(filler: &[String], movement: &Movement, label: &[String], amount: Money, date: Date) -> bool {
     let near = movement.date >= date.checked_sub(3.days()).unwrap_or(date) && movement.date <= date.checked_add(7.days()).unwrap_or(date);
     if !near || movement.amount.is_negative() != amount.is_negative() {
         return false;
     }
-    let theirs = words(&movement.label);
+    let theirs = words(filler, &movement.label);
     let named = label.iter().any(|w| theirs.contains(w));
     let same = (movement.amount.cents() - amount.cents()).abs() <= amount.cents().abs() / 100 + 1;
     named || (same && (movement.date.since(date).map_or(99, |s| s.get_days().abs())) <= 3)
 }
 
-/// Holds the movements against the ledger's recurring payments and planned lines.
-pub fn watch(bank: &Bank, ledger: &Ledger, today: Date) -> Watch {
+/// Holds the movements against the ledger's recurring payments and planned
+/// lines, their labels compared without `filler` (`words::BankWords::filler`).
+pub fn watch(bank: &Bank, ledger: &Ledger, today: Date, filler: &[String]) -> Watch {
     let mut out = Watch { balance: bank.balance(), ..Watch::default() };
     let first = bank.movements.iter().map(|m| m.date).min();
     let last = bank.movements.iter().map(|m| m.date).max();
@@ -630,9 +630,9 @@ pub fn watch(bank: &Bank, ledger: &Ledger, today: Date) -> Watch {
         let from = first.checked_add(3.days()).unwrap_or(first);
         let to = last.checked_sub(7.days()).unwrap_or(last);
         for preset in ledger.presets.iter().filter(|p| !p.estimate) {
-            let label = words(&preset.label);
+            let label = words(filler, &preset.label);
             for date in preset.occurrences(from, to) {
-                let found = bank.movements.iter().enumerate().find(|(i, m)| !used[*i] && matches(m, &label, preset.amount, date));
+                let found = bank.movements.iter().enumerate().find(|(i, m)| !used[*i] && matches(filler, m, &label, preset.amount, date));
                 match found {
                     Some((i, m)) => {
                         used[i] = true;
@@ -650,7 +650,7 @@ pub fn watch(bank: &Bank, ledger: &Ledger, today: Date) -> Watch {
     let Some((as_of, start)) = out.balance else { return out };
     let horizon = today.checked_add(31.days()).unwrap_or(today);
     let movements: Vec<&Movement> = bank.movements.iter().collect();
-    let flows = expected(&movements, ledger, None, as_of, today, horizon);
+    let flows = expected(&movements, ledger, None, as_of, today, horizon, filler);
     let week = today.checked_add(7.days()).unwrap_or(today);
     out.coming = flows.iter().filter(|f| f.date >= today && f.date <= week && f.amount.is_negative() && !ledger.presets.iter().any(|p| p.estimate && p.label == f.label)).cloned().collect();
     let (forecast, below) = carry(start, as_of, &flows, today, horizon, Money::ZERO);
@@ -670,7 +670,7 @@ pub fn watch(bank: &Bank, ledger: &Ledger, today: Date) -> Watch {
 /// read after the balance, then the recurring payments and planned lines of
 /// `budgets` (every budget's when None) not seen yet, daily spending spread
 /// over its days; in date order.
-pub(crate) fn expected(movements: &[&Movement], ledger: &Ledger, budgets: Option<&[String]>, as_of: Date, today: Date, horizon: Date) -> Vec<Expected> {
+pub(crate) fn expected(movements: &[&Movement], ledger: &Ledger, budgets: Option<&[String]>, as_of: Date, today: Date, horizon: Date, filler: &[String]) -> Vec<Expected> {
     let ours = |budget: &str| budgets.is_none_or(|list| list.iter().any(|b| b == budget));
     let last = movements.iter().map(|m| m.date).max();
     let seen_until = last.unwrap_or(as_of).max(as_of);
@@ -696,10 +696,10 @@ pub(crate) fn expected(movements: &[&Movement], ledger: &Ledger, budgets: Option
             }
             continue;
         }
-        let label = words(&preset.label);
+        let label = words(filler, &preset.label);
         for date in preset.occurrences(as_of.tomorrow().unwrap_or(as_of), horizon) {
             // Already passed in an export read after the balance: counted there.
-            if date <= seen_until && movements.iter().any(|m| m.date > as_of && matches(m, &label, preset.amount, date)) {
+            if date <= seen_until && movements.iter().any(|m| m.date > as_of && matches(filler, m, &label, preset.amount, date)) {
                 continue;
             }
             flows.push(Expected { date: date.max(today), label: preset.label.clone(), amount: preset.amount });
@@ -743,6 +743,20 @@ pub(crate) fn carry(start: Money, as_of: Date, flows: &[Expected], today: Date, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::words::Words;
+
+    /// The readers with the packs built in (French and English).
+    fn read(text: &str) -> Result<Statement, String> {
+        super::read(&Words::builtin().bank, text)
+    }
+
+    fn words(text: &str) -> Vec<String> {
+        super::words(&Words::builtin().bank.filler, text)
+    }
+
+    fn watch(bank: &Bank, ledger: &Ledger, today: Date) -> Watch {
+        super::watch(bank, ledger, today, &Words::builtin().bank.filler)
+    }
 
     #[test]
     fn filler_words_name_nothing() {
@@ -856,7 +870,7 @@ mod tests {
         // Without the wages: short on 1 November, the savings cover it.
         let mut poorer = ledger.clone();
         poorer.presets.retain(|p| p.label != "Salaire");
-        let watch = super::watch(&bank, &poorer, day("2026-10-03"));
+        let watch = self::watch(&bank, &poorer, day("2026-10-03"));
         let short = watch.findings.iter().find(|f| matches!(f, Finding::Short { .. })).expect("short");
         assert_eq!(short, &Finding::Short { label: "Loyer agence".into(), amount: Money(-78000), date: day("2026-11-01"), short: Money(55700), reserve: Some("Livret A".into()) });
     }

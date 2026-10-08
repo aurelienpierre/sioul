@@ -1872,6 +1872,8 @@ pub(crate) fn load_config() -> Config {
         return config.clone();
     }
     let config = Config::load(&path).unwrap_or_default();
+    // The words this program looks for, said once each time the file is read (`words::current`).
+    sioul_core::words::set_current(sioul_core::words::Words::of(&config));
     if let (Some((size, time)), Ok(mut parsed)) = (stamp, PARSED.lock()) {
         *parsed = Some((path, size, time, config.clone()));
     }
@@ -2087,7 +2089,7 @@ impl World {
 
     fn ledger(&self) -> Option<Ledger> {
         // With the bank accounts' movements counted in their budgets.
-        self.config.case_store_path().and_then(|root| Ledger::load_with_bank(&root).ok())
+        self.config.case_store_path().and_then(|root| Ledger::load_with_bank(&root, &sioul_core::words::Words::of(&self.config)).ok())
     }
 
     fn ledger_path(&self) -> Option<PathBuf> {
@@ -2097,7 +2099,7 @@ impl World {
     /// Every message about money, and what becomes of it.
     fn mail_lines(&self, ledger: &Ledger) -> Vec<MailLine> {
         let ignored = MoneyState::load(&MoneyState::default_path()).ignored;
-        budget::mail_lines(ledger, &self.gather(&PorchState::default()), &ignored)
+        budget::mail_lines(ledger, &self.gather(&PorchState::default()), &ignored, &sioul_core::words::Words::of(&self.config))
     }
 
     /// One message file judged as the Porch judges it, only inside the accounts' own mail.
@@ -5365,8 +5367,9 @@ impl qobject::Sioul {
         // the mail filters in Mail's ⚙, their editor, a run's preview, a search made a filter, "security-key"
         // the setup of the demo's software security key and a message signed at Send with it (docs/client.md),
         // "calls" the calls a phone declined on a computer's Porch and a person's calls of the month (docs/porch.md),
+        // "words" Settings ▸ Words, a line's lists changed and taken back (docs/words.md),
         // on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "spam", "mail-search", "mail-filters", "security-key", "calls"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "spam", "mail-search", "mail-filters", "security-key", "calls", "words"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

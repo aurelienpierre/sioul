@@ -134,7 +134,9 @@ fn finding_text(finding: &Finding, today: jiff::civil::Date) -> String {
 
 /// The bank's part of the Budgets page, as JSON.
 pub(crate) fn view() -> String {
-    let Some(root) = load_config().case_store_path() else { return json(&View { problem: tr().text("papers-no-store", None), ..View::default() }) };
+    let config = load_config();
+    let looked = sioul_core::words::Words::of(&config);
+    let Some(root) = config.case_store_path() else { return json(&View { problem: tr().text("papers-no-store", None), ..View::default() }) };
     let bank = match Bank::load(&root) {
         Ok(bank) => bank,
         Err(problem) => return json(&View { store: true, problem, ..View::default() }),
@@ -145,12 +147,12 @@ pub(crate) fn view() -> String {
         view.balance = say("bank-balance", &[("amount", tr().money(amount)), ("date", tr().day_in(date, today))]);
     }
     let ledger = Ledger::load(&root).unwrap_or_default();
-    let watch = sioul_core::bank::watch(&bank, &ledger, today);
+    let watch = sioul_core::bank::watch(&bank, &ledger, today, &looked.bank.filler);
     view.findings = watch.findings.iter().map(|f| finding_text(f, today)).collect();
     view.coming = watch.coming.iter().map(|e| format!("{} · {} · {}", tr().day_in(e.date, today), e.label, tr().money(e.amount.abs()))).collect();
     view.forecast = watch.forecast.iter().map(|(d, m)| Point { day: d.to_string(), cents: m.cents() }).collect();
     view.attention = watch.findings.len();
-    accounts_into(&mut view, &bank, &ledger, today);
+    accounts_into(&mut view, &bank, &ledger, today, &looked);
     if !watch.coming.is_empty() {
         let list = watch.coming.iter().take(4).map(|e| format!("{} {} ({})", e.label, tr().money(e.amount.abs()), tr().weekday_short(e.date))).collect::<Vec<_>>().join(", ");
         let week = today.checked_add(jiff::Span::new().days(7)).unwrap_or(today);
@@ -162,7 +164,7 @@ pub(crate) fn view() -> String {
 
 /// The bank accounts' part of the view: each with its balance, its budgets,
 /// its movements placed and why, its rules, what tops it up.
-fn accounts_into(view: &mut View, bank: &Bank, ledger: &Ledger, today: jiff::civil::Date) {
+fn accounts_into(view: &mut View, bank: &Bank, ledger: &Ledger, today: jiff::civil::Date, looked: &sioul_core::words::Words) {
     use sioul_core::accounts::{self, Place, Why};
     let budget_title = |id: &str| ledger.budgets.iter().find(|b| b.id == id).map_or(id.to_string(), |b| b.title.clone());
     let reserve_title = |id: &str| ledger.reserves.iter().find(|r| r.id == id).map_or(id.to_string(), |r| r.title.clone());
@@ -177,8 +179,8 @@ fn accounts_into(view: &mut View, bank: &Bank, ledger: &Ledger, today: jiff::civ
         .iter()
         .map(|r| ReserveView { id: r.id.clone(), title: r.title.clone(), balance: r.balance.cents() as f64 / 100.0, as_of: r.as_of.to_string(), floor: r.floor.cents() as f64 / 100.0, delay_days: r.delay_days })
         .collect();
-    let placed = accounts::place(ledger, bank);
-    let ups = accounts::top_ups(ledger, bank, today);
+    let placed = accounts::place(ledger, bank, looked);
+    let ups = accounts::top_ups(ledger, bank, today, looked);
     for account in &ledger.bank_accounts {
         let balance = accounts::balance_of(bank, account).map(|(date, amount)| say("bank-balance", &[("amount", tr().money(amount)), ("date", tr().day_in(date, today))])).unwrap_or_default();
         let mine: Vec<&accounts::Placed> = placed.iter().filter(|p| p.account == account.id).collect();
@@ -345,14 +347,15 @@ pub(crate) fn import(file: &str) -> (bool, String) {
 /// that what was read under it before is the account's too.
 pub(crate) fn import_into(file: &str, account: &str) -> (bool, String) {
     let path = crate::backend::local_path(file);
-    let Some(root) = load_config().case_store_path() else { return (false, tr().text("papers-no-store", None)) };
+    let config = load_config();
+    let Some(root) = config.case_store_path() else { return (false, tr().text("papers-no-store", None)) };
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(e) => return (false, format!("{}: {e}", path.display())),
     };
     // Some banks still write Latin-1.
     let text = String::from_utf8(bytes.clone()).unwrap_or_else(|_| bytes.iter().map(|&b| b as char).collect());
-    let statement = match sioul_core::bank::read(&text) {
+    let statement = match sioul_core::bank::read(&sioul_core::words::Words::of(&config).bank, &text) {
         Ok(s) => s,
         Err(_) => return (false, say("bank-unreadable", &[("file", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())])),
     };

@@ -218,9 +218,10 @@ impl Filter {
 /// mail), these reading Sioul's own checks first (its stamp, made as the
 /// message was stored), your provider's second, as the training reads the
 /// corpus's own checks (`features::auth_results`; `trusted_ids`: the
-/// account's authserv-ids, Sioul's own first).
+/// account's authserv-ids, Sioul's own first). The words are read with the
+/// table's own (`Table::lexicon`).
 pub fn score(table: &Table, card: &Card, trusted_ids: &[String]) -> Verdict {
-    let tokens = tokenize::tokens(&card.subject, &card.excerpt);
+    let tokens = tokenize::tokens_with(&table.lexicon(), &card.subject, &card.excerpt);
     let received = card
         .path
         .as_deref()

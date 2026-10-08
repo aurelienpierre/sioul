@@ -9,7 +9,8 @@
 //! at once and quietly, from automatic addresses too (docs/porch.md, "Right
 //! now"). Fake "your code" messages are a common phishing trick: a forged one
 //! was set aside before, and one whose sender is not verified comes with a
-//! warning. The detector reads French and English.
+//! warning. The words it looks for are the `codes` lists of the word packs
+//! in use, with your changes (`words::Codes`, docs/words.md).
 //!
 //! Many sites send these through the same services as their newsletters, with
 //! the same headers (`List-Unsubscribe`, `Precedence: bulk`): those headers
@@ -19,6 +20,7 @@
 //! which talk about passwords without handing one over.
 
 use crate::text::{find_word, fold};
+use crate::words::Codes;
 
 /// What kind of short-lived secret a message carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,123 +71,6 @@ impl OneTimeCode {
     }
 }
 
-/// Phrases are compared folded: lowercase, without accents (see `text`).
-const CODE_PHRASES: &[&str] = &[
-    "verification code", "security code", "confirmation code", "authentication code",
-    "login code", "log-in code", "sign-in code", "sign in code", "signin code", "one-time code", "one time code",
-    "one-time password", "one time password", "single-use code", "passcode", "otp",
-    "validation code", "access code", "activation code", "2fa", "two-factor", "two factor",
-    "2-step verification", "two-step verification", "verification pin", "one-time pin",
-    "code de verification", "code de securite", "code de confirmation",
-    "code d'authentification", "code d'acces", "code de connexion", "code d'activation",
-    "code a usage unique", "mot de passe a usage unique", "code temporaire",
-    "code de validation", "code d'identification", "double authentification",
-    "authentification a deux facteurs",
-];
-/// Words that point at a code without naming its use: "enter the code below",
-/// "utilisez le code suivant". A code beside them counts only in a message
-/// about signing in or checking who you are (`SIGN_IN_CUES`), so that "use
-/// this code at checkout" is no secret of yours.
-const POINTING_PHRASES: &[&str] = &[
-    "following code", "code below", "this code", "enter the code", "use the code", "copy the code", "type the code",
-    "code suivant", "ce code", "code ci-dessous", "code ci dessous", "saisissez le code", "entrez le code",
-    "utilisez le code", "indiquez le code", "renseignez le code", "copiez le code",
-];
-/// What a message about signing in or checking who you are says somewhere.
-const SIGN_IN_CUES: &[&str] = &[
-    "sign in", "sign-in", "signin", "log in", "log-in", "login", "sign into", "log into", "signing in", "logging in",
-    "sign up", "sign-up", "verify", "verification", "confirm", "identity", "authenticate", "authentication",
-    "connexion", "connecter", "connectez", "identifier", "identification", "verifier", "verification",
-    "confirmer", "identite", "authentifier", "authentification", "inscription",
-];
-/// Words between "your" and "code", or right after "code", that make it no
-/// secret of yours: "your zip code: 54390", "votre code client : 123456".
-const NOT_A_SECRET: &[&str] = &[
-    "zip", "postal", "post", "postcode", "area", "country", "dialing", "dialling", "promo", "promotional", "promotion",
-    "discount", "coupon", "gift", "voucher", "referral", "invite", "invitation", "tracking", "booking", "reservation",
-    "order", "customer", "client", "member", "membership", "product", "item", "error", "source", "dress", "tax", "vat",
-    "bank", "sort", "swift", "bic", "iban", "routing", "door", "gate", "building", "lockbox", "wifi", "wi-fi", "parking",
-    "locker", "promotionnel", "cadeau", "avantage", "reduction", "parrainage", "suivi", "colis", "commande",
-    "adherent", "membre", "produit", "article", "erreur", "vestimentaire", "porte", "portail", "immeuble", "casier",
-    "banque", "guichet", "naf", "ape", "insee", "fiscal", "tva", "pays", "region", "departement", "commune",
-];
-/// A shop's code is no secret of yours: "your code SPRING20 for 20 % off".
-const PROMO_PHRASES: &[&str] = &[
-    "promo", "discount", "coupon", "voucher", "gift code", "% off",
-    "reduction", "bon d'achat", "code avantage", "code cadeau",
-];
-/// Only the words that hand a password over: "log in with your login details"
-/// (every notice of a public service) or "your new password was saved" carry none.
-const PASSWORD_PHRASES: &[&str] = &[
-    "temporary password", "initial password", "your password is", "your new password is",
-    "your new password:", "here is your password", "here is your new password",
-    "here are your login details", "your login details are", "your login details:",
-    "mot de passe provisoire", "mot de passe temporaire", "votre mot de passe est",
-    "votre nouveau mot de passe est", "votre nouveau mot de passe :", "votre nouveau mot de passe:",
-    "voici votre mot de passe", "voici votre nouveau mot de passe", "mot de passe initial",
-    "voici vos identifiants", "vos identifiants sont", "vos identifiants :", "vos identifiants:",
-    "vos identifiants de connexion sont", "vos identifiants de connexion :",
-];
-const RESET_PHRASES: &[&str] = &[
-    "reset your password", "password reset", "reset password", "reset link",
-    "forgot your password", "forgotten password", "choose a new password",
-    "set a new password", "create a new password", "set your password", "create your password",
-    "reinitialiser votre mot de passe", "reinitialisation de votre mot de passe",
-    "reinitialisation du mot de passe", "mot de passe oublie", "lien de reinitialisation",
-    "definir votre mot de passe", "definissez votre mot de passe",
-    "choisir un nouveau mot de passe", "choisissez un nouveau mot de passe",
-    "creer votre mot de passe", "creez votre mot de passe",
-];
-const LINK_PHRASES: &[&str] = &[
-    "sign-in link", "sign in link", "signin link", "login link", "log in link", "log-in link", "magic link", "connection link",
-    "click to sign in", "click to log in", "link to sign in", "link to log in", "sign in with this link", "log in with this link",
-    "this link will sign you in", "this link will log you in",
-    "confirm your login", "confirm your sign-in", "confirm your sign in", "verify your login", "verify your sign-in", "verify your sign in",
-    "lien de connexion", "lien magique", "se connecter avec ce lien", "cliquez pour vous connecter",
-    "lien pour vous connecter", "lien pour se connecter", "confirmez votre connexion", "confirmer votre connexion",
-    "validez votre connexion", "valider votre connexion",
-];
-/// What a sign-in link's message is about, in its subject or its first lines:
-/// "Sign in to Medium", "Connexion à votre espace". Alone it proves nothing
-/// (every notice says "log in to read it"): the link must also be said to
-/// expire or to work once (`LINK_WORDS`, `VALIDITY_WORDS`).
-const SIGN_IN_INTENTS: &[&str] = &[
-    "sign in", "sign-in", "signin", "log in", "log-in", "login", "sign into", "log into", "signing in", "logging in",
-    "connexion", "vous connecter", "se connecter", "connectez-vous",
-];
-/// What may be said to expire or to work once: the link, its button, the code.
-const LINK_WORDS: &[&str] = &["link", "button", "code", "lien", "bouton"];
-/// "This link expires in 15 minutes", "ce lien est valable une heure".
-const VALIDITY_WORDS: &[&str] = &["expire", "expires", "expired", "expiration", "valid", "valable", "valide", "expirera", "expirer"];
-/// How far after "link" its validity is said, in characters.
-const VALIDITY_WINDOW: usize = 80;
-/// Lines that answer a request of yours: "if you did not ask for this,
-/// ignore this message". A newsletter does not write them.
-const REQUEST_CUES: &[&str] = &[
-    "if you did not request", "if you didn't request", "if you did not ask", "if you didn't ask",
-    "if this wasn't you", "if this was not you", "if it wasn't you", "if you did not try", "if you didn't try",
-    "if you did not make this request", "if you didn't make this request", "you can safely ignore", "you can ignore this",
-    "ignore this email", "ignore this e-mail", "ignore this message",
-    "si vous n'avez pas demande", "si vous n'etes pas a l'origine", "si ce n'est pas vous", "si vous n'avez pas essaye",
-    "si vous n'avez pas fait cette demande", "ignorez ce message", "ignorer ce message", "ignorez cet e-mail",
-    "ignorez cet email", "ignorer cet e-mail", "ignorer cet email", "ignorez ce mail",
-    // What comes with a password handed over.
-    "change it after", "change it when you", "at your first login", "at your first sign-in", "when you first sign in",
-    "changez-le", "modifiez-le", "a votre premiere connexion", "lors de votre premiere connexion", "des votre premiere connexion",
-];
-const CONFIRM_PHRASES: &[&str] = &[
-    "confirm your email", "verify your email", "confirm your e-mail", "verify your e-mail",
-    "confirm your address", "verify your address", "activate your account",
-    "confirm your account", "confirm your registration", "confirm your subscription",
-    "verify your account", "validate your email", "validate your e-mail",
-    "confirmez votre adresse", "confirmer votre adresse", "verifiez votre adresse",
-    "confirmez votre e-mail", "confirmer votre e-mail", "confirmez votre email", "confirmer votre email",
-    "verifiez votre e-mail", "verifier votre e-mail", "verifiez votre email", "verifier votre email",
-    "verifier votre adresse", "validez votre adresse", "valider votre adresse",
-    "activez votre compte", "activer votre compte", "confirmez votre compte",
-    "confirmer votre compte", "confirmez votre inscription", "confirmer votre inscription",
-];
-
 /// Characters of subject and body looked at: codes sit at the top of these messages.
 const SCAN_LIMIT: usize = 6000;
 /// Characters of a bulk message's text read, its web addresses left out
@@ -197,20 +82,13 @@ const INTENT_LEAD: usize = 300;
 /// How far around the phrase a code is looked for, in characters.
 const AFTER_WINDOW: usize = 160;
 const BEFORE_WINDOW: usize = 100;
+/// How far after "link" its validity is said, in characters.
+const VALIDITY_WINDOW: usize = 80;
 
-/// Words that hand a code over: "your code is K7Q-2M9", "votre code : AB12CD".
-/// The code must follow them at once, "is", "est" or a colon between.
-const GIVING_PHRASES: &[&str] = &["your code", "votre code", "ton code"];
-/// Whose code it is, a few words before "code": "your Instagram code: 123456".
-const OWNERS: &[&str] = &["your", "votre", "ton"];
-/// What says a code is yours, right after it: "123456 is your Instagram code".
-const OWNED_AFTER: &[&str] = &["is your", "est votre", "est ton"];
-/// What may stand between a phrase and the code it gives, besides spaces and a colon.
-const LINKING_WORDS: &[&str] = &["is", "est"];
-
-/// Finds a short-lived secret in a message, if it carries one.
-pub fn detect(subject: &str, body: &str) -> Option<OneTimeCode> {
-    read(subject, body, false)
+/// Finds a short-lived secret in a message, if it carries one. Phrases are
+/// compared folded: lowercase, without accents (see `text`).
+pub fn detect(words: &Codes, subject: &str, body: &str) -> Option<OneTimeCode> {
+    read(words, subject, body, false)
 }
 
 /// Finds a short-lived secret in a message read from mail. Bulk headers
@@ -220,13 +98,13 @@ pub fn detect(subject: &str, body: &str) -> Option<OneTimeCode> {
 /// and a phrase that hands nothing over by itself (a reset, a link, an
 /// address to confirm, a password), when it is not in the subject, counts only
 /// beside a line that answers a request ("if you did not ask for this…",
-/// `REQUEST_CUES`) or a link said to expire. A newsletter's article on
+/// `Codes::request`) or a link said to expire. A newsletter's article on
 /// passwords is none.
-pub fn detect_message(card: &crate::card::Card) -> Option<OneTimeCode> {
-    read(&card.subject, &card.excerpt, card.is_list)
+pub fn detect_message(words: &Codes, card: &crate::card::Card) -> Option<OneTimeCode> {
+    read(words, &card.subject, &card.excerpt, card.is_list)
 }
 
-fn read(subject: &str, body: &str, bulk: bool) -> Option<OneTimeCode> {
+fn read(w: &Codes, subject: &str, body: &str, bulk: bool) -> Option<OneTimeCode> {
     let subject = crate::text::readable(subject).replace('\n', " ");
     let mut body = crate::text::readable(body);
     if bulk {
@@ -238,27 +116,27 @@ fn read(subject: &str, body: &str, bulk: bool) -> Option<OneTimeCode> {
     let folded: Vec<char> = fold(&text).into_iter().map(|c| if c == '\n' { ' ' } else { c }).collect();
     // Positions before this one are the subject's.
     let in_subject = subject.chars().count();
-    let expires_minutes = expiry_minutes(&folded);
-    let promotion = first_hit(&folded, PROMO_PHRASES).is_some();
+    let expires_minutes = expiry_minutes(w, &folded);
+    let promotion = first_hit(&folded, &w.promo).is_some();
     let secret = |kind, code| Some(OneTimeCode { kind, code, expires_minutes });
     // A code phrase without a code nearby ("never share your security
     // code", a heading) is no code: the next phrase is read, and so on.
-    if !promotion && let Some(code) = code_in(&original, &folded) {
+    if !promotion && let Some(code) = code_in(w, &original, &folded) {
         return secret(CodeKind::Code, Some(code));
     }
-    let brief = lasts_briefly(&folded, expires_minutes);
+    let brief = lasts_briefly(w, &folded, expires_minutes);
     // In bulk mail, a phrase without a code beside it counts in the subject,
     // or beside a cue: "your password is" is also an article's sentence.
-    let cued = !bulk || first_hit(&folded, REQUEST_CUES).is_some() || brief;
+    let cued = !bulk || first_hit(&folded, &w.request).is_some() || brief;
     let counts = |hit: Option<(usize, usize)>| hit.is_some_and(|(start, _)| start < in_subject || cued);
-    for (kind, phrases) in [(CodeKind::Password, PASSWORD_PHRASES), (CodeKind::PasswordReset, RESET_PHRASES), (CodeKind::SignInLink, LINK_PHRASES), (CodeKind::Confirmation, CONFIRM_PHRASES)] {
+    for (kind, phrases) in [(CodeKind::Password, &w.password), (CodeKind::PasswordReset, &w.reset), (CodeKind::SignInLink, &w.link), (CodeKind::Confirmation, &w.confirm)] {
         if counts(first_hit(&folded, phrases)) {
             return secret(kind, None);
         }
     }
     // "Sign in to Medium" above, "this link expires in 15 minutes" below: a
     // link to sign in. A shop's "log in to see your offers" is none.
-    let intent = first_hit(&folded, SIGN_IN_INTENTS).filter(|&(start, _)| start <= in_subject + INTENT_LEAD);
+    let intent = first_hit(&folded, &w.intents).filter(|&(start, _)| start <= in_subject + INTENT_LEAD);
     if intent.is_some() && brief && !promotion {
         return secret(CodeKind::SignInLink, None);
     }
@@ -271,18 +149,17 @@ const BRIEF_MINUTES: u32 = 2 * 24 * 60;
 
 /// Whether a link, its button or a code is said to expire soon or to work
 /// once: "This link expires in 15 minutes", "ce lien n'est valable qu'une fois".
-fn lasts_briefly(folded: &[char], expires_minutes: Option<u32>) -> bool {
-    const ONCE: &[&str] = &["used once", "only once", "use once", "single use", "single-use", "one-time use", "one time use", "une seule fois", "usage unique", "qu'une fois"];
+fn lasts_briefly(w: &Codes, folded: &[char], expires_minutes: Option<u32>) -> bool {
     let soon = expires_minutes.is_some_and(|m| m <= BRIEF_MINUTES);
-    every_hit(folded, LINK_WORDS).into_iter().any(|(_, end)| {
+    every_hit(folded, &w.link_words).into_iter().any(|(_, end)| {
         let window = &folded[end..(end + VALIDITY_WINDOW).min(folded.len())];
-        let said = |words: &[&str]| words.iter().any(|w| find_word(window, w, 0).is_some());
-        said(ONCE) || (soon && said(VALIDITY_WORDS))
+        let said = |words: &[String]| words.iter().any(|w| find_word(window, w, 0).is_some());
+        said(&w.once) || (soon && said(&w.validity))
     })
 }
 
 /// The earliest of the phrases in the text, as (start, end) positions.
-fn first_hit(folded: &[char], phrases: &[&str]) -> Option<(usize, usize)> {
+fn first_hit(folded: &[char], phrases: &[String]) -> Option<(usize, usize)> {
     phrases
         .iter()
         .filter_map(|p| find_word(folded, p, 0).map(|start| (start, start + fold(p).len())))
@@ -290,7 +167,7 @@ fn first_hit(folded: &[char], phrases: &[&str]) -> Option<(usize, usize)> {
 }
 
 /// Every place of each phrase in the text, as (start, end) positions.
-fn every_hit(folded: &[char], phrases: &[&str]) -> Vec<(usize, usize)> {
+fn every_hit(folded: &[char], phrases: &[String]) -> Vec<(usize, usize)> {
     let mut hits = Vec::new();
     for phrase in phrases {
         let length = fold(phrase).len();
@@ -305,17 +182,22 @@ fn every_hit(folded: &[char], phrases: &[&str]) -> Vec<(usize, usize)> {
 
 /// The code beside the first phrase, in the text's order, that has one; else
 /// a code said to be yours right after it ("123456 is your Instagram code").
-fn code_in(original: &[char], folded: &[char]) -> Option<String> {
+fn code_in(w: &Codes, original: &[char], folded: &[char]) -> Option<String> {
     let found = codes(original);
-    let mut hits: Vec<(usize, usize, bool)> = every_hit(folded, CODE_PHRASES).into_iter().map(|(start, end)| (start, end, false)).collect();
-    hits.extend(every_hit(folded, GIVING_PHRASES).into_iter().map(|(start, end)| (start, end, true)));
-    hits.extend(owned_codes(original, folded).into_iter().map(|(start, end)| (start, end, true)));
+    let mut hits: Vec<(usize, usize, bool)> = every_hit(folded, &w.code).into_iter().map(|(start, end)| (start, end, false)).collect();
+    hits.extend(every_hit(folded, &w.giving).into_iter().map(|(start, end)| (start, end, true)));
+    hits.extend(owned_codes(w, original, folded).into_iter().map(|(start, end)| (start, end, true)));
     // "Enter the code below", only in a message about signing in or checking who you are.
-    if first_hit(folded, SIGN_IN_CUES).is_some() {
-        hits.extend(every_hit(folded, POINTING_PHRASES).into_iter().map(|(start, end)| (start, end, false)));
+    if first_hit(folded, &w.sign_in).is_some() {
+        hits.extend(every_hit(folded, &w.pointing).into_iter().map(|(start, end)| (start, end, false)));
     }
     hits.sort_unstable();
-    hits.into_iter().find_map(|(start, end, giving)| code_beside(folded, &found, (start, end), giving)).or_else(|| named_after(folded, &found))
+    hits.into_iter().find_map(|(start, end, giving)| code_beside(w, folded, &found, (start, end), giving)).or_else(|| named_after(w, folded, &found))
+}
+
+/// Whether a folded word is one of a list's, the list's words folded too.
+fn is_in(list: &[String], folded_word: &str) -> bool {
+    list.iter().any(|w| crate::words::folded(w) == folded_word)
 }
 
 /// The words of a text, as (start, end) positions: runs of letters and digits,
@@ -340,23 +222,23 @@ fn words(folded: &[char]) -> Vec<(usize, usize)> {
 /// "Your Instagram code", "your Uber login code", "votre code Instagram":
 /// the owner, up to two words, "code", and in French a name after it,
 /// written with a capital ("Instagram", never "postal"); none of the words
-/// one that makes it no secret (`NOT_A_SECRET`), nothing but spaces between
+/// one that makes it no secret (`Codes::not_yours`), nothing but spaces between
 /// them. As (start, end): what must be followed by the code itself.
-fn owned_codes(original: &[char], folded: &[char]) -> Vec<(usize, usize)> {
+fn owned_codes(w: &Codes, original: &[char], folded: &[char]) -> Vec<(usize, usize)> {
     let words = words(folded);
     let text = |(start, end): (usize, usize)| folded[start..end].iter().collect::<String>();
     let mut out = Vec::new();
     for (index, &code) in words.iter().enumerate() {
-        if text(code) != "code" {
+        if !is_in(&w.noun, &text(code)) {
             continue;
         }
         // Back: the owner one to three words before, only spaces between.
-        let owner = (1..=3).filter_map(|back| index.checked_sub(back)).find(|&at| OWNERS.contains(&text(words[at]).as_str()));
+        let owner = (1..=3).filter_map(|back| index.checked_sub(back)).find(|&at| is_in(&w.owners, &text(words[at])));
         let Some(owner) = owner else { continue };
         let between = &words[owner + 1..index];
         // Words and spaces only: "your account. Code: …" is two sentences.
         let spaced = folded[words[owner].1..code.0].iter().all(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '\''));
-        if !spaced || between.iter().any(|&w| NOT_A_SECRET.contains(&text(w).as_str())) {
+        if !spaced || between.iter().any(|&between| is_in(&w.not_yours, &text(between))) {
             continue;
         }
         out.push((words[owner].0, code.1));
@@ -364,7 +246,7 @@ fn owned_codes(original: &[char], folded: &[char]) -> Vec<(usize, usize)> {
         if let Some(&name) = words.get(index + 1)
             && folded[code.1..name.0].iter().all(|c| *c == ' ')
             && original[name.0].is_uppercase()
-            && !NOT_A_SECRET.contains(&text(name).as_str())
+            && !is_in(&w.not_yours, &text(name))
         {
             out.push((words[owner].0, name.1));
         }
@@ -375,19 +257,19 @@ fn owned_codes(original: &[char], folded: &[char]) -> Vec<(usize, usize)> {
 /// A code followed by what says it is yours: "123456 is your Instagram code",
 /// "482913 est votre code de vérification". Up to three words between "your"
 /// and "code", none that makes it no secret.
-fn named_after(folded: &[char], found: &[Found]) -> Option<String> {
+fn named_after(w: &Codes, folded: &[char], found: &[Found]) -> Option<String> {
     found.iter().find_map(|f| {
         let rest = &folded[f.end..(f.end + 60).min(folded.len())];
         let lead = rest.iter().take_while(|c| **c == ' ').count();
-        let owned = OWNED_AFTER.iter().find(|p| {
+        let owned = w.owned_after.iter().find(|p| {
             let p = fold(p);
             rest[lead..].starts_with(&p) && rest.get(lead + p.len()).is_none_or(|c| !c.is_alphanumeric())
         })?;
         let after = &rest[lead + owned.chars().count()..];
         let words = words(after);
         let text = |(start, end): (usize, usize)| after[start..end].iter().collect::<String>();
-        let code = words.iter().take(4).position(|&w| text(w) == "code")?;
-        let clean = words[..code].iter().all(|&w| !NOT_A_SECRET.contains(&text(w).as_str()));
+        let code = words.iter().take(4).position(|&word| is_in(&w.noun, &text(word)))?;
+        let clean = words[..code].iter().all(|&word| !is_in(&w.not_yours, &text(word)));
         let spaced = after[..words[code].0].iter().all(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '\''));
         (clean && spaced).then(|| f.code.clone())
     })
@@ -395,11 +277,11 @@ fn named_after(folded: &[char], found: &[Found]) -> Option<String> {
 
 /// The code next to a phrase: right after it, whatever its shape ("votre code
 /// est : 482 913", "your sign-in code: K7Q-2M9"); else, for a phrase of
-/// `CODE_PHRASES`, digits further after it, or the nearest before it
+/// `Codes::code`, digits further after it, or the nearest before it
 /// ("G-482913 is your Google verification code").
-fn code_beside(folded: &[char], found: &[Found], (start, end): (usize, usize), giving: bool) -> Option<String> {
+fn code_beside(w: &Codes, folded: &[char], found: &[Found], (start, end): (usize, usize), giving: bool) -> Option<String> {
     if let Some(next) = found.iter().find(|f| f.start >= end)
-        && ties(&folded[end..next.start], giving)
+        && ties(w, &folded[end..next.start], giving)
     {
         return Some(next.code.clone());
     }
@@ -416,11 +298,11 @@ fn code_beside(folded: &[char], found: &[Found], (start, end): (usize, usize), g
 /// Whether what stands between a phrase and a code ties them: spaces, a
 /// colon, "is" or "est". After "your code", a colon or one of these words
 /// at least: "votre code postal : 54390" gives no code.
-fn ties(gap: &[char], giving: bool) -> bool {
+fn ties(w: &Codes, gap: &[char], giving: bool) -> bool {
     let gap: String = gap.iter().collect();
-    let words: Vec<&str> = gap.split(|c: char| c.is_whitespace() || c == ':' || c == '=').filter(|w| !w.is_empty()).collect();
+    let words: Vec<&str> = gap.split(|c: char| c.is_whitespace() || c == ':' || c == '=').filter(|word| !word.is_empty()).collect();
     let linked = gap.contains([':', '=']) || !words.is_empty();
-    words.len() <= 1 && words.iter().all(|w| LINKING_WORDS.contains(w)) && (linked || !giving)
+    words.len() <= 1 && words.iter().all(|word| is_in(&w.linking, word)) && (linked || !giving)
 }
 
 /// A code-shaped stretch of the text: where it is, the code as kept, and
@@ -577,8 +459,8 @@ fn prefixed_code(text: &str) -> Option<String> {
 }
 
 /// "valable 10 minutes", "expires in 15 minutes", "valid for 1 hour", "for 7 days".
-fn expiry_minutes(folded: &[char]) -> Option<u32> {
-    const CONTEXT: &[&str] = &["valid", "valable", "expire", "pendant", "during", "within", "dans", "for"];
+fn expiry_minutes(w: &Codes, folded: &[char]) -> Option<u32> {
+    let starts = |unit: &str, list: &[String]| list.iter().map(|u| crate::words::folded(u)).any(|u| !u.is_empty() && unit.starts_with(&u));
     let mut i = 0;
     while i < folded.len() {
         if !folded[i].is_ascii_digit() {
@@ -592,12 +474,12 @@ fn expiry_minutes(folded: &[char]) -> Option<u32> {
         let number: u32 = folded[start..i].iter().collect::<String>().parse().unwrap_or(0);
         let unit: String = folded[i..(i + 8).min(folded.len())].iter().collect::<String>().trim_start().to_string();
         let before: String = folded[start.saturating_sub(40)..start].iter().collect();
-        let in_context = CONTEXT.iter().any(|w| before.contains(w));
-        let minutes = if unit.starts_with("min") {
+        let in_context = w.expiry_context.iter().map(|c| crate::words::folded(c)).any(|c| !c.is_empty() && before.contains(&c));
+        let minutes = if starts(&unit, &w.unit_minutes) {
             Some(number)
-        } else if unit.starts_with("heure") || unit.starts_with("hour") {
+        } else if starts(&unit, &w.unit_hours) {
             Some(number.saturating_mul(60))
-        } else if unit.starts_with("day") || unit.starts_with("jour") {
+        } else if starts(&unit, &w.unit_days) {
             Some(number.saturating_mul(24 * 60))
         } else {
             None
@@ -612,6 +494,32 @@ fn expiry_minutes(folded: &[char]) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::words::Words;
+
+    /// The detectors with the packs built in (French and English).
+    fn detect(subject: &str, body: &str) -> Option<OneTimeCode> {
+        super::detect(&Words::builtin().codes, subject, body)
+    }
+
+    fn detect_message(card: &crate::card::Card) -> Option<OneTimeCode> {
+        super::detect_message(&Words::builtin().codes, card)
+    }
+
+    /// The words come from the configuration: one added is read, one taken away is not.
+    #[test]
+    fn the_words_you_add_and_take_away() {
+        let config: crate::config::Config = toml::from_str(
+            "[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n[words.codes.code]\nadd = [\"Bestätigungscode\"]\nremove = [\"code de connexion\"]\n",
+        )
+        .unwrap();
+        let yours = Words::of(&config);
+        let german = ("Ihr Bestätigungscode", "Bestätigungscode: 482913");
+        assert_eq!(detect(german.0, german.1), None, "not with the packs built in");
+        assert_eq!(super::detect(&yours.codes, german.0, german.1).and_then(|c| c.code).as_deref(), Some("482913"));
+        let french = ("Connexion", "Votre code de connexion : 551204");
+        assert_eq!(detect(french.0, french.1).and_then(|c| c.code).as_deref(), Some("551204"));
+        assert_eq!(super::detect(&yours.codes, french.0, french.1), None, "taken away");
+    }
 
     #[test]
     fn french_bank_code() {

@@ -667,9 +667,9 @@ impl MailLine {
 /// it. Mail set aside (forged, spam) and the review queue's (what your own spam
 /// filter flagged or moved) are never read; a rule gives the budget and
 /// the preset; `ignored` holds the keys you said are not payments.
-pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>) -> Vec<MailLine> {
+pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>, words: &crate::words::Words) -> Vec<MailLine> {
     let recorded: BTreeSet<&str> = ledger.lines.iter().flat_map(|l| l.links.iter().map(String::as_str)).collect();
-    let mut lines: Vec<MailLine> = items.iter().filter(|t| t.lane != Lane::SetAside && t.lane != Lane::Review).filter_map(|t| mail_line(ledger, t)).collect();
+    let mut lines: Vec<MailLine> = items.iter().filter(|t| t.lane != Lane::SetAside && t.lane != Lane::Review).filter_map(|t| mail_line(ledger, t, words)).collect();
     lines.sort_by_key(|l| l.date);
     for line in &mut lines {
         line.state = if recorded.contains(line.key.as_str()) {
@@ -685,13 +685,13 @@ pub fn mail_lines(ledger: &Ledger, items: &[Triaged], ignored: &BTreeSet<String>
     lines
 }
 
-fn mail_line(ledger: &Ledger, t: &Triaged) -> Option<MailLine> {
+fn mail_line(ledger: &Ledger, t: &Triaged, words: &crate::words::Words) -> Option<MailLine> {
     let card = &t.card;
     let rule = ledger.mail_rules.iter().find(|r| r.route.explain(card).is_some());
-    let detected = payments::detect(card);
+    let detected = payments::detect(words, card);
     let mut payment = match (detected, rule) {
         (Some(payment), _) => payment,
-        (None, Some(rule)) => payments::read(card, kind_of(rule.direction), &payments::start(card)),
+        (None, Some(rule)) => payments::read(words, card, kind_of(rule.direction), &payments::start(card)),
         (None, None) => return None,
     };
     if let Some(rule) = rule {
@@ -1434,7 +1434,7 @@ mod tests {
         use crate::porch::{self, Context, KnownSenders};
         let raw = format!("From: {from}\r\nSubject: {subject}\r\nDate: {date}\r\nMessage-ID: <{id}>\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n{body}\r\n");
         let known = KnownSenders::default();
-        porch::triage(crate::card::Card::from_bytes(raw.as_bytes()).unwrap(), &Context { cases: None, known: &known, senders: &crate::porch::Senders::default(), trusted_ids: &[], now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, filed_words: &[], own_addresses: &[], spam: None })
+        porch::triage(crate::card::Card::from_bytes(raw.as_bytes()).unwrap(), &Context { cases: None, known: &known, senders: &crate::porch::Senders::default(), trusted_ids: &[], now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None })
     }
 
     const PAY: &str = "Pay Exemple <service@pay.example>";
@@ -1443,7 +1443,7 @@ mod tests {
     fn mail_becomes_a_line() {
         let ledger: Ledger = toml::from_str("[[mail_rule]]\nbudget = 'projects'\ndirection = 'credit'\nfrom_domains = ['pay.example']\nsubject_contains = ['paiement reçu']").unwrap();
         let mail = [triaged(PAY, "Notification de paiement reçu", "Fri, 02 Oct 2026 10:00:00 +0200", "p1@pay.example", "Vous avez reçu un paiement de 25,00 € EUR de Jean Exemple (jean@example.org).")];
-        let lines = mail_lines(&ledger, &mail, &BTreeSet::new());
+        let lines = mail_lines(&ledger, &mail, &BTreeSet::new(), crate::words::Words::builtin_ref());
         assert_eq!(lines.len(), 1);
         let line = lines[0].line("projects").unwrap();
         assert_eq!((line.amount, line.label.as_str()), (Money(2500), "Jean Exemple"));
@@ -1451,8 +1451,8 @@ mod tests {
         assert_eq!((lines[0].budget.as_deref(), &lines[0].state), (Some("projects"), &MailState::Proposed));
         // Once in the file, it is counted, not proposed again.
         let recorded = Ledger { lines: vec![line], ..ledger };
-        assert_eq!(mail_lines(&recorded, &mail, &BTreeSet::new())[0].state, MailState::Recorded);
-        assert_eq!(mail_lines(&Ledger::default(), &mail, &BTreeSet::from(["mid:p1@pay.example".to_string()]))[0].state, MailState::Ignored);
+        assert_eq!(mail_lines(&recorded, &mail, &BTreeSet::new(), crate::words::Words::builtin_ref())[0].state, MailState::Recorded);
+        assert_eq!(mail_lines(&Ledger::default(), &mail, &BTreeSet::from(["mid:p1@pay.example".to_string()]), crate::words::Words::builtin_ref())[0].state, MailState::Ignored);
     }
 
     #[test]
@@ -1463,7 +1463,8 @@ mod tests {
             triaged("Telecom <factures@telecom.example>", "Votre facture mobile est disponible", "Sat, 26 Sep 2026 00:08:00 +0200", "bill@telecom.example", "Rendez-vous dans votre espace."),
             triaged("Telecom <factures@telecom.example>", "Le règlement de votre facture a bien été effectué", "Fri, 02 Oct 2026 17:30:00 +0200", "settled@telecom.example", "Merci."),
         ];
-        let lines = mail_lines(&Ledger::default(), &mail, &BTreeSet::new());
+        // The processor's authorisation is its own wording, added as its users add it.
+        let lines = mail_lines(&Ledger::default(), &mail, &BTreeSet::new(), &crate::words::with_processor());
         let state = |key: &str| lines.iter().find(|l| l.key == key).unwrap().state.clone();
         assert_eq!(state("mid:pay@pay.example"), MailState::Proposed);
         assert_eq!(state("mid:order@shop.example"), MailState::Duplicate("mid:pay@pay.example".into()));

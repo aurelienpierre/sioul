@@ -8,7 +8,7 @@ description: Sioul's settings - one place for what belongs to Sioul as a whole, 
 
 **Settings** is the sliders icon at the bottom of the left column. It holds what belongs to Sioul as a whole; what belongs to one page is on that page, behind its ⚙ ([below](#each-pages-own-settings)). Each setting says in one sentence what it changes, and is saved as soon as you change it: nothing to confirm, nothing to apply. Your settings follow you to your other devices when you share between them; your passwords never do.
 
-The Settings page has a tab for each of the sections below, from **Display** to **Invoices**; a phone adds **This phone**.
+The Settings page has a tab for each of the sections below, from **Display** to **Invoices**; a phone adds **This phone**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)).
 
 ## Protected by default {#what-is-protected}
 
@@ -140,6 +140,17 @@ In one plain text file, `config.toml`, in your configuration folder (`~/.config/
 - **Lists travel whole**: your pinned sites, your hours, your days off and your mail filters each travel as one list, so that when two devices change the same list before they exchange, the later list is kept. Change such a list on one device at a time.
 - **Not emptied everywhere at once**: a settings file found empty or gone, after a crash or with a full disk, counts as taken out only if it stays so for ten minutes; meanwhile the status line says so, and nothing of it is taken out on your other devices.
 
+### Words Sioul looks for {#words}
+
+Sioul recognises things by their words: a code in a message, a bill, a letter from the tax office, the folder that is your Junk, a call ringing in a chat, a sender borrowing a bank's name. Those words come in language packs (French and English; German, Spanish and Italian for codes, approvals, folders, replies and dates) and country packs (France), and **Settings ▸ Words** shows them: add your own, take away those that misfire.
+
+- **Languages read and countries**, at the top: a tick for each language Sioul has words for, and for each country it has names for (its public bodies, its banks' approval services, its brands). A ticked language adds its words to every list; Sioul never ticks one by itself.
+- **One line for each thing recognised**, in four groups (mail; money and papers; the phone; tasks and a public address), with how many words it holds and, once you changed it, how many you added and took away. Open a line: a sentence says what its words do, then each list, one word to a chip: **×** takes a word away, the field adds one. Whole words; capitals and accents do not matter. **Back to the defaults** takes that line's changes out.
+- **Your changes are kept as differences**: the words you added and those you took away, never a copy of a list, so the words a newer Sioul brings still reach you. A word you take away and add again is there. Your changes travel with your other settings.
+- **Your provider's spam marks** ("[SPAM]" at the start of a subject) are taken off before your own spam filter reads a message. A change counts from the filter's next training, on every device at once.
+- **Voicemail by mail** is read only from the operators you name, by the domain their mail comes from; none is named at first ([Calls](calls.md#afterwards-on-the-porch)).
+- **A public address**: the words that make a message to it hostile or rude, and those of each topic. Add the words of your own field to the support topic.
+
 ## Compared with other apps {#compared-with-other-apps}
 
 Every app has settings, and a table would compare nothing you choose an app for, so there is none here. What Sioul does its own way is said above: one place for each setting, a sentence for each, saved at once, the same settings on each of your devices, and no secret among them.
@@ -151,3 +162,4 @@ Every app has settings, and a table would compare nothing you choose an app for,
 - **Shared entry by entry**: each setting is one entry, and each account one entry, keyed by its `id`; a list such as your pinned sites (`[[site]]`), your hours (`[[window]]`), your days off or your filters (`[[mail.filter]]`) travels whole, as one entry. The later change wins by a hybrid logical clock, so that a change made after seeing another always comes after it. Each entry is a sealed record (XChaCha20-Poly1305, under a key made from your passphrase by Argon2id), as for the rest of the [sharing](sharing.md#what-it-protects-and-what-it-cannot-hide).
 - **Kept on each device**: `case_store` (the notes folder), `reading`, `history_weeks`, `letters.inbox` (where scans arrive), `dnd.background`, and each account's `maildir` and `history_weeks`. The senders' lists travel in their own part, **Senders**. Per-device view choices (passwords shown, the home screen's details, how pages were left) are kept in the window's state, outside `config.toml`.
 - **The panels**: a page's ⚙ opens on its right, 42% of the window, between 520 and 760 pixels and leaving the page 240; under 720 pixels (a phone), the whole width. The Settings page reads 720 pixels wide at most, 1,100 for What reaches you's cards.
+- **The words** (`[words]`): `languages` and `countries`, then a table for each list you changed, such as `[words.folders.trash]`, with `add` (your words) and `remove` (the shipped ones you took away); for a list of names, such as the brands, `add` gives each name its words and `remove` lists names. A configuration from before October 2026 gets `languages = ["fr", "en"]` and `countries = ["FR"]` at its first start, so that nothing changes until you change it. The packs are in `crates/sioul-core/data/words/`; one installed in `$XDG_DATA_HOME/sioul/words/` or `$XDG_DATA_DIRS/sioul/words/` replaces Sioul's own when its `checked` date is later. The spam filter's table keeps the words it was trained with, so that every device reads alike. How the lists are made: [the words Sioul looks for](../dev/words.md).

@@ -3,7 +3,8 @@
 
 // What belongs to Sioul as a whole rather than to one page: language and
 // colours, working hours and days off, what reaches you and when
-// (ReachesTab.qml), reminders, the pauses, on a phone what sets it up
+// (ReachesTab.qml), the words Sioul looks for (WordsTab.qml), reminders,
+// the pauses, on a phone what sets it up
 // (PhoneSetup.qml), your folder and sharing, invoices. Each setting says in a
 // sentence what it changes and is saved at once.
 
@@ -28,16 +29,19 @@ Item {
         if (page.section === "files")
             page.shareMade = true
     }
-    // One tab at a time: how it looks, the hours, what reaches you, reminders,
-    // the pauses; on a phone, what sets it up; your folder and sharing, invoices.
-    readonly property var sections: ["look", "hours", "attention", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(["files", "invoices"])
+    // One tab at a time: how it looks, the hours, what reaches you, the words,
+    // reminders, the pauses; on a phone, what sets it up; your folder and sharing, invoices.
+    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(["files", "invoices"])
     // The pause's screen tried from its setup (main.qml shows it, nothing held).
     signal tryPause
     property string section: "look"
-    // What reaches you draws its own switches (ReachesTab.qml): none listed here.
-    readonly property var shown: page.section === "attention" ? [] : page.rows.filter(r => r.section === page.section)
+    // What reaches you and the words draw their own rows (ReachesTab.qml,
+    // WordsTab.qml): none listed here.
+    readonly property var shown: page.section === "attention" || page.section === "words" ? [] : page.rows.filter(r => r.section === page.section)
     // A view of What reaches you asked for before its tab was made: shown once it is.
     property string reachesAsked: ""
+    // A list of the words asked for ("words.voicemail.operators") before its tab was made: its line opened once it is.
+    property string wordsAsked: ""
 
     function reload() {
         page.rows = JSON.parse(page.sioul.settings("parameters"))
@@ -68,6 +72,15 @@ Item {
             page.showAsked()
     }
 
+    // The line holding a list of the words, opened.
+    function showWords() {
+        const asked = page.wordsAsked
+        page.wordsAsked = ""
+        const words = wordsLoader.item as WordsTab
+        if (words)
+            words.show(asked)
+    }
+
     function showAsked() {
         const asked = page.reachesAsked
         page.reachesAsked = ""
@@ -88,6 +101,14 @@ Item {
         key = older[key] || key
         if (key === "attention" || key.startsWith("attention.")) {
             page.showReaches(key)
+            return
+        }
+        if (key.startsWith("words.")) {
+            page.section = "words"
+            scroll.ScrollBar.vertical.position = 0
+            page.wordsAsked = key
+            if (wordsLoader.item)
+                page.showWords()
             return
         }
         const row = page.rows.find(r => r.key === key)
@@ -247,6 +268,29 @@ Item {
                             page.save(key, value)
                             reachesTab.reload()
                         }
+                        onToTop: scroll.ScrollBar.vertical.position = 0
+                    }
+                }
+            }
+
+            // The words Sioul looks for (docs/words.md): the languages, then a line per thing recognised.
+            Loader {
+                id: wordsLoader
+
+                active: page.section === "words"
+                visible: active
+                Layout.fillWidth: true
+                onLoaded: {
+                    if (page.wordsAsked !== "")
+                        page.showWords()
+                }
+
+                sourceComponent: Component {
+                    WordsTab {
+                        sioul: page.sioul
+                        theme: page.theme
+                        rows: page.rows.filter(r => r.section === "words")
+                        onSave: (key, value) => page.save(key, value)
                         onToTop: scroll.ScrollBar.vertical.position = 0
                     }
                 }

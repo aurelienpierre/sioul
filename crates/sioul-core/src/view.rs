@@ -213,7 +213,7 @@ pub fn lanes(config: &Config, store: Option<&CaseStore>, tr: &Translator) -> Vec
     let known = crate::porch::SenderList::load(&config.known_senders_path()).entries().len();
     lanes.push(lane("people", tr.text("lane-people", None), Lane::People, false, tr.text("lane-about-people", None), vec![say("rule-people", &[("n", known.to_string())])]));
     lanes.push(lane("screener", tr.text("lane-screener", None), Lane::Screener, false, tr.text("lane-about-screener", None), vec![tr.text("rule-screener", None)]));
-    let words = config.filed_words.clone().unwrap_or_else(|| porch::AUTOMATIC.iter().map(|w| w.to_string()).collect());
+    let words = crate::words::Words::of(config).senders.automatic.clone();
     lanes.push(lane("filed", tr.text("lane-filed", None), Lane::Filed, true, tr.text("lane-about-filed", None), vec![say("rule-filed", &[("words", words.join(", "))])]));
     let below: Vec<String> = config.accounts.iter().filter(|a| a.priority == Priority::Below).map(|a| address_of(&a.id)).collect();
     lanes.push(lane("low", tr.text("lane-low", None), Lane::Low, true, tr.text("lane-about-low", None), if below.is_empty() { vec![tr.text("rule-low-none", None)] } else { vec![say("rule-low", &[("addresses", below.join(", "))]), tr.text("rule-where-rank", None)] }));
@@ -1264,7 +1264,9 @@ fn conversations(cards: &[Card], sent: &[Card], shown: &dyn Fn(&Card) -> bool, i
 /// and how far its sender is verified, as the Porch judges it. `own`: one of
 /// your answers from Sent, shown in a conversation. Its key is its file, when
 /// it has one (a search gives a message seen on its server only its own).
-pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &[String], tr: &Translator) -> MailItem {
+/// `words`: what the codes detector looks for, as the Porch reads it.
+#[allow(clippy::too_many_arguments)]
+pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &[String], words: &crate::words::Words, tr: &Translator) -> MailItem {
     let outgoing = matches!(role, Role::Sent | Role::Drafts);
     let (trust_level, trust, checks) = if outgoing || own {
         ("own", String::new(), String::new())
@@ -1273,7 +1275,7 @@ pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &
         // As the Porch judges it: a signature counts for the sender's own domain only,
         // and a list excuses a DMARC failure, never for a code (`porch::triage`).
         let failed = results.as_ref().is_some_and(|r| r.dmarc == Some(trust::Outcome::Fail));
-        let code = card.is_list && failed && crate::codes::detect_message(card).is_some();
+        let code = card.is_list && failed && crate::codes::detect_message(&words.codes, card).is_some();
         let judged = trust::judge_sender(results.as_ref(), card.is_list && !code, card.sender_domain()).0;
         let level = match judged {
             Trust::Verified => "verified",
@@ -1313,7 +1315,7 @@ pub fn mail_item(card: &Card, role: Role, own: bool, flags: &str, trusted_ids: &
 /// message kept, by sender, recipient and subject. With `sent` (the account's
 /// Sent folder), messages are shown by conversation, your answers among them.
 #[allow(clippy::too_many_arguments)]
-pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids: &[String], all: bool, query: &str, tr: &Translator, now: i64, sent: Option<Vec<Card>>) -> FolderView {
+pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids: &[String], words: &crate::words::Words, all: bool, query: &str, tr: &Translator, now: i64, sent: Option<Vec<Card>>) -> FolderView {
     // The account's history, two weeks unless set; everything kept when it says so.
     let all = all || account.history_days().is_none();
     let since = now - account.history_days().unwrap_or(RECENT_DAYS) * 86_400;
@@ -1330,7 +1332,7 @@ pub fn folder(account: &Account, folder: &Folder, cards: Vec<Card>, trusted_ids:
     let recent = |c: &Card| c.date.unwrap_or(0) >= since;
     let older = cards.iter().filter(|c| !recent(c)).count();
     let shown = |c: &Card| all || !query.is_empty() || recent(c);
-    let item = |card: &Card, own: bool| mail_item(card, folder.role, own, &maildir::flags_of(card.path.as_deref().unwrap_or(std::path::Path::new(""))), trusted_ids, tr);
+    let item = |card: &Card, own: bool| mail_item(card, folder.role, own, &maildir::flags_of(card.path.as_deref().unwrap_or(std::path::Path::new(""))), trusted_ids, words, tr);
     let items: Vec<MailItem> = match sent {
         None => cards.iter().filter(|c| shown(c)).map(|c| item(c, false)).collect(),
         Some(sent) => conversations(&cards, &sent, &shown, &item),
@@ -1708,17 +1710,17 @@ auth = "google"
         let account = Account::imap("me", "me@example.net", "imap.example.net", 993, crate::config::Security::Tls, None);
         let inbox = crate::folders::folder("INBOX", Some("."), None);
         let tr = Translator::new("en");
-        let view = folder(&account, &inbox, cards.clone(), &[], false, "", &tr, now, None);
+        let view = folder(&account, &inbox, cards.clone(), &[], crate::words::Words::builtin_ref(), false, "", &tr, now, None);
         assert_eq!(view.items.iter().map(|i| i.subject.as_str()).collect::<Vec<_>>(), ["Lease", "Read"]);
         assert!(view.earlier && view.items[0].unread && view.items[1].flagged && !view.items[1].unread);
         assert_eq!(view.sentence, "One message you have not read.");
-        let everything = folder(&account, &inbox, cards.clone(), &[], true, "", &tr, now, None);
+        let everything = folder(&account, &inbox, cards.clone(), &[], crate::words::Words::builtin_ref(), true, "", &tr, now, None);
         assert_eq!(everything.items.len(), 3);
         assert!(!everything.earlier);
-        let searched = folder(&account, &inbox, cards.clone(), &[], false, "old", &tr, now, None);
+        let searched = folder(&account, &inbox, cards.clone(), &[], crate::words::Words::builtin_ref(), false, "old", &tr, now, None);
         assert_eq!(searched.items.len(), 1);
         let sent = crate::folders::folder("Sent", Some("."), Some(Role::Sent));
-        let view = folder(&account, &sent, cards, &[], false, "", &tr, now, None);
+        let view = folder(&account, &sent, cards, &[], crate::words::Words::builtin_ref(), false, "", &tr, now, None);
         assert_eq!(view.items[0].who, "To Me");
         assert!(view.items.iter().all(|i| !i.unread && i.trust_level == "own"));
     }
@@ -1740,7 +1742,7 @@ auth = "google"
         let account = Account::imap("me", "me@example.net", "imap.example.net", 993, crate::config::Security::Tls, None);
         let inbox = crate::folders::folder("INBOX", Some("."), None);
         let tr = Translator::new("en");
-        let view = folder(&account, &inbox, vec![question, thanks, other], &[], false, "", &tr, now, Some(vec![answer, unrelated]));
+        let view = folder(&account, &inbox, vec![question, thanks, other], &[], crate::words::Words::builtin_ref(), false, "", &tr, now, Some(vec![answer, unrelated]));
         let rows: Vec<(&str, usize, bool)> = view.items.iter().map(|i| (i.subject.as_str(), i.size, i.member)).collect();
         // The lease first (its last message is the newest), with its question and your answer under it, oldest first.
         assert_eq!(rows, [("Re: Lease", 3, false), ("Lease", 1, true), ("Re: Lease", 1, true), ("Lunch", 1, false)]);

@@ -79,14 +79,13 @@ fn folded(text: &str) -> String {
     crate::text::fold(text).into_iter().collect()
 }
 
-/// What PayPal and Stripe write for money moved to or from a bank: a payout,
-/// a withdrawal, a deposit.
-const BETWEEN: &[&str] = &["payout", "virement standard", "virement bancaire", "virement vers", "retrait", "withdrawal", "transfer to bank", "bank deposit", "approvisionnement", "transfert vers", "versement vers"];
 
 /// Every movement of the declared bank accounts, placed (see the module's
 /// notes), oldest first. Movements of no declared account are left out: they
 /// only feed the money watch.
-pub fn place(ledger: &Ledger, bank: &Bank) -> Vec<Placed> {
+/// `looked`: the words of labels that name nothing, and what PayPal and
+/// Stripe write for money moved to or from a bank (`words::AccountWords`).
+pub fn place(ledger: &Ledger, bank: &Bank, looked: &crate::words::Words) -> Vec<Placed> {
     let mut movements: Vec<(&BankAccount, &Movement)> = bank.movements.iter().filter_map(|m| account_of(ledger, &m.account).map(|a| (a, m))).collect();
     movements.sort_by(|a, b| (a.1.date, &a.1.id).cmp(&(b.1.date, &b.1.id)));
     // What each account's exports cover: a movement elsewhere names it only inside.
@@ -139,7 +138,7 @@ pub fn place(ledger: &Ledger, bank: &Bank) -> Vec<Placed> {
             let named = match other.kind() {
                 "paypal" => label.contains("paypal"),
                 "stripe" => label.contains("stripe"),
-                _ => matches!(account.kind(), "paypal" | "stripe") && BETWEEN.iter().any(|w| label.contains(w)),
+                _ => matches!(account.kind(), "paypal" | "stripe") && looked.accounts.between.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && label.contains(&w)),
             };
             named && covered.get(other.id.as_str()).is_some_and(|(a, b)| m.date >= a.checked_sub(10.days()).unwrap_or(*a) && m.date <= b.checked_add(10.days()).unwrap_or(*b))
         });
@@ -168,9 +167,9 @@ pub fn place(ledger: &Ledger, bank: &Bank) -> Vec<Placed> {
         }
         // 5. The recurring payment it stands for, in a budget it fills.
         let preset = ledger.presets.iter().enumerate().filter(|(_, p)| !p.estimate && (account.fills.is_empty() || account.fills.contains(&p.budget))).find_map(|(i, p)| {
-            let words = bank::words(&p.label);
+            let words = bank::words(&looked.bank.filler, &p.label);
             let around = (m.date.checked_sub(10.days()).ok()?, m.date.checked_add(5.days()).ok()?);
-            p.occurrences(around.0, around.1).into_iter().find(|d| !preset_taken.contains(&(i, *d)) && bank::matches(m, &words, p.amount, *d)).map(|d| (i, d))
+            p.occurrences(around.0, around.1).into_iter().find(|d| !preset_taken.contains(&(i, *d)) && bank::matches(&looked.bank.filler, m, &words, p.amount, *d)).map(|d| (i, d))
         });
         if let Some((i, date)) = preset {
             preset_taken.push((i, date));
@@ -230,7 +229,7 @@ impl Ledger {
     /// day, for the budgets to count (`budget::Ledger::status`): the presets
     /// each stands for are named (`#3` for one without an id). Kept in memory
     /// only; the budget file is not written.
-    pub fn with_bank(&self, bank: &Bank) -> Ledger {
+    pub fn with_bank(&self, bank: &Bank, looked: &crate::words::Words) -> Ledger {
         let mut out = self.clone();
         if self.bank_accounts.is_empty() {
             return out;
@@ -240,7 +239,7 @@ impl Ledger {
                 preset.id = Some(format!("#{i}"));
             }
         }
-        for item in place(self, bank) {
+        for item in place(self, bank, looked) {
             let link = format!("bank:{}/{}", item.account, item.movement.id);
             let line = |budget: String, amount: Money, preset: Option<String>, reserve: Option<String>| Line {
                 budget,
@@ -295,16 +294,16 @@ pub fn carried_by<'a>(ledger: &'a Ledger, account: &BankAccount) -> Vec<String> 
 /// planned lines; on the first day it would go under its floor, what is
 /// missing (rounded up to ten), taken from its reserves in order, each as far
 /// as it holds above its own floor, asked its delay ahead.
-pub fn top_ups(ledger: &Ledger, bank: &Bank, today: Date) -> Vec<TopUp> {
+pub fn top_ups(ledger: &Ledger, bank: &Bank, today: Date, looked: &crate::words::Words) -> Vec<TopUp> {
     let horizon = today.checked_add(31.days()).unwrap_or(today);
     // The reserves' balances count the money already moved, read from the exports.
-    let ledger = &ledger.with_bank(bank);
+    let ledger = &ledger.with_bank(bank, looked);
     let mut out = Vec::new();
     for account in ledger.bank_accounts.iter().filter(|a| !a.topped_up_by.is_empty()) {
         let Some((as_of, start)) = balance_of(bank, account) else { continue };
         let movements: Vec<&Movement> = bank.movements.iter().filter(|m| account.owns(&m.account)).collect();
         let budgets = carried_by(ledger, account);
-        let flows: Vec<Expected> = bank::expected(&movements, ledger, Some(&budgets), as_of, today, horizon);
+        let flows: Vec<Expected> = bank::expected(&movements, ledger, Some(&budgets), as_of, today, horizon, &looked.bank.filler);
         let (_, below) = bank::carry(start, as_of, &flows, today, horizon, account.floor);
         let Some((day, at, balance)) = below else { continue };
         let missing = account.floor.cents() - balance.cents();
@@ -334,13 +333,13 @@ pub fn month_of(date: Date) -> Date {
 impl Ledger {
     /// The budget file at the root of a case store, with its bank accounts'
     /// movements counted (`with_bank`) when it declares some.
-    pub fn load_with_bank(root: &std::path::Path) -> Result<Ledger, String> {
+    pub fn load_with_bank(root: &std::path::Path, looked: &crate::words::Words) -> Result<Ledger, String> {
         let ledger = Ledger::load(root)?;
         if ledger.bank_accounts.is_empty() {
             return Ok(ledger);
         }
         Ok(match Bank::load(root) {
-            Ok(bank) => ledger.with_bank(&bank),
+            Ok(bank) => ledger.with_bank(&bank, looked),
             Err(_) => ledger,
         })
     }
@@ -635,7 +634,7 @@ mod tests {
 
     #[test]
     fn each_movement_finds_its_budget() {
-        let placed = place(&ledger(), &bank());
+        let placed = place(&ledger(), &bank(), crate::words::Words::builtin_ref());
         let of = |id: &str| placed.iter().find(|p| p.movement.id == id).map(|p| (p.place.clone(), p.why)).unwrap();
         // The rent stands for its preset (#0); the cinema by a rule; the SHOP line from mail counts once.
         assert_eq!(of("m1"), (Place::Budgets(vec![Share { budget: "duties".into(), amount: Money(-25000), preset: Some("#0".into()) }]), Why::Preset));
@@ -659,7 +658,7 @@ mod tests {
     #[test]
     fn budgets_count_the_movements_once() {
         let ledger = ledger();
-        let with = ledger.with_bank(&bank());
+        let with = ledger.with_bank(&bank(), crate::words::Words::builtin_ref());
         let duties = with.budgets.iter().find(|b| b.id == "duties").unwrap();
         let status = with.status(duties, day("2026-10-10"));
         // Rent 250 (the real one, standing for the preset), food 300 (an envelope: 45 + 40
@@ -672,7 +671,7 @@ mod tests {
         // Nothing declared: the budgets are as the file says.
         let mut bare = ledger.clone();
         bare.bank_accounts.clear();
-        assert_eq!(bare.with_bank(&bank()).lines.len(), bare.lines.len());
+        assert_eq!(bare.with_bank(&bank(), crate::words::Words::builtin_ref()).lines.len(), bare.lines.len());
     }
 
     #[test]
@@ -709,7 +708,7 @@ mod tests {
         ledger.reserves[0].balance = Money(100000);
         // A tax on 25 October that the account will not hold.
         ledger.lines.push(toml::from_str::<Ledger>("[[line]]\nbudget = 'duties'\ndate = 2026-10-25\namount = -1500\nlabel = 'Tax'\nplanned = true\n").unwrap().lines.remove(0));
-        let ups = top_ups(&ledger, &bank(), day("2026-10-08"));
+        let ups = top_ups(&ledger, &bank(), day("2026-10-08"), crate::words::Words::builtin_ref());
         // The Livret A first, as far as it holds (1,000 less the 500 moved out on the 5th), at once;
         // then the assurance vie for the rest, asked ten days ahead.
         assert_eq!(ups.iter().map(|u| u.reserve.as_str()).collect::<Vec<_>>(), vec!["livret-a", "av"], "{ups:#?}");
@@ -717,6 +716,6 @@ mod tests {
         assert_eq!((ups[1].ask_by, ups[1].late, ups[1].payment.as_str()), (day("2026-10-15"), false, "Tax"));
         assert_eq!(ups[1].amount.cents() % 1000, 0, "rounded up to ten");
         // Asked on the 20th, the assurance vie arrives after the tax.
-        assert!(top_ups(&ledger, &bank(), day("2026-10-20")).iter().any(|u| u.reserve == "av" && u.late));
+        assert!(top_ups(&ledger, &bank(), day("2026-10-20"), crate::words::Words::builtin_ref()).iter().any(|u| u.reserve == "av" && u.late));
     }
 }
