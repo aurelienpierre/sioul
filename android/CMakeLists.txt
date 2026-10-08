@@ -19,6 +19,9 @@ cmake_minimum_required(VERSION 3.22)
 set(SIOUL_ROOT "${CMAKE_CURRENT_LIST_DIR}/..")
 file(STRINGS "${SIOUL_ROOT}/Cargo.toml" SIOUL_VERSION_LINE REGEX "^version = \"[0-9]+\\.[0-9]+\\.[0-9]+\"" LIMIT_COUNT 1)
 string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" SIOUL_VERSION "${SIOUL_VERSION_LINE}")
+# Read again whenever Cargo.toml changes, so that a new version reaches the
+# APK without configuring again by hand.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SIOUL_ROOT}/Cargo.toml")
 
 # C for the dependencies Cargo compiles (ring), C++ for Qt and CXX-Qt.
 project(sioul VERSION ${SIOUL_VERSION} LANGUAGES C CXX)
