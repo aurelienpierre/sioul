@@ -10,7 +10,8 @@ import java.util.Map;
 /**
  * What a change of the phone's own do-not-disturb means for Sioul's switch
  * (docs/do-not-disturb.md, "Both ways"; DndReceiver), decided in Java so that
- * most changes end without loading Sioul's library. Pure, checked on a JVM.
+ * most changes end without loading Sioul's library. Pure, checked on a JVM
+ * (android/jvm-checks/HeardCheck.java).
  *
  * - The phone's do-not-disturb is one fact: on (the interruption filter is
  *   not ALL) or off. A change of it from the state last seen, read once

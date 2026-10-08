@@ -155,7 +155,7 @@ final class PauseMode
      * within 15 minutes, the conversations marked important in Android,
      * alarms, the doses' and an event's alarms' channels. An older Sioul says
      * only "people": starred contacts and repeat callers, or nobody; no
-     * conversation. Pure, checked on a JVM.
+     * conversation. Pure, checked on a JVM (android/jvm-checks/ModeCheck.java).
      */
     static final class Through
     {
@@ -526,7 +526,7 @@ final class PauseMode
      * Whether a channel that passes is the one now: one of Sioul's modes is
      * on, and every mode on lets `flag` through ("doses.", "events."; null:
      * any mode on will do), as `kept` has them (SharedPreferences.getAll).
-     * Pure, checked on a JVM.
+     * Pure, checked on a JVM (android/jvm-checks/: ModeCheck, HeardCheck).
      */
     static boolean passesNow(Map<String, ?> kept, String flag)
     {

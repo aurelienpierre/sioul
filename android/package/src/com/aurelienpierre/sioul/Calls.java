@@ -64,7 +64,8 @@ import java.util.Set;
  * from its switch or a focus session). Nothing to decide from (no table, a
  * table past its frames, a row a frame does not name, anything that fails):
  * it rings, as Android would. The JVM checks this order against Rust's
- * (crates/sioul-core/src/calls.rs, `decide`) on tables as Rust writes them.
+ * (crates/sioul-core/src/calls.rs, `decide`) on tables as Rust writes them
+ * (android/jvm-checks/: DecideCheck, TableCheck).
  *
  * Here too: Rust's questions (StepService.call, verbs "calls-…"), and the
  * press of "Let every call through" on the background service's notification,

@@ -1534,9 +1534,14 @@ SioulWindow {
                 () => grabber.save("tasks-panel"),
                 () => window.close()
             ]
-            // A task moved to another list on a test server, then sent.
+            // A task of the demo profile (make-demo.py) moved to its other list, then
+            // sent: nothing is sent off the network (SIOUL_DEMO=1); from the test
+            // build, against a test server holding them, the move goes there.
             readonly property var movetask: [
-                () => sioul.status = sioul.moveTask("life-ansel-done", "agenda/errands", false),
+                () => {
+                    sioul.status = sioul.moveTask("demo-task-bike", "cloud/work-tasks", false)
+                    console.warn("movetask: " + sioul.status)
+                },
                 () => sioul.syncNow(),
                 () => {},
                 () => {},

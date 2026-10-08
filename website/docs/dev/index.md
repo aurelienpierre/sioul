@@ -39,11 +39,13 @@ cargo build --release               # core, sync, command line (no Qt)
 cargo test                          # their tests
 cargo build --release -p sioul-app  # the window (Qt 6.9 or newer)
 tools/lint-qml.sh                   # the QML, after the window
+tools/qml-test.sh                   # the QML tests
 tools/check-messages.py             # every message, every language
+tools/final-pass.sh                 # all of it before a commit, tests in release
 ```
 
 - **What it needs**, system by system: [Install](../guide/install.md) in the user guide, and [Building and running](building.md).
-- **Images of each page**: `SIOUL_GRAB=<folder> sioul-app` shows each page in turn, saves it, and quits. With `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` pointed at a test folder, it shows invented data instead of yours; without a screen, add `QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software`.
+- **Images of each page**: `tools/demo/run.sh <folder> en pages` starts the window on an invented profile, in a sandbox (no network, no display, your home out of reach), shows each page in turn, saves it, and quits. It is the one way to start the window for a check ([Building and running](building.md#running-the-window-for-a-check)).
 - **A demonstration, off the network**: `SIOUL_DEMO=1` keeps Sioul from fetching or sending anything by itself. `tools/demo/make-demo.py --into <folder>` writes an invented profile for it, and `tools/demo/screenshots.sh` takes this website's pictures from it.
 - **Nothing is tested against real accounts.** Writing to a mail server is tested against GreenMail, contacts and calendars against Radicale, Google Tasks and GitHub against stand-ins of their APIs (`tools/`), OpenPGP against GnuPG. How: [Building and running](building.md).
 - **Three systems**: `.github/workflows/build.yml` builds and tests on Linux, Windows and macOS on each push to `main` that touches code; started by hand, it also makes a Windows folder and a macOS `.dmg` with Qt beside the program.

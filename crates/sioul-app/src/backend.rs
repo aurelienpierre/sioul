@@ -5368,8 +5368,9 @@ impl qobject::Sioul {
         // the setup of the demo's software security key and a message signed at Send with it (docs/client.md),
         // "calls" the calls a phone declined on a computer's Porch and a person's calls of the month (docs/porch.md),
         // "words" Settings ▸ Words, a line's lists changed and taken back (docs/words.md),
+        // "movetask" one of the demo's tasks moved to its other list (docs/tasks.md),
         // on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "spam", "mail-search", "mail-filters", "security-key", "calls", "words"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "spam", "mail-search", "mail-filters", "security-key", "calls", "words", "movetask"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
