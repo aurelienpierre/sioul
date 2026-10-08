@@ -776,9 +776,14 @@ mod tests {
 
         /// `gpg` in this home, no passphrase asked (the keys made here have none).
         fn gpg(&self, args: &[&str]) -> String {
+            self.gpg_said(args).0
+        }
+
+        /// The same, with what it said besides (an import names what it left out).
+        fn gpg_said(&self, args: &[&str]) -> (String, String) {
             let out = std::process::Command::new(&self.gpg).arg("--homedir").arg(&self.dir).args(["--batch", "--no-tty", "--pinentry-mode", "loopback", "--passphrase", ""]).args(args).stdin(Stdio::null()).output().unwrap();
             assert!(out.status.success(), "gpg {args:?}: {}", String::from_utf8_lossy(&out.stderr));
-            String::from_utf8_lossy(&out.stdout).to_string()
+            (String::from_utf8_lossy(&out.stdout).to_string(), String::from_utf8_lossy(&out.stderr).to_string())
         }
 
         fn gnupg(&self) -> Gnupg {
@@ -810,13 +815,14 @@ mod tests {
         let (card, public) = SoftCard::generate("0006:12345678", &["Card Holder <me@example.org>"], "123456").unwrap();
         let asc = home.dir.join("card.asc");
         std::fs::write(&asc, &public).unwrap();
-        home.gpg(&["--import", asc.to_str().unwrap()]);
+        let (_, imported) = home.gpg_said(&["--import", asc.to_str().unwrap()]);
         let fingerprint = card.info.sign.as_ref().unwrap().fingerprint.clone();
         let gnupg = home.gnupg();
         // Exported, then checked against the key as "Import from GnuPG" does: the key's own.
         let exported = gnupg.export(&fingerprint).unwrap();
         assert!(String::from_utf8_lossy(&exported).starts_with("-----BEGIN PGP PUBLIC KEY BLOCK-----"));
-        let (_, check) = securitykey::certificate_in(&exported, &card.info).unwrap();
+        // Once on CI (Ubuntu's GnuPG), 0 in 60 here: what GnuPG kept, if it happens again.
+        let (_, check) = securitykey::certificate_in(&exported, &card.info).unwrap_or_else(|e| panic!("{e:?}; the import said: {imported}; GnuPG holds: {}", home.gpg(&["--with-colons", "--list-keys"])));
         assert_eq!(check.addresses, vec!["me@example.org".to_string()]);
         // A key GnuPG does not hold, or a fingerprint that is none: said so, nothing run with it.
         assert_eq!(gnupg.export("0123456789ABCDEF0123456789ABCDEF01234567"), Err(GnupgProblem::NoSuchKey));
