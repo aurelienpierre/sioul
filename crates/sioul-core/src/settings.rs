@@ -482,6 +482,11 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("places_named", "places-named", Kind::Bool, SettingValue::Bool(config.places_named));
             // Passwords shown as they are typed, for whoever needs to see them (the window keeps it, per computer).
             b.push("passwords_shown", "passwords-shown", Kind::Bool, SettingValue::Bool(false));
+            // colour: the sites in the screen's own colours, and calmer colours (docs/colour.md);
+            // the window says which profile, and leaves both out on a phone (backend.rs).
+            b.push("screen_colours", "screen-colours", Kind::Bool, SettingValue::Bool(config.screen_colours.unwrap_or(true)));
+            let s = b.push("calmer_colours", "calmer-colours", Kind::Choice, SettingValue::Text(config.calmer_colours.clone().unwrap_or_default()));
+            s.choices = [("", "set-calmer-colours-off"), ("little", "set-calmer-colours-little"), ("more", "set-calmer-colours-more")].iter().map(|(v, l)| Choice { value: SettingValue::Text(v.to_string()), label: tr.text(l, None) }).collect();
             // Your folder: notes, and beside them projects, budgets, letters. How far back
             // mail and calendars go is the accounts', at the top of Accounts.
             b.section = "files".into();
@@ -584,6 +589,20 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("invoice.folder", "invoice-folder", Kind::Folder, SettingValue::Text(invoice.folder.clone()));
             let s = b.push("invoice.rate", "invoice-rate", Kind::Float, SettingValue::Float(invoice.rate));
             Builder::range(s, 0.0, 2000.0, 5.0, "/h");
+            // AI agents connected with `sioul mcp` (docs/ai.md, docs/mcp.md): what they may read and
+            // write. Things in no project, then each project, closed until opened (`consent`).
+            b.section = "ai".into();
+            b.group = tr.text("set-ai-agents-group", None);
+            b.note(tr.text("set-ai-agents-note", None), Vec::new());
+            b.push("mcp.outside_projects", "mcp-outside-projects", Kind::Bool, SettingValue::Bool(config.mcp.outside_projects));
+            b.push("mcp.texts", "mcp-texts", Kind::Bool, SettingValue::Bool(config.mcp.texts));
+            b.push("mcp.spam", "mcp-spam", Kind::Bool, SettingValue::Bool(config.mcp.spam));
+            b.group = tr.text("set-ai-projects-group", None);
+            let projects = config.case_store_path().and_then(|root| crate::cases::CaseStore::load(&root).ok()).map(|store| store.cases).unwrap_or_default();
+            b.note(tr.text(if projects.is_empty() { "set-ai-projects-none" } else { "set-ai-projects-note" }, None), Vec::new());
+            for project in projects {
+                b.said(&format!("case.{}.ai", project.id), Kind::Bool, project.title.clone(), String::new(), SettingValue::Bool(project.ai));
+            }
         }
         _ => {}
     }
@@ -997,6 +1016,13 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
             let hidden: Vec<String> = store.cases.iter().map(|c| c.id.clone()).filter(|id| !shown.contains(id)).collect();
             set_value(config_path, "porch.hidden_projects", &SettingValue::Texts(hidden))
         }
+        // A project opened to AI agents, or closed: `ai` on its entry in the manifest (docs/ai.md).
+        _ if key.strip_prefix("case.").and_then(|rest| rest.strip_suffix(".ai")).is_some_and(|id| !id.is_empty()) => {
+            let id = key.strip_prefix("case.").and_then(|rest| rest.strip_suffix(".ai")).unwrap_or_default();
+            let SettingValue::Bool(open) = value else { return Err(format!("{key}: on or off expected")) };
+            let root = config.case_store_path().ok_or_else(|| format!("{key}: no case store"))?;
+            crate::cases::set_ai(&root.join(crate::cases::MANIFEST), id, *open)
+        }
         _ if key.starts_with("case.") && key.ends_with(".routes") => {
             let id = key.trim_start_matches("case.").trim_end_matches(".routes");
             let routes: &[crate::cases::RouteValue] = match value {
@@ -1084,10 +1110,11 @@ mod tests {
         assert_eq!(
             parameters,
             vec![
-                "language", "theme", "places_named", "passwords_shown", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "free_time.nothing",
+                // colour: "screen_colours", "calmer_colours".
+                "language", "theme", "places_named", "passwords_shown", "screen_colours", "calmer_colours", "case_store", "window", "window.admin", "link.needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "free_time.nothing",
                 "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.before_event", "reminders.events", "reminders.asked_days", "reminders.waits", "reminders.payment_days", "reminders_closed", "reminders.gathered",
                 "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice.name", "invoice.address", "invoice.siret", "invoice.vat",
-                "invoice.prefix", "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate"
+                "invoice.prefix", "invoice.currency", "invoice.payment", "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
             ]
         );
         // What reaches you: its switches in their own tab; the matrix is the tab's (`attention::grid`), no setting of it here.

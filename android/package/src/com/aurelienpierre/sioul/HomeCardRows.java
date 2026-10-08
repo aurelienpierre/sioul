@@ -168,7 +168,7 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
         if (card == null || card.optInt("v") < 2)
             return rows;
         JSONObject words = card.optJSONObject("words");
-        JSONObject frame = HomeCard.frame(card.optJSONArray("frames"), now);
+        JSONObject frame = HomeCard.frame(HomeCard.frames(card), now);
         if (!HomeCard.AGENDA.equals(kind))
             mail(rows, card, frame, words == null ? "" : words.optString("mail"), kind);
         if (!HomeCard.MAIL.equals(kind))
@@ -275,7 +275,7 @@ final class HomeCardRows implements RemoteViewsService.RemoteViewsFactory
     }
 
     /** The first `until` ahead of `now` among some wordings; none, Long.MAX_VALUE. */
-    private static long ahead(JSONArray labels, long now)
+    static long ahead(JSONArray labels, long now)
     {
         for (int i = 0; labels != null && i < labels.length(); i++) {
             JSONObject label = labels.optJSONObject(i);

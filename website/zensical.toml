@@ -48,6 +48,8 @@ nav = [
       { "What reaches you, and when" = "guide/notifications.md" },
       { "Pauses: Free time and Pause" = "guide/pauses.md" },
       { "Calls: who may ring, and when" = "guide/calls.md" },
+      # texts: SMS phase (b).
+      { "Texts: read and sent from your computer" = "guide/texts.md" },
       { "Sharing between your devices" = "guide/sharing.md" },
       { "Using an AI agent" = "guide/ai-agent.md" },
       { "Privacy and security" = "guide/privacy-security.md" },
@@ -89,9 +91,12 @@ nav = [
       { "Free time, the good moment" = "dev/research/global-pause.md" },
       { "Screening phone calls" = "dev/research/call-screening.md" },
       { "Chats on Android" = "dev/research/android-chats.md" },
+      { "Texts and notifications on the computer" = "dev/research/sms.md" },
       { "Android's providers and DAVx⁵" = "dev/research/android-providers.md" },
       { "The spam filter's evidence" = "dev/research/spam-filter.md" },
       { "OpenPGP on a security key" = "dev/research/openpgp-card.md" },
+      # colour: the sites' colours.
+      { "Colours on the screen" = "dev/research/colour.md" },
     ] },
     { "Building" = [
       { "Building and running" = "dev/building.md" },
@@ -134,8 +139,12 @@ nav = [
       { "Google" = "dev/google.md" },
       { "GitHub" = "dev/github.md" },
       { "Sites" = "dev/sites.md" },
+      # colour: the sites' colours.
+      { "Colours on the screen" = "dev/colour.md" },
       { "Health" = "dev/health.md" },
       { "Several devices" = "dev/database.md" },
+      # texts: SMS phase (b).
+      { "Texts" = "dev/texts.md" },
       { "AI" = "dev/ai.md" },
       { "AI agents (MCP)" = "dev/mcp.md" },
     ] },

@@ -307,6 +307,14 @@ pub(crate) fn step(pressed: bool) -> serde_json::Value {
         forget_state();
     }
     refresh(pressed);
+    words()
+}
+
+/// The background service's notification's words for the calls, the table
+/// left as it is (`steps::note`, after each apply in Sioul's own process):
+/// {screening, through, line, hour, off, again}; nothing while this phone does
+/// not screen calls.
+pub(crate) fn words() -> serde_json::Value {
     if !screens_here() {
         return json!({});
     }
@@ -399,7 +407,7 @@ fn listed(root: &Path, here: &str, everywhere: bool, now_ms: i64) -> Vec<Held> {
 
 /// Your phones in the sharing, each with its name (a phone's model), for the
 /// list's words ("your phone (GS290)"); read again five minutes on at most.
-fn phone_names() -> Vec<(String, String)> {
+pub(crate) fn phone_names() -> Vec<(String, String)> {
     type Kept = Option<(i64, Vec<(String, String)>)>;
     static KEPT: Mutex<Kept> = Mutex::new(None);
     let now = jiff::Timestamp::now().as_second();
@@ -422,7 +430,7 @@ fn phone_names() -> Vec<(String, String)> {
 /// Whether this device has apps for `tel:` and `sms:` links: a phone always;
 /// a computer when its system names one (Linux: `xdg-mime`, KDE Connect,
 /// which hands them to your phone, or a softphone). Looked up once.
-fn link_apps() -> (bool, bool) {
+pub(crate) fn link_apps() -> (bool, bool) {
     static FOUND: std::sync::OnceLock<(bool, bool)> = std::sync::OnceLock::new();
     *FOUND.get_or_init(|| {
         if cfg!(target_os = "android") {
@@ -486,6 +494,45 @@ pub(crate) fn view() -> String {
     let lister = rules::Lister { now: &now, tr: tr(), region: senders.region(), name_of: &name_of, shows: &shows, phone: &words };
     let (tel, sms) = link_apps();
     json!({ "lines": rules::lines(&held, &seen, &messages, &lister), "phone": cfg!(target_os = "android"), "links": { "tel": tel, "sms": sms } }).to_string()
+}
+
+/// What a moment lets through, and the time a list is seen from: the lines then.
+pub(crate) type CardCalls = Box<dyn Fn(&sioul_core::attention::Now, &Zoned) -> Vec<String>>;
+
+/// The calls declined as the phone's home card lists them (homecard.rs): the
+/// Porch's lines (`view`'s) at a moment and a time, each shown as that
+/// moment lets its caller through, its day said as seen from that time;
+/// without the voicemails, which the card does not say. Read once, for
+/// every frame of the card. None where no phone ever shared a call.
+pub(crate) fn for_card() -> Option<CardCalls> {
+    let root = rules::folder();
+    if !phone() && !root.join(rules::LOG).is_dir() {
+        return None;
+    }
+    let config = load_config();
+    let here = here_id();
+    let held = listed(&root, &here, config.porch.calls, Zoned::now().timestamp().as_millisecond());
+    if held.is_empty() {
+        return None;
+    }
+    let senders = Senders::load(&config);
+    let attention = Attention::of(&config);
+    let always = People::load(&People::default_path());
+    let seen = rules::read_seen(&root);
+    let phones = phone_names();
+    Some(Box::new(move |moment, at| {
+        let shows = |h: &Held| match who_now(&senders, h) {
+            None => attention.listed(Person::Hidden, false, moment),
+            Some(who) => attention.listed(Person::of(who), always.admits_number(&h.key, senders.region()), moment),
+        };
+        let name_of = |key: &str| {
+            let judged = senders.judge_number(key);
+            (!judged.card.trim().is_empty()).then_some(judged.card)
+        };
+        let words = |device: &str| rules::phone_words(tr(), device, &here, &phones, cfg!(target_os = "android"));
+        let lister = rules::Lister { now: at, tr: tr(), region: senders.region(), name_of: &name_of, shows: &shows, phone: &words };
+        rules::lines(&held, &seen, &BTreeMap::new(), &lister).into_iter().map(|line| line.text).collect()
+    }))
 }
 
 /// A person's calls of the last month (`numbers`: theirs, as written), for

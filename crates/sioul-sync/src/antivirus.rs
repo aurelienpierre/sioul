@@ -13,6 +13,9 @@
 //! - **Without an antivirus**, nothing is refused: the window says the file
 //!   will not be checked, asks before opening or saving it, and says how to
 //!   install one (`install_hint`).
+//! - **A phone** has no antivirus another app can call, and no ClamAV:
+//!   `scan` answers `Unavailable` there without trying, and Sioul's window
+//!   does not ask it (crates/sioul-app/src/attachments.rs).
 
 use std::path::Path;
 #[cfg(not(windows))]
@@ -39,7 +42,13 @@ pub fn scan(file: &Path) -> Verdict {
     {
         windows_scan(file)
     }
-    #[cfg(not(windows))]
+    // A phone: no antivirus another app can call, and no ClamAV to start.
+    #[cfg(target_os = "android")]
+    {
+        let _ = file;
+        Verdict::Unavailable("no antivirus on a phone".into())
+    }
+    #[cfg(not(any(windows, target_os = "android")))]
     {
         clamav(file)
     }
@@ -53,7 +62,8 @@ fn program(name: &str) -> PathBuf {
 }
 
 /// How to install an antivirus here, in one line: the command for this
-/// system's packages, or what to turn on, in your language.
+/// system's packages, in backticks (the window offers it to copy), or what to
+/// turn on, in your language.
 pub fn install_hint() -> String {
     #[cfg(windows)]
     {
@@ -61,20 +71,25 @@ pub fn install_hint() -> String {
     }
     #[cfg(target_os = "macos")]
     {
-        "brew install clamav".to_string()
+        "`brew install clamav`".to_string()
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
+    // A phone has none to install that Sioul could call: a computer with one, then.
+    #[cfg(target_os = "android")]
+    {
+        crate::translator().text("antivirus-hint-phone", None)
+    }
+    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
     {
         let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default().to_ascii_lowercase();
         let like = |name: &str| release.lines().any(|l| (l.starts_with("id=") || l.starts_with("id_like=")) && l.contains(name));
         if like("fedora") || like("rhel") {
-            "sudo dnf install clamav clamav-update && sudo freshclam".to_string()
+            "`sudo dnf install clamav clamav-update && sudo freshclam`".to_string()
         } else if like("debian") || like("ubuntu") {
-            "sudo apt install clamav && sudo freshclam".to_string()
+            "`sudo apt install clamav && sudo freshclam`".to_string()
         } else if like("arch") {
-            "sudo pacman -S clamav && sudo freshclam".to_string()
+            "`sudo pacman -S clamav && sudo freshclam`".to_string()
         } else if like("suse") {
-            "sudo zypper install clamav && sudo freshclam".to_string()
+            "`sudo zypper install clamav && sudo freshclam`".to_string()
         } else {
             crate::translator().text("antivirus-hint-packages", None)
         }
@@ -102,7 +117,7 @@ fn system_signatures() -> bool {
         .any(|dir| std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).any(|e| e.path().extension().is_some_and(|x| x == "cvd" || x == "cld")))
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "android")))]
 fn clamav(file: &Path) -> Verdict {
     let own = own_signatures();
     let database = format!("--database={}", own.display());

@@ -77,7 +77,7 @@ As Sioul does now, unless you change it:
 
 | Time | Comes at once | Shown, not told | Waits |
 |---|---|---|---|
-| **Work** | everyone's mail and messages; calls from your safe, neutral and restricted contacts and hidden numbers; your reminders, doses, codes; Health's notices, the pause to move, your watch's offers; a site in real time | | strangers' calls go to voicemail; your sites and other apps' automatons come at the gathered times |
+| **Work** | everyone's mail and messages; calls from your safe, neutral and restricted contacts and hidden numbers; your reminders, doses, codes; Health's notices, the pause to move; a site in real time | | strangers' calls go to voicemail; your sites and other apps' automatons come at the gathered times |
 | **Admin** | mail and messages from everyone but your restricted contacts; calls from your safe and neutral contacts and hidden numbers; reminders, doses, codes, Health's notices; "Work hours are over" | | restricted contacts' mail and messages, for work time; restricted contacts' and strangers' calls go to voicemail; your sites and other apps' automatons come at the gathered times |
 | **Leisure** | your safe senders' mail, calls and messages; reminders, doses, codes, Health's notices | | everyone else's mail and messages, for work or admin time; their calls go to voicemail, listed then; what is for work |
 | **Meals** | as leisure | | as leisure |
@@ -157,7 +157,7 @@ Under the grid:
 ## Sioul's own {#sioul-s-own}
 
 <figure markdown="span">
-  [![What reaches you, Sioul's own: a grid, the kinds down in four groups (What you set or asked for: codes and links, doses, an event's alarms; Reminders; Your day: meals, naps and the night, the pause to move, Work hours are over, the time running, your watch's offers; Sites, on a computer) and the nine columns across, the fixed marks greyed; above it, Sites' notifications gathered and the gathered times.](../assets/screens/attention-own.png){ loading=lazy }](../assets/screens/attention-own.png "Open the picture at full size")
+  [![What reaches you, Sioul's own: a grid, the kinds down in four groups (What you set or asked for: codes and links, doses, an event's alarms; Reminders; Your day: meals, naps and the night, the pause to move, Work hours are over, the time running; Sites, on a computer) and the nine columns across, the fixed marks greyed; above it, Sites' notifications gathered and the gathered times.](../assets/screens/attention-own.png){ loading=lazy }](../assets/screens/attention-own.png "Open the picture at full size")
   <figcaption>Sioul's own notifications, each kind at each time.</figcaption>
 </figure>
 
@@ -170,7 +170,7 @@ Each notification comes once, never repeated. What each kind does, unless you ch
 - **Reminders before an event**: a quarter of an hour before it and its time to get ready and get there, unless you change it ([Agenda](agenda.md#reminders)); **events, the working day before**: half an hour before work ends. Each device tells its own.
 - **Dates asked, waits over, payments, papers and contracts to renew**: once each, on a computer, in waking times ([Settings](settings.md#reminders)).
 - **Meals, naps and the night**: two notices at most for each, each once; none during a meeting, none in sleep, a pause or Free time ([Health](health.md#meals-rest-and-sleep)).
-- **The pause to move**, every 45 minutes unless you change it, in waking times ([Health](health.md#moving)); **"Work hours are over"**, once, at the end of your hours, not in work time itself ([Tasks](tasks.md#the-end-of-the-day)); **your watch's offers**, in work time.
+- **The pause to move**, every 45 minutes unless you change it, in waking times ([Health](health.md#moving)); **"Work hours are over"**, once, at the end of your hours, not in work time itself ([Tasks](tasks.md#the-end-of-the-day)).
 - **The time running**: while a focus session runs, on Linux and on a phone, with **Pause** and **Stop** ([Time](time.md#where-time-comes-from)).
 - **Your sites**, on a computer: what they notify waits, then comes in one notification at the gathered times, for the sites of those hours. A site in **Real time**, and a call in a site, come at once ([Sites](sites.md#notifications-at-your-pace)).
 - **Other apps**, on a phone: their automatons come back at the gathered times; the apps you set to **At once** come at once in waking times ([below](#other-apps-on-a-phone)).
@@ -236,7 +236,29 @@ In Exceptions, as each app, conversation and site shows up:
 - **A conversation Always through, during Sioul's modes**: Sioul holds nothing of it, but the phone's own do-not-disturb, which Sioul turns on for a pause, Free time and do-not-disturb, lets a conversation ring only when it is marked **Priority** in Android (Android 11 and later). **Mark it Priority in Android**, beside the conversation, opens its page there: choose **Priority**. A conversation Android has not seen changed yet has no page of its own: the button opens Android's list of conversations, where it shows among the recent ones; or long-press its next notification and choose **Priority**. Mark as priority only the conversations you let through always: Android rings every priority conversation through Sioul's modes, before Sioul can hold it. On Android 10, which has no priority conversations, it rings only from a starred contact.
 - **Each site** of your browser: **Gathered** or **At once**.
 
-**What Sioul keeps**, on the phone only, never shared with your other devices: your choices, the names of the apps, conversations and sites it saw, and when what it held comes back. Never what a notification says.
+#### Other apps, by time {#other-apps-by-time}
+
+**Other apps, by time**, on top of the phone's part of Exceptions, is a table: down, each app seen in the last month, then the conversations you chose for and the ten seen last; across, the seven times and the two layers, as in the grids of [By person](#by-person). Each cell says **As usual** (=), **At once** (●), **At the gathered times** (◎) or **Held** (○); a press opens its choices in words. To let Discord through during work and hold it otherwise: **At once** under Work, **Held** under every other time.
+
+- **As usual** follows what the notification is: a message by who wrote it, an automaton at the gathered times, an app set to **At once** at once. Nothing changes for an app until you set one of its cells.
+- **A conversation's** cell, where set, wins over its app's; where it says **As usual**, the app's counts.
+- **Under a layer**: **At once** under Do not disturb lets the app through while do-not-disturb holds, at the times its row lets it through; **As usual** holds it as do-not-disturb holds everyone else's messages.
+- **As before**: your Always through people still come; the blocked never do; codes and approvals, calls, alarms and what runs are never held.
+- **Each app's line** says its row in one sentence: "At once: Work; held: Admin, Leisure, Meals, Sleep, Pause, Free time, Time for you and Do not disturb."
+- **What Android allows**: a notification's first sound plays before Sioul sees it, so make an app you hold at some times silent (Settings ▸ This phone, **Make it silent**). During a pause, Free time or do-not-disturb, Sioul's own mode decides what rings: what a cell lets through then shows without a sound, unless it is a priority conversation or from a starred contact.
+- **On a computer**, Exceptions shows the apps' rows set on your phone, by name, and changes them: they travel with your settings.
+
+**What Sioul keeps**, on the phone only, never shared with your other devices: your choices of each app's kind, each conversation's way through and each site's, the names of the apps, conversations and sites it saw, and when what it held comes back. Never what a notification says, unless you send an app's messages to your computers ([below](#messages-on-your-computers)). The rows by time travel with your settings: an app's with its name, a conversation's by a number made from it, never its title.
+
+#### On your computers {#messages-on-your-computers}
+
+Your phone can show your computers the messages its notifications bring, texts first, on their Porch under **From your phone**: "While you slept, Dr Martin's office wrote: 09:41 Your appointment is moved to Thursday 10:30." It is off until you turn it on, on the phone and on each computer that should show them: Settings ▸ This phone ▸ **On your computers** on the phone, the part **Messages from your phone** under Settings ▸ Your folder and sharing on a computer ([Sharing](sharing.md#what-travels-from-this-device)).
+
+- **Which apps**: the phone's SMS app sends its words unless you say otherwise; every other app (Signal, WhatsApp, Discord…) sends nothing until you choose it. For each: **Not on your computers**, **Who and when**, or **Who, when and the words**.
+- **When they show**: once the phone let the notification through, and while the person who wrote may reach you, as on the phone; a text from a service (a short number, "AMELI") at the automatons' times. Never as a notification on the computer, never counted.
+- **What you can do**: **Text back** and **Call back** for a text, through your computer's app for such links (KDE Connect hands them to your phone), else **Copy the number**; **Seen** takes the line away on every device, with ten seconds to undo. It never touches the phone's notification, and never marks anything as read.
+- **Never sent**: codes and approvals ("A code came from your bank at 09:12. It stays on your phone."), pictures ("a picture"), a blocked sender's messages, a conversation set to **Never**, notifications an app keeps secret, ongoing ones, Sioul's own.
+- **Kept** a week. The words travel encrypted with your passphrase and sit in Sioul's files on each computer that shows them: choose the apps with that in mind.
 
 ### Sites, events, Health's days {#sites-events-health}
 
@@ -312,7 +334,7 @@ Do-not-disturb is yours, not a device's: each device's own do-not-disturb and Si
 
 - **The device you press it on** applies it at once, and sends it to the sharing folder at once.
 - **Your other devices** apply it at their next look at the folder, each minute while Sioul is open, once your sync app has brought the change: about a minute with a Nextcloud server. A phone's sync app may take half an hour or more. When the folder lives on a Nextcloud that one of your accounts reaches, Sioul also reads the other devices' files from the server, and a phone follows within about a minute ([When the sync app is late](sharing.md#when-the-sync-app-is-late)).
-- **With Sioul closed on a phone**, Sioul keeps your devices in step in the background, with one quiet notification, "Sioul keeps your devices in step", which shows do-not-disturb's line while it holds. Do-not-disturb turned on at your computer follows within a few minutes: the phone looks every two minutes while another device is in use, every five otherwise, every fifteen while you sleep, and as soon as the sync app writes another device's file. **Keep this phone in step in the background**, in Settings ▸ This phone: off, changes come when you open Sioul. There too, **Allow in the background**, or Android may stop Sioul to save the battery.
+- **With Sioul closed on a phone**, Sioul keeps your devices in step in the background, with one quiet notification which says the state now, within a second or two of each change: what now is for and until when ("Leisure until 22:00"), do-not-disturb on or off, and whether your calls are screened. Do-not-disturb turned on at your computer follows within a few minutes: the phone looks every two minutes while another device is in use, every five otherwise, every fifteen while you sleep, and as soon as the sync app writes another device's file. **Keep this phone in step in the background**, in Settings ▸ This phone: off, changes come when you open Sioul. There too, **Allow in the background**, or Android may stop Sioul to save the battery.
 - **Without sharing**, it holds on this device only.
 
 ### What the status line says {#what-the-status-line-says}

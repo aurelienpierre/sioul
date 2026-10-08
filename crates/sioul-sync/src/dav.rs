@@ -74,6 +74,18 @@ pub(crate) struct Budget {
 const BUDGET: Budget = Budget { connect: Duration::from_secs(20), stall: Duration::from_secs(60), whole: Duration::from_secs(15 * 60) };
 
 pub(crate) fn agent(budget: &Budget) -> ureq::Agent {
+    agent_with(budget, false)
+}
+
+/// The same for sending a file whole (`remote::Server::put_file`): its bytes
+/// may wait in the system's buffers long after they were handed over, on a
+/// slow uplink, while the answer is awaited; that wait is bounded by the
+/// whole budget alone, the others by `stall`.
+pub(crate) fn upload_agent(budget: &Budget) -> ureq::Agent {
+    agent_with(budget, true)
+}
+
+fn agent_with(budget: &Budget, patient: bool) -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .timeout_connect(Some(budget.connect))
         .timeout_global(Some(budget.whole))
@@ -81,26 +93,27 @@ pub(crate) fn agent(budget: &Budget) -> ureq::Agent {
         .max_redirects(0)
         .allow_non_standard_methods(true)
         .build();
-    ureq::Agent::with_parts(config, DefaultConnector::new().chain(Stalls(budget.stall)), DefaultResolver::default())
+    ureq::Agent::with_parts(config, DefaultConnector::new().chain(Stalls(budget.stall, patient)), DefaultResolver::default())
 }
 
 /// Each wait for the network, at most `.0`: ureq's own limits count a whole
 /// phase of a request (all of an answer's body), this one each read and
 /// write. Built on ureq's transport, which follows no semver yet
 /// (`ureq::unversioned`): a ureq update may ask this to change.
+/// `.1`: the waits for an answer are not capped (an upload's, `upload_agent`).
 #[derive(Debug)]
-struct Stalls(Duration);
+struct Stalls(Duration, bool);
 
 impl Connector<Box<dyn Transport>> for Stalls {
     type Out = Stalling;
 
     fn connect(&self, _: &ConnectionDetails, chained: Option<Box<dyn Transport>>) -> Result<Option<Stalling>, ureq::Error> {
-        Ok(chained.map(|transport| Stalling(transport, self.0)))
+        Ok(chained.map(|transport| Stalling(transport, self.0, self.1)))
     }
 }
 
 #[derive(Debug)]
-struct Stalling(Box<dyn Transport>, Duration);
+struct Stalling(Box<dyn Transport>, Duration, bool);
 
 impl Stalling {
     fn within(&self, timeout: NextTimeout) -> NextTimeout {
@@ -119,7 +132,9 @@ impl Transport for Stalling {
     }
 
     fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
-        let timeout = self.within(timeout);
+        // An upload's answer, awaited while its last bytes drain from the
+        // system's buffers on a slow uplink: within the whole budget alone.
+        let timeout = if self.2 { timeout } else { self.within(timeout) };
         self.0.await_input(timeout)
     }
 

@@ -15,9 +15,14 @@
 //! - `tools`: the registry, as plain data (a name, a description, a JSON
 //!   schema, a function), which another agent protocol can serve as it is.
 //! - `read` and `write`: the tools themselves, on the core's public
-//!   functions, as the command line uses them.
+//!   functions, as the command line uses them; `phone` (the phone's
+//!   messages, calls) and `records` (papers, contracts, letters, time,
+//!   invoices, reminders, the moment now) read the rest, read-only.
 //! - `spam`: the spam filter's tools (computers only), on `sioul spam`'s
 //!   own reports; `[mcp] spam = false` keeps them from agents.
+//! - `access`: consent per project: every project closed to agents until
+//!   the person opens it, things in no project as `[mcp] outside_projects`
+//!   says (`sioul_core::consent`); every tool keeps to it.
 //! - `mask`: what is never handed to an agent as it is (docs/ai.md); the
 //!   command line's `sioul spam` lists masks the same way.
 //! - `log`: what each agent asked, and what it was given.
@@ -30,10 +35,13 @@
 //! you send it. Two spam tools start a job apart that reads your mail
 //! servers (the training corpus, read-only) or trains; none moves mail.
 
+mod access;
 mod log;
 pub(crate) mod mask;
+mod phone;
 mod protocol;
 pub(crate) mod read;
+mod records;
 #[cfg(not(target_os = "android"))]
 mod spam;
 mod tools;

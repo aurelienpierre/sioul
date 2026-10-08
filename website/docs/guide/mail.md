@@ -19,7 +19,7 @@ Without any setting:
 
 - **Every message is checked as it arrives.** You see whether it is *verified*, *not verified* or *forged* before you read it. Forged mail, and mail borrowing a bank's or a public service's name, wait apart on the Porch with the reason ([Reading](#reading)).
 - **Nothing in a message loads or runs**, so nobody learns that you opened it, and every link shows where it goes before it opens ([Reading](#reading)).
-- **Attachments go through your computer's antivirus** before they open, and a program attached is never started. Without an antivirus, and on a phone, Sioul asks first ([Attachments](#attachments)).
+- **Attachments go through your computer's antivirus** before they open, and a program attached is never started. Without an antivirus Sioul asks first; on a phone, which has none Sioul can call, it says the file is not checked ([Attachments](#attachments)).
 - **Your mail travels encrypted.** Sioul has no setting to talk to a mail server in clear.
 - **Nothing leaves without you**, and you have ten seconds to change your mind. No read receipt is ever sent. There is no Sioul server: your mail goes between your device and your provider, and nowhere else unless you choose to send it somewhere ([Privacy and security](privacy-security.md)).
 
@@ -110,7 +110,8 @@ Attachments are folded under the message, one line each with their kind, name an
 
 - **Your system's antivirus checks each one before it opens or is saved**: Microsoft Defender on Windows, ClamAV on Linux and macOS when it is installed. When it finds a threat, nothing opens and the copy is deleted.
 - **A program, a script, a shortcut or an installer is never started from a mail**, checked or not: save it if you trust it, and run it yourself.
-- **Without an antivirus**, Sioul does not refuse: it says the file will not be checked, asks before opening it (**Open it unchecked**), and says how to get one. A phone has no antivirus Sioul can call, so there it always asks.
+- **Without an antivirus**, Sioul does not refuse: it says the file will not be checked, asks before opening it (**Open it unchecked**), and says how to get one.
+- **On a phone**, which has no antivirus Sioul can call, attachments are not checked, and Sioul says so in the message and after each opening, rather than asking each time. An attachment opens in the app you choose (Android asks which, when none is set for its kind of file), which can read that one file and nothing else of Sioul's; Android's installers (`.apk`) never open, as programs never do. **Save…** asks Android where to put the file.
 - **On Windows and macOS, files you open or save carry the system's mark that they came from the Internet**, so that the system treats them with its usual care: Office opens them in Protected View, macOS checks them before they run.
 - **The attachments of mail set aside do not open.**
 - **Keep in papers** files one in your [papers](papers.md): checked, then kept, and you say what it is.
@@ -215,7 +216,7 @@ Filters act on new mail as it arrives, on its server: into a folder, archived, t
 
 On a computer, your OpenPGP key can stay on a security key (a YubiKey, a Nitrokey), which signs and decrypts by itself and never gives the key out. Set it up in [Accounts ▸ Security key](accounts.md#security-key).
 
-A message your security key signs is signed when you press **Send**, before the ten seconds of **Undo**: a band at the bottom of the writing window asks for the key's PIN, and says how many tries are left when some were lost; then, when the key asks for a touch, it says **Touch your security key** while the key blinks. Not plugged in, it says so, and goes on as soon as the key comes. **Send unsigned** and **Not now** are there all along, and **Undo** throws the signed message away and opens the draft again. The PIN stays in memory fifteen minutes after its last use, never written or logged anywhere; it is forgotten when you pull the key out, close Sioul, or choose **Forget the PIN now** in Accounts.
+A message your security key signs is signed when you press **Send**, before the ten seconds of **Undo**: a band at the bottom of the writing window asks for the key's PIN, and says how many tries are left when some were lost; then, when the key asks for a touch, it says to touch it now and hold the finger on it a second or two, as the key waits about fifteen seconds and a brief tap is often not taken. Not plugged in, it says so, and goes on as soon as the key comes. **Send unsigned** and **Not now** are there all along, and **Undo** throws the signed message away and opens the draft again. The PIN stays in memory fifteen minutes after its last use, never written or logged anywhere; it is forgotten when you pull the key out, close Sioul, or choose **Forget the PIN now** in Accounts.
 
 A message encrypted to your security key is never opened just because it is shown: the line under the sender says "Encrypted for your security key", with **Open with your security key**. Once opened, it opens again without the key, its attachments too, until Sioul closes.
 
@@ -300,7 +301,7 @@ Thunderbird is the free-software mail program for computers, with an Android app
     13. Outlook: Outlook.com loads them through Microsoft's proxy; classic Outlook and the phone apps can block them.
     14. Apple Mail loads them privately, through two relays (Mail Privacy Protection), or, on a Mac, blocks them if you choose.
     15. Proton Mail loads them through its proxy and removes known trackers.
-    16. Sioul: your computer's own antivirus (Microsoft Defender on Windows; ClamAV on Linux and macOS, when installed); a phone has none, and Sioul asks before opening.
+    16. Sioul: your computer's own antivirus (Microsoft Defender on Windows; ClamAV on Linux and macOS, when installed); a phone has none, and Sioul says the file was not checked.
     17. Thunderbird leaves this to the computer's antivirus, which it lets quarantine a single message.
     18. On the provider's servers.
     19. macOS checks a program when it is first opened.
@@ -527,7 +528,7 @@ HTML is cleaned with an allowlist (`ammonia`): text structure and links only; st
 
 ### The antivirus {#the-antivirus}
 
-On Windows, the Antimalware Scan Interface (AMSI) hands the file to the antivirus Windows runs, Microsoft Defender by default; this path follows Microsoft's documented sequence and is built by the project's automatic builds, but has not yet run on a Windows computer. On Linux and macOS, ClamAV when the system has it: its daemon (`clamdscan --fdpass`), else its scanner with the system's signatures, else with signatures Sioul keeps current once a day with the system's `freshclam`. Nothing of ClamAV ships with Sioul. A Flatpak cannot reach the system's ClamAV, and asks. Programs (`.exe`, `.js`, `.lnk`, `.desktop`, `.iso`…) are only ever saved. An attachment's name is cleaned before it is written: no folder in it, and on Windows no device name or hidden stream. Files opened or saved carry Windows' Mark of the Web (`Zone.Identifier`, zone 3) or macOS's quarantine flag (`com.apple.quarantine`).
+On Windows, the Antimalware Scan Interface (AMSI) hands the file to the antivirus Windows runs, Microsoft Defender by default; this path follows Microsoft's documented sequence and is built by the project's automatic builds, but has not yet run on a Windows computer. On Linux and macOS, ClamAV when the system has it: its daemon (`clamdscan --fdpass`), else its scanner with the system's signatures, else with signatures Sioul keeps current once a day with the system's `freshclam`. Nothing of ClamAV ships with Sioul. A Flatpak cannot reach the system's ClamAV, and asks. Programs (`.exe`, `.js`, `.lnk`, `.desktop`, `.iso`…) are only ever saved. An attachment's name is cleaned before it is written: no folder in it, and on Windows no device name or hidden stream. Files opened or saved carry Windows' Mark of the Web (`Zone.Identifier`, zone 3) or macOS's quarantine flag (`com.apple.quarantine`). On Android nothing is scanned: Android offers no way to have another app scan a file, and ClamAV does not run there. The attachment goes to the app you choose by a `content://` address lent to read only, for that one file; its type comes from its name, never from the message, and is never Android's installer.
 
 ### OpenPGP {#openpgp}
 

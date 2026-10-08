@@ -23,12 +23,46 @@
 use super::tools::{Answer, Args, Tool, object};
 use crate::Session;
 use crate::spam::report::{self, Report};
-use serde_json::json;
+use serde_json::{Value, json};
+use sioul_core::consent::Consent;
 use sioul_core::spam::Action;
 use sioul_core::spam::labels::Label;
 use sioul_learn::{Cancel, Dirs};
 
-fn answer(report: Report) -> Answer {
+/// A report as the agent is given it: a message kept from agents (a closed
+/// project's, or in no project while those are closed, `access`) taken out of
+/// every list, its line with it, and counted, never named.
+fn answer(s: &Session, mut report: Report) -> Answer {
+    let consent = super::read::mail_consent(s);
+    let mut gone: Vec<(String, String)> = Vec::new();
+    fn walk(value: &mut Value, consent: &Consent, gone: &mut Vec<(String, String)>) {
+        match value {
+            Value::Array(items) => {
+                items.retain(|item| {
+                    let uri = item.get("uri").and_then(Value::as_str).unwrap_or_default();
+                    let keep = !uri.starts_with("mid:") || consent.allows(uri);
+                    if !keep {
+                        let field = |name: &str| item.get(name).and_then(Value::as_str).unwrap_or_default().to_string();
+                        gone.push((field("from"), field("subject")));
+                    }
+                    keep
+                });
+                items.iter_mut().for_each(|item| walk(item, consent, gone));
+            }
+            Value::Object(map) => map.values_mut().for_each(|v| walk(v, consent, gone)),
+            _ => {}
+        }
+    }
+    walk(&mut report.data, &consent, &mut gone);
+    if !gone.is_empty() {
+        // Each message's line holds its sender and its subject side by side (`report::listed`).
+        let said: Vec<String> = gone.iter().filter(|(from, subject)| !from.is_empty() || !subject.is_empty()).map(|(from, subject)| format!("{from} · {subject}")).collect();
+        report.lines.retain(|line| !said.iter().any(|s| line.contains(s.as_str())));
+        report.lines.extend(super::access::left_out(gone.len()));
+        if let Value::Object(map) = &mut report.data {
+            map.insert("kept_from_agents".into(), json!(gone.len()));
+        }
+    }
     Answer { text: report.lines.join("\n"), data: report.data }
 }
 
@@ -167,12 +201,12 @@ pub const TOOLS: &[Tool] = &[
 ];
 
 fn status(s: &Session, _: &Args) -> Result<Answer, String> {
-    Ok(answer(report::status(s, &Dirs::standard())?))
+    Ok(answer(s, report::status(s, &Dirs::standard())?))
 }
 
 fn eval(s: &Session, args: &Args) -> Result<Answer, String> {
     let errors = args.number("errors", 20, 0, 200)? as usize;
-    Ok(answer(report::eval(s, &Dirs::standard(), errors, &mut |_| {}, &Cancel::new())?))
+    Ok(answer(s, report::eval(s, &Dirs::standard(), errors, &mut |_| {}, &Cancel::new())?))
 }
 
 /// An action asked by its name.
@@ -191,11 +225,11 @@ fn dry_run(s: &Session, args: &Args) -> Result<Answer, String> {
         threshold_spam: threshold("threshold_spam")?,
         threshold_unsure: threshold("threshold_unsure")?,
     };
-    Ok(answer(report::dry_run(s, &ask)?))
+    Ok(answer(s, report::dry_run(s, &ask)?))
 }
 
 fn review(s: &Session, args: &Args) -> Result<Answer, String> {
-    Ok(answer(report::review(s, args.number("limit", 100, 1, 500)? as usize)?))
+    Ok(answer(s, report::review(s, args.number("limit", 100, 1, 500)? as usize)?))
 }
 
 fn job(s: &Session, args: &Args) -> Result<Answer, String> {
@@ -204,7 +238,7 @@ fn job(s: &Session, args: &Args) -> Result<Answer, String> {
     if stop && id.is_none() {
         return Err("“stop” needs the job's “id”.".into());
     }
-    Ok(answer(report::job(s, id.as_deref(), stop)?))
+    Ok(answer(s, report::job(s, id.as_deref(), stop)?))
 }
 
 fn label(s: &Session, args: &Args) -> Result<Answer, String> {
@@ -214,8 +248,20 @@ fn label(s: &Session, args: &Args) -> Result<Answer, String> {
         "ham" => Label::Ham,
         other => return Err(format!("“label” is spam or ham; not “{}”.", crate::one_line(other))),
     };
+    // A message kept from agents is not labelled by one: by its address, or its file when it is one.
+    let consent = super::read::mail_consent(s);
+    let by_id = message.starts_with("mid:") || message.starts_with('<') || (message.contains('@') && !message.contains('/') && !message.contains('\\'));
+    let kept = if by_id {
+        !consent.allows(&sioul_core::links::mail_uri(&message))
+    } else {
+        // Only a file of the accounts' mail is opened (`find_message` checks the path first); a corpus's place is the label's to find.
+        super::read::find_message(s, &message).ok().and_then(|path| sioul_core::maildir::read_one(&path)).is_some_and(|card| !consent.allows_mail(card.message_id.as_deref(), Some(&card)))
+    };
+    if kept {
+        return Err(super::access::kept("This message"));
+    }
     // Never the window's move: only the label.
-    Ok(answer(report::label(s, &Dirs::standard(), &message, label, false)?))
+    Ok(answer(s, report::label(s, &Dirs::standard(), &message, label, false)?))
 }
 
 fn fetch(s: &Session, args: &Args) -> Result<Answer, String> {
@@ -226,7 +272,7 @@ fn fetch(s: &Session, args: &Args) -> Result<Answer, String> {
         }
         job.extend(["--account".to_string(), account]);
     }
-    Ok(answer(report::started(s, "fetch", job)?))
+    Ok(answer(s, report::started(s, "fetch", job)?))
 }
 
 fn train(s: &Session, args: &Args) -> Result<Answer, String> {
@@ -256,5 +302,5 @@ fn train(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     job.extend(["--errors".to_string(), args.number("errors", 20, 0, 200)?.to_string()]);
     job.extend(settings.args());
-    Ok(answer(report::started(s, "train", job)?))
+    Ok(answer(s, report::started(s, "train", job)?))
 }

@@ -10,7 +10,12 @@
 //! What an agent writes may come from mail it read, so it is checked as
 //! mail is: a title, a place, a subject on one line; an address one address;
 //! a tie to Sioul's own things or a web page only; a note inside the notes.
+//!
+//! Nothing is written into a project closed to agents, nor outside projects
+//! while those are closed (`access`); a thing kept from agents is not tied to,
+//! nor answered: each refusal says so plainly.
 
+use super::access;
 use super::read::{self, Desk};
 use super::tools::{Answer, Args};
 use crate::{Session, one_line};
@@ -21,6 +26,7 @@ use serde_json::json;
 use sioul_core::agenda::{self, EventEdit};
 use sioul_core::compose::{self, Draft, DraftKind};
 use sioul_core::config::Account;
+use sioul_core::consent::Consent;
 use sioul_core::links::{self, Kind, LocalLinks, Loaded, World};
 use sioul_core::porch::Lane;
 use sioul_core::tasks::{self, ContactRef, Link, Status, TaskEdit};
@@ -36,8 +42,9 @@ const LONGEST_ADDRESS: usize = 2000;
 /// task, an event or a note's front matter as it is, so it is one line of
 /// visible characters; and the window opens it when the person clicks it, so
 /// it is never a file of this computer (`file:`) nor another program's
-/// scheme (`smb:`, `ms-…:`).
-fn known(world: &World, uri: &str) -> Result<String, String> {
+/// scheme (`smb:`, `ms-…:`). A thing kept from agents is refused: it is not
+/// tied to, whatever ties it.
+fn known(world: &World, consent: &Consent, uri: &str) -> Result<String, String> {
     let uri = uri.trim();
     let shown = || one_line(&uri.chars().take(200).collect::<String>());
     // Sioul's own addresses come out percent-encoded ("Call%20with…"); anything else as it was given.
@@ -49,16 +56,32 @@ fn known(world: &World, uri: &str) -> Result<String, String> {
     match links::kind_of(&canonical) {
         Kind::Web => Ok(canonical),
         Kind::File | Kind::Other => Err(unknown()),
+        Kind::Case if world.describe(&canonical).found && !consent.is_open(&links::id_of(&canonical)) => Err(access::closed_project(&links::id_of(&canonical))),
+        _ if world.describe(&canonical).found && !access::allows(consent, world, &canonical) => Err(access::kept(&format!("“{}”", shown()))),
         _ if world.describe(&canonical).found => Ok(canonical),
         _ => Err(unknown()),
     }
 }
 
+/// The projects named among addresses (`sioul:case/…`).
+fn cases_among(uris: &[String]) -> Vec<String> {
+    uris.iter().filter(|u| links::kind_of(u) == Kind::Case).map(|u| links::id_of(u)).collect()
+}
+
+/// Whether something new in these projects may be written for an agent: each
+/// open; in none, while things outside projects are open.
+fn may_write(consent: &Consent, projects: &[String]) -> Result<(), String> {
+    if let Some(closed) = projects.iter().find(|p| consent.knows(p) && !consent.is_open(p)) {
+        return Err(access::closed_project(closed));
+    }
+    if consent.allows_projects(projects.iter().map(String::as_str)) { Ok(()) } else { Err(access::OUTSIDE_CLOSED.into()) }
+}
+
 /// Addresses checked, each once.
-fn known_all(world: &World, uris: &[String]) -> Result<Vec<String>, String> {
+fn known_all(world: &World, consent: &Consent, uris: &[String]) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = Vec::new();
     for uri in uris {
-        let uri = known(world, uri)?;
+        let uri = known(world, consent, uri)?;
         if !out.contains(&uri) {
             out.push(uri);
         }
@@ -116,25 +139,37 @@ pub fn add_task(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     let list = target_list(s, args.text("list")?.as_deref())?;
     let loaded = Loaded::read(&s.config);
+    let consent = access::of(s, &loaded);
     for case in args.list("cases")? {
         if !loaded.cases.iter().any(|c| c.id == case) {
-            return Err(format!("No case or project “{}”: list_projects gives their ids.", one_line(&case)));
+            return Err(format!("No project “{}”: list_projects gives their ids.", one_line(&case)));
+        }
+        if !consent.is_open(&case) {
+            return Err(access::closed_project(&case));
         }
         if !edit.cases.contains(&case) {
             edit.cases.push(case);
         }
     }
+    // Only the tasks an agent may see are found: a step of one kept from agents is never made.
+    let open_tasks: Vec<tasks::Task> = loaded.tasks.iter().filter(|t| consent.allows(&links::task_uri(&t.uid))).cloned().collect();
+    let mut projects = edit.cases.clone();
     if let Some(parent) = args.text("parent")? {
-        edit.parent = read::find_task(s, &loaded.tasks, &parent)?.uid.clone();
+        let parent = read::find_task(s, &open_tasks, &parent)?;
+        edit.parent = parent.uid.clone();
+        projects.extend(consent.projects_of(&links::task_uri(&parent.uid)));
     }
     for wanted in args.list("after")? {
-        edit.waits_for.push(read::find_task(s, &loaded.tasks, &wanted)?.uid.clone());
+        edit.waits_for.push(read::find_task(s, &open_tasks, &wanted)?.uid.clone());
     }
     let world = loaded.world();
     if let Some(source) = args.text("source")? {
-        edit.links.push(Link { uri: known(&world, &source)?, label: String::new(), rel: "via".into() });
+        edit.links.push(Link { uri: known(&world, &consent, &source)?, label: String::new(), rel: "via".into() });
     }
-    for uri in known_all(&world, &args.list("links")?)? {
+    let tied = known_all(&world, &consent, &args.list("links")?)?;
+    projects.extend(cases_among(&tied));
+    may_write(&consent, &projects)?;
+    for uri in tied {
         tie_in_task(&mut edit, &world, &uri);
     }
     let uid = vdir::new_name();
@@ -149,7 +184,9 @@ pub fn add_task(s: &Session, args: &Args) -> Result<Answer, String> {
 pub fn complete_task(s: &Session, args: &Args) -> Result<Answer, String> {
     let wanted = args.needed("task")?;
     let desk = Desk::read(s);
-    let task = read::find_task(s, &desk.loaded.tasks, &wanted)?;
+    // Only the tasks an agent may see are found: one kept from agents is never marked done by one.
+    let open = desk.open_tasks();
+    let task = read::find_task(s, &open, &wanted)?;
     if task.read_only {
         return Err(s.tr.text("task-read-only", None));
     }
@@ -170,6 +207,10 @@ pub fn complete_task(s: &Session, args: &Args) -> Result<Answer, String> {
 }
 
 pub fn add_event(s: &Session, args: &Args) -> Result<Answer, String> {
+    // A new event is in no project.
+    if !s.config.mcp.outside_projects {
+        return Err(access::OUTSIDE_CLOSED.into());
+    }
     let title = args.needed_line("title")?;
     let all_day = args.flag("all_day")?;
     let start = args.moment("start")?.ok_or("“start” is needed.")?;
@@ -279,8 +320,13 @@ pub fn add_note(s: &Session, args: &Args) -> Result<Answer, String> {
     if !inside_notes(&root, &folder) {
         return Err(format!("“{}” leads out of the notes folder (a link): the note is not written there.", one_line(&folder)));
     }
-    let wanted = args.list("links")?;
-    let links = if wanted.is_empty() { Vec::new() } else { known_all(&Loaded::read(&s.config).world(), &wanted)? };
+    let loaded = Loaded::read(&s.config);
+    let consent = access::of(s, &loaded);
+    let links = known_all(&loaded.world(), &consent, &args.list("links")?)?;
+    // In the projects whose files hold its folder, and those it is tied to.
+    let mut projects: Vec<String> = consent.note_projects(&format!("{folder}/{}", notes::file_name(&file_title(&title)))).into_iter().collect();
+    projects.extend(cases_among(&links));
+    may_write(&consent, &projects)?;
     // The title is written as the heading: a body starting with it again keeps one.
     if let Some(rest) = body.trim_start().strip_prefix(&format!("# {title}")).filter(|r| r.is_empty() || r.starts_with('\n')) {
         body = rest.trim_start().to_string();
@@ -356,9 +402,14 @@ pub fn draft_reply(s: &Session, args: &Args) -> Result<Answer, String> {
     if judged.lane == Lane::Hostile {
         return Err("This message is hostile mail to a shielded address: Sioul keeps it from agents. The person can answer it from the window, if they choose to.".into());
     }
+    let loaded = Loaded::read(&s.config);
+    let consent = access::of(s, &loaded);
+    // Mail kept from agents is not answered by one.
+    if !consent.allows_mail(judged.card.message_id.as_deref(), Some(&judged.card)) {
+        return Err(access::kept("This message"));
+    }
     let kind = if args.flag("reply_all")? { DraftKind::ReplyAll } else { DraftKind::Reply };
-    let wanted = args.list("links")?;
-    let links = if wanted.is_empty() { Vec::new() } else { known_all(&Loaded::read(&s.config).world(), &wanted)? };
+    let links = known_all(&loaded.world(), &consent, &args.list("links")?)?;
     let (own_account, _) = read::place_of(&s.config, &path);
     let account = s.config.account(&own_account).filter(|a| a.syncs()).map_or_else(|| sender(s, None), Ok)?;
     let mut draft = compose::answer(&path, kind, &account.id, &crate::mail::own_addresses(s)).ok_or_else(|| s.tr.text("mail-message-gone", None))?;
@@ -383,8 +434,11 @@ pub fn draft_message(s: &Session, args: &Args) -> Result<Answer, String> {
     let subject = args.needed_line("subject")?;
     let body = draft_body(args)?;
     let account = sender(s, args.text("account")?.as_deref())?;
-    let wanted = args.list("links")?;
-    let links = if wanted.is_empty() { Vec::new() } else { known_all(&Loaded::read(&s.config).world(), &wanted)? };
+    let loaded = Loaded::read(&s.config);
+    let consent = access::of(s, &loaded);
+    let links = known_all(&loaded.world(), &consent, &args.list("links")?)?;
+    // A new message is in the projects it is tied to; in none, outside them.
+    may_write(&consent, &cases_among(&links))?;
     let mut draft = Draft::new(&account.id);
     free_draft(&mut draft);
     draft.to = to;
@@ -411,7 +465,8 @@ fn rewrite(s: &Session, change: &links::Rewrite) -> Result<(), String> {
 pub fn link(s: &Session, args: &Args) -> Result<Answer, String> {
     let loaded = Loaded::read(&s.config);
     let world = loaded.world();
-    let (from, to) = (known(&world, &args.needed("from")?)?, known(&world, &args.needed("to")?)?);
+    let consent = access::of(s, &loaded);
+    let (from, to) = (known(&world, &consent, &args.needed("from")?)?, known(&world, &consent, &args.needed("to")?)?);
     if from == to {
         return Err("A thing is not tied to itself.".into());
     }

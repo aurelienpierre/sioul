@@ -5,8 +5,8 @@
 // underneath, notes, how it repeats, the time kept before and after it
 // (getting there, getting ready, coming back), when it is reminded (as
 // usual, not this one, or so long before: docs/reminders.md), what it costs
-// and gives back (four costs and a gain, sliders from 0 to 10, unsaid until
-// said), and the calendar when there are several. Opened from an event's details ("Edit"),
+// and gives back (four costs and a gain as tiles, 0 to 10, unsaid until
+// said: CostTiles.qml), and the calendar when there are several. Opened from an event's details ("Edit"),
 // or new.
 
 pragma ComponentBehavior: Bound
@@ -116,6 +116,15 @@ Dialog {
         dialog.moreShown = note !== ""
     }
 
+    // For the window's pictures: the costs and the gain in view.
+    function showRatings() {
+        dialog.moreShown = true
+        Qt.callLater(() => {
+            const top = tiles.mapToItem(scroll.contentItem.contentItem, 0, 0).y
+            scroll.contentItem.contentY = Math.max(0, Math.min(top - 12, scroll.contentItem.contentHeight - scroll.height))
+        })
+    }
+
     // For the window's tests: as if typed, then saved.
     function fill(text, from, to, how) {
         title.text = text
@@ -158,10 +167,20 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: Overlay.overlay
     modal: true
-    width: Math.min(560, (parent ? parent.width : 560) - 32)
+    // As wide as what it holds, without a cap of its own (docs/qt-quick.md, "An
+    // editing card's width"): its fields at about 70 characters of the body
+    // font, a readable line, or its tiles side by side, whichever is wider;
+    // never past the window less the usual margins, all of a phone's.
+    width: Math.min(Math.ceil(Math.max(70 * body.averageCharacterWidth, tiles.naturalWidth)) + dialog.leftPadding + dialog.rightPadding + 12, (parent ? parent.width : 800) - 2 * dialog.theme.gap)
     // Taller than the window, every detail unfolded: the form scrolls, its buttons stay.
     height: Math.min(implicitHeight, (Overlay.overlay ? Overlay.overlay.height : 800) - 32)
     title: dialog.key ? dialog.sioul.text("ui-edit-event") : dialog.sioul.text("ui-new-event")
+
+    FontMetrics {
+        id: body
+
+        font: dialog.font
+    }
 
     ScrollView {
         id: scroll
@@ -316,59 +335,19 @@ Dialog {
                     currentIndex: Math.max(0, dialog.reminds.findIndex(c => c.value === dialog.remind))
                     onActivated: index => dialog.remind = dialog.reminds[index].value
                 }
-                // What it costs, and what it gives back: 0 to 10 each, as you feel it;
-                // unsaid until said, never 0 by default (RatingSlider.qml).
-                RatingSlider {
+                // What it costs, and what it gives back: four tiles and a row, 0 to 10
+                // each, unsaid until said (CostTiles.qml); kept until Save.
+                CostTiles {
+                    id: tiles
+
                     Layout.columnSpan: 2
                     Layout.fillWidth: true
                     Layout.topMargin: 4
-                    sioul: dialog.sioul
-                    theme: dialog.theme
-                    label: dialog.sioul.text("task-field-cognitive")
-                    words: [dialog.sioul.text("rating-cognitive-0"), dialog.sioul.text("rating-cognitive-5"), dialog.sioul.text("rating-cognitive-10")]
-                    value: dialog.rating("cognitive")
-                    onEdited: given => dialog.rate("cognitive", given)
-                }
-                RatingSlider {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    sioul: dialog.sioul
-                    theme: dialog.theme
-                    label: dialog.sioul.text("task-field-emotional")
-                    words: [dialog.sioul.text("rating-emotional-0"), dialog.sioul.text("rating-emotional-5"), dialog.sioul.text("rating-emotional-10")]
-                    value: dialog.rating("emotional")
-                    onEdited: given => dialog.rate("emotional", given)
-                }
-                RatingSlider {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    sioul: dialog.sioul
-                    theme: dialog.theme
-                    label: dialog.sioul.text("task-field-anxiety")
-                    words: [dialog.sioul.text("rating-anxiety-0"), dialog.sioul.text("rating-anxiety-5"), dialog.sioul.text("rating-anxiety-10")]
-                    value: dialog.rating("anxiety")
-                    onEdited: given => dialog.rate("anxiety", given)
-                }
-                RatingSlider {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
-                    sioul: dialog.sioul
-                    theme: dialog.theme
-                    label: dialog.sioul.text("task-field-body")
-                    words: [dialog.sioul.text("rating-body-0"), dialog.sioul.text("rating-body-5"), dialog.sioul.text("rating-body-10")]
-                    value: dialog.rating("body")
-                    onEdited: given => dialog.rate("body", given)
-                }
-                RatingSlider {
-                    Layout.columnSpan: 2
-                    Layout.fillWidth: true
                     Layout.bottomMargin: 4
                     sioul: dialog.sioul
                     theme: dialog.theme
-                    label: dialog.sioul.text("task-field-gain")
-                    words: [dialog.sioul.text("rating-gain-0"), dialog.sioul.text("rating-gain-5"), dialog.sioul.text("rating-gain-10")]
-                    value: dialog.rating("gain")
-                    onEdited: given => dialog.rate("gain", given)
+                    values: dialog.demands
+                    onEdited: (name, value) => dialog.rate(name, value)
                 }
                 Label {
                     visible: dialog.calendars.length > 1 && dialog.key === ""

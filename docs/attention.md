@@ -14,7 +14,7 @@ A source is where something comes from. **Sioul's own**: Sioul fetches, keeps or
 | Your mail addresses | Sioul's | judges, sorts, shows, tells | `porch`, `mailnote` |
 | Your sites, on a computer | Sioul's (its browser) | catches their notifications | app `sites` |
 | Agenda, tasks, budgets, papers, contracts, the bank | Sioul's | reminds | `reminders` |
-| Health: doses, meals, naps, the night, moving, the watch, the alarm at waking | Sioul's | reminds, rings | app `health`, `wake` |
+| Health: doses, meals, naps, the night, moving, the alarm at waking | Sioul's | reminds, rings | app `health`, `wake` |
 | The focus timer, the end of the day | Sioul's | shows, offers | `timenote`, app `reviews` |
 | Phone calls (Android 10 and later) | the system's | lets ring, or declines | `calls`, `Calls.java` |
 | Other apps' notifications (Android) | the system's | holds, or lets through | `appnotes`, `AppNotes.java` |
@@ -41,11 +41,17 @@ One row per kind, with no who (`attention::Kind`), in five groups:
 |---|---|
 | What you set or asked for | codes and links you asked for (`codes`), doses (`doses`), the alarm at waking (`wake`), an event's alarms (`alarms`) |
 | Reminders | Sioul's reminder before an event (`before`), events the working day before (`day-before`), dates, waits, payments, papers (`dates`) |
-| Your day | meals, naps and the night (`needs`), the pause to move (`move`), "Work hours are over" (`work-over`), the time running (`time`), your watch's offers (`watch`) |
+| Your day | meals, naps and the night (`needs`), the pause to move (`move`), "Work hours are over" (`work-over`), the time running (`time`) |
 | Sites, on a computer | sites gathered (`sites`), a site in real time (`sites-live`), a call in a site (`site-calls`) |
 | Other apps, on a phone | automatons (`app-automatons`), apps and browser sites set to At once (`app-at-once`) |
 
 Thirty-seven rows in all (`Row::ALL`), with ids such as `mail.safe`, `calls.hidden`, `messages.groups`, `codes`.
+
+**Other apps' own rows, on a phone** (the owner's words, 8 October 2026: "we need to list the apps sending notifications, because for example, I need to let Discord through during work hours […] at least we need a mapping between app and timeframes"). Besides the 36, a row per app (`app.<package>`) and per conversation in one (`conversation.<key>`, the key `appnotes::talk_key` makes of its app and its id), with the same nine columns. Each cell takes **At once** (●), **At the gathered times** (◎), **Held** (○) or **As usual** (=), and says as usual until set: an app nobody chose for has no row, and nothing changes for it. As usual reads, column by column, the row the notification takes otherwise: its person's Messages row (Mail's for a mail app, Calls' for a missed call), the groups', the automatons', the apps set to At once; as Always through's = reads their own row. So "Discord: through during Work, held otherwise" is ● under Work and ○ under every other column; ● under Work alone lets it through at work and leaves the rest as usual. Read as any row (`Attention::level`'s rule): the least strict of the time's columns, then the stricter of that and each layer that holds; a layer's ● lets it through that layer (do-not-disturb's cell ● for Discord: through while do-not-disturb holds, at the times its row lets it through), its = holds it as the layer holds everyone else's messages.
+
+- **A conversation's** cell, where set, wins over its app's; where it says as usual, the app's does (`attention::source_rows`: the conversation's, then the app's).
+- **What stays**: the blocked never come; codes and approvals, calls, alarms and what runs are never held; someone Always through stays so whatever an app's row says (only a conversation's own row changes them); a conversation set to Never stays held for good. A source's cell set for a time is your word for it: no area holds it then.
+- **Where Android cannot follow**: a notification's first sound plays before the listener sees it (the existing guide to make an app silent covers it, [android.md](android.md#notifications-from-other-apps)); during Sioul's own modes Android's policy decides what rings, so a cell ● during a pause, Free time or do-not-disturb shows the notification without a sound, unless it is a priority conversation or a starred contact's message.
 
 ### 1.4 When: seven times, two layers
 One **time** holds at any moment (`quiet::mode`, read by `Now::of`), the first that applies:
@@ -160,7 +166,6 @@ A mail app's notification on a phone takes the Mail rows (◑ held, since a phon
 | The pause to move | ● | ● | ● | ● | – | – | – | – | – |
 | Work hours are over | – | ● | ● | ● | – | – | – | ● | ● |
 | The time running | ● | ● | ● | ● | ● | ● | ● | ● | ● |
-| Your watch's offers | ● | – | – | – | – | – | – | ● | ● |
 | Sites, gathered (computer) | ◎ | ◎ | ◎ | ◎ | ○ | ○ | ○ | ○ | ○ |
 | A site in real time (computer) | ● | ● | ● | ● | ○ | ○ | ○ | ○ | ○ |
 | A call in a site (computer) | ● | ● | ● | ● | ○ | ○ | ○ | ● | ○ |
@@ -184,7 +189,7 @@ Choosing one writes every row as it says (`apply_preset`), never a lock. The tab
 ## 5. Two answers at once
 - Two times open together (work and admin): the less strict cell.
 - A time and a layer: the stricter.
-- Among your own choices: the most precise wins (a conversation over a person over an app; an address over a card over a category over a domain).
+- Among your own choices: the most precise wins (a conversation over a person over an app; an address over a card over a category over a domain). Other apps' own rows (§1.3): a conversation's cell over its app's, and an app's cell over the person's row, but for someone Always through, whom only a conversation's row changes.
 - Blocked and Always through: blocked, on every channel, in the pipeline and in the calls' table; one list takes them off the other, and the person's sheet says so.
 
 ## 6. What the system lets through
@@ -202,13 +207,17 @@ Silencing the system is no step of the pipeline: it follows the time. The pause,
 "mail.neutral" = ["work", "admin", "leisure", "meals:quiet", "sleep:later", "pause:later", "free:later", "slot:quiet", "dnd:quiet"]
 "messages.always" = ["work", "admin", "leisure", "meals", "sleep:as", "pause:as", "free", "slot", "dnd:through"]
 codes = ["work", "admin", "leisure", "meals", "sleep:never", "pause", "free", "slot", "dnd"]
+"app.com.discord" = ["work", "admin:later", "leisure:later", "meals:later", "sleep:later", "pause:later", "free:later", "slot:later", "dnd:later", "name=Discord"]
+"conversation.8c1f0e5a2b7d4c69" = ["leisure", "dnd"]
 ```
+
+Other apps' own rows (§1.3) write only the cells set (a column unsaid is as usual: `leisure:as` is taken out), and an app's with its name (`name=…`), for your other devices, which never saw the app; a conversation's never with its title, which names a person. A row as usual everywhere is taken out. An older Sioul reads no row of these (`Row::read` knows none) and leaves them as they are. The first such row written does what the first row always does: every seeded row written, the older keys out.
 
 **The older keys.** While no `[attention]` is written, `[reach]`, `[reach.calls]`, `[reach.messages]`, `[notify]`, `[reminders] doses_in_sleep`, `[pause] doses`, `[pause] people` and `[dnd] people` seed the matrix once (`attention::seeded`): read into cells, compared with what the same rules make of an empty configuration, and only what you had changed is kept; everywhere else the usual cells hold, the owner's decisions included. A mail row was the product of two grids: ticked and told now gives ●, ticked and told later ◑, unticked ○. The first row written (Settings, a preset) writes every row that is not usual and takes the older keys out (`attention::OLDER`, `config::set_table`). Nothing is written beside for an older Sioul: alpha, one user.
 
-**Settings' keys**: `attention.<row>` with the row's words whole; the older grids' `notify.<kind>` and `reach.<row>` land there too (`settings::apply`). The tab's switches stay ordinary settings: `reminders.mail`, `reminders.mail_newsletters`, `reminders.gather`, `free_time.nothing`, `dnd.button`, `dnd.focus`, `dnd.pauses`, `dnd.sleep` (section "attention" of `settings::for_view("parameters")`).
+**Settings' keys**: `attention.<row>` with the row's words whole (`attention.app.<package>` and `attention.conversation.<key>` too); the older grids' `notify.<kind>` and `reach.<row>` land there too (`settings::apply`). The tab's switches stay ordinary settings: `reminders.mail`, `reminders.mail_newsletters`, `reminders.gather`, `free_time.nothing`, `dnd.button`, `dnd.focus`, `dnd.pauses`, `dnd.sleep` (section "attention" of `settings::for_view("parameters")`).
 
-**Shared**: `[attention]` travels with the settings to every device ([database.md](database.md)); the Always through list in the senders' part; `state/slots.toml` is each device's own.
+**Shared**: `[attention]` travels with the settings to every device ([database.md](database.md)), other apps' own rows with it; the Always through list in the senders' part; `state/slots.toml` is each device's own.
 
 ## 8. The interface
 **Settings ▸ What reaches you** (« Ce qui vous joint »; `ReachesTab.qml`, its words from `reaches.rs`, its data from the window's `reachesView`):
@@ -217,7 +226,7 @@ codes = ["work", "admin", "leisure", "meals", "sleep:never", "pause", "free", "s
 - **By time**, the default: a card per time and per layer, now's first, each in sentences grouped by level (what comes at once, at the gathered times, when its event falls then, is shown without a notification, waits until when, does not come), Always through first when it gets more than their own lists; then what the phone or the computer silences then, and the named holds of that time ("After the pause, the Porch rests…"). Free time's card holds **Nothing at all**. **Change…** opens that time's rows, each value in words.
 - **By person**: Mail, Calls, Messages, each with a sentence when no phone of yours screens calls or holds messages yet; mail's own switches (new mail told, newsletters) and what the spam filter and an address's area hold; the channel's grid on a computer, its rows on a phone, each opening its nine values; then who is on which list (the four lists, the people placed on a list, your contacts' categories).
 - **Sioul's own**: the kinds' grid, the sites' gathering and the gathered times.
-- **Exceptions**: Always through (each channel's row in a sentence, then the list); a phone's conversations, apps and browser sites; a computer's sites; an event's Remind; Health's days.
+- **Exceptions**: Always through (each channel's row in a sentence, then the list); on a phone, **Other apps, by time**: a table of each app seen in the last month, then the conversations chosen for and the ten seen last (never a wall of them), the nine columns across, each cell as usual until pressed (`AttentionGrid.qml`, `appnotes::by_time`, `attention::source_grid`), with what Android cannot follow said under it; then each app's line with its row in a sentence ("At once: Work; held: Admin, Leisure…", `attention::source_sentence`), its kind and area, each conversation's way through, each browser site; on a computer, the apps' rows set on the phone, by the name written with them, changed there as here; a computer's sites; an event's Remind; Health's days.
 - **Do not disturb**: what turns it on, what holds while it does, what each device does.
 
 A press on a cell opens its choices in words, the current one in bold; a fixed cell says why; a dot marks a cell changed from As Sioul does now. At 412 pixels the whole grid never shows: cards, a time's rows, a row's values; while a time or a row is open, the moment and the presets step aside. The grid is `AttentionGrid.qml`, its marks `LevelMark.qml`.
@@ -232,6 +241,7 @@ A press on a cell opens its choices in words, the current one in bold; a fixed c
 **`sioul_core::attention`**:
 - **The objects**: `Person` (`persons(channel)` the rows of each channel), `Kind`, `Row` (`People(Channel, Person)` or `Own(Kind)`), `Column`, `Level` (`mark`), `usual`, `choices`, `lock`.
 - **The matrix**: `Attention` (`usual`, `of(&Config)`, `cell`, `set`, `words`, `changes_from`); `level(Row, &Now)`; `person(Channel, Person, always, &Now)`; `listed(Person, always, &Now)` (a declined call listed after the fact); `mail(..)` (the Porch's reading of a message).
+- **Other apps' own rows**: `APP_ROW`, `CONVERSATION_ROW`, `NAME`, `SOURCE_CHOICES`, `is_source`, `source_rows(package, conversation)`; on `Attention`, `source`, `sources`, `source_name`, `set_source`, `name_source`, `source_words`, `has_sources`, read by `decide` through `Event::from_sources` (its step `Step::Chosen` when a cell set decided); `Settings::sources`; `source_grid`, `SourceLine`, `source_sentence`. Their timing on a phone: `appnotes::first_time` and `by_matrix` (at once now or where things change, gathered at a gathered time), `Ask::sources`, `Why::Times`.
 - **The moment**: `Now` (`of(&Mode)`, `of_moment(..)`, `time(Column)`, `layers(slot, dnd)`; `times`, `time`, `week`, `slot`, `dnd`, `nothing`, `span`, `gathering`, `realtime`, `through`, `holds: Holds { porch_rests, meeting, chats }`).
 - **The pipeline**: `decide(&Event, &Now) -> Output`; `Event { source, area, starts }` (`own`, `of`, `for_area`, `starting`); `Source`, `Lane`, `Output`, `Step` (emergency, blocked, content, floor, matrix, area, hold).
 - **The system**: `silence(&[Column], nothing, Phone { screens }) -> Silence { calls, messages: Senders, repeat, conversations, alarms, doses, events }`.
@@ -240,13 +250,13 @@ A press on a cell opens its choices in words, the current one in bold; a fixed c
 - **Time for you**: `Slots`, `dnd_from_files`.
 - **Words**: `grid` (columns, marks, rows with their choices, each cell said in a sentence, presets, the changes), `channel_rows`, `kind_rows`, `now_sentence`, `list_choice`, `column_label`, `row_label`, `level_label`; the `attention-*` strings of both `.ftl` files.
 
-**Who asks it**: the Porch's display (`backend::compute`, the phone's card `homecard`); new mail (`mailnote`: now, through, later or never; through at critical urgency on a computer, on its own channel on a phone); codes (`backend::notify_codes`, `sioul watch`); reminders (`reminders::Holds`: an event's own by its span, work's by their area); Health's notices, the pause to move, the watch (`health`); the end of the day (`reviews`); the time running (`timenote`); the pause's screen (`pauses`); a phone's background fetch (`steps`); sites (`sites`: gathered, live, calls, chat sites by who wrote); other apps (`appnotes::decide`); calls (`calls::frames` from the matrix and its layers, Always through as rows of their own, never a blocked number); Sioul's system modes (`everywhere`, `dnd`); `sioul remind`.
+**Who asks it**: the Porch's display (`backend::compute`, the phone's card `homecard`); new mail (`mailnote`: now, through, later or never; through at critical urgency on a computer, on its own channel on a phone); codes (`backend::notify_codes`, `sioul watch`); reminders (`reminders::Holds`: an event's own by its span, work's by their area); Health's notices, the pause to move (`health`); the end of the day (`reviews`); the time running (`timenote`); the pause's screen (`pauses`); a phone's background fetch (`steps`); sites (`sites`: gathered, live, calls, chat sites by who wrote); other apps (`appnotes::decide`); calls (`calls::frames` from the matrix and its layers, Always through as rows of their own, never a blocked number); Sioul's system modes (`everywhere`, `dnd`); `sioul remind`.
 
 **The window's words** (`crates/sioul-app/src/reaches.rs`): `view` (the tab's JSON: the moment now, the presets, the cards, the grid, the exceptions), `set_row`, `preset`, `person`, `person_change`; each sentence built from the matrix, people grouped by what each channel does with them ("mail and messages from everyone", "calls from your safe and neutral senders"), Sioul's own named by their kinds, verbs agreeing in both languages.
 
 **Removed**: `notify.rs`; `reach`'s matrices (`Reach`, `Matrix`, `Times`, `Row`, `Column`, `next_allowed`); `quiet::mail_in_view` and `quiet::list_choice`; `pause::reach_now`; `everywhere::mail_gate`; Accounts ▸ Who may reach you; Settings ▸ Reminders and notifications ▸ When each comes; Settings ▸ Do not disturb's tab, its list now Always through; Settings ▸ Calls and Other apps, their phone parts now This phone; a contact's "Their list" and a message's "Their mail", now the person's sheet.
 
-**Tests**: in `attention.rs`, the usual matrix written out; locks and choices; rows read leniently from the configuration; times together, layers and lending; Always through read against their own row; an oracle against the decisions of the code it replaced, but where the owner decided otherwise, each asserted as such; messages, calls and each decided change; areas and holds; what each Android mode lets through; the older keys seeding what was changed and nothing else; the matrix written whole once, the older keys out; slots read by every process; presets never touching a lock; the grid's words in both languages (no key missing, French typography, « type », never « sorte »). In `reaches.rs`, every card, the moment now and a person's lines in both languages, every row and level said. In `settings.rs`, the tab's switches in their own section.
+**Tests**: in `attention.rs`, other apps' own rows read over their usual row (nothing changes without one, at every time and layer; through during work and held otherwise; as usual reading the person's row; a layer's cell; a conversation's over its app's; Always through kept; the blocked never; no area over a cell set; "Nothing at all"; the grid and the row's sentence in both languages) and written with the settings (only the cells set and an app's name, the first write seeding, taken out when as usual); in `appnotes.rs`, an app's own row deciding when (every fixture unchanged without one, through at work, held in the evening until work, a conversation's row over its app's, gathered by day, under do-not-disturb, worked out again, a code and the blocked as before, an automaton the matrix lets through at once coming at once); the usual matrix written out; locks and choices; rows read leniently from the configuration; times together, layers and lending; Always through read against their own row; an oracle against the decisions of the code it replaced, but where the owner decided otherwise, each asserted as such; messages, calls and each decided change; areas and holds; what each Android mode lets through; the older keys seeding what was changed and nothing else; the matrix written whole once, the older keys out; slots read by every process; presets never touching a lock; the grid's words in both languages (no key missing, French typography, « type », never « sorte »). In `reaches.rs`, every card, the moment now and a person's lines in both languages, every row and level said. In `settings.rs`, the tab's switches in their own section.
 
 ## 10. What was decided
 The owner's answers of 7 October 2026: "Your plan seems sensible to me, and the re-interfacing too. Inconsistencies you found need a fix, obviously." Every recommendation of the design, but the 24th:
@@ -307,7 +317,7 @@ The design as first proposed on 7 October 2026, before it was built, kept for th
 | An event's Remind; a block's Not today | reminders, `needs::Days` | exceptions |
 | Tasks ⚙ ▸ Time for you | the window's capacity.rs | the Time for you layer |
 | Mail ⚙ ▸ Your own spam filter | settings.rs:278-288 | the spam filter's classes |
-| Health ⚙: the chat limit, moving, the watch, each block's notices | | named holds and master switches |
+| Health ⚙: the chat limit, moving, each block's notices | | named holds and master switches |
 | Android: Sioul's channels, its modes, stars | Java | the outputs |
 
 ### A.2 The inconsistencies of the older code

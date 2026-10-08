@@ -1,5 +1,5 @@
 ---
-description: Ce avec quoi Sioul fonctionne, fonction par fonction – serveurs de courrier et d’agenda, Google, les applications que vous utilisez déjà sur les mêmes comptes, Obsidian et Nextcloud Notes, applications de synchronisation, sites web, Bitwarden, OpenPGP, montres, antivirus, agents d’IA et systèmes ; ce qui a été testé, ce qui est attendu, et les limites connues.
+description: Ce avec quoi Sioul fonctionne, fonction par fonction – serveurs de courrier et d’agenda, Google, les applications que vous utilisez déjà sur les mêmes comptes, Obsidian et Nextcloud Notes, applications de synchronisation, sites web, Bitwarden, OpenPGP, antivirus, agents d’IA et systèmes ; ce qui a été testé, ce qui est attendu, et les limites connues.
 ---
 
 # Fonctionne avec {#works-with}
@@ -25,7 +25,6 @@ Rien ici ne va au-delà de ce qui est construit. Les normes derrière chaque lig
 | [Partager entre vos appareils](#sharing-between-your-devices) | Nextcloud d’abord ([où en trouver un](#where-to-get-a-nextcloud)) ; toute application qui garde un dossier en accord : Nextcloud, l’eDrive de Murena, Syncthing, Dropbox, Google Drive, OneDrive… | **Testé** avec un simulateur de la façon dont se comportent les applications de synchronisation, et avec eDrive sur un téléphone ; **attendu** avec les autres |
 | [Les sites](#sites) | les sites web qui fonctionnent dans Chrome ou Chromium : messageries sécurisées, discussions, appels ; clés de sécurité | **Attendu** ; vu fonctionner avec Proton Mail. **Limites** : sur un téléphone, les sites s’ouvrent dans votre navigateur |
 | [Identifiants et clés](#logins-and-keys) | Bitwarden (son cloud, votre propre serveur, Vaultwarden) ; OpenPGP avec GnuPG et les autres logiciels de courrier | GnuPG **testé** dans les deux sens ; Bitwarden **testé** avec le propre coffre du propriétaire, utilisé chaque jour (6 octobre 2026) |
-| [Votre montre](#your-watch) | les fichiers d’une montre Garmin : depuis la montre, depuis Gadgetbridge, ou depuis l’export de Garmin | **Testé** sur des fichiers faits à la main, pas sur une vraie montre |
 | [Antivirus et courrier scanné](#antivirus-and-scanned-letters) | ClamAV, Microsoft Defender, Tesseract et Poppler | **Testé** sur Linux ; Defender **attendu** |
 | [Agents d’IA](#ai-agents) | Claude Code, Claude Desktop, les autres clients MCP qui lancent un programme | **Testé** seul, pas encore dans ces clients |
 | [GitHub](#github) | vos tickets et pull requests, lus avec un jeton | **Testé** face à une imitation de GitHub |
@@ -161,14 +160,7 @@ Les sites tournent dans Qt WebEngine, le moteur de Chromium, dans un profil à e
 |---|---|---|---|---|
 | Les identifiants de Bitwarden | votre compte Bitwarden : bitwarden.com, bitwarden.eu, votre propre serveur ou Vaultwarden, en HTTPS | le propre coffre du propriétaire dans le cloud de Bitwarden, utilisé chaque jour (6 octobre 2026) ; son déchiffrement vérifié sur les propres valeurs de test de Bitwarden | votre propre serveur ou Vaultwarden | lecture seule : rien n’est écrit dans votre coffre. Duo comme deuxième étape : non pris en charge. Sur un téléphone : pas de clé de sécurité |
 | Les mots de passe de vos comptes | le trousseau de votre système | Linux, utilisé chaque jour | le Gestionnaire d’identification de Windows, le Trousseau d’accès de macOS, le KeyStore d’Android | les mots de passe ne voyagent jamais entre vos appareils |
-| Le courrier chiffré (OpenPGP) | votre clé, faite dans Sioul ou importée de GnuPG | GnuPG 2.4, dans les deux sens : signé, chiffré, falsifié | Thunderbird, Proton, tout programme qui lit le PGP/MIME ; l’annuaire de clés web de leur domaine (WKD), keys.openpgp.org | Sioul garde ses propres clés et ne lit ni n’écrit jamais celles de GnuPG. Les clés sur une clé de sécurité (une carte OpenPGP : YubiKey, Nitrokey) : sur ordinateur, par le service des cartes à puce du système (pcscd sous Linux) ; pas encore essayé avec une vraie clé ; pas encore sur téléphone. Vos clés secrètes restent sur leur appareil |
-
-## Votre montre {#your-watch}
-
-| Fonction | Ce qu’il faut | Testé avec | Attendu avec | Limites |
-|---|---|---|---|---|
-| Une montre Garmin | ses propres fichiers (FIT) : depuis son dossier `GARMIN` quand votre bureau le montre, depuis les exports de Gadgetbridge, ou depuis l’export de Garmin | des fichiers faits à la main | les montres Garmin ; Gadgetbridge avec une montre Garmin | jamais par un compte Garmin. Les montres récentes, sur KDE, demandent kio-fuse ; sans lui, copiez les dossiers de la montre à la main ([La santé](health.md#your-watch)) |
-| Les autres montres | — | — | — | **non pris en charge** : seuls les fichiers de Garmin sont lus ; pas la base de données propre de Gadgetbridge, Apple Santé, Health Connect ni Fitbit |
+| Le courrier chiffré (OpenPGP) | votre clé, faite dans Sioul ou importée de GnuPG | GnuPG 2.4, dans les deux sens : signé, chiffré, falsifié ; une YubiKey 5 portant la clé (8 octobre 2026) : renouvelée, signé, chiffré, ouvert | Thunderbird, Proton, tout programme qui lit le PGP/MIME ; l’annuaire de clés web de leur domaine (WKD), keys.openpgp.org | Sioul garde ses propres clés et ne lit ni n’écrit jamais celles de GnuPG. Les clés sur une clé de sécurité (une carte OpenPGP : YubiKey, Nitrokey) : sur ordinateur, par le service des cartes à puce du système (pcscd sous Linux) ; pas encore essayé avec une vraie clé ; pas encore sur téléphone. Vos clés secrètes restent sur leur appareil |
 
 ## Antivirus et courrier scanné {#antivirus-and-scanned-letters}
 
@@ -222,4 +214,4 @@ Sur Ubuntu 24.04 et suivants, l’AppImage fait tourner les sites sans le bac à
 - Un site qui garde sa connexion dans sa page, comme Discord, qui reste connecté après la fermeture de Sioul.
 - Bitwarden sur votre propre serveur ou Vaultwarden.
 - Windows et macOS, lancés par une personne.
-- Le courrier scanné dans le Flatpak ; Proton Mail Bridge ; une vraie montre Garmin ; Claude Code et Claude Desktop.
+- Le courrier scanné dans le Flatpak ; Proton Mail Bridge ; Claude Code et Claude Desktop.

@@ -80,6 +80,15 @@ A message from a site's domain ("you have a new message in your secure space") g
 
 Chats, video calls and dating sites have the microphone and the camera. When a call starts, Sioul asks for the devices chosen in **Devices for calls…**, and plays the call's sound through the speaker chosen. **Share in the call** lets you choose a whole screen, one window, or nothing. When a site asks for the microphone while it is off, the status line says so, with where to turn it on. The place where you are is never given to any site.
 
+<!-- colour: the sites' colours (docs/colour.md). -->
+## Colours {#colours}
+
+A screen wider than sRGB, as many photo laptops and some monitors have, makes websites' colours louder than their makers meant: a green comes out more saturated, a red brighter. On a computer, Sioul shows every site in your screen's own colours, read from its colour profile, and can soften loud colours further.
+
+- **Colours for this screen**, in Settings ▸ Display: on unless you turn it off. On Linux with X11, Sioul converts sites to the profile your desktop publishes for each screen (with colord, `xiccd` or KDE's colour service), and follows a window moving to another screen. Under Wayland and on macOS, your desktop adapts colours itself, and Sioul leaves it to it, so that nothing is converted twice. The sentence under the setting says which.
+- **Calmer colours on sites**: Off, A little, More. Loud colours are softened, their lightness and hue kept; greys, soft tints and faces barely move. It works on every computer, with or without a profile.
+- Both change every open site at once, its pop-up windows too, without reloading anything. Sioul's own window around the sites keeps its colours.
+
 ## Security keys
 
 When a site asks for your security key (a YubiKey or another FIDO2 key, to sign in to GitHub, Google or Proton), Sioul's own dialog names the site that asks, lets you choose among the key's accounts when it keeps several, asks for its PIN when it has one (or for a new one, when the key asks for it), says when to touch it, and says in plain words why it failed (not registered, PIN blocked, too late), with **Try again**. Passkeys kept on the key work. Passkeys kept in a phone or in the system do not, on Linux and macOS; on Windows, Windows' own dialog takes the key.
@@ -251,6 +260,7 @@ As of October 2026, from each app's own documentation.
 - **Permissions**: notifications are granted to every site and caught by Sioul; the clipboard, read and write, is granted to every site, since Qt WebEngine asks one permission for both; the microphone, the camera and screen capture follow the site's switches, and a request while they are off is refused and said in the status line; everything else (location, the computer's fonts, the pointer lock) is refused.
 - **Addresses**: a site is pinned only at an `https://` address: Sioul refuses any other, since a site's sign-in should never travel in clear.
 - **Security keys**: WebAuthn through Qt WebEngine's own request (Chromium's FIDO code, over USB HID). On Linux it works with Qt WebEngine built with udev and systemd's rules for keys, with no rule to add; the Flatpak needs `--device=all`. A one-line script takes `PublicKeyCredential.getClientCapabilities()` away from every page, since Qt 6.10 and 6.11 never answer it (QTBUG-149575) and sites would wait forever. On Windows, Windows' own dialog handles the key.
+- **Colours**: each site's picture goes through a shader that looks every pixel up in a table made for the screen: 33 × 33 × 33 entries of the screen's linear values, then its tone curve in 1,024 entries, in half floats, made with Little CMS from the screen's ICC profile (the X11 `_ICC_PROFILE` atoms, matched to screens through colord); calmer colours limit chroma softly in OKLCh before that. Within one 8-bit code of Little CMS's own transform. Details: [colour.md](https://aurelienpierre.github.io/sioul/dev/colour.html).
 - **Devices for calls**: a script in every page asks for the camera and the microphone you chose by their names (`getUserMedia` with an ideal `deviceId`), and sends every sound to the speaker you chose (`setSinkId`); a page learns the names only once it is allowed a microphone or a camera.
 - **Icons**: the site's own `<link rel="icon">`, the largest, else `/favicon.ico`, over HTTPS only, redirects included; kept a week in `~/.cache/sioul/favicons/`.
 - **Notifications**: kept in `~/.local/state/sioul/site-notices.toml`, the newest 200, 300 characters each; what reaches you and when follows [What reaches you, and when](notifications.md).

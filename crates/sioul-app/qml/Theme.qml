@@ -38,6 +38,9 @@ QtObject {
     readonly property color focus: dark ? "#c9d9cf" : "#2f4a3d"
     // A phone held upright: narrower margins and spacing (main.qml says when).
     property bool compact: false
+    // Fingers rather than a mouse (a phone, or the runner's phone size): what is
+    // tapped is kept a fingertip wide (CostTiles.qml).
+    property bool touch: false
     readonly property int gap: compact ? 10 : 16
     readonly property int radius: 6
 

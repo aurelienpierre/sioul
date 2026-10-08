@@ -26,6 +26,8 @@ pub(crate) fn tick(qt: &QtThread) {
         // What holds now is the notification matrix's to say (Settings ▸ Reminders and
         // notifications): asleep, as usual, nothing but what you chose to happen then.
         let (mut all, holds) = reminders::gather(&load_config(), tr(), &now);
+        // The phone's card says the dates, waits, payments and papers due (homecard.rs).
+        crate::homecard::reminders_seen(&all);
         let holds = crate::hours::with_layers(holds);
         let phone = cfg!(target_os = "android");
         if phone {

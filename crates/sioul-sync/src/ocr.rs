@@ -29,7 +29,8 @@ fn runs(name: &str) -> bool {
 
 /// How to install what reads scans here, in one line, in your language:
 /// Tesseract, its models of the languages `wanted` ("fra", English being
-/// in every Tesseract), and Poppler.
+/// in every Tesseract), and Poppler; a command in backticks (the window
+/// offers it to copy).
 pub fn install_hint(wanted: &[String]) -> String {
     // SUSE names its models by the language's English name.
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -48,20 +49,20 @@ pub fn install_hint(wanted: &[String]) -> String {
     }
     #[cfg(target_os = "macos")]
     {
-        "brew install tesseract tesseract-lang poppler".to_string()
+        "`brew install tesseract tesseract-lang poppler`".to_string()
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default().to_ascii_lowercase();
         let like = |name: &str| release.lines().any(|l| (l.starts_with("id=") || l.starts_with("id_like=")) && l.contains(name));
         if like("fedora") || like("rhel") {
-            format!("sudo dnf install tesseract{} poppler-utils", models("tesseract-langpack-"))
+            format!("`sudo dnf install tesseract{} poppler-utils`", models("tesseract-langpack-"))
         } else if like("debian") || like("ubuntu") {
-            format!("sudo apt install tesseract-ocr{} poppler-utils", models("tesseract-ocr-"))
+            format!("`sudo apt install tesseract-ocr{} poppler-utils`", models("tesseract-ocr-"))
         } else if like("arch") {
-            format!("sudo pacman -S tesseract{} poppler", models("tesseract-data-"))
+            format!("`sudo pacman -S tesseract{} poppler`", models("tesseract-data-"))
         } else if like("suse") {
-            format!("sudo zypper install tesseract-ocr{} poppler-tools", models("tesseract-ocr-traineddata-"))
+            format!("`sudo zypper install tesseract-ocr{} poppler-tools`", models("tesseract-ocr-traineddata-"))
         } else {
             crate::translator().text("ocr-hint-packages", None)
         }

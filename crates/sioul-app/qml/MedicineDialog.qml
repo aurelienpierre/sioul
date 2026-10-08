@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// A medicine, new or changed, from the Health page: its name, its dose, when
-// it is taken (at set times each day, every few days, every few hours),
-// until when, the prescription it comes with, paused for now; taken out
-// after one question. Made the first time it opens (HealthPage.qml).
+// A medicine, new or changed, from the Health page: its name (its brand, or
+// your word for it), its generic name (INN) and strength, optional, for a
+// doctor or a pharmacist; its dose, when
+// it is taken (at set times each day, its takes as rows, each its time and
+// its own amount when it differs: TakesEditor.qml; every few days; every few
+// hours), until when, the prescription it comes with, paused for now; taken
+// out after one question. Made the first time it opens (HealthPage.qml).
 
 pragma ComponentBehavior: Bound
 
@@ -35,10 +38,14 @@ Dialog {
         form.medicineId = medicine ? medicine.id : ""
         form.problem = ""
         medicineName.text = medicine ? medicine.name : ""
-        medicineDose.text = medicine ? medicine.dose || "" : ""
+        generic.text = medicine ? medicine.generic || "" : ""
+        strength.text = medicine ? medicine.strength || "" : ""
+        since.date = medicine && medicine.since ? medicine.since : ""
+        // Its usual amount: the one most takes have, each other take saying its own.
+        medicineDose.text = medicine ? (medicine.usual !== undefined ? medicine.usual : medicine.dose) || "" : ""
         const schedule = medicine ? medicine.schedule : { every: "day", times: ["08:00"] }
         every.currentIndex = Math.max(0, form.everies.indexOf(schedule.every))
-        times.text = schedule.every === "day" ? schedule.times.join(", ") : "08:00"
+        takes.load(medicine && schedule.every === "day" ? medicine.takes : [])
         everyDays.value = schedule.every === "days" ? schedule.days : 2
         everyHours.value = schedule.every === "hours" ? schedule.hours : 6
         dayTime.text = schedule.every === "days" ? schedule.time : "08:00"
@@ -58,9 +65,12 @@ Dialog {
         const today = Qt.formatDate(new Date(), "yyyy-MM-dd")
         const edit = {
             name: medicineName.text,
+            generic: generic.text,
+            strength: strength.text,
+            since: since.date,
             dose: medicineDose.text,
             every: kind,
-            times: times.text.split(",").map(t => t.trim()).filter(t => t !== ""),
+            takes: takes.takes(),
             days: everyDays.value,
             hours: everyHours.value,
             time: dayTime.text,
@@ -84,156 +94,216 @@ Dialog {
     width: Math.min(520, (parent ? parent.width : 520) - 2 * form.theme.gap)
     title: form.medicineId === "" ? form.sioul.text("health-add-medicine") : form.sioul.text("health-medicine")
 
-    contentItem: GridLayout {
-        columns: 2
-        columnSpacing: 10
-        rowSpacing: 8
+    // Many takes, a small window: the form scrolls, its buttons stay.
+    contentItem: ScrollView {
+        id: scroll
 
-        Label {
-            text: form.sioul.text("health-field-name")
-            color: form.theme.muted
-        }
-        TextField {
-            id: medicineName
+        implicitHeight: Math.min(grid.implicitHeight, (form.parent ? form.parent.height : 700) - 160)
+        contentWidth: availableWidth
+        clip: true
 
-            Layout.fillWidth: true
-        }
-        Label {
-            text: form.sioul.text("health-field-dose")
-            color: form.theme.muted
-        }
-        TextField {
-            id: medicineDose
+        GridLayout {
+            id: grid
 
-            Layout.fillWidth: true
-            placeholderText: form.sioul.text("health-field-dose-hint")
-        }
-        Label {
-            text: form.sioul.text("health-field-when")
-            color: form.theme.muted
-        }
-        ComboBox {
-            id: every
+            width: scroll.availableWidth
+            // On a phone, each label above its field: the takes keep the width.
+            columns: form.width < 480 ? 1 : 2
+            columnSpacing: 10
+            rowSpacing: 8
 
-            Layout.fillWidth: true
-            model: form.everies.map(e => form.sioul.text("health-every-" + e + "-choice"))
-        }
-        Label {
-            visible: every.currentIndex === 0
-            text: form.sioul.text("health-field-times")
-            color: form.theme.muted
-        }
-        TextField {
-            id: times
-
-            visible: every.currentIndex === 0
-            Layout.fillWidth: true
-            placeholderText: "12:00, 18:00"
-        }
-        Label {
-            visible: every.currentIndex === 1
-            text: form.sioul.text("health-field-every-days")
-            color: form.theme.muted
-        }
-        RowLayout {
-            visible: every.currentIndex === 1
-            spacing: 6
-
-            SpinBox {
-                id: everyDays
-
-                from: 1
-                to: 90
-                editable: true
-            }
+            // Long labels wrap, in a column no wider than this: the fields keep the width.
             Label {
-                text: form.sioul.text("health-field-at")
+                Layout.maximumWidth: 170
+                text: form.sioul.text("health-field-brand")
+                wrapMode: Text.Wrap
                 color: form.theme.muted
             }
             TextField {
-                id: dayTime
+                id: medicineName
 
-                Layout.preferredWidth: 70
-                inputMask: "99:99"
+                Layout.fillWidth: true
+                placeholderText: form.sioul.text("health-field-brand-hint")
             }
-        }
-        Label {
-            visible: every.currentIndex === 1
-            text: form.sioul.text("health-field-from")
-            color: form.theme.muted
-        }
-        DateField {
-            id: from
-
-            visible: every.currentIndex === 1
-            theme: form.theme
-            locale: form.dateLocale
-        }
-        Label {
-            visible: every.currentIndex === 2
-            text: form.sioul.text("health-field-every-hours")
-            color: form.theme.muted
-        }
-        RowLayout {
-            visible: every.currentIndex === 2
-            spacing: 6
-
-            SpinBox {
-                id: everyHours
-
-                from: 1
-                to: 48
-                editable: true
-            }
+            // For a doctor or a pharmacist: what is in it, whatever the brand.
             Label {
-                text: form.sioul.text("health-field-from-time")
+                Layout.maximumWidth: 170
+                text: form.sioul.text("health-field-generic")
+                wrapMode: Text.Wrap
                 color: form.theme.muted
             }
             TextField {
-                id: hourFrom
+                id: generic
 
-                Layout.preferredWidth: 70
-                inputMask: "99:99"
+                Layout.fillWidth: true
+                placeholderText: form.sioul.text("health-field-generic-hint")
             }
-        }
+            Label {
+                Layout.maximumWidth: 170
+                text: form.sioul.text("health-field-strength")
+                wrapMode: Text.Wrap
+                color: form.theme.muted
+            }
+            TextField {
+                id: strength
 
-        Label {
-            text: form.sioul.text("health-field-until")
-            color: form.theme.muted
-        }
-        DateField {
-            id: until
+                Layout.fillWidth: true
+                placeholderText: form.sioul.text("health-field-strength-hint")
+            }
+            Label {
+                text: form.sioul.text("health-field-dose")
+                color: form.theme.muted
+            }
+            TextField {
+                id: medicineDose
 
-            theme: form.theme
-            locale: form.dateLocale
-        }
-        Label {
-            text: form.sioul.text("health-field-prescription")
-            color: form.theme.muted
-        }
-        ComboBox {
-            id: link
+                Layout.fillWidth: true
+                placeholderText: form.sioul.text("health-field-dose-hint")
+            }
+            Label {
+                text: form.sioul.text("health-field-when")
+                color: form.theme.muted
+            }
+            ComboBox {
+                id: every
 
-            Layout.fillWidth: true
-            model: [form.sioul.text("health-no-prescription")].concat(form.prescriptions.map(p => form.theme.plain(p.title)))
-        }
-        Item {
-            Layout.preferredHeight: 1
-        }
-        CheckBox {
-            id: paused
+                Layout.fillWidth: true
+                model: form.everies.map(e => form.sioul.text("health-every-" + e + "-choice"))
+            }
+            Label {
+                visible: every.currentIndex === 0
+                Layout.alignment: Qt.AlignTop
+                Layout.topMargin: 10
+                text: form.sioul.text("health-field-takes")
+                color: form.theme.muted
+            }
+            TakesEditor {
+                id: takes
 
-            visible: form.medicineId !== ""
-            text: form.sioul.text("health-pause")
-        }
-        Label {
-            visible: form.problem !== ""
-            Layout.columnSpan: 2
-            Layout.fillWidth: true
-            text: form.problem
-            textFormat: Text.PlainText
-            wrapMode: Text.Wrap
-            color: form.theme.warm
+                visible: every.currentIndex === 0
+                Layout.fillWidth: true
+                sioul: form.sioul
+                theme: form.theme
+                usual: medicineDose.text.trim()
+            }
+            Label {
+                visible: every.currentIndex === 1
+                text: form.sioul.text("health-field-every-days")
+                color: form.theme.muted
+            }
+            RowLayout {
+                visible: every.currentIndex === 1
+                spacing: 6
+
+                SpinBox {
+                    id: everyDays
+
+                    from: 1
+                    to: 90
+                    editable: true
+                }
+                Label {
+                    text: form.sioul.text("health-field-at")
+                    color: form.theme.muted
+                }
+                TextField {
+                    id: dayTime
+
+                    Layout.preferredWidth: 70
+                    inputMask: "99:99"
+                }
+            }
+            Label {
+                visible: every.currentIndex === 1
+                text: form.sioul.text("health-field-from")
+                color: form.theme.muted
+            }
+            DateField {
+                id: from
+
+                visible: every.currentIndex === 1
+                theme: form.theme
+                locale: form.dateLocale
+            }
+            Label {
+                visible: every.currentIndex === 2
+                text: form.sioul.text("health-field-every-hours")
+                color: form.theme.muted
+            }
+            RowLayout {
+                visible: every.currentIndex === 2
+                spacing: 6
+
+                SpinBox {
+                    id: everyHours
+
+                    from: 1
+                    to: 48
+                    editable: true
+                }
+                Label {
+                    text: form.sioul.text("health-field-from-time")
+                    color: form.theme.muted
+                }
+                TextField {
+                    id: hourFrom
+
+                    Layout.preferredWidth: 70
+                    inputMask: "99:99"
+                }
+            }
+
+            Label {
+                text: form.sioul.text("health-field-until")
+                color: form.theme.muted
+            }
+            DateField {
+                id: until
+
+                theme: form.theme
+                locale: form.dateLocale
+            }
+            // When it was first taken, if you know: how long, said to a professional.
+            Label {
+                Layout.maximumWidth: 170
+                text: form.sioul.text("health-field-since")
+                wrapMode: Text.Wrap
+                color: form.theme.muted
+            }
+            DateField {
+                id: since
+
+                theme: form.theme
+                locale: form.dateLocale
+            }
+            Label {
+                text: form.sioul.text("health-field-prescription")
+                color: form.theme.muted
+            }
+            ComboBox {
+                id: link
+
+                Layout.fillWidth: true
+                model: [form.sioul.text("health-no-prescription")].concat(form.prescriptions.map(p => form.theme.plain(p.title)))
+            }
+            Item {
+                visible: grid.columns > 1
+                Layout.preferredHeight: 1
+            }
+            CheckBox {
+                id: paused
+
+                visible: form.medicineId !== ""
+                text: form.sioul.text("health-pause")
+            }
+            Label {
+                visible: form.problem !== ""
+                Layout.columnSpan: grid.columns
+                Layout.fillWidth: true
+                text: form.problem
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: form.theme.warm
+            }
         }
     }
 

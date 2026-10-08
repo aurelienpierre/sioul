@@ -30,6 +30,7 @@ use card_backend::SmartcardError;
 use card_backend_pcsc::PcscBackend;
 use openpgp_card::ocard::algorithm::{AlgorithmAttributes, Curve};
 use openpgp_card::ocard::crypto::{Cryptogram, HashAlgo, PublicKeyMaterial, SigningAlgo};
+use openpgp_card::ocard::data::UserInteractionFlag;
 use openpgp_card::ocard::{KeyType, StatusBytes};
 use openpgp_card::state::{Open, Transaction};
 use sioul_core::securitykey::{Card, CardError, CardInfo, CardPublic, Password, PinMode, Protected, Readers, SlotInfo, ToDecipher, ToSign, Touch, Visit, Visited};
@@ -105,6 +106,19 @@ impl Readers for PcscReaders {
     }
 }
 
+/// What a key's user interaction flag says of its touch (DO D6 for signing,
+/// D7 for decrypting, D8 for authenticating: its first byte, the touch
+/// policy). A card without the flag asks for none; a flag that does not read
+/// is a touch maybe asked: said "If your key asks for a touch…", a wrong guess
+/// costing nothing.
+fn touch_of(flag: Result<Option<UserInteractionFlag>, openpgp_card::Error>) -> Touch {
+    match flag {
+        Ok(Some(flag)) => Touch::from_flag(u8::from(flag.touch_policy())),
+        Ok(None) => Touch::Off,
+        Err(_) => Touch::Unknown,
+    }
+}
+
 /// One OpenPGP card, open in one transaction.
 struct PcscCard<'a> {
     tx: openpgp_card::Card<Transaction<'a>>,
@@ -120,7 +134,7 @@ impl PcscCard<'_> {
     fn slot(&mut self, key: KeyType, fingerprint: Option<String>, created: u32) -> Option<SlotInfo> {
         let fingerprint = fingerprint?;
         let algorithm = self.tx.algorithm_attributes(key).map(|a| algorithm_name(&a)).unwrap_or_default();
-        let touch = self.tx.user_interaction_flag(key).ok().flatten().map_or(Touch::Off, |flag| Touch::from_flag(u8::from(flag.touch_policy())));
+        let touch = touch_of(self.tx.user_interaction_flag(key));
         let public = match self.tx.public_key_material(key) {
             Ok(PublicKeyMaterial::R(rsa)) => Some(CardPublic::Rsa { n: rsa.n().to_vec(), e: rsa.v().to_vec() }),
             Ok(PublicKeyMaterial::E(ecc)) => Some(CardPublic::Ecc { point: ecc.data().to_vec() }),
@@ -260,6 +274,28 @@ mod tests {
     /// nothing is opened, no PIN is given, so no try is spent. Never in a test
     /// run: the owner runs it himself, his key plugged in:
     /// `cargo test --release -p sioul-sync -- --ignored --nocapture a_real_key_reads_without_its_pin`.
+    /// The touch settings, from user interaction flags made of invented bytes
+    /// (policy, then features: 0x20 a button), as a card's DOs D6 to D8 give
+    /// them; never a real card.
+    #[test]
+    fn the_touch_settings_read_from_the_flags() {
+        let flag = |bytes: &[u8]| UserInteractionFlag::try_from(bytes.to_vec());
+        assert_eq!(touch_of(flag(&[0x00, 0x20]).map(Some)), Touch::Off);
+        assert_eq!(touch_of(flag(&[0x01, 0x20]).map(Some)), Touch::On, "a YubiKey with touch on: UIF Sign=on");
+        assert_eq!(touch_of(flag(&[0x02, 0x20]).map(Some)), Touch::Fixed);
+        assert_eq!(touch_of(flag(&[0x03, 0x20]).map(Some)), Touch::Cached);
+        assert_eq!(touch_of(flag(&[0x04, 0x20]).map(Some)), Touch::CachedFixed);
+        assert_eq!(touch_of(flag(&[0x7f, 0x20]).map(Some)), Touch::Unknown, "a setting Sioul does not know: asked");
+        // Bytes that are no flag: not read, so said as maybe.
+        assert_eq!(touch_of(flag(&[0x01]).map(Some)), Touch::Unknown);
+        // A card without the flag (before version 3): no touch.
+        assert_eq!(touch_of(Ok(None)), Touch::Off);
+        let tr = sioul_core::i18n::Translator::new("en");
+        assert!(touch_of(flag(&[0x01, 0x20]).map(Some)).words(&tr).is_some_and(|w| w.contains("hold your finger") && w.contains("15 seconds")));
+        assert!(touch_of(flag(&[0x01]).map(Some)).words(&tr).is_some_and(|w| w.starts_with("If your key asks for a touch")));
+        assert_eq!(touch_of(Ok(None)).words(&tr), None);
+    }
+
     #[test]
     #[ignore = "reads a real security key: the owner runs it himself, his key plugged in"]
     fn a_real_key_reads_without_its_pin() {

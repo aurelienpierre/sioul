@@ -7,8 +7,8 @@
 //!
 //! Mail, contacts, the agenda and tasks travel by their servers; projects and
 //! notes by the folder that holds them. The rest lives in small files here:
-//! settings, who may write to you, ties, time, drafts, health, the watch,
-//! lists kept on this computer. Each computer has a name, a UUID made once,
+//! settings, who may write to you, ties, time, drafts, health, lists kept
+//! on this computer. Each computer has a name, a UUID made once,
 //! and appends each change it finds in them, as one sealed record, to its own
 //! file in the folder (`<computer>-<round>.jsonl`): one writer per file, so
 //! the sync never makes conflicted copies.
@@ -27,8 +27,8 @@
 //! what.
 //!
 //! What is shared comes in parts (`PARTS`: settings, senders, the spam
-//! filter's table and label logs, health, time, drafts, projects, the watch,
-//! lists, notes, papers), each switched on or off on each device. Notes and papers travel
+//! filter's table and label logs, health, time, drafts, projects, lists,
+//! notes, papers), each switched on or off on each device. Notes and papers travel
 //! one file at a time, each sealed apart in the folder (`blobs`), their
 //! records saying which content each file holds; two devices changing one
 //! file keep both versions. The spam filter's table is sealed apart too: one
@@ -56,8 +56,39 @@ const SEP: char = '\u{1f}';
 const MARK: char = '\u{1e}';
 /// Files larger than this stay here.
 const LARGEST: u64 = 16 << 20;
-/// A computer's file past this size starts a new round.
+/// What a computer appends past its last full round before it opens a new
+/// one, restating every entry it holds (`new_round`): old rounds can then go.
 const ROUND_SIZE: u64 = 1 << 20;
+/// A computer's file past this size is continued in a new round of its own,
+/// nothing restated (docs/database.md, "The log"): a server sent the file whole
+/// at each change (WebDAV has no append) is sent a small one, never the opening
+/// of a full round (on a computer, a megabyte or two) again and again.
+const SEGMENT: u64 = 32 << 10;
+/// While the connection is metered, or measured slow (`set_frugal`), a full
+/// round, a megabyte or two sent at once, waits, as long as this computer
+/// appended less than this since the last one.
+const FRUGAL_ROUND_SIZE: u64 = 4 << 20;
+
+/// The sharings (by their memory) whose connection is metered or slow: full
+/// rounds wait there (`FRUGAL_ROUND_SIZE`).
+static FRUGAL: std::sync::Mutex<BTreeSet<PathBuf>> = std::sync::Mutex::new(BTreeSet::new());
+
+/// Said by the window before its exchanges: the connection is metered, or
+/// measured slow (`remote::Sending::slow`); a full round, sent whole, then
+/// waits for a better one, within `FRUGAL_ROUND_SIZE`. `memory`: the sharing's.
+pub fn set_frugal(memory: &Path, on: bool) {
+    if let Ok(mut frugal) = FRUGAL.lock() {
+        if on {
+            frugal.insert(memory.to_path_buf());
+        } else {
+            frugal.remove(memory);
+        }
+    }
+}
+
+fn frugal(memory: &Path) -> bool {
+    FRUGAL.lock().is_ok_and(|f| f.contains(memory))
+}
 /// Entries taken out are remembered this long, so an old copy does not bring them back.
 const TOMBSTONE_DAYS: i64 = 90;
 /// A computer silent this long no longer holds back the removal of old rounds.
@@ -84,7 +115,7 @@ const FILES: &str = "files/";
 /// How a file divides into entries.
 #[derive(Debug, Clone, Copy)]
 pub enum Shape {
-    /// The file whole: a draft, an invoice, a day of the watch.
+    /// The file whole: a draft, an invoice.
     Whole,
     /// One entry per line: the sender lists.
     Lines,
@@ -125,6 +156,8 @@ static CONFIG_RULES: Rules = Rules {
 static HEALTH_RULES: Rules = Rules {
     keyed: &[Keyed { list: "prescription", by: &["id"], local: &[] }, Keyed { list: "medicine", by: &["id"], local: &[] }],
     whole: &[],
+    // An older Sioul's folder of a watch's files (until 8 October 2026), a
+    // path on its own computer: never carried, as before.
     local: &["watch_folder"],
 };
 static LINKS_RULES: Rules = Rules { keyed: &[Keyed { list: "link", by: &[], local: &[] }], whole: &[], local: &[] };
@@ -185,10 +218,26 @@ const NOT_NOTES: &[&str] = &[
 
 /// The parts of what is shared, each switched on or off on each device
 /// (docs/database.md, "Parts"): settings and accounts, senders, the calls
-/// your phones screened, the spam filter's table and label logs, health,
-/// time, drafts and invoices, projects and money, the watch, lists kept here,
-/// notes, papers.
-pub const PARTS: [&str; 12] = ["settings", "senders", "calls", "spam", "health", "time", "drafts", "projects", "watch", "lists", "notes", "papers"];
+/// your phones screened, the messages from your phones' notifications, the
+/// spam filter's table and label logs, health, time, drafts and invoices,
+/// projects and money, lists kept here, notes, papers.
+/// (texts: the part "texts", SMS phase b, after the phone's messages.)
+pub const PARTS: [&str; 13] = ["settings", "senders", "calls", sioul_core::phonemsgs::PART, sioul_core::texts::PART, "spam", "health", "time", "drafts", "projects", "lists", "notes", "papers"];
+
+/// Stores an older Sioul shared and this one no longer has: a Garmin
+/// watch's days and the memory of its offers, taken out on 8 October 2026
+/// (docs/health.md, "Your watch"). A device on an older version may still
+/// send their changes: they are left aside, neither written nor kept
+/// waiting, and the rest of the exchange goes on. The files stay where they
+/// are on every device. texts: the first build of the texts, never
+/// released, kept them in the state folder (`state/texts/`).
+const RETIRED: &[&str] = &["data/watch/", "state/watch-offers.json", "state/texts/"];
+
+/// Whether a record's key names a store that left (`RETIRED`).
+fn retired(key: &str) -> bool {
+    let file = file_of(key);
+    RETIRED.iter().any(|store| if store.ends_with('/') { file.starts_with(store) } else { file == *store })
+}
 
 /// The phones' logs of the calls they screened (`sioul_core::calls`): each
 /// phone writes its own file, a line per call, taken out after a month by
@@ -204,9 +253,40 @@ pub const CALLS_SEEN: &str = "state/calls/seen/";
 /// device after its month (`calls_store`).
 const CALLS: &str = "state/calls/";
 
-/// A store, a file or an entry of the calls' part, by its name in the records.
+/// The phones' logs of the messages their notifications brought
+/// (`sioul_core::phonemsgs`), for the apps you switched on there: each phone
+/// writes its own file, a line per message, padded, taken out after a week
+/// by that phone alone; every device reads them all, so that a computer's
+/// Porch says what came. Never a code, never a blocked sender's.
+pub const PHONE_MESSAGES_LOG: &str = "state/phone-messages/log/";
+/// The messages marked Seen, each device's own file: seen on one device,
+/// gone from the Porch of every device.
+pub const PHONE_MESSAGES_SEEN: &str = "state/phone-messages/seen/";
+/// Where the phones' messages keep their files in the records: as the
+/// calls', remembered beside the notes, never kept as an earlier version nor
+/// copied aside when sharing starts (`calls_store`).
+const PHONE_MESSAGES: &str = "state/phone-messages/";
+
+// texts: SMS phase (b) (docs/texts.md, docs/database.md "Texts"). Each
+// store a folder of lines in the data folder (an archive), one writer per
+// file, every line sealed at rest by its writer (`textseal`) and again in
+// the folder; media travel as blobs, outside the records.
+/// Each phone's texts, the whole history (`sioul_core::texts::Text`).
+pub const TEXTS_LOG: &str = "data/texts/log/";
+/// Each computer's texts to send, a random key each.
+pub const TEXTS_SEND: &str = "data/texts/send/";
+/// Each phone's word on each text it was asked to send.
+pub const TEXTS_OUTCOME: &str = "data/texts/outcome/";
+/// Where the texts keep their files in the records: as the calls', remembered
+/// beside the notes, never kept as an earlier version nor copied aside (`calls_store`).
+const TEXTS: &str = "data/texts/";
+
+/// A store, a file or an entry of the calls' part, or of the phones'
+/// messages, by its name in the records: logs of lines that leave every
+/// device after their time.
 fn calls_store(name: &str) -> bool {
-    name.starts_with(CALLS)
+    // texts: their stores too.
+    name.starts_with(CALLS) || name.starts_with(PHONE_MESSAGES) || name.starts_with(TEXTS)
 }
 
 /// The spam filter's table (`sioul_core::spam::table`), made by a training
@@ -235,11 +315,16 @@ pub const SPAM_FLAGGED: &str = "state/spam/flagged/";
 /// Whether a device that never chose shares a part: what was shared before
 /// parts had switches, everything but notes and papers, and projects as the
 /// setting all devices followed then said (`share_projects`); the spam
-/// filter's table, which every device reads.
+/// filter's table, which every device reads. Never the phones' messages,
+/// newer than the switches: each device shares them once you turn them on there.
 pub fn shared_by_default(part: &str, config: &Config) -> bool {
     match part {
         "projects" => config.share_projects,
         "notes" | "papers" => false,
+        // A notification's words leave the phone only once you say so, on each device.
+        sioul_core::phonemsgs::PART => false,
+        // texts: read and sent through your phone, once you say so on each device.
+        sioul_core::texts::PART => false,
         _ => true,
     }
 }
@@ -308,7 +393,6 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         folder("drafts", "data/drafts/", d.join("drafts"), Shape::Whole, &[]),
         folder("drafts", "data/invoices/", d.join("invoices"), Shape::Whole, &[]),
         folder("senders", "data/pgp/others/", d.join("pgp").join("others"), Shape::Whole, &[]),
-        folder("watch", "data/watch/", d.join("watch"), Shape::Whole, &["imported.json"]),
         folder("lists", "data/calendars/local/", d.join("calendars").join(local), Shape::Whole, &[]),
         folder("lists", "data/contacts/local/", d.join("contacts").join(local), Shape::Whole, &[]),
         file("settings", "state/porch.toml", s.join("porch.toml"), Shape::Toml(&PORCH_RULES)),
@@ -322,7 +406,6 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         // Each dose that fell due and the answers your devices captured (docs/health.md,
         // "Doses as records"): a file of its own, which an older Sioul leaves alone.
         file("health", "state/health-doses.toml", s.join(sioul_core::doses::FILE), Shape::Toml(&DOSES_RULES)),
-        file("watch", "state/watch-offers.json", s.join("watch-offers.json"), Shape::Whole),
         folder("senders", "state/shield/", s.join("shield"), Shape::Whole, &[]),
         folder("lists", "state/dav/local/", s.join("dav").join(local), Shape::Whole, &[]),
         // The spam filter's table alone: its language model and its corpus, beside it, stay here.
@@ -337,6 +420,14 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         // each device's own file (`<device>.jsonl`), a line each, every device's read.
         folder("calls", CALLS_LOG, s.join(sioul_core::calls::FOLDER).join(sioul_core::calls::LOG), Shape::Lines, &[]),
         folder("calls", CALLS_SEEN, s.join(sioul_core::calls::FOLDER).join(sioul_core::calls::SEEN_LOG), Shape::Lines, &[]),
+        // The messages each phone's notifications brought, and those each device
+        // marked Seen: each device's own file, a line each, every device's read.
+        folder(sioul_core::phonemsgs::PART, PHONE_MESSAGES_LOG, s.join(sioul_core::phonemsgs::FOLDER).join(sioul_core::phonemsgs::LOG), Shape::Lines, &[]),
+        folder(sioul_core::phonemsgs::PART, PHONE_MESSAGES_SEEN, s.join(sioul_core::phonemsgs::FOLDER).join(sioul_core::phonemsgs::SEEN_LOG), Shape::Lines, &[]),
+        // texts: each phone's texts and outcomes, each computer's requests, sealed lines, in the data folder.
+        folder(sioul_core::texts::PART, TEXTS_LOG, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::LOG), Shape::Lines, &[]),
+        folder(sioul_core::texts::PART, TEXTS_SEND, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::SEND), Shape::Lines, &[]),
+        folder(sioul_core::texts::PART, TEXTS_OUTCOME, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::OUTCOME), Shape::Lines, &[]),
     ];
     // From the notes folder each device keeps where it likes: projects,
     // budgets, the bank's movements and contracts; the papers' wallet and its
@@ -440,7 +531,7 @@ impl Found {
 /// Folders whose files travel whole (`Shape::Whole`, `Shape::Files`): their
 /// keys are the file's name and an empty entry, `#`, and a name may hold `#`
 /// itself ("Facture #123.pdf").
-const WHOLE_FOLDERS: &[&str] = &["data/drafts/", "data/invoices/", "data/pgp/others/", "data/watch/", "data/calendars/local/", "data/contacts/local/", "state/shield/", "state/dav/local/", FILES];
+const WHOLE_FOLDERS: &[&str] = &["data/drafts/", "data/invoices/", "data/pgp/others/", "data/calendars/local/", "data/contacts/local/", "state/shield/", "state/dav/local/", FILES];
 
 /// `<store><file>`: the part of a key before its entry.
 fn file_of(key: &str) -> &str {
@@ -700,8 +791,11 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
     }
     let modified = modified_ns(&meta);
     found.changed.insert(file.to_string(), (modified / 1_000_000) as i64);
-    // As last read: the same size and time, read well after it changed.
-    if let Some(stat) = known.get(file).filter(|s| s.size == meta.len() && s.modified == modified && (s.seen == 0 || (s.modified / 1_000_000) as i64 + settling_ms() < s.seen)) {
+    // As last read: the same size and time, read well after it changed. Not
+    // a log of lines (calls, texts, labels): what it holds is not kept twice
+    // in the memory (its lines are its entries' names), it is read again.
+    let lines = matches!(store.shape, Shape::Lines);
+    if let Some(stat) = known.get(file).filter(|s| !lines && s.size == meta.len() && s.modified == modified && (s.seen == 0 || (s.modified / 1_000_000) as i64 + settling_ms() < s.seen)) {
         for (entry, h) in &stat.entries {
             found.hashes.insert(format!("{file}#{entry}"), h.clone());
             // A file sealed apart: its record made from what was kept, the file not read again.
@@ -732,11 +826,14 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
         found.unknown.insert(file.to_string());
         return;
     };
-    let mut stat = Stat { size: meta.len(), modified, entries: Vec::with_capacity(entries.len()), seen: look.clock };
+    // A log of lines is read at every look: when it was is not kept (the memory would change at each).
+    let mut stat = Stat { size: meta.len(), modified, entries: Vec::with_capacity(if lines { 0 } else { entries.len() }), seen: if lines { 0 } else { look.clock } };
     for (entry, value) in entries {
         let key = format!("{file}#{entry}");
         let h = hash(&value);
-        stat.entries.push((entry, h.clone()));
+        if !lines {
+            stat.entries.push((entry, h.clone()));
+        }
         found.hashes.insert(key.clone(), h);
         found.values.insert(key, value);
     }
@@ -1302,6 +1399,20 @@ struct Memory {
     /// start another one each minute).
     #[serde(default)]
     round_base: u64,
+    /// The last round that opens on every entry this computer holds (a full
+    /// round, `new_round`); the rounds after it continue it, `SEGMENT` each at
+    /// most. 0: kept by an older Sioul, whose every round was full.
+    #[serde(default)]
+    full_round: u32,
+    /// What this computer appended since its last full round (bytes).
+    #[serde(default)]
+    grown: u64,
+    /// When this computer's sealed files were last looked for, and the
+    /// history and leftovers last tidied (milliseconds).
+    #[serde(default)]
+    checked: i64,
+    #[serde(default)]
+    tidied: i64,
     /// Others' records already read in: done once, when sharing starts.
     #[serde(default)]
     joined: bool,
@@ -1393,10 +1504,13 @@ struct Sealed {
     #[serde(default)]
     confirmed: BTreeSet<String>,
     /// When this computer's sealed files were last looked for, and the
-    /// history and leftovers last tidied (milliseconds).
-    #[serde(default)]
+    /// history and leftovers last tidied (milliseconds): kept in `memory.json`
+    /// now (`Memory::checked`, `tidied`), so that this file, large with many
+    /// notes or texts, is written only when what it holds changes. Read once,
+    /// from an older Sioul's.
+    #[serde(default, skip_serializing)]
     checked: i64,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     tidied: i64,
 }
 
@@ -1422,7 +1536,12 @@ impl Memory {
     fn load_all(path: &Path, computer: &str) -> Memory {
         let mut memory = Memory::load(path, computer);
         match std::fs::read_to_string(sealed_path(path)).ok().and_then(|t| serde_json::from_str::<Sealed>(&t).ok()).filter(|s| s.computer == computer) {
-            Some(sealed) => memory.sealed = sealed,
+            Some(sealed) => {
+                // An older Sioul's times, kept in this file then.
+                memory.checked = memory.checked.max(sealed.checked);
+                memory.tidied = memory.tidied.max(sealed.tidied);
+                memory.sealed = sealed;
+            }
             // Lost, or not readable: notes and papers, and the calls, join
             // again as a new device's would (their files read again from the
             // records first), rather than each going out as new.
@@ -1488,6 +1607,13 @@ struct Change {
     /// else changed it too: both are kept.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     b: String,
+    /// The build that wrote it (`sioul_core::build::DESCRIBED`), on the first
+    /// line of each batch this computer appends, a new round's first line
+    /// among them: the lines after it, until the next that says one, are that
+    /// build's. Sealed with the change: the server never learns it. An older
+    /// Sioul passes over it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    build: String,
 }
 
 /// A computer's own notes in the folder: when it last exchanged, its round, how far it read the others.
@@ -1677,6 +1803,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.seq = n;
         memory.own_size = size;
         memory.round_base = 0;
+        // Which of its rounds was full is not known: none taken out until
+        // the next full round (`remove_old_rounds` keeps every round from 1).
+        memory.full_round = 1;
         memory.read.clear();
         memory.rebuild.insert("*".into());
     }
@@ -1841,7 +1970,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // time first. A change for a part this device does not share is not kept
     // waiting: switched on, the part joins and reads it again.
     let newer = |c: u64, w: &str, than: Option<(u64, &str)>| than.is_none_or(|(tc, tw)| (c, w) > (tc, tw));
-    let off = |key: &str| locate(stores, file_of(key)).is_none() && known_part(file_of(key)).is_some();
+    // Nor one for a store that left (`RETIRED`), which an older device may still send.
+    let off = |key: &str| retired(key) || (locate(stores, file_of(key)).is_none() && known_part(file_of(key)).is_some());
     let mut winners: BTreeMap<String, (Option<String>, u64, String)> = std::mem::take(&mut memory.pending)
         .into_iter()
         .filter(|(key, (_, c, w))| !off(key) && newer(*c, w, memory.entries.get(key).map(|k| (k.c, k.w.as_str()))))
@@ -2178,7 +2308,24 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         new_round(sharing, &mut memory, stores, &found, &hurried, now_ms)?;
         memory.round_base = own(&memory);
     }
+    // Past `SEGMENT`, what comes goes into a new round continuing this one,
+    // nothing restated: the file sent at each change stays small.
+    if !out.is_empty() && own(&memory) >= SEGMENT {
+        if memory.full_round == 0 {
+            memory.full_round = memory.round;
+        }
+        memory.round += 1;
+        memory.seq = 0;
+        memory.round_base = 0;
+    }
+    let before = own(&memory);
     append(sharing, &mut memory, &out)?;
+    memory.grown += own(&memory).saturating_sub(before);
+    // The first round holds all this computer had when it joined: a full one.
+    if memory.full_round == 0 && memory.round == 1 {
+        memory.full_round = 1;
+        memory.grown = 0;
+    }
     // When each part last sent and received a change, for the window.
     let part_of = |key: &str| locate(stores, file_of(key)).map(|(store, _)| store.part);
     for part in out.iter().filter_map(|(key, ..)| part_of(key)) {
@@ -2188,9 +2335,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.traffic.entry(part.to_string()).or_default().1 = now_ms / 1000;
     }
     // Now and then, the sealed files this computer's records point to looked for (`look_after_sealed`).
-    if sharing.files && !hurried() && now_ms - memory.sealed.checked >= 10 * MINUTE {
+    if sharing.files && !hurried() && now_ms - memory.checked >= 10 * MINUTE {
         look_after_sealed(sharing, stores, &mut memory, &found, &hurried, &mut outcome.problems, now_ms);
-        memory.sealed.checked = now_ms;
+        memory.checked = now_ms;
     }
     // Damaged sealed files no change waits for any more are forgotten.
     if !memory.sealed.damaged.is_empty() {
@@ -2215,12 +2362,14 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.sealed.mine.retain(|name, (at, _)| last.get(name).map(|kept| *at = *kept).is_some());
     }
     // The history held within bounds, and what a crash left half written cleaned: after a writing, or hourly.
-    if kept || now_ms - memory.sealed.tidied >= HOUR {
+    if kept || now_ms - memory.tidied >= HOUR {
         crate::history::prune(&history, now_ms, crate::history::cap(&history), &|_, file| locate(stores, file).is_some_and(|(_, path)| path.exists()));
         clean_leftovers(&sharing.folder.join("blobs"));
-        memory.sealed.tidied = now_ms;
+        memory.tidied = now_ms;
     }
-    if own(&memory) > memory.round_base + ROUND_SIZE {
+    // A full round, past `ROUND_SIZE` appended since the last: then the
+    // rounds before it can go. Waits while the connection is metered or slow.
+    if memory.grown > ROUND_SIZE && (!frugal(sharing.memory) || memory.grown > FRUGAL_ROUND_SIZE) {
         new_round(sharing, &mut memory, stores, &found, &hurried, now_ms)?;
         memory.round_base = own(&memory);
     }
@@ -2744,9 +2893,10 @@ fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<Str
     }
     let path = round_file(sharing.folder, sharing.computer, memory.round);
     let mut text = String::new();
-    for (key, value, clock, base) in changes {
+    for (at, (key, value, clock, base)) in changes.iter().enumerate() {
         memory.seq += 1;
-        let plain = serde_json::to_vec(&Change { k: key.clone(), v: value.clone(), b: base.clone() }).map_err(|e| e.to_string())?;
+        let build = if at == 0 { sioul_core::build::DESCRIBED.to_string() } else { String::new() };
+        let plain = serde_json::to_vec(&Change { k: key.clone(), v: value.clone(), b: base.clone(), build }).map_err(|e| e.to_string())?;
         let line = Line { n: memory.seq, c: *clock, s: seal(sharing.key, &bound(sharing.computer, memory.round, memory.seq, *clock), &plain) };
         text.push_str(&serde_json::to_string(&line).map_err(|e| e.to_string())?);
         text.push('\n');
@@ -2836,7 +2986,16 @@ fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &F
     }
     memory.round += 1;
     memory.seq = 0;
+    memory.full_round = memory.round;
+    memory.grown = 0;
     append(sharing, memory, &ours)
+}
+
+/// The sealed files this computer put in the folder (`blobs/<name>`), by
+/// name, and the size it sealed each at: what it sends to the server itself
+/// beside the sync app (`remote::send`), whole, and nothing else of `blobs/`.
+pub fn own_sealed(memory: &Path, computer: &str) -> BTreeMap<String, u64> {
+    std::fs::read_to_string(sealed_path(memory)).ok().and_then(|t| serde_json::from_str::<Sealed>(&t).ok()).filter(|s| s.computer == computer).map(|s| s.mine.into_iter().map(|(name, (_, size))| (name, size)).collect()).unwrap_or_default()
 }
 
 /// How far this computer wrote its records: its round and the number of the
@@ -2973,7 +3132,10 @@ fn remove_old_rounds(sharing: &Sharing, memory: &Memory, now_ms: i64) {
     let all = rounds(sharing.folder);
     let others: Vec<Seen> = computers(sharing.folder).iter().filter(|c| *c != sharing.computer).filter_map(|c| read_seen(sharing.folder, c)).filter(|s| now_ms / 1000 - s.at < SILENT_DAYS * 86_400).collect();
     let read_up_to = others.iter().map(|s| s.read.get(sharing.computer).copied().unwrap_or(0)).min().unwrap_or(memory.round);
-    for round in all.get(sharing.computer).into_iter().flatten().filter(|r| **r < memory.round && **r < read_up_to) {
+    // Never the last full round, nor the rounds continuing it: a device
+    // joining reads from the oldest kept, and finds every entry there.
+    let full = if memory.full_round == 0 { memory.round } else { memory.full_round };
+    for round in all.get(sharing.computer).into_iter().flatten().filter(|r| **r < full && **r < read_up_to) {
         let _ = std::fs::remove_file(round_file(sharing.folder, sharing.computer, *round));
     }
 }
@@ -3290,7 +3452,16 @@ mod tests {
                 let wrote = written(&desk.memory, &desk.id);
                 crate::lease::renew(&server, &key, "health", &desk.id, now / 1000, now / 1000, false, crate::lease::Rule::FollowsYou, wrote).unwrap();
                 carrier.carry(&server, &phone_folder);
-                phone.exchange(&phone_folder, &key, now + 30_000);
+                // texts: a first import running on the phone beside it, a batch each minute and a picture each ten.
+                let import: Vec<sioul_core::texts::Text> = (0..20).map(|i| sioul_core::texts::Text { id: format!("sms-{minute}-{i}"), at: NOW - 86_400_000 + minute * MINUTE + i, direction: "in".into(), with: vec!["+33199001234".into()], body: format!("Message {minute}-{i}"), ..sioul_core::texts::Text::default() }).collect();
+                sioul_core::texts::append(&sioul_core::texts::own_file(&texts_of(&phone), sioul_core::texts::LOG, &phone.id), &import, &crate::textseal::TextSeal::new(&key), None).unwrap();
+                if minute % 10 == 0 {
+                    let picture = base.join(format!("picture-{minute}.bin"));
+                    std::fs::write(&picture, vec![minute as u8; 256 * 1024]).unwrap();
+                    let (hash, _) = crate::blobs::hash_file(&picture).unwrap();
+                    crate::blobs::put(&phone_folder, &key, &picture, &hash).unwrap();
+                }
+                phone.exchange_with(&phone_folder, &key, now + 30_000, &base.join("phone-notes"), &[sioul_core::texts::PART]);
                 // What the phone takes as known must be there: a dose known not taken that was taken is the harm.
                 if let Some(claim) = crate::lease::claims(&phone_folder, &key, "health").into_iter().find(|c| c.computer == desk.id)
                     && let Some(wrote) = claim.wrote
@@ -3363,6 +3534,50 @@ mod tests {
         // The phone's own files went up untouched.
         let phone_record = format!("{}-1.jsonl", phone.id);
         assert_eq!(std::fs::read(server.join(&phone_record)).ok(), std::fs::read(phone_folder.join(&phone_record)).ok());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The build that wrote them (docs/database.md, "The log"): on the first
+    /// line of each batch a computer appends, sealed with it; lines without it
+    /// (an older Sioul's) read as ever.
+    #[test]
+    fn each_batch_of_records_says_its_build() {
+        let base = scratch("build");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let desk = Computer::new(&base, "desk");
+        desk.write("config/safe-senders.txt", "a@example.org\nb@example.org\n");
+        desk.exchange(&folder, &key, NOW);
+        let own = round_file(&folder, &desk.id, 1);
+        let first = std::fs::read_to_string(&own).unwrap().lines().count();
+        desk.write("config/safe-senders.txt", "a@example.org\nb@example.org\nc@example.org\n");
+        desk.exchange(&folder, &key, NOW + MINUTE);
+        let text = std::fs::read_to_string(&own).unwrap();
+        let builds: Vec<String> = text
+            .lines()
+            .map(|l| {
+                let line: Line = serde_json::from_str(l).unwrap();
+                serde_json::from_slice::<Change>(&open(&key, &bound(&desk.id, 1, line.n, line.c), &line.s).unwrap()).unwrap().build
+            })
+            .collect();
+        assert!(first >= 2 && builds.len() > first, "{builds:?}");
+        for (n, build) in builds.iter().enumerate() {
+            assert_eq!(build.as_str(), if n == 0 || n == first { sioul_core::build::DESCRIBED } else { "" }, "line {n}");
+        }
+        assert!(!text.contains(sioul_core::build::DESCRIBED), "sealed: the server never learns it");
+        // A new round opens with the build too.
+        std::fs::write(&own, text.lines().next().unwrap().to_string() + "\n").unwrap();
+        desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+        let line: Line = serde_json::from_str(std::fs::read_to_string(round_file(&folder, &desk.id, 2)).unwrap().lines().next().unwrap()).unwrap();
+        let change: Change = serde_json::from_slice(&open(&key, &bound(&desk.id, 2, line.n, line.c), &line.s).unwrap()).unwrap();
+        assert_eq!(change.build, sioul_core::build::DESCRIBED);
+        // Another computer reads them all, those written before the build was said among them.
+        let laptop = Computer::new(&base, "laptop");
+        let stranger = uuid::Uuid::new_v4().to_string();
+        append_to(&round_file(&folder, &stranger, 1), &record_of(&key, &stranger, 1, ((NOW + MINUTE) as u64) << 16, &Change { k: "config/safe-senders.txt#d@example.org".into(), v: Some(String::new()), b: String::new(), build: String::new() }));
+        laptop.exchange(&folder, &key, NOW + 3 * MINUTE);
+        let safe = laptop.read("config/safe-senders.txt");
+        assert!(["a@", "b@", "c@", "d@"].iter().all(|a| safe.contains(a)), "{safe}");
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -3456,7 +3671,7 @@ mod tests {
         // Lines missing (a stale copy of the file put back, then written after): a gap, said, and not known.
         let line = |n: u64, value: &str| {
             let clock = (NOW as u64) << 16 | n;
-            let plain = serde_json::to_vec(&Change { k: "config/safe-senders.txt#".to_string() + value, v: Some(String::new()), b: String::new() }).unwrap();
+            let plain = serde_json::to_vec(&Change { k: "config/safe-senders.txt#".to_string() + value, v: Some(String::new()), b: String::new(), build: String::new() }).unwrap();
             serde_json::to_string(&Line { n, c: clock, s: seal(&key, &bound(&desk.id, 1, n, clock), &plain) }).unwrap() + "\n"
         };
         let last = written(&desk.memory, &desk.id).unwrap().1;
@@ -3530,6 +3745,90 @@ mod tests {
         desk.exchange(&folder, &key, NOW + 6 * MINUTE);
         laptop.exchange(&folder, &key, NOW + 7 * MINUTE);
         assert!(!laptop.read("config/safe-senders.txt").contains("a@example.org"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The file a server is sent at each change stays small (docs/database.md,
+    /// "The log"): past `SEGMENT`, a round is continued in a new one, nothing
+    /// restated; a full round only past `ROUND_SIZE` appended (or later while
+    /// the connection is metered); old rounds go only before the last full
+    /// one; a device joining late reads every entry from what is kept.
+    #[test]
+    fn a_change_sends_a_small_file_and_a_late_joiner_reads_everything() {
+        let base = scratch("segments");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        // A desk holding much: three thousand senders, its opening far past a segment.
+        let many: String = (0..3000).map(|n| format!("sender{n}@example.org\n")).collect();
+        desk.write("config/known-senders.txt", &many);
+        desk.exchange(&folder, &key, NOW);
+        laptop.exchange(&folder, &key, NOW + 30_000);
+        let current = |c: &Computer| {
+            let all = rounds(&folder);
+            let last = *all.get(&c.id).unwrap().last().unwrap();
+            std::fs::metadata(round_file(&folder, &c.id, last)).unwrap().len()
+        };
+        assert!(current(&desk) > SEGMENT, "the first file holds it all");
+        // A sender a minute for an hour: each change goes into a small file.
+        let mut list = many.clone();
+        for minute in 1..=60 {
+            list.push_str(&format!("new{minute}@example.org\n"));
+            desk.write("config/known-senders.txt", &list);
+            desk.exchange(&folder, &key, NOW + minute * MINUTE);
+            assert!(current(&desk) <= SEGMENT + 4096, "minute {minute}: the file sent is {} bytes", current(&desk));
+            laptop.exchange(&folder, &key, NOW + minute * MINUTE + 30_000);
+        }
+        assert!(laptop.read("config/known-senders.txt").contains("new60@example.org"));
+        // Past a megabyte appended: a full round, then the rounds before it go once the laptop read past them.
+        let more: String = (0..8000).map(|n| format!("later{n}@example.org\n")).collect();
+        list.push_str(&more);
+        desk.write("config/known-senders.txt", &list);
+        desk.exchange(&folder, &key, NOW + 61 * MINUTE);
+        let full = Memory::load(&desk.memory, &desk.id).full_round;
+        assert!(full > 1, "a full round opened");
+        for minute in 62..66 {
+            laptop.exchange(&folder, &key, NOW + minute * MINUTE + 30_000);
+            list.push_str(&format!("after{minute}@example.org\n"));
+            desk.write("config/known-senders.txt", &list);
+            desk.exchange(&folder, &key, NOW + minute * MINUTE);
+        }
+        let kept = rounds(&folder).get(&desk.id).cloned().unwrap();
+        assert!(kept[0] >= full && kept.len() > 1, "only the last full round and those continuing it: {kept:?} (full {full})");
+        // A device joining now reads everything from what is kept.
+        let late = Computer::new(&base, "late");
+        late.exchange(&folder, &key, NOW + 70 * MINUTE);
+        let known = late.read("config/known-senders.txt");
+        for address in ["sender0@", "sender2999@", "new1@", "new60@", "later7999@", "after65@"] {
+            assert!(known.contains(address), "{address} missing for the late joiner");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// While the connection is metered or slow, a full round waits, within
+    /// `FRUGAL_ROUND_SIZE`; then it opens all the same.
+    #[test]
+    fn a_full_round_waits_while_the_connection_is_metered() {
+        let base = scratch("frugal");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let desk = Computer::new(&base, "desk");
+        let memory_full = || Memory::load(&desk.memory, &desk.id).full_round;
+        let lines = |from: usize, count: usize| -> String { (from..from + count).map(|n| format!("s{n}@example.org\n")).collect() };
+        set_frugal(&desk.memory, true);
+        let mut list = lines(0, 6000);
+        desk.write("config/known-senders.txt", &list);
+        desk.exchange(&folder, &key, NOW);
+        list.push_str(&lines(6000, 7000));
+        desk.write("config/known-senders.txt", &list);
+        desk.exchange(&folder, &key, NOW + MINUTE);
+        let waited = memory_full();
+        assert!(Memory::load(&desk.memory, &desk.id).grown > ROUND_SIZE && waited <= 1, "past a megabyte, metered: no full round yet ({waited})");
+        set_frugal(&desk.memory, false);
+        list.push_str(&lines(13000, 10));
+        desk.write("config/known-senders.txt", &list);
+        desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+        assert!(memory_full() > 1, "not metered any more: the full round opens");
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -3836,25 +4135,23 @@ mod tests {
         a.write("config/safe-senders.txt", "friend@example.org\n");
         a.exchange(&folder, &key, NOW);
         b.exchange(&folder, &key, NOW + MINUTE);
-        // A large file, changed until a's file passes its size.
+        // A large file, changed until a full round opens (a megabyte appended), the rounds before it continued in between.
         let mut now = NOW + MINUTE;
-        let mut round = 1;
-        while round == 1 {
+        while Memory::load(&a.memory, &a.id).full_round <= 1 {
             now += MINUTE;
-            a.write("data/watch/2026-10-01.json", &format!("{{\"steps\": {now}, \"pad\": \"{}\"}}", "x".repeat(100_000)));
+            a.write("data/drafts/2026-10-01.json", &format!("{{\"steps\": {now}, \"pad\": \"{}\"}}", "x".repeat(100_000)));
             a.exchange(&folder, &key, now);
-            round = Memory::load(&a.memory, &a.id).round;
         }
         assert!(round_file(&folder, &a.id, 1).exists(), "kept until b has read past it");
         // b reads past round 1.
         b.exchange(&folder, &key, now + MINUTE);
-        assert!(b.read("data/watch/2026-10-01.json").contains(&format!("\"steps\": {now}")));
+        assert!(b.read("data/drafts/2026-10-01.json").contains(&format!("\"steps\": {now}")));
         a.exchange(&folder, &key, now + 2 * MINUTE);
         assert!(!round_file(&folder, &a.id, 1).exists(), "read by everyone: removed");
         // A third computer joins later: round 2 alone holds the day.
         let c = Computer::new(&base, "c");
         c.exchange(&folder, &key, now + 3 * MINUTE);
-        assert!(c.read("data/watch/2026-10-01.json").contains(&format!("\"steps\": {now}")));
+        assert!(c.read("data/drafts/2026-10-01.json").contains(&format!("\"steps\": {now}")));
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -4170,7 +4467,7 @@ mod tests {
         // A record that is not one, and a line that does not open: said, the file here stays.
         let last = written(&desk.memory, &desk.id).unwrap();
         let clock = ((NOW + 7 * MINUTE) as u64) << 16;
-        let plain = serde_json::to_vec(&Change { k: "files/notes/lease.md#".into(), v: Some("not a reference".into()), b: String::new() }).unwrap();
+        let plain = serde_json::to_vec(&Change { k: "files/notes/lease.md#".into(), v: Some("not a reference".into()), b: String::new(), build: String::new() }).unwrap();
         let mut text = std::fs::read_to_string(round_file(&folder, &desk.id, last.0)).unwrap();
         text.push_str("{\"n\": 99, \"c\": 1, \"s\": \"broken\"}\n");
         text.push_str(&(serde_json::to_string(&Line { n: last.1 + 1, c: clock, s: seal(&key, &bound(&desk.id, last.0, last.1 + 1, clock), &plain) }).unwrap() + "\n"));
@@ -4457,7 +4754,7 @@ mod tests {
             file.write_all(b"\n").unwrap();
         }
         let clock = ((NOW + MINUTE) as u64) << 16;
-        append_to(&round_file(&folder, &stranger, 1), &record_of(&key, &stranger, 1, clock, &Change { k: "config/safe-senders.txt#b@example.org".into(), v: Some(String::new()), b: String::new() }));
+        append_to(&round_file(&folder, &stranger, 1), &record_of(&key, &stranger, 1, clock, &Change { k: "config/safe-senders.txt#b@example.org".into(), v: Some(String::new()), b: String::new(), build: String::new() }));
         std::fs::write(seen_path(&folder, &stranger), "x".repeat(100_000)).unwrap();
         let outcome = laptop.exchange(&folder, &key, NOW + 2 * MINUTE);
         assert!(outcome.problems.iter().any(|p| *p == format!("share-other-line:{stranger}")), "{outcome:?}");
@@ -4547,6 +4844,49 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// A device on an older Sioul still shares a watch's days and the memory
+    /// of its offers (taken out on 8 October 2026): left aside here, never
+    /// written, never kept waiting, never a problem; the rest of the
+    /// exchange comes in, and the older device's files stay as they are.
+    #[test]
+    fn an_older_sioul_s_watch_is_left_aside() {
+        let base = scratch("watch-older");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (older, desk) = (Computer::new(&base, "older"), Computer::new(&base, "desk"));
+        // The older Sioul's stores: this version's, and the watch's as it shared them.
+        let mut with_watch = stores(&Config::default(), &older.roots);
+        with_watch.push(Store { name: "data/watch/".into(), path: older.roots.data.join("watch"), folder: true, shape: Shape::Whole, skip: &["imported.json"], part: "watch" });
+        with_watch.push(Store { name: "state/watch-offers.json".into(), path: older.roots.state.join("watch-offers.json"), folder: false, shape: Shape::Whole, skip: &[], part: "watch" });
+        let older_exchange = |now: i64| exchange(&Sharing { folder: &folder, computer: &older.id, key: &key, memory: &older.memory, files: true, hurry: None }, &with_watch, now).unwrap();
+        older.write("data/watch/2026-10-07.json", "{\"steps\": 4200}");
+        older.write("state/watch-offers.json", "{\"declined\": {}}");
+        older.write("config/safe-senders.txt", "friend@example.org\n");
+        let sent = older_exchange(NOW);
+        assert!(sent.problems.is_empty() && sent.sent >= 3, "{sent:?}");
+        for n in 1..=2 {
+            let came = desk.exchange(&folder, &key, NOW + n * MINUTE);
+            assert!(came.problems.is_empty() && came.pending == 0, "{came:?}");
+        }
+        assert_eq!(desk.read("config/safe-senders.txt"), "friend@example.org\n", "the rest came in");
+        assert!(!desk.path("data/watch").exists() && !desk.path("state/watch-offers.json").exists(), "nothing of the watch written");
+        // Its records named by their stores (the folders' own paths hold the test's name).
+        let memory = std::fs::read_to_string(&desk.memory).unwrap();
+        assert!(!memory.contains("data/watch/") && !memory.contains("watch-offers"), "nothing of the watch kept waiting");
+        // A new day from the older device, and a change it receives: the exchanges go on both ways.
+        older.write("data/watch/2026-10-08.json", "{\"steps\": 900}");
+        older_exchange(NOW + 3 * MINUTE);
+        desk.write("config/safe-senders.txt", "friend@example.org\nneighbour@example.org\n");
+        let came = desk.exchange(&folder, &key, NOW + 4 * MINUTE);
+        assert!(came.problems.is_empty() && came.pending == 0 && came.sent >= 1, "{came:?}");
+        let back = older_exchange(NOW + 5 * MINUTE);
+        assert!(back.problems.is_empty() && back.received >= 1, "{back:?}");
+        assert_eq!(older.read("config/safe-senders.txt"), "friend@example.org\nneighbour@example.org\n");
+        assert_eq!(older.read("data/watch/2026-10-07.json"), "{\"steps\": 4200}", "its own files as they were");
+        assert!(!desk.path("data/watch").exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     // F10
     #[cfg(unix)]
     #[test]
@@ -4571,7 +4911,7 @@ mod tests {
         let value = reference(&h, s, 0);
         let mut text = String::new();
         for (n, file) in [(1, "files/notes/link/evil.desktop#"), (2, "files/notes/sioul-shared/plain.md#")] {
-            text += &record_of(&key, &other, n, ((NOW + MINUTE) as u64) << 16 | n, &Change { k: file.into(), v: Some(value.clone()), b: String::new() });
+            text += &record_of(&key, &other, n, ((NOW + MINUTE) as u64) << 16 | n, &Change { k: file.into(), v: Some(value.clone()), b: String::new(), build: String::new() });
         }
         std::fs::write(round_file(&folder, &other, 1), text).unwrap();
         let outcome = desk.exchange_with(&folder, &key, NOW + 2 * MINUTE, &notes, &["notes"]);
@@ -4856,7 +5196,7 @@ mod tests {
         let config = Config { case_store: Some("/notes".into()), ..Config::default() };
         let parts = |stores: &[Store]| stores.iter().map(|s| s.part).collect::<BTreeSet<_>>();
         // A device that never chose: what was shared before parts had switches.
-        assert_eq!(parts(&stores(&config, &roots)), ["calls", "drafts", "health", "lists", "senders", "settings", "spam", "time", "watch"].into());
+        assert_eq!(parts(&stores(&config, &roots)), ["calls", "drafts", "health", "lists", "senders", "settings", "spam", "time"].into());
         let old = Config { share_projects: true, ..config.clone() };
         assert!(parts(&stores(&old, &roots)).contains("projects"), "projects as the old setting said");
         // Its own choices, kept in its own file, never in a shared one.
@@ -5178,6 +5518,393 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// A message a phone's notification brought (fiction numbers only).
+    fn texted(at: i64) -> sioul_core::phonemsgs::Line {
+        sioul_core::phonemsgs::Line {
+            at,
+            id: format!("{at}-0123456789abcdef"),
+            app: "foundation.e.message".into(),
+            label: "Message".into(),
+            kind: "text".into(),
+            name: "Cabinet du Dr Martin".into(),
+            key: "+33199001234".into(),
+            who: "neutral".into(),
+            text: "Votre rendez-vous est déplacé à jeudi 10 h 30.".into(),
+            shows: at,
+            ..sioul_core::phonemsgs::Line::default()
+        }
+    }
+
+    /// The phones' messages' folder of a device.
+    fn messages_of(c: &Computer) -> PathBuf {
+        c.roots.state.join(sioul_core::phonemsgs::FOLDER)
+    }
+
+    /// A phone's message reaches the desk, both with the part on: sealed and
+    /// padded in the folder, remembered beside `memory.json`, never kept as an
+    /// earlier version; Seen on the desk comes back to the phone.
+    #[test]
+    fn a_phone_s_messages_reach_the_desk_sealed_and_seen_comes_back() {
+        use sioul_core::{calls, phonemsgs};
+        let base = scratch("phone-messages");
+        let (folder, notes) = (base.join("folder"), base.join("notes"));
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let on = [phonemsgs::PART];
+        let own = calls::own_file(&messages_of(&phone), phonemsgs::LOG, &phone.id);
+        assert_eq!(phonemsgs::carry_into(&own, &[texted(NOW - 3_600_000)], NOW).unwrap(), 1);
+        assert!(std::fs::read_to_string(&own).unwrap().lines().all(|l| l.len() % phonemsgs::PAD_STEP == 0), "padded");
+        phone.exchange_with(&folder, &key, NOW, &notes, &on);
+        let came = desk.exchange_with(&folder, &key, NOW + MINUTE, &notes, &on);
+        assert!(came.written.contains(PHONE_MESSAGES_LOG), "{came:?}");
+        let on_desk = phonemsgs::read_logs(&messages_of(&desk), NOW + MINUTE);
+        assert_eq!(on_desk.iter().map(|l| (l.device.as_str(), l.key.as_str(), l.text.as_str())).collect::<Vec<_>>(), [(phone.id.as_str(), "+33199001234", "Votre rendez-vous est déplacé à jeudi 10 h 30.")]);
+        // Seen on the desk, in its own log: the phone hears of it.
+        calls::mark_seen(&messages_of(&desk), &desk.id, &[on_desk[0].id.clone()], NOW + 2 * MINUTE).unwrap();
+        desk.exchange_with(&folder, &key, NOW + 3 * MINUTE, &notes, &on);
+        let came = phone.exchange_with(&folder, &key, NOW + 4 * MINUTE, &notes, &on);
+        assert!(came.written.contains(PHONE_MESSAGES_SEEN), "{came:?}");
+        assert!(calls::read_seen(&messages_of(&phone)).seen.contains(&on_desk[0].id));
+        // Sealed: nothing of it readable in the folder.
+        let mut files = Vec::new();
+        list_files(&folder, &folder, &[], &mut files);
+        for (name, path) in &files {
+            let bytes = std::fs::read(path).unwrap();
+            for plain in [&b"199001234"[..], b"Cabinet", b"rendez-vous", b"neutral"] {
+                assert!(!bytes.windows(plain.len()).any(|w| w == plain), "{name}");
+            }
+        }
+        let every = stores_of(&Config::default(), &desk.roots, &|_| true);
+        assert_eq!(locate(&every, &format!("{PHONE_MESSAGES_LOG}{}.jsonl", phone.id)).map(|(s, _)| s.part), Some(phonemsgs::PART));
+        for c in [&desk, &phone] {
+            let small = Memory::load(&c.memory, &c.id);
+            assert!(small.entries.keys().chain(small.files.keys()).chain(small.pending.keys()).all(|k| !calls_store(k)), "memory.json stays small");
+            let share = c.memory.parent().unwrap();
+            let mut kept = Vec::new();
+            list_files(share, share, &[], &mut kept);
+            assert!(kept.iter().all(|(name, _)| !name.contains("phone-messages")), "{kept:?}");
+        }
+        // files.json lost: nothing goes out again as new.
+        std::fs::remove_file(sealed_path(&desk.memory)).unwrap();
+        let again = desk.exchange_with(&folder, &key, NOW + 5 * MINUTE, &notes, &on);
+        assert_eq!(again.sent, 0, "{again:?}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The part is off until turned on, on every device: a desk that never
+    /// turned it on receives nothing and keeps nothing waiting; turned on, it
+    /// reads them. A phone that never turned it on sends nothing.
+    #[test]
+    fn the_phone_messages_part_is_off_until_turned_on_and_off_receives_nothing() {
+        use sioul_core::{calls, phonemsgs};
+        let base = scratch("phone-messages-off");
+        let (folder, notes) = (base.join("folder"), base.join("notes"));
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        assert!(!shared_by_default(phonemsgs::PART, &Config::default()));
+        assert!(stores(&Config::default(), &desk.roots).iter().all(|s| s.part != phonemsgs::PART));
+        phonemsgs::carry_into(&calls::own_file(&messages_of(&phone), phonemsgs::LOG, &phone.id), &[texted(NOW - 3_600_000)], NOW).unwrap();
+        // The phone's part off: nothing of it leaves.
+        phone.exchange(&folder, &key, NOW);
+        desk.exchange_with(&folder, &key, NOW + MINUTE, &notes, &[phonemsgs::PART]);
+        assert!(phonemsgs::read_logs(&messages_of(&desk), NOW + MINUTE).is_empty(), "the phone's part off");
+        // The phone's on, the desk's off: nothing comes, nothing waits.
+        phone.exchange_with(&folder, &key, NOW + 2 * MINUTE, &notes, &[phonemsgs::PART]);
+        let outcome = desk.exchange(&folder, &key, NOW + 3 * MINUTE);
+        assert_eq!(outcome.pending, 0, "{outcome:?}");
+        assert!(!messages_of(&desk).join(phonemsgs::LOG).exists());
+        // Turned on on the desk: it joins and reads it.
+        let came = desk.exchange_with(&folder, &key, NOW + 4 * MINUTE, &notes, &[phonemsgs::PART]);
+        assert!(came.written.contains(PHONE_MESSAGES_LOG), "{came:?}");
+        assert_eq!(phonemsgs::read_logs(&messages_of(&desk), NOW + 4 * MINUTE).len(), 1);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A week on, the phone takes its own line out: every device's copy loses it.
+    #[test]
+    fn a_trimmed_line_of_phone_messages_leaves_every_device() {
+        use sioul_core::{calls, phonemsgs};
+        let base = scratch("phone-messages-trim");
+        let (folder, notes) = (base.join("folder"), base.join("notes"));
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let on = [phonemsgs::PART];
+        let own = calls::own_file(&messages_of(&phone), phonemsgs::LOG, &phone.id);
+        phonemsgs::carry_into(&own, &[texted(NOW - 3_600_000)], NOW).unwrap();
+        phone.exchange_with(&folder, &key, NOW, &notes, &on);
+        desk.exchange_with(&folder, &key, NOW + MINUTE, &notes, &on);
+        let theirs = calls::own_file(&messages_of(&desk), phonemsgs::LOG, &phone.id);
+        assert_eq!(phonemsgs::read_file(&theirs).len(), 1);
+        let later = NOW + phonemsgs::KEPT_DAYS * 86_400_000;
+        assert_eq!(phonemsgs::trim_own(&messages_of(&phone), &phone.id, later).unwrap(), 1);
+        phone.exchange_with(&folder, &key, later, &notes, &on);
+        desk.exchange_with(&folder, &key, later + MINUTE, &notes, &on);
+        assert!(phonemsgs::read_file(&theirs).is_empty(), "gone from the desk's copy too");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// An older Sioul knows neither of the phones' messages' stores: their
+    /// records wait, written nowhere; updated, it reads them.
+    #[test]
+    fn an_older_sioul_keeps_the_phone_s_messages_waiting() {
+        use sioul_core::{calls, phonemsgs};
+        let base = scratch("phone-messages-older");
+        let (folder, notes) = (base.join("folder"), base.join("notes"));
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let on = [phonemsgs::PART];
+        phonemsgs::carry_into(&calls::own_file(&messages_of(&phone), phonemsgs::LOG, &phone.id), &[texted(NOW - 3_600_000)], NOW).unwrap();
+        phone.exchange_with(&folder, &key, NOW, &notes, &on);
+        // The desk's older Sioul: no store of the phones' messages, and none known.
+        let older_stores = desk.stores_with(&notes, &|part| part == phonemsgs::PART).into_iter().filter(|s| s.part != phonemsgs::PART).collect::<Vec<_>>();
+        OLDER.with(|older| *older.borrow_mut() = vec![PHONE_MESSAGES_LOG.to_string(), PHONE_MESSAGES_SEEN.to_string()]);
+        for n in 1..=2 {
+            let outcome = exchange(&Sharing { folder: &folder, computer: &desk.id, key: &key, memory: &desk.memory, files: true, hurry: None }, &older_stores, NOW + n * MINUTE).unwrap();
+            assert_eq!(outcome.pending, 1, "kept waiting: {outcome:?}");
+        }
+        assert!(!messages_of(&desk).exists(), "nothing written");
+        OLDER.with(|older| older.borrow_mut().clear());
+        let came = desk.exchange_with(&folder, &key, NOW + 3 * MINUTE, &notes, &on);
+        assert!(came.written.contains(PHONE_MESSAGES_LOG) && came.pending == 0, "{came:?}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // ---------------------------------------------------------------- texts (SMS phase b)
+
+    /// The texts' folder of a device (in its data folder).
+    fn texts_of(c: &Computer) -> PathBuf {
+        c.roots.data.join(sioul_core::texts::FOLDER)
+    }
+
+    /// A text a computer asks the phone to send (fiction numbers only).
+    fn to_send(key: &str, phone: &str, written: i64) -> sioul_core::texts::Request {
+        sioul_core::texts::Request { key: key.into(), phone: phone.into(), to: "01 99 00 12 34".into(), body: "J'arrive dans dix minutes.".into(), sub: -1, written, ahead: 0, again: String::new(), device: String::new() }
+    }
+
+    /// The phone's step as the app takes it: every request read, decided,
+    /// claimed in the ledger before it is "sent", its outcome written.
+    fn phone_step(phone: &Computer, ledger: &Path, seal: &crate::textseal::TextSeal, now: i64) -> Vec<String> {
+        use sioul_core::texts;
+        let book = texts::Ledger::open(ledger, now).unwrap();
+        let mut sent = Vec::new();
+        for r in texts::read_requests(&texts_of(phone), seal) {
+            if texts::verdict(&r, &phone.id, now, &book, None) == texts::Verdict::Send {
+                texts::record(ledger, &texts::Claim { key: r.key.clone(), at: now, state: "claimed".into(), ..texts::Claim::default() }).unwrap();
+                let outcome = texts::Outcome { key: r.key.clone(), state: "sent".into(), at: now, row: "sms-412".into(), ..texts::Outcome::default() };
+                texts::append(&texts::own_file(&texts_of(phone), texts::OUTCOME, &phone.id), &[outcome], seal, None).unwrap();
+                sent.push(r.key);
+            }
+        }
+        sent
+    }
+
+    /// A text written on the desk reaches the phone, which sends it once and
+    /// says so; the desk hears it. Sealed in the folder and at rest on each
+    /// device, remembered beside `memory.json`; read again after `files.json`
+    /// is lost, it is never sent twice.
+    #[test]
+    fn a_text_written_on_the_desk_is_sent_once_by_the_phone_and_its_outcome_comes_back() {
+        use sioul_core::texts::{self, Sealer};
+        let base = scratch("texts");
+        let (folder, notes, ledger) = (base.join("folder"), base.join("notes"), base.join("phone-private"));
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let seal = crate::textseal::TextSeal::new(&key);
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let on = [texts::PART];
+        texts::Ledger::open(&ledger, NOW - MINUTE).unwrap();
+        let request = to_send("0123456789abcdef0123456789abcdef", &phone.id, NOW);
+        texts::append(&texts::own_file(&texts_of(&desk), texts::SEND, &desk.id), std::slice::from_ref(&request), &seal, None).unwrap();
+        desk.exchange_with(&folder, &key, NOW, &notes, &on);
+        let came = phone.exchange_with(&folder, &key, NOW + MINUTE, &notes, &on);
+        assert!(came.written.contains(TEXTS_SEND), "{came:?}");
+        assert_eq!(phone_step(&phone, &ledger, &seal, NOW + MINUTE), [request.key.clone()]);
+        phone.exchange_with(&folder, &key, NOW + 2 * MINUTE, &notes, &on);
+        let came = desk.exchange_with(&folder, &key, NOW + 3 * MINUTE, &notes, &on);
+        assert!(came.written.contains(TEXTS_OUTCOME), "{came:?}");
+        let outcomes = texts::read_outcomes(&texts_of(&desk), &seal);
+        assert_eq!(texts::state_of(&request.key, &outcomes).map(|o| o.state.as_str()), Some("sent"));
+        // Sealed in the folder, and at rest on both devices.
+        for root in [&folder, &desk.roots.data, &phone.roots.data] {
+            let mut files = Vec::new();
+            list_files(root, root, &[], &mut files);
+            for (name, path) in &files {
+                let bytes = std::fs::read(path).unwrap();
+                for plain in [&b"199001234"[..], b"dix minutes", b"sms-412"] {
+                    assert!(!bytes.windows(plain.len()).any(|w| w == plain), "{name}");
+                }
+            }
+        }
+        assert!(seal.open(std::fs::read_to_string(texts::own_file(&texts_of(&phone), texts::SEND, &desk.id)).unwrap().lines().next().unwrap()).is_some());
+        for c in [&desk, &phone] {
+            let small = Memory::load(&c.memory, &c.id);
+            assert!(small.entries.keys().chain(small.files.keys()).all(|k| !calls_store(k)), "memory.json stays small");
+        }
+        // The phone's files.json lost: the request read again, never sent again.
+        std::fs::remove_file(sealed_path(&phone.memory)).unwrap();
+        phone.exchange_with(&folder, &key, NOW + 4 * MINUTE, &notes, &on);
+        assert!(phone_step(&phone, &ledger, &seal, NOW + 4 * MINUTE).is_empty());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The part is off until turned on: nothing of the texts travels from a
+    /// device that never turned it on, and a desk with it off receives nothing.
+    #[test]
+    fn the_texts_part_is_off_until_turned_on() {
+        use sioul_core::texts;
+        assert!(!shared_by_default(texts::PART, &Config::default()));
+        let base = scratch("texts-off");
+        let (folder, notes) = (base.join("folder"), base.join("notes"));
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let seal = crate::textseal::TextSeal::new(&key);
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        assert!(stores(&Config::default(), &desk.roots).iter().all(|s| s.part != texts::PART));
+        let text = texts::Text { id: "sms-1".into(), at: NOW - MINUTE, direction: "in".into(), with: vec!["+33199001234".into()], body: "Bonjour".into(), ..texts::Text::default() };
+        texts::append(&texts::own_file(&texts_of(&phone), texts::LOG, &phone.id), &[text], &seal, None).unwrap();
+        phone.exchange_with(&folder, &key, NOW, &notes, &[texts::PART]);
+        let outcome = desk.exchange(&folder, &key, NOW + MINUTE);
+        assert_eq!(outcome.pending, 0, "{outcome:?}");
+        assert!(!texts_of(&desk).exists());
+        let came = desk.exchange_with(&folder, &key, NOW + 2 * MINUTE, &notes, &[texts::PART]);
+        assert!(came.written.contains(TEXTS_LOG), "{came:?}");
+        assert_eq!(texts::read_logs(&texts_of(&desk), &seal).len(), 1);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The archive only grows: a year on, nothing is trimmed by age; a text
+    /// deleted on the phone gets a line of its own, and every device keeps
+    /// the text, marked.
+    #[test]
+    fn the_texts_archive_only_grows_and_a_deletion_is_marked_everywhere() {
+        use sioul_core::texts;
+        let base = scratch("texts-archive");
+        let (folder, notes) = (base.join("folder"), base.join("notes"));
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let seal = crate::textseal::TextSeal::new(&key);
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let on = [texts::PART];
+        let own = texts::own_file(&texts_of(&phone), texts::LOG, &phone.id);
+        let id = |t: &texts::Text| t.line_id();
+        let text = texts::Text { id: "sms-1".into(), at: NOW - 3 * 365 * 86_400_000, direction: "in".into(), with: vec!["+33199001234".into()], body: "Bonjour".into(), ..texts::Text::default() };
+        texts::append(&own, std::slice::from_ref(&text), &seal, Some(&id)).unwrap();
+        phone.exchange_with(&folder, &key, NOW, &notes, &on);
+        desk.exchange_with(&folder, &key, NOW + MINUTE, &notes, &on);
+        let later = NOW + 400 * 86_400_000;
+        assert_eq!(texts::trim_own(&texts_of(&phone), &phone.id, &seal, later).unwrap() + texts::trim_others(&texts_of(&desk), &desk.id, &seal, later).unwrap(), 0);
+        texts::append(&own, &[texts::Text { deleted: later, body: String::new(), ..text }], &seal, Some(&id)).unwrap();
+        phone.exchange_with(&folder, &key, later, &notes, &on);
+        desk.exchange_with(&folder, &key, later + MINUTE, &notes, &on);
+        let kept = texts::read_logs(&texts_of(&desk), &seal);
+        assert_eq!(kept.iter().map(|t| (t.body.as_str(), t.deleted > 0)).collect::<Vec<_>>(), [("Bonjour", true)]);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The first import of a whole history goes a batch at a time (500 texts
+    /// and their media each step); every exchange in between still carries
+    /// the dose marked and do-not-disturb pressed just before it, and the
+    /// media go as blobs, never in the records.
+    #[test]
+    fn the_first_texts_build_s_records_are_passed_over() {
+        // texts: its stores were in the state folder; left aside, never kept waiting, and written nowhere.
+        let key = |folder: &str| format!("{folder}phone.jsonl#a line");
+        assert!(retired(&key("state/texts/log/")));
+        assert!(!retired(&key(TEXTS_LOG)));
+    }
+
+    /// A computer holding ten thousand texts (the owner's, 8 October 2026:
+    /// 9,833 and a 25 MB `files.json` rewritten at each exchange): an idle
+    /// exchange writes nothing of its memory; what it keeps of them is measured.
+    #[test]
+    fn an_idle_exchange_writes_nothing_with_ten_thousand_texts() {
+        use sioul_core::texts;
+        let base = scratch("texts-idle");
+        let (folder, notes) = (base.join("folder"), base.join("notes"));
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let seal = crate::textseal::TextSeal::new(&key);
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let on = [texts::PART];
+        let own = texts::own_file(&texts_of(&phone), texts::LOG, &phone.id);
+        for batch in 0..20 {
+            let lines: Vec<texts::Text> = (0..texts::BATCH)
+                .map(|i| {
+                    let n = batch * texts::BATCH + i;
+                    texts::Text { id: format!("sms-{n}"), at: NOW - 400 * 86_400_000 + n as i64 * MINUTE, direction: "in".into(), with: vec!["+33199001234".into()], body: format!("Message {n}, about as long as a text usually is, give or take."), ..texts::Text::default() }
+                })
+                .collect();
+            texts::append(&own, &lines, &seal, None).unwrap();
+        }
+        // The desk's own sealed file too (its spam filter's table): its time
+        // of use was set at every exchange, and the 25 MB file written again.
+        desk.write("data/spam/table.bin", "a table of the desk's training");
+        phone.exchange_with(&folder, &key, NOW, &notes, &on);
+        desk.exchange_with(&folder, &key, NOW + MINUTE, &notes, &on);
+        desk.exchange_with(&folder, &key, NOW + 2 * MINUTE, &notes, &on);
+        assert!(!Memory::load_all(&desk.memory, &desk.id).sealed.mine.is_empty(), "the desk sealed its table");
+        let sealed = sealed_path(&desk.memory);
+        let (size, memory_size) = (std::fs::metadata(&sealed).unwrap().len(), std::fs::metadata(&desk.memory).unwrap().len());
+        let stamp = |p: &Path| std::fs::metadata(p).unwrap().modified().unwrap();
+        let before = stamp(&sealed);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        // Half an hour without a change: the sealed files looked for, the history tidied, nothing of it written.
+        for minute in 3..33 {
+            desk.exchange_with(&folder, &key, NOW + minute * MINUTE, &notes, &on);
+        }
+        eprintln!("ten thousand texts: files.json {size} bytes, memory.json {memory_size} bytes; the phone's log {} bytes", std::fs::metadata(&own).unwrap().len());
+        assert_eq!(stamp(&sealed), before, "files.json rewritten by idle exchanges");
+        assert!(std::fs::metadata(&desk.memory).unwrap().len() < 64 << 10, "memory.json stays small");
+        assert!(size < 2 * std::fs::metadata(&own).unwrap().len(), "the texts' lines not kept twice: {size}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_first_import_goes_in_batches_and_never_holds_back_the_doses() {
+        use sioul_core::texts;
+        let base = scratch("texts-import");
+        let (folder, notes) = (base.join("folder"), base.join("notes"));
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let seal = crate::textseal::TextSeal::new(&key);
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let on = [texts::PART];
+        let own = texts::own_file(&texts_of(&phone), texts::LOG, &phone.id);
+        let picture = vec![7u8; 512 * 1024];
+        let source = base.join("picture.bin");
+        std::fs::write(&source, &picture).unwrap();
+        let (hash, size) = crate::blobs::hash_file(&source).unwrap();
+        for batch in 0..6 {
+            let now = NOW + batch * 10 * MINUTE;
+            // A dose taken and do-not-disturb pressed on the phone, then the import's next step.
+            phone.write("state/health-state.toml", &format!("[taken]\n\"dose@{batch}\" = {}\n", now / 1000));
+            phone.write("state/do-not-disturb.toml", &format!("[device.{}]\npressed = {now}\n", phone.id));
+            let lines: Vec<texts::Text> = (0..texts::BATCH)
+                .map(|i| {
+                    let n = batch as usize * texts::BATCH + i;
+                    let mut text = texts::Text { id: format!("sms-{n}"), at: NOW - 400 * 86_400_000 + n as i64 * MINUTE, direction: "in".into(), with: vec!["+33199001234".into()], body: format!("Message {n}"), ..texts::Text::default() };
+                    if i == 0 {
+                        text.parts = vec![texts::Part { seq: 0, ct: "image/png".into(), size, hash: hash.clone(), state: "here".into(), ..texts::Part::default() }];
+                    }
+                    text
+                })
+                .collect();
+            crate::blobs::put(&folder, &key, &source, &hash).unwrap();
+            texts::append(&own, &lines, &seal, None).unwrap();
+            let sent = phone.exchange_with(&folder, &key, now, &notes, &on);
+            assert!(sent.sent <= texts::BATCH + 10, "a batch at a time: {sent:?}");
+            desk.exchange_with(&folder, &key, now + MINUTE, &notes, &on);
+            // On time: the dose and the press of this very step are on the desk.
+            assert!(desk.read("state/health-state.toml").contains(&format!("dose@{batch}")), "batch {batch}");
+            assert!(desk.read("state/do-not-disturb.toml").contains(&now.to_string()), "batch {batch}");
+            assert_eq!(texts::read_logs(&texts_of(&desk), &seal).len(), (batch as usize + 1) * texts::BATCH);
+        }
+        // The media: a blob in the folder, never in the records.
+        let mut files = Vec::new();
+        list_files(&folder, &folder, &[], &mut files);
+        let records: u64 = files.iter().filter(|(name, _)| !name.starts_with("blobs")).filter_map(|(_, p)| std::fs::metadata(p).ok()).map(|m| m.len()).sum();
+        assert!(records < 6 * texts::BATCH as u64 * 2048, "the records hold lines, not media: {records} bytes");
+        let target = base.join("fetched.bin");
+        crate::blobs::get(&folder, &key, &hash, &target).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), picture);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn toml_entries_and_back() {
         let rules = &CONFIG_RULES;
@@ -5196,6 +5923,36 @@ mod tests {
         let money = "ignored = [\"a\", \"b\"]\n";
         let new = toml_write(money, &MONEY_RULES, &[("ignored\u{1f}\u{1e}v = \"a\"\n", None), ("ignored\u{1f}\u{1e}v = \"c\"\n", Some("v = \"c\"\n"))]).unwrap();
         assert_eq!(new, "ignored = [\"b\", \"c\"]\n");
+    }
+
+    /// A medicine's takes and their own amounts, its generic name and its
+    /// strength travel with it, one entry by
+    /// its id (docs/health.md, "Kept as"): written into the file of a device
+    /// whose copy has no amounts (an older Sioul's), they arrive whole, and the
+    /// times every dose falls due at are the same.
+    #[test]
+    fn a_medicines_takes_travel_whole() {
+        let new = "[[medicine]]\nid = \"iron\"\nname = \"Iron\"\ndose = \"08:00 · 1 tablet, 20:00 · 2 tablets\"\ngeneric = \"ferrous sulfate\"\nstrength = \"80 mg\"\nsince = 2026-09-01\n\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\", \"20:00\"]\n\n[medicine.schedule.amounts]\n\"08:00\" = \"1 tablet\"\n\"20:00\" = \"2 tablets\"\n";
+        let entries = toml_entries(new, &HEALTH_RULES).unwrap();
+        assert_eq!(entries.len(), 1, "one entry for the medicine, its takes in it: {entries:?}");
+        let (entry, value) = &entries[0];
+        assert!(entry.starts_with("medicine") && value.contains("2 tablets"), "{entry} {value}");
+        let old = "[[medicine]]\nid = \"iron\"\nname = \"Iron\"\ndose = \"1 tablet\"\n\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\", \"20:00\"]\n";
+        let written = toml_write(old, &HEALTH_RULES, &[(entry.as_str(), Some(value.as_str()))]).unwrap();
+        let health: sioul_core::health::Health = toml::from_str(&written).unwrap();
+        let takes: Vec<(String, String)> = health.medicines[0].takes().into_iter().map(|t| (t.time, t.amount)).collect();
+        assert_eq!(takes, [("08:00".to_string(), "1 tablet".to_string()), ("20:00".to_string(), "2 tablets".to_string())]);
+        // Its generic name, strength and first day too.
+        assert_eq!((health.medicines[0].generic.as_str(), health.medicines[0].strength.as_str(), health.medicines[0].since.map(|d| d.to_string())), ("ferrous sulfate", "80 mg", Some("2026-09-01".to_string())));
+        let before: sioul_core::health::Health = toml::from_str(old).unwrap();
+        let day = |h: &sioul_core::health::Health| {
+            let start: jiff::Zoned = "2026-10-08T00:00[Europe/Paris]".parse().unwrap();
+            let end: jiff::Zoned = "2026-10-09T00:00[Europe/Paris]".parse().unwrap();
+            h.doses(&start, &end).into_iter().map(|d| (d.key, d.dose)).collect::<Vec<_>>()
+        };
+        let (now, then) = (day(&health), day(&before));
+        assert_eq!(now.iter().map(|d| &d.0).collect::<Vec<_>>(), then.iter().map(|d| &d.0).collect::<Vec<_>>(), "the same doses, the same keys");
+        assert_eq!(now.iter().map(|d| d.1.as_str()).collect::<Vec<_>>(), ["1 tablet", "2 tablets"]);
     }
 
     /// Do-not-disturb on every device (docs/do-not-disturb.md): each device's

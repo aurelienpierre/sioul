@@ -11,14 +11,19 @@
 //! comes as data: on one line each where a line is one thing, and a
 //! message's or a note's own text between two lines that carry a mark made
 //! for that answer, which the text's author cannot know, so cannot close.
+//!
+//! Each keeps to what the person opened to agents (`access`): a closed
+//! project's things, and things in no project while those are closed, are
+//! left out of every list, counted, never named; asked for by name, refused.
 
-use super::mask;
 use super::tools::{self, Answer, Args};
+use super::{access, mask};
 use crate::{Session, one_line};
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 use serde_json::{Value, json};
 use sioul_core::cases::CaseStore;
+use sioul_core::consent::Consent;
 use sioul_core::config::{self, AccountKind, Config};
 use sioul_core::links::{self, Kind, Loaded};
 use sioul_core::mailindex::{MailIndex, MailRef};
@@ -70,7 +75,7 @@ fn mark() -> String {
 
 /// Someone else's words, between two lines that carry a mark made for this
 /// answer: whatever they say, they cannot end the frame and speak as Sioul.
-fn framed(what: &str, text: &str) -> Vec<String> {
+pub(super) fn framed(what: &str, text: &str) -> Vec<String> {
     let mut mark = mark();
     while text.contains(&mark) {
         mark = self::mark();
@@ -169,7 +174,12 @@ pub fn porch(s: &Session, args: &Args) -> Result<Answer, String> {
     let senders = porch::Senders::load(&s.config);
     let state = if all { PorchState::default() } else { PorchState::load(&PorchState::default_path()) };
     let now = Zoned::now();
-    let items = porch::gather(&sources, store.as_ref(), &known, &senders, &state, now.timestamp().as_second());
+    let mut items = porch::gather(&sources, store.as_ref(), &known, &senders, &state, now.timestamp().as_second());
+    // Mail of a project closed to agents (or of none, while those are closed): left out, counted.
+    let consent = mail_consent(s);
+    let gathered = items.len();
+    items.retain(|t| consent.allows_mail(t.card.message_id.as_deref(), Some(&t.card)));
+    let closed = gathered - items.len();
     let shown = view::porch(&items, &s.config, store.as_ref(), &s.tr, &now, open);
     let by_key: HashMap<String, &Triaged> = items.iter().filter_map(|t| Some((t.card.path.as_ref()?.display().to_string(), t))).collect();
     let mut lines = Vec::new();
@@ -205,9 +215,19 @@ pub fn porch(s: &Session, args: &Args) -> Result<Answer, String> {
         }
         lanes.push(json!({ "key": lane.key, "title": lane.title, "items": rows, "more": more }));
     }
+    let closed = if shown.open { closed } else { 0 };
+    if let Some(note) = access::left_out(closed) {
+        lines.push(String::new());
+        lines.push(note);
+    }
     let codes: Vec<Value> = shown.right_now.iter().map(|c| json!({ "title": c.title, "validity": c.validity })).collect();
-    let data = json!({ "open": shown.open, "closed": shown.closed, "summary": shown.summary, "status": shown.status, "right_now": codes, "lanes": lanes });
+    let data = json!({ "open": shown.open, "closed": shown.closed, "summary": shown.summary, "status": shown.status, "right_now": codes, "lanes": lanes, "kept_from_agents": closed });
     Ok(Answer { text: self::rows(&lines).trim().to_string(), data })
+}
+
+/// What the person opened to agents, for mail: the projects, their routes and Sioul's ties.
+pub(super) fn mail_consent(s: &Session) -> Consent {
+    access::for_mail(s, mail_index(&s.config)).0
 }
 
 /// A Porch item's subject and preview, masked; nothing of hostile mail, no preview of rude mail.
@@ -253,7 +273,7 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
     let from = since.and_then(|d| d.to_zoned(TimeZone::system()).ok()).map_or(i64::MIN, |z| z.timestamp().as_second());
     let senders = porch::Senders::load(&s.config);
     let words = words(&query);
-    let index = mail_index(&s.config);
+    let (consent, index) = access::for_mail(s, mail_index(&s.config));
     let shield = Shield::of(&s.config);
     let looked = sioul_core::words::Words::of(&s.config);
     // The words are looked for in what the agent is shown, masked: a code or
@@ -272,17 +292,34 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
         let (subject, excerpt) = mask::message(&looked, &m.subject, card.as_ref().map_or("", |c| c.excerpt.as_str()));
         holds(&format!("{subject} {} {}", m.from, m.address), &words) || (in_text && holds(&format!("{subject} {excerpt}"), &words))
     };
-    let mut found: Vec<(&String, &MailRef)> = index
+    // Mail kept from agents is never searched: left out of the scope first
+    // (the dates, the account), by its projects as known, and counted whatever
+    // the words, so that a search cannot learn what it holds.
+    let (scope, kept_out): (Vec<(&String, &MailRef)>, Vec<(&String, &MailRef)>) = index
         .iter()
         .filter(|(_, m)| m.date >= from && folder.as_ref().is_none_or(|f| m.path.starts_with(f)))
         .filter(|(_, m)| senders.who(&m.address) != sioul_core::reach::Who::Blocked)
-        .filter(|(_, m)| shown_holds(m))
-        .collect();
+        .partition(|(id, _)| consent.allows(&links::mail_uri(id)));
+    let closed = kept_out.len();
+    let mut found: Vec<(&String, &MailRef)> = scope.into_iter().filter(|(_, m)| shown_holds(m)).collect();
     found.sort_by_key(|(_, m)| std::cmp::Reverse(m.date));
-    let total = found.len();
+    // Those shown are read whole: a project's route on their text counts too.
+    let mut kept = Vec::new();
+    let mut kept_whole = 0;
+    for (id, mail) in found.iter().copied() {
+        if kept.len() == limit {
+            break;
+        }
+        if consent.allows_mail(Some(id), maildir::read_one(&mail.path).as_ref()) {
+            kept.push((id, mail));
+        } else {
+            kept_whole += 1;
+        }
+    }
+    let total = found.len() - kept_whole;
     let mut lines = Vec::new();
     let mut rows = Vec::new();
-    for (id, mail) in found.into_iter().take(limit) {
+    for (id, mail) in kept {
         let hidden = shield.as_ref().is_some_and(|sh| sh.hides(&mail.path));
         let (sender, address) = if hidden {
             let domain = mail.address.rsplit_once('@').map_or(String::new(), |(_, d)| d.to_string());
@@ -304,7 +341,8 @@ pub fn search_mail(s: &Session, args: &Args) -> Result<Answer, String> {
     } else if total > limit {
         lines.push(format!("… {} more", total - limit));
     }
-    Ok(Answer { text: self::rows(&lines), data: json!({ "messages": rows, "total": total }) })
+    lines.extend(access::left_out(closed));
+    Ok(Answer { text: self::rows(&lines), data: json!({ "messages": rows, "total": total, "kept_from_agents": closed }) })
 }
 
 /// A path with its "." and ".." taken away as they are written, without
@@ -356,6 +394,9 @@ pub(crate) fn find_message(s: &Session, wanted: &str) -> Result<PathBuf, String>
 pub fn read_message(s: &Session, args: &Args) -> Result<Answer, String> {
     let path = find_message(s, &args.needed("message")?)?;
     let (t, store) = judged(s, &path)?;
+    if !mail_consent(s).allows_mail(t.card.message_id.as_deref(), Some(&t.card)) {
+        return Err(access::kept("This message"));
+    }
     Ok(message_answer(s, &path, &t, store.as_ref()))
 }
 
@@ -463,7 +504,9 @@ fn lane_title(s: &Session, lane: &Lane, store: Option<&CaseStore>) -> String {
 
 /// Tasks, the plan and the day, read once, as the command line's `tasks` reads them.
 pub(super) struct Desk {
+    /// Everything read; the tasks and projects kept from agents with nothing of theirs (`access::redact`).
     pub loaded: Loaded,
+    pub consent: Consent,
     filter: Filter,
     offices: Offices,
     pub plan: Plan,
@@ -476,7 +519,10 @@ pub(super) struct Desk {
 
 impl Desk {
     pub fn read(s: &Session) -> Desk {
-        let loaded = Loaded::read(&s.config);
+        let mut loaded = Loaded::read(&s.config);
+        // The plan is the person's, closed projects' tasks in it, but nothing of them is given.
+        let consent = access::of(s, &loaded);
+        access::redact(&mut loaded, &consent);
         let now = Zoned::now();
         let today = Today::load(&Today::default_path(), now.date());
         let sessions = timelog::sessions();
@@ -490,7 +536,17 @@ impl Desk {
         settings.capacity = sioul_core::capacity::gather(&loaded.tasks, &sessions, &settings, &s.config.planning, &own, &now).planning;
         let plan = plan::plan(&loaded.tasks, now.date(), &settings, &spent, &today.aside);
         let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
-        Desk { loaded, filter, offices: situation.offices, plan, settings, today, spent, stopped }
+        Desk { loaded, consent, filter, offices: situation.offices, plan, settings, today, spent, stopped }
+    }
+
+    /// Whether a task reaches the agent.
+    pub fn allows(&self, uid: &str) -> bool {
+        self.consent.allows(&links::task_uri(uid))
+    }
+
+    /// The tasks an agent may name: the others are not found.
+    pub fn open_tasks(&self) -> Vec<Task> {
+        self.loaded.tasks.iter().filter(|t| self.allows(&t.uid)).cloned().collect()
     }
 
     pub fn context<'a>(&'a self, s: &'a Session) -> Context<'a> {
@@ -556,9 +612,15 @@ pub fn list_tasks(s: &Session, args: &Args) -> Result<Answer, String> {
 
 fn tasks_now(s: &Session, desk: &Desk) -> Answer {
     let cx = desk.context(s);
-    let view = taskview::now(&cx, desk.today.weather, &desk.today.aside);
+    let mut view = taskview::now(&cx, desk.today.weather, &desk.today.aside);
     let mut lines: Vec<String> = [&view.weather_note, &view.office_note, &view.tied_note].into_iter().filter(|n| !n.is_empty()).cloned().collect();
+    // A step kept from agents: said so, nothing of it given, nor why it comes now.
+    let kept_now = view.now.as_ref().is_some_and(|card| !desk.allows(&card.uid));
+    if view.then.as_ref().is_some_and(|card| !desk.allows(&card.uid)) {
+        view.then = None;
+    }
     match &view.now {
+        Some(_) if kept_now => lines.push("The next step is one the person keeps from agents (a project not opened to them): nothing of it is given here. Ask the person if it matters.".into()),
         Some(card) => {
             lines.push(s.tr.text("task-now-title", None));
             lines.extend(card_lines(card, 0));
@@ -575,7 +637,14 @@ fn tasks_now(s: &Session, desk: &Desk) -> Answer {
         lines.push(String::new());
         lines.push(line.clone());
     }
-    Answer { text: rows(&lines), data: serde_json::to_value(&view).unwrap_or(Value::Null) }
+    let mut data = serde_json::to_value(&view).unwrap_or(Value::Null);
+    if kept_now {
+        for field in ["now", "then", "why", "picked"] {
+            data[field] = Value::Null;
+        }
+        data["kept_from_agents"] = json!(true);
+    }
+    Answer { text: rows(&lines), data }
 }
 
 /// Today laid out, as the Today page shows it: events at their times, the plan's steps in the gaps.
@@ -585,9 +654,16 @@ fn tasks_today(s: &Session, desk: &Desk) -> Answer {
     let day_start = |day: jiff::civil::Date| day.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
     let midnight = day_start(now.date());
     // Up to tomorrow's midnight: the day of a clock change has 23 or 25 hours.
-    let events = agenda::occurrences(midnight, now.date().tomorrow().map_or(midnight + 86_400, day_start));
+    let mut events = agenda::occurrences(midnight, now.date().tomorrow().map_or(midnight + 86_400, day_start));
+    // Events and steps kept from agents: left out of the day, counted.
+    let before = events.len();
+    events.retain(|e| desk.consent.allows(&links::event_uri(&e.uid)) && (e.task.is_empty() || desk.allows(&e.task)));
+    let mut closed = before - events.len();
     let shown: Vec<Task> = desk.loaded.tasks.iter().filter(|t| desk.filter.quiet.as_ref().is_none_or(|q| q.keeps(t))).cloned().collect();
-    let day = dayview::day(&now, &events, &desk.plan, &shown, &desk.settings);
+    let mut day = dayview::day(&now, &events, &desk.plan, &shown, &desk.settings);
+    let before = day.blocks.len();
+    day.blocks.retain(|b| !matches!(b.kind, "task" | "done") || desk.allows(&b.key));
+    closed += before - day.blocks.len();
     let hour = |t: i64| Timestamp::from_second(t).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
     let mut lines = vec![s.tr.text("agenda-today", None)];
     if !day.all_day.is_empty() {
@@ -603,16 +679,25 @@ fn tasks_today(s: &Session, desk: &Desk) -> Answer {
     if day.more > 0 {
         lines.push(s.tr.text("day-more", Some(&s.tr.counted(day.more))));
     }
+    lines.extend(access::left_out(closed));
     let blocks: Vec<Value> = day
         .blocks
         .iter()
         .map(|b| json!({ "kind": b.kind, "title": b.title, "start": instant(b.start), "end": instant(b.end), "uid": if b.kind == "task" { b.key.as_str() } else { "" }, "location": b.location, "energy": b.energy }))
         .collect();
-    Answer { text: rows(&lines), data: json!({ "all_day": day.all_day, "blocks": blocks, "more": day.more }) }
+    Answer { text: rows(&lines), data: json!({ "all_day": day.all_day, "blocks": blocks, "more": day.more, "kept_from_agents": closed }) }
 }
 
 fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: &str) -> Answer {
-    let view = taskview::list(&desk.context(s), by, done, query);
+    let mut view = taskview::list(&desk.context(s), by, done, query);
+    // Tasks kept from agents, and a group that held only them: left out, counted.
+    let mut closed = 0;
+    for group in &mut view.groups {
+        let before = group.rows.len();
+        group.rows.retain(|card| desk.allows(&card.uid));
+        closed += before - group.rows.len();
+    }
+    view.groups.retain(|g| !g.rows.is_empty());
     let mut lines = Vec::new();
     for group in &view.groups {
         lines.push(String::new());
@@ -624,7 +709,13 @@ fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: &str) -> An
     if lines.is_empty() {
         lines.push(if query.is_empty() { s.tr.text("task-nothing-ready", None) } else { s.say("task-not-found", &[("what", query.to_string())]) });
     }
-    Answer { text: rows(&lines).trim().to_string(), data: serde_json::to_value(&view).unwrap_or(Value::Null) }
+    if let Some(note) = access::left_out(closed) {
+        lines.push(String::new());
+        lines.push(note);
+    }
+    let mut data = serde_json::to_value(&view).unwrap_or(Value::Null);
+    data["kept_from_agents"] = json!(closed);
+    Answer { text: rows(&lines).trim().to_string(), data }
 }
 
 // The agenda and contacts.
@@ -634,7 +725,13 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
     let from = args.date("from")?.unwrap_or_else(|| Zoned::now().date());
     let days = args.number("days", view::AGENDA_DAYS, 1, 92)?;
     let start = from.to_zoned(zone.clone()).map_err(|e| e.to_string())?.timestamp().as_second();
-    let shown = view::agenda(&agenda::occurrences(start, start + days * 86_400 + 3_600), from, days, &s.tr, &zone);
+    let mut events = agenda::occurrences(start, start + days * 86_400 + 3_600);
+    // Events kept from agents (a closed project's, a closed project's step's): left out, counted.
+    let consent = access::of(s, &Loaded::read(&s.config));
+    let before = events.len();
+    events.retain(|e| consent.allows(&links::event_uri(&e.uid)) && (e.task.is_empty() || consent.allows(&links::task_uri(&e.task))));
+    let closed = before - events.len();
+    let shown = view::agenda(&events, from, days, &s.tr, &zone);
     let mut lines = Vec::new();
     let mut out = Vec::new();
     for day in shown.days.iter().filter(|d| !d.events.is_empty()) {
@@ -657,16 +754,26 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
     if lines.is_empty() {
         lines.push(shown.sentence.clone());
     }
-    Ok(Answer { text: rows(&lines), data: json!({ "from": shown.from, "days": out, "sentence": shown.sentence }) })
+    lines.extend(access::left_out(closed));
+    Ok(Answer { text: rows(&lines), data: json!({ "from": shown.from, "days": out, "sentence": shown.sentence, "kept_from_agents": closed }) })
 }
 
 pub fn search_contacts(s: &Session, args: &Args) -> Result<Answer, String> {
     let query = args.text("query")?.unwrap_or_default();
     let limit = args.number("limit", 20, 1, 500)? as usize;
-    let all = contacts::all();
+    let loaded = Loaded::read(&s.config);
+    let consent = access::of(s, &loaded);
+    // A contact kept from agents (a closed project's client, or tied to one;
+    // any while things outside projects are closed): never searched, counted.
+    let (all, kept_out): (Vec<contacts::Contact>, Vec<contacts::Contact>) = loaded.contacts.into_iter().partition(|c| consent.allows(&links::contact_uri(&c.uid)));
+    let closed = kept_out.len();
     let found = contacts::search(&all, &query);
     if found.is_empty() {
-        return Ok(Answer { text: one_line(&view::contacts(&all, &query, "", &s.tr).sentence), data: json!({ "contacts": [] }) });
+        let mut text = one_line(&view::contacts(&all, &query, "", &s.tr).sentence);
+        if let Some(note) = access::left_out(closed) {
+            text = format!("{text}\n{note}");
+        }
+        return Ok(Answer { text, data: json!({ "contacts": [], "kept_from_agents": closed }) });
     }
     let mut lines = Vec::new();
     let mut rows = Vec::new();
@@ -686,7 +793,8 @@ pub fn search_contacts(s: &Session, args: &Args) -> Result<Answer, String> {
     if found.len() > limit {
         lines.push(format!("… {} more", found.len() - limit));
     }
-    Ok(Answer { text: self::rows(&lines), data: json!({ "contacts": rows, "total": found.len() }) })
+    lines.extend(access::left_out(closed));
+    Ok(Answer { text: self::rows(&lines), data: json!({ "contacts": rows, "total": found.len(), "kept_from_agents": closed }) })
 }
 
 // Money.
@@ -700,6 +808,10 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
         Ok(bank) => ledger.with_bank(bank, &sioul_core::words::Words::of(&s.config)),
         Err(_) => ledger,
     };
+    // Budgets kept from agents (a closed project's invoices go there, or it is
+    // tied to one; any not in a project while those are closed), and lines tied to a closed project.
+    let consent = access::of(s, &Loaded::read(&s.config));
+    let (ledger, closed, kept_labels) = open_ledger(ledger, &consent);
     let today = Zoned::now().date();
     let shown = view::budgets(&ledger, &[], &s.tr, today);
     let mut lines = vec![shown.title.clone()];
@@ -718,13 +830,21 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
     }
     let mut accounts = Vec::new();
     let mut findings = Vec::new();
-    if let Ok(bank) = &bank {
+    // The bank accounts are in no project: as things outside projects are.
+    if let Ok(bank) = &bank
+        && consent.outside
+    {
         for account in bank.accounts.iter().filter(|a| a.balance.is_some()) {
             let name = mask::text(if account.title.is_empty() { &account.id } else { &account.title });
             let balance = account.balance.map(|(date, amount)| s.say("bank-balance", &[("amount", s.tr.money(amount)), ("date", s.tr.day_in(date, today))])).unwrap_or_default();
             accounts.push(json!({ "name": name, "balance": balance }));
         }
-        findings = bank::watch(bank, &ledger, today, &sioul_core::words::Words::of(&s.config).bank.filler).findings.iter().map(|f| finding_text(s, f, today)).collect();
+        findings = bank::watch(bank, &ledger, today, &sioul_core::words::Words::of(&s.config).bank.filler)
+            .findings
+            .iter()
+            .filter(|f| !kept_labels.contains(finding_label(f)))
+            .map(|f| finding_text(s, f, today))
+            .collect();
     }
     if !accounts.is_empty() || !findings.is_empty() {
         lines.push(String::new());
@@ -732,8 +852,47 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
     }
     lines.extend(accounts.iter().map(|a| format!("  {}: {}", a["name"].as_str().unwrap_or_default(), a["balance"].as_str().unwrap_or_default())));
     lines.extend(findings.iter().map(|f| format!("  {f}")));
-    let data = json!({ "title": shown.title, "budgets": shown.budgets, "reserves": shown.reserves, "bank_accounts": accounts, "watch": findings });
+    lines.extend(access::left_out(closed));
+    let data = json!({ "title": shown.title, "budgets": shown.budgets, "reserves": shown.reserves, "bank_accounts": accounts, "watch": findings, "kept_from_agents": closed });
     Ok(Answer { text: rows(&lines), data })
+}
+
+/// The budgets' file as an agent may see it: the budgets, their lines and
+/// their recurring payments kept from agents taken out, a line tied to a
+/// closed project too; reserves only while things outside projects are open.
+/// Returns it, how many budgets and lines were left out, and the labels of
+/// those lines (what the money watch would name).
+fn open_ledger(mut ledger: budget::Ledger, consent: &Consent) -> (budget::Ledger, usize, std::collections::BTreeSet<String>) {
+    let cases_in = |links: &[String]| links.iter().filter(|l| links::kind_of(l) == Kind::Case).map(|l| links::id_of(l)).collect::<Vec<_>>();
+    let budget_open = |id: &str, ties: &[String]| {
+        let mut projects: Vec<String> = consent.budget_projects(id).into_iter().collect();
+        projects.extend(cases_in(ties));
+        consent.allows_projects(projects.iter().map(String::as_str))
+    };
+    let open: std::collections::BTreeSet<String> = ledger.budgets.iter().filter(|b| budget_open(&b.id, &b.links)).map(|b| b.id.clone()).collect();
+    let before = ledger.budgets.len() + ledger.lines.len();
+    ledger.budgets.retain(|b| open.contains(&b.id));
+    let mut kept_labels = std::collections::BTreeSet::new();
+    ledger.lines.retain(|line| {
+        let keeps = open.contains(&line.budget) && consent.allows_projects(cases_in(&line.links).iter().map(String::as_str).chain(consent.budget_projects(&line.budget).iter().map(String::as_str)));
+        if !keeps {
+            kept_labels.insert(line.label.clone());
+        }
+        keeps
+    });
+    let closed = before - ledger.budgets.len() - ledger.lines.len();
+    ledger.presets.retain(|p| open.contains(&p.budget) && consent.allows_projects(cases_in(&p.links).iter().map(String::as_str)));
+    if !consent.outside {
+        ledger.reserves.clear();
+    }
+    (ledger, closed, kept_labels)
+}
+
+/// The label a finding of the money watch names.
+fn finding_label(finding: &bank::Finding) -> &String {
+    match finding {
+        bank::Finding::Missed { label, .. } | bank::Finding::Changed { label, .. } | bank::Finding::Short { label, .. } => label,
+    }
 }
 
 /// What the money watch noticed, in a sentence, as the Budgets page says it.
@@ -770,7 +929,11 @@ pub fn search_notes(s: &Session, args: &Args) -> Result<Answer, String> {
     let in_file = |note: &Note| {
         note.kind == NoteKind::Text && vault.file(&note.path).and_then(|f| std::fs::read_to_string(f).ok()).is_some_and(|text| holds(&text, &words) && holds(&mask::text(&head(&text).0), &words))
     };
-    let mut found: Vec<&Note> = vault.notes.iter().filter(|n| holds(&format!("{} {} {}", n.title, n.path, n.tags.join(" ")), &words) || (in_text && in_file(n))).collect();
+    // Notes kept from agents (a closed project's files or ties; any outside a project while those are closed): left out, counted.
+    let consent = access::of(s, &Loaded::read(&s.config));
+    let (open, closed): (Vec<&Note>, Vec<&Note>) = vault.notes.iter().partition(|n| consent.allows_note(&n.path));
+    let closed = closed.len();
+    let mut found: Vec<&Note> = open.into_iter().filter(|n| holds(&format!("{} {} {}", n.title, n.path, n.tags.join(" ")), &words) || (in_text && in_file(n))).collect();
     found.sort_by_key(|n| std::cmp::Reverse(n.modified));
     let mut lines = Vec::new();
     let mut rows = Vec::new();
@@ -784,7 +947,9 @@ pub fn search_notes(s: &Session, args: &Args) -> Result<Answer, String> {
     } else if found.len() > limit {
         lines.push(format!("… {} more", found.len() - limit));
     }
-    Ok(Answer { text: self::rows(&lines), data: json!({ "notes": rows, "total": found.len() }) })
+    // How many notes are kept, whatever the words: their words are not looked in.
+    lines.extend(access::left_out(closed));
+    Ok(Answer { text: self::rows(&lines), data: json!({ "notes": rows, "total": found.len(), "kept_from_agents": closed }) })
 }
 
 pub fn read_note(s: &Session, args: &Args) -> Result<Answer, String> {
@@ -793,8 +958,14 @@ pub fn read_note(s: &Session, args: &Args) -> Result<Answer, String> {
     let loaded = Loaded::read(&s.config);
     let vault = loaded.vault.as_ref().ok_or_else(|| s.tr.text("error-no-store", None))?;
     let note = vault.note(&path).ok_or_else(|| s.say("note-not-found", &[("path", one_line(&path))]))?;
+    let consent = access::of(s, &loaded);
+    if !consent.allows_note(&note.path) {
+        return Err(access::kept("This note"));
+    }
     let shield = Shield::of(&s.config);
-    let related = taskview::related_views(&s.tr, &loaded.world().related(&note.uri()));
+    let world = loaded.world();
+    let (related, closed) = open_related(&consent, &world, world.related(&note.uri()));
+    let related = taskview::related_views(&s.tr, &related);
     let text = match note.kind {
         NoteKind::Text => vault.file(&note.path).and_then(|f| std::fs::read_to_string(f).ok()).map(|t| {
             let (head, total) = head(&t);
@@ -816,7 +987,8 @@ pub fn read_note(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     lines.extend(related.iter().map(|r| format!("{}: {}  <{}>", one_line(r["how"].as_str().unwrap_or_default()), one_line(r["title"].as_str().unwrap_or_default()), r["uri"].as_str().unwrap_or_default())));
     lines.extend(open.iter().map(|c| format!("○ {} (l. {})", one_line(c["text"].as_str().unwrap_or_default()), c["line"])));
-    let data = json!({ "uri": note.uri(), "path": note.path, "title": note.title, "kind": note.kind, "tags": note.tags, "text": text, "related": related, "open_checkboxes": open });
+    lines.extend(access::left_out(closed));
+    let data = json!({ "uri": note.uri(), "path": note.path, "title": note.title, "kind": note.kind, "tags": note.tags, "text": text, "related": related, "open_checkboxes": open, "kept_from_agents": closed });
     Ok(Answer { text: lines.join("\n"), data })
 }
 
@@ -827,8 +999,13 @@ pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
     let id = args.text("id")?;
     let loaded = Loaded::read(&s.config);
     let entries = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.cases, &TimeZone::system());
+    let consent = access::of(s, &loaded);
     let Some(id) = id else {
-        let rows = project::rows(&loaded, &entries, &loaded.cases);
+        // Only the projects open to agents; the others counted, never named.
+        let mut rows = project::rows(&loaded, &entries, &loaded.cases);
+        let before = rows.len();
+        rows.retain(|r| consent.is_open(&r.id));
+        let closed = before - rows.len();
         let mut lines: Vec<String> = rows
             .iter()
             .map(|r| {
@@ -840,12 +1017,24 @@ pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
             })
             .collect();
         if lines.is_empty() {
-            lines.push(s.tr.text("project-none", None));
+            lines.push(if closed > 0 { "No project is open to agents: the person opens one on its page in Sioul, or in Settings ▸ AI agents.".to_string() } else { s.tr.text("project-none", None) });
         }
-        return Ok(Answer { text: self::rows(&lines), data: json!({ "projects": rows }) });
+        if closed > 0 && !rows.is_empty() {
+            lines.push(format!("({closed} more {} closed to agents: left out on purpose, not named.)", if closed == 1 { "project is" } else { "projects are" }));
+        }
+        return Ok(Answer { text: self::rows(&lines), data: json!({ "projects": rows, "closed_to_agents": closed }) });
     };
     let case = loaded.cases.iter().find(|c| c.id == id).ok_or_else(|| s.tr.text("project-gone", None))?;
+    if !consent.is_open(&case.id) {
+        return Err(access::closed_project(&case.id));
+    }
     let mut page = project::view(&loaded, case, &entries, &invoice::all_in(&invoice::folder()), s.config.invoice.rate, Timestamp::now().as_second(), &s.tr);
+    // On its line of time, what is also in a closed project (a task in two, a
+    // conversation in two): left out, counted.
+    let world = loaded.world();
+    let before = page.moments.len();
+    page.moments.retain(|m| m.uri.is_empty() || access::allows(&consent, &world, &m.uri));
+    let closed = before - page.moments.len();
     // Its mail as everywhere else: subjects masked, hostile mail unnamed; in the lines and in the data.
     let shield = Shield::of(&s.config);
     for moment in page.moments.iter_mut().filter(|m| m.kind == "mail") {
@@ -871,7 +1060,10 @@ pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
             lines.push(format!("  {} · {}{detail}  <{}>", m.date, m.title, m.uri));
         }
     }
-    Ok(Answer { text: self::rows(&lines), data: serde_json::to_value(&page).unwrap_or(Value::Null) })
+    lines.extend(access::left_out(closed));
+    let mut data = serde_json::to_value(&page).unwrap_or(Value::Null);
+    data["kept_from_agents"] = json!(closed);
+    Ok(Answer { text: self::rows(&lines), data })
 }
 
 /// "No task open", "One task open", "3 tasks open".
@@ -892,13 +1084,26 @@ fn related_rows(s: &Session, shield: Option<&Shield>, related: &[taskview::Relat
         .collect()
 }
 
+/// Things tied to another, those kept from agents taken out; and how many.
+fn open_related(consent: &Consent, world: &links::World, related: Vec<links::Related>) -> (Vec<links::Related>, usize) {
+    let before = related.len();
+    let open: Vec<links::Related> = related.into_iter().filter(|r| access::allows(consent, world, &r.uri)).collect();
+    let closed = before - open.len();
+    (open, closed)
+}
+
 pub fn links(s: &Session, args: &Args) -> Result<Answer, String> {
     let uri = args.needed("uri")?;
     let loaded = Loaded::read(&s.config);
     let world = loaded.world();
+    let consent = access::of(s, &loaded);
     let shield = Shield::of(&s.config);
     let me = world.describe(&uri);
-    let related = related_rows(s, shield.as_ref(), &taskview::related_views(&s.tr, &world.related(&uri)));
+    if me.found && !access::allows(&consent, &world, &me.uri) {
+        return Err(access::kept("This thing"));
+    }
+    let (related, closed) = open_related(&consent, &world, world.related(&uri));
+    let related = related_rows(s, shield.as_ref(), &taskview::related_views(&s.tr, &related));
     let (title, detail) = if me.kind == Kind::Mail { mail_shown(s, shield.as_ref(), Path::new(&me.key), &me.title, &me.detail) } else { (me.title.clone(), me.detail.clone()) };
     let mut lines = vec![format!("{title}  <{}>", me.uri)];
     if !me.found {
@@ -908,7 +1113,8 @@ pub fn links(s: &Session, args: &Args) -> Result<Answer, String> {
         let when = r["when"].as_str().filter(|w| !w.is_empty()).map_or(String::new(), |w| format!(" · {w}"));
         lines.push(format!("  {}: {}{when}  <{}>", r["how"].as_str().unwrap_or_default(), r["title"].as_str().unwrap_or_default(), r["uri"].as_str().unwrap_or_default()));
     }
-    let data = json!({ "uri": me.uri, "kind": me.kind, "title": title, "detail": detail, "found": me.found, "related": related });
+    lines.extend(access::left_out(closed));
+    let data = json!({ "uri": me.uri, "kind": me.kind, "title": title, "detail": detail, "found": me.found, "related": related, "kept_from_agents": closed });
     Ok(Answer { text: rows(&lines), data })
 }
 
@@ -930,7 +1136,12 @@ pub fn find(s: &Session, args: &Args) -> Result<Answer, String> {
     let limit = args.number("limit", 20, 1, 100)? as usize;
     let loaded = Loaded::read(&s.config);
     let shield = Shield::of(&s.config);
-    let found = taskview::related_views(&s.tr, &loaded.world().search(&query, kind, "", limit));
+    // What is kept from agents is never found: taken out before the limit, never counted (a count would tell what their titles hold).
+    let consent = access::of(s, &loaded);
+    let world = loaded.world();
+    let open: Vec<links::Related> =
+        world.search(&query, kind, "", limit * 5 + 50).into_iter().filter(|r| consent.allows(&r.uri)).filter(|r| access::allows(&consent, &world, &r.uri)).take(limit).collect();
+    let found = taskview::related_views(&s.tr, &open);
     // A message is found by the words of its subject as the agent sees it: a
     // code is not found again by its digits, nor hostile mail by its words.
     let wanted = words(&query);
@@ -946,6 +1157,9 @@ pub fn find(s: &Session, args: &Args) -> Result<Answer, String> {
         .collect();
     if lines.is_empty() {
         lines.push(s.say("mail-not-found", &[("query", query.clone())]));
+    }
+    if consent.closed_projects() > 0 || !consent.outside {
+        lines.push("(What the person keeps from agents is not searched here.)".into());
     }
     Ok(Answer { text: rows(&lines), data: json!({ "found": found }) })
 }

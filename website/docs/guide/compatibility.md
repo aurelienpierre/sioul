@@ -1,5 +1,5 @@
 ---
-description: What Sioul works with, feature by feature - mail and calendar servers, Google, the apps you already use on the same accounts, Obsidian and Nextcloud Notes, sync apps, websites, Bitwarden, OpenPGP, watches, antivirus, AI agents and the systems it runs on; what was tested, what is expected, and the known limits.
+description: What Sioul works with, feature by feature - mail and calendar servers, Google, the apps you already use on the same accounts, Obsidian and Nextcloud Notes, sync apps, websites, Bitwarden, OpenPGP, antivirus, AI agents and the systems it runs on; what was tested, what is expected, and the known limits.
 ---
 
 # Works with
@@ -25,7 +25,6 @@ Nothing here goes beyond what is built. The standards behind each line, and wher
 | [Sharing between your devices](#sharing-between-your-devices) | Nextcloud first ([where to get one](#where-to-get-a-nextcloud)); any app that keeps a folder in step: Nextcloud, Murena's eDrive, Syncthing, Dropbox, Google Drive, OneDrive… | **Tested** with a simulator of how sync apps behave, and with eDrive on a phone; **expected** with the others |
 | [Sites](#sites) | websites that work in Chrome or Chromium: secure mailboxes, chats, calls; security keys | **Expected**; seen working with Proton Mail. **Limits**: on a phone, sites open in your browser |
 | [Logins and keys](#logins-and-keys) | Bitwarden (its cloud, your own server, Vaultwarden); OpenPGP with GnuPG and other mail programs | GnuPG **tested** both ways; Bitwarden **tested** with the owner's own vault, in daily use (6 October 2026) |
-| [Your watch](#your-watch) | a Garmin watch's own files: from the watch, from Gadgetbridge, or from Garmin's export | **Tested** on files made by hand, not on a real watch |
 | [Antivirus and scanned letters](#antivirus-and-scanned-letters) | ClamAV, Microsoft Defender, Tesseract and Poppler | **Tested** on Linux; Defender **expected** |
 | [AI agents](#ai-agents) | Claude Code, Claude Desktop, other MCP clients that start a program | **Tested** on its own, not yet inside those clients |
 | [GitHub](#github) | your issues and pull requests, read with a token | **Tested** against a stand-in of GitHub |
@@ -161,14 +160,7 @@ Sites run in Qt WebEngine, the engine of Chromium, in a profile of their own, ap
 |---|---|---|---|---|
 | Logins from Bitwarden | your Bitwarden account: bitwarden.com, bitwarden.eu, your own server or Vaultwarden, over HTTPS | the owner's own vault on Bitwarden's cloud, in daily use (6 October 2026); its decryption checked on Bitwarden's own test values | your own server or Vaultwarden | read only: nothing is written to your vault. Duo as a second step: not supported. On a phone: no security key |
 | Your accounts' passwords | your system's keyring | Linux, in daily use | Windows' Credential Manager, macOS' Keychain, Android's KeyStore | passwords never travel between your devices |
-| Encrypted mail (OpenPGP) | your key, made in Sioul or imported from GnuPG | GnuPG 2.4, both ways: signed, encrypted, tampered | Thunderbird, Proton, any program that reads PGP/MIME; the Web Key Directory of their domain, keys.openpgp.org | Sioul keeps its own keys and never reads or writes GnuPG's. Keys on a security key (an OpenPGP card: YubiKey, Nitrokey): on computers, through the system's smart card service (pcscd on Linux); not yet tried with a real key; not on phones yet. Your secret keys stay on their device |
-
-## Your watch
-
-| Feature | What it needs | Tested with | Expected with | Limits |
-|---|---|---|---|---|
-| A Garmin watch | its own files (FIT): from its `GARMIN` folder when your desktop shows it, from Gadgetbridge's exports, or from Garmin's export | files made by hand | Garmin watches; Gadgetbridge with a Garmin watch | never through a Garmin account. Recent watches on KDE need kio-fuse; without it, copy the watch's folders by hand ([Health](health.md#your-watch)) |
-| Other watches | — | — | — | **not supported**: only Garmin's files are read; not Gadgetbridge's own database, Apple Health, Health Connect or Fitbit |
+| Encrypted mail (OpenPGP) | your key, made in Sioul or imported from GnuPG | GnuPG 2.4, both ways: signed, encrypted, tampered; a YubiKey 5 holding the key (8 October 2026): renewed, signed, encrypted, opened | Thunderbird, Proton, any program that reads PGP/MIME; the Web Key Directory of their domain, keys.openpgp.org | Sioul keeps its own keys and never reads or writes GnuPG's. Keys on a security key (an OpenPGP card: YubiKey, Nitrokey): on computers, through the system's smart card service (pcscd on Linux); not yet tried with a real key; not on phones yet. Your secret keys stay on their device |
 
 ## Antivirus and scanned letters
 
@@ -222,4 +214,4 @@ Worth trying, and welcome in [GitHub issues](https://github.com/aurelienpierre/s
 - A site that keeps its login inside its page, such as Discord, staying logged in after Sioul quits.
 - Bitwarden on your own server or Vaultwarden.
 - Windows and macOS, run by a person.
-- Scanned letters in the Flatpak; Proton Mail Bridge; a real Garmin watch; Claude Code and Claude Desktop.
+- Scanned letters in the Flatpak; Proton Mail Bridge; Claude Code and Claude Desktop.

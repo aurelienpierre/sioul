@@ -414,6 +414,19 @@ public final class AppNotes extends NotificationListenerService
         });
     }
 
+    /**
+     * The phone's do-not-disturb changed, whatever changed it: Android tells a
+     * bound listener of every change (NotificationManagerService,
+     * notifyInterruptionFilterChanged), a word surer than the broadcast to
+     * the packages with Do Not Disturb access. Decided in Sioul's own process,
+     * where its modes are kept (DndReceiver.HEARD), as the broadcast is.
+     */
+    @Override
+    public void onInterruptionFilterChanged(int interruptionFilter)
+    {
+        DndReceiver.forward(getApplicationContext());
+    }
+
     @Override
     public void onListenerDisconnected()
     {
@@ -452,6 +465,9 @@ public final class AppNotes extends NotificationListenerService
             long hold = new JSONObject(answer).optLong("hold", 0);
             if (hold > 0)
                 snooze(sbn.getKey(), hold);
+            // A line written for your computers (crates/sioul-app/src/phonemsgs.rs): shared at a step soon.
+            if (new JSONObject(answer).optBoolean("shared", false))
+                StepService.soon(getApplicationContext());
         } catch (Throwable e) {
             // Sioul's library that does not load, Rust that fails: the notification stays as it came.
             Log.e(TAG, "Notes: a notification was not decided; it comes as sent.", e);
@@ -596,6 +612,9 @@ public final class AppNotes extends NotificationListenerService
             out.put("user", new JSONObject().put("name", me.getName() == null ? "" : me.getName().toString()).put("key", me.getKey() == null ? "" : me.getKey()));
         }
         out.put("people", people(extras, contacts));
+        // For your computers, when its app sends to them (crates/sioul-core/src/phonemsgs.rs, `Extra`):
+        // whether its app keeps it secret, when it was sent and posted, whether it shows a picture (never the picture).
+        PhoneMessages.notice(out, n.visibility, n.when, sbn.getPostTime(), extras.containsKey(Notification.EXTRA_PICTURE) || extras.containsKey("android.pictureIcon"));
         return out;
     }
 
@@ -632,6 +651,8 @@ public final class AppNotes extends NotificationListenerService
             Notification.MessagingStyle.Message message = messages.get(i);
             JSONObject one = new JSONObject();
             one.put("text", message.getText() == null ? "" : message.getText().toString());
+            // When it was sent, and whether it is a picture (its address stays here): for your computers.
+            PhoneMessages.message(one, message.getTimestamp(), message.getDataMimeType());
             Person sender = message.getSenderPerson();
             if (sender != null)
                 one.put("sender", person(sender.getName(), sender.getKey(), sender.getUri(), sender.isBot(), contacts && i == last));

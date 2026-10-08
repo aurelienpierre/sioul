@@ -126,11 +126,27 @@ const PROGRAMS: &[&str] = &[
     "desktop", "sh", "run", "appimage", "deb", "rpm", "flatpakref", "flatpakrepo", "snap",
 ];
 
+/// Android's installers, which a phone would offer to install rather than
+/// show: an app, and the bundles of split apps other stores pass around.
+const PHONE_PROGRAMS: &[&str] = &["apk", "apks", "apkm", "xapk"];
+
 /// Whether a file of this name (or path, or address) is one the desktop would start.
 pub fn is_program(name: &str) -> bool {
+    extension_in(name, PROGRAMS)
+}
+
+/// Whether a file of this name is one of Android's installers: on a phone,
+/// kept from opening as programs are (`is_program`).
+pub fn is_phone_program(name: &str) -> bool {
+    extension_in(name, PHONE_PROGRAMS)
+}
+
+/// Whether a name's extension, in any case, is one of `list`; the dots,
+/// spaces and slashes a name may end with left aside.
+fn extension_in(name: &str, list: &[&str]) -> bool {
     let name = name.trim_end_matches(['.', ' ', '/', '\\']).to_ascii_lowercase();
     let last = name.rsplit(['/', '\\']).next().unwrap_or(&name);
-    last.rsplit_once('.').is_some_and(|(_, extension)| PROGRAMS.contains(&extension))
+    last.rsplit_once('.').is_some_and(|(_, extension)| list.contains(&extension))
 }
 
 /// The folder a file's address is in: "file:///home/a/" for "file:///home/a/run.sh".
@@ -986,5 +1002,8 @@ mod tests {
         let program = world.describe("file:///home/a/Downloads/update%20now.desktop");
         assert_eq!((program.title.as_str(), program.key.as_str(), program.program), ("update now.desktop", "file:///home/a/Downloads/", true));
         assert!(is_program("C:\\Users\\a\\setup.EXE") && is_program("/Applications/Tool.app/") && !is_program("/home/a/scan.pdf"));
+        // Android's installers: a phone's list, apart; a computer's is as it was.
+        assert!(is_phone_program("/sdcard/Download/App.APK") && is_phone_program("bundle.apks ") && is_phone_program("game.xapk") && is_phone_program("split.apkm"));
+        assert!(!is_phone_program("apk.pdf") && !is_phone_program("setup.exe") && !is_program("app.apk"));
     }
 }

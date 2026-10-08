@@ -221,13 +221,13 @@ It is made by one person, in the open: no support is promised. Questions and rep
 
 ## For technical readers
 
-- **Security by default, with nothing to set up**: no server of ours, no telemetry, no update check; encrypted connections only (TLS through rustls, with no clear-text option); Sioul's folders closed to the computer's other accounts ([Privacy and security](guide/privacy-security.md)).
+- **Security by default, with nothing to set up**: no server of ours, no telemetry, no update check; encrypted connections only (TLS through rustls, with no clear-text option); Sioul's folders closed to the computer's other accounts ([Privacy and security](guide/privacy-security.md)). Nothing goes to an outside AI service unless you turn it on: the AI shield of one public address, or an agent you connect yourself, each said plainly where you turn it on ([AI agents](guide/ai-agent.md)).
 - **Every message checked on arrival**: SPF, DKIM, DMARC, ARC and reverse DNS, by Sioul itself. Forged mail is set aside with the reason, and a sender that nothing authenticates counts as a stranger, whatever address it shows. Names borrowed from brands and public services are caught, even when written with look-alike letters ([How a sender is checked](guide/mail.md#how-a-sender-is-checked)).
 - **A spam filter of your own**: a fastText classifier trained on your computer from your own mail (the headers and the start of each text, never attachments), first when you ask, then again by itself once a week while that computer is plugged in and idle; only its compact table travels to your phone, sealed. It judges only strangers' mail, and moves nothing unless you choose to ([Your own spam filter](guide/settings.md#your-own-spam-filter)).
 - **Attachments scanned before they open**, by your system's antivirus: ClamAV on Linux and macOS, Microsoft Defender (through AMSI) on Windows. Programs never open from a mail, and on Windows and macOS the files you open or save carry the system's mark that they came from the Internet.
 - **HTML mail made safe**: nothing remote loads, ever, and nothing runs; links show their address before they open.
 - **Hard authentication**, on computers:
-    - your OpenPGP key on a security key (an OpenPGP card: YubiKey, Nitrokey), its PIN held in memory only and never logged;
+    - your OpenPGP key on a security key (any OpenPGP card: a YubiKey, a Nitrokey…): the card itself signs and decrypts, so your private key never enters the computer; its PIN held in memory only and never logged;
     - FIDO2 and WebAuthn security keys, and the passkeys kept on them, in the sites you keep, with the PIN asked in Sioul's own dialog;
     - Bitwarden, read by Sioul's own client and never written, unlocked with a security key as the second step, or alone as a passkey.
 - **OpenPGP**: Sequoia, signing and encrypting as you send, with Autocrypt (keys taken from verified mail only) and the Web Key Directory.

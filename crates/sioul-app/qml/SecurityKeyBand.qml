@@ -145,11 +145,12 @@ Rectangle {
                 implicitWidth: 18
                 implicitHeight: 18
             }
-            Label {
+            // Its commands, if any, to copy (no smart card service, a locked key).
+            CommandText {
                 Layout.fillWidth: true
+                sioul: band.sioul
+                theme: band.theme
                 text: band.said.line || ""
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
                 color: band.said.warm ? band.theme.warm : band.theme.text
             }
         }

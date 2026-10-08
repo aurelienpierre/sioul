@@ -63,8 +63,17 @@ public final class HeardCheck
         expect("settling", settling, DndHeard.LATER + 2_300);
         // On again within the settle after Sioul turned it off: on before, on after; no press, no loop.
         expect("on again within the settle", DndHeard.decide(true, kept("sioul_on", false, "seen_on", true), filter, 0, null, DndHeard.LIVE_UNKNOWN, priority, now), "");
-        // First sight after a restart: found, not heard.
+        // First sight, nothing ever noted: found, not heard.
         expect("first sight", DndHeard.decide(true, kept("sioul_on", false), filter, 0, null, DndHeard.LIVE_UNKNOWN, priority, now), "");
+        // After a restart or an update the state found is noted (PauseMode.noteSeen): the first change after it is heard
+        // (0.0.3 forgot it instead, and lost that change: 8 October 2026, on a phone).
+        Map<String, Object> restarted = kept("sioul_on", false);
+        restarted.put("seen_on", DndHeard.noted(all));
+        expect("first change after an update", DndHeard.decide(true, restarted, filter, 0, null, DndHeard.LIVE_UNKNOWN, priority, now), "on");
+        Map<String, Object> restartedOn = kept("on.dnd", true, "sioul_on", true);
+        restartedOn.put("seen_on", DndHeard.noted(priority));
+        expect("first off after an update", DndHeard.decide(true, restartedOn, filter, 0, null, DndHeard.LIVE_UNKNOWN, all, now), "off");
+        expect("nothing noted when Android does not say", DndHeard.noted(unknown), null);
         // Stricter (alarms only): still on, no change of on and off.
         expect("stricter", DndHeard.decide(true, kept("sioul_on", false, "seen_on", true), filter, 0, null, DndHeard.LIVE_UNKNOWN, alarms, now), "");
         // Without the access, or a filter Android does not say: nothing.

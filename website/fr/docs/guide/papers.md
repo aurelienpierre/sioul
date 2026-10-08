@@ -12,7 +12,7 @@ La page Papiers garde les documents qu’on vous demande encore et encore (une c
 
 - Vos papiers et vos lettres restent dans votre dossier de notes, sur vos appareils. Il n’y a pas de serveur de Sioul.
 - Les lettres sont lues sur votre propre ordinateur, par des programmes de votre système : aucun scan n’est envoyé nulle part pour être lu.
-- Une pièce jointe ne devient un papier qu’après la vérification de votre antivirus, et un programme ne le devient jamais.
+- Une pièce jointe ne devient un papier qu’après la vérification de votre antivirus (un téléphone n’en a pas que Sioul puisse appeler : là, elle est gardée sans vérification, et Sioul le dit), et un programme ne le devient jamais.
 - Entre vos appareils, les papiers voyagent par la synchronisation de votre dossier, ou par le partage de Sioul une fois **Papiers** activé : chaque fichier scellé à part, pour que le dossier et son serveur n’en voient ni les noms ni le contenu ([Le partage](sharing.md)).
 - Les tâches faites à partir d’une lettre ou d’un renouvellement vont dans votre liste de tâches : si cette liste est sur votre serveur d’agenda, leurs titres y sont aussi. Choisissez une liste gardée sur cet appareil si vous préférez que non.
 - Un agent d’IA, seulement si vous en connectez un, peut lire le texte des lettres avec les codes et les numéros de compte masqués ; il ne voit les fichiers de vos papiers que par leurs noms, jamais ce qu’ils contiennent.
@@ -207,7 +207,7 @@ D’autres en font plus par endroits : les cinq cherchent dans le texte de cha
 
 **Scellés entre vos appareils.** Avec **Papiers** activé dans le partage de Sioul, `sioul-papers.toml` voyage scellé comme tout enregistrement, et chaque fichier du dossier `papers` compressé et scellé à part, en morceaux de 1 Mio, chacun scellé avec XChaCha20-Poly1305 avec le nom du fichier, son rang et une marque de fin comme données associées, pour qu’on ne puisse ni échanger, ni couper, ni ajouter de morceaux. Leurs noms dans le dossier sont un HMAC-SHA-256 de l’empreinte du contenu, sous une sous-clé tirée de la clé du partage par HKDF-SHA-256 : le dossier ne voit ni le nom des fichiers ni leur contenu. Les fichiers de plus de 64 Mio restent sur l’appareil qui les a ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)). Les lettres voyagent avec les notes.
 
-**L’antivirus.** **Garder dans les papiers** passe d’abord par l’antivirus de votre système : ClamAV sous Linux et macOS (`clamdscan`, sinon `clamscan`), Microsoft Defender par AMSI sous Windows ([Les pièces jointes et l’antivirus](privacy-security.md#attachments-and-the-antivirus)). Sans antivirus, Sioul vous demande d’abord. Un programme (`.exe`, `.js`, `.lnk`, `.desktop`…) n’est jamais gardé comme papier, et le courrier mis de côté n’a jamais ses pièces jointes ouvertes.
+**L’antivirus.** **Garder dans les papiers** passe d’abord par l’antivirus de votre système : ClamAV sous Linux et macOS (`clamdscan`, sinon `clamscan`), Microsoft Defender par AMSI sous Windows ([Les pièces jointes et l’antivirus](privacy-security.md#attachments-and-the-antivirus)). Sans antivirus, Sioul vous demande d’abord ; un téléphone n’en a pas que Sioul puisse appeler, et là le fichier est gardé sans vérification. Un programme (`.exe`, `.js`, `.lnk`, `.desktop`…) n’est jamais gardé comme papier, et le courrier mis de côté n’a jamais ses pièces jointes ouvertes.
 
 **Un agent d’IA.** Son outil `read_note` ne lit que les notes en texte (`.md`, `.txt`), masquées ; un PDF ou une image est nommé, jamais lu ; `sioul-papers.toml` n’est pas une note.
 

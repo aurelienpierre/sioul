@@ -26,6 +26,13 @@ pub struct Config {
     /// icons: for whoever reads words more easily than icons. Their icons alone if unset.
     #[serde(default)]
     pub places_named: bool,
+    /// colour: the sites shown in the screen's own colours, read from its
+    /// colour profile (docs/colour.md); on unless set to false.
+    #[serde(default)]
+    pub screen_colours: Option<bool>,
+    /// colour: loud colours on sites softened: "little", "more"; off if unset.
+    #[serde(default)]
+    pub calmer_colours: Option<String>,
     /// The folder of Markdown files that holds the record of each case.
     pub case_store: Option<String>,
     /// Projects, budgets and the bank's movements (`sioul-cases.toml`,
@@ -624,11 +631,22 @@ pub struct McpSettings {
     /// corpus's download and a training run apart. On unless set to false.
     #[serde(default = "yes")]
     pub spam: bool,
+    /// Things in no project (the Porch's other mail, tasks of no project,
+    /// general notes, the agenda, contacts, the phone's messages, papers):
+    /// open to agents unless set to false. Projects are each opened on their
+    /// own (`ai = true` in `sioul-cases.toml`, `consent`).
+    #[serde(default = "yes")]
+    pub outside_projects: bool,
+    /// Your texts (SMS and MMS, docs/texts.md): read and searched, a draft
+    /// written that waits in the Texts page. Off unless set to true: texts
+    /// carry other people's words.
+    #[serde(default)]
+    pub texts: bool,
 }
 
 impl Default for McpSettings {
     fn default() -> Self {
-        McpSettings { spam: true }
+        McpSettings { spam: true, outside_projects: true, texts: false }
     }
 }
 

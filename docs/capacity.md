@@ -27,7 +27,7 @@ Code:
 
 | What | Where | Written as |
 |---|---|---|
-| Four costs (thinking, feelings, anxiety, body and senses) and a gain, 0–10 each, unsaid until said | task panel, event form | `X-SIOUL-COST:COGNITIVE=3;EMOTIONAL=5;ANXIETY=7;BODY=2`, `X-SIOUL-GAIN:6` |
+| Four costs (thinking, feelings, worry or anxiety, body and senses) and a gain, 0–10 each, unsaid until said | task panel, event form, as tiles ([the form](#the-form)) | `X-SIOUL-COST:COGNITIVE=3;EMOTIONAL=5;ANXIETY=7;BODY=2`, `X-SIOUL-GAIN:6` |
 | How it was, said after the task, optional | "How was it?" on finishing, the task panel | `X-SIOUL-FELT-COST;X-SIOUL-ON=20261006:ANXIETY=3`, `X-SIOUL-FELT-GAIN;X-SIOUL-ON=20261006:6`: one rating per day, the newest five kept in the task |
 | The first estimate | written by Sioul when a task first gets an estimate | `X-SIOUL-ESTIMATE-FIRST:PT30M` |
 | Heavy or light | computed from the costs once one is rated, else chosen | `X-SIOUL-ENERGY:HEAVY` (no line for usual) |
@@ -50,6 +50,39 @@ Every device holding the same record plans the same day: nothing learned is stor
   - R: CB6–7 (van Gog 2012; Rachman 1994: anxiety over-predicted beforehand), G5–G6.
 - **Time records written before kinds existed read as "unknown"** and count as typed. The Time page says "not known how". R: TE4, TE15 (Roy, Christenfeld & McKenzie 2005: typed durations are memories; Johnson & Disney 1999).
 - **A timed record whose minutes you change becomes "corrected"**: on the Time page, or when Sioul cuts a timer left running all night. It still counts as timed: the case TE13 asks to catch at the source. G: corrected weighs as timed.
+
+### The form {#the-form}
+
+The four costs and the gain are asked as tiles (`CostTiles.qml`), in the task panel, the event form and "How was it?". Taking two minutes over what something will cost, against your needs and your capacity, is part of the point, so the form has to be light enough to fill in and plain in what it asks. The data does not change: the same `X-SIOUL-COST` and `X-SIOUL-GAIN` values, unsaid until said, and the same plan and budgets.
+
+- **Five tiles.** **Thinking**, **Feelings**, **Worry** and **Body and senses**, two by two, then **Gives back** under them. They are the four costs and the gain of the table above, under shorter names; the file keeps `COGNITIVE`, `EMOTIONAL`, `ANXIETY` and `BODY`.
+- **A gauge from 0 to 10**: a small cell for 0, then ten cells for 1 to 10.
+  - A tap on a cell gives that value. A tap on the value given clears it, back to unsaid. Unsaid is not 0: 0 fills the small cell and reads "nothing".
+  - With the focus on a tile (Tab goes from one to the next), a digit gives 0 to 9, **+** or **=** gives 10, the arrows step by one, Delete or Backspace clears. From unsaid, the first arrow gives the faint value, the forecast in "How was it?", else 5. An arrow's value is given when the key comes up, not at each repeat.
+  - A screen reader hears "Thinking: 3, moderate", or "Thinking: unsaid", then the question.
+  - G: on a touch screen, the cells are 30 pixels wide at least. Where a gauge is narrower, a tap picks the nearest cell, and the tile's margins give 0 and 10.
+- **A word beside the number**, after Borg's CR10, the scale session-RPE rates a session with (research.md, finding 36; CB5). Words stand at fixed numbers; a number between two takes the word below it:
+
+  | | 0 | 1 | 2 | 3–4 | 5–6 | 7–9 | 10 |
+  |---|---|---|---|---|---|---|---|
+  | Costs | nothing | very light | light | moderate | hard | very hard | the most |
+  | Gives back | nothing | a little | a little | some | a good deal | a lot | the most |
+
+  In French: *rien, très léger, léger, modéré, lourd, très lourd, au maximum*; *rien, un peu, modérément, nettement, beaucoup, pleinement*. R: the costs' words follow CR10's anchors in plain words (Borg 1982), as session-RPE uses the scale (Foster et al. 2001). G: the gain's words, for which CR10 has no counterpart.
+- **A concrete question in each tile**, never a category alone. Feelings are asked about through what stirs them, for whoever finds feelings hard to name:
+  - Thinking: "Deciding, many things to hold in mind, something new to learn?"
+  - Feelings: "Talking to someone, being judged or disappointing someone, a painful reminder?"
+  - Worry: "A deadline, an answer you wait for, a risk of getting it wrong?"
+  - Body and senses: "Moving, standing, noise, crowds, screens, travel?"
+  - Gives back: "Will it give you anything back: rest, joy, meaning?"; in "How was it?", "Did it give you anything back…".
+  - R: the four sides, from NICE NG206 and the admin-burden findings (research.md, finding 36; CB1–4). G: the questions themselves, which no study tested.
+- **Faint values from what you felt before** (`FeltIndex::proposal`): for each value the form leaves unsaid, the median of the last five said after the same item (the same task, or tasks of the same title), else after tasks of the same kind, rounded to a whole number, a half up. It is section 3's order without the forecast, since the form is where the forecast is said.
+  - They show faintly on the unsaid tiles only, and nothing faint is written.
+  - **Looks right** writes them all, in one save. A tap on a tile gives that tile alone; the others stay faint.
+  - A line says where they come from: this task, tasks of its kind, or both.
+  - An event has none: nothing is felt after an event.
+- **"How was it?"** has the same tiles and no faint values. Each gauge shows the forecast as a thin mark across its cell, so that foreseen and felt compare at a glance. Only what you tap is kept as felt: the forecast is never copied (above).
+- **Width.** The tiles stand in two columns, or in one under 360 pixels, and on a touch screen wherever two columns would make a cell narrower than 30 pixels (a phone held upright). The word sits beside the gauge where the cells keep their size (14 pixels with a mouse, 30 with a finger), else beside the number. The cards that hold the tiles have no width cap of their own ([qt-quick.md](qt-quick.md#a-computer-and-a-phone), "An editing card's width").
 
 ## 2. Heaviness
 

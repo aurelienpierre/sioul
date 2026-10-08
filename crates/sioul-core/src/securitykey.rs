@@ -95,6 +95,19 @@ impl Touch {
     pub fn asked(self) -> bool {
         self != Touch::Off
     }
+
+    /// What is said while the key may wait for a touch, at the moment it is
+    /// asked: to touch it now and hold the finger a second or two, as a key
+    /// may wait about fifteen seconds and its light says little; "If your key
+    /// asks for a touch…" when its setting could not be read (a wrong guess
+    /// costs nothing). None when it asks for no touch.
+    pub fn words(self, tr: &Translator) -> Option<String> {
+        match self {
+            Touch::Off => None,
+            Touch::Unknown => Some(tr.text("seckey-touch-maybe", None)),
+            _ => Some(tr.text("seckey-touch", None)),
+        }
+    }
 }
 
 /// Which check of the PIN an operation needs. A card keeps two from the one
@@ -1070,6 +1083,141 @@ pub fn expiry_of(cert: &Cert, fingerprints: &[&str]) -> Option<i64> {
     valid.primary_key().key_expiration_time().and_then(unix).into_iter().chain(keys).min()
 }
 
+/// What a key of a certificate is for, as said to you.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    /// The primary key: it certifies the others (and may sign).
+    Primary,
+    /// A subkey that signs.
+    Signing,
+    /// A subkey others encrypt to.
+    Encryption,
+    /// A subkey that signs you in elsewhere (SSH).
+    Authentication,
+    /// A subkey with no use Sioul names.
+    Other,
+}
+
+/// One key of a certificate: what it is for, its fingerprint, until when
+/// (Unix seconds; none when it does not expire).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Part {
+    pub role: Role,
+    pub fingerprint: String,
+    pub expires: Option<i64>,
+}
+
+/// The keys of `cert` that are not revoked, the primary key first, each with
+/// what it is for and until when: what is said of each, never "the key"
+/// for all of them when one part alone expired.
+pub fn parts(cert: &Cert) -> Vec<Part> {
+    let policy = StandardPolicy::new();
+    let Ok(valid) = cert.with_policy(&policy, None) else { return Vec::new() };
+    let unix = |t: SystemTime| t.duration_since(SystemTime::UNIX_EPOCH).ok().and_then(|d| i64::try_from(d.as_secs()).ok());
+    let mut out = vec![Part { role: Role::Primary, fingerprint: cert.fingerprint().to_hex(), expires: valid.primary_key().key_expiration_time().and_then(unix) }];
+    for key in valid.keys().subkeys() {
+        if matches!(key.revocation_status(), openpgp::types::RevocationStatus::Revoked(_)) {
+            continue;
+        }
+        let role = if key.for_transport_encryption() || key.for_storage_encryption() {
+            Role::Encryption
+        } else if key.for_signing() {
+            Role::Signing
+        } else if key.for_authentication() {
+            Role::Authentication
+        } else {
+            Role::Other
+        };
+        out.push(Part { role, fingerprint: key.key().fingerprint().to_hex(), expires: key.key_expiration_time().and_then(unix) });
+    }
+    // Said in one order whatever the certificate's: signing, encryption, authentication.
+    out.sort_by_key(|part| part.role as u8);
+    out
+}
+
+/// The parts of the first certificate among `bytes` (`gpg --export`): none when there is none.
+pub fn parts_in(bytes: &[u8]) -> Vec<Part> {
+    use openpgp::parse::Parse;
+    openpgp::cert::CertParser::from_bytes(bytes).ok().and_then(|mut certs| certs.find_map(Result::ok)).map(|cert| parts(&cert)).unwrap_or_default()
+}
+
+/// "B81A…BF8C": a fingerprint as it is told apart at a glance.
+pub fn short_fingerprint(fingerprint: &str) -> String {
+    let hex: String = fingerprint.chars().filter(char::is_ascii_hexdigit).collect::<String>().to_ascii_uppercase();
+    if hex.len() <= 8 { hex } else { format!("{}…{}", &hex[..4], &hex[hex.len() - 4..]) }
+}
+
+/// Each part that expired by `now`, said exactly: which, since when, and what
+/// it stops ("Its encryption subkey (B81A…BF8C) expired on 8 April 2025:
+/// nobody can encrypt to you with it.").
+pub fn expired_parts(tr: &Translator, parts: &[Part], now: i64) -> Vec<String> {
+    parts
+        .iter()
+        .filter_map(|part| {
+            let at = part.expires.filter(|at| *at <= now)?;
+            let id = match part.role {
+                Role::Primary => "seckey-part-expired-primary",
+                Role::Signing => "seckey-part-expired-sign",
+                Role::Encryption => "seckey-part-expired-encrypt",
+                Role::Authentication => "seckey-part-expired-auth",
+                Role::Other => "seckey-part-expired-other",
+            };
+            Some(say(tr, id, &[("fingerprint", short_fingerprint(&part.fingerprint)), ("date", full_date(tr, at))]))
+        })
+        .collect()
+}
+
+/// Every part and until when, in a line: "primary key until 7 October 2028,
+/// encryption subkey until 7 October 2028"; "without end" for one that does not expire.
+pub fn parts_until(tr: &Translator, parts: &[Part]) -> String {
+    parts
+        .iter()
+        .map(|part| {
+            let name = tr.text(
+                match part.role {
+                    Role::Primary => "seckey-part-primary",
+                    Role::Signing => "seckey-part-sign",
+                    Role::Encryption => "seckey-part-encrypt",
+                    Role::Authentication => "seckey-part-auth",
+                    Role::Other => "seckey-part-other",
+                },
+                None,
+            );
+            match part.expires {
+                Some(at) => say(tr, "seckey-part-until", &[("part", name), ("date", full_date(tr, at))]),
+                None => say(tr, "seckey-part-forever", &[("part", name)]),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// What a certificate says of its expiry, part by part: each part expired,
+/// exactly ("Its encryption subkey (B81A…BF8C) expired on 8 April 2025:
+/// nobody can encrypt to you with it."), and, when its subkeys alone expired,
+/// that Renew renews them; else until when it is valid, or that it expires
+/// soon (`expires`, the earliest of the keys that matter). What it says,
+/// whether warmly, and whether a part expired.
+pub fn expiry_words(tr: &Translator, cert: &Cert, expires: Option<i64>, now: i64) -> (String, bool, bool) {
+    let parts = parts(cert);
+    let expired = expired_parts(tr, &parts, now);
+    if expired.is_empty() {
+        return expiry_line(tr, expires, &cert.fingerprint().to_hex(), now).map_or((String::new(), false, false), |(line, late)| (line, late, false));
+    }
+    let primary_alive = parts.first().is_some_and(|p| p.expires.is_none_or(|at| at > now));
+    let mut line = expired.join(" ");
+    if primary_alive {
+        line = format!("{line} {}", tr.text("seckey-subkeys-renew", None));
+    }
+    (line, true, true)
+}
+
+/// The subkeys of a certificate that are not revoked, by fingerprint: what
+/// "Renew for two years" names one by one.
+pub fn subkeys_of(cert: &Cert) -> Vec<String> {
+    parts(cert).into_iter().filter(|p| p.role != Role::Primary).map(|p| p.fingerprint).collect()
+}
+
 /// "3 March 2026", "3 mars 2026".
 pub fn full_date(tr: &Translator, at: i64) -> String {
     let Ok(stamp) = jiff::Timestamp::from_second(at) else { return String::new() };
@@ -1709,6 +1857,52 @@ mod tests {
         }
     }
 
+    /// Each part of a certificate and its expiry said exactly: all expired; the
+    /// primary key renewed alone, its encryption subkey expired (Renew offered
+    /// for it); none expired.
+    #[test]
+    fn each_part_of_the_key_and_its_expiry_said_exactly() {
+        let tr = Translator::new("en");
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let made = SystemTime::now() - Duration::from_secs(3 * 365 * 24 * 3600);
+        let (old, _) = CertBuilder::new()
+            .add_userid("Card Holder <late@example.org>")
+            .set_cipher_suite(CipherSuite::Cv25519)
+            .set_creation_time(made)
+            .set_validity_period(Duration::from_secs(365 * 24 * 3600))
+            .set_primary_key_flags(KeyFlags::empty().set_certification().set_signing())
+            .add_transport_encryption_subkey()
+            .add_authentication_subkey()
+            .generate()
+            .unwrap();
+        let roles: Vec<Role> = parts(&old).iter().map(|p| p.role).collect();
+        assert_eq!(roles, [Role::Primary, Role::Encryption, Role::Authentication]);
+        // All expired: each said, the primary key first; no word of renewing the subkeys alone.
+        let (line, warm, expired) = expiry_words(&tr, &old, None, now);
+        assert!(warm && expired);
+        let primary = short_fingerprint(&old.fingerprint().to_hex());
+        assert!(line.starts_with(&format!("Its primary key ({primary}) expired on ")), "{line}");
+        assert!(line.contains("Its encryption subkey (") && line.contains("nobody can encrypt to you with it.") && line.contains("Its authentication subkey ("), "{line}");
+        assert!(!line.contains("Renew for two years"), "{line}");
+        // The primary key renewed alone, as in a terminal: the subkeys said, and Renew offered for them.
+        let mut signer = old.primary_key().key().clone().parts_into_secret().unwrap().into_keypair().unwrap();
+        let policy = StandardPolicy::new();
+        let renewed = old.primary_key().with_policy(&policy, None).unwrap().set_expiration_time(&mut signer, Some(SystemTime::now() + Duration::from_secs(2 * 365 * 24 * 3600))).unwrap();
+        let half = old.clone().insert_packets(renewed).unwrap().0;
+        let (line, warm, expired) = expiry_words(&tr, &half, None, now);
+        assert!(warm && expired);
+        let encryption = short_fingerprint(&parts(&half)[1].fingerprint);
+        assert!(line.starts_with(&format!("Its encryption subkey ({encryption}) expired on ")) && !line.contains("Its primary key"), "{line}");
+        assert!(line.ends_with("Renew for two years renews them with its primary key. By hand, name each subkey: GnuPG's \"*\" leaves those already expired as they are."), "{line}");
+        assert_eq!(subkeys_of(&half).len(), 2);
+        // Nothing expired: until when, as before.
+        let (fresh, _) = CertBuilder::general_purpose(Some("Card Holder <now@example.org>")).set_validity_period(Duration::from_secs(365 * 24 * 3600)).generate().unwrap();
+        let (line, warm, expired) = expiry_words(&tr, &fresh, Some(now + 300 * 86_400), now);
+        assert!(!warm && !expired && line.starts_with("Valid until "), "{line}");
+        assert!(parts_until(&tr, &parts(&fresh)).starts_with("primary key until "));
+        assert_eq!(short_fingerprint("b81a 2c3d 4e5f 6a7b 8c9d 0e1f 2a3b 4c5d 6e7f bf8c"), "B81A…BF8C");
+    }
+
     #[test]
     fn an_expired_key_is_still_its_key_and_says_so() {
         let made = SystemTime::now() - Duration::from_secs(3 * 365 * 24 * 3600);
@@ -1727,7 +1921,8 @@ mod tests {
         let tr = Translator::new("en");
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs() as i64;
         let (line, warm) = expiry_line(&tr, found.expires, &found.cert, now).unwrap();
-        assert!(warm && line.contains("expired on") && line.contains(&found.cert), "{line}");
+        // Where it is renewed, never a command in the sentence: those are under "By hand", to copy.
+        assert!(warm && line.contains("expired on") && line.contains("Accounts ▸ Encryption") && !line.contains("gpg "), "{line}");
         let (soon, warm) = expiry_line(&tr, Some(now + 10 * 24 * 3600), "F", now).unwrap();
         assert!(warm && soon.contains("expires on"), "{soon}");
         let (later, warm) = expiry_line(&tr, Some(now + 300 * 24 * 3600), "F", now).unwrap();

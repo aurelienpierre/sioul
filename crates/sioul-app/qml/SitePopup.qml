@@ -9,6 +9,8 @@
 
 import QtQuick
 import QtWebEngine
+// colour: ScreenColours, a type of Sioul's own module (cpp/screencolours.h).
+import com.aurelienpierre.sioul
 
 SioulWindow {
     id: popup
@@ -86,6 +88,9 @@ SioulWindow {
 
         anchors.fill: parent
         profile: popup.profile
+        // colour: in the screen's own colours, calmer when asked, as the site's page (docs/colour.md).
+        layer.enabled: visible && ScreenColours.revision >= 0 && ScreenColours.active(Screen.name)
+        layer.effect: ColourEffect {}
         // A call's window shares the screen as the site's page does (SitesPage.qml).
         settings.screenCaptureEnabled: true
         Component.onCompleted: userScripts.collection = popup.webFixes

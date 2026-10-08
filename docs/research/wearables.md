@@ -1,5 +1,7 @@
 # Reading one's own watch, and calm offers of breaks
 
+Sioul read a Garmin watch's files until 8 October 2026. That feature was taken out, because the watch's health figures are not shown to be accurate (below, section 7.1) and Garmin has no official interface, only unofficial connectors that risk being blocked (sections 1 and 2). This research stays for whoever needs it; [health.md](../health.md), "Your watch", says what became of the feature.
+
 **The question**: as of October 2026, how can a desktop app (Rust and Qt 6, GPL-3.0-or-later, Linux first) read a person's own Garmin data (heart rate, stress, Body Battery, sleep, steps, HRV, training status and readiness), and how can it turn that into calm suggestions for breaks and activity?
 
 Researched on 3 October 2026. "Built", "next", "not built" and "refused" say where Sioul stood on 4 October 2026. The feature: [health.md](../health.md), "Your watch".

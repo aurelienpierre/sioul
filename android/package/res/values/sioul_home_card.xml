@@ -16,7 +16,7 @@
     <dimen name="sioul_home_card_padding">16dp</dimen>
     <dimen name="sioul_home_card_gap">6dp</dimen>
     <dimen name="sioul_home_card_block_radius">6dp</dimen>
-    <string name="sioul_home_card_description">What now is for, your next step, the Porch\'s latest messages and your coming events.</string>
+    <string name="sioul_home_card_description">Today\'s date and weather, then a dose due, a code, reminders, and your next step.</string>
     <string name="sioul_home_card_mail_label">Sioul — Mail</string>
     <string name="sioul_home_card_mail_description">The Porch\'s latest messages.</string>
     <string name="sioul_home_card_agenda_label">Sioul — Agenda</string>

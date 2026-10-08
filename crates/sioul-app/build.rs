@@ -45,7 +45,7 @@ fn main() {
         "qml/TaskRow.qml",
         "qml/TaskPanel.qml",
         "qml/TaskTimeline.qml",
-        "qml/RatingSlider.qml",
+        "qml/CostTiles.qml",
         "qml/FeltRatings.qml",
         "qml/HowWasIt.qml",
         "qml/CaptureField.qml",
@@ -97,7 +97,6 @@ fn main() {
         "qml/Avatar.qml",
         "qml/LineDialog.qml",
         "qml/TimeExport.qml",
-        "qml/WatchPanel.qml",
         "qml/SharePanel.qml",
         "qml/PapersPage.qml",
         "qml/PaperDialog.qml",
@@ -124,6 +123,10 @@ fn main() {
         "qml/MedicinesSection.qml",
         "qml/MedicineDialog.qml",
         "qml/PrescriptionDialog.qml",
+        "qml/TakesEditor.qml",
+        "qml/CommandText.qml",
+        "qml/TimeField.qml",
+        "qml/ShowMedicines.qml",
         "qml/StoppedCard.qml",
         "qml/Interruption.qml",
         "qml/BankSection.qml",
@@ -136,6 +139,11 @@ fn main() {
         "qml/CallsSection.qml",
         "qml/CallsApplet.qml",
         "qml/CallsSetup.qml",
+        "qml/PhoneMessagesSection.qml",
+        "qml/PhoneMessagesSetup.qml",
+        // texts: SMS phase (b).
+        "qml/TextsPage.qml",
+        "qml/TextsSetup.qml",
         "qml/LineButton.qml",
         "qml/StatusLine.qml",
         "qml/TitleBar.qml",
@@ -150,6 +158,8 @@ fn main() {
     } else {
         pages.into_iter().chain(["qml-desktop/Tray.qml"]).collect()
     };
+    // colour: the effect drawing a site in the screen's colours (docs/colour.md), on computers only, as the Sites page.
+    let pages: Vec<&str> = if android { pages } else { pages.into_iter().chain(["qml/ColourEffect.qml"]).collect() };
     // Line spacing for editable text, which Qt Quick does not offer; PDFs written; the window's
     // icon; text and images made ready at the start.
     let mut cpp = vec!["cpp/textspacing.h", "cpp/textspacing.cpp", "cpp/pdfwriter.h", "cpp/pdfwriter.cpp", "cpp/appicon.cpp", "cpp/warmup.cpp"];
@@ -160,6 +170,10 @@ fn main() {
         // A widgets application, for the system tray's menu.
         cpp.push("cpp/application.cpp");
     }
+    // colour: each screen's profile and the tables of the sites' colours (docs/colour.md).
+    if !android {
+        cpp.extend(["cpp/screencolours.h", "cpp/screencolours.cpp"]);
+    }
     let builder = CxxQtBuilder::new_qml_module(QmlModule::new("com.aurelienpierre.sioul").depend("QtQuick").qml_files(pages))
         .files(["src/backend.rs", "src/desktop.rs"])
         .cpp_files(cpp)
@@ -167,6 +181,10 @@ fn main() {
     // Qt Widgets on computers only: Plasma's system tray makes its menu of widgets
     // (cpp/application.cpp). A phone has no tray, and its build never carries them.
     let builder = if android { builder } else { builder.qt_module("Widgets") };
+    // colour: the sites' colours: their shader (tools/make-shaders.sh), and on Linux colord,
+    // read over D-Bus to know which screen a profile belongs to (docs/colour.md).
+    let builder = if android { builder } else { builder.qrc("shaders/shaders.qrc") };
+    let builder = if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") { builder.qt_module("DBus") } else { builder };
     builder
         // The Breeze icons Sioul uses, for systems without them (tools/bundle-icons.py).
         .qrc("icons/icons.qrc")

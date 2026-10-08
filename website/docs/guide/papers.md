@@ -12,7 +12,7 @@ Papers keeps the documents you are asked for again and again (an identity card, 
 
 - Your papers and your letters stay in your notes folder, on your devices. There is no server of Sioul's.
 - Letters are read on your own computer, by programs of your system: no scan is sent anywhere to be read.
-- An attachment becomes a paper only after your antivirus checked it, and a program never does.
+- An attachment becomes a paper only after your antivirus checked it (a phone has none Sioul can call: there it is kept unchecked, and Sioul says so), and a program never does.
 - Between your devices, papers travel by your folder's own sync, or through Sioul's sharing once you switch **Papers** on: each file sealed apart, so that the folder and its server see neither names nor contents ([Sharing](sharing.md)).
 - The tasks made from a letter or a renewal go to your task list: if that list is on your calendar server, their titles are there too. Choose a list kept on this device if you would rather not.
 - An AI agent, only if you connect one, can read the letters' texts with codes and account numbers masked; it sees your papers' files by their names only, never what they hold.
@@ -207,7 +207,7 @@ Others do more in places: all five search the text of every document, Adobe Scan
 
 **Sealed between devices.** With **Papers** on in Sioul's sharing, `sioul-papers.toml` travels sealed like every record, and each file of the `papers` folder compressed and sealed apart, in pieces of 1 MiB, each sealed with XChaCha20-Poly1305 with the file's name, its index and an end flag as associated data, so that pieces cannot be swapped, cut or added. Their names in the folder are HMAC-SHA-256 of the content's hash, under a sub-key derived by HKDF-SHA-256 from the sharing key: the folder sees neither the files' names nor their contents. Files over 64 MiB stay on the device that has them ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)). Letters travel with the notes.
 
-**The antivirus.** **Keep in papers** goes through your system's antivirus first: ClamAV on Linux and macOS (`clamdscan`, else `clamscan`), Microsoft Defender through AMSI on Windows ([Attachments and the antivirus](privacy-security.md#attachments-and-the-antivirus)). Without one, Sioul asks you first. A program (`.exe`, `.js`, `.lnk`, `.desktop`…) is never kept as a paper, and mail set aside never has its attachments opened.
+**The antivirus.** **Keep in papers** goes through your system's antivirus first: ClamAV on Linux and macOS (`clamdscan`, else `clamscan`), Microsoft Defender through AMSI on Windows ([Attachments and the antivirus](privacy-security.md#attachments-and-the-antivirus)). Without one, Sioul asks you first; a phone has none Sioul can call, and there the file is kept unchecked. A program (`.exe`, `.js`, `.lnk`, `.desktop`…) is never kept as a paper, and mail set aside never has its attachments opened.
 
 **An AI agent.** Its `read_note` tool reads text notes only (`.md`, `.txt`), masked; a PDF or a picture is named, never read; `sioul-papers.toml` is not a note.
 

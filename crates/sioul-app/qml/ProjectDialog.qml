@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// A case or a project: its name, and for work done for someone, who it is
-// for, what an hour costs and which budget its invoices are expected in.
+// A project: its name, and for work done for someone, who it is for, what
+// an hour costs and which budget its invoices are expected in; whether AI
+// agents may read it and add to it (closed until opened, docs/ai.md).
 
 pragma ComponentBehavior: Bound
 
@@ -34,6 +35,7 @@ Dialog {
         budget.currentIndex = page ? Math.max(0, dialog.budgets.findIndex(b => b.id === page.budget) + 1) : 0
         status.currentIndex = page ? Math.max(0, dialog.statuses.indexOf(page.status)) : 0
         personal.checked = page ? page.area === "personal" : false
+        openToAi.checked = page ? page.ai === true : false
         dialog.open()
         title.forceActiveFocus()
     }
@@ -58,7 +60,8 @@ Dialog {
             client: isProject.checked ? client.text : "",
             rate: hourly,
             budget: isProject.checked && budget.currentIndex > 0 ? dialog.budgets[budget.currentIndex - 1].id : "",
-            area: personal.checked ? "personal" : ""
+            area: personal.checked ? "personal" : "",
+            ai: openToAi.checked
         }
         const answer = JSON.parse(dialog.sioul.saveProject(dialog.projectId, JSON.stringify(edit)))
         if (answer.error) {
@@ -159,6 +162,22 @@ Dialog {
             ToolTip.visible: hovered
             ToolTip.text: dialog.sioul.text("project-field-personal-help")
             ToolTip.delay: 500
+        }
+        // Closed to AI agents until opened; what opening means, in one sentence.
+        Switch {
+            id: openToAi
+
+            Layout.columnSpan: 2
+            text: dialog.sioul.text("project-ai")
+        }
+        Label {
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            text: dialog.sioul.text("project-ai-help")
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 12
+            color: dialog.theme.muted
         }
         Label {
             visible: dialog.problem !== ""

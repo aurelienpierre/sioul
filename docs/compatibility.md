@@ -191,11 +191,6 @@ Code: `crates/sioul-sync/src/antivirus.rs`, `ocr.rs`.
 - **Scans**: Poppler's `pdftotext`, else `pdftoppm` at 300 dpi read by Tesseract (French and English when installed); images by Tesseract. The Flatpak carries neither.
 - **Tested**: Linux without ClamAV (the question comes, with Fedora's command); Tesseract on a French letter drawn as an image (`ocr::a_letter_as_an_image`, ignored, run by hand). The AMSI code is compiled by the Windows build, never run.
 
-## The watch
-Code: `crates/sioul-core/src/wearable.rs` (`fitparser`); details: [health.md](health.md), "Your watch".
-- Garmin's FIT files only: monitoring, stress, Body Battery, sleep, HRV; from a folder (Gadgetbridge's exported FIT files, Garmin's export ZIPs, nested ZIPs opened) or from the watch's `GARMIN` folder when the desktop mounts it (mass storage, GNOME's gvfs, KDE's kio-fuse). **Not supported**: Garmin's account, Gadgetbridge's database (other watches' data), Apple Health, Health Connect.
-- **Tested** on FIT files written by hand; not on a real watch.
-
 ## AI agents
 Code: `crates/sioul-cli/src/mcp.rs`, `mcp/`; details: [mcp.md](mcp.md).
 - MCP 2025-06-18, and 2025-03-26 and 2024-11-05 for older clients; JSON-RPC 2.0 over standard input and output, one message a line. **Not supported**: Streamable HTTP and MCP's OAuth, so no client that reaches servers over the Internet (ChatGPT).
@@ -239,7 +234,6 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | Bitwarden | its key-derivation vectors; the live cloud with a made-up account; the owner's own vault, in daily use | [sites.md](sites.md), "Bitwarden"; the owner, 6 October 2026 |
 | Sharing | a simulator of five sync behaviours; eDrive 1.9.2 on a phone | [database.md](database.md), "Tested"; [android.md](android.md) |
 | Notes | files as Obsidian and Nextcloud Notes write them | `notes` tests |
-| The watch | FIT files written by hand | [health.md](health.md) |
 | Antivirus, scans | Linux without ClamAV; Tesseract on a drawn letter | [client.md](client.md), "Antivirus"; `ocr::a_letter_as_an_image` |
 | MCP | the server on its own | [mcp.md](mcp.md), "Tested" |
 | Android | one phone | [android.md](android.md) |
@@ -257,5 +251,4 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 - The Flatpak: whether scanned letters can be read there at all.
 - Claude Code and Claude Desktop with `sioul mcp`.
 - Proton Mail Bridge, once its certificate is trusted by the system.
-- A real Garmin watch, and Gadgetbridge's exports.
 - Sync apps on a computer other than through the simulator: Nextcloud's client, Syncthing, Dropbox, Google Drive, OneDrive.

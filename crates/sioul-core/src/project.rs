@@ -57,6 +57,8 @@ pub struct ProjectView {
     pub budget: String,
     /// "personal": it stays in view in quiet time.
     pub area: String,
+    /// Open to AI agents (`cases::Case::ai`).
+    pub ai: bool,
     pub open_tasks: usize,
     pub done_tasks: usize,
     /// All the time noted, and what is left to bill.
@@ -79,6 +81,8 @@ pub struct ProjectRow {
     pub unbilled: String,
     /// Yours outside work: listed in quiet time too.
     pub personal: bool,
+    /// Open to AI agents (`cases::Case::ai`).
+    pub ai: bool,
 }
 
 pub fn rows(loaded: &Loaded, entries: &[Entry], cases: &[Case]) -> Vec<ProjectRow> {
@@ -95,6 +99,7 @@ pub fn rows(loaded: &Loaded, entries: &[Entry], cases: &[Case]) -> Vec<ProjectRo
                 open_tasks: loaded.tasks.iter().filter(|t| t.status.is_open() && t.cases.iter().any(|x| x == &c.id)).count(),
                 unbilled: if unbilled > 0 { duration(unbilled) } else { String::new() },
                 personal: c.area.as_deref() == Some("personal"),
+                ai: c.ai,
             }
         })
         .collect();
@@ -194,6 +199,7 @@ pub fn view(loaded: &Loaded, case: &Case, entries: &[Entry], invoices: &[Invoice
         rate,
         budget: case.budget.clone().unwrap_or_default(),
         area: case.area.clone().unwrap_or_default(),
+        ai: case.ai,
         open_tasks: open,
         done_tasks: done,
         time: if all > 0 { duration(all) } else { String::new() },

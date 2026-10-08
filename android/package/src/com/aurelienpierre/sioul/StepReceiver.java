@@ -13,7 +13,8 @@ import android.content.Intent;
  * running, else the service started again, if it was on. An exact alarm
  * lets an app start its foreground service from the background; so do the
  * restart and the update. Also the notification's "Let every call through"
- * (Calls.java), sent by it alone.
+ * (Calls.java), sent by it alone; and its words, told by Sioul's own process
+ * after each apply (NOTE_WORDS), shown at once.
  */
 public final class StepReceiver extends BroadcastReceiver
 {
@@ -33,6 +34,12 @@ public final class StepReceiver extends BroadcastReceiver
             break;
         case StepService.HEARD:
             StepService.heard(app);
+            break;
+        case StepService.NOTE_WORDS:
+            StepService.told(intent.getStringExtra("words"));
+            break;
+        case StepService.SOON:
+            StepService.soonHere();
             break;
         case Intent.ACTION_BOOT_COMPLETED:
         case Intent.ACTION_MY_PACKAGE_REPLACED:

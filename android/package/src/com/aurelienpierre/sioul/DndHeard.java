@@ -82,6 +82,16 @@ final class DndHeard
         return on == sioul ? "" : on ? "on" : "off";
     }
 
+    /**
+     * The state noted as seen at a restart or an update (PauseMode.noteSeen),
+     * so that the next change counts from it: on or off; null when Android
+     * does not say (nothing noted).
+     */
+    static Boolean noted(int filter)
+    {
+        return filter == NotificationManager.INTERRUPTION_FILTER_UNKNOWN ? null : seen(filter);
+    }
+
     /** The phone's do-not-disturb on for this filter. */
     static boolean seen(int filter)
     {

@@ -27,10 +27,6 @@ directories.workspace = true
 jiff.workspace = true
 fluent-bundle.workspace = true
 unic-langid.workspace = true
-# A watch's own files (Garmin's FIT), read here: an independent parser (MIT),
-# not Garmin's SDK, whose licence forbids copyleft; and the ZIPs exports come in.
-fitparser = "0.11"
-zip = { version = "2", default-features = false, features = ["deflate"] }
 # The spam filter's tokenizer (spam/tokenize.rs): both already built for every
 # target, Android included (regex through sequoia-openpgp, icu_normalizer
 # through sioul-sync), so nothing new is compiled.

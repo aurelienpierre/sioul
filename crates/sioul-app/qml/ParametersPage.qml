@@ -30,8 +30,9 @@ Item {
             page.shareMade = true
     }
     // One tab at a time: how it looks, the hours, what reaches you, the words,
-    // reminders, the pauses; on a phone, what sets it up; your folder and sharing, invoices.
-    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(["files", "invoices"])
+    // reminders, the pauses; on a phone, what sets it up; your folder and sharing, invoices;
+    // what AI agents may use (each project closed to them until opened).
+    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses"].concat(Qt.platform.os === "android" ? ["phone"] : []).concat(["files", "invoices", "ai"])
     // The pause's screen tried from its setup (main.qml shows it, nothing held).
     signal tryPause
     property string section: "look"

@@ -100,3 +100,14 @@ The tokenizer's words (a provider's subject marks, month and key names, French e
 - **Units and abbreviations typed by you**, shared by the languages and read as notation: a routine's step lengths (`routines.rs`: "m", "min", "mn", "h"), a filter's sizes (`rules.rs`: "kb", "ko", "mb", "mo"…), the days of office hours (`window.rs`: "mo-fr", "lu-ve", which are also the configuration's identifiers), quick capture's "~15m" and "~1h30", the "h" of "9 h 15" in letters.
 - **Output**: the folder names Sioul creates when a role has none ("Junk", "Trash", "Archive", "Sent"), Sioul's own invoices' legal mentions (a country setting later), interface words outside the `.ftl` files.
 - **Gaps, not lists**: out-of-office replies and parcels have no recogniser yet; when they come, they start in packs.
+- **The sync tools' conflicted copies** (`share.rs`, `made_by_tools`): the names Nextcloud, Syncthing, Dropbox and others give a copy in conflict. They are the tools' own, in their own languages, and a French "copie en conflit" is not among them yet.
+- **The one-time-code field of a site's form** (`sites.rs`): the pattern by which the site filler finds where a code goes, which follows the forms' own markup (`autocomplete="one-time-code"`, names and ids) rather than a language.
+
+## Not built yet
+The approved design goes further than what ships. These parts wait:
+- **Why a message went where it went**: the Porch's reason naming the word that matched, with a link to its list; a "Taken away" or "Put back" line under a list; refusing a word under two characters, and a warning when you add a stop word.
+- **The languages of your mail**: noticing a language that makes up a share of the last messages (5 % of the last 500, at least 20) and offering its pack. Today a new configuration reads its interface's language and English, and one from before keeps French and English.
+- **Your changes, keyed**: a list's `add` and `remove` travel through the sharing as one entry per list, so two devices changing the same list at the same moment keep the later list whole, not both changes.
+- **Country rules that are numbers**: the papers' durations, contracts' notice, numbering plans, crisis lines (which you could add to but never take away), the masked social security number, which currency "$" means. Today they are code, as are Sioul's own invoices' legal mentions.
+- **Calls in sites**: their words still match inside a word, unlike the rule above; whole words come with the next change to that recogniser.
+- **A second reader for the packs**: the rule that someone other than a pack's author reads it for tailored words before a release has no tool yet; the French, English and France packs were read by their author alone.

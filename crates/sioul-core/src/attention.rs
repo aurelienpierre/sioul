@@ -152,8 +152,6 @@ pub enum Kind {
     WorkOver,
     /// The time running: a focus session's own notification.
     Time,
-    /// The watch's gentle offers.
-    Watch,
     /// What your sites notified, gathered (a computer).
     Sites,
     /// A site in real time (a computer).
@@ -167,7 +165,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 17] = [
+    pub const ALL: [Kind; 16] = [
         Kind::Codes,
         Kind::Doses,
         Kind::Wake,
@@ -179,7 +177,6 @@ impl Kind {
         Kind::Move,
         Kind::WorkOver,
         Kind::Time,
-        Kind::Watch,
         Kind::Sites,
         Kind::SitesLive,
         Kind::SiteCalls,
@@ -200,7 +197,6 @@ impl Kind {
             Kind::Move => "move",
             Kind::WorkOver => "work-over",
             Kind::Time => "time",
-            Kind::Watch => "watch",
             Kind::Sites => "sites",
             Kind::SitesLive => "sites-live",
             Kind::SiteCalls => "site-calls",
@@ -220,7 +216,7 @@ impl Kind {
         match self {
             Kind::Codes | Kind::Doses | Kind::Wake | Kind::Alarms => "asked",
             Kind::Before | Kind::DayBefore | Kind::Dates => "reminders",
-            Kind::Needs | Kind::Move | Kind::WorkOver | Kind::Time | Kind::Watch => "day",
+            Kind::Needs | Kind::Move | Kind::WorkOver | Kind::Time => "day",
             Kind::Sites | Kind::SitesLive | Kind::SiteCalls => "sites",
             Kind::AppAutomatons | Kind::AppAtOnce => "apps",
         }
@@ -236,7 +232,7 @@ pub enum Row {
 
 impl Row {
     /// Every row, in the order they are shown: mail's, calls', messages', then the kinds.
-    pub const ALL: [Row; 37] = [
+    pub const ALL: [Row; 36] = [
         Row::People(Channel::Mail, Person::Always),
         Row::People(Channel::Mail, Person::Safe),
         Row::People(Channel::Mail, Person::Neutral),
@@ -268,7 +264,6 @@ impl Row {
         Row::Own(Kind::Move),
         Row::Own(Kind::WorkOver),
         Row::Own(Kind::Time),
-        Row::Own(Kind::Watch),
         Row::Own(Kind::Sites),
         Row::Own(Kind::SitesLive),
         Row::Own(Kind::SiteCalls),
@@ -489,7 +484,6 @@ pub fn usual(row: Row, column: Column) -> Level {
             Kind::Needs => if rests { Never } else { Now },
             Kind::Move => if hours { Now } else { Never },
             Kind::WorkOver => if column == Work || rests { Never } else { Now },
-            Kind::Watch => if matches!(column, Work | Slot | Dnd) { Now } else { Never },
             Kind::Sites | Kind::AppAutomatons => if hours { Gathered } else { Later },
             Kind::SitesLive | Kind::AppAtOnce => if hours { Now } else { Later },
             Kind::SiteCalls => if hours || column == Slot { Now } else { Later },
@@ -516,7 +510,7 @@ pub fn choices(row: Row, column: Column) -> &'static [Level] {
             Kind::Alarms | Kind::Before if column.ends() => &[Now, Event, Later],
             Kind::Alarms | Kind::Before => &[Now, Later],
             Kind::DayBefore | Kind::Dates | Kind::SitesLive | Kind::SiteCalls | Kind::AppAtOnce => &[Now, Later],
-            Kind::Needs | Kind::Move | Kind::WorkOver | Kind::Time | Kind::Watch => &[Now, Never],
+            Kind::Needs | Kind::Move | Kind::WorkOver | Kind::Time => &[Now, Never],
             Kind::Sites => &[Gathered, Later],
             Kind::AppAutomatons => &[Now, Gathered, Later],
         },
@@ -537,6 +531,54 @@ pub fn lock(row: Row, column: Column) -> Option<&'static str> {
         Row::Own(Kind::Wake) => Some("attention-lock-wake"),
         _ => None,
     }
+}
+
+// ---------------------------------------------------------------- a source's own rows
+
+/// A source's own row, on a phone (docs/attention.md, §1.3): an app's
+/// (`app.<package>`) or a conversation's in one (`conversation.<key>`, the key
+/// `appnotes::talk_key` makes). A row of the matrix like the others, a cell
+/// per column, but each cell says "as usual" (=) until set, read then as the
+/// row the notification takes otherwise (a person's on Messages, a group's,
+/// the automatons', the apps set to come at once), as Always through's =
+/// reads their own row. A conversation's cell set wins over its app's; a
+/// source's cell set for a time is your word for it, so no area holds it
+/// then. Blocked senders, codes and what is never held stay as they are.
+pub const APP_ROW: &str = "app.";
+pub const CONVERSATION_ROW: &str = "conversation.";
+/// A source row's word for its name, written for your other devices
+/// ("name=Discord"); never a column, so an older Sioul leaves it aside.
+pub const NAME: &str = "name=";
+
+/// The levels a source's cell takes: at once, at the gathered times, held
+/// (later), as usual.
+pub const SOURCE_CHOICES: [Level; 4] = [Level::Now, Level::Gathered, Level::Later, Level::As];
+
+/// Whether an id names a source's row: `app.<package>` or `conversation.<key>`.
+pub fn is_source(id: &str) -> bool {
+    [APP_ROW, CONVERSATION_ROW].iter().any(|prefix| id.strip_prefix(prefix).is_some_and(|rest| !rest.is_empty() && !rest.contains(char::is_whitespace)))
+}
+
+/// The source rows a notification reads, the most precise first: its
+/// conversation's when it has one, then its app's.
+pub fn source_rows(package: &str, conversation: &str) -> Vec<String> {
+    let (package, conversation) = (package.trim(), conversation.trim());
+    let mut rows = Vec::new();
+    if !conversation.is_empty() {
+        rows.push(format!("{CONVERSATION_ROW}{conversation}"));
+    }
+    if !package.is_empty() {
+        rows.push(format!("{APP_ROW}{package}"));
+    }
+    rows
+}
+
+/// What a source's row is read over: a row of the matrix, or a person on a
+/// channel, on the Always through list or not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Base {
+    Row(Row),
+    Person(Channel, Person, bool),
 }
 
 // ---------------------------------------------------------------- the moment
@@ -655,10 +697,14 @@ impl Now {
 
 // ---------------------------------------------------------------- the matrix
 
-/// The matrix: a level in each cell, as set.
+/// The matrix: a level in each cell, as set; and the sources' own rows, an
+/// app's or a conversation's on a phone, by id (`app.<package>`,
+/// `conversation.<key>`), each with its name when written with one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attention {
-    cells: [[Level; 9]; 37],
+    cells: [[Level; 9]; 36],
+    sources: BTreeMap<String, [Level; 9]>,
+    names: BTreeMap<String, String>,
 }
 
 impl Default for Attention {
@@ -670,13 +716,13 @@ impl Default for Attention {
 impl Attention {
     /// What Sioul does unless you change it (`usual`).
     pub fn usual() -> Attention {
-        let mut cells = [[Level::Now; 9]; 37];
+        let mut cells = [[Level::Now; 9]; 36];
         for row in Row::ALL {
             for column in Column::ALL {
                 cells[row.index()][column.index()] = usual(row, column);
             }
         }
-        Attention { cells }
+        Attention { cells, sources: BTreeMap::new(), names: BTreeMap::new() }
     }
 
     /// As the configuration says: the usual cells; while no `[attention]` is
@@ -691,6 +737,21 @@ impl Attention {
                 let _ = attention.set(row, column, level);
             }
         }
+        // The sources' own rows: their cells set, their name.
+        for (id, words) in settings.sources() {
+            for text in &words {
+                match text.strip_prefix(NAME) {
+                    Some(name) => attention.name_source(&id, name),
+                    None => {
+                        if let Some((column, level)) = word(text) {
+                            let _ = attention.set_source(&id, column, level);
+                        }
+                    }
+                }
+            }
+        }
+        let sources = &attention.sources;
+        attention.names.retain(|id, _| sources.contains_key(id));
         attention
     }
 
@@ -727,9 +788,146 @@ impl Attention {
             .collect()
     }
 
-    /// How many cells differ from another matrix's (a preset's).
+    /// How many cells differ from another matrix's (a preset's); the
+    /// sources' own rows aside, which no preset sets.
     pub fn changes_from(&self, other: &Attention) -> usize {
         Row::ALL.iter().flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
+    }
+
+    /// A source's own row (`app.<package>`, `conversation.<key>`): its nine
+    /// cells; none while every one says as usual.
+    pub fn source(&self, id: &str) -> Option<[Level; 9]> {
+        self.sources.get(id).copied()
+    }
+
+    /// The sources' rows set, by id.
+    pub fn sources(&self) -> &BTreeMap<String, [Level; 9]> {
+        &self.sources
+    }
+
+    /// The name a source's row was written with (an app's, for your other
+    /// devices, which never saw it); "" when none.
+    pub fn source_name(&self, id: &str) -> &str {
+        self.names.get(id).map_or("", String::as_str)
+    }
+
+    /// A source's cell changed; refused when the id names no source, or the
+    /// value is not one a source's cell takes (`SOURCE_CHOICES`). A row as
+    /// usual everywhere is no row: taken out.
+    pub fn set_source(&mut self, id: &str, column: Column, level: Level) -> Result<(), String> {
+        if !is_source(id) {
+            return Err(format!("attention.{id}: no such row"));
+        }
+        if !SOURCE_CHOICES.contains(&level) {
+            let offered: Vec<&str> = SOURCE_CHOICES.iter().map(|l| l.id()).collect();
+            return Err(format!("attention.{id}: {}: {}", column.id(), offered.join(", ")));
+        }
+        let mut cells = self.source(id).unwrap_or([Level::As; 9]);
+        cells[column.index()] = level;
+        if cells.iter().all(|l| *l == Level::As) {
+            self.sources.remove(id);
+        } else {
+            self.sources.insert(id.to_string(), cells);
+        }
+        Ok(())
+    }
+
+    /// A source's name, kept beside its row ("" takes it out).
+    pub fn name_source(&mut self, id: &str, name: &str) {
+        let name = name.trim();
+        if name.is_empty() {
+            self.names.remove(id);
+        } else {
+            self.names.insert(id.to_string(), name.to_string());
+        }
+    }
+
+    /// A source's row as the configuration writes it: its cells set ("work"
+    /// for at once, "admin:later"), as usual unsaid, then its name
+    /// ("name=Discord"); nothing when as usual everywhere.
+    pub fn source_words(&self, id: &str) -> Vec<String> {
+        let Some(cells) = self.source(id) else { return Vec::new() };
+        let mut words: Vec<String> = Column::ALL
+            .iter()
+            .filter(|c| cells[c.index()] != Level::As)
+            .map(|c| match cells[c.index()] {
+                Level::Now => c.id().to_string(),
+                other => format!("{}:{}", c.id(), other.id()),
+            })
+            .collect();
+        if let Some(name) = self.names.get(id).filter(|n| !n.is_empty()) {
+            words.push(format!("{NAME}{name}"));
+        }
+        words
+    }
+
+    /// Whether one of these sources has a row set: a notification from them reads it.
+    pub fn has_sources(&self, ids: &[String]) -> bool {
+        ids.iter().any(|id| self.sources.contains_key(id))
+    }
+
+    /// The rows set among these sources, the most precise first.
+    fn source_cells(&self, ids: &[String]) -> Vec<[Level; 9]> {
+        ids.iter().filter_map(|id| self.source(id)).collect()
+    }
+
+    /// What a row, or a person on a channel, gives at one column, as `level`
+    /// and `person` read it (= and ☆ resolved, "Nothing at all" holding the
+    /// states' rows in Free time): what a source's "as usual" stands for.
+    fn base_at(&self, base: Base, column: Column, now: &Now) -> Level {
+        let free_nothing = column == Column::Free && now.nothing;
+        match base {
+            Base::Row(row) => {
+                if free_nothing && matches!(row, Row::People(_, person) if person.state()) {
+                    return Level::Later;
+                }
+                match self.lent(row, column, now.week) {
+                    Level::As => Level::Later,
+                    Level::Through => Level::Now,
+                    other => other,
+                }
+            }
+            Base::Person(channel, person, always) => {
+                if person == Person::Blocked {
+                    return Level::Never;
+                }
+                let own = Row::People(channel, if person == Person::Always { Person::Safe } else { person });
+                if !always && person != Person::Always {
+                    return self.base_at(Base::Row(own), column, now);
+                }
+                let always_row = Row::People(channel, Person::Always);
+                let level = match self.lent(always_row, column, now.week) {
+                    Level::As => self.lent(own, column, now.week),
+                    Level::Through => Level::Now,
+                    level => level,
+                };
+                if free_nothing && self.cell(always_row, Column::Free) == Level::As { level.max(Level::Later) } else { level }
+            }
+        }
+    }
+
+    /// A row, or a person, read with sources' rows over it (`sources`, the
+    /// most precise first: a conversation's, then its app's): at each column
+    /// the first cell set, else the row's own (`base_at`); then as `level`
+    /// reads a moment, the least strict of the times, the stricter of that
+    /// and each layer that holds. With it, whether a source's cell said any
+    /// of the columns read now.
+    fn over(&self, base: Base, sources: &[[Level; 9]], now: &Now) -> (Level, bool) {
+        let at = |column: Column| match sources.iter().map(|cells| cells[column.index()]).find(|l| *l != Level::As) {
+            Some(level) => (level, true),
+            None => (self.base_at(base, column, now), false),
+        };
+        let times: Vec<(Level, bool)> = now.times.iter().map(|c| at(*c)).collect();
+        let mut level = times.iter().map(|(l, _)| *l).min().unwrap_or(Level::Now);
+        let mut chosen = times.iter().any(|(_, set)| *set);
+        for (holds, column) in [(now.slot, Column::Slot), (now.dnd, Column::Dnd)] {
+            if holds {
+                let (layer, set) = at(column);
+                level = level.max(layer);
+                chosen |= set;
+            }
+        }
+        (level, chosen)
     }
 
     /// A row's cell at a time column, lent as the week says for the people's
@@ -858,15 +1056,24 @@ pub struct Event {
     pub area: Option<Area>,
     /// An event's own reminder: when its event begins (Unix seconds), for ◐.
     pub starts: Option<i64>,
+    /// The sources' own rows it reads, the most precise first (`source_rows`:
+    /// another app's notification, its conversation's and its app's).
+    pub sources: Vec<String>,
 }
 
 impl Event {
     pub fn own(kind: Kind) -> Event {
-        Event { source: Source::Own(kind), area: None, starts: None }
+        Event { source: Source::Own(kind), area: None, starts: None, sources: Vec::new() }
     }
 
     pub fn of(source: Source) -> Event {
-        Event { source, area: None, starts: None }
+        Event { source, area: None, starts: None, sources: Vec::new() }
+    }
+
+    /// Read with these sources' own rows over its own (`source_rows`).
+    pub fn from_sources(mut self, sources: Vec<String>) -> Event {
+        self.sources = sources;
+        self
     }
 
     /// For an area's times only.
@@ -931,6 +1138,8 @@ pub enum Step {
     Floor,
     /// The matrix, the time and its layers.
     Matrix,
+    /// A source's own row, an app's or a conversation's, as you set it.
+    Chosen,
     /// What its source is for holds it: work's things in your evening.
     Area,
     /// A named hold: the Porch resting after a pause, a meeting, the chat limit.
@@ -995,15 +1204,18 @@ impl Attention {
     }
 
     fn own(&self, kind: Kind, event: &Event, now: &Now) -> Output {
-        let mut level = self.level(Row::Own(kind), now);
+        // Another app's, read with its app's and conversation's own rows over the kind's.
+        let sources = self.source_cells(&event.sources);
+        let (mut level, chosen) = if sources.is_empty() { (self.level(Row::Own(kind), now), false) } else { self.over(Base::Row(Row::Own(kind)), &sources, now) };
         if level == Level::Event {
             level = if event.starts.is_some_and(|s| now.span.0 <= s && s < now.span.1) { Level::Now } else { Level::Later };
         }
-        let mut step = Step::Matrix;
+        let mut step = if chosen { Step::Chosen } else { Step::Matrix };
         // What a thing is for, not the matrix: work's dates wait while work rests, in
         // the hours' times (asleep, paused or in Free time, the cells say it already).
+        // A source's cell set for this time is your word for it: no area holds it.
         let hours = !now.times.iter().any(|c| matches!(c, Column::Sleep | Column::Pause | Column::Free));
-        if hours && matches!(level, Level::Now | Level::Gathered) && event.area.is_some_and(|area| !in_view(area, now.time, now.week)) {
+        if !chosen && hours && matches!(level, Level::Now | Level::Gathered) && event.area.is_some_and(|area| !in_view(area, now.time, now.week)) {
             (level, step) = (Level::Later, Step::Area);
         }
         // In a meeting: no meal's notice, no "Work hours are over".
@@ -1074,18 +1286,23 @@ impl Attention {
         if person == Person::Blocked {
             return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked };
         }
+        // Read with its app's and conversation's own rows over the person's, when set; someone
+        // Always through stays so whatever an app's row says: only a conversation's own row changes them.
+        let sources = if always { self.source_cells(&event.sources.iter().filter(|id| id.starts_with(CONVERSATION_ROW)).cloned().collect::<Vec<_>>()) } else { self.source_cells(&event.sources) };
         // A missed call: as a declined call is listed, by the Calls row.
-        let mut level = if via == Channel::Calls {
-            if self.listed(person, always, now) { Level::Now } else { Level::Later }
+        let (mut level, chosen) = if !sources.is_empty() {
+            self.over(Base::Person(via, person, always), &sources, now)
+        } else if via == Channel::Calls {
+            (if self.listed(person, always, now) { Level::Now } else { Level::Later }, false)
         } else {
-            self.person(via, person, always, now)
+            (self.person(via, person, always, now), false)
         };
         // A phone cannot show what it holds: shown, not told, is held.
         if level == Level::Quiet {
             level = Level::Later;
         }
-        let mut step = Step::Matrix;
-        if level == Level::Now && person != Person::Safe && !always && event.area.is_some_and(|area| !in_view(area, now.time, now.week)) {
+        let mut step = if chosen { Step::Chosen } else { Step::Matrix };
+        if !chosen && level == Level::Now && person != Person::Safe && !always && event.area.is_some_and(|area| !in_view(area, now.time, now.week)) {
             (level, step) = (Level::Later, Step::Area);
         }
         let mut out = Output::at(level, step);
@@ -1293,6 +1510,23 @@ impl Settings {
             _ => Vec::new(),
         })
     }
+
+    /// The sources' own rows written (`app.<package>`, `conversation.<key>`),
+    /// each with its words, as `words` reads a row's.
+    pub fn sources(&self) -> Vec<(String, Vec<String>)> {
+        self.0
+            .iter()
+            .filter(|(key, _)| is_source(key.trim()))
+            .map(|(key, value)| {
+                let words = match value {
+                    toml::Value::Array(list) => list.iter().filter_map(|w| w.as_str().map(str::to_string)).collect(),
+                    toml::Value::String(text) => text.split(',').map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect(),
+                    _ => Vec::new(),
+                };
+                (key.trim().to_string(), words)
+            })
+            .collect()
+    }
 }
 
 /// `[notify]` as an older Sioul wrote it (what each kind of notification did
@@ -1352,9 +1586,9 @@ pub fn seeded(config: &Config) -> Attention {
 }
 
 /// What the older keys made Sioul do, written as cells (docs/attention.md, §5).
-fn older(config: &Config) -> [[Level; 9]; 37] {
+fn older(config: &Config) -> [[Level; 9]; 36] {
     use Column::*;
-    let mut cells = [[Level::Now; 9]; 37];
+    let mut cells = [[Level::Now; 9]; 36];
     // `[notify]`: each kind's row, as `column[:value]` words.
     let notify = |row: &str, column: Column| -> &'static str {
         let usual = older_notify(row, column);
@@ -1534,7 +1768,6 @@ fn older_notify(row: &str, column: Column) -> &'static str {
         "needs" => if held { "never" } else { "now" },
         "move" => if hours { "now" } else { "never" },
         "work-over" => if column == Work || held { "never" } else { "now" },
-        "watch" => if matches!(column, Work | Slot | Dnd) { "now" } else { "never" },
         "mail" => match column {
             Dnd => "list",
             _ if hours => "now",
@@ -1578,6 +1811,18 @@ pub fn apply(path: &Path, config: &Config, key: &str, value: &SettingValue) -> R
         }
         return write(path, config, &attention, &[row]);
     }
+    // A source's own row (an app's, a conversation's): its cells, and its name ("name=…").
+    if let Some(id) = key.strip_prefix("attention.").filter(|id| is_source(id)) {
+        for text in words {
+            if let Some(name) = text.strip_prefix(NAME) {
+                attention.name_source(id, name);
+                continue;
+            }
+            let (column, level) = word(text).ok_or_else(|| format!("{key}: {text}: not understood"))?;
+            attention.set_source(id, column, level)?;
+        }
+        return write_with(path, config, &attention, &[], &[id.to_string()]);
+    }
     let rest = key.strip_prefix("attention.").or_else(|| key.strip_prefix("notify.")).ok_or_else(|| format!("{key}: no such row"))?;
     let row = Row::read(rest).ok_or_else(|| format!("{key}: no such row"))?;
     for text in words {
@@ -1596,10 +1841,16 @@ pub fn apply_preset(path: &Path, config: &Config, preset: Preset) -> Result<(), 
 /// `rows` written as `attention` has them, each whole or taken out when
 /// usual; the first time, every row that is not usual too, and the older keys out.
 fn write(path: &Path, config: &Config, attention: &Attention, rows: &[Row]) -> Result<(), String> {
+    write_with(path, config, attention, rows, &[])
+}
+
+/// `write`, with sources' own rows (`sources`, by id) written too, each as
+/// set or taken out when as usual everywhere; the other sources' rows stay.
+fn write_with(path: &Path, config: &Config, attention: &Attention, rows: &[Row], sources: &[String]) -> Result<(), String> {
     let usual = Attention::usual();
     let first = config.attention.is_none();
     let rows: Vec<Row> = if first { Row::ALL.to_vec() } else { rows.to_vec() };
-    let said: Vec<(String, Option<Vec<String>>)> = rows
+    let mut said: Vec<(String, Option<Vec<String>>)> = rows
         .iter()
         .filter(|r| !matches!(r, Row::People(_, Person::Blocked)))
         .map(|row| {
@@ -1607,6 +1858,10 @@ fn write(path: &Path, config: &Config, attention: &Attention, rows: &[Row]) -> R
             (row.id(), (!same).then(|| attention.words(*row)))
         })
         .collect();
+    for id in sources {
+        let words = attention.source_words(id);
+        said.push((id.clone(), (!words.is_empty()).then_some(words)));
+    }
     crate::config::set_table(path, "attention", &said, if first { OLDER } else { &[] })
 }
 
@@ -1871,6 +2126,102 @@ pub fn kind_rows() -> Vec<Row> {
     Kind::ALL.iter().map(|k| Row::Own(*k)).collect()
 }
 
+/// A source's row to draw (`source_grid`): its id (`app.<package>`,
+/// `conversation.<key>`), its words (an app's name; a conversation's title
+/// and its app's), and the group it shows in, in words and by id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceLine {
+    pub id: String,
+    pub label: String,
+    pub group: String,
+    pub group_id: String,
+}
+
+/// The sources' own rows as Settings draws them (`AttentionGrid.qml`): each
+/// a row of the nine columns, its cells as set or as usual, each in a
+/// sentence; a cell set carries the grid's dot. The values a source's cell
+/// takes, in their own words: at once, at the gathered times, held, as usual.
+pub fn source_grid(attention: &Attention, tr: &Translator, lines: &[SourceLine]) -> Grid {
+    let columns = Column::ALL.iter().map(|c| Named { id: c.id().to_string(), label: column_label(tr, *c) }).collect();
+    let label = |level: Level| tr.text(&format!("attention-source-{}", level.id()), None);
+    let choices: Vec<Mark> = SOURCE_CHOICES.iter().map(|l| Mark { id: l.id().to_string(), mark: l.mark(false).to_string(), label: label(*l) }).collect();
+    let offered: Vec<String> = SOURCE_CHOICES.iter().map(|l| l.id().to_string()).collect();
+    let rows = lines
+        .iter()
+        .map(|line| {
+            let set = attention.source(&line.id).unwrap_or([Level::As; 9]);
+            let cells: Vec<GridCell> = Column::ALL
+                .iter()
+                .map(|column| {
+                    let value = set[column.index()];
+                    let mut args = crate::i18n::args();
+                    args.set("row", line.label.clone());
+                    args.set("column", column_label(tr, *column));
+                    args.set("value", label(value));
+                    GridCell {
+                        column: column.id().to_string(),
+                        value: value.id().to_string(),
+                        choices: offered.clone(),
+                        locked: String::new(),
+                        changed: value != Level::As,
+                        said: tr.text("attention-cell", Some(&args)),
+                    }
+                })
+                .collect();
+            GridRow {
+                id: line.id.clone(),
+                label: line.label.clone(),
+                group: line.group.clone(),
+                group_id: line.group_id.clone(),
+                help: tr.text("attention-source-help", None),
+                choices: choices.clone(),
+                changed: cells.iter().any(|c| c.changed),
+                cells,
+            }
+        })
+        .collect();
+    Grid {
+        columns,
+        layers: vec![Column::Slot.id().to_string(), Column::Dnd.id().to_string()],
+        marks: choices,
+        rows,
+        presets: Vec::new(),
+        changed: String::new(),
+        now: String::new(),
+    }
+}
+
+/// A source's row in one sentence: where it comes at once, where at the
+/// gathered times, where it is held, and as usual the rest of the time; "As
+/// usual at every time." when nothing is set. "At once: Work and Do not
+/// disturb; held: Leisure and Sleep; as usual the rest of the time."
+pub fn source_sentence(attention: &Attention, tr: &Translator, id: &str) -> String {
+    let Some(cells) = attention.source(id) else { return tr.text("attention-source-usual", None) };
+    let and = tr.text("word-and", None);
+    let mut parts: Vec<String> = [Level::Now, Level::Gathered, Level::Later]
+        .iter()
+        .filter_map(|level| {
+            let columns: Vec<String> = Column::ALL.iter().filter(|c| cells[c.index()] == *level).map(|c| column_label(tr, *c)).collect();
+            let columns = match columns.as_slice() {
+                [] => return None,
+                [one] => one.clone(),
+                [rest @ .., last] => format!("{} {and} {last}", rest.join(", ")),
+            };
+            let mut args = crate::i18n::args();
+            args.set("columns", columns);
+            Some(tr.text(&format!("attention-source-said-{}", level.id()), Some(&args)))
+        })
+        .collect();
+    if cells.contains(&Level::As) {
+        parts.push(tr.text("attention-source-said-as", None));
+    }
+    let mut args = crate::i18n::args();
+    args.set("parts", parts.join(&tr.text("attention-source-said-join", None)));
+    let said = tr.text("attention-source-said", Some(&args));
+    let mut letters = said.chars();
+    letters.next().map(|first| first.to_uppercase().chain(letters).collect()).unwrap_or_default()
+}
+
 /// The moment now in one sentence, from the matrix: what comes at once, what
 /// is shown without a word, what waits. "Now: at once: your safe senders'
 /// mail, calls and messages; doses. Waiting: everyone else's."
@@ -2005,7 +2356,6 @@ mod tests {
             ("move", "●●●●–––––"),
             ("work-over", "–●●●–––●●"),
             ("time", "●●●●●●●●●"),
-            ("watch", "●––––––●●"),
             ("sites", "◎◎◎◎○○○○○"),
             ("sites-live", "●●●●○○○○○"),
             ("site-calls", "●●●●○○○●○"),
@@ -2577,7 +2927,7 @@ mod tests {
             let mut a = Attention::usual();
             a.set(row("mail.neutral"), Column::Leisure, Level::Now).unwrap();
             let grid = grid(&a, &tr, &Row::ALL, Preset::Usual, Some(&Now::time(Column::Leisure)));
-            assert_eq!((grid.columns.len(), grid.rows.len(), grid.marks.len(), grid.presets.len()), (9, 37, 8, 3));
+            assert_eq!((grid.columns.len(), grid.rows.len(), grid.marks.len(), grid.presets.len()), (9, 36, 8, 3));
             assert!(grid.rows.iter().find(|r| r.id == "mail.neutral").unwrap().changed && !grid.presets[0].current && grid.presets[0].changes == 1);
             assert!(!grid.changed.is_empty() && !grid.now.is_empty());
             let words = grid
@@ -2605,5 +2955,148 @@ mod tests {
         assert_eq!(Translator::new("fr").text("attention-column-free", None), "Temps libre");
         assert_eq!(list_choice(&Translator::new("en"), Who::Neutral, &Attention::usual(), false), "Neutral: work, admin");
         assert_eq!(list_choice(&Translator::new("en"), Who::Safe, &Attention::usual(), false), "Safe: any time");
+    }
+
+    /// A source's own row (an app's, a conversation's: §1.3), each cell as
+    /// set or, as usual, the row the notification takes otherwise; at each
+    /// time, under the layers, a conversation's over its app's; nothing
+    /// changes for an app until a cell of its row is set.
+    #[test]
+    fn a_source_s_row_is_read_over_its_usual_row() {
+        let app = "app.com.example.chat".to_string();
+        let talk = "conversation.0123456789abcdef".to_string();
+        let both = vec![talk.clone(), app.clone()];
+        let message = |who: Who, group: bool| Event::of(Source::Message { via: Channel::Messages, who, group, always: false });
+        let at = |column: Column| Now::time(column);
+        let usual = Attention::usual();
+        // Nothing set: every person, every time, layer or none, as before.
+        for who in [Who::Safe, Who::Neutral, Who::Restricted, Who::Stranger, Who::Blocked] {
+            for group in [false, true] {
+                for column in Column::TIMES {
+                    for (slot, dnd) in [(false, false), (true, false), (false, true)] {
+                        let now = at(column).layers(slot, dnd);
+                        assert_eq!(usual.decide(&message(who, group).from_sources(both.clone()), &now), usual.decide(&message(who, group), &now), "{who:?} {group} {column:?}");
+                    }
+                }
+            }
+        }
+        // The owner's example: through during work, held otherwise.
+        let mut a = Attention::usual();
+        for column in Column::ALL {
+            a.set_source(&app, column, if column == Column::Work { Level::Now } else { Level::Later }).unwrap();
+        }
+        let stranger = message(Who::Stranger, false).from_sources(both.clone());
+        assert_eq!(a.decide(&stranger, &at(Column::Work)), Output { level: Level::Now, shown: true, told: true, pierce: false, step: Step::Chosen });
+        for column in [Column::Admin, Column::Leisure, Column::Meals, Column::Sleep, Column::Pause, Column::Free] {
+            assert_eq!(a.decide(&stranger, &at(column)).level, Level::Later, "{column:?}");
+        }
+        // A safe friend too: the app's row says it, whoever writes; the blocked never.
+        assert_eq!(a.decide(&message(Who::Safe, false).from_sources(both.clone()), &at(Column::Leisure)).level, Level::Later);
+        assert_eq!(a.decide(&message(Who::Blocked, false).from_sources(both.clone()), &at(Column::Work)).step, Step::Blocked);
+        // Under do-not-disturb: held, as its layer's cell says.
+        assert_eq!(a.decide(&stranger, &at(Column::Work).layers(false, true)).level, Level::Later);
+        // As usual where not set: the person's own row (a safe friend comes in leisure, a stranger waits).
+        let mut b = Attention::usual();
+        b.set_source(&app, Column::Work, Level::Later).unwrap();
+        assert_eq!(b.decide(&message(Who::Safe, false).from_sources(both.clone()), &at(Column::Leisure)), usual.decide(&message(Who::Safe, false), &at(Column::Leisure)));
+        assert_eq!(b.decide(&message(Who::Stranger, false).from_sources(both.clone()), &at(Column::Leisure)).step, Step::Matrix);
+        assert_eq!(b.decide(&message(Who::Safe, false).from_sources(both.clone()), &at(Column::Work)).level, Level::Later);
+        // A layer as usual holds as it does: at once at work, but do-not-disturb holds a stranger; set at once, it does not.
+        let mut c = Attention::usual();
+        c.set_source(&app, Column::Leisure, Level::Now).unwrap();
+        assert_eq!(c.decide(&stranger, &at(Column::Leisure)).level, Level::Now);
+        assert_eq!(c.decide(&stranger, &at(Column::Leisure).layers(false, true)).level, Level::Later);
+        c.set_source(&app, Column::Dnd, Level::Now).unwrap();
+        assert_eq!(c.decide(&stranger, &at(Column::Leisure).layers(false, true)).level, Level::Now);
+        // Someone Always through stays so, whatever the app's row says.
+        let listed = Event::of(Source::Message { via: Channel::Messages, who: Who::Neutral, group: false, always: true }).from_sources(both.clone());
+        assert_eq!(a.decide(&listed, &at(Column::Sleep)).level, Level::Now);
+        // A conversation's choice wins over its app's.
+        a.set_source(&talk, Column::Leisure, Level::Now).unwrap();
+        assert_eq!(a.decide(&stranger, &at(Column::Leisure)).level, Level::Now);
+        assert_eq!(a.decide(&message(Who::Stranger, false).from_sources(vec![app.clone()]), &at(Column::Leisure)).level, Level::Later);
+        // Gathered: an app's automatons and its messages alike.
+        let mut d = Attention::usual();
+        d.set_source(&app, Column::Work, Level::Gathered).unwrap();
+        assert_eq!(d.decide(&Event::own(Kind::AppAutomatons).from_sources(both.clone()), &at(Column::Work)).level, Level::Gathered);
+        assert_eq!(d.decide(&stranger, &at(Column::Work)).level, Level::Gathered);
+        assert_eq!(d.decide(&Event::own(Kind::AppAutomatons).from_sources(both.clone()), &at(Column::Leisure)), usual.decide(&Event::own(Kind::AppAutomatons), &at(Column::Leisure)));
+        // Your word for a time: no area holds it then; as usual, the area does.
+        let leisure_app = Event::own(Kind::AppAtOnce).for_area(Some(Area::WORK)).from_sources(both.clone());
+        let mut e = Attention::usual();
+        e.set_source(&app, Column::Leisure, Level::Now).unwrap();
+        assert_eq!(e.decide(&leisure_app, &at(Column::Leisure)).step, Step::Chosen);
+        assert_eq!(usual.decide(&leisure_app, &at(Column::Leisure)).step, Step::Area);
+        // Free time's "Nothing at all": as usual, it holds a state's row; set, the cell says.
+        let mut nothing = at(Column::Free);
+        nothing.nothing = true;
+        assert_eq!(b.decide(&message(Who::Safe, false).from_sources(both.clone()), &nothing).level, Level::Later);
+        e.set_source(&app, Column::Free, Level::Now).unwrap();
+        assert_eq!(e.decide(&message(Who::Safe, false).from_sources(both.clone()), &nothing).level, Level::Now);
+        // Only its own values; a row as usual everywhere is no row; ids that are no source refused.
+        assert!(a.set_source(&app, Column::Work, Level::Quiet).is_err() && a.set_source("app.", Column::Work, Level::Now).is_err() && a.set_source("mail.safe", Column::Work, Level::Now).is_err());
+        let mut f = Attention::usual();
+        f.set_source(&app, Column::Work, Level::Now).unwrap();
+        f.set_source(&app, Column::Work, Level::As).unwrap();
+        assert!(f.source(&app).is_none() && f.sources().is_empty() && !f.has_sources(&both));
+        assert_eq!(source_rows("com.example.chat", "0123456789abcdef"), both);
+        assert_eq!(source_rows("com.example.chat", " "), vec![app.clone()]);
+        // In words, both languages.
+        for language in ["en", "fr"] {
+            let tr = Translator::new(language);
+            let lines = vec![SourceLine { id: app.clone(), label: "Chat".into(), group: "Apps".into(), group_id: "app-rows".into() }];
+            let grid = source_grid(&a, &tr, &lines);
+            assert_eq!((grid.columns.len(), grid.rows.len(), grid.marks.len(), grid.rows[0].cells.len()), (9, 1, 4, 9));
+            assert!(grid.rows[0].changed && grid.rows[0].cells.iter().all(|c| c.choices.len() == 4 && c.locked.is_empty()));
+            let said = source_sentence(&a, &tr, &app);
+            let usual_said = source_sentence(&Attention::usual(), &tr, &app);
+            let words = grid.marks.iter().map(|m| m.label.clone()).chain(grid.rows[0].cells.iter().map(|c| c.said.clone())).chain([grid.rows[0].help.clone(), said.clone(), usual_said, source_sentence(&b, &tr, &app)]);
+            for text in words {
+                assert!(!text.starts_with("attention-") && !text.contains('{') && !text.contains("sorte"), "{language}: {text}");
+                if language == "fr" {
+                    for mark in [" :", " ;", " !", " ?", "« ", " »", "'"] {
+                        assert!(!text.contains(mark), "{language}: typography in {text:?}");
+                    }
+                }
+            }
+        }
+        assert_eq!(source_sentence(&a, &Translator::new("en"), &app), "At once: Work; held: Admin, Leisure, Meals, Sleep, Pause, Free time, Time for you and Do not disturb.");
+        assert_eq!(source_sentence(&b, &Translator::new("en"), &app), "Held: Work; as usual the rest of the time.");
+        assert_eq!(source_sentence(&b, &Translator::new("fr"), &app), "Retenues\u{202f}: Travail\u{202f}; comme d’habitude le reste du temps.");
+    }
+
+    /// A source's row written with the settings, read back, its name kept for
+    /// the other devices; as usual again, taken out; the other rows untouched.
+    #[test]
+    fn source_rows_written_and_read() {
+        let dir = std::env::temp_dir().join(format!("sioul-attention-sources-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "[notify]\nsites = [\"work:later\"]\n").unwrap();
+        let config = Config::load(&path).unwrap();
+        let words = |w: &[&str]| SettingValue::Texts(w.iter().map(|s| s.to_string()).collect());
+        // The first row written is a source's: the older keys seed the matrix as for any row.
+        apply(&path, &config, "attention.app.com.example.chat", &words(&["work", "admin:later", "leisure:as", "dnd:gathered", "name=Example Chat"])).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"app.com.example.chat\" = [\"work\", \"admin:later\", \"dnd:gathered\", \"name=Example Chat\"]") && !text.contains("[notify]"), "{text}");
+        let a = Attention::of(&Config::load(&path).unwrap());
+        assert_eq!(a.cell(row("sites"), Column::Work), Level::Later, "seeded from [notify]");
+        let cells = a.source("app.com.example.chat").unwrap();
+        assert_eq!((cells[0], cells[1], cells[2], cells[8]), (Level::Now, Level::Later, Level::As, Level::Gathered));
+        assert_eq!(a.source_name("app.com.example.chat"), "Example Chat");
+        // Another row changed: the source's stays.
+        apply(&path, &Config::load(&path).unwrap(), "attention.codes", &words(&["sleep:never"])).unwrap();
+        assert!(Attention::of(&Config::load(&path).unwrap()).source("app.com.example.chat").is_some());
+        // Refused: a value a source's cell does not take, a word not understood.
+        assert!(apply(&path, &Config::load(&path).unwrap(), "attention.app.com.example.chat", &words(&["work:quiet"])).is_err());
+        assert!(apply(&path, &Config::load(&path).unwrap(), "attention.app.com.example.chat", &words(&["teatime"])).is_err());
+        // As usual everywhere: taken out, name and all.
+        apply(&path, &Config::load(&path).unwrap(), "attention.app.com.example.chat", &words(&["work:as", "admin:as", "dnd:as"])).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("example.chat") && Attention::of(&Config::load(&path).unwrap()).sources().is_empty(), "{text}");
+        // An older Sioul's reading leaves it aside: no row of the matrix is a source's.
+        assert!(Row::read("app.com.example.chat").is_none() && Row::read("conversation.0123").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

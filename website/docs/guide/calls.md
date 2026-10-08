@@ -32,7 +32,7 @@ Do-not-disturb comes after: while one of Sioul's modes is on (a pause, Free time
 
 ## Let every call through {#let-every-call-through}
 
-When you expect a call. On the phone's notification "Sioul keeps your devices in step": **Let calls ring, 1 h**, or **Let calls ring** until you turn it off; **Screen calls again** ends it. In the window, the phone button in the status line, on any of your devices: a click lets every call ring for an hour; a right click, or a long press, chooses until when.
+When you expect a call. On Sioul's quiet notification on the phone, the one that says what now is for (its channel: "Devices in step"): **Let calls ring, 1 h**, or **Let calls ring** until you turn it off; **Screen calls again** ends it. In the window, the phone button in the status line, on any of your devices: a click lets every call ring for an hour; a right click, or a long press, chooses until when.
 
 ## Afterwards, on the Porch {#afterwards-on-the-porch}
 

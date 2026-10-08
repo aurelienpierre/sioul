@@ -47,10 +47,10 @@ Item {
         page.routes = page.openId !== "" ? JSON.parse(page.sioul.settings("project:" + page.openId) || "[]") : []
     }
 
+    // A setting of the project's own (its routes, whether AI agents may read it), saved at once.
     function saveRoutes(key, value) {
         page.problem = page.sioul.setSetting(key, JSON.stringify(value))
-        if (page.problem === "")
-            page.reload()
+        page.reload()
     }
 
     function open(id) {
@@ -339,6 +339,28 @@ Item {
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: page.theme.text
+                }
+                // Closed to AI agents until opened (docs/ai.md): the switch, and what it means in a sentence.
+                Switch {
+                    id: openToAi
+
+                    visible: page.shown !== null
+                    text: page.sioul.text("project-ai")
+                    checked: page.shown !== null && page.shown.ai === true
+                    onToggled: {
+                        page.saveRoutes("case." + page.openId + ".ai", openToAi.checked)
+                        // As the file says now, for this project and the next one opened.
+                        openToAi.checked = Qt.binding(() => page.shown !== null && page.shown.ai === true)
+                    }
+                }
+                Label {
+                    visible: page.shown !== null
+                    Layout.fillWidth: true
+                    text: page.sioul.text("project-ai-help")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 12
+                    color: page.theme.muted
                 }
                 Label {
                     visible: page.problem !== ""

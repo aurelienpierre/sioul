@@ -31,11 +31,15 @@
 //!   newer of the two copies: records the longer (they only grow), notes to
 //!   each other, entries and claims by the times they hold. The folder's copy
 //!   wins a tie. What was fetched goes once the folder's copy caught up.
-//! - **Never**: anything written, moved or deleted on the server; anything
-//!   written into the synced folder; this device's own files fetched or read
-//!   from there; plain HTTP (a test's own stand-in apart); the password kept
-//!   or said (it comes from the keyring, as the calendars' sync has it, for
-//!   the requests only).
+//! - **Sent too** (`send`, docs/database.md, "Sent to the server too"): this
+//!   device's own files, beside the sync app, each over what is there as it
+//!   was seen; found there the same (the sync app sent it), not sent twice;
+//!   records never shorter; never another device's file.
+//! - **Never**: another device's file written, moved or deleted on the
+//!   server; anything written into the synced folder; this device's own files
+//!   fetched or read from there; plain HTTP (a test's own stand-in apart); the
+//!   password kept or said (it comes from the keyring, as the calendars' sync
+//!   has it, for the requests only).
 
 use crate::SyncError;
 use crate::dav::{self, Budget, DAV};
@@ -57,9 +61,22 @@ pub(crate) struct Limits {
     pub(crate) pull: Duration,
     /// A sealed note or paper, as long as it moves.
     pub(crate) blob: Duration,
+    /// A file sent (`Server::put_file`): given `large`, and as long more as
+    /// it takes at `floor` bytes a second; cut when nothing moved for `stall`.
+    pub(crate) floor: u64,
+    pub(crate) stall: Duration,
 }
 
-pub(crate) const LIMITS: Limits = Limits { wait: Duration::from_secs(10), small: Duration::from_secs(10), large: Duration::from_secs(60), pull: Duration::from_secs(30), blob: Duration::from_secs(15 * 60) };
+pub(crate) const LIMITS: Limits = Limits { wait: Duration::from_secs(10), small: Duration::from_secs(10), large: Duration::from_secs(60), pull: Duration::from_secs(30), blob: Duration::from_secs(15 * 60), floor: FLOOR, stall: Duration::from_secs(30) };
+
+/// The slowest upload Sioul waits for (bytes a second): a phone's mobile
+/// data on 3G sends faster. A 2.5 MB file is given 60 s and 156 s more.
+pub const FLOOR: u64 = 16 << 10;
+
+/// Sending this device's files (`send`): a step that sends a large file on a
+/// slow line is not cut after thirty seconds, as a pull is; each file is
+/// given the time its size asks (`FLOOR`).
+pub(crate) const SEND_LIMITS: Limits = Limits { wait: Duration::from_secs(20), small: Duration::from_secs(30), large: Duration::from_secs(60), pull: Duration::from_secs(20 * 60), blob: Duration::from_secs(15 * 60), floor: FLOOR, stall: Duration::from_secs(30) };
 
 /// Looked for again this long after the last look, when not found (seconds).
 pub const LOOK_AGAIN: i64 = 6 * 3600;
@@ -69,13 +86,17 @@ const SEAL_AGAIN: i64 = 6 * 3600;
 const LIST_AGAIN: i64 = 10 * 60;
 /// A records' file is never fetched past this.
 const LARGEST: u64 = 64 << 20;
+/// A device's texts to send (`texts/send/<id>.jsonl`) are never fetched past this.
+const TEXTS_LARGEST: u64 = 4 << 20;
 /// A listing is never read past this.
 const LISTING: u64 = 4 << 20;
 /// The last line asked again, to check the copy here joins what is there, when shorter than this.
 const OVERLAP: u64 = 1 << 20;
 
 const XML: &str = "application/xml; charset=utf-8";
-const LIST: &str = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getetag/><d:getcontentlength/></d:prop></d:propfind>"#;
+const LIST: &str = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getetag/><d:getcontentlength/><oc:checksums/></d:prop></d:propfind>"#;
+/// Nextcloud's own properties: the checksums a file was sent with (`oc:checksums`).
+const OC: &str = "http://owncloud.org/ns";
 const PRINCIPAL: &str = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>"#;
 
 // ---------------------------------------------------------------- where
@@ -118,6 +139,10 @@ pub struct State {
     /// When you asked to look again (Unix seconds).
     #[serde(default)]
     pub asked: i64,
+    /// This device's own files sent there too, beside the sync app (`send`):
+    /// as switched here, else on wherever the backup is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub send: Option<bool>,
     /// The sharing folder here it backs.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub folder: String,
@@ -212,7 +237,7 @@ impl State {
         let path = state_path(memory);
         sioul_core::filelock::with_lock(&path, || {
             let there = State::load(memory);
-            State { on: there.on, given: there.given, asked: there.asked, ..self.clone() }.write(memory)
+            State { on: there.on, given: there.given, asked: there.asked, send: there.send, ..self.clone() }.write(memory)
         })
     }
 
@@ -235,6 +260,12 @@ impl State {
     /// Fetching: as switched here, else on.
     pub fn fetching(&self) -> bool {
         self.on != Some(false)
+    }
+
+    /// Sending this device's own files there too (`send`): with the backup
+    /// on, as switched here, else on.
+    pub fn sending(&self) -> bool {
+        self.fetching() && self.send != Some(false)
     }
 
     /// The server, by its name: "murena.io".
@@ -304,6 +335,8 @@ fn usable(folder: &Path, memory: &Path) -> bool {
 pub fn forget(memory: &Path, folder: &Path) {
     let _ = std::fs::remove_dir_all(cache_of(memory));
     let _ = std::fs::remove_file(state_path(memory));
+    let _ = std::fs::remove_file(Lane::Main.memory(memory));
+    let _ = std::fs::remove_file(Lane::Urgent.memory(memory));
     if let Ok(mut attached) = ATTACHED.lock() {
         attached.remove(folder);
     }
@@ -344,6 +377,8 @@ pub(crate) struct Item {
     pub(crate) dir: bool,
     pub(crate) etag: String,
     pub(crate) size: u64,
+    /// The checksums the server keeps of it, as it says them ("SHA1:… MD5:…"); "" when none.
+    pub(crate) checksum: String,
 }
 
 /// What came of a file asked from a place in it: where it starts, its bytes,
@@ -352,6 +387,33 @@ pub(crate) struct Got {
     start: u64,
     bytes: Vec<u8>,
     error: Option<SyncError>,
+}
+
+/// A file that did not go (`Server::put_file`): the error, what kind of
+/// failure ("timeout", "stalled", "unreachable", "tls", "login", "network"),
+/// how long the try lasted (seconds), how many of its bytes went, of how many.
+#[derive(Debug)]
+pub(crate) struct PutFailed {
+    pub(crate) error: SyncError,
+    pub(crate) kind: &'static str,
+    pub(crate) words: String,
+    pub(crate) seconds: u64,
+    pub(crate) sent: u64,
+    pub(crate) total: u64,
+}
+
+/// A body read from memory, counting what went: what a failure says it sent.
+struct Counted {
+    inner: std::io::Cursor<Vec<u8>>,
+    moved: std::sync::Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl Read for Counted {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.moved.fetch_add(n as u64, std::sync::atomic::Ordering::Relaxed);
+        Ok(n)
+    }
 }
 
 fn failed(e: &ureq::Error) -> SyncError {
@@ -411,6 +473,7 @@ impl Server {
         }
         let body = response.body_mut().with_config().limit(LISTING).read_to_string().map_err(|e| failed(&e))?;
         let (responses, _) = dav::multistatus(&body)?;
+        let sums = checksums(&body, url);
         let me = dav::path_key(url);
         let mut listing = Listing::default();
         for response in responses {
@@ -422,15 +485,98 @@ impl Server {
             }
             let Some(name) = path.strip_prefix(&me).and_then(|rest| rest.strip_prefix('/')).filter(|n| !n.is_empty() && !n.contains('/')) else { continue };
             let size = response.text(DAV, "getcontentlength").and_then(|t| t.parse().ok()).unwrap_or(0);
-            listing.items.insert(name.to_string(), Item { dir: response.is(DAV, "collection"), etag, size });
+            listing.items.insert(name.to_string(), Item { dir: response.is(DAV, "collection"), etag, size, checksum: sums.get(&path).cloned().unwrap_or_default() });
         }
         Ok(listing)
+    }
+
+    /// One file as the server has it now (`Depth: 0`): its ETag, size and
+    /// checksums; none when it is not there.
+    pub(crate) fn stat(&self, url: &str) -> Result<Option<Item>, SyncError> {
+        let mut response = self.request(false, "PROPFIND", url, &[("Depth", "0"), ("Content-Type", XML)], LIST.as_bytes().to_vec())?;
+        match response.status().as_u16() {
+            207 => {}
+            404 => return Ok(None),
+            status => return Err(SyncError::Server(format!("PROPFIND: {status}"))),
+        }
+        let body = response.body_mut().with_config().limit(LISTING).read_to_string().map_err(|e| failed(&e))?;
+        let (responses, _) = dav::multistatus(&body)?;
+        let sums = checksums(&body, url);
+        Ok(responses.first().map(|r| Item {
+            dir: r.is(DAV, "collection"),
+            etag: r.text(DAV, "getetag").unwrap_or_default(),
+            size: r.text(DAV, "getcontentlength").and_then(|t| t.parse().ok()).unwrap_or(0),
+            checksum: sums.get(&dav::path_key(&dav::absolute(url, &r.href))).cloned().unwrap_or_default(),
+        }))
+    }
+
+    /// One of this device's files sent whole beside a sync app (`send`): over
+    /// what is there as it was seen (`If-Match` its ETag, `If-None-Match: *`
+    /// when none was there), dated as the file here (`X-OC-Mtime`), with its
+    /// SHA-1 (`OC-Checksum`): a Nextcloud client finding the same file there
+    /// as here, same size, date and checksum, takes it as its own, without a
+    /// download and without a conflicted copy. Its status, and its ETag there.
+    ///
+    /// Given the time its size asks: `limits.large`, and as long more as it
+    /// takes at `limits.floor` bytes a second (a file still moving is not cut
+    /// at a flat minute); cut when nothing moved for `limits.stall`. Failed:
+    /// why, how long it lasted and how many of its bytes went (`PutFailed`).
+    pub(crate) fn put_file(&self, url: &str, body: Vec<u8>, seen: Option<&str>, modified_s: u64, sha1: &str) -> Result<(u16, Option<String>), PutFailed> {
+        let total = body.len() as u64;
+        let started = Instant::now();
+        let gave_up = |error: SyncError, kind: &'static str, sent: u64| PutFailed { words: error.to_string(), error, kind, seconds: started.elapsed().as_millis().div_ceil(1000) as u64, sent, total };
+        dav::allowed(url).map_err(|e| gave_up(e, "refused", 0))?;
+        if self.started.elapsed() > self.limits.pull {
+            return Err(gave_up(SyncError::Network("out of time".into()), "out-of-time", 0));
+        }
+        let precondition = match seen.filter(|etag| !etag.is_empty()) {
+            Some(etag) => ("If-Match", etag),
+            None => ("If-None-Match", "*"),
+        };
+        let whole = self.limits.large + Duration::from_secs(total / self.limits.floor.max(1));
+        let agent = dav::upload_agent(&Budget { connect: self.limits.wait, stall: self.limits.stall, whole });
+        let moved = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let reader = Counted { inner: std::io::Cursor::new(body), moved: std::sync::Arc::clone(&moved) };
+        let request = ureq::http::Request::builder()
+            .method("PUT")
+            .uri(url)
+            .header("Authorization", &self.authorization)
+            .header("User-Agent", "Sioul")
+            .header(precondition.0, precondition.1)
+            .header("Content-Type", "application/octet-stream")
+            .header("Content-Length", total.to_string())
+            .header("X-OC-Mtime", modified_s.to_string())
+            .header("OC-Checksum", format!("SHA1:{sha1}"))
+            .body(ureq::SendBody::from_owned_reader(reader))
+            .map_err(|e| gave_up(SyncError::Server(e.to_string()), "server", 0))?;
+        match agent.run(request) {
+            Ok(response) if response.status().as_u16() == 401 => Err(gave_up(SyncError::Login("PUT: 401".into()), "login", moved.load(std::sync::atomic::Ordering::Relaxed))),
+            Ok(response) => Ok((response.status().as_u16(), header(&response, "ETag").or_else(|| header(&response, "OC-ETag")))),
+            Err(e) => {
+                let sent = moved.load(std::sync::atomic::Ordering::Relaxed);
+                let kind = match &e {
+                    ureq::Error::Timeout(ureq::Timeout::Connect | ureq::Timeout::Resolve) | ureq::Error::ConnectionFailed | ureq::Error::HostNotFound => "unreachable",
+                    // Nothing moved for `stall`, well before the time given.
+                    ureq::Error::Timeout(_) | ureq::Error::Io(_) if started.elapsed() + Duration::from_secs(2) < whole && sent > 0 => "stalled",
+                    ureq::Error::Timeout(_) => "timeout",
+                    ureq::Error::Tls(_) => "tls",
+                    _ if format!("{e:?}").starts_with("Rustls") => "tls",
+                    _ => "network",
+                };
+                Err(gave_up(failed(&e), kind, sent))
+            }
+        }
     }
 
     /// A small file whole (`share::SMALL_FILE` at most) and its ETag; none
     /// when it is not there, or larger than any such file. A body that came
     /// cut, or whose end cannot be told, is an error: never taken as whole.
     pub(crate) fn small(&self, url: &str) -> Result<Option<(Vec<u8>, Option<String>)>, SyncError> {
+        self.small_up_to(url, crate::share::SMALL_FILE)
+    }
+
+    /// The same, at most `cap` bytes (a texts' file may grow past a small file's).
+    pub(crate) fn small_up_to(&self, url: &str, cap: u64) -> Result<Option<(Vec<u8>, Option<String>)>, SyncError> {
         let mut response = self.request(false, "GET", url, &[("Accept-Encoding", "identity")], Vec::new())?;
         match response.status().as_u16() {
             200 => {}
@@ -440,10 +586,10 @@ impl Server {
         let etag = header(&response, "ETag");
         let length = response.body().content_length();
         let chunked = header(&response, "Transfer-Encoding").is_some_and(|t| t.to_ascii_lowercase().contains("chunked"));
-        if length.is_some_and(|l| l > crate::share::SMALL_FILE) {
+        if length.is_some_and(|l| l > cap) {
             return Ok(None);
         }
-        let bytes = match response.body_mut().with_config().limit(crate::share::SMALL_FILE).read_to_vec() {
+        let bytes = match response.body_mut().with_config().limit(cap).read_to_vec() {
             Ok(bytes) => bytes,
             Err(ureq::Error::BodyExceedsLimit(_)) => return Ok(None),
             Err(e) => return Err(failed(&e)),
@@ -577,6 +723,31 @@ pub(crate) fn encode_path(path: &str) -> String {
         .join("/")
 }
 
+/// The checksums a multistatus says (`oc:checksums`, Nextcloud's), by the
+/// path of each response: "SHA1:… MD5:… ADLER32:…".
+fn checksums(body: &str, url: &str) -> BTreeMap<String, String> {
+    let Ok(doc) = roxmltree::Document::parse(body) else { return BTreeMap::new() };
+    doc.descendants()
+        .filter(|n| n.has_tag_name((DAV, "response")))
+        .filter_map(|response| {
+            let href = response.children().find(|c| c.has_tag_name((DAV, "href")))?.text()?.trim().to_string();
+            let sums = response.descendants().filter(|n| n.has_tag_name((OC, "checksum"))).filter_map(|n| n.text()).map(str::trim).filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ");
+            (!sums.is_empty()).then(|| (dav::path_key(&dav::absolute(url, &href)), sums))
+        })
+        .collect()
+}
+
+/// A content's SHA-1, in lower case hexadecimal, as `OC-Checksum` says it.
+fn sha1_hex(bytes: &[u8]) -> String {
+    use sha1::Digest;
+    sha1::Sha1::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The SHA-1 among checksums as a server says them ("SHA1:ab12… MD5:…"), in lower case.
+fn sha1_of(checksums: &str) -> Option<String> {
+    checksums.split_whitespace().find_map(|sum| sum.split_once(':').filter(|(kind, _)| kind.eq_ignore_ascii_case("sha1")).map(|(_, hex)| hex.to_ascii_lowercase()))
+}
+
 /// Why, in a code the window says in words: "login:murena.io".
 fn code(error: &SyncError, host: &str) -> String {
     let kind = match error {
@@ -686,7 +857,7 @@ pub(crate) fn find_with(memory: &Path, folder: &Path, logins: &[Login], places: 
     if state.folder != shown(folder) {
         // Another folder: what was fetched for the last one goes.
         let _ = std::fs::remove_dir_all(cache_of(memory));
-        state = State { on: state.on, given: state.given.clone(), asked: state.asked, folder: shown(folder), ..State::default() };
+        state = State { on: state.on, given: state.given.clone(), asked: state.asked, send: state.send, folder: shown(folder), ..State::default() };
     }
     state.looked = now;
     state.confirmed = 0;
@@ -832,8 +1003,22 @@ pub struct Pulled {
     pub listed: usize,
     /// Files that came down and are kept.
     pub fetched: usize,
-    /// This device's own files that went up (`MIRROR`).
+    /// This device's own files that went up (`MIRROR`, or beside a sync app: `send`).
     pub sent: usize,
+    /// This device's own files found there already as they are here: nothing sent (`send`).
+    pub same: usize,
+    /// This device's records found longer there than here (a sync app put an
+    /// older copy back here): left as they are there (`send`).
+    pub longer: usize,
+    /// This device's files found otherwise there, by kind and size, for the
+    /// log ("records 70708 here, 71234 there"; eight at most): never a name nor a content.
+    pub differ: Vec<String>,
+    /// Large files left for later on a metered or slow connection (`send`).
+    pub paced: usize,
+    /// Files that did not go (too slow, cut), held back until their backoff (`send`).
+    pub held: usize,
+    /// The last failure, in detail (`send`).
+    pub failure: Option<Failure>,
     /// Bytes that came down.
     pub bytes: u64,
     /// What went wrong, as `State::said` says it; none when it went through.
@@ -883,7 +1068,7 @@ pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
     // fetched belongs to another sharing, and the server's folder is looked at again.
     if !usable(folder, memory) {
         let _ = std::fs::remove_dir_all(&cache);
-        state = State { on: state.on, given: state.given.clone(), asked: state.asked, folder: state.folder.clone(), said: "no-seal".into(), ..State::default() };
+        state = State { on: state.on, given: state.given.clone(), asked: state.asked, send: state.send, folder: state.folder.clone(), said: "no-seal".into(), ..State::default() };
         let _ = state.save(memory);
         pulled.problem = Some(state.said);
         return pulled;
@@ -950,6 +1135,8 @@ pub(crate) enum Kind {
     Seen,
     Device,
     Claim,
+    /// Its texts to send (`texts/send/<id>.jsonl`): a small file of their own (`place_texts`).
+    Texts,
 }
 
 pub(crate) fn is_id(id: &str) -> bool {
@@ -967,6 +1154,7 @@ pub(crate) fn kind_of(relative: &str) -> Option<(Kind, &str)> {
         }
         ["devices", name] => name.strip_suffix(".device").filter(|id| is_id(id)).map(|id| (Kind::Device, id)),
         ["leases", _, name] => name.strip_suffix(".lease").filter(|id| !id.is_empty() && !id.starts_with('.')).map(|id| (Kind::Claim, id)),
+        ["texts", "send", name] => name.strip_suffix(".jsonl").filter(|id| is_id(id)).map(|id| (Kind::Texts, id)),
         _ => None,
     }
 }
@@ -980,6 +1168,7 @@ fn cached_files(cache: &Path) -> Vec<String> {
         let part = part.file_name().to_string_lossy().to_string();
         out.extend(names(&cache.join("leases").join(&part)).into_iter().map(|n| format!("leases/{part}/{n}")));
     }
+    out.extend(names(&cache.join("texts").join("send")).into_iter().map(|n| format!("texts/send/{n}")));
     out
 }
 
@@ -1087,6 +1276,30 @@ impl Puller<'_> {
             }
             self.looked("leases/", &parts.etag);
         }
+        // Each device's texts to send, a small file of its own: a phone has
+        // them within its quarter of an hour, whatever the records' size.
+        if let Some(texts) = root.items.get("texts").filter(|item| item.dir)
+            && !self.unchanged("texts/", &texts.etag)
+        {
+            match self.server.list(&self.url("texts/send/")) {
+                Ok(listing) => {
+                    self.pulled.listed += listing.items.len();
+                    self.own_listed("texts/send/", &listing);
+                    for (name, item) in listing.items.iter().filter(|(_, item)| !item.dir) {
+                        let relative = format!("texts/send/{name}");
+                        if let Some((Kind::Texts, id)) = kind_of(&relative)
+                            && id != self.own
+                        {
+                            self.small(&relative, item)?;
+                        }
+                    }
+                    self.forget_gone("texts/send/", &listing);
+                    self.looked("texts/", &texts.etag);
+                }
+                Err(SyncError::NotFound(_)) => self.looked("texts/", &texts.etag),
+                Err(e) => return Err(Stop::Failed(e)),
+            }
+        }
         // Sioul keeping the folder itself: the sealed notes and papers the others put there come too.
         if self.mirror()
             && let Some(blobs) = root.items.get("blobs").filter(|item| item.dir)
@@ -1172,10 +1385,11 @@ impl Puller<'_> {
         if !item.etag.is_empty() && self.state.files.get(relative) == Some(&known) && (!self.mirror() || self.folder.join(relative).exists()) {
             return Ok(());
         }
-        if item.size > crate::share::SMALL_FILE {
+        let cap = if matches!(kind_of(relative), Some((Kind::Texts, _))) { TEXTS_LARGEST } else { crate::share::SMALL_FILE };
+        if item.size > cap {
             return Ok(());
         }
-        let Some((bytes, _)) = self.server.small(&self.url(relative))? else {
+        let Some((bytes, _)) = self.server.small_up_to(&self.url(relative), cap)? else {
             self.state.files.remove(relative);
             return Ok(());
         };
@@ -1318,8 +1532,10 @@ impl Puller<'_> {
         let bytes = std::fs::read(self.folder.join(relative)).map_err(|e| Stop::Failed(SyncError::Disk(format!("{relative}: {e}"))))?;
         let url = self.url(relative);
         let mut seen = if blob { None } else { seen };
+        let sha1 = sha1_hex(&bytes);
         for attempt in 0..3 {
-            let (status, etag) = self.server.put(&url, bytes.clone(), seen.as_deref())?;
+            // Given the time its size asks on a slow line (`put_file`).
+            let (status, etag) = self.server.put_file(&url, bytes.clone(), seen.as_deref(), modified / 1_000_000_000, &sha1).map_err(|failed| Stop::Failed(failed.error))?;
             match status {
                 200 | 201 | 204 => {
                     self.state.sent.insert(relative.to_string(), Sent { size, modified, etag: etag.unwrap_or_default() });
@@ -1623,9 +1839,20 @@ fn dir_of(relative: &str) -> &str {
 /// sealed file not there yet is read as a sync app's late copy is: the
 /// others wait for it (docs/database.md, "Coming in").
 fn own_files(folder: &Path, own: &str, state: &State) -> Vec<String> {
-    let names = |dir: &Path| -> Vec<String> {
-        std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| !n.starts_with('.')).collect()
-    };
+    let mut out = own_plain(folder, own);
+    out.extend(file_names(&folder.join("blobs")).into_iter().map(|n| format!("blobs/{n}")).filter(|r| !state.files.contains_key(r)));
+    out
+}
+
+/// The files of a folder, by name, hidden ones left out.
+fn file_names(dir: &Path) -> Vec<String> {
+    std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| !n.starts_with('.')).collect()
+}
+
+/// This device's own files in the folder but its sealed ones, in the order
+/// they go up: its records, its notes to the others, its claims, its entry.
+fn own_plain(folder: &Path, own: &str) -> Vec<String> {
+    let names = file_names;
     let mut out: Vec<String> = Vec::new();
     let mut records: Vec<(u8, u32, String)> = names(folder)
         .into_iter()
@@ -1644,7 +1871,6 @@ fn own_files(folder: &Path, own: &str, state: &State) -> Vec<String> {
     if folder.join(&entry).is_file() {
         out.push(entry);
     }
-    out.extend(names(&folder.join("blobs")).into_iter().map(|n| format!("blobs/{n}")).filter(|r| !state.files.contains_key(r)));
     out
 }
 
@@ -1662,6 +1888,680 @@ fn own_latest(folder: &Path, own: &str) -> Option<u32> {
             }
         })
         .max()
+}
+
+// ---------------------------------------------------------------- sent beside the sync app
+
+/// A full check of what the server holds of this device's files, beside the
+/// quick sends (each a few requests): every six hours, and when asked
+/// ("Send everything again").
+const CHECK_AGAIN: i64 = 6 * 3600;
+/// A file past this size (bytes) is a large one: on a metered or slow
+/// connection (`Sending::frugal`), sent at most every `PACE` seconds.
+pub const LARGE_FILE: u64 = 256 << 10;
+const PACE: i64 = 10 * 60;
+/// Under this rate (bytes a second), measured on a file sent of 64 KiB at
+/// least, the connection counts as slow: paced as a metered one.
+pub const SLOW: u64 = 64 << 10;
+
+/// How long a failed send waits before it is tried again, by how many failed
+/// in a row: a minute, two, five, a quarter of an hour, half an hour, an hour.
+pub fn backoff(tries: u32) -> i64 {
+    [60, 120, 300, 900, 1800, 3600][tries.saturating_sub(1).min(5) as usize]
+}
+
+/// The two ways this device's files go (`send`, `send_urgent`), each with its
+/// own lock and its own memory, so that a large file on a slow line, going
+/// up for minutes, never holds back a text to send.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Lane {
+    /// Its records, notes, claims, entry and sealed files.
+    Main,
+    /// What must reach the others within minutes, in a small file of its own:
+    /// its texts to send (`texts/send/<id>.jsonl`, `place_texts`).
+    Urgent,
+}
+
+impl Lane {
+    fn memory(self, memory: &Path) -> PathBuf {
+        memory.with_file_name(match self {
+            Lane::Main => "sending.toml",
+            Lane::Urgent => "sending-urgent.toml",
+        })
+    }
+
+    fn lock(self, memory: &Path) -> PathBuf {
+        memory.with_file_name(match self {
+            Lane::Main => "send.step",
+            Lane::Urgent => "send.urgent",
+        })
+    }
+}
+
+/// What sending this device's own files beside the sync app knows (`send`):
+/// `share/sending.toml` (`share/sending-urgent.toml` for the urgent lane),
+/// never shared, apart from the backup's state, so that a pull and a send
+/// never write over each other's.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Sending {
+    /// The folder there the files went to: another, and each is looked at again.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub url: String,
+    /// When a send last went through whole, and was last tried (Unix seconds).
+    #[serde(default)]
+    pub last: i64,
+    #[serde(default)]
+    pub tried: i64,
+    /// When the server's copies were last listed and compared with the files here (Unix seconds).
+    #[serde(default)]
+    pub checked: i64,
+    /// Why the last send stopped, a code as `State::said` has them; "" when it went through.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub said: String,
+    /// The last failure, in detail: which file, how, how long, how many of its bytes went.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<Failure>,
+    /// The server unreachable (a connection, a certificate, a password
+    /// refused): how many sends failed in a row, and none tried before
+    /// `retry_at` (Unix seconds; "Send everything again" apart).
+    #[serde(default)]
+    pub tries: u32,
+    #[serde(default)]
+    pub retry_at: i64,
+    /// Files that did not go (too slow, cut): how many tries in a row, and not
+    /// tried again before when (`backoff`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub held: BTreeMap<String, Held>,
+    /// The rate of the last file of 64 KiB or more that went, or of what went
+    /// of one that failed (bytes a second); 0 unknown.
+    #[serde(default)]
+    pub rate: u64,
+    /// When a large file was last sent or tried (Unix seconds), for the pace.
+    #[serde(default)]
+    pub large_at: i64,
+    /// What "Send everything again" last did, in either mode.
+    #[serde(default)]
+    pub again: Again,
+    /// This device's own files as they last went up, or were found there the same, by their path in the folder.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sent: BTreeMap<String, Sent>,
+}
+
+/// A failed send, in detail: what the panel and the log say of it.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Failure {
+    /// "timeout" (slower than the floor), "stalled" (nothing moved for half
+    /// a minute), "unreachable", "tls", "login", "server", "quota", "network".
+    #[serde(default)]
+    pub kind: String,
+    /// The file, by kind: "records", "notes", "claim", "entry", "texts", "sealed".
+    #[serde(default)]
+    pub file: String,
+    #[serde(default)]
+    pub seconds: u64,
+    #[serde(default)]
+    pub sent: u64,
+    #[serde(default)]
+    pub total: u64,
+    /// The error's own words, for the log.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub words: String,
+    /// When (Unix seconds).
+    #[serde(default)]
+    pub at: i64,
+}
+
+/// A file held back after it failed: tries in a row, and when to try again (Unix seconds).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Held {
+    #[serde(default)]
+    pub tries: u32,
+    #[serde(default)]
+    pub until: i64,
+}
+
+/// What "Send everything again" did: when (Unix seconds), how many files
+/// went, how many were there already as they are here, and why it stopped
+/// ("" when it went through).
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Again {
+    #[serde(default)]
+    pub at: i64,
+    #[serde(default)]
+    pub sent: usize,
+    #[serde(default)]
+    pub same: usize,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub said: String,
+}
+
+#[cfg(test)]
+fn sending_path(memory: &Path) -> PathBuf {
+    Lane::Main.memory(memory)
+}
+
+impl Sending {
+    pub fn load(memory: &Path) -> Sending {
+        Sending::load_lane(memory, Lane::Main)
+    }
+
+    /// The urgent lane's (`send_urgent`).
+    pub fn load_urgent(memory: &Path) -> Sending {
+        Sending::load_lane(memory, Lane::Urgent)
+    }
+
+    fn load_lane(memory: &Path, lane: Lane) -> Sending {
+        std::fs::read_to_string(lane.memory(memory)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    }
+
+    fn save(&self, memory: &Path, lane: Lane) -> Result<(), String> {
+        let text = toml::to_string(self).map_err(|e| e.to_string())?;
+        crate::share::write_atomically(&lane.memory(memory), format!("# Sioul: this device's files sent to the sharing folder's server beside the sync app (docs/database.md). Never shared.\n{text}").as_bytes())
+    }
+
+    /// "Send everything again" could not start (no account for the server,
+    /// the folder not found, sending switched off): why, said as a code.
+    pub fn note_again(memory: &Path, now: i64, why: &str) {
+        let mut sending = Sending::load(memory);
+        sending.again = Again { at: now, sent: 0, same: 0, said: why.to_string() };
+        let _ = sending.save(memory, Lane::Main);
+    }
+
+    /// The connection measured slow: under `SLOW` on the last large file.
+    pub fn slow(&self) -> bool {
+        self.rate > 0 && self.rate < SLOW
+    }
+
+    /// When the next try is due, when a send waits (Unix seconds): the server
+    /// unreachable, or a file held back; 0 when nothing waits.
+    pub fn next_try(&self) -> i64 {
+        self.held.values().map(|h| h.until).chain([self.retry_at]).filter(|at| *at > 0).min().unwrap_or(0)
+    }
+}
+
+/// This device's own files sent to the server beside the sync app that
+/// carries the folder (docs/database.md, "Sent to the server too"), once the
+/// backup found the folder there under the same seal. Only its own files
+/// (`own_plain`, and the sealed files it made, `sealed`: their name and the
+/// size it sealed, sent whole only), each over what is there as it was seen;
+/// a file found there as it is here is not sent again (the sync app sent it,
+/// or will find it there as its own); records only grow (never one shorter
+/// than what went, or than the server's), and go in order; never another
+/// device's file. Each file is given the time its size asks (`FLOOR`); one
+/// that does not go is held back (`backoff`), never tried sooner, the next
+/// records with it, the other files still going. The server unreachable,
+/// nothing is tried before its backoff. With `frugal` (a metered connection),
+/// or the connection measured slow, a large file goes at most every ten
+/// minutes. With `again`, or every six hours, or the first time, the server's
+/// folders are listed and every file compared: one lost there is sent again.
+/// This device's records past their time and the sealed files it swept are
+/// taken out there. One send at a time on this device, whichever process runs it.
+#[allow(clippy::too_many_arguments)]
+pub fn send(memory: &Path, folder: &Path, own: &str, login: &Login, sealed: &BTreeMap<String, u64>, now: i64, again: bool, frugal: bool) -> Pulled {
+    send_lane(Lane::Main, memory, folder, own, login, sealed, now, again, frugal, SEND_LIMITS)
+}
+
+/// This device's texts to send (`texts/send/<id>.jsonl`, `place_texts`), on a
+/// lane of their own: a small file, sent first and alone, never waiting
+/// behind a large one going up on a slow line; Sioul keeping the folder
+/// itself too (`MIRROR`).
+pub fn send_urgent(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64) -> Pulled {
+    send_lane(Lane::Urgent, memory, folder, own, login, &BTreeMap::new(), now, false, false, SEND_LIMITS)
+}
+
+#[cfg(test)]
+pub(crate) fn send_urgent_with(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64, limits: Limits) -> Pulled {
+    send_lane(Lane::Urgent, memory, folder, own, login, &BTreeMap::new(), now, false, false, limits)
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn send_with(memory: &Path, folder: &Path, own: &str, login: &Login, sealed: &BTreeMap<String, u64>, now: i64, again: bool, limits: Limits) -> Pulled {
+    send_lane(Lane::Main, memory, folder, own, login, sealed, now, again, false, limits)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login, sealed: &BTreeMap<String, u64>, now: i64, again: bool, frugal: bool, limits: Limits) -> Pulled {
+    sioul_core::filelock::with_lock(&lane.lock(memory), || {
+        let state = State::load(memory);
+        let mut pulled = Pulled::default();
+        let refused = if state.mode == MIRROR && lane == Lane::Main {
+            Some("mirror")
+        } else if !state.confirmed_for(folder) || state.account != login.account {
+            Some("not-confirmed")
+        } else if state.mode != MIRROR && !state.sending() {
+            Some("off")
+        } else {
+            None
+        };
+        if let Some(why) = refused {
+            if again {
+                Sending::note_again(memory, now, why);
+            }
+            pulled.problem = Some(why.into());
+            return pulled;
+        }
+        let mut sending = Sending::load_lane(memory, lane);
+        if sending.url != state.url {
+            sending = Sending { url: state.url.clone(), again: sending.again.clone(), ..Sending::default() };
+        }
+        let host = state.host();
+        // The server unreachable a moment ago: not tried before its backoff.
+        if !again && now < sending.retry_at {
+            pulled.problem = Some(format!("waiting:{host}"));
+            return pulled;
+        }
+        sending.tried = now;
+        let check = again || sending.checked == 0 || now - sending.checked >= CHECK_AGAIN;
+        let frugal = frugal || sending.slow();
+        let files: Vec<String> = match lane {
+            Lane::Urgent => own_urgent(folder, own),
+            Lane::Main => {
+                let mut files = own_plain(folder, own);
+                let mut names: Vec<&String> = sealed.keys().collect();
+                names.sort();
+                files.extend(names.into_iter().map(|name| format!("blobs/{name}")).filter(|relative| folder.join(relative).is_file()));
+                files
+            }
+        };
+        let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| Sender { server: &server, folder, own, url: &state.url, sealed, sending: &mut sending, pulled: &mut pulled, now, frugal, lane }.run(&files, check, again));
+        match outcome {
+            Ok(()) => {
+                sending.tries = 0;
+                sending.retry_at = 0;
+                if sending.held.is_empty() {
+                    sending.last = now;
+                    sending.said.clear();
+                    sending.failure = None;
+                } else if let Some(failure) = &sending.failure {
+                    sending.said = format!("network:{host}");
+                    pulled.failure = Some(failure.clone());
+                }
+                if check {
+                    sending.checked = now;
+                }
+            }
+            Err(Stop::Unconfirmed(why)) => sending.said = why,
+            Err(Stop::Failed(e)) => {
+                // Unreachable, refused, out of time: nothing more before the backoff.
+                sending.tries += 1;
+                sending.retry_at = now + backoff(sending.tries);
+                sending.said = code(&e, &host);
+                if sending.failure.as_ref().is_none_or(|f| f.at != now) {
+                    sending.failure = Some(Failure { kind: kind_of_error(&e).into(), file: String::new(), words: e.to_string(), at: now, ..Failure::default() });
+                }
+                pulled.failure = sending.failure.clone();
+            }
+        }
+        if again {
+            sending.again = Again { at: now, sent: pulled.sent, same: pulled.same, said: sending.said.clone() };
+        }
+        let _ = sending.save(memory, lane);
+        pulled.problem = (!sending.said.is_empty()).then(|| sending.said.clone());
+        pulled
+    })
+}
+
+/// A failure's kind, from its error alone (no file under way).
+fn kind_of_error(e: &SyncError) -> &'static str {
+    match e {
+        SyncError::Login(_) | SyncError::AppPassword(_) => "login",
+        SyncError::Tls(_) => "tls",
+        SyncError::Server(d) if d == "quota" => "quota",
+        SyncError::Server(_) => "server",
+        SyncError::Disk(_) => "disk",
+        SyncError::Network(d) if d == "out of time" => "out-of-time",
+        _ => "unreachable",
+    }
+}
+
+/// Sioul keeping the folder itself (`MIRROR`): "Send everything again". What
+/// it remembers of sending this device's own files is forgotten (its sealed
+/// files apart, which tell its own from the others'), and the server's
+/// folders are looked through again: each own file goes over what is there
+/// now, the others' newer files come. Said as `Sending::again` says it.
+pub fn again_mirror(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64) -> Pulled {
+    again_mirror_with(memory, folder, own, login, now, LIMITS)
+}
+
+pub(crate) fn again_mirror_with(memory: &Path, folder: &Path, own: &str, login: &Login, now: i64, limits: Limits) -> Pulled {
+    let forgot = sioul_core::filelock::with_lock(&memory.with_file_name("mirror.step"), || {
+        let mut state = State::load(memory);
+        if state.mode != MIRROR {
+            return false;
+        }
+        state.sent.retain(|relative, _| relative.starts_with("blobs/"));
+        state.folders.clear();
+        state.save(memory).is_ok()
+    });
+    let pulled = if forgot { step_with(memory, folder, own, login, now, true, limits) } else { Pulled { problem: Some("not-confirmed".into()), ..Pulled::default() } };
+    let mut sending = Sending::load(memory);
+    sending.again = Again { at: now, sent: pulled.sent, same: 0, said: pulled.problem.clone().unwrap_or_default() };
+    let _ = sending.save(memory, Lane::Main);
+    pulled
+}
+
+/// This device's texts to send copied into the sharing folder as a small
+/// file of its own, `texts/send/<id>.jsonl` (`source`: its own file of the
+/// part "texts", every line sealed already): the sync app carries it, Sioul
+/// sends it first (`send_urgent`), the others read it beside the records'
+/// copy, so that a request reaches the phone within its quarter of an hour
+/// whatever the records' size. None here, none there. Whether it changed.
+pub fn place_texts(folder: &Path, own: &str, source: &Path) -> Result<bool, String> {
+    let target = texts_file(folder, own);
+    let Ok(bytes) = std::fs::read(source) else {
+        return Ok(std::fs::remove_file(&target).is_ok());
+    };
+    if std::fs::read(&target).ok().as_deref() == Some(&bytes[..]) {
+        return Ok(false);
+    }
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    }
+    crate::share::write_atomically(&target, &bytes).map(|()| true)
+}
+
+/// Where a device's texts to send are, in the sharing folder (or a copy fetched from its server).
+pub fn texts_file(folder: &Path, device: &str) -> PathBuf {
+    folder.join("texts").join("send").join(format!("{device}.jsonl"))
+}
+
+/// This device's urgent files in the folder: its texts to send.
+fn own_urgent(folder: &Path, own: &str) -> Vec<String> {
+    let relative = format!("texts/send/{own}.jsonl");
+    if folder.join(&relative).is_file() { vec![relative] } else { Vec::new() }
+}
+
+/// A file of the folder, by its kind, for what is said: never its name.
+fn file_kind(relative: &str) -> &'static str {
+    match kind_of(relative) {
+        Some((Kind::Round, _)) => "records",
+        Some((Kind::Seen, _)) => "notes",
+        Some((Kind::Device, _)) => "entry",
+        Some((Kind::Claim, _)) => "claim",
+        Some((Kind::Texts, _)) => "texts",
+        None => "sealed",
+    }
+}
+
+/// What came of one file: gone or the same there, left (unchanged, paced,
+/// longer there), or held back after a failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Went {
+    Done,
+    Left,
+    Held,
+}
+
+/// One send beside the sync app.
+struct Sender<'a> {
+    server: &'a Server,
+    folder: &'a Path,
+    own: &'a str,
+    /// The folder there, an address ending with "/".
+    url: &'a str,
+    sealed: &'a BTreeMap<String, u64>,
+    sending: &'a mut Sending,
+    pulled: &'a mut Pulled,
+    now: i64,
+    frugal: bool,
+    lane: Lane,
+}
+
+impl Sender<'_> {
+    fn url(&self, relative: &str) -> String {
+        format!("{}{}", self.url, encode_path(relative))
+    }
+
+    /// `files` in their order (records first, by round, then the notes to
+    /// the others, the claims, the entry, the sealed files last): nothing
+    /// large holds back what the others wait for. A records file held back
+    /// holds the next ones (records go in order); the other files still go.
+    fn run(&mut self, files: &[String], check: bool, again: bool) -> Result<(), Stop> {
+        let listed = if check { Some(self.list_own()?) } else { None };
+        let mut records_held = false;
+        for relative in files {
+            let records = matches!(kind_of(relative), Some((Kind::Round, _)));
+            if records && records_held {
+                continue;
+            }
+            let there = listed.as_ref().map(|listed| listed.get(relative).cloned());
+            let went = self.one(relative, there, again)?;
+            records_held |= records && went == Went::Held;
+        }
+        if self.lane == Lane::Main {
+            self.take_out_gone()?;
+        }
+        Ok(())
+    }
+
+    /// The server's copies of this device's files, by their path in the
+    /// folder: the folder itself, `devices/`, each part's claims, `blobs/`
+    /// (when this device sealed any), `texts/send/`. A folder not there holds none.
+    fn list_own(&mut self) -> Result<BTreeMap<String, Item>, Stop> {
+        let mut out = BTreeMap::new();
+        let root = self.server.list(self.url).map_err(|e| match e {
+            SyncError::NotFound(_) => Stop::Unconfirmed(format!("seal-gone:{}", host_of(self.url))),
+            e => Stop::Failed(e),
+        })?;
+        self.pulled.listed += root.items.len();
+        let mut dirs: Vec<String> = Vec::new();
+        for (name, item) in &root.items {
+            if item.dir {
+                if name == "devices" || (name == "blobs" && !self.sealed.is_empty()) {
+                    dirs.push(format!("{name}/"));
+                }
+                if name == "texts" {
+                    dirs.push("texts/send/".into());
+                }
+                if name == "leases" {
+                    match self.server.list(&self.url("leases/")) {
+                        Ok(parts) => dirs.extend(parts.items.iter().filter(|(_, item)| item.dir).map(|(part, _)| format!("leases/{part}/"))),
+                        Err(SyncError::NotFound(_)) => {}
+                        Err(e) => return Err(Stop::Failed(e)),
+                    }
+                }
+            } else {
+                out.insert(name.clone(), item.clone());
+            }
+        }
+        for dir in dirs {
+            match self.server.list(&self.url(&dir)) {
+                Ok(listing) => {
+                    self.pulled.listed += listing.items.len();
+                    out.extend(listing.items.into_iter().filter(|(_, item)| !item.dir).map(|(name, item)| (format!("{dir}{name}"), item)));
+                }
+                Err(SyncError::NotFound(_)) => {}
+                Err(e) => return Err(Stop::Failed(e)),
+            }
+        }
+        Ok(out)
+    }
+
+    /// Whether the server's copy is this file as it is here: a sealed file
+    /// by its size (its name is its content's); records by their size (they
+    /// only grow, one writer) and their checksum when the server keeps one;
+    /// the rest by their checksum, else read there and compared.
+    fn same(&self, relative: &str, there: &Item, bytes: &[u8], sha1: &str) -> Result<bool, Stop> {
+        if there.dir || there.size != bytes.len() as u64 {
+            return Ok(false);
+        }
+        if relative.starts_with("blobs/") {
+            return Ok(true);
+        }
+        if let Some(theirs) = sha1_of(&there.checksum) {
+            return Ok(theirs == sha1);
+        }
+        if matches!(kind_of(relative), Some((Kind::Round, _))) {
+            return Ok(true);
+        }
+        Ok(self.server.small_up_to(&self.url(relative), TEXTS_LARGEST)?.is_some_and(|(theirs, _)| theirs == bytes))
+    }
+
+    /// One of this device's files, sent when it changed here since it went
+    /// (or, `there` listed, when the server's copy is not this one), over
+    /// what is there as it was seen. Refused because it changed there
+    /// meanwhile (`412`): the server's copy looked at; the same as here (the
+    /// sync app sent it), nothing more; else sent over it. A folder missing
+    /// there (`409`), made first. Too slow or cut: held back (`backoff`).
+    fn one(&mut self, relative: &str, listed: Option<Option<Item>>, again: bool) -> Result<Went, Stop> {
+        let path = self.folder.join(relative);
+        let Ok(meta) = std::fs::metadata(&path) else { return Ok(Went::Left) };
+        let (size, modified) = (meta.len(), crate::share::modified_ns(&meta));
+        let blob = relative.strip_prefix("blobs/");
+        // A sealed file goes whole, as this device sealed it, or not at all.
+        if blob.is_some_and(|name| self.sealed.get(name) != Some(&size)) {
+            return Ok(Went::Left);
+        }
+        let records = matches!(kind_of(relative), Some((Kind::Round, _)));
+        let sent = self.sending.sent.get(relative).cloned();
+        let same_here = sent.as_ref().is_some_and(|s| s.size == size && s.modified == modified);
+        match &listed {
+            None if same_here => return Ok(Went::Left),
+            Some(there) if same_here && !again && there.as_ref().is_some_and(|t| t.etag == sent.as_ref().map_or("", |s| s.etag.as_str())) => return Ok(Went::Left),
+            _ => {}
+        }
+        // Held back after a failure: never tried before its backoff.
+        if !again && self.sending.held.get(relative).is_some_and(|held| self.now < held.until) {
+            return Ok(Went::Held);
+        }
+        // Records only grow: one cut here (a sync app put an older copy back)
+        // is never sent over a longer one; the exchange opens a new round.
+        if records && sent.as_ref().is_some_and(|s| size < s.size) {
+            self.pulled.longer += 1;
+            return Ok(Went::Left);
+        }
+        // A large file on a metered or slow connection: at most every ten minutes.
+        let large = size > LARGE_FILE;
+        if large && self.frugal && !again && self.now - self.sending.large_at < PACE {
+            self.pulled.paced += 1;
+            return Ok(if records { Went::Held } else { Went::Left });
+        }
+        let bytes = std::fs::read(&path).map_err(|e| Stop::Failed(SyncError::Disk(format!("{relative}: {e}"))))?;
+        // Read while it grew: what was read is what goes, said as it is.
+        let size = bytes.len() as u64;
+        let sha1 = sha1_hex(&bytes);
+        let url = self.url(relative);
+        // What is there: as listed; else, never sent or its ETag unsaid, asked.
+        let mut there: Option<Option<Item>> = listed;
+        if there.is_none() && sent.as_ref().is_none_or(|s| s.etag.is_empty()) {
+            there = Some(self.server.stat(&url)?);
+        }
+        let modified_s = modified / 1_000_000_000;
+        for attempt in 0..3 {
+            if let Some(Some(item)) = &there {
+                if self.same(relative, item, &bytes, &sha1)? {
+                    self.sending.sent.insert(relative.to_string(), Sent { size, modified, etag: item.etag.clone() });
+                    self.sending.held.remove(relative);
+                    self.pulled.same += 1;
+                    return Ok(Went::Done);
+                }
+                // Not the same: said by kind and size, for the log (nothing of its name or content).
+                if self.pulled.differ.len() < 8 {
+                    self.pulled.differ.push(format!("{} {size} here, {} there", file_kind(relative), item.size));
+                }
+                // Longer there than here: never cut. Remembered at the server's
+                // size, so that what is appended here later, while still
+                // shorter, is never sent over it either.
+                if records && item.size > size {
+                    self.sending.sent.insert(relative.to_string(), Sent { size: item.size, modified, etag: item.etag.clone() });
+                    self.pulled.longer += 1;
+                    return Ok(Went::Left);
+                }
+            }
+            let seen: Option<String> = match &there {
+                Some(Some(item)) => Some(item.etag.clone()),
+                Some(None) => None,
+                None => sent.as_ref().map(|s| s.etag.clone()),
+            };
+            if large {
+                self.sending.large_at = self.now;
+            }
+            let started = Instant::now();
+            let (status, etag) = match self.server.put_file(&url, bytes.clone(), seen.as_deref(), modified_s, &sha1) {
+                Ok(answer) => answer,
+                Err(failed) => return self.failed(relative, failed),
+            };
+            match status {
+                200 | 201 | 204 => {
+                    self.sending.sent.insert(relative.to_string(), Sent { size, modified, etag: etag.unwrap_or_default() });
+                    self.sending.held.remove(relative);
+                    self.pulled.sent += 1;
+                    self.pulled.bytes += size;
+                    if size >= 64 << 10 {
+                        self.sending.rate = size * 1000 / (started.elapsed().as_millis() as u64).max(1);
+                    }
+                    return Ok(Went::Done);
+                }
+                // Changed there meanwhile, or gone: looked at again.
+                412 | 404 => there = Some(self.server.stat(&url)?),
+                409 if attempt == 0 => self.make_folders(relative)?,
+                507 => return Err(Stop::Failed(SyncError::Server("quota".into()))),
+                status => return Err(Stop::Failed(SyncError::Server(format!("PUT: {status}")))),
+            }
+        }
+        Err(Stop::Failed(SyncError::Server("PUT: 412".into())))
+    }
+
+    /// A file that did not go, said in detail (`Sending::failure`). Too slow
+    /// or cut on its way (the connection made, its bytes moving): that file
+    /// held back (`backoff`), the others still going. Else (the server
+    /// unreachable, refused, out of time): the send stops.
+    fn failed(&mut self, relative: &str, failed: PutFailed) -> Result<Went, Stop> {
+        self.sending.failure = Some(Failure { kind: failed.kind.into(), file: file_kind(relative).into(), seconds: failed.seconds, sent: failed.sent, total: failed.total, words: failed.words.clone(), at: self.now });
+        if failed.sent > 0 && failed.seconds > 0 {
+            self.sending.rate = failed.sent / failed.seconds;
+        }
+        if matches!(failed.kind, "timeout" | "stalled" | "network") && failed.sent > 0 {
+            let held = self.sending.held.entry(relative.to_string()).or_default();
+            held.tries += 1;
+            held.until = self.now + backoff(held.tries);
+            self.pulled.held += 1;
+            return Ok(Went::Held);
+        }
+        Err(Stop::Failed(failed.error))
+    }
+
+    /// The folders a file's path goes through, made there (`MKCOL`) when missing.
+    fn make_folders(&mut self, relative: &str) -> Result<(), Stop> {
+        let mut at = String::new();
+        let names: Vec<&str> = relative.split('/').collect();
+        for name in &names[..names.len().saturating_sub(1)] {
+            at = format!("{at}{name}/");
+            match self.server.mkcol(&self.url(&at))? {
+                201 | 405 => {}
+                status => return Err(Stop::Failed(SyncError::Server(format!("MKCOL: {status}")))),
+            }
+        }
+        Ok(())
+    }
+
+    /// What this device sent and let go here, taken out there as it was
+    /// sent (`If-Match`): its records past their time (removed here once
+    /// every device read past them), never its last round, and nothing while
+    /// none of its records is here; the sealed files it swept. Gone there
+    /// already, or changed there since: forgotten all the same. Another file
+    /// gone here (a claim of a part no longer kept) is forgotten, left there.
+    fn take_out_gone(&mut self) -> Result<(), Stop> {
+        let latest = own_latest(self.folder, self.own);
+        let gone: Vec<(String, String)> = self.sending.sent.iter().filter(|(relative, _)| !self.folder.join(relative).exists()).map(|(relative, sent)| (relative.clone(), sent.etag.clone())).collect();
+        for (relative, etag) in gone {
+            let round = relative.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse::<u32>().ok());
+            let past = matches!(kind_of(&relative), Some((Kind::Round, _))) && round.zip(latest).is_some_and(|(round, latest)| round < latest);
+            let swept = relative.strip_prefix("blobs/").is_some_and(|name| !self.sealed.contains_key(name));
+            if past || swept {
+                match self.server.delete(&self.url(&relative), Some(&etag).filter(|e| !e.is_empty()).map(String::as_str))? {
+                    200 | 204 | 404 | 412 => {}
+                    status => return Err(Stop::Failed(SyncError::Server(format!("DELETE: {status}")))),
+                }
+            }
+            if past || swept || !matches!(kind_of(&relative), Some((Kind::Round, _))) {
+                self.sending.sent.remove(&relative);
+                self.sending.held.remove(&relative);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1717,6 +2617,14 @@ pub(crate) mod fake {
         /// The account's files: `<files>/<path>` is `/remote.php/dav/files/jane/<path>`.
         pub(crate) files: PathBuf,
         pub(crate) base: String,
+        /// The checksums files were sent with (`OC-Checksum`), as Nextcloud
+        /// keeps them: by file, with its ETag then; a file changed since by
+        /// other hands (a test's own copy) has none.
+        sums: Mutex<std::collections::BTreeMap<PathBuf, (String, String)>>,
+        /// An uplink this slow (bytes a second) for what is sent to it; none: as fast as it comes.
+        pub(crate) throttle: Mutex<Option<u64>>,
+        /// The bytes of every `PUT` it took, whole or not: what a sending costs.
+        pub(crate) received: std::sync::atomic::AtomicU64,
         faults: Mutex<Faults>,
         seen: Mutex<Vec<String>>,
         /// Serving one request at a time: a listing never sees a file half written by a test's own copy.
@@ -1727,7 +2635,16 @@ pub(crate) mod fake {
         pub(crate) fn start(files: &Path) -> Arc<Fake> {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
-            let fake = Arc::new(Fake { files: files.to_path_buf(), base, faults: Mutex::new(Vec::new()), seen: Mutex::new(Vec::new()), turn: Mutex::new(()) });
+            let fake = Arc::new(Fake {
+                files: files.to_path_buf(),
+                base,
+                sums: Mutex::new(std::collections::BTreeMap::new()),
+                throttle: Mutex::new(None),
+                received: std::sync::atomic::AtomicU64::new(0),
+                faults: Mutex::new(Vec::new()),
+                seen: Mutex::new(Vec::new()),
+                turn: Mutex::new(()),
+            });
             let serving = Arc::clone(&fake);
             std::thread::spawn(move || {
                 for stream in listener.incoming().filter_map(Result::ok) {
@@ -1767,7 +2684,8 @@ pub(crate) mod fake {
         }
 
         fn exchange(&self, mut stream: TcpStream) {
-            let Some(request) = read(&stream) else { return };
+            let throttle = *self.throttle.lock().unwrap();
+            let Some(request) = read(&stream, throttle, &self.received) else { return };
             let fault = self.faults.lock().unwrap().iter_mut().find_map(|f| f(&request));
             let (status, headers, body) = match fault {
                 Some(Fault::Drop) => {
@@ -1798,6 +2716,48 @@ pub(crate) mod fake {
             let _ = stream.flush();
         }
 
+        /// A file's checksums as kept, while it is as it was sent.
+        fn sum_of(&self, path: &Path) -> Option<String> {
+            let sums = self.sums.lock().unwrap();
+            sums.get(path).filter(|(etag, _)| *etag == etag_of(path)).map(|(_, sum)| sum.clone())
+        }
+
+        fn propfind(&self, request: &Request, relative: &str, path: &Path) -> Reply {
+            let Ok(meta) = std::fs::metadata(path) else { return (404, Vec::new(), Vec::new()) };
+            let mut out = entry(&href(relative, meta.is_dir()), meta.is_dir(), &etag_of(path), meta.len(), self.sum_of(path));
+            if meta.is_dir() && request.header("Depth") != Some("0") {
+                let mut children: Vec<_> = std::fs::read_dir(path).into_iter().flatten().filter_map(Result::ok).collect();
+                children.sort_by_key(|e| e.file_name());
+                for child in children {
+                    let name = child.file_name().to_string_lossy().to_string();
+                    let inside = if relative.is_empty() { name } else { format!("{relative}/{name}") };
+                    let dir = child.file_type().is_ok_and(|t| t.is_dir());
+                    out += &entry(&href(&inside, dir), dir, &etag_of(&child.path()), child.metadata().map_or(0, |m| m.len()), self.sum_of(&child.path()));
+                }
+            }
+            (207, vec![("Content-Type", "application/xml; charset=utf-8".into())], multistatus(&out))
+        }
+
+        /// A file written whole (`PUT`), as Nextcloud does: its folder there,
+        /// the precondition met (`If-None-Match: *` none there, `If-Match` its
+        /// ETag); dated as `X-OC-Mtime` says, its `OC-Checksum` kept.
+        fn put(&self, request: &Request, path: &Path) -> Reply {
+            let reply = put(request, path);
+            if matches!(reply.0, 201 | 204) {
+                if let Some(seconds) = request.header("X-OC-Mtime").and_then(|t| t.parse::<u64>().ok())
+                    && let Ok(file) = std::fs::File::options().write(true).open(path)
+                {
+                    let _ = file.set_modified(std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(seconds));
+                }
+                let mut sums = self.sums.lock().unwrap();
+                match request.header("OC-Checksum") {
+                    Some(sum) => sums.insert(path.to_path_buf(), (etag_of(path), sum.to_string())),
+                    None => sums.remove(path),
+                };
+            }
+            reply
+        }
+
         fn note(&self, request: &Request, what: &str) {
             self.seen.lock().unwrap().push(format!("{} {} {what}", request.method, request.path));
         }
@@ -1815,9 +2775,9 @@ pub(crate) mod fake {
             let Some(relative) = request.path.strip_prefix(FILES).map(|r| r.trim_start_matches('/').to_string()) else { return (404, Vec::new(), Vec::new()) };
             let path = if relative.is_empty() { self.files.clone() } else { self.files.join(&relative) };
             match request.method.as_str() {
-                "PROPFIND" => propfind(request, &relative, &path),
+                "PROPFIND" => self.propfind(request, &relative, &path),
                 "GET" => get(request, &path),
-                "PUT" => put(request, &path),
+                "PUT" => self.put(request, &path),
                 "MKCOL" => mkcol(&path),
                 "DELETE" => delete(request, &path),
                 _ => (405, Vec::new(), Vec::new()),
@@ -1825,7 +2785,8 @@ pub(crate) mod fake {
         }
     }
 
-    fn read(stream: &TcpStream) -> Option<Request> {
+    /// A request as it comes, its body at `throttle` bytes a second at most (a slow uplink).
+    fn read(stream: &TcpStream, throttle: Option<u64>, received: &std::sync::atomic::AtomicU64) -> Option<Request> {
         let mut reader = BufReader::new(stream);
         let mut line = String::new();
         reader.read_line(&mut line).ok()?;
@@ -1840,12 +2801,25 @@ pub(crate) mod fake {
         }
         let length = headers.iter().find(|(n, _)| n.eq_ignore_ascii_case("content-length")).and_then(|(_, v)| v.parse().ok()).unwrap_or(0);
         let mut body = vec![0; length];
-        reader.read_exact(&mut body).ok()?;
+        let piece = throttle.map_or(length.max(1), |rate| usize::try_from(rate / 20).unwrap_or(usize::MAX).max(1));
+        let mut at = 0;
+        while at < length {
+            let end = (at + piece).min(length);
+            let read = reader.read_exact(&mut body[at..end]);
+            if method == "PUT" {
+                received.fetch_add((end - at) as u64, std::sync::atomic::Ordering::Relaxed);
+            }
+            read.ok()?;
+            at = end;
+            if throttle.is_some() && at < length {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
         Some(Request { method, path: crate::dav::path_key(&raw), headers, body })
     }
 
     pub(crate) fn multistatus(responses: &str) -> Vec<u8> {
-        format!(r#"<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:">{responses}</d:multistatus>"#).into_bytes()
+        format!(r#"<?xml version="1.0" encoding="utf-8"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">{responses}</d:multistatus>"#).into_bytes()
     }
 
     /// A file's ETag, from its content; a folder's, from all it holds, as Nextcloud's change with anything below them.
@@ -1860,14 +2834,25 @@ pub(crate) mod fake {
             }
         } else {
             std::fs::read(path).unwrap_or_default().hash(&mut hasher);
+            GENERATIONS.lock().unwrap().get(path).copied().unwrap_or(0).hash(&mut hasher);
         }
         format!("{:016x}", hasher.finish())
     }
 
-    fn entry(href: &str, dir: bool, etag: &str, size: u64) -> String {
+    /// How many times each file was written whole there: Nextcloud gives a
+    /// file a new ETag at each `PUT`, the same bytes sent again included.
+    static GENERATIONS: Mutex<std::collections::BTreeMap<PathBuf, u64>> = Mutex::new(std::collections::BTreeMap::new());
+
+    /// A file written there anew (a `PUT`, or a test's sync app sending it): a new ETag, whatever it holds.
+    pub(crate) fn bump(path: &Path) {
+        *GENERATIONS.lock().unwrap().entry(path.to_path_buf()).or_insert(0) += 1;
+    }
+
+    fn entry(href: &str, dir: bool, etag: &str, size: u64, sum: Option<String>) -> String {
         let kind = if dir { "<d:resourcetype><d:collection/></d:resourcetype>" } else { "<d:resourcetype/>" };
         let length = if dir { String::new() } else { format!("<d:getcontentlength>{size}</d:getcontentlength>") };
-        format!("<d:response><d:href>{href}</d:href><d:propstat><d:prop>{kind}<d:getetag>&quot;{etag}&quot;</d:getetag>{length}</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>")
+        let sums = sum.map(|sum| format!("<oc:checksums><oc:checksum>{sum}</oc:checksum></oc:checksums>")).unwrap_or_default();
+        format!("<d:response><d:href>{href}</d:href><d:propstat><d:prop>{kind}<d:getetag>&quot;{etag}&quot;</d:getetag>{length}{sums}</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>")
     }
 
     pub(crate) fn href(relative: &str, dir: bool) -> String {
@@ -1879,28 +2864,21 @@ pub(crate) mod fake {
         }
     }
 
-    fn propfind(request: &Request, relative: &str, path: &Path) -> Reply {
-        let Ok(meta) = std::fs::metadata(path) else { return (404, Vec::new(), Vec::new()) };
-        let mut out = entry(&href(relative, meta.is_dir()), meta.is_dir(), &etag_of(path), meta.len());
-        if meta.is_dir() && request.header("Depth") != Some("0") {
-            let mut children: Vec<_> = std::fs::read_dir(path).into_iter().flatten().filter_map(Result::ok).collect();
-            children.sort_by_key(|e| e.file_name());
-            for child in children {
-                let name = child.file_name().to_string_lossy().to_string();
-                let inside = if relative.is_empty() { name } else { format!("{relative}/{name}") };
-                let dir = child.file_type().is_ok_and(|t| t.is_dir());
-                out += &entry(&href(&inside, dir), dir, &etag_of(&child.path()), child.metadata().map_or(0, |m| m.len()));
-            }
-        }
-        (207, vec![("Content-Type", "application/xml; charset=utf-8".into())], multistatus(&out))
-    }
-
     /// A file written whole (`PUT`), as Nextcloud does: its folder there, the
     /// precondition met (`If-None-Match: *` none there, `If-Match` its ETag).
     fn put(request: &Request, path: &Path) -> Reply {
         if !path.parent().is_some_and(Path::is_dir) {
             return (409, Vec::new(), Vec::new());
         }
+        let reply = put_once(request, path);
+        if matches!(reply.0, 201 | 204) {
+            bump(path);
+            return (reply.0, vec![("ETag", format!("\"{}\"", etag_of(path)))], Vec::new());
+        }
+        reply
+    }
+
+    fn put_once(request: &Request, path: &Path) -> Reply {
         let current = path.is_file().then(|| format!("\"{}\"", etag_of(path)));
         let refused = match (request.header("If-None-Match"), request.header("If-Match")) {
             (Some("*"), _) => current.is_some(),
@@ -1967,7 +2945,7 @@ mod tests {
     const SEAL: &str = "# Sioul: how your devices' shared records are sealed (docs/database.md).\nversion = 1\nsalt = \"AAAAAAAAAAAAAAAAAAAAAA==\"\nmemory_kib = 65536\npasses = 3\ncheck = \"one\"\n";
     const OTHER_SEAL: &str = "# Sioul: how your devices' shared records are sealed (docs/database.md).\nversion = 1\nsalt = \"BBBBBBBBBBBBBBBBBBBBBB==\"\nmemory_kib = 65536\npasses = 3\ncheck = \"two\"\n";
     /// The network's limits, short: a test does not wait ten seconds.
-    const TEST: Limits = Limits { wait: Duration::from_millis(700), small: Duration::from_secs(3), large: Duration::from_secs(5), pull: Duration::from_secs(30), blob: Duration::from_secs(5) };
+    const TEST: Limits = Limits { wait: Duration::from_millis(700), small: Duration::from_secs(3), large: Duration::from_secs(5), pull: Duration::from_secs(30), blob: Duration::from_secs(5), floor: 1 << 30, stall: Duration::from_millis(700) };
     const DUE: i64 = 1_800_000_000;
 
     fn scratch(name: &str) -> PathBuf {
@@ -2813,7 +3791,8 @@ mod tests {
         std::fs::create_dir_all(table.parent().unwrap()).unwrap();
         std::fs::write(&table, made(1)).unwrap();
         let mut taken = String::from("[taken]\n");
-        for (n, fault) in [Fault::Status(500), Fault::Drop, Fault::Late(Duration::from_secs(2))].into_iter().enumerate() {
+        // Late past the time a file's size asks (an upload's answer is awaited that long, `put_file`).
+        for (n, fault) in [Fault::Status(500), Fault::Drop, Fault::Late(Duration::from_secs(6))].into_iter().enumerate() {
             p.fake.clear_faults();
             p.fake.fault(move |r| (r.method == "PUT" && r.path.contains("/blobs/")).then_some(fault));
             let now = DUE + 100 + n as i64 * 60;
@@ -2894,5 +3873,662 @@ mod tests {
         w.fake.forget_seen();
         assert_eq!(step_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), DUE + 1, false, TEST).problem.as_deref(), Some("not-confirmed"));
         assert!(w.fake.seen().is_empty());
+    }
+
+    // ------------------------------------------------ sent beside the sync app
+
+    fn mtime(path: &Path) -> Option<SystemTime> {
+        std::fs::metadata(path).and_then(|m| m.modified()).ok()
+    }
+
+    fn set_mtime(path: &Path, at: SystemTime) {
+        if let Ok(file) = std::fs::File::options().write(true).open(path) {
+            let _ = file.set_modified(at);
+        }
+    }
+
+    /// A file written there by a sync app, as a `PUT` writes it: a new ETag, dated as the file here.
+    fn sync_up(local: &Path, server: &Path) {
+        std::fs::create_dir_all(server.parent().unwrap()).unwrap();
+        std::fs::write(server, std::fs::read(local).unwrap()).unwrap();
+        fake::bump(server);
+        if let Some(at) = mtime(local) {
+            set_mtime(server, at);
+        }
+    }
+
+    /// A file brought down by a sync app: a new file put in its place, dated as the server's.
+    fn sync_down(server: &Path, local: &Path) {
+        std::fs::create_dir_all(local.parent().unwrap()).unwrap();
+        let temporary = local.with_file_name(format!(".{}.download", local.file_name().unwrap().to_string_lossy()));
+        std::fs::write(&temporary, std::fs::read(server).unwrap()).unwrap();
+        if let Some(at) = mtime(server) {
+            set_mtime(&temporary, at);
+        }
+        std::fs::rename(&temporary, local).unwrap();
+    }
+
+    fn folder_of(relative: &str) -> &str {
+        relative.rfind('/').map_or("", |at| &relative[..at])
+    }
+
+    /// Murena's eDrive as its source reads (eDrive `main`, 31 August 2026;
+    /// docs/database.md, "Sent to the server too"): the server's files first,
+    /// an ETag changed there brought down when the size differs, else taken
+    /// as known; then the phone's, a time later than the one known sent up,
+    /// `If-Match` the ETag it knows (the Documents folder is a "media"
+    /// folder), replacing the download planned. A folder whose time did not
+    /// change is not looked at here (a file appended in place changes none):
+    /// the download planned then goes ahead over the phone's newer file. A
+    /// refused upload holds the file back, and after four, for good. Never a
+    /// conflicted copy.
+    #[derive(Default)]
+    struct EDrive {
+        known: BTreeMap<String, (String, Option<SystemTime>)>,
+        dirs: BTreeMap<String, Option<SystemTime>>,
+        refused: BTreeMap<String, u32>,
+        uploads: usize,
+        refusals: usize,
+        downloads_over_newer: usize,
+    }
+
+    impl EDrive {
+        fn scan(&mut self, fake: &Fake, server: &Path, phone: &Path) {
+            let _turn = fake.turn.lock().unwrap();
+            let (there, here) = (walk(server), walk(phone));
+            let mut downloads: BTreeSet<String> = BTreeSet::new();
+            for (relative, bytes) in there.iter().filter(|(r, _)| *r != "seal.toml") {
+                let etag = fake::etag_of(&server.join(relative));
+                if self.known.get(relative).is_some_and(|(known, _)| *known == etag) {
+                    continue;
+                }
+                if here.get(relative).map(Vec::len) == Some(bytes.len()) {
+                    let time = self.known.get(relative).and_then(|(_, t)| *t);
+                    self.known.insert(relative.clone(), (etag, time));
+                } else {
+                    downloads.insert(relative.clone());
+                }
+            }
+            let mut uploads: Vec<String> = Vec::new();
+            for relative in here.keys().filter(|r| *r != "seal.toml") {
+                let dir = folder_of(relative).to_string();
+                let looked = self.dirs.get(&dir).copied().flatten() != mtime(&phone.join(&dir));
+                let later = self.known.get(relative).is_none_or(|(_, t)| mtime(&phone.join(relative)) > *t);
+                if looked && later {
+                    downloads.remove(relative);
+                    uploads.push(relative.clone());
+                }
+            }
+            for relative in downloads {
+                if here.get(&relative).is_some_and(|mine| there[&relative].len() < mine.len()) {
+                    self.downloads_over_newer += 1;
+                }
+                sync_down(&server.join(&relative), &phone.join(&relative));
+                self.known.insert(relative.clone(), (fake::etag_of(&server.join(&relative)), mtime(&phone.join(&relative))));
+            }
+            for relative in uploads {
+                self.upload(server, phone, &relative);
+            }
+            self.dirs = here.keys().map(|r| folder_of(r).to_string()).chain([String::new()]).map(|d| (d.clone(), mtime(&phone.join(&d)))).collect();
+        }
+
+        /// One file sent up, as eDrive sends it: `If-Match` the ETag it knows.
+        fn upload(&mut self, server: &Path, phone: &Path, relative: &str) {
+            if self.refused.get(relative).is_some_and(|n| *n >= 4) {
+                return;
+            }
+            let there = server.join(relative);
+            if let Some((known, _)) = self.known.get(relative)
+                && there.is_file()
+                && fake::etag_of(&there) != *known
+            {
+                self.refusals += 1;
+                *self.refused.entry(relative.to_string()).or_insert(0) += 1;
+                return;
+            }
+            sync_up(&phone.join(relative), &there);
+            self.uploads += 1;
+            self.known.insert(relative.to_string(), (fake::etag_of(&there), mtime(&phone.join(relative))));
+        }
+
+        /// A file closed after writing (`CLOSE_WRITE`), sent at once.
+        fn closed(&mut self, fake: &Fake, server: &Path, phone: &Path, relative: &str) {
+            let _turn = fake.turn.lock().unwrap();
+            if phone.join(relative).is_file() {
+                self.upload(server, phone, relative);
+            }
+        }
+    }
+
+    /// The Nextcloud desktop client as its source reads (v34; docs/database.md,
+    /// "Sent to the server too"): a file changed on one side only goes the
+    /// other way (`If-Match`); changed on both, the contents compared: the
+    /// same, it takes the server's as its own; else the file here is renamed
+    /// "(conflicted copy …)", which never goes up, and the server's takes its
+    /// name. Hidden files left out.
+    #[derive(Default)]
+    struct Client {
+        journal: BTreeMap<String, (String, u64, Option<SystemTime>)>,
+        conflicts: usize,
+        uploads: usize,
+    }
+
+    impl Client {
+        fn stamp(path: &Path) -> Option<(u64, Option<SystemTime>)> {
+            std::fs::metadata(path).ok().filter(|m| m.is_file()).map(|m| (m.len(), m.modified().ok()))
+        }
+
+        fn sync(&mut self, fake: &Fake, server: &Path, local: &Path) {
+            let _turn = fake.turn.lock().unwrap();
+            let names: BTreeSet<String> = walk(server).into_keys().chain(walk(local).into_keys()).filter(|r| r != "seal.toml" && !r.contains("(conflicted copy")).collect();
+            for relative in names {
+                let (there, here) = (server.join(&relative), local.join(&relative));
+                let etag = there.is_file().then(|| fake::etag_of(&there));
+                let stamp = Self::stamp(&here);
+                let known = self.journal.get(&relative).cloned();
+                let local_changed = known.as_ref().map(|(_, size, at)| Some((*size, *at))) != Some(stamp);
+                let remote_changed = known.as_ref().map(|(e, ..)| e.clone()) != etag;
+                let remember = |journal: &mut BTreeMap<String, (String, u64, Option<SystemTime>)>| {
+                    let (size, at) = Self::stamp(&here).unwrap_or((0, None));
+                    journal.insert(relative.clone(), (fake::etag_of(&there), size, at));
+                };
+                match (stamp.is_some(), etag.is_some()) {
+                    (true, true) if !local_changed && !remote_changed => {}
+                    (true, true) if !remote_changed => {
+                        sync_up(&here, &there);
+                        self.uploads += 1;
+                        remember(&mut self.journal);
+                    }
+                    (true, true) if !local_changed => {
+                        sync_down(&there, &here);
+                        remember(&mut self.journal);
+                    }
+                    (true, true) => {
+                        if std::fs::read(&here).ok() != std::fs::read(&there).ok() {
+                            let name = here.file_name().unwrap().to_string_lossy().to_string();
+                            let (stem, extension) = name.rsplit_once('.').unwrap_or((&name, ""));
+                            std::fs::rename(&here, here.with_file_name(format!("{stem} (conflicted copy 20261008 104200).{extension}"))).unwrap();
+                            sync_down(&there, &here);
+                            self.conflicts += 1;
+                        }
+                        remember(&mut self.journal);
+                    }
+                    (true, false) if known.is_some() && !local_changed => {
+                        let _ = std::fs::remove_file(&here);
+                        self.journal.remove(&relative);
+                    }
+                    (true, false) => {
+                        sync_up(&here, &there);
+                        self.uploads += 1;
+                        remember(&mut self.journal);
+                    }
+                    (false, true) if known.is_some() && !remote_changed => {
+                        let _ = std::fs::remove_file(&there);
+                        self.journal.remove(&relative);
+                    }
+                    (false, true) => {
+                        sync_down(&there, &here);
+                        remember(&mut self.journal);
+                    }
+                    (false, false) => {
+                        self.journal.remove(&relative);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The sizes of a device's records on the server, which must only grow.
+    fn records_there(server: &Path, id: &str) -> BTreeMap<String, usize> {
+        walk(server).into_iter().filter(|(r, _)| r.starts_with(id) && r.ends_with(".jsonl")).map(|(r, b)| (r, b.len())).collect()
+    }
+
+    fn never_shorter(before: &mut BTreeMap<String, usize>, now: BTreeMap<String, usize>, at: &str) {
+        for (name, size) in &now {
+            assert!(before.get(name).is_none_or(|was| size >= was), "{at}: {name} shorter there: {size} after {:?}", before.get(name));
+        }
+        before.extend(now);
+    }
+
+    /// The phone's own files sent beside its sync app.
+    fn phone_sends(w: &World, now: i64, again: bool) -> Pulled {
+        send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), now, again, TEST)
+    }
+
+    /// This device's own files go up at once, beside the sync app; the sync
+    /// app sending the same file after is a no-op here; a file it sent before
+    /// Sioul is taken as sent (`412`, then the same there); records never
+    /// sent shorter; switched off, not a request; never another device's file.
+    #[test]
+    fn beside_a_sync_app_only_this_devices_files_go_up_and_never_twice() {
+        let w = World::new("beside");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        // A dose answered on the phone: its records and entry on the server within the send.
+        w.phone.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000040\n");
+        w.phone.exchange(&w.phone_folder, DUE + 40);
+        w.fake.forget_seen();
+        let sent = phone_sends(&w, DUE + 41, false);
+        assert!(sent.problem.is_none() && sent.sent >= 2, "{sent:?}");
+        let mine = |line: &String| line.split(' ').nth(1).is_some_and(|path| path.contains(&w.phone.id));
+        for line in w.fake.seen() {
+            if line.starts_with("PUT ") || line.starts_with("DELETE ") {
+                assert!(mine(&line), "never another device's file: {line}");
+            }
+        }
+        for (relative, bytes) in walk(&w.phone_folder).into_iter().filter(|(r, _)| r.contains(&w.phone.id)) {
+            assert_eq!(std::fs::read(w.server.join(&relative)).ok(), Some(bytes), "{relative} there as here");
+        }
+        let kept = std::fs::read_to_string(sending_path(&w.phone.memory)).unwrap();
+        assert!(!kept.contains(PASSWORD) && !kept.contains("Basic"), "{kept}");
+        w.desk.exchange(&w.server, DUE + 45);
+        assert!(w.desk.read("health-state.toml").contains("levo@1800000000"), "the desk has it, no sync app between");
+        // The sync app sends them again, the same: nothing more from Sioul, not a request.
+        w.up();
+        for relative in walk(&w.phone_folder).into_keys().filter(|r| r.contains(&w.phone.id)) {
+            fake::bump(&w.server.join(relative));
+        }
+        w.fake.forget_seen();
+        let again = phone_sends(&w, DUE + 50, false);
+        assert_eq!((again.sent, &again.problem), (0, &None));
+        assert!(w.fake.seen().is_empty(), "{:?}", w.fake.seen());
+        // Another answer: the sync app sends it first; Sioul finds it there (412, the same) and sends nothing twice.
+        w.phone.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000040\n\"iron@1800000000\" = 1800000060\n");
+        w.phone.exchange(&w.phone_folder, DUE + 60);
+        {
+            let _turn = w.fake.turn.lock().unwrap();
+            for relative in walk(&w.phone_folder).into_keys().filter(|r| r.contains(&w.phone.id)) {
+                sync_up(&w.phone_folder.join(&relative), &w.server.join(&relative));
+            }
+        }
+        w.fake.forget_seen();
+        let raced = phone_sends(&w, DUE + 61, false);
+        assert!(raced.problem.is_none() && raced.sent == 0 && raced.same >= 2, "{raced:?} {:?}", w.fake.seen());
+        assert!(w.fake.seen().iter().all(|l| !(l.starts_with("PUT ") && !l.ends_with(" 412"))), "{:?}", w.fake.seen());
+        // The phone's records put back shorter here (a sync app's older copy): never sent over the longer one there.
+        let round = walk(&w.phone_folder).into_keys().find(|r| r.starts_with(&w.phone.id) && r.ends_with(".jsonl")).unwrap();
+        let longer = std::fs::read(w.server.join(&round)).unwrap();
+        let first = longer.iter().position(|b| *b == b'\n').unwrap() + 1;
+        std::fs::write(w.phone_folder.join(&round), &longer[..first]).unwrap();
+        w.fake.forget_seen();
+        let cut = phone_sends(&w, DUE + 70, false);
+        assert!(cut.problem.is_none(), "{cut:?}");
+        assert_eq!(std::fs::read(w.server.join(&round)).unwrap(), longer, "never shorter there");
+        assert!(w.fake.seen().iter().all(|l| !(l.starts_with("PUT ") && l.contains(&round))), "{:?}", w.fake.seen());
+        // Listed (every six hours), found longer there; then a line appended here, still shorter: never sent either.
+        assert_eq!(phone_sends(&w, DUE + 72, true).longer, 1);
+        let mut appended = longer[..first].to_vec();
+        appended.extend_from_slice(&longer[first..first + (longer.len() - first) / 2]);
+        appended.push(b'\n');
+        std::fs::write(w.phone_folder.join(&round), &appended).unwrap();
+        w.fake.forget_seen();
+        assert!(phone_sends(&w, DUE + 75, false).problem.is_none());
+        assert_eq!(std::fs::read(w.server.join(&round)).unwrap(), longer, "an append here, still shorter, never sent over the longer copy");
+        assert!(w.fake.seen().iter().all(|l| !(l.starts_with("PUT ") && l.contains(&round))), "{:?}", w.fake.seen());
+        // Switched off: not a request; the backup's fetching goes on.
+        State::choose(&w.phone.memory, |s| s.send = Some(false)).unwrap();
+        w.fake.forget_seen();
+        assert_eq!(phone_sends(&w, DUE + 80, true).problem.as_deref(), Some("off"));
+        assert!(w.fake.seen().is_empty());
+        assert!(State::load(&w.phone.memory).fetching());
+    }
+
+    /// Sealed files: only those this device sealed, whole, and taken out there once swept.
+    #[test]
+    fn sealed_files_go_up_whole_and_only_this_devices() {
+        let w = World::new("beside-blobs");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let source = w.base.join("note.md");
+        std::fs::write(&source, "a note\n".repeat(500)).unwrap();
+        let (hash, _) = crate::blobs::hash_file(&source).unwrap();
+        crate::blobs::put(&w.phone_folder, &KEY, &source, &hash).unwrap();
+        let name = crate::blobs::name(&KEY, &hash);
+        let size = std::fs::metadata(w.phone_folder.join("blobs").join(&name)).unwrap().len();
+        // Another device's sealed file, brought down by the sync app: never sent.
+        put(&w.phone_folder, "blobs/0123456789abcdef", "another device's");
+        // Not whole yet (the size sealed differs): not sent.
+        let half: BTreeMap<String, u64> = [(name.clone(), size + 1)].into();
+        send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &half, DUE + 10, false, TEST);
+        assert!(!w.server.join("blobs").join(&name).exists());
+        let whole: BTreeMap<String, u64> = [(name.clone(), size)].into();
+        let sent = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &whole, DUE + 20, false, TEST);
+        assert!(sent.problem.is_none(), "{sent:?}");
+        assert_eq!(std::fs::read(w.server.join("blobs").join(&name)).unwrap(), std::fs::read(w.phone_folder.join("blobs").join(&name)).unwrap());
+        assert!(!w.server.join("blobs/0123456789abcdef").exists(), "never another device's");
+        // Swept here: taken out there.
+        std::fs::remove_file(w.phone_folder.join("blobs").join(&name)).unwrap();
+        send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 30, false, TEST);
+        assert!(!w.server.join("blobs").join(&name).exists());
+    }
+
+    /// "Send everything again" after the server lost this device's files:
+    /// each one goes back, said; a second time, nothing goes, all found there.
+    #[test]
+    fn send_everything_again_after_the_server_lost_this_devices_files() {
+        let w = World::new("again");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        w.phone.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000040\n");
+        w.phone.exchange(&w.phone_folder, DUE + 40);
+        assert!(phone_sends(&w, DUE + 41, false).problem.is_none());
+        let own: Vec<String> = walk(&w.phone_folder).into_keys().filter(|r| r.contains(&w.phone.id)).collect();
+        assert!(own.len() >= 2, "{own:?}");
+        // The server loses them (restored from a backup, a folder emptied by hand).
+        for relative in &own {
+            std::fs::remove_file(w.server.join(relative)).unwrap();
+        }
+        assert!(crate::devices::all(&w.server, &KEY).0.iter().all(|e| e.id != w.phone.id));
+        // Nothing changed here: a quick send asks nothing, sends nothing.
+        w.fake.forget_seen();
+        assert_eq!(phone_sends(&w, DUE + 50, false).sent, 0);
+        assert!(w.fake.seen().is_empty());
+        // Sent again, whatever was sent before.
+        let again = phone_sends(&w, DUE + 60, true);
+        assert!(again.problem.is_none() && again.sent == own.len(), "{again:?}");
+        for relative in &own {
+            assert_eq!(std::fs::read(w.server.join(relative)).ok(), std::fs::read(w.phone_folder.join(relative)).ok(), "{relative}");
+        }
+        assert_eq!(Sending::load(&w.phone.memory).again, Again { at: DUE + 60, sent: own.len(), same: 0, said: String::new() });
+        w.desk.exchange(&w.server, DUE + 70);
+        assert!(w.desk.read("health-state.toml").contains("levo@1800000000"));
+        assert!(crate::devices::all(&w.server, &KEY).0.iter().any(|e| e.id == w.phone.id), "its entry back");
+        // Again: all there, nothing sent.
+        w.fake.forget_seen();
+        let twice = phone_sends(&w, DUE + 80, true);
+        assert!(twice.problem.is_none() && twice.sent == 0 && twice.same == own.len(), "{twice:?}");
+        assert!(w.fake.seen().iter().all(|l| !l.starts_with("PUT ")), "{:?}", w.fake.seen());
+        // The server unreachable: said, nothing lost here.
+        w.fake.fault(|_| Some(Fault::Status(503)));
+        let failed = phone_sends(&w, DUE + 90, true);
+        assert!(failed.problem.as_deref().is_some_and(|p| p.starts_with("server:")), "{failed:?}");
+        assert!(Sending::load(&w.phone.memory).again.said.starts_with("server:"));
+    }
+
+    /// The doses' rule (docs/health.md, "Knowing") with the phone's own files
+    /// sent by Sioul right after each exchange and by eDrive too, late, and
+    /// now and then in the moment between a write and Sioul's send (eDrive
+    /// bringing the older copy down over the phone's newer one, or refusing
+    /// its own upload): what the desk takes as known is there, every dose
+    /// comes, the phone's records there never shorter, no conflicted copy.
+    #[test]
+    fn doses_are_never_known_wrongly_with_edrive_sending_too() {
+        let w = World::new("edrive-sends");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let mut edrive = EDrive::default();
+        edrive.scan(&w.fake, &w.server, &w.phone_folder);
+        let mut marked: Vec<(String, i64)> = Vec::new();
+        let mut sizes = BTreeMap::new();
+        for minute in 0..150 {
+            let now = DUE + minute * 60;
+            // Every ten minutes; and twice close together, the second where eDrive looks before Sioul sends.
+            if (minute % 10 == 0 || [17, 19, 77, 79].contains(&minute)) && minute < 130 {
+                marked.push((format!("dose@{minute}"), now));
+                let record: String = marked.iter().map(|(d, at)| format!("\"{d}\" = {at}\n")).collect();
+                w.phone.write("health-state.toml", &format!("[taken]\n{record}"));
+            }
+            w.phone.exchange(&w.phone_folder, now);
+            let round = walk(&w.phone_folder).into_keys().filter(|r| r.starts_with(&w.phone.id) && r.ends_with(".jsonl")).max_by_key(|r| r.trim_end_matches(".jsonl").rsplit('-').next().unwrap().parse::<u32>().unwrap()).unwrap();
+            match minute % 6 {
+                // Between the write and Sioul's send: eDrive looks (asked by another app, its half hour come).
+                1 => edrive.scan(&w.fake, &w.server, &w.phone_folder),
+                // Its upload of the appended file at once (CLOSE_WRITE), before Sioul's.
+                3 => edrive.closed(&w.fake, &w.server, &w.phone_folder, &round),
+                _ => {}
+            }
+            let sent = phone_sends(&w, now + 1, false);
+            assert!(sent.problem.is_none(), "minute {minute}: {sent:?}");
+            // Then eDrive, asked to look after Sioul's send, or not at all for a while.
+            if minute % 4 == 0 {
+                edrive.scan(&w.fake, &w.server, &w.phone_folder);
+            }
+            never_shorter(&mut sizes, records_there(&w.server, &w.phone.id), &format!("minute {minute}"));
+            let outcome = w.desk.exchange(&w.server, now + 20);
+            assert!(outcome.problems.iter().all(|p| !p.starts_with("share-other-cut") && !p.starts_with("share-other-gap")), "minute {minute}: {:?}", outcome.problems);
+            if let Some(entry) = crate::devices::all(&w.server, &KEY).0.into_iter().find(|e| e.id == w.phone.id)
+                && let Some(wrote) = entry.wrote
+                && crate::share::heard(&w.desk.memory, &w.desk.id).complete(&w.phone.id, wrote)
+            {
+                let record = w.desk.read("health-state.toml");
+                for (dose, at) in marked.iter().filter(|(_, at)| *at <= entry.exported) {
+                    assert!(record.contains(dose.as_str()), "minute {minute}: the desk takes {dose} ({at}) as known, its record lacks it:\n{record}");
+                }
+            }
+        }
+        let record = w.desk.read("health-state.toml");
+        for (dose, _) in &marked {
+            assert!(record.contains(dose.as_str()), "{dose} never came:\n{record}");
+        }
+        assert!(walk(&w.server).keys().all(|r| !r.contains("conflicted")));
+        eprintln!("eDrive beside Sioul: {} uploads, {} refused, {} brought down over a newer copy", edrive.uploads, edrive.refusals, edrive.downloads_over_newer);
+        assert!(edrive.downloads_over_newer > 0 && edrive.refusals > 0, "the races were run");
+    }
+
+    /// The same with the desk's folder carried by the Nextcloud client and
+    /// the desk sending its own files too: the client looking between a write
+    /// and Sioul's send makes a conflicted copy here and puts the older copy
+    /// back; the desk starts a new round with all it holds; the phone never
+    /// takes a dose as known wrongly, never reads a copy, gets every dose.
+    #[test]
+    fn doses_are_never_known_wrongly_with_the_nextcloud_client_sending_too() {
+        let w = World::new("client-sends");
+        let desk_folder = w.base.join("desk-folder").join("Sioul");
+        copy_dir(&w.server, &desk_folder);
+        State::choose(&w.desk.memory, |s| s.given = "Documents/Sioul".into()).unwrap();
+        assert!(find_with(&w.desk.memory, &desk_folder, &[w.fake.login()], &[], DUE, TEST).confirmed_for(&desk_folder));
+        let mut client = Client::default();
+        client.sync(&w.fake, &w.server, &desk_folder);
+        let phone_down = || {
+            let _turn = w.fake.turn.lock().unwrap();
+            for (relative, bytes) in walk(&w.server).into_iter().filter(|(r, _)| !r.contains(&w.phone.id)) {
+                put_bytes(&w.phone_folder, &relative, &bytes);
+            }
+        };
+        let phone_up = || {
+            let _turn = w.fake.turn.lock().unwrap();
+            for relative in walk(&w.phone_folder).into_keys().filter(|r| r.contains(&w.phone.id)) {
+                sync_up(&w.phone_folder.join(&relative), &w.server.join(&relative));
+            }
+        };
+        let mut marked: Vec<(String, i64)> = Vec::new();
+        let mut sizes = BTreeMap::new();
+        let mut cuts = 0;
+        for minute in 0..150 {
+            let now = DUE + minute * 60;
+            // Every ten minutes; and right after, where the client looks before Sioul sends.
+            if (minute % 10 == 0 || [21, 71].contains(&minute)) && minute < 130 {
+                marked.push((format!("dose@{minute}"), now));
+                let record: String = marked.iter().map(|(d, at)| format!("\"{d}\" = {at}\n")).collect();
+                w.desk.write("health-state.toml", &format!("[taken]\n{record}"));
+            }
+            let outcome = w.desk.exchange(&desk_folder, now);
+            cuts += outcome.problems.iter().filter(|p| *p == "share-own-cut").count();
+            // Now and then the client looks before Sioul's send.
+            if minute % 5 == 1 {
+                client.sync(&w.fake, &w.server, &desk_folder);
+            }
+            let sent = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), now + 1, false, TEST);
+            assert!(sent.problem.is_none(), "minute {minute}: {sent:?}");
+            if minute % 3 == 0 {
+                client.sync(&w.fake, &w.server, &desk_folder);
+            }
+            never_shorter(&mut sizes, records_there(&w.server, &w.desk.id), &format!("minute {minute}"));
+            phone_down();
+            let read = w.phone.exchange(&w.phone_folder, now + 30);
+            assert!(read.problems.iter().all(|p| !p.starts_with("share-other-cut") && !p.starts_with("share-other-gap")), "minute {minute}: {:?}", read.problems);
+            phone_up();
+            if let Some(entry) = crate::devices::all(&w.phone_folder, &KEY).0.into_iter().find(|e| e.id == w.desk.id)
+                && let Some(wrote) = entry.wrote
+                && crate::share::heard(&w.phone.memory, &w.phone.id).complete(&w.desk.id, wrote)
+            {
+                let record = w.phone.read("health-state.toml");
+                for (dose, at) in marked.iter().filter(|(_, at)| *at <= entry.exported) {
+                    assert!(record.contains(dose.as_str()), "minute {minute}: the phone takes {dose} ({at}) as known, its record lacks it:\n{record}");
+                }
+            }
+        }
+        let record = w.phone.read("health-state.toml");
+        for (dose, _) in &marked {
+            assert!(record.contains(dose.as_str()), "{dose} never came:\n{record}");
+        }
+        assert!(walk(&w.server).keys().all(|r| !r.contains("conflicted")), "a conflicted copy never goes up");
+        eprintln!("Nextcloud client beside Sioul: {} uploads, {} conflicted copies here, {} rounds started again", client.uploads, client.conflicts, cuts);
+        assert!(client.conflicts > 0 && cuts > 0, "the races were run");
+    }
+
+    // ------------------------------------------------ a slow uplink, a text to send, the cost
+
+    /// The desk beside its own sync app, sending its files: its folder apart
+    /// from the server's, found there under the same seal.
+    fn desk_beside(w: &World) -> PathBuf {
+        let desk_folder = w.base.join("desk-folder").join("Sioul");
+        copy_dir(&w.server, &desk_folder);
+        State::choose(&w.desk.memory, |s| s.given = "Documents/Sioul".into()).unwrap();
+        assert!(find_with(&w.desk.memory, &desk_folder, &[w.fake.login()], &[], DUE, TEST).confirmed_for(&desk_folder));
+        desk_folder
+    }
+
+    /// A desk holding much (its records' opening far past a megabyte).
+    fn a_desk_holding_much(w: &World, folder: &Path, at: i64) {
+        let many: String = (0..8000).map(|n| format!("sender{n}@example.org\n")).collect();
+        put(&w.desk.roots.config, "known-senders.txt", &many);
+        w.desk.exchange(folder, at);
+    }
+
+    fn desk_records(folder: &Path, id: &str) -> Vec<(String, u64)> {
+        let mut out: Vec<(String, u64)> = walk(folder).into_iter().filter(|(r, _)| r.starts_with(id) && r.ends_with(".jsonl")).map(|(r, b)| (r, b.len() as u64)).collect();
+        out.sort_by_key(|(r, _)| r.trim_end_matches(".jsonl").rsplit('-').next().unwrap().parse::<u32>().unwrap());
+        out
+    }
+
+    /// The owner's desk, 8 October 2026: a records file of 2.5 MB on a
+    /// phone's hotspot (3G) never went, cut at a flat minute and tried again
+    /// from zero every minute. Now a file is given the time its size asks
+    /// (`FLOOR`), still going is not cut; a file too slow even so is said in
+    /// detail and held back, never tried before its backoff.
+    #[test]
+    fn a_large_file_goes_through_a_slow_uplink() {
+        let w = World::new("slow-uplink");
+        let desk_folder = desk_beside(&w);
+        a_desk_holding_much(&w, &desk_folder, DUE);
+        // The first large one in order: records go in order, the next ones wait behind it.
+        let (round, size) = desk_records(&desk_folder, &w.desk.id).into_iter().find(|(_, s)| *s > 1 << 20).unwrap();
+        assert!(size > 1 << 20, "a large records file: {size}");
+        // An uplink of 512 KiB a second; a flat second for a file, as a flat minute was on 3G.
+        *w.fake.throttle.lock().unwrap() = Some(512 << 10);
+        let flat = Limits { large: Duration::from_secs(1), floor: 1 << 30, ..TEST };
+        let tried = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 10, false, flat);
+        let failure = tried.failure.clone().expect("said in detail");
+        assert!(failure.kind == "timeout" && failure.file == "records" && failure.sent > 0 && failure.total == size && failure.seconds >= 1, "{failure:?}");
+        assert!(tried.held == 1, "{tried:?}");
+        let sending = Sending::load(&w.desk.memory);
+        assert_eq!(sending.failure.as_ref().map(|f| f.kind.as_str()), Some("timeout"));
+        assert!(sending.held.get(&round).is_some_and(|h| h.tries == 1 && h.until == DUE + 10 + backoff(1)), "{:?}", sending.held);
+        assert!(sending.rate > 0, "its rate measured from what went");
+        // Before its backoff: not tried again, not a byte spent.
+        let spent = w.fake.received.load(std::sync::atomic::Ordering::Relaxed);
+        let early = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 40, false, flat);
+        assert!(early.held == 0 && w.fake.received.load(std::sync::atomic::Ordering::Relaxed) - spent < size / 2, "{early:?}");
+        assert!(std::fs::metadata(w.server.join(&round)).map_or(0, |m| m.len()) < size);
+        // Given the time its size asks (a floor of 256 KiB a second here): it goes, slowly, whole.
+        let scaled = Limits { large: Duration::from_secs(1), floor: 256 << 10, ..TEST };
+        let went = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 10 + backoff(1), false, scaled);
+        assert!(went.problem.is_none() && went.held == 0, "{went:?}");
+        assert_eq!(std::fs::read(w.server.join(&round)).unwrap(), std::fs::read(desk_folder.join(&round)).unwrap());
+        let sending = Sending::load(&w.desk.memory);
+        assert!(sending.held.is_empty() && sending.failure.is_none() && sending.last == DUE + 10 + backoff(1), "{sending:?}");
+    }
+
+    /// The server unreachable, or refusing: nothing tried again before the backoff.
+    #[test]
+    fn a_failed_send_waits_for_its_backoff() {
+        let w = World::new("backoff");
+        let desk_folder = desk_beside(&w);
+        w.desk.write("health-state.toml", "[taken]\n\"levo@1800000000\" = 1800000040\n");
+        w.desk.exchange(&desk_folder, DUE + 40);
+        w.fake.fault(|r| (r.method == "PUT").then_some(Fault::Status(503)));
+        let failed = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 41, false, TEST);
+        assert!(failed.problem.as_deref().is_some_and(|p| p.starts_with("server:")), "{failed:?}");
+        assert_eq!(Sending::load(&w.desk.memory).retry_at, DUE + 41 + backoff(1));
+        w.fake.forget_seen();
+        let early = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 41 + backoff(1) - 1, false, TEST);
+        assert!(early.problem.as_deref().is_some_and(|p| p.starts_with("waiting:")) && w.fake.seen().is_empty(), "{early:?} {:?}", w.fake.seen());
+        // Failing again: two minutes, then five.
+        let again = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 41 + backoff(1), false, TEST);
+        assert!(again.problem.is_some());
+        assert_eq!(Sending::load(&w.desk.memory).retry_at, DUE + 41 + backoff(1) + backoff(2));
+        assert_eq!((backoff(1), backoff(2), backoff(3), backoff(9)), (60, 120, 300, 3600));
+        // The server back: it goes, and the count starts again.
+        w.fake.clear_faults();
+        let at = DUE + 41 + backoff(1) + backoff(2);
+        assert!(send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), at, false, TEST).problem.is_none());
+        let sending = Sending::load(&w.desk.memory);
+        assert!(sending.tries == 0 && sending.retry_at == 0 && sending.failure.is_none());
+    }
+
+    /// A text written on the desk reaches the phone within a minute while a
+    /// large records file is still crawling up: its small file of its own
+    /// goes first and alone (`send_urgent`), the phone's pull brings it.
+    #[test]
+    fn a_text_to_send_reaches_the_phone_while_the_records_crawl() {
+        let w = World::new("texts-lane");
+        let desk_folder = desk_beside(&w);
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        a_desk_holding_much(&w, &desk_folder, DUE);
+        // An uplink of 256 KiB a second: the records take seconds to go, given the time.
+        *w.fake.throttle.lock().unwrap() = Some(256 << 10);
+        let slow = Limits { large: Duration::from_secs(2), floor: 64 << 10, stall: Duration::from_secs(5), pull: Duration::from_secs(120), ..TEST };
+        let crawling = {
+            let (memory, folder, id, login) = (w.desk.memory.clone(), desk_folder.clone(), w.desk.id.clone(), w.fake.login());
+            std::thread::spawn(move || send_with(&memory, &folder, &id, &login, &BTreeMap::new(), DUE + 10, false, slow))
+        };
+        std::thread::sleep(Duration::from_millis(500));
+        // A text written now: its lines sealed already, in the desk's own file of the part "texts".
+        let source = w.base.join("desk-texts-send.jsonl");
+        std::fs::write(&source, "a sealed request line\n").unwrap();
+        let written = Instant::now();
+        assert!(place_texts(&desk_folder, &w.desk.id, &source).unwrap());
+        let urgent = send_urgent_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), DUE + 11, slow);
+        assert!(urgent.problem.is_none() && urgent.sent == 1, "{urgent:?}");
+        // The phone's next pull brings it; the records still on their way.
+        let pulled = pull_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), DUE + 20, TEST);
+        assert!(pulled.problem.is_none(), "{pulled:?}");
+        assert_eq!(std::fs::read(texts_file(&cache_of(&w.phone.memory), &w.desk.id)).unwrap(), b"a sealed request line\n");
+        assert!(!crawling.is_finished(), "the records still going up");
+        assert!(written.elapsed() < Duration::from_secs(10), "{:?}", written.elapsed());
+        let crawled = crawling.join().unwrap();
+        assert!(crawled.problem.is_none(), "{crawled:?}");
+        // Never sent twice by the main lane; a change goes again; none here, none there.
+        assert!(!own_plain(&desk_folder, &w.desk.id).iter().any(|r| r.starts_with("texts/")));
+        assert!(!place_texts(&desk_folder, &w.desk.id, &source).unwrap(), "unchanged: nothing to place");
+        std::fs::remove_file(&source).unwrap();
+        assert!(place_texts(&desk_folder, &w.desk.id, &source).unwrap() && !texts_file(&desk_folder, &w.desk.id).exists());
+    }
+
+    /// What a computer writing each minute costs, sent beside its sync app:
+    /// a change a minute for an hour, its entry and its claim renewed each
+    /// minute. Its records' file stays small (`share::SEGMENT`): measured here.
+    #[test]
+    fn bytes_an_hour_of_a_computer_writing_each_minute() {
+        let w = World::new("an-hour");
+        let desk_folder = desk_beside(&w);
+        a_desk_holding_much(&w, &desk_folder, DUE);
+        assert!(send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 1, false, TEST).problem.is_none());
+        let start = w.fake.received.load(std::sync::atomic::Ordering::Relaxed);
+        let mut minutes: String = String::new();
+        for minute in 1..=60 {
+            let now = DUE + minute * 60;
+            minutes.push_str(&format!("\"dose@{minute}\" = {now}\n"));
+            w.desk.write("health-state.toml", &format!("[taken]\n{minutes}"));
+            w.desk.exchange(&desk_folder, now);
+            crate::lease::renew(&desk_folder, &KEY, "health", &w.desk.id, now, now, false, crate::lease::Rule::FollowsYou, crate::share::written(&w.desk.memory, &w.desk.id)).unwrap();
+            let sent = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), now + 1, false, TEST);
+            assert!(sent.problem.is_none(), "minute {minute}: {sent:?}");
+        }
+        let hour = w.fake.received.load(std::sync::atomic::Ordering::Relaxed) - start;
+        let largest = desk_records(&desk_folder, &w.desk.id).last().map_or(0, |(_, s)| *s);
+        eprintln!("A computer writing each minute, sent beside its sync app: {hour} bytes in an hour; its current records' file {largest} bytes");
+        assert!(hour < 3 << 20, "{hour} bytes an hour");
+        assert!(largest < 64 << 10, "{largest}");
+        // Every dose there for the others.
+        w.phone.exchange(&w.server, DUE + 3_700);
+        assert!(w.phone.read("health-state.toml").contains("dose@60"));
     }
 }

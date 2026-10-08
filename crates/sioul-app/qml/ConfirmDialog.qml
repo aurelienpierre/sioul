@@ -14,15 +14,20 @@ Dialog {
     required property var theme
     property string sentence: ""
     property string action: ""
+    // The sentence holds commands in backticks, Sioul's own (how to install
+    // an antivirus): each shown to copy (CommandText.qml). Off unless asked:
+    // a name from a message is never taken for a command.
+    property bool commands: false
 
     signal confirmed
 
     // Asks, then calls `confirmed` if the action is chosen. The heading and the
     // sentence may name what came in a message (an attachment): plain text.
-    function ask(heading, sentence, action) {
+    function ask(heading, sentence, action, commands) {
         dialog.title = dialog.theme.plain(heading)
         dialog.sentence = sentence
         dialog.action = action
+        dialog.commands = commands === true
         dialog.open()
     }
 
@@ -31,11 +36,12 @@ Dialog {
     modal: true
     width: Math.min(440, (parent ? parent.width : 440) - 2 * dialog.theme.gap)
 
-    contentItem: Label {
+    // A command in the sentence (how to install an antivirus) to copy.
+    contentItem: CommandText {
+        sioul: dialog.sioul
+        theme: dialog.theme
         text: dialog.sentence
-        textFormat: Text.PlainText
-        wrapMode: Text.Wrap
-        color: dialog.theme.text
+        commands: dialog.commands
     }
 
     footer: DialogButtonBox {

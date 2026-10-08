@@ -66,6 +66,12 @@ public final class StepService extends Service
     static final String CALLS = "com.aurelienpierre.sioul.action.CALLS";
     /** A press of the switch heard in Sioul's own process (DndReceiver, the tile): sent at once (StepReceiver). */
     static final String HEARD = "com.aurelienpierre.sioul.action.HEARD";
+    /** The notification's words, as Rust says them after each apply in Sioul's own process (StepReceiver): extra "words". */
+    static final String NOTE_WORDS = "com.aurelienpierre.sioul.action.NOTE_WORDS";
+    /** A message's line written for your computers by the listener (AppNotes, `soon`): a step soon shares it. */
+    static final String SOON = "com.aurelienpierre.sioul.action.SOON";
+    /** How long a step asked by `SOON` waits: the messages that follow go with it. */
+    private static final long SOON_MS = 20_000;
     private static final String CHANNEL = "steps";
     private static final int NOTE = 0x5137;
     private static final String KEPT = "sioul-steps";
@@ -84,7 +90,9 @@ public final class StepService extends Service
     private FileObserver watch;
     private String watched = "";
     private String own = "";
+    /** Its text: do-not-disturb on or off, the calls screened or ringing (Rust's `steps::note`). */
     private String line = "";
+    /** Its title: what now is for, until when; Sioul's words for the service before Rust gave any. */
     private String title = "";
     private String channelName = "";
     /**
@@ -95,6 +103,8 @@ public final class StepService extends Service
     private String calls = "";
     /** A step asked while one runs: the phone stays awake for it. */
     private volatile boolean posted;
+    /** When the words shown were made (Unix milliseconds, Rust's clock): older ones are left aside. */
+    private long saidAt;
 
     /** One step, on the worker thread: {next (seconds), folder, own, line, title, channel, stop}. */
     static native String nativeStep(String reason);
@@ -134,6 +144,9 @@ public final class StepService extends Service
             case "next":
                 DndReceiver.schedule(context, asked.optLong("at", 0));
                 return "true";
+            case "note":
+                // The notification's words now, from Sioul's own process: to the service, in its own.
+                return note(context, json) ? "true" : "false";
             case "stars":
                 return DndContacts.stars(context, asked).toString();
             case "open-contact":
@@ -142,7 +155,16 @@ public final class StepService extends Service
                 return DndContacts.add(context, asked) ? "true" : "false";
             case "contacts-allowed":
                 return DndContacts.allowed(context) ? "true" : "false";
+            case "sms-app":
+                // The phone's SMS app, for Settings ▸ This phone ▸ On your computers.
+                return JSONObject.quote(PhoneMessages.smsApp(context));
             default:
+                // texts: read and sent for your computers (Texts.java, TextSend.java).
+                if (verb.startsWith("texts-"))
+                    return Texts.call(context, verb, asked);
+                // A mail attachment opened in the app you choose, or saved where you choose (Attachments.java).
+                if (verb.startsWith("attachment-"))
+                    return Attachments.call(context, verb, asked);
                 // The calls screened (Calls.java): the role, its pages, the phone app's dial pad.
                 return verb.startsWith("calls-") ? Calls.call(context, verb, asked) : null;
             }
@@ -359,8 +381,11 @@ public final class StepService extends Service
         JSONObject words = callsWords();
         String through = words == null ? "" : words.optString("line", "");
         String text = line.isEmpty() ? through : through.isEmpty() ? line : line + " " + through;
-        if (!text.isEmpty())
+        if (!text.isEmpty()) {
+            // Whole when opened: what now is for above, do-not-disturb and the calls below.
             note.setContentText(text);
+            note.setStyle(new Notification.BigTextStyle().bigText(text));
+        }
         // "Let every call through" while this phone screens calls: for an hour or until
         // turned off; once on, "Screen calls again" (docs/android.md, "Calls").
         if (words != null && words.optBoolean("screening")) {
@@ -391,6 +416,96 @@ public final class StepService extends Service
         Intent press = new Intent(context, StepReceiver.class).setAction(CALLS).putExtra("on", on).putExtra("minutes", minutes);
         PendingIntent pending = PendingIntent.getBroadcast(context, code, press, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         return new Notification.Action.Builder(null, title, pending).build();
+    }
+
+    /**
+     * The notification's words, {title, text, calls}, told by Rust after each
+     * apply in Sioul's own process: to the service running in this process,
+     * else to its process (StepReceiver), only while it runs. True when told.
+     */
+    static boolean note(Context context, String json)
+    {
+        StepService service = running;
+        if (service != null) {
+            service.words(json);
+            return true;
+        }
+        if (!runningHere(context))
+            return false;
+        // Android's queue of foreground broadcasts: never behind one held open meanwhile
+        // (DndReceiver holds its own while Sioul's change settles, three seconds).
+        context.sendBroadcast(new Intent(context, StepReceiver.class).setAction(NOTE_WORDS).putExtra("words", json)
+                                  .addFlags(Intent.FLAG_RECEIVER_FOREGROUND));
+        return true;
+    }
+
+    /** The words told (StepReceiver, in this process): the notification changed in place at once when they differ. */
+    static void told(String json)
+    {
+        StepService service = running;
+        if (service != null && json != null)
+            service.words(json);
+    }
+
+    /**
+     * New words, kept and shown at once when they changed: on the caller's
+     * thread, never behind a step, which may wait for the sync app or for
+     * mail on the worker's.
+     */
+    private void words(String json)
+    {
+        try {
+            said(new JSONObject(json));
+        } catch (JSONException e) {
+            Log.w(TAG, "Steps: words not read: " + e);
+        }
+    }
+
+    /**
+     * The notification's words from Rust ({at, title, text, channel, calls}):
+     * shown again when one changed; words made before those shown (`at`,
+     * Unix milliseconds: a step's, finished after a press told newer ones)
+     * are left aside.
+     */
+    private synchronized void said(JSONObject answer)
+    {
+        long at = answer.optLong("at", 0);
+        if (at > 0 && at < saidAt)
+            return;
+        saidAt = Math.max(saidAt, at);
+        String said = answer.optString("text", answer.optString("line", line));
+        String words = answer.optString("title", title);
+        String channel = answer.optString("channel", channelName);
+        JSONObject callsSaid = answer.optJSONObject("calls");
+        String callsNow = callsSaid == null ? calls : callsSaid.toString();
+        if (!said.equals(line) || !words.equals(title) || !channel.equals(channelName) || !callsNow.equals(calls)) {
+            line = said;
+            title = words;
+            channelName = channel;
+            calls = callsNow;
+            refresh();
+            // When, for the time each change takes to show (adb logcat -s sioul); nothing of what it says.
+            Log.i(TAG, "Steps: the notification says the state now.");
+        }
+    }
+
+    /**
+     * A line written for your computers, from the listener's process: a step
+     * soon, while the service runs (else the window's own exchanges, or the
+     * next start, send it).
+     */
+    static void soon(Context context)
+    {
+        if (runningHere(context))
+            context.sendBroadcast(new Intent(context, StepReceiver.class).setAction(SOON));
+    }
+
+    /** `SOON` heard (StepReceiver, in this process): a step `SOON_MS` on, unless one is asked already. */
+    static void soonHere()
+    {
+        StepService service = running;
+        if (service != null && !service.posted)
+            service.step("messages", SOON_MS);
     }
 
     /** A press of the switch made in Sioul's own process (StepReceiver): a step at once, which sends it. */
@@ -456,18 +571,9 @@ public final class StepService extends Service
             schedule(this, answer.optLong("next", USUAL_S));
             own = answer.optString("own", own);
             watchFolder(answer.optString("folder", ""));
-            String said = answer.optString("line", "");
-            String words = answer.optString("title", title);
-            String channel = answer.optString("channel", channelName);
-            JSONObject callsSaid = answer.optJSONObject("calls");
-            String callsNow = callsSaid == null ? "" : callsSaid.toString();
-            if (!said.equals(line) || !words.equals(title) || !channel.equals(channelName) || !callsNow.equals(calls)) {
-                line = said;
-                title = words;
-                channelName = channel;
-                calls = callsNow;
-                refresh();
-            }
+            if (answer.optJSONObject("calls") == null)
+                answer.put("calls", new JSONObject());
+            said(answer);
         } catch (Throwable e) {
             // Sioul's library that does not load, a step that failed: tried again at the usual pace.
             Log.e(TAG, "Steps: a step failed (" + reason + ")", e);

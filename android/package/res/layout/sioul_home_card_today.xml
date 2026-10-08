@@ -1,0 +1,1032 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Sioul's full card on the home screen (HomeCard.java, HomeCardToday.java;
+     docs/android.md, "The card on the home screen"), in Sioul's colours, light
+     or dark as the phone is, rounded as the launcher's cards. Today first: the
+     date (the card's age beside it, once it is old), the weather now and the
+     next four hours on its row, the next morning, afternoon, evening and night, the next
+     seven days, the forecast's credit; then what the Porch has for you: a dose
+     due, a code you asked for and its warning, reminders, the calls declined,
+     two events at once, "not set up yet"; then Now: what now is for,
+     do-not-disturb, the next step, where you stopped. Each part shown or left
+     out as the card's height allows, today kept longest. No list, no count,
+     no button: the mail card and the agenda card (sioul_home_card.xml) list
+     the messages and the events. -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/sioul_home_card_background"
+    android:clipToOutline="true">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/sioul_home_card_padding"
+        android:paddingEnd="@dimen/sioul_home_card_padding"
+        android:paddingTop="12dp"
+        android:paddingBottom="10dp">
+        <LinearLayout
+            android:id="@+id/sioul_home_card_head"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@+id/sioul_home_card_date"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/sioul_home_card_text"
+                android:textSize="16sp" />
+            <TextView
+                android:id="@+id/sioul_home_card_age"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:maxLines="1"
+                android:textColor="@color/sioul_home_card_muted"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </LinearLayout>
+        <!-- No place chosen for the weather yet: where to choose one; or no forecast yet. -->
+        <TextView
+            android:id="@+id/sioul_home_card_weather_line"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="@color/sioul_home_card_muted"
+            android:textSize="13sp"
+            android:visibility="gone" />
+        <!-- The weather now: its icon, its temperature, the chance of rain; the next four hours beside it, the farthest left out first when they do not fit. -->
+        <LinearLayout
+            android:id="@+id/sioul_home_card_now"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+            <ImageView
+                android:id="@+id/sioul_home_card_now_icon"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="center_vertical"
+                android:importantForAccessibility="no"
+                android:scaleType="fitCenter"
+                android:tint="@color/sioul_home_card_text" />
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_gravity="center_vertical"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_now_temp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="24sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_now_rain"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+            <LinearLayout
+                android:id="@+id/sioul_home_card_hours"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:orientation="horizontal">
+                <LinearLayout
+                    android:id="@+id/sioul_home_card_hour0"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:minWidth="48dp">
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour0_label"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_muted"
+                        android:textSize="11sp" />
+                    <ImageView
+                        android:id="@+id/sioul_home_card_hour0_icon"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:layout_gravity="center_horizontal"
+                        android:importantForAccessibility="no"
+                        android:scaleType="fitCenter"
+                        android:tint="@color/sioul_home_card_text" />
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour0_temp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_text"
+                        android:textSize="13sp" />
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour0_rain"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_muted"
+                        android:textSize="11sp" />
+                </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/sioul_home_card_hour1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:minWidth="48dp">
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour1_label"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_muted"
+                        android:textSize="11sp" />
+                    <ImageView
+                        android:id="@+id/sioul_home_card_hour1_icon"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:layout_gravity="center_horizontal"
+                        android:importantForAccessibility="no"
+                        android:scaleType="fitCenter"
+                        android:tint="@color/sioul_home_card_text" />
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour1_temp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_text"
+                        android:textSize="13sp" />
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour1_rain"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_muted"
+                        android:textSize="11sp" />
+                </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/sioul_home_card_hour2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:minWidth="48dp">
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour2_label"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_muted"
+                        android:textSize="11sp" />
+                    <ImageView
+                        android:id="@+id/sioul_home_card_hour2_icon"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:layout_gravity="center_horizontal"
+                        android:importantForAccessibility="no"
+                        android:scaleType="fitCenter"
+                        android:tint="@color/sioul_home_card_text" />
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour2_temp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_text"
+                        android:textSize="13sp" />
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour2_rain"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_muted"
+                        android:textSize="11sp" />
+                </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/sioul_home_card_hour3"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:minWidth="48dp">
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour3_label"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_muted"
+                        android:textSize="11sp" />
+                    <ImageView
+                        android:id="@+id/sioul_home_card_hour3_icon"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:layout_gravity="center_horizontal"
+                        android:importantForAccessibility="no"
+                        android:scaleType="fitCenter"
+                        android:tint="@color/sioul_home_card_text" />
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour3_temp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_text"
+                        android:textSize="13sp" />
+                    <TextView
+                        android:id="@+id/sioul_home_card_hour3_rain"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="1dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:gravity="center_horizontal"
+                        android:textColor="@color/sioul_home_card_muted"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+        <!-- The next morning, afternoon, evening and night, in order. -->
+        <LinearLayout
+            android:id="@+id/sioul_home_card_parts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+            <LinearLayout
+                android:id="@+id/sioul_home_card_part0"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_part0_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/sioul_home_card_part0_icon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="center_horizontal"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitCenter"
+                    android:tint="@color/sioul_home_card_text" />
+                <TextView
+                    android:id="@+id/sioul_home_card_part0_temp"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_part0_rain"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/sioul_home_card_part1"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_part1_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/sioul_home_card_part1_icon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="center_horizontal"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitCenter"
+                    android:tint="@color/sioul_home_card_text" />
+                <TextView
+                    android:id="@+id/sioul_home_card_part1_temp"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_part1_rain"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/sioul_home_card_part2"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_part2_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/sioul_home_card_part2_icon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="center_horizontal"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitCenter"
+                    android:tint="@color/sioul_home_card_text" />
+                <TextView
+                    android:id="@+id/sioul_home_card_part2_temp"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_part2_rain"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/sioul_home_card_part3"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_part3_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/sioul_home_card_part3_icon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="center_horizontal"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitCenter"
+                    android:tint="@color/sioul_home_card_text" />
+                <TextView
+                    android:id="@+id/sioul_home_card_part3_temp"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_part3_rain"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+        <!-- The next seven days: each its name, its icon, its high and low, the chance of rain. -->
+        <LinearLayout
+            android:id="@+id/sioul_home_card_days"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+            <LinearLayout
+                android:id="@+id/sioul_home_card_day0"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_day0_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/sioul_home_card_day0_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center_horizontal"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitCenter"
+                    android:tint="@color/sioul_home_card_text" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day0_high"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day0_low"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day0_rain"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/sioul_home_card_day1"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_day1_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/sioul_home_card_day1_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center_horizontal"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitCenter"
+                    android:tint="@color/sioul_home_card_text" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day1_high"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day1_low"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day1_rain"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/sioul_home_card_day2"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_day2_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/sioul_home_card_day2_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center_horizontal"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitCenter"
+                    android:tint="@color/sioul_home_card_text" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day2_high"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day2_low"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day2_rain"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/sioul_home_card_day3"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_day3_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/sioul_home_card_day3_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center_horizontal"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitCenter"
+                    android:tint="@color/sioul_home_card_text" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day3_high"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day3_low"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day3_rain"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/sioul_home_card_day4"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_day4_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/sioul_home_card_day4_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center_horizontal"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitCenter"
+                    android:tint="@color/sioul_home_card_text" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day4_high"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day4_low"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day4_rain"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/sioul_home_card_day5"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_day5_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/sioul_home_card_day5_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center_horizontal"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitCenter"
+                    android:tint="@color/sioul_home_card_text" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day5_high"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day5_low"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day5_rain"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/sioul_home_card_day6"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+                <TextView
+                    android:id="@+id/sioul_home_card_day6_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/sioul_home_card_day6_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center_horizontal"
+                    android:importantForAccessibility="no"
+                    android:scaleType="fitCenter"
+                    android:tint="@color/sioul_home_card_text" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day6_high"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_text"
+                    android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day6_low"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="11sp" />
+                <TextView
+                    android:id="@+id/sioul_home_card_day6_rain"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:gravity="center_horizontal"
+                    android:textColor="@color/sioul_home_card_muted"
+                    android:textSize="10sp" />
+            </LinearLayout>
+        </LinearLayout>
+        <!-- Open-Meteo's credit, small, as its licence asks (CC BY 4.0). -->
+        <TextView
+            android:id="@+id/sioul_home_card_credit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:gravity="end"
+            android:textColor="@color/sioul_home_card_muted"
+            android:textSize="10sp"
+            android:visibility="gone" />
+        <!-- What the Porch has for you: a dose due, a code and its warning, reminders, calls declined, two events at once. -->
+        <LinearLayout
+            android:id="@+id/sioul_home_card_porch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+            <TextView
+                android:id="@+id/sioul_home_card_dose"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/sioul_home_card_text"
+                android:textSize="13sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/sioul_home_card_code"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/sioul_home_card_text"
+                android:textSize="13sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/sioul_home_card_warning"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/sioul_home_card_muted"
+                android:textSize="12sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/sioul_home_card_reminder0"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/sioul_home_card_text"
+                android:textSize="13sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/sioul_home_card_reminder1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/sioul_home_card_text"
+                android:textSize="13sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/sioul_home_card_reminder2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/sioul_home_card_text"
+                android:textSize="13sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/sioul_home_card_call0"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/sioul_home_card_text"
+                android:textSize="13sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/sioul_home_card_call1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/sioul_home_card_text"
+                android:textSize="13sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/sioul_home_card_overlap"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/sioul_home_card_text"
+                android:textSize="13sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/sioul_home_card_note"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/sioul_home_card_muted"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </LinearLayout>
+        <!-- Now: what it is for, do-not-disturb, the next step (why it comes now is on Now, a tap away), where you stopped. -->
+        <LinearLayout
+            android:id="@+id/sioul_home_card_now_part"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/sioul_home_card_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/sioul_home_card_text"
+                android:textSize="14sp" />
+            <TextView
+                android:id="@+id/sioul_home_card_dnd"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/sioul_home_card_muted"
+                android:textSize="13sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/sioul_home_card_step"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/sioul_home_card_accent"
+                android:textSize="14sp"
+                android:visibility="gone" />
+            <TextView
+                android:id="@+id/sioul_home_card_stopped"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/sioul_home_card_muted"
+                android:textSize="13sp"
+                android:visibility="gone" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

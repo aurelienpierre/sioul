@@ -849,9 +849,10 @@ ColumnLayout {
             }
         }
     }
-    // A phone: each conversation, app and browser site with a choice of its own.
+    // A phone: each conversation, app and browser site with a choice of its
+    // own, and each by time; a computer: the rows by time set on the phone.
     Loader {
-        active: tab.view === "exceptions" && tab.shown.phone
+        active: tab.view === "exceptions"
         visible: active
         Layout.fillWidth: true
 

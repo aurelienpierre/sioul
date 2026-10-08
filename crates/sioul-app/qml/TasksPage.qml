@@ -92,6 +92,19 @@ Item {
     property string caseFilter: ""
     // A narrow screen (a phone): the board's columns one under the other.
     readonly property bool narrow: page.width < 640
+    // The open task's width beside the list, with no cap of its own
+    // (docs/qt-quick.md, "An editing card's width"): its natural width (its
+    // fields at a readable line, its tiles side by side) while the list keeps
+    // `listLeast` pixels, where its rows still hold on one line (the day's
+    // weather and its three choices, in French), or half the room in a
+    // narrower window. On a phone the list is hidden and the panel takes the
+    // whole width.
+    readonly property real listLeast: 480
+    readonly property real panelWidth: {
+        const room = columns.width - columns.spacing
+        const natural = page.panel ? page.panel.naturalWidth : room / 2
+        return Math.round(Math.max(0, Math.min(natural, Math.max(room - page.listLeast, room / 2))))
+    }
     readonly property int halfFlow: Math.floor((viewsFlow.width - viewsFlow.spacing) / 2)
     // One kind, one category; "" for all. Kept between sessions, as the choices above.
     readonly property string kindFilter: page.shown && page.shown.view ? page.shown.view.filter.kind : ""
@@ -250,7 +263,7 @@ Item {
             Layout.fillHeight: true
             Layout.fillWidth: true
             Layout.minimumWidth: 0
-            Layout.preferredWidth: !page.panelOpen ? columns.width : Math.round((columns.width - columns.spacing) * 0.58)
+            Layout.preferredWidth: !page.panelOpen ? columns.width : columns.width - columns.spacing - page.panelWidth
             spacing: 10
 
             // The ways to see tasks, then the filters: on a second line when the
@@ -530,25 +543,6 @@ Item {
                                                     weatherButton.checked = Qt.binding(() => page.shown !== null && page.shown.weather === weatherButton.modelData)
                                             }
                                         }
-                                    }
-                                }
-                                // What the watch says of this morning: an offer, never an alarm.
-                                RowLayout {
-                                    visible: page.shown !== null && !page.shown.quiet && page.shown.morning !== "" && page.shown.weather === "clear"
-                                    Layout.fillWidth: true
-                                    spacing: 8
-
-                                    Label {
-                                        Layout.fillWidth: true
-                                        text: page.shown && page.shown.morning !== "" ? page.sioul.text("watch-morning-" + page.shown.morning) : ""
-                                        textFormat: Text.PlainText
-                                        wrapMode: Text.Wrap
-                                        color: page.theme.muted
-                                    }
-                                    Button {
-                                        flat: true
-                                        text: page.sioul.text("watch-morning-lighter")
-                                        onClicked: page.sioul.setWeather(page.shown.morning === "strain" ? "fog" : "haze")
                                     }
                                 }
                                 Label {
@@ -1228,7 +1222,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumWidth: 0
-            Layout.preferredWidth: Math.round((columns.width - columns.spacing) * 0.42)
+            Layout.preferredWidth: page.panelWidth
 
             sourceComponent: TaskPanel {
                 theme: page.theme

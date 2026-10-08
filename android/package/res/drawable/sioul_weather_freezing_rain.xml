@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: LGPL-3.0-or-later -->
+<!-- Breeze's weather-freezing-rain-symbolic (crates/sioul-app/icons/COPYING-ICONS), made by
+     tools/make-weather-drawables.py for the card on the home screen: white,
+     tinted by the card's layout in its text colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path android:pathData="m32.95 17.08a 9 9 0 0 0 -8.95-8.08 a 9 9 0 0 0 -8.36 12.31 a 5 5 0 1 0 -1.63 9.69h18a 7 7 0 0 0 0.95 -13.92 z"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="2"
+        android:strokeLineJoin="bevel" />
+    <path android:pathData="m12 33-3 3 3 3 3-3-3-3z"
+        android:fillColor="#ffffff" />
+    <path android:pathData="m28 33-3 3 3 3 3-3-3-3z"
+        android:fillColor="#ffffff" />
+    <path android:pathData="m16 39-3 3 3 3 3-3-3-3z"
+        android:fillColor="#ffffff" />
+    <path android:pathData="m32 39-3 3 3 3 3-3-3-3z"
+        android:fillColor="#ffffff" />
+    <path android:pathData="m22.59 40.59a2 2 0 0 0 0 2.8284 2 2 0 0 0 2.8284 0 2 2 0 0 0 0-2.8284l-1.4142-1.4142-1.4142 1.4142z"
+        android:fillColor="#ffffff" />
+    <path android:pathData="m 6.59 40.59a2 2 0 0 0 0 2.8284 2 2 0 0 0 2.8284 0 2 2 0 0 0 0-2.8284l-1.4142-1.4142-1.4142 1.4142z"
+        android:fillColor="#ffffff" />
+    <path android:pathData="m34.59 34.59a2 2 0 0 0 0 2.8284 2 2 0 0 0 2.8284 0 2 2 0 0 0 0-2.8284l-1.4142-1.4142-1.4142 1.4142z"
+        android:fillColor="#ffffff" />
+    <path android:pathData="m18.59 34.59a2 2 0 0 0 0 2.8284 2 2 0 0 0 2.8284 0 2 2 0 0 0 0-2.8284l-1.4142-1.4142-1.4142 1.4142z"
+        android:fillColor="#ffffff" />
+</vector>

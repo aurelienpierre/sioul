@@ -2,9 +2,9 @@
 // Copyright © 2026 Aurélien Pierre
 
 // "How was it?", from the status line just after a task is done: its four
-// costs and its gain, filled in with what was foreseen (FeltRatings.qml).
-// Over the window, never in its way: not modal, closed by Escape or a click
-// elsewhere; nothing is kept unless a slider changes or "As expected".
+// costs and its gain as tiles, what was foreseen a thin mark on each
+// (FeltRatings.qml). Over the window, never in its way: not modal, closed by
+// Escape or a click elsewhere; nothing is kept unless a tile is tapped.
 
 pragma ComponentBehavior: Bound
 
@@ -52,7 +52,9 @@ Popup {
     modal: false
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    width: Math.min(460, (parent ? parent.width : 460) - 32)
+    // As wide as its tiles side by side, without a cap of its own; never past the
+    // window less the usual margins (docs/qt-quick.md, "An editing card's width").
+    width: Math.min(ratings.naturalWidth + 2 * popup.padding + 12, (parent ? parent.width : 460) - 2 * popup.theme.gap)
     height: Math.min(implicitHeight, (parent ? parent.height : 800) - 96)
     x: parent ? (parent.width - width) / 2 : 0
     // Above the status line, where "How was it?" was.

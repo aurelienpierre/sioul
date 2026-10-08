@@ -41,6 +41,9 @@ finish-args:
   # The system keyring (Secret Service) and notifications.
   - --talk-name=org.freedesktop.secrets
   - --talk-name=org.freedesktop.Notifications
+  # colour: colord, read only, to tell which screen a colour profile belongs
+  # to when there are several (docs/colour.md).
+  - --system-talk-name=org.freedesktop.ColorManager
   # Your case files and budgets, where you keep them.
   - --filesystem=home
   # Qt WebEngine's helper and QML modules, from its BaseApp.

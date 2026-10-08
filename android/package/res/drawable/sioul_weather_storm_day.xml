@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: LGPL-3.0-or-later -->
+<!-- Breeze's weather-storm-day-symbolic (crates/sioul-app/icons/COPYING-ICONS), made by
+     tools/make-weather-drawables.py for the card on the home screen: white,
+     tinted by the card's layout in its text colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path android:pathData="m2 19h5"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="2" />
+    <group android:rotation="36" android:pivotX="18" android:pivotY="19">
+        <path android:pathData="m2 19h5"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2" />
+    </group>
+    <group android:rotation="72" android:pivotX="18" android:pivotY="19">
+        <path android:pathData="m2 19h5"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2" />
+    </group>
+    <group android:rotation="108" android:pivotX="18" android:pivotY="19">
+        <path android:pathData="m2 19h5"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2" />
+    </group>
+    <group android:rotation="-36" android:pivotX="18" android:pivotY="19">
+        <path android:pathData="m2 19h5"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2" />
+    </group>
+    <path android:pathData="m18 19 m-9 0 a9 9 0 0 1 9 -9 a 9 9 0 0 1 9 9 m -18 0 a 9 9 1 0 0 9 9"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="2"
+        android:strokeLineCap="round" />
+    <path android:pathData="m26.281 9c-5.5 0 -10 4.5-10 10 0 0.67593 0 1.3498 0.21463 2h-0.21463c-3.3137 0-6 2.6857-6 6 0 3 2.1722 5.7078 5.2371 6h4.344l4.1726-11h9.344l-3.8399 7h 4.158 l-2.615 4 h 3.2137 c4.418-0.04657 7.9096-3.3519 7.9854-7.9536 0-3.7055-2.4854-6.9696-6.1454-7.822-0.85988-4.7586-5-8.2199-9.84-8.2204z"
+        android:fillColor="#ffffff" />
+    <path android:pathData="m25.415 24  -3.4145 9 3.2442 0l-5.2442 13l0.3171 0l 9.6829-15h-3.841l3.841-7z"
+        android:fillColor="#ffffff" />
+    <path android:pathData="m9 42 5-7"
+        android:fillColor="#ffffff"
+        android:strokeColor="#ffffff"
+        android:strokeWidth="2" />
+    <group android:translateX="6" android:translateY="0">
+        <path android:pathData="m9 42 5-7"
+            android:fillColor="#ffffff"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2" />
+    </group>
+    <group android:translateX="20" android:translateY="0">
+        <path android:pathData="m9 42 5-7"
+            android:fillColor="#ffffff"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2" />
+    </group>
+    <group android:translateX="26" android:translateY="0">
+        <path android:pathData="m9 42 5-7"
+            android:fillColor="#ffffff"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="2" />
+    </group>
+</vector>

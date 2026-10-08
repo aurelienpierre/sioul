@@ -715,6 +715,9 @@ pub struct Ask<'a> {
     /// Where things change that the clock does not know (Unix seconds): the
     /// ends of slots of time for you, of do-not-disturb's switch.
     pub also: &'a [i64],
+    /// The notification's own rows in the matrix, its conversation's then its
+    /// app's (`attention::source_rows`): read over its usual row when set.
+    pub sources: &'a [String],
 }
 
 impl Ask<'_> {
@@ -772,6 +775,8 @@ pub enum Why {
     Untouched,
     /// A code, a sign-in or a payment to approve.
     Code,
+    /// As you chose for this app or conversation at this time (its own row in the matrix).
+    Times,
     /// Holding is off.
     Off,
     /// The app or the site comes at once.
@@ -795,6 +800,7 @@ impl Why {
         match self {
             Why::Untouched => "untouched",
             Why::Code => "code",
+            Why::Times => "times",
             Why::Off => "off",
             Why::AtOnce => "at-once",
             Why::Allowed => "allowed",
@@ -876,18 +882,81 @@ pub fn next_gathering(ask: &Ask) -> Option<Zoned> {
     None
 }
 
-/// Held until the next gathering; through when it is this very one.
-fn gathered(ask: &Ask) -> Decision {
-    match next_gathering(ask) {
-        Some(at) if at.timestamp().as_second() <= ask.stamp() => Decision::through(Why::Gathered),
-        Some(at) => Decision::held(at.timestamp().as_second(), Why::Gathered),
-        None => Decision::held(ask.stamp() + RECHECK, Why::Gathered),
+/// The gathered times from now on, within the coming days, in order; one
+/// that began less than a minute ago among them.
+fn gatherings(ask: &Ask) -> Vec<Zoned> {
+    let zone = ask.now.time_zone().clone();
+    let stamp = ask.stamp();
+    let times = times_of(ask.gathered);
+    let mut out = Vec::new();
+    for day in 0..=HORIZON_DAYS {
+        let Ok(date) = ask.now.date().checked_add(jiff::Span::new().days(day)) else { continue };
+        for time in &times {
+            if let Ok(at) = date.to_datetime(*time).to_zoned(zone.clone())
+                && at.timestamp().as_second() + GRACE > stamp
+            {
+                out.push(at);
+            }
+        }
+    }
+    out
+}
+
+/// The first moment from now on, within the coming days, when what the
+/// matrix says of a notification lets it come (`level_at`): at once (●) now
+/// or where something changes; at the gathered times (◎) at a gathered time.
+pub fn first_time(ask: &Ask, level_at: &dyn Fn(&Zoned, &Mode) -> Level) -> Option<Zoned> {
+    let mut candidates: Vec<(Zoned, bool)> = vec![(ask.now.clone(), false)];
+    candidates.extend(ask.moments().into_iter().map(|at| (at, false)));
+    candidates.extend(gatherings(ask).into_iter().map(|at| (at, true)));
+    candidates.sort_by_key(|(at, gathering)| (at.timestamp(), !*gathering));
+    candidates
+        .into_iter()
+        .find(|(at, gathering)| match level_at(at, &ask.clock.mode(at)) {
+            Level::Now => true,
+            Level::Gathered => *gathering,
+            _ => false,
+        })
+        .map(|(at, _)| at)
+}
+
+/// When a notification comes, by what the matrix says of it at each moment
+/// (`Attention::decide`, its app's and conversation's own rows read over its
+/// usual one): through now, or held until its first time (`first_time`), the
+/// next event tried when one finds none (its area left aside: nothing waits
+/// for good). Why: `now` or `later`, or as you chose for this time
+/// (`Why::Times`) when a source's own cell decides it now.
+fn by_matrix(ask: &Ask, events: &[Event], now: Why, later: Why) -> Decision {
+    let stamp = ask.stamp();
+    let Some(first) = events.first() else { return Decision::through(now) };
+    let chosen = ask.attention.decide(first, &ask.moment(ask.now, &ask.clock.mode(ask.now))).step == attention::Step::Chosen;
+    let why = |usual: Why| if chosen { Why::Times } else { usual };
+    let next = events.iter().find_map(|event| first_time(ask, &|at, mode| ask.attention.decide(event, &ask.moment(at, mode)).level));
+    match next {
+        Some(at) if at.timestamp().as_second() <= stamp => Decision::through(why(now)),
+        Some(at) => Decision::held(at.timestamp().as_second(), why(later)),
+        None => Decision::held(stamp + RECHECK, why(later)),
     }
 }
 
+/// Gathered: held until the next gathered time the matrix gathers at (an
+/// automaton's row, as usual three a day but not while you sleep, pause,
+/// take Free time or have do-not-disturb on), within the app's area; through
+/// when it is this very one, or when the row says at once now (as the
+/// preset More reachable does at work). Its app's own row read over it.
+fn gathered(ask: &Ask) -> Decision {
+    let event = Event::own(attention::Kind::AppAutomatons).for_area(ask.area).from_sources(ask.sources.to_vec());
+    by_matrix(ask, &[event], Why::Gathered, Why::Gathered)
+}
+
 /// At once, at the times the matrix lets these apps come (as usual, as
-/// Sioul's own notifications come): else when it does.
+/// Sioul's own notifications come): else when it does. Its app's own row
+/// read over it, when set.
 fn at_once(ask: &Ask) -> Decision {
+    if ask.attention.has_sources(ask.sources) {
+        let event = Event::own(attention::Kind::AppAtOnce).for_area(ask.area).from_sources(ask.sources.to_vec());
+        return by_matrix(ask, &[event], Why::AtOnce, Why::AtOnce);
+    }
     match first_moment(ask, &|at, mode| ask.level(attention::Kind::AppAtOnce, at, mode) == Level::Now && ask.area_fits(mode)) {
         Some(at) if at.timestamp().as_second() <= ask.stamp() => Decision::through(Why::AtOnce),
         Some(at) => Decision::held(at.timestamp().as_second(), Why::AtOnce),
@@ -903,6 +972,11 @@ fn at_once(ask: &Ask) -> Decision {
 fn person(talk: &Talk, who: Who, group: bool, always: bool, ask: &Ask) -> Decision {
     if who == Who::Blocked {
         return Decision::held(ask.stamp() + FOR_GOOD, Why::Never);
+    }
+    // Its app's or conversation's own row, set: at once, gathered or held as it says at each time.
+    if ask.attention.has_sources(ask.sources) {
+        let event = Event::of(Source::Message { via: talk.via, who, group, always }).from_sources(ask.sources.to_vec());
+        return by_matrix(ask, &[event.clone().for_area(ask.area), event], Why::Allowed, Why::Waiting);
     }
     let open = |at: &Zoned, mode: &Mode, area: Option<Area>| ask.attention.decide(&Event::of(Source::Message { via: talk.via, who, group, always }).for_area(area), &ask.moment(at, mode)).told;
     // Its area and its times never meeting in the coming days, the matrix alone decides: nothing waits for good.
@@ -1267,7 +1341,7 @@ pub fn why_text(tr: &Translator, why: &str, until: i64, now: &Zoned) -> String {
     args.set("when", if until > 0 { when_text(tr, until, now) } else { String::new() });
     let held = until > now.timestamp().as_second();
     let id = match (why, held) {
-        ("waiting", true) | ("gathered", true) | ("at-once", true) | ("never", true) => format!("appnotes-why-{why}-held"),
+        ("waiting", true) | ("gathered", true) | ("at-once", true) | ("never", true) | ("times", true) => format!("appnotes-why-{why}-held"),
         _ => format!("appnotes-why-{why}"),
     };
     tr.text(&id, Some(&args))
@@ -1354,7 +1428,7 @@ mod tests {
     fn ask<'a>(now: &'a Zoned, clock: &'a TestClock, area: Option<Area>, gate: Option<Gate>) -> Ask<'a> {
         static GATHERED: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
         let gathered = GATHERED.get_or_init(|| vec!["09:00".into(), "13:00".into(), "18:00".into()]);
-        Ask { now, clock, attention: usual(), gathered, area, gate, slot_at: &never_slot, nothing: false, also: &[] }
+        Ask { now, clock, attention: usual(), gathered, area, gate, slot_at: &never_slot, nothing: false, also: &[], sources: &[] }
     }
 
     fn posted(json: &str) -> Posted {
@@ -1595,7 +1669,7 @@ mod tests {
         let late = vec!["06:30".to_string(), "13:00".into(), "22:30".into()];
         let ask_late = |now: &'static str| {
             let now = Box::leak(Box::new(at(now)));
-            Ask { now, clock: &clock, attention: usual(), gathered: &late, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[] }
+            Ask { now, clock: &clock, attention: usual(), gathered: &late, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &[] }
         };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &ask_late("2026-10-06T20:00[Europe/Paris]"))), "2026-10-07T13:00:00", "22:30 and 06:30 are asleep");
         // A pause: nothing gathered until it ends; asked again six hours on, brought back when it ends (`again`).
@@ -1615,7 +1689,7 @@ mod tests {
         let slot = |z: &Zoned| z.date() == at("2026-10-06T00:00[Europe/Paris]").date() && z.hour() == 13;
         let now = at("2026-10-06T10:00[Europe/Paris]");
         let usual = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
-        let with_slot = Ask { now: &now, clock: &clock, attention: self::usual(), gathered: &usual, area: None, gate: None, slot_at: &slot, nothing: false, also: &[] };
+        let with_slot = Ask { now: &now, clock: &clock, attention: self::usual(), gathered: &usual, area: None, gate: None, slot_at: &slot, nothing: false, also: &[], sources: &[] };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &with_slot)), "2026-10-06T18:00:00");
         // No time that reads: three a day.
         assert_eq!(times_of(&["later".into()]).len(), 3);
@@ -1647,7 +1721,7 @@ mod tests {
         let shop = classify(&posted(SHOP), &choices);
         let gathered = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
         let decided = |kind: &Kind, who: Option<Who>, listed: bool, matrix: &Attention, now: &Zoned, clock: &TestClock, gate: Option<Gate>| {
-            decide(kind, who, listed, &choices, &Ask { now, clock, attention: matrix, gathered: &gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[] })
+            decide(kind, who, listed, &choices, &Ask { now, clock, attention: matrix, gathered: &gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[], sources: &[] })
         };
         let mut matrix = usual().clone();
         // Always through under do-not-disturb: at once whatever their row (Q2), as usual; their row's times with ☆.
@@ -1674,10 +1748,10 @@ mod tests {
         assert_eq!(until_of(decided(&shop, None, false, &matrix, &morning, &clock, None)), "2026-10-06T18:00:00");
         // Time for you everywhere (Q12): the listener reads the slots, which hold automatons as the window's did.
         let in_slot = |z: &Zoned| z.hour() == 9;
-        let slotted = Ask { now: &morning, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[] };
+        let slotted = Ask { now: &morning, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[], sources: &[] };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &slotted)), "2026-10-06T13:00:00");
         // "Nothing at all" in Free time: the safe wait too, Always through comes.
-        let nothing = Ask { now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[] };
+        let nothing = Ask { now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[], sources: &[] };
         assert_eq!(decide(&sms, Some(Who::Safe), false, &choices, &nothing).why, Why::Waiting);
         assert_eq!(decide(&sms, Some(Who::Safe), true, &choices, &nothing).why, Why::Allowed);
         // A mail app's notification takes the Mail rows (Q5): a safe sender's at night waits for waking (before: let through).
@@ -1775,6 +1849,99 @@ mod tests {
         assert_eq!(again(&held, &off, &ask(&now, &paused, None, None)), Decision::through(Why::Off));
     }
 
+    /// Other apps by time (docs/attention.md, §1.3): Discord let through
+    /// during work and held otherwise, a conversation's row over its app's,
+    /// gathered, under do-not-disturb, worked out again; nothing changes for
+    /// an app without a row of its own; the blocked and codes as before; an
+    /// automaton the matrix lets through at once comes at once.
+    #[test]
+    fn an_app_s_own_row_decides_when() {
+        fn with<'a>(now: &'a Zoned, clock: &'a TestClock, attention: &'a Attention, gathered: &'a [String], sources: &'a [String], gate: Option<Gate>) -> Ask<'a> {
+            Ask { now, clock, attention, gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[], sources }
+        }
+        let clock = TestClock::new();
+        let choices = Choices::default();
+        let gathered = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
+        let (morning, evening) = (at("2026-10-06T10:00[Europe/Paris]"), at("2026-10-06T20:00[Europe/Paris]"));
+        let dm = classify(&posted(DISCORD_DM), &choices);
+        let server = classify(&posted(DISCORD_SERVER), &choices);
+        let key = |k: &Kind| match k {
+            Kind::People(t) => t.conversation.as_ref().map(|c| c.key.clone()).unwrap_or_default(),
+            _ => String::new(),
+        };
+        let dm_rows = attention::source_rows("com.discord", &key(&dm));
+        let server_rows = attention::source_rows("com.discord", &key(&server));
+        assert_eq!(server_rows, vec![format!("conversation.{}", key(&server)), "app.com.discord".to_string()]);
+        // Nothing set: every fixture at every hour as before, its rows read or not.
+        for fixture in [SMS_NUMBER, SMS_SENDER_ID, WHATSAPP_PERSON, WHATSAPP_GROUP, DISCORD_SERVER, DISCORD_DM, CHROME_SITE, PROTON, SHOP, BANK_CODE] {
+            let p = posted(fixture);
+            let kind = classify(&p, &choices);
+            let rows = attention::source_rows(&p.package, &key(&kind));
+            for hour in ["03:00", "08:30", "10:00", "12:30", "17:30", "20:00", "22:30"] {
+                let now = at(&format!("2026-10-06T{hour}[Europe/Paris]"));
+                for who in [None, Some(Who::Safe), Some(Who::Stranger)] {
+                    assert_eq!(decide(&kind, who, false, &choices, &with(&now, &clock, usual(), &gathered, &rows, None)), decide(&kind, who, false, &choices, &with(&now, &clock, usual(), &gathered, &[], None)), "{fixture} {hour} {who:?}");
+                }
+            }
+        }
+        // The owner's example: Discord through during work, held otherwise.
+        let mut work_only = usual().clone();
+        for column in Column::ALL {
+            work_only.set_source("app.com.discord", column, if column == Column::Work { Level::Now } else { Level::Later }).unwrap();
+        }
+        assert_eq!(decide(&dm, Some(Who::Stranger), false, &choices, &with(&morning, &clock, &work_only, &gathered, &dm_rows, None)), Decision::through(Why::Times));
+        let held = decide(&dm, Some(Who::Stranger), false, &choices, &with(&evening, &clock, &work_only, &gathered, &dm_rows, None));
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Times, "2026-10-07T09:00:00"));
+        // A safe friend's message too, which comes in the evening as usual.
+        assert_eq!(decide(&dm, Some(Who::Safe), false, &choices, &with(&evening, &clock, usual(), &gathered, &dm_rows, None)), Decision::through(Why::Allowed));
+        assert_eq!(until_of(decide(&dm, Some(Who::Safe), false, &choices, &with(&evening, &clock, &work_only, &gathered, &dm_rows, None))), "2026-10-07T09:00:00");
+        // The blocked never, a code always, whatever the row says.
+        assert_eq!(decide(&dm, Some(Who::Blocked), false, &choices, &with(&morning, &clock, &work_only, &gathered, &dm_rows, None)).why, Why::Never);
+        let code = classify(&posted(BANK_CODE), &choices);
+        let mut code_held = usual().clone();
+        code_held.set_source("app.com.bank.example", Column::Work, Level::Later).unwrap();
+        let code_rows = attention::source_rows("com.bank.example", "");
+        assert_eq!(decide(&code, None, false, &choices, &with(&morning, &clock, &code_held, &gathered, &code_rows, None)), Decision::through(Why::Code));
+        // A conversation's choice wins over its app's: the server comes in the evening, the rest of Discord waits.
+        let mut server_evening = work_only.clone();
+        server_evening.set_source(&server_rows[0], Column::Leisure, Level::Now).unwrap();
+        assert_eq!(decide(&server, Some(Who::Stranger), false, &choices, &with(&evening, &clock, &server_evening, &gathered, &server_rows, None)), Decision::through(Why::Times));
+        assert_eq!(decide(&dm, Some(Who::Stranger), false, &choices, &with(&evening, &clock, &server_evening, &gathered, &dm_rows, None)).why, Why::Times);
+        assert!(decide(&dm, Some(Who::Stranger), false, &choices, &with(&evening, &clock, &server_evening, &gathered, &dm_rows, None)).until.is_some());
+        // Gathered by day: the next gathered time.
+        let mut by_day = usual().clone();
+        for column in [Column::Work, Column::Admin, Column::Meals] {
+            by_day.set_source("app.com.discord", column, Level::Gathered).unwrap();
+        }
+        let held = decide(&dm, Some(Who::Stranger), false, &choices, &with(&morning, &clock, &by_day, &gathered, &dm_rows, None));
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Times, "2026-10-06T13:00:00"));
+        // Under do-not-disturb's switch until 11:00: its cell holds (held here), as usual too; set at once, through.
+        let gate = || Some(Gate { until: Some(at("2026-10-06T11:00[Europe/Paris]").timestamp().as_second()) });
+        assert_eq!(until_of(decide(&dm, Some(Who::Stranger), false, &choices, &with(&morning, &clock, &work_only, &gathered, &dm_rows, gate()))), "2026-10-06T11:00:00");
+        let mut through_dnd = work_only.clone();
+        through_dnd.set_source("app.com.discord", Column::Dnd, Level::As).unwrap();
+        assert_eq!(until_of(decide(&dm, Some(Who::Stranger), false, &choices, &with(&morning, &clock, &through_dnd, &gathered, &dm_rows, gate()))), "2026-10-06T11:00:00");
+        through_dnd.set_source("app.com.discord", Column::Dnd, Level::Now).unwrap();
+        assert_eq!(decide(&dm, Some(Who::Stranger), false, &choices, &with(&morning, &clock, &through_dnd, &gathered, &dm_rows, gate())), Decision::through(Why::Times));
+        // An automaton's app at once in the evening, as usual held until the next gathering.
+        let shop = classify(&posted(SHOP), &choices);
+        let shop_rows = attention::source_rows("com.shop.example", "");
+        let mut shop_evening = usual().clone();
+        shop_evening.set_source("app.com.shop.example", Column::Leisure, Level::Now).unwrap();
+        assert_eq!(decide(&shop, None, false, &choices, &with(&evening, &clock, &shop_evening, &gathered, &shop_rows, None)), Decision::through(Why::Times));
+        assert_eq!(until_of(decide(&shop, None, false, &choices, &with(&evening, &clock, usual(), &gathered, &shop_rows, None))), "2026-10-07T09:00:00");
+        // The automatons' row at once at work (More reachable): at once, not at the next gathering.
+        let reachable = crate::attention::Preset::Reachable.matrix();
+        assert_eq!(decide(&shop, None, false, &choices, &with(&morning, &clock, &reachable, &gathered, &[], None)), Decision::through(Why::Gathered));
+        // Worked out again: a message held in the evening comes once work begins, or now when its row says so.
+        let kept = Held { app: "com.discord".into(), label: "Discord".into(), kind: "people".into(), via: "messages".into(), who: "stranger".into(), conversation: key(&dm), since: 0, until: 0, ..Held::default() };
+        assert_eq!(again(&kept, &choices, &with(&morning, &clock, &work_only, &gathered, &dm_rows, None)), Decision::through(Why::Times));
+        assert_eq!(until_of(again(&kept, &choices, &with(&evening, &clock, &work_only, &gathered, &dm_rows, None))), "2026-10-07T09:00:00");
+        let mut dm_evening = work_only.clone();
+        dm_evening.set_source(&dm_rows[0], Column::Leisure, Level::Now).unwrap();
+        assert_eq!(again(&kept, &choices, &with(&evening, &clock, &dm_evening, &gathered, &dm_rows, None)), Decision::through(Why::Times));
+    }
+
     #[test]
     fn choices_and_ledger_read_and_written() {
         let dir = std::env::temp_dir().join(format!("sioul-appnotes-{}", std::process::id()));
@@ -1823,7 +1990,8 @@ mod tests {
         assert_eq!(why_text(&tr, "allowed", 0, &now), "From someone who may reach you now: let through.");
         let fr = Translator::new("fr");
         assert_eq!(why_text(&fr, "gathered", at13, &now), "D’un automate\u{202f}: retenue jusqu’à 13:00, une heure de regroupement.");
-        for why in ["untouched", "code", "off", "at-once", "allowed", "always", "waiting", "gathered", "never", "again"] {
+        assert_eq!(why_text(&tr, "times", at13, &now), "As you chose for this time: held until 13:00.");
+        for why in ["untouched", "code", "off", "at-once", "allowed", "always", "waiting", "gathered", "never", "again", "times"] {
             for tr in [&tr, &fr] {
                 let said = why_text(tr, why, 0, &now);
                 assert!(!said.starts_with("appnotes-"), "{why}: {said}");
