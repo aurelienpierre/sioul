@@ -79,16 +79,43 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.tag || github.ref }}
       - uses: dtolnay/rust-toolchain@stable
+      # Unpacking Qt's archives side by side on Windows fails now and then, with
+      # aqt's own unpacker ("Specified path is bad", two archives on one folder)
+      # as with 7-Zip ("System ERROR", a file still in use): up to three tries,
+      # what a failed one left taken away first.
       - uses: jurplel/install-qt-action@v4
+        id: qt1
+        continue-on-error: true
         with:
           version: ${{ env.QT_VERSION }}
           modules: ${{ env.QT_MODULES }}
           cache: true
           aqtsource: ${{ env.AQT_SOURCE }}
-          # py7zr, aqt's own unpacker, stopped on Windows where two Qt archives
-          # write into one folder (6.11.3's qtlocation beside qtdeclarative: "Specified
-          # path is bad"); the runner's 7-Zip unpacks them.
+      - name: Clear the first try
+        if: steps.qt1.outcome == 'failure'
+        shell: bash
+        run: rm -rf "$RUNNER_WORKSPACE/Qt"
+      - uses: jurplel/install-qt-action@v4
+        id: qt2
+        if: steps.qt1.outcome == 'failure'
+        continue-on-error: true
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: ${{ env.QT_MODULES }}
+          cache: true
+          aqtsource: ${{ env.AQT_SOURCE }}
           extra: '--external 7z'
+      - name: Clear the second try
+        if: steps.qt1.outcome == 'failure' && steps.qt2.outcome == 'failure'
+        shell: bash
+        run: rm -rf "$RUNNER_WORKSPACE/Qt"
+      - uses: jurplel/install-qt-action@v4
+        if: steps.qt1.outcome == 'failure' && steps.qt2.outcome == 'failure'
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: ${{ env.QT_MODULES }}
+          cache: true
+          aqtsource: ${{ env.AQT_SOURCE }}
       - name: Tell CXX-Qt which Qt
         shell: bash
         run: echo "QMAKE=${QT_ROOT_DIR}/bin/qmake.exe" >> "$GITHUB_ENV"
