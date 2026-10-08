@@ -41,7 +41,7 @@ On a phone, the Sites page lists your sites and opens each in your browser: Siou
 
 ## A site, open
 
-When a site is open, a row above it holds: back, reload, **Real time** (its notifications at once), **Silence its sounds**, **Fill the login** (from Bitwarden, below), and the site's menu, ⋮.
+When a site is open, a row above it holds: back, reload, **Real time** (its notifications at once), the camera button while the site has a call ([Calls](#calls)), **Silence its sounds**, **Fill the login** (from Bitwarden, below), and the site's menu, ⋮.
 
 ## A site's menu
 
@@ -78,7 +78,15 @@ A message from a site's domain ("you have a new message in your secure space") g
 
 ## Calls
 
-Chats, video calls and dating sites have the microphone and the camera. When a call starts, Sioul asks for the devices chosen in **Devices for calls…**, and plays the call's sound through the speaker chosen. **Share in the call** lets you choose a whole screen, one window, or nothing. When a site asks for the microphone while it is off, the status line says so, with where to turn it on. The place where you are is never given to any site.
+Chats, video calls and dating sites have the microphone and the camera. A call starts on the camera and the microphone chosen in **Devices for calls…**, and plays its sound through the speaker chosen, from a site's very first call.
+
+While a site has a call, a camera button appears in the row above it, beside **Silence its sounds**. It opens the lists of cameras, microphones and speakers. A choice takes effect at once in every call open in Sioul, as soon as the new device has opened, without cutting the call, and it stays for the next calls. Calls in a pop-up window, or inside a frame of another site, change too. During a call, a device you choose in the site's own menu is kept for that call; that menu may still name the old device after a change in Sioul.
+
+**The system's own** follows your system: on Linux, choosing another default microphone or speaker in your desktop's sound settings moves a call that uses the system's own at once. A call on a device you named, in Sioul or in the site, stays on it.
+
+When a device cannot be opened, because another program holds it or it is unplugged, the line above the site says so, and the call keeps the device it had.
+
+**Share in the call** lets you choose a whole screen, one window, or nothing. When a site asks for the microphone while it is off, the status line says so, with where to turn it on. The place where you are is never given to any site.
 
 <!-- colour: the sites' colours (docs/colour.md). -->
 ## Colours {#colours}
@@ -191,7 +199,7 @@ As of October 2026, from each app's own documentation.
     13. With an account at Rambox, Shift or Wavebox.
     14. With a Mozilla account.
 
-**Other apps.** Franz (Windows, macOS, Linux) works as Ferdium and Rambox do: each service in a container of its own, about 75 ready-made services, 1Password filling with its Pro plan, a switch that mutes every service, and no hours for notifications. Station no longer has a product site; its last stable release dates from 1 December 2024. Choosing the camera, the microphone and the speaker for calls, which Sioul does, is left out of the tables: the other apps' documentation does not say how they do it.
+**Other apps.** Franz (Windows, macOS, Linux) works as Ferdium and Rambox do: each service in a container of its own, about 75 ready-made services, 1Password filling with its Pro plan, a switch that mutes every service, and no hours for notifications. Station no longer has a product site; its last stable release dates from 1 December 2024. Choosing the camera, the microphone and the speaker for calls, and changing them during a call, which Sioul does, is left out of the tables: the other apps' documentation does not say how they do it.
 
 ??? info "Sources"
     - Ferdium: its home page, <https://ferdium.org/>, read 8 October 2026.
@@ -261,7 +269,7 @@ As of October 2026, from each app's own documentation.
 - **Addresses**: a site is pinned only at an `https://` address: Sioul refuses any other, since a site's sign-in should never travel in clear.
 - **Security keys**: WebAuthn through Qt WebEngine's own request (Chromium's FIDO code, over USB HID). On Linux it works with Qt WebEngine built with udev and systemd's rules for keys, with no rule to add; the Flatpak needs `--device=all`. A one-line script takes `PublicKeyCredential.getClientCapabilities()` away from every page, since Qt 6.10 and 6.11 never answer it (QTBUG-149575) and sites would wait forever. On Windows, Windows' own dialog handles the key.
 - **Colours**: each site's picture goes through a shader that looks every pixel up in a table made for the screen: 33 × 33 × 33 entries of the screen's linear values, then its tone curve in 1,024 entries, in half floats, made with Little CMS from the screen's ICC profile (the X11 `_ICC_PROFILE` atoms, matched to screens through colord); calmer colours limit chroma softly in OKLCh before that. Within one 8-bit code of Little CMS's own transform. Details: [colour.md](https://aurelienpierre.github.io/sioul/dev/colour.html).
-- **Devices for calls**: a script in every page asks for the camera and the microphone you chose by their names (`getUserMedia` with an ideal `deviceId`), and sends every sound to the speaker you chose (`setSinkId`); a page learns the names only once it is allowed a microphone or a camera.
+- **Devices for calls**: a script runs in every page and frame of a site. For each call, it gives the page a relay track for its camera and one for its microphone (Chromium's `MediaStreamTrackGenerator`, fed from the real device through a `MediaStreamTrackProcessor`). A change replaces what feeds the relay, never the call's own tracks, so the site's mute button, its voice meter, its effects and hanging up keep working. Devices are asked for by their names, since the browser's ids are each site's own. Before a site was first allowed a device, its names are unknown: the call is moved to the chosen device right after that first grant, before the page sees it. The speaker is given, with `setSinkId`, to every element and audio context the page plays through. A site allowed no microphone and no camera never receives the names. It is checked with Chromium's fake devices, in a sandbox where no real camera or microphone can be opened.
 - **Icons**: the site's own `<link rel="icon">`, the largest, else `/favicon.ico`, over HTTPS only, redirects included; kept a week in `~/.cache/sioul/favicons/`.
 - **Notifications**: kept in `~/.local/state/sioul/site-notices.toml`, the newest 200, 300 characters each; what reaches you and when follows [What reaches you, and when](notifications.md).
 - **Bitwarden, as Bitwarden's own clients do it**: the master key is made from your master password by PBKDF2-SHA256 or Argon2id, as your account says, with the server's settings held to Bitwarden's own bounds (PBKDF2, 5,000 to 2,000,000 iterations; Argon2id, at least 2 passes, 16 to 1,024 MiB, 1 to 16 lanes), so that a server cannot make your password cheaper to guess. The login sends a hash of it, never the password. The user key is opened through HKDF-stretched keys; each AES-256-CBC item is checked by its HMAC-SHA256 before anything is decrypted, and newer accounts' items are read too (COSE: XChaCha20-Poly1305, AES-256-GCM); an organisation's key comes through your RSA key (RSA-OAEP).

@@ -57,75 +57,37 @@ Item {
     // PublicKeyCredential.getClientCapabilities(), and sites asking for a
     // security key wait for it forever (QTBUG-149575); without it they ask
     // the key directly. Injection point 2: DocumentCreation; world 0: the page's.
-    readonly property var webFixes: [{
+    readonly property var webauthnFix: ({
         name: "sioul-webauthn",
         sourceCode: "if (window.PublicKeyCredential && PublicKeyCredential.getClientCapabilities) { delete PublicKeyCredential.getClientCapabilities; }",
         injectionPoint: 2,
         worldId: 0,
         runsOnSubFrames: true
-    }, {
-        name: "sioul-devices",
-        sourceCode: page.devicesScript + "(" + JSON.stringify(page.callDevices) + ");",
-        injectionPoint: 2,
-        worldId: 0,
-        runsOnSubFrames: true
-    }]
+    })
     // Calls take the camera, microphone and speaker you chose, by their names
-    // (the browser's own ids are a site's): asked for when the page does not
-    // choose one itself, the speaker given to every sound it plays. The names
-    // stay inside the script, out of the page's reach: a page learns them only
-    // as its browser tells it, once allowed a microphone or a camera. Changed,
-    // they come to the pages open as an event ("sioul-devices").
-    readonly property string devicesScript: `(chosen => {
-        if (!navigator.mediaDevices || navigator.mediaDevices.__sioul) return;
-        navigator.mediaDevices.__sioul = true;
-        let names = chosen || {};
-        window.addEventListener("sioul-devices", e => { names = (e && e.detail) || {}; });
-        const wanted = () => names;
-        const fold = s => String(s || "").toLowerCase();
-        const find = async (kind, name) => {
-            if (!name) return null;
-            try {
-                const all = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === kind && d.label);
-                const want = fold(name);
-                const hit = all.find(d => fold(d.label) === want) || all.find(d => fold(d.label).startsWith(want)) || all.find(d => want.startsWith(fold(d.label))) || all.find(d => fold(d.label).includes(want));
-                return hit ? hit.deviceId : null;
-            } catch (e) { return null; }
-        };
-        const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-        navigator.mediaDevices.getUserMedia = async constraints => {
-            const asked = constraints ? Object.assign({}, constraints) : {};
-            const pick = async (key, kind, name) => {
-                if (!asked[key] || !name) return;
-                const id = await find(kind, name);
-                if (!id) return;
-                const given = asked[key] === true ? {} : Object.assign({}, asked[key]);
-                if (!given.deviceId) given.deviceId = { ideal: id };
-                asked[key] = given;
-            };
-            await pick("video", "videoinput", wanted().camera);
-            await pick("audio", "audioinput", wanted().microphone);
-            return original(asked);
-        };
-        const sink = async element => {
-            const name = wanted().speaker;
-            if (!name || !element.setSinkId) return;
-            const id = await find("audiooutput", name);
-            if (id && element.sinkId !== id) { try { await element.setSinkId(id); } catch (e) {} }
-        };
-        const play = HTMLMediaElement.prototype.play;
-        HTMLMediaElement.prototype.play = function () { sink(this); return play.apply(this, arguments); };
-        if (window.AudioContext && AudioContext.prototype.setSinkId) {
-            const Original = window.AudioContext;
-            const Made = function (...args) {
-                const context = new Original(...args);
-                find("audiooutput", wanted().speaker).then(id => { if (id) context.setSinkId(id).catch(() => {}); });
-                return context;
-            };
-            Made.prototype = Original.prototype;
-            window.AudioContext = Made;
-        }
-    })`
+    // (the browser's own ids are each site's), and change them during a call
+    // (src/calls.js, docs/sites.md). The names go only to sites allowed a
+    // microphone or a camera, which can read them from their browser anyway;
+    // inside the script they stay out of the page's reach. A change comes to
+    // the pages open as an event ("sioul-devices"), in every frame.
+    readonly property string callsScript: page.sioul.callsScript()
+    // A secret of this run, which marks what the calls script says in the
+    // console: a page cannot write in its name. Qt's JavaScript draws
+    // Math.random from QRandomGenerator::global(), seeded by the system.
+    readonly property string callToken: [0, 1, 2, 3].map(() => Math.floor(Math.random() * 4294967296).toString(36)).join("")
+    function devicesFor(site) {
+        return site && (site.microphone || site.camera) ? page.callDevices : ({})
+    }
+    // A page's scripts, for a site (null: a page of no site, the vault's).
+    function webFixesFor(site) {
+        return [page.webauthnFix, {
+            name: "sioul-calls",
+            sourceCode: "(" + page.callsScript + ")(" + JSON.stringify(page.devicesFor(site)) + ", " + JSON.stringify(page.callToken) + ");",
+            injectionPoint: 2,
+            worldId: 0,
+            runsOnSubFrames: true
+        }]
+    }
     // Chats covered: their daily time used (Health page), until it comes back.
     property bool chatsCovered: page.sioul.chatsCovered()
 
@@ -238,6 +200,7 @@ Item {
     property alias presetsMenu: presetsMenu
     property alias siteMenu: siteMenu
     property alias devicesDialog: devicesDialog
+    property alias callPanel: callPanel
     property alias filterMenu: filterMenu
     function showPresets() {
         page.presetTree = JSON.parse(page.sioul.sitePresetsTree()).countries
@@ -316,6 +279,11 @@ Item {
         }
         const gone = () => {
             delete page.leaving[id]
+            if (page.calls[id] !== undefined) {
+                const calls = Object.assign({}, page.calls)
+                delete calls[id]
+                page.calls = calls
+            }
             for (let i = 0; i < viewIds.count; i++) {
                 if (viewIds.get(i).siteId === id) {
                     viewIds.remove(i)
@@ -354,18 +322,74 @@ Item {
         }
     }
 
-    // The camera, microphone and speaker calls use, by their names: given to every
-    // page (`devicesScript`), and to those open now.
+    // The camera, microphone and speaker calls use, by their names: given to the
+    // pages of sites allowed a device (`webFixesFor`, for the pages to come),
+    // and to every frame of those open now, pop-ups too: calls in progress
+    // change at once.
     property var callDevices: JSON.parse(page.sioul.callDevices() || "{}")
     function setCallDevice(which, name) {
         page.problem = page.sioul.setCallDevice(which, name)
         page.callDevices = JSON.parse(page.sioul.callDevices() || "{}")
         const said = "window.dispatchEvent(new CustomEvent('sioul-devices', { detail: " + JSON.stringify(page.callDevices) + " }));"
-        for (const id in page.siteViews) {
-            const view = page.siteViews[id] as WebEngineView
-            if (view)
-                view.runJavaScript(said)
+        const allowed = site => site !== null && site !== undefined && (site.microphone || site.camera)
+        for (const site of page.sites) {
+            if (allowed(site))
+                page.everyFrame(page.viewOf(site.id), said)
         }
+        for (const popup of page.popups) {
+            if (page.popupOpen(popup) && allowed(popup.site))
+                page.everyFrame(popup.view, said)
+        }
+    }
+    // A script run in each frame of a view, in the page's world: a call may be
+    // in a frame of another site (an embedded room), which the view's own
+    // runJavaScript never reaches.
+    function everyFrame(view, script) {
+        if (!view)
+            return
+        const visit = frame => {
+            if (!frame.isValid)
+                return
+            frame.runJavaScript(script, 0, () => {})
+            for (const child of frame.children)
+                visit(child)
+        }
+        visit((view as WebEngineView).mainFrame)
+    }
+    // The sites with a call now, by id: how many of their pages and frames
+    // have one (src/calls.js says "call" and "end"); a pop-up counts its own
+    // (`callCount`), gone with it. The call button shows then.
+    property var calls: ({})
+    function calling(id) {
+        return (page.calls[id] || 0) > 0 || page.popups.some(p => page.popupOpen(p) && p.site !== null && p.site.id === id && p.callCount > 0)
+    }
+    // What a page's console says: the calls script's lines carry this run's
+    // token; a device it could not open is said in the line above the site,
+    // with the name Sioul has, never words from the page. `popup`: the pop-up
+    // it comes from, or none.
+    function heard(site, message, popup) {
+        const mark = "sioul:" + page.callToken + ":"
+        if (!site || !String(message).startsWith(mark))
+            return
+        let said = null
+        try {
+            said = JSON.parse(String(message).slice(mark.length))
+        } catch (e) {
+            return
+        }
+        const next = Object.assign({}, page.calls)
+        if (said.what === "call" || said.what === "end") {
+            const step = said.what === "call" ? 1 : -1
+            if (popup)
+                popup.callCount = Math.max(0, popup.callCount + step)
+            else
+                next[site.id] = Math.max(0, (next[site.id] || 0) + step)
+        } else if (said.what === "kept") {
+            const which = ({ "video": "camera", "audio": "microphone", "speaker": "speaker" })[said.kind]
+            if (which)
+                page.problem = page.sioul.textArgs("site-device-kept-" + which, JSON.stringify({ site: site.name, device: page.callDevices[which] || page.sioul.text("site-device-system") }))
+        }
+        page.calls = next
     }
 
     function open(id) {
@@ -874,6 +898,20 @@ Item {
                     ToolTip.delay: 400
                     onToggled: page.problem = page.sioul.setSite(page.openId, "realtime", String(checked))
                 }
+                // A call in this site, or in a pop-up it opened: its camera, microphone
+                // and speaker, changed at once (`callPanel`).
+                ToolButton {
+                    id: callButton
+
+                    visible: page.opened !== null && page.calling(page.openId)
+                    icon.name: "camera-video"
+                    icon.color: page.theme.text
+                    Accessible.name: page.sioul.text("site-call-devices")
+                    ToolTip.visible: hovered
+                    ToolTip.text: page.sioul.text("site-call-devices")
+                    ToolTip.delay: 400
+                    onClicked: callPanel.open()
+                }
                 ToolButton {
                     checkable: true
                     checked: page.opened !== null && page.opened.muted
@@ -975,6 +1013,14 @@ Item {
                             blurMax: 64
                         }
                         Component.onDestruction: delete page.siteViews[holder.siteId]
+                        // Its pages' scripts: given again when the site or the devices change,
+                        // for the pages it loads next (a reload starts with the names of now).
+                        readonly property var fixes: page.webFixesFor(holder.modelData)
+                        onFixesChanged: {
+                            const view = loader.item as WebEngineView
+                            if (view)
+                                view.userScripts.collection = holder.fixes
+                        }
 
                         // Its view, made when first wanted (`page.alive`), stays for the
                         // session: it goes only closed (`closePage`), as Sioul quits or
@@ -1046,7 +1092,9 @@ Item {
                                 // capture without it, after the choice even; the site's
                                 // switch and the choice still decide (`shareScreen`).
                                 settings.screenCaptureEnabled: true
-                                Component.onCompleted: userScripts.collection = page.webFixes
+                                Component.onCompleted: userScripts.collection = holder.fixes
+                                // What the calls script says (`heard`).
+                                onJavaScriptConsoleMessage: (level, message, lineNumber, sourceID) => page.heard(holder.modelData, message, null)
                                 // Its page closed (`closePage`); a page's own window.close() changes nothing.
                                 onWindowCloseRequested: holder.pageClosed()
                                 // Called by Qt WebEngine when a page refused to close: no longer waited for.
@@ -1225,14 +1273,56 @@ Item {
     }
 
     // The devices of calls: the system's list of cameras, microphones and
-    // speakers, the same on every computer; "The system's own" when unsaid.
+    // speakers, the same on every computer; "The system's own" when unsaid. A
+    // device chosen but not plugged in now stays named, at the end of its list.
     MediaDevices {
         id: mediaDevices
     }
+    Component {
+        id: deviceRows
+
+        GridLayout {
+            id: rowsGrid
+
+            readonly property var lists: [["camera", mediaDevices.videoInputs], ["microphone", mediaDevices.audioInputs], ["speaker", mediaDevices.audioOutputs]]
+
+            columns: 2
+            columnSpacing: 10
+            rowSpacing: 8
+
+            Repeater {
+                model: rowsGrid.lists
+
+                delegate: RowLayout {
+                    id: deviceRow
+
+                    required property var modelData
+                    readonly property string which: deviceRow.modelData[0]
+                    readonly property string chosen: page.callDevices[deviceRow.which] || ""
+                    readonly property var listed: deviceRow.modelData[1].map(d => d.description)
+                    readonly property var names: [""].concat(deviceRow.listed, deviceRow.chosen !== "" && deviceRow.listed.indexOf(deviceRow.chosen) < 0 ? [deviceRow.chosen] : [])
+
+                    Layout.columnSpan: 2
+                    Layout.fillWidth: true
+                    spacing: 10
+
+                    Label {
+                        Layout.preferredWidth: 130
+                        text: page.sioul.text("site-device-" + deviceRow.which)
+                        color: page.theme.muted
+                    }
+                    ComboBox {
+                        Layout.fillWidth: true
+                        model: deviceRow.names.map(n => n === "" ? page.sioul.text("site-device-system") : n)
+                        currentIndex: Math.max(0, deviceRow.names.indexOf(deviceRow.chosen))
+                        onActivated: index => page.setCallDevice(deviceRow.which, deviceRow.names[index])
+                    }
+                }
+            }
+        }
+    }
     Dialog {
         id: devicesDialog
-
-        readonly property var lists: [["camera", mediaDevices.videoInputs], ["microphone", mediaDevices.audioInputs], ["speaker", mediaDevices.audioOutputs]]
 
         parent: Overlay.overlay
         anchors.centerIn: parent
@@ -1258,39 +1348,48 @@ Item {
                 font.pixelSize: 13
                 color: page.theme.muted
             }
-            GridLayout {
+            Loader {
                 Layout.fillWidth: true
-                columns: 2
-                columnSpacing: 10
-                rowSpacing: 8
+                sourceComponent: deviceRows
+            }
+        }
+    }
+    // The call button's panel: the same lists, under the button, during a call.
+    Popup {
+        id: callPanel
 
-                Repeater {
-                    model: devicesDialog.lists
+        parent: callButton
+        x: Math.min(0, callButton.width - callPanel.width)
+        y: callButton.height + 4
+        width: Math.min(480, page.width - 2 * page.theme.gap)
+        padding: 14
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-                    delegate: RowLayout {
-                        id: deviceRow
+        background: Rectangle {
+            color: page.theme.surface
+            border.color: page.theme.line
+            radius: page.theme.radius
+        }
+        contentItem: ColumnLayout {
+            spacing: 8
 
-                        required property var modelData
-                        readonly property string which: deviceRow.modelData[0]
-                        readonly property var names: [""].concat(deviceRow.modelData[1].map(d => d.description))
-
-                        Layout.columnSpan: 2
-                        Layout.fillWidth: true
-                        spacing: 10
-
-                        Label {
-                            Layout.preferredWidth: 130
-                            text: page.sioul.text("site-device-" + deviceRow.which)
-                            color: page.theme.muted
-                        }
-                        ComboBox {
-                            Layout.fillWidth: true
-                            model: deviceRow.names.map(n => n === "" ? page.sioul.text("site-device-system") : n)
-                            currentIndex: Math.max(0, deviceRow.names.indexOf(page.callDevices[deviceRow.which] || ""))
-                            onActivated: index => page.setCallDevice(deviceRow.which, deviceRow.names[index])
-                        }
-                    }
-                }
+            Label {
+                Layout.fillWidth: true
+                text: page.sioul.text("site-call-devices")
+                font.bold: true
+                color: page.theme.text
+            }
+            Label {
+                Layout.fillWidth: true
+                text: page.sioul.text("site-devices-help")
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: page.theme.muted
+            }
+            Loader {
+                Layout.fillWidth: true
+                sourceComponent: deviceRows
             }
         }
     }
@@ -1318,11 +1417,12 @@ Item {
 
             theme: page.theme
             profile: page.profile
-            webFixes: page.webFixes
+            webFixes: page.webFixesFor(popupItem.site)
             closeWait: page.closeWait
             onWebAuthAsked: request => webAuth.show(request)
             onPopupAsked: request => page.openPopup(request, popupItem.site)
             onScreenAsked: request => page.shareScreen(request, popupItem.site)
+            onConsoleSaid: message => page.heard(popupItem.site, message, popupItem)
         }
     }
 
@@ -1555,7 +1655,7 @@ Item {
                 profile: page.profile
                 url: unlock.keyAsk !== null ? unlock.keyAsk.page : ""
                 // Injection point 1: once the page's document is ready.
-                Component.onCompleted: userScripts.collection = page.webFixes.concat([{
+                Component.onCompleted: userScripts.collection = page.webFixesFor(null).concat([{
                     name: "sioul-key",
                     sourceCode: unlock.keyAsk.script,
                     injectionPoint: 1,

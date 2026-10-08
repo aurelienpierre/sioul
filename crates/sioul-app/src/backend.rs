@@ -1304,6 +1304,11 @@ pub mod qobject {
         #[qinvokable]
         fn set_call_device(self: Pin<&mut Sioul>, which: &QString, name: &QString) -> QString;
 
+        /// The script every site's page runs for its calls (src/calls.js): the
+        /// devices chosen, changed during a call; called with the names and a token.
+        #[qinvokable]
+        fn calls_script(self: &Sioul) -> QString;
+
         /// "missing", "unauthenticated", "locked" or "unlocked".
         #[qinvokable]
         fn bitwarden_state(self: &Sioul) -> QString;
@@ -4821,6 +4826,10 @@ impl qobject::Sioul {
         QString::from(&serde_json::to_string(&load_config().calls).unwrap_or_default())
     }
 
+    fn calls_script(&self) -> QString {
+        QString::from(include_str!("calls.js"))
+    }
+
     fn set_call_device(mut self: Pin<&mut Self>, which: &QString, name: &QString) -> QString {
         let which = which.to_string();
         if !matches!(which.as_str(), "camera" | "microphone" | "speaker") {
@@ -5487,6 +5496,7 @@ impl qobject::Sioul {
         // closes the day with its review (docs/reviews.md), "site-open", "site-quit" and
         // "site-during" open the test site, close its pages and the window
         // (tools/check-sites.py quit), "site-share" shares its screen (tools/check-sites.py share),
+        // "site-devices" changes the devices of its calls (tools/check-sites.py devices),
         // colour: "site-colour" takes its pictures in the screen's colours (tools/check-colour.py),
         // "rail" shows the places with their icons alone and with their
         // names (main.qml), "pauses" free time and the pause (docs/pauses.md), "blocks" a task pinned to a
@@ -5517,7 +5527,7 @@ impl qobject::Sioul {
         // a message's attachments unfolded, a phone's words with "phone", nothing opened (docs/client.md),
         // "projects-file" the projects' file under its first name renamed from Settings
         // (make-demo.py --old-projects, docs/notes-folder.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

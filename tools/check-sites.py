@@ -58,8 +58,32 @@ you would: with Qt WebEngine's screen capture off (as Sioul had it), then on
 passes when the second gives the page a video track, and the first and the
 third give none, the third with the line saying the switch is off.
 
+devices: whether calls take the camera, microphone and speaker chosen, and
+change them during a call (docs/sites.md, "The devices of calls"). Chromium's
+own fake devices stand in for real ones (--use-fake-device-for-media-stream:
+three cameras, two microphones and two speakers besides the defaults), and
+the sandbox has a /dev of its own, with no camera and no sound device, and no
+sound server: no real camera or microphone can be opened. Four sites: a call
+in the page ("direct", sent through a canvas effect, with a voice meter on
+its stream), a call in a frame of another site ("frame"), a call in a pop-up
+("popup"), and a mailbox allowed no device ("bank"). Each call is a loopback
+between two peers in its page, keeping its own references to its tracks.
+A camera and a microphone are chosen before Sioul starts; the grab steps
+("site-devices") then change the camera, the speaker and the microphone
+during the calls; the direct call turns its camera off and on with its own button,
+then a camera that is not there is chosen, then every call hangs up. It
+passes when each call starts on the devices chosen, follows each change
+(fake camera 1 is grey: the preview and the effect's remote picture turn
+grey), every element plays on the speaker chosen, the voice meter goes on
+reading, the call's own button blacks the picture and brings it back, the
+missing camera is said in the line above the site while the call keeps its
+own, the bank hears nothing, after hanging up every track has ended and
+Sioul sees no call, and the page reloaded after one more change starts its
+new call on the camera chosen last.
+
     tools/check-sites.py quit --ways window,term,during,termall,kill --after 1,35
     tools/check-sites.py share --app target/release/sioul-app --keep DIR
+    tools/check-sites.py devices
 
 Build first (CARGO_INCREMENTAL=0 cargo build -p sioul-app). Exits with 1 when
 a check fails. --keep DIR keeps the profiles and logs there.
@@ -148,6 +172,138 @@ document.getElementById("found").textContent = JSON.stringify(found, null, 1);
 </body></html>
 """
 
+# devices: a call between two peers in one page, as a site makes it.
+CALL_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Test call</title></head>
+<body>
+<video id="me" autoplay muted playsinline width="160" height="120"></video>
+<video id="them" autoplay playsinline width="160" height="120"></video>
+<script>
+"use strict";
+const query = new URLSearchParams(location.search);
+const who = query.get("who") || "direct";
+const say = (event, data) => {
+    try { navigator.sendBeacon("/report", JSON.stringify(Object.assign({ event: event, who: who, at: Date.now() }, data || {}))); } catch (e) {}
+};
+let phase = "start", hungUp = false;
+window.setPhase = name => { phase = name; };
+const canvas = document.createElement("canvas");
+canvas.width = 32;
+canvas.height = 24;
+const drawing = canvas.getContext("2d", { willReadFrequently: true });
+// A picture's mean colour, red/green/blue: fake camera 1 is grey, the others green.
+const look = element => {
+    if (!element.videoWidth)
+        return null;
+    drawing.drawImage(element, 0, 0, 32, 24);
+    const d = drawing.getImageData(0, 0, 32, 24).data;
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    const n = d.length / 4;
+    return [r / n, g / n, b / n].map(Math.round);
+};
+(async () => {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        // The site's own references to its tracks, as call sites keep them.
+        const mine = stream.getTracks();
+        document.getElementById("me").srcObject = stream;
+        let send = stream;
+        if (query.get("effect") === "canvas") {
+            // A background effect as sites make one: a hidden video, a canvas, its stream.
+            const hidden = document.createElement("video");
+            hidden.muted = true;
+            hidden.srcObject = stream;
+            hidden.play();
+            const effect = document.createElement("canvas");
+            effect.width = 160;
+            effect.height = 120;
+            const paint = effect.getContext("2d");
+            setInterval(() => { if (hidden.videoWidth) paint.drawImage(hidden, 0, 0, 160, 120); }, 33);
+            send = new MediaStream([effect.captureStream(30).getVideoTracks()[0]].concat(stream.getAudioTracks()));
+        }
+        // A voice meter on the site's own stream, as call sites show one.
+        const context = new AudioContext();
+        const analyser = context.createAnalyser();
+        context.createMediaStreamSource(stream).connect(analyser);
+        context.resume();
+        const samples = new Float32Array(analyser.fftSize);
+        let peak = 0;
+        setInterval(() => {
+            analyser.getFloatTimeDomainData(samples);
+            peak = Math.max(peak, Math.round(1000 * Math.sqrt(samples.reduce((a, x) => a + x * x, 0) / samples.length)));
+        }, 20);
+        const pc1 = new RTCPeerConnection(), pc2 = new RTCPeerConnection();
+        pc1.onicecandidate = e => e.candidate && pc2.addIceCandidate(e.candidate);
+        pc2.onicecandidate = e => e.candidate && pc1.addIceCandidate(e.candidate);
+        const remote = new MediaStream();
+        pc2.ontrack = e => { remote.addTrack(e.track); document.getElementById("them").srcObject = remote; };
+        for (const track of send.getTracks())
+            pc1.addTrack(track, send);
+        const offer = await pc1.createOffer();
+        await pc1.setLocalDescription(offer);
+        await pc2.setRemoteDescription(offer);
+        const answer = await pc2.createAnswer();
+        await pc2.setLocalDescription(answer);
+        await pc1.setRemoteDescription(answer);
+        // The site's own camera button, and hanging up with its own references.
+        window.mute = off => mine.forEach(t => { if (t.kind === "video") t.enabled = !off; });
+        window.hangup = () => { mine.forEach(t => t.stop()); pc1.close(); pc2.close(); hungUp = true; };
+        say("call", {});
+        setInterval(async () => {
+            const labels = {};
+            mine.forEach(t => { labels[t.kind] = t.label; });
+            let frames = 0, received = 0;
+            if (!hungUp) {
+                (await pc2.getStats()).forEach(r => {
+                    if (r.type === "inbound-rtp" && r.kind === "video") frames = r.framesDecoded;
+                    if (r.type === "inbound-rtp" && r.kind === "audio") received = r.totalSamplesReceived;
+                });
+            }
+            const outputs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audiooutput");
+            const wanted = outputs.find(d => d.label === "Fake Audio Output 2");
+            const sinks = Array.from(document.querySelectorAll("video")).map(v => v.sinkId);
+            const level = peak;
+            peak = 0;
+            say("state", { phase: phase, video: labels.video, audio: labels.audio, states: mine.map(t => t.readyState),
+                           preview: look(document.getElementById("me")), remote: look(document.getElementById("them")),
+                           frames: frames, received: received, level: level, sinks: sinks, wanted: wanted ? wanted.deviceId : null });
+        }, 1000);
+    } catch (e) {
+        say("error", { error: e.name + ": " + e.message });
+    }
+})();
+</script>
+</body></html>
+"""
+# devices: a site whose call is in a frame of another site (another host, the same port).
+FRAME_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Test room</title></head>
+<body><script>
+const frame = document.createElement("iframe");
+frame.src = "http://localhost:" + location.port + "/call?who=frame";
+frame.allow = "camera; microphone";
+frame.width = 400;
+frame.height = 200;
+document.body.appendChild(frame);
+</script></body></html>
+"""
+# devices: a site whose call opens in a pop-up.
+OPENER_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Test opener</title></head>
+<body><script>window.open("/call?who=popup", "_blank", "width=400,height=300");</script></body></html>
+"""
+# devices: a site allowed no device, listening for what Sioul sends to calls.
+LISTEN_PAGE = """<!doctype html>
+<html><head><meta charset="utf-8"><title>Test bank</title></head>
+<body><script>
+const say = (event, data) => navigator.sendBeacon("/report", JSON.stringify(Object.assign({ event: event, who: "bank" }, data || {})));
+addEventListener("sioul-devices", e => say("heard", { detail: e.detail }));
+say("load", {});
+</script></body></html>
+"""
+DEVICE_PAGES = {"/call": CALL_PAGE, "/frame": FRAME_PAGE, "/opener": OPENER_PAGE, "/listen": LISTEN_PAGE}
+
 
 class Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
@@ -168,6 +324,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        page = DEVICE_PAGES.get(self.path.split("?")[0])
+        if page is not None:
+            body = page.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if not self.path.startswith(("/site", "/popup")):
             self.send_error(404)
             return
@@ -205,17 +371,20 @@ def make_profile(folder, bwrap):
                    check=True, stdout=subprocess.DEVNULL)
 
 
-def pin(config, port, popup=False):
-    """The local page as the profile's only site, kept open as a chat."""
+def pin(config, port, popup=False, sites=None):
+    """The local page as the profile's only site, kept open as a chat; or
+    `sites`, (id, name, path, type) each."""
     kept, skipping = [], False
     for line in config.read_text().splitlines():
         if line.strip().startswith("["):
             skipping = line.strip() == "[[site]]"
         if not skipping:
             kept.append(line)
-    address = f"http://127.0.0.1:{port}/site" + ("?popup=1" if popup else "")
-    kept += ["", "[[site]]", f'id = "{SITE_ID}"', 'name = "Test site"', f'url = "{address}"',
-             'site = "chat"', 'area = "work+admin+leisure"', "background = true", "announced_by = []", ""]
+    if sites is None:
+        sites = [(SITE_ID, "Test site", "/site" + ("?popup=1" if popup else ""), "chat")]
+    for site_id, name, path, kind in sites:
+        kept += ["", "[[site]]", f'id = "{site_id}"', f'name = "{name}"', f'url = "http://127.0.0.1:{port}{path}"',
+                 f'site = "{kind}"', 'area = "work+admin+leisure"', "background = true", "announced_by = []", ""]
     config.write_text("\n".join(kept))
 
 
@@ -258,12 +427,16 @@ def sioul_env(grab, folder):
     return env
 
 
-def sandbox(profile, own_network=False):
+def sandbox(profile, own_network=False, no_devices=False):
     """Bubblewrap: the profile as the home of a user "demo", the real home out of reach;
-    with `own_network`, a network and a /tmp of its own (Weston's and Xwayland's sockets)."""
+    with `own_network`, a network and a /tmp of its own (Weston's and Xwayland's sockets);
+    with `no_devices`, a /dev of its own (no camera, no sound card) and no user's
+    runtime folder (no sound server): no real camera or microphone can be opened."""
     command = ["bwrap", "--dev-bind", "/", "/", "--tmpfs", "/home"]
     if own_network:
         command += ["--unshare-net", "--tmpfs", "/tmp"]
+    if no_devices:
+        command += ["--dev", "/dev", "--tmpfs", "/run/user"]
     command += ["--ro-bind", str(REPO), str(REPO),
                 "--bind", str(profile / "config"), f"{HOME}/.config", "--bind", str(profile / "data"), f"{HOME}/.local/share",
                 "--bind", str(profile / "state"), f"{HOME}/.local/state", "--bind", str(profile / "cache"), f"{HOME}/.cache",
@@ -538,9 +711,143 @@ def run_share(args, app, folder):
     return failed
 
 
+# devices
+
+DEVICE_SITES = [("test-bank", "Test bank", "/listen", "mailbox"), ("test-popup", "Test opener", "/opener", "chat"),
+                ("test-frame", "Test room", "/frame", "chat"), ("test-chat", "Test call", "/call?who=direct&effect=canvas", "chat")]
+FAKE_DEVICES = "--use-fake-device-for-media-stream=device-count=3 --allow-loopback-in-peer-connection"
+
+
+def devices_inside(profile, app):
+    """In the sandbox: the four sites, Sioul taking the grab steps "site-devices"
+    on Chromium's fake devices; what the pages and Sioul said, into PROFILE/devices.json."""
+    server = Server()
+    server.run = "devices"
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    config = pathlib.Path(f"{HOME}/.config/sioul/config.toml")
+    pin(config, server.server_address[1], sites=DEVICE_SITES)
+    # Chosen before Sioul starts, as you would have: the first calls, before
+    # any site was allowed a device, must start on them.
+    chosen = 'camera = "fake_device_2"\nmicrophone = "Fake Audio Input 1"\n'
+    text = config.read_text()
+    config.write_text(text.replace("\n[calls]\n", "\n[calls]\n" + chosen, 1) if "\n[calls]\n" in text else text + "\n[calls]\n" + chosen)
+    runtime = pathlib.Path("/tmp/sioul-runtime")
+    runtime.mkdir(mode=0o700, exist_ok=True)
+    said = {"reports": []}
+    try:
+        env = sioul_env("site-devices", profile)
+        env.update({"HOME": HOME, "XDG_CONFIG_HOME": f"{HOME}/.config", "XDG_DATA_HOME": f"{HOME}/.local/share",
+                    "XDG_STATE_HOME": f"{HOME}/.local/state", "XDG_CACHE_HOME": f"{HOME}/.cache",
+                    "XDG_RUNTIME_DIR": str(runtime), "QTWEBENGINE_CHROMIUM_FLAGS": FAKE_DEVICES})
+        outside = {k: v for k, v in os.environ.items() if k not in ("DISPLAY", "WAYLAND_DISPLAY", "PULSE_SERVER", "PIPEWIRE_REMOTE")}
+        with open(profile / "run.log", "w") as log:
+            sioul = subprocess.Popen(["dbus-run-session", "--", str(app)], stdout=log, stderr=subprocess.STDOUT, env={**outside, **env})
+            try:
+                sioul.wait(150)
+            except subprocess.TimeoutExpired:
+                said["problem"] = "Sioul did not end its steps within 150 s"
+                sioul.kill()
+        with server.lock:
+            said["reports"] = list(server.reports)
+        text = (profile / "run.log").read_text(errors="replace")
+        line = re.search(r"sioul-devices: the line above the site says: (.*)", text)
+        said["line"] = line.group(1).strip() if line else None
+        for key, pattern in (("calling", r"sioul-devices: calling (\{.*\})"), ("after", r"sioul-devices: after hanging up, calling (\{.*\})")):
+            found = re.search(pattern, text)
+            said[key] = json.loads(found.group(1)) if found else None
+    finally:
+        server.shutdown()
+        (profile / "devices.json").write_text(json.dumps(said, indent=1))
+
+
+def grey(colour):
+    """Fake camera 1's picture: grey, not black (the others are green)."""
+    return colour is not None and max(colour) - min(colour) <= 6 and max(colour) >= 4
+
+
+def run_devices(args, app, folder):
+    """The devices check, its sandbox made here."""
+    if shutil.which("bwrap") is None:
+        print("devices: needs bubblewrap.")
+        return True
+    profile = folder / "devices"
+    make_profile(profile, True)
+    command, _ = sandbox(profile, own_network=True, no_devices=True)
+    subprocess.run(command + [sys.executable, str(REPO / "tools/check-sites.py"), "devices", "--inside", str(profile), "--app", str(app)],
+                   env={k: v for k, v in os.environ.items() if k not in ("DISPLAY", "WAYLAND_DISPLAY", "SESSION_MANAGER")},
+                   timeout=240)
+    said = json.loads((profile / "devices.json").read_text())
+    if said.get("problem"):
+        print("devices: " + said["problem"])
+        return True
+    reports = said["reports"]
+    errors = [r for r in reports if r.get("event") == "error"]
+    states = [r for r in reports if r.get("event") == "state"]
+
+    def last(who, phase):
+        found = [r for r in states if r.get("who") == who and r.get("phase") == phase]
+        return found[-1] if found else None
+
+    def every(who, phase):
+        return [r for r in states if r.get("who") == who and r.get("phase") == phase]
+
+    results = []
+
+    def check(name, good, text):
+        results.append((name, good, text))
+
+    for error in errors:
+        check(f"{error.get('who')} call", False, error.get("error", ""))
+    for who in ("direct", "frame", "popup"):
+        # The first word of each call: it must never have been on another device.
+        start, camera = (every(who, "start") or [None])[0], last(who, "camera")
+        if start is None:
+            check(f"{who} start", False, "the call never reported")
+            continue
+        check(f"{who} start", start["video"] == "fake_device_2" and start["audio"] == "Fake Audio Input 1",
+              f"camera {start['video']}, microphone {start['audio']} (chose fake_device_2, Fake Audio Input 1)")
+        check(f"{who} camera", camera is not None and camera["video"] == "fake_device_1" and grey(camera["preview"]),
+              f"camera {camera and camera['video']}, preview {camera and camera['preview']} (chose fake_device_1, grey)")
+        speaker = last(who, "speaker")
+        check(f"{who} speaker", speaker is not None and speaker["wanted"] is not None and all(s == speaker["wanted"] for s in speaker["sinks"]),
+              f"elements on {speaker and speaker['sinks']}, chosen {speaker and speaker['wanted']}")
+        microphone = every(who, "microphone")
+        flowing = len(microphone) >= 2 and microphone[-1]["received"] > microphone[0]["received"]
+        check(f"{who} microphone", bool(microphone) and microphone[-1]["audio"] == "Fake Audio Input 2" and flowing,
+              f"microphone {microphone[-1]['audio'] if microphone else None}, sound received {'growing' if flowing else 'not growing'}")
+        missing = last(who, "missing")
+        check(f"{who} missing camera", missing is not None and missing["video"] == "fake_device_1",
+              f"camera {missing and missing['video']} (kept fake_device_1)")
+        hung = last(who, "hangup")
+        check(f"{who} hang-up", hung is not None and all(s == "ended" for s in hung["states"]),
+              f"tracks {hung and hung['states']}")
+    hung = last("direct", "hangup")
+    again = [r for r in states if r.get("who") == "direct" and r.get("phase") == "start" and hung is not None and r["heard"] > hung["heard"]]
+    check("direct reloaded", bool(again) and again[0]["video"] == "fake_device_0",
+          f"camera {again[0]['video'] if again else None} (chose fake_device_0 before the reload)")
+    camera = last("direct", "camera")
+    check("direct effect", camera is not None and grey(camera["remote"]), f"remote picture {camera and camera['remote']} (grey)")
+    meter = every("direct", "microphone")
+    check("direct meter", any(r["level"] > 0 for r in meter), f"levels {[r['level'] for r in meter]}")
+    muted, unmuted = last("direct", "mute"), last("direct", "unmute")
+    check("direct own mute", muted is not None and muted["remote"] == [0, 0, 0] and unmuted is not None and grey(unmuted["remote"]),
+          f"off {muted and muted['remote']}, on again {unmuted and unmuted['remote']}")
+    heard = [r for r in reports if r.get("who") == "bank" and r.get("event") == "heard"]
+    check("bank", not heard and any(r.get("who") == "bank" and r.get("event") == "load" for r in reports), f"{len(heard)} change(s) heard")
+    line = said.get("line") or ""
+    check("line", "Unplugged camera" in line, line or "nothing")
+    calling, after = said.get("calling") or {}, said.get("after") or {}
+    check("call button", calling.get("chat") and calling.get("frame") and calling.get("popup") and not calling.get("bank"),
+          f"during {calling}")
+    check("calls ended", after != {} and not any(after.values()), f"after {after}")
+    for name, good, text in results:
+        print(f"devices {name:20} {text[:90]:90} {'as expected' if good else 'WRONG'}")
+    return not all(good for _, good, _ in results)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("check", choices=("quit", "share"))
+    parser.add_argument("check", choices=("quit", "share", "devices"))
     parser.add_argument("--app", type=pathlib.Path, default=REPO / "target/debug/sioul-app")
     parser.add_argument("--ways", default="window,term,during", help="quit: window, term, during, termall, kill, joined by commas")
     parser.add_argument("--after", default="3", help="quit: seconds between the page loading and the signal, several joined by commas")
@@ -550,7 +857,7 @@ def main():
     args = parser.parse_args()
     app = args.app.resolve()
     if args.inside:
-        share_inside(args.inside, app)
+        (devices_inside if args.check == "devices" else share_inside)(args.inside, app)
         return
     if not app.exists():
         sys.exit(f"No {app}: build it first (CARGO_INCREMENTAL=0 cargo build -p sioul-app).")
@@ -558,7 +865,8 @@ def main():
     folder = args.keep or pathlib.Path(tempfile.mkdtemp(prefix="sioul-sites."))
     folder.mkdir(parents=True, exist_ok=True)
     try:
-        failed = run_quit(args, app, folder, bwrap) if args.check == "quit" else run_share(args, app, folder)
+        failed = {"quit": lambda: run_quit(args, app, folder, bwrap), "share": lambda: run_share(args, app, folder),
+                  "devices": lambda: run_devices(args, app, folder)}[args.check]()
     finally:
         if args.keep is None:
             shutil.rmtree(folder, ignore_errors=True)

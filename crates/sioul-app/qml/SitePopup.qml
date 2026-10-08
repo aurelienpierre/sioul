@@ -26,13 +26,19 @@ SioulWindow {
     property bool pageClosed: false
     // Who waits for its page to close.
     property var whenClosed: []
+    // Its pages and frames with a call now (SitesPage.qml, `heard`).
+    property int callCount: 0
 
     signal webAuthAsked(var request)
     signal popupAsked(var request)
     // A call shares a screen: you choose which, or none, in Sioul's dialog.
     // Unanswered, Qt WebEngine would share the whole first screen by itself.
     signal screenAsked(var request)
+    // A line of its page's console: the calls script's are read by SitesPage.qml (`heard`).
+    signal consoleSaid(string message)
 
+    // Its pages' scripts given again when the devices of calls change, for the pages it loads next.
+    onWebFixesChanged: popupView.userScripts.collection = popup.webFixes
     width: 520
     height: 680
     title: popupView.title
@@ -94,6 +100,7 @@ SioulWindow {
         // A call's window shares the screen as the site's page does (SitesPage.qml).
         settings.screenCaptureEnabled: true
         Component.onCompleted: userScripts.collection = popup.webFixes
+        onJavaScriptConsoleMessage: (level, message, lineNumber, sourceID) => popup.consoleSaid(message)
         // Closed, by `closePage` or by its own script (which ran its unload first).
         onWindowCloseRequested: popup.pageGone()
         // Called by Qt WebEngine when the page refused to close: the window goes all the same.
