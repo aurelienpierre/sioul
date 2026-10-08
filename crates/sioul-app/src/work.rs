@@ -19,7 +19,7 @@ use jiff::{Timestamp, Zoned};
 use serde::Serialize;
 use sioul_core::capture;
 use sioul_core::card::Card;
-use sioul_core::cases::CaseStore;
+use sioul_core::projects::ProjectStore;
 use sioul_core::compose::Draft;
 use sioul_core::links::{self, Kind as LinkKind, Loaded, LocalLinks};
 use sioul_core::notes;
@@ -39,7 +39,7 @@ use std::sync::atomic::Ordering;
 const NOTES_FOLDER: &str = "notes";
 
 /// What the task pages ask for: the list's grouping, done tasks, a search, one
-/// case, one kind and category. All but the searches are kept between sessions.
+/// project, one kind and category. All but the searches are kept between sessions.
 #[derive(Clone, Default, Serialize, serde::Deserialize)]
 pub(crate) struct WorkState {
     #[serde(default)]
@@ -48,8 +48,9 @@ pub(crate) struct WorkState {
     pub done: bool,
     #[serde(skip)]
     pub query: String,
-    #[serde(default)]
-    pub case: String,
+    /// One project; `case`, its name in a file kept before, reads too.
+    #[serde(default, alias = "case")]
+    pub project: String,
     #[serde(default)]
     pub filter: Filter,
     #[serde(skip)]
@@ -111,7 +112,7 @@ const EVENTS_AHEAD: i64 = 28 * 86_400;
 /// The room for tasks: your hours, each kind for its own tasks, less the
 /// events of the coming weeks and the blocks tasks are pinned to; today's
 /// from now, scaled by the weather.
-fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, cases: &[sioul_core::cases::Case], tasks: &[Task], shared: &Shared) -> Settings {
+fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, projects: &[sioul_core::projects::Project], tasks: &[Task], shared: &Shared) -> Settings {
     let config = load_config();
     let now = Zoned::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
@@ -130,7 +131,7 @@ fn settings(weather: Weather, situation: &sioul_core::quiet::Situation, cases: &
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
     let day = sioul_core::pause::Day::of(&config, crate::hours::blocks(&now), &events);
     let extension = sioul_core::pause::moved_today(&overrides, &day.evening(), &now, config.free_time.moves);
-    let mut settings = Settings::of_hours(&config.week_hours(), sioul_core::areas::TaskAreas::of_config(&config, cases)).with_needs(&needs, pushed).with_days(days).with_extension(extension).with_pins(pins).with_events(&now, &events);
+    let mut settings = Settings::of_hours(&config.week_hours(), sioul_core::areas::TaskAreas::of_config(&config, projects)).with_needs(&needs, pushed).with_days(days).with_extension(extension).with_pins(pins).with_events(&now, &events);
     settings.default_estimate = config.tasks.estimate.unwrap_or(settings.default_estimate);
     // Today by its weather, and no heavier than a hazy day after a pause (docs/pauses.md).
     (settings.today_percent, settings.heavy_today) = sioul_core::pause::today_level(&overrides, now.date(), weather);
@@ -150,10 +151,10 @@ pub(crate) fn show_anyway(qt: &QtThread, shared: &Arc<Shared>, on: bool) {
 }
 
 /// The moment, for the task pages: quiet or not, offices open or not.
-pub(crate) fn situation(cases: &[sioul_core::cases::Case]) -> sioul_core::quiet::Situation {
+pub(crate) fn situation(projects: &[sioul_core::projects::Project]) -> sioul_core::quiet::Situation {
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
     let now = Zoned::now();
-    sioul_core::quiet::Situation::now(&load_config(), &overrides, &crate::hours::blocks(&now), &now, tr(), cases)
+    sioul_core::quiet::Situation::now(&load_config(), &overrides, &crate::hours::blocks(&now), &now, tr(), projects)
 }
 
 /// The plan, and what it needs, from what was read.
@@ -178,9 +179,9 @@ impl Desk {
         let sessions = timelog::sessions();
         let spent = timelog::spent(&sessions, 0, i64::MAX);
         let stopped = sessions.iter().filter(|s| !s.note.is_empty()).map(|s| (s.task.clone(), s.note.clone())).collect();
-        let situation = situation(&loaded.cases);
+        let situation = situation(&loaded.projects);
         // What your record says: ratings said after tasks, corrected lengths, what a day holds (docs/capacity.md).
-        let settings = crate::capacity::planned(settings(today.weather, &situation, &loaded.cases, &loaded.tasks, shared), &loaded.tasks, &sessions);
+        let settings = crate::capacity::planned(settings(today.weather, &situation, &loaded.projects, &loaded.tasks, shared), &loaded.tasks, &sessions);
         let plan = plan::plan(&loaded.tasks, date, &settings, &spent, &today.aside);
         // Asleep no task shows, unless the page asked to see them all.
         let anyway = situation.mode.sleeps() && SHOWN_ANYWAY.load(Ordering::Relaxed);
@@ -215,7 +216,7 @@ impl Desk {
     }
 
     fn context(&self) -> Context<'_> {
-        Context { filter: &self.filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: tr(), cases: &self.loaded.cases, spent: &self.spent, stopped: &self.stopped }
+        Context { filter: &self.filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: tr(), projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped }
     }
 
     fn task(&self, uid: &str) -> Option<&Task> {
@@ -235,7 +236,7 @@ struct ListChoice {
 }
 
 #[derive(Serialize)]
-struct CaseChoice {
+struct ProjectChoice {
     id: String,
     title: String,
 }
@@ -261,7 +262,7 @@ struct TasksShown {
     board: BoardView,
     timeline: TimelineView,
     lists: Vec<ListChoice>,
-    cases: Vec<CaseChoice>,
+    projects: Vec<ProjectChoice>,
     /// No list can take tasks yet.
     no_list: bool,
     /// Work time or quiet time.
@@ -348,7 +349,7 @@ pub(crate) fn save_routine(id: &str, title: &str, text: &str, auto: bool) -> Str
     let mut routines = load_config().routines;
     let id = if id.is_empty() {
         let taken: Vec<String> = routines.iter().map(|r| r.id.clone()).chain(std::iter::once("admin".to_string())).collect();
-        sioul_core::cases::new_id(title, &taken)
+        sioul_core::projects::new_id(title, &taken)
     } else {
         id.to_string()
     };
@@ -451,9 +452,9 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
         }
         // The phone's home screen card: the next step as each coming time will have it (homecard.rs).
         crate::homecard::plan_seen(&desk.loaded, &desk.plan, &desk.today, &desk.spent, &desk.stopped);
-        desk.filter = Filter { case: state.case.clone(), quiet: desk.filter.quiet.clone(), ..state.filter.clone() };
+        desk.filter = Filter { project: state.project.clone(), quiet: desk.filter.quiet.clone(), ..state.filter.clone() };
         let cx = desk.context();
-        let case = Some(state.case.as_str()).filter(|c| !c.is_empty());
+        let project = Some(state.project.as_str()).filter(|c| !c.is_empty());
         let rest = desk.settings.rest_days();
         let lists = writable_lists();
         let mut counted: BTreeMap<String, (usize, String)> = BTreeMap::new();
@@ -477,12 +478,12 @@ pub(crate) fn show_work(qt: &QtThread, shared: &Arc<Shared>) {
             categories: categories.into_iter().map(|(_, c)| c).collect(),
             weather: desk.today.weather,
             now: taskview::now(&cx, desk.today.weather, &desk.today.aside),
-            list: taskview::list(&cx, if state.by.is_empty() { "case" } else { &state.by }, state.done, &state.query),
-            board: taskview::board(&cx, case),
-            timeline: taskview::timeline(&cx, case, &rest),
+            list: taskview::list(&cx, if state.by.is_empty() { "project" } else { &state.by }, state.done, &state.query),
+            board: taskview::board(&cx, project),
+            timeline: taskview::timeline(&cx, project, &rest),
             no_list: lists.is_empty(),
             lists,
-            cases: desk.loaded.cases.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| CaseChoice { id: c.id.clone(), title: c.title.clone() }).collect(),
+            projects: desk.loaded.projects.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| ProjectChoice { id: c.id.clone(), title: c.title.clone() }).collect(),
             quiet: desk.quiet,
             first_step: first.0,
             first_step_task: first.1,
@@ -578,10 +579,10 @@ pub(crate) fn closing(shared: &Shared) -> Closed {
     let today = Today::load(&Today::default_path(), date);
     let sessions = timelog::sessions();
     let spent = timelog::spent(&sessions, 0, i64::MAX);
-    let mut situation = situation(&loaded.cases);
-    let before = plan::plan(&loaded.tasks, date, &settings(today.weather, &situation, &loaded.cases, &loaded.tasks, shared), &spent, &today.aside);
+    let mut situation = situation(&loaded.projects);
+    let before = plan::plan(&loaded.tasks, date, &settings(today.weather, &situation, &loaded.projects, &loaded.tasks, shared), &spent, &today.aside);
     situation.closed.insert(date);
-    let after = plan::plan(&loaded.tasks, date, &settings(today.weather, &situation, &loaded.cases, &loaded.tasks, shared), &spent, &today.aside);
+    let after = plan::plan(&loaded.tasks, date, &settings(today.weather, &situation, &loaded.projects, &loaded.tasks, shared), &spent, &today.aside);
     let config = load_config();
     let back = sioul_core::quiet::after_today(&config.working_hours(), &config.time_off, &now, i8::try_from(config.agenda.day_start.unwrap_or(7)).unwrap_or(7));
     let back_day = back.date();
@@ -652,13 +653,13 @@ pub(crate) fn closing(shared: &Shared) -> Closed {
     Closed { closing, back, first }
 }
 
-/// The task page's choices: how the list is grouped, done tasks, a search, one case.
-pub(crate) fn set_view(qt: &QtThread, shared: &Arc<Shared>, by: &str, done: bool, query: &str, case: &str) {
+/// The task page's choices: how the list is grouped, done tasks, a search, one project.
+pub(crate) fn set_view(qt: &QtThread, shared: &Arc<Shared>, by: &str, done: bool, query: &str, project: &str) {
     if let Ok(mut state) = shared.work.lock() {
         state.by = by.to_string();
         state.done = done;
         state.query = query.to_string();
-        state.case = case.to_string();
+        state.project = project.to_string();
         state.save();
     }
     show_work(qt, shared);
@@ -717,8 +718,8 @@ pub(crate) fn new_form(shared: &Shared, from: &str, key: &str, start: f64, list:
         .map(|c| sioul_core::capabilities::task_fields_lost(sioul_core::capabilities::provider_of_collection(config.account(&c.account), c), false))
         .unwrap_or_default();
     // What its tags would say it is for, as the panel shows it for a task made.
-    let shaped = Task { categories: edit.categories.clone(), cases: edit.cases.clone(), list_id: list_id.clone(), ..Task::default() };
-    let area_tags = sioul_core::areas::TaskAreas::of_config(&config, &loaded.cases).by_tags(&shaped).id();
+    let shaped = Task { categories: edit.categories.clone(), projects: edit.projects.clone(), list_id: list_id.clone(), ..Task::default() };
+    let area_tags = sioul_core::areas::TaskAreas::of_config(&config, &loaded.projects).by_tags(&shaped).id();
     let source = if from.is_empty() { String::new() } else { loaded.world().describe(&loaded.world().canonical(from)).title };
     // What was felt after tasks of its title or its kind, faint in its form.
     let proposed = sioul_core::capacity::FeltIndex::of(&loaded.tasks).proposal(&Task { title: edit.title.clone(), kind: edit.kind.clone(), ..Task::default() });
@@ -853,7 +854,7 @@ pub(crate) fn rename_category(qt: &QtThread, shared: &Arc<Shared>, from: &str, t
 
 /// A note moved to the vault's trash, "Undo" offered; returns what went wrong, else "".
 pub(crate) fn trash_note(qt: &QtThread, shared: &Arc<Shared>, path: &str) -> String {
-    let Some(root) = load_config().case_store_path() else { return tr().text("error-no-store", None) };
+    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
     match notes::trash(&root, path) {
         Ok(trashed) => {
             mail::offer_untrash(qt, shared, trashed, path.to_string(), say("note-trashed", &[("title", path.rsplit('/').next().unwrap_or(path).to_string())]));
@@ -967,15 +968,15 @@ fn answer(result: Result<String, String>) -> String {
 
 /// What a typed line says, before it becomes a task: its chips, as JSON.
 pub(crate) fn captured(shared: &Shared, line: &str) -> String {
-    let cases: Vec<String> = loaded(shared).cases.iter().map(|c| c.id.clone()).collect();
-    crate::backend::json(&capture::capture(line, Zoned::now().date(), &cases, &load_config().task_kinds(tr())))
+    let projects: Vec<String> = loaded(shared).projects.iter().map(|c| c.id.clone()).collect();
+    crate::backend::json(&capture::capture(line, Zoned::now().date(), &projects, &load_config().task_kinds(tr())))
 }
 
 /// A task from a typed line, a step of `parent` when given.
 pub(crate) fn add(qt: &QtThread, shared: &Arc<Shared>, line: &str, parent: &str, list: &str) -> String {
-    let cases: Vec<String> = loaded(shared).cases.iter().map(|c| c.id.clone()).collect();
+    let projects: Vec<String> = loaded(shared).projects.iter().map(|c| c.id.clone()).collect();
     let config = load_config();
-    let mut edit = capture::capture(line, Zoned::now().date(), &cases, &config.task_kinds(tr())).edit;
+    let mut edit = capture::capture(line, Zoned::now().date(), &projects, &config.task_kinds(tr())).edit;
     edit.parent = parent.to_string();
     // In quiet time, a thought noted waits for work to come back, out of sight.
     let now = Zoned::now();
@@ -989,12 +990,12 @@ pub(crate) fn add(qt: &QtThread, shared: &Arc<Shared>, line: &str, parent: &str,
         edit.start = back.date().to_string();
         noted = say("task-noted-for", &[("day", day_name(back.date(), now.date()))]);
     }
-    // A step goes into its bigger task's list, and its case.
+    // A step goes into its bigger task's list, and its project.
     let list = match find(shared, parent) {
         Ok(bigger) => {
-            for case in bigger.cases {
-                if !edit.cases.contains(&case) {
-                    edit.cases.push(case);
+            for project in bigger.projects {
+                if !edit.projects.contains(&project) {
+                    edit.projects.push(project);
                 }
             }
             bigger.list_id
@@ -1280,7 +1281,7 @@ struct NoteRow {
 
 #[derive(Serialize)]
 struct NotesShown {
-    /// No notes folder: the case store is not set.
+    /// No notes folder: none is set.
     missing: bool,
     /// Every note found, by title: the window shows them as one list or as a tree.
     notes: Vec<NoteRow>,
@@ -1305,7 +1306,7 @@ fn notes_list(loaded: &Loaded, query: &str, tree: bool) -> String {
 
 /// A new note in a folder of the notes ("" for the notes' own folder); returns its path.
 pub(crate) fn create_note_in(qt: &QtThread, shared: &Arc<Shared>, folder: &str, title: &str) -> String {
-    let Some(root) = load_config().case_store_path() else { return String::new() };
+    let Some(root) = load_config().notes_root_path() else { return String::new() };
     let title = if title.trim().is_empty() { tr().text("note-untitled", None) } else { title.to_string() };
     let folder = if folder.trim().is_empty() { notes_folder() } else { folder.to_string() };
     let path = notes::free_path(&root, &folder, &title);
@@ -1323,7 +1324,7 @@ pub(crate) fn create_note_in(qt: &QtThread, shared: &Arc<Shared>, folder: &str, 
 
 /// A new folder in `parent`; returns what went wrong, else "".
 pub(crate) fn make_folder(qt: &QtThread, shared: &Arc<Shared>, parent: &str, name: &str) -> String {
-    let Some(root) = load_config().case_store_path() else { return tr().text("error-no-store", None) };
+    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
     match notes::make_folder(&root, parent, name) {
         Ok(_) => {
             links_changed(qt, shared);
@@ -1351,7 +1352,7 @@ pub(crate) fn rename_folder(qt: &QtThread, shared: &Arc<Shared>, path: &str, nam
 
 /// An empty folder taken out; returns what went wrong, else "".
 pub(crate) fn remove_folder(qt: &QtThread, shared: &Arc<Shared>, path: &str) -> String {
-    let Some(root) = load_config().case_store_path() else { return tr().text("error-no-store", None) };
+    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
     match notes::remove_folder(&root, path) {
         Ok(()) => {
             links_changed(qt, shared);
@@ -1449,7 +1450,7 @@ pub(crate) fn note(shared: &Shared, path: &str) -> String {
 /// Saves a note's text; returns what went wrong, else "".
 pub(crate) fn save_note(qt: &QtThread, shared: &Arc<Shared>, path: &str, text: &str, stamp: &str) -> String {
     let answer = |problem: String, path: &str, kept: String| serde_json::json!({ "problem": problem, "stamp": text_stamp(text), "path": path, "kept": kept }).to_string();
-    let Some(root) = load_config().case_store_path() else { return answer(tr().text("error-no-store", None), path, String::new()) };
+    let Some(root) = load_config().notes_root_path() else { return answer(tr().text("error-no-store", None), path, String::new()) };
     // Changed since it was opened (another device through the sharing, a sync
     // app, another editor): that version keeps the name, this one goes beside it.
     let changed = notes::normalize(path)
@@ -1509,7 +1510,7 @@ fn notes_folder() -> String {
 /// Where a new audio memo is recorded: `<notes>/memos/2026-10-03 18.40.ogg`, as
 /// a file URL, its folder made; "" without a notes folder.
 pub(crate) fn memo_url() -> String {
-    let Some(root) = load_config().case_store_path() else { return String::new() };
+    let Some(root) = load_config().notes_root_path() else { return String::new() };
     let folder = root.join(notes_folder()).join("memos");
     if std::fs::create_dir_all(&folder).is_err() {
         return String::new();
@@ -1542,14 +1543,14 @@ pub(crate) fn calm_sounds(shared: &Shared) -> String {
 
 /// The vault path of a file URL in the notes folder: what opens a memo once recorded.
 pub(crate) fn note_path_of(url: &str) -> String {
-    let Some(root) = load_config().case_store_path() else { return String::new() };
+    let Some(root) = load_config().notes_root_path() else { return String::new() };
     let file = crate::backend::local_path(url);
     file.strip_prefix(&root).map(|p| p.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect::<Vec<_>>().join("/")).unwrap_or_default()
 }
 
 /// A new note in the notes folder, its front matter linking `links`; returns its path, or "".
 fn new_note(title: &str, front: &[(&str, Vec<String>)], body: &str) -> Result<String, String> {
-    let root = load_config().case_store_path().ok_or_else(|| tr().text("error-no-store", None))?;
+    let root = load_config().notes_root_path().ok_or_else(|| tr().text("error-no-store", None))?;
     let path = notes::free_path(&root, &notes_folder(), title);
     notes::write(&root, &path, &notes::new_text(title, front, body))?;
     Ok(path)
@@ -1597,7 +1598,7 @@ fn links_changed(qt: &QtThread, shared: &Arc<Shared>) {
 fn rewrite(shared: &Arc<Shared>, change: &links::Rewrite) -> Result<(), String> {
     match change.kind {
         LinkKind::Note => {
-            let root = load_config().case_store_path().ok_or_else(|| tr().text("error-no-store", None))?;
+            let root = load_config().notes_root_path().ok_or_else(|| tr().text("error-no-store", None))?;
             let path = change.path.strip_prefix(&root).map_err(|_| say("note-outside-notes", &[("path", change.path.display().to_string())]))?;
             notes::write(&root, &path.to_string_lossy().replace('\\', "/"), &change.text).map(|_| ())
         }
@@ -1704,7 +1705,7 @@ pub(crate) fn search_things(shared: &Shared, query: &str, kind: &str, from: &str
         "note" => Some(LinkKind::Note),
         "contact" => Some(LinkKind::Contact),
         "budget" => Some(LinkKind::Budget),
-        "case" => Some(LinkKind::Case),
+        "project" | "case" => Some(LinkKind::Project),
         "site" => Some(LinkKind::Site),
         _ => None,
     };
@@ -1726,7 +1727,7 @@ pub(crate) fn uri_of(kind: &str, id: &str) -> String {
         "task" => links::task_uri(id),
         "event" => links::event_uri(id),
         "contact" => links::contact_uri(id),
-        "case" => links::case_uri(id),
+        "project" | "case" => links::project_uri(id),
         "site" => links::site_uri(id),
         _ => id.to_string(),
     }
@@ -1756,9 +1757,9 @@ pub(crate) fn make_linked(qt: &QtThread, shared: &Arc<Shared>, kind: &str, from:
 }
 
 /// What a task made from `from` starts with: a message's subject, the message
-/// linked, its sender and case; for an event, "Prepare: …", its day as the
-/// date asked, the event linked, its cases; else the thing's title and a tie
-/// to it (a contact involved, a case, a note describing it, anything related).
+/// linked, its sender and project; for an event, "Prepare: …", its day as the
+/// date asked, the event linked, its projects; else the thing's title and a tie
+/// to it (a contact involved, a project, a note describing it, anything related).
 fn linked_edit(shared: &Shared, from: &str, key: &str, start: f64) -> Result<TaskEdit, String> {
     let loaded = loaded(shared);
     let world = loaded.world();
@@ -1771,7 +1772,7 @@ fn linked_edit(shared: &Shared, from: &str, key: &str, start: f64) -> Result<Tas
             let mut edit = TaskEdit { title: source.title.clone(), ..TaskEdit::default() };
             match other {
                 LinkKind::Contact => edit.contacts.push(ContactRef { name: source.title.clone(), uri: from.clone() }),
-                LinkKind::Case => edit.cases.push(links::id_of(&from)),
+                LinkKind::Project => edit.projects.push(links::id_of(&from)),
                 LinkKind::Note => edit.links.push(Link { uri: from.clone(), label: source.title.clone(), rel: "describedby".into() }),
                 _ => edit.links.push(Link { uri: from.clone(), label: source.title.clone(), rel: "related".into() }),
             }
@@ -1836,7 +1837,7 @@ fn sender_contact(loaded: &Loaded, card: &Card) -> Option<ContactRef> {
     }
 }
 
-/// A task from a message: its subject, the message linked, its sender, its case.
+/// A task from a message: its subject, the message linked, its sender, its project.
 pub(crate) fn task_from_mail(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> String {
     answer(mail_task_edit(shared, key).and_then(|edit| create(qt, shared, &edit, "")))
 }
@@ -1850,8 +1851,8 @@ fn mail_task_edit(shared: &Shared, key: &str) -> Result<TaskEdit, String> {
         edit.links.push(Link { uri: links::mail_uri(id), label: String::new(), rel: "via".into() });
     }
     edit.contacts.extend(sender_contact(&loaded, &card));
-    if let Some(store) = load_config().case_store_path().and_then(|r| CaseStore::load(&r).ok()) {
-        edit.cases.extend(store.route(&card).first().map(|r| r.case.id.clone()));
+    if let Some(store) = load_config().notes_root_path().and_then(|r| ProjectStore::load(&r).ok()) {
+        edit.projects.extend(store.route(&card).first().map(|r| r.project.id.clone()));
     }
     Ok(edit)
 }
@@ -1920,7 +1921,7 @@ fn event_task_edit(shared: &Shared, key: &str, start: f64) -> Result<TaskEdit, S
         title: say("task-prepare", &[("title", event.summary.clone())]),
         due: day,
         links: vec![Link { uri: format!("uid:{}", event.uid), label: event.summary.clone(), rel: "related".into() }],
-        cases: event.cases.clone(),
+        projects: event.projects.clone(),
         ..TaskEdit::default()
     })
 }

@@ -115,7 +115,7 @@ nav = [
       { "The Porch" = "dev/porch.md" },
       { "Your own spam filter" = "dev/spam-filter.md" },
       { "Mail, contacts, calendars" = "dev/client.md" },
-      { "The case store" = "dev/case-store.md" },
+      { "The notes folder" = "dev/notes-folder.md" },
       { "Virtual Secretary" = "dev/virtual-secretary.md" },
     ] },
     { "Tasks and time" = [

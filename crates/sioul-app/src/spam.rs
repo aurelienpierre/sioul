@@ -56,7 +56,7 @@ pub(crate) fn after_fetch(account: &Account, new: &[PathBuf], first: bool) -> us
         return 0;
     }
     let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
-    let store = config.case_store_path().and_then(|root| sioul_core::cases::CaseStore::load(&root).ok()).map(|s| s.with_ties(&ties));
+    let store = config.notes_root_path().and_then(|root| sioul_core::projects::ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties));
     let known = porch::KnownSenders::load(&config.known_senders_path());
     let senders = porch::Senders::load(&config);
     let judged = porch::judge(new, &config.mail_sources(), store.as_ref(), &known, &senders, jiff::Timestamp::now().as_second());

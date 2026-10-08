@@ -572,8 +572,8 @@ Also checked, with steps at most and no waits: GNOME Evolution, GNOME Endeavour,
 
 ```
 sioul tasks [now]                      the next step, why, and the one after it
-sioul tasks list [--by case|list] [--done] [words]
-sioul tasks board | timeline [--case <id>] | show <task>
+sioul tasks list [--by project|list] [--done] [words]
+sioul tasks board | timeline [--project <id>] | show <task>
 sioul tasks add "Call the tax office tomorrow ~15m #taxes" [--list <account/id>] [--parent <task>] [--after <task>]
 sioul tasks done | start | not-now <task>
 sioul tasks weather clear|haze|fog

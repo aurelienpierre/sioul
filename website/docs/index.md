@@ -11,7 +11,7 @@ description: "Sioul is a personal administrative environment, trauma-informed an
 
 Modern admin assumes someone always available and always at full strength. Sioul starts instead from what you can give today, your attention, your energy, your health and your rest, and fits work, institutions and money around it.
 
-A letter from the tax office, the task it asks for, the appointment, the document, the person who sent it and the payment all belong to one case. You do not have to keep their relationships in your head: Sioul keeps them.
+A letter from the tax office, the task it asks for, the appointment, the document, the person who sent it and the payment all belong to one matter. You do not have to keep their relationships in your head: Sioul keeps them.
 
 **Sioul is a personal administrative environment.** It gathers what modern life scatters across mailboxes, websites, calendars, task lists, folders and banks, and brings forward only what belongs in your attention now. It runs on your own devices.
 
@@ -75,9 +75,9 @@ No unread counts, no badges, no red, no streaks; new mail makes no sound, and no
 
 ## The software keeps the links
 
-Most software splits a case across a mail program, a calendar, a task list, a folder and a bank's website, and leaves you to remember how the pieces relate. Yet you never think "now I use my mail program"; you think "now I deal with this client". Sioul is built the second way.
+Most software splits one matter across a mail program, a calendar, a task list, a folder and a bank's website, and leaves you to remember how the pieces relate. Yet you never think "now I use my mail program"; you think "now I deal with this client". Sioul is built the second way.
 
-In Sioul, each case is a project: a tax return, a lease, a client's work, any matter you follow. Its mail comes to it by itself, by sender or by words. Its tasks, events, notes and the people involved are tied to it, and each task, contact or note shows what it is tied to. The project lays it all on one line of time: what is coming, then what happened. Your own business too: a client's mail, the tasks, the time spent, the invoice, the money expected and the figures for your accountant form one chain.
+In Sioul, each matter you follow is a project: a tax return, a lease, a client's work. Its mail comes to it by itself, by sender or by words. Its tasks, events, notes and the people involved are tied to it, and each task, contact or note shows what it is tied to. The project lays it all on one line of time: what is coming, then what happened. Your own business too: a client's mail, the tasks, the time spent, the invoice, the money expected and the figures for your accountant form one chain.
 
 ## Working for yourself
 

@@ -813,8 +813,11 @@ mod tests {
         phones::region_named("FR")
     }
 
+    // French and English named, as the owner's configuration does: CI runs
+    // with no locale, where a configuration without [words] reads English only.
     fn words() -> std::sync::Arc<crate::words::Words> {
-        crate::words::Words::of(&crate::config::Config::default())
+        let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n").unwrap();
+        crate::words::Words::of(&config)
     }
 
     fn person(name: &str, uri: &str) -> Person {

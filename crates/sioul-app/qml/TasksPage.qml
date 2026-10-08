@@ -86,10 +86,10 @@ Item {
     property bool startedShown: false
     property bool doneShown: false
     property bool joyShown: false
-    property string by: "case"
+    property string by: "project"
     property bool showDone: false
     property string query: ""
-    property string caseFilter: ""
+    property string projectFilter: ""
     // A narrow screen (a phone): the board's columns one under the other.
     readonly property bool narrow: page.width < 640
     // The open task's width beside the list, with no cap of its own
@@ -127,9 +127,10 @@ Item {
         if (page.restored || page.shown === null || !page.shown.view)
             return
         page.restored = true
-        page.by = page.shown.view.by || "case"
+        // "case": the grouping's name before the one name, "project".
+        page.by = page.shown.view.by === "list" ? "list" : "project"
         page.showDone = page.shown.view.done
-        page.caseFilter = page.shown.view.case || ""
+        page.projectFilter = page.shown.view.project || ""
     }
     // A card dragged on the board, and where.
     property var dragging: null
@@ -175,14 +176,14 @@ Item {
     }
 
     // One project's tasks, from its page.
-    function showCase(id, mode) {
-        page.caseFilter = id
+    function showProject(id, mode) {
+        page.projectFilter = id
         page.mode = mode
         page.apply()
     }
 
     function apply() {
-        page.sioul.showTasks(page.by, page.showDone, page.query, page.caseFilter)
+        page.sioul.showTasks(page.by, page.showDone, page.query, page.projectFilter)
     }
 
     function tick(task) {
@@ -304,16 +305,16 @@ Item {
                     Accessible.description: page.sioul.text("routines-tip")
                     onClicked: routinesDialog.now().show()
                 }
-                // The board and the timeline: one case, or all.
+                // The board and the timeline: one project, or all.
                 ComboBox {
-                    readonly property var choices: [{ id: "", title: page.sioul.text("task-all-cases") }].concat(page.shown ? page.shown.cases : [])
+                    readonly property var choices: [{ id: "", title: page.sioul.text("task-all-projects") }].concat(page.shown ? page.shown.projects : [])
 
                     // On a phone, two choices a line.
                     width: page.narrow ? page.halfFlow : 200
                     model: choices.map(c => page.theme.plain(c.title))
-                    currentIndex: Math.max(0, choices.findIndex(c => c.id === page.caseFilter))
+                    currentIndex: Math.max(0, choices.findIndex(c => c.id === page.projectFilter))
                     onActivated: index => {
-                        page.caseFilter = choices[index].id
+                        page.projectFilter = choices[index].id
                         page.apply()
                     }
                 }
@@ -661,13 +662,13 @@ Item {
                                                 color: page.theme.accent
                                             }
                                         }
-                                        // The bigger task it is a step of, and its case.
+                                        // The bigger task it is a step of, and its project.
                                         Label {
                                             readonly property var task: page.shown && page.shown.now.now ? page.shown.now.now : null
 
                                             visible: task !== null && text !== ""
                                             Layout.fillWidth: true
-                                            text: task ? [task.parent].concat(task.cases).filter(t => t !== "").join("  ·  ") : ""
+                                            text: task ? [task.parent].concat(task.projects).filter(t => t !== "").join("  ·  ") : ""
                                             textFormat: Text.PlainText
                                             wrapMode: Text.Wrap
                                             color: page.theme.muted
@@ -979,10 +980,10 @@ Item {
                                     }
                                 }
                                 ComboBox {
-                                    model: [page.sioul.text("task-by-case"), page.sioul.text("task-by-list")]
+                                    model: [page.sioul.text("task-by-project"), page.sioul.text("task-by-list")]
                                     currentIndex: page.by === "list" ? 1 : 0
                                     onActivated: index => {
-                                        page.by = index === 1 ? "list" : "case"
+                                        page.by = index === 1 ? "list" : "project"
                                         page.apply()
                                     }
                                 }
@@ -1229,7 +1230,7 @@ Item {
                 sioul: page.sioul
                 window: page.window
                 uid: page.opened
-                cases: page.shown ? page.shown.cases : []
+                projects: page.shown ? page.shown.projects : []
                 kinds: page.shown ? page.shown.kinds : []
                 categories: page.shown ? page.shown.categories : []
                 onClosed: page.closePanel()

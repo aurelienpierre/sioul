@@ -6,7 +6,7 @@
 //! the stdio framing and the masks; then what a hostile message or a
 //! misled agent could try. The home lives in the system's temporary folder,
 //! with invented mail (reserved example domains, RFC 2606), an invented
-//! case, note, task list and calendar; the XDG folders and HOME point into
+//! project, note, task list and calendar; the XDG folders and HOME point into
 //! it, so the person's own files are never read nor written.
 //!
 //! The spam filter's tools and `sioul spam`'s reports are tested here too,
@@ -81,8 +81,8 @@ fn seen(unique: &str) -> String {
 }
 
 /// The configuration, a mail account with its messages, a shielded public
-/// address with a message its AI reading found hostile, a case store with a
-/// case and a note, a task list with a task, a calendar. Returns the configuration's path.
+/// address with a message its AI reading found hostile, a notes folder with
+/// a projects' file under its first name, `sioul-cases.toml`, and a note, a task list with a task, a calendar. Returns the configuration's path.
 fn make(root: &Path) -> PathBuf {
     let config = root.join("config/sioul/config.toml");
     std::fs::create_dir_all(config.parent().unwrap()).unwrap();
@@ -136,7 +136,7 @@ fn make(root: &Path) -> PathBuf {
     // A bank account kept under its IBAN, as an export names it.
     std::fs::write(store.join("sioul-bank.toml"), "[[account]]\nid = \"FR7630006000011234567890189\"\nbalance = 845.10\nas_of = 2026-10-03\n").unwrap();
     let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Tasks", None, &["VTODO"]).unwrap();
-    let edit = TaskEdit { title: "Find the rent receipt".into(), cases: vec!["housing".into()], estimate: 10, ..TaskEdit::default() };
+    let edit = TaskEdit { title: "Find the rent receipt".into(), projects: vec!["housing".into()], estimate: 10, ..TaskEdit::default() };
     vdir::write_item(&list.dir.join("receipt.ics"), &tasks::new_task(&edit, "receipt", &jiff::tz::TimeZone::system(), &Zoned::now()).unwrap()).unwrap();
     vdir::create(Kind::Calendars, vdir::LOCAL, "Agenda", None, &["VEVENT"]).unwrap();
     closed_project(root, &store, &mail);
@@ -157,7 +157,7 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
     std::fs::write(store.join("taxes/notice.md"), "# Zeugma notice\n\nKeep the Zeugma receipt.\n").unwrap();
     let list = vdir::collections(Kind::Calendars).into_iter().find(|c| c.holds("VTODO")).unwrap();
     let zone = jiff::tz::TimeZone::system();
-    let pay = TaskEdit { title: "Pay the Zeugma tax".into(), cases: vec!["taxes".into()], estimate: 15, ..TaskEdit::default() };
+    let pay = TaskEdit { title: "Pay the Zeugma tax".into(), projects: vec!["taxes".into()], estimate: 15, ..TaskEdit::default() };
     vdir::write_item(&list.dir.join("zeugma-pay.ics"), &tasks::new_task(&pay, "zeugma-pay", &zone, &Zoned::now()).unwrap()).unwrap();
     // A step without a project of its own: in its bigger task's.
     let step = TaskEdit { title: "Find the Zeugma form".into(), parent: "zeugma-pay".into(), estimate: 5, ..TaskEdit::default() };
@@ -176,7 +176,7 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
     let letter = sioul_core::letters::Letter {
         id: "zeugma-letter".into(),
         received: Some(Zoned::now().date()),
-        case: "taxes".into(),
+        project: "taxes".into(),
         reading: sioul_core::letters::Reading { sender: "Zeugma Office".into(), deadline: Zoned::now().date().tomorrow().ok(), ..Default::default() },
         ..Default::default()
     };
@@ -450,7 +450,7 @@ fn reading_round_trip() {
     assert!(text(&note).contains("blue folder") && text(&note).contains("○ scan the September receipt"), "{}", text(&note));
     // Its IBAN masked in the text, its open checkboxes, and the data.
     assert!(text(&note).contains("○ pay [IBAN …0189]") && !note.to_string().contains("3000 6000"), "{note}");
-    // A message by its Message-ID: genuine, in its case, its IBAN masked, its text marked as data.
+    // A message by its Message-ID: genuine, in its project, its IBAN masked, its text marked as data.
     let letter = call(&mut server, "read_message", json!({ "message": "mid:letter-1@housing.example" }));
     let said = text(&letter);
     assert_eq!(letter["isError"], false, "{said}");
@@ -473,7 +473,7 @@ fn reading_round_trip() {
         assert_eq!(refused["isError"], true, "{refused}");
         assert!(!text(&refused).contains("case_store"));
     }
-    // The Porch, opened: the letter in its case's lane, the code without its code.
+    // The Porch, opened: the letter in its project's lane, the code without its code.
     let porch = call(&mut server, "porch", json!({ "open": true }));
     assert!(text(&porch).contains("Housing aid") && text(&porch).contains("Your housing aid file"), "{}", text(&porch));
     assert!(!text(&porch).contains("482 913") && !text(&porch).contains("482913") && !text(&porch).contains("551204") && !porch.to_string().contains("551204"), "{}", text(&porch));
@@ -481,7 +481,10 @@ fn reading_round_trip() {
     let list = call(&mut server, "list_tasks", json!({ "view": "list" }));
     assert!(text(&list).contains("Find the rent receipt  [receipt]"), "{}", text(&list));
     let projects = call(&mut server, "list_projects", json!({}));
-    assert!(text(&projects).contains("Housing aid") && text(&projects).contains("<sioul:case/housing>"), "{}", text(&projects));
+    assert!(text(&projects).contains("Housing aid") && text(&projects).contains("<sioul:project/housing>") && !text(&projects).contains("sioul:case/"), "{}", text(&projects));
+    let tied = call(&mut server, "links", json!({ "uri": "sioul:project/housing" }));
+    assert!(text(&tied).contains("Find the rent receipt"), "{}", text(&tied));
+    // An address written before the one name, "project", still opens it.
     let tied = call(&mut server, "links", json!({ "uri": "sioul:case/housing" }));
     assert!(text(&tied).contains("Find the rent receipt"), "{}", text(&tied));
     // Budgets, the bank account named by its IBAN masked.
@@ -522,7 +525,7 @@ fn a_closed_project_is_never_shown() {
         ("search_notes", json!({})),
         ("search_notes", json!({ "query": "Zeugma", "in_text": true })),
         ("list_projects", json!({})),
-        ("links", json!({ "uri": "sioul:case/housing" })),
+        ("links", json!({ "uri": "sioul:project/housing" })),
         ("find", json!({ "query": "Zeugma" })),
         ("find", json!({ "query": "notice" })),
         ("time", json!({})),
@@ -555,6 +558,7 @@ fn a_closed_project_is_never_shown() {
         ("read_message", json!({ "message": "mid:zeugma-1@finances.example" })),
         ("read_note", json!({ "note": "taxes/notice.md" })),
         ("list_projects", json!({ "id": "taxes" })),
+        ("links", json!({ "uri": "sioul:project/taxes" })),
         ("links", json!({ "uri": "sioul:case/taxes" })),
         ("links", json!({ "uri": "mid:zeugma-1@finances.example" })),
         ("links", json!({ "uri": "sioul:task/zeugma-step" })),
@@ -569,15 +573,18 @@ fn a_closed_project_is_never_shown() {
     // (other tests write beside it at the same time: only its own folder is watched).
     let before = snapshot(&[home.root.join("store/taxes")]);
     for (tool, arguments) in [
+        ("add_task", json!({ "title": "Call the tax office", "projects": ["taxes"] })),
         ("add_task", json!({ "title": "Call the tax office", "cases": ["taxes"] })),
         ("add_task", json!({ "title": "A step", "parent": "zeugma-pay" })),
         ("add_task", json!({ "title": "From the notice", "source": "mid:zeugma-1@finances.example" })),
         ("add_note", json!({ "title": "Thoughts", "folder": "taxes" })),
+        ("add_note", json!({ "title": "Thoughts", "links": ["sioul:project/taxes"] })),
         ("add_note", json!({ "title": "Thoughts", "links": ["sioul:case/taxes"] })),
+        ("link", json!({ "from": "sioul:task/receipt", "to": "sioul:project/taxes" })),
         ("link", json!({ "from": "sioul:task/receipt", "to": "sioul:case/taxes" })),
-        ("link", json!({ "from": "mid:zeugma-1@finances.example", "to": "sioul:case/housing" })),
+        ("link", json!({ "from": "mid:zeugma-1@finances.example", "to": "sioul:project/housing" })),
         ("draft_reply", json!({ "message": "mid:zeugma-1@finances.example", "body": "Paid." })),
-        ("draft_message", json!({ "to": ["office@example.org"], "subject": "Taxes", "body": "Hello.", "links": ["sioul:case/taxes"] })),
+        ("draft_message", json!({ "to": ["office@example.org"], "subject": "Taxes", "body": "Hello.", "links": ["sioul:project/taxes"] })),
         ("complete_task", json!({ "task": "zeugma-pay" })),
         ("spam_label", json!({ "message": "mid:zeugma-1@finances.example", "label": "spam" })),
     ] {
@@ -793,8 +800,8 @@ fn writing_round_trip() {
     let home = home();
     let mut server = server();
     ask(&mut server, "initialize", json!({ "clientInfo": { "name": "tests" } }));
-    // A task made from the letter, in its case: a new file in the task list.
-    let added = call(&mut server, "add_task", json!({ "title": "Send the September receipt", "due": "2026-10-30", "estimate": 15, "cases": ["housing"], "source": "mid:letter-1@housing.example" }));
+    // A task made from the letter, in its project: a new file in the task list.
+    let added = call(&mut server, "add_task", json!({ "title": "Send the September receipt", "due": "2026-10-30", "estimate": 15, "projects": ["housing"], "source": "mid:letter-1@housing.example" }));
     assert_eq!(added["isError"], false, "{added}");
     let uid = added["structuredContent"]["uid"].as_str().unwrap().to_string();
     let file = PathBuf::from(added["structuredContent"]["file"].as_str().unwrap());
@@ -826,6 +833,11 @@ fn writing_round_trip() {
     assert_eq!((first.as_str(), second.as_str()), ("notes/Call with the CAF.md", "notes/Call with the CAF 2.md"));
     let written = std::fs::read_to_string(home.root.join("store").join(&first)).unwrap();
     assert!(written.starts_with("---\nlinks: mid:letter-1@housing.example\n---\n\n# Call with the CAF\n\nThey want the receipt."), "{written}");
+    // Tied to a project by its address from before the one name: written as projects are named now.
+    let tied = call(&mut server, "add_note", json!({ "title": "Housing notes", "body": "Rent.", "links": ["sioul:case/housing"] }));
+    assert_eq!(tied["isError"], false, "{tied}");
+    let written = std::fs::read_to_string(home.root.join("store").join(tied["structuredContent"]["path"].as_str().unwrap())).unwrap();
+    assert!(written.starts_with("---\nlinks: sioul:project/housing\n---\n"), "{written}");
     // An event, then the note tied to it: the tie is written in the event.
     let event = call(&mut server, "add_event", json!({ "title": "CAF office", "start": "2026-10-12T09:30", "end": "2026-10-12T10:00", "location": "1 rue de l'Exemple" }));
     assert_eq!(event["isError"], false, "{event}");
@@ -1151,7 +1163,7 @@ fn a_dry_run_moves_and_writes_nothing() {
     let flagging = report::dry_run(&s, &report::DryAsk { limit: 50, ..report::DryAsk::default() }).unwrap();
     assert_eq!((flagging.data["matrix"]["spam"].clone(), flagging.data["would_move"]["total"].clone()), (json!("flag"), json!(0)), "{}", flagging.data);
     assert!(subjects(&flagging.data["would_flag"]["messages"]).contains(&"Winner: claim your lottery prize".to_string()), "{}", flagging.data);
-    // "Move to spam" tried for probable spam: the prize would be moved; codes, people, cases protected.
+    // "Move to spam" tried for probable spam: the prize would be moved; codes, people, projects protected.
     let moving = report::dry_run(&s, &report::DryAsk { limit: 50, account: Some("home".into()), spam: Some(sioul_core::spam::Action::Move), ..report::DryAsk::default() }).unwrap();
     let data = &moving.data;
     let moved = &data["would_move"]["messages"];
@@ -1160,7 +1172,7 @@ fn a_dry_run_moves_and_writes_nothing() {
     assert!(prize["p"].as_f64().unwrap() >= 0.95 && prize["class"] == "spam" && prize["account"] == "home", "{prize}");
     let account = &data["accounts"][0];
     assert_eq!(account["account"], "home");
-    // Every message counted once: judged, or protected (the letter, a case's; the codes, a day old, are no codes any more), or set aside before.
+    // Every message counted once: judged, or protected (the letter, a project's; the codes, a day old, are no codes any more), or set aside before.
     let count = |key: &str| account[key].as_u64().unwrap();
     assert_eq!(count("judged") + count("protected") + count("set_aside") + count("hostile") + count("blocked"), count("messages"), "{account}");
     assert!(count("protected") >= 1 && count("judged") >= 2, "{account}");

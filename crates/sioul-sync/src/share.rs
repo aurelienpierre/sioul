@@ -145,26 +145,30 @@ pub struct Keyed {
     pub list: &'static str,
     pub by: &'static [&'static str],
     pub local: &'static [&'static str],
+    /// Other names the list may have in a file, its entries the same: the
+    /// records always say `list`, and a file keeps the name it has. A file
+    /// with neither, of another name than its record's, takes the first.
+    pub also: &'static [&'static str],
 }
 
 static CONFIG_RULES: Rules = Rules {
-    keyed: &[Keyed { list: "account", by: &["id"], local: &["maildir", "history_weeks"] }],
+    keyed: &[Keyed { list: "account", by: &["id"], local: &["maildir", "history_weeks"], also: &[] }],
     whole: &[],
     // Where things are on this computer, and how text reads on its screen.
     local: &["case_store", "known_senders", "blocked_senders", "reading", "history_weeks", "letters.inbox", "dnd.background"],
 };
 static HEALTH_RULES: Rules = Rules {
-    keyed: &[Keyed { list: "prescription", by: &["id"], local: &[] }, Keyed { list: "medicine", by: &["id"], local: &[] }],
+    keyed: &[Keyed { list: "prescription", by: &["id"], local: &[], also: &[] }, Keyed { list: "medicine", by: &["id"], local: &[], also: &[] }],
     whole: &[],
     // An older Sioul's folder of a watch's files (until 8 October 2026), a
     // path on its own computer: never carried, as before.
     local: &["watch_folder"],
 };
-static LINKS_RULES: Rules = Rules { keyed: &[Keyed { list: "link", by: &[], local: &[] }], whole: &[], local: &[] };
+static LINKS_RULES: Rules = Rules { keyed: &[Keyed { list: "link", by: &[], local: &[], also: &[] }], whole: &[], local: &[] };
 static PORCH_RULES: Rules = Rules { keyed: &[], whole: &["done.*"], local: &[] };
-static MONEY_RULES: Rules = Rules { keyed: &[Keyed { list: "ignored", by: &[], local: &[] }], whole: &[], local: &[] };
-static TODAY_RULES: Rules = Rules { keyed: &[Keyed { list: "aside", by: &[], local: &[] }], whole: &[], local: &[] };
-static TIME_RULES: Rules = Rules { keyed: &[Keyed { list: "session", by: &["start", "task", "project"], local: &[] }], whole: &[], local: &[] };
+static MONEY_RULES: Rules = Rules { keyed: &[Keyed { list: "ignored", by: &[], local: &[], also: &[] }], whole: &[], local: &[] };
+static TODAY_RULES: Rules = Rules { keyed: &[Keyed { list: "aside", by: &[], local: &[], also: &[] }], whole: &[], local: &[] };
+static TIME_RULES: Rules = Rules { keyed: &[Keyed { list: "session", by: &["start", "task", "project"], local: &[], also: &[] }], whole: &[], local: &[] };
 /// How each day went (`sioul_core::reviews`): a date's review at the end of
 /// work and the one before sleep travel whole, so that two devices answering
 /// the same one keep the later answer, never a mix of both; the weather field by field.
@@ -174,41 +178,46 @@ static PLAIN_RULES: Rules = Rules { keyed: &[], whole: &[], local: &[] };
 /// written by its own device alone, shared whole.
 static DND_RULES: Rules = Rules { keyed: &[], whole: &["device.*"], local: &[] };
 /// Who may reach you during do-not-disturb: one person each, by its id.
-static DND_PEOPLE_RULES: Rules = Rules { keyed: &[Keyed { list: "person", by: &["id"], local: &[] }], whole: &[], local: &[] };
+static DND_PEOPLE_RULES: Rules = Rules { keyed: &[Keyed { list: "person", by: &["id"], local: &[], also: &[] }], whole: &[], local: &[] };
 /// Each dose that fell due (`sioul_core::doses`): one entry per field, each
 /// device's opening apart, and each device's answer whole, so that two
 /// devices never write one entry and an answer never travels in halves.
 static DOSES_RULES: Rules = Rules { keyed: &[], whole: &["dose.*.answer.*"], local: &[] };
 // Projects and budgets, at the notes folder's root, when they travel here (`share_projects`).
-static CASES_RULES: Rules = Rules { keyed: &[Keyed { list: "case", by: &["id"], local: &[] }], whole: &[], local: &[] };
+// The projects' records keep their first names, `notes/sioul-cases.toml` and
+// `case`, which every version reads; a file renamed `sioul-projects.toml`, its
+// tables `[[project]]`, reads and is written under them (`sioul_core::projects`).
+static PROJECTS_RULES: Rules = Rules { keyed: &[Keyed { list: "case", by: &["id"], local: &[], also: &["project"] }], whole: &[], local: &[] };
 // The bank's movements: each account by its id, each movement by its account and the bank's own id.
 static BANK_RULES: Rules = Rules {
-    keyed: &[Keyed { list: "account", by: &["id"], local: &[] }, Keyed { list: "movement", by: &["account", "id"], local: &[] }],
+    keyed: &[Keyed { list: "account", by: &["id"], local: &[], also: &[] }, Keyed { list: "movement", by: &["account", "id"], local: &[], also: &[] }],
     whole: &[],
     local: &[],
 };
 static LEDGER_RULES: Rules = Rules {
     keyed: &[
-        Keyed { list: "budget", by: &["id"], local: &[] },
-        Keyed { list: "preset", by: &["id"], local: &[] },
-        Keyed { list: "reserve", by: &["id"], local: &[] },
-        Keyed { list: "bank_account", by: &["id"], local: &[] },
-        Keyed { list: "assign", by: &["account", "movement"], local: &[] },
+        Keyed { list: "budget", by: &["id"], local: &[], also: &[] },
+        Keyed { list: "preset", by: &["id"], local: &[], also: &[] },
+        Keyed { list: "reserve", by: &["id"], local: &[], also: &[] },
+        Keyed { list: "bank_account", by: &["id"], local: &[], also: &[] },
+        Keyed { list: "assign", by: &["account", "movement"], local: &[], also: &[] },
         // No name of their own: each one is itself, so two devices adding some keep both.
-        Keyed { list: "line", by: &[], local: &[] },
-        Keyed { list: "cover", by: &[], local: &[] },
-        Keyed { list: "mail_rule", by: &[], local: &[] },
-        Keyed { list: "split", by: &[], local: &[] },
+        Keyed { list: "line", by: &[], local: &[], also: &[] },
+        Keyed { list: "cover", by: &[], local: &[], also: &[] },
+        Keyed { list: "mail_rule", by: &[], local: &[], also: &[] },
+        Keyed { list: "split", by: &[], local: &[], also: &[] },
     ],
     whole: &[],
     local: &[],
 };
-static CONTRACTS_RULES: Rules = Rules { keyed: &[Keyed { list: "contract", by: &["id"], local: &[] }], whole: &[], local: &[] };
-static PAPERS_RULES: Rules = Rules { keyed: &[Keyed { list: "paper", by: &["id"], local: &[] }], whole: &[], local: &[] };
+static CONTRACTS_RULES: Rules = Rules { keyed: &[Keyed { list: "contract", by: &["id"], local: &[], also: &[] }], whole: &[], local: &[] };
+static PAPERS_RULES: Rules = Rules { keyed: &[Keyed { list: "paper", by: &["id"], local: &[], also: &[] }], whole: &[], local: &[] };
 /// In the notes folder, what the other parts carry: projects, budgets, the
 /// bank, contracts (projects), the papers' wallet and its folder (papers).
 const NOT_NOTES: &[&str] = &[
-    sioul_core::cases::MANIFEST,
+    sioul_core::projects::FILE,
+    sioul_core::projects::OLD_FILE,
+    sioul_core::projects::BEFORE_RENAME,
     sioul_core::budget::LEDGER,
     sioul_core::bank::MANIFEST,
     sioul_core::contracts::MANIFEST,
@@ -432,8 +441,8 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
     // From the notes folder each device keeps where it likes: projects,
     // budgets, the bank's movements and contracts; the papers' wallet and its
     // files; the notes themselves, each file sealed apart.
-    if let Some(notes) = config.case_store_path() {
-        stores.push(file("projects", "notes/sioul-cases.toml", notes.join(sioul_core::cases::MANIFEST), Shape::Toml(&CASES_RULES)));
+    if let Some(notes) = config.notes_root_path() {
+        stores.push(file("projects", "notes/sioul-cases.toml", sioul_core::projects::file_in(&notes), Shape::Toml(&PROJECTS_RULES)));
         stores.push(file("projects", "notes/sioul-budgets.toml", notes.join(sioul_core::budget::LEDGER), Shape::Toml(&LEDGER_RULES)));
         stores.push(file("projects", "notes/sioul-bank.toml", notes.join(sioul_core::bank::MANIFEST), Shape::Toml(&BANK_RULES)));
         stores.push(file("projects", "notes/sioul-contracts.toml", notes.join(sioul_core::contracts::MANIFEST), Shape::Toml(&CONTRACTS_RULES)));
@@ -463,7 +472,7 @@ fn known_part(file: &str) -> Option<&'static str> {
     static KNOWN: std::sync::OnceLock<Vec<(String, bool, &'static str)>> = std::sync::OnceLock::new();
     let known = KNOWN.get_or_init(|| {
         let roots = Roots { config: PathBuf::from("config"), data: PathBuf::from("data"), state: PathBuf::from("state") };
-        let config = Config { case_store: Some("notes".into()), ..Config::default() };
+        let config = Config { notes_root: Some("notes".into()), ..Config::default() };
         stores_of(&config, &roots, &|_| true).into_iter().map(|store| (store.name, store.folder, store.part)).collect()
     });
     #[cfg(test)]
@@ -910,13 +919,13 @@ fn toml_entries(text: &str, rules: &Rules) -> Result<Vec<(String, String)>, Stri
     let table: toml::Table = text.parse().map_err(|e: toml::de::Error| e.to_string())?;
     let mut out = Vec::new();
     for (name, value) in &table {
-        if let Some(keyed) = rules.keyed.iter().find(|k| k.list == name)
+        if let Some(keyed) = rules.keyed.iter().find(|k| k.list == name || k.also.contains(&name.as_str()))
             && let toml::Value::Array(elements) = value
         {
             for element in elements {
                 let mut element = element.clone();
                 strip_local(&mut element, keyed.local);
-                out.push((format!("{name}{SEP}{MARK}{}", identity(&element, keyed.by)), leaf_text(&element)));
+                out.push((format!("{}{SEP}{MARK}{}", keyed.list, identity(&element, keyed.by)), leaf_text(&element)));
             }
             continue;
         }
@@ -999,7 +1008,10 @@ fn rewritten(store: &Store, path: &Path, changes: &[(&str, Option<&str>)]) -> Re
         }
         Shape::Toml(rules) => {
             let text = std::fs::read_to_string(path).unwrap_or_default();
-            Ok(Some(toml_write(&text, rules, changes)?.into_bytes()))
+            // A file here under another name than its record's (the projects'
+            // file renamed): a list new to it takes its other name.
+            let renamed = path.file_name() != Path::new(&store.name).file_name();
+            Ok(Some(toml_write(&text, rules, changes, renamed)?.into_bytes()))
         }
     }
 }
@@ -1104,8 +1116,9 @@ fn edit_item(text: &str) -> Result<toml_edit::Item, String> {
     Ok(item)
 }
 
-/// Sets or takes out entries in a TOML file's text, keeping the rest as written.
-fn toml_write(text: &str, rules: &Rules, changes: &[(&str, Option<&str>)]) -> Result<String, String> {
+/// Sets or takes out entries in a TOML file's text, keeping the rest as
+/// written; `renamed`: the file has another name than its record's (`Keyed::also`).
+fn toml_write(text: &str, rules: &Rules, changes: &[(&str, Option<&str>)], renamed: bool) -> Result<String, String> {
     let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
     for (entry, value) in changes {
         let path: Vec<&str> = entry.split(SEP).collect();
@@ -1113,7 +1126,7 @@ fn toml_write(text: &str, rules: &Rules, changes: &[(&str, Option<&str>)]) -> Re
             && let Some(id) = element.strip_prefix(MARK)
         {
             let keyed = rules.keyed.iter().find(|k| k.list == *list).ok_or_else(|| format!("{list}: not a list"))?;
-            write_element(&mut doc, keyed, id, *value)?;
+            write_element(&mut doc, keyed, id, *value, renamed)?;
         } else {
             let item = value.map(edit_item).transpose()?;
             set_path(doc.as_table_mut(), &path, item.as_ref())?;
@@ -1162,8 +1175,41 @@ fn set_path(table: &mut toml_edit::Table, path: &[&str], value: Option<&toml_edi
     }
 }
 
+/// Where a store is read, as the memory keeps it (`Memory::places`): its
+/// path, the projects' file under its first name whichever it has, so that
+/// renaming it (`sioul_core::projects::rename_file`) is no move: a move
+/// rebuilds the file from the records, and a change made since would go.
+fn place_of(store: &Store) -> String {
+    let renamed = !store.folder && store.path.file_name().is_some_and(|name| name == sioul_core::projects::FILE);
+    let path = if renamed { store.path.with_file_name(sioul_core::projects::OLD_FILE) } else { store.path.clone() };
+    path.display().to_string()
+}
+
+/// A table read from an entry's text, placed in a file: written where it
+/// stands, its own tables under it. toml_edit writes a file's tables in the
+/// order of the positions they were read at; those read from the entry's
+/// text would put them out of place (a project's routes under the project
+/// after it). So its tables keep none, and it takes `at`, the position of
+/// the one it replaces.
+fn placed(mut table: toml_edit::Table, at: Option<isize>) -> toml_edit::Table {
+    fn clear(table: &mut toml_edit::Table) {
+        table.set_position(None);
+        for (_, item) in table.iter_mut() {
+            match item {
+                toml_edit::Item::Table(inner) => clear(inner),
+                toml_edit::Item::ArrayOfTables(list) => list.iter_mut().for_each(clear),
+                _ => {}
+            }
+        }
+    }
+    clear(&mut table);
+    table.set_position(at);
+    table
+}
+
 /// The element named `id` of a keyed list: replaced (its local fields kept), added, or taken out.
-fn write_element(doc: &mut toml_edit::DocumentMut, keyed: &Keyed, id: &str, value: Option<&str>) -> Result<(), String> {
+/// The list keeps the name it has in the file (`Keyed::also`).
+fn write_element(doc: &mut toml_edit::DocumentMut, keyed: &Keyed, id: &str, value: Option<&str>, renamed: bool) -> Result<(), String> {
     let normal = |text: String| -> Option<toml::Value> {
         let mut element = leaf_value(&text).ok()?;
         strip_local(&mut element, keyed.local);
@@ -1172,18 +1218,22 @@ fn write_element(doc: &mut toml_edit::DocumentMut, keyed: &Keyed, id: &str, valu
     let named = |element: Option<toml::Value>| element.is_some_and(|e| identity(&e, keyed.by) == id);
     let new = value.map(edit_item).transpose()?;
     let table = doc.as_table_mut();
-    if !table.contains_key(keyed.list) {
+    let name = std::iter::once(keyed.list).chain(keyed.also.iter().copied()).find(|n| table.contains_key(n)).unwrap_or(match keyed.also.first() {
+        Some(other) if renamed => other,
+        _ => keyed.list,
+    });
+    if !table.contains_key(name) {
         match &new {
             Some(toml_edit::Item::Table(_)) => {
-                table.insert(keyed.list, toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new()));
+                table.insert(name, toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new()));
             }
             Some(_) => {
-                table.insert(keyed.list, toml_edit::value(toml_edit::Array::new()));
+                table.insert(name, toml_edit::value(toml_edit::Array::new()));
             }
             None => return Ok(()),
         }
     }
-    match table.get_mut(keyed.list) {
+    match table.get_mut(name) {
         Some(toml_edit::Item::ArrayOfTables(list)) => {
             let at = (0..list.len()).find(|&i| named(list.get(i).and_then(|t| normal(format!("[v]\n{t}")))));
             match (new, at) {
@@ -1196,8 +1246,11 @@ fn write_element(doc: &mut toml_edit::DocumentMut, keyed: &Keyed, id: &str, valu
                         }
                     }
                     match at.and_then(|i| list.get_mut(i)) {
-                        Some(place) => *place = element,
-                        None => list.push(element),
+                        Some(place) => {
+                            let at = place.position();
+                            *place = placed(element, at);
+                        }
+                        None => list.push(placed(element, None)),
                     }
                 }
                 (None, Some(at)) => {
@@ -1220,7 +1273,7 @@ fn write_element(doc: &mut toml_edit::DocumentMut, keyed: &Keyed, id: &str, valu
             }
             list.fmt();
         }
-        _ => return Err(format!("{}: not a list", keyed.list)),
+        _ => return Err(format!("{name}: not a list")),
     }
     Ok(())
 }
@@ -1828,7 +1881,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // values, an empty new folder is filled, and nothing is taken out
     // elsewhere. A memory from before places were kept takes every store where
     // it is. A store not read this time joins when it is.
-    let place = |store: &Store| store.path.display().to_string();
+    let place = place_of;
     if memory.joined && memory.places.is_empty() {
         memory.places = stores.iter().map(|s| (s.name.clone(), place(s))).collect();
     }
@@ -3192,7 +3245,7 @@ mod tests {
 
         /// An exchange carrying the projects and budgets of `notes`, this computer's notes folder.
         fn exchange_notes(&self, folder: &Path, key: &[u8; 32], now: i64, notes: &Path) -> Outcome {
-            let config = Config { share_projects: true, case_store: Some(notes.display().to_string()), ..Config::default() };
+            let config = Config { share_projects: true, notes_root: Some(notes.display().to_string()), ..Config::default() };
             let stores = stores(&config, &self.roots);
             exchange(&Sharing { folder, computer: &self.id, key, memory: &self.memory, files: true, hurry: None }, &stores, now).unwrap()
         }
@@ -3204,7 +3257,7 @@ mod tests {
         }
 
         fn stores_with(&self, notes: &Path, on: &dyn Fn(&str) -> bool) -> Vec<Store> {
-            let config = Config { case_store: Some(notes.display().to_string()), ..Config::default() };
+            let config = Config { notes_root: Some(notes.display().to_string()), ..Config::default() };
             stores_of(&config, &self.roots, &|part| on(part) || shared_by_default(part, &config))
         }
 
@@ -3921,7 +3974,7 @@ mod tests {
         desk.write("data/time/2026-10.toml", "[[session]]\ntask = \"t1\"\nstart = 100\nminutes = 25\n");
         assert_eq!(desk.exchange(&folder, &key, NOW).received, 0);
 
-        // The laptop joins with its own: its case store stays, its blocked sender joins the desk's.
+        // The laptop joins with its own: its notes folder stays, its blocked sender joins the desk's.
         laptop.write("config/config.toml", "language = \"en\"\ncase_store = \"~/Nextcloud/Notes\"\n");
         laptop.write("config/blocked-senders.txt", "*@pushy.example.com\n");
         let outcome = laptop.exchange(&folder, &key, NOW + MINUTE);
@@ -3971,7 +4024,7 @@ mod tests {
         let key = quick_key(&folder, "four words make a passphrase").unwrap();
         let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
         let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
-        let cases = |notes: &Path| std::fs::read_to_string(notes.join("sioul-cases.toml")).unwrap_or_default();
+        let projects = |notes: &Path| std::fs::read_to_string(sioul_core::projects::file_in(notes)).unwrap_or_default();
         let ledger = |notes: &Path| std::fs::read_to_string(notes.join("sioul-budgets.toml")).unwrap_or_default();
         let bank = |notes: &Path| std::fs::read_to_string(notes.join("sioul-bank.toml")).unwrap_or_default();
         let movement = |id: &str, label: &str| format!("\n[[movement]]\naccount = \"main\"\ndate = 2026-10-01\namount = -20.0\nlabel = \"{label}\"\nid = \"{id}\"\n");
@@ -3983,9 +4036,12 @@ mod tests {
 
         // The phone, with a notes folder of its own: the project, the budget and the bank come.
         phone.exchange_notes(&folder, &key, NOW + MINUTE, &phone_notes);
-        assert!(cases(&phone_notes).contains("id = \"acme\"") && cases(&phone_notes).contains("acme.example"), "{}", cases(&phone_notes));
+        assert!(projects(&phone_notes).contains("id = \"acme\"") && projects(&phone_notes).contains("acme.example"), "{}", projects(&phone_notes));
         assert!(ledger(&phone_notes).contains("Rent"), "{}", ledger(&phone_notes));
         assert!(bank(&phone_notes).contains("fitid-1") && bank(&phone_notes).contains("1200"), "{}", bank(&phone_notes));
+        // The phone had no projects' file: it makes one of the new name, the desk keeps its own.
+        assert!(phone_notes.join(sioul_core::projects::FILE).exists() && projects(&phone_notes).contains("[[project]]") && !projects(&phone_notes).contains("[[case"), "{}", projects(&phone_notes));
+        assert!(projects(&desk_notes).contains("[[case]]") && !desk_notes.join(sioul_core::projects::FILE).exists());
 
         // A line each, apart: both kept on both.
         std::fs::write(desk_notes.join("sioul-budgets.toml"), format!("{}\n[[line]]\nbudget = \"home\"\ndate = \"2026-10-02\"\namount = -12.5\nlabel = \"Bread\"\n", ledger(&desk_notes))).unwrap();
@@ -4003,6 +4059,32 @@ mod tests {
             ids.sort();
             assert_eq!(ids, ["fitid-1", "fitid-2", "fitid-3"], "{}", bank(notes));
         }
+
+        // Each file keeps its names: a project made on the phone reaches the desk's
+        // `[[case]]`, as an older Sioul reads it; renamed on the desk, the file
+        // still exchanges under the same records, both ways.
+        use sioul_core::projects::{ProjectEdit, ProjectStore, file_in, rename_file, save_project, set_ai};
+        save_project(&file_in(&phone_notes), "", &ProjectEdit { title: "Garden".into(), ..ProjectEdit::default() }).unwrap();
+        phone.exchange_notes(&folder, &key, NOW + 5 * MINUTE, &phone_notes);
+        desk.exchange_notes(&folder, &key, NOW + 6 * MINUTE, &desk_notes);
+        assert!(projects(&desk_notes).matches("[[case]]").count() == 2 && !projects(&desk_notes).contains("[[project"), "{}", projects(&desk_notes));
+        // Added after a project with a route: each route stays under its own project.
+        let desk_store = ProjectStore::load(&desk_notes).unwrap();
+        assert!(desk_store.get("acme").unwrap().routes.len() == 1 && desk_store.get("garden").unwrap().routes.is_empty(), "{}", projects(&desk_notes));
+        rename_file(&desk_notes).unwrap();
+        set_ai(&file_in(&desk_notes), "acme", true).unwrap();
+        desk.exchange_notes(&folder, &key, NOW + 7 * MINUTE, &desk_notes);
+        phone.exchange_notes(&folder, &key, NOW + 8 * MINUTE, &phone_notes);
+        desk.exchange_notes(&folder, &key, NOW + 9 * MINUTE, &desk_notes);
+        for notes in [&desk_notes, &phone_notes] {
+            let store = ProjectStore::load(notes).unwrap();
+            let mut ids: Vec<&str> = store.projects.iter().map(|p| p.id.as_str()).collect();
+            ids.sort();
+            assert_eq!(ids, ["acme", "garden"], "{}", projects(notes));
+            assert!(store.get("acme").unwrap().ai && store.get("acme").unwrap().routes.len() == 1 && store.get("garden").unwrap().routes.is_empty(), "{}", projects(notes));
+            assert!(!projects(notes).contains("[[case"), "{}", projects(notes));
+        }
+        assert!(desk_notes.join(sioul_core::projects::BEFORE_RENAME).exists());
 
         // Without the choice, a notes folder stays home.
         let laptop = Computer::new(&base, "laptop");
@@ -4167,7 +4249,7 @@ mod tests {
             put(&desk_notes, "admin/taxes.md", b"# Taxes\nNotice received.\n");
             put(&desk_notes, "admin/scan.pdf", &noise(1_500_000, 1));
             // Made by tools, or carried by another part: they stay.
-            for name in ["lease.md~", ".lease.md.swp", "lease (conflicted copy 2026-10-05 140533).md", "taxes.sync-conflict-20261005-140533-ABCDEFG.md", "~$letter.docx", "sioul-cases.toml", "papers/passport.pdf"] {
+            for name in ["lease.md~", ".lease.md.swp", "lease (conflicted copy 2026-10-05 140533).md", "taxes.sync-conflict-20261005-140533-ABCDEFG.md", "~$letter.docx", "sioul-cases.toml", "sioul-projects.toml", "sioul-cases.toml.before-rename", "papers/passport.pdf"] {
                 put(&desk_notes, name, b"stays home");
             }
             let mut carrier = Carrier::new(how);
@@ -5042,9 +5124,9 @@ mod tests {
         assert_eq!(outcome.problems.iter().filter(|p| p.starts_with("share-name-clash:")).count(), pairs, "{outcome:?}");
         assert_eq!(files_in(&ln).len(), 1 + pairs);
         // What another part carries is never a note, whatever its case.
-        let config = Config { case_store: Some("/notes".into()), ..Config::default() };
+        let config = Config { notes_root: Some("/notes".into()), ..Config::default() };
         let every = stores_of(&config, &laptop.roots, &|_| true);
-        assert!(locate(&every, "files/notes/Sioul-Cases.toml").is_none() && locate(&every, "files/notes/Papers/id.pdf").is_none());
+        assert!(locate(&every, "files/notes/Sioul-Cases.toml").is_none() && locate(&every, "files/notes/Sioul-Projects.toml").is_none() && locate(&every, "files/notes/Papers/id.pdf").is_none());
         assert_eq!(kept_by_windows("aux.md"), true);
         assert_eq!(kept_by_windows("auxiliary.md"), false);
         let _ = std::fs::remove_dir_all(&base);
@@ -5193,7 +5275,7 @@ mod tests {
     #[test]
     fn each_device_chooses_its_parts() {
         let roots = Roots { config: PathBuf::from("config"), data: PathBuf::from("data"), state: PathBuf::from("state") };
-        let config = Config { case_store: Some("/notes".into()), ..Config::default() };
+        let config = Config { notes_root: Some("/notes".into()), ..Config::default() };
         let parts = |stores: &[Store]| stores.iter().map(|s| s.part).collect::<BTreeSet<_>>();
         // A device that never chose: what was shared before parts had switches.
         assert_eq!(parts(&stores(&config, &roots)), ["calls", "drafts", "health", "lists", "senders", "settings", "spam", "time"].into());
@@ -5207,14 +5289,14 @@ mod tests {
         let chosen = stores_of(&old, &roots, &|part| here.shares(part, &old));
         assert!(chosen.iter().any(|s| s.name == "files/notes/") && !chosen.iter().any(|s| s.part == "health" || s.part == "projects"));
         let notes = chosen.iter().find(|s| s.name == "files/notes/").unwrap();
-        assert!(["sioul-cases.toml", "sioul-papers.toml", "papers"].iter().all(|n| notes.skip.contains(n)), "what other parts carry stays out of the notes");
+        assert!(["sioul-projects.toml", "sioul-cases.toml", "sioul-cases.toml.before-rename", "sioul-papers.toml", "papers"].iter().all(|n| notes.skip.contains(n)), "what other parts carry stays out of the notes");
         let back: Here = toml::from_str(&toml::to_string(&here).unwrap()).unwrap();
         assert_eq!(back.parts, here.parts);
         assert!(stores_of(&config, &roots, &|_| true).iter().all(|s| s.name != "state/share/here.toml"));
         // Written into the notes folder, never what tools make nor what another part carries.
         let every = stores_of(&config, &roots, &|_| true);
         assert!(locate(&every, "files/notes/admin/lease.md").is_some());
-        for file in ["files/notes/.obsidian/app.json", "files/notes/lease.md~", "files/notes/sioul-cases.toml", "files/notes/papers/id.pdf", "files/notes/a (conflicted copy).md"] {
+        for file in ["files/notes/.obsidian/app.json", "files/notes/lease.md~", "files/notes/sioul-cases.toml", "files/notes/sioul-projects.toml", "files/notes/papers/id.pdf", "files/notes/a (conflicted copy).md"] {
             assert!(locate(&every, file).is_none(), "{file}");
         }
         assert_eq!(locate(&every, "files/papers/id.pdf").map(|(s, _)| s.part), Some("papers"));
@@ -5915,13 +5997,13 @@ mod tests {
         assert!(!names.iter().any(|n| n.starts_with("case_store")));
         // Writing keeps the rest of the file as written.
         let account = entries.iter().find(|(k, _)| k.starts_with("account")).unwrap().1.replace("id = \"a\"", "id = \"a\"\nmuted = true");
-        let new = toml_write(text, rules, &[("language", Some("v = \"en\"\n")), ("account\u{1f}\u{1e}a", Some(&account)), ("quiet\u{1f}work", Some("v = [\"client\"]\n"))]).unwrap();
+        let new = toml_write(text, rules, &[("language", Some("v = \"en\"\n")), ("account\u{1f}\u{1e}a", Some(&account)), ("quiet\u{1f}work", Some("v = [\"client\"]\n"))], false).unwrap();
         assert!(new.starts_with("# mine\nlanguage = \"en\""), "{new}");
         assert!(new.contains("muted = true") && new.contains("maildir = \"/x\""), "{new}");
         assert!(new.contains("work = [\"client\"]"), "{new}");
         // A list of words, one at a time.
         let money = "ignored = [\"a\", \"b\"]\n";
-        let new = toml_write(money, &MONEY_RULES, &[("ignored\u{1f}\u{1e}v = \"a\"\n", None), ("ignored\u{1f}\u{1e}v = \"c\"\n", Some("v = \"c\"\n"))]).unwrap();
+        let new = toml_write(money, &MONEY_RULES, &[("ignored\u{1f}\u{1e}v = \"a\"\n", None), ("ignored\u{1f}\u{1e}v = \"c\"\n", Some("v = \"c\"\n"))], false).unwrap();
         assert_eq!(new, "ignored = [\"b\", \"c\"]\n");
     }
 
@@ -5938,7 +6020,7 @@ mod tests {
         let (entry, value) = &entries[0];
         assert!(entry.starts_with("medicine") && value.contains("2 tablets"), "{entry} {value}");
         let old = "[[medicine]]\nid = \"iron\"\nname = \"Iron\"\ndose = \"1 tablet\"\n\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\", \"20:00\"]\n";
-        let written = toml_write(old, &HEALTH_RULES, &[(entry.as_str(), Some(value.as_str()))]).unwrap();
+        let written = toml_write(old, &HEALTH_RULES, &[(entry.as_str(), Some(value.as_str()))], false).unwrap();
         let health: sioul_core::health::Health = toml::from_str(&written).unwrap();
         let takes: Vec<(String, String)> = health.medicines[0].takes().into_iter().map(|t| (t.time, t.amount)).collect();
         assert_eq!(takes, [("08:00".to_string(), "1 tablet".to_string()), ("20:00".to_string(), "2 tablets".to_string())]);

@@ -9,7 +9,7 @@ or in French, for trying Sioul and for the documentation's screenshots.
 Writes DIR/config, DIR/data, DIR/state and DIR/cache (the four XDG folders:
 run Sioul with XDG_CONFIG_HOME=DIR/config, XDG_DATA_HOME=DIR/data,
 XDG_STATE_HOME=DIR/state, XDG_CACHE_HOME=DIR/cache and SIOUL_DEMO=1, which
-keeps it off the network), and DIR/notes, the folder of notes (the case store).
+keeps it off the network), and DIR/notes, the notes folder.
 
 Everything is invented: the people, the companies, the messages. Addresses are
 on example.org, example.com, .example, .test and .invalid hosts (RFC 2606), phone numbers in the
@@ -1281,7 +1281,7 @@ def escape(text: str) -> str:
 
 
 def event(clock: Clock, uid: str, title: str, day: date, start: str, end: str, *, location="", notes="", weekly=False,
-          organizer=None, attendees=(), case=None) -> str:
+          organizer=None, attendees=(), project=None) -> str:
     lines = ["BEGIN:VEVENT", f"UID:demo-event-{uid}", f"DTSTAMP:{utc(clock.at(clock.day(-14), '09:00'))}",
              f"DTSTART:{utc(clock.at(day, start))}", f"DTEND:{utc(clock.at(day, end))}", f"SUMMARY:{escape(title)}"]
     if location:
@@ -1294,8 +1294,8 @@ def event(clock: Clock, uid: str, title: str, day: date, start: str, end: str, *
         lines.append(f'ORGANIZER;CN="{organizer[0]}":mailto:{organizer[1]}')
     for name, addr, answer in attendees:
         lines.append(f'ATTENDEE;CN="{name}";PARTSTAT={answer}:mailto:{addr}')
-    if case:
-        lines.append(f"REFID:{case}")
+    if project:
+        lines.append(f"REFID:{project}")
     lines.append("END:VEVENT")
     return vcalendar(lines)
 
@@ -1324,7 +1324,7 @@ def write_calendars(p: Profile, mails: list[Mail]):
                        location=t("Video call, meet.example.com/fernhill", "Visio, meet.example.com/fougeres"),
                        notes=t("The two layouts, the opening hours under the photo, the children's corner in the menu.",
                                "Les deux mises en page, les horaires sous la photo, le coin des enfants dans le menu."),
-                       organizer=W.iris, attendees=[me_w, (W.oskar[0], W.oskar[1], "ACCEPTED")], case="fernhill")),
+                       organizer=W.iris, attendees=[me_w, (W.oskar[0], W.oskar[1], "ACCEPTED")], project="fernhill")),
         ("work", event(c, "planning", t("Weekly planning", "Planning de la semaine"), c.this_week(0), "09:00", "10:00",
                        notes=t("The week's steps, in Sioul's Tasks.", "Les étapes de la semaine, dans les Tâches de Sioul."), weekly=True)),
         ("personal", event(c, "doctor", t("Dr Varga: check-up", "Dr Varga : bilan"), c.weekday_after(1), "09:30", "10:00",
@@ -1332,15 +1332,15 @@ def write_calendars(p: Profile, mails: list[Mail]):
                            notes=t("Bring the blood test results.", "Apporter les résultats de la prise de sang."))),
         ("work", event(c, "accountant", t("Call with Marc (accountant)", "Appel avec Marc (comptable)"), c.weekday_after(2), "11:00", "11:30",
                        location=t("Phone: +33 4 65 71 63 25", "Téléphone : +33 4 65 71 63 25"),
-                       notes=t("The 2025 receipts, and the quarterly declaration.", "Les justificatifs 2025 et la déclaration trimestrielle."), case="taxes-2026")),
+                       notes=t("The 2025 receipts, and the quarterly declaration.", "Les justificatifs 2025 et la déclaration trimestrielle."), project="taxes-2026")),
         ("personal", event(c, "choir", t("Choir rehearsal", "Répétition de la chorale"), c.this_week(3), "18:45", "20:30",
-                           location=t("Two Rivers Voices, community hall", "Chœur des Deux Rivières, salle des fêtes"), weekly=True, case="choir")),
+                           location=t("Two Rivers Voices, community hall", "Chœur des Deux Rivières, salle des fêtes"), weekly=True, project="choir")),
         ("work", event(c, "tom-lunch", t("Lunch with Tom", "Déjeuner avec Tom"), c.this_week(4), "12:30", "13:45", location="Café du Quai")),
         ("personal", event(c, "climbing", t("Climbing with Jonas", "Escalade avec Jonas"), c.this_week(5), "10:00", "12:00",
                            location=t("Bloc & Boulder gym", "Salle Bloc et Prise"))),
         ("personal", event(c, "lunch-mum", t("Lunch at Mum's", "Déjeuner chez Maman"), c.this_week(6), "12:30", "15:00", location="Villeurbanne")),
         ("work", event(c, "fernhill-pages", t("Fernhill: pages kick-off", "Fougères : lancement des pages"), c.weekday_after(8), "10:00", "11:00",
-                       location=W.library_name, organizer=W.iris, attendees=[me_w], case="fernhill")),
+                       location=W.library_name, organizer=W.iris, attendees=[me_w], project="fernhill")),
         ("personal", event(c, "hugo-birthday", t("Hugo's birthday dinner", "Dîner d'anniversaire de Hugo"), c.day(9), "19:30", "22:00", location="Saint-Étienne")),
     ]
     for calendar, text in events:
@@ -1352,7 +1352,7 @@ def write_calendars(p: Profile, mails: list[Mail]):
 
 
 def task(clock: Clock, uid: str, title: str, *, status="NEEDS-ACTION", start=None, due=None, estimate=0, kind="", categories=(),
-         case=None, parent=None, waits=(), notes="", links=(), contacts=(), office=None, completed=None, priority=0, created=None, energy="") -> str:
+         project=None, parent=None, waits=(), notes="", links=(), contacts=(), office=None, completed=None, priority=0, created=None, energy="") -> str:
     made = created or clock.at(clock.day(-12), "09:00")
     lines = ["BEGIN:VTODO", f"UID:demo-task-{uid}", f"DTSTAMP:{utc(made)}", f"CREATED:{utc(made)}", f"SUMMARY:{escape(title)}", f"STATUS:{status}"]
     if notes:
@@ -1376,8 +1376,8 @@ def task(clock: Clock, uid: str, title: str, *, status="NEEDS-ACTION", start=Non
             lines.append(f"X-SIOUL-OFFICE-HOURS:{escape(office)}")
     if energy:
         lines.append(f"X-SIOUL-ENERGY:{energy.upper()}")
-    if case:
-        lines.append(f"REFID:{case}")
+    if project:
+        lines.append(f"REFID:{project}")
     if parent:
         lines.append(f"RELATED-TO;RELTYPE=PARENT:demo-task-{parent}")
     for other in waits:
@@ -1416,19 +1416,19 @@ def write_tasks(p: Profile, mail: dict):
     tasks = [
         # Work.
         ("work-tasks", task(c, "mockup", t("Fernhill: homepage mock-up", "Fougères : maquette de la page d'accueil"), due=c.weekday_after(4), kind="make",
-                            categories=[work], case="fernhill", links=[("describedby", project_note)], contacts=["iris"],
+                            categories=[work], project="fernhill", links=[("describedby", project_note)], contacts=["iris"],
                             notes=t("Two layouts; the calm one first. Opening hours under the photo.",
                                     "Deux mises en page ; la calme d'abord. Les horaires sous la photo."))),
         ("work-tasks", task(c, "photos", t("Gather the library's photos", "Rassembler les photos de la médiathèque"), status="COMPLETED", estimate=30, kind="online",
-                            categories=[work], case="fernhill", parent="mockup", completed=c.at(c.weekday_before(-2), "17:10"), links=[("via", mid(mail["photos"]))])),
+                            categories=[work], project="fernhill", parent="mockup", completed=c.at(c.weekday_before(-2), "17:10"), links=[("via", mid(mail["photos"]))])),
         ("work-tasks", task(c, "sketch", t("Sketch two layouts for the homepage", "Esquisser deux mises en page pour l'accueil"), status="IN-PROCESS", start=c.day(0),
-                            estimate=240, kind="make", categories=[work], case="fernhill", parent="mockup", links=[("describedby", project_note)])),
-        ("work-tasks", task(c, "send-mockup", t("Send the mock-up to Iris", "Envoyer la maquette à Iris"), estimate=30, kind="write", categories=[work], case="fernhill",
+                            estimate=240, kind="make", categories=[work], project="fernhill", parent="mockup", links=[("describedby", project_note)])),
+        ("work-tasks", task(c, "send-mockup", t("Send the mock-up to Iris", "Envoyer la maquette à Iris"), estimate=30, kind="write", categories=[work], project="fernhill",
                             parent="mockup", waits=["sketch"], contacts=["iris"])),
         ("work-tasks", task(c, "hours-page", t("Fernhill: opening hours page", "Fougères : page des horaires"), estimate=90, kind="make", categories=[work],
-                            case="fernhill", waits=["mockup"], due=c.weekday_after(11), links=[("via", mid(mail["hours"]))])),
+                            project="fernhill", waits=["mockup"], due=c.weekday_after(11), links=[("via", mid(mail["hours"]))])),
         ("work-tasks", task(c, "invoice", t("Invoice Fernhill for the mock-up stage", "Facturer la médiathèque pour l'étape maquette"), estimate=15, kind="online",
-                            categories=[work], case="fernhill", waits=["send-mockup"], due=c.weekday_after(6))),
+                            categories=[work], project="fernhill", waits=["send-mockup"], due=c.weekday_after(6))),
         ("work-tasks", task(c, "quote", t("Write a quote for the Greenfield Cooperative", "Rédiger un devis pour la Coopérative des Champs Verts"), estimate=60,
                             kind="write", categories=[work], due=c.weekday_after(3), links=[("via", mid(mail["hana"]))], created=c.ago(hours=2))),
         ("work-tasks", task(c, "fair", t("Craft fair: answer Tom about the shared stand", "Salon des créateurs : répondre à Tom pour le stand"), estimate=15,
@@ -1436,7 +1436,7 @@ def write_tasks(p: Profile, mail: dict):
         ("work-tasks", task(c, "portfolio", t("Portfolio: add the poster series", "Portfolio : ajouter la série d'affiches"), estimate=90, kind="make",
                             categories=[work, "someday"])),
         ("work-tasks", task(c, "oskar", t("Thank Oskar for the photos", "Remercier Oscar pour les photos"), status="COMPLETED", estimate=5, kind="write",
-                            categories=[work], case="fernhill", completed=c.at(c.day(0), "09:20"), contacts=["oskar"])),
+                            categories=[work], project="fernhill", completed=c.at(c.day(0), "09:20"), contacts=["oskar"])),
         # Admin.
         ("home-tasks", task(c, "health-call", t("Call the health cover office about the refund", "Appeler la caisse santé pour le remboursement"), estimate=15,
                             kind="call", categories=[admin, t("health", "santé")], office="mo-fr 09:00-12:00, 14:00-16:30", contacts=["healthcover"],
@@ -1446,17 +1446,17 @@ def write_tasks(p: Profile, mail: dict):
         ("home-tasks", task(c, "passport", t("Passport: book an appointment at the town hall", "Passeport : prendre rendez-vous à la mairie"), estimate=15,
                             kind="online", categories=[admin], start=c.day(0), due=c.day(30), links=[("related", "sioul:paper/passport")])),
         ("home-tasks", task(c, "receipts", t("Gather the 2025 receipts", "Rassembler les justificatifs 2025"), estimate=45, kind="make", categories=[admin],
-                            case="taxes-2026", links=[("describedby", note_uri(W.tax_note))])),
+                            project="taxes-2026", links=[("describedby", note_uri(W.tax_note))])),
         ("home-tasks", task(c, "send-receipts", t("Send the receipts to Marc", "Envoyer les justificatifs à Marc"), estimate=10, kind="write", categories=[admin],
-                            case="taxes-2026", waits=["receipts"], due=c.day(24), contacts=["marc"], links=[("via", mid(mail["marc"]))])),
+                            project="taxes-2026", waits=["receipts"], due=c.day(24), contacts=["marc"], links=[("via", mid(mail["marc"]))])),
         ("home-tasks", task(c, "tax-check", t("Read the 2026 tax notice", "Lire l'avis d'impôt 2026"), estimate=20, kind="read", categories=[admin],
-                            case="taxes-2026", due=c.day(20), links=[("via", mid(mail["tax"]))])),
+                            project="taxes-2026", due=c.day(20), links=[("via", mid(mail["tax"]))])),
         ("home-tasks", task(c, "bike", t("Fix the bike's back light", "Réparer le feu arrière du vélo"), estimate=20, kind="make", categories=[admin])),
         ("home-tasks", task(c, "bus-pass", t("Renew the bus pass", "Renouveler l'abonnement de bus"), status="COMPLETED", estimate=10, kind="online",
                             categories=[admin], completed=c.at(c.day(-3), "18:30"))),
         # Leisure.
         ("home-tasks", task(c, "alto", t("Learn the alto part of the Ave verum", "Apprendre la partie d'alto de l'Ave verum"), estimate=30, kind="make",
-                            categories=[t("leisure", "loisirs"), "joy"], case="choir", links=[("via", mid(mail["choir"]))])),
+                            categories=[t("leisure", "loisirs"), "joy"], project="choir", links=[("via", mid(mail["choir"]))])),
         ("home-tasks", task(c, "gift", t("Find a birthday present for Hugo", "Trouver un cadeau d'anniversaire pour Hugo"), estimate=30, kind="out",
                             categories=[t("family", "famille")], due=c.day(8), contacts=["hugo"])),
         ("home-tasks", task(c, "gym", t("Book the climbing gym for Saturday", "Réserver la salle d'escalade pour samedi"), estimate=5, kind="online",
@@ -1735,10 +1735,10 @@ Illustrateur, Atelier L'Encrier. Déjeuner presque tous les vendredis. Voir [[Sa
     for path, (moment, content) in notes.items():
         p.write(n / path, content, moment)
 
-    # Projects and cases.
-    p.write(n / "sioul-cases.toml", f"""# Projects and cases (docs/case-store.md, docs/projects.md).
+    # Projects.
+    p.write(n / "sioul-projects.toml", f"""# Projects (docs/notes-folder.md, docs/projects.md).
 
-[[case]]
+[[project]]
 id = "fernhill"
 title = {toml_string(W.project_title)}
 kind = "project"
@@ -1747,29 +1747,29 @@ rate = 55.0
 budget = "work"
 status = "open"
 files = {toml_list([W.project_note, W.meeting_note])}
-[[case.route]]
+[[project.route]]
 from_domains = ["{W.library}"]
-[[case.route]]
+[[project.route]]
 from_addresses = ["notifications@forge.example.com"]
 subject_contains = ["{W.repository}"]
 
-[[case]]
+[[project]]
 id = "taxes-2026"
 title = {toml_string(t("Income tax 2026", "Impôt sur le revenu 2026"))}
 status = "waiting"
 files = {toml_list([W.tax_note])}
-[[case.route]]
+[[project.route]]
 from_domains = ["{W.tax}"]
-[[case.route]]
+[[project.route]]
 from_domains = ["{W.accounts}"]
 
-[[case]]
+[[project]]
 id = "choir"
 title = {toml_string(t("Winter concert", "Concert d'hiver"))}
 area = "personal"
 status = "open"
 files = {toml_list([W.choir_note])}
-[[case.route]]
+[[project.route]]
 from_domains = ["{W.choir}"]
 """)
 
@@ -1856,7 +1856,7 @@ budget = "work"
 date = {paid_sep}
 amount = 990
 label = {toml_string(t("Invoice 2026-014, Fernhill Library", "Facture 2026-014, Médiathèque des Fougères"))}
-links = ["sioul:invoice/2026-014", "sioul:case/fernhill"]
+links = ["sioul:invoice/2026-014", "sioul:project/fernhill"]
 
 [[line]]
 budget = "work"
@@ -1871,7 +1871,7 @@ date = {first.replace(day=22)}
 amount = 660
 label = {toml_string(t("Invoice 2026-015, Fernhill Library (mock-up), expected", "Facture 2026-015, Médiathèque des Fougères (maquette), attendue"))}
 planned = true
-links = ["sioul:case/fernhill"]
+links = ["sioul:project/fernhill"]
 
 # Mail that becomes a line: proposed on the Budgets page.
 [[mail_rule]]
@@ -2547,6 +2547,21 @@ def prepare(root: Path):
     (root / MARK).write_text("A demo profile made by tools/demo/make-demo.py; it may be emptied and made again.\n")
 
 
+def as_written_before(p: Profile):
+    """The projects' file as a Sioul from before projects had one name wrote it
+    (docs/notes-folder.md, "Its first name"): sioul-cases.toml, its entries
+    [[case]], and projects' addresses as sioul:case/ in the budgets' lines."""
+    new, old = p.notes / "sioul-projects.toml", p.notes / "sioul-cases.toml"
+    text = new.read_text(encoding="utf-8").replace("[[project.route]]", "[[case.route]]").replace("[[project]]", "[[case]]")
+    moment = datetime.fromtimestamp(new.stat().st_mtime).astimezone()
+    new.unlink()
+    p.write(old, text, moment)
+    ledger = p.notes / "sioul-budgets.toml"
+    if ledger.exists():
+        moment = datetime.fromtimestamp(ledger.stat().st_mtime).astimezone()
+        p.write(ledger, ledger.read_text(encoding="utf-8").replace("sioul:project/", "sioul:case/"), moment)
+
+
 def main():
     global LANG, W
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -2565,6 +2580,8 @@ def main():
                         help="texts: the texts a phone read and those written here for it, as the part Texts brings them (SIOUL_DEMO_TEXTS=1 too)")
     parser.add_argument("--compose", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_COMPOSE")),
                         help="a message to answer on a phone's width: a long subject, replies to two addresses, a copy to a third (SIOUL_DEMO_COMPOSE=1 too)")
+    parser.add_argument("--old-projects", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_OLD_PROJECTS")),
+                        help="the projects' file under its first name, sioul-cases.toml with [[case]], and the budgets' ties as sioul:case/: Settings offers to rename it (SIOUL_DEMO_OLD_PROJECTS=1 too)")
     args = parser.parse_args()
     LANG = args.language
     W = World()
@@ -2590,6 +2607,8 @@ def main():
         write_texts(profile)
     write_calendars(profile, mails)
     write_notes(profile, mails)
+    if args.old_projects:
+        as_written_before(profile)
     sessions = write_time(profile)
     write_invoices(profile, sessions)
     write_health(profile)

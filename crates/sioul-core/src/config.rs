@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! The configuration file: accounts, admin windows, the case store.
+//! The configuration file: accounts, admin windows, the notes folder.
 //!
 //! Default location: `$XDG_CONFIG_HOME/sioul/config.toml`, else
 //! `~/.config/sioul/config.toml`. Passwords never go in it: they belong in the
@@ -33,9 +33,12 @@ pub struct Config {
     /// colour: loud colours on sites softened: "little", "more"; off if unset.
     #[serde(default)]
     pub calmer_colours: Option<String>,
-    /// The folder of Markdown files that holds the record of each case.
-    pub case_store: Option<String>,
-    /// Projects, budgets and the bank's movements (`sioul-cases.toml`,
+    /// The notes folder: your Markdown files, with beside them your projects,
+    /// budgets and papers. Its key in the file, `case_store`, is its first
+    /// name, kept so that every configuration reads as before.
+    #[serde(rename = "case_store")]
+    pub notes_root: Option<String>,
+    /// Projects, budgets and the bank's movements (`sioul-projects.toml`,
     /// `sioul-budgets.toml`, `sioul-bank.toml`) travel sealed with the sharing
     /// between your devices, for a notes folder no sync carries; else they
     /// travel with that folder (docs/database.md).
@@ -52,7 +55,7 @@ pub struct Config {
     /// Minutes between two fetches of the folders a server does not push (IDLE keeps the inbox current).
     #[serde(default)]
     pub fetch_minutes: Option<u32>,
-    /// Where new notes go in the case store.
+    /// Where new notes go in the notes folder.
     #[serde(default)]
     pub notes_folder: Option<String>,
     /// Words that make a sender automatic, its mail filed: "no-reply",
@@ -472,7 +475,7 @@ pub fn change_kind(path: &Path, config: &Config, from: &str, to: &str) -> Result
             return Ok(());
         }
         let taken: Vec<String> = kinds.iter().map(|k| k.id.clone()).collect();
-        kinds.push(TaskKind { id: crate::cases::new_id(to, &taken), label: to.to_string() });
+        kinds.push(TaskKind { id: crate::projects::new_id(to, &taken), label: to.to_string() });
     } else if to.is_empty() {
         kinds.retain(|k| k.id != from);
     } else {
@@ -531,7 +534,7 @@ pub struct ContactSettings {
 /// Paper letters (docs/porch.md): the folder their scans arrive in.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct LetterSettings {
-    /// Unset: `letters/inbox` in the case store.
+    /// Unset: `letters/inbox` in the notes folder.
     #[serde(default)]
     pub inbox: Option<String>,
 }
@@ -634,7 +637,7 @@ pub struct McpSettings {
     /// Things in no project (the Porch's other mail, tasks of no project,
     /// general notes, the agenda, contacts, the phone's messages, papers):
     /// open to agents unless set to false. Projects are each opened on their
-    /// own (`ai = true` in `sioul-cases.toml`, `consent`).
+    /// own (`ai = true` in `sioul-projects.toml`, `consent`).
     #[serde(default = "yes")]
     pub outside_projects: bool,
     /// Your texts (SMS and MMS, docs/texts.md): read and searched, a draft
@@ -1040,10 +1043,10 @@ impl Config {
         history_days(self.history_weeks)
     }
 
-    /// The case store's folder, with `~` expanded. On Android, unset: a folder
+    /// The notes folder, with `~` expanded. On Android, unset: a folder
     /// of the app's own storage, which no other app, nor any sync, reads.
-    pub fn case_store_path(&self) -> Option<PathBuf> {
-        self.case_store.as_deref().map(expand_home).or_else(|| cfg!(target_os = "android").then(|| expand_home("~/Notes")))
+    pub fn notes_root_path(&self) -> Option<PathBuf> {
+        self.notes_root.as_deref().map(expand_home).or_else(|| cfg!(target_os = "android").then(|| expand_home("~/Notes")))
     }
 
     /// The known senders' file: `known_senders`, else `known-senders.txt` next to the configuration.
@@ -1444,7 +1447,7 @@ pub enum SettingValue {
     Texts(Vec<String>),
     Windows(Vec<WindowValue>),
     TimeOff(Vec<TimeOffValue>),
-    Routes(Vec<crate::cases::RouteValue>),
+    Routes(Vec<crate::projects::RouteValue>),
     /// Names with their ids: kinds of task, categories. Shown, never read back.
     Named(Vec<NamedValue>),
     /// One name changed: renamed (`from`, `to`), taken away (`to` empty), added (`from` empty).
@@ -1990,7 +1993,7 @@ mod tests {
         let config = Config::load(&path).unwrap();
         assert_eq!((config.reading.spacing, config.accounts[0].shield), (1.6, true));
         assert!(std::fs::read_to_string(&path).unwrap().contains("some_days = [30, 30, 30, 30, 30, 0, 0]"));
-        assert_eq!((config.windows.len(), config.case_store.as_deref(), config.reading.size), (2, Some("~/Notes"), 16));
+        assert_eq!((config.windows.len(), config.notes_root.as_deref(), config.reading.size), (2, Some("~/Notes"), 16));
         assert!(std::fs::read_to_string(&path).unwrap().starts_with("# Mine."));
         // The last day off, the last hours taken away: the window's JSON `[]` reads as numbers.
         let empty: SettingValue = serde_json::from_str("[]").unwrap();

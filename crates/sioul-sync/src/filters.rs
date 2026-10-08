@@ -129,7 +129,7 @@ pub fn jobs(config: &Config, account: &Account, files: &[PathBuf]) -> Vec<Job> {
         return Vec::new();
     }
     let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
-    let store = config.case_store_path().and_then(|root| sioul_core::cases::CaseStore::load(&root).ok()).map(|s| s.with_ties(&ties));
+    let store = config.notes_root_path().and_then(|root| sioul_core::projects::ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties));
     let known = sioul_core::porch::KnownSenders::load(&config.known_senders_path());
     let senders = sioul_core::porch::Senders::load(config);
     let now = jiff::Timestamp::now().as_second();

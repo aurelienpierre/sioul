@@ -10,7 +10,7 @@ Money arrives and leaves by mail: invoices, receipts, payment notifications, pay
 - **What each is for** (docs/areas.md): work, your admin, leisure, any of them together; it says the hours a budget is in view. Unsaid: your admin. The older word `area = "personal"` still reads as leisure.
 - **A period and a target.** The period is a month or a year. The target is the balance to reach by the end of each period: 0 is breaking even, a positive target is saving.
 - **The balance carries over**, as an envelope keeps what was not spent. Money set aside in October for a bill due in December is still there in December, and no reserve is drawn twice for it. `since` sets the day a budget's balance starts from; without it, the budget starts with the current period.
-- **Lines**: credits in, debits out, each with a date and a label. Each can be linked to what it belongs with: the message it came from (a `mid:` URI), a task, an event, a Markdown file, a case. Budgets can be linked the same way.
+- **Lines**: credits in, debits out, each with a date and a label. Each can be linked to what it belongs with: the message it came from (a `mid:` URI), a task, an event, a Markdown file, a project. Budgets can be linked the same way.
 
 ## Made, changed, taken out, in the window
 - **A budget**: "New budget" on the budgets page, "Edit" on its page: its name, month or year, the balance to reach, what it is for. Taking one out keeps its lines in the file, as written; they no longer count.
@@ -23,7 +23,7 @@ Money arrives and leaves by mail: invoices, receipts, payment notifications, pay
   - **What a message says about money is read first** (`crates/sioul-core/src/payments.rs`), in French and English: a payment received, a payment made, a merchant's order, a bill, a refund. Newsletters, activity reports, mandates and shipping notices are not payments; mail set aside (forged, spam, a borrowed brand name, a blocked sender) is never read.
   - **The amount** is the one the message states: the only amount of the subject ("SHOP: 23,98 € EUR"), else the one after the sentence that states the payment ("Vous avez payé 387,00 € à…"), else the total's line, else the last amount above zero, the way receipts end with what was paid. A discount is negative; a share capital in the legal footer is never read.
   - **Who was paid, or who paid**, comes from the same sentence, else from a receipt's label ("Paiement à", then the name), else it is the sender.
-  - **Rules** on the sender's address or domain, and on words, as for cases ([case-store.md](case-store.md)): each condition listed must hold. A rule gives the budget, the direction, and the preset the message stands for (`preset`).
+  - **Rules** on the sender's address or domain, and on words, as for a project's routes ([notes-folder.md](notes-folder.md#routes)): each condition listed must hold. A rule gives the budget, the direction, and the preset the message stands for (`preset`).
   - **One payment told twice counts once**: a merchant's order confirmation and the processor's payment for it (same amount, three days apart at most), a bill and the message saying it was settled (same sender), one message received at two addresses.
   - **Lines are proposed**: in the window's budgets page, "Add" writes the line into the budget file, with the message in its `links`, and a comment saying where it came from; "Not a payment" leaves the message out for good. From someone new and not verified, a line says to check it first.
   - **Amounts in another currency** are flagged for conversion.
@@ -124,7 +124,7 @@ budget = "leisure"
 
 ## The bank
 Arrears that build up in silence are how it goes wrong: a debit stops, nothing says so, and nobody looks when accounts go badly (Olafsson & Pagel 2017); a payment reminder that ignores the balance can push an account into overdraft (Medina 2021). So Sioul reads your bank's own movements and holds them against your budgets' recurring payments. Code: `crates/sioul-core/src/bank.rs`, `crates/sioul-app/src/bank.rs`, `qml/BankSection.qml`.
-- **Taken in**: Budgets ▸ The bank ▸ "Take in an export…": the file your bank gives (OFX or QFX, ISO 20022 camt.053, or its CSV: the header found by its words, `;` or `,`, decimal commas, debit and credit apart or not, the balance written above the table as some banks do). Movements are kept by the bank's own id (or one made from the day, the amount and the label), so an export read twice adds nothing; the newest balance is kept. `sioul-bank.toml` at the root of the case store; nothing is sent anywhere, except sealed to your other devices when they share projects and budgets (docs/database.md).
+- **Taken in**: Budgets ▸ The bank ▸ "Take in an export…": the file your bank gives (OFX or QFX, ISO 20022 camt.053, or its CSV: the header found by its words, `;` or `,`, decimal commas, debit and credit apart or not, the balance written above the table as some banks do). Movements are kept by the bank's own id (or one made from the day, the amount and the label), so an export read twice adds nothing; the newest balance is kept. `sioul-bank.toml` at the root of the notes folder; nothing is sent anywhere, except sealed to your other devices when they share projects and budgets (docs/database.md).
 - **What it says**, in sentences, never in red:
   - *missed*: a recurring payment (or wages) expected around a day, inside what the exports cover, with no movement within three days before and seven after that names it or has its amount: "Free Mobile (€19.99) has not left the account. Expected around 12 September…";
   - *changed*: one that passed with another amount (more than 5 % and €2 apart): "EDF took €58.30 on 5 September, where €52 was expected";
@@ -137,7 +137,7 @@ Arrears that build up in silence are how it goes wrong: a debit stops, nothing s
 
 ## Contracts and subscriptions
 What you are bound to (rent, energy, phone and internet, insurances, health cover, subscriptions, hosting, the bank), each with when it renews, the notice it needs, how to stop it and what it covers. Forgotten subscriptions are part of what people with ADHD call the "ADHD tax"; knowing what an insurance covers matters before a legal step. Code: `crates/sioul-core/src/contracts.rs`, `crates/sioul-app/src/contracts.rs`, `qml/ContractsSection.qml`, `qml/ContractDialog.qml`.
-- **Where**: `sioul-contracts.toml` at the root of the case store, beside the budgets; shown on the Budgets page under "Contracts and subscriptions".
+- **Where**: `sioul-contracts.toml` at the root of the notes folder, beside the budgets; shown on the Budgets page under "Contracts and subscriptions".
 - **Found, not typed**: the recurring payments out with no contract yet are listed below the contracts, with "Note it" (the kind guessed from the payment's name, with the contracts' word lists of [the words Sioul looks for](words.md): "Loyer" a rent, "EDF" energy, "Free Mobile" a phone line, "MAIF" an insurance, "Abonnement mensuel" a subscription); a mail becomes one with "Keep as a contract…" in the reader's menu (its subject, its sender, the kind they suggest). Bank lines will propose the debits that no preset names yet.
 - **Where it stands**, in a sentence: "Renews on Tuesday 1 December; to stop it, the notice must leave by 2 October", "…the notice for this renewal can no longer leave in time", "No renewal date; it can be stopped at any time". A renewal moves on by its term (each month, each year) from the date written.
 - **The notice proposed** is the one usually asked for its kind, said with its rule in the form (France): three months for a tenant (one in a furnished flat or a tight area), one month for insurances and health covers after their first year (loi Hamon; health covers since December 2020), at most ten days for phone and internet after twelve months, none for energy (art. L224-13 of the consumer code). Yours is what your contract says.
@@ -149,7 +149,7 @@ What you are bound to (rent, energy, phone and internet, insurances, health cove
 Invoice numbers must never repeat. With sharing on, one device numbers them (`sioul_sync::lease`, "staying put"): the first that made invoices keeps them; another says "Invoices are numbered on <computer>" and offers "Make invoices on this device", which takes them over once the others had time to know (a minute and a half). A device whose sharing folder cannot be written, or whose other devices went silent for a few minutes, waits rather than risk a number twice.
 
 ## Storage
-- **The budget file**, `sioul-budgets.toml`, sits at the root of the case store: readable, written by hand or by Sioul, versioned with git. It holds the budgets, presets, lines, reserves, covers and mail rules, and the bank accounts, their rules (`[[split]]`) and your choices for single movements (`[[assign]]`).
+- **The budget file**, `sioul-budgets.toml`, sits at the root of the notes folder: readable, written by hand or by Sioul, versioned with git. It holds the budgets, presets, lines, reserves, covers and mail rules, and the bank accounts, their rules (`[[split]]`) and your choices for single movements (`[[assign]]`).
 - **The bank's movements**, `sioul-bank.toml`, beside it: every account's, by the bank's own id, and the newest balance of each.
 - **Lines accepted from mail** go into it, at the end, each with a comment saying which message it came from and when it was added, and the message's `mid:` in its `links`, so it is never proposed twice.
 - **Messages you said are not payments** are remembered in `~/.local/state/sioul/money.toml`.
@@ -165,4 +165,4 @@ Invoice numbers must never repeat. With sharing on, one device numbers them (`si
 - **Simulations**: how many days of work a budget takes.
 
 ## Privacy
-Everything is local. An AI sees money only for a case you opened to it ([ai.md](ai.md)).
+Everything is local. An AI sees money only for a project you opened to it ([ai.md](ai.md)).

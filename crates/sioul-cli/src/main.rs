@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! `sioul`: the Porch, cases, admin windows, budgets and mail accounts, from the terminal.
+//! `sioul`: the Porch, projects, admin windows, budgets and mail accounts, from the terminal.
 //!
 //! The terminal is the first interface because agents and scripts use it too;
 //! the Qt interface comes on top of the same core (docs/roadmap.md). Every
@@ -54,7 +54,7 @@ mod tasks;
 use clap::{Parser, Subcommand};
 use jiff::{Timestamp, Zoned, tz::TimeZone};
 use sioul_core::budget::{self, Ledger};
-use sioul_core::cases::CaseStore;
+use sioul_core::projects::ProjectStore;
 use sioul_core::config::{self, Config, Source};
 use sioul_core::i18n::{self, Translator};
 use sioul_core::porch::{self, Context, KnownSenders, Lane, SenderList, Triaged};
@@ -65,7 +65,7 @@ use std::process::ExitCode;
 
 #[derive(Parser)]
 // `sioul --version`: the version and the commit it was built from (docs/building.md, "Which build").
-#[command(name = "sioul", version = sioul_core::build::DESCRIBED, about = "Calm admin: the Porch, cases and admin windows.")]
+#[command(name = "sioul", version = sioul_core::build::DESCRIBED, about = "Calm admin: the Porch, projects and admin windows.")]
 struct Cli {
     /// Configuration file (default: ~/.config/sioul/config.toml).
     #[arg(long, global = true)]
@@ -95,9 +95,10 @@ enum Command {
     Done,
     /// One message: its card, its lane and the reasons (a developer's view).
     Card { file: PathBuf },
-    /// The cases of the case store, and the files they name.
-    Cases {
-        /// The case store (default: case_store in the configuration).
+    /// The projects of the notes folder, and the files they name.
+    #[command(alias = "cases")]
+    Projects {
+        /// The notes folder (default: case_store in the configuration).
         #[arg(long)]
         store: Option<PathBuf>,
     },
@@ -105,7 +106,7 @@ enum Command {
     Window,
     /// Budgets and reserves at a glance, and the lines mail proposes.
     Budgets {
-        /// The budget file (default: sioul-budgets.toml at the root of the case store).
+        /// The budget file (default: sioul-budgets.toml at the root of the notes folder).
         #[arg(long)]
         file: Option<PathBuf>,
         /// Read mail about money in this Maildir or folder of .eml files, instead of the accounts'.
@@ -176,7 +177,7 @@ enum Command {
     Focus(tasks::FocusCommand),
     /// What a thing is tied to, both ways: `sioul:task/<UID>`, `mid:<Message-ID>`, `sioul:note/<path>`…
     Links { uri: String },
-    /// Notes of the case store: those matching, or one with --path.
+    /// Notes of the notes folder: those matching, or one with --path.
     Notes {
         query: Vec<String>,
         #[arg(long)]
@@ -339,7 +340,7 @@ fn main() -> ExitCode {
         Command::Porch { maildir, open, all } => porch_command(&session, &maildir, open, all),
         Command::Done => done_command(&session),
         Command::Card { file } => card_command(&session, &file),
-        Command::Cases { store } => cases_command(&session, store),
+        Command::Projects { store } => projects_command(&session, store),
         Command::Window => window_command(&session),
         Command::Budgets { file, maildir } => budgets_command(&session, file, &maildir),
         Command::Account(command) => accounts::run(&session, command),
@@ -397,11 +398,11 @@ fn sources(config: &Config, maildirs: &[PathBuf]) -> Vec<Source> {
     maildirs.iter().map(|m| Source { account: None, address: None, folder: m.clone(), trusted_ids: ids.clone(), priority: Default::default(), shielded: false, words: sioul_core::words::Words::of(config), spam: Some(sioul_core::spam::Filter::of(config)) }).collect()
 }
 
-pub(crate) fn load_store(config: &Config) -> Option<CaseStore> {
-    let root = config.case_store_path()?;
-    // With the mail tied to cases, so their conversations follow.
+pub(crate) fn load_store(config: &Config) -> Option<ProjectStore> {
+    let root = config.notes_root_path()?;
+    // With the mail tied to projects, so their conversations follow.
     let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
-    CaseStore::load(&root).map_err(|e| eprintln!("{}", plain_lines(&e))).ok().map(|s| s.with_ties(&ties))
+    ProjectStore::load(&root).map_err(|e| eprintln!("{}", plain_lines(&e))).ok().map(|s| s.with_ties(&ties))
 }
 
 fn porch_command(s: &Session, maildirs: &[PathBuf], open: bool, all: bool) -> Result<(), String> {
@@ -497,10 +498,10 @@ fn print_closed_porch(s: &Session, now: &Zoned) {
     println!("{}", s.tr.text("porch-open-hint", None));
 }
 
-fn print_open_porch(s: &Session, triaged: &[Triaged], store: Option<&CaseStore>) {
+fn print_open_porch(s: &Session, triaged: &[Triaged], store: Option<&ProjectStore>) {
     println!("{}\n", plain_lines(&s.tr.summary(&porch::summarise(triaged), store)));
-    for case in store.map_or(&[][..], |st| &st.cases[..]) {
-        print_lane(s, &case.title, triaged, &Lane::Case(case.id.clone()), false, store);
+    for project in store.map_or(&[][..], |st| &st.projects[..]) {
+        print_lane(s, &project.title, triaged, &Lane::Project(project.id.clone()), false, store);
     }
     print_lane(s, &s.tr.text("lane-people", None), triaged, &Lane::People, false, store);
     print_lane(s, &s.tr.text("lane-screener", None), triaged, &Lane::Screener, true, store);
@@ -510,7 +511,7 @@ fn print_open_porch(s: &Session, triaged: &[Triaged], store: Option<&CaseStore>)
     print_lane(s, &s.tr.text("lane-set-aside", None), triaged, &Lane::SetAside, true, store);
 }
 
-fn print_lane(s: &Session, title: &str, triaged: &[Triaged], lane: &Lane, with_reason: bool, store: Option<&CaseStore>) {
+fn print_lane(s: &Session, title: &str, triaged: &[Triaged], lane: &Lane, with_reason: bool, store: Option<&ProjectStore>) {
     let items: Vec<&Triaged> = triaged.iter().filter(|t| &t.lane == lane).collect();
     if items.is_empty() {
         return;
@@ -541,7 +542,7 @@ fn card_command(s: &Session, file: &Path) -> Result<(), String> {
     // Sioul's own spam filter, as the Porch asks it.
     let filter = sioul_core::spam::Filter::of(&s.config);
     let words = sioul_core::words::Words::of(&s.config);
-    let ctx = Context { cases: store.as_ref(), known: &known, senders: &senders, trusted_ids: &ids, now: Some(Timestamp::now().as_second()), priority: Default::default(), own_domains: &own, shielded: false, assessments: None, words: Some(&words), own_addresses: &own_addresses, spam: Some(&filter) };
+    let ctx = Context { projects: store.as_ref(), known: &known, senders: &senders, trusted_ids: &ids, now: Some(Timestamp::now().as_second()), priority: Default::default(), own_domains: &own, shielded: false, assessments: None, words: Some(&words), own_addresses: &own_addresses, spam: Some(&filter) };
     let t = porch::triage(card, &ctx);
     println!("From      {} <{}>", one_line(t.card.sender()), one_line(t.card.from_address.as_deref().unwrap_or("?")));
     println!("Subject   {}", one_line(&t.card.subject));
@@ -569,15 +570,15 @@ fn card_command(s: &Session, file: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn cases_command(s: &Session, store: Option<PathBuf>) -> Result<(), String> {
-    let root = store.or_else(|| s.config.case_store_path()).ok_or_else(|| s.tr.text("error-no-store", None))?;
-    let store = CaseStore::load(&root)?;
+fn projects_command(s: &Session, store: Option<PathBuf>) -> Result<(), String> {
+    let root = store.or_else(|| s.config.notes_root_path()).ok_or_else(|| s.tr.text("error-no-store", None))?;
+    let store = ProjectStore::load(&root)?;
     let missing = store.missing_files();
-    for case in &store.cases {
-        let status = case.status.as_deref().map_or(String::new(), |st| format!(" [{}]", one_line(st)));
-        println!("{} · {}{status}", one_line(&case.id), one_line(&case.title));
-        for file in &case.files {
-            let gone = missing.iter().any(|(id, f)| id == &case.id && f == file);
+    for project in &store.projects {
+        let status = project.status.as_deref().map_or(String::new(), |st| format!(" [{}]", one_line(st)));
+        println!("{} · {}{status}", one_line(&project.id), one_line(&project.title));
+        for file in &project.files {
+            let gone = missing.iter().any(|(id, f)| id == &project.id && f == file);
             println!("    {}{}", one_line(file), if gone { "  (?)" } else { "" });
         }
     }
@@ -607,7 +608,7 @@ fn window_command(s: &Session) -> Result<(), String> {
 
 fn budgets_command(s: &Session, file: Option<PathBuf>, maildirs: &[PathBuf]) -> Result<(), String> {
     let path = file
-        .or_else(|| s.config.case_store_path().map(|root| root.join(budget::LEDGER)))
+        .or_else(|| s.config.notes_root_path().map(|root| root.join(budget::LEDGER)))
         .ok_or_else(|| s.tr.text("error-no-ledger", None))?;
     let ledger = Ledger::load_file(&path)?;
     // With the bank accounts' movements, read from the exports beside the file.

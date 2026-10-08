@@ -19,7 +19,7 @@
 //! happened so far, and what is known to come before the end of the period
 //! (presets and planned lines) are compared with the target (docs/accounting.md).
 
-use crate::cases::Route;
+use crate::projects::Route;
 use crate::money::{Amount, Money};
 use crate::payments::{self, Payment, PaymentKind};
 use crate::porch::{Lane, Triaged};
@@ -32,7 +32,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 
-/// The file's name, at the root of the case store.
+/// The file's name, at the root of the notes folder.
 pub const LEDGER: &str = "sioul-budgets.toml";
 
 /// TOML writes dates bare (`2026-10-01`) and jiff reads them as text: both are accepted.
@@ -97,7 +97,7 @@ pub struct Budget {
     /// the budget starts with the current period.
     #[serde(default, deserialize_with = "dates::optional")]
     pub since: Option<Date>,
-    /// Cases, notes, tasks this budget belongs with.
+    /// Projects, notes, tasks this budget belongs with.
     #[serde(default)]
     pub links: Vec<String>,
     /// "personal" for leisure money: it stays in view in quiet time.
@@ -318,7 +318,7 @@ pub enum Direction {
 pub struct MailRule {
     pub budget: String,
     pub direction: Direction,
-    /// Which messages: the same conditions as a case's routes (docs/case-store.md).
+    /// Which messages: the same conditions as a project's routes (docs/notes-folder.md).
     #[serde(flatten)]
     pub route: Route,
     /// A fixed amount; else the amount the message states.
@@ -415,7 +415,7 @@ pub struct ReserveStatus {
 }
 
 impl Ledger {
-    /// Reads `sioul-budgets.toml` at the root of a case store.
+    /// Reads `sioul-budgets.toml` at the root of a notes folder.
     pub fn load(root: &Path) -> Result<Ledger, String> {
         Ledger::load_file(&root.join(LEDGER))
     }
@@ -830,7 +830,7 @@ pub fn save_budget(path: &Path, id: &str, edit: &BudgetEdit) -> Result<String, S
     let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
     let budgets = doc.entry("budget").or_insert(Item::ArrayOfTables(ArrayOfTables::new())).as_array_of_tables_mut().ok_or_else(|| fail("`budget` is not a list of tables".into()))?;
     let taken: Vec<String> = budgets.iter().filter_map(|t| t.get("id").and_then(Item::as_str).map(str::to_string)).collect();
-    let id = if id.is_empty() { crate::cases::new_id(title, &taken) } else { id.to_string() };
+    let id = if id.is_empty() { crate::projects::new_id(title, &taken) } else { id.to_string() };
     if !budgets.iter().any(|t| t.get("id").and_then(Item::as_str) == Some(id.as_str())) {
         let mut table = Table::new();
         table["id"] = value(id.as_str());
@@ -1434,7 +1434,7 @@ mod tests {
         use crate::porch::{self, Context, KnownSenders};
         let raw = format!("From: {from}\r\nSubject: {subject}\r\nDate: {date}\r\nMessage-ID: <{id}>\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n{body}\r\n");
         let known = KnownSenders::default();
-        porch::triage(crate::card::Card::from_bytes(raw.as_bytes()).unwrap(), &Context { cases: None, known: &known, senders: &crate::porch::Senders::default(), trusted_ids: &[], now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None })
+        porch::triage(crate::card::Card::from_bytes(raw.as_bytes()).unwrap(), &Context { projects: None, known: &known, senders: &crate::porch::Senders::default(), trusted_ids: &[], now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None })
     }
 
     const PAY: &str = "Pay Exemple <service@pay.example>";

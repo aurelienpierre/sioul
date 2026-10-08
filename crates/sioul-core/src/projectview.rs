@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! A project, or a case, on one page: everything dated in it on one line of
+//! A project on one page: everything dated in it on one line of
 //! time (tasks asked and done, events, mail, notes changed, time noted,
 //! invoices), what is coming first, then what happened, newest first. Mail
-//! belongs to it by its routes or by a link; the rest by its case (REFID) or
+//! belongs to it by its routes or by a link; the rest by its project (REFID) or
 //! a link.
 
-use crate::cases::Case;
+use crate::projects::Project;
 use crate::i18n::Translator;
 use crate::invoice::Invoice;
 use crate::links::{self, Kind, Loaded};
@@ -50,14 +50,15 @@ pub struct InvoiceRow {
 pub struct ProjectView {
     pub id: String,
     pub title: String,
-    pub is_project: bool,
+    /// Work for a client, its time billable (`Project::is_for_client`).
+    pub for_client: bool,
     pub status: String,
     pub client: String,
     pub rate: f64,
     pub budget: String,
     /// "personal": it stays in view in quiet time.
     pub area: String,
-    /// Open to AI agents (`cases::Case::ai`).
+    /// Open to AI agents (`Project::ai`).
     pub ai: bool,
     pub open_tasks: usize,
     pub done_tasks: usize,
@@ -69,46 +70,47 @@ pub struct ProjectView {
     pub invoices: Vec<InvoiceRow>,
 }
 
-/// Every case and project, for the list: open ones first, projects first.
+/// Every project, for the list: open ones first, those for a client first.
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectRow {
     pub id: String,
     pub title: String,
-    pub is_project: bool,
+    /// Work for a client, its time billable.
+    pub for_client: bool,
     pub status: String,
     pub client: String,
     pub open_tasks: usize,
     pub unbilled: String,
     /// Yours outside work: listed in quiet time too.
     pub personal: bool,
-    /// Open to AI agents (`cases::Case::ai`).
+    /// Open to AI agents (`Project::ai`).
     pub ai: bool,
 }
 
-pub fn rows(loaded: &Loaded, entries: &[Entry], cases: &[Case]) -> Vec<ProjectRow> {
-    let mut out: Vec<ProjectRow> = cases
+pub fn rows(loaded: &Loaded, entries: &[Entry], projects: &[Project]) -> Vec<ProjectRow> {
+    let mut out: Vec<ProjectRow> = projects
         .iter()
         .map(|c| {
             let unbilled: u32 = entries.iter().filter(|e| e.project == c.id && e.billable && e.invoice.is_empty()).map(|e| e.minutes).sum();
             ProjectRow {
                 id: c.id.clone(),
                 title: c.title.clone(),
-                is_project: c.is_project(),
+                for_client: c.is_for_client(),
                 status: c.status.clone().unwrap_or_default(),
                 client: c.client.clone().unwrap_or_default(),
-                open_tasks: loaded.tasks.iter().filter(|t| t.status.is_open() && t.cases.iter().any(|x| x == &c.id)).count(),
+                open_tasks: loaded.tasks.iter().filter(|t| t.status.is_open() && t.projects.iter().any(|x| x == &c.id)).count(),
                 unbilled: if unbilled > 0 { duration(unbilled) } else { String::new() },
                 personal: c.area.as_deref() == Some("personal"),
                 ai: c.ai,
             }
         })
         .collect();
-    out.sort_by_key(|r| (r.status == "closed", !r.is_project, r.title.to_lowercase()));
+    out.sort_by_key(|r| (r.status == "closed", !r.for_client, r.title.to_lowercase()));
     out
 }
 
 /// One project's page, `now` in Unix seconds.
-pub fn view(loaded: &Loaded, case: &Case, entries: &[Entry], invoices: &[Invoice], default_rate: f64, now: i64, tr: &Translator) -> ProjectView {
+pub fn view(loaded: &Loaded, project: &Project, entries: &[Entry], invoices: &[Invoice], default_rate: f64, now: i64, tr: &Translator) -> ProjectView {
     let zone = TimeZone::system();
     let words = |when: i64| Timestamp::from_second(when).map(|t| tr.day(t.to_zoned(zone.clone()).date())).unwrap_or_default();
     let mut moments: Vec<Moment> = Vec::new();
@@ -117,14 +119,14 @@ pub fn view(loaded: &Loaded, case: &Case, entries: &[Entry], invoices: &[Invoice
             moments.push(Moment { when, date: words(when), kind: kind.into(), title, detail, uri, key, coming: when > now });
         }
     };
-    let me = links::case_uri(&case.id);
+    let me = links::project_uri(&project.id);
     let world = loaded.world();
     let tied: Vec<links::Related> = world.related(&me);
-    let in_case = |uri: &str| tied.iter().any(|r| r.uri == uri);
+    let in_project = |uri: &str| tied.iter().any(|r| r.uri == uri);
     // Tasks: when asked, when done.
     let (mut open, mut done) = (0, 0);
     for task in &loaded.tasks {
-        if !task.cases.iter().any(|c| c == &case.id) && !in_case(&links::task_uri(&task.uid)) {
+        if !task.projects.iter().any(|c| c == &project.id) && !in_project(&links::task_uri(&task.uid)) {
             continue;
         }
         let uri = links::task_uri(&task.uid);
@@ -143,14 +145,14 @@ pub fn view(loaded: &Loaded, case: &Case, entries: &[Entry], invoices: &[Invoice
         }
     }
     // Events.
-    for event in loaded.events.iter().filter(|e| e.cases.iter().any(|c| c == &case.id) || in_case(&links::event_uri(&e.uid))) {
+    for event in loaded.events.iter().filter(|e| e.projects.iter().any(|c| c == &project.id) || in_project(&links::event_uri(&e.uid))) {
         push(event.start, "event", event.summary.clone(), String::new(), links::event_uri(&event.uid), event.key.clone());
     }
     // Mail: by its routes, or tied by hand; then the rest of their conversations.
     let seeds: std::collections::BTreeSet<String> = loaded
         .mail
         .iter()
-        .filter(|(id, mail)| case.routes.iter().any(|r| r.takes_header(&mail.address, &mail.subject)) || in_case(&links::mail_uri(id)))
+        .filter(|(id, mail)| project.routes.iter().any(|r| r.takes_header(&mail.address, &mail.subject)) || in_project(&links::mail_uri(id)))
         .map(|(id, _)| id.clone())
         .collect();
     for id in loaded.mail.conversations(&seeds) {
@@ -159,15 +161,15 @@ pub fn view(loaded: &Loaded, case: &Case, entries: &[Entry], invoices: &[Invoice
         args.set("sender", mail.from.clone());
         push(mail.date, "mail", if mail.subject.trim().is_empty() { tr.text("mail-no-subject", None) } else { mail.subject.clone() }, tr.text("project-from", Some(&args)), links::mail_uri(&id), mail.path.display().to_string());
     }
-    // Notes: those of the case's record, or tied to it.
+    // Notes: those of the project's record, or tied to it.
     if let Some(vault) = loaded.vault.as_ref() {
-        for note in vault.notes.iter().filter(|n| case.files.iter().any(|f| f == &n.path) || in_case(&n.uri())) {
+        for note in vault.notes.iter().filter(|n| project.files.iter().any(|f| f == &n.path) || in_project(&n.uri())) {
             push(note.modified, "note", note.title.clone(), tr.text("project-note-changed", None), note.uri(), vault.root.join(&note.path).display().to_string());
         }
     }
     // Time: a line a day.
     let mut by_day: BTreeMap<jiff::civil::Date, (i64, u32)> = BTreeMap::new();
-    for entry in entries.iter().filter(|e| e.project == case.id) {
+    for entry in entries.iter().filter(|e| e.project == project.id) {
         let day = by_day.entry(entry.day).or_insert((entry.start, 0));
         day.0 = day.0.max(entry.start);
         day.1 += entry.minutes;
@@ -178,7 +180,7 @@ pub fn view(loaded: &Loaded, case: &Case, entries: &[Entry], invoices: &[Invoice
         push(when, "time", tr.text("project-time-noted", Some(&args)), String::new(), String::new(), String::new());
     }
     // Invoices.
-    for invoice in invoices.iter().filter(|i| i.project == case.id) {
+    for invoice in invoices.iter().filter(|i| i.project == project.id) {
         let at = invoice.date.parse::<jiff::civil::Date>().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(0, |z| z.timestamp().as_second());
         let mut args = crate::i18n::args();
         args.set("number", invoice.number.clone());
@@ -187,19 +189,19 @@ pub fn view(loaded: &Loaded, case: &Case, entries: &[Entry], invoices: &[Invoice
     // What is coming, the nearest first; then what happened, the newest first.
     moments.sort_by_key(|m| if m.coming { (0, m.when) } else { (1, -m.when) });
     moments.truncate(300);
-    let all: u32 = entries.iter().filter(|e| e.project == case.id).map(|e| e.minutes).sum();
-    let unbilled: u32 = entries.iter().filter(|e| e.project == case.id && e.billable && e.invoice.is_empty()).map(|e| e.minutes).sum();
-    let rate = case.rate.unwrap_or(default_rate);
+    let all: u32 = entries.iter().filter(|e| e.project == project.id).map(|e| e.minutes).sum();
+    let unbilled: u32 = entries.iter().filter(|e| e.project == project.id && e.billable && e.invoice.is_empty()).map(|e| e.minutes).sum();
+    let rate = project.rate.unwrap_or(default_rate);
     ProjectView {
-        id: case.id.clone(),
-        title: case.title.clone(),
-        is_project: case.is_project(),
-        status: case.status.clone().unwrap_or_default(),
-        client: case.client.clone().unwrap_or_default(),
+        id: project.id.clone(),
+        title: project.title.clone(),
+        for_client: project.is_for_client(),
+        status: project.status.clone().unwrap_or_default(),
+        client: project.client.clone().unwrap_or_default(),
         rate,
-        budget: case.budget.clone().unwrap_or_default(),
-        area: case.area.clone().unwrap_or_default(),
-        ai: case.ai,
+        budget: project.budget.clone().unwrap_or_default(),
+        area: project.area.clone().unwrap_or_default(),
+        ai: project.ai,
         open_tasks: open,
         done_tasks: done,
         time: if all > 0 { duration(all) } else { String::new() },
@@ -208,7 +210,7 @@ pub fn view(loaded: &Loaded, case: &Case, entries: &[Entry], invoices: &[Invoice
         moments,
         invoices: invoices
             .iter()
-            .filter(|i| i.project == case.id)
+            .filter(|i| i.project == project.id)
             .rev()
             .map(|i| InvoiceRow { number: i.number.clone(), date: i.date.clone(), total: tr.money(Money(i.total_cents)), paid: i.paid })
             .collect(),
@@ -229,23 +231,23 @@ pub fn kind_icon(kind: &str) -> Kind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cases::Route;
+    use crate::projects::Route;
     use crate::tasks::Task;
 
     #[test]
     fn a_project_on_one_line_of_time() {
         let now = 1_791_000_000;
-        let lumen = Case {
+        let lumen = Project {
             id: "lumen".into(),
             title: "Studio Lumen".into(),
             kind: Some("project".into()),
             rate: Some(60.0),
             routes: vec![Route { from_domains: vec!["lumen.example.net".into()], ..Route::default() }],
-            ..Case::default()
+            ..Project::default()
         };
-        let done = Task { uid: "d".into(), title: "Mock-ups".into(), status: Status::Completed, completed: Some(now - 86_400), cases: vec!["lumen".into()], ..Task::default() };
-        let coming = Task { uid: "c".into(), title: "Deliver the site".into(), due: "2030-01-15".into(), cases: vec!["lumen".into()], ..Task::default() };
-        let other = Task { uid: "o".into(), title: "Housing".into(), cases: vec!["housing".into()], ..Task::default() };
+        let done = Task { uid: "d".into(), title: "Mock-ups".into(), status: Status::Completed, completed: Some(now - 86_400), projects: vec!["lumen".into()], ..Task::default() };
+        let coming = Task { uid: "c".into(), title: "Deliver the site".into(), due: "2030-01-15".into(), projects: vec!["lumen".into()], ..Task::default() };
+        let other = Task { uid: "o".into(), title: "Housing".into(), projects: vec!["housing".into()], ..Task::default() };
         let mut mail = crate::mailindex::MailIndex::default();
         mail.insert("q@lumen.example.net", crate::mailindex::MailRef { subject: "Quote".into(), from: "Jane".into(), address: "jane@lumen.example.net".into(), date: now - 3 * 86_400, ..Default::default() });
         mail.insert("x@else.example.org", crate::mailindex::MailRef { subject: "Other".into(), address: "x@else.example.org".into(), date: now - 86_400, ..Default::default() });
@@ -270,7 +272,7 @@ mod tests {
         assert_eq!(line, vec![("task", "Deliver the site", true), ("task", "Mock-ups", false), ("time", "2 h 30 noted", false), ("mail", "Re: Quote", false), ("mail", "Quote", false)]);
         assert_eq!((page.open_tasks, page.done_tasks, page.unbilled.as_str()), (1, 1, "2 h 30"));
         assert_eq!(page.unbilled_amount, tr.money(Money(15000)));
-        let listed = rows(&loaded, &entries, &[Case { id: "housing".into(), title: "Housing".into(), ..Case::default() }, lumen]);
+        let listed = rows(&loaded, &entries, &[Project { id: "housing".into(), title: "Housing".into(), ..Project::default() }, lumen]);
         assert_eq!(listed[0].id, "lumen", "projects first");
     }
 }

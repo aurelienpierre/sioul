@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Projects and cases, the umbrella over everything else. On the left, each
+// Projects, the umbrella over everything else. On the left, each
 // with its open tasks and the time left to bill; on the right, the one open:
 // what is coming, then what happened, on one line of time; its tasks one
 // click away as a board, a list or a calendar; its time and its invoices.
@@ -62,6 +62,13 @@ Item {
     // A new project: its form.
     function startNew() {
         projectDialog.now().edit("", null)
+    }
+
+    // The open project's form (its Edit button); returns the form.
+    function editOpen() {
+        const form = projectDialog.now()
+        form.edit(page.openId, page.shown)
+        return form
     }
 
     function openFirst() {
@@ -130,7 +137,7 @@ Item {
         anchors.margins: page.theme.gap
         spacing: page.theme.gap
 
-        // Every project and case; on a phone, the whole page until one is open.
+        // Every project; on a phone, the whole page until one is open.
         ColumnLayout {
             visible: !(page.window.compact && page.openId !== "")
             Layout.fillHeight: true
@@ -207,7 +214,7 @@ Item {
                         spacing: 8
 
                         Icon {
-                            iconName: row.modelData.is_project ? "view-financial-account" : "folder-documents"
+                            iconName: row.modelData.for_client ? "view-financial-account" : "folder-documents"
                             size: 16
                             opacity: row.modelData.status === "closed" ? 0.5 : 1
                         }
@@ -277,7 +284,7 @@ Item {
                         }
                         Label {
                             Layout.fillWidth: true
-                            text: page.shown ? [page.shown.is_project ? page.sioul.text("project-kind-project") : page.sioul.text("project-kind-case"), page.shown.client, page.shown.is_project && page.shown.rate > 0 ? page.sioul.textWith("project-rate", "rate", page.money(page.shown.rate)) : "", page.shown.status !== "" ? page.sioul.text("project-status-" + page.shown.status) : ""].filter(t => t !== "").join("  ·  ") : ""
+                            text: page.shown ? [page.shown.for_client ? page.sioul.text("project-kind-project") : page.sioul.text("project-kind-own"), page.shown.client, page.shown.for_client && page.shown.rate > 0 ? page.sioul.textWith("project-rate", "rate", page.money(page.shown.rate)) : "", page.shown.status !== "" ? page.sioul.text("project-status-" + page.shown.status) : ""].filter(t => t !== "").join("  ·  ") : ""
                             textFormat: Text.PlainText
                             wrapMode: Text.Wrap
                             color: page.theme.muted
@@ -288,7 +295,7 @@ Item {
                         text: page.sioul.text("ui-edit")
                         icon.name: "document-edit"
                         icon.color: page.theme.text
-                        onClicked: projectDialog.now().edit(page.openId, page.shown)
+                        onClicked: page.editOpen()
                     }
                 }
 
@@ -323,7 +330,7 @@ Item {
                         onClicked: timeDialog.now().begin(page.openId)
                     }
                     Button {
-                        visible: page.shown !== null && page.shown.is_project && page.shown.unbilled !== ""
+                        visible: page.shown !== null && page.shown.for_client && page.shown.unbilled !== ""
                         text: page.sioul.text("invoice-make")
                         icon.name: "document-new"
                         icon.color: page.theme.accentText
@@ -348,7 +355,7 @@ Item {
                     text: page.sioul.text("project-ai")
                     checked: page.shown !== null && page.shown.ai === true
                     onToggled: {
-                        page.saveRoutes("case." + page.openId + ".ai", openToAi.checked)
+                        page.saveRoutes("project." + page.openId + ".ai", openToAi.checked)
                         // As the file says now, for this project and the next one opened.
                         openToAi.checked = Qt.binding(() => page.shown !== null && page.shown.ai === true)
                     }
@@ -384,7 +391,7 @@ Item {
                     sioul: page.sioul
                     theme: page.theme
                     window: page.window
-                    source: page.shown ? { uri: "sioul:case/" + encodeURIComponent(page.openId), kind: "case", key: page.openId, title: page.shown.title } : null
+                    source: page.shown ? { uri: "sioul:project/" + encodeURIComponent(page.openId), kind: "project", key: page.openId, title: page.shown.title } : null
                 }
 
                 // The mail that comes here by itself: by sender, words, attachments; replies follow.

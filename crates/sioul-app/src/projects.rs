@@ -13,49 +13,49 @@ use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use serde::Deserialize;
 use sioul_core::budget::{self, Line};
-use sioul_core::cases::{self, CaseEdit, CaseStore};
+use sioul_core::projects::{self, ProjectEdit, ProjectStore};
 use sioul_core::invoice::{self, Invoice};
 use sioul_core::money::Money;
 use sioul_core::timelog::{self, Session};
 use sioul_core::timereport::{self, Entry};
-use sioul_core::{links, project};
+use sioul_core::{links, projectview};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-fn store() -> Result<CaseStore, String> {
-    let root = load_config().case_store_path().ok_or_else(|| tr().text("error-no-store", None))?;
-    CaseStore::load(&root)
+fn store() -> Result<ProjectStore, String> {
+    let root = load_config().notes_root_path().ok_or_else(|| tr().text("error-no-store", None))?;
+    ProjectStore::load(&root)
 }
 
 /// Every session with its project and title.
 fn entries(shared: &Shared) -> Vec<Entry> {
     let loaded = loaded(shared);
-    timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.cases, &TimeZone::system())
+    timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &TimeZone::system())
 }
 
-/// The cases and projects, for the list.
+/// The projects, for the list.
 pub(crate) fn rows(shared: &Shared) -> String {
     let loaded = loaded(shared);
-    json(&project::rows(&loaded, &entries(shared), &loaded.cases))
+    json(&projectview::rows(&loaded, &entries(shared), &loaded.projects))
 }
 
 /// One project's page, as JSON; "" when it is gone.
 pub(crate) fn page(shared: &Shared, id: &str) -> String {
     let loaded = loaded(shared);
-    let Some(case) = loaded.cases.iter().find(|c| c.id == id) else { return String::new() };
+    let Some(project) = loaded.projects.iter().find(|c| c.id == id) else { return String::new() };
     let config = load_config();
-    let view = project::view(&loaded, case, &entries(shared), &invoice::all_in(&invoice::folder()), config.invoice.rate, Zoned::now().timestamp().as_second(), tr());
+    let view = projectview::view(&loaded, project, &entries(shared), &invoice::all_in(&invoice::folder()), config.invoice.rate, Zoned::now().timestamp().as_second(), tr());
     json(&view)
 }
 
-/// Saves a case or project from its form (a new one when `id` is empty); returns {"id"} or {"error"}.
+/// Saves a project from its form (a new one when `id` is empty); returns {"id"} or {"error"}.
 pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, id: &str, edit: &str) -> String {
-    let result = serde_json::from_str::<CaseEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
+    let result = serde_json::from_str::<ProjectEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
         if edit.title.trim().is_empty() {
             return Err(tr().text("project-no-title", None));
         }
         let store = store()?;
-        cases::save_case(&store.root.join(cases::MANIFEST), id, &edit)
+        projects::save_project(&store.file(), id, &edit)
     });
     work::refresh(qt, shared);
     match result {
@@ -64,10 +64,10 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, id: &str, edit: &str) ->
     }
 }
 
-/// A case or project taken out of the list; its tasks, notes, mail and time
+/// A project taken out of the list; its tasks, notes, mail and time
 /// stay. Returns what went wrong, else "".
 pub(crate) fn remove(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
-    let result = store().and_then(|store| cases::remove_case(&store.root.join(cases::MANIFEST), id));
+    let result = store().and_then(|store| projects::remove_project(&store.file(), id));
     work::refresh(qt, shared);
     result.err().unwrap_or_default()
 }
@@ -75,7 +75,7 @@ pub(crate) fn remove(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
 /// A budget made (`id` empty) or changed; returns {"id"} or {"error"}.
 pub(crate) fn save_budget(qt: &QtThread, shared: &Arc<Shared>, id: &str, edit: &str) -> String {
     let result = serde_json::from_str::<budget::BudgetEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
-        let root = load_config().case_store_path().ok_or_else(|| tr().text("error-no-store", None))?;
+        let root = load_config().notes_root_path().ok_or_else(|| tr().text("error-no-store", None))?;
         budget::save_budget(&root.join(budget::LEDGER), id, &edit)
     });
     crate::backend::show(qt, shared);
@@ -88,7 +88,7 @@ pub(crate) fn save_budget(qt: &QtThread, shared: &Arc<Shared>, id: &str, edit: &
 /// A budget taken out (its lines stay in the file), or one of its lines
 /// (`sioul:budget/<budget>/<place>`); returns what went wrong, else "".
 pub(crate) fn remove_budget(qt: &QtThread, shared: &Arc<Shared>, what: &str) -> String {
-    let Some(root) = load_config().case_store_path() else { return tr().text("error-no-store", None) };
+    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
     let path = root.join(budget::LEDGER);
     let result = match what.strip_prefix("sioul:budget/").and_then(|rest| rest.rsplit_once('/')) {
         Some((_, place)) => place.parse::<usize>().map_err(|e| e.to_string()).and_then(|place| budget::remove_line(&path, place)),
@@ -100,7 +100,7 @@ pub(crate) fn remove_budget(qt: &QtThread, shared: &Arc<Shared>, what: &str) -> 
 
 /// A line of the budgets' file changed: label, amount, date; returns what went wrong, else "".
 pub(crate) fn change_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, label: &str, amount: f64, date: &str) -> String {
-    let Some(root) = load_config().case_store_path() else { return tr().text("error-no-store", None) };
+    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
     let path = root.join(budget::LEDGER);
     let today = Zoned::now().date();
     let result = uri
@@ -121,9 +121,9 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
     let sessions = timelog::sessions();
     // Time noted by hand has no task, or was not timed: it can be taken out.
     let by_hand: std::collections::BTreeSet<String> = sessions.iter().filter(|s| s.task.is_empty() || !s.project.is_empty()).map(Session::key).collect();
-    let all = timereport::entries(&sessions, &loaded.tasks, &loaded.cases, &TimeZone::system());
+    let all = timereport::entries(&sessions, &loaded.tasks, &loaded.projects, &TimeZone::system());
     let config = load_config();
-    let mut view = timereport::view(&all, &loaded.cases, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr());
+    let mut view = timereport::view(&all, &loaded.projects, &|key| by_hand.contains(key), period, anchor, Some(project).filter(|p| !p.is_empty()), config.invoice.rate, today, tr());
     // How each stretch's minutes were known, said quietly: timed, typed, corrected, or not known.
     let kinds: std::collections::BTreeMap<String, Option<timelog::Kind>> = sessions.iter().map(|s| (s.key(), s.kind)).collect();
     for entry in &mut view.entries {
@@ -138,13 +138,13 @@ pub(crate) fn time(shared: &Shared, period: &str, anchor: &str, project: &str) -
 /// `target` (a file address); returns the file written.
 pub(crate) fn export_time_csv(shared: &Shared, project: &str, from: &str, to: &str, target: &str) -> Result<String, String> {
     let loaded = loaded(shared);
-    let Some(case) = loaded.cases.iter().find(|c| c.id == project) else { return Err(tr().text("project-gone", None)) };
+    let Some(found) = loaded.projects.iter().find(|c| c.id == project) else { return Err(tr().text("project-gone", None)) };
     let (Ok(from), Ok(to)) = (from.parse::<Date>(), to.parse::<Date>()) else { return Err(tr().text("time-bad-day", None)) };
-    let all = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.cases, &TimeZone::system());
+    let all = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &TimeZone::system());
     let config = load_config();
     let french = tr().text("qt-locale", None).starts_with("fr");
     let words = ["time-csv-what", "time-csv-hours", "time-csv-rate", "time-csv-amount", "time-csv-total"].map(|w| tr().text(w, None));
-    let csv = timereport::billable_csv(&all, case, from, to, config.invoice.rate, french, [&words[0], &words[1], &words[2], &words[3], &words[4]]);
+    let csv = timereport::billable_csv(&all, found, from, to, config.invoice.rate, french, [&words[0], &words[1], &words[2], &words[3], &words[4]]);
     let path = crate::backend::local_path(target);
     std::fs::write(&path, csv).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path.display().to_string())
@@ -262,13 +262,13 @@ pub(crate) fn change_time(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: 
     result.err().unwrap_or_default()
 }
 
-/// The tasks time can be given to, as JSON [{uid, title, case}]: the open
+/// The tasks time can be given to, as JSON [{uid, title, project}]: the open
 /// ones, and `keep` (the stretch's own task, done or not).
 pub(crate) fn task_choices(shared: &Shared, keep: &str) -> String {
     let loaded = loaded(shared);
     let mut tasks: Vec<&sioul_core::tasks::Task> = loaded.tasks.iter().filter(|t| t.status.is_open() || t.uid == keep).collect();
     tasks.sort_by_key(|t| t.title.to_lowercase());
-    json(&tasks.iter().map(|t| serde_json::json!({ "uid": t.uid, "title": t.title, "case": t.cases.first().cloned().unwrap_or_default() })).collect::<Vec<_>>())
+    json(&tasks.iter().map(|t| serde_json::json!({ "uid": t.uid, "title": t.title, "project": t.projects.first().cloned().unwrap_or_default() })).collect::<Vec<_>>())
 }
 
 /// Takes out time noted by hand; billed time stays.
@@ -371,16 +371,16 @@ pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
     let result = (|| -> Result<serde_json::Value, String> {
         let config = load_config();
         let store = store()?;
-        let case = store.get(id).ok_or_else(|| tr().text("project-gone", None))?.clone();
+        let project = store.get(id).ok_or_else(|| tr().text("project-gone", None))?.clone();
         let existing = invoice::all_in(&invoice::folder());
         let today = Zoned::now().date();
         let number = invoice::next_number(&existing, &config.invoice.prefix, today.year());
-        let (client, address) = client_of(shared, case.client.as_deref().unwrap_or(""));
-        let made = invoice::make(&entries(shared), &case, &client, &address, &config.invoice, &number, today).ok_or_else(|| tr().text("invoice-nothing", None))?;
+        let (client, address) = client_of(shared, project.client.as_deref().unwrap_or(""));
+        let made = invoice::make(&entries(shared), &project, &client, &address, &config.invoice, &number, today).ok_or_else(|| tr().text("invoice-nothing", None))?;
         invoice::save_in(&invoice::folder(), &made)?;
         timelog::update_in(&timelog::folder(), &made.sessions, |s| s.invoice = number.clone())?;
         // Expected in the project's budget until paid.
-        if let Some(budget_id) = case.budget.as_deref().filter(|b| !b.is_empty()) {
+        if let Some(budget_id) = project.budget.as_deref().filter(|b| !b.is_empty()) {
             let ledger = store.root.join(budget::LEDGER);
             let line = Line {
                 budget: budget_id.to_string(),
@@ -389,7 +389,7 @@ pub(crate) fn make_invoice(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
                 label: say("invoice-budget-line", &[("number", number.clone()), ("client", client.lines().next().unwrap_or("").to_string())]),
                 planned: true,
                 reserve: None,
-                links: vec![format!("sioul:invoice/{number}"), links::case_uri(&case.id)],
+                links: vec![format!("sioul:invoice/{number}"), links::project_uri(&project.id)],
                 preset: None,
             };
             budget::record_line(&ledger, &line, &say("invoice-budget-origin", &[("number", number.clone())]))?;

@@ -10,7 +10,7 @@
 //! What GitHub says is written into a task when GitHub changes it: its title,
 //! its link, and whether it is open (kept as `X-SIOUL-GITHUB`, so a task you
 //! marked done or dropped here stays so until GitHub's state changes). What
-//! you add here (a date, a length, steps, a case) stays.
+//! you add here (a date, a length, steps, a project) stays.
 
 use crate::card::Card;
 use crate::lines;
@@ -129,8 +129,8 @@ fn link(issue: &Issue) -> String {
     tasks::link_line(&Link { uri: issue.url.clone(), label: format!("{} #{}", issue.repo, issue.number), rel: "related".into() })
 }
 
-/// A new task for an issue, in `case` when one of your projects takes it.
-pub fn new_task(issue: &Issue, case: Option<&str>, now: &Zoned) -> String {
+/// A new task for an issue, in `project` when one of your projects takes it.
+pub fn new_task(issue: &Issue, project: Option<&str>, now: &Zoned) -> String {
     let stamp = now.timestamp().strftime("%Y%m%dT%H%M%SZ").to_string();
     let mut out = vec!["BEGIN:VCALENDAR".to_string(), "VERSION:2.0".into(), "PRODID:-//Sioul//Sioul//EN".into(), "BEGIN:VTODO".into()];
     out.push(format!("UID:{}", uid(&issue.repo, issue.number)));
@@ -140,8 +140,8 @@ pub fn new_task(issue: &Issue, case: Option<&str>, now: &Zoned) -> String {
     out.extend(status_lines(issue));
     out.push(format!("{REASON}:{}", issue.reason));
     out.push(link(issue));
-    if let Some(case) = case {
-        out.push(format!("REFID:{}", lines::escape(case)));
+    if let Some(project) = project {
+        out.push(format!("REFID:{}", lines::escape(project)));
     }
     out.extend(["END:VTODO".to_string(), "END:VCALENDAR".to_string()]);
     lines::fold(&out)
@@ -150,7 +150,7 @@ pub fn new_task(issue: &Issue, case: Option<&str>, now: &Zoned) -> String {
 /// A task's text with what GitHub changed written in; None when nothing
 /// changed. Its open or closed state only when GitHub's changed since it was
 /// last written: done or dropped here stays so.
-pub fn updated(text: &str, issue: &Issue, case: Option<&str>, now: &Zoned) -> Option<String> {
+pub fn updated(text: &str, issue: &Issue, project: Option<&str>, now: &Zoned) -> Option<String> {
     let source = lines::unfold(text);
     let value_of = |name: &str| source.iter().find(|l| lines::name(l) == name).map(|l| lines::unescape(lines::value(l).trim()));
     let mut dropped: Vec<&str> = Vec::new();
@@ -173,10 +173,10 @@ pub fn updated(text: &str, issue: &Issue, case: Option<&str>, now: &Zoned) -> Op
     if relinked {
         added.push(link);
     }
-    if let Some(case) = case
+    if let Some(project) = project
         && !source.iter().any(|l| lines::name(l) == "REFID")
     {
-        added.push(format!("REFID:{}", lines::escape(case)));
+        added.push(format!("REFID:{}", lines::escape(project)));
     }
     if added.is_empty() {
         return None;
@@ -248,7 +248,7 @@ mod tests {
         let zone = jiff::tz::TimeZone::UTC;
         let text = new_task(&issue("open", ""), Some("project"), &now);
         let task = tasks::task_of_text(&text, &zone).unwrap();
-        assert_eq!((task.uid.as_str(), task.status, task.cases.clone()), ("github:example/project#12", tasks::Status::NeedsAction, vec!["project".to_string()]));
+        assert_eq!((task.uid.as_str(), task.status, task.projects.clone()), ("github:example/project#12", tasks::Status::NeedsAction, vec!["project".to_string()]));
         assert_eq!(task.links[0].uri, "https://github.com/example/project/issues/12");
         // Nothing changed there: nothing written.
         assert_eq!(updated(&text, &issue("open", ""), Some("project"), &now), None);

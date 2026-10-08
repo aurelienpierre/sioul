@@ -103,7 +103,7 @@ Changed line by line: what Sioul does not edit is kept byte for byte (tests: `ta
 | `RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D` | RFC 9253 §4 | the task that comes first | a wait with a gap; `NEXT` is read too |
 | `LINK;LINKREL=describedby`, `via`, `related`; `VALUE=URI` or `UID` | RFC 9253 | tasks, events | notes (`sioul:note/…`), the message (`mid:`, RFC 2392), drafts, events |
 | `CONCEPT` (tag URIs, RFC 4151) | RFC 9253 §7.3 | tasks | the kind; "needs an open office"; other applications' concepts kept |
-| `REFID` | RFC 9253 | tasks, events | the case or project |
+| `REFID` | RFC 9253 | tasks, events | the project |
 | `ESTIMATED-DURATION` | draft-ietf-calext-ical-tasks | tasks | how long it takes |
 | `CONTACT;ALTREP="sioul:contact/<UID>"` | RFC 5545 §3.8.4.2 | tasks | the people and offices involved |
 | `X-SIOUL-BEFORE`, `X-SIOUL-AFTER`, `X-SIOUL-COST`, `X-SIOUL-GAIN` | non-standard properties, RFC 5545 §3.8.8.2 | tasks, events | time kept around it; costs and gain, 0 to 10 |
@@ -203,7 +203,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 ## Files other programs read
 - **Mail**: Maildir, a Maildir++ subfolder per folder (notmuch, mutt); on Windows `!` before the flags, as mbsync writes it; `:` and `!` read everywhere.
 - **Calendars and contacts**: vdir, one `.ics` or `.vcf` per item, `displayname` and `color` beside (khal, khard, vdirsyncer, pimsync); the sync's state kept apart.
-- **Notes and cases**: Markdown with front matter; settings, time spent, projects and budgets: TOML.
+- **Notes, and the records of projects**: Markdown with front matter; settings, time spent, the projects' file and budgets: TOML.
 - **Expected**: none of these programs was run on Sioul's folders.
 
 ## Systems

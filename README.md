@@ -8,7 +8,7 @@
 
 Modern admin assumes someone always available and always at full strength. Sioul starts instead from what you can give today, your attention, your energy, your health and your rest, and fits work, institutions and money around it.
 
-A letter from the tax office, the task it asks for, the appointment, the document, the person who sent it and the payment all belong to one case. You do not have to keep their relationships in your head: Sioul keeps them.
+A letter from the tax office, the task it asks for, the appointment, the document, the person who sent it and the payment all belong to one matter. You do not have to keep their relationships in your head: Sioul keeps them.
 
 **Sioul is a personal administrative environment.** It gathers what modern life scatters across mailboxes, websites, calendars, task lists, folders and banks, and brings forward only what belongs in your attention now. It is free software, and it runs on your own devices.
 
@@ -45,7 +45,7 @@ Most software lets each app decide when it may interrupt you. Sioul turns that a
 
 - **Your needs first, then the work.** You set your meals, your rest and your sleep first; they are kept free, and so is the time to get ready, get there and come back around each event. Each day you can say how it is (clear, haze or fog), and at its end whether it was too much, about right or too empty: the plan learns how much a day holds for you, and never guesses your state from what you do. The work goes in the hours you have given it, as one next step with its reason. Nothing is ever overdue.
 - **A porch between the world and your attention.** Mail, the news from the "secure mailboxes" of banks and offices, chats: everything new waits on the Porch, sorted, and shown in the hours you chose. The question is not what has arrived, but what belongs in your attention now. Each message is checked first, genuine or forged, and the codes you just asked for come at once.
-- **The software keeps the links.** Each case is a project (a tax return, a lease, a client's work): its mail comes to it by itself, and its tasks, events, notes and people are tied to it, on one line of time. You are no longer the glue between a mail program, a calendar, a task list, a folder and a bank's website.
+- **The software keeps the links.** Each matter you follow is a project (a tax return, a lease, a client's work): its mail comes to it by itself, and its tasks, events, notes and people are tied to it, on one line of time. You are no longer the glue between a mail program, a calendar, a task list, a folder and a bank's website.
 - **Nothing to be afraid of getting wrong.** No unread counts, badges, red or streaks; new mail makes no sound; ten seconds to undo anything moved, deleted or sent; nothing sent, deleted or paid without you, not even by an AI agent. The words are chosen with the same care: reminders that neither call you ill nor praise you, stopping early said as the ordinary thing it is, no forced cheer, no talking down.
 
 ## When capacity changes

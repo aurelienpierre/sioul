@@ -1,5 +1,5 @@
-# Budgets, an example (docs/accounting.md). Put yours at the root of your case
-# store as sioul-budgets.toml. Amounts in euros: positive in, negative out.
+# Budgets, an example (docs/accounting.md). Put yours at the root of your notes
+# folder as sioul-budgets.toml. Amounts in euros: positive in, negative out.
 
 # A budget is an envelope with a goal: the balance to reach by the end of each period.
 [[budget]]
@@ -47,7 +47,7 @@ label = "Withdrawal from the savings account"
 reserve = "savings"
 planned = true
 
-# Mail that becomes a line: the same conditions as a case's routes.
+# Mail that becomes a line: the same conditions as a project's routes.
 [[mail_rule]]
 budget = "projects"
 direction = "credit"

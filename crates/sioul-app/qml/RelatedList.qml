@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 // What the thing open is tied to, both ways: its notes, the mail it came
-// from, what it waits for and frees, the people, the case. One row each,
+// from, what it waits for and frees, the people, the project. One row each,
 // with how it is tied; a click opens it where it lives, a right click can
 // undo the tie. Read again whenever a tie is made or undone.
 

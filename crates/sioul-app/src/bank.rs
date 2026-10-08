@@ -136,7 +136,7 @@ fn finding_text(finding: &Finding, today: jiff::civil::Date) -> String {
 pub(crate) fn view() -> String {
     let config = load_config();
     let looked = sioul_core::words::Words::of(&config);
-    let Some(root) = config.case_store_path() else { return json(&View { problem: tr().text("papers-no-store", None), ..View::default() }) };
+    let Some(root) = config.notes_root_path() else { return json(&View { problem: tr().text("papers-no-store", None), ..View::default() }) };
     let bank = match Bank::load(&root) {
         Ok(bank) => bank,
         Err(problem) => return json(&View { store: true, problem, ..View::default() }),
@@ -295,7 +295,7 @@ fn accounts_into(view: &mut View, bank: &Bank, ledger: &Ledger, today: jiff::civ
 
 /// The budget file, where bank accounts, rules and choices are written.
 fn ledger_path() -> Result<std::path::PathBuf, String> {
-    load_config().case_store_path().map(|root| root.join(sioul_core::budget::LEDGER)).ok_or_else(|| tr().text("papers-no-store", None))
+    load_config().notes_root_path().map(|root| root.join(sioul_core::budget::LEDGER)).ok_or_else(|| tr().text("papers-no-store", None))
 }
 
 pub(crate) fn save_account(id: &str, edit: &str) -> String {
@@ -348,7 +348,7 @@ pub(crate) fn import(file: &str) -> (bool, String) {
 pub(crate) fn import_into(file: &str, account: &str) -> (bool, String) {
     let path = crate::backend::local_path(file);
     let config = load_config();
-    let Some(root) = config.case_store_path() else { return (false, tr().text("papers-no-store", None)) };
+    let Some(root) = config.notes_root_path() else { return (false, tr().text("papers-no-store", None)) };
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
         Err(e) => return (false, format!("{}: {e}", path.display())),

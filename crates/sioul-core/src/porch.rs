@@ -5,12 +5,12 @@
 //!
 //! Every message gets one lane and the reasons for it. The order of the checks
 //! is the order of what protects you most: forged mail first, then spam, then
-//! the short-lived codes that cannot wait, then cases, then the rest
+//! the short-lived codes that cannot wait, then projects, then the rest
 //! (docs/porch.md). The core returns facts; the sentences are the
 //! translator's (`i18n`), in your language.
 
 use crate::card::Card;
-use crate::cases::{CaseStore, RouteMatch};
+use crate::projects::{ProjectStore, RouteMatch};
 use crate::codes::{self, CodeKind, OneTimeCode};
 use crate::config::{Priority, Source};
 use crate::lookalike;
@@ -27,13 +27,13 @@ pub enum Lane {
     RightNow,
     /// Forged, or flagged as spam: set aside, never deleted.
     SetAside,
-    /// It belongs to a case (its id).
-    Case(String),
+    /// It belongs to a project (its id).
+    Project(String),
     /// From someone new: it waits until you let them in.
     Screener,
     /// Newsletters and automatic notifications: filed, readable anytime.
     Filed,
-    /// From people you know, outside any case.
+    /// From people you know, outside any project.
     People,
     /// From an account you ranked below the others: folded at the bottom.
     Low,
@@ -77,7 +77,7 @@ pub enum Reason {
     UnverifiedCode(CodeKind),
     /// Verified, from one of your own addresses to another: always let in.
     FromYourself,
-    Case { case_id: String, matched: Vec<RouteMatch> },
+    Project { project_id: String, matched: Vec<RouteMatch> },
     Newsletter,
     Automatic,
     FirstMessage,
@@ -1156,7 +1156,7 @@ pub fn set_person(config: &crate::config::Config, uid: &str, addresses: &[String
 
 /// What the triage needs to know beyond the message.
 pub struct Context<'a> {
-    pub cases: Option<&'a CaseStore>,
+    pub projects: Option<&'a ProjectStore>,
     pub known: &'a SenderList,
     /// Who is safe, neutral or blocked; the blocked are set aside for good.
     pub senders: &'a Senders,
@@ -1311,7 +1311,7 @@ pub fn sent(card: &Card) -> Option<i64> {
 
 /// The lanes are decided in this order: set aside; for a shielded address,
 /// hostile; what your own spam filter flagged or would move, as you chose
-/// (`review`); codes; cases; what you sent yourself; a shielded address's own
+/// (`review`); codes; projects; what you sent yourself; a shielded address's own
 /// lane; addresses ranked below; newsletters and automatic senders; the
 /// screener; people you know.
 #[allow(clippy::too_many_arguments)]
@@ -1320,7 +1320,7 @@ fn choose_lane(card: &Card, ctx: &Context, trust: Trust, code: Option<&OneTimeCo
         .or_else(|| assessment.filter(|a| a.tone == crate::shield::Tone::Hostile).map(|_| (Lane::Hostile, Reason::Hostile)))
         .or_else(|| review(learned))
         .or_else(|| right_now(code))
-        .or_else(|| in_case(card, ctx, sender.unproven))
+        .or_else(|| in_project(card, ctx, sender.unproven))
         .or_else(|| ctx.from_yourself(card, trust).then_some((Lane::People, Reason::FromYourself)))
         .or_else(|| public(card, assessment, sender))
         .or_else(|| (ctx.priority == Priority::Below).then_some((Lane::Low, Reason::LowPriority)))
@@ -1343,7 +1343,7 @@ fn public(card: &Card, assessment: Option<&crate::shield::Assessment>, sender: S
 /// mail client (`spam::labels::said_ham`). Blocked and forged mail, and a
 /// stranger borrowing a name, are set aside before this is asked.
 fn protected(card: &Card, ctx: &Context, trust: Trust, code: Option<&OneTimeCode>, sender: Sender) -> bool {
-    code.is_some() || ctx.from_yourself(card, trust) || !sender.stranger() || in_case(card, ctx, sender.unproven).is_some() || crate::spam::labels::said_ham(card)
+    code.is_some() || ctx.from_yourself(card, trust) || !sender.stranger() || in_project(card, ctx, sender.unproven).is_some() || crate::spam::labels::said_ham(card)
 }
 
 /// Blocked, forged, borrowing a brand's name, or spam: set aside, never deleted.
@@ -1388,15 +1388,15 @@ fn right_now(code: Option<&OneTimeCode>) -> Option<(Lane, Reason)> {
     Some((Lane::RightNow, Reason::ExpiresSoon(code?.kind)))
 }
 
-/// A project's or a case's mail, as its routes say. Mail nothing
+/// A project's mail, as its routes say. Mail nothing
 /// authenticates is read as from nobody: a route that names a sender's
 /// address or domain takes it no more; one by its subject, its text or an
 /// attachment still does.
-fn in_case(card: &Card, ctx: &Context, unproven: bool) -> Option<(Lane, Reason)> {
-    let cases = ctx.cases?;
-    let routing = if unproven { cases.route(&Card { from_address: None, ..card.clone() }) } else { cases.route(card) }.into_iter().next()?;
-    let id = routing.case.id.clone();
-    Some((Lane::Case(id.clone()), Reason::Case { case_id: id, matched: routing.matched }))
+fn in_project(card: &Card, ctx: &Context, unproven: bool) -> Option<(Lane, Reason)> {
+    let projects = ctx.projects?;
+    let routing = if unproven { projects.route(&Card { from_address: None, ..card.clone() }) } else { projects.route(card) }.into_iter().next()?;
+    let id = routing.project.id.clone();
+    Some((Lane::Project(id.clone()), Reason::Project { project_id: id, matched: routing.matched }))
 }
 
 fn filed(card: &Card, ctx: &Context) -> Option<(Lane, Reason)> {
@@ -1415,7 +1415,7 @@ fn screener(sender: Sender) -> Option<(Lane, Reason)> {
 /// Everything waiting in the Porch, from every source, minus what you closed it on.
 /// Messages already done are skipped by their file name, without being read.
 /// Mail from senders you blocked is left out: never shown, never counted.
-pub fn gather(sources: &[Source], cases: Option<&CaseStore>, known: &SenderList, senders: &Senders, state: &PorchState, now: i64) -> Vec<Triaged> {
+pub fn gather(sources: &[Source], projects: Option<&ProjectStore>, known: &SenderList, senders: &Senders, state: &PorchState, now: i64) -> Vec<Triaged> {
     let own = own_domains(sources);
     let own_addresses = own_addresses(sources);
     let own_domains = own.as_slice();
@@ -1428,7 +1428,7 @@ pub fn gather(sources: &[Source], cases: Option<&CaseStore>, known: &SenderList,
         .iter()
         .flat_map(|src| {
             let account = src.account.as_deref();
-            let ctx = Context { cases, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains, shielded: src.shielded, assessments: Some(&assessments), words: Some(&src.words), own_addresses: &own_addresses, spam: src.spam.as_ref() };
+            let ctx = Context { projects, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains, shielded: src.shielded, assessments: Some(&assessments), words: Some(&src.words), own_addresses: &own_addresses, spam: src.spam.as_ref() };
             // An account the Porch was never closed on shows its first window only:
             // all your mail is kept, the Porch is not an archive.
             let fresh = account.is_some_and(|a| !state.done.contains_key(a));
@@ -1536,23 +1536,23 @@ fn moved_item(card: Card, ctx: &Context, class: crate::spam::Class) -> Triaged {
     Triaged { card, lane: Lane::Review, trust, code: None, reasons: vec![Reason::Trust(proof), Reason::of_class(class, p), Reason::MovedToJunk], priority: ctx.priority, checks: auth, assessment: None }
 }
 
-/// A message in the conversation of one of a case's goes to that case, unless
+/// A message in the conversation of one of a project's goes to that project, unless
 /// it was set aside, is a code or is hostile: those lanes come first.
 fn follow_conversations(items: &mut [Triaged]) {
     let groups = crate::threads::group(&items.iter().map(|t| &t.card).collect::<Vec<_>>());
-    let mut case_of: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
+    let mut project_of: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
     for (item, group) in items.iter().zip(&groups) {
-        if let Lane::Case(id) = &item.lane {
-            case_of.entry(*group).or_insert_with(|| id.clone());
+        if let Lane::Project(id) = &item.lane {
+            project_of.entry(*group).or_insert_with(|| id.clone());
         }
     }
     for (item, group) in items.iter_mut().zip(&groups) {
-        let Some(id) = case_of.get(group) else { continue };
+        let Some(id) = project_of.get(group) else { continue };
         // Flagged by your filter, yes; moved into a Junk folder, it stays there until you say.
         let flagged = item.lane == Lane::Review && !item.reasons.contains(&Reason::MovedToJunk);
         if flagged || matches!(item.lane, Lane::People | Lane::Screener | Lane::Filed | Lane::Low | Lane::Public(_)) {
-            item.lane = Lane::Case(id.clone());
-            let reason = Reason::Case { case_id: id.clone(), matched: vec![crate::cases::RouteMatch { field: crate::cases::RouteField::Thread, value: String::new() }] };
+            item.lane = Lane::Project(id.clone());
+            let reason = Reason::Project { project_id: id.clone(), matched: vec![crate::projects::RouteMatch { field: crate::projects::RouteField::Thread, value: String::new() }] };
             match item.reasons.iter_mut().find(|r| !matches!(r, Reason::Trust(_) | Reason::UnverifiedCode(_) | Reason::NotAuthenticated)) {
                 Some(slot) => *slot = reason,
                 None => item.reasons.push(reason),
@@ -1564,7 +1564,7 @@ fn follow_conversations(items: &mut [Triaged]) {
 }
 
 /// Judges files just fetched as the Porch would, each with its account's trusted ids.
-pub fn judge(paths: &[PathBuf], sources: &[Source], cases: Option<&CaseStore>, known: &SenderList, senders: &Senders, now: i64) -> Vec<Triaged> {
+pub fn judge(paths: &[PathBuf], sources: &[Source], projects: Option<&ProjectStore>, known: &SenderList, senders: &Senders, now: i64) -> Vec<Triaged> {
     let own = own_domains(sources);
     let own_addresses = own_addresses(sources);
     // The AI's answers, as `gather` reads them: a message it found hostile is hostile here too.
@@ -1575,7 +1575,7 @@ pub fn judge(paths: &[PathBuf], sources: &[Source], cases: Option<&CaseStore>, k
             let src = sources.iter().find(|src| path.starts_with(&src.folder))?;
             let mut card = maildir::read_one(path).filter(|card| senders.who_of(card) != crate::reach::Who::Blocked)?;
             card.account = src.account.clone();
-            let ctx = Context { cases, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains: &own, shielded: src.shielded, assessments: assessments.as_ref(), words: Some(&src.words), own_addresses: &own_addresses, spam: src.spam.as_ref() };
+            let ctx = Context { projects, known, senders, trusted_ids: &src.trusted_ids, now: Some(now), priority: src.priority, own_domains: &own, shielded: src.shielded, assessments: assessments.as_ref(), words: Some(&src.words), own_addresses: &own_addresses, spam: src.spam.as_ref() };
             Some(triage(card, &ctx))
         })
         .collect::<Vec<_>>();
@@ -1600,8 +1600,8 @@ pub fn own_addresses(sources: &[Source]) -> Vec<String> {
 pub struct Summary {
     pub total: usize,
     pub codes: usize,
-    /// Each case with messages, in order of first appearance, and how many.
-    pub cases: Vec<(String, usize)>,
+    /// Each project with messages, in order of first appearance, and how many.
+    pub projects: Vec<(String, usize)>,
     pub people: usize,
     pub screener: usize,
     pub filed: usize,
@@ -1615,19 +1615,19 @@ pub struct Summary {
 /// Counts what came, lane by lane.
 pub fn summarise(items: &[Triaged]) -> Summary {
     let count = |lane: Lane| items.iter().filter(|t| t.lane == lane).count();
-    let mut cases: Vec<(String, usize)> = Vec::new();
+    let mut projects: Vec<(String, usize)> = Vec::new();
     for t in items {
-        if let Lane::Case(id) = &t.lane {
-            match cases.iter_mut().find(|(c, _)| c == id) {
+        if let Lane::Project(id) = &t.lane {
+            match projects.iter_mut().find(|(c, _)| c == id) {
                 Some((_, n)) => *n += 1,
-                None => cases.push((id.clone(), 1)),
+                None => projects.push((id.clone(), 1)),
             }
         }
     }
     Summary {
         total: items.len() - count(Lane::Low) - count(Lane::Review),
         codes: count(Lane::RightNow),
-        cases,
+        projects,
         people: count(Lane::People),
         screener: count(Lane::Screener),
         filed: count(Lane::Filed),
@@ -1645,7 +1645,7 @@ mod tests {
         let raw = format!("From: {from}\r\nSubject: Votre abonnement\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\n\r\nVotre abonnement a été renouvelé : 69,90 €.\r\n");
         let card = Card::from_bytes(raw.as_bytes()).unwrap();
         let senders = Senders { blocked: blocked.clone(), ..Senders::default() };
-        triage(card, &Context { cases: None, known, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None })
+        triage(card, &Context { projects: None, known, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None })
     }
 
     #[test]
@@ -1672,7 +1672,7 @@ mod tests {
         assert_eq!(normalize("two words@x"), None);
         // A safe sender skips the screener; a forged message from them is still set aside.
         let none = SenderList::default();
-        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
+        let ctx = Context { projects: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let card = |from: &str| Card::from_bytes(format!("From: {from}\r\nSubject: Hello\r\n\r\nHi.\r\n").as_bytes()).unwrap();
         assert_eq!(triage(card("Jane <jane@example.org>"), &ctx).lane, Lane::People);
         assert_eq!(triage(card("Someone <someone@elsewhere.example>"), &ctx).lane, Lane::Screener);
@@ -1883,7 +1883,7 @@ mod tests {
     fn an_account_ranked_below_waits_folded() {
         let none = SenderList::default();
         let raw = "From: Social <notify@social.example>\r\nSubject: Someone liked your post\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\n\r\nHello.\r\n";
-        let low = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Below, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
+        let low = Context { projects: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Below, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let t = triage(Card::from_bytes(raw.as_bytes()).unwrap(), &low);
         assert_eq!((t.lane.clone(), t.reasons.last()), (Lane::Low, Some(&Reason::LowPriority)));
         let summary = summarise(&[t]);
@@ -1905,7 +1905,7 @@ mod tests {
     fn a_code_set_aside_is_not_offered() {
         let none = SenderList::default();
         let raw = "From: PayPal <service@unrelated.example>\r\nSubject: Your security code\r\n\r\nYour security code is 482913.\r\n";
-        let ctx = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
+        let ctx = Context { projects: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let t = triage(Card::from_bytes(raw.as_bytes()).unwrap(), &ctx);
         assert_eq!(t.lane, Lane::SetAside);
         assert!(!t.reasons.iter().any(|r| matches!(r, Reason::UnverifiedCode(_))), "{:?}", t.reasons);
@@ -1922,7 +1922,7 @@ mod tests {
         std::fs::File::options().write(true).open(&path).unwrap().set_modified(arrived).unwrap();
         let now = i64::try_from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()).unwrap();
         let none = SenderList::default();
-        let ctx = Context { cases: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: Some(now), priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
+        let ctx = Context { projects: None, known: &none, senders: &Senders::default(), trusted_ids: &[], now: Some(now), priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let t = triage(maildir::read_one(&path).unwrap(), &ctx);
         assert!(t.code.is_none() && t.lane != Lane::RightNow, "{:?}", t.lane);
         std::fs::remove_dir_all(&dir).unwrap();
@@ -1932,7 +1932,7 @@ mod tests {
     /// know, a code, a project's mail, a message said not spam.
     #[test]
     fn spam_never_touches_who_you_know() {
-        use crate::cases::{Case, CaseStore, Route};
+        use crate::projects::{Project, ProjectStore, Route};
         // Your provider wrote its verdict above the line where the message came in.
         let flagged = |from: &str, subject: &str, body: &str| {
             let raw = format!("X-Spam-Flag: YES\r\nReceived: from mail.sender.example (mail.sender.example [203.0.112.9]) by mx.provider.example with ESMTPS\r\nFrom: {from}\r\nSubject: {subject}\r\n\r\n{body}\r\n");
@@ -1940,9 +1940,9 @@ mod tests {
         };
         let senders = Senders { safe: SenderList::parse("jane@example.org"), neutral: SenderList::parse("@partner.example"), ..Senders::default() };
         let none = SenderList::default();
-        let taxes = Case { id: "taxes".into(), title: "Taxes".into(), routes: vec![Route { from_domains: vec!["finances.example".into()], ..Route::default() }], ..Case::default() };
-        let store = CaseStore { root: PathBuf::from("."), cases: vec![taxes], ties: Default::default() };
-        let ctx = Context { cases: Some(&store), known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
+        let taxes = Project { id: "taxes".into(), title: "Taxes".into(), routes: vec![Route { from_domains: vec!["finances.example".into()], ..Route::default() }], ..Project::default() };
+        let store = ProjectStore { root: PathBuf::from("."), projects: vec![taxes], ties: Default::default() };
+        let ctx = Context { projects: Some(&store), known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let stranger = triage(flagged("Prize <win@lottery.test>", "You won", "Claim it."), &ctx);
         assert_eq!((stranger.lane.clone(), stranger.reasons.last()), (Lane::SetAside, Some(&Reason::Spam { source: "SpamAssassin", score: None })));
         assert!(stranger.reasons.last().is_some_and(Reason::is_spam));
@@ -1950,7 +1950,7 @@ mod tests {
         assert_eq!(triage(flagged("Jane <jane@example.org>", "Lunch", "Tomorrow?"), &ctx).lane, Lane::People);
         assert_eq!(triage(flagged("Ops <ops@partner.example>", "Hello", "Hi."), &ctx).lane, Lane::Screener);
         assert_eq!(triage(flagged("Shop <codes@shop.example>", "Your verification code", "Your verification code: 482913"), &ctx).lane, Lane::RightNow);
-        assert_eq!(triage(flagged("Avis <avis@dgfip.finances.example>", "Avis", "Votre avis."), &ctx).lane, Lane::Case("taxes".into()));
+        assert_eq!(triage(flagged("Avis <avis@dgfip.finances.example>", "Avis", "Votre avis."), &ctx).lane, Lane::Project("taxes".into()));
         // A name it borrows ("Impots") is set aside before: borrowing comes first, as it did.
         assert_eq!(triage(flagged("Impots <avis@dgfip.finances.example>", "Avis", "Votre avis."), &ctx).lane, Lane::SetAside);
         // Said not spam: its `$NotJunk` keyword kept in the file's name.
@@ -1999,7 +1999,7 @@ mod tests {
         assert_eq!(usual.class(crate::spam::score(&made, &calm, &[]).p), Class::Ham);
         let senders = Senders { safe: SenderList::parse("jane@example.org"), ..Senders::default() };
         let none = SenderList::default();
-        let ctx = |filter| Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: filter };
+        let ctx = |filter| Context { projects: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: filter };
         // Until you choose: spam and doubts flagged, in the review queue, never notified; the rest in its lane.
         let t = triage(spam.clone(), &ctx(Some(&usual)));
         assert!(t.lane == Lane::Review && matches!(t.reasons.last(), Some(Reason::LearnedSpam { p }) if *p >= 0.95), "{:?} {:?}", t.lane, t.reasons);
@@ -2064,7 +2064,7 @@ mod tests {
         let src = Source { account: Some("home".into()), address: None, folder: root.clone(), trusted_ids: Vec::new(), priority: Priority::Average, shielded: false, words: crate::words::Words::builtin(), spam: None };
         let none = SenderList::default();
         let senders = Senders::default();
-        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
+        let ctx = Context { projects: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let found = moved_items(&src, &ctx, std::slice::from_ref(&junk), &log, &[]);
         // Only the one moved and still unmarked; not another's junk, not one stored before the move.
         assert_eq!(found.iter().map(|t| t.card.message_id.clone().unwrap_or_default()).collect::<Vec<_>>(), ["moved@lottery.test"]);
@@ -2080,14 +2080,14 @@ mod tests {
     /// nobody you know, whoever the address it shows.
     #[test]
     fn unauthenticated_mail_is_a_strangers() {
-        use crate::cases::{Case, CaseStore, Route};
+        use crate::projects::{Project, ProjectStore, Route};
         let senders = Senders { safe: SenderList::parse("jane@example.org"), blocked: SenderList::parse("pest@example.org"), ..Senders::default() };
         let none = SenderList::default();
         let ids = ["mx.provider.example".to_string()];
-        let by_sender = Case { id: "jane".into(), title: "With Jane".into(), routes: vec![Route { from_addresses: vec!["jane@example.org".into()], ..Route::default() }], ..Case::default() };
-        let by_subject = Case { id: "trip".into(), title: "The trip".into(), routes: vec![Route { subject_contains: vec!["the trip".into()], ..Route::default() }], ..Case::default() };
-        let store = CaseStore { root: PathBuf::from("."), cases: vec![by_sender, by_subject], ties: Default::default() };
-        let ctx = Context { cases: None, known: &none, senders: &senders, trusted_ids: &ids, now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
+        let by_sender = Project { id: "jane".into(), title: "With Jane".into(), routes: vec![Route { from_addresses: vec!["jane@example.org".into()], ..Route::default() }], ..Project::default() };
+        let by_subject = Project { id: "trip".into(), title: "The trip".into(), routes: vec![Route { subject_contains: vec!["the trip".into()], ..Route::default() }], ..Project::default() };
+        let store = ProjectStore { root: PathBuf::from("."), projects: vec![by_sender, by_subject], ties: Default::default() };
+        let ctx = Context { projects: None, known: &none, senders: &senders, trusted_ids: &ids, now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
         let mail = |from: &str, results: &str, above: &str, subject: &str| {
             let raw = format!("{above}Authentication-Results: mx.provider.example; {results}\r\nFrom: {from}\r\nSubject: {subject}\r\n\r\n{subject}?\r\n");
             Card::from_bytes(raw.as_bytes()).unwrap()
@@ -2119,9 +2119,9 @@ mod tests {
         assert_eq!(code.lane, Lane::RightNow);
         assert!(code.reasons.iter().any(|r| matches!(r, Reason::UnverifiedCode(_))), "{:?}", code.reasons);
         // Routes: one that names the sender takes it no more; one by its subject still does.
-        let routed = Context { cases: Some(&store), ..ctx };
-        assert_eq!(triage(mail("Jane <jane@example.org>", "spf=pass smtp.mailfrom=example.org; dkim=pass header.d=example.org", "", "Lunch"), &routed).lane, Lane::Case("jane".into()));
+        let routed = Context { projects: Some(&store), ..ctx };
+        assert_eq!(triage(mail("Jane <jane@example.org>", "spf=pass smtp.mailfrom=example.org; dkim=pass header.d=example.org", "", "Lunch"), &routed).lane, Lane::Project("jane".into()));
         assert_eq!(triage(mail("Jane <jane@example.org>", failed, "", "Lunch"), &routed).lane, Lane::Screener);
-        assert_eq!(triage(mail("Jane <jane@example.org>", failed, "", "About the trip"), &routed).lane, Lane::Case("trip".into()));
+        assert_eq!(triage(mail("Jane <jane@example.org>", failed, "", "About the trip"), &routed).lane, Lane::Project("trip".into()));
     }
 }

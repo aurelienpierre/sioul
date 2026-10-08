@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Links between everything: mail, tasks, events, contacts, notes, drafts,
-//! budget lines and cases.
+//! budget lines and projects.
 //!
 //! Each link lives in the thing that makes it, in that thing's own format,
 //! wherever one can: in a task or an event (LINK, RELATED-TO, CONTACT, REFID:
@@ -17,12 +17,14 @@
 //! - a message: `mid:<Message-ID>` (RFC 2392);
 //! - a task, an event, a contact: `sioul:task/<UID>`, `sioul:event/<UID>`, `sioul:contact/<UID>`;
 //! - a note: `sioul:note/<path in the notes folder>`;
-//! - a draft: `sioul:draft/<id>`; a case: `sioul:case/<id>`; a paper: `sioul:paper/<id>`;
+//! - a draft: `sioul:draft/<id>`; a paper: `sioul:paper/<id>`;
+//! - a project: `sioul:project/<id>`; one written before the name changed,
+//!   `sioul:case/<id>`, still reads as the same project, and always will;
 //! - a budget line: `sioul:budget/<budget>/<position in the file>`;
 //! - anything else: its URL.
 
 use crate::agenda::EventRef;
-use crate::cases::Case;
+use crate::projects::Project;
 use crate::compose::Draft;
 use crate::contacts::Contact;
 use crate::mailindex::{MailIndex, bare_id};
@@ -43,7 +45,7 @@ pub enum Kind {
     Note,
     Contact,
     Budget,
-    Case,
+    Project,
     Paper,
     /// A site kept in Sioul's Sites: a bank, a tax office, a chat.
     Site,
@@ -65,7 +67,8 @@ pub fn kind_of(uri: &str) -> Kind {
             "note" => Kind::Note,
             "draft" => Kind::Draft,
             "budget" => Kind::Budget,
-            "case" => Kind::Case,
+            // A project's address as Sioul wrote it before the name changed.
+            "project" | "case" => Kind::Project,
             "paper" => Kind::Paper,
             "site" => Kind::Site,
             _ => Kind::Other,
@@ -185,8 +188,10 @@ pub fn site_uri(id: &str) -> String {
     format!("sioul:site/{}", encode(id))
 }
 
-pub fn case_uri(id: &str) -> String {
-    format!("sioul:case/{}", encode(id))
+/// A project, by its id. An address written before the name changed,
+/// `sioul:case/<id>`, reads as the same project (`kind_of`, `World::canonical`).
+pub fn project_uri(id: &str) -> String {
+    format!("sioul:project/{}", encode(id))
 }
 
 /// `mid:` and the Message-ID, without its angle brackets (RFC 2392).
@@ -207,7 +212,8 @@ pub struct Edge {
     pub from: String,
     pub to: String,
     /// "note" (its notes), "source" (made from), "waits" (waits for), "step"
-    /// (a step of), "contact", "case", "mention" (a note names it),
+    /// (a step of), "contact", "project" ("case" in ties written before the
+    /// name changed), "mention" (a note names it),
     /// "answers" (a reply), "link".
     #[serde(default)]
     pub how: String,
@@ -275,13 +281,13 @@ impl LocalLinks {
     }
 }
 
-/// The messages tied to a case, by bare Message-ID, and the case's id.
-pub fn mail_cases(links: &LocalLinks) -> std::collections::BTreeMap<String, String> {
+/// The messages tied to a project, by bare Message-ID, and the project's id.
+pub fn mail_projects(links: &LocalLinks) -> std::collections::BTreeMap<String, String> {
     let mut out = std::collections::BTreeMap::new();
     for edge in &links.links {
-        for (mail, case) in [(&edge.from, &edge.to), (&edge.to, &edge.from)] {
-            if mail.starts_with("mid:") && case.starts_with("sioul:case/") {
-                out.insert(bare_id(mail), id_of(case));
+        for (mail, project) in [(&edge.from, &edge.to), (&edge.to, &edge.from)] {
+            if mail.starts_with("mid:") && kind_of(project) == Kind::Project {
+                out.insert(bare_id(mail), id_of(project));
             }
         }
     }
@@ -314,7 +320,7 @@ pub struct Related {
     pub key: String,
     /// How it is tied, seen from the thing open: "note", "notes-of", "source",
     /// "made", "waits-for", "unblocks", "part-of", "step", "contact",
-    /// "involves", "case", "in-case", "mentions", "mentioned-by", "answers",
+    /// "involves", "project", "in-project", "mentions", "mentioned-by", "answers",
     /// "answered-by", "link".
     pub how: String,
     /// Still there.
@@ -331,7 +337,7 @@ fn inverse(how: &str) -> &'static str {
         "waits" => "unblocks",
         "step" => "step",
         "contact" => "involves",
-        "case" => "in-case",
+        "project" | "case" => "in-project",
         "mention" => "mentioned-by",
         "answers" => "answered-by",
         _ => "link",
@@ -346,7 +352,7 @@ fn forward(how: &str) -> &'static str {
         "waits" => "waits-for",
         "step" => "part-of",
         "contact" => "contact",
-        "case" => "case",
+        "project" | "case" => "project",
         "mention" => "mentions",
         "answers" => "answers",
         _ => "link",
@@ -355,7 +361,7 @@ fn forward(how: &str) -> &'static str {
 
 /// Which tie says most, when two things are tied twice: smaller first.
 fn closeness(how: &str) -> usize {
-    const ORDER: &[&str] = &["waits-for", "unblocks", "part-of", "step", "source", "made", "answers", "answered-by", "note", "notes-of", "contact", "involves", "case", "in-case", "mentions", "mentioned-by", "link"];
+    const ORDER: &[&str] = &["waits-for", "unblocks", "part-of", "step", "source", "made", "answers", "answered-by", "note", "notes-of", "contact", "involves", "project", "in-project", "mentions", "mentioned-by", "link"];
     ORDER.iter().position(|h| *h == how).unwrap_or(ORDER.len())
 }
 
@@ -367,7 +373,7 @@ pub struct World<'a> {
     pub vault: Option<&'a Vault>,
     pub drafts: &'a [Draft],
     pub mail: &'a MailIndex,
-    pub cases: &'a [Case],
+    pub projects: &'a [Project],
     pub budget: &'a [BudgetRef],
     pub local: &'a LocalLinks,
     pub sites: &'a [crate::sites::Site],
@@ -375,7 +381,8 @@ pub struct World<'a> {
 
 impl World<'_> {
     /// One address for one thing, however it was written: `uid:` made a task's
-    /// or an event's, a message's id bare, a note's path decoded and without its heading.
+    /// or an event's, a message's id bare, a note's path decoded and without its
+    /// heading, a project's `sioul:case/` (its address before the name changed) `sioul:project/`.
     pub fn canonical(&self, uri: &str) -> String {
         let uri = uri.trim();
         if let Some(uid) = uri.strip_prefix("uid:") {
@@ -391,6 +398,8 @@ impl World<'_> {
             && let Some((kind, id)) = rest.split_once('/')
         {
             let id = notes::decode(id.split('#').next().unwrap_or(id));
+            // A project's address as written before the name changed: the same project.
+            let kind = if kind == "case" { "project" } else { kind };
             return format!("sioul:{kind}/{}", encode(&id));
         }
         uri.to_string()
@@ -427,8 +436,8 @@ impl World<'_> {
             for contact in task.contacts.iter().filter(|c| !c.uri.is_empty()) {
                 push(me.clone(), self.canonical(&contact.uri), "contact");
             }
-            for case in &task.cases {
-                push(me.clone(), case_uri(case), "case");
+            for project in &task.projects {
+                push(me.clone(), project_uri(project), "project");
             }
         }
         for event in self.events {
@@ -440,8 +449,8 @@ impl World<'_> {
             for relation in &event.related {
                 push(me.clone(), self.canonical(&format!("uid:{}", relation.uid)), "link");
             }
-            for case in &event.cases {
-                push(me.clone(), case_uri(case), "case");
+            for project in &event.projects {
+                push(me.clone(), project_uri(project), "project");
             }
             for person in &event.people {
                 if let Some(contact) = crate::contacts::by_address(self.contacts, person) {
@@ -457,7 +466,7 @@ impl World<'_> {
                     if matches!(kind_of(&target), Kind::Web | Kind::File | Kind::Other) {
                         continue;
                     }
-                    let how = if kind_of(&target) == Kind::Case { "case" } else { "mention" };
+                    let how = if kind_of(&target) == Kind::Project { "project" } else { "mention" };
                     push(me.clone(), target, how);
                 }
             }
@@ -485,7 +494,7 @@ impl World<'_> {
     }
 
     /// What is tied to `uri`, both ways, each once: tasks first, then events,
-    /// mail, drafts, notes, contacts, budget lines, cases.
+    /// mail, drafts, notes, contacts, budget lines, projects.
     pub fn related(&self, uri: &str) -> Vec<Related> {
         let me = self.canonical(uri);
         let mut out: Vec<Related> = Vec::new();
@@ -554,8 +563,8 @@ impl World<'_> {
         for site in self.sites {
             push(Kind::Site, &site.name, &crate::sites::host_of(&site.url), 0, site_uri(&site.id));
         }
-        for case in self.cases {
-            push(Kind::Case, &case.title, &case.id, 0, case_uri(&case.id));
+        for project in self.projects {
+            push(Kind::Project, &project.title, &project.id, 0, project_uri(&project.id));
         }
         let except = self.canonical(except);
         found.retain(|(_, _, _, uri)| *uri != except);
@@ -638,11 +647,11 @@ impl World<'_> {
                     out.found = true;
                 }
             }
-            Kind::Case => {
-                if let Some(case) = self.cases.iter().find(|c| c.id == id) {
-                    out.title = case.title.clone();
-                    out.detail = case.status.clone().unwrap_or_default();
-                    out.key = case.id.clone();
+            Kind::Project => {
+                if let Some(project) = self.projects.iter().find(|c| c.id == id) {
+                    out.title = project.title.clone();
+                    out.detail = project.status.clone().unwrap_or_default();
+                    out.key = project.id.clone();
                     out.found = true;
                 }
             }
@@ -694,7 +703,7 @@ pub struct Loaded {
     pub vault: Option<Vault>,
     pub drafts: Vec<Draft>,
     pub mail: MailIndex,
-    pub cases: Vec<Case>,
+    pub projects: Vec<Project>,
     pub budget: Vec<BudgetRef>,
     pub local: LocalLinks,
     pub sites: Vec<crate::sites::Site>,
@@ -722,7 +731,7 @@ impl Loaded {
         let id = id_of(other);
         match kind_of(other) {
             Kind::Contact if in_task => contact_line(&ContactRef { name: self.world().describe(other).title, uri: other.to_string() }),
-            Kind::Case => format!("REFID:{}", crate::lines::escape(&id)),
+            Kind::Project => format!("REFID:{}", crate::lines::escape(&id)),
             Kind::Note => link_line(&Link { uri: other.to_string(), label: String::new(), rel: "describedby".into() }),
             Kind::Task | Kind::Event => link_line(&Link { uri: format!("uid:{id}"), label: String::new(), rel: "related".into() }),
             _ => link_line(&Link { uri: other.to_string(), label: String::new(), rel: "related".into() }),
@@ -781,7 +790,7 @@ impl Loaded {
                 "LINK" if crate::lines::param(line, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("UID")) => world.canonical(&format!("uid:{value}")) == other,
                 "LINK" => world.canonical(value) == other,
                 "CONTACT" => crate::lines::param(line, "ALTREP").is_some_and(|uri| world.canonical(&uri) == other),
-                "REFID" => case_uri(&crate::lines::unescape(value)) == other,
+                "REFID" => project_uri(&crate::lines::unescape(value)) == other,
                 _ => false,
             }
         };
@@ -824,11 +833,11 @@ impl Loaded {
         out
     }
 
-    /// Reads every task, event, contact, draft and link, the notes of the case
-    /// store, and the headers of the mail kept for the configured accounts.
+    /// Reads every task, event, contact, draft and link, the notes of the notes
+    /// folder, and the headers of the mail kept for the configured accounts.
     pub fn read(config: &crate::config::Config) -> Loaded {
         let zone = jiff::tz::TimeZone::system();
-        let root = config.case_store_path();
+        let root = config.notes_root_path();
         let mail_roots: Vec<PathBuf> = config.accounts.iter().filter(|a| a.kind == crate::config::AccountKind::Imap).map(|a| a.maildir_path()).collect();
         let budget = root
             .as_deref()
@@ -853,7 +862,7 @@ impl Loaded {
             tasks: crate::tasks::all(&zone),
             events: crate::agenda::event_refs(),
             contacts: crate::contacts::all(),
-            cases: root.as_deref().and_then(|r| crate::cases::CaseStore::load(r).ok()).map(|s| s.cases).unwrap_or_default(),
+            projects: root.as_deref().and_then(|r| crate::projects::ProjectStore::load(r).ok()).map(|s| s.projects).unwrap_or_default(),
             vault: root.as_deref().map(Vault::open),
             drafts: Draft::all(),
             mail: MailIndex::build(&mail_roots, &crate::config::cache_dir().join("mail-index.tsv")),
@@ -871,7 +880,7 @@ impl Loaded {
             vault: self.vault.as_ref(),
             drafts: &self.drafts,
             mail: &self.mail,
-            cases: &self.cases,
+            projects: &self.projects,
             budget: &self.budget,
             local: &self.local,
             sites: &self.sites,
@@ -928,7 +937,7 @@ mod tests {
         let kept = dir.join("links.toml");
         std::fs::write(&kept, "[[link]]\nfrom = \"mid:a@example.org\"\nto = ").unwrap();
         let mut local = LocalLinks::load(&kept);
-        local.add("mid:a@example.org", "sioul:case/x", "case");
+        local.add("mid:a@example.org", "sioul:project/x", "project");
         assert!(local.save(&kept).is_err());
         assert_eq!(std::fs::read_to_string(&kept).unwrap(), "[[link]]\nfrom = \"mid:a@example.org\"\nto = ");
         std::fs::remove_file(&kept).unwrap();
@@ -950,7 +959,7 @@ mod tests {
             ],
             relations: vec![Relation { kind: "DEPENDS-ON".into(), uid: "form".into(), gap: 0 }],
             contacts: vec![ContactRef { name: "School".into(), uri: "sioul:contact/school".into() }],
-            cases: vec!["school".into()],
+            projects: vec!["school".into()],
             ..Task::default()
         };
         let form = Task { uid: "form".into(), title: "Fill the form".into(), ..Task::default() };
@@ -963,7 +972,7 @@ mod tests {
         let mut local = LocalLinks::default();
         local.add("mid:abc@caf.example", "sioul:contact/caf", "contact");
         let (tasks, events) = (vec![certificate, form], vec![meeting]);
-        let world = World { tasks: &tasks, events: &events, contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), cases: &[], budget: &[], local: &local, sites: &[] };
+        let world = World { tasks: &tasks, events: &events, contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &[], budget: &[], local: &local, sites: &[] };
         let related = world.related("sioul:task/certificate");
         let seen: Vec<(Kind, &str, &str)> = related.iter().map(|r| (r.kind, r.how.as_str(), r.uri.as_str())).collect();
         assert_eq!(
@@ -974,7 +983,7 @@ mod tests {
                 (Kind::Mail, "source", "mid:abc@caf.example"),
                 (Kind::Note, "note", "sioul:note/admin/letters.md"),
                 (Kind::Contact, "contact", "sioul:contact/school"),
-                (Kind::Case, "case", "sioul:case/school"),
+                (Kind::Project, "project", "sioul:project/school"),
             ]
         );
         assert_eq!(world.related("sioul:task/form")[0].how, "unblocks");
@@ -1005,5 +1014,46 @@ mod tests {
         // Android's installers: a phone's list, apart; a computer's is as it was.
         assert!(is_phone_program("/sdcard/Download/App.APK") && is_phone_program("bundle.apks ") && is_phone_program("game.xapk") && is_phone_program("split.apkm"));
         assert!(!is_phone_program("apk.pdf") && !is_phone_program("setup.exe") && !is_program("app.apk"));
+    }
+
+    #[test]
+    fn a_project_written_before_the_name_changed_still_opens() {
+        // New addresses say "project"; the first form, "case", reads as the same project.
+        assert_eq!(project_uri("taxes 2025"), "sioul:project/taxes%202025");
+        assert_eq!((kind_of("sioul:case/taxes"), kind_of("sioul:project/taxes")), (Kind::Project, Kind::Project));
+        assert_eq!(id_of("sioul:case/taxes%202025"), "taxes 2025");
+        let housing = Project { id: "housing".into(), title: "Housing".into(), ..Project::default() };
+        // Ties kept here before: a message tied with the old address and the old word.
+        let mut local = LocalLinks::default();
+        local.add("mid:caf-1@caf.example", "sioul:case/housing", "case");
+        local.add("mid:caf-2@caf.example", "sioul:project/housing", "project");
+        assert_eq!(mail_projects(&local).into_iter().collect::<Vec<_>>(), [("caf-1@caf.example".to_string(), "housing".to_string()), ("caf-2@caf.example".to_string(), "housing".to_string())]);
+        // A note's front matter naming it the old way, and a task by its REFID.
+        let vault = Vault { root: PathBuf::from("/vault"), notes: vec![notes::read("lease.md", "---\ncase: housing\n---\n# Lease\n"), notes::read("rent.md", "# Rent\n\nFor [housing](sioul:project/housing).\n")], folders: Vec::new() };
+        let tasks = vec![Task { uid: "rent".into(), title: "Pay the rent".into(), projects: vec!["housing".into()], ..Task::default() }];
+        let projects = vec![housing];
+        let world = World { tasks: &tasks, events: &[], contacts: &[], vault: Some(&vault), drafts: &[], mail: &MailIndex::default(), projects: &projects, budget: &[], local: &local, sites: &[] };
+        assert_eq!(world.canonical("sioul:case/housing"), "sioul:project/housing");
+        for address in ["sioul:case/housing", "sioul:project/housing"] {
+            let mut tied: Vec<(Kind, String, String)> = world.related(address).into_iter().map(|r| (r.kind, r.how, r.uri)).collect();
+            tied.sort();
+            assert_eq!(
+                tied,
+                [
+                    (Kind::Task, "in-project".to_string(), "sioul:task/rent".to_string()),
+                    (Kind::Mail, "in-project".to_string(), "mid:caf-1@caf.example".to_string()),
+                    (Kind::Mail, "in-project".to_string(), "mid:caf-2@caf.example".to_string()),
+                    (Kind::Note, "in-project".to_string(), "sioul:note/lease.md".to_string()),
+                    (Kind::Note, "in-project".to_string(), "sioul:note/rent.md".to_string()),
+                ],
+                "{address}"
+            );
+            assert_eq!(world.describe(address).title, "Housing");
+        }
+        assert_eq!(world.related("mid:caf-1@caf.example")[0].how, "project");
+        // Untied, however the tie was written.
+        let mut kept = local.clone();
+        assert!(kept.untie(&world, "sioul:project/housing", "mid:caf-1@caf.example"));
+        assert_eq!(kept.links.len(), 1);
     }
 }

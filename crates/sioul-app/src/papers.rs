@@ -12,7 +12,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 fn wallet() -> Result<Wallet, String> {
-    let root = load_config().case_store_path().ok_or_else(|| tr().text("papers-no-store", None))?;
+    let root = load_config().notes_root_path().ok_or_else(|| tr().text("papers-no-store", None))?;
     Wallet::load(&root)
 }
 
@@ -54,7 +54,7 @@ struct Choice {
 
 #[derive(Serialize, Default)]
 struct PapersView {
-    /// A case store is set: papers have a home.
+    /// A notes folder is set: papers have a home.
     store: bool,
     problem: String,
     kinds: Vec<Choice>,
@@ -96,7 +96,7 @@ pub(crate) fn view() -> String {
     let kinds = Kind::ALL.iter().map(|k| Choice { id: k.id(), label: tr().text(&format!("paper-kind-{}", k.id()), None) }).collect();
     let wallet = match wallet() {
         Ok(wallet) => wallet,
-        Err(problem) => return json(&PapersView { store: load_config().case_store_path().is_some(), problem, kinds, families: Vec::new() }),
+        Err(problem) => return json(&PapersView { store: load_config().notes_root_path().is_some(), problem, kinds, families: Vec::new() }),
     };
     let today = jiff::Zoned::now().date();
     let mut families: Vec<Family> = Vec::new();

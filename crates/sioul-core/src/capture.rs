@@ -12,7 +12,7 @@
 //!   "vendredi", "semaine prochaine", "dans 3 jours", "30 octobre");
 //! - **how long**: "~15m", "~1h", "~1h30";
 //! - **the date asked**, in braces: "{30/10}", "{vendredi}";
-//! - **a case or a tag**: "#housing".
+//! - **a project or a tag**: "#housing".
 //!
 //! Anywhere in the line, "@tomorrow" or "@30/10" gives the day to start, and
 //! "@call", "@write", "@online", "@out", "@read", "@think", "@make" (or in
@@ -32,7 +32,7 @@ use serde::Serialize;
 /// Something the line said besides the title.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Chip {
-    /// "start", "due", "estimate", "case", "tag", "kind".
+    /// "start", "due", "estimate", "project", "tag", "kind".
     pub kind: String,
     /// As typed.
     pub text: String,
@@ -177,15 +177,15 @@ pub fn parse_minutes(text: &str) -> Option<u32> {
     text.parse().ok().filter(|&m: &u32| m > 0)
 }
 
-/// Reads one typed line. `cases` are the case ids a "#word" may name; any
+/// Reads one typed line. `projects` are the project ids a "#word" may name; any
 /// other "#word" is a tag (CATEGORIES). `kinds` are your kinds, id and name;
 /// empty, Sioul's. The words are those in use (`words::current`).
-pub fn capture(line: &str, today: Date, cases: &[String], kinds: &[(String, String)]) -> Captured {
-    capture_with(&crate::words::current().capture, line, today, cases, kinds)
+pub fn capture(line: &str, today: Date, projects: &[String], kinds: &[(String, String)]) -> Captured {
+    capture_with(&crate::words::current().capture, line, today, projects, kinds)
 }
 
 /// `capture`, read with these words.
-pub fn capture_with(w: &CaptureWords, line: &str, today: Date, cases: &[String], kinds: &[(String, String)]) -> Captured {
+pub fn capture_with(w: &CaptureWords, line: &str, today: Date, projects: &[String], kinds: &[(String, String)]) -> Captured {
     let mut edit = TaskEdit::default();
     let mut chips: Vec<Chip> = Vec::new();
     let mut words: Vec<String> = line.split_whitespace().map(str::to_string).collect();
@@ -226,13 +226,13 @@ pub fn capture_with(w: &CaptureWords, line: &str, today: Date, cases: &[String],
             continue;
         }
         if let Some(tag) = last.strip_prefix('#').filter(|t| !t.is_empty()) {
-            let is_case = cases.iter().any(|c| c.eq_ignore_ascii_case(tag));
-            if is_case {
-                edit.cases.push(tag.to_string());
+            let is_project = projects.iter().any(|c| c.eq_ignore_ascii_case(tag));
+            if is_project {
+                edit.projects.push(tag.to_string());
             } else {
                 edit.categories.push(tag.to_string());
             }
-            chips.push(chip(if is_case { "case" } else { "tag" }, &last, tag.to_string()));
+            chips.push(chip(if is_project { "project" } else { "tag" }, &last, tag.to_string()));
             words.pop();
             continue;
         }
@@ -323,22 +323,22 @@ mod tests {
 
     #[test]
     fn kinds_typed_or_plain() {
-        let cases: Vec<String> = Vec::new();
-        let typed = capture("Banque @appel demain ~15m", today(), &cases, &[]);
+        let projects: Vec<String> = Vec::new();
+        let typed = capture("Banque @appel demain ~15m", today(), &projects, &[]);
         assert_eq!((typed.edit.title.as_str(), typed.edit.kind.as_str(), typed.edit.start.as_str()), ("Banque", "call", "2026-10-04"));
-        assert_eq!(capture("Remplir le formulaire de la CAF", today(), &cases, &[]).edit.kind, "online");
-        assert_eq!(capture("Call the bank", today(), &cases, &[]).edit.kind, "call");
-        assert_eq!(capture("Ask the lawyer", today(), &cases, &[]).edit.kind, "", "a word that could be several says nothing");
-        assert_eq!(capture("Écrire au propriétaire", today(), &cases, &[]).edit.kind, "write");
-        let both = capture("Call the bank @write", today(), &cases, &[]);
+        assert_eq!(capture("Remplir le formulaire de la CAF", today(), &projects, &[]).edit.kind, "online");
+        assert_eq!(capture("Call the bank", today(), &projects, &[]).edit.kind, "call");
+        assert_eq!(capture("Ask the lawyer", today(), &projects, &[]).edit.kind, "", "a word that could be several says nothing");
+        assert_eq!(capture("Écrire au propriétaire", today(), &projects, &[]).edit.kind, "write");
+        let both = capture("Call the bank @write", today(), &projects, &[]);
         assert_eq!(both.edit.kind, "write", "what is typed wins over the first word");
         assert_eq!(both.chips.iter().filter(|c| c.kind == "kind").count(), 1);
         // Your kinds: one added, "think" taken away.
         let yours = vec![("call".to_string(), "Call".to_string()), ("rendez-vous".to_string(), "Rendez-vous".to_string())];
-        assert_eq!(capture("Dentist @rendez-vous", today(), &cases, &yours).edit.kind, "rendez-vous");
-        assert_eq!(capture("Call the bank", today(), &cases, &yours).edit.kind, "call");
-        assert_eq!(capture("Decide @think", today(), &cases, &yours).edit.kind, "", "a kind taken away is never given");
-        assert_eq!(capture("Decide on the flat", today(), &cases, &yours).edit.kind, "");
+        assert_eq!(capture("Dentist @rendez-vous", today(), &projects, &yours).edit.kind, "rendez-vous");
+        assert_eq!(capture("Call the bank", today(), &projects, &yours).edit.kind, "call");
+        assert_eq!(capture("Decide @think", today(), &projects, &yours).edit.kind, "", "a kind taken away is never given");
+        assert_eq!(capture("Decide on the flat", today(), &projects, &yours).edit.kind, "");
     }
 
     #[test]
@@ -365,18 +365,18 @@ mod tests {
 
     #[test]
     fn one_line_one_task() {
-        let cases = vec!["housing".to_string()];
-        let got = capture("Call the CAF tomorrow ~15m #housing {30 oct}", today(), &cases, &[]);
+        let projects = vec!["housing".to_string()];
+        let got = capture("Call the CAF tomorrow ~15m #housing {30 oct}", today(), &projects, &[]);
         assert_eq!(got.edit.title, "Call the CAF");
         assert_eq!((got.edit.start.as_str(), got.edit.due.as_str(), got.edit.estimate), ("2026-10-04", "2026-10-30", 15));
-        assert_eq!((got.edit.cases.clone(), got.edit.categories.clone()), (vec!["housing".to_string()], vec![]));
+        assert_eq!((got.edit.projects.clone(), got.edit.categories.clone()), (vec!["housing".to_string()], vec![]));
         // "Call" says the kind plainly: its chip comes last, as nothing typed it.
-        assert_eq!(got.chips.iter().map(|c| c.kind.as_str()).collect::<Vec<_>>(), vec!["start", "estimate", "case", "due", "kind"]);
+        assert_eq!(got.chips.iter().map(|c| c.kind.as_str()).collect::<Vec<_>>(), vec!["start", "estimate", "project", "due", "kind"]);
         assert_eq!(got.edit.kind, "call");
-        let tagged = capture("Prepare @lundi the tomorrow meeting notes #health", today(), &cases, &[]);
+        let tagged = capture("Prepare @lundi the tomorrow meeting notes #health", today(), &projects, &[]);
         assert_eq!((tagged.edit.title.as_str(), tagged.edit.start.as_str()), ("Prepare the tomorrow meeting notes", "2026-10-05"));
         assert_eq!(tagged.edit.categories, vec!["health"]);
-        assert_eq!(capture("Book room 12", today(), &cases, &[]).edit.title, "Book room 12");
+        assert_eq!(capture("Book room 12", today(), &projects, &[]).edit.title, "Book room 12");
     }
 
     /// Words added in your configuration: German days, a German "in", a German verb.

@@ -100,7 +100,7 @@ pub fn next_number(existing: &[Invoice], prefix: &str, year: i16) -> String {
 /// An invoice for a project's billable time not billed yet, among `entries`;
 /// None when there is none.
 #[allow(clippy::too_many_arguments)]
-pub fn make(entries: &[Entry], project: &crate::cases::Case, client: &str, client_address: &str, settings: &InvoiceSettings, number: &str, date: Date) -> Option<Invoice> {
+pub fn make(entries: &[Entry], project: &crate::projects::Project, client: &str, client_address: &str, settings: &InvoiceSettings, number: &str, date: Date) -> Option<Invoice> {
     let rate = project.rate.unwrap_or(settings.rate);
     let billed: Vec<&Entry> = entries.iter().filter(|e| e.project == project.id && e.billable && e.invoice.is_empty() && e.minutes > 0).collect();
     if billed.is_empty() {
@@ -237,7 +237,7 @@ pub fn html(invoice: &Invoice, tr: &Translator) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cases::Case;
+    use crate::projects::Project;
 
     fn entry(key: &str, start: i64, minutes: u32, title: &str, invoice: &str) -> Entry {
         Entry {
@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     fn an_invoice_bills_each_hour_once() {
-        let project = Case { id: "lumen".into(), title: "Studio Lumen".into(), kind: Some("project".into()), rate: Some(60.0), ..Case::default() };
+        let project = Project { id: "lumen".into(), title: "Studio Lumen".into(), kind: Some("project".into()), rate: Some(60.0), ..Project::default() };
         let entries = vec![
             entry("a", 10, 90, "Build the site", ""),
             entry("b", 20, 25, "Call with the client", ""),

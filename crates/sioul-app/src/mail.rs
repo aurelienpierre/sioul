@@ -963,7 +963,7 @@ pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>) -> Option<String> {
     show(qt, shared);
     let (line, draft) = match &pending.work {
         Work::Untrash { trashed, path } => {
-            let root = load_config().case_store_path();
+            let root = load_config().notes_root_path();
             let back = root.ok_or_else(|| tr().text("error-no-store", None)).and_then(|root| sioul_core::notes::untrash(&root, trashed, path));
             crate::work::show_work(qt, shared);
             (back.err().unwrap_or_else(|| tr().text("undo-done", None)), None)

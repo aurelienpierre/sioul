@@ -4,7 +4,7 @@
 // One task, open on the right: its details first (its title, what to do
 // with it now: start, done, not now; its steps, what it waits for and frees,
 // its fields in words, its notes, everything tied to it), then "Edit" turns
-// them into its form: every field, its dates, length, costs and gain, case
+// them into its form: every field, its dates, length, costs and gain, project
 // and notes. Each change is saved as it is made: only the lines that changed
 // are written. A task done asks, quietly, "How was it?".
 //
@@ -29,8 +29,8 @@ Panel {
     property string uid: ""
     property var detail: null
     property bool moreShown: false
-    // The cases a task can belong to: [{id, title}].
-    property var cases: []
+    // The projects a task can belong to: [{id, title}].
+    property var projects: []
     // The kinds of task, as you named them: {id, label}.
     property var kinds: []
     // Every tag in use, to choose one again.
@@ -324,8 +324,8 @@ Panel {
             add("task-field-energy", panel.sioul.textWith("task-energy-computed", "level", panel.sioul.text("task-energy-" + level)))
         else if (e.energy)
             add("task-field-energy", panel.sioul.text("task-energy-" + e.energy))
-        const project = e.cases && e.cases.length > 0 ? panel.cases.find(c => c.id === e.cases[0]) : null
-        add("task-field-case", project ? project.title : (e.cases && e.cases.length > 0 ? e.cases[0] : ""))
+        const project = e.projects && e.projects.length > 0 ? panel.projects.find(c => c.id === e.projects[0]) : null
+        add("task-field-project", project ? project.title : (e.projects && e.projects.length > 0 ? e.projects[0] : ""))
         add("task-field-billable", e.billable === true ? panel.sioul.text("task-billable-yes") : e.billable === false ? panel.sioul.text("task-billable-no") : "")
         const kind = e.kind ? panel.kinds.find(k => k.id === e.kind) : null
         add("task-kind", kind ? kind.label : (e.kind || ""))
@@ -1152,21 +1152,21 @@ Panel {
                     onTaken: values => panel.changeRatings(values)
                 }
                 Label {
-                    text: panel.sioul.text("task-field-case")
+                    text: panel.sioul.text("task-field-project")
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
                     wrapMode: Text.Wrap
-                    opacity: panel.keeps("case") ? 1 : 0.45
+                    opacity: panel.keeps("project") ? 1 : 0.45
                 }
                 ComboBox {
-                    readonly property var choices: [{ id: "", title: "—" }].concat(panel.cases)
+                    readonly property var choices: [{ id: "", title: "—" }].concat(panel.projects)
 
                     Layout.fillWidth: true
-                    enabled: panel.canEdit && panel.keeps("case")
-                    opacity: panel.keeps("case") ? 1 : 0.45
+                    enabled: panel.canEdit && panel.keeps("project")
+                    opacity: panel.keeps("project") ? 1 : 0.45
                     model: choices.map(c => panel.theme.plain(c.title))
-                    currentIndex: panel.detail ? Math.max(0, choices.findIndex(c => c.id === (panel.detail.edit.cases[0] || ""))) : 0
-                    onActivated: index => panel.change("cases", choices[index].id === "" ? [] : [choices[index].id])
+                    currentIndex: panel.detail ? Math.max(0, choices.findIndex(c => c.id === (panel.detail.edit.projects[0] || ""))) : 0
+                    onActivated: index => panel.change("projects", choices[index].id === "" ? [] : [choices[index].id])
                 }
                 Label {
                     text: panel.sioul.text("task-field-billable")

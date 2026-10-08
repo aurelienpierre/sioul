@@ -16,7 +16,7 @@ use crate::backend::{QtThread, Shared, load_config, tr};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use serde::Serialize;
-use sioul_core::cases::{Case, CaseStore};
+use sioul_core::projects::{Project, ProjectStore};
 use sioul_core::i18n::Translator;
 use sioul_core::stopped::Stopped;
 use sioul_core::tasks::{self, Task};
@@ -74,12 +74,12 @@ fn note_of(running: Option<&Running>, title: &str, now: i64, tr: &Translator, zo
 
 /// The task's title, else its first project's; "" when neither is known here
 /// (a task not synced to this device yet).
-fn title_of(uid: &str, tasks: &[Task], cases: &[Case]) -> String {
+fn title_of(uid: &str, tasks: &[Task], projects: &[Project]) -> String {
     let Some(task) = tasks.iter().find(|t| t.uid == uid) else { return String::new() };
     if !task.title.trim().is_empty() {
         return task.title.clone();
     }
-    task.cases.iter().find_map(|id| cases.iter().find(|c| c.id == *id)).map(|c| c.title.clone()).unwrap_or_default()
+    task.projects.iter().find_map(|id| projects.iter().find(|c| c.id == *id)).map(|c| c.title.clone()).unwrap_or_default()
 }
 
 /// What this process shows.
@@ -151,11 +151,11 @@ fn post(window: Option<(&QtThread, &Arc<Shared>)>) -> Option<Note> {
 fn title_now(named: &mut (String, String), uid: &str, shared: Option<&Arc<Shared>>) -> String {
     let read = shared.and_then(|s| s.loaded.lock().ok().and_then(|l| l.clone()));
     let title = match read {
-        Some(loaded) => title_of(uid, &loaded.tasks, &loaded.cases),
+        Some(loaded) => title_of(uid, &loaded.tasks, &loaded.projects),
         None if named.0 == uid => return named.1.clone(),
         None => {
-            let cases = load_config().case_store_path().and_then(|root| CaseStore::load(&root).ok()).map(|store| store.cases).unwrap_or_default();
-            title_of(uid, &tasks::all(&TimeZone::system()), &cases)
+            let projects = load_config().notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
+            title_of(uid, &tasks::all(&TimeZone::system()), &projects)
         }
     };
     *named = (uid.to_string(), title.clone());
@@ -332,12 +332,12 @@ mod tests {
 
     #[test]
     fn titles_from_the_task_else_its_project() {
-        let task = |uid: &str, title: &str, cases: &[&str]| Task { uid: uid.into(), title: title.into(), cases: cases.iter().map(|c| c.to_string()).collect(), ..Task::default() };
+        let task = |uid: &str, title: &str, projects: &[&str]| Task { uid: uid.into(), title: title.into(), projects: projects.iter().map(|c| c.to_string()).collect(), ..Task::default() };
         let tasks = vec![task("t1", "Write to the bank", &["lumen"]), task("t2", "", &["gone", "lumen"])];
-        let cases = vec![Case { id: "lumen".into(), title: "Lumen, the website".into(), ..Case::default() }];
-        assert_eq!(title_of("t1", &tasks, &cases), "Write to the bank");
-        assert_eq!(title_of("t2", &tasks, &cases), "Lumen, the website");
-        assert_eq!(title_of("t3", &tasks, &cases), "", "a task not here yet");
+        let projects = vec![Project { id: "lumen".into(), title: "Lumen, the website".into(), ..Project::default() }];
+        assert_eq!(title_of("t1", &tasks, &projects), "Write to the bank");
+        assert_eq!(title_of("t2", &tasks, &projects), "Lumen, the website");
+        assert_eq!(title_of("t3", &tasks, &projects), "", "a task not here yet");
     }
 
     #[test]

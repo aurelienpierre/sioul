@@ -467,7 +467,7 @@ mod tests {
         let task = Task { links: read.links.clone(), ..bank.clone() };
         let event = agenda::event_ref(&text, "block-1.ics", &paris()).unwrap();
         let (empty_mail, empty_links) = (crate::mailindex::MailIndex::default(), crate::links::LocalLinks::default());
-        let world = crate::links::World { tasks: std::slice::from_ref(&task), events: std::slice::from_ref(&event), contacts: &[], vault: None, drafts: &[], mail: &empty_mail, cases: &[], budget: &[], local: &empty_links, sites: &[] };
+        let world = crate::links::World { tasks: std::slice::from_ref(&task), events: std::slice::from_ref(&event), contacts: &[], vault: None, drafts: &[], mail: &empty_mail, projects: &[], budget: &[], local: &empty_links, sites: &[] };
         let edges = world.edges();
         assert!(edges.iter().any(|e| e.from == crate::links::task_uri("bank-1") && e.to == crate::links::event_uri("block-1")), "{edges:?}");
         assert!(edges.iter().any(|e| e.from == crate::links::event_uri("block-1") && e.to == crate::links::task_uri("bank-1")), "{edges:?}");

@@ -60,7 +60,9 @@ As it arrives, mail is checked before a route files it ([above](#what-is-protect
 
 ## Where projects live {#where-projects-live}
 
-In one file, `sioul-cases.toml`, at the root of your notes folder: readable, and written by hand if you like. It travels with your notes folder, or through Sioul's sharing once you switch **Projects and money** on in it ([Sharing](sharing.md)). A project's tasks and events carry its identifier in a standard field, so other calendar programs keep the grouping.
+In one file, `sioul-projects.toml`, at the root of your notes folder: readable, and written by hand if you like. It travels with your notes folder, or through Sioul's sharing once you switch **Projects and money** on in it ([Sharing](sharing.md)). A project's tasks and events carry its identifier in a standard field, so other calendar programs keep the grouping.
+
+If your notes folder still holds `sioul-cases.toml`, the file's name before projects had one name, nothing changes: Sioul reads it and writes it as it is, so that a device not yet updated reads it too. When each of your devices has this version, **Rename to sioul-projects.toml**, in Settings ▸ Your folder and sharing, renames it, with a copy of the old file kept beside it. Links to a project written before still open it.
 
 ## In quiet time {#in-quiet-time}
 
@@ -70,7 +72,7 @@ Projects for clients rest outside working hours: "Work projects rest until work 
 
 - **A lane on the Porch**: **Projects shown here**, in the Porch's ⚙, gives a project its own lane there ([The Porch](porch.md)).
 - **Yours, outside work**: a project of your own, marked so, stays in view in quiet time, when work projects rest.
-- **By hand, if you like**: the list of projects is a readable file, `sioul-cases.toml`, which you can edit; its form is [below](#for-technical-readers).
+- **By hand, if you like**: the list of projects is a readable file, `sioul-projects.toml`, which you can edit; its form is [below](#for-technical-readers).
 - **An AI agent you connect** ([Using an AI agent](ai-agent.md)) can read a project's page as the window shows it, with one-time codes, sign-in links, account and card numbers masked in its mail. It changes nothing there.
 
 ## Compared with other apps {#compared-with-other-apps}
@@ -127,17 +129,17 @@ Others do more for working together: every other app here shares a project with 
 
 ### The file {#the-file}
 
-`sioul-cases.toml`, at the root of your notes folder: TOML, one `[[case]]` per project (`id`, `title`, `kind = "project"` for a client's, `client`, `rate`, `budget`, `status`), each with its `[[case.route]]` lines. A project's tasks and events carry its `id` in `REFID` (RFC 9253 §8.3), so other CalDAV programs keep the grouping.
+`sioul-projects.toml`, at the root of your notes folder: TOML, one `[[project]]` per project (`id`, `title`, `kind = "project"` for a client's, `client`, `rate`, `budget`, `status`, `ai`), each with its `[[project.route]]` lines. The file's first name, `sioul-cases.toml`, with `[[case]]` and `[[case.route]]`, reads the same and keeps its names when Sioul writes it; renaming it checks that nothing changes before it writes, and keeps `sioul-cases.toml.before-rename`. A project's tasks and events carry its `id` in `REFID` (RFC 9253 §8.3), so other CalDAV programs keep the grouping.
 
 ### How routes match {#how-routes-match}
 
 - `from_domains`: the sender's domain or any subdomain ("example.org" takes "mail.example.org", never "notexample.org"); `from_addresses`: exact, case ignored; `subject_contains`, `text_contains`, `attachment_contains`: whole words, case and accents ignored. Every list filled must match; any item of a list will do.
 - The text is read in its first 6,000 characters (the HTML part, read as text, when the text part is only a stub).
-- Conversations follow `In-Reply-To` and `References`. A message filed as it arrives is tied to its project (`links.toml`: `mid:` ↔ `sioul:case/<id>`), so it stays when routes change.
+- Conversations follow `In-Reply-To` and `References`. A message filed as it arrives is tied to its project (`links.toml`: `mid:` ↔ `sioul:project/<id>`; `sioul:case/<id>`, as written before, reads the same), so it stays when routes change.
 
 ### Security, precisely {#security-precisely}
 
 - When mail arrives, and on the Porch, lanes are decided in the order of protection: a blocked sender stays blocked; forged mail (DMARC failing under a `quarantine` or `reject` policy) and mail whose display name borrows a known one are set aside; one-time codes keep their lane; then project routes. Authentication results come from your own provider's `Authentication-Results` (RFC 8601, only from an `authserv-id` you trust) and from Sioul's own check of each message as it is fetched ([Every message checked](privacy-security.md#every-message-checked)).
 - Mail that is not authenticated (SPF and DKIM both failed, no DMARC pass, no ARC seal from a forwarder you trust) is routed with its sender removed, so `from_domains` and `from_addresses` cannot take it, while subject, text and attachment routes still can. A message with no results, or with only one of the two failing, keeps its sender: a sender route then trusts the address as written.
 - A matching route wins over a provider's spam flag, and Sioul's own spam filter leaves a project's conversations alone.
-- The sharing part **Projects and money** seals `sioul-cases.toml` with the budgets, bank and contracts files: each record with XChaCha20-Poly1305, under a key made from your passphrase with Argon2id (64 MiB, 3 passes) and kept in each device's keyring ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)).
+- The sharing part **Projects and money** seals the projects' file (`sioul-projects.toml`, or `sioul-cases.toml`) with the budgets, bank and contracts files: each record with XChaCha20-Poly1305, under a key made from your passphrase with Argon2id (64 MiB, 3 passes) and kept in each device's keyring ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)).

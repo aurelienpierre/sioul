@@ -211,7 +211,7 @@ Item {
     }
 
     function laneIcon(key) {
-        if (key.startsWith("case:"))
+        if (key.startsWith("project:"))
             return "folder-documents"
         if (key.startsWith("public:"))
             return "mail-message"

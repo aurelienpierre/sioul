@@ -930,7 +930,9 @@ impl Words {
         type Cache = Mutex<Vec<(String, Arc<Words>)>>;
         static CACHE: LazyLock<Cache> = LazyLock::new(|| Mutex::new(Vec::new()));
         let (languages, countries) = (languages(config), countries(config));
-        let key = format!("{languages:?}|{countries:?}|{}", toml::to_string(&config.words).unwrap_or_default());
+        // Keyed by all it is made from: the older settings too (`older_settings`),
+        // else two configurations alike but for `filed_words` shared one list.
+        let key = format!("{languages:?}|{countries:?}|{}|{:?}|{:?}|{:?}", toml::to_string(&config.words).unwrap_or_default(), config.filed_words, config.quiet.personal, config.quiet.work);
         if let Ok(cache) = CACHE.lock()
             && let Some((_, words)) = cache.iter().find(|(k, _)| *k == key)
         {

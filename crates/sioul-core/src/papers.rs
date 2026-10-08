@@ -7,7 +7,7 @@
 //! one ends, early enough to renew it (a passport takes weeks, the
 //! complémentaire santé solidaire does not renew by itself).
 //!
-//! `sioul-papers.toml` at the root of the case store, the files in its
+//! `sioul-papers.toml` at the root of the notes folder, the files in its
 //! `papers/` folder: they travel with your projects and notes.
 
 use jiff::civil::Date;
@@ -177,7 +177,7 @@ pub struct Paper {
     #[serde(default)]
     pub kind: Kind,
     pub title: String,
-    /// Its file: in the case store (`papers/…`), or anywhere.
+    /// Its file: in the notes folder (`papers/…`), or anywhere.
     #[serde(default)]
     pub file: String,
     #[serde(default, deserialize_with = "crate::budget::dates::optional")]
@@ -261,7 +261,7 @@ pub fn usual_end(kind: Kind, issued: Date) -> Option<Date> {
     issued.checked_add(Span::new().years(kind.years()?)).ok()?.yesterday().ok()
 }
 
-/// The papers of a case store.
+/// The papers of a notes folder.
 #[derive(Debug, Clone, Default)]
 pub struct Wallet {
     pub root: PathBuf,
@@ -275,7 +275,7 @@ struct File {
 }
 
 impl Wallet {
-    /// The wallet at the root of a case store; empty when there is none yet.
+    /// The wallet at the root of a notes folder; empty when there is none yet.
     pub fn load(root: &Path) -> Result<Wallet, String> {
         let path = root.join(MANIFEST);
         let papers = match std::fs::read_to_string(&path) {
@@ -303,7 +303,7 @@ impl Wallet {
     pub fn put(&mut self, mut paper: Paper) -> String {
         if paper.id.is_empty() {
             let taken: Vec<String> = self.papers.iter().map(|p| p.id.clone()).collect();
-            paper.id = crate::cases::new_id(&paper.title, &taken);
+            paper.id = crate::projects::new_id(&paper.title, &taken);
         }
         let id = paper.id.clone();
         match self.papers.iter_mut().find(|p| p.id == id) {
@@ -320,7 +320,7 @@ impl Wallet {
         self.papers.len() != before
     }
 
-    /// A file copied into the wallet's folder, under a free name; its path from the case store.
+    /// A file copied into the wallet's folder, under a free name; its path from the notes folder.
     pub fn keep_file(&self, source: &Path, name: &str) -> Result<String, String> {
         let folder = self.root.join(FOLDER);
         std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;

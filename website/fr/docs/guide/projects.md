@@ -60,7 +60,9 @@ Une réponse dans une conversation du projet va avec lui, comme un message que v
 
 ## Où vivent les projets {#where-projects-live}
 
-Dans un seul fichier, `sioul-cases.toml`, à la racine de votre dossier de notes : lisible, et modifiable à la main si vous voulez. Il voyage avec votre dossier de notes, ou par le partage de Sioul une fois **Projets et argent** activé dans le partage ([Le partage](sharing.md)). Les tâches et les événements d’un projet portent son identifiant dans un champ standard, pour que les autres programmes d’agenda gardent le regroupement.
+Dans un seul fichier, `sioul-projects.toml`, à la racine de votre dossier de notes : lisible, et modifiable à la main si vous voulez. Il voyage avec votre dossier de notes, ou par le partage de Sioul une fois **Projets et argent** activé dans le partage ([Le partage](sharing.md)). Les tâches et les événements d’un projet portent son identifiant dans un champ standard, pour que les autres programmes d’agenda gardent le regroupement.
+
+Si votre dossier de notes contient encore `sioul-cases.toml`, le nom du fichier d’avant le nom unique des projets, rien ne change : Sioul le lit et l’écrit tel quel, pour qu’un appareil pas encore mis à jour le lise aussi. Quand chacun de vos appareils a cette version, **Renommer en sioul-projects.toml**, dans Paramètres ▸ Votre dossier et le partage, le renomme, en gardant une copie de l’ancien fichier à côté. Les liens vers un projet écrits avant l’ouvrent toujours.
 
 ## Pendant le calme {#in-quiet-time}
 
@@ -70,7 +72,7 @@ Les projets pour des clients se reposent en dehors des heures de travail : «�
 
 - **Une file sur le Porche** : **Projets montrés ici**, dans le ⚙ du Porche, donne à un projet sa propre file ([Le Porche](porch.md)).
 - **À vous, hors travail** : un projet à vous, marqué ainsi, reste en vue pendant le calme, quand les projets de travail se reposent.
-- **À la main, si vous voulez** : la liste des projets est un fichier lisible, `sioul-cases.toml`, que vous pouvez modifier ; sa forme est [plus bas](#for-technical-readers).
+- **À la main, si vous voulez** : la liste des projets est un fichier lisible, `sioul-projects.toml`, que vous pouvez modifier ; sa forme est [plus bas](#for-technical-readers).
 - **Un agent d’IA que vous connectez** ([Avec un agent d’IA](ai-agent.md)) peut lire la page d’un projet telle que la fenêtre la montre, les codes à usage unique, les liens de connexion, les numéros de compte et de carte masqués dans son courrier. Il n’y change rien.
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
@@ -127,17 +129,17 @@ D’autres en font plus pour le travail à plusieurs : chacune des autres appl
 
 ### Le fichier {#the-file}
 
-`sioul-cases.toml`, à la racine de votre dossier de notes : du TOML, un `[[case]]` par projet (`id`, `title`, `kind = "project"` pour celui d’un client, `client`, `rate`, `budget`, `status`), chacun avec ses lignes `[[case.route]]`. Les tâches et les événements d’un projet portent son `id` dans `REFID` (RFC 9253 §8.3), pour que les autres programmes CalDAV gardent le regroupement.
+`sioul-projects.toml`, à la racine de votre dossier de notes : du TOML, un `[[project]]` par projet (`id`, `title`, `kind = "project"` pour celui d’un client, `client`, `rate`, `budget`, `status`, `ai`), chacun avec ses lignes `[[project.route]]`. Le premier nom du fichier, `sioul-cases.toml`, avec `[[case]]` et `[[case.route]]`, se lit de même et garde ses noms quand Sioul l’écrit ; le renommer vérifie que rien ne change avant d’écrire, et garde `sioul-cases.toml.before-rename`. Les tâches et les événements d’un projet portent son `id` dans `REFID` (RFC 9253 §8.3), pour que les autres programmes CalDAV gardent le regroupement.
 
 ### Comment les règles correspondent {#how-routes-match}
 
 - `from_domains` : le domaine de l’expéditeur ou l’un de ses sous-domaines (« example.org » prend « mail.example.org », jamais « notexample.org ») ; `from_addresses` : exactes, sans tenir compte de la casse ; `subject_contains`, `text_contains`, `attachment_contains` : des mots entiers, sans tenir compte de la casse ni des accents. Chaque liste remplie doit correspondre ; n’importe quel élément d’une liste suffit.
 - Le texte est lu dans ses 6 000 premiers caractères (la partie HTML, lue comme du texte, quand la partie texte n’est qu’une ébauche).
-- Les conversations suivent `In-Reply-To` et `References`. Un message rangé à son arrivée est lié à son projet (`links.toml` : `mid:` ↔ `sioul:case/<id>`), et y reste quand les règles changent.
+- Les conversations suivent `In-Reply-To` et `References`. Un message rangé à son arrivée est lié à son projet (`links.toml` : `mid:` ↔ `sioul:project/<id>` ; `sioul:case/<id>`, écrit avant, se lit de même), et y reste quand les règles changent.
 
 ### La sécurité, précisément {#security-precisely}
 
 - À l’arrivée du courrier, et sur le Porche, les files se décident dans l’ordre de la protection : un expéditeur bloqué reste bloqué ; le courrier falsifié (DMARC en échec sous une politique `quarantine` ou `reject`) et celui dont le nom affiché emprunte un nom connu sont mis de côté ; les codes à usage unique gardent leur file ; puis viennent les règles des projets. Les résultats d’authentification viennent du `Authentication-Results` de votre propre fournisseur (RFC 8601, seulement d’un `authserv-id` auquel vous faites confiance) et de la vérification que fait Sioul de chaque message à sa réception ([Chaque message vérifié](privacy-security.md#every-message-checked)).
 - Le courrier non authentifié (SPF et DKIM tous deux en échec, aucun succès DMARC, aucun sceau ARC d’un relais de confiance) est rangé sans son expéditeur : `from_domains` et `from_addresses` ne peuvent pas le prendre, tandis que les règles sur l’objet, le texte et les pièces jointes le peuvent encore. Un message sans résultats, ou dont un seul des deux échoue, garde son expéditeur : une règle sur l’expéditeur se fie alors à l’adresse telle qu’elle est écrite.
 - Une règle qui correspond l’emporte sur la marque d’indésirable du fournisseur, et le propre filtre à indésirables de Sioul laisse en paix les conversations d’un projet.
-- La partie **Projets et argent** du partage scelle `sioul-cases.toml` avec les fichiers des budgets, de la banque et des contrats : chaque enregistrement avec XChaCha20-Poly1305, sous une clé tirée de votre phrase de passe par Argon2id (64 Mio, 3 passes) et gardée dans le trousseau de chaque appareil ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)).
+- La partie **Projets et argent** du partage scelle le fichier des projets (`sioul-projects.toml`, ou `sioul-cases.toml`) avec les fichiers des budgets, de la banque et des contrats : chaque enregistrement avec XChaCha20-Poly1305, sous une clé tirée de votre phrase de passe par Argon2id (64 Mio, 3 passes) et gardée dans le trousseau de chaque appareil ([Le partage](sharing.md#what-it-protects-and-what-it-cannot-hide)).

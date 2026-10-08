@@ -31,7 +31,7 @@ Sioul is one Cargo *workspace* (Cargo is Rust's build tool; a workspace is a set
 | `android/` | The phone's app: `CMakeLists.txt` builds the APK around the window's Rust library; `main.cpp` is the program Android starts, and the glue between Java and Rust; `package/` holds the manifest, the Java classes (`src/com/aurelienpierre/sioul/`) and Android's resources (`res/`); `jvm-checks/`, the Java's pure parts checked on a computer's JVM against Rust's ([android.md](android.md#building-it)). |
 | `presets/sites.json` | The sites Sioul offers to add (banks, offices, chats), built into the core (`sioul_core::presets`); `presets/research/` holds the lists they come from. |
 | `data/` | The desktop file, the AppStream file and the icon's drawings. |
-| `examples/` | A commented `config.toml`, a case store's and budgets' files, and `demo.toml`, the command line on invented mail. |
+| `examples/` | A commented `config.toml`, a notes folder's projects' and budgets' files, and `demo.toml`, the command line on invented mail. |
 | `tools/` | Checks and helpers: `final-pass.sh` (every check before a commit), `check-messages.py` (the strings), `lint-qml.sh` and `qml-test.sh` (the QML), `check-presets.py` and `check-sites.py` (the sites), the makers of icons and of the symbols font, stand-ins of Google's and GitHub's APIs for tests, `measure-load.py`, `demo/` (an invented profile, `run.sh`, which starts the window on it for a check, and the website's pictures) and `e2e/notifications/` (a notification end to end). |
 | `packaging/` | The Flatpak, AppImage, Windows and macOS files, used by `.github/workflows/release.yml`. |
 | `.github/workflows/` | `build.yml` (Linux, Windows, macOS), `android.yml` (the APK), `release.yml` (the packages), `pages.yml` (this website). |
@@ -122,8 +122,8 @@ Sioul has its own names for its parts. The design notes use them without explain
 | **lanes** | The Porch's groups: Right now, Set aside, one per project, Screener, Filed, People, less important accounts, and two for a shielded public address (`sioul_core::porch::Lane`). | [porch.md](porch.md) |
 | **Right now** | The lane of short-lived secrets (one-time codes, password resets, sign-in links): shown at once, whatever the time. | [porch.md](porch.md) |
 | **the screener** | The lane of senders you do not know yet: they wait until you let them in. | [porch.md](porch.md) |
-| **a case** | The code's and older notes' word for what the window calls a **project**: a folder of your own Markdown notes, its routes (which mail belongs to it), its tasks and events (`sioul_core::cases`, `sioul-cases.toml`). | [case-store.md](case-store.md) |
-| **the case store** | Your notes folder, which holds the cases, budgets, papers and notes as plain files. | [case-store.md](case-store.md) |
+| **a project** | Any matter you follow, for a client or your own: a record in your own Markdown notes, its routes (which mail belongs to it), its tasks and events (`sioul_core::projects`, `sioul-projects.toml`). Older notes and files call it **a case** (`sioul-cases.toml`, `[[case]]`, `sioul:case/`): the same thing, still read. | [notes-folder.md](notes-folder.md) |
+| **the notes folder** | Your folder of Markdown files, which holds the projects, budgets, papers and notes as plain files; older notes call it **the case store**, and the configuration's key is still `case_store`. | [notes-folder.md](notes-folder.md) |
 | **admin windows** | The older word for working hours and hours for your admin. "Free time" in older notes meant every other time, now **leisure**; **Free time** is now one of the two pauses. | [areas.md](areas.md) |
 | **areas** | What a thing is for: work, your own admin, leisure, as three switches (`sioul_core::areas::Area`). | [areas.md](areas.md) |
 | **the five times** | What now is for: work, admin, meals, sleep, leisure (`sioul_core::areas::Time`, decided by `sioul_core::quiet::mode`). | [areas.md](areas.md) |

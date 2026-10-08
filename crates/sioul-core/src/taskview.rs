@@ -10,7 +10,7 @@
 //! was; a day to start that passed says nothing at all; nothing commands, and
 //! nothing counts what you did not do.
 
-use crate::cases::Case;
+use crate::projects::Project;
 use crate::i18n::Translator;
 use crate::links::{Kind, Related};
 use crate::plan::{Column, Plan, Planned};
@@ -32,7 +32,7 @@ pub struct Context<'a> {
     pub plan: &'a Plan,
     pub today: Date,
     pub tr: &'a Translator,
-    pub cases: &'a [Case],
+    pub projects: &'a [Project],
     /// Minutes spent on each task, all time.
     pub spent: &'a BTreeMap<String, u32>,
     /// The last "where I stopped" line of each task.
@@ -47,9 +47,9 @@ pub struct Filter {
     pub kind: String,
     #[serde(default)]
     pub category: String,
-    /// One case or project ("" for all); kept apart, as the page's own choice.
+    /// One project ("" for all); kept apart, as the page's own choice.
     #[serde(skip)]
-    pub case: String,
+    pub project: String,
     /// Quiet time: what it keeps (`quiet::QuietTasks`).
     #[serde(skip)]
     pub quiet: Option<crate::quiet::QuietTasks>,
@@ -59,12 +59,12 @@ impl Filter {
     pub fn wants(&self, task: &Task) -> bool {
         (self.kind.is_empty() || task.kind == self.kind)
             && (self.category.is_empty() || task.categories.iter().any(|c| c.eq_ignore_ascii_case(&self.category)))
-            && (self.case.is_empty() || task.cases.iter().any(|c| c == &self.case))
+            && (self.project.is_empty() || task.projects.iter().any(|c| c == &self.project))
             && self.quiet.as_ref().is_none_or(|quiet| quiet.keeps(task))
     }
 
     pub fn is_empty(&self) -> bool {
-        self.kind.is_empty() && self.category.is_empty() && self.case.is_empty() && self.quiet.is_none()
+        self.kind.is_empty() && self.category.is_empty() && self.project.is_empty() && self.quiet.is_none()
     }
 }
 
@@ -117,8 +117,8 @@ impl Context<'_> {
         self.task(uid).map(|t| t.title.clone()).unwrap_or_else(|| uid.to_string())
     }
 
-    fn case_title(&self, id: &str) -> String {
-        self.cases.iter().find(|c| c.id == id).map_or_else(|| id.to_string(), |c| c.title.clone())
+    fn project_title(&self, id: &str) -> String {
+        self.projects.iter().find(|c| c.id == id).map_or_else(|| id.to_string(), |c| c.title.clone())
     }
 
     fn args(&self, pairs: &[(&str, String)]) -> FluentArgs<'static> {
@@ -236,8 +236,8 @@ pub struct CardView {
     pub stopped: String,
     /// "45 minutes so far".
     pub spent: String,
-    pub cases: Vec<String>,
-    pub case_ids: Vec<String>,
+    pub projects: Vec<String>,
+    pub project_ids: Vec<String>,
     pub tags: Vec<String>,
     /// One of `tasks::KINDS`, or "".
     pub kind: String,
@@ -343,8 +343,8 @@ pub fn card(cx: &Context, task: &Task) -> CardView {
         parent_uid,
         stopped: cx.stopped.get(&task.uid).filter(|s| !s.is_empty() && task.status.is_open()).map(|s| cx.say("task-stopped", &[("text", s.clone())])).unwrap_or_default(),
         spent: if spent > 0 { minutes_text(cx.tr, "task-spent-time", spent, None) } else { String::new() },
-        cases: task.cases.iter().map(|c| cx.case_title(c)).collect(),
-        case_ids: task.cases.clone(),
+        projects: task.projects.iter().map(|c| cx.project_title(c)).collect(),
+        project_ids: task.projects.clone(),
         tags: task.categories.clone(),
         kind: task.kind.clone(),
         tight,
@@ -516,7 +516,7 @@ pub fn now(cx: &Context, weather: Weather, aside: &std::collections::BTreeSet<St
     } else {
         // Nothing free today: the step the plan puts first, and its day.
         let coming = cx.plan.order.iter().filter_map(|u| Some((cx.task(u)?, cx.planned(u)?))).filter(|(_, p)| p.open_steps == 0 && p.start.is_some()).min_by_key(|(_, p)| p.start);
-        let quiet_only = cx.filter.quiet.is_some() && cx.filter.kind.is_empty() && cx.filter.category.is_empty() && cx.filter.case.is_empty();
+        let quiet_only = cx.filter.quiet.is_some() && cx.filter.kind.is_empty() && cx.filter.category.is_empty() && cx.filter.project.is_empty();
         view.empty = if !ready.is_empty() {
             cx.tr.text("task-all-aside", None)
         } else if quiet_only {
@@ -578,9 +578,9 @@ pub struct BoardView {
 
 /// The board shows the steps you act on: a bigger task stands for itself
 /// only when all its steps are done.
-pub fn board(cx: &Context, case: Option<&str>) -> BoardView {
-    let in_case = |t: &Task| case.is_none_or(|c| t.cases.iter().any(|x| x == c)) && cx.filter.wants(t);
-    let acted_on = |t: &&Task| cx.planned(&t.uid).is_some_and(|p| p.open_steps == 0 && (!p.optional || t.status != Status::NeedsAction)) && in_case(t);
+pub fn board(cx: &Context, project: Option<&str>) -> BoardView {
+    let in_project = |t: &Task| project.is_none_or(|c| t.projects.iter().any(|x| x == c)) && cx.filter.wants(t);
+    let acted_on = |t: &&Task| cx.planned(&t.uid).is_some_and(|p| p.open_steps == 0 && (!p.optional || t.status != Status::NeedsAction)) && in_project(t);
     let ordered: Vec<&Task> = cx.plan.order.iter().filter_map(|u| cx.task(u)).filter(acted_on).collect();
     let fortnight = cx.today.checked_sub(Span::new().days(14)).unwrap_or(cx.today).to_zoned(TimeZone::system()).map_or(0, |z| z.timestamp().as_second());
     let mut done: Vec<&Task> = cx.tasks.iter().filter(|t| t.status == Status::Completed && t.completed.is_some_and(|c| c >= fortnight)).filter(acted_on).collect();
@@ -594,7 +594,7 @@ pub fn board(cx: &Context, case: Option<&str>) -> BoardView {
     }
 }
 
-/// A group of the list: a case, or a list.
+/// A group of the list: a project, or a list.
 #[derive(Debug, Clone, Serialize)]
 pub struct GroupView {
     pub id: String,
@@ -608,7 +608,7 @@ pub struct ListView {
 }
 
 /// The list: every open task, a bigger task followed by its steps, in the
-/// plan's order, grouped by case ("case") or by list ("list"). Done tasks of
+/// plan's order, grouped by project ("project") or by list ("list"). Done tasks of
 /// the last two weeks come last when `done` is asked.
 pub fn list(cx: &Context, by: &str, done: bool, query: &str) -> ListView {
     let fold = |t: &str| crate::text::fold(t).into_iter().collect::<String>();
@@ -656,9 +656,9 @@ pub fn list(cx: &Context, by: &str, done: bool, query: &str) -> ListView {
             _ if optional && joyful => (OPTIONAL_JOY.to_string(), cx.tr.text("task-group-joy", None)),
             _ if optional => (OPTIONAL_SOMEDAY.to_string(), cx.tr.text("task-group-someday", None)),
             "list" => (root.list_id.clone(), root.list.clone()),
-            _ => match rows.iter().find_map(|t| t.cases.first()) {
-                Some(case) => (case.clone(), cx.case_title(case)),
-                None => (String::new(), cx.tr.text("task-no-case", None)),
+            _ => match rows.iter().find_map(|t| t.projects.first()) {
+                Some(project) => (project.clone(), cx.project_title(project)),
+                None => (String::new(), cx.tr.text("task-no-project", None)),
             },
         };
         let cards: Vec<CardView> = rows.into_iter().filter(|t| shown(t)).map(|t| card(cx, t)).collect();
@@ -670,7 +670,7 @@ pub fn list(cx: &Context, by: &str, done: bool, query: &str) -> ListView {
             None => groups.push(GroupView { id, title, rows: cards }),
         }
     }
-    // Tasks without a case come after the cases; what you do if you want, and what is parked, last.
+    // Tasks without a project come after the projects; what you do if you want, and what is parked, last.
     groups.sort_by_key(|g| match g.id.as_str() {
         OPTIONAL_JOY => 2,
         OPTIONAL_SOMEDAY => 3,
@@ -727,11 +727,11 @@ pub struct TimelineView {
 }
 
 /// The timeline (Gantt chart): each open task on the days the plan gives it,
-/// from today; the dates asked as marks. `case` keeps one case.
-pub fn timeline(cx: &Context, case: Option<&str>, rest_days: &[bool; 7]) -> TimelineView {
-    let in_case = |t: &Task| case.is_none_or(|c| t.cases.iter().any(|x| x == c)) && cx.filter.wants(t);
+/// from today; the dates asked as marks. `project` keeps one project.
+pub fn timeline(cx: &Context, project: Option<&str>, rest_days: &[bool; 7]) -> TimelineView {
+    let in_project = |t: &Task| project.is_none_or(|c| t.projects.iter().any(|x| x == c)) && cx.filter.wants(t);
     let list = list(cx, "plan", false, "");
-    let ordered: Vec<&Task> = list.groups.iter().flat_map(|g| g.rows.iter()).filter_map(|c| cx.task(&c.uid)).filter(|t| in_case(t)).collect();
+    let ordered: Vec<&Task> = list.groups.iter().flat_map(|g| g.rows.iter()).filter_map(|c| cx.task(&c.uid)).filter(|t| in_project(t)).collect();
     let last = ordered
         .iter()
         .filter_map(|t| {
@@ -942,7 +942,7 @@ mod tests {
         let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
         let tr = Translator::new("en");
         let everything = Filter::default();
-        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, cases: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
+        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
         let view = now(&cx, Weather::Clear, &BTreeSet::new());
         let first = view.now.clone().unwrap();
         assert_eq!(first.title, "Fill the housing form");
@@ -974,8 +974,8 @@ mod tests {
         let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
         let tr = Translator::new("en");
         let calls = Filter { kind: "call".into(), ..Filter::default() };
-        let cx = Context { filter: &calls, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, cases: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
-        let titles: Vec<String> = list(&cx, "case", false, "").groups.iter().flat_map(|g| g.rows.iter().map(|r| r.title.clone())).collect();
+        let cx = Context { filter: &calls, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
+        let titles: Vec<String> = list(&cx, "project", false, "").groups.iter().flat_map(|g| g.rows.iter().map(|r| r.title.clone())).collect();
         // In the plan's order: the free call first, the one that waits after.
         assert_eq!(titles, vec!["Call the CAF", "Call the bank"]);
         assert_eq!(now(&cx, Weather::Clear, &BTreeSet::new()).now.unwrap().title, "Call the CAF", "the bank's call still waits for the message");
@@ -994,8 +994,8 @@ mod tests {
         let plan = plan(&tasks, today, &Settings::default(), &BTreeMap::new(), &BTreeSet::new());
         let tr = Translator::new("en");
         let everything = Filter::default();
-        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, cases: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
-        let mut titles: Vec<String> = list(&cx, "case", false, "").groups.iter().flat_map(|g| g.rows.iter().map(|r| r.title.clone())).collect();
+        let cx = Context { filter: &everything, offices: Offices::always(), tasks: &tasks, plan: &plan, today, tr: &tr, projects: &[], spent: &BTreeMap::new(), stopped: &BTreeMap::new() };
+        let mut titles: Vec<String> = list(&cx, "project", false, "").groups.iter().flat_map(|g| g.rows.iter().map(|r| r.title.clone())).collect();
         titles.sort();
         assert_eq!(titles, vec!["First", "Second", "Third"]);
     }

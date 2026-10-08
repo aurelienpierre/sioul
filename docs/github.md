@@ -21,7 +21,7 @@ Every thirty minutes while Sioul is open, and at "Sync now". Answers are asked w
 ## What GitHub owns, and what you do
 - GitHub's title and link are written again when they change.
 - Open, done or dropped is written only when GitHub's state changes (`X-SIOUL-GITHUB` keeps what it said last): an issue you marked done or dropped here stays so while it stays open there; closed there, it is done here (dropped when closed as not planned or a duplicate); reopened there, it comes back.
-- What you add here stays: a date, a length, steps, a kind, a case.
+- What you add here stays: a date, a length, steps, a kind, a project.
 - An issue no longer found (unassigned, review given): Sioul asks GitHub for it; closed, it is done here; still open and unchanged for an hour (the search may lag behind a change), it is dropped here; it never disappears without a trace.
 - Nothing is written to GitHub.
 

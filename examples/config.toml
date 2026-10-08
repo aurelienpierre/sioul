@@ -5,7 +5,8 @@
 # `sioul account add you@example.org` (or the window's Accounts page) finds the
 # server, tests the password and writes the [[account]] block for you.
 
-# The folder of Markdown files holding the record of each case (docs/case-store.md).
+# The notes folder: your Markdown files, and beside them your projects, budgets
+# and papers (docs/notes-folder.md). Its key keeps its first name, case_store.
 case_store = "~/Notes"
 
 # Senders you know: one address or @domain per line. Everyone else waits in the screener.

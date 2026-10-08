@@ -98,8 +98,8 @@
 //! - [`routines`]: routines: timed steps played one at a time.
 //! - [`stopped`]: where you stopped: one line kept when something interrupts you.
 //! - [`today`]: today's own choices: how the day is, the steps put off for today.
-//! - [`cases`]: cases, the dossiers your admin is organised by (the window calls them projects).
-//! - [`project`]: a project, or a case, on one page: everything dated in it.
+//! - [`projects`]: projects, every matter you follow, and the file in your notes folder that names them.
+//! - [`projectview`]: a project on one page: everything dated in it.
 //! - [`github`]: GitHub's issues and pull requests that are yours, as tasks.
 //! - [`notes`]: a folder of Markdown files, read the way Obsidian reads a vault.
 //! - [`links`]: links between everything: mail, tasks, events, contacts, notes, budget lines.
@@ -152,7 +152,7 @@
 //!
 //! ## Settings, words and files
 //!
-//! - [`config`]: the configuration file: accounts, working hours, the case store.
+//! - [`config`]: the configuration file: accounts, working hours, the notes folder.
 //! - [`settings`]: settings, shown where they apply, and written into the configuration.
 //! - [`i18n`]: every sentence Sioul shows, in your language.
 //! - [`sites`]: sites kept open in Sioul (a bank's secure mailbox, a chat), and what they notified.
@@ -174,7 +174,6 @@ pub mod capabilities;
 pub mod capacity;
 pub mod capture;
 pub mod card;
-pub mod cases;
 pub mod consent;
 pub mod codes;
 pub mod compose;
@@ -222,7 +221,8 @@ pub mod reach;
 pub mod reviews;
 pub mod routines;
 pub mod reminders;
-pub mod project;
+pub mod projects;
+pub mod projectview;
 pub mod reading;
 pub mod rules;
 pub mod securitykey;

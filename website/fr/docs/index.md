@@ -11,7 +11,7 @@ description: "Sioul est un environnement administratif personnel, sensible au tr
 
 La vie administrative moderne suppose quelqu’un de toujours disponible et toujours en pleine forme. Sioul part au contraire de ce que vous pouvez donner aujourd’hui, votre attention, votre énergie, votre santé et votre repos, et y ajuste le travail, les institutions et l’argent.
 
-Une lettre des impôts, la tâche qu’elle demande, le rendez-vous, le document, la personne qui l’a envoyée et le paiement forment un seul dossier. Vous n’avez pas à garder en tête ce qui les relie : Sioul le garde pour vous.
+Une lettre des impôts, la tâche qu’elle demande, le rendez-vous, le document, la personne qui l’a envoyée et le paiement forment une seule affaire. Vous n’avez pas à garder en tête ce qui les relie : Sioul le garde pour vous.
 
 **Sioul est un environnement administratif personnel.** Il rassemble ce que la vie moderne éparpille entre les messageries, les sites, les agendas, les listes de tâches, les fichiers et les banques, et ne met en avant que ce qui a sa place dans votre attention maintenant. Il fonctionne sur vos propres appareils.
 
@@ -75,9 +75,9 @@ Pas de compteur de non-lus, pas de pastilles, pas de rouge, pas de séries ; l
 
 ## Le logiciel garde les liens {#the-software-keeps-the-links}
 
-La plupart des logiciels éparpillent les pièces d’un dossier entre la messagerie, l’agenda, la liste de tâches, vos fichiers et le site de la banque, et vous laissent vous souvenir de ce qui les relie. Pourtant, vous ne vous dites jamais « maintenant, j’utilise ma messagerie » ; vous vous dites « maintenant, je m’occupe de ce client ». Sioul est construit de la seconde façon.
+La plupart des logiciels éparpillent les pièces d’une même affaire entre la messagerie, l’agenda, la liste de tâches, vos fichiers et le site de la banque, et vous laissent vous souvenir de ce qui les relie. Pourtant, vous ne vous dites jamais « maintenant, j’utilise ma messagerie » ; vous vous dites « maintenant, je m’occupe de ce client ». Sioul est construit de la seconde façon.
 
-Dans Sioul, chaque dossier est un projet : une déclaration d’impôts, un bail, le travail pour un client, toute affaire que vous suivez. Son courrier lui arrive tout seul, par l’expéditeur ou par des mots. Ses tâches, ses événements, ses notes et les personnes concernées lui sont reliés, et chaque tâche, chaque contact, chaque note montre ce qui lui est relié. Le projet pose tout sur une ligne de temps : ce qui vient, puis ce qui s’est passé. Votre propre activité aussi : le courrier d’un client, les tâches, le temps passé, la facture, l’argent attendu et les chiffres pour votre comptable forment une seule chaîne.
+Dans Sioul, chaque affaire que vous suivez est un projet : une déclaration d’impôts, un bail, le travail pour un client. Son courrier lui arrive tout seul, par l’expéditeur ou par des mots. Ses tâches, ses événements, ses notes et les personnes concernées lui sont reliés, et chaque tâche, chaque contact, chaque note montre ce qui lui est relié. Le projet pose tout sur une ligne de temps : ce qui vient, puis ce qui s’est passé. Votre propre activité aussi : le courrier d’un client, les tâches, le temps passé, la facture, l’argent attendu et les chiffres pour votre comptable forment une seule chaîne.
 
 ## Travailler à son compte {#working-for-yourself}
 
