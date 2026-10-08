@@ -18,9 +18,9 @@ Dialog {
     property var source: null
     property string kind: ""
     property var found: []
-    readonly property var kinds: ["", "task", "event", "mail", "note", "contact", "budget", "case", "site"]
+    readonly property var kinds: ["", "task", "event", "mail", "note", "contact", "budget", "project", "site"]
 
-    // `kind`: what to look among first ("task", "event", "case"…), else all.
+    // `kind`: what to look among first ("task", "event", "project"…), else all.
     function show(source, kind) {
         picker.source = source
         picker.kind = kind || ""

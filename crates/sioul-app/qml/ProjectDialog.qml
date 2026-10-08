@@ -29,7 +29,7 @@ Dialog {
         dialog.projectId = id
         dialog.problem = ""
         title.text = page ? page.title : ""
-        isProject.checked = page ? page.is_project : true
+        isProject.checked = page ? page.for_client : true
         client.text = page ? page.client : ""
         rate.text = page && page.rate > 0 ? String(page.rate).replace(".", Qt.locale(dialog.sioul.text("qt-locale")).decimalPoint) : ""
         budget.currentIndex = page ? Math.max(0, dialog.budgets.findIndex(b => b.id === page.budget) + 1) : 0

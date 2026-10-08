@@ -155,9 +155,9 @@ impl Seen {
         porch::gather(&self.config.mail_sources(), store.as_ref(), &known, self.senders(), &state, stamp)
     }
 
-    fn world(&self) -> (Option<sioul_core::cases::CaseStore>, porch::SenderList) {
+    fn world(&self) -> (Option<sioul_core::projects::ProjectStore>, porch::SenderList) {
         let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
-        let store = self.config.case_store_path().and_then(|root| sioul_core::cases::CaseStore::load(&root).ok()).map(|s| s.with_ties(&ties));
+        let store = self.config.notes_root_path().and_then(|root| sioul_core::projects::ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties));
         (store, porch::KnownSenders::load(&self.config.known_senders_path()))
     }
 }

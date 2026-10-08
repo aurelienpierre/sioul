@@ -11,7 +11,7 @@
 //! translation lacks (docs/i18n.md).
 
 use crate::budget::{BudgetStatus, Period, ReserveStatus, Verdict};
-use crate::cases::{CaseStore, RouteField, RouteMatch};
+use crate::projects::{ProjectStore, RouteField, RouteMatch};
 use crate::money::Money;
 use crate::codes::CodeKind;
 use crate::porch::{Reason, Summary};
@@ -94,7 +94,7 @@ impl Translator {
     }
 
     /// What came, in a few calm sentences.
-    pub fn summary(&self, s: &Summary, cases: Option<&CaseStore>) -> String {
+    pub fn summary(&self, s: &Summary, projects: Option<&ProjectStore>) -> String {
         if s.total == 0 {
             let mut sentences = vec![self.text("summary-nothing", None)];
             self.push_counted(&mut sentences, "summary-low", s.low);
@@ -102,8 +102,8 @@ impl Translator {
         }
         let mut sentences = vec![self.text("summary-total", Some(&self.counted(s.total)))];
         self.push_counted(&mut sentences, "summary-codes", s.codes);
-        if !s.cases.is_empty() {
-            sentences.push(self.case_sentence(s, cases));
+        if !s.projects.is_empty() {
+            sentences.push(self.project_sentence(s, projects));
         }
         self.push_counted(&mut sentences, "summary-people", s.people);
         self.push_counted(&mut sentences, "summary-screener", s.screener);
@@ -119,31 +119,31 @@ impl Translator {
         }
     }
 
-    /// "Three belong to cases: Taxes (two), Health cover (one)."
-    fn case_sentence(&self, s: &Summary, cases: Option<&CaseStore>) -> String {
-        let n: usize = s.cases.iter().map(|(_, k)| k).sum();
-        let several = s.cases.len() > 1;
+    /// "Three belong to projects: Taxes (two), Health cover (one)."
+    fn project_sentence(&self, s: &Summary, projects: Option<&ProjectStore>) -> String {
+        let n: usize = s.projects.iter().map(|(_, k)| k).sum();
+        let several = s.projects.len() > 1;
         let parts: Vec<String> = s
-            .cases
+            .projects
             .iter()
             .map(|(id, k)| {
-                let title = case_title(id, cases);
+                let title = project_title(id, projects);
                 if !several {
                     return title;
                 }
                 let mut args = self.counted(*k);
                 args.set("title", title);
-                self.text("summary-case-part", Some(&args))
+                self.text("summary-project-part", Some(&args))
             })
             .collect();
         let mut args = self.counted(n);
-        args.set("k", s.cases.len());
-        args.set("cases", parts.join(", "));
-        self.text("summary-cases", Some(&args))
+        args.set("k", s.projects.len());
+        args.set("projects", parts.join(", "));
+        self.text("summary-projects", Some(&args))
     }
 
     /// One reason, as a phrase.
-    pub fn reason(&self, reason: &Reason, cases: Option<&CaseStore>) -> String {
+    pub fn reason(&self, reason: &Reason, projects: Option<&ProjectStore>) -> String {
         match reason {
             Reason::Trust(proof) => self.text(proof_id(*proof), None),
             Reason::Forged => self.text("reason-forged", None),
@@ -162,11 +162,11 @@ impl Translator {
             }
             Reason::ExpiresSoon(kind) => self.text("reason-expires-soon", Some(&self.kind_args(*kind))),
             Reason::UnverifiedCode(kind) => self.text("reason-unverified-code", Some(&self.kind_args(*kind))),
-            Reason::Case { case_id, matched } => {
+            Reason::Project { project_id, matched } => {
                 let mut args = FluentArgs::new();
-                args.set("title", case_title(case_id, cases));
+                args.set("title", project_title(project_id, projects));
                 args.set("why", matched.iter().map(|m| self.route_match(m)).collect::<Vec<_>>().join(", "));
-                self.text("reason-case", Some(&args))
+                self.text("reason-project", Some(&args))
             }
             Reason::Hostile => self.text("reason-hostile", None),
             Reason::Public(topic) => {
@@ -457,8 +457,8 @@ fn kind_id(kind: CodeKind) -> &'static str {
     }
 }
 
-fn case_title(id: &str, cases: Option<&CaseStore>) -> String {
-    cases.and_then(|c| c.get(id)).map_or_else(|| id.to_string(), |c| c.title.clone())
+fn project_title(id: &str, projects: Option<&ProjectStore>) -> String {
+    projects.and_then(|c| c.get(id)).map_or_else(|| id.to_string(), |c| c.title.clone())
 }
 
 /// "fr_FR.UTF-8" → "fr"; "en-GB" → "en".

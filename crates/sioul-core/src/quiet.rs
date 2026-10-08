@@ -463,7 +463,7 @@ impl QuietTasks {
 }
 
 impl Situation {
-    pub fn now(config: &crate::config::Config, overrides: &Overrides, blocks: &Blocks, now: &Zoned, tr: &crate::i18n::Translator, cases: &[crate::cases::Case]) -> Situation {
+    pub fn now(config: &crate::config::Config, overrides: &Overrides, blocks: &Blocks, now: &Zoned, tr: &crate::i18n::Translator, projects: &[crate::projects::Project]) -> Situation {
         let mode = mode(&config.week_hours(), &config.time_off, overrides, blocks, now);
         let office = config.office_hours();
         let open = window::current(&office, now).is_some();
@@ -490,7 +490,7 @@ impl Situation {
             closed.insert(today);
         }
         let no_movement = mode.free() && !config.free_time.movement(&config.planning);
-        let quiet_tasks = QuietTasks { time: mode.time, week: mode.week, areas: TaskAreas::of_config(config, cases), no_movement };
+        let quiet_tasks = QuietTasks { time: mode.time, week: mode.week, areas: TaskAreas::of_config(config, projects), no_movement };
         Situation { mode, offices: crate::taskview::Offices { open, next, now: Some(now.clone()) }, closed, office_days, quiet_tasks }
     }
 
@@ -502,10 +502,10 @@ impl Situation {
 
 /// Whether a task is yours, outside work: one of its categories is among
 /// `personal` (case and accents aside), or one of its cases is marked as yours.
-pub fn personal_task(task: &crate::tasks::Task, personal: &[String], personal_cases: &[String]) -> bool {
+pub fn personal_task(task: &crate::tasks::Task, personal: &[String], personal_projects: &[String]) -> bool {
     let fold = |s: &str| crate::text::fold(s.trim()).into_iter().collect::<String>();
     let wanted: Vec<String> = personal.iter().map(|p| fold(p)).collect();
-    task.categories.iter().any(|c| wanted.contains(&fold(c))) || task.cases.iter().any(|c| personal_cases.contains(c))
+    task.categories.iter().any(|c| wanted.contains(&fold(c))) || task.projects.iter().any(|c| personal_projects.contains(c))
 }
 
 #[cfg(test)]
@@ -704,12 +704,12 @@ mod tests {
 
     #[test]
     fn what_is_yours() {
-        let task = |cats: &[&str], cases: &[&str]| crate::tasks::Task { categories: cats.iter().map(|s| s.to_string()).collect(), cases: cases.iter().map(|s| s.to_string()).collect(), ..crate::tasks::Task::default() };
+        let task = |cats: &[&str], projects: &[&str]| crate::tasks::Task { categories: cats.iter().map(|s| s.to_string()).collect(), projects: projects.iter().map(|s| s.to_string()).collect(), ..crate::tasks::Task::default() };
         let personal = vec!["Famille".to_string(), "joy".into()];
         assert!(personal_task(&task(&["famille"], &[]), &personal, &[]));
         assert!(personal_task(&task(&[], &["garden"]), &personal, &["garden".into()]));
         assert!(!personal_task(&task(&["you"], &["taxes"]), &personal, &["garden".into()]));
-        let areas = TaskAreas { work_categories: vec!["travail".into()], work_cases: vec!["client-x".into()], ..TaskAreas::usual() };
+        let areas = TaskAreas { work_categories: vec!["travail".into()], work_projects: vec!["client-x".into()], ..TaskAreas::usual() };
         let week = Week { work_hours: true, ..Week::default() };
         // Asleep: no task at all, yours neither.
         let night = QuietTasks { time: Time::Sleep, week, areas: areas.clone(), no_movement: false };

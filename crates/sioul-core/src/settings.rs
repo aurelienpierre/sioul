@@ -47,7 +47,7 @@ pub enum Kind {
     Words,
     /// What a source is for: work, your admin, leisure, any of them together ("admin+leisure").
     Areas,
-    /// A case's routes: domains, addresses, words in the subject or the text.
+    /// A project's routes: domains, addresses, words in the subject or the text.
     Routes,
     /// Kinds of task: each renamed in place or taken away; new ones added.
     Kinds,
@@ -61,6 +61,10 @@ pub enum Kind {
     Secret,
     /// Nothing to change here: a button to where it is changed (`value`: "needs", the Health page's meals and sleep).
     Link,
+    /// Nothing to change: a sentence (`help`) and a button (`label`) that
+    /// does one thing when pressed, never by itself; pressing it saves `true`
+    /// under its key (the projects' file renamed: `projects::rename_file`).
+    Action,
     /// Round buttons in a grid: `rows` down, `choices` across, one per row;
     /// `value` lists each row's as "row:column"; saved a row at a time
     /// (`<key>.<row>`): what Sioul's own spam filter does with each verdict.
@@ -189,7 +193,7 @@ fn history_choices(tr: &Translator, with_default: bool) -> Vec<Choice> {
 /// The settings of one page: "porch", "mail", "agenda", "tasks", "notes",
 /// "reading", "contacts", "time", "general". `lists` names the task lists
 /// a new task can go into, as ("account/id", name).
-pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, String)], store: Option<&crate::cases::CaseStore>) -> Vec<Setting> {
+pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, String)], store: Option<&crate::projects::ProjectStore>) -> Vec<Setting> {
     let mut b = Builder { tr, out: Vec::new(), group: String::new(), section: String::new() };
     let int = |n: Option<u32>, default: u32| SettingValue::Int(i64::from(n.unwrap_or(default)));
     let known = || SettingValue::Texts(SenderList::load(&config.known_senders_path()).entries());
@@ -212,9 +216,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
     }
     // A project's routes: the mail that belongs to it, on its page in Projects.
     if let Some(id) = view.strip_prefix("project:") {
-        if let Some(case) = store.and_then(|s| s.get(id)) {
-            let routes = case.routes.iter().map(crate::cases::RouteValue::from).collect();
-            b.push(&format!("case.{}.routes", case.id), "routes", Kind::Routes, SettingValue::Routes(routes));
+        if let Some(project) = store.and_then(|s| s.get(id)) {
+            let routes = project.routes.iter().map(crate::projects::RouteValue::from).collect();
+            b.push(&format!("project.{}.routes", project.id), "routes", Kind::Routes, SettingValue::Routes(routes));
         }
         return b.out;
     }
@@ -244,15 +248,15 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // Working hours and days off are Sioul's as a whole: in the settings page.
             b.note(tr.text("set-hours-elsewhere", None), Vec::new());
             // Which projects have their lane here; each is made, renamed and routed in Projects.
-            if let Some(store) = store.filter(|s| !s.cases.is_empty()) {
+            if let Some(store) = store.filter(|s| !s.projects.is_empty()) {
                 b.group = tr.text("set-projects-group", None);
-                let shown = store.cases.iter().filter(|c| !config.porch.hidden_projects.contains(&c.id)).map(|c| c.id.clone()).collect();
+                let shown = store.projects.iter().filter(|c| !config.porch.hidden_projects.contains(&c.id)).map(|c| c.id.clone()).collect();
                 let s = b.push("porch.projects", "porch-projects", Kind::Picks, SettingValue::Texts(shown));
-                s.choices = store.cases.iter().map(|c| Choice { value: SettingValue::Text(c.id.clone()), label: c.title.clone() }).collect();
+                s.choices = store.projects.iter().map(|c| Choice { value: SettingValue::Text(c.id.clone()), label: c.title.clone() }).collect();
             }
             // Paper letters: the folder their scans arrive in.
             b.group = tr.text("set-letters-group", None);
-            let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.case_store_path().map(|r| crate::letters::Letters::folder(&r).join("inbox").display().to_string()).unwrap_or_default());
+            let inbox = config.letters.inbox.clone().unwrap_or_else(|| config.notes_root_path().map(|r| crate::letters::Letters::folder(&r).join("inbox").display().to_string()).unwrap_or_default());
             b.push("letters.inbox", "letters-inbox", Kind::Folder, SettingValue::Text(inbox));
             // The calls your phones declined, on the Porch of every device (docs/porch.md, "Calls declined").
             b.group = tr.text("set-calls-group", None);
@@ -265,7 +269,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // project's lane is in its page.
             b.group = tr.text("set-sorting", None);
             b.note(tr.text("rule-order", None), Vec::new());
-            for lane in crate::view::lanes(config, store, tr).into_iter().filter(|l| !l.key.starts_with("case:")) {
+            for lane in crate::view::lanes(config, store, tr).into_iter().filter(|l| !l.key.starts_with("project:")) {
                 b.group = lane.title.clone();
                 b.note(lane.about, lane.rules);
                 for mut setting in for_view(&format!("lane:{}", lane.key), config, tr, lists, store) {
@@ -491,7 +495,16 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // mail and calendars go is the accounts', at the top of Accounts.
             b.section = "files".into();
             b.group = tr.text("set-files-group", None);
-            b.push("case_store", "case-store", Kind::Folder, SettingValue::Text(config.case_store.clone().unwrap_or_default()));
+            b.push("case_store", "notes-root", Kind::Folder, SettingValue::Text(config.notes_root.clone().unwrap_or_default()));
+            // The projects' file under its first name: renamed only when you say
+            // so (`projects::rename_file`); with both names there, which one is read.
+            if let Some(root) = config.notes_root_path() {
+                if crate::projects::only_old_in(&root) {
+                    b.push("projects.rename", "projects-rename", Kind::Action, SettingValue::Bool(false));
+                } else if crate::projects::both_in(&root) {
+                    b.note(tr.text("set-projects-both", None), Vec::new());
+                }
+            }
             b.section = "hours".into();
             b.group = tr.text("set-hours-group", None);
             let week = |windows: &[crate::window::AdminWindow]| SettingValue::Windows(windows.iter().map(|w| WindowValue { day: w.day.clone(), start: w.start.clone(), end: w.end_text(), minutes: 0 }).collect());
@@ -598,10 +611,10 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("mcp.texts", "mcp-texts", Kind::Bool, SettingValue::Bool(config.mcp.texts));
             b.push("mcp.spam", "mcp-spam", Kind::Bool, SettingValue::Bool(config.mcp.spam));
             b.group = tr.text("set-ai-projects-group", None);
-            let projects = config.case_store_path().and_then(|root| crate::cases::CaseStore::load(&root).ok()).map(|store| store.cases).unwrap_or_default();
+            let projects = config.notes_root_path().and_then(|root| crate::projects::ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
             b.note(tr.text(if projects.is_empty() { "set-ai-projects-none" } else { "set-ai-projects-note" }, None), Vec::new());
             for project in projects {
-                b.said(&format!("case.{}.ai", project.id), Kind::Bool, project.title.clone(), String::new(), SettingValue::Bool(project.ai));
+                b.said(&format!("project.{}.ai", project.id), Kind::Bool, project.title.clone(), String::new(), SettingValue::Bool(project.ai));
             }
         }
         _ => {}
@@ -1011,27 +1024,32 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
                 _ if none => &[],
                 _ => return Err(format!("{key}: a list expected")),
             };
-            let root = config.case_store_path().ok_or_else(|| format!("{key}: no notes folder"))?;
-            let store = crate::cases::CaseStore::load(&root).map_err(|e| e.to_string())?;
-            let hidden: Vec<String> = store.cases.iter().map(|c| c.id.clone()).filter(|id| !shown.contains(id)).collect();
+            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            let store = crate::projects::ProjectStore::load(&root).map_err(|e| e.to_string())?;
+            let hidden: Vec<String> = store.projects.iter().map(|c| c.id.clone()).filter(|id| !shown.contains(id)).collect();
             set_value(config_path, "porch.hidden_projects", &SettingValue::Texts(hidden))
         }
-        // A project opened to AI agents, or closed: `ai` on its entry in the manifest (docs/ai.md).
-        _ if key.strip_prefix("case.").and_then(|rest| rest.strip_suffix(".ai")).is_some_and(|id| !id.is_empty()) => {
-            let id = key.strip_prefix("case.").and_then(|rest| rest.strip_suffix(".ai")).unwrap_or_default();
-            let SettingValue::Bool(open) = value else { return Err(format!("{key}: on or off expected")) };
-            let root = config.case_store_path().ok_or_else(|| format!("{key}: no case store"))?;
-            crate::cases::set_ai(&root.join(crate::cases::MANIFEST), id, *open)
+        // The projects' file renamed, when its button is pressed (`projects::rename_file`).
+        "projects.rename" => {
+            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            crate::projects::rename_file(&root).map(|_| ())
         }
-        _ if key.starts_with("case.") && key.ends_with(".routes") => {
-            let id = key.trim_start_matches("case.").trim_end_matches(".routes");
-            let routes: &[crate::cases::RouteValue] = match value {
+        // A project opened to AI agents, or closed: `ai` on its entry in the projects' file (docs/ai.md).
+        _ if key.strip_prefix("project.").and_then(|rest| rest.strip_suffix(".ai")).is_some_and(|id| !id.is_empty()) => {
+            let id = key.strip_prefix("project.").and_then(|rest| rest.strip_suffix(".ai")).unwrap_or_default();
+            let SettingValue::Bool(open) = value else { return Err(format!("{key}: on or off expected")) };
+            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            crate::projects::set_ai(&crate::projects::file_in(&root), id, *open)
+        }
+        _ if key.starts_with("project.") && key.ends_with(".routes") => {
+            let id = key.trim_start_matches("project.").trim_end_matches(".routes");
+            let routes: &[crate::projects::RouteValue] = match value {
                 SettingValue::Routes(routes) => routes,
                 _ if none => &[],
                 _ => return Err(format!("{key}: routes expected")),
             };
-            let root = config.case_store_path().ok_or_else(|| format!("{key}: no case store"))?;
-            crate::cases::set_routes(&root.join(crate::cases::MANIFEST), id, routes)
+            let root = config.notes_root_path().ok_or_else(|| format!("{key}: no notes folder"))?;
+            crate::projects::set_routes(&crate::projects::file_in(&root), id, routes)
         }
         // A row of the matrix of what reaches you, its words: read, checked, written whole
         // (`attention::apply`); the older grids' rows ("notify.<kind>", "reach.<row>") land there too.
@@ -1106,7 +1124,8 @@ mod tests {
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
         // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices;
         // the words tab apart (`the_words_tab`).
-        let parameters: Vec<String> = keys("parameters").into_iter().filter(|k| !k.starts_with("words.")).collect();
+        // (The projects' file's renaming shows only for a notes folder holding its first name: `the_projects_file_is_renamed_on_demand`.)
+        let parameters: Vec<String> = keys("parameters").into_iter().filter(|k| !k.starts_with("words.") && k != "projects.rename").collect();
         assert_eq!(
             parameters,
             vec![
@@ -1241,6 +1260,37 @@ mod tests {
         // A secret is never written into the configuration.
         assert!(apply(&path, &config, "github_token", &SettingValue::Int(12345)).is_err());
         assert!(!std::fs::read_to_string(&path).unwrap().contains("github_token"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_projects_file_is_renamed_on_demand() {
+        let dir = std::env::temp_dir().join(format!("sioul-rename-setting-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let notes = dir.join("notes");
+        std::fs::create_dir_all(&notes).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, format!("case_store = \"{}\"\n", notes.display().to_string().replace('\\', "/"))).unwrap();
+        let config = Config::load(&path).unwrap();
+        let tr = Translator::new("en");
+        let row = || for_view("parameters", &config, &tr, &[], None).into_iter().find(|s| s.section == "files" && (s.key == "projects.rename" || s.kind == Kind::Note));
+        // No projects' file yet: nothing to say.
+        assert!(row().is_none());
+        // Its first name only: a button, never pressed by itself.
+        std::fs::write(notes.join(crate::projects::OLD_FILE), "[[case]]\nid = \"taxes\"\ntitle = \"Taxes\"\nai = true\n").unwrap();
+        let rename = row().unwrap();
+        assert_eq!((rename.key.as_str(), rename.kind), ("projects.rename", Kind::Action));
+        assert!(rename.label.contains("sioul-projects.toml") && !rename.help.starts_with("set-"), "{rename:?}");
+        assert!(notes.join(crate::projects::OLD_FILE).exists() && !notes.join(crate::projects::FILE).exists());
+        apply(&path, &config, "projects.rename", &SettingValue::Bool(true)).unwrap();
+        assert!(row().is_none());
+        assert!(crate::projects::ProjectStore::load(&notes).unwrap().get("taxes").unwrap().ai);
+        assert!(notes.join(crate::projects::BEFORE_RENAME).exists());
+        // Both names there (an older device wrote its file again): said, and the new one read.
+        std::fs::write(notes.join(crate::projects::OLD_FILE), "[[case]]\nid = \"old\"\ntitle = \"Old\"\n").unwrap();
+        let both = row().unwrap();
+        assert!(both.kind == Kind::Note && both.label.contains("sioul-projects.toml"), "{both:?}");
+        assert!(apply(&path, &config, "projects.rename", &SettingValue::Bool(true)).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

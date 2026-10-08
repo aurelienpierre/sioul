@@ -56,16 +56,16 @@ fn known(world: &World, consent: &Consent, uri: &str) -> Result<String, String> 
     match links::kind_of(&canonical) {
         Kind::Web => Ok(canonical),
         Kind::File | Kind::Other => Err(unknown()),
-        Kind::Case if world.describe(&canonical).found && !consent.is_open(&links::id_of(&canonical)) => Err(access::closed_project(&links::id_of(&canonical))),
+        Kind::Project if world.describe(&canonical).found && !consent.is_open(&links::id_of(&canonical)) => Err(access::closed_project(&links::id_of(&canonical))),
         _ if world.describe(&canonical).found && !access::allows(consent, world, &canonical) => Err(access::kept(&format!("“{}”", shown()))),
         _ if world.describe(&canonical).found => Ok(canonical),
         _ => Err(unknown()),
     }
 }
 
-/// The projects named among addresses (`sioul:case/…`).
-fn cases_among(uris: &[String]) -> Vec<String> {
-    uris.iter().filter(|u| links::kind_of(u) == Kind::Case).map(|u| links::id_of(u)).collect()
+/// The projects named among addresses (`sioul:project/…`, or `sioul:case/…` as written before).
+fn projects_among(uris: &[String]) -> Vec<String> {
+    uris.iter().filter(|u| links::kind_of(u) == Kind::Project).map(|u| links::id_of(u)).collect()
 }
 
 /// Whether something new in these projects may be written for an agent: each
@@ -90,13 +90,13 @@ fn known_all(world: &World, consent: &Consent, uris: &[String]) -> Result<Vec<St
 }
 
 /// A tie held by a new task, as `Loaded::tie` writes one in a task: its
-/// people as CONTACT, its cases as REFID, a note as what describes it, the rest as LINK.
+/// people as CONTACT, its projects as REFID, a note as what describes it, the rest as LINK.
 fn tie_in_task(edit: &mut TaskEdit, world: &World, uri: &str) {
     let link = |uri: String, rel: &str| Link { uri, label: String::new(), rel: rel.into() };
     match links::kind_of(uri) {
         Kind::Contact => edit.contacts.push(ContactRef { name: world.describe(uri).title, uri: uri.to_string() }),
-        Kind::Case if edit.cases.contains(&links::id_of(uri)) => {}
-        Kind::Case => edit.cases.push(links::id_of(uri)),
+        Kind::Project if edit.projects.contains(&links::id_of(uri)) => {}
+        Kind::Project => edit.projects.push(links::id_of(uri)),
         Kind::Note => edit.links.push(link(uri.to_string(), "describedby")),
         Kind::Task | Kind::Event => edit.links.push(link(format!("uid:{}", links::id_of(uri)), "related")),
         _ => edit.links.push(link(uri.to_string(), "related")),
@@ -140,20 +140,23 @@ pub fn add_task(s: &Session, args: &Args) -> Result<Answer, String> {
     let list = target_list(s, args.text("list")?.as_deref())?;
     let loaded = Loaded::read(&s.config);
     let consent = access::of(s, &loaded);
-    for case in args.list("cases")? {
-        if !loaded.cases.iter().any(|c| c.id == case) {
-            return Err(format!("No project “{}”: list_projects gives their ids.", one_line(&case)));
+    // "cases": the argument's name before the one name (`tools::FORMER`).
+    let mut wanted = args.list("projects")?;
+    wanted.extend(args.list("cases")?);
+    for project in wanted {
+        if !loaded.projects.iter().any(|c| c.id == project) {
+            return Err(format!("No project “{}”: list_projects gives their ids.", one_line(&project)));
         }
-        if !consent.is_open(&case) {
-            return Err(access::closed_project(&case));
+        if !consent.is_open(&project) {
+            return Err(access::closed_project(&project));
         }
-        if !edit.cases.contains(&case) {
-            edit.cases.push(case);
+        if !edit.projects.contains(&project) {
+            edit.projects.push(project);
         }
     }
     // Only the tasks an agent may see are found: a step of one kept from agents is never made.
     let open_tasks: Vec<tasks::Task> = loaded.tasks.iter().filter(|t| consent.allows(&links::task_uri(&t.uid))).cloned().collect();
-    let mut projects = edit.cases.clone();
+    let mut projects = edit.projects.clone();
     if let Some(parent) = args.text("parent")? {
         let parent = read::find_task(s, &open_tasks, &parent)?;
         edit.parent = parent.uid.clone();
@@ -167,7 +170,7 @@ pub fn add_task(s: &Session, args: &Args) -> Result<Answer, String> {
         edit.links.push(Link { uri: known(&world, &consent, &source)?, label: String::new(), rel: "via".into() });
     }
     let tied = known_all(&world, &consent, &args.list("links")?)?;
-    projects.extend(cases_among(&tied));
+    projects.extend(projects_among(&tied));
     may_write(&consent, &projects)?;
     for uri in tied {
         tie_in_task(&mut edit, &world, &uri);
@@ -312,7 +315,7 @@ fn file_title(title: &str) -> String {
 pub fn add_note(s: &Session, args: &Args) -> Result<Answer, String> {
     let title = args.needed_line("title")?;
     let mut body = args.body("body")?;
-    let root = s.config.case_store_path().ok_or_else(|| s.tr.text("error-no-store", None))?;
+    let root = s.config.notes_root_path().ok_or_else(|| s.tr.text("error-no-store", None))?;
     let folder = match args.text("folder")? {
         Some(asked) => notes_folder_asked(&asked)?,
         None => notes_folder(s),
@@ -325,7 +328,7 @@ pub fn add_note(s: &Session, args: &Args) -> Result<Answer, String> {
     let links = known_all(&loaded.world(), &consent, &args.list("links")?)?;
     // In the projects whose files hold its folder, and those it is tied to.
     let mut projects: Vec<String> = consent.note_projects(&format!("{folder}/{}", notes::file_name(&file_title(&title)))).into_iter().collect();
-    projects.extend(cases_among(&links));
+    projects.extend(projects_among(&links));
     may_write(&consent, &projects)?;
     // The title is written as the heading: a body starting with it again keeps one.
     if let Some(rest) = body.trim_start().strip_prefix(&format!("# {title}")).filter(|r| r.is_empty() || r.starts_with('\n')) {
@@ -438,7 +441,7 @@ pub fn draft_message(s: &Session, args: &Args) -> Result<Answer, String> {
     let consent = access::of(s, &loaded);
     let links = known_all(&loaded.world(), &consent, &args.list("links")?)?;
     // A new message is in the projects it is tied to; in none, outside them.
-    may_write(&consent, &cases_among(&links))?;
+    may_write(&consent, &projects_among(&links))?;
     let mut draft = Draft::new(&account.id);
     free_draft(&mut draft);
     draft.to = to;
@@ -454,7 +457,7 @@ pub fn draft_message(s: &Session, args: &Args) -> Result<Answer, String> {
 fn rewrite(s: &Session, change: &links::Rewrite) -> Result<(), String> {
     match change.kind {
         Kind::Note => {
-            let root = s.config.case_store_path().ok_or_else(|| s.tr.text("error-no-store", None))?;
+            let root = s.config.notes_root_path().ok_or_else(|| s.tr.text("error-no-store", None))?;
             let path = change.path.strip_prefix(&root).map_err(|_| format!("{}: outside the notes", change.path.display()))?;
             notes::write(&root, &path.to_string_lossy().replace('\\', "/"), &change.text).map(|_| ())
         }

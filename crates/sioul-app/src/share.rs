@@ -114,7 +114,7 @@ fn between_exchanges<T>(work: impl FnOnce() -> T) -> T {
 /// other's changes. On a phone, a notes folder in the same top folder of its
 /// storage as the sharing folder (Documents…), which the sync app carries whole.
 fn notes_carried(config: &Config, folder: Option<&Path>) -> Option<PathBuf> {
-    let store = config.case_store_path()?;
+    let store = config.notes_root_path()?;
     let carried = if cfg!(target_os = "android") { folder.is_some_and(|folder| same_top(&on_storage(&store), &on_storage(folder), Path::new(STORAGE))) } else { carried(&store, &synced_roots()) };
     carried.then_some(store)
 }
@@ -295,9 +295,9 @@ fn carried(path: &Path, roots: &[PathBuf]) -> bool {
 /// Where to share by default: inside a Documents folder a sync carries when
 /// there is one, since a phone's sync app may carry only some folders (Murena's
 /// eDrive: Documents, Pictures, Music…, not the cloud's root); else in the
-/// case store when a sync carries it, else in a synced folder.
+/// notes folder when a sync carries it, else in a synced folder.
 fn suggested(roots: &[PathBuf]) -> String {
-    let store = load_config().case_store_path();
+    let store = load_config().notes_root_path();
     let documents = roots.iter().map(|root| root.join("Documents")).find(|d| d.is_dir());
     let folder = match (&store, &documents, roots.first()) {
         (Some(store), _, _) if carried(store, roots) && in_documents(store) => store.join("sioul-shared"),
@@ -448,7 +448,7 @@ pub(crate) fn status(folder: &str) -> String {
     // Notes travel by their own folder, unless this device shares them here:
     // say so when no sync seems to carry it.
     let config = load_config();
-    if let Some(store) = config.case_store_path()
+    if let Some(store) = config.notes_root_path()
         && !here.shares("notes", &config)
         && carried(&path, &roots)
         && !carried(&store, &roots)
@@ -515,7 +515,7 @@ fn vanished_of(code: &str) -> Option<Vanished> {
     let (folder, count) = code.strip_prefix("share-vanished:")?.rsplit_once(':')?;
     let store = if folder.starts_with("files/papers/") { "files/papers/" } else { "files/notes/" };
     let shown = match share::shown(folder) {
-        "" => load_config().case_store_path().map(|notes| shorten(&notes)).unwrap_or_default(),
+        "" => load_config().notes_root_path().map(|notes| shorten(&notes)).unwrap_or_default(),
         inside => inside.trim_end_matches('/').to_string(),
     };
     Some(Vanished { store: store.to_string(), text: say("share-vanished", &[("folder", shown), ("count", count.to_string())]) })

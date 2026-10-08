@@ -1176,8 +1176,8 @@ pub fn form(tr: &Translator) -> Form {
 /// What Virtual Secretary's sorting proposes for a message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Proposed {
-    /// Put the message in a case, by id.
-    AssignCase(String),
+    /// Put the message in a project, by id.
+    AssignProject(String),
     /// File it on a shelf, out of the way.
     File(Shelf),
     /// Set it aside, with the reason.
@@ -1190,7 +1190,7 @@ pub enum Proposed {
     Trash,
     /// Flagged, to follow.
     Flag,
-    /// Propose a task in the message's case.
+    /// Propose a task in the message's project.
     ProposeTask { title: String, due: Option<String> },
 }
 
@@ -1221,8 +1221,9 @@ impl Shelf {
 pub struct FolderMapping {
     /// The IMAP folder, as Virtual Secretary names it: "INBOX.Money.Taxes".
     pub folder: String,
-    #[serde(default)]
-    pub case: Option<String>,
+    /// The project its mail goes to; `case`, the word before the name changed, reads too.
+    #[serde(default, alias = "case")]
+    pub project: Option<String>,
     #[serde(default)]
     pub shelf: Option<String>,
     #[serde(default)]
@@ -1233,10 +1234,10 @@ impl FolderMapping {
     /// What a message found in `folder` should become.
     pub fn actions_for(mappings: &[FolderMapping], folder: &str) -> Vec<Proposed> {
         let Some(m) = mappings.iter().find(|m| m.folder.eq_ignore_ascii_case(folder)) else { return Vec::new() };
-        let case = m.case.clone().map(Proposed::AssignCase);
+        let project = m.project.clone().map(Proposed::AssignProject);
         let shelf = m.shelf.as_deref().and_then(Shelf::parse).map(Proposed::File);
         let junk = m.junk.then_some(Proposed::Junk);
-        [case, shelf, junk].into_iter().flatten().collect()
+        [project, shelf, junk].into_iter().flatten().collect()
     }
 }
 
@@ -1250,7 +1251,10 @@ mod tests {
             r#"
             [[map]]
             folder = "INBOX.Money.Taxes"
-            case = "taxes"
+            project = "taxes"
+            [[map]]
+            folder = "INBOX.Money.Health"
+            case = "health"
             [[map]]
             folder = "INBOX.Services.Notifications"
             shelf = "notifications"
@@ -1262,7 +1266,8 @@ mod tests {
         .unwrap()
         .remove("map")
         .unwrap();
-        assert_eq!(FolderMapping::actions_for(&mappings, "inbox.money.taxes"), vec![Proposed::AssignCase("taxes".into())]);
+        assert_eq!(FolderMapping::actions_for(&mappings, "inbox.money.taxes"), vec![Proposed::AssignProject("taxes".into())]);
+        assert_eq!(FolderMapping::actions_for(&mappings, "INBOX.Money.Health"), vec![Proposed::AssignProject("health".into())], "the word before the name changed");
         assert_eq!(FolderMapping::actions_for(&mappings, "INBOX.spam"), vec![Proposed::Junk]);
         assert!(FolderMapping::actions_for(&mappings, "INBOX").is_empty());
     }

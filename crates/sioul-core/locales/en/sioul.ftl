@@ -43,14 +43,14 @@ summary-codes = { $Count } { $n ->
         [one] code is
        *[other] codes are
     } ready above.
-summary-cases = { $Count } { $n ->
+summary-projects = { $Count } { $n ->
         [one] belongs
        *[other] belong
     } to { $k ->
         [one] a project
        *[other] projects
-    }: { $cases }.
-summary-case-part = { $title } ({ $count })
+    }: { $projects }.
+summary-project-part = { $title } ({ $count })
 summary-people = { $Count } { $n ->
         [one] is
        *[other] are
@@ -87,7 +87,7 @@ spam-chip-unsure = maybe spam
 spam-chip-ham = probably not spam
 reason-expires-soon = { $akind } that expires soon
 reason-unverified-code = it looks like { $akind }, but the sender is not verified: use it only if you just asked this site for it; fake codes are a phishing trick
-reason-case = project { $title }: { $why }
+reason-project = project { $title }: { $why }
 reason-newsletter = a newsletter or a mailing list
 reason-automatic = sent by an automatic address
 reason-first-message = the first message from this sender
@@ -1175,7 +1175,7 @@ task-unblocks = Frees { $count } other { $n ->
 task-stopped = Where you stopped: { $text }
 task-spent = { $minutes } minutes so far
 task-session = { $date }: { $minutes } minutes
-task-no-case = Without a project
+task-no-project = Without a project
 task-weather-haze-note = Haze: the plan keeps less for today.
 task-weather-fog-note = Fog: only small steps are shown. One step is a full day.
 # What a day holds (docs/capacity.md): words only, never a number.
@@ -1235,8 +1235,8 @@ how-part-of = Part of
 how-step = A step
 how-contact = Who
 how-involves = Involves them
-how-case = Project
-how-in-case = In the project
+how-project = Project
+how-in-project = In the project
 how-mentions = Mentions
 how-mentioned-by = Mentioned in
 how-answers = Answers
@@ -1286,12 +1286,12 @@ task-capture-hint = A task in one line: “Call the tax office tomorrow ~15m #pr
 chip-start = from
 chip-due = date asked
 chip-estimate = minutes
-chip-case = project
+chip-project = project
 chip-tag = tag
 task-first-list = Tasks live in a task list, on your calendar server or only here. One is made in a click:
 task-default-list = Tasks
 task-make-list = Make the list
-task-all-cases = Every project
+task-all-projects = Every project
 task-weather = How is today?
 task-weather-clear = Clear
 task-weather-haze = Haze
@@ -1331,7 +1331,7 @@ task-other-choices = Other choices
 task-started = Started
 task-done-week = Done this week
 task-search = Search the tasks
-task-by-case = By project
+task-by-project = By project
 task-by-list = By list
 task-show-done = Done too
 task-title = Title
@@ -1344,7 +1344,7 @@ task-frees-one = Frees: { $title }
 task-field-start = Can start from
 task-field-due = Date asked
 task-field-estimate = Takes about
-task-field-case = Project
+task-field-project = Project
 task-field-tags = Tags
 task-field-repeat = Comes back
 task-field-list = List
@@ -1457,8 +1457,11 @@ set-task-blocks-help = Where a task pinned to a time is written: an event, which
 set-task-blocks-own = “Planned tasks”, with each task's list
 set-task-block-alarms = An alarm in each block
 set-task-block-alarms-help = Five minutes before it, for the calendars of your other devices; in the blocks made or moved from now on. Without it, Sioul reminds you of a block as of any event, and a phone does not remind you twice.
-set-case-store = The notes folder
-set-case-store-help = Your folder of Markdown files, read as a vault: your notes, and beside them your projects (sioul-cases.toml) and budgets (sioul-budgets.toml). Sioul links to it and never owns it.
+set-notes-root = The notes folder
+set-notes-root-help = Your folder of Markdown files, read as a vault: your notes, and beside them your projects (sioul-projects.toml) and budgets (sioul-budgets.toml). Sioul links to it and never owns it.
+set-projects-rename = Rename to sioul-projects.toml
+set-projects-rename-help = Your projects are in sioul-cases.toml, the file's first name, which Sioul still reads and writes as it is. Renamed, it becomes sioul-projects.toml and its entries [[project]], every field and comment kept, with a copy of the old file beside it (sioul-cases.toml.before-rename). Rename it once each of your devices has this version of Sioul or a later one: an older version reads only sioul-cases.toml.
+set-projects-both = Your notes folder holds both sioul-projects.toml and sioul-cases.toml: Sioul reads sioul-projects.toml and leaves sioul-cases.toml as it is. An older version of Sioul, on another device, may still write there.
 set-notes-folder = New notes go into
 set-notes-folder-help = A folder inside the notes folder, for notes made from mail and events.
 set-reading-family = Font
@@ -1795,7 +1798,7 @@ link-kind-mail = Mail
 link-kind-note = Notes
 link-kind-contact = Contacts
 link-kind-budget = Budget lines
-link-kind-case = Projects
+link-kind-project = Projects
 link-kind-draft = Drafts
 link-kind-web = Web
 link-kind-file = Files
@@ -1888,7 +1891,7 @@ project-status-open = Open
 project-status-waiting = Waiting
 project-status-closed = Closed
 project-kind-project = For a client
-project-kind-case = Yours
+project-kind-own = Yours
 project-rate = { $rate } an hour
 project-board = Board
 project-list = List
@@ -2397,7 +2400,7 @@ porch-open-until = Open until { $time }.
 porch-opened-anyway = Opened outside a window.
 lane-public = Your public address, { $address }
 lane-hostile = Hostile, set aside
-lane-about-case = Mail that matches this project's routes.
+lane-about-project = Mail that matches this project's routes.
 lane-about-public = To { $address }, from someone you have not let in, read first and sorted by topic: work first.
 lane-about-people = From people you know: in your address books, let in, or named on a list.
 lane-about-screener = From someone new: let them in, or block them.
@@ -2425,7 +2428,7 @@ rule-review-protected = Only a stranger's mail is judged: never someone you know
 rule-review-buttons = Sioul learns from them as they are: what was moved into the Junk folder, or flagged as probably spam, as spam; a maybe spam, not until you say. “Not spam” puts one back in its lane, from the Junk folder into the inbox, for good, on every device, and teaches the filter; “Spam” moves a flagged one into the Junk folder. Each, and each “for all”, can be undone for ten seconds.
 rule-review-where = What it does with each verdict, and how sure it must be: Mail ▸ ⚙, “Your own spam filter”.
 rule-blocked = Blocked: from your list of blocked senders; such mail is never shown, never counted.
-rule-case-none = This project has no route yet: no mail comes here by itself.
+rule-project-none = This project has no route yet: no mail comes here by itself.
 rule-route = { $parts }.
 rule-part-domains = From { $list } (and its subdomains)
 rule-part-addresses = From { $list }

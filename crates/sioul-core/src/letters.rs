@@ -15,7 +15,7 @@
 //! 2017); clearer material and the amount shown raise what people claim
 //! (Bhargava & Manoli 2015).
 //!
-//! `letters/letters.toml` in the case store, each letter's text beside it
+//! `letters/letters.toml` in the notes folder, each letter's text beside it
 //! (`letters/<id>.txt`), the scans filed in `letters/<year>/`.
 
 use crate::money::Money;
@@ -324,14 +324,15 @@ fn as_written(text: &str, phrase: &str) -> String {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Letter {
     pub id: String,
-    /// Its scan: from the case store, or anywhere.
+    /// Its scan: from the notes folder, or anywhere.
     pub file: String,
     /// The scan as it was when read: its name, size and time, to read it once.
     pub source: String,
     pub received: Option<Date>,
     pub reading: Reading,
-    /// The project it belongs with.
-    pub case: String,
+    /// The project it belongs with: `case` in the file, the key every
+    /// version of Sioul reads (`project` reads too).
+    pub project: String,
     /// "new" until you are done with it; "done" then.
     pub status: String,
     /// The task made for its date.
@@ -340,7 +341,7 @@ pub struct Letter {
     pub problem: String,
 }
 
-/// The letters of a case store.
+/// The letters of a notes folder.
 #[derive(Debug, Clone, Default)]
 pub struct Letters {
     pub root: PathBuf,
@@ -386,7 +387,7 @@ impl Letters {
                         registered: t.get("registered").and_then(toml::Value::as_bool).unwrap_or(false),
                         reference: text_of(t, "reference"),
                     },
-                    case: text_of(t, "case"),
+                    project: Some(text_of(t, "project")).filter(|p| !p.is_empty()).unwrap_or_else(|| text_of(t, "case")),
                     status: text_of(t, "status"),
                     task: text_of(t, "task"),
                     problem: text_of(t, "problem"),
@@ -433,7 +434,7 @@ impl Letters {
         }
         std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
         let extension = from.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-        let sender: String = crate::cases::new_id(&letter.reading.sender, &[]);
+        let sender: String = crate::projects::new_id(&letter.reading.sender, &[]);
         let base = format!("{day} {sender} {}", letter.reading.kind.id());
         let target = std::iter::once(folder.join(format!("{base}{extension}"))).chain((2..1000).map(|n| folder.join(format!("{base} {n}{extension}")))).find(|p| !p.exists()).ok_or("no free name")?;
         std::fs::rename(&from, &target).or_else(|_| std::fs::copy(&from, &target).and_then(|_| std::fs::remove_file(&from))).map_err(|e| e.to_string())?;
@@ -452,7 +453,9 @@ impl Letters {
             let mut t = toml_edit::Table::new();
             t["id"] = toml_edit::value(&l.id);
             t["file"] = toml_edit::value(&l.file);
-            for (k, v) in [("source", &l.source), ("sender", &l.reading.sender), ("why", &l.reading.why), ("reference", &l.reading.reference), ("case", &l.case), ("status", &l.status), ("task", &l.task), ("problem", &l.problem)] {
+            // The project under `case`, its key from the first version: an older
+            // Sioul writing the file again would drop a key it does not know.
+            for (k, v) in [("source", &l.source), ("sender", &l.reading.sender), ("why", &l.reading.why), ("reference", &l.reading.reference), ("case", &l.project), ("status", &l.status), ("task", &l.task), ("problem", &l.problem)] {
                 if !v.is_empty() {
                     t[k] = toml_edit::value(v);
                 }
@@ -482,9 +485,9 @@ impl Letters {
 }
 
 /// The project a letter belongs with: the one whose name's words it carries most.
-pub fn case_of(text: &str, sender: &str, cases: &[crate::cases::Case]) -> Option<String> {
+pub fn project_of(text: &str, sender: &str, projects: &[crate::projects::Project]) -> Option<String> {
     let all = plain(&format!("{sender} {text}"));
-    cases
+    projects
         .iter()
         .filter(|c| c.status.as_deref() != Some("closed"))
         .map(|c| {

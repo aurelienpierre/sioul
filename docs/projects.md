@@ -1,9 +1,9 @@
 # Projects, time and invoices
 
-A project is any matter you follow, one list for all of them (`sioul-cases.toml` in your notes folder, [case-store.md](case-store.md)): the umbrella over its tasks (REFID), events, mail (its routes), notes, time and budget lines. Projects were once "cases" beside "projects"; they are one thing now, and "for a client" is a choice in its form. Made, renamed, given its routes and taken out from the Projects page (its form, "Its mail"); taken out, its tasks, notes, mail and time stay where they are. The Porch's settings only choose which projects have a lane there (Porch ⚙, "Projects shown here"). A project **for a client** (`kind = "project"`) has a client, an hourly rate and the budget its invoices are expected in, and its time can be billed.
+A project is any matter you follow, one list for all of them (`sioul-projects.toml` in your notes folder, [notes-folder.md](notes-folder.md)): the umbrella over its tasks (REFID), events, mail (its routes), notes, time and budget lines. Projects were once "cases" beside "projects"; they are one thing, with one name, and "for a client" is a choice in its form. What was written under the old name still reads ([notes-folder.md](notes-folder.md#its-first-name)). Made, renamed, given its routes and taken out from the Projects page (its form, "Its mail"); taken out, its tasks, notes, mail and time stay where they are. The Porch's settings only choose which projects have a lane there (Porch ⚙, "Projects shown here"). A project **for a client** (`kind = "project"`) has a client, an hourly rate and the budget its invoices are expected in, and its time can be billed.
 
 ```toml
-[[case]]
+[[project]]
 id = "lumen"
 title = "Studio Lumen — website"
 kind = "project"
@@ -13,7 +13,7 @@ budget = "work"                # invoices expected there until paid
 ```
 
 ## A project's page (Projects, Ctrl+8)
-- **One line of time**: what is coming first (dates asked of its open tasks, events), then what happened, newest first (tasks done, mail by its routes or tied by hand, notes of its record or tied to it, time noted, invoices). Mail comes by its routes on sender and subject (matched again each time), by being tied to the case (when it arrived, or by hand), and by conversation: the whole of a conversation one of its messages belongs to ([case-store.md](case-store.md)).
+- **One line of time**: what is coming first (dates asked of its open tasks, events), then what happened, newest first (tasks done, mail by its routes or tied by hand, notes of its record or tied to it, time noted, invoices). Mail comes by its routes on sender and subject (matched again each time), by being tied to the project (when it arrived, or by hand), and by conversation: the whole of a conversation one of its messages belongs to ([notes-folder.md](notes-folder.md#routes)).
 - **Its tasks** as a board, a list or a calendar: the Tasks page, filtered to the project.
 - **"Note time"**: a meeting, a call, work away from the timer; for a project alone or a task.
 - **"Make the invoice"**, when billable time waits.
@@ -21,7 +21,7 @@ budget = "work"                # invoices expected there until paid
 ## Time (Ctrl+9)
 A week, a month or a year: a bar per day (per month over a year) stacked by project, each project's hours and what is left to bill, in hours and in money at its rate, then each stretch of time, newest first.
 - **Billed or not, task by task**: a task's form says "Billed": as its project says (work for a client is billed), its time is billed, or not billed (`X-SIOUL-BILLABLE` in the task, kept by CalDAV servers; greyed on Google Tasks).
-- **As a spreadsheet**: the export button on the Time page writes a project's billable time as CSV: what (a line per task, or per note), hours, hourly rate, amount, then the total; this week, last week, this month, last month, all time, or from one day to another. In French, `;` between fields and a decimal comma, as French spreadsheets read them. Nothing else goes in: the full invoice is the invoice's (below). Time comes from the focus timer (a task's time counts for its project: the first of its cases that is a project, else its first case) and from what is noted by hand (`$XDG_DATA_HOME/sioul/time/<month>.toml`, sessions with `project`, `unbilled`, `invoice`). Any stretch not billed, timed or noted by hand, changes with a click: its task, its project, its day, from when to when, what it was (`qml/TimeDialog.qml`; moved to another month, it is written there first); its right click takes it out. Billed time stays as it was billed.
+- **As a spreadsheet**: the export button on the Time page writes a project's billable time as CSV: what (a line per task, or per note), hours, hourly rate, amount, then the total; this week, last week, this month, last month, all time, or from one day to another. In French, `;` between fields and a decimal comma, as French spreadsheets read them. Nothing else goes in: the full invoice is the invoice's (below). Time comes from the focus timer (a task's time counts for its project: the first of its projects that is for a client, else its first project) and from what is noted by hand (`$XDG_DATA_HOME/sioul/time/<month>.toml`, sessions with `project`, `unbilled`, `invoice`). Any stretch not billed, timed or noted by hand, changes with a click: its task, its project, its day, from when to when, what it was (`qml/TimeDialog.qml`; moved to another month, it is written there first); its right click takes it out. Billed time stays as it was billed.
 
 ## Invoices
 - **Numbers** follow each other within a year and are never reused: `[invoice] prefix`, else the year: 2026-001, 2026-002.

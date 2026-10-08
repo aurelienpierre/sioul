@@ -8,7 +8,7 @@ Nothing changes on its side: it moves messages into IMAP folders and tags them. 
 ```toml
 [[virtual_secretary.map]]
 folder = "INBOX.Money.Taxes"
-case = "taxes-2025"
+project = "taxes-2025"     # `case`, as written before, reads too
 
 [[virtual_secretary.map]]
 folder = "INBOX.Services.Notifications"
@@ -33,7 +33,7 @@ Sioul does not move mail on the server while Virtual Secretary does, so the two 
 | `email.ip`, `email.domains` | the server route from `Received` |
 | `spf_pass()`, `dkim_pass()`, `arc_pass()`, `authenticity_score()`, `is_authentic()` | Sioul's trust results |
 | `is_newsletter()`, `is_mailing_list()` | the card's list detection |
-| `move(folder)` | a proposal to file or assign a case, through the folder mapping |
+| `move(folder)` | a proposal to file or assign a project, through the folder mapping |
 | `tag(k)`, `untag(k)` | a label |
 | `spam(folder)` | junk: set aside, and the classifier learns |
 | `delete()` | the trash, recoverable for 30 days |

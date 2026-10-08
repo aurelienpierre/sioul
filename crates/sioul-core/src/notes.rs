@@ -14,7 +14,7 @@
 //!   `aliases` and links (`task:`, `event:`, `mail:` …).
 //! - **Checkboxes**: `- [ ] line`, ready to become tasks.
 //!
-//! The folder is yours (the case store, docs/case-store.md). Sioul reads it,
+//! The folder is yours (the notes folder, docs/notes-folder.md). Sioul reads it,
 //! and writes only the notes you write or make from it.
 
 use serde::Serialize;
@@ -444,7 +444,9 @@ fn unquote(value: &str) -> String {
     if quoted { value[1..value.len() - 1].to_string() } else { value.to_string() }
 }
 
-/// Front matter keys whose values are links.
+/// Front matter keys whose values are links. `case: housing`, a project by
+/// its id alone, is how notes written before the name changed say it; a
+/// `project:` key is left alone, as many vaults use it for their own ends.
 const FRONT_LINKS: &[&str] = &["task", "tasks", "event", "events", "mail", "mails", "contact", "contacts", "draft", "drafts", "links", "related", "case"];
 
 /// Reads one note's text: its title, tags, links and checkboxes. Links are
@@ -456,7 +458,7 @@ pub fn read(path: &str, text: &str) -> Note {
     note.aliases.extend(front.get("aliases").into_iter().flatten().chain(front.get("alias").into_iter().flatten()).cloned());
     for key in FRONT_LINKS {
         for value in front.get(*key).into_iter().flatten() {
-            let target = if *key == "case" && !value.contains(':') { format!("sioul:case/{value}") } else { value.clone() };
+            let target = if *key == "case" && !value.contains(':') { crate::links::project_uri(value) } else { value.clone() };
             note.links.push(NoteLink { target, anchor: String::new(), text: key.to_string(), line: 1 });
         }
     }

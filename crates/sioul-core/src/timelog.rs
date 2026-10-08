@@ -59,7 +59,7 @@ pub struct Session {
     /// The task's UID; "" for time given to a project alone.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub task: String,
-    /// The project (a case's id) it counts for; "" for the task's own case.
+    /// The project (its id) it counts for; "" for the task's own project.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub project: String,
     /// Not to be billed, though its project is billable.

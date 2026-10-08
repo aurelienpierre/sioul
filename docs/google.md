@@ -94,7 +94,7 @@ The steps for a key of your own are in the form (*How to make your Google key*):
 Google's CalDAV refuses tasks; its task lists come over the Google Tasks API (`google_tasks.rs`), each kept here as a folder of VTODO files like any list (`calendars/<account>/tasks-<id>`), so the rest of Sioul reads them as it reads a CalDAV list.
 
 - **Kept by Google**: the title, the notes, done or not (and when), a day (Google's "due" is the day it should be done; no hour), one level of steps.
-- **Not kept, greyed in the task form** (with "This list is on Google Tasks: what Google does not keep is greyed"): a start day, a length, a case, a kind, office hours, categories, repeating, waiting for another task, steps of a step. Moving a task to a Google list says first what it would lose.
+- **Not kept, greyed in the task form** (with "This list is on Google Tasks: what Google does not keep is greyed"): a start day, a length, a project, a kind, office hours, categories, repeating, waiting for another task, steps of a step. Moving a task to a Google list says first what it would lose.
 - What Google does not know stays in the file here (an alarm, a link written by another program) but is not sent.
 - Lists can be made, renamed and deleted from Sioul (Google Tasks allows it); a list deleted here that holds tasks there (added from a phone meanwhile) comes back.
 - Sync: what changed here first (inserted, patched, moved under its parent, deleted), then what changed there since the last sync (`updatedMin`, deletions included), everything the first time. Changed on both sides between two syncs: yours is sent, and Google's answer is what stays.

@@ -11,12 +11,12 @@ use sioul_core::budget::Ledger;
 use sioul_core::contracts::{Contract, Contracts, Kind};
 
 fn contracts() -> Result<Contracts, String> {
-    let root = load_config().case_store_path().ok_or_else(|| tr().text("papers-no-store", None))?;
+    let root = load_config().notes_root_path().ok_or_else(|| tr().text("papers-no-store", None))?;
     Contracts::load(&root)
 }
 
 fn ledger() -> Option<Ledger> {
-    load_config().case_store_path().and_then(|root| Ledger::load(&root).ok())
+    load_config().notes_root_path().and_then(|root| Ledger::load(&root).ok())
 }
 
 #[derive(Serialize)]

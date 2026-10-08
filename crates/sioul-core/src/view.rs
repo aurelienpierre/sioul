@@ -12,7 +12,7 @@ use crate::budget::{Budget, Ledger, MailLine, MailState, Period, Reserve, Verdic
 use crate::money::Money;
 use crate::payments::PaymentKind;
 use crate::card::Card;
-use crate::cases::CaseStore;
+use crate::projects::ProjectStore;
 use crate::config::{Account, AccountKind, Config, Priority};
 use crate::folders::{Folder, Role};
 use crate::maildir;
@@ -122,7 +122,7 @@ pub struct ItemView {
 
 /// The Porch as the window shows it. `opened_anyway` is your "open it anyway"
 /// outside a window; codes show either way.
-pub fn porch(items: &[Triaged], config: &Config, store: Option<&CaseStore>, tr: &Translator, now: &Zoned, opened_anyway: bool) -> PorchView {
+pub fn porch(items: &[Triaged], config: &Config, store: Option<&ProjectStore>, tr: &Translator, now: &Zoned, opened_anyway: bool) -> PorchView {
     let right_now = codes(items, tr);
     let open = opened_anyway || config.windows.is_empty() || window::current(&config.windows, now).is_some();
     if !open {
@@ -142,7 +142,7 @@ pub fn porch(items: &[Triaged], config: &Config, store: Option<&CaseStore>, tr: 
         None => String::new(),
     };
     let order = tr.text("rule-order", None);
-    let hidden = |key: &str| key.strip_prefix("case:").is_some_and(|id| config.porch.hidden_projects.iter().any(|h| h == id));
+    let hidden = |key: &str| key.strip_prefix("project:").is_some_and(|id| config.porch.hidden_projects.iter().any(|h| h == id));
     let lanes = lanes(config, store, tr)
         .into_iter()
         .filter(|l| !hidden(&l.key))
@@ -163,7 +163,7 @@ pub fn porch(items: &[Triaged], config: &Config, store: Option<&CaseStore>, tr: 
 
 /// A lane of the Porch, empty or not: what it holds and how mail lands there.
 pub struct LaneInfo {
-    /// `people`, `case:<id>`, `public:<account>`.
+    /// `people`, `project:<id>`, `public:<account>`.
     pub key: String,
     pub title: String,
     pub lane: Lane,
@@ -177,11 +177,11 @@ pub struct LaneInfo {
     pub counted: bool,
 }
 
-/// Every lane mail can land in, in the order the Porch shows them: cases,
+/// Every lane mail can land in, in the order the Porch shows them: projects,
 /// public addresses, people, the screener, filed and less important mail,
 /// what waits for your review, what is set aside, hostile mail when an
 /// address is shielded.
-pub fn lanes(config: &Config, store: Option<&CaseStore>, tr: &Translator) -> Vec<LaneInfo> {
+pub fn lanes(config: &Config, store: Option<&ProjectStore>, tr: &Translator) -> Vec<LaneInfo> {
     let say = |id: &str, pairs: &[(&str, String)]| {
         let mut args = i18n::args();
         for (name, value) in pairs {
@@ -192,12 +192,12 @@ pub fn lanes(config: &Config, store: Option<&CaseStore>, tr: &Translator) -> Vec
     let lane = |key: &str, title: String, lane: Lane, folded: bool, about: String, rules: Vec<String>| LaneInfo { key: key.to_string(), title, counted: lane != Lane::Review, lane, folded, about, rules };
     let address_of = |id: &str| config.account(id).and_then(|a| a.address.clone()).unwrap_or_else(|| id.to_string());
     let mut lanes: Vec<LaneInfo> = store
-        .map_or(&[][..], |s| &s.cases[..])
+        .map_or(&[][..], |s| &s.projects[..])
         .iter()
         .map(|c| {
-            let mut rules = case_rules(c, tr);
+            let mut rules = project_rules(c, tr);
             rules.push(tr.text("rule-where-routes", None));
-            lane(&format!("case:{}", c.id), c.title.clone(), Lane::Case(c.id.clone()), false, tr.text("lane-about-case", None), rules)
+            lane(&format!("project:{}", c.id), c.title.clone(), Lane::Project(c.id.clone()), false, tr.text("lane-about-project", None), rules)
         })
         .collect();
     for account in config.accounts.iter().filter(|a| a.shield) {
@@ -250,10 +250,10 @@ pub fn lanes(config: &Config, store: Option<&CaseStore>, tr: &Translator) -> Vec
     lanes
 }
 
-/// A case's routes, each in a sentence.
-fn case_rules(case: &crate::cases::Case, tr: &Translator) -> Vec<String> {
-    if case.routes.is_empty() {
-        return vec![tr.text("rule-case-none", None)];
+/// A project's routes, each in a sentence.
+fn project_rules(project: &crate::projects::Project, tr: &Translator) -> Vec<String> {
+    if project.routes.is_empty() {
+        return vec![tr.text("rule-project-none", None)];
     }
     let part = |id: &str, list: &[String]| -> Option<String> {
         (!list.is_empty()).then(|| {
@@ -262,7 +262,7 @@ fn case_rules(case: &crate::cases::Case, tr: &Translator) -> Vec<String> {
             tr.text(id, Some(&args))
         })
     };
-    case.routes
+    project.routes
         .iter()
         .map(|route| {
             let parts: Vec<String> = [
@@ -312,7 +312,7 @@ fn code_view(t: &Triaged, tr: &Translator) -> CodeView {
     }
 }
 
-fn item_view(t: &Triaged, store: Option<&CaseStore>, tr: &Translator) -> ItemView {
+fn item_view(t: &Triaged, store: Option<&ProjectStore>, tr: &Translator) -> ItemView {
     // Sioul's own filter's word on it, in the review queue.
     let learned = t.reasons.iter().find_map(Reason::learned).filter(|_| t.lane == Lane::Review);
     let preview: String = t.card.excerpt.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(PREVIEW).collect();

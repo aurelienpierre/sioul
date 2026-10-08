@@ -4,9 +4,10 @@
 //! Time spent, as the Time page and a project's page show it: a bar per day
 //! (per month over a year), the hours of each project, and for work done for
 //! someone, what is left to bill. A session counts for its own project when
-//! it names one, else for its task's project, else its task's first case.
+//! it names one, else for its task's project for a client, else its task's
+//! first project.
 
-use crate::cases::Case;
+use crate::projects::Project;
 use crate::i18n::Translator;
 use crate::money::Money;
 use crate::tasks::Task;
@@ -23,7 +24,7 @@ pub struct Entry {
     pub start: i64,
     pub day: Date,
     pub minutes: u32,
-    /// The case's id; "" when it counts for none.
+    /// The project's id; "" when it counts for none.
     pub project: String,
     pub task: String,
     /// The task's title, else the note, else the project's title.
@@ -35,19 +36,19 @@ pub struct Entry {
 }
 
 /// Each session with its project and title.
-pub fn entries(sessions: &[Session], tasks: &[Task], cases: &[Case], zone: &TimeZone) -> Vec<Entry> {
+pub fn entries(sessions: &[Session], tasks: &[Task], projects: &[Project], zone: &TimeZone) -> Vec<Entry> {
     sessions
         .iter()
         .map(|s| {
             let task = tasks.iter().find(|t| !s.task.is_empty() && t.uid == s.task);
-            // The task's project first, else its first case.
-            let from_task = task.and_then(|t| t.cases.iter().find(|c| cases.iter().any(|x| x.id == **c && x.is_project())).or(t.cases.first())).cloned();
+            // The task's project for a client first, else its first project.
+            let from_task = task.and_then(|t| t.projects.iter().find(|c| projects.iter().any(|x| x.id == **c && x.is_for_client())).or(t.projects.first())).cloned();
             let project = if s.project.is_empty() { from_task.unwrap_or_default() } else { s.project.clone() };
-            let case = cases.iter().find(|c| c.id == project);
+            let found = projects.iter().find(|c| c.id == project);
             let title = match task {
                 Some(t) => t.title.clone(),
                 None if !s.note.is_empty() => s.note.clone(),
-                None => case.map(|c| c.title.clone()).unwrap_or_default(),
+                None => found.map(|c| c.title.clone()).unwrap_or_default(),
             };
             Entry {
                 key: s.key(),
@@ -55,7 +56,7 @@ pub fn entries(sessions: &[Session], tasks: &[Task], cases: &[Case], zone: &Time
                 day: jiff::Timestamp::from_second(s.start).map(|t| t.to_zoned(zone.clone()).date()).unwrap_or(Date::ZERO),
                 minutes: s.minutes,
                 // The task's own word first, else its project's: work for a client is billed.
-                billable: task.and_then(|t| t.billable).unwrap_or_else(|| case.is_some_and(Case::is_project)) && !s.unbilled,
+                billable: task.and_then(|t| t.billable).unwrap_or_else(|| found.is_some_and(Project::is_for_client)) && !s.unbilled,
                 project,
                 task: s.task.clone(),
                 title,
@@ -157,7 +158,7 @@ pub struct TimeView {
 /// much, one line per task (or note), then the total. Nothing else: a full
 /// invoice is the invoice's (invoice.rs). In French, `;` between fields and a
 /// decimal comma, as French spreadsheets expect; else `,` and a point.
-pub fn billable_csv(all: &[Entry], case: &Case, from: Date, to: Date, default_rate: f64, french: bool, words: [&str; 5]) -> String {
+pub fn billable_csv(all: &[Entry], project: &Project, from: Date, to: Date, default_rate: f64, french: bool, words: [&str; 5]) -> String {
     let (sep, decimal) = if french { (';', ',') } else { (',', '.') };
     let number = |value: f64| format!("{value:.2}").replace('.', &decimal.to_string());
     // A title is text, never a formula: one starting with "=", "+", "-", "@" (a task made from
@@ -166,10 +167,10 @@ pub fn billable_csv(all: &[Entry], case: &Case, from: Date, to: Date, default_ra
         let text = if text.starts_with(['=', '+', '-', '@', '\t', '\r']) { format!("'{text}") } else { text.to_string() };
         if text.contains([sep, '"', '\n', '\r']) { format!("\"{}\"", text.replace('"', "\"\"")) } else { text }
     };
-    let rate = case.rate.unwrap_or(default_rate);
+    let rate = project.rate.unwrap_or(default_rate);
     let mut by_what: Vec<(String, u32)> = Vec::new();
-    for e in all.iter().filter(|e| e.project == case.id && e.billable && e.day >= from && e.day <= to) {
-        let what = if e.title.trim().is_empty() { case.title.clone() } else { e.title.trim().to_string() };
+    for e in all.iter().filter(|e| e.project == project.id && e.billable && e.day >= from && e.day <= to) {
+        let what = if e.title.trim().is_empty() { project.title.clone() } else { e.title.trim().to_string() };
         match by_what.iter_mut().find(|(w, _)| *w == what) {
             Some((_, minutes)) => *minutes += e.minutes,
             None => by_what.push((what, e.minutes)),
@@ -203,7 +204,7 @@ pub fn bounds(period: &str, anchor: Date) -> (Date, Date) {
 }
 
 /// What the Time page shows for `period` around `anchor`, every project or one.
-pub fn view(all: &[Entry], cases: &[Case], sessions_by_hand: &dyn Fn(&str) -> bool, period: &str, anchor: Date, project: Option<&str>, default_rate: f64, today: Date, tr: &Translator) -> TimeView {
+pub fn view(all: &[Entry], projects: &[Project], sessions_by_hand: &dyn Fn(&str) -> bool, period: &str, anchor: Date, project: Option<&str>, default_rate: f64, today: Date, tr: &Translator) -> TimeView {
     let (from, to) = bounds(period, anchor);
     let wanted = |e: &&Entry| project.is_none_or(|p| e.project == p);
     let shown: Vec<&Entry> = all.iter().filter(wanted).filter(|e| e.day >= from && e.day <= to).collect();
@@ -221,21 +222,21 @@ pub fn view(all: &[Entry], cases: &[Case], sessions_by_hand: &dyn Fn(&str) -> bo
             ids.push(e.project.clone());
         }
     }
-    let projects: Vec<ProjectTime> = ids
+    let times: Vec<ProjectTime> = ids
         .iter()
         .enumerate()
         .map(|(index, id)| {
-            let case = cases.iter().find(|c| c.id == *id);
-            let rate = case.and_then(|c| c.rate).unwrap_or(default_rate);
+            let found = projects.iter().find(|c| c.id == *id);
+            let rate = found.and_then(|c| c.rate).unwrap_or(default_rate);
             let unbilled_minutes: u32 = all.iter().filter(|e| e.project == *id && e.billable && e.invoice.is_empty()).map(|e| e.minutes).sum();
             let minutes = minutes_of(id);
             ProjectTime {
                 id: id.clone(),
-                title: case.map_or_else(|| tr.text(if id.is_empty() { "time-no-project" } else { "time-gone-project" }, None), |c| c.title.clone()),
+                title: found.map_or_else(|| tr.text(if id.is_empty() { "time-no-project" } else { "time-gone-project" }, None), |c| c.title.clone()),
                 index,
                 minutes,
                 time: duration(minutes),
-                billable: case.is_some_and(Case::is_project),
+                billable: found.is_some_and(Project::is_for_client),
                 unbilled_minutes,
                 unbilled: if unbilled_minutes > 0 { duration(unbilled_minutes) } else { String::new() },
                 unbilled_amount: if unbilled_minutes > 0 && rate > 0.0 { tr.money(amount(unbilled_minutes, rate)) } else { String::new() },
@@ -305,7 +306,7 @@ pub fn view(all: &[Entry], cases: &[Case], sessions_by_hand: &dyn Fn(&str) -> bo
                 time: duration(e.minutes),
                 title: e.title.clone(),
                 project: e.project.clone(),
-                project_title: projects.iter().find(|p| p.id == e.project).map(|p| p.title.clone()).unwrap_or_default(),
+                project_title: times.iter().find(|p| p.id == e.project).map(|p| p.title.clone()).unwrap_or_default(),
                 note: if e.note == e.title { String::new() } else { e.note.clone() },
                 billable: e.billable,
                 invoice: e.invoice.clone(),
@@ -320,7 +321,7 @@ pub fn view(all: &[Entry], cases: &[Case], sessions_by_hand: &dyn Fn(&str) -> bo
             })
             .collect(),
         sentence: if total == 0 { tr.text(&format!("time-nothing-{period}"), None) } else { String::new() },
-        projects,
+        projects: times,
     }
 }
 
@@ -333,26 +334,26 @@ mod tests {
         let day = |d: &str| d.parse::<Date>().unwrap();
         let entry = |title: &str, d: &str, minutes: u32, billable: bool| Entry { key: String::new(), start: 0, day: day(d), minutes, project: "studio".into(), task: String::new(), title: title.into(), note: String::new(), billable, invoice: String::new() };
         let all = vec![entry("Logo; second draft", "2026-10-01", 90, true), entry("Logo; second draft", "2026-10-02", 30, true), entry("Call", "2026-10-02", 60, false), entry("Site", "2026-11-01", 60, true)];
-        let case = Case { id: "studio".into(), title: "Studio".into(), rate: Some(60.0), ..Case::default() };
-        let csv = billable_csv(&all, &case, day("2026-10-01"), day("2026-10-31"), 50.0, true, ["Quoi", "Heures", "Taux horaire", "Montant", "Total"]);
+        let studio = Project { id: "studio".into(), title: "Studio".into(), rate: Some(60.0), ..Project::default() };
+        let csv = billable_csv(&all, &studio, day("2026-10-01"), day("2026-10-31"), 50.0, true, ["Quoi", "Heures", "Taux horaire", "Montant", "Total"]);
         assert_eq!(csv, "Quoi;Heures;Taux horaire;Montant\r\n\"Logo; second draft\";2,00;60,00;120,00\r\nTotal;2,00;;120,00\r\n");
-        let english = billable_csv(&all, &case, day("2026-01-01"), day("2026-12-31"), 50.0, false, ["What", "Hours", "Hourly rate", "Amount", "Total"]);
+        let english = billable_csv(&all, &studio, day("2026-01-01"), day("2026-12-31"), 50.0, false, ["What", "Hours", "Hourly rate", "Amount", "Total"]);
         assert!(english.ends_with("Total,3.00,,180.00\r\n"), "{english}");
         // A title that a spreadsheet would run as a formula stays text.
         let formula = vec![entry("=HYPERLINK(\"https://example.org/?\"&A1)", "2026-10-01", 60, true)];
-        let csv = billable_csv(&formula, &case, day("2026-10-01"), day("2026-10-31"), 50.0, false, ["What", "Hours", "Hourly rate", "Amount", "Total"]);
+        let csv = billable_csv(&formula, &studio, day("2026-10-01"), day("2026-10-31"), 50.0, false, ["What", "Hours", "Hourly rate", "Amount", "Total"]);
         assert!(csv.contains("\r\n\"'=HYPERLINK(\"\"https://example.org/?\"\"&A1)\",1.00,60.00,60.00\r\n"), "{csv}");
     }
 
-    fn case(id: &str, project: bool, rate: Option<f64>) -> Case {
-        Case { id: id.into(), title: id.to_uppercase(), kind: project.then(|| "project".to_string()), rate, ..Case::default() }
+    fn project(id: &str, for_client: bool, rate: Option<f64>) -> Project {
+        Project { id: id.into(), title: id.to_uppercase(), kind: for_client.then(|| "project".to_string()), rate, ..Project::default() }
     }
 
     #[test]
     fn time_by_project_and_left_to_bill() {
         let zone = TimeZone::UTC;
         let day = |d: &str, h: i8| Date::from(d.parse::<Date>().unwrap()).at(h, 0, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
-        let site = Task { uid: "t".into(), title: "Build the site".into(), cases: vec!["housing".into(), "lumen".into()], ..Task::default() };
+        let site = Task { uid: "t".into(), title: "Build the site".into(), projects: vec!["housing".into(), "lumen".into()], ..Task::default() };
         let sessions = vec![
             Session { task: "t".into(), start: day("2026-10-05", 9), minutes: 90, ..Session::default() },
             Session { project: "lumen".into(), start: day("2026-10-06", 14), minutes: 30, note: "Call with the client".into(), ..Session::default() },
@@ -360,14 +361,14 @@ mod tests {
             Session { project: "housing".into(), start: day("2026-10-07", 10), minutes: 45, ..Session::default() },
             Session { project: "lumen".into(), start: day("2026-09-20", 10), minutes: 15, unbilled: true, ..Session::default() },
         ];
-        let cases = vec![case("housing", false, None), case("lumen", true, Some(60.0))];
-        let all = entries(&sessions, &[site], &cases, &zone);
-        // The task counts for its project, not its first case.
+        let projects = vec![project("housing", false, None), project("lumen", true, Some(60.0))];
+        let all = entries(&sessions, &[site], &projects, &zone);
+        // The task counts for its project for a client, not its first project.
         assert_eq!(all[0].project, "lumen");
         assert!(all[0].billable && !all[3].billable && !all[4].billable);
         let tr = Translator::new("en");
         let today: Date = "2026-10-07".parse().unwrap();
-        let week = view(&all, &cases, &|_| false, "week", today, None, 40.0, today, &tr);
+        let week = view(&all, &projects, &|_| false, "week", today, None, 40.0, today, &tr);
         assert_eq!(week.total, "3 h 45");
         assert_eq!(week.bars.len(), 7);
         assert_eq!((week.bars[0].minutes, week.bars[1].minutes, week.bars[2].minutes), (90, 90, 45));
@@ -375,7 +376,7 @@ mod tests {
         assert_eq!((lumen.id.as_str(), lumen.minutes, lumen.unbilled_minutes), ("lumen", 180, 120));
         assert_eq!(lumen.unbilled_amount, tr.money(Money(12000)));
         assert_eq!(week.entries[0].title, "HOUSING", "newest first, titled by its project");
-        let year = view(&all, &cases, &|_| false, "year", today, Some("lumen"), 40.0, today, &tr);
+        let year = view(&all, &projects, &|_| false, "year", today, Some("lumen"), 40.0, today, &tr);
         assert_eq!((year.bars.len(), year.bars[8].minutes, year.bars[9].minutes), (12, 15, 180));
         assert_eq!(amount(50, 60.0), Money(5000));
         assert_eq!((duration(45).as_str(), duration(120).as_str(), duration(150).as_str()), ("45 min", "2 h", "2 h 30"));

@@ -72,7 +72,7 @@ Dialog {
         // there must not move to another project unseen.
         const projects = JSON.parse(dialog.sioul.projectRows() || "[]").filter(p => p.status !== "closed" || p.id === project)
         dialog.projects = [{ id: "", title: dialog.sioul.text("time-own-project") }].concat(projects)
-        dialog.tasks = [{ uid: "", title: dialog.sioul.text("time-no-task"), case: "" }].concat(JSON.parse(dialog.sioul.taskChoices(task || "") || "[]"))
+        dialog.tasks = [{ uid: "", title: dialog.sioul.text("time-no-task"), project: "" }].concat(JSON.parse(dialog.sioul.taskChoices(task || "") || "[]"))
         dialog.replacing = ""
         dialog.problem = ""
         day.date = dialog.today()
@@ -132,8 +132,8 @@ Dialog {
             // A task chosen: its project, unless one was chosen for this stretch.
             onActivated: index => {
                 const task = dialog.tasks[index]
-                if (task && task.case !== "" && which.currentIndex === 0)
-                    which.currentIndex = Math.max(0, dialog.projects.findIndex(p => p.id === task.case))
+                if (task && task.project !== "" && which.currentIndex === 0)
+                    which.currentIndex = Math.max(0, dialog.projects.findIndex(p => p.id === task.project))
             }
         }
         Label {
@@ -212,7 +212,7 @@ Dialog {
         CheckBox {
             id: unbilled
 
-            visible: dialog.projects.length > 0 && !!dialog.projects[which.currentIndex] && dialog.projects[which.currentIndex].is_project === true
+            visible: dialog.projects.length > 0 && !!dialog.projects[which.currentIndex] && dialog.projects[which.currentIndex].for_client === true
             text: dialog.sioul.text("time-field-unbilled")
         }
         Label {

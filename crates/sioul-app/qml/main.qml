@@ -575,8 +575,9 @@ SioulWindow {
             window.page = 9
             budgetsPage.openContract(item.key || decodeURIComponent(item.uri.slice("sioul:contract/".length)))
         }
-        else if (item.kind === "case")
-            window.openProject(decodeURIComponent(item.uri.slice("sioul:case/".length)))
+        // A project's address, or as it was written before the one name ("sioul:case/").
+        else if (item.kind === "project")
+            window.openProject(item.key || decodeURIComponent(item.uri.replace(/^sioul:(project|case)\//, "")))
         else if (item.kind === "health")
             window.page = 10
         // Meals, naps and the night, where Health sets them (the Porch's card, Settings ▸ Hours).
@@ -645,7 +646,7 @@ SioulWindow {
     // A project's tasks, as a board, a list or a calendar.
     function showTasksOf(id, mode) {
         window.page = 1
-        tasksPage.showCase(id, mode)
+        tasksPage.showProject(id, mode)
     }
 
     // A draft's window; brought forward when it is already open.
@@ -935,7 +936,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "attachments": grabber.attachmentSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -2726,6 +2727,25 @@ SioulWindow {
                 () => grabber.saveChecked("texts-off"),
                 () => window.close()
             ]
+            // The projects' file under its first name (make-demo.py --old-projects,
+            // docs/notes-folder.md): Settings ▸ Your folder and sharing offers to
+            // rename it; renamed there, the first project's page and its form read as before.
+            readonly property var projectsFileSteps: [
+                () => window.showParameters("case_store"),
+                () => {},
+                () => grabber.save("projects-file"),
+                () => window.parametersPage.save("projects.rename", true),
+                () => {},
+                () => grabber.save("projects-file-renamed"),
+                () => window.page = 7,
+                () => projectsPage.openFirst(),
+                () => {},
+                () => grabber.save("projects-file-page"),
+                () => projectsPage.editOpen(),
+                () => {},
+                () => grabber.savePopup(projectsPage.editOpen(), "projects-file-form"),
+                () => window.close()
+            ]
             // What AI agents may use (docs/mcp.md): Settings ▸ AI agents, the first
             // project closed then opened on its page, the tab again; the Texts page
             // with an agent's draft (make-demo.py --texts), used: its words in the box, nothing sent.
@@ -2737,7 +2757,7 @@ SioulWindow {
                 () => projectsPage.openFirst(),
                 () => {},
                 () => grabber.save("ai-project-closed"),
-                () => projectsPage.saveRoutes("case." + projectsPage.openId + ".ai", true),
+                () => projectsPage.saveRoutes("project." + projectsPage.openId + ".ai", true),
                 () => {},
                 () => grabber.save("ai-project-open"),
                 () => window.showParameters("ai"),

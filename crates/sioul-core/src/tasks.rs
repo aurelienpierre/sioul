@@ -12,7 +12,7 @@
 //! - **its notes, mail, drafts, events**: `LINK` (RFC 9253 §8.2): `mid:` for a
 //!   message (RFC 2392), `sioul:` for the rest (`links`);
 //! - **the people and offices it involves**: `CONTACT`, its `ALTREP` pointing at their card;
-//! - **its case**: `REFID` (docs/case-store.md);
+//! - **its project**: `REFID` (docs/notes-folder.md);
 //! - **how long it takes**: `ESTIMATED-DURATION` (draft-ietf-calext-ical-tasks).
 //!
 //! `DTSTART` says from when a task can start, `DUE` the date asked from
@@ -180,8 +180,8 @@ pub struct Task {
     pub relations: Vec<Relation>,
     pub links: Vec<Link>,
     pub contacts: Vec<ContactRef>,
-    /// Its cases (REFID).
-    pub cases: Vec<String>,
+    /// Its projects (REFID).
+    pub projects: Vec<String>,
     /// "daily", "weekly", "monthly", "yearly" when it comes back; "" otherwise.
     pub repeat: String,
     /// When it was made (CREATED, else DTSTAMP), in Unix seconds: the order among equals.
@@ -465,7 +465,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             AT => task.at = zoned(line, zone).map(|z| z.strftime("%Y-%m-%dT%H:%M").to_string()).unwrap_or_default(),
             "LINK" => task.links.push(link_of(line)),
             "CONTACT" => task.contacts.push(contact(line)),
-            "REFID" => task.cases.push(lines::unescape(value.trim())),
+            "REFID" => task.projects.push(lines::unescape(value.trim())),
             "RRULE" => task.repeat = repeat_of(value),
             "CREATED" => task.created = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
             "DTSTAMP" => stamp = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
@@ -556,8 +556,9 @@ pub struct TaskEdit {
     pub links: Vec<Link>,
     #[serde(default)]
     pub contacts: Vec<ContactRef>,
-    #[serde(default)]
-    pub cases: Vec<String>,
+    /// Its projects, by id (REFID); `cases`, the name before, reads too.
+    #[serde(default, alias = "cases")]
+    pub projects: Vec<String>,
     /// "", "daily", "weekly", "monthly", "yearly".
     #[serde(default)]
     pub repeat: String,
@@ -590,7 +591,7 @@ impl TaskEdit {
             waits_for: task.depends_on().map(|r| r.uid.clone()).collect(),
             links: task.links.clone(),
             contacts: task.contacts.clone(),
-            cases: task.cases.clone(),
+            projects: task.projects.clone(),
             repeat: task.repeat.clone(),
         }
     }
@@ -628,7 +629,7 @@ impl TaskEdit {
             waits_for: unique(self.waits_for.iter().map(|u| u.trim().to_string()).filter(|u| !u.is_empty())),
             links: unique(self.links.iter().filter(|l| !l.uri.trim().is_empty()).map(|l| Link { uri: l.uri.trim().to_string(), label: l.label.trim().to_string(), rel: l.rel.trim().to_string() })),
             contacts: unique(self.contacts.iter().filter(|c| !c.name.trim().is_empty() || !c.uri.trim().is_empty()).map(|c| ContactRef { name: c.name.trim().to_string(), uri: c.uri.trim().to_string() })),
-            cases: unique(self.cases.iter().map(|c| c.trim().to_string()).filter(|c| !c.is_empty())),
+            projects: unique(self.projects.iter().map(|c| c.trim().to_string()).filter(|c| !c.is_empty())),
             repeat: self.repeat.trim().to_lowercase(),
             ..self.clone()
         }
@@ -851,7 +852,7 @@ pub fn new_task(edit: &TaskEdit, uid: &str, zone: &TimeZone, now: &Zoned) -> Res
     out.extend(edit.waits_for.iter().map(|uid| relation_line("DEPENDS-ON", uid, 0)));
     out.extend(edit.links.iter().map(link_line));
     out.extend(edit.contacts.iter().map(contact_line));
-    out.extend(edit.cases.iter().map(|c| format!("REFID:{}", lines::escape(c))));
+    out.extend(edit.projects.iter().map(|c| format!("REFID:{}", lines::escape(c))));
     out.extend(["END:VTODO".to_string(), "END:VCALENDAR".to_string()]);
     Ok(lines::fold(&out))
 }
@@ -915,7 +916,7 @@ pub fn apply(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned) -> Resul
     added.extend(edit.waits_for.iter().filter(|u| !old.waits_for.contains(u)).map(|uid| relation_line("DEPENDS-ON", uid, 0)));
     added.extend(edit.links.iter().filter(|l| !old.links.contains(l)).map(link_line));
     added.extend(edit.contacts.iter().filter(|c| !old.contacts.contains(c)).map(contact_line));
-    added.extend(edit.cases.iter().filter(|c| !old.cases.contains(c)).map(|c| format!("REFID:{}", lines::escape(c))));
+    added.extend(edit.projects.iter().filter(|c| !old.projects.contains(c)).map(|c| format!("REFID:{}", lines::escape(c))));
     let keep = |line: &str| {
         let name = lines::name(line);
         match name.as_str() {
@@ -929,7 +930,7 @@ pub fn apply(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned) -> Resul
             }
             "LINK" => edit.links.contains(&link_of(line)),
             "CONTACT" => edit.contacts.contains(&contact(line)),
-            "REFID" => edit.cases.contains(&lines::unescape(lines::value(line).trim())),
+            "REFID" => edit.projects.contains(&lines::unescape(lines::value(line).trim())),
             // Only Sioul's own concepts, the kind and the office hours, are written again; others stay.
             "CONCEPT" => {
                 let value = lines::value(line);
@@ -1169,7 +1170,7 @@ mod tests {
         assert_eq!(task.links[0], Link { uri: "sioul:note/admin/letters.md".into(), label: "Outbox: 5".into(), rel: "describedby".into() });
         assert_eq!(task.links[1].uri, "uid:event-7");
         assert_eq!(task.contacts, vec![ContactRef { name: "Service des impôts, centre".into(), uri: "sioul:contact/tax-office".into() }]);
-        assert_eq!((task.cases.clone(), task.status), (vec!["taxes-2025".to_string()], Status::NeedsAction));
+        assert_eq!((task.projects.clone(), task.status), (vec!["taxes-2025".to_string()], Status::NeedsAction));
     }
 
     #[test]
@@ -1227,7 +1228,7 @@ mod tests {
             waits_for: vec!["form".into()],
             links: vec![Link { uri: "sioul:note/admin/letters.md".into(), label: "Outbox: 2".into(), rel: "describedby".into() }, Link { uri: "mid:abc@example.org".into(), label: String::new(), rel: "via".into() }],
             contacts: vec![ContactRef { name: "School, office".into(), uri: "sioul:contact/school".into() }],
-            cases: vec!["school".into()],
+            projects: vec!["school".into()],
             ..TaskEdit::default()
         };
         let text = new_task(&edit, "certificate", &paris(), &now()).unwrap();

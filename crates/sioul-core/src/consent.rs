@@ -5,7 +5,7 @@
 //! may read, and write into (docs/ai.md, "Consent per project"; docs/mcp.md).
 //!
 //! **Every project is closed until you open it** (`ai = true` on its entry in
-//! `sioul-cases.toml`, `cases::set_ai`): the switch on its page, in its form,
+//! `sioul-projects.toml`, `projects::set_ai`): the switch on its page, in its form,
 //! or in Settings ▸ AI agents. The sharing carries the entry, so the choice
 //! holds on every device. **Things in no project** (the Porch's other mail,
 //! tasks of no project, general notes, the agenda, contacts, the phone's
@@ -28,7 +28,7 @@
 //! page does.
 
 use crate::card::Card;
-use crate::cases::Case;
+use crate::projects::Project;
 use crate::links::{self, Kind, Loaded};
 use crate::notes;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -40,30 +40,30 @@ pub struct Consent {
     pub outside: bool,
     /// Every project, by id: open or not.
     projects: BTreeMap<String, bool>,
-    /// The projects' routes, for a message read whole.
-    cases: Vec<Case>,
+    /// The projects themselves, for their routes and budgets.
+    listed: Vec<Project>,
     /// What each thing is tied to, by its address: its projects' ids.
     tied: HashMap<String, BTreeSet<String>>,
 }
 
 impl Consent {
     /// Every project closed, things outside projects as `outside` says; nothing tied.
-    pub fn new(cases: &[Case], outside: bool) -> Consent {
-        Consent { outside, projects: cases.iter().map(|c| (c.id.clone(), c.ai)).collect(), cases: cases.to_vec(), tied: HashMap::new() }
+    pub fn new(projects: &[Project], outside: bool) -> Consent {
+        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new() }
     }
 
     /// What everything Sioul reads belongs to, from the files read once
     /// (`Loaded::read`) and the configuration's `[mcp] outside_projects`.
     pub fn of(loaded: &Loaded, outside: bool) -> Consent {
-        let mut consent = Consent::new(&loaded.cases, outside);
+        let mut consent = Consent::new(&loaded.projects, outside);
         let world = loaded.world();
-        let case_of = |uri: &str| (links::kind_of(uri) == Kind::Case).then(|| links::id_of(uri));
+        let project_of = |uri: &str| (links::kind_of(uri) == Kind::Project).then(|| links::id_of(uri));
         // Every tie with a project at one end: tasks' and events' REFID, notes'
         // front matter, budget lines' sources, Sioul's own links file.
         for edge in world.edges() {
-            if let Some(id) = case_of(&edge.to) {
+            if let Some(id) = project_of(&edge.to) {
                 consent.tie(&edge.from, &id);
-            } else if let Some(id) = case_of(&edge.from) {
+            } else if let Some(id) = project_of(&edge.from) {
                 consent.tie(&edge.to, &id);
             }
         }
@@ -97,12 +97,12 @@ impl Consent {
             }
         }
         // A contact the project is for: its address, or its name or organisation.
-        for case in &loaded.cases {
-            let Some(client) = case.client.as_deref().map(str::trim).filter(|c| !c.is_empty()) else { continue };
+        for project in &loaded.projects {
+            let Some(client) = project.client.as_deref().map(str::trim).filter(|c| !c.is_empty()) else { continue };
             for contact in &loaded.contacts {
                 let named = contact.name.eq_ignore_ascii_case(client) || (!contact.org.is_empty() && contact.org.eq_ignore_ascii_case(client));
                 if named || world.canonical(client) == links::contact_uri(&contact.uid) {
-                    consent.tie(&links::contact_uri(&contact.uid), &case.id);
+                    consent.tie(&links::contact_uri(&contact.uid), &project.id);
                 }
             }
         }
@@ -137,7 +137,7 @@ impl Consent {
         let mut by_root: HashMap<String, BTreeSet<String>> = HashMap::new();
         for (id, mail) in loaded.mail.iter() {
             let mut own: BTreeSet<String> = self.tied.get(&links::mail_uri(id)).cloned().unwrap_or_default();
-            own.extend(self.cases.iter().filter(|c| c.routes.iter().any(|r| r.takes_header(&mail.address, &mail.subject))).map(|c| c.id.clone()));
+            own.extend(self.listed.iter().filter(|c| c.routes.iter().any(|r| r.takes_header(&mail.address, &mail.subject))).map(|c| c.id.clone()));
             if !own.is_empty() {
                 by_root.entry(root(&mut parent, id)).or_default().extend(own);
             }
@@ -190,13 +190,13 @@ impl Consent {
     }
 
     /// The projects a thing is in, by its address (`mid:…`, `sioul:task/…`,
-    /// `sioul:note/…`, `sioul:case/…`…): a project is in itself.
+    /// `sioul:note/…`, `sioul:project/…`…): a project is in itself.
     pub fn projects_of(&self, uri: &str) -> BTreeSet<String> {
         let uri = uri.trim();
         let uri = if uri.starts_with("mid:") { links::mail_uri(uri) } else { notes::path_of(uri).map_or_else(|| uri.to_string(), |path| notes::uri_of(&path)) };
         let mut out = self.tied.get(&uri).cloned().unwrap_or_default();
         match links::kind_of(&uri) {
-            Kind::Case => {
+            Kind::Project => {
                 let id = links::id_of(&uri);
                 if self.knows(&id) {
                     out.insert(id);
@@ -225,7 +225,7 @@ impl Consent {
     /// The projects whose files name this note: the file itself, or a folder holding it.
     pub fn note_projects(&self, path: &str) -> BTreeSet<String> {
         let path = path.trim_start_matches('/');
-        self.cases
+        self.listed
             .iter()
             .filter(|c| {
                 c.files.iter().any(|f| {
@@ -244,7 +244,7 @@ impl Consent {
 
     /// The projects whose invoices go to this budget, by its id.
     pub fn budget_projects(&self, budget: &str) -> BTreeSet<String> {
-        self.cases.iter().filter(|c| c.budget.as_deref().is_some_and(|b| !b.is_empty() && b == budget)).map(|c| c.id.clone()).collect()
+        self.listed.iter().filter(|c| c.budget.as_deref().is_some_and(|b| !b.is_empty() && b == budget)).map(|c| c.id.clone()).collect()
     }
 
     /// The projects a message is in: by its address as above, and, read
@@ -252,7 +252,7 @@ impl Consent {
     pub fn mail_projects(&self, message_id: Option<&str>, card: Option<&Card>) -> BTreeSet<String> {
         let mut out = message_id.filter(|id| !id.is_empty()).map(|id| self.projects_of(&links::mail_uri(id))).unwrap_or_default();
         if let Some(card) = card {
-            out.extend(self.cases.iter().filter(|c| c.routes.iter().any(|r| r.explain(card).is_some())).map(|c| c.id.clone()));
+            out.extend(self.listed.iter().filter(|c| c.routes.iter().any(|r| r.explain(card).is_some())).map(|c| c.id.clone()));
             if let Some(id) = card.message_id.as_deref() {
                 out.extend(self.projects_of(&links::mail_uri(id)));
             }
@@ -269,34 +269,34 @@ impl Consent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cases::Route;
+    use crate::projects::Route;
     use crate::mailindex::{MailIndex, MailRef};
     use crate::tasks::{Relation, Task};
 
-    fn case(id: &str, open: bool) -> Case {
-        Case { id: id.into(), title: id.to_uppercase(), ai: open, ..Case::default() }
+    fn project(id: &str, open: bool) -> Project {
+        Project { id: id.into(), title: id.to_uppercase(), ai: open, ..Project::default() }
     }
 
     #[test]
     fn closed_until_opened_and_outside_by_its_setting() {
-        let mut lumen = case("lumen", true);
+        let mut lumen = project("lumen", true);
         lumen.routes = vec![Route { from_domains: vec!["lumen.example.net".into()], ..Route::default() }];
         lumen.files = vec!["work/lumen/".into()];
         lumen.client = Some("Studio Lumen".into());
-        let mut taxes = case("taxes", false);
+        let mut taxes = project("taxes", false);
         taxes.routes = vec![Route { from_domains: vec!["finances.example".into()], ..Route::default() }];
         taxes.files = vec!["admin/taxes.md".into()];
         taxes.budget = Some("income".into());
         let tasks = vec![
-            Task { uid: "t1".into(), title: "Declare".into(), cases: vec!["taxes".into()], ..Task::default() },
+            Task { uid: "t1".into(), title: "Declare".into(), projects: vec!["taxes".into()], ..Task::default() },
             // A step of a closed project's task, without a project of its own.
             Task { uid: "t2".into(), title: "Find the form".into(), relations: vec![Relation { kind: "PARENT".into(), uid: "t1".into(), gap: 0 }], ..Task::default() },
-            Task { uid: "t3".into(), title: "Mock-ups".into(), cases: vec!["lumen".into()], ..Task::default() },
+            Task { uid: "t3".into(), title: "Mock-ups".into(), projects: vec!["lumen".into()], ..Task::default() },
             // In both: closed, as one of them is.
-            Task { uid: "t4".into(), title: "Both".into(), cases: vec!["lumen".into(), "taxes".into()], ..Task::default() },
+            Task { uid: "t4".into(), title: "Both".into(), projects: vec!["lumen".into(), "taxes".into()], ..Task::default() },
             Task { uid: "t5".into(), title: "Groceries".into(), ..Task::default() },
             // A project the manifest no longer names: in no project.
-            Task { uid: "t6".into(), title: "Old".into(), cases: vec!["gone".into()], ..Task::default() },
+            Task { uid: "t6".into(), title: "Old".into(), projects: vec!["gone".into()], ..Task::default() },
         ];
         let mut mail = MailIndex::default();
         mail.insert("n@finances.example", MailRef { subject: "Avis".into(), address: "x@dgfip.finances.example".into(), ..Default::default() });
@@ -305,10 +305,11 @@ mod tests {
         mail.insert("q@lumen.example.net", MailRef { subject: "Quote".into(), address: "jane@lumen.example.net".into(), ..Default::default() });
         mail.insert("o@example.org", MailRef { subject: "Hello".into(), address: "friend@example.org".into(), ..Default::default() });
         let contacts = vec![crate::contacts::Contact { uid: "c1".into(), name: "Jane".into(), org: "Studio Lumen".into(), ..Default::default() }];
-        let loaded = Loaded { tasks, mail, contacts, cases: vec![lumen, taxes], ..Loaded::default() };
+        let loaded = Loaded { tasks, mail, contacts, projects: vec![lumen, taxes], ..Loaded::default() };
         let consent = Consent::of(&loaded, true);
         let allows = |uri: &str| consent.allows(uri);
-        assert!(allows("sioul:case/lumen") && !allows("sioul:case/taxes"));
+        assert!(allows("sioul:project/lumen") && !allows("sioul:project/taxes"));
+        assert!(allows("sioul:case/lumen") && !allows("sioul:case/taxes"), "an address written before the name changed");
         assert!(!allows("sioul:task/t1") && !allows("sioul:task/t2"), "a closed project's task and its step");
         assert!(allows("sioul:task/t3") && !allows("sioul:task/t4"));
         assert!(allows("sioul:task/t5") && allows("sioul:task/t6"));
@@ -323,7 +324,7 @@ mod tests {
         assert!(only.allows("sioul:task/t3") && !only.allows("sioul:task/t5") && !only.allows("mid:o@example.org") && !only.allows("sioul:note/journal.md"));
         assert_eq!((only.open_projects(), only.closed_projects()), (vec!["lumen".to_string()], 1));
         // A message read whole: a route on its text counts too.
-        let mut words = case("words", false);
+        let mut words = project("words", false);
         words.routes = vec![Route { text_contains: vec!["dossier 4471".into()], ..Route::default() }];
         let consent = Consent::new(&[words], true);
         let card = Card::from_bytes(b"From: a@example.org\r\nSubject: Hi\r\nMessage-ID: <w@example.org>\r\n\r\nAbout dossier 4471.\r\n").unwrap();

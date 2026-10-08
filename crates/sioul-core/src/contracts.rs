@@ -10,7 +10,7 @@
 //! June 2023, loi 2022-1158) or drafts the letter. Facts about your contracts,
 //! never offers.
 //!
-//! `sioul-contracts.toml` at the root of the case store.
+//! `sioul-contracts.toml` at the root of the notes folder.
 
 use jiff::civil::Date;
 use jiff::{Span, ToSpan};
@@ -181,7 +181,7 @@ impl Contract {
     }
 }
 
-/// The contracts of a case store.
+/// The contracts of a notes folder.
 #[derive(Debug, Clone, Default)]
 pub struct Contracts {
     pub root: PathBuf,
@@ -213,7 +213,7 @@ impl Contracts {
     pub fn put(&mut self, mut contract: Contract) -> String {
         if contract.id.is_empty() {
             let taken: Vec<String> = self.list.iter().map(|c| c.id.clone()).collect();
-            contract.id = crate::cases::new_id(&contract.title, &taken);
+            contract.id = crate::projects::new_id(&contract.title, &taken);
         }
         let id = contract.id.clone();
         match self.list.iter_mut().find(|c| c.id == id) {

@@ -5,7 +5,7 @@ The same papers are asked again and again (an identity card, the last tax notice
 Code: `crates/sioul-core/src/papers.rs`, `crates/sioul-app/src/papers.rs`, `qml/PapersPage.qml`, `qml/PaperDialog.qml`.
 
 ## Where they live
-`sioul-papers.toml` at the root of the case store, the files in its `papers/` folder: they travel with your projects and notes, by the same sync; where no sync carries the case store (a phone's), the sharing's "Papers" part carries them, sealed file by file, off until switched on ([database.md](database.md), "Parts"). A file chosen elsewhere (a scan in Downloads) is copied there when the paper is saved, under a free name.
+`sioul-papers.toml` at the root of the notes folder, the files in its `papers/` folder: they travel with your projects and notes, by the same sync; where no sync carries the notes folder (a phone's), the sharing's "Papers" part carries them, sealed file by file, off until switched on ([database.md](database.md), "Parts"). A file chosen elsewhere (a scan in Downloads) is copied there when the paper is saved, under a free name.
 
 ```toml
 [[paper]]

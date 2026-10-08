@@ -86,6 +86,7 @@ On a phone, what sets it up, nothing that decides when (that is [What reaches yo
 ## Your folder and sharing
 
 - **The notes folder**: your folder of Markdown files, read as a vault: your notes, and beside them your projects, budgets, papers and letters. Sioul links to it; it never owns it ([Notes](notes.md)).
+- **Rename to sioul-projects.toml**: shown while your projects' file has its first name, `sioul-cases.toml`. It renames the file and its entries in one write, every project kept, with a copy of the old file beside it. Never done by itself: press it once each of your devices has this version of Sioul, since an older one reads only the first name ([Where projects live](projects.md#where-projects-live)).
 - **Between your devices**: sharing with your other devices what Sioul keeps on this one, part by part, sealed with a passphrase; your notes and papers too, if you switch them on. See [Sharing between your devices](sharing.md).
 - **Show earlier versions**: what another device's change replaced here, kept on this device, with **Put back** ([Putting back an older version](sharing.md#putting-back-an-older-version)).
 

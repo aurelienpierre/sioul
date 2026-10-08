@@ -10,12 +10,12 @@ Order matters: what protects you most comes first.
 | **Set aside** | blocked, forged (DMARC fail), borrowing a name, or a stranger's mail your provider calls spam (below, "Spam: never for people you know") | in the window, at the bottom, with the reason; never deleted; spam has **Not spam**, which puts it back in its lane for good |
 | **Caught by your own spam filter** | a stranger's mail Sioul's own filter flagged, or moved into the Junk folder, as you chose for its verdict (below) | in the window, folded, no count, never notified; **Spam** and **Not spam** on each, and for all |
 | **Right now** | a one-time code, a password, a password reset, a sign-in link or an address to confirm: what you just asked a site for, from its automatic address (no-reply…) too, and sent with a newsletter's headers too | at once, whatever the time: the one exception to the windows |
-| **A case** | a route of the case store matches ([case-store.md](case-store.md)) | in the window, under the case's title |
+| **A project** | a route of a project matches ([notes-folder.md](notes-folder.md#routes)) | in the window, under the project's title |
 | **From yourself** | mail from one of your own addresses to another (a file sent from your phone), verified | with people you know, in any hour; never screened, never taken for spam |
 | **Filed** | a newsletter or mailing list (`List-Id`, `List-Unsubscribe`, `Precedence: bulk`), or an automatic address (no-reply…) | in the window, folded |
 | **Screener** | a stranger (in none of your address books, on no list, not let in), or a sender only a domain on a list names | in the window; you let them in, or not |
-| **People** | someone you know (in your address books, let in, or on a list by their own address), outside any case | in the window |
-| **Less important accounts** | any mail of an account you ranked below the others (social networks, notifications read sometimes, never answered), unless a case takes it | in the window, folded at the bottom; one sentence at the end of the summary, outside its count |
+| **People** | someone you know (in your address books, let in, or on a list by their own address), outside any project | in the window |
+| **Less important accounts** | any mail of an account you ranked below the others (social networks, notifications read sometimes, never answered), unless a project takes it | in the window, folded at the bottom; one sentence at the end of the summary, outside its count |
 
 These messages come from an explicit request of yours, a moment ago: they are expected, and needed at once. A forged one is set aside before (DMARC fail, a borrowed brand's name, spam); one from a sender that is only **not verified** comes right now too, with a warning to use it only if you just asked that site for it, because fake codes are a phishing trick. A message "from yourself" that is not verified gets no pass: a forged own address is a classic trick.
 
@@ -163,7 +163,7 @@ What the filter flags or moves goes to **Caught by your own spam filter** (`Lane
 
 ## Paper letters
 The envelope stays outside: a scan, a phone photo or a PDF dropped in a folder (by you, a scanner, or someone who opens the post for you) is read on this device, understood by rules, and waits for the window as a card, like mail. Opening post is part of admin anxiety (Money and Mental Health 2018), and a date written "within two months" is remembered by no one: the card says it as a date. Code: `crates/sioul-core/src/letters.rs` (reading, keeping, filing), `crates/sioul-sync/src/ocr.rs` (the text), `crates/sioul-app/src/letters.rs`, `qml/LettersSection.qml`.
-- **Where scans arrive**: Porch ⚙ ▸ Paper letters ▸ "Where scans arrive" (unset: `letters/inbox` in the case store). PDF, PNG, JPEG, TIFF, WebP. A file still being written (less than twenty seconds old) is read the next minute. Each is read once (by its name, size and time).
+- **Where scans arrive**: Porch ⚙ ▸ Paper letters ▸ "Where scans arrive" (unset: `letters/inbox` in the notes folder). PDF, PNG, JPEG, TIFF, WebP. A file still being written (less than twenty seconds old) is read the next minute. Each is read once (by its name, size and time).
 - **The text**: a PDF's own text when it has one (Poppler's `pdftotext`), else its pages at 300 dpi (`pdftoppm`) read by Tesseract, in French and English when those are installed; photos and images by Tesseract directly. Both are your system's programs, optional as the antivirus is: without them the scans wait, unread, and the Porch says the command that installs them (Fedora: `sudo dnf install tesseract tesseract-langpack-fra poppler-utils`). Nothing leaves this computer.
 - **What the rules find**, French first, English too:
   - *who*: a body that writes to everyone found in the letterhead (CAF, Assurance Maladie, Finances publiques, Urssaf, France Travail, MDPH, préfecture, tribunal, commissaire de justice, hospital, mairie, banks, EDF…), else the letterhead's first line;
@@ -179,13 +179,13 @@ In `crates/sioul-core`, `crates/sioul-sync`, `crates/sioul-cli` and `crates/siou
 - reading messages from a Maildir or a folder of `.eml` files, and the card of each message;
 - trust v0, the provider's id learned from mail, spam verdicts, the route;
 - detection of one-time codes, and their expiry;
-- the case store and routing, the known senders and "let in", the lanes and their reasons;
+- the notes folder and routing, the known senders and "let in", the lanes and their reasons;
 - the summary, in English and French;
 - admin windows, and the Porch's memory ("Done for now");
 - **accounts**: found from the address (the provider's autoconfig, then Thunderbird's ISPDB, then a guess said as such), passwords in the system keyring, written into the configuration without losing its comments;
 - **IMAP sync**, over TLS (rustls) or STARTTLS, into Maildir: the last 14 days at first, then only what arrives, for every folder but views of others (Gmail's "All Mail"); flags and deletions made elsewhere brought back; one fetch at a time per account, across processes; the server written to only when you act ([client.md](client.md));
 - **the watcher**: IDLE per account, reconnection with growing pauses, no retry after a refused password, the notification for "right now";
-- `sioul porch`, `done`, `card`, `cases`, `window`, `budgets`, `account add|portal|list|test|password|remove`, `sync` and `watch`;
+- `sioul porch`, `done`, `card`, `projects` (once `cases`, still taken), `window`, `budgets`, `account add|portal|list|test|password|remove`, `sync` and `watch`;
 - **the window** (Qt Quick through CXX-Qt): the Porch with codes on top, the lanes and a plain-text reading pane; budgets; accounts with the add form; the status line; keyboard throughout; the desktop's light or dark colours. Built with Qt's development files ([building.md](building.md)), linted, and checked page by page on invented mail.
 
 ## Next, in this slice

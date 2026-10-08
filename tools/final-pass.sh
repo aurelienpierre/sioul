@@ -14,7 +14,7 @@
 #    Their lines of the calls' log are kept for step 2;
 # 2. each crate's tests, in release, one crate at a time, each on a D-Bus
 #    session of its own (dbus-run-session), so that no test reaches the
-#    desktop's; sioul-core's reads the JVM's lines of the calls' log
+#    desktop's, then again with no locale set, as CI runs them; sioul-core's reads the JVM's lines of the calls' log
 #    (SIOUL_CALLS_SAMPLE, calls::tests::java_s_lines_read_here);
 # 3. the two programs, in release, and no test hook in them (the SIOUL_TEST_*
 #    names belong to the test build alone);
@@ -94,6 +94,13 @@ for crate in "${crates[@]}"; do
     status=$?
     grep -E "^test result: [A-Za-z]+\. [0-9]+ passed|FAILED|panicked|^error" "$out/test-$crate.log" | grep -v " 0 passed; 0 failed" | sort | uniq -c | head -12
     [[ $status -eq 0 ]] || { echo "  exit $status"; failed+=("test-$crate"); }
+    # Again with no locale, as CI runs them: a test that names no language
+    # reads English only there, and a French word it relies on is missed
+    # (8 October 2026: CI failed on such a test that passed here).
+    env -u LANG -u LC_ALL -u LC_MESSAGES -u LANGUAGE -u LC_TELEPHONE "${env[@]}" timeout 3600 dbus-run-session -- cargo test --release -p "$crate" > "$out/test-$crate-no-locale.log" 2>&1
+    status=$?
+    grep -E "FAILED|panicked|^error" "$out/test-$crate-no-locale.log" | sort | uniq -c | head -8 | sed 's/^/  no locale: /'
+    [[ $status -eq 0 ]] || { echo "  exit $status with no locale"; failed+=("test-$crate-no-locale"); }
 done
 
 # 3. The programs, and no test hook in them.

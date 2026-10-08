@@ -9,7 +9,7 @@
 use crate::backend::{QtThread, Shared, load_config, set_status, tr};
 use jiff::Zoned;
 use jiff::tz::TimeZone;
-use sioul_core::cases::CaseStore;
+use sioul_core::projects::ProjectStore;
 use sioul_core::config::Config;
 use sioul_core::github::{self, Issue};
 use sioul_core::links::{self, LocalLinks};
@@ -93,8 +93,8 @@ fn bring(config: &Config) -> Result<usize, SyncError> {
     let wanted = Wanted { assigned: config.github.assigned, reviews: config.github.reviews, created: config.github.created, mentioned: config.github.mentioned };
     let open = sioul_sync::github::open_issues(wanted)?;
     // Your projects' routes say which project an issue belongs to, as they do for mail.
-    let store = config.case_store_path().and_then(|root| CaseStore::load(&root).ok()).map(|s| s.with_ties(&LocalLinks::load(&LocalLinks::default_path())));
-    let case_of = |issue: &Issue| store.as_ref().and_then(|s| s.route(&github::as_card(issue)).first().map(|r| r.case.id.clone()));
+    let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&LocalLinks::load(&LocalLinks::default_path())));
+    let project_of = |issue: &Issue| store.as_ref().and_then(|s| s.route(&github::as_card(issue)).first().map(|r| r.project.id.clone()));
     let now = Zoned::now();
     let mut changed = 0;
     let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
@@ -102,8 +102,8 @@ fn bring(config: &Config) -> Result<usize, SyncError> {
         let path = list.dir.join(github::file_name(&issue.repo, issue.number));
         seen.insert(path.clone());
         let text = match std::fs::read_to_string(&path) {
-            Ok(before) => github::updated(&before, issue, case_of(issue).as_deref(), &now),
-            Err(_) => Some(github::new_task(issue, case_of(issue).as_deref(), &now)),
+            Ok(before) => github::updated(&before, issue, project_of(issue).as_deref(), &now),
+            Err(_) => Some(github::new_task(issue, project_of(issue).as_deref(), &now)),
         };
         if let Some(text) = text {
             vdir::write_item(&path, &text).map_err(SyncError::Disk)?;
@@ -146,8 +146,8 @@ pub(crate) fn tie_mail(config: &Config, files: &[PathBuf], ties: &mut LocalLinks
         let Ok(text) = std::fs::read_to_string(list.dir.join(github::file_name(&repo, number))) else { continue };
         let Some(task) = tasks::task_of_text(&text, &TimeZone::system()) else { continue };
         ties.add(&links::mail_uri(mid), &links::task_uri(&task.uid), "link");
-        if let Some(case) = task.cases.first() {
-            ties.add(&links::mail_uri(mid), &links::case_uri(case), "case");
+        if let Some(project) = task.projects.first() {
+            ties.add(&links::mail_uri(mid), &links::project_uri(project), "project");
         }
     }
 }

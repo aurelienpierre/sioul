@@ -86,6 +86,7 @@ Sur un téléphone, ce qui le règle, rien de ce qui décide quand (c’est [Ce 
 ## Votre dossier et le partage {#your-folder-and-sharing}
 
 - **Le dossier des notes** : votre dossier de fichiers Markdown, lu comme un coffre : vos notes, et à côté vos projets, budgets, papiers et lettres. Sioul s’y lie ; il ne le possède jamais ([Les notes](notes.md)).
+- **Renommer en sioul-projects.toml** : montré tant que le fichier de vos projets a son premier nom, `sioul-cases.toml`. Il renomme le fichier et ses entrées en une seule écriture, chaque projet gardé, avec une copie de l’ancien fichier à côté. Jamais fait de lui-même : appuyez quand chacun de vos appareils a cette version de Sioul, car une version plus ancienne ne lit que le premier nom ([Où vivent les projets](projects.md#where-projects-live)).
 - **Entre vos appareils** : partager avec vos autres appareils ce que Sioul garde sur celui-ci, partie par partie, scellé par une phrase de passe ; vos notes et vos papiers aussi, si vous les activez. Voir [Partager entre vos appareils](sharing.md).
 - **Voir les versions précédentes** : ce qu’un changement venu d’un autre appareil a remplacé ici, gardé sur cet appareil, avec **Remettre** ([Remettre une version précédente](sharing.md#putting-back-an-older-version)).
 

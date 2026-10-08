@@ -333,7 +333,7 @@ Panel {
                     id: linkMenuForm
 
                     Repeater {
-                        model: ["task", "event", "case", ""]
+                        model: ["task", "event", "project", ""]
 
                         delegate: MenuItem {
                             required property string modelData

@@ -44,7 +44,7 @@ finish-args:
   # colour: colord, read only, to tell which screen a colour profile belongs
   # to when there are several (docs/colour.md).
   - --system-talk-name=org.freedesktop.ColorManager
-  # Your case files and budgets, where you keep them.
+  # Your notes folder (projects, budgets, papers), where you keep it.
   - --filesystem=home
   # Qt WebEngine's helper and QML modules, from its BaseApp.
   - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess

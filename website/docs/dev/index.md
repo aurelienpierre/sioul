@@ -15,7 +15,7 @@ This section holds the design notes of the repository's `docs/` folder, as they 
 
 Sioul adapts the demands of the world to the person: it starts from the person's needs and from what a day can hold, keeps that time, and plans the obligations in what remains; it shows what belongs in the person's attention now; it keeps the ties between things so that the person does not have to. Each rule comes from a chain: an observation in the research, its mechanism, the rule it gives, what Sioul does, and what it refuses to do ([design](design.md), [what the research says](research.md), [the research notes](research/README.md)). Three tests for anything added: it takes admin work off the person rather than moving it elsewhere; its complexity stays on Sioul's side; it is something software may do to a person.
 
-A few words in the notes are older than the window: a *case* is what the window calls a *project*; *admin windows* became working hours and hours for your admin (free time became every other time, leisure); *Parameters* is the Settings page.
+A few words in the notes are older than the window: a *project* was once also a *case*, a name older files still carry ([the notes folder](notes-folder.md#its-first-name)); *admin windows* became working hours and hours for your admin (free time became every other time, leisure); *Parameters* is the Settings page.
 
 ## Architecture, in brief
 
@@ -77,7 +77,7 @@ The rules of the code ([Architecture](architecture.md#code-style)): one task per
 - **Design**: [the design](design.md) and its rule; [what the research says](research.md), each finding with the rule it gives; [the roadmap](roadmap.md).
 - **Research**: [the research notes](research/README.md), in detail: tasks, "Done for today", life admin, wearables, Google and security keys, the licences of what Sioul bundles.
 - **Building**: [building and running](building.md), [architecture](architecture.md), [languages](i18n.md).
-- **Mail**: [the Porch](porch.md), [mail, contacts and calendars](client.md), [the case store](case-store.md), [Virtual Secretary](virtual-secretary.md).
+- **Mail**: [the Porch](porch.md), [mail, contacts and calendars](client.md), [the notes folder](notes-folder.md), [Virtual Secretary](virtual-secretary.md).
 - **Tasks and time**: [tasks, notes, links and focus](tasks.md), [what a day holds](capacity.md), [areas and hours](areas.md), [reminders](reminders.md), [projects, time and invoices](projects.md), [sounds](sounds.md).
 - **Money and papers**: [accounting](accounting.md), [papers](papers.md).
 - **Elsewhere**: [Google](google.md), [GitHub](github.md), [sites](sites.md), [health](health.md), [several devices](database.md), [AI](ai.md), [AI agents through MCP](mcp.md).

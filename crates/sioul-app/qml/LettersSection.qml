@@ -18,7 +18,7 @@ ColumnLayout {
     required property var sioul
     required property var theme
     required property var window
-    property var shown: ({ inbox: "", letters: [], cases: [], missing: "" })
+    property var shown: ({ inbox: "", letters: [], projects: [], missing: "" })
     property string problem: ""
 
     function reload() {
@@ -155,18 +155,18 @@ ColumnLayout {
                         Layout.fillWidth: true
                     }
                     ComboBox {
-                        id: caseChoice
+                        id: projectChoice
 
-                        readonly property var choices: [{ id: "", title: section.sioul.text("letters-no-project") }].concat(section.shown.cases)
+                        readonly property var choices: [{ id: "", title: section.sioul.text("letters-no-project") }].concat(section.shown.projects)
 
                         Layout.preferredWidth: 170
                         model: choices.map(c => c.title)
-                        currentIndex: Math.max(0, choices.findIndex(c => c.id === card.modelData.case))
+                        currentIndex: Math.max(0, choices.findIndex(c => c.id === card.modelData.project))
                     }
                     Button {
                         text: section.sioul.text("letters-done")
                         onClicked: {
-                            section.problem = section.sioul.letterDone(card.modelData.id, caseChoice.choices[caseChoice.currentIndex].id)
+                            section.problem = section.sioul.letterDone(card.modelData.id, projectChoice.choices[projectChoice.currentIndex].id)
                             section.reload()
                         }
                     }

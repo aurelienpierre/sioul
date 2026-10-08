@@ -1005,7 +1005,7 @@ fn master_range(source: &[String]) -> Option<std::ops::Range<usize>> {
     None
 }
 
-/// What an event file ties to: its links (LINK, RELATED-TO), its cases
+/// What an event file ties to: its links (LINK, RELATED-TO), its projects
 /// (REFID) and its guests, read from its main VEVENT.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EventRef {
@@ -1016,7 +1016,7 @@ pub struct EventRef {
     pub start: i64,
     pub links: Vec<crate::tasks::Link>,
     pub related: Vec<crate::tasks::Relation>,
-    pub cases: Vec<String>,
+    pub projects: Vec<String>,
     /// The guests' and organizer's addresses.
     pub people: Vec<String>,
 }
@@ -1037,7 +1037,7 @@ pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
             "SUMMARY" => found.summary = lines::unescape(lines::value(line).trim()),
             "LINK" => found.links.push(crate::tasks::link_of(line)),
             "RELATED-TO" => found.related.push(crate::tasks::relation_of(line)),
-            "REFID" => found.cases.push(lines::unescape(lines::value(line).trim())),
+            "REFID" => found.projects.push(lines::unescape(lines::value(line).trim())),
             "ATTENDEE" | "ORGANIZER" => found.people.push(address(lines::value(line))),
             _ => {}
         }

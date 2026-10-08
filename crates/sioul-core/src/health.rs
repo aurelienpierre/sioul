@@ -398,7 +398,7 @@ impl Health {
     /// A new id among the others, from a name.
     pub fn new_id(&self, name: &str) -> String {
         let taken: Vec<String> = self.prescriptions.iter().map(|p| p.id.clone()).chain(self.medicines.iter().map(|m| m.id.clone())).collect();
-        crate::cases::new_id(name, &taken)
+        crate::projects::new_id(name, &taken)
     }
 
     /// Every dose from `start` to `end`, of the medicines taken then, each

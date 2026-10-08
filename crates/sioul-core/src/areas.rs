@@ -227,9 +227,9 @@ pub struct TaskAreas {
     pub leisure_categories: Vec<String>,
     pub personal_categories: Vec<String>,
     /// Projects for a client, and those marked work.
-    pub work_cases: Vec<String>,
+    pub work_projects: Vec<String>,
     /// Projects marked personal (family, friends, leisure, health).
-    pub personal_cases: Vec<String>,
+    pub personal_projects: Vec<String>,
 }
 
 impl TaskAreas {
@@ -245,15 +245,15 @@ impl TaskAreas {
             work_categories: words.work.clone(),
             leisure_categories: words.leisure.clone(),
             personal_categories: words.usual_personal.clone(),
-            work_cases: Vec::new(),
-            personal_cases: Vec::new(),
+            work_projects: Vec::new(),
+            personal_projects: Vec::new(),
         }
     }
 
     /// As your settings say: the categories of work and those that are yours
     /// (`[quiet]`, else the languages' own: `words.tasks`; leisure among them
     /// goes to leisure), and your projects' areas.
-    pub fn of_config(config: &crate::config::Config, cases: &[crate::cases::Case]) -> TaskAreas {
+    pub fn of_config(config: &crate::config::Config, projects: &[crate::projects::Project]) -> TaskAreas {
         let words = crate::words::Words::of(config);
         let leisure: Vec<String> = words.tasks.leisure.iter().map(|c| crate::words::folded(c)).collect();
         let (leisure_categories, personal_categories): (Vec<String>, Vec<String>) = words.tasks.personal.iter().cloned().partition(|c| leisure.contains(&crate::words::folded(c)));
@@ -261,8 +261,8 @@ impl TaskAreas {
             work_categories: words.tasks.work.clone(),
             leisure_categories,
             personal_categories,
-            work_cases: cases.iter().filter(|c| c.client.is_some() || c.area.as_deref() == Some("work")).map(|c| c.id.clone()).collect(),
-            personal_cases: cases.iter().filter(|c| c.area.as_deref() == Some("personal")).map(|c| c.id.clone()).collect(),
+            work_projects: projects.iter().filter(|c| c.client.is_some() || c.area.as_deref() == Some("work")).map(|c| c.id.clone()).collect(),
+            personal_projects: projects.iter().filter(|c| c.area.as_deref() == Some("personal")).map(|c| c.id.clone()).collect(),
         }
     }
 
@@ -280,13 +280,13 @@ impl TaskAreas {
             task.categories.iter().any(|c| list.contains(&fold(c)))
         };
         let mut area = Area::default();
-        if has(&self.work_categories) || task.cases.iter().any(|c| self.work_cases.contains(c)) || task.list_id.starts_with("local/github") {
+        if has(&self.work_categories) || task.projects.iter().any(|c| self.work_projects.contains(c)) || task.list_id.starts_with("local/github") {
             area = area.with(Area::WORK);
         }
         if has(&self.leisure_categories) {
             area = area.with(Area::LEISURE);
         }
-        if has(&self.personal_categories) || task.cases.iter().any(|c| self.personal_cases.contains(c)) {
+        if has(&self.personal_categories) || task.projects.iter().any(|c| self.personal_projects.contains(c)) {
             area = area.with(Area::PERSONAL);
         }
         if area.is_empty() { Area::ADMIN } else { area }

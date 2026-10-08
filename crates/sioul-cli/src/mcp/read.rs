@@ -22,7 +22,7 @@ use crate::{Session, one_line};
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, Zoned};
 use serde_json::{Value, json};
-use sioul_core::cases::CaseStore;
+use sioul_core::projects::ProjectStore;
 use sioul_core::consent::Consent;
 use sioul_core::config::{self, AccountKind, Config};
 use sioul_core::links::{self, Kind, Loaded};
@@ -34,7 +34,7 @@ use sioul_core::state::PorchState;
 use sioul_core::taskview::{self, CardView, Context, Filter, Offices};
 use sioul_core::tasks::{Status, Task};
 use sioul_core::today::Today;
-use sioul_core::{agenda, bank, budget, contacts, dayview, invoice, maildir, project, reading, shield, timelog, timereport, view};
+use sioul_core::{agenda, bank, budget, contacts, dayview, invoice, maildir, projectview, reading, shield, timelog, timereport, view};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Component, Path, PathBuf};
 
@@ -402,7 +402,7 @@ pub fn read_message(s: &Session, args: &Args) -> Result<Answer, String> {
 
 /// A message as the Porch judges it, with its account's trusted checks, and
 /// the AI's reading of a shielded address's mail; none from a blocked sender.
-pub(super) fn judged(s: &Session, path: &Path) -> Result<(Triaged, Option<CaseStore>), String> {
+pub(super) fn judged(s: &Session, path: &Path) -> Result<(Triaged, Option<ProjectStore>), String> {
     let gone = || s.tr.text("mail-message-gone", None);
     let card = maildir::read_one(path).ok_or_else(gone)?;
     let senders = porch::Senders::load(&s.config);
@@ -428,7 +428,7 @@ pub(super) fn judged(s: &Session, path: &Path) -> Result<(Triaged, Option<CaseSt
     Ok((t, store))
 }
 
-fn message_answer(s: &Session, path: &Path, t: &Triaged, store: Option<&CaseStore>) -> Answer {
+fn message_answer(s: &Session, path: &Path, t: &Triaged, store: Option<&ProjectStore>) -> Answer {
     let card = &t.card;
     let hostile = t.lane == Lane::Hostile;
     let encrypted = card.headers.first("Content-Type").is_some_and(|v| v.trim().to_ascii_lowercase().starts_with("multipart/encrypted"));
@@ -493,7 +493,7 @@ fn message_answer(s: &Session, path: &Path, t: &Triaged, store: Option<&CaseStor
 }
 
 /// A lane's title, as the Porch shows it.
-fn lane_title(s: &Session, lane: &Lane, store: Option<&CaseStore>) -> String {
+fn lane_title(s: &Session, lane: &Lane, store: Option<&ProjectStore>) -> String {
     if *lane == Lane::RightNow {
         return s.tr.text("right-now-title", None);
     }
@@ -529,8 +529,8 @@ impl Desk {
         let spent = timelog::spent(&sessions, 0, i64::MAX);
         let stopped = sessions.iter().filter(|x| !x.note.is_empty()).map(|x| (x.task.clone(), x.note.clone())).collect();
         let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
-        let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.cases);
-        let mut settings = crate::tasks::settings(s, today.weather, &situation, &loaded.cases, &loaded.tasks);
+        let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.projects);
+        let mut settings = crate::tasks::settings(s, today.weather, &situation, &loaded.projects, &loaded.tasks);
         // As the window plans: what your record says of a day (docs/capacity.md), a block counted as its task.
         let own = |from: i64, to: i64| sioul_core::blocks::without_blocks(sioul_core::agenda::occurrences(from, to), &loaded.tasks);
         settings.capacity = sioul_core::capacity::gather(&loaded.tasks, &sessions, &settings, &s.config.planning, &own, &now).planning;
@@ -550,7 +550,7 @@ impl Desk {
     }
 
     pub fn context<'a>(&'a self, s: &'a Session) -> Context<'a> {
-        Context { filter: &self.filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, cases: &self.loaded.cases, spent: &self.spent, stopped: &self.stopped }
+        Context { filter: &self.filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped }
     }
 }
 
@@ -592,9 +592,10 @@ pub fn list_tasks(s: &Session, args: &Args) -> Result<Answer, String> {
     let wanted = args.text("view")?.unwrap_or_else(|| "now".into());
     let query = args.text("query")?.unwrap_or_default();
     let done = args.flag("done")?;
-    let by = args.text("by")?.unwrap_or_else(|| "case".into());
-    if !matches!(by.as_str(), "case" | "list") {
-        return Err(format!("“by” is case or list; not “{}”.", one_line(&by)));
+    // "case", the word before the one name, reads as "project".
+    let by = args.text("by")?.map(|by| if by == "case" { "project".to_string() } else { by }).unwrap_or_else(|| "project".into());
+    if !matches!(by.as_str(), "project" | "list") {
+        return Err(format!("“by” is project or list; not “{}”.", one_line(&by)));
     }
     if !matches!(wanted.as_str(), "now" | "today" | "list") {
         return Err(format!("“view” is now, today or list; not “{}”.", one_line(&wanted)));
@@ -800,7 +801,7 @@ pub fn search_contacts(s: &Session, args: &Args) -> Result<Answer, String> {
 // Money.
 
 pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
-    let root = s.config.case_store_path().filter(|r| r.join(budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
+    let root = s.config.notes_root_path().filter(|r| r.join(budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
     let ledger = budget::Ledger::load(&root)?;
     // With the bank accounts' movements, read from the exports beside the file.
     let bank = bank::Bank::load(&root);
@@ -863,10 +864,10 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
 /// Returns it, how many budgets and lines were left out, and the labels of
 /// those lines (what the money watch would name).
 fn open_ledger(mut ledger: budget::Ledger, consent: &Consent) -> (budget::Ledger, usize, std::collections::BTreeSet<String>) {
-    let cases_in = |links: &[String]| links.iter().filter(|l| links::kind_of(l) == Kind::Case).map(|l| links::id_of(l)).collect::<Vec<_>>();
+    let projects_in = |links: &[String]| links.iter().filter(|l| links::kind_of(l) == Kind::Project).map(|l| links::id_of(l)).collect::<Vec<_>>();
     let budget_open = |id: &str, ties: &[String]| {
         let mut projects: Vec<String> = consent.budget_projects(id).into_iter().collect();
-        projects.extend(cases_in(ties));
+        projects.extend(projects_in(ties));
         consent.allows_projects(projects.iter().map(String::as_str))
     };
     let open: std::collections::BTreeSet<String> = ledger.budgets.iter().filter(|b| budget_open(&b.id, &b.links)).map(|b| b.id.clone()).collect();
@@ -874,14 +875,14 @@ fn open_ledger(mut ledger: budget::Ledger, consent: &Consent) -> (budget::Ledger
     ledger.budgets.retain(|b| open.contains(&b.id));
     let mut kept_labels = std::collections::BTreeSet::new();
     ledger.lines.retain(|line| {
-        let keeps = open.contains(&line.budget) && consent.allows_projects(cases_in(&line.links).iter().map(String::as_str).chain(consent.budget_projects(&line.budget).iter().map(String::as_str)));
+        let keeps = open.contains(&line.budget) && consent.allows_projects(projects_in(&line.links).iter().map(String::as_str).chain(consent.budget_projects(&line.budget).iter().map(String::as_str)));
         if !keeps {
             kept_labels.insert(line.label.clone());
         }
         keeps
     });
     let closed = before - ledger.budgets.len() - ledger.lines.len();
-    ledger.presets.retain(|p| open.contains(&p.budget) && consent.allows_projects(cases_in(&p.links).iter().map(String::as_str)));
+    ledger.presets.retain(|p| open.contains(&p.budget) && consent.allows_projects(projects_in(&p.links).iter().map(String::as_str)));
     if !consent.outside {
         ledger.reserves.clear();
     }
@@ -919,7 +920,7 @@ fn finding_text(s: &Session, finding: &bank::Finding, today: jiff::civil::Date) 
 // Notes, projects, links.
 
 pub fn search_notes(s: &Session, args: &Args) -> Result<Answer, String> {
-    let root = s.config.case_store_path().ok_or_else(|| s.tr.text("error-no-store", None))?;
+    let root = s.config.notes_root_path().ok_or_else(|| s.tr.text("error-no-store", None))?;
     let query = args.text("query")?.unwrap_or_default();
     let in_text = args.flag("in_text")?;
     let limit = args.number("limit", 30, 1, 500)? as usize;
@@ -993,16 +994,16 @@ pub fn read_note(s: &Session, args: &Args) -> Result<Answer, String> {
 }
 
 pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
-    if s.config.case_store_path().is_none() {
+    if s.config.notes_root_path().is_none() {
         return Err(s.tr.text("error-no-store", None));
     }
     let id = args.text("id")?;
     let loaded = Loaded::read(&s.config);
-    let entries = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.cases, &TimeZone::system());
+    let entries = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &TimeZone::system());
     let consent = access::of(s, &loaded);
     let Some(id) = id else {
         // Only the projects open to agents; the others counted, never named.
-        let mut rows = project::rows(&loaded, &entries, &loaded.cases);
+        let mut rows = projectview::rows(&loaded, &entries, &loaded.projects);
         let before = rows.len();
         rows.retain(|r| consent.is_open(&r.id));
         let closed = before - rows.len();
@@ -1013,7 +1014,7 @@ pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
                 let client = if r.client.is_empty() { String::new() } else { format!(" · {}", r.client) };
                 let tasks = open_tasks(s, r.open_tasks);
                 let unbilled = if r.unbilled.is_empty() { String::new() } else { format!(" · {}", s.say("project-to-bill", &[("time", r.unbilled.clone())])) };
-                format!("{}{status}{client} · {tasks}{unbilled}  <{}>", r.title, links::case_uri(&r.id))
+                format!("{}{status}{client} · {tasks}{unbilled}  <{}>", r.title, links::project_uri(&r.id))
             })
             .collect();
         if lines.is_empty() {
@@ -1024,11 +1025,11 @@ pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
         }
         return Ok(Answer { text: self::rows(&lines), data: json!({ "projects": rows, "closed_to_agents": closed }) });
     };
-    let case = loaded.cases.iter().find(|c| c.id == id).ok_or_else(|| s.tr.text("project-gone", None))?;
-    if !consent.is_open(&case.id) {
-        return Err(access::closed_project(&case.id));
+    let project = loaded.projects.iter().find(|c| c.id == id).ok_or_else(|| s.tr.text("project-gone", None))?;
+    if !consent.is_open(&project.id) {
+        return Err(access::closed_project(&project.id));
     }
-    let mut page = project::view(&loaded, case, &entries, &invoice::all_in(&invoice::folder()), s.config.invoice.rate, Timestamp::now().as_second(), &s.tr);
+    let mut page = projectview::view(&loaded, project, &entries, &invoice::all_in(&invoice::folder()), s.config.invoice.rate, Timestamp::now().as_second(), &s.tr);
     // On its line of time, what is also in a closed project (a task in two, a
     // conversation in two): left out, counted.
     let world = loaded.world();
@@ -1040,7 +1041,7 @@ pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
     for moment in page.moments.iter_mut().filter(|m| m.kind == "mail") {
         (moment.title, moment.detail) = mail_shown(s, shield.as_ref(), Path::new(&moment.key), &moment.title, &moment.detail);
     }
-    let mut lines = vec![format!("{}  <{}>", page.title, links::case_uri(&page.id))];
+    let mut lines = vec![format!("{}  <{}>", page.title, links::project_uri(&page.id))];
     lines.extend([&page.status, &page.client].into_iter().filter(|l| !l.is_empty()).map(|l| format!("  {l}")));
     let mut counts = vec![open_tasks(s, page.open_tasks)];
     if page.done_tasks > 0 {
@@ -1049,7 +1050,7 @@ pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
     counts.extend([&page.time, &page.unbilled].into_iter().filter(|l| !l.is_empty()).cloned());
     lines.push(format!("  {}", counts.join(" · ")));
     for (coming, title) in [(true, "project-coming"), (false, "project-before")] {
-        let moments: Vec<&project::Moment> = page.moments.iter().filter(|m| m.coming == coming).take(40).collect();
+        let moments: Vec<&projectview::Moment> = page.moments.iter().filter(|m| m.coming == coming).take(40).collect();
         if moments.is_empty() {
             continue;
         }
@@ -1129,9 +1130,10 @@ pub fn find(s: &Session, args: &Args) -> Result<Answer, String> {
         Some("note") => Some(Kind::Note),
         Some("contact") => Some(Kind::Contact),
         Some("budget") => Some(Kind::Budget),
-        Some("case") => Some(Kind::Case),
+        // "case": the word before the one name.
+        Some("project" | "case") => Some(Kind::Project),
         Some("site") => Some(Kind::Site),
-        Some(other) => return Err(format!("“kind” is task, event, mail, draft, note, contact, budget, case or site; not “{}”.", one_line(other))),
+        Some(other) => return Err(format!("“kind” is task, event, mail, draft, note, contact, budget, project or site; not “{}”.", one_line(other))),
     };
     let limit = args.number("limit", 20, 1, 100)? as usize;
     let loaded = Loaded::read(&s.config);

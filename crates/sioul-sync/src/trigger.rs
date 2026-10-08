@@ -274,7 +274,7 @@ mod tests {
         for dir in [&roots.config, &roots.data.join("drafts"), &roots.state, &notes] {
             std::fs::create_dir_all(dir).unwrap();
         }
-        let config = Config { case_store: Some(notes.display().to_string()), ..Config::default() };
+        let config = Config { notes_root: Some(notes.display().to_string()), ..Config::default() };
         let stores = crate::share::stores_of(&config, &roots, &|_| true);
         std::fs::write(roots.config.join("config.toml"), "language = \"fr\"\n").unwrap();
         std::fs::write(notes.join("lease.md"), "a note\n").unwrap();

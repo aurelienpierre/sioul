@@ -38,9 +38,9 @@ fn instant(seconds: i64) -> String {
     Timestamp::from_second(seconds).map(|t| t.to_zoned(TimeZone::system()).strftime("%Y-%m-%dT%H:%M:%S%:z").to_string()).unwrap_or_default()
 }
 
-/// The case store's root, where papers, contracts and letters are kept.
+/// The notes folder, where papers, contracts and letters are kept.
 fn store(s: &Session) -> Result<std::path::PathBuf, String> {
-    s.config.case_store_path().ok_or_else(|| s.tr.text("error-no-store", None))
+    s.config.notes_root_path().ok_or_else(|| s.tr.text("error-no-store", None))
 }
 
 /// Lines of an answer: each one line, whatever was written in it.
@@ -146,7 +146,7 @@ pub fn letters(s: &Session, args: &Args) -> Result<Answer, String> {
     let all = letters::Letters::load(&store(s)?)?;
     let (consent, _) = consent(s);
     // A letter is in its project; in none, as things outside projects are.
-    let mut shown: Vec<&letters::Letter> = all.list.iter().filter(|l| consent.allows_projects([l.case.as_str()])).collect();
+    let mut shown: Vec<&letters::Letter> = all.list.iter().filter(|l| consent.allows_projects([l.project.as_str()])).collect();
     let closed = all.list.len() - shown.len();
     shown.sort_by_key(|l| std::cmp::Reverse(l.received));
     let mut lines = Vec::new();
@@ -177,7 +177,7 @@ pub fn letters(s: &Session, args: &Args) -> Result<Answer, String> {
         out.push(json!({
             "id": letter.id, "sender": r.sender, "kind": r.kind.id(), "kind_said": kind, "received": day(letter.received), "dated": day(r.dated),
             "deadline": day(r.deadline), "why": r.why, "amount": r.amount.map(|a| s.tr.money(a)), "registered": r.registered,
-            "project": letter.case, "status": letter.status, "task": if letter.task.is_empty() { String::new() } else { links::task_uri(&letter.task) },
+            "project": letter.project, "status": letter.status, "task": if letter.task.is_empty() { String::new() } else { links::task_uri(&letter.task) },
         }));
     }
     if out.is_empty() && closed == 0 {
@@ -201,20 +201,20 @@ pub fn time(s: &Session, args: &Args) -> Result<Answer, String> {
     let project = args.text("project")?;
     let (consent, loaded) = consent(s);
     if let Some(id) = &project {
-        if !loaded.cases.iter().any(|c| &c.id == id) {
+        if !loaded.projects.iter().any(|c| &c.id == id) {
             return Err(format!("No project “{}”: list_projects gives their ids.", one_line(id)));
         }
         if !consent.is_open(id) {
             return Err(access::closed_project(id));
         }
     }
-    let entries = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.cases, &TimeZone::system());
+    let entries = timereport::entries(&timelog::sessions(), &loaded.tasks, &loaded.projects, &TimeZone::system());
     let in_range: Vec<&timereport::Entry> = entries.iter().filter(|e| e.day >= from && e.day <= to && project.as_ref().is_none_or(|p| &e.project == p)).collect();
     // Time of a project kept from agents, or of a task kept from them; in none, as things outside projects are.
     let allowed = |e: &timereport::Entry| consent.allows_projects([e.project.as_str()]) && (e.task.is_empty() || consent.allows(&links::task_uri(&e.task)));
     let shown: Vec<&timereport::Entry> = in_range.iter().copied().filter(|e| allowed(e)).collect();
     let closed = in_range.len() - shown.len();
-    let title_of = |id: &str| loaded.cases.iter().find(|c| c.id == id).map_or_else(|| "(no project)".to_string(), |c| c.title.clone());
+    let title_of = |id: &str| loaded.projects.iter().find(|c| c.id == id).map_or_else(|| "(no project)".to_string(), |c| c.title.clone());
     // By project: all the time, the billable part, what is left to bill.
     let mut by_project: std::collections::BTreeMap<&str, (u32, u32, u32)> = Default::default();
     for e in &shown {
@@ -237,7 +237,7 @@ pub fn time(s: &Session, args: &Args) -> Result<Answer, String> {
         if *unbilled > 0 {
             said.push(format!("{} not billed yet", timereport::duration(*unbilled)));
         }
-        let address = if id.is_empty() { String::new() } else { format!("  <{}>", links::case_uri(id)) };
+        let address = if id.is_empty() { String::new() } else { format!("  <{}>", links::project_uri(id)) };
         lines.push(format!("  {}: {}{address}", title_of(id), said.join(" · ")));
         projects.push(json!({ "project": id, "title": title_of(id), "minutes": all, "billable_minutes": billable, "unbilled_minutes": unbilled }));
     }

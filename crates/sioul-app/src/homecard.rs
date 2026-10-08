@@ -42,7 +42,7 @@ use jiff::{Span, Timestamp, Zoned};
 use serde::Serialize;
 use sioul_core::agenda::Occurrence;
 use sioul_core::areas::{Area, Time};
-use sioul_core::cases::CaseStore;
+use sioul_core::projects::ProjectStore;
 use sioul_core::codes::CodeKind;
 use sioul_core::config::Config;
 use sioul_core::i18n::{self, Translator};
@@ -385,7 +385,7 @@ pub(crate) struct Dose {
 pub(crate) struct PorchInput {
     items: Vec<Triaged>,
     senders: Senders,
-    store: Option<CaseStore>,
+    store: Option<ProjectStore>,
 }
 
 /// The plan, as the window last made it.
@@ -896,11 +896,11 @@ fn step_at(m: &Moment, input: &PlanInput, mode: &Mode, at: &Zoned) -> Option<Ste
     if !time_for_a_step(mode) {
         return None;
     }
-    let situation = quiet::Situation::now(m.config, m.overrides, m.blocks, at, m.tr, &input.loaded.cases);
+    let situation = quiet::Situation::now(m.config, m.overrides, m.blocks, at, m.tr, &input.loaded.projects);
     let filter = Filter { quiet: situation.quiet_tasks(), ..Filter::default() };
     let today = input.today.date == at.date().to_string();
     let (weather, aside) = if today { (input.today.weather, input.today.aside.clone()) } else { (Weather::Clear, BTreeSet::new()) };
-    let cx = taskview::Context { filter: &filter, offices: situation.offices.clone(), tasks: &input.loaded.tasks, plan: &input.plan, today: at.date(), tr: m.tr, cases: &input.loaded.cases, spent: &input.spent, stopped: &input.stopped };
+    let cx = taskview::Context { filter: &filter, offices: situation.offices.clone(), tasks: &input.loaded.tasks, plan: &input.plan, today: at.date(), tr: m.tr, projects: &input.loaded.projects, spent: &input.spent, stopped: &input.stopped };
     let now = taskview::now(&cx, weather, &aside);
     let card = now.now?;
     if m.details {
@@ -1168,7 +1168,7 @@ static WRITTEN: Mutex<Option<Written>> = Mutex::new(None);
 
 /// The Porch's messages the window just gathered, before the hours sort
 /// them (`backend::compute`): the card follows.
-pub(crate) fn porch_seen(items: &[Triaged], senders: &Senders, store: Option<&CaseStore>) {
+pub(crate) fn porch_seen(items: &[Triaged], senders: &Senders, store: Option<&ProjectStore>) {
     if !on() {
         return;
     }
@@ -1447,7 +1447,7 @@ pub(crate) fn mail_came() {
     let now = Zoned::now();
     // The Porch as the window gathers it (`backend::World`): the projects and their ties, the senders let in.
     let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
-    let store = config.case_store_path().and_then(|root| CaseStore::load(&root).ok()).map(|s| s.with_ties(&ties));
+    let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties));
     let known = porch::KnownSenders::load(&config.known_senders_path());
     let senders = Senders::load(&config);
     let state = sioul_core::state::PorchState::load(&sioul_core::state::PorchState::default_path());

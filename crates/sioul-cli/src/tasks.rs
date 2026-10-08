@@ -30,8 +30,8 @@ pub(crate) enum TasksCommand {
     Now,
     /// Every open task, a bigger task followed by its steps, in the plan's order.
     List {
-        /// "case" (default) or "list".
-        #[arg(long, default_value = "case")]
+        /// "project" (default) or "list"; "case", the word before, reads as "project".
+        #[arg(long, default_value = "project")]
         by: String,
         /// Also the tasks done in the last two weeks.
         #[arg(long)]
@@ -42,8 +42,9 @@ pub(crate) enum TasksCommand {
     Board,
     /// When each open task could happen, from today.
     Timeline {
-        #[arg(long)]
-        case: Option<String>,
+        /// One project's tasks, by its id.
+        #[arg(long, alias = "case")]
+        project: Option<String>,
     },
     /// One task in full, with what it is tied to.
     Show { task: String },
@@ -132,7 +133,7 @@ struct Desk {
 /// The room for tasks: your hours, each kind for its own tasks, less the
 /// events of the coming four weeks and the blocks tasks are pinned to;
 /// today's from now, scaled by the weather.
-pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::quiet::Situation, cases: &[sioul_core::cases::Case], tasks: &[Task]) -> Settings {
+pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::quiet::Situation, projects: &[sioul_core::projects::Project], tasks: &[Task]) -> Settings {
     let now = Zoned::now();
     let midnight = now.date().to_zoned(now.time_zone().clone()).map_or(0, |z| z.timestamp().as_second());
     let read = sioul_core::agenda::occurrences(midnight, midnight + 28 * 86_400);
@@ -153,7 +154,7 @@ pub(crate) fn settings(s: &Session, weather: Weather, situation: &sioul_core::qu
     let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
     let day = sioul_core::pause::Day::of(&s.config, sioul_core::quiet::Blocks::read(&now, &read), &events);
     let extension = sioul_core::pause::moved_today(&overrides, &day.evening(), &now, s.config.free_time.moves);
-    let mut settings = Settings::of_hours(&s.config.week_hours(), sioul_core::areas::TaskAreas::of_config(&s.config, cases)).with_needs(&needs, pushed).with_days(days).with_extension(extension).with_pins(pins).with_events(&now, &events);
+    let mut settings = Settings::of_hours(&s.config.week_hours(), sioul_core::areas::TaskAreas::of_config(&s.config, projects)).with_needs(&needs, pushed).with_days(days).with_extension(extension).with_pins(pins).with_events(&now, &events);
     settings.default_estimate = s.config.tasks.estimate.unwrap_or(settings.default_estimate);
     // As the window plans: how today is says how many heavy tasks it takes, no
     // heavier than a hazy day after a pause.
@@ -175,8 +176,8 @@ impl Desk {
         let stopped = sessions.iter().filter(|x| !x.note.is_empty()).map(|x| (x.task.clone(), x.note.clone())).collect();
         let overrides = sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path());
         let now = Zoned::now();
-        let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.cases);
-        let mut settings = settings(s, today.weather, &situation, &loaded.cases, &loaded.tasks);
+        let situation = sioul_core::quiet::Situation::now(&s.config, &overrides, &sioul_core::quiet::Blocks::read_now(&now), &now, &s.tr, &loaded.projects);
+        let mut settings = settings(s, today.weather, &situation, &loaded.projects, &loaded.tasks);
         // As the window plans: what your record says of a day (docs/capacity.md), a block counted as its task.
         let own = |from: i64, to: i64| sioul_core::blocks::without_blocks(sioul_core::agenda::occurrences(from, to), &loaded.tasks);
         settings.capacity = sioul_core::capacity::gather(&loaded.tasks, &sessions, &settings, &s.config.planning, &own, &now).planning;
@@ -186,7 +187,7 @@ impl Desk {
     }
 
     fn context<'a>(&'a self, s: &'a Session) -> Context<'a> {
-        Context { filter: &self.filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, cases: &self.loaded.cases, spent: &self.spent, stopped: &self.stopped }
+        Context { filter: &self.filter, offices: self.offices.clone(), tasks: &self.loaded.tasks, plan: &self.plan, today: Zoned::now().date(), tr: &s.tr, projects: &self.loaded.projects, spent: &self.spent, stopped: &self.stopped }
     }
 
     /// A task by UID, else by the start of its title, else by a word of it; one only.
@@ -211,7 +212,7 @@ pub(crate) fn run(s: &Session, command: TasksCommand) -> Result<(), String> {
         TasksCommand::Now => now(s),
         TasksCommand::List { by, done, query } => list(s, &by, done, query.as_deref().unwrap_or("")),
         TasksCommand::Board => board(s),
-        TasksCommand::Timeline { case } => timeline(s, case.as_deref()),
+        TasksCommand::Timeline { project } => timeline(s, project.as_deref()),
         TasksCommand::Show { task } => show(s, &task),
         TasksCommand::Add { line, list, parent, after, no_sync } => add(s, &line.join(" "), list.as_deref(), parent.as_deref(), &after, no_sync),
         TasksCommand::Done { task } => set_status(s, &task, Status::Completed),
@@ -298,11 +299,11 @@ fn board(s: &Session) -> Result<(), String> {
     Ok(())
 }
 
-fn timeline(s: &Session, case: Option<&str>) -> Result<(), String> {
+fn timeline(s: &Session, project: Option<&str>) -> Result<(), String> {
     let desk = Desk::read(s);
     // The days of rest of the room the plan was made with, as in the window.
     let rest = desk.settings.rest_days();
-    let view = taskview::timeline(&desk.context(s), case, &rest);
+    let view = taskview::timeline(&desk.context(s), project, &rest);
     let width = view.days.len();
     for row in &view.rows {
         let mut bar: Vec<char> = (0..width).map(|i| if view.days[i].rest { '·' } else { ' ' }).collect();
@@ -363,8 +364,8 @@ fn sync_list(s: &Session, list: &Collection) -> Result<(), String> {
 
 fn add(s: &Session, line: &str, list: Option<&str>, parent: Option<&str>, after: &[String], no_sync: bool) -> Result<(), String> {
     let desk = Desk::read(s);
-    let cases: Vec<String> = desk.loaded.cases.iter().map(|c| c.id.clone()).collect();
-    let captured = capture::capture(line, Zoned::now().date(), &cases, &s.config.task_kinds(&s.tr));
+    let projects: Vec<String> = desk.loaded.projects.iter().map(|c| c.id.clone()).collect();
+    let captured = capture::capture(line, Zoned::now().date(), &projects, &s.config.task_kinds(&s.tr));
     let mut edit = captured.edit;
     if edit.title.is_empty() {
         return Err(s.tr.text("task-no-title", None));
@@ -491,8 +492,9 @@ struct ImportTask {
     priority: u8,
     #[serde(default)]
     tags: Vec<String>,
-    #[serde(default)]
-    cases: Vec<String>,
+    /// Its projects' ids; `cases`, their name in files written before, reads too.
+    #[serde(default, alias = "cases")]
+    projects: Vec<String>,
     /// The key of the bigger task, or `uid:<UID>`.
     #[serde(default)]
     parent: String,
@@ -502,7 +504,7 @@ struct ImportTask {
     /// Keys it waits for, with the days to wait after each is done.
     #[serde(default)]
     after_gap: BTreeMap<String, u32>,
-    /// Notes in the case store, by path ("admin/letters.md").
+    /// Notes in the notes folder, by path ("admin/letters.md").
     #[serde(default)]
     note: Vec<String>,
     #[serde(default)]
@@ -681,7 +683,7 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
             }
         };
         merge(&mut edit.categories, task.tags.clone());
-        merge(&mut edit.cases, task.cases.clone());
+        merge(&mut edit.projects, task.projects.clone());
         merge(&mut edit.waits_for, task.after.iter().map(|k| uid_of(&plan.prefix, k)).collect());
         if !task.parent.is_empty() {
             edit.parent = uid_of(&plan.prefix, &task.parent);
@@ -807,9 +809,9 @@ pub(crate) fn links_command(s: &Session, uri: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Notes of the case store: those matching, or one in full with its links back.
+/// Notes of the notes folder: those matching, or one in full with its links back.
 pub(crate) fn notes_command(s: &Session, query: &str, path: Option<&str>) -> Result<(), String> {
-    let root = s.config.case_store_path().ok_or_else(|| s.tr.text("error-no-store", None))?;
+    let root = s.config.notes_root_path().ok_or_else(|| s.tr.text("error-no-store", None))?;
     let vault = notes::Vault::open(&root);
     if let Some(path) = path {
         let note = vault.note(path).ok_or_else(|| s.say("note-not-found", &[("path", path.to_string())]))?;
@@ -831,4 +833,16 @@ pub(crate) fn notes_command(s: &Session, query: &str, path: Option<&str>) -> Res
         println!("{}  ({})", one_line(&note.title), one_line(&note.path));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_plan_file_names_projects_either_way() {
+        // `projects`, and `cases` as files written before the one name say it.
+        let plan: Plan_ = toml::from_str("[[task]]\nkey = \"a\"\ntitle = \"A\"\nprojects = [\"taxes\"]\n\n[[task]]\nkey = \"b\"\ntitle = \"B\"\ncases = [\"housing\"]\n").unwrap();
+        assert_eq!(plan.tasks.iter().map(|t| t.projects.clone()).collect::<Vec<_>>(), [vec!["taxes".to_string()], vec!["housing".to_string()]]);
+    }
 }

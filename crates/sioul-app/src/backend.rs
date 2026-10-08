@@ -14,7 +14,7 @@ use cxx_qt_lib::QString;
 use jiff::Zoned;
 use sioul_core::budget::{self, Ledger, MailLine};
 use sioul_core::card::ImapOrigin;
-use sioul_core::cases::CaseStore;
+use sioul_core::projects::ProjectStore;
 use sioul_core::config::{self, Account, Config, Priority, Security};
 use sioul_core::i18n::{self, Translator};
 use sioul_core::porch::{self, KnownSenders, SenderList, Triaged};
@@ -582,9 +582,9 @@ pub mod qobject {
         #[qinvokable]
         fn stop_using_security_key(self: Pin<&mut Sioul>, ident: &QString);
 
-        /// The task page's choices: the list grouped "case" or "list", done tasks, a search, one case.
+        /// The task page's choices: the list grouped "project" or "list", done tasks, a search, one project.
         #[qinvokable]
-        fn show_tasks(self: Pin<&mut Sioul>, by: &QString, done: bool, query: &QString, case_id: &QString);
+        fn show_tasks(self: Pin<&mut Sioul>, by: &QString, done: bool, query: &QString, project_id: &QString);
 
         /// Tasks of one kind ("call"…) and one category only; "" for all. Kept for next time.
         #[qinvokable]
@@ -982,7 +982,7 @@ pub mod qobject {
         #[qinvokable]
         fn remove_folder(self: Pin<&mut Sioul>, path: &QString) -> QString;
 
-        /// A case or project taken out of the list; returns what went wrong, else "".
+        /// A project taken out of the list; returns what went wrong, else "".
         #[qinvokable]
         fn remove_project(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
@@ -1516,7 +1516,7 @@ pub mod qobject {
         #[qinvokable]
         fn calls_setup_change(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
 
-        /// The cases and projects, for their list, as JSON.
+        /// The projects, for their list, as JSON.
         #[qinvokable]
         fn project_rows(self: &Sioul) -> QString;
 
@@ -1524,7 +1524,7 @@ pub mod qobject {
         #[qinvokable]
         fn project_page(self: &Sioul, id: &QString) -> QString;
 
-        /// Saves a case or project from its form (a new one when `id` is empty); returns {"id"} or {"error"}.
+        /// Saves a project from its form (a new one when `id` is empty); returns {"id"} or {"error"}.
         #[qinvokable]
         fn save_project(self: Pin<&mut Sioul>, id: &QString, edit: &QString) -> QString;
 
@@ -2111,7 +2111,7 @@ pub(crate) fn reading_json() -> String {
 /// What the Porch and the budgets read: the configuration and its lists.
 struct World {
     config: Config,
-    store: Option<CaseStore>,
+    store: Option<ProjectStore>,
     known: SenderList,
     /// Who is safe, neutral or blocked.
     senders: porch::Senders,
@@ -2121,8 +2121,8 @@ impl World {
     fn load() -> World {
         let config = load_config();
         World {
-            // With the mail tied to cases, so their conversations follow.
-            store: config.case_store_path().and_then(|root| CaseStore::load(&root).ok()).map(|s| s.with_ties(&sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path()))),
+            // With the mail tied to projects, so their conversations follow.
+            store: config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path()))),
             known: KnownSenders::load(&config.known_senders_path()),
             senders: porch::Senders::load(&config),
             config,
@@ -2137,11 +2137,11 @@ impl World {
 
     fn ledger(&self) -> Option<Ledger> {
         // With the bank accounts' movements counted in their budgets.
-        self.config.case_store_path().and_then(|root| Ledger::load_with_bank(&root, &sioul_core::words::Words::of(&self.config)).ok())
+        self.config.notes_root_path().and_then(|root| Ledger::load_with_bank(&root, &sioul_core::words::Words::of(&self.config)).ok())
     }
 
     fn ledger_path(&self) -> Option<PathBuf> {
-        self.config.case_store_path().map(|root| root.join(budget::LEDGER))
+        self.config.notes_root_path().map(|root| root.join(budget::LEDGER))
     }
 
     /// Every message about money, and what becomes of it.
@@ -2333,7 +2333,7 @@ fn compute(shared: &Shared) -> Views {
     // Asleep no project shows: what your senders wrote about one comes among the people you know.
     if mode.sleeps() {
         for t in &mut items {
-            if matches!(t.lane, sioul_core::porch::Lane::Case(_)) {
+            if matches!(t.lane, sioul_core::porch::Lane::Project(_)) {
                 t.lane = sioul_core::porch::Lane::People;
             }
         }
@@ -2643,10 +2643,10 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
     if let Ok(report) = &result {
         if !report.new.is_empty() {
             learn(qt, shared, &account.id);
-            tie_to_cases(&report.new);
+            tie_to_projects(&report.new);
         }
         if !report.elsewhere.is_empty() {
-            tie_to_cases(&report.elsewhere);
+            tie_to_projects(&report.elsewhere);
         }
         // Older mail waits for room: said once a session, calmly.
         if report.held_back
@@ -2704,21 +2704,21 @@ fn sort_on_server(qt: &QtThread, shared: &Arc<Shared>, account: &Account, new: V
     });
 }
 
-/// Mail just fetched that a case takes, by its routes or its conversation:
-/// tied to the case, so its project shows it whatever its routes need, and
+/// Mail just fetched that a project takes, by its routes or its conversation:
+/// tied to the project, so its page shows it whatever its routes need, and
 /// the replies that come later follow it.
-fn tie_to_cases(files: &[PathBuf]) {
+fn tie_to_projects(files: &[PathBuf]) {
     let config = load_config();
     let path = sioul_core::links::LocalLinks::default_path();
     let mut ties = sioul_core::links::LocalLinks::load(&path);
     let before = ties.links.len();
     // GitHub's notification mail, to its issue's task.
     crate::github::tie_mail(&config, files, &mut ties);
-    if let Some(store) = config.case_store_path().and_then(|root| CaseStore::load(&root).ok()).map(|s| s.with_ties(&ties)) {
+    if let Some(store) = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).map(|s| s.with_ties(&ties)) {
         let senders = porch::Senders::load(&config);
         for t in porch::judge(files, &config.mail_sources(), Some(&store), &KnownSenders::default(), &senders, Zoned::now().timestamp().as_second()) {
-            if let (porch::Lane::Case(id), Some(mid)) = (&t.lane, t.card.message_id.as_deref()) {
-                ties.add(&sioul_core::links::mail_uri(mid), &sioul_core::links::case_uri(id), "case");
+            if let (porch::Lane::Project(id), Some(mid)) = (&t.lane, t.card.message_id.as_deref()) {
+                ties.add(&sioul_core::links::mail_uri(mid), &sioul_core::links::project_uri(id), "project");
             }
         }
     }
@@ -2727,14 +2727,14 @@ fn tie_to_cases(files: &[PathBuf]) {
     }
 }
 
-/// A case's routes changed: the mail already here that only its text or an
+/// A project's routes changed: the mail already here that only its text or an
 /// attachment ties to it, tied now, on a thread (routes on the sender and the
 /// subject are matched again each time the project shows).
-fn retie_case(id: String) {
+fn retie_project(id: String) {
     std::thread::spawn(move || {
         let config = load_config();
-        let Some(case) = config.case_store_path().and_then(|root| CaseStore::load(&root).ok()).and_then(|s| s.get(&id).cloned()) else { return };
-        let routes: Vec<&sioul_core::cases::Route> = case.routes.iter().filter(|r| r.needs_body()).collect();
+        let Some(project) = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok()).and_then(|s| s.get(&id).cloned()) else { return };
+        let routes: Vec<&sioul_core::projects::Route> = project.routes.iter().filter(|r| r.needs_body()).collect();
         if routes.is_empty() {
             return;
         }
@@ -2747,7 +2747,7 @@ fn retie_case(id: String) {
                 if let Some(mid) = card.message_id.as_deref()
                     && routes.iter().any(|r| r.explain(&card).is_some())
                 {
-                    ties.add(&sioul_core::links::mail_uri(mid), &sioul_core::links::case_uri(&case.id), "case");
+                    ties.add(&sioul_core::links::mail_uri(mid), &sioul_core::links::project_uri(&project.id), "project");
                 }
             }
         }
@@ -2801,7 +2801,7 @@ fn notify_codes(qt: &QtThread, files: &[PathBuf]) {
     let config = load_config();
     let now = Zoned::now().timestamp().as_second();
     let senders = porch::Senders::load(&config);
-    // Codes are decided before cases and screening: neither is needed here.
+    // Codes are decided before projects and screening: neither is needed here.
     let judged = porch::judge(files, &config.mail_sources(), None, &KnownSenders::default(), &senders, now);
     for code in view::codes(&judged, tr()) {
         let copy = code.code.clone().map(|text| {
@@ -3919,8 +3919,8 @@ impl qobject::Sioul {
         securitykey::stop_using(&self.qt_thread(), &self.shared(), &ident.to_string());
     }
 
-    fn show_tasks(self: Pin<&mut Self>, by: &QString, done: bool, query: &QString, case_id: &QString) {
-        work::set_view(&self.qt_thread(), &self.shared(), &by.to_string(), done, &query.to_string(), &case_id.to_string());
+    fn show_tasks(self: Pin<&mut Self>, by: &QString, done: bool, query: &QString, project_id: &QString) {
+        work::set_view(&self.qt_thread(), &self.shared(), &by.to_string(), done, &query.to_string(), &project_id.to_string());
     }
 
     fn filter_tasks(self: Pin<&mut Self>, kind: &QString, category: &QString) {
@@ -5339,7 +5339,7 @@ impl qobject::Sioul {
     fn settings(&self, view: &QString) -> QString {
         let config = load_config();
         let lists: Vec<(String, String)> = sioul_core::tasks::lists().into_iter().filter(|c| !c.read_only).map(|c| (format!("{}/{}", c.account, c.id), c.label(&config, tr()))).collect();
-        let store = config.case_store_path().and_then(|root| CaseStore::load(&root).ok());
+        let store = config.notes_root_path().and_then(|root| ProjectStore::load(&root).ok());
         let mut rows = sioul_core::settings::for_view(&view.to_string(), &config, tr(), &lists, store.as_ref());
         // The categories are the tasks': the core does not read them.
         if view.to_string() == "tasks" {
@@ -5423,8 +5423,8 @@ impl qobject::Sioul {
         }
         // What the setting changes is shown again.
         let (qt, shared) = (self.qt_thread(), self.shared());
-        if let Some(case) = key.strip_prefix("case.").and_then(|k| k.strip_suffix(".routes")) {
-            retie_case(case.to_string());
+        if let Some(project) = key.strip_prefix("project.").and_then(|k| k.strip_suffix(".routes")) {
+            retie_project(project.to_string());
         }
         // A list, a calendar, an address book renamed or deleted: told to the server now.
         if key == "collections"
@@ -5515,8 +5515,9 @@ impl qobject::Sioul {
         // for one day, closed unsaved (docs/health.md), "tiles" the costs as tiles in a task's
         // form, an event's and "How was it?", at three widths (docs/capacity.md), "attachments"
         // a message's attachments unfolded, a phone's words with "phone", nothing opened (docs/client.md),
-        // on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments"].contains(&steps.as_str()) && offline()) {
+        // "projects-file" the projects' file under its first name renamed from Settings
+        // (make-demo.py --old-projects, docs/notes-folder.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

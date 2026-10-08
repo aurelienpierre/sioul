@@ -1,7 +1,7 @@
 # Architecture
 
 ## Layers
-- **`sioul-core`, a Rust library**: reading and judging mail, cases, the Porch, admin windows, contacts and calendars, tasks (`tasks`) and their plan (`plan`), notes (`notes`), links between everything (`links`), time spent (`timelog`), budgets, health, the spam filter every device runs (`spam`: its tokenizer, the messages' features, the table that scores them), translations. Everything the interface shows is decided and worded here (`view`, `taskview`), so the command line, the Qt interface and AI agents see the same thing.
+- **`sioul-core`, a Rust library**: reading and judging mail, projects, the Porch, admin windows, contacts and calendars, tasks (`tasks`) and their plan (`plan`), notes (`notes`), links between everything (`links`), time spent (`timelog`), budgets, health, the spam filter every device runs (`spam`: its tokenizer, the messages' features, the table that scores them), translations. Everything the interface shows is decided and worded here (`view`, `taskview`), so the command line, the Qt interface and AI agents see the same thing.
 - **`sioul` (`crates/sioul-cli`)**: the command line, first because agents and scripts use it too.
 - **The Qt 6 interface (QML) through CXX-Qt** (KDAB; bridge API stable since 0.7, 0.10 in 2026). The sites (once called portals) use Qt WebEngine, on computers. The interface holds no logic. It is a library (`crates/sioul-app/src/lib.rs`), which the desktop program and Android's both run.
 - **`sioul-sync`, the background service's library**: finding servers, the keyring, IMAP sync and what you do to messages on the server, sending through SMTP, IDLE watchers, the notifications, CalDAV and CardDAV, Google, GitHub, Bitwarden, the sharing between your devices (`share`). The window runs its watchers; without it, `sioul watch` keeps the inboxes open and `sioul remind --watch` tells reminders; on Android, a service of its own keeps the phone in step ([android.md](android.md#in-the-background)).
@@ -17,7 +17,7 @@ New to Rust, Qt Quick, CXX-Qt, Fluent or Android? [Start here](start-here.md) ma
 - **Tasks**: VTODO files in the calendars' vdir; their links inside them (RFC 9253). **Links between things that cannot hold them**: `links.toml`. **Time spent**: one TOML file per month. **Today's choices** (weather, "not now"): `today.toml` in the state folder. SQLite and tantivy wait until plain files are too slow.
 - **History**: a file another device changes is kept as it was, on this device, to be put back ([database.md](database.md#earlier-versions)).
 - **Between your devices**: what only Sioul keeps (settings, senders, time, health…) travels as sealed records, one file per device, through a folder your sync app carries ([database.md](database.md)).
-- **Cases**: your own Markdown files ([case-store.md](case-store.md)).
+- **Projects**: your own Markdown files, and one file that names them ([notes-folder.md](notes-folder.md)).
 
 ## Protocols
 - **Mail**: IMAP (RFC 9051, IDLE, CONDSTORE/QRESYNC), JMAP (RFC 8620/8621), SMTP submission.

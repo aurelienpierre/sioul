@@ -331,7 +331,7 @@ pub fn month_of(date: Date) -> Date {
 }
 
 impl Ledger {
-    /// The budget file at the root of a case store, with its bank accounts'
+    /// The budget file at the root of a notes folder, with its bank accounts'
     /// movements counted (`with_bank`) when it declares some.
     pub fn load_with_bank(root: &std::path::Path, looked: &crate::words::Words) -> Result<Ledger, String> {
         let ledger = Ledger::load(root)?;
@@ -408,7 +408,7 @@ pub fn save_bank_account(path: &std::path::Path, id: &str, edit: &BankAccountEdi
     let mut doc = open(path)?;
     let accounts = tables(&mut doc, "bank_account")?;
     let taken: Vec<String> = accounts.iter().filter_map(|t| t.get("id").and_then(Item::as_str).map(str::to_string)).collect();
-    let id = if id.is_empty() { crate::cases::new_id(title, &taken) } else { id.to_string() };
+    let id = if id.is_empty() { crate::projects::new_id(title, &taken) } else { id.to_string() };
     if !taken.contains(&id) {
         let mut table = Table::new();
         table["id"] = value(id.as_str());
@@ -558,7 +558,7 @@ pub fn save_reserve(path: &std::path::Path, id: &str, edit: &ReserveEdit, today:
     let mut doc = open(path)?;
     let reserves = tables(&mut doc, "reserve")?;
     let taken: Vec<String> = reserves.iter().filter_map(|t| t.get("id").and_then(Item::as_str).map(str::to_string)).collect();
-    let id = if id.is_empty() { crate::cases::new_id(title, &taken) } else { id.to_string() };
+    let id = if id.is_empty() { crate::projects::new_id(title, &taken) } else { id.to_string() };
     if !taken.contains(&id) {
         let mut table = Table::new();
         table["id"] = value(id.as_str());

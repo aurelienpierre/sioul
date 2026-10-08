@@ -20,12 +20,12 @@ static MISSING: Mutex<String> = Mutex::new(String::new());
 
 const SCANS: &[&str] = &["pdf", "png", "jpg", "jpeg", "tif", "tiff", "webp"];
 
-/// The inbox: the folder chosen, else `letters/inbox` in the case store.
+/// The inbox: the folder chosen, else `letters/inbox` in the notes folder.
 pub(crate) fn inbox() -> Option<PathBuf> {
     let config = load_config();
     match config.letters.inbox.as_deref().filter(|f| !f.trim().is_empty()) {
         Some(folder) => Some(sioul_core::config::expand_home(folder)),
-        None => config.case_store_path().map(|root| Letters::folder(&root).join("inbox")),
+        None => config.notes_root_path().map(|root| Letters::folder(&root).join("inbox")),
     }
 }
 
@@ -43,11 +43,11 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         let Some(_busy) = crate::backend::one_at_a_time(&BUSY) else { return };
         let config = load_config();
         let looked = sioul_core::words::Words::of(&config);
-        let (Some(inbox), Some(root)) = (inbox(), config.case_store_path()) else { return };
+        let (Some(inbox), Some(root)) = (inbox(), config.notes_root_path()) else { return };
         let Ok(entries) = std::fs::read_dir(&inbox) else { return };
         let Ok(mut letters) = Letters::load(&root) else { return };
         let known: Vec<String> = letters.list.iter().map(|l| l.source.clone()).collect();
-        let cases = sioul_core::cases::CaseStore::load(&root).map(|s| s.cases).unwrap_or_default();
+        let projects = sioul_core::projects::ProjectStore::load(&root).map(|s| s.projects).unwrap_or_default();
         let mut added = 0;
         for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|e| SCANS.contains(&e.to_string_lossy().to_ascii_lowercase().as_str()))) {
             let source = source_of(&path);
@@ -65,7 +65,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             match sioul_sync::ocr::text_of(&path, &work, &looked.ocr.tesseract) {
                 Ok(text) => {
                     letter.reading = sioul_core::letters::read(&looked, &text, received);
-                    letter.case = sioul_core::letters::case_of(&text, &letter.reading.sender, &cases).unwrap_or_default();
+                    letter.project = sioul_core::letters::project_of(&text, &letter.reading.sender, &projects).unwrap_or_default();
                     let _ = letters.save_text(&id, &text);
                     if let Ok(mut missing) = MISSING.lock() {
                         missing.clear();
@@ -104,12 +104,12 @@ struct LetterView {
     deadline: String,
     appointment: bool,
     task: String,
-    case: String,
+    project: String,
     problem: String,
 }
 
 #[derive(Serialize)]
-struct CaseChoice {
+struct ProjectChoice {
     id: String,
     title: String,
 }
@@ -118,7 +118,7 @@ struct CaseChoice {
 struct View {
     inbox: String,
     letters: Vec<LetterView>,
-    cases: Vec<CaseChoice>,
+    projects: Vec<ProjectChoice>,
     /// No OCR program: how to install one.
     missing: String,
 }
@@ -126,11 +126,11 @@ struct View {
 /// The letters not done with, as JSON.
 pub(crate) fn view() -> String {
     let mut view = View { inbox: inbox().map(|p| p.display().to_string()).unwrap_or_default(), missing: MISSING.lock().map(|m| m.clone()).unwrap_or_default(), ..View::default() };
-    let Some(root) = load_config().case_store_path() else { return json(&view) };
+    let Some(root) = load_config().notes_root_path() else { return json(&view) };
     let Ok(letters) = Letters::load(&root) else { return json(&view) };
     let today = jiff::Zoned::now().date();
-    let cases = sioul_core::cases::CaseStore::load(&root).map(|s| s.cases).unwrap_or_default();
-    view.cases = cases.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| CaseChoice { id: c.id.clone(), title: c.title.clone() }).collect();
+    let projects = sioul_core::projects::ProjectStore::load(&root).map(|s| s.projects).unwrap_or_default();
+    view.projects = projects.iter().filter(|c| c.status.as_deref() != Some("closed")).map(|c| ProjectChoice { id: c.id.clone(), title: c.title.clone() }).collect();
     for letter in letters.list.iter().filter(|l| l.status != "done") {
         let r = &letter.reading;
         let day = |d: jiff::civil::Date| tr().day_in(d, today);
@@ -168,7 +168,7 @@ pub(crate) fn view() -> String {
             deadline: r.deadline.map(|d| d.to_string()).unwrap_or_default(),
             appointment: r.appointment.is_some(),
             task: letter.task.clone(),
-            case: letter.case.clone(),
+            project: letter.project.clone(),
             problem: letter.problem.clone(),
         });
     }
@@ -177,7 +177,7 @@ pub(crate) fn view() -> String {
 
 fn with_letter(id: &str, change: impl FnOnce(&mut Letters, &mut Letter) -> Result<String, String>) -> String {
     let result = (|| {
-        let root = load_config().case_store_path().ok_or_else(|| tr().text("papers-no-store", None))?;
+        let root = load_config().notes_root_path().ok_or_else(|| tr().text("papers-no-store", None))?;
         let mut letters = Letters::load(&root)?;
         let mut letter = letters.get(id).cloned().ok_or_else(|| tr().text("papers-gone", None))?;
         let said = change(&mut letters, &mut letter)?;
@@ -206,7 +206,7 @@ pub(crate) fn make_task(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String
             notes,
             due: r.deadline.map(|d| d.to_string()).unwrap_or_default(),
             estimate: 20,
-            cases: if letter.case.is_empty() { Vec::new() } else { vec![letter.case.clone()] },
+            projects: if letter.project.is_empty() { Vec::new() } else { vec![letter.project.clone()] },
             links: vec![Link { uri: scan, label: tr().text("letter-scan", None), rel: "describedby".into() }],
             ..TaskEdit::default()
         };
@@ -226,7 +226,7 @@ pub(crate) fn make_event(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Strin
     if !filed.is_empty() {
         return filed;
     }
-    let root = load_config().case_store_path();
+    let root = load_config().notes_root_path();
     let letter = root.as_deref().and_then(|r| Letters::load(r).ok()).and_then(|l| Some((l.get(id)?.clone(), l)));
     let Some((letter, letters)) = letter else { return tr().text("papers-gone", None) };
     let Some((date, time)) = letter.reading.appointment else { return String::new() };
@@ -248,10 +248,10 @@ pub(crate) fn make_event(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Strin
 }
 
 /// Done with it: its project set, its scan filed in `letters/<year>/`.
-pub(crate) fn done(id: &str, case: &str) -> String {
+pub(crate) fn done(id: &str, project: &str) -> String {
     with_letter(id, |letters, letter| {
-        if !case.is_empty() {
-            letter.case = case.to_string();
+        if !project.is_empty() {
+            letter.project = project.to_string();
         }
         letters.file_away(letter)?;
         letter.status = "done".into();

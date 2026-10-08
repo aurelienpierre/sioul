@@ -44,7 +44,7 @@ pub struct Report {
     /// Messages in the inbox, on the server.
     pub inbox: u32,
     /// Files written besides the inbox's arrivals: other folders, older mail.
-    /// Tied to their cases like the rest, never notified.
+    /// Tied to their projects like the rest, never notified.
     pub elsewhere: Vec<PathBuf>,
     /// Older mail waits: fetching it would take the disk's reserve.
     pub held_back: bool,

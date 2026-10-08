@@ -5,7 +5,7 @@
 //! access"; the rule itself is the core's: `sioul_core::consent`).
 //!
 //! Every project is closed to agents until the person opens it (`ai = true`
-//! in `sioul-cases.toml`); things in no project follow `[mcp]
+//! in `sioul-projects.toml`); things in no project follow `[mcp]
 //! outside_projects`. A tool that lists leaves out what is closed and says
 //! how many things it left out, never which: the agent knows something is
 //! there and does not invent it. A tool that reads one thing, or writes into
@@ -28,8 +28,8 @@ pub fn of(s: &Session, loaded: &Loaded) -> Consent {
 /// The same for mail alone, lighter: the projects, Sioul's own ties, and
 /// `index` (the mail's headers), which comes back with it.
 pub fn for_mail(s: &Session, index: MailIndex) -> (Consent, MailIndex) {
-    let cases = s.config.case_store_path().and_then(|root| sioul_core::cases::CaseStore::load(&root).ok()).map(|store| store.cases).unwrap_or_default();
-    let loaded = Loaded { cases, mail: index, local: LocalLinks::load(&LocalLinks::default_path()), ..Loaded::default() };
+    let projects = s.config.notes_root_path().and_then(|root| sioul_core::projects::ProjectStore::load(&root).ok()).map(|store| store.projects).unwrap_or_default();
+    let loaded = Loaded { projects, mail: index, local: LocalLinks::load(&LocalLinks::default_path()), ..Loaded::default() };
     let consent = of(s, &loaded);
     (consent, loaded.mail)
 }
@@ -80,10 +80,10 @@ pub fn redact(loaded: &mut Loaded, consent: &Consent) {
     for task in loaded.tasks.iter_mut().filter(|t| !consent.allows(&links::task_uri(&t.uid))) {
         *task = Task { title: KEPT.into(), notes: String::new(), location: String::new(), categories: Vec::new(), links: Vec::new(), contacts: Vec::new(), ..task.clone() };
     }
-    for case in loaded.cases.iter_mut().filter(|c| !consent.is_open(&c.id)) {
-        case.title = KEPT.into();
-        case.client = None;
-        case.files.clear();
-        case.routes.clear();
+    for project in loaded.projects.iter_mut().filter(|c| !consent.is_open(&c.id)) {
+        project.title = KEPT.into();
+        project.client = None;
+        project.files.clear();
+        project.routes.clear();
     }
 }

@@ -66,7 +66,7 @@ QtObject {
             "note": "view-pim-notes",
             "contact": "contact-new",
             "budget": "view-filter",
-            "case": "folder-documents",
+            "project": "folder-documents",
             "web": "insert-link",
             "file": "document-new",
             "other": "insert-link"

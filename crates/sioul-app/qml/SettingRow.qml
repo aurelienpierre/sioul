@@ -35,7 +35,7 @@ ColumnLayout {
     spacing: 3
 
     Label {
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action"
         Layout.fillWidth: true
         text: field.setting.label
         font.weight: Font.DemiBold
@@ -76,6 +76,16 @@ ColumnLayout {
             // The window shows it, as a reminder's "Open" does (main.qml, openThing).
             onClicked: field.sioul.reminderOpened(String(field.setting.value), "", "")
         }
+    }
+
+    // Nothing to change: a button that does one thing when pressed, never by
+    // itself (the projects' file renamed, in Settings ▸ Your folder and
+    // sharing); its sentence below it, as every setting's.
+    Button {
+        visible: field.setting.kind === "action"
+        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+        text: field.setting.kind === "action" ? field.setting.label : ""
+        onClicked: field.save(field.setting.key, true)
     }
 
     // One of a few for each row, in a grid of round buttons: what Sioul's own
@@ -904,7 +914,7 @@ ColumnLayout {
         }
     }
 
-    // A case's routes: each a few lines, comma-separated words.
+    // A project's routes: each a few lines, comma-separated words.
     ColumnLayout {
         visible: field.setting.kind === "routes"
         Layout.fillWidth: true
