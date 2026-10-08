@@ -254,5 +254,6 @@ The same files serve both. What differs:
 
 ## Checking QML
 - **qmllint**, Qt's linter: `tools/lint-qml.sh`, after `cargo build -p sioul-app`. It lints the pages as one module, with the `qmldir` and the type description (`plugin.qmltypes`) the build wrote, so that qmllint knows Sioul's own types. Qt's documentation: [qmllint](https://doc.qt.io/qt-6/qtqml-tooling-qmllint.html).
-- **Images of every page**: `SIOUL_GRAB=<folder> sioul-app` shows each page in turn, saves it and quits; with test folders in `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME`, on invented data ([building.md](building.md#working-on-the-window)).
+- **Tests**: `tools/qml-test.sh` runs the QML tests of `crates/sioul-app/tests/qml/`, each component on a stand-in for Sioul, with Qt's QtTest; no build needed ([building.md](building.md#the-checks-before-a-commit)).
+- **Images of every page**: `tools/demo/run.sh <folder> en pages` starts the window on the demo profile, in a sandbox, shows each page in turn, saves it and quits (`SIOUL_GRAB`); another step list in place of `pages` acts in the window. It is the one way to start the window for a check ([building.md](building.md#running-the-window-for-a-check)).
 - **Qt's messages** (QML errors, warnings, `console.info`): Fedora's Qt sends them to the system journal; `QT_FORCE_STDERR_LOGGING=1` brings them back to the terminal. Each page's making time is logged as `sioul-perf: … made in … ms`.

@@ -215,7 +215,7 @@ public final class AppNotes extends NotificationListenerService
     /**
      * A conversation's key as Rust's `talk_key` makes it: FNV-1a (64 bits)
      * of its app, U+001F and its id, in hexadecimal. Pure, checked on a JVM
-     * against Rust's values.
+     * against Rust's values (android/jvm-checks/ModeCheck.java).
      */
     static String talkKey(String pkg, String id)
     {
@@ -230,7 +230,7 @@ public final class AppNotes extends NotificationListenerService
     /**
      * The keys to forget among those kept (each a JSON text with its time
      * "at"): those unseen for a week, then the oldest past the most kept.
-     * Pure, checked on a JVM.
+     * Pure, checked on a JVM (android/jvm-checks/ModeCheck.java).
      */
     static List<String> forgotten(Map<String, ?> kept, long now)
     {
@@ -339,7 +339,8 @@ public final class AppNotes extends NotificationListenerService
      * next one when a page does not open: "conversation", its own page
      * (where Priority is), once Android gave it one; "conversations", the
      * list of conversations, where one not changed yet shows among the
-     * recent ones; "app", the app's notifications. Pure, checked on a JVM.
+     * recent ones; "app", the app's notifications. Pure, checked on a JVM
+     * (android/jvm-checks/ModeCheck.java).
      */
     static String[] pages(int api, boolean conversation, boolean own, boolean channel)
     {

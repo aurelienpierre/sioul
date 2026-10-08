@@ -308,7 +308,8 @@ final class EventAlarms
     /**
      * Whether a reminder is an alarm its event carries: as Rust says it
      * ("kind": "alarm", "before", "event"), else by its key (`alarm:…`, a
-     * list given by an older Sioul). Pure, checked on a JVM.
+     * list given by an older Sioul). Pure, checked on a JVM
+     * (android/jvm-checks/ModeCheck.java).
      */
     static boolean isAlarm(String kind, String key)
     {

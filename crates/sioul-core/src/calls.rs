@@ -1812,8 +1812,8 @@ mod tests {
         assert_eq!((back.name.as_str(), back.verified.as_str(), back.number.as_str()), ("Cabinet du Dr Martin", "passed", ""));
     }
 
-    /// The lines Java writes (the JVM's LogCheck, where SIOUL_CALLS_SAMPLE
-    /// says), read as Java's file is read here: declined; a second call that
+    /// The lines Java writes (android/jvm-checks/LogCheck.java, where
+    /// SIOUL_CALLS_SAMPLE says), read as Java's file is read here: declined; a second call that
     /// rang, its time of day said; hidden; no table, keyed here. Skipped
     /// without the sample.
     #[test]

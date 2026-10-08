@@ -53,28 +53,9 @@ if [[ ! -x "$app" ]]; then
 fi
 
 # The moment the pictures show: a weekday at 14:xx (else another hour of
-# work), in a zone a whole number of hours from UTC (the day view draws its
-# hours on UTC's) and at most a day away; the minutes are the clock's.
-read -r now zone < <(python3 - <<'EOF'
-from datetime import datetime, timedelta, timezone
-real = datetime.now(timezone.utc).replace(second=0, microsecond=0)
-for hour in (14, 15, 10, 9, 11, 16):
-    found = []
-    for days in (-1, 0, 1):
-        offset = hour - real.hour + 24 * days
-        # A fixed offset stays within a day (Python's limit, and POSIX's).
-        if abs(offset) <= 23 and (real + timedelta(hours=offset)).weekday() < 5:
-            found.append(offset)
-    if found:
-        offset = min(found, key=abs)
-        local = real.astimezone(timezone(timedelta(hours=offset)))
-        # POSIX writes the offset the other way round: DEMO-02 is two hours east.
-        print(local.isoformat(), f"DEMO{'-' if offset >= 0 else '+'}{abs(offset):02d}")
-        break
-else:
-    print("none none")
-EOF
-)
+# work), in a zone a whole number of hours from UTC (moment.py, which
+# run.sh shares).
+read -r now zone < <(python3 "$repo/tools/demo/moment.py")
 if [[ "$now" == none ]]; then
     echo "No weekday is within a day of now (Saturday 16:00 to Sunday 10:00, UTC): try again later." >&2
     exit 1
@@ -88,28 +69,8 @@ else
 fi
 
 # The fonts Plasma users see, Noto Sans and Hack, whatever this system's
-# default: Bitstream Vera Sans, for one, draws the no-break space of "620 €"
-# twice as wide as a space. The system's configuration, then these first.
-fonts="$scratch/fonts.conf"
-cat > "$fonts" <<'EOF'
-<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
-<fontconfig>
-  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
-  <match target="pattern">
-    <test name="family" qual="any"><string>sans-serif</string></test>
-    <edit name="family" mode="prepend" binding="strong"><string>Noto Sans</string></edit>
-  </match>
-  <match target="pattern">
-    <test name="family" qual="any"><string>Sans Serif</string></test>
-    <edit name="family" mode="prepend" binding="strong"><string>Noto Sans</string></edit>
-  </match>
-  <match target="pattern">
-    <test name="family" qual="any"><string>monospace</string></test>
-    <edit name="family" mode="prepend" binding="strong"><string>Hack</string></edit>
-  </match>
-</fontconfig>
-EOF
+# default (fonts.conf, which run.sh shares).
+fonts="$repo/tools/demo/fonts.conf"
 if command -v fc-match > /dev/null && ! FONTCONFIG_FILE="$fonts" fc-match "Sans Serif" | grep -q "Noto Sans"; then
     echo "Noto Sans is not installed: the pictures take this system's sans-serif font." >&2
 fi
