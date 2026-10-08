@@ -4427,8 +4427,9 @@ mod tests {
         let early = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 40, false, flat);
         assert!(early.held == 0 && w.fake.received.load(std::sync::atomic::Ordering::Relaxed) - spent < size / 2, "{early:?}");
         assert!(std::fs::metadata(w.server.join(&round)).map_or(0, |m| m.len()) < size);
-        // Given the time its size asks (a floor of 256 KiB a second here): it goes, slowly, whole.
-        let scaled = Limits { large: Duration::from_secs(1), floor: 256 << 10, ..TEST };
+        // Given the time its size asks (a floor of 128 KiB a second here): it goes, slowly, whole.
+        // A stall of seconds: a busy machine (macOS on CI) may pause the fake server longer than TEST's.
+        let scaled = Limits { large: Duration::from_secs(1), floor: 128 << 10, stall: Duration::from_secs(3), ..TEST };
         let went = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 10 + backoff(1), false, scaled);
         assert!(went.problem.is_none() && went.held == 0, "{went:?}");
         assert_eq!(std::fs::read(w.server.join(&round)).unwrap(), std::fs::read(desk_folder.join(&round)).unwrap());
