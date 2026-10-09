@@ -169,7 +169,7 @@ SioulWindow {
     // Each page is made when it is first shown, then kept: the window opens
     // with the Porch alone, and a page asked for (a link, "New") is made
     // before it is used, as the page is set first.
-    property var made: sioul.grabFolder() !== "" ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true }) : ({ 0: true })
+    property var made: sioul.grabFolder() !== "" && sioul.grabSteps() !== "memory" ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true }) : ({ 0: true })
     onPageChanged: {
         window.placesOpen = false
         if (window.made[window.page] !== true) {
@@ -936,7 +936,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -1268,6 +1268,28 @@ SioulWindow {
                 () => sitesPage.open("test-chat")
             ]
             readonly property var siteQuit: grabber.siteOpen.concat(Array(8).fill(() => {}), [() => window.close()])
+            // Memory (SIOUL_GRAB_STEPS=memory, tools/measure-memory.py, on a demo profile):
+            // a minute at rest on the Porch, every page and form as "pages" opens them
+            // (each page made as it is first shown, as in use, no picture taken), the
+            // same once the scripts' garbage is collected, then the profile's sites
+            // shown one by one. "sioul-memory: <moment>" in the log at each moment
+            // measured, then half a minute held for the measure.
+            readonly property bool pictures: sioul.grabSteps() !== "memory"
+            function held(steps) {
+                return Array(steps).fill(() => {})
+            }
+            readonly property var memorySteps: grabber.held(40).concat(
+                [() => console.info("sioul-memory: rest")], grabber.held(20),
+                grabber.pages.slice(0, -1), grabber.held(4),
+                [() => console.info("sioul-memory: pages")], grabber.held(20),
+                [() => gc(), () => console.info("sioul-memory: pages-gc")], grabber.held(20),
+                [() => window.page = 3],
+                [0, 1, 2, 3, 4].reduce((all, i) => all.concat([() => {
+                    if (sitesPage.sites.length > i)
+                        sitesPage.open(sitesPage.sites[i].id)
+                }], grabber.held(6)), []),
+                [() => console.info("sioul-memory: sites")], grabber.held(20),
+                [() => window.close()])
             // colour: the test site in the screen's colours, then calmer too, then
             // neither (tools/check-colour.py reads the patches back from each picture).
             readonly property var siteColour: grabber.siteOpen.concat(Array(5).fill(() => {}), [
@@ -3428,6 +3450,8 @@ SioulWindow {
             }
 
             function save(name) {
+                if (!grabber.pictures)
+                    return
                 frame.grabToImage(result => result.saveToFile(grabber.folder + "/" + name + ".png"))
                 if (window.phoneGrab)
                     grabber.overflow(name)
@@ -3494,11 +3518,15 @@ SioulWindow {
 
             // The window with what floats over it (a tip, a menu), which the frame leaves out.
             function saveWindow(name) {
+                if (!grabber.pictures)
+                    return
                 frame.Overlay.overlay.parent.grabToImage(result => result.saveToFile(grabber.folder + "/" + name + ".png"))
             }
 
             // An open menu or pop-up, which the frame leaves out.
             function savePopup(popup, name) {
+                if (!grabber.pictures)
+                    return
                 popup.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/" + name + ".png"))
                 if (window.phoneGrab)
                     grabber.overflow(name, popup.contentItem.parent)
@@ -3506,7 +3534,7 @@ SioulWindow {
 
             // The writing window's picture; at a phone's size, what passes its right edge too.
             function saveDraft(name) {
-                if (window.drafts.length === 0)
+                if (window.drafts.length === 0 || !grabber.pictures)
                     return
                 window.drafts[0].grab(grabber.folder + "/" + name + ".png")
                 if (window.phoneGrab)

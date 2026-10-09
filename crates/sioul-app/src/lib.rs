@@ -217,6 +217,32 @@ fn timed() -> bool {
     cfg!(target_os = "android") || std::env::var_os("SIOUL_TIMING").is_some()
 }
 
+/// Freed memory given back to the system as it is freed (glibc, Linux). By
+/// default glibc raises its thresholds after a large block is freed: blocks
+/// as large come from its heaps from then on, and each thread's heap keeps
+/// up to twice that free for itself. Sioul's threads read files of several
+/// megabytes, and Chromium's run in this process: the window held some 15 MB
+/// free and unreturned with every page opened, 18 MB more with sites. Fixed
+/// thresholds (a block of a quarter of a megabyte or more mapped on its own,
+/// at most an eighth kept free at a heap's end) cost a system call or two for
+/// each such block, which Sioul makes a few times a minute.
+fn steady_heap() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        unsafe extern "C" {
+            fn mallopt(param: std::ffi::c_int, value: std::ffi::c_int) -> std::ffi::c_int;
+        }
+        // glibc's malloc.h.
+        const M_TRIM_THRESHOLD: std::ffi::c_int = -1;
+        const M_MMAP_THRESHOLD: std::ffi::c_int = -3;
+        // SAFETY: glibc's own settings, made before Sioul's threads start; nothing of Rust's is touched.
+        unsafe {
+            mallopt(M_MMAP_THRESHOLD, 256 * 1024);
+            mallopt(M_TRIM_THRESHOLD, 128 * 1024);
+        }
+    }
+}
+
 /// How long ago the process started (Linux, Android): what came before
 /// [`run`], the libraries loaded above all, for `timing`.
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -253,6 +279,7 @@ fn process_age() -> Option<std::time::Duration> {
 pub fn run() -> i32 {
     // Before anything else: no crate logs above "info", a security key's PIN never (securitykey.rs).
     sioul_sync::securitykey::cap_logging();
+    steady_heap();
     STARTED.get_or_init(std::time::Instant::now);
     if let Some(age) = process_age().filter(|_| timed()) {
         eprintln!("Sioul: the process started {} ms before Sioul did", age.as_millis());

@@ -599,7 +599,9 @@ Item {
                         }
                     }
 
-                    // A picture, fitted to the page, at most its own size.
+                    // A picture, fitted to the page, at most its own size; read at
+                    // the screen's width at most (a photo of 12 megapixels read
+                    // whole held 48 MB), not again as the window is resized.
                     Flickable {
                         visible: page.kind === "image"
                         Layout.fillWidth: true
@@ -612,7 +614,8 @@ Item {
                         Image {
                             id: picture
 
-                            width: Math.min(parent.parent.width, sourceSize.width > 0 ? sourceSize.width : parent.parent.width)
+                            width: Math.min(parent.parent.width, picture.implicitWidth > 0 ? picture.implicitWidth : parent.parent.width)
+                            sourceSize.width: Math.ceil(Screen.width * Screen.devicePixelRatio)
                             source: page.kind === "image" ? page.note.url : ""
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true

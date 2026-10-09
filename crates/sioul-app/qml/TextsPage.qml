@@ -579,12 +579,15 @@ Item {
                                             Layout.fillWidth: true
                                             spacing: 2
 
+                                            // Read at the width it is drawn at, at most: a phone's photo
+                                            // read whole held some 48 MB, drawn 320 pixels wide.
                                             Image {
                                                 id: photo
 
                                                 visible: shown.here && shown.modelData.kind === "picture" && photo.status === Image.Ready
-                                                Layout.preferredWidth: Math.min(320, column.width, photo.sourceSize.width)
-                                                Layout.preferredHeight: photo.sourceSize.width > 0 ? Math.min(320, column.width, photo.sourceSize.width) * photo.sourceSize.height / photo.sourceSize.width : 0
+                                                Layout.preferredWidth: Math.min(320, column.width, photo.implicitWidth)
+                                                Layout.preferredHeight: photo.implicitWidth > 0 ? Math.min(320, column.width, photo.implicitWidth) * photo.implicitHeight / photo.implicitWidth : 0
+                                                sourceSize.width: Math.ceil(320 * Screen.devicePixelRatio)
                                                 source: shown.picture
                                                 fillMode: Image.PreserveAspectFit
                                                 asynchronous: true

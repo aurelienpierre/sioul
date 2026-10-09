@@ -19,21 +19,21 @@ Chacun contient aussi la ligne de commande, `sioul`. Ces premiers paquets ont é
 
 ## Ressources nécessaires {#resources-needed}
 
-Mesuré le 6 octobre 2026 sur un ordinateur Linux à 8 cœurs, Sioul et tous les processus qu’il lance comptés ensemble (la mémoire en PSS : chaque page partagée comptée une fois) :
+Mesuré sur un ordinateur Linux à 8 cœurs, Sioul et tous les processus qu’il lance comptés ensemble (la mémoire en PSS : chaque page partagée comptée une fois), le 6 octobre 2026, et le 9 octobre pour la mémoire de Sioul seul :
 
 | | Mémoire | Processeur |
 |---|---|---|
-| **Sioul seul** : un profil inventé, aucun site ouvert, pendant cinq minutes | environ 70 Mo, en un seul processus | presque rien au repos (0,2 % d’un cœur) |
+| **Sioul seul** : un profil inventé, aucun site ouvert, pendant cinq minutes | environ 80 Mo au repos, 190 Mo une fois chaque page ouverte, en un seul processus | presque rien au repos (0,2 % d’un cœur) |
 | **Sioul au quotidien** : une vraie boîte aux lettres, des notes et des tâches, et trois sites ouverts en temps réel, pendant trois minutes | environ 1,15 Go en tout : le processus de Sioul 0,4 Go, les pages des trois sites 0,7 Go | moins de 1 % d’un cœur la plupart du temps (la moitié du temps moins de 0,4 %), quelques secondes jusqu’à 40 % d’un cœur de temps en temps |
 
-- **Ce qui n’est pas ouvert ne coûte rien.** Chaque page de la fenêtre, chaque formulaire et chaque menu est fait la première fois que vous l’ouvrez, et le moteur qui affiche les sites démarre avec le premier site ouvert. Le 4 octobre, avant cela, Sioul seul prenait 280 Mo, et 1,9 Go au quotidien (son propre processus 0,7 Go).
-- **Les sites sont la part lourde.** Chacun gardé ouvert coûte ce que coûte un onglet de navigateur, 150 à 350 Mo, et le processeur qu’utilise sa page : une messagerie qui se tient à jour toute seule est la plus active.
+- **Ce qui n’est pas ouvert ne coûte rien.** Chaque page de la fenêtre, chaque formulaire et chaque menu est fait la première fois que vous l’ouvrez, le moteur qui affiche les sites démarre avec le premier site ouvert, et ce qui liste caméras et micros avec le premier appel. Le 4 octobre, avant cela, Sioul seul prenait 280 Mo, et 1,9 Go au quotidien (son propre processus 0,7 Go).
+- **Les sites sont la part lourde.** Le moteur qui les affiche prend environ 75 Mo dans le processus de Sioul, une fois, quel que soit leur nombre. Chacun gardé ouvert coûte ce que coûte un onglet de navigateur, 150 à 350 Mo, et le processeur qu’utilise sa page : une messagerie qui se tient à jour toute seule est la plus active.
 - **Disque** : quelques mégaoctets lus et écrits en quelques minutes.
 - **Fenêtre fermée**, le veilleur des rappels (Paramètres ▸ Rappels) prend 10 Mo et presque pas de processeur.
 - **Sur un téléphone** (Android, un téléphone de 2019) : environ 200 Mo quand Sioul est à l’écran et 140 Mo une fois mis de côté, avec presque pas de processeur alors ; chaque page s’ouvre en 0,1 à 0,5 s la première fois, puis tout de suite.
 - **Ce qu’il faut prévoir** : 4 Go de mémoire pour Sioul et quelques sites à côté de vos autres programmes, 8 Go pour garder beaucoup de sites ouverts ; sans sites, Sioul demande très peu. N’importe quel processeur des dix dernières années.
 
-La mesure peut être refaite sur n’importe quel ordinateur : `tools/measure-load.py` dans les sources ([building.md, en anglais](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
+La mesure peut être refaite sur n’importe quel ordinateur : `tools/measure-load.py` et `tools/measure-memory.py` dans les sources ([building.md, en anglais](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
 
 ## Ou le construire à partir de ses sources {#or-build-it-from-its-sources}
 
