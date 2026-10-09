@@ -50,7 +50,14 @@ pub(crate) fn recorded() {
 
 /// Whether everything recorded here went out with an export since.
 fn all_out() -> bool {
-    RECORDED.load(Ordering::SeqCst) < EXPORTED.load(Ordering::SeqCst) || RECORDED.load(Ordering::SeqCst) == 0
+    went_out(RECORDED.load(Ordering::SeqCst), EXPORTED.load(Ordering::SeqCst))
+}
+
+/// Whether what was recorded (`RECORDED`) went out with an export since
+/// (`EXPORTED`): both 0 in a process just started, which knows nothing of an
+/// earlier one's.
+fn went_out(recorded: i64, exported: i64) -> bool {
+    recorded < exported || recorded == 0
 }
 
 fn sessions() -> std::sync::MutexGuard<'static, Sessions> {
@@ -87,7 +94,9 @@ pub(crate) fn kind() -> &'static str {
 fn write(change: impl FnOnce(&mut Entry)) {
     let Some((id, vault)) = crate::share::vault() else { return };
     let path = sioul_sync::devices::own_path(&sioul_core::config::state_dir());
-    let doses = crate::share::shares("health");
+    // Its doses said known only while their part travels: held under a newer
+    // format (`share::holds`), they are not, whatever this process recorded.
+    let doses = doses_said(crate::share::shares("health"), crate::share::holds_doses());
     // A phone's notification access, as Android says it now: what it may hold of other apps.
     let notifications = crate::appnotes::access_here();
     let written = sioul_sync::devices::change(&path, vault.as_ref().map(|(folder, key)| (folder.as_path(), key)), |entry| {
@@ -132,12 +141,26 @@ fn raise() {
 /// else it stays up, and the others say what they cannot know until the
 /// next session's export.
 fn lower() -> bool {
-    if !all_out() {
+    if !may_lower(all_out(), crate::share::holds_doses()) {
         eprintln!("sioul: devices: what was recorded here has not gone out; this device stays up");
         return false;
     }
     write(|entry| entry.close(now()));
     true
+}
+
+/// Whether this device's entry may say it shares its doses: it shares the
+/// health part, and that part is not held here under a newer format (its
+/// answers then wait unsent, and the others must not count them as known).
+fn doses_said(shares: bool, held: bool) -> bool {
+    shares && !held
+}
+
+/// Whether a session may go down (closed: everything it captured went out):
+/// all it recorded went out, and the doses' part is not held here, which
+/// this process's own counts cannot tell after a restart.
+fn may_lower(all_out: bool, held: bool) -> bool {
+    all_out && !held
 }
 
 /// The window's session ended, its final export done (`share::closing`):
@@ -227,4 +250,27 @@ pub(crate) fn others_in_use() -> bool {
 pub(crate) fn kind_and_name(id: &str) -> Option<(String, String)> {
     let (_, Some((folder, key))) = crate::share::vault()? else { return None };
     sioul_sync::devices::all(&folder, &key).0.into_iter().find(|e| e.id == id).map(|e| (e.kind, e.name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A process started anew (an app restart; on Android, the background
+    /// process killed and started again) knows nothing of what an earlier one
+    /// recorded: its counts say all went out. While the doses' part is held
+    /// under a newer format (`share::holds`, read from the disk), its entry
+    /// still says its doses are not known, and its session never goes down as
+    /// if they were: the others doubt, never take a dose as not taken
+    /// (docs/health.md, "A newer Sioul's doses").
+    #[test]
+    fn a_held_doses_part_claims_no_knowledge_after_a_restart() {
+        // The statics as a new process has them: nothing recorded, nothing exported.
+        let (recorded, exported) = (0, 0);
+        assert!(went_out(recorded, exported), "a new process: all went out, by its own counts");
+        assert!(!may_lower(went_out(recorded, exported), true), "held: never down as if all went out");
+        assert!(!doses_said(true, true), "held: its doses said not shared");
+        assert!(may_lower(went_out(recorded, exported), false) && doses_said(true, false), "not held: as before");
+        assert!(!may_lower(went_out(5, 3), false), "an answer recorded and not exported keeps it up, as before");
+    }
 }

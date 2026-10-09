@@ -830,60 +830,66 @@ fn write_ledger(path: &Path, doc: &DocumentMut) -> Result<(), String> {
 /// Makes a budget (`id` empty) or changes one, in place, its comments and
 /// its other fields kept; returns its id.
 pub fn save_budget(path: &Path, id: &str, edit: &BudgetEdit) -> Result<String, String> {
-    let fail = |e: String| format!("{}: {e}", path.display());
-    let title = edit.title.trim();
-    if title.is_empty() {
-        return Err(fail("a budget needs a name".into()));
-    }
-    if !edit.target.is_finite() {
-        return Err(fail("a target is a number".into()));
-    }
-    // The first budget makes the file; a file that cannot be read is never written over.
-    let text = match std::fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(fail(e.to_string())),
-    };
-    let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
-    let budgets = doc.entry("budget").or_insert(Item::ArrayOfTables(ArrayOfTables::new())).as_array_of_tables_mut().ok_or_else(|| fail("`budget` is not a list of tables".into()))?;
-    let taken: Vec<String> = budgets.iter().filter_map(|t| t.get("id").and_then(Item::as_str).map(str::to_string)).collect();
-    let id = if id.is_empty() { crate::projects::new_id(title, &taken) } else { id.to_string() };
-    if !budgets.iter().any(|t| t.get("id").and_then(Item::as_str) == Some(id.as_str())) {
-        let mut table = Table::new();
-        table["id"] = value(id.as_str());
-        budgets.push(table);
-    }
-    let table = budgets.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id.as_str())).ok_or_else(|| fail(format!("no budget {id}")))?;
-    table["title"] = value(title);
-    table["period"] = value(if edit.period == "year" { "year" } else { "month" });
-    table["target"] = value((edit.target * 100.0).round() / 100.0);
-    match edit.area.as_deref().map(str::trim) {
-        Some(area) if !area.is_empty() => table["area"] = value(crate::areas::Area::parse(area).map_or(area.to_string(), |a| a.id())),
-        Some(_) => {
-            table.remove("area");
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        let title = edit.title.trim();
+        if title.is_empty() {
+            return Err(fail("a budget needs a name".into()));
         }
-        None if edit.personal => table["area"] = value("personal"),
-        None => {
-            table.remove("area");
+        if !edit.target.is_finite() {
+            return Err(fail("a target is a number".into()));
         }
-    }
-    write_ledger(path, &doc)?;
-    Ok(id)
+        // The first budget makes the file; a file that cannot be read is never written over.
+        let text = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(fail(e.to_string())),
+        };
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let budgets = doc.entry("budget").or_insert(Item::ArrayOfTables(ArrayOfTables::new())).as_array_of_tables_mut().ok_or_else(|| fail("`budget` is not a list of tables".into()))?;
+        let taken: Vec<String> = budgets.iter().filter_map(|t| t.get("id").and_then(Item::as_str).map(str::to_string)).collect();
+        let id = if id.is_empty() { crate::projects::new_id(title, &taken) } else { id.to_string() };
+        if !budgets.iter().any(|t| t.get("id").and_then(Item::as_str) == Some(id.as_str())) {
+            let mut table = Table::new();
+            table["id"] = value(id.as_str());
+            budgets.push(table);
+        }
+        let table = budgets.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id.as_str())).ok_or_else(|| fail(format!("no budget {id}")))?;
+        table["title"] = value(title);
+        table["period"] = value(if edit.period == "year" { "year" } else { "month" });
+        table["target"] = value((edit.target * 100.0).round() / 100.0);
+        match edit.area.as_deref().map(str::trim) {
+            Some(area) if !area.is_empty() => table["area"] = value(crate::areas::Area::parse(area).map_or(area.to_string(), |a| a.id())),
+            Some(_) => {
+                table.remove("area");
+            }
+            None if edit.personal => table["area"] = value("personal"),
+            None => {
+                table.remove("area");
+            }
+        }
+        write_ledger(path, &doc)?;
+        Ok(id)
+    })
 }
 
 /// Takes a budget out of the file. Its lines stay, written as they were,
 /// and no longer count anywhere.
 pub fn remove_budget(path: &Path, id: &str) -> Result<(), String> {
-    let fail = |e: String| format!("{}: {e}", path.display());
-    let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
-    let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
-    let budgets = doc.get_mut("budget").and_then(Item::as_array_of_tables_mut).ok_or_else(|| fail(format!("no budget {id}")))?;
-    let before = budgets.len();
-    budgets.retain(|t| t.get("id").and_then(Item::as_str) != Some(id));
-    if budgets.len() == before {
-        return Err(fail(format!("no budget {id}")));
-    }
-    write_ledger(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let budgets = doc.get_mut("budget").and_then(Item::as_array_of_tables_mut).ok_or_else(|| fail(format!("no budget {id}")))?;
+        let before = budgets.len();
+        budgets.retain(|t| t.get("id").and_then(Item::as_str) != Some(id));
+        if budgets.len() == before {
+            return Err(fail(format!("no budget {id}")));
+        }
+        write_ledger(path, &doc)
+    })
 }
 
 /// A line of the file as the page showed it, to find it again: lines are named
@@ -951,14 +957,17 @@ fn find_line(lines: &ArrayOfTables, place: usize, seen: &SeenLine) -> Option<usi
 /// `seen`, else the one line that is (`find_line`). Ok(false) when the line
 /// is not found as it was: nothing is changed, for the page to say so.
 pub fn remove_line(path: &Path, place: usize, seen: &SeenLine) -> Result<bool, String> {
-    let fail = |e: String| format!("{}: {e}", path.display());
-    let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
-    let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
-    let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
-    let Some(place) = find_line(lines, place, seen) else { return Ok(false) };
-    lines.remove(place);
-    write_ledger(path, &doc)?;
-    Ok(true)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
+        let Some(place) = find_line(lines, place, seen) else { return Ok(false) };
+        lines.remove(place);
+        write_ledger(path, &doc)?;
+        Ok(true)
+    })
 }
 
 /// A line of the file changed in place: its label, amount and date; its links,
@@ -966,59 +975,65 @@ pub fn remove_line(path: &Path, place: usize, seen: &SeenLine) -> Result<bool, S
 /// makes it planned. The line is found as `remove_line` finds it; Ok(false)
 /// when it is not found as it was (`seen`): nothing is changed.
 pub fn change_line(path: &Path, place: usize, seen: &SeenLine, label: &str, amount: f64, date: jiff::civil::Date, today: jiff::civil::Date) -> Result<bool, String> {
-    let fail = |e: String| format!("{}: {e}", path.display());
-    if amount == 0.0 || !amount.is_finite() {
-        return Err(fail("an amount is needed".into()));
-    }
-    let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
-    let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
-    let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
-    let Some(place) = find_line(lines, place, seen) else { return Ok(false) };
-    let Some(line) = lines.get_mut(place) else { return Ok(false) };
-    line["label"] = value(label.trim());
-    line["amount"] = value((amount * 100.0).round() / 100.0);
-    line["date"] = value(toml_edit::Datetime { date: Some(toml_edit::Date { year: date.year() as u16, month: date.month() as u8, day: date.day() as u8 }), time: None, offset: None });
-    if date > today {
-        line["planned"] = value(true);
-    } else {
-        line.remove("planned");
-    }
-    write_ledger(path, &doc)?;
-    Ok(true)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        if amount == 0.0 || !amount.is_finite() {
+            return Err(fail("an amount is needed".into()));
+        }
+        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
+        let Some(place) = find_line(lines, place, seen) else { return Ok(false) };
+        let Some(line) = lines.get_mut(place) else { return Ok(false) };
+        line["label"] = value(label.trim());
+        line["amount"] = value((amount * 100.0).round() / 100.0);
+        line["date"] = value(toml_edit::Datetime { date: Some(toml_edit::Date { year: date.year() as u16, month: date.month() as u8, day: date.day() as u8 }), time: None, offset: None });
+        if date > today {
+            line["planned"] = value(true);
+        } else {
+            line.remove("planned");
+        }
+        write_ledger(path, &doc)?;
+        Ok(true)
+    })
 }
 
 /// Writes a line at the end of the budget file, keeping its comments, with a
 /// comment saying where it came from.
 pub fn record_line(path: &Path, line: &Line, origin: &str) -> Result<(), String> {
-    let fail = |e: String| format!("{}: {e}", path.display());
-    let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
-    let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
-    let mut table = Table::new();
-    // Its own id, given now (`ids`): your devices merge each line by it, so
-    // that two lines the same stay two (docs/database.md, "The format of what travels").
-    table["id"] = value(crate::ids::new());
-    table["budget"] = value(line.budget.as_str());
-    let date = toml_edit::Date { year: line.date.year() as u16, month: line.date.month() as u8, day: line.date.day() as u8 };
-    table["date"] = value(toml_edit::Datetime { date: Some(date), time: None, offset: None });
-    table["amount"] = value(line.amount.cents() as f64 / 100.0);
-    table["label"] = value(line.label.as_str());
-    if let Some(preset) = &line.preset {
-        table["preset"] = value(preset.as_str());
-    }
-    if line.planned {
-        table["planned"] = value(true);
-    }
-    table["links"] = value(line.links.iter().map(String::as_str).collect::<Array>());
-    let origin: String = origin.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
-    let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_string();
-    let lead = if trailing.trim().is_empty() { String::new() } else { format!("{trailing}\n") };
-    table.decor_mut().set_prefix(format!("{lead}\n# {origin}\n"));
-    doc.set_trailing("");
-    let lines = doc.entry("line").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
-    lines.as_array_of_tables_mut().ok_or_else(|| fail("`line` is not a list of tables".into()))?.push(table);
-    let temporary = path.with_extension("toml.new");
-    std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
-    std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let mut table = Table::new();
+        // Its own id, given now (`ids`): your devices merge each line by it, so
+        // that two lines the same stay two (docs/database.md, "The format of what travels").
+        table["id"] = value(crate::ids::new());
+        table["budget"] = value(line.budget.as_str());
+        let date = toml_edit::Date { year: line.date.year() as u16, month: line.date.month() as u8, day: line.date.day() as u8 };
+        table["date"] = value(toml_edit::Datetime { date: Some(date), time: None, offset: None });
+        table["amount"] = value(line.amount.cents() as f64 / 100.0);
+        table["label"] = value(line.label.as_str());
+        if let Some(preset) = &line.preset {
+            table["preset"] = value(preset.as_str());
+        }
+        if line.planned {
+            table["planned"] = value(true);
+        }
+        table["links"] = value(line.links.iter().map(String::as_str).collect::<Array>());
+        let origin: String = origin.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+        let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_string();
+        let lead = if trailing.trim().is_empty() { String::new() } else { format!("{trailing}\n") };
+        table.decor_mut().set_prefix(format!("{lead}\n# {origin}\n"));
+        doc.set_trailing("");
+        let lines = doc.entry("line").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
+        lines.as_array_of_tables_mut().ok_or_else(|| fail("`line` is not a list of tables".into()))?.push(table);
+        let temporary = path.with_extension("toml.new");
+        std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
+        std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))
+    })
 }
 
 /// How a budget's period is going, at its pace: what is known in advance
@@ -1223,63 +1238,69 @@ pub struct PresetEdit {
 
 /// Adds a recurring movement to the budget file, its comments kept.
 pub fn record_preset(path: &Path, preset: &PresetEdit, origin: &str) -> Result<(), String> {
-    let fail = |e: String| format!("{}: {e}", path.display());
-    if !preset.amount.is_finite() {
-        return Err(fail("an amount is needed".into()));
-    }
-    let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
-    let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
-    let day_value = |text: &str| -> Option<toml_edit::Datetime> {
-        let d: Date = text.parse().ok()?;
-        Some(toml_edit::Datetime { date: Some(toml_edit::Date { year: d.year() as u16, month: d.month() as u8, day: d.day() as u8 }), time: None, offset: None })
-    };
-    let mut table = Table::new();
-    // Its own id (`ids`): lines and rules name it by it, and your devices merge it by it.
-    table["id"] = value(crate::ids::new());
-    table["budget"] = value(preset.budget.as_str());
-    table["label"] = value(preset.label.trim());
-    table["amount"] = value((preset.amount * 100.0).round() / 100.0);
-    table["every"] = value(if preset.every == "year" { "year" } else { "month" });
-    table["day"] = value(i64::from(preset.day.clamp(1, 31)));
-    if preset.every == "year" {
-        table["month"] = value(i64::from(preset.month.unwrap_or(1).clamp(1, 12)));
-    }
-    if let Some(from) = day_value(&preset.from) {
-        table["from"] = value(from);
-    }
-    if let Some(until) = day_value(&preset.until) {
-        table["until"] = value(until);
-    }
-    if preset.estimate {
-        table["estimate"] = value(true);
-    }
-    let origin: String = origin.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
-    let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_string();
-    let lead = if trailing.trim().is_empty() { String::new() } else { format!("{trailing}\n") };
-    table.decor_mut().set_prefix(format!("{lead}\n# {origin}\n"));
-    doc.set_trailing("");
-    let presets = doc.entry("preset").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
-    presets.as_array_of_tables_mut().ok_or_else(|| fail("`preset` is not a list of tables".into()))?.push(table);
-    let temporary = path.with_extension("toml.new");
-    std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
-    std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        if !preset.amount.is_finite() {
+            return Err(fail("an amount is needed".into()));
+        }
+        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let day_value = |text: &str| -> Option<toml_edit::Datetime> {
+            let d: Date = text.parse().ok()?;
+            Some(toml_edit::Datetime { date: Some(toml_edit::Date { year: d.year() as u16, month: d.month() as u8, day: d.day() as u8 }), time: None, offset: None })
+        };
+        let mut table = Table::new();
+        // Its own id (`ids`): lines and rules name it by it, and your devices merge it by it.
+        table["id"] = value(crate::ids::new());
+        table["budget"] = value(preset.budget.as_str());
+        table["label"] = value(preset.label.trim());
+        table["amount"] = value((preset.amount * 100.0).round() / 100.0);
+        table["every"] = value(if preset.every == "year" { "year" } else { "month" });
+        table["day"] = value(i64::from(preset.day.clamp(1, 31)));
+        if preset.every == "year" {
+            table["month"] = value(i64::from(preset.month.unwrap_or(1).clamp(1, 12)));
+        }
+        if let Some(from) = day_value(&preset.from) {
+            table["from"] = value(from);
+        }
+        if let Some(until) = day_value(&preset.until) {
+            table["until"] = value(until);
+        }
+        if preset.estimate {
+            table["estimate"] = value(true);
+        }
+        let origin: String = origin.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+        let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_string();
+        let lead = if trailing.trim().is_empty() { String::new() } else { format!("{trailing}\n") };
+        table.decor_mut().set_prefix(format!("{lead}\n# {origin}\n"));
+        doc.set_trailing("");
+        let presets = doc.entry("preset").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
+        presets.as_array_of_tables_mut().ok_or_else(|| fail("`preset` is not a list of tables".into()))?.push(table);
+        let temporary = path.with_extension("toml.new");
+        std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
+        std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))
+    })
 }
 
 /// The planned line `link` names (an invoice, "sioul:invoice/2026-002") made
 /// real: paid on `date`, no longer planned. Returns whether there was one.
 pub fn settle_line(path: &Path, link: &str, date: Date) -> Result<bool, String> {
-    let fail = |e: String| format!("{}: {e}", path.display());
-    let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
-    let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
-    let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
-    let Some(line) = lines.iter_mut().find(|t| t.get("links").and_then(Item::as_array).is_some_and(|a| a.iter().any(|v| v.as_str() == Some(link)))) else { return Ok(false) };
-    line.remove("planned");
-    let day = toml_edit::Date { year: date.year() as u16, month: date.month() as u8, day: date.day() as u8 };
-    line["date"] = value(toml_edit::Datetime { date: Some(day), time: None, offset: None });
-    let temporary = path.with_extension("toml.new");
-    std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
-    std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
-    Ok(true)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let fail = |e: String| format!("{}: {e}", path.display());
+        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
+        let Some(line) = lines.iter_mut().find(|t| t.get("links").and_then(Item::as_array).is_some_and(|a| a.iter().any(|v| v.as_str() == Some(link)))) else { return Ok(false) };
+        line.remove("planned");
+        let day = toml_edit::Date { year: date.year() as u16, month: date.month() as u8, day: date.day() as u8 };
+        line["date"] = value(toml_edit::Datetime { date: Some(day), time: None, offset: None });
+        let temporary = path.with_extension("toml.new");
+        std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
+        std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
+        Ok(true)
+    })
 }
 
 #[cfg(test)]

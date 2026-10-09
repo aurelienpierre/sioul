@@ -2703,6 +2703,8 @@ share-device-quiet = In use when it last shared, { $when }, and silent since: it
 share-device-closed = Closed { $when }; last shared { $shared }.
 share-device-older = An older Sioul: last heard { $when }.
 share-device-unread = What it says does not read here yet.
+share-device-holds = Known here by what it shared, last heard { $when }: until it is updated there, or forgotten here, your devices keep sharing in the form an older Sioul reads.
+share-device-holds-unknown = Known here by what it shared: until it is updated there, or forgotten here, your devices keep sharing in the form an older Sioul reads.
 share-device-off = Counted as off, as you said, until it shares again.
 share-device-silent = Silent since { $when }: no longer counted for your doses.
 share-device-apart = It does not share its doses.
@@ -2923,7 +2925,7 @@ share-device-build-older = Sioul { $build }, older than this device's ({ $here }
 share-newer = Your other devices share “{ $part }” in a newer form than this Sioul reads (Sioul { $build } wrote it). Update Sioul on this device to share it again: until then, what you change here in it stays on this device, and what changes on the others waits here.
 share-newer-plain = Your other devices share “{ $part }” in a newer form than this Sioul reads. Update Sioul on this device to share it again: until then, what you change here in it stays on this device, and what changes on the others waits here.
 share-newer-status = This device needs a newer Sioul to share “{ $part }”: Settings ▸ Your folder and sharing says more.
-share-format-held = One of your devices runs an older Sioul (its line below says which): until it is updated there, your devices keep sharing in the form it reads. Meanwhile, a time session, your pinned sites or a list of words changed on two devices at the same moment keep only the later change.
+share-format-held = One of your devices runs an older Sioul, or what it says does not read here (its line below says which): until it is updated there, your devices keep sharing in the form an older Sioul reads. Meanwhile, a time session, your pinned sites or a list of words changed on two devices at the same moment keep only the later change.
 share-format-wait = { $file } does not read as it should: your devices keep sharing in the older form until it does. Sioul tries again at each exchange.
 share-format-older = One of your devices runs an older Sioul, which does not read what your devices now share (its line below says which): update it there before it shares again.
 

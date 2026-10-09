@@ -1540,6 +1540,15 @@ fn write_elements(table: &mut toml_edit::Table, keyed: &Keyed, list: &str, chang
                                     element.insert(field, kept.clone());
                                 }
                             }
+                            // Its id never stripped by a value written without one (a
+                            // version from before the switch put back, an older
+                            // Sioul's): it names this element.
+                            if keyed.ids
+                                && !element.contains_key("id")
+                                && let Some(id) = old.get("id")
+                            {
+                                element.insert("id", id.clone());
+                            }
                         }
                         if let Some(place) = elements.get_mut(at) {
                             let position = place.position();
@@ -1858,6 +1867,10 @@ struct Memory {
     /// of then (milliseconds). They count again once heard of later.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     forgotten: BTreeMap<String, i64>,
+    /// Each other device's latest sealed entry seen here (`note_entries`): an
+    /// older copy put back in the folder never lowers what is known of it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    seen: BTreeMap<String, crate::devices::Entry>,
     /// What it remembers of files sealed apart, in `files.json` beside.
     #[serde(skip)]
     sealed: Sealed,
@@ -2213,30 +2226,92 @@ pub enum Holds {
     Unheard,
 }
 
+/// When an entry was written, as far as its own times tell (each writing
+/// sets one of them to its device's clock then, and none goes back).
+fn entry_stamp(entry: &crate::devices::Entry) -> i64 {
+    entry.started.max(entry.imported).max(entry.closed).max(entry.exported)
+}
+
+/// What this device has seen of each other's sealed entry, kept
+/// (`Memory::seen`): the latest by its own times. An older copy put back in
+/// the folder (a replay by a hostile server) never lowers it.
+fn note_entries(folder: &Path, key: &[u8; 32], memory: &mut Memory) {
+    for entry in crate::devices::all(folder, key).0 {
+        if memory.seen.get(&entry.id).is_none_or(|seen| entry_stamp(&entry) >= entry_stamp(seen)) {
+            memory.seen.insert(entry.id.clone(), entry);
+        }
+    }
+}
+
+/// The clock of each other device's last record in the folder, opened (sealed,
+/// bound to its device, round, number and clock), for the devices this
+/// memory has not heard of yet (`Memory::heard_at`): a memory from before it
+/// was kept learns when each device it read last wrote.
+fn fill_heard_at(folder: &Path, key: &[u8; 32], computer: &str, memory: &mut Memory) {
+    for (other, their_rounds) in rounds_with(folder) {
+        if other == computer || memory.heard_at.contains_key(&other) {
+            continue;
+        }
+        let Some(&round) = their_rounds.last() else { continue };
+        if let Some(clock) = last_record_clock(folder, key, &other, round) {
+            memory.heard_at.insert(other, (clock >> 16) as i64);
+        }
+    }
+}
+
+/// The clock of the last record of a round that opens with the key, read from its end.
+fn last_record_clock(folder: &Path, key: &[u8; 32], computer: &str, round: u32) -> Option<u64> {
+    use std::io::{Read, Seek};
+    let mut file = open_round(folder, computer, round).ok()?;
+    let size = file.metadata().ok()?.len();
+    let from = size.saturating_sub(256 * 1024);
+    let mut tail = Vec::new();
+    file.seek(std::io::SeekFrom::Start(from)).ok()?;
+    file.read_to_end(&mut tail).ok()?;
+    tail.split(|b| *b == b'\n').rev().find_map(|line| {
+        let record = std::str::from_utf8(line).ok().and_then(|t| serde_json::from_str::<Line>(t).ok())?;
+        open(key, &bound(computer, round, record.n, record.c), &record.s).map(|_| record.c)
+    })
+}
+
 /// When another device was last heard of, from sealed facts only: its entry's
 /// times (sealed, bound to it) and the clock of its last record read here
 /// (`Memory::heard_at`), in milliseconds; 0 when nothing is known. Never its
 /// notes in the folder, which are plain and could be forged.
 fn last_heard(entry: Option<&crate::devices::Entry>, memory: &Memory, id: &str) -> i64 {
-    let entry = entry.map_or(0, |e| e.started.max(e.imported).max(e.closed).max(e.exported) * 1000);
+    let entry = entry.map_or(0, |e| entry_stamp(e) * 1000);
     entry.max(memory.heard_at.get(id).copied().unwrap_or(0))
 }
 
 /// The other devices of the sharing that count, and what each says of
-/// itself: every device known here (by its records, its notes or its entry)
-/// but those that left (their sealed entry says so), those you forgot until
-/// they say anything newer (`forget_device`), and those not heard of, from
-/// sealed facts, for `SILENT_DAYS`. A device of which nothing sealed is known
-/// counts.
+/// itself (its latest sealed entry seen here, `Memory::seen`, a replayed
+/// older copy never lowering it): every device known here by a sealed fact
+/// (its readable entry, its records in the folder, or its records read here
+/// before, `read_n`, `heard_at`, whatever the folder shows now: a hostile
+/// folder hiding a device's files never makes it go), but those that left
+/// (their entry says so), those you forgot until they say anything newer
+/// (`forget_device`), and those not heard of for `SILENT_DAYS`. A file alone
+/// (plain notes, an entry that does not read) with no record is a stray file,
+/// not a device.
 fn present(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_ms: i64) -> Vec<(String, Option<crate::devices::Entry>, bool)> {
     let (entries, unread) = crate::devices::all(folder, key);
+    let recorded: BTreeSet<String> = rounds_with(folder).into_keys().chain(memory.read_n.keys().cloned()).chain(memory.heard_at.keys().cloned()).collect();
     let mut ids = computers(folder);
     ids.extend(entries.iter().map(|e| e.id.clone()));
     ids.extend(unread.iter().cloned());
+    ids.extend(recorded.iter().cloned());
     ids.into_iter()
         .filter(|id| id != computer)
         .filter_map(|id| {
-            let entry = entries.iter().find(|e| e.id == id).cloned();
+            let here = entries.iter().find(|e| e.id == id).cloned();
+            let entry = match (here, memory.seen.get(&id)) {
+                (Some(here), Some(seen)) if entry_stamp(seen) > entry_stamp(&here) => Some(seen.clone()),
+                (None, Some(seen)) => Some(seen.clone()),
+                (here, _) => here,
+            };
+            if entry.is_none() && !recorded.contains(&id) {
+                return None;
+            }
             if entry.as_ref().is_some_and(|e| e.left) {
                 return None;
             }
@@ -2247,7 +2322,7 @@ fn present(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_m
             if last > 0 && now_ms - last > SILENT_DAYS * DAY {
                 return None;
             }
-            let unread = unread.contains(&id);
+            let unread = unread.contains(&id) && entries.iter().all(|e| e.id != id);
             Some((id, entry, unread))
         })
         .collect()
@@ -2258,15 +2333,16 @@ fn present(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_m
 /// format 2 (`devices::Entry::format`), and all it wrote up to that entry
 /// (`wrote`) must be read here (`read_n`). A device whose entry does not read
 /// here, or known by its records alone, holds it back: an older Sioul cannot
-/// read format 2 and would double what it changes. A hostile folder can
-/// only hold it back longer, never open it.
+/// read format 2 and would double what it changes (an entry that no longer
+/// reads is said as such, even when an older one was seen here). A hostile
+/// folder can only hold it back longer, never open it.
 fn format_holders(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_ms: i64) -> Vec<(String, Holds)> {
     let heard = Heard { read: memory.read_n.clone(), broken: BTreeMap::new() };
     present(folder, key, computer, memory, now_ms)
         .into_iter()
         .filter_map(|(id, entry, unread)| match entry {
-            None if unread => Some((id, Holds::Unread)),
             Some(entry) if entry.format >= 2 => entry.wrote.is_some_and(|wrote| !heard.complete(&id, wrote)).then_some((id, Holds::Unheard)),
+            _ if unread => Some((id, Holds::Unread)),
             _ => Some((id, Holds::Older)),
         })
         .collect()
@@ -2317,13 +2393,34 @@ pub struct Formats {
     /// The devices that count (`present`) whose entry says they read an
     /// older format than this one's: said once this device writes format 2.
     pub older: Vec<String>,
+    /// When each device of `holders` and `older` was last heard of, from
+    /// sealed facts (`last_heard`), in milliseconds; 0 when nothing says it.
+    /// Settings lists each, with "Forget this device" for one not counted
+    /// otherwise.
+    pub heard: BTreeMap<String, i64>,
 }
 
 pub fn formats(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, now_ms: i64) -> Formats {
     let state = Memory::load(memory, computer);
     let holders = if state.format < 2 && state.joined { format_holders(folder, key, computer, &state, now_ms) } else { Vec::new() };
-    let older = if state.format >= 2 { present(folder, key, computer, &state, now_ms).into_iter().filter(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.format < FORMAT)).map(|(id, _, _)| id).collect() } else { Vec::new() };
-    Formats { writes: state.format.max(1), newer: state.newer.into_iter().map(|(part, newer)| (part, newer.format, newer.build)).collect(), holders, older }
+    let counting = present(folder, key, computer, &state, now_ms);
+    let older = if state.format >= 2 { counting.iter().filter(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.format < FORMAT)).map(|(id, _, _)| id.clone()).collect() } else { Vec::new() };
+    let heard = counting.iter().filter(|(id, _, _)| holders.iter().any(|(holder, _)| holder == id) || older.contains(id)).map(|(id, entry, _)| (id.clone(), last_heard(entry.as_ref(), &state, id))).collect();
+    Formats { writes: state.format.max(1), newer: state.newer.into_iter().map(|(part, newer)| (part, newer.format, newer.build)).collect(), holders, older, heard }
+}
+
+/// Whether this device holds a part met in a newer format than its Sioul
+/// reads (`Memory::newer`), as its memory says on the disk: the same in every
+/// process, after a restart too. For the doses: this device's entry then says
+/// its doses are not known, and it never closes as if they were (docs/health.md).
+pub fn holds(memory: &Path, part: &str) -> bool {
+    // Only the parts held are kept from the reading: the rest of the memory is passed over, never built.
+    #[derive(Deserialize)]
+    struct Held {
+        #[serde(default)]
+        newer: BTreeMap<String, serde::de::IgnoredAny>,
+    }
+    std::fs::read_to_string(memory).ok().and_then(|t| serde_json::from_str::<Held>(&t).ok()).is_some_and(|held| held.newer.contains_key(part))
 }
 
 /// The format this device writes (`FORMAT`): 1 until every device reads format 2 (`format_open`), then 2.
@@ -2337,20 +2434,17 @@ fn format_of(memory: &Path) -> u32 {
 }
 
 /// Parts held for writers that no longer count (`present`: gone, forgotten,
-/// silent 180 days: a test build tried once, a device put back to an older
-/// Sioul): no longer held. Their changes in that newer format, kept waiting,
+/// silent 180 days: a test build tried once): no longer held. Their changes in that newer format, kept waiting,
 /// are dropped; read again later, they are passed over (`Memory::released`).
 fn release_newer(sharing: &Sharing, memory: &mut Memory, now_ms: i64) {
     if memory.newer.is_empty() {
         return;
     }
-    let counting: BTreeMap<String, Option<crate::devices::Entry>> = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms).into_iter().map(|(id, entry, _)| (id, entry)).collect();
-    let gone: Vec<String> = memory
-        .newer
-        .iter()
-        .filter(|(_, newer)| newer.writers.iter().all(|w| counting.get(w).is_none_or(|entry| entry.as_ref().is_some_and(|e| e.format <= FORMAT && e.format >= 1))))
-        .map(|(part, _)| part.clone())
-        .collect();
+    // Only writers that no longer count, by sealed facts (`present`): never
+    // an entry's format, which a record ahead of its new entry, or an older
+    // copy put back, could say.
+    let counting: BTreeSet<String> = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms).into_iter().map(|(id, _, _)| id).collect();
+    let gone: Vec<String> = memory.newer.iter().filter(|(_, newer)| newer.writers.iter().all(|w| !counting.contains(w))).map(|(part, _)| part.clone()).collect();
     for part in gone {
         memory.newer.remove(&part);
         let dropped: Vec<String> = memory.waiting.iter().filter(|(key, (_, _, _, f))| known_part(file_of(key)) == Some(part.as_str()) && *f > part_format(&part)).map(|(key, _)| key.clone()).collect();
@@ -2488,21 +2582,25 @@ fn without_id(text: &str) -> String {
 /// below what format 1 already said under that entry here (`Floor`). An
 /// element's change takes the name format 2 gives it: its own id; for a
 /// session (named by its start, task and project) without one, the id of
-/// the session of that name here (an older Sioul writes a month back
-/// without the ids it does not know: the id is kept, and put back in it),
-/// else the id derived from that name; for a money line, its id, else the
-/// id derived from it. A line's removal named by a version this device does
-/// not hold any more (an older Sioul taking out a copy changed since) is
-/// passed over. Several entries for one element (an older Sioul changes a
-/// line by adding its new version and taking the old one out) make one
-/// change: the latest version held, at the latest clock; none held, taken
-/// out. A list sent whole sets what it holds and takes out, of what the
-/// previous whole list held, what it no longer holds, at its clock: never an
-/// element added since in format 2. Returns the changes, and the names that
-/// differ from what a device holding none of them would give (a session
-/// whose id was kept here): sent again from here in format 2, so that every
+/// the session of that name here (a device on format 1 writes a session
+/// without the id the switch gave it here: the id is kept), else the id
+/// derived from that name; for a money line, its id, else the id derived
+/// from it. A value without its id takes the id it goes under, written into
+/// it: what the switch wrote stays. From an older Sioul (`modern`: the
+/// writers whose sealed entry says they read format 2; the others), a line's
+/// removal named by a version this device does not hold any more (a copy
+/// changed since) is passed over; from a device that reads format 2 and
+/// still writes format 1 for a few minutes, the later word wins. Several
+/// entries for one element (an older Sioul changes a line by adding its new
+/// version and taking the old one out) make one change: the latest version
+/// held, at the latest clock; none held, taken out. A list sent whole sets
+/// what it holds and takes out, of what the previous whole list held, what
+/// it no longer holds, at its clock: never an element added since in format
+/// 2. Returns the changes, and the names that differ from what a device
+/// holding none of them would give (a session whose own id was kept here,
+/// its value carrying none): sent again from here in format 2, so that every
 /// device, one joining later too, holds it under one name.
-fn translate(stores: &[Store], older: &BTreeMap<String, (Option<String>, u64, String)>, memory: &mut Memory, winners: &BTreeMap<String, (Option<String>, u64, String)>) -> (Vec<(String, Option<String>, u64, String)>, Vec<(String, String)>) {
+fn translate(stores: &[Store], older: &BTreeMap<String, (Option<String>, u64, String)>, memory: &mut Memory, winners: &BTreeMap<String, (Option<String>, u64, String)>, modern: &BTreeSet<String>) -> (Vec<(String, Option<String>, u64, String)>, Vec<(String, String)>) {
     let mut versions: BTreeMap<String, Vec<(Option<String>, u64, String)>> = BTreeMap::new();
     let mut out = Vec::new();
     let mut again = Vec::new();
@@ -2539,24 +2637,32 @@ fn translate(stores: &[Store], older: &BTreeMap<String, (Option<String>, u64, St
                 let derived_here = elements.iter().any(|(_, after, _)| element_name(after) == fallback);
                 let mine = (!keyed.by.is_empty() && !derived_here).then(|| elements.iter().find(|(before, _, _)| before == entry)).flatten();
                 let mut value = value.clone();
+                // The id kept from the session of that name here (an older Sioul wrote it back without).
+                let mut kept = false;
                 let name = match (&given, given.as_ref().and_then(own_id), mine) {
                     (Some(_), Some(id), _) => id.to_string(),
-                    (Some(element), None, Some((_, after, text))) => {
-                        // Its id kept, and put back in it.
-                        if let Some(id) = leaf_value(text).ok().as_ref().and_then(own_id).map(str::to_string) {
-                            let mut element = element.clone();
-                            if let toml::Value::Table(table) = &mut element {
-                                table.insert("id".into(), toml::Value::String(id));
-                            }
-                            value = Some(leaf_text(&element));
-                        }
+                    (Some(_), None, Some((_, after, text))) => {
+                        kept = leaf_value(text).ok().as_ref().and_then(own_id).is_some();
                         element_name(after).to_string()
                     }
                     (None, _, Some((_, after, _))) => element_name(after).to_string(),
                     _ => fallback.clone(),
                 };
-                // A line taken out as a version this device no longer holds under that name: passed over.
-                if given.is_none() && keyed.by.is_empty() {
+                // An element's value without its id (format 1 named it otherwise) takes the id it
+                // goes under, as the switch wrote it into the element: never written back without.
+                if let Some(element) = given.as_ref().filter(|e| own_id(e).is_none() && e.is_table()) {
+                    let mut element = element.clone();
+                    if let toml::Value::Table(table) = &mut element {
+                        table.insert("id".into(), toml::Value::String(name.clone()));
+                    }
+                    value = Some(leaf_text(&element));
+                }
+                // A line taken out as a version this device no longer holds under
+                // that name, by an older Sioul (its sealed entry says no newer
+                // format): passed over. From a device that reads format 2 (it
+                // still writes format 1 for a few minutes), the later word wins,
+                // as it will when that device takes format 2.
+                if given.is_none() && keyed.by.is_empty() && !modern.contains(w) {
                     let key2 = format!("{file}#{list}{SEP}{MARK}{name}");
                     let current = winners.get(&key2).map(|(v, _, _)| v.clone()).unwrap_or_else(|| elements.iter().find(|(_, after, _)| *after == format!("{list}{SEP}{MARK}{name}")).map(|(_, _, text)| text.clone()));
                     if current.is_some_and(|text| without_id(&text) != without_id(ident)) {
@@ -2565,7 +2671,7 @@ fn translate(stores: &[Store], older: &BTreeMap<String, (Option<String>, u64, St
                     }
                 }
                 memory.floors.insert(floor, Floor { c: *c, w: w.clone(), held: None });
-                if name != fallback {
+                if kept && name != fallback {
                     again.push((format!("{file}#{list}{SEP}{MARK}{name}"), format!("{file}#{list}{SEP}{MARK}{fallback}")));
                 }
                 versions.entry(format!("{file}#{list}{SEP}{MARK}{name}")).or_default().push((value, *c, w.clone()));
@@ -2694,9 +2800,14 @@ fn switch_format(sharing: &Sharing, memory: &mut Memory, stores: &[Store], now_m
 }
 
 /// What changed in the files format 2 divides otherwise since the last look,
-/// sent in format 1 (this device still writes it), as an exchange sends it.
+/// sent in format 1 (this device still writes it), as an exchange sends it;
+/// not for a store joining in this exchange, nor a part held under a newer format.
 fn flush(sharing: &Sharing, memory: &mut Memory, stores: &[Store], now_ms: i64) -> Result<(), String> {
-    let subset: Vec<Store> = stores.iter().filter(|s| matches!(s.shape, Shape::Toml(rules) if rules.next.is_some())).cloned().collect();
+    // Not a store joining in this exchange (switched on, or moved: it joins as
+    // a new device would, its file rebuilt from the records first), nor a part
+    // held under a newer format (nothing of it goes out from here).
+    let joining = |store: &Store| !memory.places.is_empty() && memory.places.get(&store.name) != Some(&place_of(store));
+    let subset: Vec<Store> = stores.iter().filter(|s| matches!(s.shape, Shape::Toml(rules) if rules.next.is_some()) && !joining(s) && !memory.newer.contains_key(s.part)).cloned().collect();
     let confirmed = BTreeSet::new();
     let found = gather(&subset, &memory.files, &Look { reads: &|_| true, hurry: &|| false, confirmed: &confirmed, clock: clock_ms() });
     let mut out: Vec<(String, Option<String>, u64, String)> = Vec::new();
@@ -2839,13 +2950,18 @@ fn give_ids(store: &Store, file: &str, path: &Path, memory: &Memory, history: &P
             }
             before.push((path.to_vec(), entries, stands));
         });
-        // Splits and lines that named a preset by its place name it by its id.
+        // Splits, lines and mail rules that named a preset by its place name it
+        // by its id. Format 1 carried one preset without an id only, so places
+        // may name different presets on each device: each element so changed
+        // goes out again (not exact), and one version wins everywhere.
+        let mut repointed: BTreeSet<(String, usize)> = BTreeSet::new();
         if !presets.is_empty() {
-            for list in ["split", "line"] {
+            for list in ["split", "line", "mail_rule"] {
                 if let Some(tables) = doc.get_mut(list).and_then(toml_edit::Item::as_array_of_tables_mut) {
-                    for table in tables.iter_mut() {
+                    for (at, table) in tables.iter_mut().enumerate() {
                         if let Some(id) = table.get("preset").and_then(toml_edit::Item::as_str).and_then(|place| presets.get(place)).cloned() {
                             table.insert("preset", toml_edit::value(id));
+                            repointed.insert((list.to_string(), at));
                         }
                     }
                 }
@@ -2864,7 +2980,8 @@ fn give_ids(store: &Store, file: &str, path: &Path, memory: &Memory, history: &P
             let Some(elements) = array_at(&now, &list_path) else { continue };
             let (_, after) = list_names(elements, &list_path, rules, keyed);
             let list = list_name(keyed, &list_path);
-            for (((entry, (stands, exact)), name), element) in entries.into_iter().zip(stands).zip(names(&after, keyed)).zip(&after) {
+            for (at, (((entry, (stands, exact)), name), element)) in entries.into_iter().zip(stands).zip(names(&after, keyed)).zip(&after).enumerate() {
+                let exact = exact && !(list_path.len() == 1 && repointed.contains(&(list_path[0].clone(), at)));
                 placed.push(Placed { before: entry, after: format!("{list}{SEP}{MARK}{name}"), text: leaf_text(element), stands, exact });
             }
         }
@@ -3096,6 +3213,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // Parts met in a newer format that this Sioul now reads (it was updated),
     // or whose writers no longer count: no longer held (`release_newer`).
     memory.newer.retain(|part, newer| newer.format > part_format(part));
+    // What is known of the others, from sealed facts (`present`).
+    note_entries(sharing.folder, sharing.key, &mut memory);
+    fill_heard_at(sharing.folder, sharing.key, sharing.computer, &mut memory);
     release_newer(sharing, &mut memory, now_ms);
     if memory.format < 2 && (memory.switch || format_open(sharing, &memory, now_ms)) {
         switch_format(sharing, &mut memory, stores, now_ms, &mut outcome.problems)?;
@@ -3504,7 +3624,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // An older format's changes, in format 2's names (`translate`), then as any other.
     let mut again: Vec<(String, String)> = Vec::new();
     if !older_format.is_empty() {
-        let (translated, named_here) = translate(originals, &older_format, &mut memory, &winners);
+        // The writers whose sealed entry says they read format 2 (`translate`).
+        let modern: BTreeSet<String> = memory.seen.values().filter(|e| e.format >= 2).map(|e| e.id.clone()).collect();
+        let (translated, named_here) = translate(originals, &older_format, &mut memory, &winners, &modern);
         again = named_here;
         for (key, value, c, w) in translated {
             if newer(c, &w, memory.entries.get(&key).map(|k| (k.c, k.w.as_str()))) && newer(c, &w, winners.get(&key).map(|(_, c, w)| (*c, w.as_str()))) {
@@ -7695,6 +7817,10 @@ mod format_tests;
 #[cfg(test)]
 #[path = "share_switch_tests.rs"]
 mod switch_tests;
+
+#[cfg(test)]
+#[path = "share_switch_more_tests.rs"]
+mod switch_more_tests;
 
 #[cfg(test)]
 mod probe {

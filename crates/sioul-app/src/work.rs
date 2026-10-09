@@ -346,26 +346,27 @@ pub(crate) fn save_routine(id: &str, title: &str, text: &str, auto: bool) -> Str
     if steps.is_empty() {
         return tr().text("routine-no-steps", None);
     }
-    let mut routines = load_config().routines;
-    let id = if id.is_empty() {
-        let taken: Vec<String> = routines.iter().map(|r| r.id.clone()).chain(std::iter::once("admin".to_string())).collect();
-        sioul_core::projects::new_id(title, &taken)
-    } else {
-        id.to_string()
-    };
-    let routine = sioul_core::routines::Routine { id: id.clone(), title: title.to_string(), auto, steps };
-    match routines.iter_mut().find(|r| r.id == id) {
-        Some(place) => *place = routine,
-        None => routines.push(routine),
-    }
-    sioul_core::routines::save(&crate::backend::config_path(), &routines).err().unwrap_or_default()
+    // Read, changed and written under the configuration's lock, which the sharing takes too.
+    sioul_core::routines::change(&crate::backend::config_path(), |routines| {
+        let id = if id.is_empty() {
+            let taken: Vec<String> = routines.iter().map(|r| r.id.clone()).chain(std::iter::once("admin".to_string())).collect();
+            sioul_core::projects::new_id(title, &taken)
+        } else {
+            id.to_string()
+        };
+        let routine = sioul_core::routines::Routine { id: id.clone(), title: title.to_string(), auto, steps };
+        match routines.iter_mut().find(|r| r.id == id) {
+            Some(place) => *place = routine,
+            None => routines.push(routine),
+        }
+    })
+    .err()
+    .unwrap_or_default()
 }
 
 /// A routine taken out; returns what went wrong, else "".
 pub(crate) fn remove_routine(id: &str) -> String {
-    let mut routines = load_config().routines;
-    routines.retain(|r| r.id != id);
-    sioul_core::routines::save(&crate::backend::config_path(), &routines).err().unwrap_or_default()
+    sioul_core::routines::change(&crate::backend::config_path(), |routines| routines.retain(|r| r.id != id)).err().unwrap_or_default()
 }
 
 /// The lists a task can go into.

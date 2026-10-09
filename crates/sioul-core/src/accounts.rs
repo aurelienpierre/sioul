@@ -401,83 +401,95 @@ pub struct BankAccountEdit {
 
 /// Makes a bank account (`id` empty) or changes one; returns its id.
 pub fn save_bank_account(path: &std::path::Path, id: &str, edit: &BankAccountEdit) -> Result<String, String> {
-    let title = edit.title.trim();
-    if title.is_empty() {
-        return Err(format!("{}: a bank account needs a name", path.display()));
-    }
-    let mut doc = open(path)?;
-    let accounts = tables(&mut doc, "bank_account")?;
-    let taken: Vec<String> = accounts.iter().filter_map(|t| t.get("id").and_then(Item::as_str).map(str::to_string)).collect();
-    let id = if id.is_empty() { crate::projects::new_id(title, &taken) } else { id.to_string() };
-    if !taken.contains(&id) {
-        let mut table = Table::new();
-        table["id"] = value(id.as_str());
-        accounts.push(table);
-    }
-    let table = accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id.as_str())).ok_or_else(|| format!("no bank account {id}"))?;
-    table["title"] = value(title);
-    match edit.kind.as_str() {
-        "paypal" | "stripe" | "other" => table["kind"] = value(edit.kind.as_str()),
-        _ => {
-            table.remove("kind");
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let title = edit.title.trim();
+        if title.is_empty() {
+            return Err(format!("{}: a bank account needs a name", path.display()));
         }
-    }
-    table["fills"] = value(words_array(&edit.fills));
-    if edit.floor > 0.0 {
-        table["floor"] = money_value(edit.floor);
-    } else {
-        table.remove("floor");
-    }
-    table["topped_up_by"] = value(words_array(&edit.topped_up_by));
-    write(path, &doc)?;
-    Ok(id)
+        let mut doc = open(path)?;
+        let accounts = tables(&mut doc, "bank_account")?;
+        let taken: Vec<String> = accounts.iter().filter_map(|t| t.get("id").and_then(Item::as_str).map(str::to_string)).collect();
+        let id = if id.is_empty() { crate::projects::new_id(title, &taken) } else { id.to_string() };
+        if !taken.contains(&id) {
+            let mut table = Table::new();
+            table["id"] = value(id.as_str());
+            accounts.push(table);
+        }
+        let table = accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id.as_str())).ok_or_else(|| format!("no bank account {id}"))?;
+        table["title"] = value(title);
+        match edit.kind.as_str() {
+            "paypal" | "stripe" | "other" => table["kind"] = value(edit.kind.as_str()),
+            _ => {
+                table.remove("kind");
+            }
+        }
+        table["fills"] = value(words_array(&edit.fills));
+        if edit.floor > 0.0 {
+            table["floor"] = money_value(edit.floor);
+        } else {
+            table.remove("floor");
+        }
+        table["topped_up_by"] = value(words_array(&edit.topped_up_by));
+        write(path, &doc)?;
+        Ok(id)
+    })
 }
 
 /// Takes a bank account out; its movements stay in `sioul-bank.toml`, its rules and choices here.
 pub fn remove_bank_account(path: &std::path::Path, id: &str) -> Result<(), String> {
-    let mut doc = open(path)?;
-    let accounts = tables(&mut doc, "bank_account")?;
-    let before = accounts.len();
-    accounts.retain(|t| t.get("id").and_then(Item::as_str) != Some(id));
-    if accounts.len() == before {
-        return Err(format!("no bank account {id}"));
-    }
-    write(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = open(path)?;
+        let accounts = tables(&mut doc, "bank_account")?;
+        let before = accounts.len();
+        accounts.retain(|t| t.get("id").and_then(Item::as_str) != Some(id));
+        if accounts.len() == before {
+            return Err(format!("no bank account {id}"));
+        }
+        write(path, &doc)
+    })
 }
 
 /// Another name the exports give a bank account (an account number), kept so
 /// that its movements read under it are its own.
 pub fn add_export_name(path: &std::path::Path, id: &str, name: &str) -> Result<(), String> {
-    let mut doc = open(path)?;
-    let accounts = tables(&mut doc, "bank_account")?;
-    let table = accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)).ok_or_else(|| format!("no bank account {id}"))?;
-    let mut names: Vec<String> = table.get("exports").and_then(Item::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
-    if names.iter().any(|n| n == name) || name == id {
-        return Ok(());
-    }
-    names.push(name.to_string());
-    table["exports"] = value(words_array(&names));
-    write(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = open(path)?;
+        let accounts = tables(&mut doc, "bank_account")?;
+        let table = accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)).ok_or_else(|| format!("no bank account {id}"))?;
+        let mut names: Vec<String> = table.get("exports").and_then(Item::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+        if names.iter().any(|n| n == name) || name == id {
+            return Ok(());
+        }
+        names.push(name.to_string());
+        table["exports"] = value(words_array(&names));
+        write(path, &doc)
+    })
 }
 
 /// Where one movement goes, by your hand: `budget:<id>`, `none` (in no budget),
 /// or `""` (as the rules say again).
 pub fn set_assignment(path: &std::path::Path, account: &str, movement: &str, choice: &str) -> Result<(), String> {
-    let mut doc = open(path)?;
-    let all = tables(&mut doc, "assign")?;
-    all.retain(|t| !(t.get("account").and_then(Item::as_str) == Some(account) && t.get("movement").and_then(Item::as_str) == Some(movement)));
-    if !choice.is_empty() {
-        let mut table = Table::new();
-        table["account"] = value(account);
-        table["movement"] = value(movement);
-        match choice.strip_prefix("budget:") {
-            Some(budget) => table["budget"] = value(budget),
-            None if choice == "none" => table["none"] = value(true),
-            None => return Err(format!("{choice}: a budget or none")),
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = open(path)?;
+        let all = tables(&mut doc, "assign")?;
+        all.retain(|t| !(t.get("account").and_then(Item::as_str) == Some(account) && t.get("movement").and_then(Item::as_str) == Some(movement)));
+        if !choice.is_empty() {
+            let mut table = Table::new();
+            table["account"] = value(account);
+            table["movement"] = value(movement);
+            match choice.strip_prefix("budget:") {
+                Some(budget) => table["budget"] = value(budget),
+                None if choice == "none" => table["none"] = value(true),
+                None => return Err(format!("{choice}: a budget or none")),
+            }
+            all.push(table);
         }
-        all.push(table);
-    }
-    write(path, &doc)
+        write(path, &doc)
+    })
 }
 
 /// A rule as the window gives it: words, which way, and where to: `budget:<id>`,
@@ -496,47 +508,53 @@ pub struct SplitEdit {
 
 /// Makes a rule (`place` None, at the end) or changes the one at `place` among the rules.
 pub fn save_split(path: &std::path::Path, place: Option<usize>, edit: &SplitEdit) -> Result<(), String> {
-    let words: Vec<String> = edit.words.iter().map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect();
-    // Without words, a rule takes every movement one way: it needs that way.
-    if words.is_empty() && !matches!(edit.direction.as_str(), "credit" | "debit") {
-        return Err(format!("{}: a rule needs a word, or a way (in or out)", path.display()));
-    }
-    let mut table = Table::new();
-    if !edit.account.is_empty() {
-        table["account"] = value(edit.account.as_str());
-    }
-    table["words"] = value(words_array(&words));
-    if matches!(edit.direction.as_str(), "credit" | "debit") {
-        table["direction"] = value(edit.direction.as_str());
-    }
-    let (key, target) = edit.to.split_once(':').ok_or_else(|| format!("{}: where to?", edit.to))?;
-    match key {
-        "budget" | "reserve" | "transfer" | "preset" => table[key] = value(target),
-        _ => return Err(format!("{}: where to?", edit.to)),
-    }
-    let mut doc = open(path)?;
-    let all = tables(&mut doc, "split")?;
-    // Its id (`ids`), by which your devices merge it: kept when the rule is
-    // changed, given when it is made (or changed, made by an older Sioul).
-    let id = place.and_then(|at| all.get(at)).and_then(|old| old.get("id").and_then(toml_edit::Item::as_str).map(str::to_string)).unwrap_or_else(crate::ids::new);
-    let mut table = table;
-    table.insert("id", value(id));
-    match place {
-        Some(at) if at < all.len() => *all.get_mut(at).ok_or("no such rule")? = table,
-        Some(_) => return Err("no such rule".into()),
-        None => all.push(table),
-    }
-    write(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let words: Vec<String> = edit.words.iter().map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect();
+        // Without words, a rule takes every movement one way: it needs that way.
+        if words.is_empty() && !matches!(edit.direction.as_str(), "credit" | "debit") {
+            return Err(format!("{}: a rule needs a word, or a way (in or out)", path.display()));
+        }
+        let mut table = Table::new();
+        if !edit.account.is_empty() {
+            table["account"] = value(edit.account.as_str());
+        }
+        table["words"] = value(words_array(&words));
+        if matches!(edit.direction.as_str(), "credit" | "debit") {
+            table["direction"] = value(edit.direction.as_str());
+        }
+        let (key, target) = edit.to.split_once(':').ok_or_else(|| format!("{}: where to?", edit.to))?;
+        match key {
+            "budget" | "reserve" | "transfer" | "preset" => table[key] = value(target),
+            _ => return Err(format!("{}: where to?", edit.to)),
+        }
+        let mut doc = open(path)?;
+        let all = tables(&mut doc, "split")?;
+        // Its id (`ids`), by which your devices merge it: kept when the rule is
+        // changed, given when it is made (or changed, made by an older Sioul).
+        let id = place.and_then(|at| all.get(at)).and_then(|old| old.get("id").and_then(toml_edit::Item::as_str).map(str::to_string)).unwrap_or_else(crate::ids::new);
+        let mut table = table;
+        table.insert("id", value(id));
+        match place {
+            Some(at) if at < all.len() => *all.get_mut(at).ok_or("no such rule")? = table,
+            Some(_) => return Err("no such rule".into()),
+            None => all.push(table),
+        }
+        write(path, &doc)
+    })
 }
 
 pub fn remove_split(path: &std::path::Path, place: usize) -> Result<(), String> {
-    let mut doc = open(path)?;
-    let all = tables(&mut doc, "split")?;
-    if place >= all.len() {
-        return Err("no such rule".into());
-    }
-    all.remove(place);
-    write(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = open(path)?;
+        let all = tables(&mut doc, "split")?;
+        if place >= all.len() {
+            return Err("no such rule".into());
+        }
+        all.remove(place);
+        write(path, &doc)
+    })
 }
 
 /// A reserve as the window gives it.
@@ -555,36 +573,39 @@ pub struct ReserveEdit {
 
 /// Makes a reserve (`id` empty) or changes one; returns its id.
 pub fn save_reserve(path: &std::path::Path, id: &str, edit: &ReserveEdit, today: Date) -> Result<String, String> {
-    let title = edit.title.trim();
-    if title.is_empty() {
-        return Err(format!("{}: a reserve needs a name", path.display()));
-    }
-    let as_of = if edit.as_of.trim().is_empty() { today } else { edit.as_of.trim().parse::<Date>().map_err(|e| format!("{}: {e}", edit.as_of))? };
-    let mut doc = open(path)?;
-    let reserves = tables(&mut doc, "reserve")?;
-    let taken: Vec<String> = reserves.iter().filter_map(|t| t.get("id").and_then(Item::as_str).map(str::to_string)).collect();
-    let id = if id.is_empty() { crate::projects::new_id(title, &taken) } else { id.to_string() };
-    if !taken.contains(&id) {
-        let mut table = Table::new();
-        table["id"] = value(id.as_str());
-        reserves.push(table);
-    }
-    let table = reserves.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id.as_str())).ok_or_else(|| format!("no reserve {id}"))?;
-    table["title"] = value(title);
-    table["balance"] = money_value(edit.balance);
-    table["as_of"] = date_value(as_of);
-    if edit.floor > 0.0 {
-        table["floor"] = money_value(edit.floor);
-    } else {
-        table.remove("floor");
-    }
-    if edit.delay_days > 0 {
-        table["delay_days"] = value(i64::from(edit.delay_days));
-    } else {
-        table.remove("delay_days");
-    }
-    write(path, &doc)?;
-    Ok(id)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let title = edit.title.trim();
+        if title.is_empty() {
+            return Err(format!("{}: a reserve needs a name", path.display()));
+        }
+        let as_of = if edit.as_of.trim().is_empty() { today } else { edit.as_of.trim().parse::<Date>().map_err(|e| format!("{}: {e}", edit.as_of))? };
+        let mut doc = open(path)?;
+        let reserves = tables(&mut doc, "reserve")?;
+        let taken: Vec<String> = reserves.iter().filter_map(|t| t.get("id").and_then(Item::as_str).map(str::to_string)).collect();
+        let id = if id.is_empty() { crate::projects::new_id(title, &taken) } else { id.to_string() };
+        if !taken.contains(&id) {
+            let mut table = Table::new();
+            table["id"] = value(id.as_str());
+            reserves.push(table);
+        }
+        let table = reserves.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id.as_str())).ok_or_else(|| format!("no reserve {id}"))?;
+        table["title"] = value(title);
+        table["balance"] = money_value(edit.balance);
+        table["as_of"] = date_value(as_of);
+        if edit.floor > 0.0 {
+            table["floor"] = money_value(edit.floor);
+        } else {
+            table.remove("floor");
+        }
+        if edit.delay_days > 0 {
+            table["delay_days"] = value(i64::from(edit.delay_days));
+        } else {
+            table.remove("delay_days");
+        }
+        write(path, &doc)?;
+        Ok(id)
+    })
 }
 
 #[cfg(test)]

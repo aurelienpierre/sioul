@@ -2034,11 +2034,43 @@ pub(crate) struct DeviceRow {
     build: String,
 }
 
-/// Your other devices, as this one knows them, for Settings: nothing red, no counts.
-pub(crate) fn device_rows() -> Vec<DeviceRow> {
+/// Your other devices, as this one knows them, for Settings: nothing red, no
+/// counts. `holders`: the devices that hold the newer form of what travels
+/// back, or run an older Sioul once it travels (`share::formats`), with when
+/// each was last heard (seconds, 0 when nothing says it) and whether it holds
+/// it back; each is listed (`holder_rows`).
+pub(crate) fn device_rows(holders: &[(String, i64, bool)]) -> Vec<DeviceRow> {
     let knowledge = know();
     let kept = load_peers();
-    device_rows_of(&knowledge.peers, &kept, Timestamp::now().as_second(), tr())
+    let mut rows = device_rows_of(&knowledge.peers, &kept, Timestamp::now().as_second(), tr());
+    holder_rows(&mut rows, holders, tr());
+    rows
+}
+
+/// Every device holding the newer form back has its line, so that the window
+/// says which (docs/database.md, "The format of what travels"): one the rows
+/// do not list (known to the sharing alone, by what it shared before, or
+/// forgotten here while the sharing heard it since) is added, with "Forget
+/// this device": it is not counted for your doses, so forgetting it makes no
+/// dose look known. One listed keeps its own line: forgotten only once silent
+/// for a week, as any device, since a device counted for your doses and
+/// forgotten could make a dose it took look not taken.
+fn holder_rows(rows: &mut Vec<DeviceRow>, holders: &[(String, i64, bool)], words: &Translator) {
+    let zone = jiff::tz::TimeZone::system();
+    let when = |at: i64| Timestamp::from_second(at).map(|t| when_said(&t.to_zoned(zone.clone()), words)).unwrap_or_default();
+    for (id, heard, holds) in holders {
+        if id.is_empty() || rows.iter().any(|row| row.id == *id) {
+            continue;
+        }
+        let state = match (holds, *heard > 0) {
+            (true, true) => said(words, "share-device-holds", &[("when", when(*heard))]),
+            (true, false) => words.text("share-device-holds-unknown", None),
+            (false, true) => said(words, "share-device-older", &[("when", when(*heard))]),
+            (false, false) => words.text("share-device-unread", None),
+        };
+        rows.push(DeviceRow { id: id.clone(), name: capitalized(&words.text("share-other-device", None)), state, notes: Vec::new(), off: false, forget: true, build: String::new() });
+    }
+    rows.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 }
 
 fn device_rows_of(peers: &[Peer], kept: &Peers, now: i64, words: &Translator) -> Vec<DeviceRow> {
@@ -3509,5 +3541,15 @@ mod tests {
         assert!(row("e-older").state.starts_with("An older Sioul: last heard "), "{:?}", row("e-older"));
         assert!(rows.iter().all(|r| !r.state.contains("not taken")));
         let _ = Said::default();
+        // The devices holding the newer form of what travels back: each has its
+        // line; one not listed is added, with Forget; one listed keeps its own.
+        let mut rows = rows;
+        holder_rows(&mut rows, &[("e-older".into(), now - 120, true), ("f-gone".into(), now - 90 * 86_400, true), ("g-unknown".into(), 0, true), ("h-after".into(), now - 3_600, false)], &english);
+        assert_eq!(rows.iter().filter(|r| r.id == "e-older").count(), 1);
+        let row = |id: &str| rows.iter().find(|r| r.id == id).unwrap();
+        assert!(!row("e-older").forget, "counted for the doses: forgotten once silent a week only");
+        assert!(row("f-gone").forget && row("f-gone").name == "Another device of yours" && row("f-gone").state.starts_with("Known here by what it shared, last "), "{:?}", row("f-gone"));
+        assert!(row("h-after").forget && row("h-after").state.starts_with("An older Sioul: last heard "), "{:?}", row("h-after"));
+        assert!(row("g-unknown").forget && row("g-unknown").state == "Known here by what it shared: until it is updated there, or forgotten here, your devices keep sharing in the form an older Sioul reads.", "{:?}", row("g-unknown"));
     }
 }
