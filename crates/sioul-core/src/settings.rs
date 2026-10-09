@@ -913,11 +913,16 @@ pub fn rebased<T: PartialEq + Clone>(shown: &[T], value: &[T], current: &[T]) ->
 
 /// `rebased`, for a list of structured elements (days off, hours, routes):
 /// an element the editor changed is its new version in place of the one the
-/// list holds now, found by its identity (`ids`: an id, or a key such as a
-/// day's first window), else at its place while that place still holds what
-/// the editor showed. So two devices changing one element keep one, the
-/// later change, never both versions side by side.
-pub fn rebased_by<T: PartialEq + Clone>(shown: &[T], value: &[T], current: &[T], ids: impl Fn(&[T]) -> Vec<Option<String>>) -> Vec<T> {
+/// list holds now. Found by its id (`ids`, `real`: a day off's), whatever it
+/// holds now: two devices changing it keep one, the later change. By a key
+/// (`ids`, not `real`: a day's window by its rank, which a window added
+/// elsewhere shifts) only while the element there is the one shown, else by
+/// what it held wherever it is now; not there, nothing is replaced and the
+/// other device's elements stay. Without an id (a route): at its place while
+/// it holds what was shown, else by what it held wherever it is, else at its
+/// place while the list holds as many as shown (the same element, changed
+/// elsewhere: the later change).
+pub fn rebased_by<T: PartialEq + Clone>(shown: &[T], value: &[T], current: &[T], ids: impl Fn(&[T]) -> Vec<Option<String>>, real: bool) -> Vec<T> {
     if shown == current {
         return value.to_vec();
     }
@@ -934,10 +939,12 @@ pub fn rebased_by<T: PartialEq + Clone>(shown: &[T], value: &[T], current: &[T],
             None => value.get(at_shown).filter(|v| shown.len() == value.len() && !shown.contains(v) && value_ids.get(at_shown).is_some_and(Option::is_none)),
         };
         let Some(edit) = edit else { continue };
-        // Where it is now: by its identity, else at its place while it holds what was shown.
+        // Where it is now.
+        let by_value = || current.iter().position(|c| c == old);
         let at = match &identity {
-            Some(key) => current_ids.iter().position(|k| k.as_ref() == Some(key)),
-            None => (current.get(at_shown) == Some(old)).then_some(at_shown).or_else(|| current.iter().position(|c| c == old)),
+            Some(key) if real => current_ids.iter().position(|k| k.as_ref() == Some(key)),
+            Some(key) => current_ids.iter().position(|k| k.as_ref() == Some(key)).filter(|at| current.get(*at) == Some(old)).or_else(by_value),
+            None => (current.get(at_shown) == Some(old)).then_some(at_shown).or_else(by_value).or_else(|| (current.len() == shown.len()).then_some(at_shown)),
         };
         if let Some(at) = at {
             current[at] = edit.clone();
@@ -1029,9 +1036,9 @@ pub fn rebase(shown: &SettingValue, value: &SettingValue, current: &SettingValue
     match (&shown, &value, current) {
         (V::Texts(s), V::Texts(v), V::Texts(c)) => V::Texts(rebased(s, v, c)),
         (V::Ints(s), V::Ints(v), V::Ints(c)) => V::Ints(rebased(s, v, c)),
-        (V::Windows(s), V::Windows(v), V::Windows(c)) => V::Windows(rebased_by(s, v, c, window_ids)),
-        (V::TimeOff(s), V::TimeOff(v), V::TimeOff(c)) => V::TimeOff(rebased_by(s, v, c, |days| days.iter().map(|d| Some(d.id.clone()).filter(|id| !id.is_empty())).collect())),
-        (V::Routes(s), V::Routes(v), V::Routes(c)) => V::Routes(rebased_by(s, v, c, |routes| vec![None; routes.len()])),
+        (V::Windows(s), V::Windows(v), V::Windows(c)) => V::Windows(rebased_by(s, v, c, window_ids, false)),
+        (V::TimeOff(s), V::TimeOff(v), V::TimeOff(c)) => V::TimeOff(rebased_by(s, v, c, |days| days.iter().map(|d| Some(d.id.clone()).filter(|id| !id.is_empty())).collect(), true)),
+        (V::Routes(s), V::Routes(v), V::Routes(c)) => V::Routes(rebased_by(s, v, c, |routes| vec![None; routes.len()], false)),
         _ => value,
     }
 }
@@ -1400,8 +1407,9 @@ mod tests {
 
     /// One element of a structured list changed on two devices at once keeps
     /// one version, the later change, never both: a day off by its id (end to
-    /// end, its table and id kept), a day's hours by their day, a route at its
-    /// place (fourth review, R4c).
+    /// end, its table and id kept), a route at its place (fourth review, R4c).
+    /// A day's window is named by its rank only while it is the one shown
+    /// (fifth review).
     #[test]
     fn an_element_changed_on_two_devices_stays_one() {
         use crate::config::{TimeOffValue, WindowValue};
@@ -1416,15 +1424,45 @@ mod tests {
         change(&path, "time_off", Some(&SettingValue::TimeOff(vec![day("a1", "Summer")])), &SettingValue::TimeOff(vec![day("a1", "Summer trip")])).unwrap();
         let off = Config::load(&path).unwrap().time_off;
         assert_eq!(off.iter().map(|t| (t.id.as_str(), t.label.as_str())).collect::<Vec<_>>(), [("a1", "Summer trip")]);
-        // A Monday's hours, changed here and elsewhere: this change, once.
+        // A Monday's hours: named by their rank, replaced only while the window
+        // there is the one shown; changed elsewhere too, the other device's stays
+        // beside this change (nothing of a day's hours is lost to a shifted rank).
         let window = |start: &str, end: &str| WindowValue { day: "mon".into(), start: start.into(), end: end.into(), minutes: 0 };
         let windows = |list: Vec<WindowValue>| SettingValue::Windows(list);
-        assert_eq!(rebase(&windows(vec![window("09:00", "17:00")]), &windows(vec![window("09:00", "18:00")]), &windows(vec![window("08:00", "17:00")])), windows(vec![window("09:00", "18:00")]));
+        assert_eq!(rebase(&windows(vec![window("09:00", "17:00")]), &windows(vec![window("09:00", "18:00")]), &windows(vec![window("09:00", "17:00"), window("19:00", "20:00")])), windows(vec![window("09:00", "18:00"), window("19:00", "20:00")]));
+        assert_eq!(rebase(&windows(vec![window("09:00", "17:00")]), &windows(vec![window("09:00", "18:00")]), &windows(vec![window("08:00", "17:00")])), windows(vec![window("09:00", "18:00"), window("08:00", "17:00")]));
         // A route changed at its place while another device added one before it: changed in place, the other kept.
         let route = |word: &str| crate::projects::RouteValue { subject_contains: vec![word.into()], ..Default::default() };
         let routes = |list: Vec<crate::projects::RouteValue>| SettingValue::Routes(list);
         assert_eq!(rebase(&routes(vec![route("a"), route("b")]), &routes(vec![route("a2"), route("b")]), &routes(vec![route("z"), route("a"), route("b")])), routes(vec![route("a2"), route("b"), route("z")]));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A day's window changed here while another device added one earlier
+    /// that day (its rank shifted): the window shown is the one changed, the
+    /// others stay (fifth review).
+    #[test]
+    fn a_window_changed_here_while_another_was_added_that_day() {
+        use crate::config::WindowValue;
+        let w = |start: &str, end: &str| WindowValue { day: "mon".into(), start: start.into(), end: end.into(), minutes: 0 };
+        let shown = SettingValue::Windows(vec![w("09:00", "12:00"), w("14:00", "17:00")]);
+        let value = SettingValue::Windows(vec![w("09:00", "12:00"), w("14:00", "18:00")]);
+        let current = SettingValue::Windows(vec![w("07:00", "08:00"), w("09:00", "12:00"), w("14:00", "17:00")]);
+        let SettingValue::Windows(mut got) = rebase(&shown, &value, &current) else { panic!() };
+        got.sort_by(|a, b| a.start.cmp(&b.start));
+        let got: Vec<(&str, &str)> = got.iter().map(|w| (w.start.as_str(), w.end.as_str())).collect();
+        assert_eq!(got, [("07:00", "08:00"), ("09:00", "12:00"), ("14:00", "18:00")]);
+    }
+
+    /// One route changed on two devices at once (routes have no id): one
+    /// route, the later change; the others stay (fifth review).
+    #[test]
+    fn one_route_changed_on_two_devices_stays_one() {
+        let route = |word: &str| crate::projects::RouteValue { subject_contains: vec![word.into()], ..Default::default() };
+        let routes = |list: Vec<crate::projects::RouteValue>| SettingValue::Routes(list);
+        assert_eq!(rebase(&routes(vec![route("a"), route("b")]), &routes(vec![route("a2"), route("b")]), &routes(vec![route("a3"), route("b")])), routes(vec![route("a2"), route("b")]));
+        // Moved by another device: found by what it held.
+        assert_eq!(rebase(&routes(vec![route("a"), route("b")]), &routes(vec![route("a2"), route("b")]), &routes(vec![route("b"), route("c"), route("a")])), routes(vec![route("a2"), route("b"), route("c")]));
     }
 
     #[test]

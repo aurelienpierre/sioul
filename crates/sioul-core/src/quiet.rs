@@ -169,9 +169,10 @@ impl Overrides {
     /// An act undone (closing the day, a pause ended): over these (the file
     /// as it is now, read: its `read` kept, so that saving writes what
     /// differs), each field the act changed (from `previous` to `after`) put
-    /// back as it was, the others as they are now; the lighter days with what
-    /// the act added taken out and what it took out put back, another
-    /// device's kept (`settings::rebased`).
+    /// back as it was while it still holds what the act set (one another
+    /// device changed since stays), the others as they are now; the lighter
+    /// days with what the act added taken out and what it took out put back,
+    /// another device's kept (`settings::rebased`).
     pub fn put_back(&self, previous: &Overrides, after: &Overrides) -> Overrides {
         let table = |o: &Overrides| match toml::Value::try_from(o) {
             Ok(toml::Value::Table(table)) => table,
@@ -193,6 +194,8 @@ impl Overrides {
                         out.insert(key.clone(), toml::Value::Array(back));
                     }
                 }
+                // Changed again since, by another device: left as it is now.
+                (_, done) if now.get(key) != done => {}
                 (Some(before), _) => {
                     out.insert(key.clone(), before.clone());
                 }
@@ -567,6 +570,9 @@ mod tests {
         let back = now.put_back(&previous, &after);
         assert_eq!((back.work_until, back.rest_until, back.paused_since), (Some(5), None, Some(7)));
         assert_eq!(back.lighter, [day("2026-10-12"), day("2026-10-14")]);
+        // A field the act set, changed again since by another device: left as it is now.
+        let now = Overrides { rest_until: Some(200), ..now };
+        assert_eq!(now.put_back(&previous, &after).rest_until, Some(200));
     }
     use super::*;
     use crate::needs::{Days, Needs};
