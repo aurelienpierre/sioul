@@ -474,40 +474,43 @@ impl Config {
 /// empty, `to` its name). Tasks keep the kind they have: taking a kind away
 /// only takes it off the choices.
 pub fn change_kind(path: &Path, config: &Config, from: &str, to: &str) -> Result<(), String> {
-    let mut kinds = config.tasks.kinds.clone().unwrap_or_else(default_kinds);
-    let to = to.trim();
-    if from.is_empty() {
-        if to.is_empty() {
-            return Ok(());
-        }
-        let taken: Vec<String> = kinds.iter().map(|k| k.id.clone()).collect();
-        kinds.push(TaskKind { id: crate::projects::new_id(to, &taken), label: to.to_string() });
-    } else if to.is_empty() {
-        kinds.retain(|k| k.id != from);
-    } else {
-        let kind = kinds.iter_mut().find(|k| k.id == from).ok_or_else(|| format!("{from}: no such kind"))?;
-        kind.label = to.to_string();
-    }
-    let mut doc = read_document(path)?;
-    if !doc.contains_key("tasks") {
-        doc["tasks"] = toml_edit::table();
-    }
-    let tasks = doc["tasks"].as_table_mut().ok_or_else(|| format!("{}: tasks is not a table", path.display()))?;
-    if kinds.is_empty() {
-        tasks["kind"] = toml_edit::value(toml_edit::Array::new());
-    } else {
-        let mut list = toml_edit::ArrayOfTables::new();
-        for kind in &kinds {
-            let mut table = toml_edit::Table::new();
-            table["id"] = toml_edit::value(kind.id.as_str());
-            if !kind.label.is_empty() {
-                table["label"] = toml_edit::value(kind.label.as_str());
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut kinds = config.tasks.kinds.clone().unwrap_or_else(default_kinds);
+        let to = to.trim();
+        if from.is_empty() {
+            if to.is_empty() {
+                return Ok(());
             }
-            list.push(table);
+            let taken: Vec<String> = kinds.iter().map(|k| k.id.clone()).collect();
+            kinds.push(TaskKind { id: crate::projects::new_id(to, &taken), label: to.to_string() });
+        } else if to.is_empty() {
+            kinds.retain(|k| k.id != from);
+        } else {
+            let kind = kinds.iter_mut().find(|k| k.id == from).ok_or_else(|| format!("{from}: no such kind"))?;
+            kind.label = to.to_string();
         }
-        tasks["kind"] = Item::ArrayOfTables(list);
-    }
-    write_document(path, &doc)
+        let mut doc = read_document(path)?;
+        if !doc.contains_key("tasks") {
+            doc["tasks"] = toml_edit::table();
+        }
+        let tasks = doc["tasks"].as_table_mut().ok_or_else(|| format!("{}: tasks is not a table", path.display()))?;
+        if kinds.is_empty() {
+            tasks["kind"] = toml_edit::value(toml_edit::Array::new());
+        } else {
+            let mut list = toml_edit::ArrayOfTables::new();
+            for kind in &kinds {
+                let mut table = toml_edit::Table::new();
+                table["id"] = toml_edit::value(kind.id.as_str());
+                if !kind.label.is_empty() {
+                    table["label"] = toml_edit::value(kind.label.as_str());
+                }
+                list.push(table);
+            }
+            tasks["kind"] = Item::ArrayOfTables(list);
+        }
+        write_document(path, &doc)
+    })
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
@@ -1234,24 +1237,27 @@ pub fn add_site(path: &Path, id: &str, name: &str, url: &str) -> Result<(), Stri
 /// `[[site]]`, in their order, each with the comments above it; their kind
 /// goes. Returns whether any moved.
 pub fn migrate_sites(path: &Path) -> Result<bool, String> {
-    let mut doc = read_document(path)?;
-    let Some(accounts) = doc.get_mut("account").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
-    let is_site = |t: &Table| t.get("kind").and_then(Item::as_str) == Some("portal");
-    let moving: Vec<Table> = accounts.iter().filter(|t| is_site(t)).cloned().collect();
-    if moving.is_empty() {
-        return Ok(false);
-    }
-    accounts.retain(|t| !is_site(t));
-    if accounts.is_empty() {
-        doc.remove("account");
-    }
-    let sites = doc.entry("site").or_insert(Item::ArrayOfTables(ArrayOfTables::new())).as_array_of_tables_mut().ok_or_else(|| format!("{}: `site` is not a list of tables", path.display()))?;
-    for mut table in moving {
-        table.remove("kind");
-        sites.push(table);
-    }
-    write_document(path, &doc)?;
-    Ok(true)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        let Some(accounts) = doc.get_mut("account").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
+        let is_site = |t: &Table| t.get("kind").and_then(Item::as_str) == Some("portal");
+        let moving: Vec<Table> = accounts.iter().filter(|t| is_site(t)).cloned().collect();
+        if moving.is_empty() {
+            return Ok(false);
+        }
+        accounts.retain(|t| !is_site(t));
+        if accounts.is_empty() {
+            doc.remove("account");
+        }
+        let sites = doc.entry("site").or_insert(Item::ArrayOfTables(ArrayOfTables::new())).as_array_of_tables_mut().ok_or_else(|| format!("{}: `site` is not a list of tables", path.display()))?;
+        for mut table in moving {
+            table.remove("kind");
+            sites.push(table);
+        }
+        write_document(path, &doc)?;
+        Ok(true)
+    })
 }
 
 /// The copy of `config.toml` kept before the sites moved: `config-before-sites.toml`, beside it.
@@ -1276,15 +1282,18 @@ pub fn migrate_sites_at_start(path: &Path) -> Result<bool, String> {
 }
 
 fn append_site(path: &Path, mut table: Table) -> Result<(), String> {
-    migrate_sites(path)?;
-    let mut doc = read_document(path)?;
-    let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_string();
-    table.decor_mut().set_prefix(if trailing.trim().is_empty() { "\n".to_string() } else { format!("{trailing}\n\n") });
-    doc.set_trailing("");
-    let sites = doc.entry("site").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
-    let sites = sites.as_array_of_tables_mut().ok_or_else(|| format!("{}: `site` is not a list of tables", path.display()))?;
-    sites.push(table);
-    write_document(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        migrate_sites(path)?;
+        let mut doc = read_document(path)?;
+        let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_string();
+        table.decor_mut().set_prefix(if trailing.trim().is_empty() { "\n".to_string() } else { format!("{trailing}\n\n") });
+        doc.set_trailing("");
+        let sites = doc.entry("site").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
+        let sites = sites.as_array_of_tables_mut().ok_or_else(|| format!("{}: `site` is not a list of tables", path.display()))?;
+        sites.push(table);
+        write_document(path, &doc)
+    })
 }
 
 /// Moves a site `delta` places in the list: the order the Sites page shows
@@ -1295,29 +1304,32 @@ fn append_site(path: &Path, mut table: Table) -> Result<(), String> {
 /// own order travels with it, as it always did, and `site_order`, if there,
 /// follows it.
 pub fn move_site(path: &Path, id: &str, delta: i64, order: bool) -> Result<(), String> {
-    migrate_sites(path)?;
-    let mut doc = read_document(path)?;
-    let chosen: Vec<String> = doc.get("site_order").and_then(Item::as_array).map(|list| list.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
-    let Some(sites) = doc.get_mut("site").and_then(Item::as_array_of_tables_mut) else { return Ok(()) };
-    let id_of = |table: &Table| table.get("id").and_then(Item::as_str).unwrap_or_default().to_string();
-    let mut tables: Vec<Table> = sites.iter().cloned().collect();
-    let slots: Vec<Option<isize>> = tables.iter().map(Table::position).collect();
-    tables.sort_by_key(|table| chosen.iter().position(|chosen| *chosen == id_of(table)).unwrap_or(usize::MAX));
-    let Some(from) = tables.iter().position(|t| id_of(t) == id) else { return Ok(()) };
-    let Some(to) = usize::try_from(from as i64 + delta).ok().filter(|to| *to < tables.len()) else { return Ok(()) };
-    tables.swap(from, to);
-    // Each table takes the slot of its new place; each keeps the comments above it.
-    let (with_order, order): (bool, Array) = (order, tables.iter().map(id_of).collect());
-    let mut moved = ArrayOfTables::new();
-    for (mut table, slot) in tables.into_iter().zip(slots) {
-        table.set_position(slot);
-        moved.push(table);
-    }
-    *sites = moved;
-    if with_order || doc.contains_key("site_order") {
-        doc["site_order"] = value(order);
-    }
-    write_document(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        migrate_sites(path)?;
+        let mut doc = read_document(path)?;
+        let chosen: Vec<String> = doc.get("site_order").and_then(Item::as_array).map(|list| list.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+        let Some(sites) = doc.get_mut("site").and_then(Item::as_array_of_tables_mut) else { return Ok(()) };
+        let id_of = |table: &Table| table.get("id").and_then(Item::as_str).unwrap_or_default().to_string();
+        let mut tables: Vec<Table> = sites.iter().cloned().collect();
+        let slots: Vec<Option<isize>> = tables.iter().map(Table::position).collect();
+        tables.sort_by_key(|table| chosen.iter().position(|chosen| *chosen == id_of(table)).unwrap_or(usize::MAX));
+        let Some(from) = tables.iter().position(|t| id_of(t) == id) else { return Ok(()) };
+        let Some(to) = usize::try_from(from as i64 + delta).ok().filter(|to| *to < tables.len()) else { return Ok(()) };
+        tables.swap(from, to);
+        // Each table takes the slot of its new place; each keeps the comments above it.
+        let (with_order, order): (bool, Array) = (order, tables.iter().map(id_of).collect());
+        let mut moved = ArrayOfTables::new();
+        for (mut table, slot) in tables.into_iter().zip(slots) {
+            table.set_position(slot);
+            moved.push(table);
+        }
+        *sites = moved;
+        if with_order || doc.contains_key("site_order") {
+            doc["site_order"] = value(order);
+        }
+        write_document(path, &doc)
+    })
 }
 
 /// Two tables trade places. Each read from the file keeps its place in it
@@ -1332,78 +1344,93 @@ fn swap_tables(tables: &mut [Table], from: usize, to: usize) {
 
 /// Takes a site out of the configuration; what its pages kept (sign-ins, cookies) stays in its profile.
 pub fn remove_site(path: &Path, id: &str) -> Result<(), String> {
-    migrate_sites(path)?;
-    let mut doc = read_document(path)?;
-    let Some(sites) = doc.get_mut("site").and_then(Item::as_array_of_tables_mut) else { return Ok(()) };
-    let before = sites.len();
-    sites.retain(|t| t.get("id").and_then(Item::as_str) != Some(id));
-    if sites.len() == before {
-        return Err(format!("{}: no site {id}", path.display()));
-    }
-    write_document(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        migrate_sites(path)?;
+        let mut doc = read_document(path)?;
+        let Some(sites) = doc.get_mut("site").and_then(Item::as_array_of_tables_mut) else { return Ok(()) };
+        let before = sites.len();
+        sites.retain(|t| t.get("id").and_then(Item::as_str) != Some(id));
+        if sites.len() == before {
+            return Err(format!("{}: no site {id}", path.display()));
+        }
+        write_document(path, &doc)
+    })
 }
 
 /// An account switched on or off: off, it keeps its settings and is neither synced nor shown.
 pub fn set_enabled(path: &Path, id: &str, on: bool) -> Result<(), String> {
-    let mut doc = read_document(path)?;
-    let table = doc
-        .get_mut("account")
-        .and_then(Item::as_array_of_tables_mut)
-        .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
-        .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
-    if on {
-        table.remove("enabled");
-    } else {
-        table["enabled"] = value(false);
-    }
-    write_document(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        let table = doc
+            .get_mut("account")
+            .and_then(Item::as_array_of_tables_mut)
+            .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
+            .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
+        if on {
+            table.remove("enabled");
+        } else {
+            table["enabled"] = value(false);
+        }
+        write_document(path, &doc)
+    })
 }
 
 fn append_account(path: &Path, mut table: Table) -> Result<(), String> {
-    let mut doc = read_document(path)?;
-    // Comments at the end of the file stay above what is appended, where they
-    // were written: below it, a commented `language = …` would land inside the account.
-    let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_string();
-    table.decor_mut().set_prefix(if trailing.trim().is_empty() { "\n".to_string() } else { format!("{trailing}\n\n") });
-    doc.set_trailing("");
-    let accounts = doc.entry("account").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
-    let accounts = accounts.as_array_of_tables_mut().ok_or_else(|| format!("{}: `account` is not a list of tables", path.display()))?;
-    accounts.push(table);
-    write_document(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        // Comments at the end of the file stay above what is appended, where they
+        // were written: below it, a commented `language = …` would land inside the account.
+        let trailing = doc.trailing().as_str().unwrap_or("").trim_end().to_string();
+        table.decor_mut().set_prefix(if trailing.trim().is_empty() { "\n".to_string() } else { format!("{trailing}\n\n") });
+        doc.set_trailing("");
+        let accounts = doc.entry("account").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
+        let accounts = accounts.as_array_of_tables_mut().ok_or_else(|| format!("{}: `account` is not a list of tables", path.display()))?;
+        accounts.push(table);
+        write_document(path, &doc)
+    })
 }
 
 /// Moves an account `delta` places among those of its kind (sites among
 /// sites): the order the lists show them in. At either end, it stays.
 pub fn move_account(path: &Path, id: &str, delta: i64) -> Result<(), String> {
-    let mut doc = read_document(path)?;
-    let Some(accounts) = doc.get_mut("account").and_then(Item::as_array_of_tables_mut) else { return Ok(()) };
-    let mut tables: Vec<Table> = accounts.iter().cloned().collect();
-    let kind_of = |t: &Table| t.get("kind").and_then(Item::as_str).unwrap_or("").to_string();
-    let Some(from) = tables.iter().position(|t| t.get("id").and_then(Item::as_str) == Some(id)) else { return Ok(()) };
-    let kind = kind_of(&tables[from]);
-    let same: Vec<usize> = tables.iter().enumerate().filter(|(_, t)| kind_of(t) == kind).map(|(i, _)| i).collect();
-    let at = same.iter().position(|&i| i == from).unwrap_or(0) as i64;
-    let Some(&to) = usize::try_from(at + delta).ok().and_then(|t| same.get(t)) else { return Ok(()) };
-    // The tables trade places; each keeps the comments above it.
-    swap_tables(&mut tables, from, to);
-    let mut moved = ArrayOfTables::new();
-    for table in tables {
-        moved.push(table);
-    }
-    *accounts = moved;
-    write_document(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        let Some(accounts) = doc.get_mut("account").and_then(Item::as_array_of_tables_mut) else { return Ok(()) };
+        let mut tables: Vec<Table> = accounts.iter().cloned().collect();
+        let kind_of = |t: &Table| t.get("kind").and_then(Item::as_str).unwrap_or("").to_string();
+        let Some(from) = tables.iter().position(|t| t.get("id").and_then(Item::as_str) == Some(id)) else { return Ok(()) };
+        let kind = kind_of(&tables[from]);
+        let same: Vec<usize> = tables.iter().enumerate().filter(|(_, t)| kind_of(t) == kind).map(|(i, _)| i).collect();
+        let at = same.iter().position(|&i| i == from).unwrap_or(0) as i64;
+        let Some(&to) = usize::try_from(at + delta).ok().and_then(|t| same.get(t)) else { return Ok(()) };
+        // The tables trade places; each keeps the comments above it.
+        swap_tables(&mut tables, from, to);
+        let mut moved = ArrayOfTables::new();
+        for table in tables {
+            moved.push(table);
+        }
+        *accounts = moved;
+        write_document(path, &doc)
+    })
 }
 
 /// Removes an account from the configuration. Its mail and its password are not touched here.
 pub fn remove_account(path: &Path, id: &str) -> Result<(), String> {
-    let mut doc = read_document(path)?;
-    let accounts = doc.get_mut("account").and_then(Item::as_array_of_tables_mut);
-    let Some(accounts) = accounts else { return Ok(()) };
-    let index = accounts.iter().position(|t| t.get("id").and_then(Item::as_str) == Some(id));
-    if let Some(index) = index {
-        accounts.remove(index);
-    }
-    write_document(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        let accounts = doc.get_mut("account").and_then(Item::as_array_of_tables_mut);
+        let Some(accounts) = accounts else { return Ok(()) };
+        let index = accounts.iter().position(|t| t.get("id").and_then(Item::as_str) == Some(id));
+        if let Some(index) = index {
+            accounts.remove(index);
+        }
+        write_document(path, &doc)
+    })
 }
 
 /// Records the authserv-ids to trust for an account (learned at its first sync).
@@ -1414,19 +1441,22 @@ pub fn set_trusted_ids(path: &Path, id: &str, ids: &[String]) -> Result<(), Stri
 /// How an account signs in: `Some("google")` for Google's sign-in (an access
 /// token), None for a password (an app password given instead).
 pub fn set_auth(path: &Path, id: &str, auth: Option<&str>) -> Result<(), String> {
-    match auth {
-        Some(auth) => set_account_item(path, id, "auth", value(auth)),
-        None => {
-            let mut doc = read_document(path)?;
-            let table = doc
-                .get_mut("account")
-                .and_then(Item::as_array_of_tables_mut)
-                .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
-                .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
-            table.remove("auth");
-            write_document(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        match auth {
+            Some(auth) => set_account_item(path, id, "auth", value(auth)),
+            None => {
+                let mut doc = read_document(path)?;
+                let table = doc
+                    .get_mut("account")
+                    .and_then(Item::as_array_of_tables_mut)
+                    .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
+                    .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
+                table.remove("auth");
+                write_document(path, &doc)
+            }
         }
-    }
+    })
 }
 
 /// Records an account's sending server (found from its address when first needed).
@@ -1452,9 +1482,12 @@ pub const DEFAULT_FETCH_MINUTES: u32 = 5;
 
 /// Sets how far back mail and the agenda reach, in weeks (0 for everything).
 pub fn set_history(path: &Path, weeks: u32) -> Result<(), String> {
-    let mut doc = read_document(path)?;
-    doc["history_weeks"] = value(i64::from(weeks));
-    write_document(path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        doc["history_weeks"] = value(i64::from(weeks));
+        write_document(path, &doc)
+    })
 }
 
 /// Sets an account's priority; "average", the default, is written too, so the choice shows.
@@ -1464,20 +1497,23 @@ pub fn set_priority(path: &Path, id: &str, priority: Priority) -> Result<(), Str
 
 /// Sets your name as recipients see it and your signature (Markdown); empty removes them.
 pub fn set_writing(path: &Path, id: &str, name: &str, signature: &str) -> Result<(), String> {
-    let mut doc = read_document(path)?;
-    let table = doc
-        .get_mut("account")
-        .and_then(Item::as_array_of_tables_mut)
-        .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
-        .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
-    for (key, text) in [("name", name.trim()), ("signature", signature.trim())] {
-        if text.is_empty() {
-            table.remove(key);
-        } else {
-            table[key] = value(text);
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        let table = doc
+            .get_mut("account")
+            .and_then(Item::as_array_of_tables_mut)
+            .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
+            .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
+        for (key, text) in [("name", name.trim()), ("signature", signature.trim())] {
+            if text.is_empty() {
+                table.remove(key);
+            } else {
+                table[key] = value(text);
+            }
         }
-    }
-    write_document(path, &doc)
+        write_document(path, &doc)
+    })
 }
 
 /// A setting's value, as the window gives it back.
@@ -1565,162 +1601,168 @@ impl SettingValue {
 /// (an account's), `window` (every admin window at once). An empty value
 /// removes the key, so its default comes back.
 pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), String> {
-    let mut doc = read_document(path)?;
-    if key == "time_off" {
-        let days: &[TimeOffValue] = match setting {
-            SettingValue::TimeOff(days) => days,
-            // An empty list reads as the first kind of list it fits, numbers: none.
-            SettingValue::Ints(none) if none.is_empty() => &[],
-            _ => return Err(format!("{key}: days off expected")),
-        };
-        let date = |text: &str| -> Result<toml_edit::Datetime, String> {
-            let d: jiff::civil::Date = text.trim().parse().map_err(|_| format!("{text}: a day as 2026-12-24"))?;
-            Ok(toml_edit::Datetime { date: Some(toml_edit::Date { year: d.year() as u16, month: d.month() as u8, day: d.day() as u8 }), time: None, offset: None })
-        };
-        let mut tables = ArrayOfTables::new();
-        for off in days {
-            let mut table = Table::new();
-            table["from"] = value(date(&off.from)?);
-            table["until"] = value(date(&off.until)?);
-            if !off.label.trim().is_empty() {
-                table["label"] = value(off.label.trim());
-            }
-            tables.push(table);
-        }
-        if days.is_empty() {
-            doc.remove(key);
-        } else {
-            doc[key] = Item::ArrayOfTables(tables);
-        }
-        return write_document(path, &doc);
-    }
-    if key == "window" || key == "window.admin" || key == "window.leisure" || key == "office_hours" {
-        let windows: &[WindowValue] = match setting {
-            SettingValue::Windows(windows) => windows,
-            // An empty list reads as the first kind of list it fits, numbers: none.
-            SettingValue::Ints(none) if none.is_empty() => &[],
-            _ => return Err(format!("{key}: windows expected")),
-        };
-        // The week's hours of one kind: those of the other kinds stay as they are.
-        let (table_key, kind) = match key {
-            "window.admin" => ("window", "admin"),
-            "window.leisure" => ("window", "leisure"),
-            "window" => ("window", "work"),
-            other => (other, ""),
-        };
-        let kind_of = |t: &Table| match t.get("kind").and_then(Item::as_str) {
-            Some("admin") => "admin",
-            Some("leisure") => "leisure",
-            _ => "work",
-        };
-        let mut tables = ArrayOfTables::new();
-        if !kind.is_empty()
-            && let Some(old) = doc.get(table_key).and_then(Item::as_array_of_tables)
-        {
-            for table in old.iter().filter(|t| kind_of(t) != kind) {
-                tables.push(table.clone());
-            }
-        }
-        // One row a day: a day given twice keeps its first hours.
-        let mut seen: Vec<String> = Vec::new();
-        for w in windows {
-            if seen.contains(&w.day) {
-                continue;
-            }
-            seen.push(w.day.clone());
-            let mut table = Table::new();
-            table["day"] = value(w.day.as_str());
-            table["start"] = value(w.start.as_str());
-            if w.end.is_empty() {
-                table["minutes"] = value(i64::from(w.minutes));
-            } else {
-                table["end"] = value(w.end.as_str());
-            }
-            if kind == "admin" || kind == "leisure" {
-                table["kind"] = value(kind);
-            }
-            tables.push(table);
-        }
-        if tables.is_empty() {
-            doc.remove(table_key);
-        } else {
-            doc[table_key] = Item::ArrayOfTables(tables);
-        }
-        return write_document(path, &doc);
-    }
-    // A site's field: in `[[site]]`, where an older file's sites are moved first.
-    if let Some(rest) = key.strip_prefix("site.") {
-        let (id, field) = rest.rsplit_once('.').ok_or_else(|| format!("{key}: site.<id>.<field> expected"))?;
-        drop(doc);
-        migrate_sites(path)?;
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
         let mut doc = read_document(path)?;
-        let table = doc
-            .get_mut("site")
-            .and_then(Item::as_array_of_tables_mut)
-            .and_then(|sites| sites.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
-            .ok_or_else(|| format!("{}: no site {id}", path.display()))?;
-        match setting.item() {
-            Some(item) => table[field] = item,
-            None => {
-                table.remove(field);
+        if key == "time_off" {
+            let days: &[TimeOffValue] = match setting {
+                SettingValue::TimeOff(days) => days,
+                // An empty list reads as the first kind of list it fits, numbers: none.
+                SettingValue::Ints(none) if none.is_empty() => &[],
+                _ => return Err(format!("{key}: days off expected")),
+            };
+            let date = |text: &str| -> Result<toml_edit::Datetime, String> {
+                let d: jiff::civil::Date = text.trim().parse().map_err(|_| format!("{text}: a day as 2026-12-24"))?;
+                Ok(toml_edit::Datetime { date: Some(toml_edit::Date { year: d.year() as u16, month: d.month() as u8, day: d.day() as u8 }), time: None, offset: None })
+            };
+            let mut tables = ArrayOfTables::new();
+            for off in days {
+                let mut table = Table::new();
+                table["from"] = value(date(&off.from)?);
+                table["until"] = value(date(&off.until)?);
+                if !off.label.trim().is_empty() {
+                    table["label"] = value(off.label.trim());
+                }
+                tables.push(table);
             }
+            if days.is_empty() {
+                doc.remove(key);
+            } else {
+                doc[key] = Item::ArrayOfTables(tables);
+            }
+            return write_document(path, &doc);
         }
-        return write_document(path, &doc);
-    }
-    if let Some(rest) = key.strip_prefix("account.") {
-        let (id, field) = rest.rsplit_once('.').ok_or_else(|| format!("{key}: account.<id>.<field> expected"))?;
+        if key == "window" || key == "window.admin" || key == "window.leisure" || key == "office_hours" {
+            let windows: &[WindowValue] = match setting {
+                SettingValue::Windows(windows) => windows,
+                // An empty list reads as the first kind of list it fits, numbers: none.
+                SettingValue::Ints(none) if none.is_empty() => &[],
+                _ => return Err(format!("{key}: windows expected")),
+            };
+            // The week's hours of one kind: those of the other kinds stay as they are.
+            let (table_key, kind) = match key {
+                "window.admin" => ("window", "admin"),
+                "window.leisure" => ("window", "leisure"),
+                "window" => ("window", "work"),
+                other => (other, ""),
+            };
+            let kind_of = |t: &Table| match t.get("kind").and_then(Item::as_str) {
+                Some("admin") => "admin",
+                Some("leisure") => "leisure",
+                _ => "work",
+            };
+            let mut tables = ArrayOfTables::new();
+            if !kind.is_empty()
+                && let Some(old) = doc.get(table_key).and_then(Item::as_array_of_tables)
+            {
+                for table in old.iter().filter(|t| kind_of(t) != kind) {
+                    tables.push(table.clone());
+                }
+            }
+            // One row a day: a day given twice keeps its first hours.
+            let mut seen: Vec<String> = Vec::new();
+            for w in windows {
+                if seen.contains(&w.day) {
+                    continue;
+                }
+                seen.push(w.day.clone());
+                let mut table = Table::new();
+                table["day"] = value(w.day.as_str());
+                table["start"] = value(w.start.as_str());
+                if w.end.is_empty() {
+                    table["minutes"] = value(i64::from(w.minutes));
+                } else {
+                    table["end"] = value(w.end.as_str());
+                }
+                if kind == "admin" || kind == "leisure" {
+                    table["kind"] = value(kind);
+                }
+                tables.push(table);
+            }
+            if tables.is_empty() {
+                doc.remove(table_key);
+            } else {
+                doc[table_key] = Item::ArrayOfTables(tables);
+            }
+            return write_document(path, &doc);
+        }
+        // A site's field: in `[[site]]`, where an older file's sites are moved first.
+        if let Some(rest) = key.strip_prefix("site.") {
+            let (id, field) = rest.rsplit_once('.').ok_or_else(|| format!("{key}: site.<id>.<field> expected"))?;
+            drop(doc);
+            migrate_sites(path)?;
+            let mut doc = read_document(path)?;
+            let table = doc
+                .get_mut("site")
+                .and_then(Item::as_array_of_tables_mut)
+                .and_then(|sites| sites.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
+                .ok_or_else(|| format!("{}: no site {id}", path.display()))?;
+            match setting.item() {
+                Some(item) => table[field] = item,
+                None => {
+                    table.remove(field);
+                }
+            }
+            return write_document(path, &doc);
+        }
+        if let Some(rest) = key.strip_prefix("account.") {
+            let (id, field) = rest.rsplit_once('.').ok_or_else(|| format!("{key}: account.<id>.<field> expected"))?;
+            let table = doc
+                .get_mut("account")
+                .and_then(Item::as_array_of_tables_mut)
+                .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
+                .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
+            match setting.item() {
+                Some(item) => table[field] = item,
+                None => {
+                    table.remove(field);
+                }
+            }
+            return write_document(path, &doc);
+        }
+        match key.split_once('.') {
+            Some((table, field)) => {
+                if !doc.contains_key(table) {
+                    doc[table] = toml_edit::table();
+                }
+                // A table written inline (`reading = { size = 18 }`) is a table too.
+                let section = doc[table].as_table_like_mut().ok_or_else(|| format!("{}: {table} is not a table", path.display()))?;
+                match setting.item() {
+                    // In place: the comments above the key stay.
+                    Some(item) => match section.get_mut(field) {
+                        Some(slot) => *slot = item,
+                        None => {
+                            section.insert(field, item);
+                        }
+                    },
+                    None => {
+                        section.remove(field);
+                    }
+                }
+            }
+            None => match setting.item() {
+                Some(item) => doc[key] = item,
+                None => {
+                    doc.remove(key);
+                }
+            },
+        }
+        write_document(path, &doc)
+    })
+}
+
+fn set_account_item(path: &Path, id: &str, key: &str, item: Item) -> Result<(), String> {
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
         let table = doc
             .get_mut("account")
             .and_then(Item::as_array_of_tables_mut)
             .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
             .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
-        match setting.item() {
-            Some(item) => table[field] = item,
-            None => {
-                table.remove(field);
-            }
-        }
-        return write_document(path, &doc);
-    }
-    match key.split_once('.') {
-        Some((table, field)) => {
-            if !doc.contains_key(table) {
-                doc[table] = toml_edit::table();
-            }
-            // A table written inline (`reading = { size = 18 }`) is a table too.
-            let section = doc[table].as_table_like_mut().ok_or_else(|| format!("{}: {table} is not a table", path.display()))?;
-            match setting.item() {
-                // In place: the comments above the key stay.
-                Some(item) => match section.get_mut(field) {
-                    Some(slot) => *slot = item,
-                    None => {
-                        section.insert(field, item);
-                    }
-                },
-                None => {
-                    section.remove(field);
-                }
-            }
-        }
-        None => match setting.item() {
-            Some(item) => doc[key] = item,
-            None => {
-                doc.remove(key);
-            }
-        },
-    }
-    write_document(path, &doc)
-}
-
-fn set_account_item(path: &Path, id: &str, key: &str, item: Item) -> Result<(), String> {
-    let mut doc = read_document(path)?;
-    let table = doc
-        .get_mut("account")
-        .and_then(Item::as_array_of_tables_mut)
-        .and_then(|accounts| accounts.iter_mut().find(|t| t.get("id").and_then(Item::as_str) == Some(id)))
-        .ok_or_else(|| format!("{}: no account {id}", path.display()))?;
-    table[key] = item;
-    write_document(path, &doc)
+        table[key] = item;
+        write_document(path, &doc)
+    })
 }
 
 /// A table's keys written at once, each a list of words (`Some`) or taken
@@ -1728,40 +1770,43 @@ fn set_account_item(path: &Path, id: &str, key: &str, item: Item) -> Result<(), 
 /// `remove`, keys or tables taken out ("reach", "pause.doses"): one write,
 /// the comments kept (`attention`'s rows, the older keys they replace).
 pub fn set_table(path: &Path, table: &str, keys: &[(String, Option<Vec<String>>)], remove: &[&str]) -> Result<(), String> {
-    let mut doc = read_document(path)?;
-    for key in remove {
-        match key.split_once('.') {
-            Some((outer, field)) => {
-                if let Some(section) = doc.get_mut(outer).and_then(Item::as_table_like_mut) {
-                    section.remove(field);
-                }
-            }
-            None => {
-                doc.remove(key);
-            }
-        }
-    }
-    if !doc.contains_key(table) {
-        doc[table] = toml_edit::table();
-    }
-    let section = doc[table].as_table_like_mut().ok_or_else(|| format!("{}: {table} is not a table", path.display()))?;
-    for (key, words) in keys {
-        match words {
-            Some(words) => {
-                let item = value(words.iter().map(String::as_str).collect::<Array>());
-                match section.get_mut(key) {
-                    Some(slot) => *slot = item,
-                    None => {
-                        section.insert(key, item);
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        for key in remove {
+            match key.split_once('.') {
+                Some((outer, field)) => {
+                    if let Some(section) = doc.get_mut(outer).and_then(Item::as_table_like_mut) {
+                        section.remove(field);
                     }
                 }
-            }
-            None => {
-                section.remove(key);
+                None => {
+                    doc.remove(key);
+                }
             }
         }
-    }
-    write_document(path, &doc)
+        if !doc.contains_key(table) {
+            doc[table] = toml_edit::table();
+        }
+        let section = doc[table].as_table_like_mut().ok_or_else(|| format!("{}: {table} is not a table", path.display()))?;
+        for (key, words) in keys {
+            match words {
+                Some(words) => {
+                    let item = value(words.iter().map(String::as_str).collect::<Array>());
+                    match section.get_mut(key) {
+                        Some(slot) => *slot = item,
+                        None => {
+                            section.insert(key, item);
+                        }
+                    }
+                }
+                None => {
+                    section.remove(key);
+                }
+            }
+        }
+        write_document(path, &doc)
+    })
 }
 
 /// Writes the mail filters whole, in their order, as `[[mail.filter]]`
@@ -1769,42 +1814,45 @@ pub fn set_table(path: &Path, table: &str, keys: &[(String, Option<Vec<String>>)
 /// own (`rules::Filter`); the rest of the file and its comments stay. None:
 /// the list is taken out.
 pub fn set_filters(path: &Path, filters: &[crate::rules::Filter]) -> Result<(), String> {
-    let mut doc = read_document(path)?;
-    // A filter a newer Sioul wrote, holding what this one does not know
-    // (`Filter::unknown`), is written back as it was while nothing of it
-    // changed here: its words kept, not "unknown".
-    let before: Vec<(crate::rules::Filter, Table)> = doc
-        .get("mail")
-        .and_then(|mail| mail.get("filter"))
-        .and_then(Item::as_array_of_tables)
-        .map(|list| list.iter().filter_map(|table| toml::from_str::<crate::rules::Filter>(&table.to_string()).ok().map(|filter| (filter, table.clone()))).collect())
-        .unwrap_or_default();
-    if !doc.contains_key("mail") {
-        let mut mail = Table::new();
-        mail.set_implicit(true);
-        doc["mail"] = Item::Table(mail);
-    }
-    let mail = doc["mail"].as_table_mut().ok_or_else(|| format!("{}: mail is not a table", path.display()))?;
-    if filters.is_empty() {
-        mail.remove("filter");
-    } else {
-        let mut tables = ArrayOfTables::new();
-        for filter in filters {
-            match before.iter().find(|(was, _)| filter.unknown() && was == filter) {
-                // Its values as they were, in a table of its own (not its old place in the file).
-                Some((_, was)) => {
-                    let mut kept = Table::new();
-                    for (key, item) in was.iter() {
-                        kept.insert(key, item.clone());
-                    }
-                    tables.push(kept);
-                }
-                None => tables.push(filter_table(filter)?),
-            }
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        // A filter a newer Sioul wrote, holding what this one does not know
+        // (`Filter::unknown`), is written back as it was while nothing of it
+        // changed here: its words kept, not "unknown".
+        let before: Vec<(crate::rules::Filter, Table)> = doc
+            .get("mail")
+            .and_then(|mail| mail.get("filter"))
+            .and_then(Item::as_array_of_tables)
+            .map(|list| list.iter().filter_map(|table| toml::from_str::<crate::rules::Filter>(&table.to_string()).ok().map(|filter| (filter, table.clone()))).collect())
+            .unwrap_or_default();
+        if !doc.contains_key("mail") {
+            let mut mail = Table::new();
+            mail.set_implicit(true);
+            doc["mail"] = Item::Table(mail);
         }
-        mail.insert("filter", Item::ArrayOfTables(tables));
-    }
-    write_document(path, &doc)
+        let mail = doc["mail"].as_table_mut().ok_or_else(|| format!("{}: mail is not a table", path.display()))?;
+        if filters.is_empty() {
+            mail.remove("filter");
+        } else {
+            let mut tables = ArrayOfTables::new();
+            for filter in filters {
+                match before.iter().find(|(was, _)| filter.unknown() && was == filter) {
+                    // Its values as they were, in a table of its own (not its old place in the file).
+                    Some((_, was)) => {
+                        let mut kept = Table::new();
+                        for (key, item) in was.iter() {
+                            kept.insert(key, item.clone());
+                        }
+                        tables.push(kept);
+                    }
+                    None => tables.push(filter_table(filter)?),
+                }
+            }
+            mail.insert("filter", Item::ArrayOfTables(tables));
+        }
+        write_document(path, &doc)
+    })
 }
 
 /// One filter as its table, through what `rules::Filter` writes (the usual

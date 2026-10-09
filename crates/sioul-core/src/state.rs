@@ -21,6 +21,9 @@ pub struct PorchState {
     /// Per account, the newest message shown when the Porch was last closed.
     #[serde(default)]
     pub done: BTreeMap<String, ImapOrigin>,
+    /// The file as it was read: saved, only what changed since is written (`filelock::save_merged`).
+    #[serde(skip)]
+    pub read: crate::filelock::Read,
 }
 
 impl PorchState {
@@ -31,19 +34,18 @@ impl PorchState {
 
     /// The saved state; an empty one when there is none yet or it cannot be read.
     pub fn load(path: &Path) -> PorchState {
-        std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let mut state: PorchState = toml::from_str(&text).unwrap_or_default();
+        state.read = crate::filelock::Read::of(&text);
+        state
     }
 
+    /// Written beside, then moved (a crash halfway would leave a file that
+    /// cannot be read, and the Porch would forget where it was closed), under
+    /// the file's lock, which the sharing takes too: only what changed since it
+    /// was read, over what the file holds now.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
-        }
-        let text = toml::to_string(self).map_err(|e| e.to_string())?;
-        // Written beside, then moved: a crash halfway would leave a file that
-        // cannot be read, and the Porch would forget where it was closed.
-        let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, text).and_then(|()| std::fs::rename(&temporary, path)).map_err(fail)
+        crate::filelock::save_merged(path, &self.read, self)
     }
 
     /// Whether a message was shown before the Porch was last closed.
@@ -85,6 +87,9 @@ impl PorchState {
 pub struct MoneyState {
     #[serde(default)]
     pub ignored: std::collections::BTreeSet<String>,
+    /// The file as it was read: saved, only what changed since is written (`filelock::save_merged`).
+    #[serde(skip)]
+    pub read: crate::filelock::Read,
 }
 
 impl MoneyState {
@@ -93,16 +98,16 @@ impl MoneyState {
     }
 
     pub fn load(path: &Path) -> MoneyState {
-        std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let mut state: MoneyState = toml::from_str(&text).unwrap_or_default();
+        state.read = crate::filelock::Read::of(&text);
+        state
     }
 
+    /// Written under the file's lock, which the sharing takes too: only what
+    /// changed since it was read, over what the file holds now.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
-        }
-        let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).and_then(|()| std::fs::rename(&temporary, path)).map_err(fail)
+        crate::filelock::save_merged(path, &self.read, self)
     }
 }
 

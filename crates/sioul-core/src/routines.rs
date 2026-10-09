@@ -79,8 +79,36 @@ pub fn steps_text(steps: &[Step]) -> String {
     steps.iter().map(|s| format!("{} min {}", s.minutes, s.title)).collect::<Vec<_>>().join("\n")
 }
 
-/// The routines written back into the configuration, the rest of it as written.
+/// The routines as the configuration holds them now, changed by `change` and
+/// written back, the whole under the file's lock, which the sharing takes
+/// too: a routine another device's change brought in meanwhile is never
+/// written over with an older list.
+pub fn change(config_path: &std::path::Path, change: impl FnOnce(&mut Vec<Routine>)) -> Result<(), String> {
+    #[derive(Deserialize, Default)]
+    struct Listed {
+        #[serde(default)]
+        routine: Vec<Routine>,
+    }
+    crate::filelock::with_lock(config_path, || {
+        let fail = |e: String| format!("{}: {e}", config_path.display());
+        let text = match std::fs::read_to_string(config_path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(fail(e.to_string())),
+        };
+        let mut routines = toml::from_str::<Listed>(&text).map_err(|e| fail(e.to_string()))?.routine;
+        change(&mut routines);
+        save(config_path, &routines)
+    })
+}
+
+/// The routines written back into the configuration, the rest of it as
+/// written, read and written under the file's lock.
 pub fn save(config_path: &std::path::Path, routines: &[Routine]) -> Result<(), String> {
+    crate::filelock::with_lock(config_path, || save_locked(config_path, routines))
+}
+
+fn save_locked(config_path: &std::path::Path, routines: &[Routine]) -> Result<(), String> {
     let fail = |e: String| format!("{}: {e}", config_path.display());
     // No configuration yet: it is made. One there but unreadable (its rights, an
     // encoding other than UTF-8) or not TOML is left alone: written over, every setting would go.

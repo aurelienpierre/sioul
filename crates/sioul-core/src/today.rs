@@ -66,6 +66,9 @@ pub struct Today {
     /// UIDs put off for today ("Not now").
     #[serde(default)]
     pub aside: BTreeSet<String>,
+    /// The file as it was read: saved, only what changed since is written (`filelock::save_merged`).
+    #[serde(skip)]
+    pub read: crate::filelock::Read,
 }
 
 impl Today {
@@ -75,18 +78,16 @@ impl Today {
 
     /// Today's choices; yesterday's are forgotten.
     pub fn load(path: &Path, today: Date) -> Today {
-        let saved: Today = std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
-        if saved.date == today.to_string() { saved } else { Today { date: today.to_string(), ..Today::default() } }
+        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let saved: Today = toml::from_str(&text).unwrap_or_default();
+        let read = crate::filelock::Read::of(&text);
+        if saved.date == today.to_string() { Today { read, ..saved } } else { Today { date: today.to_string(), read, ..Today::default() } }
     }
 
+    /// Written under the file's lock, which the sharing takes too: only what
+    /// changed since it was read, over what the file holds now.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
-        }
-        let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
-        std::fs::rename(&temporary, path).map_err(fail)
+        crate::filelock::save_merged(path, &self.read, self)
     }
 }
 

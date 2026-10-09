@@ -117,19 +117,22 @@ fn write_atomically(path: &Path, text: &str) -> Result<(), String> {
 /// Adds a session to its month's file, in `dir`, with an id of its own when it has none.
 pub fn record_in(dir: &Path, session: &Session) -> Result<(), String> {
     let path = month_file(dir, session.start);
-    // A month not begun yet starts empty; one there that cannot be read is left
-    // alone: written over, its time (and what was billed of it) would be lost.
-    let mut month: Month = match std::fs::read_to_string(&path) {
-        Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Month::default(),
-        Err(e) => return Err(format!("{}: {e}", path.display())),
-    };
-    let mut session = session.clone();
-    if session.id.is_empty() {
-        session.id = crate::ids::new();
-    }
-    month.sessions.push(session);
-    write_atomically(&path, &toml::to_string(&month).map_err(|e| e.to_string())?)
+    // Read, changed and written under the month's lock, which the sharing takes too.
+    crate::filelock::with_lock(&path, || {
+        // A month not begun yet starts empty; one there that cannot be read is left
+        // alone: written over, its time (and what was billed of it) would be lost.
+        let mut month: Month = match std::fs::read_to_string(&path) {
+            Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Month::default(),
+            Err(e) => return Err(format!("{}: {e}", path.display())),
+        };
+        let mut session = session.clone();
+        if session.id.is_empty() {
+            session.id = crate::ids::new();
+        }
+        month.sessions.push(session);
+        write_atomically(&path, &toml::to_string(&month).map_err(|e| e.to_string())?)
+    })
 }
 
 /// Adds a session to its month's file.
@@ -178,16 +181,19 @@ pub fn update_in(dir: &Path, keys: &[String], change: impl Fn(&mut Session)) -> 
     let Ok(entries) = std::fs::read_dir(dir) else { return Ok(0) };
     let mut changed = 0;
     for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != "running.toml")) {
-        let Some(mut month) = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str::<Month>(&t).ok()) else { continue };
-        let mut here = 0;
-        for session in month.sessions.iter_mut().filter(|s| keys.contains(&s.key())) {
-            change(session);
-            here += 1;
-        }
-        if here > 0 {
-            write_atomically(&path, &toml::to_string(&month).map_err(|e| e.to_string())?)?;
-            changed += here;
-        }
+        // Each month read, changed and written under its lock.
+        changed += crate::filelock::with_lock(&path, || -> Result<usize, String> {
+            let Some(mut month) = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str::<Month>(&t).ok()) else { return Ok(0) };
+            let mut here = 0;
+            for session in month.sessions.iter_mut().filter(|s| keys.contains(&s.key())) {
+                change(session);
+                here += 1;
+            }
+            if here > 0 {
+                write_atomically(&path, &toml::to_string(&month).map_err(|e| e.to_string())?)?;
+            }
+            Ok(here)
+        })?;
     }
     Ok(changed)
 }
@@ -212,13 +218,15 @@ pub fn remove_in(dir: &Path, keys: &[String]) -> Result<usize, String> {
     let Ok(entries) = std::fs::read_dir(dir) else { return Ok(0) };
     let mut removed = 0;
     for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != "running.toml")) {
-        let Some(mut month) = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str::<Month>(&t).ok()) else { continue };
-        let before = month.sessions.len();
-        month.sessions.retain(|s| !keys.contains(&s.key()));
-        if month.sessions.len() != before {
-            removed += before - month.sessions.len();
-            write_atomically(&path, &toml::to_string(&month).map_err(|e| e.to_string())?)?;
-        }
+        removed += crate::filelock::with_lock(&path, || -> Result<usize, String> {
+            let Some(mut month) = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str::<Month>(&t).ok()) else { return Ok(0) };
+            let before = month.sessions.len();
+            month.sessions.retain(|s| !keys.contains(&s.key()));
+            if month.sessions.len() != before {
+                write_atomically(&path, &toml::to_string(&month).map_err(|e| e.to_string())?)?;
+            }
+            Ok(before - month.sessions.len())
+        })?;
     }
     Ok(removed)
 }
@@ -292,13 +300,13 @@ pub fn running() -> Option<Running> {
 /// Keeps the running session, or forgets it (None).
 pub fn keep_running_in(dir: &Path, running: Option<&Running>) -> Result<(), String> {
     let path = running_path(dir);
-    match running {
+    crate::filelock::with_lock(&path, || match running {
         Some(r) => write_atomically(&path, &toml::to_string(r).map_err(|e| e.to_string())?),
         None => match std::fs::remove_file(&path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("{}: {e}", path.display())),
             _ => Ok(()),
         },
-    }
+    })
 }
 
 pub fn keep_running(running: Option<&Running>) -> Result<(), String> {
@@ -438,7 +446,8 @@ mod tests {
         record_in(&dir, &Session { task: "b".into(), start: start - 40 * 86_400, minutes: 15, ..Session::default() }).unwrap();
         let all = sessions_in(&dir);
         assert_eq!(all.len(), 3);
-        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2, "two months, two files");
+        // Beside them, hidden, each month's lock (`filelock`).
+        assert_eq!(std::fs::read_dir(&dir).unwrap().filter_map(Result::ok).filter(|e| !e.file_name().to_string_lossy().starts_with('.')).count(), 2, "two months, two files");
         let spent = spent(&all, start - 86_400, start + 86_400);
         assert_eq!(spent.get("a"), Some(&30));
         assert_eq!(spent.get("b"), None);

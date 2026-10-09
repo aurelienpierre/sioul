@@ -107,6 +107,9 @@ impl Mode {
 /// The overrides, each until a time (Unix seconds).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Overrides {
+    /// The file as it was read: saved, only what changed since is written (`filelock::save_merged`).
+    #[serde(skip)]
+    pub read: crate::filelock::Read,
     /// Work stays in view until then.
     #[serde(default)]
     pub work_until: Option<i64>,
@@ -181,15 +184,16 @@ impl Overrides {
     }
 
     pub fn load(path: &Path) -> Overrides {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let mut overrides: Overrides = toml::from_str(&text).unwrap_or_default();
+        overrides.read = crate::filelock::Read::of(&text);
+        overrides
     }
 
+    /// Written under the file's lock, which the sharing takes too: only what
+    /// changed since it was read, over what the file holds now.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
-        }
-        std::fs::write(path, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)
+        crate::filelock::save_merged(path, &self.read, self)
     }
 }
 

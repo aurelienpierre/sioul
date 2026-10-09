@@ -1091,45 +1091,54 @@ fn array(words: &[String]) -> toml_edit::Item {
 /// shipped ones not wanted to `remove`. Wanting the shipped list takes the
 /// changes out. A named list (`MAPS`) is not written here: see `write_names`.
 pub fn write_list(config_path: &Path, path: &str, wanted: &[String], shipped: &[String]) -> Result<(), String> {
-    let shipped_folded: Vec<String> = shipped.iter().map(|w| folded(w)).collect();
-    let wanted_folded: Vec<String> = wanted.iter().map(|w| folded(w)).collect();
-    let add: Vec<String> = deduplicated(wanted.iter().filter(|w| !folded(w).is_empty() && !shipped_folded.contains(&folded(w))).map(|w| w.trim().to_string()).collect());
-    let remove: Vec<String> = shipped.iter().filter(|w| !wanted_folded.contains(&folded(w))).cloned().collect();
-    let mut doc = crate::config::read_document(config_path)?;
-    drop_changes(&mut doc, path);
-    if !add.is_empty() || !remove.is_empty() {
-        let table = changes_table(&mut doc, path).ok_or_else(|| format!("{}: words.{path} is not a table", config_path.display()))?;
-        table.set_implicit(false);
-        if !add.is_empty() {
-            table.insert("add", array(&add));
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(config_path, || {
+        let shipped_folded: Vec<String> = shipped.iter().map(|w| folded(w)).collect();
+        let wanted_folded: Vec<String> = wanted.iter().map(|w| folded(w)).collect();
+        let add: Vec<String> = deduplicated(wanted.iter().filter(|w| !folded(w).is_empty() && !shipped_folded.contains(&folded(w))).map(|w| w.trim().to_string()).collect());
+        let remove: Vec<String> = shipped.iter().filter(|w| !wanted_folded.contains(&folded(w))).cloned().collect();
+        let mut doc = crate::config::read_document(config_path)?;
+        drop_changes(&mut doc, path);
+        if !add.is_empty() || !remove.is_empty() {
+            let table = changes_table(&mut doc, path).ok_or_else(|| format!("{}: words.{path} is not a table", config_path.display()))?;
+            table.set_implicit(false);
+            if !add.is_empty() {
+                table.insert("add", array(&add));
+            }
+            if !remove.is_empty() {
+                table.insert("remove", array(&remove));
+            }
         }
-        if !remove.is_empty() {
-            table.insert("remove", array(&remove));
-        }
-    }
-    crate::config::write_document(config_path, &doc)
+        crate::config::write_document(config_path, &doc)
+    })
 }
 
 /// Takes every change of a recogniser out ("codes": `[words.codes…]`): back to the shipped lists.
 pub fn reset(config_path: &Path, recogniser: &str) -> Result<(), String> {
-    let mut doc = crate::config::read_document(config_path)?;
-    if let Some(words) = doc.get_mut("words").and_then(toml_edit::Item::as_table_mut) {
-        words.remove(recogniser);
-        if words.is_empty() {
-            doc.remove("words");
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(config_path, || {
+        let mut doc = crate::config::read_document(config_path)?;
+        if let Some(words) = doc.get_mut("words").and_then(toml_edit::Item::as_table_mut) {
+            words.remove(recogniser);
+            if words.is_empty() {
+                doc.remove("words");
+            }
         }
-    }
-    crate::config::write_document(config_path, &doc)
+        crate::config::write_document(config_path, &doc)
+    })
 }
 
 /// Takes the changes of these lists out ("folders.trash"…): one line of the
 /// words tab back to the shipped lists, the other lists of its recognisers kept.
 pub fn reset_lists(config_path: &Path, paths: &[&str]) -> Result<(), String> {
-    let mut doc = crate::config::read_document(config_path)?;
-    for path in paths {
-        drop_changes(&mut doc, path);
-    }
-    crate::config::write_document(config_path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(config_path, || {
+        let mut doc = crate::config::read_document(config_path)?;
+        for path in paths {
+            drop_changes(&mut doc, path);
+        }
+        crate::config::write_document(config_path, &doc)
+    })
 }
 
 /// Writes a named list's changes (`MAPS`: brands and their domains, bodies
@@ -1140,60 +1149,66 @@ pub fn reset_lists(config_path: &Path, paths: &[&str]) -> Result<(), String> {
 /// `remove` and back in `add` with the words wanted (added wins). Wanting the
 /// shipped list takes the changes out.
 pub fn write_names(config_path: &Path, path: &str, wanted: &[(String, Vec<String>)], shipped: &[(String, Vec<String>)]) -> Result<(), String> {
-    let folded_all = |words: &[String]| words.iter().map(|w| folded(w)).filter(|w| !w.is_empty()).collect::<Vec<_>>();
-    let trimmed = |words: &[String]| deduplicated(words.iter().map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect());
-    let mut add: Vec<(String, Vec<String>)> = Vec::new();
-    let mut remove: Vec<String> = Vec::new();
-    for (name, words) in shipped {
-        let Some((_, wanted_words)) = wanted.iter().find(|(n, _)| folded(n) == folded(name)) else {
-            remove.push(name.clone());
-            continue;
-        };
-        let (have, want) = (folded_all(words), folded_all(wanted_words));
-        if have.iter().all(|w| want.contains(w)) {
-            let more: Vec<String> = trimmed(wanted_words).into_iter().filter(|w| !have.contains(&folded(w))).collect();
-            if !more.is_empty() {
-                add.push((name.clone(), more));
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(config_path, || {
+        let folded_all = |words: &[String]| words.iter().map(|w| folded(w)).filter(|w| !w.is_empty()).collect::<Vec<_>>();
+        let trimmed = |words: &[String]| deduplicated(words.iter().map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect());
+        let mut add: Vec<(String, Vec<String>)> = Vec::new();
+        let mut remove: Vec<String> = Vec::new();
+        for (name, words) in shipped {
+            let Some((_, wanted_words)) = wanted.iter().find(|(n, _)| folded(n) == folded(name)) else {
+                remove.push(name.clone());
+                continue;
+            };
+            let (have, want) = (folded_all(words), folded_all(wanted_words));
+            if have.iter().all(|w| want.contains(w)) {
+                let more: Vec<String> = trimmed(wanted_words).into_iter().filter(|w| !have.contains(&folded(w))).collect();
+                if !more.is_empty() {
+                    add.push((name.clone(), more));
+                }
+            } else {
+                remove.push(name.clone());
+                add.push((name.clone(), trimmed(wanted_words)));
             }
-        } else {
-            remove.push(name.clone());
-            add.push((name.clone(), trimmed(wanted_words)));
         }
-    }
-    for (name, words) in wanted {
-        if !folded(name).is_empty() && !shipped.iter().any(|(n, _)| folded(n) == folded(name)) && !add.iter().any(|(n, _)| folded(n) == folded(name)) {
-            add.push((name.trim().to_string(), trimmed(words)));
-        }
-    }
-    let mut doc = crate::config::read_document(config_path)?;
-    drop_changes(&mut doc, path);
-    if !add.is_empty() || !remove.is_empty() {
-        let table = changes_table(&mut doc, path).ok_or_else(|| format!("{}: words.{path} is not a table", config_path.display()))?;
-        table.set_implicit(false);
-        if !add.is_empty() {
-            let mut names = toml_edit::InlineTable::new();
-            for (name, words) in &add {
-                names.insert(name.as_str(), toml_edit::Value::Array(words.iter().map(String::as_str).collect()));
+        for (name, words) in wanted {
+            if !folded(name).is_empty() && !shipped.iter().any(|(n, _)| folded(n) == folded(name)) && !add.iter().any(|(n, _)| folded(n) == folded(name)) {
+                add.push((name.trim().to_string(), trimmed(words)));
             }
-            table.insert("add", toml_edit::value(names));
         }
-        if !remove.is_empty() {
-            table.insert("remove", array(&remove));
+        let mut doc = crate::config::read_document(config_path)?;
+        drop_changes(&mut doc, path);
+        if !add.is_empty() || !remove.is_empty() {
+            let table = changes_table(&mut doc, path).ok_or_else(|| format!("{}: words.{path} is not a table", config_path.display()))?;
+            table.set_implicit(false);
+            if !add.is_empty() {
+                let mut names = toml_edit::InlineTable::new();
+                for (name, words) in &add {
+                    names.insert(name.as_str(), toml_edit::Value::Array(words.iter().map(String::as_str).collect()));
+                }
+                table.insert("add", toml_edit::value(names));
+            }
+            if !remove.is_empty() {
+                table.insert("remove", array(&remove));
+            }
         }
-    }
-    crate::config::write_document(config_path, &doc)
+        crate::config::write_document(config_path, &doc)
+    })
 }
 
 /// Writes `[words] languages` (codes, "fr") or `countries` ("FR"), the order kept.
 pub fn write_setting(config_path: &Path, key: &str, values: &[String]) -> Result<(), String> {
-    if !matches!(key, "languages" | "countries") {
-        return Err(format!("words.{key}: no such setting"));
-    }
-    let mut doc = crate::config::read_document(config_path)?;
-    let table = changes_table(&mut doc, "").ok_or_else(|| format!("{}: words is not a table", config_path.display()))?;
-    table.set_implicit(false);
-    table.insert(key, array(&deduplicated(values.to_vec())));
-    crate::config::write_document(config_path, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(config_path, || {
+        if !matches!(key, "languages" | "countries") {
+            return Err(format!("words.{key}: no such setting"));
+        }
+        let mut doc = crate::config::read_document(config_path)?;
+        let table = changes_table(&mut doc, "").ok_or_else(|| format!("{}: words is not a table", config_path.display()))?;
+        table.set_implicit(false);
+        table.insert(key, array(&deduplicated(values.to_vec())));
+        crate::config::write_document(config_path, &doc)
+    })
 }
 
 /// For a configuration older than these words (a config.toml without a

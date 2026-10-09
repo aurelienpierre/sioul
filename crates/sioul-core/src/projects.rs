@@ -233,37 +233,40 @@ fn entry_mut<'d>(doc: &'d mut DocumentMut, id: &str) -> Option<&'d mut Table> {
 /// `id` is made from its title. Returns its id. `file` is the notes folder's
 /// projects' file (`file_in`): a file not there yet is made.
 pub fn save_project(file: &Path, id: &str, edit: &ProjectEdit) -> Result<String, String> {
-    use toml_edit::{ArrayOfTables, value};
-    let fail = |e: String| format!("{}: {e}", file.display());
-    let mut doc = read_doc(file, true)?;
-    let taken = ids_in(&doc);
-    let id = if id.is_empty() { new_id(&edit.title, &taken) } else { id.to_string() };
-    if !taken.contains(&id) {
-        let name = table_of(&doc, file);
-        let list = doc.entry(name).or_insert(Item::ArrayOfTables(ArrayOfTables::new())).as_array_of_tables_mut().ok_or_else(|| fail(format!("`{name}` is not a list of tables")))?;
-        let mut table = Table::new();
-        table["id"] = value(id.as_str());
-        list.push(table);
-    }
-    let project = entry_mut(&mut doc, &id).ok_or_else(|| fail(format!("no project {id}")))?;
-    project["title"] = value(edit.title.trim());
-    for (key, text) in [("kind", edit.kind.trim()), ("status", edit.status.trim()), ("client", edit.client.trim()), ("budget", edit.budget.trim()), ("area", edit.area.trim())] {
-        if text.is_empty() {
-            project.remove(key);
-        } else {
-            project[key] = value(text);
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(file, || {
+        use toml_edit::{ArrayOfTables, value};
+        let fail = |e: String| format!("{}: {e}", file.display());
+        let mut doc = read_doc(file, true)?;
+        let taken = ids_in(&doc);
+        let id = if id.is_empty() { new_id(&edit.title, &taken) } else { id.to_string() };
+        if !taken.contains(&id) {
+            let name = table_of(&doc, file);
+            let list = doc.entry(name).or_insert(Item::ArrayOfTables(ArrayOfTables::new())).as_array_of_tables_mut().ok_or_else(|| fail(format!("`{name}` is not a list of tables")))?;
+            let mut table = Table::new();
+            table["id"] = value(id.as_str());
+            list.push(table);
         }
-    }
-    if edit.rate > 0.0 {
-        project["rate"] = value(edit.rate);
-    } else {
-        project.remove("rate");
-    }
-    if let Some(open) = edit.ai {
-        write_ai(project, open);
-    }
-    write_doc(file, &doc)?;
-    Ok(id)
+        let project = entry_mut(&mut doc, &id).ok_or_else(|| fail(format!("no project {id}")))?;
+        project["title"] = value(edit.title.trim());
+        for (key, text) in [("kind", edit.kind.trim()), ("status", edit.status.trim()), ("client", edit.client.trim()), ("budget", edit.budget.trim()), ("area", edit.area.trim())] {
+            if text.is_empty() {
+                project.remove(key);
+            } else {
+                project[key] = value(text);
+            }
+        }
+        if edit.rate > 0.0 {
+            project["rate"] = value(edit.rate);
+        } else {
+            project.remove("rate");
+        }
+        if let Some(open) = edit.ai {
+            write_ai(project, open);
+        }
+        write_doc(file, &doc)?;
+        Ok(id)
+    })
 }
 
 /// A project open to AI agents says so (`ai = true`); a closed one says
@@ -280,10 +283,13 @@ fn write_ai(project: &mut Table, open: bool) {
 /// other fields and the file's comments stay. The sharing carries the
 /// project's entry, so the choice holds on every device.
 pub fn set_ai(file: &Path, project_id: &str, open: bool) -> Result<(), String> {
-    let mut doc = read_doc(file, false)?;
-    let project = entry_mut(&mut doc, project_id).ok_or_else(|| format!("{}: no project {project_id}", file.display()))?;
-    write_ai(project, open);
-    write_doc(file, &doc)
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(file, || {
+        let mut doc = read_doc(file, false)?;
+        let project = entry_mut(&mut doc, project_id).ok_or_else(|| format!("{}: no project {project_id}", file.display()))?;
+        write_ai(project, open);
+        write_doc(file, &doc)
+    })
 }
 
 /// Renames the file's first name, `sioul-cases.toml`, to
@@ -572,52 +578,58 @@ impl From<&Route> for RouteValue {
 /// Takes a project out of its file, the file's comments elsewhere kept. Its
 /// tasks, notes, mail and time stay; they are no longer gathered under it.
 pub fn remove_project(file: &Path, project_id: &str) -> Result<(), String> {
-    let mut doc = read_doc(file, false)?;
-    let mut found = false;
-    for name in [TABLE, OLD_TABLE] {
-        if let Some(list) = doc.get_mut(name).and_then(Item::as_array_of_tables_mut) {
-            let before = list.len();
-            list.retain(|t| id_of(t) != Some(project_id));
-            found |= list.len() != before;
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(file, || {
+        let mut doc = read_doc(file, false)?;
+        let mut found = false;
+        for name in [TABLE, OLD_TABLE] {
+            if let Some(list) = doc.get_mut(name).and_then(Item::as_array_of_tables_mut) {
+                let before = list.len();
+                list.retain(|t| id_of(t) != Some(project_id));
+                found |= list.len() != before;
+            }
         }
-    }
-    if !found {
-        return Err(format!("{}: no project {project_id}", file.display()));
-    }
-    write_doc(file, &doc)
+        if !found {
+            return Err(format!("{}: no project {project_id}", file.display()));
+        }
+        write_doc(file, &doc)
+    })
 }
 
 /// Replaces a project's routes in its file, in place: its other fields and
 /// the file's comments stay. Routes left empty are dropped.
 pub fn set_routes(file: &Path, project_id: &str, routes: &[RouteValue]) -> Result<(), String> {
-    use toml_edit::{Array, ArrayOfTables, value};
-    let mut doc = read_doc(file, false)?;
-    let project = entry_mut(&mut doc, project_id).ok_or_else(|| format!("{}: no project {project_id}", file.display()))?;
-    let mut tables = ArrayOfTables::new();
-    for route in routes {
-        let mut table = Table::new();
-        for (key, list) in [
-            ("from_domains", &route.from_domains),
-            ("from_addresses", &route.from_addresses),
-            ("subject_contains", &route.subject_contains),
-            ("text_contains", &route.text_contains),
-            ("attachment_contains", &route.attachment_contains),
-        ] {
-            let cleaned: Vec<&str> = list.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-            if !cleaned.is_empty() {
-                table[key] = value(cleaned.into_iter().collect::<Array>());
+    // Read, changed and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(file, || {
+        use toml_edit::{Array, ArrayOfTables, value};
+        let mut doc = read_doc(file, false)?;
+        let project = entry_mut(&mut doc, project_id).ok_or_else(|| format!("{}: no project {project_id}", file.display()))?;
+        let mut tables = ArrayOfTables::new();
+        for route in routes {
+            let mut table = Table::new();
+            for (key, list) in [
+                ("from_domains", &route.from_domains),
+                ("from_addresses", &route.from_addresses),
+                ("subject_contains", &route.subject_contains),
+                ("text_contains", &route.text_contains),
+                ("attachment_contains", &route.attachment_contains),
+            ] {
+                let cleaned: Vec<&str> = list.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+                if !cleaned.is_empty() {
+                    table[key] = value(cleaned.into_iter().collect::<Array>());
+                }
+            }
+            if !table.is_empty() {
+                tables.push(table);
             }
         }
-        if !table.is_empty() {
-            tables.push(table);
+        if tables.is_empty() {
+            project.remove("route");
+        } else {
+            project["route"] = Item::ArrayOfTables(tables);
         }
-    }
-    if tables.is_empty() {
-        project.remove("route");
-    } else {
-        project["route"] = Item::ArrayOfTables(tables);
-    }
-    write_doc(file, &doc)
+        write_doc(file, &doc)
+    })
 }
 
 #[cfg(test)]

@@ -405,6 +405,8 @@ pub(crate) fn status(folder: &str) -> String {
     let mut problems = Vec::new();
     let mut vanished = Vec::new();
     let mirror = mirrored();
+    // The format of what travels, as this device knows it (its devices listed below, every one holding it back among them).
+    let formats = if on { key().map(|key| share::formats(&path, &key, &memory_path(), &here.id, now_ms())) } else { None };
     if on {
         // Kept in step with a server by Sioul itself: its folder there said, not its copy here.
         match &mirror {
@@ -434,13 +436,12 @@ pub(crate) fn status(folder: &str) -> String {
         // travels"): a part your other devices share in a newer form than
         // this Sioul reads, said as long as it lasts; a device on an older
         // Sioul holding the newer form back, or one appearing after it.
-        if let Some(key) = key() {
-            let formats = share::formats(&path, &key, &memory_path(), &here.id, now_ms());
+        if let Some(formats) = &formats {
             for (part, _, build) in &formats.newer {
                 let name = part_words(part).0;
                 problems.push(if build.is_empty() { say("share-newer-plain", &[("part", name)]) } else { say("share-newer", &[("part", name), ("build", build.clone())]) });
             }
-            if formats.holders.iter().any(|(_, holds)| *holds == share::Holds::Older) {
+            if formats.holders.iter().any(|(_, holds)| *holds != share::Holds::Unheard) {
                 lines.push(tr().text("share-format-held", None));
             }
             // A device that still counts (heard of in the last 180 days, not forgotten) on an older Sioul.
@@ -493,7 +494,9 @@ pub(crate) fn status(folder: &str) -> String {
             Part { id, name, carries, on: shared, refused, last }
         })
         .collect();
-    let devices = if on { crate::health::device_rows() } else { Vec::new() };
+    // Every device holding the newer form back, or on an older Sioul once it travels, has its line.
+    let holders: Vec<(String, i64, bool)> = formats.as_ref().map(|f| f.holders.iter().map(|(id, _)| (id, true)).chain(f.older.iter().map(|id| (id, false))).map(|(id, holds)| (id.clone(), f.heard.get(id).copied().unwrap_or(0) / 1000, holds)).collect()).unwrap_or_default();
+    let devices = if on { crate::health::device_rows(&holders) } else { Vec::new() };
     let backup = backup(on && mirror.is_none(), &path);
     let build = say("share-build", &[("build", sioul_core::build::DESCRIBED.to_string())]);
     // Pressed while the folder is not found on a server, it says why nothing went.
@@ -753,6 +756,13 @@ pub(crate) fn forget_device(id: &str) {
     {
         eprintln!("sioul: sharing: {e}");
     }
+}
+
+/// Whether the doses' part is held here, met in a newer format than this
+/// Sioul reads (`share::holds`, from the sharing's memory on the disk: the
+/// same after a restart).
+pub(crate) fn holds_doses() -> bool {
+    on() && share::holds(&memory_path(), "health")
 }
 
 /// Whether this device's sharing writes format 2 (`share::FORMAT`), where
