@@ -909,7 +909,8 @@ Item {
         }
     }
 
-    // Doses due while Sioul ran nowhere: did you take them?
+    // Doses neither marked nor reminded: due while Sioul ran nowhere, or while it
+    // ran but their reminder could not be shown. Did you take them?
     Component {
         id: missedComponent
 
@@ -920,13 +921,6 @@ Item {
                 anchors.fill: parent
                 spacing: 6
 
-                Label {
-                    Layout.fillWidth: true
-                    text: page.sioul.text("health-missed-question")
-                    wrapMode: Text.Wrap
-                    font.weight: Font.DemiBold
-                    color: page.theme.text
-                }
                 Repeater {
                     model: page.shown.missed
 
@@ -934,10 +928,23 @@ Item {
                         id: missed
 
                         required property var modelData
+                        required property int index
 
                         Layout.fillWidth: true
                         spacing: 2
 
+                        // The question, above the first dose of its kind: Sioul closed,
+                        // or its reminder not shown (health.rs, `missed_rows`).
+                        Label {
+                            visible: missed.index === 0 || page.shown.missed[missed.index - 1].question !== missed.modelData.question
+                            Layout.fillWidth: true
+                            Layout.topMargin: missed.index === 0 ? 0 : 6
+                            Layout.bottomMargin: 4
+                            text: missed.modelData.question
+                            wrapMode: Text.Wrap
+                            font.weight: Font.DemiBold
+                            color: page.theme.text
+                        }
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 12

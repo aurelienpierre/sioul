@@ -794,6 +794,13 @@ pub struct HealthState {
     /// Doses already reminded, by key; kept a week.
     #[serde(default)]
     pub reminded: BTreeMap<String, i64>,
+    /// Doses whose reminder could not be shown while Sioul ran (a desktop
+    /// without a notification server), by key, when it was tried; kept a
+    /// week. Not a reminder: such a dose is still asked about afterwards,
+    /// under its own heading, since Sioul ran (`unanswered`). Written only
+    /// when there is one: an older Sioul's file stays as it was.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub unshown: BTreeMap<String, i64>,
     /// Doses answered "not taken" when asked afterwards, by key; kept a week.
     #[serde(default)]
     pub not_taken: BTreeMap<String, i64>,
@@ -894,6 +901,7 @@ impl HealthState {
         let week = now - 7 * 86_400;
         self.taken.retain(|_, at| *at >= week);
         self.reminded.retain(|_, at| *at >= week);
+        self.unshown.retain(|_, at| *at >= week);
         self.not_taken.retain(|_, at| *at >= week);
         self.moved.retain(|key, _| self.taken.contains_key(key));
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
@@ -920,12 +928,21 @@ impl HealthState {
     }
 
     /// The doses of the last `hours`, past their time by `grace` minutes,
-    /// neither marked nor reminded: due while Sioul ran nowhere. Asked about
-    /// afterwards, as a question on the past; never reminded to take now.
+    /// neither marked nor reminded: due while Sioul ran nowhere, or while it
+    /// ran but could not show their reminder (`unshown`, `reminder_unshown`).
+    /// Asked about afterwards, as a question on the past; never reminded to
+    /// take now.
     pub fn unanswered(&self, health: &Health, now: &Zoned, hours: i64, grace: i64) -> Vec<Dose> {
         let start = now.checked_sub(Span::new().hours(hours)).unwrap_or_else(|_| now.clone());
         let end = now.checked_sub(Span::new().minutes(grace)).unwrap_or_else(|_| now.clone());
         health.doses(&start, &end).into_iter().filter(|d| !self.taken.contains_key(&d.key) && !self.reminded.contains_key(&d.key) && !self.not_taken.contains_key(&d.key)).collect()
+    }
+
+    /// Whether Sioul ran when `key` fell due but could not show its reminder
+    /// (no notification server), here or on another device that shares its
+    /// doses: its question then says so, never "while Sioul was closed".
+    pub fn reminder_unshown(&self, key: &str) -> bool {
+        self.unshown.contains_key(key) && !self.reminded.contains_key(key)
     }
 
     /// Today's doses from their time on, not marked yet (taken, or said not
@@ -1240,6 +1257,48 @@ mod tests {
         state.reminded.insert(due[0].key.clone(), now.timestamp().as_second());
         assert!(state.to_remind(&health, &now, 10).is_empty(), "reminded once");
         assert!(state.to_remind(&health, &at("2026-10-03T13:00[Europe/Paris]"), 10).is_empty(), "past its window, no second reminder");
+    }
+
+    /// A reminder that could not be shown (no notification server) is no
+    /// reminder: the dose is still asked about afterwards, and told apart from
+    /// one due while Sioul was closed; the record keeps it a week, and a file
+    /// without it (an older Sioul's) reads and is written as before.
+    #[test]
+    fn a_reminder_not_shown_is_still_asked_about_and_told_apart() {
+        let health = Health {
+            medicines: vec![Medicine { id: "demo-pill".into(), name: "Demo pill".into(), dose: String::new(), schedule: Schedule::Day { times: vec!["08:00".into(), "09:00".into()], amounts: BTreeMap::new() }, prescription: None, until: None, paused: false, generic: String::new(), strength: String::new(), since: None }],
+            ..Health::default()
+        };
+        let now = at("2026-10-03T12:00[Europe/Paris]");
+        let key = |when: &str| format!("demo-pill@{}", at(when).timestamp().as_second());
+        let mut state = HealthState::default();
+        // 08:00: Sioul ran, its reminder failed; 09:00: Sioul ran nowhere.
+        state.unshown.insert(key("2026-10-03T08:00[Europe/Paris]"), at("2026-10-03T08:01[Europe/Paris]").timestamp().as_second());
+        let asked: Vec<String> = state.unanswered(&health, &now, 12, 30).into_iter().map(|d| d.key).collect();
+        assert_eq!(asked, [key("2026-10-03T08:00[Europe/Paris]"), key("2026-10-03T09:00[Europe/Paris]")], "both still asked about");
+        assert!(state.reminder_unshown(&key("2026-10-03T08:00[Europe/Paris]")));
+        assert!(!state.reminder_unshown(&key("2026-10-03T09:00[Europe/Paris]")));
+        // Reminded later (another device, or a notification server back): a reminder, not asked.
+        let mut later = state.clone();
+        later.reminded.insert(key("2026-10-03T08:00[Europe/Paris]"), at("2026-10-03T08:05[Europe/Paris]").timestamp().as_second());
+        assert!(!later.reminder_unshown(&key("2026-10-03T08:00[Europe/Paris]")));
+        assert_eq!(later.unanswered(&health, &now, 12, 30).len(), 1);
+        // Kept as written, a week; an older Sioul's file has no table, and gets none.
+        let dir = std::env::temp_dir().join(format!("sioul-unshown-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("health-state.toml");
+        state.save(&path, now.timestamp().as_second()).unwrap();
+        let read = HealthState::read(&path).unwrap();
+        assert!(read.reminder_unshown(&key("2026-10-03T08:00[Europe/Paris]")));
+        let mut old = read.clone();
+        old.save(&path, now.timestamp().as_second() + 8 * 86_400).unwrap();
+        assert!(HealthState::read(&path).unwrap().unshown.is_empty(), "dropped after a week");
+        std::fs::write(&path, "[taken]\n[reminded]\n").unwrap();
+        let mut older = HealthState::read(&path).unwrap();
+        assert!(older.unshown.is_empty());
+        older.save(&path, now.timestamp().as_second()).unwrap();
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("unshown"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

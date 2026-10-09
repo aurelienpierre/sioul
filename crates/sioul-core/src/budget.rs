@@ -357,6 +357,25 @@ pub struct Ledger {
     pub assignments: Vec<Assignment>,
 }
 
+/// "As planned" within this many cents of the target, the same for `sioul
+/// budgets` (`status`) and the window's verdict (`pace`): 5 % of what the
+/// period moves (each of its `flows`, in or out, done or planned, and what it
+/// still `needed` beyond what is scheduled), never closer than 10 units
+/// (docs/accounting.md, "On track, without assuming money flows evenly").
+/// Wide enough that a budget whose money comes later in the month is not
+/// "short" in its first days.
+fn tolerance(flows: &[Flow], needed: Money) -> i64 {
+    let moved: i64 = flows.iter().map(|f| f.amount.cents().abs()).sum::<i64>() + needed.cents().abs();
+    (moved / 20).max(1000)
+}
+
+/// What the period still needs, beyond what is scheduled in it, to reach the
+/// target from `opening` (`pace`, `tolerance`).
+fn still_needed(budget: &Budget, opening: Money, flows: &[Flow]) -> Money {
+    let scheduled: Money = flows.iter().filter(|f| f.scheduled).map(|f| f.amount).sum();
+    budget.target - opening - scheduled
+}
+
 /// One flow of money in a budget, whatever its source.
 #[derive(Debug, Clone, Copy)]
 struct Flow {
@@ -462,9 +481,7 @@ impl Ledger {
         let surplus = Money((projected - budget.target).cents().max(0));
         let earmarked = Money(surplus.cents().min(self.planned_later(budget, end).cents()));
         let gap = projected - earmarked - budget.target;
-        let out: Money = flows.iter().filter(|f| f.amount.is_negative()).map(|f| f.amount.abs()).sum();
-        // "As planned" within 2 % of what goes out, and never closer than 10 units.
-        let tolerance = (out.cents() / 50).max(1000);
+        let tolerance = tolerance(&flows, still_needed(budget, opening, &flows));
         let verdict = match gap.cents() {
             g if g > tolerance => Verdict::Better,
             g if g < -tolerance => Verdict::Short,
@@ -869,32 +886,95 @@ pub fn remove_budget(path: &Path, id: &str) -> Result<(), String> {
     write_ledger(path, &doc)
 }
 
-/// Takes one line out of the file, by its place among the lines (as
-/// `sioul:budget/<budget>/<place>` names it).
-pub fn remove_line(path: &Path, place: usize) -> Result<(), String> {
+/// A line of the file as the page showed it, to find it again: lines are named
+/// by their place among the lines (`sioul:budget/<budget>/<place>`), and the
+/// file may have changed since the page was made (a line added or taken out
+/// on another device, or by hand). Never changed by its place alone.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SeenLine {
+    pub budget: String,
+    pub date: Date,
+    pub amount: Money,
+    pub label: String,
+}
+
+impl SeenLine {
+    /// The line an address names (`sioul:budget/<budget>/<place>`), with what
+    /// the page showed of it (JSON `{"day", "value", "label"}`, as the budget
+    /// page's rows give them): its place, and the line to find there.
+    pub fn from_page(uri: &str, shown: &str) -> Option<(usize, SeenLine)> {
+        #[derive(Deserialize)]
+        struct Shown {
+            day: String,
+            value: f64,
+            label: String,
+        }
+        let (budget, place) = uri.strip_prefix("sioul:budget/")?.rsplit_once('/')?;
+        let shown: Shown = serde_json::from_str(shown).ok()?;
+        if !shown.value.is_finite() {
+            return None;
+        }
+        let line = SeenLine { budget: crate::notes::decode(budget), date: shown.day.parse().ok()?, amount: Money((shown.value * 100.0).round() as i64), label: shown.label };
+        Some((place.parse().ok()?, line))
+    }
+
+    /// Whether `table`, a `[[line]]` of the file, is this line, read as the ledger reads it.
+    fn is(&self, table: &Table) -> bool {
+        #[derive(Deserialize)]
+        struct One {
+            line: Vec<Line>,
+        }
+        let mut doc = DocumentMut::new();
+        let mut one = ArrayOfTables::new();
+        one.push(table.clone());
+        doc.insert("line", Item::ArrayOfTables(one));
+        toml::from_str::<One>(&doc.to_string()).is_ok_and(|one| one.line.first().is_some_and(|l| l.budget == self.budget && l.date == self.date && l.amount == self.amount && l.label == self.label))
+    }
+}
+
+/// Where the line `seen` is in the file now: at `place` when it is still
+/// there, else the one line of the file that is it. None when it is gone,
+/// changed, or not told apart from another line just like it.
+fn find_line(lines: &ArrayOfTables, place: usize, seen: &SeenLine) -> Option<usize> {
+    if lines.get(place).is_some_and(|t| seen.is(t)) {
+        return Some(place);
+    }
+    let mut found = lines.iter().enumerate().filter(|(_, t)| seen.is(t)).map(|(i, _)| i);
+    match (found.next(), found.next()) {
+        (Some(i), None) => Some(i),
+        _ => None,
+    }
+}
+
+/// Takes one line out of the file: the one at `place` among the lines (as
+/// `sioul:budget/<budget>/<place>` names it) when it is still the line
+/// `seen`, else the one line that is (`find_line`). Ok(false) when the line
+/// is not found as it was: nothing is changed, for the page to say so.
+pub fn remove_line(path: &Path, place: usize, seen: &SeenLine) -> Result<bool, String> {
     let fail = |e: String| format!("{}: {e}", path.display());
     let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
     let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
-    let lines = doc.get_mut("line").and_then(Item::as_array_of_tables_mut).ok_or_else(|| fail("no line".into()))?;
-    if place >= lines.len() {
-        return Err(fail("no such line".into()));
-    }
+    let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
+    let Some(place) = find_line(lines, place, seen) else { return Ok(false) };
     lines.remove(place);
-    write_ledger(path, &doc)
+    write_ledger(path, &doc)?;
+    Ok(true)
 }
 
 /// A line of the file changed in place: its label, amount and date; its links,
 /// its budget and the comment saying where it came from stay. A date to come
-/// makes it planned.
-pub fn change_line(path: &Path, place: usize, label: &str, amount: f64, date: jiff::civil::Date, today: jiff::civil::Date) -> Result<(), String> {
+/// makes it planned. The line is found as `remove_line` finds it; Ok(false)
+/// when it is not found as it was (`seen`): nothing is changed.
+pub fn change_line(path: &Path, place: usize, seen: &SeenLine, label: &str, amount: f64, date: jiff::civil::Date, today: jiff::civil::Date) -> Result<bool, String> {
     let fail = |e: String| format!("{}: {e}", path.display());
     if amount == 0.0 || !amount.is_finite() {
         return Err(fail("an amount is needed".into()));
     }
     let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
     let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
-    let lines = doc.get_mut("line").and_then(Item::as_array_of_tables_mut).ok_or_else(|| fail("no line".into()))?;
-    let line = lines.get_mut(place).ok_or_else(|| fail("no such line".into()))?;
+    let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
+    let Some(place) = find_line(lines, place, seen) else { return Ok(false) };
+    let Some(line) = lines.get_mut(place) else { return Ok(false) };
     line["label"] = value(label.trim());
     line["amount"] = value((amount * 100.0).round() / 100.0);
     line["date"] = value(toml_edit::Datetime { date: Some(toml_edit::Date { year: date.year() as u16, month: date.month() as u8, day: date.day() as u8 }), time: None, offset: None });
@@ -903,7 +983,8 @@ pub fn change_line(path: &Path, place: usize, label: &str, amount: f64, date: ji
     } else {
         line.remove("planned");
     }
-    write_ledger(path, &doc)
+    write_ledger(path, &doc)?;
+    Ok(true)
 }
 
 /// Writes a line at the end of the budget file, keeping its comments, with a
@@ -1000,12 +1081,11 @@ impl Ledger {
         let unscheduled: Money = flows.iter().filter(|f| !f.scheduled).map(|f| f.amount).sum();
         let days = |a: Date, b: Date| (b - a).get_days() as f64 + 1.0;
         let gone = (days(start, today) / days(start, end)).clamp(0.0, 1.0);
-        let needed = budget.target - opening - scheduled;
+        let needed = still_needed(budget, opening, &flows);
         let expected_now = Money((needed.cents() as f64 * gone).round() as i64);
         let ahead = unscheduled - expected_now;
-        // Within 5 % of what the period moves, and never closer than 10 units.
-        let moved: i64 = flows.iter().map(|f| f.amount.cents().abs()).sum::<i64>() + needed.cents().abs();
-        let tolerance = (moved / 20).max(1000);
+        // The same tolerance as `status`: one "as planned" everywhere.
+        let tolerance = tolerance(&flows, needed);
         let verdict = match ahead.cents() {
             g if g > tolerance => Verdict::Better,
             g if g < -tolerance => Verdict::Short,
@@ -1212,12 +1292,56 @@ mod tests {
         assert_eq!((holidays.period, holidays.target.cents(), holidays.area.as_deref()), (Period::Year, 30_000, Some("personal")));
         save_budget(&path, "food", &BudgetEdit { title: "Groceries".into(), period: "month".into(), target: 0.0, personal: false, area: None }).unwrap();
         assert_eq!(Ledger::load_file(&path).unwrap().budget_title("food"), "Groceries");
-        remove_line(&path, 0).unwrap();
+        let market = SeenLine { budget: "food".into(), date: date("2026-10-01"), amount: Money(-1250), label: "Market".into() };
+        assert!(remove_line(&path, 0, &market).unwrap());
         remove_budget(&path, "holidays").unwrap();
         let ledger = Ledger::load_file(&path).unwrap();
         assert!(ledger.lines.is_empty() && ledger.budgets.len() == 1);
         assert!(std::fs::read_to_string(&path).unwrap().starts_with("# mine"));
         std::fs::remove_file(&path).unwrap();
+    }
+
+    /// Lines are named by their place in the file, which may change after the
+    /// page was made: a line added before it, one taken out, an edit by hand.
+    /// The line changed or taken out is the one the page showed, found again
+    /// by its content, or none, and nothing changes.
+    #[test]
+    fn a_line_is_changed_only_when_found_as_it_was() {
+        let path = std::env::temp_dir().join(format!("sioul-budget-lines-{}.toml", std::process::id()));
+        let line = |date: &str, amount: &str, label: &str| format!("\n[[line]]\nbudget = \"food\"\ndate = {date}\namount = {amount}\nlabel = \"{label}\"\n");
+        let head = "# mine\n[[budget]]\nid = \"food\"\ntitle = \"Food\"\nperiod = \"month\"\n";
+        let seen = |date: &str, cents: i64, label: &str| SeenLine { budget: "food".into(), date: date.parse().unwrap(), amount: Money(cents), label: label.into() };
+        let today = date("2026-10-09");
+        let labels = || Ledger::load_file(&path).unwrap().lines.iter().map(|l| (l.label.clone(), l.amount.cents())).collect::<Vec<_>>();
+        // The page showed "Bakery" at place 1; meanwhile a line came before it.
+        std::fs::write(&path, format!("{head}{}{}{}", line("2026-10-01", "-3", "Demo early"), line("2026-10-02", "-12.5", "Market"), line("2026-10-03", "-4.2", "Bakery"))).unwrap();
+        let bakery = seen("2026-10-03", -420, "Bakery");
+        assert!(change_line(&path, 1, &bakery, "Bakery, bread", -4.4, date("2026-10-03"), today).unwrap());
+        assert_eq!(labels(), [("Demo early".to_string(), -300), ("Market".into(), -1250), ("Bakery, bread".into(), -440)], "Market, now at place 1, is left as it was");
+        // Taken out the same way: the line shown, not the one now at its place.
+        let market = seen("2026-10-02", -1250, "Market");
+        assert!(remove_line(&path, 0, &market).unwrap());
+        assert_eq!(labels(), [("Demo early".to_string(), -300), ("Bakery, bread".into(), -440)]);
+        // Changed meanwhile (by hand, or on another device): not found as it was, nothing changes.
+        let before = std::fs::read_to_string(&path).unwrap();
+        assert!(!change_line(&path, 1, &bakery, "Anything", -1.0, date("2026-10-03"), today).unwrap());
+        assert!(!remove_line(&path, 1, &bakery).unwrap());
+        assert!(!remove_line(&path, 5, &market).unwrap(), "gone");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before, "nothing written");
+        // Two lines just alike, neither at its place: not told apart, nothing changes.
+        std::fs::write(&path, format!("{head}{}{}{}", line("2026-10-01", "-3", "Demo early"), line("2026-10-05", "-2", "Coffee"), line("2026-10-05", "-2", "Coffee"))).unwrap();
+        let coffee = seen("2026-10-05", -200, "Coffee");
+        assert!(!remove_line(&path, 0, &coffee).unwrap());
+        // At its place, one of the two is as good as the other.
+        assert!(remove_line(&path, 2, &coffee).unwrap());
+        assert_eq!(labels().len(), 2);
+        assert!(std::fs::read_to_string(&path).unwrap().starts_with("# mine"));
+        std::fs::remove_file(&path).unwrap();
+        // As the page names it: its address and what its row showed.
+        let uri = crate::links::budget_uri("food & drink", 3);
+        assert_eq!(SeenLine::from_page(&uri, r#"{"day": "2026-10-05", "value": -2.1, "label": "Coffee"}"#), Some((3, SeenLine { budget: "food & drink".into(), date: date("2026-10-05"), amount: Money(-210), label: "Coffee".into() })));
+        assert_eq!(SeenLine::from_page("sioul:budget/food", r#"{"day": "2026-10-05", "value": -2, "label": "Coffee"}"#), None, "a budget, not a line");
+        assert_eq!(SeenLine::from_page(&uri, "{}"), None, "nothing shown: never by its place alone");
     }
 
     #[test]
@@ -1270,6 +1394,32 @@ mod tests {
         assert_eq!((days[0].balance, days[1].balance), (opening + Money(-11_000), opening + Money(-8_000)));
         assert!(!days[2].future && days[3].future);
         assert_eq!(ledger.balance_series(&ledger.budgets[0], date("2026-01-01"), date("2026-12-31"), "month", third).len(), 12);
+    }
+
+    /// One tolerance says "as planned" in `sioul budgets` (`status`) and in the
+    /// window (`pace`): 5 % of what the period moves, never closer than 10
+    /// (docs/accounting.md). `sioul budgets` used 2 % of what goes out, and
+    /// called "better" what the window called "as planned".
+    #[test]
+    fn one_tolerance_says_as_planned_everywhere() {
+        let rent = "[[budget]]\nid = \"home\"\ntitle = \"Home\"\nperiod = \"month\"\n\n[[preset]]\nbudget = \"home\"\nlabel = \"Rent\"\namount = -1000\nevery = \"month\"\nday = 1\n";
+        let with_income = |amount: &str| -> Ledger { toml::from_str(&format!("{rent}\n[[line]]\nbudget = \"home\"\ndate = 2026-10-10\namount = {amount}\nlabel = \"Demo income\"\n")).unwrap() };
+        let end = date("2026-10-31");
+        let both = |ledger: &Ledger| (ledger.pace(&ledger.budgets[0], end).verdict, ledger.status(&ledger.budgets[0], end).verdict);
+        // 1,000 out (the rent), 1,200 in, 1,000 still needed beyond the rent: 3,200 moved, 160 tolerated. 200 above: better, in both.
+        let ahead = with_income("1200");
+        let budget = &ahead.budgets[0];
+        let flows = ahead.flows(budget, date("2026-10-01"), end, end);
+        assert_eq!(tolerance(&flows, still_needed(budget, Money::ZERO, &flows)), 16_000);
+        assert_eq!(both(&ahead), (Verdict::Better, Verdict::Better));
+        // 100 above, within 155: as planned, in both (2 % of what goes out, 20, said "better").
+        assert_eq!(both(&with_income("1100")), (Verdict::AsPlanned, Verdict::AsPlanned));
+        // 200 below, beyond 140: short, in both.
+        assert_eq!(both(&with_income("800")), (Verdict::Short, Verdict::Short));
+        // Little moving: never closer than 10.
+        let small: Ledger = toml::from_str("[[budget]]\nid = \"b\"\ntitle = \"B\"\nperiod = \"month\"\n\n[[line]]\nbudget = \"b\"\ndate = 2026-10-02\namount = -50\nlabel = \"Demo\"\n").unwrap();
+        let flows = small.flows(&small.budgets[0], date("2026-10-01"), end, end);
+        assert_eq!(tolerance(&flows, still_needed(&small.budgets[0], Money::ZERO, &flows)), 1_000);
     }
 
     #[test]

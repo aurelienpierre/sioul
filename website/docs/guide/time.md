@@ -70,7 +70,7 @@ On a project's page, or beside the project on the Time page, **Make the invoice*
 - **Numbers.** With the usual prefix, the year, numbers start again at 001 each January: 2026-001, 2026-002. With a prefix of your own, they go on from the last one, year after year. A number is never given twice, and an invoice cannot be deleted from Sioul.
 - **Lines**: one per task (or per note of time noted without a task), its hours at the project's rate.
 - **Billed once**: the time an invoice bills carries its number; the next invoice leaves it out, and that time can no longer be changed.
-- **What it prints**: your name or business name, your address and your SIRET; the client's name and postal address; its number; the day it is issued and the day payment is due; the project; each line with its hours, rate and amount, then the total; your VAT line (« TVA non applicable, art. 293 B du CGI » for a micro-entrepreneur); your payment details; and a line on late payment: penalties at three times the French legal interest rate, the €40 recovery fee, and no discount for early payment. Two mentions that French law asks for are not printed yet: see [Not there yet](#not-there-yet).
+- **What it prints**: your name or business name, your address and your SIRET; the client's name and postal address; its number; the day it is issued, the date or period of the service (the first and last days of the sessions it bills, or their one day), and the day payment is due; the project; each line with its hours, rate and amount, then the total; your VAT line (« TVA non applicable, art. 293 B du CGI » for a micro-entrepreneur); your payment details; and a line on late payment: penalties at three times the French legal interest rate, the €40 recovery fee, and no discount for early payment. « EI » after your name is not added for you: see [Not there yet](#not-there-yet).
 - **The PDF** (A4) goes to `Documents/Invoices` in your home folder, or the folder you chose. **Print again** writes it anew.
 - **Your budget**: the total is expected in the project's budget, due thirty days later. **Paid** dates it today, and the money counts.
 
@@ -86,7 +86,7 @@ Outside working hours, the Time page waits behind **Show anyway**. See [Hours](h
 
 ## Not there yet {#not-there-yet}
 
-- **Two mentions French law asks for.** An entrepreneur individuel's name must come with the words « entrepreneur individuel » or « EI », and an invoice must give the date of the sale or of the service (service-public.gouv.fr, sheet F31808). Sioul does not add « EI » by itself: write it after your name in [Settings ▸ Invoices](settings.md#invoices). The date or period of the work is not printed yet.
+- **« EI » after your name.** An entrepreneur individuel's name must come with the words « entrepreneur individuel » or « EI » (service-public.gouv.fr, sheet F31808). Sioul does not add it by itself: write it right after your name in [Settings ▸ Invoices](settings.md#invoices), as the field's help says (« Camille Exemple EI »).
 - **Electronic invoices.** From 1 September 2027, a French micro-enterprise, under the VAT franchise too, must issue its invoices to French businesses electronically, through an approved platform (« plateforme agréée »), in UBL, CII or a mixed format such as Factur-X, with the client's SIREN. From the same date, the data of sales to private individuals and abroad must be reported (e-reporting). Sioul makes PDF invoices only, for now.
 - Quotes, fixed-price lines, expenses, VAT amounts and credit notes.
 - The time running in the notifications of Windows and macOS: the focus window alone shows it there.
@@ -158,7 +158,7 @@ As of October 2026, from each app's own documentation.
 | Your time on your own devices, no account | ✓ | ✗ | ✗ | ✗ | partly⁶ | ✗ |
 | Free software | ✓ | ✗⁷ | ✗⁷ | ✗⁷ | ✓ | ✗⁷ |
 
-1. Printed: SIRET, the VAT exemption line, the late-payment penalties, the €40 fee, no discount for early payment. Not printed for you: « EI » (type it after your name), the date of the service, and the client's SIREN, which micro-enterprises must give from 1 September 2027.
+1. Printed: SIRET, the VAT exemption line, the date or period of the service, the late-payment penalties, the €40 fee, no discount for early payment. Not printed for you: « EI » (type it after your name), and the client's SIREN, which micro-enterprises must give from 1 September 2027.
 2. Its invoice templates are yours to edit; no French template was confirmed.
 3. Sioul makes PDF invoices. From 1 September 2027, a French micro-enterprise must issue invoices to French businesses electronically, through an approved platform.
 4. With a paid plugin, 99 € a year: Factur-X, ZUGFeRD, XRechnung, UBL and CII.

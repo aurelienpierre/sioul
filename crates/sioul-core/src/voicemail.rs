@@ -94,17 +94,11 @@ fn holds(list: &[String], text: &str) -> bool {
     list.iter().map(|w| folded(w)).any(|w| !w.trim().is_empty() && text.contains(&w))
 }
 
-/// Whether a folded text holds one of a list's words as a whole word: no
-/// letter or digit right before it, nor right after, where the word itself
-/// begins or ends with one ("du" in "part du 01…", never in "durée"; "de :"
-/// before anything). The callers' leads are read so, yours as the shipped
-/// ones: a word added in `[words]` is trimmed, and needs no spaces.
+/// Whether a folded text holds one of a list's words as a whole word
+/// (`words::holds_word`): the callers' leads are read so, yours as the
+/// shipped ones.
 fn holds_word(list: &[String], text: &str) -> bool {
-    let alnum = |c: Option<char>| c.is_some_and(char::is_alphanumeric);
-    list.iter().map(|w| folded(w.trim())).filter(|w| !w.is_empty()).any(|word| {
-        let (starts, ends) = (alnum(word.chars().next()), alnum(word.chars().next_back()));
-        text.match_indices(word.as_str()).any(|(at, _)| (!starts || !alnum(text[..at].chars().next_back())) && (!ends || !alnum(text[at + word.len()..].chars().next())))
-    })
+    crate::words::holds_word(list, text)
 }
 
 /// The voicemail a mail is, if it is one, read with `words` (the operators'

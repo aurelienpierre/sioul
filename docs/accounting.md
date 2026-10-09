@@ -16,7 +16,7 @@ Money arrives and leaves by mail: invoices, receipts, payment notifications, pay
 - **A budget**: "New budget" on the budgets page, "Edit" on its page: its name, month or year, the balance to reach, what it is for. Taking one out keeps its lines in the file, as written; they no longer count.
 - **A bank account**: "New bank account" under Bank accounts, "Edit" on its card (below).
 - **A reserve**: "New reserve" over the reserves, "Edit" on each: its name, its balance on a day, its floor, how many days money asked from it takes to arrive.
-- **A line of the file**: right click, "Delete this line", asked once.
+- **A line of the file**: right click, "Change this line…" or "Delete this line", asked once. Lines are named by their place in the file (`sioul:budget/<budget>/<place>`), which another device or an edit by hand can change meanwhile: the line changed or taken out is the one the page showed, found again by its budget, date, amount and words (`budget::SeenLine`, at its place, else the one line just like it); when it is not found as it was, or two lines just like it are, nothing is changed, and the page says so.
 
 ## Where lines come from
 - **Mail.**
@@ -44,7 +44,7 @@ For a budget's current period:
   - **Better than planned**: above the target by more than the tolerance.
   - **As planned**: within it.
   - **Short of plan**: below it.
-- **The tolerance** is 2 % of what goes out in the period, and never less than 10.
+- **The tolerance** is 5 % of what the period moves (each movement in or out, done or planned, and what it still needs beyond what is scheduled), and never less than 10: the same for `sioul budgets` and the window's verdict at its pace (`budget::tolerance`). Wide enough that a budget whose money comes later in the month is not short in its first days.
 
 ## Reserves
 - **A reserve is a savings account** (an assurance vie, a Livret A), with its balance on a date, a floor it is never planned below, and its delay (`delay_days`): how long money asked from it takes to reach your account, 0 for a Livret A, about two weeks for an assurance vie.

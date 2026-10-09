@@ -29,6 +29,7 @@
     <file>sioul/16/document-new.svg</file>
     <file>sioul/16/document-open-recent.svg</file>
     <file>sioul/16/document-open.svg</file>
+    <file>sioul/16/document-send.svg</file>
     <file>sioul/16/document-sign.svg</file>
     <file>sioul/16/edit-clear.svg</file>
     <file>sioul/16/edit-copy.svg</file>
@@ -150,6 +151,7 @@
     <file>sioul/22/document-new.svg</file>
     <file>sioul/22/document-open-recent.svg</file>
     <file>sioul/22/document-open.svg</file>
+    <file>sioul/22/document-send.svg</file>
     <file>sioul/22/document-sign.svg</file>
     <file>sioul/22/edit-clear.svg</file>
     <file>sioul/22/edit-copy.svg</file>
@@ -365,6 +367,7 @@
     <file>sioul-dark/16/document-new.svg</file>
     <file>sioul-dark/16/document-open-recent.svg</file>
     <file>sioul-dark/16/document-open.svg</file>
+    <file>sioul-dark/16/document-send.svg</file>
     <file>sioul-dark/16/document-sign.svg</file>
     <file>sioul-dark/16/edit-clear.svg</file>
     <file>sioul-dark/16/edit-copy.svg</file>
@@ -486,6 +489,7 @@
     <file>sioul-dark/22/document-new.svg</file>
     <file>sioul-dark/22/document-open-recent.svg</file>
     <file>sioul-dark/22/document-open.svg</file>
+    <file>sioul-dark/22/document-send.svg</file>
     <file>sioul-dark/22/document-sign.svg</file>
     <file>sioul-dark/22/edit-clear.svg</file>
     <file>sioul-dark/22/edit-copy.svg</file>

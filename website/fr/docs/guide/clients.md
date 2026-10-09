@@ -32,7 +32,7 @@ Dans Sioul, c’est une seule boucle, dans une seule fenêtre. Le courrier du cl
 
 **Paramètres ▸ Factures** : votre nom ou votre raison sociale, votre adresse, votre SIRET ou votre numéro d’entreprise, la mention de TVA, le début des numéros de facture, votre monnaie, vos coordonnées de paiement, votre taux horaire. Chaque facture les porte ensuite. [Paramètres ▸ Factures](settings.md#invoices)
 
-Pour une micro-entreprise, la facture imprime votre SIRET, « TVA non applicable, art. 293 B du CGI » quand vous la donnez comme mention de TVA, les pénalités de retard, l’indemnité forfaitaire de 40 € pour frais de recouvrement et « Pas d’escompte pour paiement anticipé ». Elle n’ajoute pas d’elle-même « EI » après votre nom : écrivez-le là. Elle n’imprime pas encore la date de la prestation : voir [Pas encore là](#not-there-yet). Hors de France, la mention de TVA et les coordonnées de paiement sont à écrire à votre façon.
+Pour une micro-entreprise, la facture imprime votre SIRET, « TVA non applicable, art. 293 B du CGI » quand vous la donnez comme mention de TVA, les pénalités de retard, l’indemnité forfaitaire de 40 € pour frais de recouvrement et « Pas d’escompte pour paiement anticipé ». Elle imprime aussi la date ou la période de la prestation : le premier et le dernier jour des séances qu’elle facture, ou leur seul jour. Elle n’ajoute pas d’elle-même « EI » après votre nom : entrepreneur individuel, écrivez-le là, juste après votre nom (« Camille Exemple EI »). Hors de France, la mention de TVA et les coordonnées de paiement sont à écrire à votre façon.
 
 Avec le préfixe habituel, l’année, les numéros de facture repartent chaque mois de janvier ; avec votre propre préfixe, ils continuent après le dernier ([Les factures](time.md#invoices)).
 
@@ -53,7 +53,7 @@ En dehors de vos heures de travail, les projets des clients et la page Temps se 
 ## Pas encore là {#not-there-yet}
 
 - Les factures sont faites pour le travail à l’heure, sans TVA ajoutée à leurs totaux. Les devis, les lignes au forfait, les frais et les montants de TVA ne se font pas encore.
-- **Deux mentions que demande la loi française** ne sont pas imprimées pour vous : « EI » après le nom d’un entrepreneur individuel (écrivez-le après votre nom dans Paramètres ▸ Factures), et la date ou la période de la prestation (service-public.gouv.fr, fiche F31808).
+- **« EI » après votre nom** n’est pas ajouté pour vous : le nom d’un entrepreneur individuel doit être accompagné de « EI » ou de « entrepreneur individuel » (service-public.gouv.fr, fiche F31808). Écrivez-le juste après votre nom dans Paramètres ▸ Factures.
 - **La facture électronique.** À partir du 1er septembre 2027, une micro-entreprise française, en franchise de TVA aussi, doit émettre ses factures aux entreprises françaises sous forme électronique, par une plateforme agréée, avec le SIREN du client. Sioul ne fait que des factures en PDF, pour l’instant ([Le temps et les factures](time.md#not-there-yet)).
 
 ## Comparé à d’autres applications {#compared-with-other-apps}

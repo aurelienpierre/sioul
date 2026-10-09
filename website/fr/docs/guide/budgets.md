@@ -51,7 +51,7 @@ Un budget s’ouvre sur ses mouvements, du plus récent au plus ancien, et sur s
 
 **Ajouter un mouvement** : **Une fois**, ou **Régulier** (chaque mois ou chaque année, à un jour donné). Un montant est négatif pour une sortie (`-650`) et positif pour une entrée (`1200`). Pour ce qui se dépense petit à petit, comme les courses, voir [Les dépenses du quotidien](#daily-spending).
 
-Un clic droit sur une ligne : **Modifier cette ligne…**, **Supprimer cette ligne** (avec une confirmation).
+Un clic droit sur une ligne : **Modifier cette ligne…**, **Supprimer cette ligne** (avec une confirmation). Si la ligne a changé dans le fichier entre-temps (sur un autre appareil, ou à la main), rien n’est changé, et Sioul le dit : regardez-la de nouveau.
 
 **Retirer ce budget** garde ses lignes dans le fichier, telles qu’elles ont été écrites ; elles ne comptent plus.
 
@@ -230,7 +230,7 @@ D’autres en font plus par endroits : YNAB, Actual, Firefly III et Bankin’ 
 
 **Les exports.** OFX 1.x (SGML) et 2.x (XML), par le `FITID` de chaque mouvement ; camt.053 de l’ISO 20022, des versions 001.02 à 001.08 (les écritures comptabilisées, le solde de clôture comptabilisé, les noms sous `Pty`) ; le CSV d’une banque, son en-tête trouvé par ses mots, avec `;` ou `,`, la virgule décimale, débit et crédit séparés ou non, et un solde écrit au-dessus du tableau ; l’activité de PayPal (nette de frais ; les lignes en attente, refusées et pour mémoire laissées de côté, ainsi que celles dans une autre monnaie que la plupart du fichier) ; l’historique du solde de Stripe. Un mouvement sans identifiant en reçoit un, fait de son jour, de son montant et de son libellé : un fichier lu deux fois n’ajoute rien.
 
-**Le rythme.** Ce qui est prévu (paiements réguliers, lignes planifiées) compte en entier. Pour le reste, Sioul compare ce qui est entré ou sorti jusqu’ici à la part de la période écoulée : à dix jours sur trente, un tiers de ce qu’il faut encore à la période devrait être arrivé, ou pas plus d’un tiers de ce qu’elle peut dépenser dépensé. À moins de 5 % de ce que la période fait bouger (et jamais plus près que 10), le budget est dans les temps. La fourchette vient des douze dernières périodes qui ont eu des mouvements : du plus bas au plus haut à partir de trois, du 10e au 90e centile à partir de dix.
+**Le rythme.** Ce qui est prévu (paiements réguliers, lignes planifiées) compte en entier. Pour le reste, Sioul compare ce qui est entré ou sorti jusqu’ici à la part de la période écoulée : à dix jours sur trente, un tiers de ce qu’il faut encore à la période devrait être arrivé, ou pas plus d’un tiers de ce qu’elle peut dépenser dépensé. À moins de 5 % de ce que la période fait bouger (et jamais plus près que 10), le budget est dans les temps : la même tolérance que `sioul budgets` en ligne de commande. La fourchette vient des douze dernières périodes qui ont eu des mouvements : du plus bas au plus haut à partir de trois, du 10e au 90e centile à partir de dix.
 
 **La veille.** Un paiement attendu est cherché de trois jours avant sa date à sept jours après, par un mot de son nom, ou par son montant (à 1 % près, à trois jours près). « A pris un autre montant » veut dire plus de 5 % et 2 € d’écart. Le solde est projeté 31 jours en avant, les dépenses du quotidien réparties sur leurs jours. Un renflouement est arrondi à la dizaine au-dessus et demandé autant de jours à l’avance que sa réserve en met.
 

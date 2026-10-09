@@ -51,7 +51,7 @@ A budget opens on its movements, newest first, and its balance by **Days**, **We
 
 **Add a movement**: **Once**, or **Recurring** (every month or every year, on a day). An amount is negative for money out (`-650`) and positive for money in (`1200`). For what is spent little by little, such as food, see [Daily spending](#daily-spending).
 
-A right click on a line: **Change this line…**, **Delete this line** (asked once).
+A right click on a line: **Change this line…**, **Delete this line** (asked once). If the line changed in the file meanwhile (on another device, or by hand), nothing is changed, and Sioul says so: look at it again.
 
 **Take this budget out** keeps its lines in the file, as they were written; they no longer count.
 
@@ -230,7 +230,7 @@ Others do more in places: YNAB, Actual, Firefly III and Bankin' connect to the b
 
 **Exports.** OFX 1.x (SGML) and 2.x (XML), by each movement's `FITID`; ISO 20022 camt.053, versions 001.02 to 001.08 (booked entries, the closing booked balance, names under `Pty`); a bank's CSV, its header found by its words, with `;` or `,`, decimal commas, debit and credit apart or not, and a balance written above the table; PayPal's activity (net of fees; pending, refused and memo rows left out, and rows in another currency than most of the file's); Stripe's balance history. A movement without an id gets one made from its day, amount and label: a file read twice adds nothing.
 
-**The pace.** What is scheduled (recurring payments, planned lines) counts in full. For the rest, Sioul compares what has come in or left so far with the share of the period gone: ten days into thirty, a third of what the period still needs should have come in, or no more than a third of what it may spend should be spent. Within 5 % of what the period moves (and never closer than 10), the budget is on track. The range comes from the last twelve periods with movements: lowest to highest from three, 10th to 90th percentile from ten.
+**The pace.** What is scheduled (recurring payments, planned lines) counts in full. For the rest, Sioul compares what has come in or left so far with the share of the period gone: ten days into thirty, a third of what the period still needs should have come in, or no more than a third of what it may spend should be spent. Within 5 % of what the period moves (and never closer than 10), the budget is on track: the same tolerance as `sioul budgets` on the command line. The range comes from the last twelve periods with movements: lowest to highest from three, 10th to 90th percentile from ten.
 
 **The watch.** An expected payment is looked for from three days before its date to seven after, by a word of its name, or by its amount (within 1 %, three days around). "Took another amount" means more than 5 % and €2 apart. The balance is carried 31 days ahead, daily spending spread over its days. A top-up is rounded up to ten and asked as many days ahead as its reserve takes.
 

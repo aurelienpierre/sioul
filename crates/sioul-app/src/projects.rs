@@ -88,32 +88,53 @@ pub(crate) fn save_budget(qt: &QtThread, shared: &Arc<Shared>, id: &str, edit: &
     }
 }
 
-/// A budget taken out (its lines stay in the file), or one of its lines
-/// (`sioul:budget/<budget>/<place>`); returns what went wrong, else "".
-pub(crate) fn remove_budget(qt: &QtThread, shared: &Arc<Shared>, what: &str) -> String {
+/// A budget taken out, by its id (its lines stay in the file); returns what
+/// went wrong, else "". A line is taken out by `remove_line`.
+pub(crate) fn remove_budget(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
     let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
-    let path = root.join(budget::LEDGER);
-    let result = match what.strip_prefix("sioul:budget/").and_then(|rest| rest.rsplit_once('/')) {
-        Some((_, place)) => place.parse::<usize>().map_err(|e| e.to_string()).and_then(|place| budget::remove_line(&path, place)),
-        None => budget::remove_budget(&path, what),
-    };
+    let result = budget::remove_budget(&root.join(budget::LEDGER), id);
     crate::backend::show(qt, shared);
     result.err().unwrap_or_default()
 }
 
-/// A line of the budgets' file changed: label, amount, date; returns what went wrong, else "".
-pub(crate) fn change_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, label: &str, amount: f64, date: &str) -> String {
+/// What a line's change or removal came to, said: "" when done; when the line
+/// is not in the file as the page showed it (changed meanwhile, here by hand
+/// or on another device), that nothing was changed.
+fn line_said(result: Result<bool, String>) -> String {
+    match result {
+        Ok(true) => String::new(),
+        Ok(false) => tr().text("budget-line-gone", None),
+        Err(e) => e,
+    }
+}
+
+/// One line of the budgets' file taken out (`sioul:budget/<budget>/<place>`),
+/// only when it is still the line the page showed (`shown`: its row, JSON);
+/// returns what went wrong, else "".
+pub(crate) fn remove_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown: &str) -> String {
+    let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
+    let path = root.join(budget::LEDGER);
+    let result = match budget::SeenLine::from_page(uri, shown) {
+        Some((place, seen)) => budget::remove_line(&path, place, &seen),
+        None => Ok(false),
+    };
+    crate::backend::show(qt, shared);
+    line_said(result)
+}
+
+/// A line of the budgets' file changed: label, amount, date; only when it is
+/// still the line the page showed (`shown`: its row, JSON). Returns what went
+/// wrong, else "".
+pub(crate) fn change_line(qt: &QtThread, shared: &Arc<Shared>, uri: &str, shown: &str, label: &str, amount: f64, date: &str) -> String {
     let Some(root) = load_config().notes_root_path() else { return tr().text("error-no-store", None) };
     let path = root.join(budget::LEDGER);
     let today = Zoned::now().date();
-    let result = uri
-        .strip_prefix("sioul:budget/")
-        .and_then(|rest| rest.rsplit_once('/'))
-        .and_then(|(_, place)| place.parse::<usize>().ok())
-        .ok_or_else(|| tr().text("budget-line-gone", None))
-        .and_then(|place| budget::change_line(&path, place, label, amount, date.parse().unwrap_or(today), today));
+    let result = match budget::SeenLine::from_page(uri, shown) {
+        Some((place, seen)) => budget::change_line(&path, place, &seen, label, amount, date.parse().unwrap_or(today), today),
+        None => Ok(false),
+    };
     crate::backend::show(qt, shared);
-    result.err().unwrap_or_default()
+    line_said(result)
 }
 
 /// The Time page for `period` ("week", "month", "year") around `anchor`, one project or all.

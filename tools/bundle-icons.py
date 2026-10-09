@@ -13,6 +13,10 @@ size: Qt looks for each icon in every folder of a theme, and on a phone,
 eighteen folders made a tenth of the start. Breeze is LGPL-3.0-or-later
 (https://invent.kde.org/frameworks/breeze-icons): its licence goes along.
 
+Sioul's own icons, drawn for it and kept in the same folders (`OWN`), are
+never removed: they stay, and icons.qrc lists them. Nothing else in the folder
+is touched; a Breeze icon no longer used goes, as icons.qrc listed it.
+
 Run again after using a new icon: tools/bundle-icons.py
 """
 
@@ -27,6 +31,8 @@ OUT = APP / "icons"
 SOURCES = list((APP / "qml").glob("*.qml")) + list(ROOT.glob("crates/*/src/*.rs"))
 THEMES = {"sioul": Path("/usr/share/icons/breeze"), "sioul-dark": Path("/usr/share/icons/breeze-dark")}
 SIZES = ["16", "22", "32"]
+# Sioul's own icons, not Breeze's: kept as they are, in each theme and size they are in.
+OWN = {"sioul-web.svg"}
 
 names = set()
 for source in SOURCES:
@@ -35,13 +41,23 @@ for source in SOURCES:
     # Names of one word ("chronometer") where an icon is named.
     names.update(re.findall(r'icon(?:\.name|Name)\s*:\s*"([a-z][a-z0-9]*)"', text))
 
-if OUT.exists():
-    shutil.rmtree(OUT)
-files = []
+# What the last run bundled, as its icons.qrc listed it: what is no longer
+# bundled goes, and only that. The folder itself is never emptied.
+QRC = OUT / "icons.qrc"
+before = set(re.findall(r"<file>([^<]+)</file>", QRC.read_text(encoding="utf-8"))) if QRC.exists() else set()
 for theme, base in THEMES.items():
     if not base.is_dir():
         sys.exit(f"{base}: Breeze is needed to bundle its icons (dnf install breeze-icon-theme)")
+files = []
+written = set()
+for theme, base in THEMES.items():
     sizes = set()
+    # Sioul's own first: listed, never written over.
+    for own in sorted((OUT / theme).glob("*/*.svg")) if (OUT / theme).is_dir() else []:
+        if own.name in OWN:
+            written.add(own)
+            files.append(own.relative_to(OUT))
+            sizes.add(own.parent.name)
     for name in sorted(names):
         found = [p for size in SIZES for p in sorted(base.glob(f"*/{size}/{name}.svg"))]
         # Breeze draws some icons at 48 pixels only: the weather's, some applications' (the browser).
@@ -49,8 +65,9 @@ for theme, base in THEMES.items():
             size = path.parent.name
             target = OUT / theme / size / path.name
             # A name Breeze draws for two kinds (an action and a place): the first kind's.
-            if target.exists():
+            if target in written:
                 continue
+            written.add(target)
             target.parent.mkdir(parents=True, exist_ok=True)
             # Breeze links some icons to others: the file itself is copied.
             shutil.copyfile(path.resolve(), target)
@@ -69,8 +86,17 @@ if licences:
     shutil.copyfile(licences[0], OUT / "COPYING-ICONS")
 else:
     (OUT / "COPYING-ICONS").write_text("Breeze icons: LGPL-3.0-or-later, https://invent.kde.org/frameworks/breeze-icons\n")
+# A Breeze icon bundled before and no longer used: taken out, its folder too when empty.
+now = {f.as_posix() for f in files}
+for old in sorted(before - now):
+    path = OUT / old
+    if Path(old).name in OWN or Path(old).name == "index.theme" or not path.is_file() or path.parent.parent.parent != OUT:
+        continue
+    path.unlink()
+    if not any(path.parent.iterdir()):
+        path.parent.rmdir()
 qrc = ['<!DOCTYPE RCC><RCC version="1.0">', '<qresource prefix="/icons">']
 qrc += [f"    <file>{f.as_posix()}</file>" for f in sorted(set(files))]
 qrc += ["</qresource>", "</RCC>", ""]
-(OUT / "icons.qrc").write_text("\n".join(qrc), encoding="utf-8")
+QRC.write_text("\n".join(qrc), encoding="utf-8")
 print(f"{len(names)} names looked at, {len(set(files))} files bundled in {OUT.relative_to(ROOT)}")

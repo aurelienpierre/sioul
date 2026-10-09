@@ -44,6 +44,10 @@ the Texts page lists their conversations and says each text's state
 --compose (or SIOUL_DEMO_COMPOSE=1) adds a message to answer on a phone's
 width: a subject of more than sixty characters, replies asked to two
 addresses, a copy to a third (SIOUL_GRAB_STEPS=compose, docs/building.md).
+--doses-asked (or SIOUL_DEMO_DOSES_ASKED=1) leaves today's two first doses
+unanswered: the morning's as due while Sioul was closed, the noon's as due
+while Sioul ran but its reminder could not be shown; the Porch and the Health
+page ask about each under its own question (docs/health.md).
 
 DIR must be new, empty, or a demo profile made by this script: it is then
 emptied first."""
@@ -2225,7 +2229,7 @@ payment = "IBAN FR76 0000 0000 0000 0000 0000 000"
 """ + "\n".join(lines))
 
 
-def write_health(p: Profile):
+def write_health(p: Profile, asked: bool = False):
     c = p.clock
     p.write(p.data / "health.toml", f"""errands_list = "{DAV}/home-tasks"
 
@@ -2302,14 +2306,25 @@ after = 0
 """)
     taken = []
     reminded = []
+    unshown = []
     doses = [(-1, "levothyroxine", "07:30", 9), (-1, "magnesium", "12:30", 20), (-1, "magnesium", "20:00", 35),
              (0, "levothyroxine", "07:30", 11), (0, "magnesium", "12:30", 14), (0, "magnesium", "20:00", 10)]
     for offset, medicine, hhmm, late in doses:
         moment = c.at(c.day(offset), hhmm)
         if moment + timedelta(minutes=30) < c.now:
-            taken.append(f'"{medicine}@{unix(moment)}" = {unix(moment + timedelta(minutes=late))}')
-            reminded.append(f'"{medicine}@{unix(moment)}" = {unix(moment)}')
-    p.write(p.state / "health-state.toml", "[taken]\n" + "\n".join(taken) + "\n\n[reminded]\n" + "\n".join(reminded) + "\n")
+            key = f'"{medicine}@{unix(moment)}"'
+            # --doses-asked: the morning's due while Sioul was closed; the noon's, its reminder not shown.
+            if asked and offset == 0 and hhmm == "07:30":
+                continue
+            if asked and offset == 0 and hhmm == "12:30":
+                unshown.append(f"{key} = {unix(moment)}")
+                continue
+            taken.append(f"{key} = {unix(moment + timedelta(minutes=late))}")
+            reminded.append(f"{key} = {unix(moment)}")
+    state = "[taken]\n" + "\n".join(taken) + "\n\n[reminded]\n" + "\n".join(reminded) + "\n"
+    if unshown:
+        state += "\n[unshown]\n" + "\n".join(unshown) + "\n"
+    p.write(p.state / "health-state.toml", state)
 
 
 def write_weather(p: Profile):
@@ -2582,6 +2597,8 @@ def main():
                         help="a message to answer on a phone's width: a long subject, replies to two addresses, a copy to a third (SIOUL_DEMO_COMPOSE=1 too)")
     parser.add_argument("--old-projects", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_OLD_PROJECTS")),
                         help="the projects' file under its first name, sioul-cases.toml with [[case]], and the budgets' ties as sioul:case/: Settings offers to rename it (SIOUL_DEMO_OLD_PROJECTS=1 too)")
+    parser.add_argument("--doses-asked", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_DOSES_ASKED")),
+                        help="today's morning dose due while Sioul was closed, and its noon dose whose reminder could not be shown, both unanswered (SIOUL_DEMO_DOSES_ASKED=1 too)")
     args = parser.parse_args()
     LANG = args.language
     W = World()
@@ -2611,7 +2628,7 @@ def main():
         as_written_before(profile)
     sessions = write_time(profile)
     write_invoices(profile, sessions)
-    write_health(profile)
+    write_health(profile, args.doses_asked)
     write_weather(profile)
     write_site_news(profile)
     print(f"{root}: a demo profile for {clock.now.isoformat()}, in {'French' if LANG == 'fr' else 'English'}" + ("" if profile.hours else ", without hours"))

@@ -130,7 +130,7 @@ Not tried yet. The steps, for those who want to:
 3. `cargo build --release -p sioul-app`.
 4. `windeployqt --release --qmldir crates\sioul-app\qml target\release\sioul-app.exe` gathers Qt beside the program. `packaging\windows\sioul.iss` makes an installer with Inno Setup.
 
-On Windows, attachments are checked by Microsoft Defender, through the Antimalware Scan Interface. Reminders come only while the window is open.
+On Windows, attachments are checked by Microsoft Defender, through the Antimalware Scan Interface. Reminders come only while the window is open. Tesseract, to read scanned letters, is found where its installer puts it (Program Files, or your own AppData when installed for you alone), even when it is not added to the `PATH`.
 
 ## On macOS
 
