@@ -62,12 +62,17 @@ Item {
     }
 
     function act(verb, args) {
+        // Before the window hands the page its backend (its first visibility change): nothing to do.
+        if (!page.sioul)
+            return ({})
         return JSON.parse(page.sioul.texts(verb, JSON.stringify(args || {})) || "null") || ({})
     }
 
     // Read while shown, as Mail. What did not change keeps its place; a thread
     // read to its end stays at its end as a new text comes.
     function reload() {
+        if (!page.sioul)
+            return
         const listed = page.sioul.texts("view", JSON.stringify({ query: page.query }))
         if (listed !== page.listedText)
             page.listedText = listed
@@ -435,9 +440,15 @@ Item {
                 // Held at its end as its rows take their heights, or the window its size; let go when you scroll back.
                 onContentHeightChanged: {
                     if (page.atEnd)
-                        thread.positionViewAtEnd()
+                        Qt.callLater(thread.toEnd)
                 }
                 onHeightChanged: {
+                    if (page.atEnd)
+                        Qt.callLater(thread.toEnd)
+                }
+
+                // Once per turn of the event loop, however many rows changed meanwhile.
+                function toEnd() {
                     if (page.atEnd)
                         thread.positionViewAtEnd()
                 }
@@ -581,12 +592,16 @@ Item {
 
                                             // Read at the width it is drawn at, at most: a phone's photo
                                             // read whole held some 48 MB, drawn 320 pixels wide.
+                                            // Its box set before it loads: a row whose height changed as its
+                                            // picture came moved the thread, which made rows again, each
+                                            // opening its picture again (the window froze on long threads).
                                             Image {
                                                 id: photo
 
-                                                visible: shown.here && shown.modelData.kind === "picture" && photo.status === Image.Ready
-                                                Layout.preferredWidth: Math.min(320, column.width, photo.implicitWidth)
-                                                Layout.preferredHeight: photo.implicitWidth > 0 ? Math.min(320, column.width, photo.implicitWidth) * photo.implicitHeight / photo.implicitWidth : 0
+                                                visible: shown.here && shown.modelData.kind === "picture"
+                                                Layout.preferredWidth: Math.min(320, column.width)
+                                                Layout.preferredHeight: visible ? 240 : 0
+                                                horizontalAlignment: Image.AlignLeft
                                                 sourceSize.width: Math.ceil(320 * Screen.devicePixelRatio)
                                                 source: shown.picture
                                                 fillMode: Image.PreserveAspectFit

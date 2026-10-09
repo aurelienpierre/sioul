@@ -892,14 +892,16 @@ fn opened_folder() -> PathBuf {
 
 /// A media file opened for the page or saved: its plain copy in `opened_folder`; none when it is not here.
 fn open_media(hash: &str, ct: &str) -> Option<PathBuf> {
-    let (_, seal, _) = sealed()?;
     let path = media_path(hash);
-    let plain = seal.open_bytes(&std::fs::read(&path).ok()?)?;
     let extension = ct.split('/').nth(1).and_then(|s| s.split(['+', ';', '.', '-']).next()).filter(|e| !e.is_empty() && e.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or("bin");
     let target = opened_folder().join(format!("{}.{extension}", path.file_name()?.to_string_lossy()));
-    if !target.exists() {
-        write_whole(&target, &plain).ok()?;
+    // Opened already for the page: not read and opened again each time a row shows it.
+    if target.exists() {
+        return Some(target);
     }
+    let (_, seal, _) = sealed()?;
+    let plain = seal.open_bytes(&std::fs::read(&path).ok()?)?;
+    write_whole(&target, &plain).ok()?;
     Some(target)
 }
 
@@ -988,12 +990,80 @@ fn sending_phone() -> Option<sioul_sync::devices::Entry> {
 
 // ---------------------------------------------------------------- a computer: the page
 
-fn names(config: &Config) -> impl Fn(&str) -> Option<String> {
-    let senders = Senders::load(config);
+fn names(senders: std::rc::Rc<Senders>) -> impl Fn(&str) -> Option<String> {
     move |key: &str| {
         let judged = senders.judge_number(key);
         (!judged.card.trim().is_empty()).then_some(judged.card)
     }
+}
+
+thread_local! {
+    /// The settings and your lists and address books, as the page last read
+    /// them: read again when the settings' file changed, or after a minute.
+    static LOOKS: std::cell::RefCell<Option<(Option<(u64, std::time::SystemTime)>, std::time::Instant, std::rc::Rc<Config>, std::rc::Rc<Senders>)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// The settings and your senders for the page's looks (`LOOKS`): each
+/// opening of a conversation read them twice, on the window's thread.
+fn looks() -> (std::rc::Rc<Config>, std::rc::Rc<Senders>) {
+    let stamp = std::fs::metadata(config_dir().join("config.toml")).ok().map(|m| (m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH)));
+    LOOKS.with(|cell| {
+        let mut kept = cell.borrow_mut();
+        if let Some((s, at, config, senders)) = kept.as_ref()
+            && *s == stamp
+            && at.elapsed() < std::time::Duration::from_secs(60)
+        {
+            return (std::rc::Rc::clone(config), std::rc::Rc::clone(senders));
+        }
+        let config = std::rc::Rc::new(load_config());
+        let senders = std::rc::Rc::new(Senders::load(&config));
+        *kept = Some((stamp, std::time::Instant::now(), std::rc::Rc::clone(&config), std::rc::Rc::clone(&senders)));
+        (config, senders)
+    })
+}
+
+/// The texts, the requests and their outcomes as last read, kept while their
+/// files stay as they were (size and time) for this device: the whole
+/// history is opened once, not at each look of the page (9,800 sealed lines
+/// read twice per conversation opened froze the window for seconds).
+struct Kept {
+    here: String,
+    stamp: Vec<(PathBuf, u64, std::time::SystemTime)>,
+    texts: std::sync::Arc<Vec<Text>>,
+    requests: std::sync::Arc<Vec<Request>>,
+    outcomes: std::sync::Arc<Vec<Outcome>>,
+}
+
+static KEPT: Mutex<Option<Kept>> = Mutex::new(None);
+
+/// Each record file of the three stores, its size and time.
+fn stamps(root: &Path) -> Vec<(PathBuf, u64, std::time::SystemTime)> {
+    let mut all = Vec::new();
+    for store in [rules::LOG, rules::SEND, rules::OUTCOME] {
+        for entry in std::fs::read_dir(root.join(store)).into_iter().flatten().flatten() {
+            if let Ok(meta) = entry.metadata() {
+                all.push((entry.path(), meta.len(), meta.modified().unwrap_or(std::time::UNIX_EPOCH)));
+            }
+        }
+    }
+    all.sort();
+    all
+}
+
+/// The texts, the requests and their outcomes (`KEPT`), read again only when a file changed.
+#[allow(clippy::type_complexity)]
+fn records(here: &str, seal: &Seal) -> (std::sync::Arc<Vec<Text>>, std::sync::Arc<Vec<Request>>, std::sync::Arc<Vec<Outcome>>) {
+    let root = root();
+    let stamp = stamps(&root);
+    let mut kept = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(k) = kept.as_ref().filter(|k| k.here == here && k.stamp == stamp) {
+        return (std::sync::Arc::clone(&k.texts), std::sync::Arc::clone(&k.requests), std::sync::Arc::clone(&k.outcomes));
+    }
+    let texts = std::sync::Arc::new(rules::read_logs(&root, seal));
+    let requests = std::sync::Arc::new(rules::read_requests(&root, seal));
+    let outcomes = std::sync::Arc::new(rules::read_outcomes(&root, seal));
+    *kept = Some(Kept { here: here.to_string(), stamp, texts: std::sync::Arc::clone(&texts), requests: std::sync::Arc::clone(&requests), outcomes: std::sync::Arc::clone(&outcomes) });
+    (texts, requests, outcomes)
 }
 
 /// The Texts page's list (TextsPage.qml): {can (the part on, a phone that
@@ -1004,15 +1074,14 @@ fn names(config: &Config) -> impl Fn(&str) -> Option<String> {
 /// last words.
 fn view(query: &str) -> Value {
     let tr = tr();
-    let Some((_, seal, _)) = sealed() else { return json!({ "can": false, "said": tr.text("texts-page-off", None), "conversations": [] }) };
+    let Some((here, seal, _)) = sealed() else { return json!({ "can": false, "said": tr.text("texts-page-off", None), "conversations": [] }) };
     let Some(phone) = sending_phone() else { return json!({ "can": false, "said": tr.text("texts-page-no-phone", None), "conversations": [] }) };
-    let config = load_config();
+    let (config, senders) = looks();
     let now = Zoned::now();
-    let name_of = names(&config);
+    let name_of = names(senders);
     let shared = (phone.exported > 0).then_some(phone.exported * 1000);
     let v = rules::Viewer { now: &now, tr, region: sioul_core::reach::region(&config), name_of: &name_of, phone_shared: shared, media_here: &here_media };
-    let texts = rules::read_logs(&root(), &seal);
-    let requests = rules::read_requests(&root(), &seal);
+    let (texts, requests, _) = records(&here, &seal);
     let mut conversations = rules::conversations(&texts, &requests, &v);
     let query = query.trim();
     if !query.is_empty() {
@@ -1072,17 +1141,15 @@ fn with_drafts(conversations: Vec<rules::Conversation>, drafts: &[sioul_core::te
 
 /// One conversation (TextsPage.qml): {id, title, messages, can_write, group}.
 fn conversation(id: &str) -> Value {
-    let Some((_, seal, _)) = sealed() else { return json!({ "messages": [] }) };
-    let config = load_config();
+    let Some((here, seal, _)) = sealed() else { return json!({ "messages": [] }) };
+    let (config, senders) = looks();
     let now = Zoned::now();
-    let name_of = names(&config);
+    let name_of = names(senders);
     let phone = sending_phone();
     let shared = phone.as_ref().filter(|p| p.exported > 0).map(|p| p.exported * 1000);
     let region = sioul_core::reach::region(&config);
     let v = rules::Viewer { now: &now, tr: tr(), region, name_of: &name_of, phone_shared: shared, media_here: &here_media };
-    let texts = rules::read_logs(&root(), &seal);
-    let requests = rules::read_requests(&root(), &seal);
-    let outcomes = rules::read_outcomes(&root(), &seal);
+    let (texts, requests, outcomes) = records(&here, &seal);
     let messages = rules::messages(id, &texts, &requests, &outcomes, &v);
     let with: Vec<String> = id.split(',').map(str::to_string).collect();
     let title = with.iter().map(|k| name_of(k).unwrap_or_else(|| sioul_core::calls::shown_number(k, region))).collect::<Vec<_>>().join(", ");
@@ -1156,8 +1223,8 @@ fn size_words(bytes: u64) -> String {
 /// What this device keeps of the texts, for its part's line in the sharing
 /// panel ("Keeps 4,830 texts and 210 MB of media here."); "" when none.
 pub(crate) fn kept_words() -> String {
-    let Some((_, seal, _)) = sealed() else { return String::new() };
-    let texts = rules::read_logs(&root(), &seal);
+    let Some((here, seal, _)) = sealed() else { return String::new() };
+    let (texts, _, _) = records(&here, &seal);
     if texts.is_empty() {
         return String::new();
     }
@@ -1409,3 +1476,4 @@ mod tests {
         assert!(!shared, "{answer}");
     }
 }
+
