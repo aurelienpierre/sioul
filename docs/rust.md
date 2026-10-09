@@ -16,7 +16,7 @@ members = ["crates/sioul-core", "crates/sioul-cli", "crates/sioul-sync", "crates
 default-members = ["crates/sioul-core", "crates/sioul-cli", "crates/sioul-sync", "crates/sioul-learn"]
 
 [workspace.package]
-version = "0.0.3"
+version = "0.0.4"
 edition = "2024"
 rust-version = "1.89"
 ```

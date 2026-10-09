@@ -207,7 +207,7 @@ The same reasoning decides how Sioul is built. Your data stays on your devices, 
 
 ## Where it stands
 
-Sioul is young (version 0.0.3) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet.
+Sioul is young (version 0.0.4) and changes often; it is used every day. Packages for Windows, macOS (Apple silicon and Intel), Linux (AppImage and Flatpak) and Android (64-bit phones, Android 9 and later) are on [the releases page](https://github.com/aurelienpierre/sioul/releases/latest) ([Install](guide/install.md)): built and tested by GitHub, used daily on Linux and on an Android phone, little tried elsewhere yet.
 
 It is made by one person, in the open: no support is promised. Questions and reports are welcome in [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 

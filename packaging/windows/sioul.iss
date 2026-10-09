@@ -11,7 +11,7 @@
 ; The version: the packages' workflow gives it (/DVersion=..., from the tag or
 ; Cargo.toml); this one only when the installer is built by hand.
 #ifndef Version
-  #define Version "0.0.3"
+  #define Version "0.0.4"
 #endif
 
 [Setup]
