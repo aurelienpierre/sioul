@@ -89,6 +89,34 @@ pub fn set_frugal(memory: &Path, on: bool) {
 fn frugal(memory: &Path) -> bool {
     FRUGAL.lock().is_ok_and(|f| f.contains(memory))
 }
+
+/// While a bulk import goes on (`set_importing`), full rounds wait until this
+/// device appended this much since the last one: the import's records go out
+/// once, in the rounds that continue the last full one, and a single full
+/// round follows the import, not one every few megabytes of it.
+const IMPORT_ROUND_SIZE: u64 = 64 << 20;
+
+/// The sharings (by their memory) whose device imports in bulk now (`set_importing`).
+static IMPORTING: std::sync::Mutex<BTreeSet<PathBuf>> = std::sync::Mutex::new(BTreeSet::new());
+
+/// Said before each exchange, by the background step and the window alike:
+/// a bulk import goes on here (a phone's first import of its texts, or one
+/// it fell behind in), so that no full round restating every record starts
+/// meanwhile (`IMPORT_ROUND_SIZE`). On 8 October 2026 a first import of
+/// 10 MB of texts made six full rounds, 63 MB in all, each sent twice.
+pub fn set_importing(memory: &Path, on: bool) {
+    if let Ok(mut importing) = IMPORTING.lock() {
+        if on {
+            importing.insert(memory.to_path_buf());
+        } else {
+            importing.remove(memory);
+        }
+    }
+}
+
+fn importing(memory: &Path) -> bool {
+    IMPORTING.lock().is_ok_and(|i| i.contains(memory))
+}
 /// Entries taken out are remembered this long, so an old copy does not bring them back.
 const TOMBSTONE_DAYS: i64 = 90;
 /// A computer silent this long no longer holds back the removal of old rounds.
@@ -752,6 +780,10 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
     // What is unknown keeps its last look: next time, a folder that held files is still known to have held them.
     let carried: Vec<(String, Stat)> = known.iter().filter(|(file, _)| !found.files.contains_key(*file) && found.is_unknown(file)).map(|(file, stat)| (file.clone(), stat.clone())).collect();
     found.files.extend(carried);
+    // The logs of lines kept (`LINES`) that are no longer there, forgotten.
+    if let Ok(mut all) = LINES.lock() {
+        all.retain(|path, _| path.exists() || !stores.iter().any(|s| matches!(s.shape, Shape::Lines) && path.starts_with(&s.path)));
+    }
     found
 }
 
@@ -944,22 +976,67 @@ fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, St
         found.files.insert(file.to_string(), Stat { size: meta.len(), modified, entries: vec![(String::new(), h)], seen: look.clock });
         return;
     }
+    if lines {
+        // A log of lines: its lines as this process last read them, while the
+        // file is that one (`LINES`), else read now and kept.
+        let Some(lines) = lines_of(path, &meta, look.clock) else {
+            found.unknown.insert(file.to_string());
+            return;
+        };
+        let h = hash("");
+        for line in lines.iter() {
+            let key = format!("{file}#{line}");
+            found.hashes.insert(key.clone(), h.clone());
+            found.values.insert(key, String::new());
+        }
+        // When it was read is not kept (the memory would change at each).
+        found.files.insert(file.to_string(), Stat { size: meta.len(), modified, entries: Vec::new(), seen: 0 });
+        return;
+    }
     let Some(entries) = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)) else {
         found.unknown.insert(file.to_string());
         return;
     };
-    // A log of lines is read at every look: when it was is not kept (the memory would change at each).
-    let mut stat = Stat { size: meta.len(), modified, entries: Vec::with_capacity(if lines { 0 } else { entries.len() }), seen: if lines { 0 } else { look.clock } };
+    let mut stat = Stat { size: meta.len(), modified, entries: Vec::with_capacity(entries.len()), seen: look.clock };
     for (entry, value) in entries {
         let key = format!("{file}#{entry}");
         let h = hash(&value);
-        if !lines {
-            stat.entries.push((entry, h.clone()));
-        }
+        stat.entries.push((entry, h.clone()));
         found.hashes.insert(key.clone(), h);
         found.values.insert(key, value);
     }
     found.files.insert(file.to_string(), stat);
+}
+
+/// Each log of lines (`Shape::Lines`) as this process last read it, by its
+/// path: the file's stamp then, when it was read (milliseconds), its lines.
+/// Read again only once the file changed, or when it was read within
+/// `settling_ms` of its change (a coarse clock: it may have changed again at
+/// the same size and time). The texts' log alone is megabytes of sealed lines,
+/// once read at every exchange of a phone's background step.
+type Lines = BTreeMap<PathBuf, (FileStamp, i64, std::sync::Arc<Vec<String>>)>;
+static LINES: std::sync::Mutex<Lines> = std::sync::Mutex::new(BTreeMap::new());
+
+/// A log's lines, as `entries_of` reads them: from `LINES` while the file is
+/// the one read there, else read now (`clock`: this computer's, milliseconds) and kept.
+fn lines_of(path: &Path, meta: &std::fs::Metadata, clock: i64) -> Option<std::sync::Arc<Vec<String>>> {
+    let stamp = file_stamp(meta);
+    let settled = |read: i64| (stamp.modified / 1_000_000) as i64 + settling_ms() < read;
+    if let Some((_, _, lines)) = keeping().then(|| LINES.lock().ok().and_then(|all| all.get(path).filter(|(was, read, _)| *was == stamp && settled(*read)).cloned())).flatten() {
+        return Some(lines);
+    }
+    let bytes = std::fs::read(path).ok()?;
+    #[cfg(test)]
+    LINES_READ.with(|n| n.set(n.get() + 1));
+    let lines: std::sync::Arc<Vec<String>> = std::sync::Arc::new(String::from_utf8_lossy(&bytes).lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).map(str::to_string).collect());
+    // Kept, read whole only if it did not change meanwhile: else read again next time.
+    if keeping()
+        && bytes.len() as u64 == stamp.size
+        && let Ok(mut all) = LINES.lock()
+    {
+        all.insert(path.to_path_buf(), (stamp, clock, std::sync::Arc::clone(&lines)));
+    }
+    Some(lines)
 }
 
 /// A file's entries and their values; none when it cannot be read as its
@@ -1740,7 +1817,7 @@ fn fnv(bytes: &[u8]) -> u64 {
     bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |hash, b| (hash ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3))
 }
 
-fn hash(value: &str) -> String {
+pub(crate) fn hash(value: &str) -> String {
     format!("{:016x}", fnv(value.as_bytes()))
 }
 
@@ -1785,6 +1862,11 @@ struct Memory {
     checked: i64,
     #[serde(default)]
     tidied: i64,
+    /// When what a crash left half written among the folder's sealed files
+    /// was last cleaned (milliseconds): once a day, since listing `blobs/`
+    /// reads thousands of names (on a phone, through its storage's slow layer).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    cleaned: i64,
     /// Others' records already read in: done once, when sharing starts.
     #[serde(default)]
     joined: bool,
@@ -1890,6 +1972,10 @@ struct Memory {
     /// What it remembers of files sealed apart, in `files.json` beside.
     #[serde(skip)]
     sealed: Sealed,
+    /// `memory.json` as `save` last wrote it, kept with the memory in this
+    /// process (`Memory::keep`); never written itself.
+    #[serde(skip)]
+    saved: Vec<u8>,
 }
 
 /// What this computer remembers of files sealed apart (notes, papers), beside
@@ -2001,8 +2087,13 @@ impl Memory {
     }
 
     /// The whole memory, files sealed apart too (`files.json`), their entries
-    /// and changes among the others while an exchange runs.
+    /// and changes among the others while an exchange runs: as the last
+    /// exchange in this process left it while both files are as it wrote
+    /// them (`Kept`), else read from them.
     fn load_all(path: &Path, computer: &str) -> Memory {
+        if let Some(kept) = Memory::kept(path, computer) {
+            return kept;
+        }
         let mut memory = Memory::load(path, computer);
         match std::fs::read_to_string(sealed_path(path)).ok().and_then(|t| serde_json::from_str::<Sealed>(&t).ok()).filter(|s| s.computer == computer) {
             Some(sealed) => {
@@ -2043,7 +2134,45 @@ impl Memory {
             write_synced(path, text.as_bytes())
         };
         write(&sealed_path(path), serde_json::to_string(&self.sealed).map_err(|e| e.to_string())?)?;
-        write(path, serde_json::to_string(self).map_err(|e| e.to_string())?)
+        let text = serde_json::to_string(self).map_err(|e| e.to_string())?;
+        write(path, text.clone())?;
+        self.saved = text.into_bytes();
+        Ok(())
+    }
+
+    /// Kept in this process once saved, for the next exchange or send to take
+    /// rather than read both files again (`Kept`).
+    fn keep(mut self, path: &Path) {
+        let text = std::mem::take(&mut self.saved);
+        if text.is_empty() {
+            return;
+        }
+        let sealed = stamp_at(&sealed_path(path));
+        if let Ok(mut mine) = MINE.lock() {
+            mine.insert(path.to_path_buf(), (sealed, self.computer.clone(), self.sealed.mine.iter().map(|(name, (_, size))| (name.clone(), *size)).collect()));
+        }
+        if !keeping() {
+            return;
+        }
+        self.entries.append(&mut self.sealed.entries);
+        self.files.append(&mut self.sealed.files);
+        self.pending.append(&mut self.sealed.pending);
+        let kept = Kept { own: stamp_at(path), sealed, text, memory: self };
+        if let Ok(mut all) = KEPT.lock() {
+            all.insert(path.to_path_buf(), kept);
+        }
+    }
+
+    /// The memory kept in this process (`keep`), taken, when it is this
+    /// computer's and both its files are still as it wrote them: `memory.json`
+    /// the same bytes, `files.json` the same file (its inode, size and time).
+    fn kept(path: &Path, computer: &str) -> Option<Memory> {
+        if !keeping() {
+            return None;
+        }
+        let kept = KEPT.lock().ok()?.remove(path)?;
+        let same = kept.memory.computer == computer && kept.own.is_some() && stamp_at(path) == kept.own && stamp_at(&sealed_path(path)) == kept.sealed && std::fs::read(path).is_ok_and(|text| text == kept.text);
+        same.then_some(kept.memory)
     }
 
     /// A new clock: after every clock given or read, and not before `physical` (milliseconds).
@@ -2057,6 +2186,71 @@ impl Memory {
 fn sealed_path(memory: &Path) -> PathBuf {
     memory.with_file_name("files.json")
 }
+
+/// A file as it stands: its inode (on Unix; a file written anew and renamed
+/// into place is another), its size and its time (nanoseconds).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct FileStamp {
+    ino: u64,
+    size: u64,
+    modified: u64,
+}
+
+fn file_stamp(meta: &std::fs::Metadata) -> FileStamp {
+    #[cfg(unix)]
+    let ino = std::os::unix::fs::MetadataExt::ino(meta);
+    #[cfg(not(unix))]
+    let ino = 0;
+    FileStamp { ino, size: meta.len(), modified: modified_ns(meta) }
+}
+
+fn stamp_at(path: &Path) -> Option<FileStamp> {
+    std::fs::metadata(path).ok().map(|meta| file_stamp(&meta))
+}
+
+/// The memory as the last exchange in this process saved it (`Memory::keep`),
+/// with `memory.json` as written and both files' stamps: the next exchange,
+/// or a send asking what this device sealed (`own_sealed`), takes it while
+/// neither file changed, rather than reading them again. A phone's background
+/// service exchanges every few minutes, and its `files.json` holds tens of
+/// thousands of entries (the texts' lines): megabytes read at each.
+struct Kept {
+    memory: Memory,
+    text: Vec<u8>,
+    own: Option<FileStamp>,
+    sealed: Option<FileStamp>,
+}
+
+/// The memories kept in this process, by the path of their `memory.json`.
+static KEPT: std::sync::Mutex<BTreeMap<PathBuf, Kept>> = std::sync::Mutex::new(BTreeMap::new());
+
+/// Whether this process keeps the memory and the logs of lines between its
+/// exchanges (`set_keeping`); always in tests, which run the sharing through it.
+static KEEPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(cfg!(test));
+
+/// Said once by a process that exchanges every few minutes for a long time
+/// (a phone's background service): the memory and the logs of lines are kept
+/// between its exchanges (`Kept`, `LINES`), rather than read again at each.
+/// They weigh some tens of megabytes with many texts shared (about 30 MB for
+/// 10 MB of texts): a window's process, which holds little between its
+/// minutes, reads them again at each (docs/android.md, "In the background").
+pub fn set_keeping(on: bool) {
+    KEEPING.store(on, std::sync::atomic::Ordering::Relaxed);
+    if !on {
+        KEPT.lock().map(|mut all| all.clear()).ok();
+        LINES.lock().map(|mut all| all.clear()).ok();
+    }
+}
+
+fn keeping() -> bool {
+    KEEPING.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// What this device sealed in the folder (`Sealed::mine`, by name, the size
+/// sealed), as `files.json` said it when last written or read in this process
+/// (its stamp, and whose it is): what each send asks first (`own_sealed`), a few names.
+type Mine = BTreeMap<PathBuf, (Option<FileStamp>, String, BTreeMap<String, u64>)>;
+static MINE: std::sync::Mutex<Mine> = std::sync::Mutex::new(BTreeMap::new());
 
 /// One line of a computer's file: its number in the round, its clock, the sealed change.
 #[derive(Debug, Serialize, Deserialize)]
@@ -2534,7 +2728,9 @@ pub fn forget_device(folder: &Path, key: &[u8; 32], memory: &Path, computer: &st
     let (entries, _) = crate::devices::all(folder, key);
     let mark = last_heard(entries.iter().find(|e| e.id == device), &state, device);
     state.forgotten.insert(device.to_string(), mark.max(1));
-    state.save(memory)
+    state.save(memory)?;
+    state.keep(memory);
+    Ok(())
 }
 
 /// A device counted again (Count it again), whatever it said since.
@@ -2543,6 +2739,7 @@ pub fn count_device_again(memory: &Path, computer: &str, device: &str) -> Result
     let mut state = Memory::load_all(memory, computer);
     if state.forgotten.remove(device).is_some() {
         state.save(memory)?;
+        state.keep(memory);
     }
     Ok(())
 }
@@ -3308,6 +3505,9 @@ pub struct Outcome {
     /// How far this computer's records went once it ended: round and number;
     /// none before sharing joined.
     pub wrote: Option<(u32, u64)>,
+    /// Nothing it reads had changed since an exchange left everything
+    /// settled: nothing was read nor written (`quiet`).
+    pub quiet: bool,
 }
 
 /// Before the first exchange, a copy of every shared file, in case. Not of
@@ -3344,7 +3544,6 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // copy of each other device's file (`remote`); none until a server's
     // folder is confirmed to be this one.
     crate::remote::attach(sharing.folder, sharing.memory);
-    let mut memory = Memory::load_all(sharing.memory, sharing.computer);
     let mut outcome = Outcome::default();
     // Notes and papers only when asked (not for a dose's alarm, a button
     // pressed, Sioul closing), and while no hurried exchange waits for this
@@ -3353,6 +3552,19 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // A single file sealed apart (the spam filter's table), in every exchange:
     // one file of Sioul's own, quick to read, never in a shared storage.
     let reads = |store: &Store| sharing.files || !matches!(store.shape, Shape::Files) || !store.folder;
+    // What it reads, as it stands before anything is read (`Standing`): as
+    // when the last exchange in this process left everything settled, there
+    // is nothing to do, and nothing is read (`quiet`). Not with notes and
+    // papers: the window's exchanges read them through.
+    // Its time taken first: whatever was written before it is in the stamps.
+    let standing = (!sharing.files).then(|| {
+        let taken = clock_ms();
+        (Standing::now(sharing, stores, &reads), taken)
+    });
+    if let Some(outcome) = standing.as_ref().and_then(|(standing, taken)| quiet(sharing, standing, *taken, now_ms)) {
+        return Ok(outcome);
+    }
+    let mut memory = Memory::load_all(sharing.memory, sharing.computer);
     // This computer's own records in the folder go further than its memory: the
     // memory was restored from a backup, lost, or started again ("Stop sharing",
     // then again). Its numbering goes on after the folder's last line (the
@@ -4086,15 +4298,21 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         crate::blobs::sweep(sharing.folder, &mut last, &used, now_ms);
         memory.sealed.mine.retain(|name, (at, _)| last.get(name).map(|kept| *at = *kept).is_some());
     }
-    // The history held within bounds, and what a crash left half written cleaned: after a writing, or hourly.
+    // The history held within bounds, and what a crash left half written there cleaned: after a writing, or hourly.
     if kept || now_ms - memory.tidied >= HOUR {
         crate::history::prune(&history, now_ms, crate::history::cap(&history), &|_, file| locate(stores, file).is_some_and(|(_, path)| path.exists()));
-        clean_leftovers(&sharing.folder.join("blobs"));
         memory.tidied = now_ms;
     }
+    // What a crash left half written among the folder's sealed files, once a day (`Memory::cleaned`).
+    if now_ms - memory.cleaned >= DAY {
+        clean_leftovers(&sharing.folder.join("blobs"));
+        memory.cleaned = now_ms;
+    }
     // A full round, past `ROUND_SIZE` appended since the last: then the
-    // rounds before it can go. Waits while the connection is metered or slow.
-    if memory.grown > ROUND_SIZE && (!frugal(sharing.memory) || memory.grown > FRUGAL_ROUND_SIZE) {
+    // rounds before it can go. Waits while the connection is metered or slow,
+    // and while a bulk import goes on (`set_importing`).
+    let waits = if importing(sharing.memory) { memory.grown <= IMPORT_ROUND_SIZE } else { frugal(sharing.memory) && memory.grown <= FRUGAL_ROUND_SIZE };
+    if memory.grown > ROUND_SIZE && !waits {
         new_round(sharing, &mut memory, stores, &found, &hurried, now_ms)?;
         memory.round_base = own(&memory);
     }
@@ -4107,7 +4325,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     memory.sealed.confirmed.retain(|store| !stores.iter().any(|s| s.name == *store && reads(s)));
     memory.sealed.missing.retain(|key, _| memory.pending.contains_key(key));
     memory.sealed.failing.retain(|key, _| memory.pending.contains_key(key));
-    write_seen(sharing, &memory, &all, now_ms);
+    let seen_due = write_seen(sharing, &memory, &all, now_ms);
     // What the devices' registry says of this export (`devices`).
     // The doses' part held (a newer format met): this device's answers wait
     // here, unsent, so its export claims nothing (`Entry::exported`): the
@@ -4119,8 +4337,149 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if memory.format < 2 {
         note_whole_lists(originals, &mut memory);
     }
+    // Everything settled, nothing said: the next exchanges have nothing to do
+    // while nothing they read changes, until the hour's tidying or this
+    // device's notes are due again (`quiet`). Changes of others' that wait
+    // only for notes or papers (not read here) wait there as well.
+    let settled = outcome.problems.is_empty()
+        && memory.joined
+        && !memory.switch
+        && memory.newer.is_empty()
+        && memory.waiting.is_empty()
+        && memory.held.is_empty()
+        && memory.emptied.is_empty()
+        && memory.sealed.gone.is_empty()
+        && memory.sealed.failing.is_empty()
+        && memory.sealed.missing.is_empty()
+        && memory.pending.keys().all(|key| locate(stores, file_of(key)).is_some_and(|(store, _)| !reads(store)));
+    let until = (now_ms + HOUR).min(memory.tidied + HOUR).min(memory.cleaned + DAY).min(seen_due);
+    let (round, own_size) = (memory.round, memory.own_size);
     memory.save(sharing.memory)?;
+    if let Some((standing, _)) = standing.filter(|(standing, taken)| settled && (standing.newest / 1_000_000) as i64 + settling_ms() < *taken) {
+        let quiet = Quiet { standing, at: now_ms, until, own: (stamp_at(sharing.memory), stamp_at(&sealed_path(sharing.memory))), round, own_size, wrote: outcome.wrote, pending: outcome.pending };
+        if let Ok(mut all) = QUIET.lock() {
+            all.insert(sharing.memory.to_path_buf(), quiet);
+        }
+    }
+    memory.keep(sharing.memory);
     Ok(outcome)
+}
+
+// ---------------------------------------------------------------- nothing to do
+
+/// What an exchange reads, as it stands before it reads anything: the files
+/// of the stores it reads (each by its stamp), the folder's top and what was
+/// fetched from the server beside it (`remote::overlay`: the pull writes there
+/// only what changed on the server), the other devices' rounds and the seal
+/// by their stamps, every other name there by itself, and what each other
+/// device's entry says but for its exchanges' times (`devices::steady`). The
+/// same at the next exchange, and that one has nothing to read (`quiet`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Standing {
+    sharing: (PathBuf, String, String),
+    stores: Vec<(String, PathBuf)>,
+    files: BTreeMap<PathBuf, FileStamp>,
+    folder: BTreeMap<PathBuf, Option<FileStamp>>,
+    entries: BTreeMap<String, String>,
+    overlay: Option<PathBuf>,
+    /// Full rounds waiting (`set_frugal`, `set_importing`), and this device in
+    /// use (its notes then restated each quarter of an hour, `write_seen`).
+    waits: (bool, bool),
+    in_use: bool,
+    /// The latest time among the files stamped (nanoseconds).
+    newest: u64,
+}
+
+impl Standing {
+    fn now(sharing: &Sharing, stores: &[Store], reads: &dyn Fn(&Store) -> bool) -> Standing {
+        let mut standing = Standing { sharing: (sharing.folder.to_path_buf(), sharing.computer.to_string(), hash(&B64.encode(sharing.key))), ..Standing::default() };
+        for store in stores.iter().filter(|s| reads(s)) {
+            standing.stores.push((store.name.clone(), store.path.clone()));
+            stamp_below(&store.path, &mut standing.files);
+        }
+        let overlay = crate::remote::overlay(sharing.folder);
+        for dir in std::iter::once(sharing.folder.to_path_buf()).chain(overlay.clone()) {
+            for entry in std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') || entry.file_type().is_ok_and(|t| t.is_dir()) {
+                    continue;
+                }
+                // This device's own files change only by its hand (their size checked apart, `quiet`).
+                let stamped = !name.starts_with(sharing.computer) && (name.ends_with(".jsonl") || name == "seal.toml");
+                standing.folder.insert(entry.path(), if stamped { entry.metadata().ok().map(|m| file_stamp(&m)) } else { None });
+            }
+        }
+        let (entries, unread) = crate::devices::all(sharing.folder, sharing.key);
+        standing.entries = entries.iter().filter(|e| e.id != sharing.computer).map(|e| (e.id.clone(), crate::devices::steady(e))).chain(unread.into_iter().map(|id| (id, String::new()))).collect();
+        standing.overlay = overlay;
+        standing.waits = (frugal(sharing.memory), importing(sharing.memory));
+        standing.in_use = crate::devices::in_use(sharing.memory);
+        standing.newest = standing.files.values().chain(standing.folder.values().flatten()).map(|s| s.modified).max().unwrap_or(0);
+        standing
+    }
+}
+
+/// Every file below `path` (or `path` itself), hidden ones left out, by its stamp.
+fn stamp_below(path: &Path, out: &mut BTreeMap<PathBuf, FileStamp>) {
+    let Ok(meta) = std::fs::metadata(path) else { return };
+    if meta.is_file() {
+        out.insert(path.to_path_buf(), file_stamp(&meta));
+        return;
+    }
+    for entry in std::fs::read_dir(path).into_iter().flatten().filter_map(Result::ok) {
+        if entry.file_name().to_string_lossy().starts_with('.') {
+            continue;
+        }
+        stamp_below(&entry.path(), out);
+    }
+}
+
+/// An exchange that left everything settled (`exchange`): what it read, as
+/// it stood (`Standing`); its time and until when the next may do nothing
+/// (the hour's tidying, this device's notes due again); its memory's two
+/// files as it wrote them; its own round and that file's size; what it said.
+struct Quiet {
+    standing: Standing,
+    at: i64,
+    until: i64,
+    own: (Option<FileStamp>, Option<FileStamp>),
+    round: u32,
+    own_size: u64,
+    wrote: Option<(u32, u64)>,
+    pending: usize,
+}
+
+/// The settled exchanges of this process, by the path of their memory.
+static QUIET: std::sync::Mutex<BTreeMap<PathBuf, Quiet>> = std::sync::Mutex::new(BTreeMap::new());
+
+/// An exchange with nothing to do: the last one here left everything settled
+/// (`Quiet`), and since then nothing it reads changed (`Standing`, noted at
+/// `taken`, this computer's clock), neither its memory nor this device's own
+/// file in the folder (a sync app putting back an older copy changes its
+/// size), and nothing fell due. Its outcome is that one's: nothing sent,
+/// nothing received, how far this device wrote, and its files looked at when
+/// their stamps were: as they were, so every answer captured here before is
+/// in its records (`Outcome::looked`). Else none, and the exchange runs.
+fn quiet(sharing: &Sharing, standing: &Standing, taken: i64, now_ms: i64) -> Option<Outcome> {
+    let mut all = QUIET.lock().ok()?;
+    let quiet = all.get(sharing.memory)?;
+    let own_size = std::fs::metadata(round_file(sharing.folder, sharing.computer, quiet.round)).map_or(0, |m| m.len());
+    let still = quiet.standing == *standing && (quiet.at..quiet.until).contains(&now_ms) && (stamp_at(sharing.memory), stamp_at(&sealed_path(sharing.memory))) == quiet.own && own_size == quiet.own_size;
+    if !still {
+        all.remove(sharing.memory);
+        return None;
+    }
+    #[cfg(test)]
+    QUIETED.with(|n| n.set(n.get() + 1));
+    Some(Outcome { looked: taken, wrote: quiet.wrote, pending: quiet.pending, quiet: true, ..Outcome::default() })
+}
+
+#[cfg(test)]
+thread_local! {
+    /// In this test's thread: the exchanges that had nothing to do (`quiet`),
+    /// and the logs of lines read through (`lines_of`).
+    pub(super) static QUIETED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    pub(super) static LINES_READ: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// The whole lines of a computer's records from where they were left, read a
@@ -4746,8 +5105,29 @@ fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &F
 /// The sealed files this computer put in the folder (`blobs/<name>`), by
 /// name, and the size it sealed each at: what it sends to the server itself
 /// beside the sync app (`remote::send`), whole, and nothing else of `blobs/`.
+/// Asked before each send: as this process last wrote or read `files.json`
+/// while it is still that file (`MINE`), else from that part of the file
+/// alone, the rest passed over, never built (on a phone, tens of thousands
+/// of the texts' entries).
 pub fn own_sealed(memory: &Path, computer: &str) -> BTreeMap<String, u64> {
-    std::fs::read_to_string(sealed_path(memory)).ok().and_then(|t| serde_json::from_str::<Sealed>(&t).ok()).filter(|s| s.computer == computer).map(|s| s.mine.into_iter().map(|(name, (_, size))| (name, size)).collect()).unwrap_or_default()
+    let path = sealed_path(memory);
+    let stamp = stamp_at(&path);
+    if let Some((whose, mine)) = MINE.lock().ok().and_then(|all| all.get(memory).filter(|(was, _, _)| stamp.is_some() && *was == stamp).map(|(_, whose, mine)| (whose.clone(), mine.clone()))) {
+        return if whose == computer { mine } else { BTreeMap::new() };
+    }
+    #[derive(Deserialize)]
+    struct Part {
+        #[serde(default)]
+        computer: String,
+        #[serde(default)]
+        mine: BTreeMap<String, (i64, u64)>,
+    }
+    let Some(read) = std::fs::read(&path).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()) else { return BTreeMap::new() };
+    let mine: BTreeMap<String, u64> = read.mine.into_iter().map(|(name, (_, size))| (name, size)).collect();
+    if let Ok(mut all) = MINE.lock() {
+        all.insert(memory.to_path_buf(), (stamp, read.computer.clone(), mine.clone()));
+    }
+    if read.computer == computer { mine } else { BTreeMap::new() }
 }
 
 /// How far this computer wrote its records: its round and the number of the
@@ -4808,7 +5188,9 @@ pub fn rebuild(memory: &Path, computer: &str, files: &[&str]) -> Result<(), Stri
     }
     // The others' records read again from their oldest kept round.
     state.read.clear();
-    state.save(memory)
+    state.save(memory)?;
+    state.keep(memory);
+    Ok(())
 }
 
 /// The files gone at once from a folder of notes or papers (`share-vanished`)
@@ -4818,7 +5200,9 @@ pub fn confirm_gone(memory: &Path, computer: &str, store: &str) -> Result<(), St
     let _running = exchange_lock(memory, true)?;
     let mut state = Memory::load_all(memory, computer);
     state.sealed.confirmed.insert(store.to_string());
-    state.save(memory)
+    state.save(memory)?;
+    state.keep(memory);
+    Ok(())
 }
 
 /// One exchange at a time on this computer, whatever runs it (two Sioul
@@ -4853,17 +5237,23 @@ fn seen_path(folder: &Path, computer: &str) -> PathBuf {
     folder.join(format!("{computer}.toml"))
 }
 
-/// This computer's notes in the folder, when they change or a quarter of an
-/// hour after the last: the sync is not asked to carry a file every minute.
-fn write_seen(sharing: &Sharing, memory: &Memory, all: &BTreeMap<String, Vec<u32>>, now_ms: i64) {
+/// This computer's notes in the folder, when what they say changes (its
+/// round, how far it read the others); else restated a quarter of an hour
+/// after the last while this device is in use (its entry says it: another
+/// device's do-not-disturb hears of a computer in use by them), once a day
+/// while it is put away (a phone's background step: how far it read changes
+/// rarely, and the sync is not asked to carry a file every few minutes).
+/// Returns when they are due again (milliseconds).
+fn write_seen(sharing: &Sharing, memory: &Memory, all: &BTreeMap<String, Vec<u32>>, now_ms: i64) -> i64 {
+    let again = if crate::devices::in_use(sharing.memory) { 15 * 60 } else { 24 * 3600 };
     let mut seen = Seen {
         at: now_ms / 1000,
         round: memory.round,
         read: memory.read.iter().filter(|(c, _)| all.contains_key(*c)).map(|(c, (round, _))| (c.clone(), *round)).collect(),
         pad: String::new(),
     };
-    if read_seen_in(sharing.folder, sharing.computer).is_some_and(|old| old.round == seen.round && old.read == seen.read && seen.at - old.at < 15 * 60) {
-        return;
+    if let Some(old) = read_seen_in(sharing.folder, sharing.computer).filter(|old| old.round == seen.round && old.read == seen.read && seen.at - old.at < again) {
+        return (old.at + again) * 1000;
     }
     let path = seen_path(sharing.folder, sharing.computer);
     let text = |seen: &Seen, pad: usize| toml::to_string(&Seen { pad: ".".repeat(pad), read: seen.read.clone(), ..*seen }).unwrap_or_default();
@@ -4871,6 +5261,7 @@ fn write_seen(sharing: &Sharing, memory: &Memory, all: &BTreeMap<String, Vec<u32
     if let Ok(text) = toml::to_string(&seen) {
         let _ = write_atomically(&path, text.as_bytes());
     }
+    (seen.at + again) * 1000
 }
 
 fn read_seen_in(folder: &Path, computer: &str) -> Option<Seen> {
@@ -4910,6 +5301,21 @@ pub struct Other {
 /// The other computers sharing through the folder.
 pub fn others(folder: &Path, computer: &str) -> Vec<Other> {
     computers(folder).into_iter().filter(|c| c != computer).map(|c| Other { heard: read_seen(folder, &c).map_or(0, |s| s.at), id: c }).collect()
+}
+
+/// The same, each heard when its notes or its entry in the devices'
+/// registry (`devices`) last said so, the later: a device put away restates
+/// its notes once a day (`write_seen`), its entry once an hour
+/// (`devices::RESTATED`), as Settings says when each was last heard of.
+pub fn others_heard(folder: &Path, key: &[u8; 32], computer: &str) -> Vec<Other> {
+    let (entries, _) = crate::devices::all(folder, key);
+    let mut out = others(folder, computer);
+    for other in &mut out {
+        if let Some(entry) = entries.iter().find(|e| e.id == other.id) {
+            other.heard = other.heard.max(entry_stamp(entry));
+        }
+    }
+    out
 }
 
 /// Whether the folder already holds a seal: another computer shares through it.
@@ -8009,6 +8415,14 @@ mod switch_more_tests;
 #[cfg(test)]
 #[path = "share_switch_third_tests.rs"]
 mod switch_third_tests;
+
+#[cfg(test)]
+#[path = "share_quiet_tests.rs"]
+mod quiet_tests;
+
+#[cfg(test)]
+#[path = "share_idle_bench.rs"]
+mod idle_bench;
 
 #[cfg(test)]
 mod probe {

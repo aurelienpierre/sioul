@@ -1426,15 +1426,16 @@ pub(crate) fn marked_lately() -> Vec<String> {
 }
 
 /// How long a reminder shown on a phone is checked again (every quarter of an
-/// hour, the sync app asked first), so that a dose marked on another device
+/// hour, the others' news read first), so that a dose marked on another device
 /// takes it away: three hours after the dose's time.
 const SHOWN_WATCH: i64 = 3 * 3600;
 const SHOWN_EVERY: i64 = 15 * 60;
 
 /// At a dose's time, Android's alarm asks what to say (`alarms`), maybe with
-/// nothing on the screen. What your other devices marked is read first (the
-/// sync app asked to bring it; an exchange without notes and papers, which
-/// never holds a dose back); then, as the window would: taken, not taken
+/// nothing on the screen. What your other devices marked is read first
+/// (`share::exchange_here`: Sioul's own pull from the server while it works,
+/// else the sync app asked to bring it; an exchange without notes and papers,
+/// which never holds a dose back); then, as the window would: taken, not taken
 /// said, or reminded already: nothing; kept by another device you use: its
 /// turn, asked again after the wait for news; not known: after that wait,
 /// reminded with the doubt said first; else the dose. Recorded `reminded`
