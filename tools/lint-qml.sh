@@ -7,11 +7,11 @@
 # Run `cargo build -p sioul-app` first.
 set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
-# The newest build's types: each feature set builds in its own folder.
-types=$(ls -t "$repo"/target/debug/build/sioul-app-*/out/qt-build-utils/qml_modules/com/aurelienpierre/sioul/plugin.qmltypes 2>/dev/null | head -1)
+# The newest build's types, debug or release: each feature set builds in its own folder.
+types=$(ls -t "$repo"/target/{debug,release}/build/sioul-app-*/out/qt-build-utils/qml_modules/com/aurelienpierre/sioul/plugin.qmltypes 2>/dev/null | head -1 || true)
 generated=${types%/com/aurelienpierre/sioul/plugin.qmltypes}
 if [ -z "$types" ]; then
-    echo "Build the window first: cargo build -p sioul-app" >&2
+    echo "Build the window first: cargo build --release -p sioul-app (or without --release)" >&2
     exit 1
 fi
 lint=$(mktemp -d "$repo/target/lint-qml.XXXX")

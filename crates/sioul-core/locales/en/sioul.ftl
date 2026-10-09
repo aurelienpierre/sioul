@@ -4898,6 +4898,8 @@ texts-setup-holds = { $count ->
    *[other] Your phone holds { $count } texts and { $size } of media. They go to your computers 500 texts at a time, the media after their texts.
 }
 texts-setup-progress = { $done } of { $count } texts and { $done_size } of { $size } of media have gone to your computers; the rest follows at each exchange.
+texts-setup-progress-charging = { $done } of { $count } texts and { $done_size } of { $size } of media have gone to your computers; the rest follows while your phone charges.
+texts-setup-charging = They go to your computers while your phone charges.
 texts-setup-done = { $count ->
     [one] Your phone's text and { $done_size } of media are on your computers.
    *[other] Your phone's { $count } texts and { $done_size } of media are on your computers.

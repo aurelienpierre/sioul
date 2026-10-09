@@ -42,7 +42,7 @@
 //!   has it, for the requests only).
 
 use crate::SyncError;
-use crate::dav::{self, Budget, DAV};
+use crate::dav::{self, DAV};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -262,6 +262,16 @@ impl State {
         self.on != Some(false)
     }
 
+    /// Pulling from the server works for `folder` beside a sync app: switched
+    /// on, the folder confirmed there, a pull gone through and the last one
+    /// too (`said` empty). A phone's background step then reads the other
+    /// devices' news from its pull alone, the sync app neither asked to look
+    /// nor waited for (docs/android.md, "In the background"); otherwise, as
+    /// before: the sync app asked, and given twenty seconds.
+    pub fn pulls_well(&self, folder: &Path) -> bool {
+        self.mode != MIRROR && self.fetching() && self.confirmed_for(folder) && self.last > 0 && self.said.is_empty()
+    }
+
     /// Sending this device's own files there too (`send`): with the backup
     /// on, as switched here, else on.
     pub fn sending(&self) -> bool {
@@ -355,11 +365,12 @@ pub struct Login {
 }
 
 /// One server, signed in: requests with the account's login, over TLS (plain
-/// HTTP only to a test's own stand-in, `dav::allowed`), never redirected.
+/// HTTP only to a test's own stand-in, `dav::allowed`), never redirected. Its
+/// requests go through the process's one agent (`dav::shared_agent`): a pull,
+/// the sends after it and the next pull reuse one connection while it is
+/// open, each request with its own budget (`limits`).
 pub(crate) struct Server {
-    small: ureq::Agent,
-    large: ureq::Agent,
-    blobs: ureq::Agent,
+    agent: ureq::Agent,
     authorization: String,
     started: Instant,
     limits: Limits,
@@ -431,11 +442,8 @@ fn header(response: &ureq::http::Response<ureq::Body>, name: &str) -> Option<Str
 impl Server {
     pub(crate) fn new(login: &Login, limits: Limits) -> Result<Server, SyncError> {
         let password = login.password.as_deref().ok_or(SyncError::NoPassword)?;
-        let budget = |whole| Budget { connect: limits.wait, stall: limits.wait, whole };
         Ok(Server {
-            small: dav::agent(&budget(limits.small)),
-            large: dav::agent(&budget(limits.large)),
-            blobs: dav::agent(&budget(limits.blob)),
+            agent: dav::shared_agent(),
             authorization: format!("Basic {}", sioul_core::lines::base64_encode(format!("{}:{password}", login.user).as_bytes())),
             started: Instant::now(),
             limits,
@@ -443,10 +451,13 @@ impl Server {
     }
 
     pub(crate) fn request(&self, large: bool, method: &str, url: &str, headers: &[(&str, &str)], body: Vec<u8>) -> Result<ureq::http::Response<ureq::Body>, SyncError> {
-        self.request_with(if large { &self.large } else { &self.small }, method, url, headers, body)
+        self.request_with(if large { self.limits.large } else { self.limits.small }, method, url, headers, body)
     }
 
-    fn request_with(&self, agent: &ureq::Agent, method: &str, url: &str, headers: &[(&str, &str)], body: Vec<u8>) -> Result<ureq::http::Response<ureq::Body>, SyncError> {
+    /// A request run with `whole` for all of it, `limits.wait` to connect and
+    /// for each read or write (`stalls::ask`, its answer's body read after
+    /// included).
+    fn request_with(&self, whole: Duration, method: &str, url: &str, headers: &[(&str, &str)], body: Vec<u8>) -> Result<ureq::http::Response<ureq::Body>, SyncError> {
         dav::allowed(url)?;
         if self.started.elapsed() > self.limits.pull {
             return Err(SyncError::Network("out of time".into()));
@@ -456,7 +467,9 @@ impl Server {
             request = request.header(*name, *value);
         }
         let request = request.body(body).map_err(|e| SyncError::Server(e.to_string()))?;
-        let response = agent.run(request).map_err(|e| failed(&e))?;
+        let request = self.agent.configure_request(request).timeout_connect(Some(self.limits.wait)).timeout_global(Some(whole)).build();
+        crate::stalls::ask(self.limits.wait, false);
+        let response = self.agent.run(request).map_err(|e| failed(&e))?;
         if response.status().as_u16() == 401 {
             return Err(SyncError::Login(format!("{method}: 401")));
         }
@@ -534,7 +547,6 @@ impl Server {
             None => ("If-None-Match", "*"),
         };
         let whole = self.limits.large + Duration::from_secs(total / self.limits.floor.max(1));
-        let agent = dav::upload_agent(&Budget { connect: self.limits.wait, stall: self.limits.stall, whole });
         let moved = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let reader = Counted { inner: std::io::Cursor::new(body), moved: std::sync::Arc::clone(&moved) };
         let request = ureq::http::Request::builder()
@@ -549,7 +561,12 @@ impl Server {
             .header("OC-Checksum", format!("SHA1:{sha1}"))
             .body(ureq::SendBody::from_owned_reader(reader))
             .map_err(|e| gave_up(SyncError::Server(e.to_string()), "server", 0))?;
-        match agent.run(request) {
+        // Given `whole`, each write `limits.stall` at most; the answer awaited
+        // within `whole` alone while the last bytes drain from the system's
+        // buffers on a slow uplink.
+        let request = self.agent.configure_request(request).timeout_connect(Some(self.limits.wait)).timeout_global(Some(whole)).build();
+        crate::stalls::ask(self.limits.stall, true);
+        match self.agent.run(request) {
             Ok(response) if response.status().as_u16() == 401 => Err(gave_up(SyncError::Login("PUT: 401".into()), "login", moved.load(std::sync::atomic::Ordering::Relaxed))),
             Ok(response) => Ok((response.status().as_u16(), header(&response, "ETag").or_else(|| header(&response, "OC-ETag")))),
             Err(e) => {
@@ -678,7 +695,7 @@ impl Server {
     /// at most `limit` bytes, as long as it moves (`Limits::blob`). Its size;
     /// none when it is not there, or larger.
     pub(crate) fn download(&self, url: &str, path: &Path, limit: u64) -> Result<Option<u64>, SyncError> {
-        let mut response = self.request_with(&self.blobs, "GET", url, &[("Accept-Encoding", "identity")], Vec::new())?;
+        let mut response = self.request_with(self.limits.blob, "GET", url, &[("Accept-Encoding", "identity")], Vec::new())?;
         match response.status().as_u16() {
             200 => {}
             404 | 410 => return Ok(None),
@@ -3505,6 +3522,96 @@ mod tests {
         assert!(due(&state, 1_020, pace(true, false, false, true)) && !due(&state, 1_010, pace(true, false, false, true)));
         // Found again since the last pull: at once.
         assert!(due(&State { confirmed: 1_005, ..state }, 1_006, pace(true, false, false, false)));
+    }
+
+    /// A phone's background step leaves the sync app alone only while its own
+    /// pull works: on, confirmed for this folder, gone through, and not failing.
+    #[test]
+    fn the_pull_alone_is_trusted_only_while_it_goes_through() {
+        let folder = Path::new("/storage/emulated/0/Documents/Sioul");
+        let well = State { folder: shown(folder), url: "https://cloud.example.org/remote.php/dav/files/jane/Documents/Sioul/".into(), confirmed: 1_000, last: 1_200, tried: 1_200, ..State::default() };
+        assert!(well.pulls_well(folder));
+        assert!(!State { on: Some(false), ..well.clone() }.pulls_well(folder), "switched off here");
+        assert!(State { on: Some(true), ..well.clone() }.pulls_well(folder));
+        assert!(!State { confirmed: 0, ..well.clone() }.pulls_well(folder), "not confirmed");
+        assert!(!State { last: 0, ..well.clone() }.pulls_well(folder), "never pulled yet");
+        assert!(!State { said: "network:cloud.example.org".into(), ..well.clone() }.pulls_well(folder), "the last pull failed");
+        assert!(!State { said: "not-found:cloud.example.org".into(), ..well.clone() }.pulls_well(folder), "looked for again, not found");
+        assert!(!State { mode: MIRROR.into(), ..well.clone() }.pulls_well(folder), "Sioul keeping the folder: no sync app to ask anyway");
+        assert!(!well.pulls_well(Path::new("/storage/emulated/0/Documents/Other")), "another folder");
+    }
+
+    /// A step's requests, a pull's then a send's (each a `Server` of its own,
+    /// as `pull` and `send` make them, with their own limits), go through one
+    /// connection while it stays open: the process's one agent. On mobile
+    /// data, one TLS handshake a step instead of one per pull, per send and
+    /// per file sent.
+    #[test]
+    fn a_steps_requests_go_through_one_connection() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let (connections, requests) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let (counted, served) = (Arc::clone(&connections), Arc::clone(&requests));
+        // A server that keeps its connections open (HTTP/1.1's default), as Nextcloud's does.
+        std::thread::spawn(move || {
+            for stream in listener.incoming().filter_map(Result::ok) {
+                counted.fetch_add(1, Ordering::SeqCst);
+                let served = Arc::clone(&served);
+                std::thread::spawn(move || {
+                    let mut reader = BufReader::new(stream.try_clone().unwrap());
+                    let mut stream = stream;
+                    loop {
+                        let mut line = String::new();
+                        if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                            return;
+                        }
+                        let mut length = 0;
+                        loop {
+                            let mut header = String::new();
+                            reader.read_line(&mut header).unwrap();
+                            if header.trim().is_empty() {
+                                break;
+                            }
+                            if let Some((name, value)) = header.split_once(':')
+                                && name.eq_ignore_ascii_case("content-length")
+                            {
+                                length = value.trim().parse().unwrap();
+                            }
+                        }
+                        let mut body = vec![0; length];
+                        reader.read_exact(&mut body).unwrap();
+                        served.fetch_add(1, Ordering::SeqCst);
+                        let (status, answer) = match line.split_whitespace().next() {
+                            Some("PROPFIND") => ("207 Multi-Status", super::fake::multistatus("")),
+                            Some("GET") => ("200 OK", b"version = 1\n".to_vec()),
+                            _ => ("201 Created", Vec::new()),
+                        };
+                        let head = format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\nETag: \"e\"\r\n\r\n", answer.len());
+                        if stream.write_all(head.as_bytes()).and_then(|()| stream.write_all(&answer)).is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        let login = Login { account: "cloud".into(), url: format!("{base}/remote.php/dav/"), user: "jane".into(), password: Some(PASSWORD.into()) };
+        let folder = format!("{base}/remote.php/dav/files/jane/Documents/Sioul/");
+        // The pull: a listing and a small file.
+        let pull = Server::new(&login, TEST).unwrap();
+        pull.list(&folder).unwrap();
+        assert!(pull.small(&format!("{folder}seal.toml")).unwrap().is_some());
+        // The send after the exchange, with a send's limits: a look and a file sent whole.
+        let send = Server::new(&login, Limits { wait: Duration::from_secs(2), stall: Duration::from_secs(3), ..TEST }).unwrap();
+        assert!(send.stat(&format!("{folder}devices/")).unwrap().is_none_or(|item| item.etag.is_empty()));
+        let (status, _) = send.put_file(&format!("{folder}phone.toml"), b"read = 1\n".to_vec(), None, 1, &sha1_hex(b"read = 1\n")).unwrap();
+        assert_eq!(status, 201);
+        // The second send of a step.
+        let again = Server::new(&login, TEST).unwrap();
+        again.list(&folder).unwrap();
+        assert_eq!(requests.load(Ordering::SeqCst), 5);
+        assert_eq!(connections.load(Ordering::SeqCst), 1, "one connection for the whole step");
     }
 
     #[test]

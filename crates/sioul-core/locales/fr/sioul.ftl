@@ -4916,6 +4916,8 @@ texts-setup-holds = { $count ->
    *[other] Votre téléphone a { $count } SMS et { $size } de médias. Ils partent vers vos ordinateurs par lots de 500 SMS, les médias après leurs SMS.
 }
 texts-setup-progress = { $done } SMS sur { $count } et { $done_size } de médias sur { $size } sont partis vers vos ordinateurs ; le reste suit à chaque échange.
+texts-setup-progress-charging = { $done } SMS sur { $count } et { $done_size } de médias sur { $size } sont partis vers vos ordinateurs ; le reste suit pendant que votre téléphone charge.
+texts-setup-charging = Ils partent vers vos ordinateurs pendant que votre téléphone charge.
 texts-setup-done = { $count ->
     [one] Le SMS de votre téléphone et { $done_size } de médias sont sur vos ordinateurs.
    *[other] Les { $count } SMS de votre téléphone et { $done_size } de médias sont sur vos ordinateurs.

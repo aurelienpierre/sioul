@@ -10,7 +10,7 @@ Les SMS de votre téléphone peuvent se lire sur votre ordinateur, et un SMS éc
 
 1. **Sur le téléphone**, Réglages ▸ Ce téléphone ▸ **SMS** dit à quoi sert chaque autorisation : lire vos SMS, être averti d’un nouveau, envoyer les SMS que vous écrivez sur un ordinateur, et le nom de vos cartes SIM. **Autoriser dans Android…** les demande.
 2. **Activez la partie SMS**, sur le téléphone et sur chaque ordinateur qui doit lire ou écrire des SMS (Réglages ▸ Votre dossier et le partage ▸ Ce qui part de cet appareil). Elle reste désactivée tant que vous ne l’activez pas.
-3. **L’historique suit ensuite de lui-même**, 500 SMS à la fois, les images et autres médias après leurs SMS, pour que vos prises, le mode ne pas déranger et les appels n’attendent jamais derrière lui. Sur le téléphone, Réglages ▸ Ce téléphone ▸ SMS dit combien de SMS et de médias il a, puis combien sont partis. Sur un ordinateur, la ligne de la partie dans le panneau du partage dit combien il en garde.
+3. **L’historique suit ensuite de lui-même**, 500 SMS à la fois, les images et autres médias après leurs SMS, pour que vos prises, le mode ne pas déranger et les appels n’attendent jamais derrière lui. Il part pendant que votre téléphone charge : un long historique peut peser des centaines de mégaoctets. Les nouveaux SMS, ensuite, partent en une minute ou deux, sur batterie aussi. Sur le téléphone, Réglages ▸ Ce téléphone ▸ SMS dit combien de SMS et de médias il a, puis combien sont partis. Sur un ordinateur, la ligne de la partie dans le panneau du partage dit combien il en garde.
 
 ## Ce que vous voyez {#what-you-see}
 

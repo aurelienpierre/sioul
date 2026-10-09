@@ -41,11 +41,15 @@ import java.util.Locale;
  * holds Sioul's library without Qt's window, and one quiet notification.
  *
  * - An alarm through Doze (exact while allowed, else inexact) asks Rust for
- *   a step: the sync app asked to look, the other devices' news read (a quick
- *   exchange), do-not-disturb asked of Sioul's own process when it changed
+ *   a step: the other devices' news read (Sioul's own pull from the server
+ *   while it works, else the sync app asked to look, then a quick exchange),
+ *   do-not-disturb asked of Sioul's own process when it changed
  *   (DndReceiver), mail at its rhythm; Rust says when to look next.
  * - A watch on the sharing folder: another device's file written by the
- *   sync app brings a step three seconds later, without waiting for the alarm.
+ *   sync app brings a step three seconds later, without waiting for the alarm
+ *   (Rust leaves it out when its pull brought that file already).
+ * - The phone is kept awake only while a step runs: a step asked for later
+ *   (a folder's, a message's) comes by an exact alarm of its own (`later`).
  * - While Sioul's window is on the screen, it exchanges by itself: the steps
  *   wait.
  * - While this phone screens calls (Calls.java), its notification offers "Let
@@ -69,6 +73,8 @@ public final class StepService extends Service
     static final String NOTE_WORDS = "com.aurelienpierre.sioul.action.NOTE_WORDS";
     /** A message's line written for your computers by the listener (AppNotes, `soon`): a step soon shares it. */
     static final String SOON = "com.aurelienpierre.sioul.action.SOON";
+    /** The alarm of a step asked for later (`later`): a folder's, a message's. */
+    static final String LATER = "com.aurelienpierre.sioul.action.LATER";
     /** How long a step asked by `SOON` waits: the messages that follow go with it. */
     private static final long SOON_MS = 20_000;
     private static final String CHANNEL = "steps";
@@ -102,6 +108,10 @@ public final class StepService extends Service
     private String calls = "";
     /** A step asked while one runs: the phone stays awake for it. */
     private volatile boolean posted;
+    /** The step asked for later, waiting for its alarm (`later`); none: null. */
+    private Later waiting;
+    /** The names of the other devices' files the sync app wrote since the last step, for Rust ("folder:"). */
+    private final java.util.Set<String> written = new java.util.TreeSet<>();
     /** When the words shown were made (Unix milliseconds, Rust's clock): older ones are left aside. */
     private long saidAt;
 
@@ -300,6 +310,8 @@ public final class StepService extends Service
         title = words.getString("title", "");
         channelName = words.getString("channel", "");
         foreground();
+        // The phone's texts watched in this process: the import asks Android only when they changed.
+        Texts.watch(this);
     }
 
     @Override
@@ -325,6 +337,8 @@ public final class StepService extends Service
         running = null;
         if (watch != null)
             watch.stopWatching();
+        Texts.unwatch(this);
+        cancelLater(this);
         if (awake.isHeld())
             awake.release();
         thread.quitSafely();
@@ -497,12 +511,32 @@ public final class StepService extends Service
             context.sendBroadcast(new Intent(context, StepReceiver.class).setAction(SOON));
     }
 
-    /** `SOON` heard (StepReceiver, in this process): a step `SOON_MS` on, unless one is asked already. */
+    /**
+     * `SOON` heard (StepReceiver, in this process): a step `SOON_MS` on, or
+     * the one waiting for its alarm then, which shares the line too
+     * (`Later.of`); none when a step is about to run.
+     */
     static void soonHere()
     {
         StepService service = running;
         if (service != null && !service.posted)
             service.step("messages", SOON_MS);
+    }
+
+    /** The alarm of the step asked for later (StepReceiver, in this process): it runs now; the service started again if Android had stopped it. */
+    static void laterHere(Context context)
+    {
+        StepService service = running;
+        if (service == null) {
+            restart(context, "alarm");
+            return;
+        }
+        String reason;
+        synchronized (service) {
+            reason = service.waiting == null ? "folder" : service.waiting.reason;
+            service.waiting = null;
+        }
+        service.step(reason, 0);
     }
 
     /** A press of the switch made in Sioul's own process (StepReceiver): a step at once, which sends it. */
@@ -537,19 +571,95 @@ public final class StepService extends Service
                                          PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
-    /** A step on the worker thread, `delay` milliseconds on; a later one asked meanwhile replaces it. */
+    /**
+     * A step: now, on the worker thread, the phone kept awake while it waits
+     * there and runs (one asked meanwhile replaces one not started; the one
+     * waiting for its alarm goes, this one does its work); or `delay`
+     * milliseconds on, by an exact alarm of its own, the phone left to sleep
+     * meanwhile (`later`).
+     */
     void step(String reason, long delay)
     {
+        if (delay > 0) {
+            later(reason, delay);
+            return;
+        }
+        synchronized (this) {
+            waiting = null;
+        }
+        cancelLater(this);
         awake.acquire(AWAKE_MS);
         posted = true;
         worker.removeCallbacksAndMessages(null);
-        worker.postDelayed(() -> run(reason), delay);
+        worker.post(() -> run(reason));
+    }
+
+    /**
+     * A step asked for later, as `Later.of` joins it to the one waiting:
+     * its exact alarm set, or moved (one alarm at a time). Through Doze too
+     * (allow-while-idle); Android brings an alarm five seconds on at the
+     * soonest.
+     */
+    private void later(String reason, long delay)
+    {
+        long now = SystemClock.elapsedRealtime();
+        Later next;
+        synchronized (this) {
+            next = Later.of(waiting, reason, delay, now);
+            waiting = next;
+        }
+        AlarmManager alarms = getSystemService(AlarmManager.class);
+        PendingIntent pending = laterPending(this);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarms.canScheduleExactAlarms())
+            alarms.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, next.at, pending);
+        else
+            alarms.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, next.at, pending);
+    }
+
+    /**
+     * A step asked for later: its reason, and when it comes (elapsed realtime,
+     * milliseconds). Pure: android/jvm-checks/StepsCheck.java.
+     */
+    static final class Later
+    {
+        final String reason;
+        final long at;
+
+        Later(String reason, long at)
+        {
+            this.reason = reason;
+            this.at = at;
+        }
+
+        /**
+         * `asked`, `delay` ms on at `now`, joined to the one `waiting` (null:
+         * none). A folder's step comes `delay` after the last file written
+         * (each moves it on), never in place of a message's, which then comes
+         * at that time instead: a folder's may find nothing new and be left
+         * out, a message's line must go. A message's joins the one waiting,
+         * at its time (the lines that follow go with it), shares the line
+         * then; none waiting, it comes `delay` on.
+         */
+        static Later of(Later waiting, String asked, long delay, long now)
+        {
+            if (waiting == null)
+                return new Later(asked, now + delay);
+            if ("folder".equals(asked))
+                return new Later(waiting.reason, now + delay);
+            if ("messages".equals(asked))
+                return new Later(asked, waiting.at);
+            return new Later(asked, now + delay);
+        }
     }
 
     private void run(String reason)
     {
         posted = false;
+        String names = takeWritten();
         try {
+            // A folder's step whose files a step since has read (their names taken): nothing left to do.
+            if ("folder".equals(reason) && names.isEmpty())
+                return;
             // Sioul's window on the screen exchanges by itself: the step waits for the next alarm.
             if (windowShown()) {
                 schedule(this, USUAL_S);
@@ -557,7 +667,12 @@ public final class StepService extends Service
             }
             DoseAlarms.load(getApplicationContext());
             nativeService();
-            JSONObject answer = new JSONObject(nativeStep(reason));
+            Texts.watch(getApplicationContext());
+            // A folder's step names the files written, for Rust to leave out one its pull brought already.
+            JSONObject answer = new JSONObject(nativeStep("folder".equals(reason) ? "folder:" + names : reason));
+            // Nothing new: the alarm stays as it was.
+            if (answer.optBoolean("skip"))
+                return;
             if (answer.optBoolean("stop")) {
                 // Sharing off, or the setting: no more steps; whether it starts again
                 // at the next restart stays as Sioul's window last said (`stop`, `start`).
@@ -610,14 +725,36 @@ public final class StepService extends Service
             @Override
             public void onEvent(int event, String name)
             {
-                // Hidden names are files being written; this device's own are its own steps.
-                if (name == null || name.startsWith(".") || (!own.isEmpty() && name.startsWith(own)))
+                if (!othersFile(name, own))
                     return;
+                synchronized (written) {
+                    written.add(name);
+                }
                 step("folder", SETTLE_MS);
             }
         };
         watch = observer;
         watch.startWatching();
+    }
+
+    /**
+     * Another device's file, by its name in the sharing folder's top: hidden
+     * names are files being written; this device's own are its own steps.
+     * Pure: android/jvm-checks/StepsCheck.java.
+     */
+    static boolean othersFile(String name, String own)
+    {
+        return name != null && !name.isEmpty() && !name.startsWith(".") && name.indexOf('/') < 0 && (own.isEmpty() || !name.startsWith(own));
+    }
+
+    /** The names written since the last step, "/" between them, forgotten here (any step reads the folder). */
+    private String takeWritten()
+    {
+        synchronized (written) {
+            String names = String.join("/", written);
+            written.clear();
+            return names;
+        }
     }
 
     /** The next step's alarm, `seconds` on: exact through Doze while allowed, else inexact. */
@@ -635,6 +772,19 @@ public final class StepService extends Service
     private static void cancel(Context context)
     {
         context.getSystemService(AlarmManager.class).cancel(pending(context));
+        cancelLater(context);
+    }
+
+    /** The alarm of a step asked for later, taken away: a step now does its work. */
+    private static void cancelLater(Context context)
+    {
+        context.getSystemService(AlarmManager.class).cancel(laterPending(context));
+    }
+
+    private static PendingIntent laterPending(Context context)
+    {
+        return PendingIntent.getBroadcast(context, NOTE + 1, new Intent(context, StepReceiver.class).setAction(LATER),
+                                          PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
     private static PendingIntent pending(Context context)

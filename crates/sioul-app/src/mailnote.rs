@@ -238,6 +238,23 @@ fn told(_account: &str, files: &[PathBuf], window: Option<Window>, hold: bool) {
     }
 }
 
+/// Every account fetched at once, in a process without the window (a phone's
+/// background step, `steps::fetch_mail`): every arrival is known, so the batch
+/// is told now, in one notification, not ten seconds on, which kept the phone
+/// awake for nothing. The thread waiting for it finds it empty, and ends.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) fn close_now() {
+    let (letters, window, opens) = {
+        let Ok(mut batch) = BATCH.lock() else { return };
+        batch.first = None;
+        batch.last = None;
+        (std::mem::take(&mut batch.letters), batch.window.take(), std::mem::take(&mut batch.opens))
+    };
+    if !letters.is_empty() {
+        tell_batch(letters, window, opens);
+    }
+}
+
 /// Waits for the batch to close (ten seconds without another arrival, a
 /// minute at most), then tells it.
 fn close_batch() {
@@ -254,7 +271,10 @@ fn close_batch() {
             })
         };
         if let Some((letters, window, opens)) = ready {
-            tell_batch(letters, window, opens);
+            // Told already (`close_now`): nothing left.
+            if !letters.is_empty() {
+                tell_batch(letters, window, opens);
+            }
             return;
         }
     }

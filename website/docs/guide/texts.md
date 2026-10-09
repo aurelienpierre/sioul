@@ -10,7 +10,7 @@ Your phone's texts can be read on your computer, and a text written there can be
 
 1. **On the phone**, Settings ▸ This phone ▸ **Texts** says what each permission is for: reading your texts, hearing a new one, sending the texts you write on a computer, and your SIMs' names. **Allow in Android…** asks for them.
 2. **Turn on the part Texts**, on the phone and on each computer that should read or write texts (Settings ▸ Your folder and sharing ▸ What travels from this device). It is off until you do.
-3. **Then the history follows by itself**, 500 texts at a time, the pictures and other media after their texts, so that your doses, do-not-disturb and calls never wait behind it. On the phone, Settings ▸ This phone ▸ Texts says how many texts and how much media it holds, then how much has gone. On a computer, the part's line in the sharing panel says how many it keeps.
+3. **Then the history follows by itself**, 500 texts at a time, the pictures and other media after their texts, so that your doses, do-not-disturb and calls never wait behind it. It goes while your phone charges: a long history can weigh hundreds of megabytes. New texts, after it, go within a minute or two, on the battery too. On the phone, Settings ▸ This phone ▸ Texts says how many texts and how much media it holds, then how much has gone. On a computer, the part's line in the sharing panel says how many it keeps.
 
 ## What you see {#what-you-see}
 
