@@ -23,7 +23,7 @@ announced_by = []        # the domains whose mail announces it; the site's own d
 ```
 
 ## The list
-- **Your order**, kept in the configuration: a site's ⋮ ▸ Move up, Move down. The sort button above the list groups them **by type** instead (secure mailboxes and client areas, chats, video calls, social networks, dating, other), your order kept within each.
+- **Your order**, kept in the configuration: a site's ⋮ ▸ Move up, Move down. Once your devices share each site apart (format 2, [database.md](database.md#the-format-of-what-travels)), a move also writes it as `site_order` (the sites' ids, in order), which reaches your other devices with the sites; a site it does not name comes after, in the file's order. Before that, the list travels whole, its order with it. The sort button above the list groups them **by type** instead (secure mailboxes and client areas, chats, video calls, social networks, dating, other), your order kept within each.
 - **Filtered** (the funnel above the list): by what a site is for (work, your admin, leisure), by its type, by one of your categories, each with "any"; chosen again, a choice is undone. The filters in use are said under the title, with one button to show every site again.
 - **Its own icon**: asked of the site itself, never of an icon service that would learn which sites you keep (`sioul_sync::favicon`: the icon its page names, the larger the better, else `/favicon.ico`), kept in `~/.cache/sioul/favicons/` and asked again after a week; its type's icon until then, and for a site that gives none.
 - **The sites for these hours** first; the others fold under one line, "Other hours: 3" ([areas.md](areas.md)).

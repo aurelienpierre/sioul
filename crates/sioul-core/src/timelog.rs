@@ -56,6 +56,12 @@ impl Kind {
 /// Time given to one task, or to a project.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Session {
+    /// Its own id, given when it is recorded (`record_in`, `ids`): your
+    /// devices merge each session by it, so that one changed on two devices
+    /// stays one (docs/database.md, "The format of what travels"). "" for a
+    /// session an older Sioul recorded, which keeps none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
     /// The task's UID; "" for time given to a project alone.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub task: String,
@@ -108,7 +114,7 @@ fn write_atomically(path: &Path, text: &str) -> Result<(), String> {
     std::fs::rename(&temporary, path).map_err(fail)
 }
 
-/// Adds a session to its month's file, in `dir`.
+/// Adds a session to its month's file, in `dir`, with an id of its own when it has none.
 pub fn record_in(dir: &Path, session: &Session) -> Result<(), String> {
     let path = month_file(dir, session.start);
     // A month not begun yet starts empty; one there that cannot be read is left
@@ -118,7 +124,11 @@ pub fn record_in(dir: &Path, session: &Session) -> Result<(), String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Month::default(),
         Err(e) => return Err(format!("{}: {e}", path.display())),
     };
-    month.sessions.push(session.clone());
+    let mut session = session.clone();
+    if session.id.is_empty() {
+        session.id = crate::ids::new();
+    }
+    month.sessions.push(session);
     write_atomically(&path, &toml::to_string(&month).map_err(|e| e.to_string())?)
 }
 

@@ -427,8 +427,25 @@ pub(crate) fn status(folder: &str) -> String {
         }
         if let Some((at, said)) = LAST.lock().ok().and_then(|l| l.clone()) {
             lines.push(say("share-last", &[("when", when(at))]));
-            problems.extend(said.iter().filter(|p| !kept_a_day(p) && !p.starts_with("share-vanished:") && !p.starts_with("share-busy")).map(|p| problem_text(p)));
+            problems.extend(said.iter().filter(|p| !kept_a_day(p) && !p.starts_with("share-vanished:") && !p.starts_with("share-busy") && !p.starts_with("share-newer:")).map(|p| problem_text(p)));
             vanished.extend(said.iter().filter_map(|p| vanished_of(p)));
+        }
+        // The format of what travels (docs/database.md, "The format of what
+        // travels"): a part your other devices share in a newer form than
+        // this Sioul reads, said as long as it lasts; a device on an older
+        // Sioul holding the newer form back, or one appearing after it.
+        if let Some(key) = key() {
+            let formats = share::formats(&path, &key, &memory_path(), &here.id, now_ms());
+            for (part, _, build) in &formats.newer {
+                let name = part_words(part).0;
+                problems.push(if build.is_empty() { say("share-newer-plain", &[("part", name)]) } else { say("share-newer", &[("part", name), ("build", build.clone())]) });
+            }
+            if formats.holders.iter().any(|(_, holds)| *holds == share::Holds::Older) {
+                lines.push(tr().text("share-format-held", None));
+            }
+            if formats.writes >= 2 && sioul_sync::devices::all(&path, &key).0.iter().any(|e| e.id != here.id && !e.left && e.format < share::FORMAT) {
+                problems.push(tr().text("share-format-older", None));
+            }
         }
         // Files two devices changed, both kept: said for a day.
         let day_ago = jiff::Timestamp::now().as_second() - 86_400;
@@ -722,6 +739,12 @@ pub(crate) fn stop() -> String {
         let _ = std::fs::remove_file(&memory);
         here.save(&state).err().unwrap_or_default()
     })
+}
+
+/// Whether this device's sharing writes format 2 (`share::FORMAT`), where
+/// each pinned site travels apart, and their order as its own setting.
+pub(crate) fn writes_format_2() -> bool {
+    on() && share::writes(&memory_path()) >= 2
 }
 
 /// Whether sharing is on here: a folder and its key.
@@ -1182,6 +1205,12 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
             // Codes alone: a note's name is what was exchanged.
             let codes: Vec<&str> = problems.iter().map(|p| p.split(':').next().unwrap_or_default()).collect();
             eprintln!("sioul: sharing: {sent} sent, {received} received, {pending} waiting{}{}", if codes.is_empty() { "" } else { "; " }, codes.join("; "));
+        }
+        // A part met in a newer form than this Sioul reads: said once in the
+        // status line, calmly, the first time this Sioul meets it (Settings
+        // says it as long as it lasts).
+        for part in problems.iter().filter_map(|p| p.strip_prefix("share-newer:")) {
+            crate::backend::set_status(&qt, say("share-newer-status", &[("part", part_words(part).0)]));
         }
         let mut said = problems;
         // Notes and papers wait while Android does not let Sioul read them all.

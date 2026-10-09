@@ -138,6 +138,12 @@ pub struct Config {
     /// "portal": `Config::load` reads them here, `migrate_sites` moves them.
     #[serde(rename = "site", default)]
     pub sites: Vec<Account>,
+    /// The order the Sites page shows them in, by their ids, as last chosen on
+    /// any device (`move_site`): your devices share each site apart (format 2,
+    /// docs/database.md), and this order with them. Sites it does not name
+    /// come after, in the file's order.
+    #[serde(default)]
+    pub site_order: Vec<String>,
     /// Accounts switched off: kept with their settings, neither synced nor shown.
     #[serde(skip)]
     pub accounts_off: Vec<Account>,
@@ -1018,6 +1024,9 @@ impl Config {
         for site in &mut all_sites {
             site.kind = AccountKind::Portal;
         }
+        if !self.site_order.is_empty() {
+            all_sites.sort_by_key(|site| self.site_order.iter().position(|id| *id == site.id).unwrap_or(usize::MAX));
+        }
         self.sites = all_sites;
         let (on, off): (Vec<Account>, Vec<Account>) = accounts.into_iter().partition(|a| a.enabled);
         self.accounts = on;
@@ -1278,21 +1287,36 @@ fn append_site(path: &Path, mut table: Table) -> Result<(), String> {
     write_document(path, &doc)
 }
 
-/// Moves a site `delta` places in the list: the order the Sites page shows. At either end, it stays.
-pub fn move_site(path: &Path, id: &str, delta: i64) -> Result<(), String> {
+/// Moves a site `delta` places in the list: the order the Sites page shows
+/// (`site_order`, then the file's). At either end, it stays. The file's
+/// tables take that order. With `order` (the sharing writes format 2, where
+/// each site travels apart: docs/database.md, "The format of what travels"),
+/// `site_order` says it too, for your other devices; without, the list's
+/// own order travels with it, as it always did, and `site_order`, if there,
+/// follows it.
+pub fn move_site(path: &Path, id: &str, delta: i64, order: bool) -> Result<(), String> {
     migrate_sites(path)?;
     let mut doc = read_document(path)?;
+    let chosen: Vec<String> = doc.get("site_order").and_then(Item::as_array).map(|list| list.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
     let Some(sites) = doc.get_mut("site").and_then(Item::as_array_of_tables_mut) else { return Ok(()) };
+    let id_of = |table: &Table| table.get("id").and_then(Item::as_str).unwrap_or_default().to_string();
     let mut tables: Vec<Table> = sites.iter().cloned().collect();
-    let Some(from) = tables.iter().position(|t| t.get("id").and_then(Item::as_str) == Some(id)) else { return Ok(()) };
+    let slots: Vec<Option<isize>> = tables.iter().map(Table::position).collect();
+    tables.sort_by_key(|table| chosen.iter().position(|chosen| *chosen == id_of(table)).unwrap_or(usize::MAX));
+    let Some(from) = tables.iter().position(|t| id_of(t) == id) else { return Ok(()) };
     let Some(to) = usize::try_from(from as i64 + delta).ok().filter(|to| *to < tables.len()) else { return Ok(()) };
-    // The tables trade places; each keeps the comments above it.
-    swap_tables(&mut tables, from, to);
+    tables.swap(from, to);
+    // Each table takes the slot of its new place; each keeps the comments above it.
+    let (with_order, order): (bool, Array) = (order, tables.iter().map(id_of).collect());
     let mut moved = ArrayOfTables::new();
-    for table in tables {
+    for (mut table, slot) in tables.into_iter().zip(slots) {
+        table.set_position(slot);
         moved.push(table);
     }
     *sites = moved;
+    if with_order || doc.contains_key("site_order") {
+        doc["site_order"] = value(order);
+    }
     write_document(path, &doc)
 }
 
@@ -2042,7 +2066,7 @@ mod tests {
         let path = dir.join("config.toml");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(&path, "# Mine.\n[[site]]\nid = \"a\"\nurl = \"https://a.example.org\"\n\n# The second.\n[[site]]\nid = \"b\"\nurl = \"https://b.example.org\"\n").unwrap();
-        move_site(&path, "b", -1).unwrap();
+        move_site(&path, "b", -1, true).unwrap();
         let ids = |path: &Path| Config::load(path).unwrap().sites.iter().map(|s| s.id.clone()).collect::<Vec<_>>();
         assert_eq!(ids(&path), ["b", "a"]);
         let text = std::fs::read_to_string(&path).unwrap();
@@ -2050,6 +2074,32 @@ mod tests {
         std::fs::write(&path, "[[account]]\nid = \"one\"\nkind = \"imap\"\n\n[[account]]\nid = \"two\"\nkind = \"imap\"\n").unwrap();
         move_account(&path, "two", -1).unwrap();
         assert_eq!(Config::load(&path).unwrap().accounts.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), ["two", "one"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The sites' order as its own setting (`site_order`), once each site
+    /// travels apart (format 2 of the sharing): written by a move, it orders
+    /// the sites wherever their tables stand in the file, those it does not
+    /// name after; before format 2, a move writes the tables' order alone.
+    #[test]
+    fn the_sites_order_travels_as_its_own_setting() {
+        let dir = std::env::temp_dir().join(format!("sioul-site-order-{}", std::process::id()));
+        let path = dir.join("config.toml");
+        std::fs::create_dir_all(&dir).unwrap();
+        let ids = |path: &Path| Config::load(path).unwrap().sites.iter().map(|s| s.id.clone()).collect::<Vec<_>>();
+        let three = "[[site]]\nid = \"a\"\nurl = \"https://a.example.org\"\n\n[[site]]\nid = \"b\"\nurl = \"https://b.example.org\"\n\n[[site]]\nid = \"c\"\nurl = \"https://c.example.org\"\n";
+        std::fs::write(&path, three).unwrap();
+        move_site(&path, "c", -1, false).unwrap();
+        assert_eq!(ids(&path), ["a", "c", "b"]);
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("site_order"), "format 1: the list's own order travels");
+        move_site(&path, "a", 1, true).unwrap();
+        assert_eq!(ids(&path), ["c", "a", "b"]);
+        assert!(std::fs::read_to_string(&path).unwrap().contains("site_order = [\"c\", \"a\", \"b\"]"));
+        // Another device's order, its tables where they stood, a site pinned since last.
+        std::fs::write(&path, format!("site_order = [\"b\", \"a\"]\n{three}")).unwrap();
+        assert_eq!(ids(&path), ["b", "a", "c"]);
+        move_site(&path, "c", -1, true).unwrap();
+        assert_eq!(ids(&path), ["b", "c", "a"]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -2186,7 +2236,7 @@ mod tests {
         assert!(text.contains("# My bank.\n[[site]]\nid = \"bank\"") && !text.contains("portal"), "{text}");
         assert!(!migrate_sites(&path).unwrap(), "once");
         set_value(&path, "site.bank.muted", &SettingValue::Bool(true)).unwrap();
-        move_site(&path, "bank", -1).unwrap();
+        move_site(&path, "bank", -1, false).unwrap();
         let config = Config::load(&path).unwrap();
         assert!(config.site("bank").is_some_and(|s| s.muted && s.realtime));
         remove_site(&path, "bank").unwrap();

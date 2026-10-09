@@ -9,7 +9,7 @@ Every list of words a recogniser matches text against lives outside the code, in
 ## Three layers
 1. **Language packs**, shipped: `data/words/<language>.toml`, a file per language, like the `.ftl` files.
 2. **Country packs**, shipped: `data/words/countries/<code>.toml`, the names of one country (its public bodies, its brands, its banks' approval services); and `data/words/international.toml`, always in use: the words of mail programs, servers and apps in any language (automatic senders, folder names, reply prefixes, quoted-message openings, call notifications, a provider's spam marks), brands of every country, the mail providers millions share.
-3. **Your changes**, in config.toml under `[words]`.
+3. **Your changes**, in config.toml under `[words]`. They travel to your other devices with the settings, one word at a time (format 2, [database.md](database.md#the-format-of-what-travels)): a word added on the phone and another on the computer in the same exchange both stay.
 
 A list as Sioul uses it is the packs' words in order (the languages', then the countries', then the international pack), less the shipped words you took away, plus yours. Words are compared folded (`words::folded`, `text::fold`): trimmed, lowercase, accents aside; each word is kept once, its first spelling first.
 

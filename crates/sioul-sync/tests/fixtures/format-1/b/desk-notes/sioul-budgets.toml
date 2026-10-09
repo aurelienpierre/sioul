@@ -1,0 +1,74 @@
+[[budget]]
+id = "home"
+title = "Home"
+period = "month"
+target = 0
+
+[[preset]]
+budget = "home"
+label = "Rent"
+amount = -600
+every = "month"
+day = 1
+
+[[preset]]
+budget = "home"
+label = "Insurance"
+amount = -150
+every = "year"
+month = 3
+day = 15
+
+[[line]]
+budget = "home"
+date = 2026-09-03
+amount = -42
+label = "Pharmacie"
+
+[[line]]
+budget = "home"
+date = 2026-09-05
+amount = -12
+label = "Boulangerie"
+
+[[line]]
+budget = "home"
+date = 2026-09-05
+amount = -12
+label = "Boulangerie"
+
+[[line]]
+id = "aaaaaaaa-0000-4000-8000-000000000001"
+budget = "home"
+date = 2026-09-10
+amount = -60
+label = "Essence"
+
+[[line]]
+id = "bbbbbbbb-0000-4000-8000-000000000002"
+budget = "home"
+date = 2026-09-12
+amount = -8
+label = "Café"
+
+[[line]]
+id = "cccccccc-0000-4000-8000-000000000003"
+budget = "home"
+date = 2026-09-12
+amount = -8
+label = "Café"
+
+[[reserve]]
+id = "savings"
+title = "Savings account"
+balance = 2000
+as_of = 2026-09-01
+
+[[cover]]
+reserve = "savings"
+budget = "home"
+
+[[split]]
+account = "checking"
+words = ["supermarché"]
+budget = "home"

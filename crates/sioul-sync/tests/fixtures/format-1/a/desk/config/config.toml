@@ -1,0 +1,21 @@
+language = "fr"
+
+[words.codes.code]
+add = ["Bestätigungscode"]
+remove = ["code temporaire"]
+
+[words.brands.brands]
+add = { "Ma Banque" = ["mabanque.example.org"] }
+remove = ["Banque Exemple"]
+
+[[site]]
+id = "poste"
+name = "La Poste"
+url = "https://poste.example.org"
+site = "admin"
+
+[[site]]
+id = "impots"
+name = "Impôts"
+url = "https://impots.example.org"
+site = "admin"

@@ -97,6 +97,7 @@ fn write(change: impl FnOnce(&mut Entry)) {
         // The build that writes it (docs/database.md, "Devices"): which code each device runs.
         entry.version = sioul_core::build::VERSION.into();
         entry.commit = sioul_core::build::COMMIT.into();
+        entry.format = sioul_sync::share::FORMAT;
         entry.doses = doses;
         if notifications.is_some() {
             entry.notifications = notifications;

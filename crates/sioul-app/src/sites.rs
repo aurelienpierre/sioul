@@ -200,7 +200,8 @@ pub(crate) fn add(edit: &str) -> String {
 
 /// A site moved one place up (-1) or down (1) in the list; returns what went wrong, else "".
 pub(crate) fn move_site(id: &str, delta: i64) -> String {
-    sioul_core::config::move_site(&crate::backend::config_path(), id, delta).err().unwrap_or_default()
+    // The order travels as its own setting once each site travels apart (format 2 of the sharing).
+    sioul_core::config::move_site(&crate::backend::config_path(), id, delta, crate::share::writes_format_2()).err().unwrap_or_default()
 }
 
 /// A site taken out of Sioul; its sign-ins stay in its profile until cleared. Returns what went wrong, else "".
