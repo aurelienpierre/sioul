@@ -514,7 +514,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("window", "windows", Kind::Windows, week(&of("work")));
             b.push("window.admin", "windows-admin", Kind::Windows, week(&of("admin")));
             b.push("link.needs", "hours-leisure", Kind::Link, SettingValue::Text("needs".into()));
-            let off = config.time_off.iter().map(|t| crate::config::TimeOffValue { from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone() }).collect();
+            let off = config.time_off.iter().map(|t| crate::config::TimeOffValue { id: t.id.clone(), from: t.from.to_string(), until: t.until.to_string(), label: t.label.clone() }).collect();
             b.push("time_off", "time-off", Kind::TimeOff, SettingValue::TimeOff(off));
             // What reaches you, and when (docs/attention.md): the matrix is the tab's own
             // (`attention::grid`, the window's `reachesView`); these are the switches beside it.
@@ -911,6 +911,55 @@ pub fn rebased<T: PartialEq + Clone>(shown: &[T], value: &[T], current: &[T]) ->
     out
 }
 
+/// `rebased`, for a list of structured elements (days off, hours, routes):
+/// an element the editor changed is its new version in place of the one the
+/// list holds now, found by its identity (`ids`: an id, or a key such as a
+/// day's first window), else at its place while that place still holds what
+/// the editor showed. So two devices changing one element keep one, the
+/// later change, never both versions side by side.
+pub fn rebased_by<T: PartialEq + Clone>(shown: &[T], value: &[T], current: &[T], ids: impl Fn(&[T]) -> Vec<Option<String>>) -> Vec<T> {
+    if shown == current {
+        return value.to_vec();
+    }
+    let (shown_ids, value_ids, current_ids) = (ids(shown), ids(value), ids(current));
+    let mut current = current.to_vec();
+    for (at_shown, old) in shown.iter().enumerate() {
+        if value.contains(old) {
+            continue;
+        }
+        let identity = shown_ids.get(at_shown).cloned().flatten();
+        // Its new version among what the editor sends: by its identity, else at its place.
+        let edit = match &identity {
+            Some(key) => value.iter().zip(&value_ids).find(|(v, k)| !shown.contains(v) && k.as_ref() == Some(key)).map(|(v, _)| v),
+            None => value.get(at_shown).filter(|v| shown.len() == value.len() && !shown.contains(v) && value_ids.get(at_shown).is_some_and(Option::is_none)),
+        };
+        let Some(edit) = edit else { continue };
+        // Where it is now: by its identity, else at its place while it holds what was shown.
+        let at = match &identity {
+            Some(key) => current_ids.iter().position(|k| k.as_ref() == Some(key)),
+            None => (current.get(at_shown) == Some(old)).then_some(at_shown).or_else(|| current.iter().position(|c| c == old)),
+        };
+        if let Some(at) = at {
+            current[at] = edit.clone();
+        }
+    }
+    rebased(shown, value, &current)
+}
+
+/// A day's windows named by their day and their rank in it ("mon#0"): a
+/// day's hours changed are that window changed.
+fn window_ids(windows: &[crate::config::WindowValue]) -> Vec<Option<String>> {
+    let mut seen: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    windows
+        .iter()
+        .map(|w| {
+            let rank = seen.entry(w.day.clone()).or_default();
+            *rank += 1;
+            Some(format!("{}#{}", w.day, *rank - 1))
+        })
+        .collect()
+}
+
 /// The views whose rows `current_value` looks through for a key.
 const VIEWS: &[&str] = &["parameters", "porch", "mail", "senders", "accounts", "agenda", "tasks", "notes", "reading", "sites", "contacts", "lane:people"];
 
@@ -980,9 +1029,9 @@ pub fn rebase(shown: &SettingValue, value: &SettingValue, current: &SettingValue
     match (&shown, &value, current) {
         (V::Texts(s), V::Texts(v), V::Texts(c)) => V::Texts(rebased(s, v, c)),
         (V::Ints(s), V::Ints(v), V::Ints(c)) => V::Ints(rebased(s, v, c)),
-        (V::Windows(s), V::Windows(v), V::Windows(c)) => V::Windows(rebased(s, v, c)),
-        (V::TimeOff(s), V::TimeOff(v), V::TimeOff(c)) => V::TimeOff(rebased(s, v, c)),
-        (V::Routes(s), V::Routes(v), V::Routes(c)) => V::Routes(rebased(s, v, c)),
+        (V::Windows(s), V::Windows(v), V::Windows(c)) => V::Windows(rebased_by(s, v, c, window_ids)),
+        (V::TimeOff(s), V::TimeOff(v), V::TimeOff(c)) => V::TimeOff(rebased_by(s, v, c, |days| days.iter().map(|d| Some(d.id.clone()).filter(|id| !id.is_empty())).collect())),
+        (V::Routes(s), V::Routes(v), V::Routes(c)) => V::Routes(rebased_by(s, v, c, |routes| vec![None; routes.len()])),
         _ => value,
     }
 }
@@ -1346,6 +1395,35 @@ mod tests {
         // Rebased by hand: the window's order for what it holds, what it never showed after.
         assert_eq!(rebased(&[1, 2, 3], &[3, 1, 4], &[1, 2, 3, 5]), [3, 1, 4, 5]);
         assert_eq!(rebase(&SettingValue::Ints(Vec::new()), &texts(&["a"]), &texts(&["b"])), texts(&["a", "b"]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// One element of a structured list changed on two devices at once keeps
+    /// one version, the later change, never both: a day off by its id (end to
+    /// end, its table and id kept), a day's hours by their day, a route at its
+    /// place (fourth review, R4c).
+    #[test]
+    fn an_element_changed_on_two_devices_stays_one() {
+        use crate::config::{TimeOffValue, WindowValue};
+        let dir = std::env::temp_dir().join(format!("sioul-change-one-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let day = |id: &str, label: &str| TimeOffValue { id: id.into(), from: "2026-08-01".into(), until: "2026-08-15".into(), label: label.into() };
+        std::fs::write(&path, "[[time_off]]\nid = \"a1\"\nfrom = 2026-08-01\nuntil = 2026-08-15\nlabel = \"Summer\"\n").unwrap();
+        // Another device names it otherwise meanwhile; this one changes its label from what it showed.
+        std::fs::write(&path, "[[time_off]]\nid = \"a1\"\nfrom = 2026-08-01\nuntil = 2026-08-15\nlabel = \"Summer holidays\"\n").unwrap();
+        change(&path, "time_off", Some(&SettingValue::TimeOff(vec![day("a1", "Summer")])), &SettingValue::TimeOff(vec![day("a1", "Summer trip")])).unwrap();
+        let off = Config::load(&path).unwrap().time_off;
+        assert_eq!(off.iter().map(|t| (t.id.as_str(), t.label.as_str())).collect::<Vec<_>>(), [("a1", "Summer trip")]);
+        // A Monday's hours, changed here and elsewhere: this change, once.
+        let window = |start: &str, end: &str| WindowValue { day: "mon".into(), start: start.into(), end: end.into(), minutes: 0 };
+        let windows = |list: Vec<WindowValue>| SettingValue::Windows(list);
+        assert_eq!(rebase(&windows(vec![window("09:00", "17:00")]), &windows(vec![window("09:00", "18:00")]), &windows(vec![window("08:00", "17:00")])), windows(vec![window("09:00", "18:00")]));
+        // A route changed at its place while another device added one before it: changed in place, the other kept.
+        let route = |word: &str| crate::projects::RouteValue { subject_contains: vec![word.into()], ..Default::default() };
+        let routes = |list: Vec<crate::projects::RouteValue>| SettingValue::Routes(list);
+        assert_eq!(rebase(&routes(vec![route("a"), route("b")]), &routes(vec![route("a2"), route("b")]), &routes(vec![route("z"), route("a"), route("b")])), routes(vec![route("a2"), route("b"), route("z")]));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

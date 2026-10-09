@@ -202,10 +202,19 @@ pub fn update_in(dir: &Path, keys: &[String], change: impl Fn(&mut Session)) -> 
 /// moved to another month, written there first, then taken out of its old
 /// one, so that nothing is lost on the way. Returns whether it was found.
 pub fn change_in(dir: &Path, key: &str, change: impl Fn(&mut Session)) -> Result<bool, String> {
-    let Some(old) = sessions_in(dir).into_iter().find(|s| s.key() == key) else { return Ok(false) };
-    let mut new = old.clone();
-    change(&mut new);
-    if month_file(dir, new.start) == month_file(dir, old.start) {
+    let Some(found) = sessions_in(dir).into_iter().find(|s| s.key() == key) else { return Ok(false) };
+    let path = month_file(dir, found.start);
+    // The session as its month holds it now, read and changed under the month's
+    // lock, which the sharing takes too: never a copy read before.
+    let new = crate::filelock::with_lock(&path, || {
+        let month: Month = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        month.sessions.into_iter().find(|s| s.key() == key).map(|mut session| {
+            change(&mut session);
+            session
+        })
+    });
+    let Some(new) = new else { return Ok(false) };
+    if month_file(dir, new.start) == path {
         return update_in(dir, &[key.to_string()], &change).map(|n| n > 0);
     }
     record_in(dir, &new)?;

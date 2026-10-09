@@ -838,7 +838,7 @@ mod tests {
         assert!(all.is_empty(), "{all:#?}");
         // Time off moves the working days.
         let mut off = self::config();
-        off.time_off = vec![TimeOff { from: "2026-10-12".parse().unwrap(), until: "2026-10-13".parse().unwrap(), label: String::new() }];
+        off.time_off = vec![TimeOff { id: String::new(), from: "2026-10-12".parse().unwrap(), until: "2026-10-13".parse().unwrap(), label: String::new() }];
         let all = super::all(&off, &tr, &now, &[], &[task("after", "2026-10-14")], None, &[], &[], None, |_| true);
         assert_eq!(all[0].at, at("2026-10-08T09:00").timestamp().as_second(), "Thursday and Friday before the days off");
         assert_eq!(all[0].title, "Demandé pour mercredi 14 octobre");

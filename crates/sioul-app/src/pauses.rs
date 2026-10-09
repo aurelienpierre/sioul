@@ -252,7 +252,7 @@ pub(crate) fn come_back(mut sioul: Pin<&mut Sioul>) -> QString {
     pause::forget(&mut undone);
     let (qt, shared) = (sioul.qt_thread(), sioul.shared());
     let title = tr().text("pause-back-title", None);
-    crate::mail::rest(&qt, &shared, undone, title.clone());
+    crate::mail::rest(&qt, &shared, undone, overrides.clone(), title.clone());
     // Words only where they change something: today's work not over yet, a working day tomorrow.
     let work_left = usual_end(&config, &now).is_some_and(|end| end > stamp);
     let day = match after {

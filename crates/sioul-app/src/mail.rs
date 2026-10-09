@@ -62,7 +62,8 @@ enum Work {
     /// One occurrence of a repeating event left out (EXDATE).
     Skip { account: String, file: PathBuf, start: i64 },
     /// The day closed, already in effect: "Undo" puts the time back as it was.
-    Rest { previous: sioul_core::quiet::Overrides },
+    /// `previous` as before the act, `after` as the act left it: only what it changed is put back.
+    Rest { previous: sioul_core::quiet::Overrides, after: sioul_core::quiet::Overrides },
     /// A note in the vault's trash already: "Undo" puts it back.
     Untrash { trashed: String, path: String },
     /// A change in effect already (a meal, an event or a step moved by a
@@ -674,8 +675,8 @@ pub(crate) fn offer_untrash(qt: &QtThread, shared: &Arc<Shared>, trashed: String
 }
 
 /// The day closed: "Undo" stays offered for a moment, as for mail.
-pub(crate) fn rest(qt: &QtThread, shared: &Arc<Shared>, previous: sioul_core::quiet::Overrides, line: String) {
-    schedule(qt, shared, Work::Rest { previous }, line);
+pub(crate) fn rest(qt: &QtThread, shared: &Arc<Shared>, previous: sioul_core::quiet::Overrides, after: sioul_core::quiet::Overrides, line: String) {
+    schedule(qt, shared, Work::Rest { previous, after }, line);
 }
 
 /// A change made already (a drag): "Undo" stays offered for a moment, as for
@@ -968,11 +969,11 @@ pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>) -> Option<String> {
             crate::work::show_work(qt, shared);
             (back.err().unwrap_or_else(|| tr().text("undo-done", None)), None)
         }
-        Work::Rest { previous } => {
-            // Put back as it was, over the file as it is now (`Overrides::put_back`:
-            // `save_merged` then writes what differs from this read).
+        Work::Rest { previous, after } => {
+            // What the act changed put back as it was, over the file as it is now
+            // (`Overrides::put_back`: `save_merged` then writes what differs from this read).
             let path = sioul_core::quiet::Overrides::default_path();
-            let _ = sioul_core::quiet::Overrides::load(&path).put_back(previous).save(&path);
+            let _ = sioul_core::quiet::Overrides::load(&path).put_back(previous, after).save(&path);
             let _ = qt.queue(|mut sioul| sioul.as_mut().set_mode(QString::from(&crate::backend::mode_json())));
             show(qt, shared);
             crate::work::show_work(qt, shared);
