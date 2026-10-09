@@ -19,21 +19,21 @@ Each comes with the command line, `sioul`. These first packages were built and t
 
 ## Resources needed
 
-Measured on 6 October 2026 on a Linux computer with 8 cores, with Sioul and every process it starts counted together (memory as PSS: each shared page counted once):
+Measured on a Linux computer with 8 cores, with Sioul and every process it starts counted together (memory as PSS: each shared page counted once), on 6 October 2026, and on 9 October for Sioul alone's memory:
 
 | | Memory | Processor |
 |---|---|---|
-| **Sioul alone**: an invented profile, no site open, over five minutes | about 70 MB, in a single process | close to nothing at rest (0.2 % of one core) |
+| **Sioul alone**: an invented profile, no site open, over five minutes | about 80 MB at rest, 190 MB once every page has been opened, in a single process | close to nothing at rest (0.2 % of one core) |
 | **Sioul in daily use**: a real mailbox, notes and tasks, and three sites open in real time, over three minutes | about 1.15 GB in all: Sioul's own process 0.4 GB, the pages of the three sites 0.7 GB | under 1 % of one core most of the time (half of the time under 0.4 %), a few seconds at up to 40 % of one core now and then |
 
-- **What is not open costs nothing.** Each page of the window, each form and menu is made the first time you open it, and the engine that shows websites starts with the first site you open. On 4 October, before this, Sioul alone took 280 MB, and 1.9 GB in daily use (its own process 0.7 GB).
-- **The sites are the heavy part.** Each one kept open costs what a tab of a web browser costs, 150 to 350 MB, and the processor its page uses: a chat that keeps itself up to date is the busiest.
+- **What is not open costs nothing.** Each page of the window, each form and menu is made the first time you open it, the engine that shows websites starts with the first site you open, and what lists cameras and microphones with the first call. On 4 October, before this, Sioul alone took 280 MB, and 1.9 GB in daily use (its own process 0.7 GB).
+- **The sites are the heavy part.** The engine that shows them takes about 75 MB in Sioul's own process, once, whatever their number. Each one kept open costs what a tab of a web browser costs, 150 to 350 MB, and the processor its page uses: a chat that keeps itself up to date is the busiest.
 - **Disk**: a few megabytes read and written in a few minutes.
 - **With the window closed**, the reminder watcher (Settings ▸ Reminders) takes 10 MB and almost no processor.
 - **On a phone** (Android, a 2019 phone): about 200 MB while Sioul is on the screen and 140 MB once it is put away, with almost no processor then; each page opens in 0.1 to 0.5 s the first time, and at once after.
 - **What to plan for**: 4 GB of memory for Sioul and a few sites beside your other programs, 8 GB to keep many sites open; without sites, Sioul needs very little. Any processor of the last ten years.
 
-The measure can be made again on any computer: `tools/measure-load.py` in the sources ([building.md](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
+The measure can be made again on any computer: `tools/measure-load.py` and `tools/measure-memory.py` in the sources ([building.md](https://github.com/aurelienpierre/sioul/blob/main/docs/building.md#measuring-the-load)).
 
 ## Or build it from its sources
 

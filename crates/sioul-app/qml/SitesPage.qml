@@ -380,6 +380,9 @@ Item {
         const next = Object.assign({}, page.calls)
         if (said.what === "call" || said.what === "end") {
             const step = said.what === "call" ? 1 : -1
+            // The call's panel lists the devices at once.
+            if (said.what === "call")
+                Qt.callLater(page.knowDevices)
             if (popup)
                 popup.callCount = Math.max(0, popup.callCount + step)
             else
@@ -514,38 +517,52 @@ Item {
         }
     }
 
-    // One profile for every site: logins kept, files cached on disk.
-    WebEngineProfilePrototype {
-        id: prototype
+    // One profile for every site: logins kept, files cached on disk. Its
+    // prototype, once complete, starts Chromium (some 25 MB in Sioul's process
+    // and 45 MB in its zygotes, with no site): made with the first site's
+    // view, a site kept open or one opened, never for the page shown with no
+    // site open.
+    Component {
+        id: prototypeKind
 
-        storageName: "sioul-sites"
-        httpCacheType: WebEngineProfile.DiskHttpCache
-        httpCacheMaximumSize: 512 * 1024 * 1024
-        persistentCookiesPolicy: WebEngineProfile.ForcePersistentCookies
-        // What a site was allowed is kept: notifications for good (`keepPermissions`),
-        // a microphone, a camera, a screen while its switch is on.
-        persistentPermissionsPolicy: WebEngineProfile.PersistentPermissionsPolicy.StoreOnDisk
-
-        // The profile is made once the prototype is complete; no view exists before it.
-        Component.onCompleted: {
-            const made = prototype.instance()
-            // Without Qt's name in it: some chats refuse browsers they do not know.
-            made.httpUserAgent = made.httpUserAgent.replace(/ QtWebEngine\/[\d.]+/, "")
-            // Nor in the brands it tells sites: Google refuses sign-in to browsers it takes for embedded.
-            const brands = made.clientHints.fullVersionList
-            const kept = {}
-            for (const name in brands) {
-                if (!/qt/i.test(name))
-                    kept[name] = brands[name]
-            }
-            made.clientHints.fullVersionList = kept
-            page.profile = made
-            page.keepPermissions()
+        WebEngineProfilePrototype {
+            storageName: "sioul-sites"
+            httpCacheType: WebEngineProfile.DiskHttpCache
+            httpCacheMaximumSize: 512 * 1024 * 1024
+            persistentCookiesPolicy: WebEngineProfile.ForcePersistentCookies
+            // What a site was allowed is kept: notifications for good (`keepPermissions`),
+            // a microphone, a camera, a screen while its switch is on.
+            persistentPermissionsPolicy: WebEngineProfile.PersistentPermissionsPolicy.StoreOnDisk
         }
     }
     property WebEngineProfile profile: null
+    readonly property bool profileWanted: page.sites.some(s => page.alive(s))
+    onProfileWantedChanged: page.makeProfile()
 
-    Component.onCompleted: page.reload()
+    // The profile, from its prototype, complete once made (it lives with the
+    // page); no view exists before it.
+    function makeProfile() {
+        if (page.profile !== null || !page.profileWanted)
+            return
+        const made = prototypeKind.createObject(page).instance()
+        // Without Qt's name in it: some chats refuse browsers they do not know.
+        made.httpUserAgent = made.httpUserAgent.replace(/ QtWebEngine\/[\d.]+/, "")
+        // Nor in the brands it tells sites: Google refuses sign-in to browsers it takes for embedded.
+        const brands = made.clientHints.fullVersionList
+        const kept = {}
+        for (const name in brands) {
+            if (!/qt/i.test(name))
+                kept[name] = brands[name]
+        }
+        made.clientHints.fullVersionList = kept
+        page.profile = made
+        page.keepPermissions()
+    }
+
+    Component.onCompleted: {
+        page.reload()
+        page.makeProfile()
+    }
 
     Connections {
         target: page.profile
@@ -1275,8 +1292,19 @@ Item {
     // The devices of calls: the system's list of cameras, microphones and
     // speakers, the same on every computer; "The system's own" when unsaid. A
     // device chosen but not plugged in now stays named, at the end of its list.
-    MediaDevices {
-        id: mediaDevices
+    // Known from a site's first call, or from the first look at the list: Qt
+    // Multimedia, started for it, loads FFmpeg, makes a graphics context of its
+    // own and reaches the sound server (some 60 MB in all, in the sandbox
+    // without a graphics card where it was measured).
+    property MediaDevices mediaDevices: null
+    function knowDevices() {
+        if (page.mediaDevices === null)
+            page.mediaDevices = mediaDevicesKind.createObject(page)
+    }
+    Component {
+        id: mediaDevicesKind
+
+        MediaDevices {}
     }
     Component {
         id: deviceRows
@@ -1284,11 +1312,12 @@ Item {
         GridLayout {
             id: rowsGrid
 
-            readonly property var lists: [["camera", mediaDevices.videoInputs], ["microphone", mediaDevices.audioInputs], ["speaker", mediaDevices.audioOutputs]]
+            readonly property var lists: page.mediaDevices === null ? [] : [["camera", page.mediaDevices.videoInputs], ["microphone", page.mediaDevices.audioInputs], ["speaker", page.mediaDevices.audioOutputs]]
 
             columns: 2
             columnSpacing: 10
             rowSpacing: 8
+            Component.onCompleted: page.knowDevices()
 
             Repeater {
                 model: rowsGrid.lists
@@ -1350,6 +1379,7 @@ Item {
             }
             Loader {
                 Layout.fillWidth: true
+                active: devicesDialog.visible
                 sourceComponent: deviceRows
             }
         }
@@ -1389,6 +1419,7 @@ Item {
             }
             Loader {
                 Layout.fillWidth: true
+                active: callPanel.visible
                 sourceComponent: deviceRows
             }
         }

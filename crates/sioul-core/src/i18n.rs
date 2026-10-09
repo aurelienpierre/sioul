@@ -39,7 +39,11 @@ pub fn args() -> FluentArgs<'static> {
 pub struct Translator {
     language: String,
     bundle: Bundle,
-    fallback: Bundle,
+    /// English, for a message this language lacks: parsed the first time
+    /// English has one it lacks, never when the language is English. Each
+    /// language parsed holds some 3 MB, and every message is in both files
+    /// (tools/check-messages.py), so a running Sioul rarely needs it.
+    fallback: std::sync::OnceLock<Bundle>,
 }
 
 impl Translator {
@@ -47,7 +51,19 @@ impl Translator {
     pub fn new(requested: &str) -> Translator {
         let wanted = base_language(requested);
         let language = if LANGUAGES.iter().any(|(l, _)| *l == wanted) { wanted } else { "en".to_string() };
-        Translator { bundle: bundle(&language), fallback: bundle("en"), language }
+        Translator { bundle: bundle(&language), fallback: std::sync::OnceLock::new(), language }
+    }
+
+    /// English, when it holds the message `id` this language lacks; none
+    /// for English itself, nor for a message English lacks too (a count past twelve).
+    fn fallback(&self, id: &str) -> Option<&Bundle> {
+        if self.language == "en" {
+            return None;
+        }
+        if let Some(english) = self.fallback.get() {
+            return Some(english);
+        }
+        defined(LANGUAGES[0].1, id).then(|| self.fallback.get_or_init(|| bundle("en")))
     }
 
     /// The language actually used.
@@ -58,12 +74,13 @@ impl Translator {
     /// One message with its arguments; the English one if this language lacks it.
     pub fn text(&self, id: &str, args: Option<&FluentArgs>) -> String {
         format(&self.bundle, id, None, args)
-            .or_else(|| format(&self.fallback, id, None, args))
+            .or_else(|| self.fallback(id).and_then(|english| format(english, id, None, args)))
             .unwrap_or_else(|| id.to_string())
     }
 
     fn attribute(&self, id: &str, attribute: &str) -> Option<String> {
-        format(&self.bundle, id, Some(attribute), None).or_else(|| format(&self.fallback, id, Some(attribute), None))
+        format(&self.bundle, id, Some(attribute), None)
+            .or_else(|| self.fallback(id).and_then(|english| format(english, id, Some(attribute), None)))
     }
 
     /// A number in words: "two", "Two"; in French also "une", "Une". Digits beyond twelve.
@@ -496,6 +513,14 @@ fn bundle(language: &str) -> Bundle {
     bundle
 }
 
+/// Whether a Fluent file defines the message `id` (a line "id = …"), read
+/// without parsing the file.
+fn defined(source: &str, id: &str) -> bool {
+    source.match_indices(id).any(|(at, _)| {
+        (at == 0 || source.as_bytes()[at - 1] == b'\n') && source[at + id.len()..].trim_start_matches([' ', '\t']).starts_with('=')
+    })
+}
+
 fn format(bundle: &Bundle, id: &str, attribute: Option<&str>, args: Option<&FluentArgs>) -> Option<String> {
     let message = bundle.get_message(id)?;
     let pattern = match attribute {
@@ -544,6 +569,24 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// English is parsed for another language only when it holds a message
+    /// that language lacks; a message both have, or neither, parses nothing.
+    #[test]
+    fn english_parsed_only_when_needed() {
+        assert!(defined("a = 1\nab = 2\n", "ab"));
+        assert!(defined("ab=2", "ab"));
+        assert!(!defined("ab = 2\n", "b"));
+        assert!(!defined("a-b = 2\n", "a"));
+        assert!(!defined("# a = 1\n", "a"));
+        let fr = Translator::new("fr");
+        assert_eq!(fr.text("count-1", None), "un");
+        // A count past twelve, in no file (built here, as the code builds it).
+        let past = format!("count-{}", 13);
+        assert_eq!(fr.text(&past, None), past);
+        assert!(fr.fallback.get().is_none());
+        assert!(Translator::new("en").fallback("count-1").is_none());
     }
 
     #[test]

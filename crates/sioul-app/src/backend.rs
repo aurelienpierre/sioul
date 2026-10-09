@@ -5526,8 +5526,10 @@ impl qobject::Sioul {
         // form, an event's and "How was it?", at three widths (docs/capacity.md), "attachments"
         // a message's attachments unfolded, a phone's words with "phone", nothing opened (docs/client.md),
         // "projects-file" the projects' file under its first name renamed from Settings
-        // (make-demo.py --old-projects, docs/notes-folder.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file"].contains(&steps.as_str()) && offline()) {
+        // (make-demo.py --old-projects, docs/notes-folder.md), "memory" every page as "pages" opens
+        // them, then the profile's sites, held at each moment measured (tools/measure-memory.py),
+        // on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
