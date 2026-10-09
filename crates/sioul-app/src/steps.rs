@@ -270,13 +270,15 @@ fn brought_already(folder: &Path, names: &str) -> bool {
     !names.is_empty() && names.iter().all(|name| same(name))
 }
 
-/// The sharing's full rounds wait (`share::set_frugal`, a round restating the
-/// records, a megabyte or two sent whole, waits while this device appended
-/// less than four) while a bulk import of texts goes on (`texts::importing_in_bulk`),
-/// or the connection is measured slow, as the window's exchanges do.
+/// The sharing's full rounds wait while the connection is measured slow
+/// (`share::set_frugal`: a round restating the records, a megabyte or two
+/// sent whole, waits while this device appended less than four), as the
+/// window's exchanges have them. While a bulk import of texts goes on, none
+/// starts at all: `share::exchange_here` says so before each exchange, an
+/// alarm's too (`share::set_importing`).
 fn rounds_wait() {
     let memory = sioul_core::config::state_dir().join("share").join("memory.json");
-    sioul_sync::share::set_frugal(&memory, crate::texts::importing_in_bulk() || sioul_sync::remote::Sending::load(&memory).slow());
+    sioul_sync::share::set_frugal(&memory, sioul_sync::remote::Sending::load(&memory).slow());
 }
 
 /// The background service's notification as things stand now (StepService;
@@ -422,6 +424,9 @@ pub unsafe extern "C" fn sioul_steps_step(reason: *const std::ffi::c_char) -> *m
 #[unsafe(no_mangle)]
 pub extern "C" fn sioul_steps_in_service() {
     IN_SERVICE.store(true, Ordering::Relaxed);
+    // It exchanges every few minutes for days: the sharing's memory and its
+    // logs of lines kept between exchanges, not read again at each (`share::set_keeping`).
+    sioul_sync::share::set_keeping(true);
 }
 
 /// Do-not-disturb applied in Sioul's own process (DndReceiver): asked by the

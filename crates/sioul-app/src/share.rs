@@ -417,7 +417,11 @@ pub(crate) fn status(folder: &str) -> String {
             None => lines.push(say("share-on", &[("folder", chosen.clone())])),
         }
         attached(&here);
-        let others = share::others(&path, &here.id);
+        // Each heard of by its notes or its entry, the later (a phone put away restates its entry hourly).
+        let others = match key() {
+            Some(key) => share::others_heard(&path, &key, &here.id),
+            None => share::others(&path, &here.id),
+        };
         match others.iter().map(|o| o.heard).max() {
             Some(heard) => {
                 let mut args = sioul_core::i18n::args();
@@ -964,11 +968,52 @@ fn ask_carriers() {
     if sending_on(&here) {
         std::thread::spawn(move || {
             send_to_server(&here, false);
-            ask_carriers_only();
+            // Sioul's own pull bringing the others' news: the send was all that was needed.
+            if !here.folder_path().is_some_and(|folder| pulls_alone(&folder)) {
+                ask_carriers_only();
+            }
         });
         return;
     }
     ask_carriers_only();
+}
+
+/// On a phone, beside a sync app, Sioul's own pull from the server working
+/// (`remote::State::pulls_well`: the backup on, the folder confirmed there,
+/// the last pull through): the other devices' news come from it alone, the
+/// sync app neither asked to look nor waited for, before or after a send
+/// (docs/android.md, "In the background"). A pull that fails, or the backup
+/// switched off, and the sync app is asked as before.
+fn pulls_alone(folder: &Path) -> bool {
+    cfg!(target_os = "android") && sioul_sync::remote::State::load(&memory_path()).pulls_well(folder)
+}
+
+/// How an exchange here waits for the other devices' news first (`exchange_here`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum News {
+    /// Nothing waited for: a button pressed (Android waits eight seconds for
+    /// its answer), or Sioul keeping the folder itself (the server looked through already).
+    None,
+    /// Sioul's own pull alone, waited for twenty-five seconds at most: as long
+    /// as the sync app's twenty and the five after them, never later, and over
+    /// as soon as the pull is.
+    Pull,
+    /// The sync app asked and given twenty seconds, the pull meanwhile, then
+    /// five more seconds at most for it.
+    SyncApp,
+    /// A computer: its sync app looks by itself; the pull waited for fifteen seconds at most.
+    Computer,
+}
+
+/// How an exchange waits for the others' news, as it is asked (`fetch_first`:
+/// the background step, a dose's or a waking's alarm) on this device.
+fn news(fetch_first: bool, phone: bool, mirror: bool, pulls_well: bool) -> News {
+    match (fetch_first && !mirror, phone, pulls_well) {
+        (false, _, _) => News::None,
+        (true, false, _) => News::Computer,
+        (true, true, true) => News::Pull,
+        (true, true, false) => News::SyncApp,
+    }
 }
 
 /// The sync apps asked to look now, and nothing else.
@@ -1001,8 +1046,19 @@ pub(crate) fn nudge(qt: &QtThread, shared: &Arc<Shared>, every: i64, then_read: 
     if !cfg!(target_os = "android") || now - last < every.max(60) || NUDGED.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_err() {
         return;
     }
-    if share::Here::load(&state_dir()).folder_path().is_none() {
-        return;
+    let here = share::Here::load(&state_dir());
+    let Some(folder) = here.folder_path() else { return };
+    // Sioul's own pull bringing the others' news (`pulls_alone`): the sync
+    // app is left to its own pace. Back on the screen, an exchange at once
+    // pulls and reads them, each minute's after it; after a write, Sioul's own
+    // send carried this device's files, where it sends them there too.
+    if pulls_alone(&folder) {
+        if then_read && every == 0 {
+            exchange(qt, shared);
+        }
+        if then_read || sending_on(&here) {
+            return;
+        }
     }
     ask_carriers();
     if then_read {
@@ -1025,9 +1081,9 @@ pub(crate) fn nudge_tick(qt: &QtThread, shared: &Arc<Shared>) {
 /// again when changes came in.
 /// One exchange here and now, on the calling thread, without the window (an
 /// Android alarm wakes Sioul with nothing on the screen): with `fetch_first`,
-/// the sync app is asked to bring what the other devices wrote, and given
-/// twenty seconds (the background service, its pull working: the pull alone,
-/// waited for). None when sharing is off. Waits for an exchange running.
+/// what the other devices wrote is waited for first (`news`): Sioul's own
+/// pull alone while it works, else the sync app asked and given twenty
+/// seconds. None when sharing is off. Waits for an exchange running.
 pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, String>> {
     let here = here();
     let (Some(folder), Some(key)) = (here.folder_path(), key()) else { return None };
@@ -1041,11 +1097,12 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     if mirror && fetch_first {
         mirror_step(&here, true, true);
     }
-    // The background service, its own pull working (`remote::State::pulls_well`):
-    // the others' news come from the server alone, the sync app neither asked
-    // to look nor waited for, before or after a send (docs/android.md, "In the
-    // background"). A dose's or a waking's alarm, in Sioul's own process, asks it as before.
-    let pull_alone = cfg!(target_os = "android") && crate::steps::in_service() && !mirror && sioul_sync::remote::State::load(&memory_path()).pulls_well(&folder);
+    // Its own pull working (`pulls_alone`): the others' news come from the
+    // server alone, for the background step and a dose's or a waking's alarm
+    // alike; the sync app neither asked to look nor waited for, before or
+    // after a send. Else, as before: asked, and given twenty seconds.
+    let pull_alone = !mirror && pulls_alone(&folder);
+    let waits = news(fetch_first, cfg!(target_os = "android"), mirror, pull_alone);
     // The server asked too, meanwhile, when the folder is found there (`fetch_from_server`).
     let fetching = (fetch_first && !mirror).then(|| {
         let here = here.clone();
@@ -1059,7 +1116,7 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     }
     // The sync app asked to bring the others' news, and given twenty seconds;
     // asked a moment ago already (two doses due at once), only what is left of them.
-    if fetch_first && cfg!(target_os = "android") && !mirror && !pull_alone {
+    if waits == News::SyncApp {
         use std::sync::atomic::Ordering;
         let now = jiff::Timestamp::now().as_second();
         let last = NUDGED.load(Ordering::Relaxed);
@@ -1077,10 +1134,10 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     // pull alone, up to the twenty-five seconds it had beside the sync app's
     // wait, never later than before, the step going on as soon as it is done.
     if let Some(fetching) = fetching {
-        let until = std::time::Instant::now() + std::time::Duration::from_secs(match (cfg!(target_os = "android"), pull_alone) {
-            (true, true) => 25,
-            (true, false) => 5,
-            (false, _) => 15,
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(match waits {
+            News::Pull => 25,
+            News::SyncApp => 5,
+            News::Computer | News::None => 15,
         });
         while !fetching.is_finished() && std::time::Instant::now() < until {
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1093,6 +1150,8 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
     HURRY.store(false, std::sync::atomic::Ordering::Relaxed);
     let stores = stores_here(&here);
     let memory = memory_path();
+    // A bulk import of texts going on: no full round meanwhile (`share::set_importing`).
+    share::set_importing(&memory, crate::texts::importing_in_bulk());
     let sharing = share::Sharing { folder: &folder, computer: &here.id, key: &key, memory: &memory, files: false, hurry: None };
     let outcome = share::exchange(&sharing, &stores, jiff::Timestamp::now().as_millisecond());
     if let Ok(outcome) = &outcome {
@@ -1109,6 +1168,15 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
             }
         }
         remember(&outcome.problems, jiff::Timestamp::now().as_second());
+        // On a phone, each quick exchange said in its log (adb logcat -s sioul), counts and codes
+        // only: how often a background step or an alarm found nothing new (docs/android.md, "Its cost").
+        if cfg!(target_os = "android") {
+            let codes: Vec<&str> = outcome.problems.iter().map(|p| p.split(':').next().unwrap_or_default()).collect();
+            match outcome.quiet {
+                true => eprintln!("sioul: sharing: nothing new, nothing read"),
+                false => eprintln!("sioul: sharing: {} sent, {} received, {} waiting{}{}", outcome.sent, outcome.received, outcome.pending, if codes.is_empty() { "" } else { "; " }, codes.join("; ")),
+            }
+        }
         // Inside a reminder's own session, the sync app is asked once it is down (`devices::receiver`).
         let ask = outcome.sent > 0 && !crate::devices::in_receiver();
         // Beside a sync app, this device's files sent to the server too, then
@@ -1176,8 +1244,10 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
         } else {
             fetch_from_server(&here(), false);
         }
-        // A metered or slow connection: full rounds wait (`share::set_frugal`).
+        // A metered or slow connection: full rounds wait (`share::set_frugal`);
+        // a bulk import of texts going on (in the background service), too (`share::set_importing`).
         share::set_frugal(&memory_path(), frugal_now());
+        share::set_importing(&memory_path(), crate::texts::importing_in_bulk());
         // Waits for one running (a dose's alarm, Sioul closing): what was asked is never dropped.
         let busy = BUSY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let here = here();
@@ -2051,6 +2121,24 @@ pub(crate) fn set_backup_place(place: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A dose's alarm (`health::alarm_decide`) asks for the others' news
+    /// before it decides (`exchange_here(true)`): on a phone whose own pull
+    /// works (`pulls_alone`), the pull alone, waited for twenty-five seconds
+    /// at most and no longer than it takes, the sync app neither asked nor
+    /// waited for; the pull failing, or the backup off, the sync app asked and
+    /// given its twenty seconds, as before. What the doses then know is the
+    /// same either way (sioul-sync's
+    /// `a_doses_alarm_on_the_pull_alone_knows_what_it_knew_with_the_sync_app_asked`,
+    /// `a_doses_alarm_whose_pull_fails_says_its_doubt_and_asks_the_sync_app_next`).
+    #[test]
+    fn a_doses_alarm_waits_for_the_pull_alone_while_it_works() {
+        assert_eq!(news(true, true, false, true), News::Pull);
+        assert_eq!(news(true, true, false, false), News::SyncApp, "the pull failing: as before");
+        assert_eq!(news(true, true, true, false), News::None, "Sioul keeping the folder: the server looked through already");
+        assert_eq!(news(true, false, false, false), News::Computer);
+        assert_eq!(news(false, true, false, true), News::None, "a button pressed: nothing waited for");
+    }
 
     #[test]
     fn keeping_the_folder_says_in_words_where_it_stands() {

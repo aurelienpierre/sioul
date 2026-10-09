@@ -17,6 +17,15 @@
 //! Sioul (the window, a phone's background service) never write an older
 //! state back over the other's.
 //!
+//! Written into the folder only when the others need it (`change`): at each
+//! export while the device is in use (`working`: the doses need its exports
+//! fresh, `sioul_core::health::FRESH`), when anything else it says changes
+//! (its session, how far it wrote, whether it shares its doses, its build),
+//! when the folder's copy is not the one it wrote, and once an hour
+//! (`RESTATED`). A device put away whose exchanges find nothing new writes
+//! nothing there: a phone's background step every few minutes would
+//! otherwise rewrite it, and its sync app send it, each time.
+//!
 //! The identity is the sharing's own (`share::Here::id`, a UUID made once per
 //! machine), never the host name, which can change or be another's too.
 
@@ -202,10 +211,58 @@ pub fn own(path: &Path) -> Entry {
     std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
+/// Whether this device is in use, as its own entry says (`Entry::working`):
+/// the entry kept beside the sharing's memory (`<state>/share/`, `own_path`).
+pub(crate) fn in_use(memory: &Path) -> bool {
+    own(&memory.with_file_name("device.toml")).working
+}
+
+/// How long a device not in use leaves its entry in the folder as it is, at
+/// most, while only the times of its exchanges change (seconds): restated
+/// then, so that the others still hear of it (Settings ▸ Your folder and
+/// sharing, the texts' "last shared", `sioul_core::health::SILENT_DAYS`). The
+/// doses never wait for it: a device put away is known by its close and how
+/// far it wrote, both written at once.
+pub const RESTATED: i64 = 60 * 60;
+
+/// What this device last wrote into the folder, kept beside its own entry and
+/// never shared (`published_path`): what it said then, its exchanges' times
+/// left out (`steady`), the file as written (its size and time), where, and when.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct Published {
+    said: String,
+    folder: String,
+    size: u64,
+    modified: u64,
+    at: i64,
+}
+
+fn published_path(own: &Path) -> PathBuf {
+    own.with_file_name("device-published.toml")
+}
+
+/// What an entry says but for its exchanges' times, as a hash: what the
+/// others must hear at once when it changes.
+pub(crate) fn steady(entry: &Entry) -> String {
+    let steady = Entry { imported: 0, exported: 0, pad: String::new(), ..entry.clone() };
+    serde_json::to_string(&steady).map(|text| crate::share::hash(&text)).unwrap_or_default()
+}
+
+/// The size and time of the folder's copy of an entry, when there is one.
+fn stamp_of(path: &Path) -> Option<(u64, u64)> {
+    std::fs::metadata(path).ok().map(|meta| (meta.len(), crate::share::modified_ns(&meta)))
+}
+
 /// This device's own entry changed by `change`, under its lock, read just
 /// before: written here, then, sharing on (`vault`: the folder and its key),
-/// into the folder. Returns it as written.
+/// into the folder when the others need it (see the module's words).
+/// Returns it as written here.
 pub fn change(path: &Path, vault: Option<(&Path, &[u8; 32])>, change: impl FnOnce(&mut Entry)) -> Result<Entry, String> {
+    change_at(path, vault, jiff::Timestamp::now().as_second(), change)
+}
+
+/// `change`, at `now` (Unix seconds, this device's clock): when the folder's copy was last restated.
+pub(crate) fn change_at(path: &Path, vault: Option<(&Path, &[u8; 32])>, now: i64, change: impl FnOnce(&mut Entry)) -> Result<Entry, String> {
     sioul_core::filelock::with_lock(path, || {
         let mut entry = own(path);
         change(&mut entry);
@@ -215,7 +272,19 @@ pub fn change(path: &Path, vault: Option<(&Path, &[u8; 32])>, change: impl FnOnc
         if let Some((folder, key)) = vault
             && !entry.id.is_empty()
         {
-            publish(folder, key, &entry)?;
+            let file = file_of(folder, &entry.id);
+            let said = steady(&entry);
+            let there = folder.display().to_string();
+            let last: Option<Published> = std::fs::read_to_string(published_path(path)).ok().and_then(|t| toml::from_str(&t).ok());
+            // As the others last read it: the same words, the folder's copy the one written, within the hour.
+            let current = last.is_some_and(|last| last.said == said && last.folder == there && stamp_of(&file) == Some((last.size, last.modified)) && (0..RESTATED).contains(&(now - last.at)));
+            if entry.working || !current {
+                publish(folder, key, &entry)?;
+                let (size, modified) = stamp_of(&file).unwrap_or_default();
+                let published = Published { said, folder: there, size, modified, at: now };
+                // Lost, the entry is only written again at the next change: nothing is said wrongly.
+                let _ = toml::to_string(&published).map_err(|e| e.to_string()).and_then(|text| crate::share::write_atomically(&published_path(path), text.as_bytes()));
+            }
         }
         Ok(entry)
     })
@@ -336,6 +405,76 @@ mod tests {
         let older = serde_json::json!({ "id": id, "kind": "phone", "started": 1_000, "working": true });
         std::fs::write(file_of(&folder, &id), crate::share::seal(&KEY, &bound(&id), older.to_string().as_bytes())).unwrap();
         assert_eq!(all(&folder, &KEY).0[0].notifications, None, "an older Sioul's: unsaid");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A device put away (a phone's background step every few minutes) whose
+    /// exchanges find nothing new leaves its entry in the folder as it is:
+    /// what the others need goes there at once (its session, how far it
+    /// wrote, whether it shares its doses), a copy there that is not the one
+    /// it wrote is written again, and an hour on it is restated. In use, every
+    /// export goes there, as the doses' knowing needs (`FRESH`).
+    #[test]
+    fn a_device_put_away_writes_its_entry_only_when_it_says_something_new() {
+        let dir = scratch("put-away");
+        let (folder, state) = (dir.join("shared"), dir.join("state"));
+        let own = own_path(&state);
+        let vault = Some((folder.as_path(), &KEY));
+        let id = uuid::Uuid::new_v4().to_string();
+        let file = file_of(&folder, &id);
+        let bytes = || std::fs::read(&file).unwrap();
+        let exported = |at: i64, wrote: (u32, u64)| change_at(&own, vault, at, |e| e.exported(at * 1000, Some(wrote), at)).unwrap();
+        let t = 1_800_000_000;
+        change_at(&own, vault, t, |e| {
+            e.id = id.clone();
+            e.kind = PHONE.into();
+            e.doses = true;
+            e.start(t);
+        })
+        .unwrap();
+        exported(t, (1, 4));
+        change_at(&own, vault, t + 5, |e| e.close(t + 5)).unwrap();
+        let closed = bytes();
+        // Exchanges that wrote nothing: kept here, nothing written there.
+        for n in 1..=5 {
+            exported(t + 5 + n * 120, (1, 4));
+        }
+        assert_eq!(bytes(), closed, "nothing new: the folder's copy as it was");
+        assert_eq!(super::own(&own).exported, t + 605, "kept here");
+        let seen = &all(&folder, &KEY).0[0];
+        assert_eq!((seen.exported, seen.wrote, seen.working), (t, Some((1, 4)), false));
+        // How far it wrote changed: there at once, with its time.
+        exported(t + 700, (2, 1));
+        let seen = all(&folder, &KEY).0[0].clone();
+        assert_eq!((seen.exported, seen.wrote, seen.working), (t + 700, Some((2, 1)), false));
+        // Within the hour, nothing new: as it is; an hour on: restated.
+        let wrote = bytes();
+        exported(t + 700 + RESTATED - 1, (2, 1));
+        assert_eq!(bytes(), wrote);
+        exported(t + 700 + RESTATED, (2, 1));
+        assert_eq!(all(&folder, &KEY).0[0].exported, t + 700 + RESTATED, "restated after an hour");
+        // An older copy put back by a sync app: written again at the next export.
+        std::fs::write(&file, &closed).unwrap();
+        exported(t + 800 + RESTATED, (2, 1));
+        assert_eq!(all(&folder, &KEY).0[0].wrote, Some((2, 1)), "the copy put back is replaced");
+        // Its doses no longer shared: there at once.
+        change_at(&own, vault, t + 900 + RESTATED, |e| e.doses = false).unwrap();
+        assert!(!all(&folder, &KEY).0[0].doses);
+        // In use: every export, each with its time.
+        change_at(&own, vault, t + 1_000 + RESTATED, |e| e.start(t + 1_000 + RESTATED)).unwrap();
+        for n in 1..=3 {
+            let at = t + 1_000 + RESTATED + n * 60;
+            exported(at, (2, 1));
+            let seen = &all(&folder, &KEY).0[0];
+            assert_eq!((seen.exported, seen.working), (at, true), "in use: export {n} there at once");
+        }
+        // Another folder (sharing moved): written there at once.
+        let elsewhere = dir.join("elsewhere");
+        change_at(&own, Some((elsewhere.as_path(), &KEY)), t + 2_000 + RESTATED, |e| e.close(t + 2_000 + RESTATED)).unwrap();
+        exported(t + 2_100 + RESTATED, (2, 1));
+        let moved = dir.join("moved");
+        change_at(&own, Some((moved.as_path(), &KEY)), t + 2_200 + RESTATED, |e| e.exported((t + 2_200 + RESTATED) * 1000, Some((2, 1)), t + 2_200 + RESTATED)).unwrap();
+        assert_eq!(all(&moved, &KEY).0.len(), 1, "the new folder has it at once");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -491,6 +630,38 @@ mod tests {
         assert!(doubts_now(DUE, DUE + 360, None, &[desk.sees(&folder, &phone, DUE + 360)]).is_empty());
         // The old mark came too, for an older Sioul.
         assert!(HealthState::read(&desk.marks()).unwrap().taken.contains_key(DOSE));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The phone put away, its background step exchanging every few minutes
+    /// and finding nothing new: its entry in the folder stays as it was, and
+    /// the desktop knows a dose due since as surely as before (closed after its
+    /// last export, everything it wrote read), hours later too. "Taken"
+    /// pressed on its reminder in the background goes at once, as before:
+    /// raised, recorded, exported, lowered, each in the folder.
+    #[test]
+    fn the_phone_put_away_and_quiet_is_known_without_rewriting_its_entry() {
+        let (base, folder, desk, phone) = pair("quiet-phone");
+        phone.exchange(&folder, DUE - 3_600);
+        phone.session(&folder, |e| e.close(DUE - 3_595));
+        let entry = std::fs::read(file_of(&folder, &phone.id)).unwrap();
+        for n in 0..12 {
+            phone.exchange(&folder, DUE - 3_500 + n * 300);
+            desk.exchange(&folder, DUE - 3_490 + n * 300);
+        }
+        assert_eq!(std::fs::read(file_of(&folder, &phone.id)).unwrap(), entry, "nothing new: its entry as it was");
+        for at in [DUE + 30, DUE + 3_600, DUE + 6 * 3_600] {
+            assert!(doubts_now(DUE, at, None, &[desk.sees(&folder, &phone, at)]).is_empty(), "known at {at}");
+        }
+        // Raised by a reminder: in the folder at once; the desk doubts until its export is read.
+        phone.session(&folder, |e| e.start(DUE + 300));
+        assert!(matches!(doubts_now(DUE, DUE + 310, None, &[desk.sees(&folder, &phone, DUE + 310)]).as_slice(), [Doubt::Working { .. }]));
+        phone.answer(DOSE, TAKEN, DUE + 300);
+        phone.exchange(&folder, DUE + 302);
+        phone.session(&folder, |e| e.close(DUE + 303));
+        desk.exchange(&folder, DUE + 360);
+        assert!(matches!(desk.answered(DOSE), Answered::Taken(_)));
+        assert!(doubts_now(DUE, DUE + 360, None, &[desk.sees(&folder, &phone, DUE + 360)]).is_empty());
         let _ = std::fs::remove_dir_all(&base);
     }
 

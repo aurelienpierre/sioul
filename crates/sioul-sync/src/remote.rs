@@ -3473,6 +3473,80 @@ mod tests {
         assert!(synced < std::fs::read(w.server.join(w.desk_round())).unwrap().len());
     }
 
+    /// A dose's alarm on the phone (`health::alarm_decide`, through the app's
+    /// `exchange_here`) reads the others' news from its own pull alone while
+    /// it works (`State::pulls_well`): the sync app neither asked to look nor
+    /// waited for. Minute after minute, the desk in use marking doses, the
+    /// phone's sync app bringing nothing down: from the same moment, the
+    /// alarm on the pull alone knows exactly what it knows with the sync app
+    /// asked as before (it brought everything down), its doubt never weaker,
+    /// and a dose marked elsewhere is never known not taken.
+    #[test]
+    fn a_doses_alarm_on_the_pull_alone_knows_what_it_knew_with_the_sync_app_asked() {
+        let w = World::new("alarm-alone");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        assert!(w.pull(DUE).problem.is_none());
+        let mut marked: Vec<(String, i64)> = Vec::new();
+        for minute in 0..16 {
+            let now = DUE + minute * 60;
+            if minute % 3 == 0 {
+                marked.push((format!("dose@{minute}"), now));
+                let record: String = marked.iter().map(|(d, at)| format!("\"{d}\" = {at}\n")).collect();
+                w.desk.write("health-state.toml", &format!("[taken]\n{record}"));
+            }
+            w.desk.exchange(&w.server, now);
+            w.up();
+            // As before: the sync app asked brings the server's files down, the pull meanwhile.
+            let aside = w.snapshot();
+            w.down();
+            let _ = w.pull(now + 20);
+            w.phone.exchange(&w.phone_folder, now + 25);
+            let asked = (w.phone.read("health-state.toml"), w.phone.sees(&w.phone_folder, &w.desk, now + 30));
+            // The pull alone, from the same moment: the phone's folder as stale as the sync app left it.
+            w.restore(&aside);
+            assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder), "minute {minute}");
+            assert!(w.pull(now + 20).problem.is_none());
+            w.phone.exchange(&w.phone_folder, now + 25);
+            let alone = (w.phone.read("health-state.toml"), w.phone.sees(&w.phone_folder, &w.desk, now + 30));
+            assert_eq!(alone.0, asked.0, "minute {minute}: the same answers here");
+            for (dose, due) in &marked {
+                let doubted = |peer: &Peer| !doubts_now(*due, now + 30, None, std::slice::from_ref(peer)).is_empty();
+                assert_eq!(doubted(&alone.1), doubted(&asked.1), "minute {minute}, {dose}: the same doubt");
+                assert!(alone.0.contains(dose.as_str()) || doubted(&alone.1), "minute {minute}: {dose}, marked on the desk, known not taken");
+            }
+        }
+        // The synced folder never had them: the pull brought them.
+        assert!(std::fs::read(w.phone_folder.join(w.desk_round())).map_or(0, |b| b.len()) < std::fs::read(w.server.join(w.desk_round())).unwrap().len());
+    }
+
+    /// The same alarm while the server fails: nothing came, and the doubt is
+    /// said, never "not taken"; the pull is no longer trusted alone, and the
+    /// next alarm asks the sync app first, as before; the server back, the
+    /// answer comes and the pull is trusted again.
+    #[test]
+    fn a_doses_alarm_whose_pull_fails_says_its_doubt_and_asks_the_sync_app_next() {
+        let w = World::new("alarm-fails");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        assert!(w.pull(DUE + 5).problem.is_none());
+        assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder), "the pull goes through: an alarm reads it alone");
+        // The dose falls due; the desk, in use, marks it taken and shares; the server then fails the phone.
+        w.desk.write("health-state.toml", "[taken]\n\"dose@0\" = 60\n");
+        w.desk.exchange(&w.server, DUE + 60);
+        w.fake.fault(|_| Some(Fault::Status(503)));
+        assert!(w.pull(DUE + 120).problem.is_some());
+        w.phone.exchange(&w.phone_folder, DUE + 125);
+        assert!(!w.phone.read("health-state.toml").contains("dose@0"));
+        let doubts = doubts_now(DUE, DUE + 130, None, &[w.phone.sees(&w.phone_folder, &w.desk, DUE + 130)]);
+        assert!(matches!(doubts.as_slice(), [Doubt::Working { .. }]), "nothing came: the doubt said, never known: {doubts:?}");
+        assert!(!State::load(&w.phone.memory).pulls_well(&w.phone_folder), "the next alarm asks the sync app first, as before");
+        // The server back: the answer comes, and the pull is trusted again.
+        w.fake.clear_faults();
+        assert!(w.pull(DUE + 180).problem.is_none());
+        w.phone.exchange(&w.phone_folder, DUE + 185);
+        assert!(w.phone.read("health-state.toml").contains("dose@0"));
+        assert!(State::load(&w.phone.memory).pulls_well(&w.phone_folder));
+    }
+
     /// The owner's phone, 6 October 2026, 23:30: the folder found on the
     /// server at night, the phone in the background, its folder telling the
     /// desk closed hours ago (eDrive left it so) while the desk is in use.
