@@ -20,10 +20,14 @@ Dialog {
     signal changed
 
     property string uri: ""
+    // The line as its row showed it (day, value, label): found again by it in
+    // the file, which may have changed meanwhile (budget.rs, `SeenLine`).
+    property string shown: ""
     property string problem: ""
 
     function begin(line) {
         lineChange.uri = line.uri
+        lineChange.shown = JSON.stringify({ "day": line.day, "value": line.value, "label": line.label })
         lineChange.problem = ""
         changeLabel.text = line.label
         changeAmount.text = String(line.value).replace(".", lineChange.window.sioulLocale.decimalPoint)
@@ -38,7 +42,7 @@ Dialog {
             lineChange.problem = lineChange.sioul.text("budget-add-bad-amount")
             return
         }
-        const problem = lineChange.sioul.changeLine(lineChange.uri, changeLabel.text, amount, changeDay.date)
+        const problem = lineChange.sioul.changeLine(lineChange.uri, lineChange.shown, changeLabel.text, amount, changeDay.date)
         if (problem !== "") {
             lineChange.problem = problem
             return

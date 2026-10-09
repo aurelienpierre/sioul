@@ -372,7 +372,9 @@ ColumnLayout {
         sioul: detail.sioul
         theme: detail.theme
         onConfirmed: {
-            const problem = detail.sioul.removeBudget(lineMenu.source.uri)
+            // Found again by what its row showed: the file may have changed meanwhile.
+            const line = lineMenu.line
+            const problem = detail.sioul.removeLine(lineMenu.source.uri, JSON.stringify({ "day": line.day, "value": line.value, "label": line.label }))
             if (problem !== "")
                 detail.sioul.status = problem
             detail.reload()

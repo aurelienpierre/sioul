@@ -124,9 +124,19 @@ def lists(text: str) -> str:
     """Lists as the site's Markdown reads them: the notes are written for
     GitHub, where a list may follow a line of text and nest by two or three
     spaces; Python-Markdown wants a blank line before a list and four spaces
-    a level. Code is left alone."""
+    a level. Code is left alone.
+
+    Python-Markdown also reads a block (lines between blank lines) that
+    starts indented as wholly inside the item above it: an item less
+    indented than such a block's first line would be swallowed into it, as
+    text or as a deeper item. Such an item starts a block of its own (a blank
+    line before it). And a paragraph after a blank line belongs, as on GitHub,
+    to the item its indentation is under, not always to the deepest one."""
     out, in_code, levels = [], False, []
     previous = ""
+    # The indentation of the block's first line, as written out; the depth of
+    # the paragraph going on inside a list (None: none, or a lazy one).
+    block, paragraph = 0, None
     for line in text.splitlines(keepends=True):
         if fence.match(line):
             in_code = not in_code
@@ -138,24 +148,54 @@ def lists(text: str) -> str:
                 # A list right under a line of text starts its own block.
                 if previous.strip() and not item.match(previous) and not previous.lstrip().startswith(("|", ">", "#")):
                     out.append("\n")
+                    previous = "\n"
             elif indent > levels[-1]:
                 levels.append(indent)
             else:
                 while len(levels) > 1 and levels[-1] > indent:
                     levels.pop()
             line = " " * (4 * (len(levels) - 1)) + found.group(2) + " " + found.group(4)
+            # Less indented than its block's start: a block of its own, or it is swallowed.
+            if previous.strip() and 4 * (len(levels) - 1) < block:
+                out.append("\n")
+                previous = "\n"
+            paragraph = None
         elif not in_code and line.strip() and not line.startswith(" "):
             # A line of text at the margin ends the list (or continues the item lazily).
             if not (levels and previous.strip() and item.match(previous)):
                 levels = []
+            paragraph = None
         elif not in_code and line.strip() and levels:
-            # A line inside an item: under its item's text.
-            line = " " * (4 * len(levels)) + line.lstrip(" ")
+            # A line inside an item: under its item's text. After a blank line,
+            # under the item its indentation is under (GitHub's reading); a
+            # paragraph's next lines go with it; without a blank line, the
+            # deepest item's text goes on (a lazy continuation).
+            if not previous.strip():
+                indent = len(line) - len(line.lstrip(" "))
+                paragraph = max(1, sum(1 for level in levels if level < indent))
+            depth = paragraph if paragraph is not None else len(levels)
+            line = " " * (4 * depth) + line.lstrip(" ")
         elif not line.strip():
             pass
+        if line.strip() and not previous.strip():
+            block = len(line) - len(line.lstrip(" "))
         out.append(line)
         previous = line
     return "".join(out)
+
+
+# The shapes that once broke a page, checked at each build: an item after a
+# paragraph or a nested list resumed past a blank line stays an item of its
+# own list, never text of the paragraph above nor a deeper item; a lazy line
+# under an item is left as it was.
+for shape, wanted in [
+    ("- A\n  - a1\n\n  Text of A.\n- B\n", "- A\n    - a1\n\n    Text of A.\n\n- B\n"),
+    ("- A\n  - a1\n\n  - a2\n- B\n", "- A\n    - a1\n\n    - a2\n\n- B\n"),
+    ("- A\n\n  | x |\n  |---|\n  | 1 |\n- B\n", "- A\n\n    | x |\n    |---|\n    | 1 |\n\n- B\n"),
+    ("- A\n  goes on\n- B\n", "- A\n    goes on\n- B\n"),
+]:
+    if lists(shape) != wanted:
+        sys.exit(f"build.sh: lists() reads {shape!r} as {lists(shape)!r}, not {wanted!r}")
 
 
 def rewrite(text: str, source: Path) -> str:

@@ -999,9 +999,15 @@ pub mod qobject {
         #[qinvokable]
         fn save_budget(self: Pin<&mut Sioul>, id: &QString, edit: &QString) -> QString;
 
-        /// A budget, or one of its lines (by its address), taken out; returns what went wrong.
+        /// A budget taken out, by its id; returns what went wrong.
         #[qinvokable]
         fn remove_budget(self: Pin<&mut Sioul>, what: &QString) -> QString;
+
+        /// A line of the budgets' file taken out, by its address and its row
+        /// as the page showed it (JSON: day, value, label), found again by
+        /// them; returns what went wrong, else "".
+        #[qinvokable]
+        fn remove_line(self: Pin<&mut Sioul>, uri: &QString, shown: &QString) -> QString;
 
         /// Notes as a tree of folders, or as one list.
         #[qinvokable]
@@ -1249,9 +1255,11 @@ pub mod qobject {
         #[qinvokable]
         fn ask_files_access(self: Pin<&mut Sioul>);
 
-        /// A line of the budgets' file changed: label, amount, date; returns what went wrong, else "".
+        /// A line of the budgets' file changed: label, amount, date; found again
+        /// by its address and its row as the page showed it (JSON: day, value,
+        /// label). Returns what went wrong, else "".
         #[qinvokable]
-        fn change_line(self: Pin<&mut Sioul>, uri: &QString, label: &QString, amount: f64, date: &QString) -> QString;
+        fn change_line(self: Pin<&mut Sioul>, uri: &QString, shown: &QString, label: &QString, amount: f64, date: &QString) -> QString;
 
         /// The sites kept in Sioul, as JSON.
         #[qinvokable]
@@ -4385,12 +4393,16 @@ impl qobject::Sioul {
         }
     }
 
-    fn change_line(self: Pin<&mut Self>, uri: &QString, label: &QString, amount: f64, date: &QString) -> QString {
-        QString::from(&crate::projects::change_line(&self.qt_thread(), &self.shared(), &uri.to_string(), &label.to_string(), amount, &date.to_string()))
+    fn change_line(self: Pin<&mut Self>, uri: &QString, shown: &QString, label: &QString, amount: f64, date: &QString) -> QString {
+        QString::from(&crate::projects::change_line(&self.qt_thread(), &self.shared(), &uri.to_string(), &shown.to_string(), &label.to_string(), amount, &date.to_string()))
     }
 
     fn remove_budget(self: Pin<&mut Self>, what: &QString) -> QString {
         QString::from(&crate::projects::remove_budget(&self.qt_thread(), &self.shared(), &what.to_string()))
+    }
+
+    fn remove_line(self: Pin<&mut Self>, uri: &QString, shown: &QString) -> QString {
+        QString::from(&crate::projects::remove_line(&self.qt_thread(), &self.shared(), &uri.to_string(), &shown.to_string()))
     }
 
     fn noise_url(&self, kind: &QString) -> QString {

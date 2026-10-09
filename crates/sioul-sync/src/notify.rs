@@ -19,6 +19,23 @@ use std::time::Duration;
 #[cfg(not(target_os = "android"))]
 const SHOWN: u32 = 10 * 60 * 1000;
 
+/// Sioul's bundle id on macOS, as `packaging/macos/Info.plist` names it
+/// (`CFBundleIdentifier`). macOS shows a notification as coming from the
+/// application whose id it is given; without one, notify-rust's macOS side
+/// (mac-notification-sys) names another application.
+pub const BUNDLE_ID: &str = "com.aurelienpierre.Sioul";
+
+/// macOS: Sioul's notifications said to come from Sioul (`BUNDLE_ID`), once
+/// per process, before the first is shown: macOS takes the application only
+/// once.
+#[cfg(target_os = "macos")]
+fn as_sioul() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let _ = notify_rust::set_application(BUNDLE_ID);
+    });
+}
+
 /// Shows a code: `title` says what and from whom, `body` the code and how long
 /// it lasts. No sound. With `copy`, the notification offers a button labelled
 /// with its text, and its action runs when the button is pressed; the
@@ -96,6 +113,8 @@ pub fn mail(title: &str, body: &str, through: bool, action: Option<(String, Box<
 /// Windows and macOS: the mail's words alone; their notifications carry no button here.
 #[cfg(any(windows, target_os = "macos"))]
 pub fn mail(title: &str, body: &str, _through: bool, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    as_sioul();
     Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
 }
 
@@ -139,12 +158,16 @@ pub fn remind_choices(title: &str, body: &str, _choices: Vec<(String, Box<dyn Fn
 /// Windows and macOS: the reminder is in the text; no button here.
 #[cfg(any(windows, target_os = "macos"))]
 pub fn remind(title: &str, body: &str, _action: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    as_sioul();
     Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
 }
 
 /// Windows and macOS: the code is in the text; their notifications carry no button here.
 #[cfg(any(windows, target_os = "macos"))]
 pub fn code(title: &str, body: &str, _copy: Option<(String, Box<dyn FnOnce() + Send>)>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    as_sioul();
     Notification::new().appname("Sioul").summary(title).body(body).timeout(Timeout::Milliseconds(SHOWN)).show().map(drop).map_err(|e| e.to_string())
 }
 
@@ -397,6 +420,18 @@ fn body_text(body: &str, capabilities: &[String]) -> String {
         body.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
     } else {
         body.to_string()
+    }
+}
+
+/// The bundle id macOS is given is the one Sioul's macOS bundle declares:
+/// any other would attribute its notifications to another application.
+#[cfg(test)]
+mod bundle {
+    #[test]
+    fn macos_is_given_the_bundles_own_id() {
+        let plist = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging/macos/Info.plist")).unwrap();
+        let declared = plist.split("<key>CFBundleIdentifier</key>").nth(1).and_then(|rest| rest.split("<string>").nth(1)).and_then(|rest| rest.split("</string>").next()).unwrap();
+        assert_eq!(super::BUNDLE_ID, declared.trim());
     }
 }
 

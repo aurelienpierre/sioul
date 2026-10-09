@@ -131,11 +131,12 @@ pub fn is_call(title: &str, text: &str) -> bool {
 }
 
 /// `is_call` with these words: a missed call can wait, video or voice
-/// ("Missed video call", "Appel vidéo manqué"); one ringing cannot.
+/// ("Missed video call", "Appel vidéo manqué"); one ringing cannot. Each
+/// word is matched whole (`words::holds_word`), as docs/words.md says: "vous
+/// appelle" rings, never inside "vous appellerez".
 pub fn is_call_with(words: &crate::words::CallWords, title: &str, text: &str) -> bool {
     let said: String = format!("{title} {text}").chars().map(crate::text::fold_char).collect();
-    let any = |list: &[String]| list.iter().map(|w| crate::words::folded(w)).any(|w| !w.is_empty() && said.contains(&w));
-    !any(&words.missed) && any(&words.ringing)
+    !crate::words::holds_word(&words.missed, &said) && crate::words::holds_word(&words.ringing, &said)
 }
 
 /// Every site, in the order of the configuration: `[[site]]`, and those an
@@ -216,6 +217,10 @@ mod tests {
         assert!(!is_call("Appel manqué", "Camille"), "a missed call can wait");
         assert!(!is_call("Missed video call", "Camille") && !is_call("Appel vidéo manqué", "Camille"), "a missed video call too");
         assert!(!is_call("Camille", "Did you call the bank?"));
+        // Whole words, as docs/words.md says: never inside a longer word.
+        assert!(!is_call("Rappel", "Vous appellerez la banque demain"), "« vous appelle » inside « vous appellerez »");
+        assert!(!is_call("Settings", "Incoming calls are now silenced") && !is_call("Demo", "Video calling is back"));
+        assert!(is_call("Camille vous appelle…", "") && is_call("Incoming call", "Camille"));
         // Your words: a Dutch chat's ring, once added.
         let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n[words.calls.ringing]\nadd = [\"Inkomende oproep\"]\n").unwrap();
         let yours = crate::words::Words::of(&config);

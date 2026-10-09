@@ -94,7 +94,7 @@ Sur un téléphone, ce qui le règle, rien de ce qui décide quand (c’est [Ce 
 
 Ce qui est imprimé sur les factures que vous faites depuis [Temps](time.md#invoices) et [Projets](projects.md) :
 
-- **Votre nom ou raison sociale**, **Votre adresse** (sur plusieurs lignes, comme sur une enveloppe) ;
+- **Votre nom ou raison sociale**, **Votre adresse** (sur plusieurs lignes, comme sur une enveloppe) ; en France, un entrepreneur individuel écrit « EI » juste après son nom (« Camille Exemple EI »), comme le demande la loi ;
 - **SIRET**, ou le numéro d’entreprise là où vous êtes ; vide tant que votre entreprise n’est pas immatriculée ;
 - **Mention de TVA** : pour une micro-entreprise en France, « TVA non applicable, art. 293 B du CGI » ;
 - **Les numéros de facture commencent par** : les numéros se suivent ensuite, 2026-001, 2026-002… ; laissé vide, le préfixe est l’année, si bien que la numérotation repart chaque année, tandis qu’un préfixe à vous continue de compter ;

@@ -7,7 +7,9 @@
 //! within a year ("2026-001", "2026-002"), as French law asks, and are never
 //! reused. Each invoice is kept as a record
 //! (`$XDG_DATA_HOME/sioul/invoices/<number>.toml`); the time it bills carries
-//! its number, so it is never billed twice; the window prints it to PDF.
+//! its number, so it is never billed twice; the window prints it to PDF, with
+//! the date or period of the service (the billed sessions' first and last
+//! days), which French law asks for (service-public.gouv.fr, sheet F31808).
 
 use crate::config::{InvoiceSettings, data_dir};
 use crate::i18n::Translator;
@@ -49,6 +51,13 @@ pub struct Invoice {
     pub client: String,
     #[serde(default)]
     pub client_address: String,
+    /// The date or period of the service, which French law asks for: the
+    /// billed sessions' first and last days ("2026-09-02"), the same day for
+    /// one. Empty on an invoice made before Sioul printed it: none is said.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub period_from: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub period_to: String,
     pub lines: Vec<InvoiceLine>,
     pub total_cents: i64,
     pub currency: String,
@@ -90,7 +99,11 @@ pub fn all_in(dir: &Path) -> Vec<Invoice> {
     out
 }
 
-/// The number after the last one of the year: `prefix` (else "2026-") and three digits.
+/// The number after the last one given with the same prefix: `prefix` (else
+/// the year, "2026-") and three digits. With the usual prefix, the year, the
+/// count restarts each January (2026-001, then 2027-001); with your own
+/// prefix it never restarts, and goes on from the last one whatever the year
+/// (F-041, F-042…), as the guide says (Clients, "Invoices").
 pub fn next_number(existing: &[Invoice], prefix: &str, year: i16) -> String {
     let prefix = if prefix.trim().is_empty() { format!("{year}-") } else { prefix.trim().to_string() };
     let last = existing.iter().filter_map(|i| i.number.strip_prefix(&prefix)).filter_map(|rest| rest.parse::<u32>().ok()).max().unwrap_or(0);
@@ -119,6 +132,9 @@ pub fn make(entries: &[Entry], project: &crate::projects::Project, client: &str,
         }
     }
     lines.sort_by_key(|(first, _)| *first);
+    // The service's date or period: the first and last days worked.
+    let period_from = billed.iter().map(|e| e.day).min().map(|d| d.to_string()).unwrap_or_default();
+    let period_to = billed.iter().map(|e| e.day).max().map(|d| d.to_string()).unwrap_or_default();
     let lines: Vec<InvoiceLine> = lines
         .into_iter()
         .map(|(_, mut line)| {
@@ -134,6 +150,8 @@ pub fn make(entries: &[Entry], project: &crate::projects::Project, client: &str,
         project_title: project.title.clone(),
         client: client.to_string(),
         client_address: client_address.to_string(),
+        period_from,
+        period_to,
         total_cents: lines.iter().map(|l| l.cents).sum(),
         lines,
         currency: if settings.currency.trim().is_empty() { "EUR".into() } else { settings.currency.trim().to_string() },
@@ -164,8 +182,9 @@ fn lines_html(text: &str) -> String {
     text.lines().map(escape).collect::<Vec<_>>().join("<br>")
 }
 
-/// The invoice as a page to print: who sends it and to whom, its lines, the
-/// total, the legal mentions and how to pay.
+/// The invoice as a page to print: who sends it and to whom, the date or
+/// period of the service, its lines, the total, the legal mentions and how to
+/// pay.
 pub fn html(invoice: &Invoice, tr: &Translator) -> String {
     let money = |cents: i64| if invoice.currency == "EUR" { tr.money(Money(cents)) } else { format!("{} {}", tr.number(Money(cents)), escape(&invoice.currency)) };
     let date = |text: &str| text.parse::<Date>().map(|d| tr.day_month(d) + " " + &d.year().to_string()).unwrap_or_else(|_| text.to_string());
@@ -190,6 +209,12 @@ pub fn html(invoice: &Invoice, tr: &Translator) -> String {
         })
         .collect();
     let siret = if invoice.issuer.siret.trim().is_empty() { String::new() } else { format!("<br>{}", escape(&say("invoice-siret", &[("siret", invoice.issuer.siret.clone())]))) };
+    // The date or period of the service, on its own line under the date of issue.
+    let period = match (invoice.period_from.as_str(), invoice.period_to.as_str()) {
+        ("", _) => String::new(),
+        (from, to) if to.is_empty() || from == to => format!("<br>{}", escape(&say("invoice-period-day", &[("date", date(from))]))),
+        (from, to) => format!("<br>{}", escape(&say("invoice-period", &[("from", date(from)), ("to", date(to))]))),
+    };
     format!(
         "<html><head><meta charset=\"utf-8\"><style>\
          body {{ font-family: sans-serif; font-size: 11pt; color: #222; }}\
@@ -206,7 +231,7 @@ pub fn html(invoice: &Invoice, tr: &Translator) -> String {
          </tr></table>\
          <p>&nbsp;</p>\
          <h1>{title}</h1>\
-         <p class=\"muted\">{dated}<br>{due}<br>{project}</p>\
+         <p class=\"muted\">{dated}{period}<br>{due}<br>{project}</p>\
          <table class=\"lines\" width=\"100%\" cellpadding=\"6\" cellspacing=\"0\"><tr><th width=\"52%\" align=\"left\">{h_what}</th><th width=\"14%\" align=\"right\">{h_time}</th><th width=\"17%\" align=\"right\">{h_rate}</th><th width=\"17%\" align=\"right\">{h_amount}</th></tr>{rows}\
          <tr><td colspan=\"3\" align=\"right\" class=\"total\"><b>{h_total}</b></td><td align=\"right\" class=\"total\"><b>{total}</b></td></tr></table>\
          <p>{vat}</p>\
@@ -280,6 +305,40 @@ mod tests {
         assert_eq!(all_in(&dir), vec![invoice]);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(make(&entries[3..], &project, "", "", &settings, "x", "2026-10-05".parse().unwrap()).is_none());
+    }
+
+    /// The date or period of the service, which French law asks for: the
+    /// billed sessions' first and last days, one date for one day; kept with
+    /// the invoice, printed in both languages; none on an invoice made before.
+    #[test]
+    fn an_invoice_says_the_period_of_its_service() {
+        let project = Project { id: "lumen".into(), title: "Studio Lumen".into(), kind: Some("project".into()), rate: Some(60.0), ..Project::default() };
+        let on = |key: &str, day: &str, invoice: &str| Entry { day: day.parse().unwrap(), ..entry(key, 10, 60, "Build the site", invoice) };
+        // Billed in September, an older session billed already in August: not counted.
+        let entries = vec![on("a", "2026-09-30", ""), on("b", "2026-09-02", ""), on("c", "2026-09-14", ""), on("d", "2026-08-20", "2026-001")];
+        let settings = InvoiceSettings { name: "Camille Exemple EI".into(), ..InvoiceSettings::default() };
+        let invoice = make(&entries, &project, "Studio Lumen", "", &settings, "2026-002", "2026-10-05".parse().unwrap()).unwrap();
+        assert_eq!((invoice.period_from.as_str(), invoice.period_to.as_str()), ("2026-09-02", "2026-09-30"));
+        let french = html(&invoice, &Translator::new("fr"));
+        assert!(french.contains("Prestation réalisée du 2 septembre 2026 au 30 septembre 2026") && french.contains("Camille Exemple EI"), "{french}");
+        assert!(html(&invoice, &Translator::new("en")).contains("Service from 2 September 2026 to 30 September 2026"));
+        // One day: one date.
+        let one = make(&entries[2..3], &project, "", "", &settings, "2026-003", "2026-10-05".parse().unwrap()).unwrap();
+        assert!(html(&one, &Translator::new("fr")).contains("Prestation réalisée le 14 septembre 2026"));
+        assert!(html(&one, &Translator::new("en")).contains("Service on 14 September 2026"));
+        // Kept with the invoice, read back.
+        let dir = std::env::temp_dir().join(format!("sioul-invoices-period-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        save_in(&dir, &invoice).unwrap();
+        assert_eq!(all_in(&dir), vec![invoice.clone()]);
+        // Made before Sioul printed it: read as before, no period said.
+        let older = "number = \"2026-001\"\ndate = \"2026-09-01\"\ndue = \"2026-10-01\"\nproject = \"lumen\"\nproject_title = \"Studio Lumen\"\nclient = \"Studio Lumen\"\nlines = []\ntotal_cents = 0\ncurrency = \"EUR\"\nsessions = []\n[issuer]\nname = \"\"\naddress = \"\"\nsiret = \"\"\nvat = \"\"\npayment = \"\"\n";
+        std::fs::write(dir.join("2026-001.toml"), older).unwrap();
+        let read = all_in(&dir).into_iter().find(|i| i.number == "2026-001").unwrap();
+        assert_eq!((read.period_from.as_str(), read.date.as_str()), ("", "2026-09-01"));
+        let page = html(&read, &Translator::new("en"));
+        assert!(!page.contains("Service on") && !page.contains("Service from"), "{page}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

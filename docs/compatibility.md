@@ -188,8 +188,8 @@ Code: `crates/sioul-core/src/pgp.rs` (Sequoia, pure-Rust cryptography), `crates/
 Code: `crates/sioul-sync/src/antivirus.rs`, `ocr.rs`.
 - **ClamAV** (Linux, macOS): `clamdscan --fdpass` when the daemon runs, else `clamscan` with the system's signatures, else with Sioul's own, refreshed daily with the system's `freshclam`. Homebrew's on a Mac. The Flatpak does not reach the system's ClamAV.
 - **AMSI** (Windows): `AmsiScanBuffer`, answered by Microsoft Defender or any antivirus registered with AMSI.
-- **Scans**: Poppler's `pdftotext`, else `pdftoppm` at 300 dpi read by Tesseract (French and English when installed); images by Tesseract. The Flatpak carries neither.
-- **Tested**: Linux without ClamAV (the question comes, with Fedora's command); Tesseract on a French letter drawn as an image (`ocr::a_letter_as_an_image`, ignored, run by hand). The AMSI code is compiled by the Windows build, never run.
+- **Scans**: Poppler's `pdftotext`, else `pdftoppm` at 300 dpi read by Tesseract (French and English when installed); images by Tesseract. The Flatpak carries neither. On Windows, Tesseract is looked for on the `PATH`, then where its installers put it, since UB Mannheim's (which winget and Chocolatey use too) leaves it off the `PATH` unless asked: `Program Files\Tesseract-OCR`, 64-bit or 32-bit, then `AppData\Local\Programs\Tesseract-OCR` for one installed for you alone (`ocr::tesseract_places`); the registry is not read.
+- **Tested**: Linux without ClamAV (the question comes, with Fedora's command); Tesseract on a French letter drawn as an image (`ocr::a_letter_as_an_image`, ignored, run by hand); Windows' places for Tesseract, in folders invented for the test (`ocr::tesseract_is_found_where_windows_installers_put_it`), never on Windows itself. The AMSI code is compiled by the Windows build, never run.
 
 ## AI agents
 Code: `crates/sioul-cli/src/mcp.rs`, `mcp/`; details: [mcp.md](mcp.md).
@@ -213,7 +213,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | Tested | developed and used on Fedora (Qt 6.11.2); the CI's tests on Ubuntu 24.04 | built, and the core, sync and command line tested, on GitHub's Windows Server 2022 at each change; not run by a person | the same on GitHub's macOS 15; not run by a person | a Gigaset GS290, /e/OS 4.0, Android 12 ([android.md](android.md)) |
 | Keyring | Secret Service (GNOME Keyring, KWallet) | Credential Manager | Keychain | KeyStore (`android-keyring`) |
 | Reminders with the window closed | `sioul remind --watch`, started with the session (XDG autostart) | not yet | a launch agent | doses and the wake alarm, by Android's alarms |
-| Notifications | the desktop's, with buttons; the time running | Windows' | macOS' | doses, the time running, the wake alarm |
+| Notifications | the desktop's, with buttons; the time running | Windows' | macOS', given as Sioul's by its bundle id (`notify::BUNDLE_ID`) | doses, the time running, the wake alarm |
 | Antivirus | ClamAV (not in the Flatpak) | AMSI | ClamAV (Homebrew) | none |
 | Scans read | Tesseract and Poppler (not in the Flatpak) | Tesseract and Poppler | Homebrew's | not read |
 | Sites | inside (on Ubuntu 24.04 and later, the AppImage runs them without Chromium's sandbox) | inside | inside | the system's browser |

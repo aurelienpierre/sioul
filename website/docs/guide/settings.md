@@ -94,7 +94,7 @@ On a phone, what sets it up, nothing that decides when (that is [What reaches yo
 
 Printed on the invoices you make from [Time](time.md#invoices) and [Projects](projects.md):
 
-- **Your name or business name**, **Your address** (on lines, as on an envelope);
+- **Your name or business name**, **Your address** (on lines, as on an envelope); in France, an entrepreneur individuel writes « EI » right after the name (« Camille Exemple EI »), which French law asks for;
 - **SIRET**, or the business number where you are; empty until you are registered;
 - **VAT line**: for a French micro-entrepreneur, « TVA non applicable, art. 293 B du CGI »;
 - **Invoice numbers start with**: numbers then follow each other, 2026-001, 2026-002…; left empty, the prefix is the year, so numbering starts again each year, while a prefix of your own goes on counting;

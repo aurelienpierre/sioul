@@ -32,7 +32,7 @@ In Sioul it is one loop, in one window. The client's mail comes to their project
 
 **Settings ▸ Invoices**: your name or business name, your address, your SIRET or your business number, the VAT line, how invoice numbers start, your currency, your payment details, your hourly rate. Every invoice then carries them. [Settings ▸ Invoices](settings.md#invoices)
 
-For a French micro-entrepreneur, the invoice prints your SIRET, « TVA non applicable, art. 293 B du CGI » when you give it as your VAT line, the late-payment penalties, the €40 recovery fee and "no discount for early payment". It does not add « EI » after your name by itself: write it there. It does not print the date of the service yet: see [Not there yet](#not-there-yet). Elsewhere, the VAT line and the payment details are yours to word.
+For a French micro-entrepreneur, the invoice prints your SIRET, « TVA non applicable, art. 293 B du CGI » when you give it as your VAT line, the late-payment penalties, the €40 recovery fee and "no discount for early payment". It prints the date or period of the service too: the first and last days of the sessions it bills, or their one day. It does not add « EI » after your name by itself: as an entrepreneur individuel, write it right after your name there (« Camille Exemple EI »). Elsewhere, the VAT line and the payment details are yours to word.
 
 With the usual prefix, the year, invoice numbers start again each January; with a prefix of your own, they go on from the last one ([Invoices](time.md#invoices)).
 
@@ -53,7 +53,7 @@ Outside your working hours, client projects and the Time page rest: "Work projec
 ## Not there yet {#not-there-yet}
 
 - Invoices are for hourly work, without VAT added to their totals. Quotes, fixed-price lines, expenses and VAT amounts are not made yet.
-- **Two mentions French law asks for** are not printed for you: « EI » after an entrepreneur individuel's name (write it after your name in Settings ▸ Invoices), and the date or period of the service (service-public.gouv.fr, sheet F31808).
+- **« EI » after your name** is not added for you: an entrepreneur individuel's name must come with « EI » or « entrepreneur individuel » (service-public.gouv.fr, sheet F31808). Write it right after your name in Settings ▸ Invoices.
 - **Electronic invoices.** From 1 September 2027, a French micro-enterprise, under the VAT franchise too, must issue its invoices to French businesses electronically, through an approved platform (« plateforme agréée »), with the client's SIREN. Sioul makes PDF invoices only, for now ([Time and invoices](time.md#not-there-yet)).
 
 ## Compared with other apps {#compared-with-other-apps}

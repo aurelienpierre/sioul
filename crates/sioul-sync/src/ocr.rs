@@ -18,9 +18,46 @@ pub enum Unread {
 }
 
 /// A program, as the system has it: on its path, else where Homebrew puts it
-/// (a macOS application does not get the shell's path).
+/// (a macOS application does not get the shell's path); on Windows,
+/// Tesseract also where its installers put it, since they leave it off the
+/// PATH unless asked (`tesseract_places`).
 fn program(name: &str) -> PathBuf {
+    #[cfg(windows)]
+    if name == "tesseract" {
+        let path: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+        if let Some(found) = find_in("tesseract.exe", &path, &tesseract_places(|var| std::env::var(var).ok())) {
+            return found;
+        }
+    }
     ["/opt/homebrew/bin", "/usr/local/bin"].iter().map(|dir| Path::new(dir).join(name)).find(|p| p.is_file()).filter(|_| cfg!(target_os = "macos")).unwrap_or_else(|| PathBuf::from(name))
+}
+
+/// The folders Windows installers put Tesseract in, from the environment
+/// (`env`): UB Mannheim's installer (which winget and Chocolatey use too) in
+/// Program Files, 64-bit or 32-bit, or for you alone in
+/// `AppData\Local\Programs`; each in `Tesseract-OCR`. Without the
+/// environment, the usual one. The registry is not read.
+#[cfg(any(windows, test))]
+fn tesseract_places(env: impl Fn(&str) -> Option<String>) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"].iter().filter_map(|var| env(var)).filter(|dir| !dir.trim().is_empty()).map(|dir| PathBuf::from(dir).join("Tesseract-OCR")).collect();
+    if let Some(local) = env("LOCALAPPDATA").filter(|dir| !dir.trim().is_empty()) {
+        out.push(PathBuf::from(local).join("Programs").join("Tesseract-OCR"));
+    }
+    out.push(PathBuf::from(r"C:\Program Files\Tesseract-OCR"));
+    let mut seen = Vec::new();
+    out.retain(|dir| {
+        let new = !seen.contains(dir);
+        seen.push(dir.clone());
+        new
+    });
+    out
+}
+
+/// `file` ("tesseract.exe") in the first folder of `path` that holds it, else
+/// in the first of `places` that does.
+#[cfg(any(windows, test))]
+fn find_in(file: &str, path: &[PathBuf], places: &[PathBuf]) -> Option<PathBuf> {
+    path.iter().chain(places).map(|dir| dir.join(file)).find(|candidate| candidate.is_file())
 }
 
 fn runs(name: &str) -> bool {
@@ -133,6 +170,45 @@ fn pages_read(file: &Path, work: &Path, wanted: &[String]) -> Result<String, Unr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Windows: Tesseract found where its installers put it, off the PATH,
+    /// in folders invented for the test standing for Program Files and
+    /// AppData; the PATH first when it has it; none when nowhere.
+    #[test]
+    fn tesseract_is_found_where_windows_installers_put_it() {
+        let root = std::env::temp_dir().join(format!("sioul-ocr-places-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (programs, programs32, local, bin) = (root.join("Program Files"), root.join("Program Files (x86)"), root.join("Local"), root.join("bin"));
+        for dir in [&programs, &programs32, &local, &bin] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        let env = |var: &str| match var {
+            "ProgramW6432" | "ProgramFiles" => Some(programs.display().to_string()),
+            "ProgramFiles(x86)" => Some(programs32.display().to_string()),
+            "LOCALAPPDATA" => Some(local.display().to_string()),
+            _ => None,
+        };
+        let places = tesseract_places(env);
+        assert_eq!(places, [programs.join("Tesseract-OCR"), programs32.join("Tesseract-OCR"), local.join("Programs").join("Tesseract-OCR"), PathBuf::from(r"C:\Program Files\Tesseract-OCR")], "each once");
+        let path = [bin.clone()];
+        assert_eq!(find_in("tesseract.exe", &path, &places), None, "nowhere");
+        let put = |dir: PathBuf| {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("tesseract.exe"), "").unwrap();
+            dir.join("tesseract.exe")
+        };
+        // Installed for you alone, then for everyone: the computer's first.
+        let yours = put(local.join("Programs").join("Tesseract-OCR"));
+        assert_eq!(find_in("tesseract.exe", &path, &places), Some(yours));
+        let everyone = put(programs32.join("Tesseract-OCR"));
+        assert_eq!(find_in("tesseract.exe", &path, &places), Some(everyone));
+        // On the PATH: that one.
+        let on_path = put(bin.clone());
+        assert_eq!(find_in("tesseract.exe", &path, &places), Some(on_path));
+        // No environment at all: the usual folder alone.
+        assert_eq!(tesseract_places(|_| None), [PathBuf::from(r"C:\Program Files\Tesseract-OCR")]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     /// A French letter written as an image, read back. Needs Tesseract with
     /// French and Python's Pillow, which make no part of Sioul: run by hand.

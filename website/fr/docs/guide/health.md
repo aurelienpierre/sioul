@@ -73,6 +73,8 @@ Une notification sur le bureau par prise, dans la demi-heure qui suit son heure,
 
 Si Sioul était fermé à ce moment-là, une prise des douze dernières heures qui n’a été ni marquée ni rappelée est demandée sur le Porche au démarrage suivant, et sur cette page : avec **Pris…** (quand vous l’avez prise) et **Pas pris**. C’est une question sur le passé, jamais un rappel d’en prendre une maintenant.
 
+Si Sioul était ouvert mais n’a pas pu afficher le rappel (sur un ordinateur dont les notifications ne marchaient pas), la prise est demandée de la même façon, sous son propre titre : « Prévus pendant que Sioul tournait, mais leur rappel n’a pas pu s’afficher ». Sioul ne compte jamais un rappel qui ne s’est pas affiché.
+
 **Sur le Porche** aussi, chaque prise du jour pas encore marquée attend à partir de son heure, que sa notification vous soit parvenue ou non : son heure, son nom et **Pris** (plus d’une demi-heure en retard, **Pris…** demande quand vous l’avez prise). Elle s’affiche quelles que soient vos heures, et reste jusqu’à ce que vous la marquiez, que la journée finisse ou que douze heures soient passées ; pendant votre sommeil, si les prises restent silencieuses, elle attend votre réveil.
 
 ### Sur plusieurs appareils {#on-several-computers}

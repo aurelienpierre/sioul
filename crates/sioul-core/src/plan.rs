@@ -160,13 +160,14 @@ pub fn less(stretches: &[(i64, i64, Area)], busy: &[(i64, i64)]) -> Vec<(i64, i6
 }
 
 /// The time events hold: their margins (getting there and back, getting
-/// ready: `demands`), then a pause before and after; timed ones, not
-/// cancelled; shorter than a quarter of an hour, a quarter of an hour.
+/// ready: `demands`), then a pause before and after; timed ones that hold
+/// time (`Occurrence::holds_time`: not cancelled, not transparent, not
+/// declined by you); shorter than a quarter of an hour, a quarter of an hour.
 pub fn event_spans(events: &[Occurrence], pause: u32) -> Vec<(i64, i64)> {
     let pause = i64::from(pause) * 60;
     events
         .iter()
-        .filter(|e| !e.cancelled && !e.all_day)
+        .filter(|e| e.holds_time() && !e.all_day)
         .map(|e| (e.start - i64::from(e.margins.before) * 60 - pause, e.end.max(e.start + 15 * 60) + i64::from(e.margins.after) * 60 + pause))
         .collect()
 }
@@ -1715,6 +1716,43 @@ mod tests {
         let later = now.with().hour(11).minute(30).build().unwrap();
         let settings = Settings::of_hours(&windows, TaskAreas::usual()).with_events(&later, &[]);
         assert_eq!(settings.room_on(later.date()).total(), 30);
+    }
+
+    /// A transparent event (TRANSP:TRANSPARENT) and an invitation you declined
+    /// (your PARTSTAT=DECLINED) hold no time in the plan, read from their
+    /// files as the agenda reads them; both are still listed, as before. One
+    /// declined by another guest holds its time, and so does one you accepted.
+    #[test]
+    fn transparent_and_declined_events_take_no_room() {
+        let windows = vec![window("monday", "09:00", "12:00", "work")];
+        let zone = TimeZone::get("Europe/Paris").unwrap();
+        let now = "2026-10-05T08:00".parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap();
+        let event = |uid: &str, extra: &str| format!("BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261001T000000Z\r\nDTSTART;TZID=Europe/Paris:20261005T100000\r\nDTEND;TZID=Europe/Paris:20261005T110000\r\nSUMMARY:{uid}\r\n{extra}END:VEVENT\r\n");
+        let invited = |me: &str, other: &str| format!("ORGANIZER:mailto:host@example.org\r\nATTENDEE;PARTSTAT={me}:mailto:Me@Example.org\r\nATTENDEE;PARTSTAT={other}:mailto:guest@example.org\r\n");
+        let dir = std::env::temp_dir().join(format!("sioul-plan-transp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let calendar = crate::vdir::Collection { kind: crate::vdir::Kind::Calendars, account: "demo".into(), id: "demo".into(), dir: dir.clone(), name: "Demo".into(), color: None, read_only: false, components: vec![] };
+        let read = |name: &str, body: String| {
+            let path = dir.join(format!("{name}.ics"));
+            std::fs::write(&path, format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Demo//EN\r\n{body}END:VCALENDAR\r\n")).unwrap();
+            let mut found = crate::agenda::file_occurrences(&path, &calendar, now.timestamp().as_second(), now.timestamp().as_second() + 86_400, &zone);
+            crate::agenda::mark_declined(&mut found, &["me@example.org".to_string()]);
+            found
+        };
+        let room = |events: &[Occurrence]| Settings::of_hours(&windows, TaskAreas::usual()).with_events(&now, events).room_on(now.date()).total();
+        let free = read("free", event("free", "TRANSP:TRANSPARENT\r\n"));
+        let declined = read("declined", event("declined", &invited("DECLINED", "ACCEPTED")));
+        assert!(free[0].transparent && !free[0].declined && declined[0].declined && !declined[0].transparent);
+        assert_eq!((room(&free), room(&declined), room(&[free.clone(), declined.clone()].concat())), (180, 180, 180), "no room taken");
+        assert!(event_spans(&[free.clone(), declined.clone()].concat(), 5).is_empty());
+        // Still events of the day: listed, with their times.
+        assert_eq!((free.len(), declined.len(), free[0].start), (1, 1, declined[0].start));
+        // Opaque, accepted, or declined by someone else: an hour and its pauses taken, as before.
+        let busy = read("busy", event("busy", "TRANSP:OPAQUE\r\n"));
+        let accepted = read("accepted", event("accepted", &invited("ACCEPTED", "DECLINED")));
+        assert!(!accepted[0].declined);
+        assert_eq!((room(&busy), room(&accepted)), (180 - 70, 180 - 70));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

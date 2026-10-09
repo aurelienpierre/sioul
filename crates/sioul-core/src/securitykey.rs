@@ -401,8 +401,10 @@ fn hint_for_os_release(text: &str) -> &'static str {
     }
 }
 
-/// What the card signs: a digest as it is (EdDSA, ECDSA), or one the card
-/// wraps in a DigestInfo before signing (RSA, specification §7.2.10.2).
+/// What the card is given to sign: a digest as it is (EdDSA, ECDSA), or, for
+/// RSA, a digest and its hash, which `openpgp-card` builds into a DigestInfo
+/// (`signature_for_hash`, specification §7.2.10.2) before the card pads and
+/// signs it.
 #[derive(Debug, Clone, Copy)]
 pub enum ToSign<'a> {
     /// EdDSA and ECDSA: the digest itself (cut to the curve's size for ECDSA).
@@ -650,7 +652,7 @@ impl crypto::Signer for CardSigner<'_> {
 
     fn acceptable_hashes(&self) -> &[HashAlgorithm] {
         match self.public.mpis() {
-            // The card wraps the digest in a DigestInfo it knows: SHA-2 only.
+            // `openpgp-card` builds the DigestInfo (`signature_for_hash`) for the hashes it knows: SHA-2 only.
             mpi::PublicKey::RSA { .. } => &[HashAlgorithm::SHA512, HashAlgorithm::SHA384, HashAlgorithm::SHA256],
             _ => &[HashAlgorithm::SHA512, HashAlgorithm::SHA384, HashAlgorithm::SHA256, HashAlgorithm::SHA224],
         }

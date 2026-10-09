@@ -773,6 +773,20 @@ pub fn folded(text: &str) -> String {
     crate::text::fold(text.trim()).into_iter().collect()
 }
 
+/// Whether a folded text holds one of a list's words as a whole word, as
+/// docs/words.md says words are matched: no letter or digit right before it,
+/// nor right after, where the word itself begins or ends with one ("du" in
+/// "part du 01…", never in "durée"; "de :" before anything). A word added in
+/// `[words]` is trimmed, and needs no spaces. The voicemail's callers' leads
+/// and the sites' call words are read so.
+pub fn holds_word(list: &[String], text: &str) -> bool {
+    let alnum = |c: Option<char>| c.is_some_and(char::is_alphanumeric);
+    list.iter().map(|w| folded(w)).filter(|w| !w.is_empty()).any(|word| {
+        let (starts, ends) = (alnum(word.chars().next()), alnum(word.chars().next_back()));
+        text.match_indices(word.as_str()).any(|(at, _)| (!starts || !alnum(text[..at].chars().next_back())) && (!ends || !alnum(text[at + word.len()..].chars().next())))
+    })
+}
+
 /// Whether a word (a category, a folder's name) is one of a list's, folded.
 pub fn is_named(word: &str, list: &[String]) -> bool {
     let word = folded(word);

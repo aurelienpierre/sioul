@@ -25,7 +25,9 @@ use jiff::{Timestamp, ToSpan, Zoned};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Occurrences of a repeating event looked at, at most, per file.
+/// Occurrences of a repeating event looked at, at most, per file: a safety
+/// net. Expansion starts just before the stretch asked for (`from_window`),
+/// so an event repeating every hour for years still reaches today.
 const EXPANSION_LIMIT: usize = 20_000;
 
 /// Occurrences looked at to find an event's first one still there: occurrences
@@ -51,6 +53,13 @@ pub struct Occurrence {
     pub color: Option<String>,
     pub cancelled: bool,
     pub tentative: bool,
+    /// TRANSP:TRANSPARENT: shown as any event, but holds no time (a reminder
+    /// of a holiday, "working from home"): the plan lays tasks over it (`holds_time`).
+    pub transparent: bool,
+    /// You declined it: the guest that is you (one of your accounts' addresses)
+    /// answered PARTSTAT=DECLINED (`occurrences`, `mark_declined`). Shown as
+    /// before; holds no time (`holds_time`).
+    pub declined: bool,
     pub organizer: String,
     pub attendees: Vec<Attendee>,
     pub read_only: bool,
@@ -76,6 +85,22 @@ pub struct Attendee {
     pub address: String,
     /// "accepted", "declined", "tentative", "needs-action".
     pub answer: String,
+}
+
+impl Occurrence {
+    /// Whether it takes time from the plan, your hours and your meals
+    /// (`plan::event_spans`, `capacity`): not cancelled, not transparent, not
+    /// declined by you. Whole days are left out where times are counted.
+    pub fn holds_time(&self) -> bool {
+        !self.cancelled && !self.transparent && !self.declined
+    }
+}
+
+/// Each event `own` (your addresses) declined marked so (`Occurrence::declined`).
+pub fn mark_declined(events: &mut [Occurrence], own: &[String]) {
+    for event in events.iter_mut() {
+        event.declined = event.attendees.iter().any(|a| a.answer == "declined" && own.iter().any(|o| o.trim().eq_ignore_ascii_case(a.address.trim())));
+    }
 }
 
 /// Parses an iCalendar object.
@@ -208,11 +233,94 @@ fn for_expansion(text: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(lines::fold(&out))
 }
 
+/// The text as calcard should expand it for occurrences from `from` (Unix
+/// seconds) on. calcard expands a repeating event from its start, at most
+/// `EXPANSION_LIMIT` occurrences, so an event repeating every hour begun years
+/// ago would never reach today. Its start (and its end) moved forward by whole
+/// periods of its rule, to a couple of days and a period before `from`, give
+/// the same occurrences from there on: done for rules repeating by the second,
+/// minute, hour, day or week (their periods are all as long; a month or a year
+/// reaches far enough from the start), without COUNT (counted from the true
+/// start), and without a change to "this and those after" (RANGE, whose
+/// offset starts at its own occurrence). A start without a time, or one that
+/// does not read, is left as it is. The file is left as it is.
+fn from_window(text: &str, from: i64) -> std::borrow::Cow<'_, str> {
+    use std::borrow::Cow;
+    if !text.contains("RRULE") {
+        return Cow::Borrowed(text);
+    }
+    let mut source = lines::unfold(text);
+    if source.iter().any(|l| lines::name(l) == "RECURRENCE-ID" && lines::param(l, "RANGE").is_some()) {
+        return Cow::Borrowed(text);
+    }
+    let Some(master) = master_range(&source) else { return Cow::Borrowed(text) };
+    // The master's own lines, its alarms left out.
+    let mut own = Vec::new();
+    let mut nested = 0usize;
+    for i in master.start + 1..master.end.saturating_sub(1) {
+        match lines::name(&source[i]).as_str() {
+            "BEGIN" => nested += 1,
+            "END" => nested = nested.saturating_sub(1),
+            _ if nested == 0 => own.push(i),
+            _ => {}
+        }
+    }
+    let find = |name: &str| own.iter().copied().find(|&i| lines::name(&source[i]) == name);
+    let (Some(rule), Some(start)) = (find("RRULE"), find("DTSTART")) else { return Cow::Borrowed(text) };
+    let parts: Vec<(String, String)> = lines::value(&source[rule]).split(';').filter_map(|p| p.split_once('=')).map(|(k, v)| (k.trim().to_ascii_uppercase(), v.trim().to_ascii_uppercase())).collect();
+    let part = |name: &str| parts.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str());
+    let unit = match part("FREQ") {
+        Some("SECONDLY") => 1,
+        Some("MINUTELY") => 60,
+        Some("HOURLY") => 3_600,
+        Some("DAILY") => 86_400,
+        Some("WEEKLY") => 7 * 86_400,
+        _ => return Cow::Borrowed(text),
+    };
+    if part("COUNT").is_some() {
+        return Cow::Borrowed(text);
+    }
+    let step = unit * part("INTERVAL").and_then(|n| n.parse::<i64>().ok()).filter(|n| *n > 0).unwrap_or(1);
+    // A time as written, on its own clock (TZID, UTC or none): moved as calcard counts, on that clock.
+    let civil = |line: &str| DateTime::strptime("%Y%m%dT%H%M%S", lines::value(line).trim().trim_end_matches(['Z', 'z'])).ok();
+    let Some(begins) = civil(&source[start]) else { return Cow::Borrowed(text) };
+    let end = find("DTEND");
+    let length = match (end.and_then(|i| civil(&source[i])), find("DURATION")) {
+        (Some(ends), _) => begins.duration_until(ends).as_secs().max(0),
+        (None, Some(i)) => lines::value(&source[i]).trim().parse::<jiff::Span>().ok().and_then(|span| span.total((jiff::Unit::Second, begins)).ok()).map_or(0, |s| s.max(0.0) as i64),
+        (None, None) => 0,
+    };
+    // `from` on any clock: within fourteen hours of UTC; two days spare.
+    let Some(window) = Timestamp::from_second(from).ok().map(|t| t.to_zoned(TimeZone::UTC).datetime()) else { return Cow::Borrowed(text) };
+    let before = window.checked_sub(jiff::SignedDuration::from_secs(2 * 86_400 + length + step)).unwrap_or(window);
+    let ahead = begins.duration_until(before).as_secs();
+    let periods = ahead.div_euclid(step);
+    if periods <= 0 {
+        return Cow::Borrowed(text);
+    }
+    let moved = jiff::SignedDuration::from_secs(periods.saturating_mul(step));
+    let rewrite = |line: &str, at: DateTime| {
+        let value = lines::value(line).trim();
+        let utc = if value.ends_with(['Z', 'z']) { "Z" } else { "" };
+        format!("{}:{}{utc}", head_of(line), at.strftime("%Y%m%dT%H%M%S"))
+    };
+    let Ok(new_start) = begins.checked_add(moved) else { return Cow::Borrowed(text) };
+    source[start] = rewrite(&source[start], new_start);
+    if let Some(i) = end
+        && let Some(ends) = civil(&source[i])
+        && let Ok(new_end) = ends.checked_add(moved)
+    {
+        source[i] = rewrite(&source[i], new_end);
+    }
+    Cow::Owned(lines::fold(&source))
+}
+
 /// The occurrences of one file's events between `from` and `to` (Unix seconds);
-/// times written without a zone are taken in `zone`, yours.
+/// times written without a zone are taken in `zone`, yours. Expanded from just
+/// before `from` (`from_window`), not from each event's start.
 pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, zone: &TimeZone) -> Vec<Occurrence> {
     let Some(text) = std::fs::read_to_string(path).ok() else { return Vec::new() };
-    let Some(ical) = parse(&for_expansion(&text)) else { return Vec::new() };
+    let Some(ical) = parse(&for_expansion(&from_window(&text, from))) else { return Vec::new() };
     let expanded = ical.expand_dates(calcard_zone(zone), EXPANSION_LIMIT);
     let mut found = Vec::new();
     for event in expanded.events {
@@ -248,6 +356,8 @@ pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, 
             color: calendar.color.clone(),
             cancelled: status == "CANCELLED",
             tentative: status == "TENTATIVE",
+            transparent: text_of(component, &ICalendarProperty::Transp).eq_ignore_ascii_case("TRANSPARENT"),
+            declined: false,
             organizer,
             attendees,
             read_only: calendar.read_only,
@@ -262,13 +372,18 @@ pub fn file_occurrences(path: &Path, calendar: &Collection, from: i64, to: i64, 
     found
 }
 
-/// Everything between `from` and `to`, from every calendar, by start.
+/// Everything between `from` and `to`, from every calendar, by start; those
+/// you declined marked (`declined`), by your accounts' addresses.
 pub fn occurrences(from: i64, to: i64) -> Vec<Occurrence> {
     let zone = TimeZone::system();
     let mut all: Vec<Occurrence> = vdir::collections(Kind::Calendars)
         .iter()
         .flat_map(|calendar| calendar.items().into_iter().flat_map(|path| file_occurrences(&path, calendar, from, to, &zone)).collect::<Vec<_>>())
         .collect();
+    if all.iter().any(|e| e.attendees.iter().any(|a| a.answer == "declined")) {
+        let own: Vec<String> = crate::config::Config::load(&crate::config::default_path()).map(|c| c.every_account().filter_map(|a| a.address.clone()).collect()).unwrap_or_default();
+        mark_declined(&mut all, &own);
+    }
     all.sort_by(|a, b| (a.start, a.all_day == false, &a.summary).cmp(&(b.start, b.all_day == false, &b.summary)));
     all
 }
@@ -675,7 +790,7 @@ pub fn skip_occurrence(text: &str, start: i64) -> Option<String> {
 /// VEVENTs (calcard keeps them in the text's order), and whether that one is a
 /// changed occurrence (RECURRENCE-ID). Times without a zone are in `zone`.
 fn occurrence_at(text: &str, start: i64, zone: &TimeZone) -> Option<(usize, bool)> {
-    let ical = parse(&for_expansion(text))?;
+    let ical = parse(&for_expansion(&from_window(text, start)))?;
     let events: Vec<usize> = ical.components.iter().enumerate().filter(|(_, c)| c.component_type == ICalendarComponentType::VEvent).map(|(i, _)| i).collect();
     let found = ical.expand_dates(calcard_zone(zone), EXPANSION_LIMIT).events.into_iter().find(|e| e.start.timestamp() == start && events.contains(&(e.comp_id as usize)))?;
     let place = events.iter().position(|&i| i == found.comp_id as usize)?;
@@ -1196,6 +1311,72 @@ mod tests {
 
     fn calendar() -> Collection {
         Collection { kind: Kind::Calendars, account: "a".into(), id: "personal".into(), dir: PathBuf::from("/tmp"), name: "Personal".into(), color: Some("#4c6b5c".into()), read_only: false, components: vec![] }
+    }
+
+    /// A repeating event begun years ago reaches the stretch asked for: it is
+    /// expanded from just before it (`from_window`), with the same occurrences
+    /// there as an expansion from its true start without a cap would give:
+    /// every hour, across the change of hour, every other week on two days,
+    /// a day left out and a changed occurrence; a counted rule as it was.
+    #[test]
+    fn an_event_repeating_for_years_reaches_today() {
+        let event = |extra: &str, start: &str, end: &str, rule: &str| {
+            format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Demo//EN\r\nBEGIN:VEVENT\r\nUID:demo-repeat\r\nDTSTAMP:20190101T000000Z\r\nDTSTART;TZID=Europe/Paris:{start}\r\nDTEND;TZID=Europe/Paris:{end}\r\nRRULE:{rule}\r\nSUMMARY:Demo\r\n{extra}END:VEVENT\r\nEND:VCALENDAR\r\n")
+        };
+        // As calcard gives them from the true start, with no cap that matters here.
+        let uncapped = |text: &str, from: i64, to: i64| -> Vec<(i64, i64)> {
+            let ical = parse(&for_expansion(text)).unwrap();
+            let mut out: Vec<(i64, i64)> = ical
+                .expand_dates(calcard_zone(&paris()), 80_000)
+                .events
+                .into_iter()
+                .map(|e| {
+                    let start = e.start.timestamp();
+                    let end = match e.end {
+                        TimeOrDelta::Time(end) => end.timestamp(),
+                        TimeOrDelta::Delta(delta) => start + delta.num_seconds(),
+                    };
+                    (start, end)
+                })
+                .filter(|(start, end)| *end > from && *start < to)
+                .collect();
+            out.sort_unstable();
+            out
+        };
+        let read = |name: &str, text: &str, from: i64, to: i64| -> Vec<(i64, i64)> {
+            let mut out: Vec<(i64, i64)> = file_occurrences(&write_temp(name, text), &calendar(), from, to, &paris()).into_iter().map(|o| (o.start, o.end)).collect();
+            out.sort_unstable();
+            out
+        };
+        // Every hour since 1 January 2019: 24 on Monday 5 October 2026 (68,000 hours on).
+        let hourly = event("", "20190101T000000", "20190101T001500", "FREQ=HOURLY");
+        let (monday, tuesday) = (at("2026-10-05T00:00"), at("2026-10-06T00:00"));
+        let found = read("hourly.ics", &hourly, monday, tuesday);
+        assert_eq!(found.len(), 24, "{found:?}");
+        assert_eq!((found[0], found[23].0), ((monday, monday + 900), at("2026-10-05T23:00")));
+        assert_eq!(found, uncapped(&hourly, monday, tuesday));
+        // The night the clocks go back, 25 hours: as calcard counts them from the start.
+        let (sunday, after) = (at("2026-10-25T00:00"), at("2026-10-26T00:00"));
+        assert_eq!(read("hourly.ics", &hourly, sunday, after), uncapped(&hourly, sunday, after));
+        // Every other week, Monday and Wednesday at 18:00, since 2019; one left out, one moved.
+        let changed = "EXDATE;TZID=Europe/Paris:20261007T180000\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:demo-repeat\r\nRECURRENCE-ID;TZID=Europe/Paris:20261019T180000\r\nDTSTART;TZID=Europe/Paris:20261019T200000\r\nDTEND;TZID=Europe/Paris:20261019T210000\r\nSUMMARY:Demo later\r\n";
+        let weekly = event(changed, "20190107T180000", "20190107T190000", "FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE");
+        let (october, november) = (at("2026-10-01T00:00"), at("2026-11-01T00:00"));
+        let found = read("weekly.ics", &weekly, october, november);
+        assert_eq!(found, uncapped(&weekly, october, november));
+        assert!(found.contains(&(at("2026-10-19T20:00"), at("2026-10-19T21:00"))) && !found.iter().any(|o| o.0 == at("2026-10-07T18:00")), "{found:?}");
+        // Every quarter of an hour: the cap alone would stop in 2019.
+        let minutes = event("", "20190101T000000", "20190101T000500", "FREQ=MINUTELY;INTERVAL=15");
+        let found = read("minutes.ics", &minutes, monday, tuesday);
+        assert_eq!((found.len(), found.first().map(|o| o.0)), (96, Some(monday)));
+        // Counted from its start: left as it was (all its 20 are long over).
+        let counted = event("", "20190101T000000", "20190101T001500", "FREQ=HOURLY;COUNT=20");
+        assert!(read("counted.ics", &counted, monday, tuesday).is_empty());
+        assert_eq!(from_window(&counted, monday), counted.as_str());
+        // A rule by the month reaches far enough from its start: left as it was.
+        let monthly = event("", "19900115T090000", "19900115T100000", "FREQ=MONTHLY");
+        assert_eq!(from_window(&monthly, monday), monthly.as_str());
+        assert_eq!(read("monthly.ics", &monthly, october, november).len(), 1);
     }
 
     const WEEKLY: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Test//EN\r\nBEGIN:VEVENT\r\nUID:yoga-1\r\nDTSTAMP:20260101T000000Z\r\n\

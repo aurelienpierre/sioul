@@ -570,8 +570,9 @@ Item {
                     }
                 }
 
-                // Doses due while Sioul was closed on all your computers: a question on the
-                // past, answered once (when it was taken, in DoseTaken.qml); never a reminder.
+                // Doses neither marked nor reminded: due while Sioul was closed on all your
+                // computers, or while it ran but their reminder could not be shown. A question
+                // on the past, answered once (when it was taken, in DoseTaken.qml); never a reminder.
                 Panel {
                     visible: page.missedDoses.length > 0
                     Layout.fillWidth: true
@@ -581,13 +582,6 @@ Item {
                         anchors.fill: parent
                         spacing: 6
 
-                        Label {
-                            Layout.fillWidth: true
-                            text: page.sioul.text("health-missed-question")
-                            wrapMode: Text.Wrap
-                            font.weight: Font.DemiBold
-                            color: page.theme.text
-                        }
                         Repeater {
                             model: page.missedDoses
 
@@ -596,12 +590,26 @@ Item {
                                 id: missedDose
 
                                 required property var modelData
+                                required property int index
 
                                 Layout.fillWidth: true
                                 columns: page.width < 600 ? 2 : 3
                                 columnSpacing: 12
                                 rowSpacing: 2
 
+                                // The question, above the first dose of its kind: Sioul closed,
+                                // or its reminder not shown (health.rs, `missed_rows`).
+                                Label {
+                                    visible: missedDose.index === 0 || page.missedDoses[missedDose.index - 1].question !== missedDose.modelData.question
+                                    Layout.columnSpan: missedDose.columns
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: missedDose.index === 0 ? 0 : 6
+                                    Layout.bottomMargin: 4
+                                    text: missedDose.modelData.question
+                                    wrapMode: Text.Wrap
+                                    font.weight: Font.DemiBold
+                                    color: page.theme.text
+                                }
                                 Label {
                                     Layout.preferredWidth: 90
                                     text: missedDose.modelData.time

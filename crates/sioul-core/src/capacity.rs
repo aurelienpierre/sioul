@@ -687,7 +687,8 @@ pub fn day_records(tasks: &[Task], sessions: &[Session], events: &[Occurrence], 
         let Some(day) = record(&mut days, date, from, to) else { continue };
         day.count(&rates_on(task, date), corrected(task));
     }
-    for event in events.iter().filter(|e| !e.cancelled && !e.all_day && e.end > e.start) {
+    // Events that held time (`Occurrence::holds_time`): not one you declined, nor a transparent one.
+    for event in events.iter().filter(|e| e.holds_time() && !e.all_day && e.end > e.start) {
         let Some(date) = day_of(event.start) else { continue };
         let Some(day) = record(&mut days, date, from, to) else { continue };
         let length = u32::try_from((event.end - event.start) / 60).unwrap_or(0).min(24 * 60);
@@ -973,7 +974,7 @@ impl Planning {
 /// The days before and after each heavy event (its highest cost 7 or more), from `today` on.
 pub fn around_heavy(events: &[Occurrence], zone: &TimeZone, today: Date) -> BTreeSet<Date> {
     let mut out = BTreeSet::new();
-    for event in events.iter().filter(|e| !e.cancelled && e.demands.highest().is_some_and(|h| h >= HEAVY_EVENT)) {
+    for event in events.iter().filter(|e| e.holds_time() && e.demands.highest().is_some_and(|h| h >= HEAVY_EVENT)) {
         let Some(first) = jiff::Timestamp::from_second(event.start).ok().map(|t| t.to_zoned(zone.clone()).date()) else { continue };
         let last = jiff::Timestamp::from_second((event.end - 1).max(event.start)).ok().map_or(first, |t| t.to_zoned(zone.clone()).date());
         for date in [first.yesterday().ok(), last.tomorrow().ok()].into_iter().flatten() {
@@ -985,10 +986,10 @@ pub fn around_heavy(events: &[Occurrence], zone: &TimeZone, today: Date) -> BTre
     out
 }
 
-/// What each day's events hold, by day.
+/// What each day's events hold, by day: those that hold time (`Occurrence::holds_time`).
 pub fn held_by_events(events: &[Occurrence], zone: &TimeZone) -> BTreeMap<Date, Load> {
     let mut out: BTreeMap<Date, Load> = BTreeMap::new();
-    for event in events.iter().filter(|e| !e.cancelled && !e.all_day && e.end > e.start) {
+    for event in events.iter().filter(|e| e.holds_time() && !e.all_day && e.end > e.start) {
         let Some(date) = jiff::Timestamp::from_second(event.start).ok().map(|t| t.to_zoned(zone.clone()).date()) else { continue };
         let minutes = u32::try_from((event.end - event.start) / 60).unwrap_or(0).min(24 * 60);
         add(out.entry(date).or_insert([0.0; 5]), &Rates::of_event(event).load(minutes));

@@ -103,6 +103,11 @@ struct DoseRow {
     doubt_off: Vec<OffButton>,
     /// Answers that differ, said in `doubt`: "Taken" and "Not taken" settle it (`choose`).
     choose: bool,
+    /// For a dose due earlier and answered nowhere (`missed_rows`), the
+    /// question it is asked under, shown above the first of its kind: due
+    /// while Sioul was closed, or due while it ran but its reminder could not
+    /// be shown. "" for today's doses on the Porch.
+    question: String,
 }
 
 /// "This device is off", under a doubt naming it: the device's id, the button's words.
@@ -265,7 +270,8 @@ fn prescription_rows(health: &Health, today: Date) -> Vec<PrescriptionRow> {
 #[derive(Serialize)]
 struct PageView {
     week: WeekView,
-    /// Doses due while Sioul ran nowhere, neither marked nor reminded: a question on the past.
+    /// Doses neither marked nor reminded: due while Sioul ran nowhere, or
+    /// while it ran but could not show their reminder; a question on the past.
     missed: Vec<DoseRow>,
     /// Why a dose marked elsewhere may not show here: this computer alone, or
     /// your other computers not heard from lately; "" when all is known.
@@ -778,10 +784,13 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
     }
 }
 
-/// Doses due while Sioul ran nowhere, neither marked nor reminded: a question
-/// on the past, each saying when whether it was taken is not known here.
+/// Doses neither marked nor reminded: a question on the past, each saying
+/// when whether it was taken is not known here. Two questions, each its own
+/// heading: those due while Sioul ran nowhere, then those due while it ran
+/// but whose reminder could not be shown (no notification server: never
+/// said "while Sioul was closed"); by their time within each.
 fn missed_rows(health: &Health, state: &HealthState, knowledge: &Knowledge, now: &Zoned, words: &Translator) -> Vec<DoseRow> {
-    state
+    let mut rows: Vec<DoseRow> = state
         .unanswered(health, now, MISSED_HOURS, GRACE_MINUTES)
         .into_iter()
         .map(|d| {
@@ -793,13 +802,44 @@ fn missed_rows(health: &Health, state: &HealthState, knowledge: &Knowledge, now:
                 doubt,
                 doubt_off,
                 choose: false,
+                question: if state.reminder_unshown(&d.key) { words.text("health-unshown-question", None) } else { words.text("health-missed-question", None) },
                 time: if d.at.date() == now.date() { d.at.strftime("%H:%M").to_string() } else { format!("{} {}", words.weekday_short(d.at.date()), d.at.strftime("%H:%M")) },
                 key: d.key,
                 name: d.name,
                 dose: d.dose,
             }
         })
-        .collect()
+        .collect();
+    rows.sort_by_key(|row| state.reminder_unshown(&row.key));
+    rows
+}
+
+/// The notification's title for the question on doses neither marked nor
+/// reminded (`missed`): "While Sioul was closed" only when it was; "A
+/// reminder could not be shown" when Sioul ran; both kinds, a title true of
+/// both.
+fn missed_title(missed: &[sioul_core::health::Dose], state: &HealthState, words: &Translator) -> String {
+    let unshown = missed.iter().filter(|d| state.reminder_unshown(&d.key)).count();
+    match unshown {
+        0 => words.text("health-missed", None),
+        n if n == missed.len() => words.text("health-unshown", None),
+        _ => words.text("health-missed-some", None),
+    }
+}
+
+/// What a minute of `tick` did, written in the doses' record: the reminders
+/// shown, those that could not be (`unshown`, so that the question on the
+/// past says Sioul ran), and the errands' tasks made.
+fn note_minute(record: &mut HealthState, reminded: &[String], unshown: &[String], made: &[(String, String)], stamp: i64) {
+    for key in reminded {
+        record.reminded.insert(key.clone(), stamp);
+    }
+    for key in unshown {
+        record.unshown.insert(key.clone(), stamp);
+    }
+    for (key, uid) in made {
+        record.errands.insert(key.clone(), uid.clone());
+    }
 }
 
 /// The Porch's doses (docs/health.md, "On the Porch"). `due`: today's, from
@@ -827,7 +867,7 @@ fn porch_doses(health: &Health, state: &HealthState, records: &DoseRecords, me: 
     let stamp = now.timestamp().as_second();
     let row = |d: sioul_core::health::Dose, doubt: String, doubt_off: Vec<OffButton>, choose: bool| {
         let at = d.at.timestamp().as_second();
-        DoseRow { taken: String::new(), past: true, late: stamp - at > GRACE_MINUTES * 60, doubt, doubt_off, choose, time: d.at.strftime("%H:%M").to_string(), key: d.key, name: d.name, dose: d.dose }
+        DoseRow { taken: String::new(), past: true, late: stamp - at > GRACE_MINUTES * 60, doubt, doubt_off, choose, question: String::new(), time: d.at.strftime("%H:%M").to_string(), key: d.key, name: d.name, dose: d.dose }
     };
     // Answered in the records, their marks not here (yet): answered all the same; never due twice.
     let mut due: Vec<DoseRow> = state
@@ -2773,6 +2813,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         needs_tick(qt, shared, &health, &now);
     }
     let mut reminded: Vec<String> = Vec::new();
+    let mut unshown: Vec<String> = Vec::new();
     // On a phone, Android's alarm clock reminds, Sioul shown or not (`alarms`).
     crate::alarms::schedule();
     // Asleep with "Doses during sleep: stay silent" (Settings ▸ Reminders and
@@ -2816,16 +2857,21 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
                 crate::share::exchange(&qt_taken, &shared_taken);
             });
             // Recorded reminded only when shown: else another device reminds it,
-            // and the question on doses due while closed still asks about it.
+            // and the question on the past still asks about it, saying that its
+            // reminder could not be shown (`unshown`), never that Sioul was closed.
             match sioul_sync::notify::remind(&title, &body, Some((tr().text("health-taken", None), taken))) {
                 Ok(()) => reminded.push(dose.key.clone()),
-                Err(e) => tell(qt, shared, e),
+                Err(e) => {
+                    unshown.push(dose.key.clone());
+                    tell(qt, shared, e);
+                }
             }
         }
     }
-    // Doses due while Sioul ran nowhere: asked about once, as a question on
-    // the past, after your other computers were heard from (a dose marked
-    // there comes first), and only where you are; what is not known, said.
+    // Doses due while Sioul ran nowhere, or whose reminder could not be shown:
+    // asked about once, as a question on the past, after your other computers
+    // were heard from (a dose marked there comes first), and only where you
+    // are; its title says which (`missed_title`); what is not known, said.
     let heard = !crate::share::on() || crate::share::last_exchange().is_some();
     // On a phone, without notifications, the Porch asks it (`missed`).
     // Asleep with doses staying silent, it waits for waking too.
@@ -2842,7 +2888,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
             if let Some(doubt) = doubts.first() {
                 body = format!("{body} {doubt}");
             }
-            if let Err(e) = sioul_sync::notify::remind(&tr().text("health-missed", None), &body, Some((tr().text("health-missed-open", None), open))) {
+            if let Err(e) = sioul_sync::notify::remind(&missed_title(&missed, &state, tr()), &body, Some((tr().text("health-missed-open", None), open))) {
                 tell(qt, shared, e);
             }
         }
@@ -2875,15 +2921,8 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         }
     }
     // What this minute did, written over nothing anyone else wrote meanwhile.
-    let problem = change(|record| {
-        for key in &reminded {
-            record.reminded.insert(key.clone(), stamp);
-        }
-        for (key, uid) in &made {
-            record.errands.insert(key.clone(), uid.clone());
-        }
-    });
-    if !problem.is_empty() && (!reminded.is_empty() || !made.is_empty()) {
+    let problem = change(|record| note_minute(record, &reminded, &unshown, &made, stamp));
+    if !problem.is_empty() && (!reminded.is_empty() || !unshown.is_empty() || !made.is_empty()) {
         tell(qt, shared, problem);
     }
 }
@@ -3212,6 +3251,65 @@ mod tests {
         let night = shown(&state, &alone, &at("2026-10-07T00:30[Europe/Paris]"), false, true);
         assert!(night["due"].as_array().unwrap().is_empty());
         assert_eq!(night["closed"][0]["time"].as_str(), Some("Tue 21:00"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A dose whose reminder could not be shown (no notification server) while
+    /// Sioul ran, on a health file written for the test: recorded apart from a
+    /// reminder (`note_minute`), still asked about, but under its own question,
+    /// never "Due while Sioul was closed"; a dose due while Sioul ran nowhere
+    /// keeps that one. Both say the doubt, never "not taken"; the
+    /// notification's title says which, in English and French.
+    #[test]
+    fn a_reminder_not_shown_is_asked_about_under_its_own_question() {
+        let dir = std::env::temp_dir().join(format!("sioul-unshown-doses-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("health.toml");
+        let file = "[[medicine]]\nid = \"demo-a\"\nname = \"Demo A\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"08:00\"]\n\n\
+                    [[medicine]]\nid = \"demo-b\"\nname = \"Demo B\"\n[medicine.schedule]\nevery = \"day\"\ntimes = [\"07:00\"]\n";
+        std::fs::write(&path, file).unwrap();
+        let health = Health::load(&path);
+        let (english, french) = (Translator::new("en"), Translator::new("fr"));
+        let at = |text: &str| text.parse::<Zoned>().unwrap();
+        let key = |id: &str, when: &str| format!("{id}@{}", at(when).timestamp().as_second());
+        let (a, b) = (key("demo-a", "2026-10-06T08:00[Europe/Paris]"), key("demo-b", "2026-10-06T07:00[Europe/Paris]"));
+        let alone = Knowledge { record_lost: None, peers: Vec::new() };
+        let noon = at("2026-10-06T12:00[Europe/Paris]");
+        // The minute at 08:00: Demo A's notification failed. Not reminded: noted apart.
+        let mut state = HealthState::default();
+        note_minute(&mut state, &[], std::slice::from_ref(&a), &[], at("2026-10-06T08:00:30[Europe/Paris]").timestamp().as_second());
+        assert!(state.reminded.is_empty() && state.reminder_unshown(&a));
+        // Demo B, at 07:00, due while Sioul ran nowhere: the usual question, first.
+        let view = serde_json::to_value(porch_doses(&health, &state, &DoseRecords::default(), "desk-id", &alone, &noon, false, true, &english)).unwrap();
+        let closed = view["closed"].as_array().unwrap();
+        assert_eq!(closed.len(), 2, "{view}");
+        assert_eq!((closed[0]["key"].as_str(), closed[0]["question"].as_str()), (Some(b.as_str()), Some("Due while Sioul was closed, and marked nowhere Sioul can see: did you take them?")));
+        // Demo A, Sioul running: still asked about, under what happened.
+        assert_eq!(closed[1]["key"].as_str(), Some(a.as_str()));
+        let question = closed[1]["question"].as_str().unwrap();
+        assert!(question.starts_with("Due while Sioul ran, but their reminder could not be shown") && !question.contains("closed"), "{question}");
+        assert!(view["due"].as_array().unwrap().iter().all(|row| row["question"] == ""), "today's doses carry no question");
+        // The Health page's list says the same.
+        let rows = missed_rows(&health, &state, &alone, &noon, &french);
+        assert_eq!(rows.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), [b.as_str(), a.as_str()]);
+        assert!(rows[1].question.starts_with("Prévus pendant que Sioul tournait, mais leur rappel n’a pas pu s’afficher"), "{}", rows[1].question);
+        // Another device not heard since: the doubt said under both, never "not taken".
+        let heard = at("2026-10-06T06:30[Europe/Paris]").timestamp().as_second();
+        let unsure = Knowledge { record_lost: None, peers: vec![Peer { name: "laptop".into(), known_until: heard, closed: false, delay: Some(30), broken: None, heard, ..Peer::default() }] };
+        for row in missed_rows(&health, &state, &unsure, &noon, &english) {
+            assert!(row.doubt.starts_with("Sioul can't tell whether it was taken") && !row.doubt.to_lowercase().contains("not taken"), "{}", row.doubt);
+        }
+        // The notification's title: one kind, the other, both.
+        let missed = state.unanswered(&health, &noon, MISSED_HOURS, GRACE_MINUTES);
+        assert_eq!(missed_title(&missed, &state, &english), "Doses due earlier");
+        assert_eq!(missed_title(&missed[1..], &state, &english), "A reminder could not be shown");
+        assert_eq!(missed_title(&missed[..1], &state, &english), "While Sioul was closed");
+        assert_eq!(missed_title(&missed[1..], &state, &french), "Un rappel n’a pas pu s’afficher");
+        // Reminded later (another device, or notifications back): no question at all.
+        note_minute(&mut state, std::slice::from_ref(&a), &[], &[], at("2026-10-06T08:05[Europe/Paris]").timestamp().as_second());
+        let rows = missed_rows(&health, &state, &alone, &noon, &english);
+        assert_eq!(rows.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), [b.as_str()]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
