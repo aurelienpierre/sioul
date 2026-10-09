@@ -25,7 +25,8 @@ ColumnLayout {
     required property var theme
 
     // A row's words, nine of them, the one chosen changed.
-    signal save(string key, var value)
+    // `shown`: the row's words as it showed them, so that only the cell changed is set.
+    signal save(string key, var value, var shown)
 
     // Where a row is saved: "attention." and its id ("attention.mail.safe").
     property string prefix: "attention."
@@ -112,11 +113,9 @@ ColumnLayout {
     function choose(value) {
         const row = grid.openRow
         const column = grid.openCell.column
-        const words = row.cells.map(c => {
-            const v = c.column === column ? value : c.value
-            return v === "now" ? c.column : c.column + ":" + v
-        })
-        grid.save(grid.prefix + row.id, words)
+        const word = (c, v) => v === "now" ? c.column : c.column + ":" + v
+        const words = row.cells.map(c => word(c, c.column === column ? value : c.value))
+        grid.save(grid.prefix + row.id, words, row.cells.map(c => word(c, c.value)))
     }
 
     // A cell's choices opened by its row's and column's ids, and closed: for

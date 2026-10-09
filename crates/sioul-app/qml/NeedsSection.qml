@@ -36,7 +36,8 @@ ColumnLayout {
     function edit(change) {
         const needs = JSON.parse(JSON.stringify(section.shown.needs))
         change(needs)
-        section.problem = section.sioul.saveNeeds(JSON.stringify(needs))
+        // With what the page showed: the change is set over the settings as they are now.
+        section.problem = section.sioul.saveNeeds(JSON.stringify(needs), JSON.stringify(section.shown.needs))
         section.reload()
         section.changed()
     }

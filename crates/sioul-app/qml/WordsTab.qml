@@ -31,7 +31,8 @@ ColumnLayout {
     required property var rows
 
     // A list changed, or a line taken back (Settings saves it, then reads its rows again).
-    signal save(string key, var value)
+    // `shown`: the value the row showed (`changeSetting`).
+    signal save(string key, var value, var shown)
     // A line opened or closed: the page scrolled back to its top.
     signal toTop
 
@@ -67,7 +68,7 @@ ColumnLayout {
             setting: modelData
             sioul: tab.sioul
             theme: tab.theme
-            onSave: (key, value) => tab.save(key, value)
+            onSave: (key, value, shown) => tab.save(key, value, shown)
         }
     }
 
@@ -192,7 +193,7 @@ ColumnLayout {
             setting: modelData
             sioul: tab.sioul
             theme: tab.theme
-            onSave: (key, value) => tab.save(key, value)
+            onSave: (key, value, shown) => tab.save(key, value, shown)
         }
     }
 

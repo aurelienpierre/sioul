@@ -10,6 +10,14 @@
 
 use std::path::{Path, PathBuf};
 
+/// Whether a writer of `path` takes its lock here (its hidden lock file is
+/// there): for files the sharing writes without it otherwise (a note, which
+/// most writers do not lock), so that a file one of Sioul's own writers
+/// changes under its lock (the letters' list) is written under it too.
+pub fn has_lock(path: &Path) -> bool {
+    lock_path(path).exists()
+}
+
 fn lock_path(path: &Path) -> PathBuf {
     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     path.with_file_name(format!(".{name}.lock"))
@@ -85,24 +93,41 @@ impl std::fmt::Debug for Read {
 /// `state` written into `path`, under its lock, the file read again first:
 /// what changed from `read` (the file as it was read) to `state` is set over
 /// what the file holds now, field by field (a list as a set: what was added
-/// added, what was taken out taken out); the rest stays as the file holds it.
-/// Nothing read before (a new file, one that did not read): `state` whole.
-/// Written beside, then moved.
-pub fn save_merged<T: serde::Serialize>(path: &Path, read: &Read, state: &T) -> Result<(), String> {
+/// added, what was taken out taken out; a list or table missing on one side
+/// is an empty one, as a state skips an empty field); the rest stays as the
+/// file holds it. A file missing when it was read is read as empty. Nothing
+/// read before that could be merged (a file that did not read): `state`
+/// whole. Written beside, then moved.
+pub fn save_merged<T: serde::Serialize + serde::de::DeserializeOwned>(path: &Path, read: &Read, state: &T) -> Result<(), String> {
+    save_merged_by(path, read, state, |_, _| {})
+}
+
+/// The same, `settle` then given the merged table and the file as it was
+/// just before (none when missing): for what a field-by-field merge cannot
+/// say (a mark that must never go backwards).
+pub fn save_merged_by<T: serde::Serialize + serde::de::DeserializeOwned>(path: &Path, read: &Read, state: &T, settle: impl FnOnce(&mut toml::Table, Option<&toml::Table>)) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     let new = match toml::Value::try_from(state).map_err(|e| e.to_string())? {
         toml::Value::Table(table) => table,
         _ => return Err(format!("{}: not a table", path.display())),
     };
+    // What of the file as read this Sioul knows: read into `T` and written
+    // again. A field it does not know (a newer Sioul's) is never taken out.
+    let known: Option<toml::Table> = read.0.as_ref().and_then(|base| T::deserialize(toml::Value::Table((**base).clone())).ok()).and_then(|t| toml::Value::try_from(&t).ok()).and_then(|v| match v {
+        toml::Value::Table(table) => Some(table),
+        _ => None,
+    });
     with_lock(path, || {
         let current = std::fs::read_to_string(path).ok().and_then(|text| text.parse::<toml::Table>().ok());
-        let table = match (&read.0, current) {
-            (Some(base), Some(mut current)) => {
-                merge(&mut current, base, &new);
-                current
+        let mut table = match (&read.0, &current) {
+            (Some(base), Some(current)) => {
+                let mut merged = current.clone();
+                merge(&mut merged, base, &new, known.as_ref());
+                merged
             }
             _ => new.clone(),
         };
+        settle(&mut table, current.as_ref());
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(fail)?;
         }
@@ -112,14 +137,38 @@ pub fn save_merged<T: serde::Serialize>(path: &Path, read: &Read, state: &T) -> 
     })
 }
 
-/// What changed from `base` to `new`, set over `current`.
-fn merge(current: &mut toml::Table, base: &toml::Table, new: &toml::Table) {
-    let keys: std::collections::BTreeSet<String> = base.keys().chain(new.keys()).cloned().collect();
+static EMPTY: std::sync::LazyLock<toml::Table> = std::sync::LazyLock::new(toml::Table::new);
+
+/// What changed from `base` to `new`, set over `current`. A list or a table
+/// on one side only stands against an empty one on the other: emptied, it
+/// takes out what it held, never what another writer added since; filled
+/// from nothing, it adds to what another writer put there.
+///
+/// `known`: the base as the state's type reads it (none: all of it); a key of
+/// the base it does not hold, nor `new`, is one that type does not know,
+/// left as `current` holds it.
+fn merge(current: &mut toml::Table, base: &toml::Table, new: &toml::Table, known: Option<&toml::Table>) {
+    let keys: std::collections::BTreeSet<String> = base.keys().chain(new.keys()).filter(|key| new.contains_key(*key) || known.is_none_or(|known| known.contains_key(*key)) || !base.contains_key(*key)).cloned().collect();
+    let no_list = toml::Value::Array(Vec::new());
+    let no_table = toml::Value::Table(toml::Table::new());
     for key in keys {
-        match (base.get(&key), new.get(&key)) {
+        let (before, after) = match (base.get(&key), new.get(&key)) {
+            (Some(before @ toml::Value::Array(_)), None) => (Some(before), Some(&no_list)),
+            (None, Some(after @ toml::Value::Array(_))) => (Some(&no_list), Some(after)),
+            (Some(before @ toml::Value::Table(_)), None) => (Some(before), Some(&no_table)),
+            (None, Some(after @ toml::Value::Table(_))) => (Some(&no_table), Some(after)),
+            pair => pair,
+        };
+        match (before, after) {
             (before, after) if before == after => {}
             (Some(toml::Value::Table(before)), Some(toml::Value::Table(after))) => match current.get_mut(&key) {
-                Some(toml::Value::Table(inner)) => merge(inner, before, after),
+                Some(toml::Value::Table(inner)) => {
+                    merge(inner, before, after, known.map(|k| k.get(&key).and_then(toml::Value::as_table).unwrap_or(&*EMPTY)));
+                    if inner.is_empty() && !new.contains_key(&key) {
+                        current.remove(&key);
+                    }
+                }
+                _ if after.is_empty() && !new.contains_key(&key) => {}
                 _ => {
                     current.insert(key, toml::Value::Table(after.clone()));
                 }
@@ -132,7 +181,11 @@ fn merge(current: &mut toml::Table, base: &toml::Table, new: &toml::Table) {
                             inner.push(item.clone());
                         }
                     }
+                    if inner.is_empty() && !new.contains_key(&key) {
+                        current.remove(&key);
+                    }
                 }
+                _ if after.is_empty() && !new.contains_key(&key) => {}
                 _ => {
                     current.insert(key, toml::Value::Array(after.clone()));
                 }
@@ -177,6 +230,58 @@ lighter = [2026-10-01, 2026-10-03]
         assert_eq!(now["work_until"].as_integer(), Some(11));
         assert_eq!(now["rest_until"].as_integer(), Some(20), "the other writer's field stays");
         assert_eq!(now["lighter"].as_array().unwrap().len(), 3, "both days added stay: {now:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A list the window empties (a state skips an empty field) takes out
+    /// what it held, never what another writer added since; a list written
+    /// into a file that was missing when read adds to what another writer put
+    /// there since (third review, T9).
+    #[test]
+    fn an_emptied_or_new_list_keeps_what_another_writer_added() {
+        let dir = std::env::temp_dir().join(format!("sioul-merge-empty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("quiet.toml");
+        std::fs::write(&path, "lighter = [2026-10-12]\n").unwrap();
+        let read = Read::of(&std::fs::read_to_string(&path).unwrap());
+        std::fs::write(&path, "lighter = [2026-10-12, 2026-10-14]\n").unwrap();
+        save_merged(&path, &read, &toml::Table::new()).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap().trim(), "lighter = [2026-10-14]");
+        // Emptied with nothing added since: the field goes.
+        let read = Read::of(&std::fs::read_to_string(&path).unwrap());
+        save_merged(&path, &read, &toml::Table::new()).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap().trim(), "");
+        // Missing when read; the other writer makes it; this one adds its own.
+        std::fs::remove_file(&path).unwrap();
+        let read = Read::of(&std::fs::read_to_string(&path).unwrap_or_default());
+        std::fs::write(&path, "ignored = [\"a\"]\n[seen]\nx = 1\n").unwrap();
+        let mine: toml::Table = "ignored = [\"b\"]\n[seen]\ny = 2\n".parse().unwrap();
+        save_merged(&path, &read, &mine).unwrap();
+        let now: toml::Table = std::fs::read_to_string(&path).unwrap().parse().unwrap();
+        assert_eq!(now["ignored"].as_array().unwrap().len(), 2, "{now:?}");
+        assert_eq!((now["seen"].get("x").and_then(toml::Value::as_integer), now["seen"].get("y").and_then(toml::Value::as_integer)), (Some(1), Some(2)), "{now:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A field the state's type does not know (a newer Sioul's) stays, saved
+    /// over by an older one.
+    #[test]
+    fn a_field_a_newer_sioul_wrote_stays() {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct Older {
+            #[serde(default)]
+            work_until: Option<i64>,
+        }
+        let dir = std::env::temp_dir().join(format!("sioul-merge-newer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("quiet.toml");
+        std::fs::write(&path, "work_until = 10\nnewer = \"kept\"\n[table]\nnewer = 1\n").unwrap();
+        let read = Read::of(&std::fs::read_to_string(&path).unwrap());
+        save_merged(&path, &read, &Older { work_until: Some(11) }).unwrap();
+        let now: toml::Table = std::fs::read_to_string(&path).unwrap().parse().unwrap();
+        assert_eq!((now["work_until"].as_integer(), now["newer"].as_str(), now.get("table").is_some()), (Some(11), Some("kept"), true), "{now:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

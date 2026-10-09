@@ -251,6 +251,10 @@ impl BankAccount {
 /// yours, counted in no budget). The first rule that holds wins.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Split {
+    /// Its id (`ids`), by which your devices merge it and the window names it;
+    /// empty for a rule an older Sioul made, until the sharing gives it one.
+    #[serde(default)]
+    pub id: String,
     /// The bank account it reads; empty for all.
     #[serde(default)]
     pub account: String,

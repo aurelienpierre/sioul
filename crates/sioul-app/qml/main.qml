@@ -2767,7 +2767,7 @@ SioulWindow {
             }
             readonly property var mailFilterSteps: [
                 () => window.page = 2,
-                () => sioul.status = sioul.setMailFilters(JSON.stringify(grabber.demoFilters())),
+                () => sioul.status = sioul.setMailFilters(JSON.stringify(grabber.demoFilters()), ""),
                 () => mailPage.openSettings(true),
                 () => mailPage.scrollSettings("mail.filter"),
                 () => {},

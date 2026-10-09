@@ -427,19 +427,22 @@ impl SenderList {
     /// The file's lines but those `gone` names, written beside, then moved: a
     /// crash halfway never empties a list, which would let every blocked
     /// sender back in. Nothing is written when no line goes.
+    /// Read and written under the file's lock, which the sharing takes too.
     fn rewrite(path: &Path, gone: impl Fn(&str) -> bool) -> Result<(), String> {
-        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-        let text = match std::fs::read_to_string(path) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(e) => return Err(fail(e)),
-        };
-        let kept: Vec<&str> = text.lines().filter(|l| !gone(l)).collect();
-        if kept.len() == text.lines().count() {
-            return Ok(());
-        }
-        let temporary = path.with_extension("txt.new");
-        std::fs::write(&temporary, kept.join("\n") + "\n").and_then(|()| std::fs::rename(&temporary, path)).map_err(fail)
+        crate::filelock::with_lock(path, || {
+            let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+            let text = match std::fs::read_to_string(path) {
+                Ok(text) => text,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(e) => return Err(fail(e)),
+            };
+            let kept: Vec<&str> = text.lines().filter(|l| !gone(l)).collect();
+            if kept.len() == text.lines().count() {
+                return Ok(());
+            }
+            let temporary = path.with_extension("txt.new");
+            std::fs::write(&temporary, kept.join("\n") + "\n").and_then(|()| std::fs::rename(&temporary, path)).map_err(fail)
+        })
     }
 
     /// A line at the end of the file, the file made if needed.
@@ -478,11 +481,14 @@ impl SenderList {
         if let Entry::Category(name) = entry {
             return SenderList::add_category(path, name);
         }
-        let text = std::fs::read_to_string(path).unwrap_or_default();
-        if text.lines().filter(|l| !l.trim().starts_with('#')).any(|l| Entry::read(l, region).is_some_and(|e| e.same(entry))) {
-            return Ok(());
-        }
-        SenderList::append(path, &entry.line())
+        // Looked at and added under the file's lock, which the sharing takes too.
+        crate::filelock::with_lock(path, || {
+            let text = std::fs::read_to_string(path).unwrap_or_default();
+            if text.lines().filter(|l| !l.trim().starts_with('#')).any(|l| Entry::read(l, region).is_some_and(|e| e.same(entry))) {
+                return Ok(());
+            }
+            SenderList::append(path, &entry.line())
+        })
     }
 
     /// Adds a category's line at the end of the file, as written; nothing when it is already there.
@@ -491,20 +497,24 @@ impl SenderList {
         if name.is_empty() || name.contains(['\n', '\r']) {
             return Err(format!("{name}: not a category"));
         }
-        if SenderList::load(path).names_category(&[category_key(name)]).is_some() {
-            return Ok(());
-        }
-        SenderList::append(path, &format!("{CATEGORY}{name}"))
+        crate::filelock::with_lock(path, || {
+            if SenderList::load(path).names_category(&[category_key(name)]).is_some() {
+                return Ok(());
+            }
+            SenderList::append(path, &format!("{CATEGORY}{name}"))
+        })
     }
 
     /// Adds an address or a pattern at the end of the file: lets a sender in, or
     /// marks them; nothing when it is already there.
     pub fn let_in(path: &Path, entry: &str) -> Result<(), String> {
         let pattern = normalize(entry).ok_or_else(|| format!("{}: not an address", entry.trim()))?;
-        if SenderList::load(path).patterns.contains(&pattern) {
-            return Ok(());
-        }
-        SenderList::append(path, &pattern)
+        crate::filelock::with_lock(path, || {
+            if SenderList::load(path).patterns.contains(&pattern) {
+                return Ok(());
+            }
+            SenderList::append(path, &pattern)
+        })
     }
 }
 

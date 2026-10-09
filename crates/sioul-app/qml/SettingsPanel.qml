@@ -36,8 +36,9 @@ Popup {
         flick.contentY = Math.max(0, Math.min(top - 8, flick.contentHeight - flick.height))
     }
 
-    function save(key, value) {
-        panel.problem = panel.sioul.setSetting(key, JSON.stringify(value))
+    // `shown`: the value the row showed: a list's change is set over the files as they are now.
+    function save(key, value, shown) {
+        panel.problem = shown === undefined ? panel.sioul.setSetting(key, JSON.stringify(value)) : panel.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
         if (panel.problem === "")
             panel.reload()
     }
@@ -127,7 +128,7 @@ Popup {
                         setting: row.modelData
                         sioul: panel.sioul
                         theme: panel.theme
-                        onSave: (key, value) => panel.save(key, value)
+                        onSave: (key, value, shown) => panel.save(key, value, shown)
                     }
                 }
             }

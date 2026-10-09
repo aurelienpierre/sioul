@@ -444,6 +444,18 @@ pub struct Imported {
 }
 
 impl Bank {
+    /// Read, changed by `change` and written back, all under the file's lock,
+    /// which the sharing takes too: a change is set over the file as it is
+    /// then, never over a copy read earlier. Returns what `change` returns.
+    pub fn change<R>(root: &Path, change: impl FnOnce(&mut Bank) -> R) -> Result<R, String> {
+        crate::filelock::with_lock(&root.join(MANIFEST), || {
+            let mut bank = Bank::load(root)?;
+            let out = change(&mut bank);
+            bank.save()?;
+            Ok(out)
+        })
+    }
+
     pub fn load(root: &Path) -> Result<Bank, String> {
         let path = root.join(MANIFEST);
         let text = match std::fs::read_to_string(&path) {
@@ -508,7 +520,12 @@ impl Bank {
         Imported { read: statement.movements.len(), new }
     }
 
+    /// Written whole, under the file's lock, which the sharing takes too.
     pub fn save(&self) -> Result<(), String> {
+        crate::filelock::with_lock(&self.root.join(MANIFEST), || self.write())
+    }
+
+    fn write(&self) -> Result<(), String> {
         let mut doc = toml_edit::DocumentMut::new();
         doc.decor_mut().set_prefix("# Your bank's movements, read from its exports (docs/accounting.md). Kept on your devices only.\n\n");
         let date = |d: Date| toml_edit::value(toml_edit::Datetime { date: Some(toml_edit::Date { year: d.year() as u16, month: d.month() as u8, day: d.day() as u8 }), time: None, offset: None });

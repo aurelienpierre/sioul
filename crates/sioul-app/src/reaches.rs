@@ -802,10 +802,11 @@ fn level_word(level: Level) -> &'static str {
 
 /// A row changed from the tab: its words whole (`words`, a JSON list), as
 /// `attention::apply` reads them. "" when kept, else why not.
-pub(crate) fn set_row(row: &str, words: &str) -> String {
+pub(crate) fn set_row(row: &str, words: &str, shown: &str) -> String {
     let words: Vec<String> = serde_json::from_str(words).unwrap_or_default();
-    let config = load_config();
-    match attention::apply(&config_path(), &config, &format!("attention.{row}"), &SettingValue::Texts(words)) {
+    // What the row showed: only the cells changed from it are set, over the row as it is now.
+    let shown: Option<Vec<String>> = serde_json::from_str(shown).ok();
+    match attention::apply_change(&config_path(), &format!("attention.{row}"), shown.map(SettingValue::Texts).as_ref(), &SettingValue::Texts(words)) {
         Ok(()) => String::new(),
         Err(e) => e,
     }

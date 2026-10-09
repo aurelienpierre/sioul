@@ -195,6 +195,18 @@ struct File {
 }
 
 impl Contracts {
+    /// Read, changed by `change` and written back, all under the file's lock,
+    /// which the sharing takes too: a change is set over the file as it is
+    /// then, never over a copy read earlier. Returns what `change` returns.
+    pub fn change<R>(root: &Path, change: impl FnOnce(&mut Contracts) -> R) -> Result<R, String> {
+        crate::filelock::with_lock(&root.join(MANIFEST), || {
+            let mut contracts = Contracts::load(root)?;
+            let out = change(&mut contracts);
+            contracts.save()?;
+            Ok(out)
+        })
+    }
+
     pub fn load(root: &Path) -> Result<Contracts, String> {
         let path = root.join(MANIFEST);
         let list = match std::fs::read_to_string(&path) {
@@ -229,8 +241,12 @@ impl Contracts {
         before != self.list.len()
     }
 
-    /// Written whole, next to its place then moved.
+    /// Written whole, next to its place then moved, under the file's lock.
     pub fn save(&self) -> Result<(), String> {
+        crate::filelock::with_lock(&self.root.join(MANIFEST), || self.write())
+    }
+
+    fn write(&self) -> Result<(), String> {
         let mut doc = toml_edit::DocumentMut::new();
         doc.decor_mut().set_prefix("# What you are bound to: renewals, notices, how to stop each (docs/accounting.md).\n\n");
         let date = |d: Date| toml_edit::value(toml_edit::Datetime { date: Some(toml_edit::Date { year: d.year() as u16, month: d.month() as u8, day: d.day() as u8 }), time: None, offset: None });

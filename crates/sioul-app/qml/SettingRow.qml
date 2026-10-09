@@ -22,7 +22,9 @@ ColumnLayout {
     required property var theme
     readonly property var weekdays: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
-    signal save(string key, var value)
+    // `shown`: the value the row showed, what its change is set over the files
+    // from (`changeSetting`), so that what another device added meanwhile stays.
+    signal save(string key, var value, var shown)
 
     function same(a, b) {
         return JSON.stringify(a) === JSON.stringify(b)
@@ -91,7 +93,7 @@ ColumnLayout {
             Button {
                 implicitWidth: implicitContentWidth + leftPadding + rightPadding
                 text: field.setting.kind === "action" ? field.setting.label : ""
-                onClicked: field.save(field.setting.key, true)
+                onClicked: field.save(field.setting.key, true, field.setting.value)
             }
         }
     }
@@ -200,7 +202,7 @@ ColumnLayout {
                                     Accessible.name: radioRow.modelData.label + ", " + radio.modelData.label
                                     onClicked: {
                                         if (radios.chosen.indexOf(radio.cell) < 0)
-                                            field.save(field.setting.key + "." + radioRow.modelData.value, radio.modelData.value)
+                                            field.save(field.setting.key + "." + radioRow.modelData.value, radio.modelData.value, field.setting.value)
                                         radio.checked = Qt.binding(() => radios.chosen.indexOf(radio.cell) >= 0)
                                     }
                                 }
@@ -256,7 +258,7 @@ ColumnLayout {
                 checked: field.setting.value === true
                 Accessible.name: field.setting.label
                 onToggled: {
-                    field.save(field.setting.key, checked)
+                    field.save(field.setting.key, checked, field.setting.value)
                     onOff.checked = Qt.binding(() => field.setting.value === true)
                 }
             }
@@ -279,7 +281,7 @@ ColumnLayout {
                     editable: true
                     value: field.setting.kind === "int" ? field.setting.value : 0
                     Accessible.name: field.setting.label
-                    onValueModified: field.save(field.setting.key, value)
+                    onValueModified: field.save(field.setting.key, value, field.setting.value)
                 }
                 Label {
                     text: field.setting.unit
@@ -311,9 +313,9 @@ ColumnLayout {
                     Accessible.name: field.setting.label
                     onPressedChanged: {
                         if (!pressed)
-                            field.save(field.setting.key, Math.round(value * 100) / 100)
+                            field.save(field.setting.key, Math.round(value * 100) / 100, field.setting.value)
                     }
-                    Keys.onReleased: field.save(field.setting.key, Math.round(value * 100) / 100)
+                    Keys.onReleased: field.save(field.setting.key, Math.round(value * 100) / 100, field.setting.value)
                 }
                 // A share as a percentage ("95%", "95 %"), else the number and its unit.
                 Label {
@@ -352,7 +354,7 @@ ColumnLayout {
                         onToggled: {
                             const was = areaRow.on
                             const now = ["work", "admin", "leisure"].filter(a => a === modelData ? checked : was.indexOf(a) >= 0)
-                            field.save(field.setting.key, now.join("+"))
+                            field.save(field.setting.key, now.join("+"), field.setting.value)
                             area.checked = Qt.binding(() => areaRow.on.indexOf(area.modelData) >= 0)
                         }
                     }
@@ -386,7 +388,7 @@ ColumnLayout {
                         text: pick.modelData.label
                         checked: picks.on.indexOf(pick.modelData.value) >= 0
                         onToggled: {
-                            field.save(field.setting.key, field.setting.choices.map(c => c.value).filter(v => v === pick.modelData.value ? pick.checked : picks.on.indexOf(v) >= 0))
+                            field.save(field.setting.key, field.setting.choices.map(c => c.value).filter(v => v === pick.modelData.value ? pick.checked : picks.on.indexOf(v) >= 0), field.setting.value)
                             pick.checked = Qt.binding(() => picks.on.indexOf(pick.modelData.value) >= 0)
                         }
                     }
@@ -406,7 +408,7 @@ ColumnLayout {
                 model: field.setting.kind === "choice" ? field.setting.choices.map(c => c.label) : []
                 currentIndex: field.setting.kind === "choice" ? Math.max(0, field.setting.choices.findIndex(c => field.same(c.value, field.setting.value))) : -1
                 Accessible.name: field.setting.label
-                onActivated: index => field.save(field.setting.key, field.setting.choices[index].value)
+                onActivated: index => field.save(field.setting.key, field.setting.choices[index].value, field.setting.value)
             }
         }
     }
@@ -423,7 +425,7 @@ ColumnLayout {
                 Accessible.name: field.setting.label
                 onEditingFinished: {
                     if (text !== field.setting.value)
-                        field.save(field.setting.key, text)
+                        field.save(field.setting.key, text, field.setting.value)
                 }
             }
         }
@@ -451,7 +453,7 @@ ColumnLayout {
                     }
                     onEditingFinished: {
                         if (text !== field.setting.value)
-                            field.save(field.setting.key, text)
+                            field.save(field.setting.key, text, field.setting.value)
                     }
                 }
             }
@@ -485,7 +487,7 @@ ColumnLayout {
                     Accessible.name: field.setting.label
                     onEditingFinished: {
                         if (text !== field.setting.value)
-                            field.save(field.setting.key, text)
+                            field.save(field.setting.key, text, field.setting.value)
                     }
                 }
                 Button {
@@ -501,7 +503,7 @@ ColumnLayout {
                         target: browser.item
 
                         function onChosen(path) {
-                            field.save(field.setting.key, path)
+                            field.save(field.setting.key, path, field.setting.value)
                         }
                     }
 
@@ -515,7 +517,7 @@ ColumnLayout {
                             if (path === "")
                                 field.sioul.status = field.sioul.text("folder-not-on-device")
                             else
-                                field.save(field.setting.key, path)
+                                field.save(field.setting.key, path, field.setting.value)
                         }
                     }
                 }
@@ -536,7 +538,7 @@ ColumnLayout {
                 model: field.setting.kind === "font" ? families.map(f => f === "" ? field.sioul.text("set-font-desktop") : f) : []
                 currentIndex: field.setting.kind === "font" ? Math.max(0, families.indexOf(field.setting.value)) : -1
                 Accessible.name: field.setting.label
-                onActivated: index => field.save(field.setting.key, families[index])
+                onActivated: index => field.save(field.setting.key, families[index], field.setting.value)
             }
         }
     }
@@ -579,7 +581,7 @@ ColumnLayout {
                             onValueModified: {
                                 const week = field.setting.value.slice()
                                 week[day.index] = value
-                                field.save(field.setting.key, week)
+                                field.save(field.setting.key, week, field.setting.value)
                             }
                         }
                     }
@@ -614,14 +616,14 @@ ColumnLayout {
                 // A day switched on (09:00–17:00) or off (every range of it goes).
                 function setDay(day, on) {
                     const rest = field.setting.value.filter(w => w.day.toLowerCase() !== day)
-                    field.save(field.setting.key, week.sorted(on ? rest.concat([{ day: day, start: "09:00", end: "17:00", minutes: 0 }]) : rest))
+                    field.save(field.setting.key, week.sorted(on ? rest.concat([{ day: day, start: "09:00", end: "17:00", minutes: 0 }]) : rest), field.setting.value)
                 }
 
                 // One range changed, the day's others kept.
                 function setRange(at, start, end) {
                     const all = field.setting.value.slice()
                     all[at] = { day: all[at].day, start: start, end: end, minutes: 0 }
-                    field.save(field.setting.key, week.sorted(all))
+                    field.save(field.setting.key, week.sorted(all), field.setting.value)
                 }
 
                 // Another range, an hour after the day's last one ends.
@@ -630,11 +632,11 @@ ColumnLayout {
                     const last = ranges.length > 0 && ranges[ranges.length - 1].end.length === 5 ? ranges[ranges.length - 1].end : "12:00"
                     const hour = Math.min(Number(last.slice(0, 2)) + 1, 21)
                     const pad = n => (n < 10 ? "0" : "") + n
-                    field.save(field.setting.key, week.sorted(field.setting.value.concat([{ day: day, start: pad(hour) + last.slice(2), end: pad(hour + 2) + last.slice(2), minutes: 0 }])))
+                    field.save(field.setting.key, week.sorted(field.setting.value.concat([{ day: day, start: pad(hour) + last.slice(2), end: pad(hour + 2) + last.slice(2), minutes: 0 }])), field.setting.value)
                 }
 
                 function removeRange(at) {
-                    field.save(field.setting.key, field.setting.value.filter((w, i) => i !== at))
+                    field.save(field.setting.key, field.setting.value.filter((w, i) => i !== at), field.setting.value)
                 }
 
                 columns: 4
@@ -757,7 +759,7 @@ ColumnLayout {
                             onEditingFinished: {
                                 const name = text.trim()
                                 if (name !== "" && name !== named.modelData.label)
-                                    field.save(field.setting.key, { from: named.modelData.id, to: name })
+                                    field.save(field.setting.key, { from: named.modelData.id, to: name }, field.setting.value)
                             }
                         }
                         Label {
@@ -773,7 +775,7 @@ ColumnLayout {
                             Accessible.name: field.sioul.text("ui-delete")
                             onClicked: {
                                 if (field.setting.kind === "kinds")
-                                    field.save(field.setting.key, { from: named.modelData.id, to: "" })
+                                    field.save(field.setting.key, { from: named.modelData.id, to: "" }, field.setting.value)
                                 else
                                     named.asking = true
                             }
@@ -781,7 +783,7 @@ ColumnLayout {
                         Button {
                             visible: named.asking
                             text: field.sioul.text(field.setting.kind === "collections" ? "set-collections-remove" : "set-task-categories-remove")
-                            onClicked: field.save(field.setting.key, { from: named.modelData.id, to: "" })
+                            onClicked: field.save(field.setting.key, { from: named.modelData.id, to: "" }, field.setting.value)
                         }
                         Button {
                             visible: named.asking
@@ -809,7 +811,7 @@ ColumnLayout {
                         enabled: newName.text.trim() !== ""
                         text: field.sioul.text("ui-add")
                         onClicked: {
-                            field.save(field.setting.key, { from: "", to: newName.text.trim() })
+                            field.save(field.setting.key, { from: "", to: newName.text.trim() }, field.setting.value)
                             newName.clear()
                         }
                     }
@@ -848,7 +850,7 @@ ColumnLayout {
                         ToolButton {
                             text: "×"
                             Accessible.name: field.sioul.text("ui-delete")
-                            onClicked: field.save(field.setting.key, field.setting.value.filter((w, i) => i !== off.index))
+                            onClicked: field.save(field.setting.key, field.setting.value.filter((w, i) => i !== off.index), field.setting.value)
                         }
                     }
                 }
@@ -883,7 +885,7 @@ ColumnLayout {
                         text: field.sioul.text("set-time-off-add")
                         enabled: /^\d{4}-\d\d-\d\d$/.test(offFrom.text) && /^\d{4}-\d\d-\d\d$/.test(offUntil.text)
                         onClicked: {
-                            field.save(field.setting.key, field.setting.value.concat([{ from: offFrom.text, until: offUntil.text, label: offLabel.text }]))
+                            field.save(field.setting.key, field.setting.value.concat([{ from: offFrom.text, until: offUntil.text, label: offLabel.text }]), field.setting.value)
                             offFrom.text = ""
                             offUntil.text = ""
                             offLabel.text = ""
@@ -942,7 +944,7 @@ ColumnLayout {
                                     implicitWidth: 28
                                     text: "×"
                                     Accessible.name: field.sioul.text("ui-delete") + " " + entry.modelData
-                                    onClicked: field.save(field.setting.key, field.setting.value.filter(e => e !== entry.modelData))
+                                    onClicked: field.save(field.setting.key, field.setting.value.filter(e => e !== entry.modelData), field.setting.value)
                                 }
                             }
                         }
@@ -955,7 +957,7 @@ ColumnLayout {
                     onAccepted: {
                         if (text.trim() === "")
                             return
-                        field.save(field.setting.key, field.setting.value.concat([text.trim()]))
+                        field.save(field.setting.key, field.setting.value.concat([text.trim()]), field.setting.value)
                         clear()
                     }
                 }
@@ -1002,7 +1004,7 @@ ColumnLayout {
                         text: field.sioul.text("set-ai-key-keep")
                         enabled: secretField.text.trim() !== ""
                         onClicked: {
-                            field.save(field.setting.key, secretField.text)
+                            field.save(field.setting.key, secretField.text, field.setting.value)
                             secretField.clear()
                         }
                     }
@@ -1012,7 +1014,7 @@ ColumnLayout {
                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     flat: true
                     text: field.sioul.text(secretBox.words + "-forget")
-                    onClicked: field.save(field.setting.key, "")
+                    onClicked: field.save(field.setting.key, "", field.setting.value)
                 }
                 // GitHub's page for a token, its rights filled in: read issues and pull requests.
                 Button {
@@ -1048,7 +1050,7 @@ ColumnLayout {
                         function changed(part, text) {
                             const all = JSON.parse(JSON.stringify(field.setting.value))
                             all[route.index][part] = text.split(",").map(t => t.trim()).filter(t => t !== "")
-                            field.save(field.setting.key, all)
+                            field.save(field.setting.key, all, field.setting.value)
                         }
 
                         Layout.fillWidth: true
@@ -1075,7 +1077,7 @@ ColumnLayout {
                                 ToolButton {
                                     text: "×"
                                     Accessible.name: field.sioul.text("ui-delete")
-                                    onClicked: field.save(field.setting.key, field.setting.value.filter((r, i) => i !== route.index))
+                                    onClicked: field.save(field.setting.key, field.setting.value.filter((r, i) => i !== route.index), field.setting.value)
                                 }
                             }
                             Repeater {
@@ -1112,7 +1114,7 @@ ColumnLayout {
                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     flat: true
                     text: "+  " + field.sioul.text("set-route-add")
-                    onClicked: field.save(field.setting.key, field.setting.value.concat([{ from_domains: [], from_addresses: [], subject_contains: [], text_contains: [], attachment_contains: [] }]))
+                    onClicked: field.save(field.setting.key, field.setting.value.concat([{ from_domains: [], from_addresses: [], subject_contains: [], text_contains: [], attachment_contains: [] }]), field.setting.value)
                 }
             }
         }

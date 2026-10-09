@@ -206,14 +206,20 @@ pub(crate) fn new_from(given: &str) -> String {
         Ok(given) => given,
         Err(e) => return e.to_string(),
     };
-    let config = load_config();
-    let ids: Vec<String> = config.accounts.iter().filter(|a| a.syncs()).map(|a| a.id.clone()).collect();
-    let (filter, left_out) = from_search(given, &ids);
-    let mut filters = config.mail.filters.clone();
-    filters.push(filter);
-    if let Err(e) = sioul_core::config::set_filters(&config_path(), &filters) {
-        return e;
-    }
+    // Added last to the list as the configuration holds it now, under its lock, which the sharing takes too.
+    let path = config_path();
+    let added = sioul_core::filelock::with_lock(&path, || {
+        let config = if path.exists() { Config::load(&path)? } else { load_config() };
+        let ids: Vec<String> = config.accounts.iter().filter(|a| a.syncs()).map(|a| a.id.clone()).collect();
+        let (filter, left_out) = from_search(given, &ids);
+        let mut filters = config.mail.filters.clone();
+        filters.push(filter);
+        sioul_core::config::set_filters(&path, &filters).map(|()| (filters, left_out))
+    });
+    let (filters, left_out) = match added {
+        Ok(added) => added,
+        Err(e) => return e,
+    };
     let note = if left_out { tr().text("filter-from-search-left", None) } else { String::new() };
     if let Ok(mut opened) = OPENED.lock() {
         *opened = Some((filters.len() - 1, note));
@@ -263,14 +269,33 @@ fn from_search(given: Given, ids: &[String]) -> (Filter, bool) {
     (filter, left_out)
 }
 
-/// The whole list written, in its order, as the editor has it (JSON); what went wrong, else "".
-pub(crate) fn save(list: &str) -> String {
+/// The list written, in its order, as the editor has it (JSON), from the list
+/// it showed (`shown`, JSON; "" for none): the editor's change set over the
+/// filters as the configuration holds them now, under its lock, which the
+/// sharing takes too (`settings::rebased`): a filter another device added
+/// meanwhile stays. What went wrong, else "".
+pub(crate) fn save(list: &str, shown: &str) -> String {
     let edited: Vec<Edited> = match serde_json::from_str(list) {
         Ok(edited) => edited,
         Err(e) => return e.to_string(),
     };
     let filters: Vec<Filter> = edited.iter().map(Edited::filter).collect();
-    sioul_core::config::set_filters(&config_path(), &filters).err().unwrap_or_default()
+    let shown: Option<Vec<Filter>> = serde_json::from_str::<Vec<Edited>>(shown).ok().map(|shown| shown.iter().map(Edited::filter).collect());
+    let path = config_path();
+    sioul_core::filelock::with_lock(&path, || {
+        let filters = match &shown {
+            Some(shown) if path.exists() => {
+                let config = Config::load(&path)?;
+                // As the editor would show them: what a newer Sioul wrote in them aside (`set_filters` keeps it).
+                let current: Vec<Filter> = config.mail.filters.iter().map(|f| Edited::of(f, &config).filter()).collect();
+                sioul_core::settings::rebased(shown, &filters, &current)
+            }
+            _ => filters,
+        };
+        sioul_core::config::set_filters(&path, &filters)
+    })
+    .err()
+    .unwrap_or_default()
 }
 
 /// One filter being edited, as the list would show it: {said, problem, only}, as JSON.

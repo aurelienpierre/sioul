@@ -94,7 +94,9 @@ struct MovementView {
 
 #[derive(Serialize)]
 struct RuleView {
-    /// Its place among the rules of the file.
+    /// Its id, by which a change names it; empty for a rule an older Sioul made.
+    id: String,
+    /// Its place among the rules of the file (a rule without an id is named by it).
     place: usize,
     words: Vec<String>,
     /// "credit", "debit", "".
@@ -257,7 +259,7 @@ fn accounts_into(view: &mut View, bank: &Bank, ledger: &Ledger, today: jiff::civ
                     Some(sioul_core::budget::Direction::Debit) => "debit",
                     None => "",
                 };
-                RuleView { place, words: s.words.clone(), direction: direction.to_string(), to, to_title, everywhere: s.account.is_empty() }
+                RuleView { id: s.id.clone(), place, words: s.words.clone(), direction: direction.to_string(), to, to_title, everywhere: s.account.is_empty() }
             })
             .collect();
         let top_ups = ups
@@ -315,18 +317,28 @@ pub(crate) fn place_movement(account: &str, movement: &str, choice: &str) -> Str
     ledger_path().and_then(|path| sioul_core::accounts::set_assignment(&path, account, movement, choice)).err().unwrap_or_default()
 }
 
-/// A rule made (`place` below zero) or changed.
-pub(crate) fn save_rule(place: i32, edit: &str) -> String {
+/// A rule made (`shown` empty) or changed: `shown` the rule as the window
+/// showed it (JSON, `RuleView`), found by its id, or at its place while it
+/// still holds what was shown (`accounts::save_split`).
+pub(crate) fn save_rule(shown: &str, edit: &str) -> String {
     let result = ledger_path().and_then(|path| {
         let edit: sioul_core::accounts::SplitEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
-        sioul_core::accounts::save_split(&path, usize::try_from(place).ok(), &edit)
+        let shown: Option<sioul_core::accounts::SplitShown> = (!shown.trim().is_empty()).then(|| serde_json::from_str(shown)).transpose().map_err(|e| e.to_string())?;
+        sioul_core::accounts::save_split(&path, shown.as_ref(), &edit)
     });
-    result.err().unwrap_or_default()
+    match result {
+        Err(e) if e == "no such rule" => tr().text("bank-rule-gone", None),
+        other => other.err().unwrap_or_default(),
+    }
 }
 
-pub(crate) fn remove_rule(place: i32) -> String {
-    let Ok(place) = usize::try_from(place) else { return tr().text("bank-rule-gone", None) };
-    ledger_path().and_then(|path| sioul_core::accounts::remove_split(&path, place)).err().unwrap_or_default()
+/// The rule the window showed (JSON, `RuleView`) taken out.
+pub(crate) fn remove_rule(shown: &str) -> String {
+    let Ok(shown) = serde_json::from_str::<sioul_core::accounts::SplitShown>(shown) else { return tr().text("bank-rule-gone", None) };
+    match ledger_path().and_then(|path| sioul_core::accounts::remove_split(&path, &shown)) {
+        Err(e) if e == "no such rule" => tr().text("bank-rule-gone", None),
+        other => other.err().unwrap_or_default(),
+    }
 }
 
 pub(crate) fn save_reserve(id: &str, edit: &str) -> String {
@@ -359,10 +371,6 @@ pub(crate) fn import_into(file: &str, account: &str) -> (bool, String) {
         Ok(s) => s,
         Err(_) => return (false, say("bank-unreadable", &[("file", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())])),
     };
-    let mut bank = match Bank::load(&root) {
-        Ok(bank) => bank,
-        Err(e) => return (false, e),
-    };
     let title = path.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let mut statement = statement;
     if !account.is_empty() {
@@ -373,10 +381,11 @@ pub(crate) fn import_into(file: &str, account: &str) -> (bool, String) {
             return (false, e);
         }
     }
-    let added = bank.import(&statement, &title);
-    if let Err(e) = bank.save() {
-        return (false, e);
-    }
+    // Taken into the movements as the file holds them now, under its lock, which the sharing takes too.
+    let added = match Bank::change(&root, |bank| bank.import(&statement, &title)) {
+        Ok(added) => added,
+        Err(e) => return (false, e),
+    };
     let mut args = sioul_core::i18n::args();
     args.set("read", added.read as i64);
     args.set("new", added.new as i64);

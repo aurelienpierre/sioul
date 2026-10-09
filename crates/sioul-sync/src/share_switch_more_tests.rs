@@ -11,10 +11,10 @@ use super::format_tests::{announce, into_format_2, writes};
 use super::tests::{Computer, MINUTE, NOW, quick_key, scratch};
 use super::*;
 
-const PASSPHRASE: &str = "four words make a passphrase";
-const BUDGET: &str = "[[budget]]\nid = \"home\"\ntitle = \"Home\"\nperiod = \"month\"\ntarget = 0\n";
+pub(super) const PASSPHRASE: &str = "four words make a passphrase";
+pub(super) const BUDGET: &str = "[[budget]]\nid = \"home\"\ntitle = \"Home\"\nperiod = \"month\"\ntarget = 0\n";
 
-fn two_devices(name: &str) -> (PathBuf, PathBuf, [u8; 32], Computer, Computer, PathBuf, PathBuf) {
+pub(super) fn two_devices(name: &str) -> (PathBuf, PathBuf, [u8; 32], Computer, Computer, PathBuf, PathBuf) {
     let base = scratch(name);
     let folder = base.join("Sioul");
     let key = quick_key(&folder, PASSPHRASE).unwrap();
@@ -25,7 +25,7 @@ fn two_devices(name: &str) -> (PathBuf, PathBuf, [u8; 32], Computer, Computer, P
     (base, folder, key, desk, phone, desk_notes, phone_notes)
 }
 
-fn rounds(folder: &Path, key: &[u8; 32], devices: &[(&Computer, &Path)], mut now: i64, rounds: usize) -> i64 {
+pub(super) fn rounds(folder: &Path, key: &[u8; 32], devices: &[(&Computer, &Path)], mut now: i64, rounds: usize) -> i64 {
     for _ in 0..rounds {
         for (computer, notes) in devices {
             computer.exchange_notes(folder, key, now, notes);
@@ -35,7 +35,7 @@ fn rounds(folder: &Path, key: &[u8; 32], devices: &[(&Computer, &Path)], mut now
     now
 }
 
-fn rounds_announced(folder: &Path, key: &[u8; 32], devices: &[(&Computer, &Path)], mut now: i64, rounds: usize) -> i64 {
+pub(super) fn rounds_announced(folder: &Path, key: &[u8; 32], devices: &[(&Computer, &Path)], mut now: i64, rounds: usize) -> i64 {
     for _ in 0..rounds {
         for (computer, notes) in devices {
             computer.exchange_notes(folder, key, now, notes);
@@ -46,16 +46,16 @@ fn rounds_announced(folder: &Path, key: &[u8; 32], devices: &[(&Computer, &Path)
     now
 }
 
-fn ledger_path(notes: &Path) -> PathBuf {
+pub(super) fn ledger_path(notes: &Path) -> PathBuf {
     notes.join("sioul-budgets.toml")
 }
 
-fn list_of(text: &str, name: &str) -> Vec<toml::Table> {
+pub(super) fn list_of(text: &str, name: &str) -> Vec<toml::Table> {
     let table: toml::Table = toml::from_str(text).unwrap_or_default();
     table.get(name).and_then(toml::Value::as_array).map(|list| list.iter().filter_map(|v| v.as_table().cloned()).collect()).unwrap_or_default()
 }
 
-fn lines(notes: &Path) -> Vec<(String, i64)> {
+pub(super) fn lines(notes: &Path) -> Vec<(String, i64)> {
     let mut out: Vec<(String, i64)> = list_of(&std::fs::read_to_string(ledger_path(notes)).unwrap_or_default(), "line")
         .iter()
         .map(|line| {
@@ -67,7 +67,7 @@ fn lines(notes: &Path) -> Vec<(String, i64)> {
     out
 }
 
-fn sessions(computer: &Computer) -> Vec<(String, i64, i64, String)> {
+pub(super) fn sessions(computer: &Computer) -> Vec<(String, i64, i64, String)> {
     let mut out: Vec<(String, i64, i64, String)> = list_of(&computer.read("data/time/2026-09.toml"), "session")
         .iter()
         .map(|s| {
@@ -79,7 +79,7 @@ fn sessions(computer: &Computer) -> Vec<(String, i64, i64, String)> {
     out
 }
 
-fn words(computer: &Computer, which: &str) -> Vec<String> {
+pub(super) fn words(computer: &Computer, which: &str) -> Vec<String> {
     let config: toml::Table = toml::from_str(&computer.read("config/config.toml")).unwrap_or_default();
     let mut out: Vec<String> = config
         .get("words")
@@ -93,7 +93,7 @@ fn words(computer: &Computer, which: &str) -> Vec<String> {
     out
 }
 
-fn change_words(computer: &Computer, which: &str, change: impl FnOnce(&mut Vec<String>)) {
+pub(super) fn change_words(computer: &Computer, which: &str, change: impl FnOnce(&mut Vec<String>)) {
     let mut doc: toml_edit::DocumentMut = computer.read("config/config.toml").parse().unwrap();
     let mut list = words(computer, which);
     change(&mut list);
@@ -101,13 +101,13 @@ fn change_words(computer: &Computer, which: &str, change: impl FnOnce(&mut Vec<S
     computer.write("config/config.toml", &doc.to_string());
 }
 
-fn sites(computer: &Computer) -> Vec<String> {
+pub(super) fn sites(computer: &Computer) -> Vec<String> {
     let mut out: Vec<String> = list_of(&computer.read("config/config.toml"), "site").iter().filter_map(|s| s.get("id").and_then(toml::Value::as_str).map(str::to_string)).collect();
     out.sort();
     out
 }
 
-fn bread() -> sioul_core::budget::Line {
+pub(super) fn bread() -> sioul_core::budget::Line {
     sioul_core::budget::Line { budget: "home".into(), date: "2026-09-05".parse().unwrap(), amount: sioul_core::money::Money(-1200), label: "Boulangerie".into(), planned: false, reserve: None, links: Vec::new(), preset: None }
 }
 
@@ -297,7 +297,7 @@ impl SizeOnly {
     }
 }
 
-fn edit_ledger(notes: &Path, change: impl FnOnce(&mut toml_edit::ArrayOfTables)) {
+pub(super) fn edit_ledger(notes: &Path, change: impl FnOnce(&mut toml_edit::ArrayOfTables)) {
     let path = ledger_path(notes);
     let Ok(text) = std::fs::read_to_string(&path) else { return };
     let mut doc: toml_edit::DocumentMut = text.parse().unwrap();
@@ -314,12 +314,12 @@ fn edit_ledger(notes: &Path, change: impl FnOnce(&mut toml_edit::ArrayOfTables))
 /// words and sites; exactly one "letters" and one "garden" session (never
 /// added nor removed, only corrected); as many "admin" sessions as were
 /// recorded.
-fn converge(seed: u64, lag: i64, phone_from: i64) -> Result<(), String> {
+pub(super) fn converge(seed: u64, lag: i64, phone_from: i64) -> Result<(), String> {
     converge3(seed, lag, phone_from, None)
 }
 
 /// `laptop_at`: a third device (on the server's folder, as the desk) joining at that minute, acting too.
-fn converge3(seed: u64, lag: i64, phone_from: i64, laptop_at: Option<i64>) -> Result<(), String> {
+pub(super) fn converge3(seed: u64, lag: i64, phone_from: i64, laptop_at: Option<i64>) -> Result<(), String> {
     let (base, server, key, desk, phone, desk_notes, phone_notes) = two_devices(&format!("sw2-sim-{seed}-{lag}-{phone_from}-{laptop_at:?}"));
     let laptop = Computer::new(&base, "laptop");
     let laptop_notes = base.join("laptop-notes");

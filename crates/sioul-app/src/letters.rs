@@ -45,8 +45,10 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         let looked = sioul_core::words::Words::of(&config);
         let (Some(inbox), Some(root)) = (inbox(), config.notes_root_path()) else { return };
         let Ok(entries) = std::fs::read_dir(&inbox) else { return };
-        let Ok(mut letters) = Letters::load(&root) else { return };
+        let Ok(letters) = Letters::load(&root) else { return };
         let known: Vec<String> = letters.list.iter().map(|l| l.source.clone()).collect();
+        // Read first (seconds each), then added to the letters as the file holds them then.
+        let mut read: Vec<Letter> = Vec::new();
         let projects = sioul_core::projects::ProjectStore::load(&root).map(|s| s.projects).unwrap_or_default();
         let mut added = 0;
         for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|e| SCANS.contains(&e.to_string_lossy().to_ascii_lowercase().as_str()))) {
@@ -80,10 +82,19 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
                 }
                 Err(sioul_sync::ocr::Unread::Failed(e)) => letter.problem = e,
             }
-            letters.put(letter);
+            read.push(letter);
             added += 1;
         }
-        if added > 0 && letters.save().is_ok() {
+        let taken = added > 0
+            && Letters::change(&root, |letters| {
+                for letter in read {
+                    if !letters.list.iter().any(|l| l.source == letter.source) {
+                        letters.put(letter);
+                    }
+                }
+            })
+            .is_ok();
+        if taken {
             let _ = qt.queue(|mut sioul| sioul.as_mut().letters_changed());
             let _ = shared;
         }
@@ -178,12 +189,13 @@ pub(crate) fn view() -> String {
 fn with_letter(id: &str, change: impl FnOnce(&mut Letters, &mut Letter) -> Result<String, String>) -> String {
     let result = (|| {
         let root = load_config().notes_root_path().ok_or_else(|| tr().text("papers-no-store", None))?;
-        let mut letters = Letters::load(&root)?;
-        let mut letter = letters.get(id).cloned().ok_or_else(|| tr().text("papers-gone", None))?;
-        let said = change(&mut letters, &mut letter)?;
-        letters.put(letter);
-        letters.save()?;
-        Ok(said)
+        // Read, changed and written under the file's lock: over the letters as they are then.
+        Letters::try_change(&root, |letters| {
+            let mut letter = letters.get(id).cloned().ok_or_else(|| tr().text("papers-gone", None))?;
+            let said = change(letters, &mut letter)?;
+            letters.put(letter);
+            Ok(said)
+        })
     })();
     match result {
         Ok(said) => said,

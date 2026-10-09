@@ -1787,7 +1787,34 @@ fn older_notify(row: &str, column: Column) -> &'static str {
 /// not understood refused; the row then written whole, or taken out when it
 /// says the usual. The first time, every row the older keys seeded is
 /// written, and they are taken out.
+///
+/// Read, changed and written under the configuration's lock, which the
+/// sharing takes too, from the configuration as it is then (`config` is
+/// what the caller read: the file is read again under the lock).
 pub fn apply(path: &Path, config: &Config, key: &str, value: &SettingValue) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
+        apply_locked(path, &fresh, key, value)
+    })
+}
+
+/// A row changed from the window: only the cells the window changed, from
+/// what its row showed (`shown`, its words then) to `value`, set over the
+/// row as the configuration holds it now; a cell another device changed
+/// meanwhile stays. Without `shown`, every word of `value`.
+pub fn apply_change(path: &Path, key: &str, shown: Option<&SettingValue>, value: &SettingValue) -> Result<(), String> {
+    let shown: Option<&[String]> = match shown {
+        Some(SettingValue::Texts(words)) => Some(words),
+        _ => None,
+    };
+    let value = match (value, shown) {
+        (SettingValue::Texts(words), Some(shown)) if !key.starts_with("reach.") => SettingValue::Texts(words.iter().filter(|w| !shown.contains(w)).cloned().collect()),
+        _ => value.clone(),
+    };
+    apply(path, &Config::default(), key, &value)
+}
+
+fn apply_locked(path: &Path, config: &Config, key: &str, value: &SettingValue) -> Result<(), String> {
     let words: &[String] = match value {
         SettingValue::Texts(words) => words,
         SettingValue::Ints(none) if none.is_empty() => &[],
@@ -1832,10 +1859,14 @@ pub fn apply(path: &Path, config: &Config, key: &str, value: &SettingValue) -> R
     write(path, config, &attention, &[row])
 }
 
-/// A preset chosen: every row written as it says (the usual taken out).
+/// A preset chosen: every row written as it says (the usual taken out),
+/// under the configuration's lock, from the file as it is then.
 pub fn apply_preset(path: &Path, config: &Config, preset: Preset) -> Result<(), String> {
-    let matrix = preset.matrix();
-    write(path, config, &matrix, &Row::ALL)
+    crate::filelock::with_lock(path, || {
+        let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
+        let matrix = preset.matrix();
+        write(path, &fresh, &matrix, &Row::ALL)
+    })
 }
 
 /// `rows` written as `attention` has them, each whole or taken out when

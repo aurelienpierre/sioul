@@ -1021,8 +1021,8 @@ Item {
                                             Connections {
                                                 target: ruleRow.item
 
-                                                function onSave(key, value) {
-                                                    const problem = page.sioul.setSetting(key, JSON.stringify(value))
+                                                function onSave(key, value, shown) {
+                                                    const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
                                                     if (problem === "")
                                                         rules.rows = JSON.parse(page.sioul.settings(lane.modelData.settings))
                                                     else

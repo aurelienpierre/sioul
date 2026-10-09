@@ -472,10 +472,12 @@ impl Config {
 
 /// A kind renamed (`from` and `to`), taken away (`to` empty) or added (`from`
 /// empty, `to` its name). Tasks keep the kind they have: taking a kind away
-/// only takes it off the choices.
-pub fn change_kind(path: &Path, config: &Config, from: &str, to: &str) -> Result<(), String> {
-    // Read, changed and written under the file's lock, which the sharing takes too.
+/// only takes it off the choices. The kinds are read under the file's lock,
+/// which the sharing takes too, as the file holds them then: a kind another
+/// device's change brought in meanwhile stays.
+pub fn change_kind(path: &Path, from: &str, to: &str) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
+        let config = if path.exists() { Config::load(path)? } else { Config::default() };
         let mut kinds = config.tasks.kinds.clone().unwrap_or_else(default_kinds);
         let to = to.trim();
         if from.is_empty() {
@@ -1615,13 +1617,29 @@ pub fn set_value(path: &Path, key: &str, setting: &SettingValue) -> Result<(), S
                 let d: jiff::civil::Date = text.trim().parse().map_err(|_| format!("{text}: a day as 2026-12-24"))?;
                 Ok(toml_edit::Datetime { date: Some(toml_edit::Date { year: d.year() as u16, month: d.month() as u8, day: d.day() as u8 }), time: None, offset: None })
             };
+            // Each day off already there keeps its table (its id, given when the
+            // sharing took format 2, and what else it holds); a new one takes an
+            // id of its own once the list carries ids (format 2: one id per day off).
+            let mut there: Vec<Table> = doc.get(key).and_then(Item::as_array_of_tables).map(|list| list.iter().cloned().collect()).unwrap_or_default();
+            let with_ids = there.iter().any(|t| t.get("id").and_then(Item::as_str).is_some_and(|id| !id.is_empty()));
+            let same = |t: &Table, from: &toml_edit::Datetime, until: &toml_edit::Datetime, label: &str| {
+                t.get("from").and_then(Item::as_datetime) == Some(from) && t.get("until").and_then(Item::as_datetime) == Some(until) && t.get("label").and_then(Item::as_str).unwrap_or_default() == label
+            };
             let mut tables = ArrayOfTables::new();
             for off in days {
+                let (from, until, label) = (date(&off.from)?, date(&off.until)?, off.label.trim());
+                if let Some(at) = there.iter().position(|t| same(t, &from, &until, label)) {
+                    tables.push(there.remove(at));
+                    continue;
+                }
                 let mut table = Table::new();
-                table["from"] = value(date(&off.from)?);
-                table["until"] = value(date(&off.until)?);
-                if !off.label.trim().is_empty() {
-                    table["label"] = value(off.label.trim());
+                if with_ids {
+                    table["id"] = value(crate::ids::new());
+                }
+                table["from"] = value(from);
+                table["until"] = value(until);
+                if !label.is_empty() {
+                    table["label"] = value(label);
                 }
                 tables.push(table);
             }
@@ -2189,11 +2207,11 @@ mod tests {
         let ids = |config: &Config| config.task_kinds(&tr).into_iter().map(|(id, _)| id).collect::<Vec<_>>();
         let config = Config::load(&path).unwrap();
         assert_eq!(ids(&config).len(), crate::tasks::KINDS.len(), "Sioul's kinds until you name yours");
-        change_kind(&path, &config, "", "Rendez-vous").unwrap();
+        change_kind(&path, "", "Rendez-vous").unwrap();
         let config = Config::load(&path).unwrap();
         assert_eq!(ids(&config).last().map(String::as_str), Some("rendez-vous"));
-        change_kind(&path, &config, "call", "Phone").unwrap();
-        change_kind(&path, &Config::load(&path).unwrap(), "think", "").unwrap();
+        change_kind(&path, "call", "Phone").unwrap();
+        change_kind(&path, "think", "").unwrap();
         let config = Config::load(&path).unwrap();
         let kinds = config.task_kinds(&tr);
         assert!(kinds.contains(&("call".to_string(), "Phone".to_string())));

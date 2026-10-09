@@ -869,7 +869,7 @@ pub mod qobject {
 
         /// Meals, naps and the night saved; returns what went wrong, else "".
         #[qinvokable]
-        fn save_needs(self: Pin<&mut Sioul>, edit: &QString) -> QString;
+        fn save_needs(self: Pin<&mut Sioul>, edit: &QString, shown: &QString) -> QString;
 
         /// A block skipped today, or not; returns what went wrong, else "".
         #[qinvokable]
@@ -1069,12 +1069,13 @@ pub mod qobject {
         #[qinvokable]
         fn place_movement(self: Pin<&mut Sioul>, account: &QString, movement: &QString, choice: &QString) -> QString;
 
-        /// A rule for movements made (`place` below zero) or changed.
+        /// A rule for movements made (`rule` "") or changed (`rule`: the rule as
+        /// shown, JSON: named by its id, or its place while it holds the same).
         #[qinvokable]
-        fn save_bank_rule(self: Pin<&mut Sioul>, place: i32, edit: &QString) -> QString;
+        fn save_bank_rule(self: Pin<&mut Sioul>, rule: &QString, edit: &QString) -> QString;
 
         #[qinvokable]
-        fn remove_bank_rule(self: Pin<&mut Sioul>, place: i32) -> QString;
+        fn remove_bank_rule(self: Pin<&mut Sioul>, rule: &QString) -> QString;
 
         /// A reserve made (`id` empty) or changed: its balance, its floor, its delay.
         #[qinvokable]
@@ -1188,10 +1189,12 @@ pub mod qobject {
         #[qinvokable]
         fn mail_filters(self: &Sioul) -> QString;
 
-        /// The whole list of mail filters written, in its order (JSON, as
-        /// `mail_filters` gives them); returns what went wrong, else "".
+        /// The list of mail filters written, in its order (JSON, as
+        /// `mail_filters` gives them), from the list the editor showed
+        /// (`shown`): its change set over the filters as they are now. Returns
+        /// what went wrong, else "".
         #[qinvokable]
-        fn set_mail_filters(self: Pin<&mut Sioul>, filters: &QString) -> QString;
+        fn set_mail_filters(self: Pin<&mut Sioul>, filters: &QString, shown: &QString) -> QString;
 
         /// One filter being edited, in words: {said, problem, only}, as JSON.
         #[qinvokable]
@@ -1522,9 +1525,10 @@ pub mod qobject {
         fn reaches_view(self: &Sioul) -> QString;
 
         /// A row of the matrix changed (`row`: "mail.safe", "codes"; `words`: its
-        /// words whole, a JSON list): what went wrong, else "".
+        /// words whole, a JSON list; `shown`: its words as the row showed them,
+        /// so that only the cells changed are set): what went wrong, else "".
         #[qinvokable]
-        fn reaches_set(self: Pin<&mut Sioul>, row: &QString, words: &QString) -> QString;
+        fn reaches_set(self: Pin<&mut Sioul>, row: &QString, words: &QString, shown: &QString) -> QString;
 
         /// A preset chosen ("usual", "quieter", "reachable"): what went wrong, else "".
         #[qinvokable]
@@ -1639,6 +1643,13 @@ pub mod qobject {
         /// Changes one setting (its value as JSON); returns what went wrong, else "".
         #[qinvokable]
         fn set_setting(self: Pin<&mut Sioul>, key: &QString, value: &QString) -> QString;
+
+        /// Changes one setting from its row: `shown` the value the row showed,
+        /// `value` the new one, both as JSON. A list is the row's change set over
+        /// the list as the files hold it now (`settings::change`): an element
+        /// another device added meanwhile stays. Returns what went wrong, else "".
+        #[qinvokable]
+        fn change_setting(self: Pin<&mut Sioul>, key: &QString, shown: &QString, value: &QString) -> QString;
 
         /// "dark" or "light" when `SIOUL_THEME` forces one, for the window's images; else "" (the setting decides).
         #[qinvokable]
@@ -4141,16 +4152,24 @@ impl qobject::Sioul {
 
     fn keep_folder(self: Pin<&mut Self>, account: &QString, folder: &QString, kept: bool) -> QString {
         let (id, folder) = (account.to_string(), folder.to_string());
-        let config = load_config();
-        let Some(account) = config.account(&id).cloned() else { return QString::default() };
-        let mut skipped = account.skip_folders.clone();
-        skipped.retain(|f| f != &folder);
-        if !kept {
-            skipped.push(folder.clone());
-        }
-        if let Err(e) = config::set_value(&config_path(), &format!("account.{id}.skip_folders"), &config::SettingValue::Texts(skipped)) {
-            return QString::from(&e);
-        }
+        // The folder kept or set aside, over the list as the configuration holds it
+        // now, read and written under its lock, which the sharing takes too.
+        let path = config_path();
+        let changed = sioul_core::filelock::with_lock(&path, || {
+            let config = config::Config::load(&path)?;
+            let Some(account) = config.account(&id).cloned() else { return Ok(None) };
+            let mut skipped = account.skip_folders.clone();
+            skipped.retain(|f| f != &folder);
+            if !kept {
+                skipped.push(folder.clone());
+            }
+            config::set_value(&path, &format!("account.{id}.skip_folders"), &config::SettingValue::Texts(skipped)).map(|()| Some(account))
+        });
+        let account = match changed {
+            Ok(Some(account)) => account,
+            Ok(None) => return QString::default(),
+            Err(e) => return QString::from(&e),
+        };
         let (qt, shared) = (self.qt_thread(), self.shared());
         std::thread::spawn(move || {
             if !kept && let Err(e) = sioul_sync::mailbox::forget_folder(&account, &folder) {
@@ -4276,14 +4295,14 @@ impl qobject::Sioul {
         QString::from(&problem)
     }
 
-    fn save_bank_rule(self: Pin<&mut Self>, place: i32, edit: &QString) -> QString {
-        let problem = crate::bank::save_rule(place, &edit.to_string());
+    fn save_bank_rule(self: Pin<&mut Self>, rule: &QString, edit: &QString) -> QString {
+        let problem = crate::bank::save_rule(&rule.to_string(), &edit.to_string());
         show(&self.qt_thread(), &self.shared());
         QString::from(&problem)
     }
 
-    fn remove_bank_rule(self: Pin<&mut Self>, place: i32) -> QString {
-        let problem = crate::bank::remove_rule(place);
+    fn remove_bank_rule(self: Pin<&mut Self>, rule: &QString) -> QString {
+        let problem = crate::bank::remove_rule(&rule.to_string());
         show(&self.qt_thread(), &self.shared());
         QString::from(&problem)
     }
@@ -4530,8 +4549,8 @@ impl qobject::Sioul {
         QString::from(&crate::health::needs_page())
     }
 
-    fn save_needs(self: Pin<&mut Self>, edit: &QString) -> QString {
-        let problem = crate::health::save_needs(&edit.to_string());
+    fn save_needs(self: Pin<&mut Self>, edit: &QString, shown: &QString) -> QString {
+        let problem = crate::health::save_needs(&edit.to_string(), &shown.to_string());
         // The plan goes around them at once.
         crate::work::show_work(&self.qt_thread(), &self.shared());
         QString::from(&problem)
@@ -5231,8 +5250,8 @@ impl qobject::Sioul {
         QString::from(&crate::reaches::view(self.shared().realtime.load(Ordering::Relaxed)))
     }
 
-    fn reaches_set(self: Pin<&mut Self>, row: &QString, words: &QString) -> QString {
-        let problem = crate::reaches::set_row(&row.to_string(), &words.to_string());
+    fn reaches_set(self: Pin<&mut Self>, row: &QString, words: &QString, shown: &QString) -> QString {
+        let problem = crate::reaches::set_row(&row.to_string(), &words.to_string(), &shown.to_string());
         if problem.is_empty() {
             self.attention_changed();
         }
@@ -5452,8 +5471,14 @@ impl qobject::Sioul {
         QString::from(&json(&rows))
     }
 
-    fn set_setting(mut self: Pin<&mut Self>, key: &QString, value: &QString) -> QString {
+    fn set_setting(self: Pin<&mut Self>, key: &QString, value: &QString) -> QString {
+        self.change_setting(key, &QString::default(), value)
+    }
+
+    fn change_setting(mut self: Pin<&mut Self>, key: &QString, shown: &QString, value: &QString) -> QString {
         let key = key.to_string();
+        // What the row showed: what its change is set over the files from (none: the value as sent).
+        let shown: Option<config::SettingValue> = Some(shown.to_string()).filter(|s| !s.is_empty()).and_then(|s| serde_json::from_str(&s).ok());
         let parsed: Result<config::SettingValue, String> = serde_json::from_str(&value.to_string()).map_err(|e| e.to_string());
         let result = parsed.and_then(|v| match (key.as_str(), v) {
             // The AI's key goes to the keyring, never to the configuration; an empty one is forgotten.
@@ -5470,7 +5495,7 @@ impl qobject::Sioul {
                 crate::homecard::now();
                 Ok(())
             }
-            (_, v) => sioul_core::settings::apply(&config_path(), &load_config(), &key, &v),
+            (_, v) => sioul_core::settings::change(&config_path(), &key, shown.as_ref(), &v),
         });
         if let Err(e) = result {
             return QString::from(&e);
@@ -5662,8 +5687,8 @@ impl qobject::Sioul {
         QString::from(&crate::filters::view())
     }
 
-    fn set_mail_filters(self: Pin<&mut Self>, filters: &QString) -> QString {
-        QString::from(&crate::filters::save(&filters.to_string()))
+    fn set_mail_filters(self: Pin<&mut Self>, filters: &QString, shown: &QString) -> QString {
+        QString::from(&crate::filters::save(&filters.to_string(), &shown.to_string()))
     }
 
     fn mail_filter_said(&self, filter: &QString) -> QString {

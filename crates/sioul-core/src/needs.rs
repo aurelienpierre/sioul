@@ -138,6 +138,29 @@ pub struct Needs {
     pub later: u32,
 }
 
+impl Needs {
+    /// The settings' change, from what the page showed (`shown`) to what it
+    /// sends (`self`), set over the settings as the file holds them now
+    /// (`current`): each field the page changed, the page's; the others as
+    /// they are now; the meals and naps as lists (`settings::rebased`), so
+    /// that one another device added meanwhile stays.
+    pub fn rebased(&self, shown: &Needs, current: &Needs) -> Needs {
+        fn field<T: PartialEq + Clone>(value: &T, shown: &T, current: &T) -> T {
+            if value == shown { current.clone() } else { value.clone() }
+        }
+        Needs {
+            meals_on: field(&self.meals_on, &shown.meals_on, &current.meals_on),
+            meals: crate::settings::rebased(&shown.meals, &self.meals, &current.meals),
+            naps_on: field(&self.naps_on, &shown.naps_on, &current.naps_on),
+            naps: crate::settings::rebased(&shown.naps, &self.naps, &current.naps),
+            sleep_on: field(&self.sleep_on, &shown.sleep_on, &current.sleep_on),
+            sleep: field(&self.sleep, &shown.sleep, &current.sleep),
+            heads_up: field(&self.heads_up, &shown.heads_up, &current.heads_up),
+            later: field(&self.later, &shown.later, &current.later),
+        }
+    }
+}
+
 impl Default for Needs {
     fn default() -> Needs {
         Needs { meals_on: false, meals: three_meals(), naps_on: false, naps: a_nap(), sleep_on: false, sleep: Sleep::default(), heads_up: quarter(), later: quarter() }
@@ -274,9 +297,26 @@ impl Days {
         }
     }
 
+    /// Read, changed by `change` and written back, all under the file's lock,
+    /// which the sharing takes too: a change is set over the file as it is
+    /// then, never over a copy read earlier. Returns what `change` returns.
+    pub fn change_file<R>(path: &Path, today: Date, change: impl FnOnce(&mut Days) -> R) -> Result<R, String> {
+        crate::filelock::with_lock(path, || {
+            let mut days = Days::load(path);
+            let out = change(&mut days);
+            days.save(path, today)?;
+            Ok(out)
+        })
+    }
+
     /// Written next to its place, then moved: never half a file. Yours alone.
     /// Days more than two weeks before `today` go, and blocks left as usual.
+    /// Under the file's lock, which the sharing takes too.
     pub fn save(&self, path: &Path, today: Date) -> Result<(), String> {
+        crate::filelock::with_lock(path, || self.write(path, today))
+    }
+
+    fn write(&self, path: &Path, today: Date) -> Result<(), String> {
         let mut kept = self.clone();
         let oldest = today.checked_sub(jiff::Span::new().days(KEPT_DAYS)).unwrap_or(today);
         kept.0.retain(|day, blocks| {

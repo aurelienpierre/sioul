@@ -48,8 +48,9 @@ Item {
     }
 
     // A setting of the project's own (its routes, whether AI agents may read it), saved at once.
-    function saveRoutes(key, value) {
-        page.problem = page.sioul.setSetting(key, JSON.stringify(value))
+    // `shown`: the routes the row showed: the change is set over the file as it is now.
+    function saveRoutes(key, value, shown) {
+        page.problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
         page.reload()
     }
 
@@ -411,7 +412,7 @@ Item {
                         setting: modelData
                         sioul: page.sioul
                         theme: page.theme
-                        onSave: (key, value) => page.saveRoutes(key, value)
+                        onSave: (key, value, shown) => page.saveRoutes(key, value, shown)
                     }
                 }
 

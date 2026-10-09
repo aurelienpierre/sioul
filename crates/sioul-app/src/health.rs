@@ -27,11 +27,14 @@ fn load() -> Health {
     Health::load(&Health::default_path())
 }
 
-fn save(health: &Health) -> Result<(), String> {
-    health.save(&Health::default_path())?;
+/// The health file read, changed by `change` and written back, all under its
+/// lock, which the sharing takes too: a change is set over the medicines as
+/// the file holds them then (`Health::change`), never over a copy read earlier.
+fn change_health<R>(change: impl FnOnce(&mut Health) -> Result<R, String>) -> Result<R, String> {
+    let out = Health::change(&Health::default_path(), change)?;
     // A medicine changed: a phone's alarms follow (`alarms`).
     crate::alarms::schedule();
-    Ok(())
+    Ok(out)
 }
 
 /// "Levothyroxine and Magnesium", "A, B and C".
@@ -1016,9 +1019,7 @@ fn apply_medicine(health: &mut Health, id: &str, edit: MedicineEdit, now: &Zoned
 /// A medicine made (`id` empty) or changed; returns {"id"} or {"error"}.
 pub(crate) fn save_medicine(id: &str, edit: &str) -> String {
     let result = serde_json::from_str::<MedicineEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
-        let mut health = load();
-        let id = apply_medicine(&mut health, id, edit, &Zoned::now(), tr())?;
-        save(&health).map(|()| id)
+        change_health(|health| apply_medicine(health, id, edit, &Zoned::now(), tr()))
     });
     answer(result)
 }
@@ -1144,9 +1145,7 @@ fn apply_prescription(health: &mut Health, id: &str, edit: PrescriptionEdit, wor
 /// A prescription made (`id` empty) or changed, with its medicines; returns {"id"} or {"error"}.
 pub(crate) fn save_prescription(id: &str, edit: &str) -> String {
     let result = serde_json::from_str::<PrescriptionEdit>(edit).map_err(|e| e.to_string()).and_then(|edit| {
-        let mut health = load();
-        let id = apply_prescription(&mut health, id, edit, tr())?;
-        save(&health).map(|()| id)
+        change_health(|health| apply_prescription(health, id, edit, tr()))
     });
     answer(result)
 }
@@ -1284,22 +1283,28 @@ pub(crate) fn for_professional(prescription: &str) -> String {
 
 /// A medicine or a prescription taken out; returns what went wrong, else "".
 pub(crate) fn remove(id: &str) -> String {
-    let mut health = load();
-    health.medicines.retain(|m| m.id != id);
-    health.prescriptions.retain(|p| p.id != id);
-    for medicine in health.medicines.iter_mut().filter(|m| m.prescription.as_deref() == Some(id)) {
-        medicine.prescription = None;
-    }
-    save(&health).err().unwrap_or_default()
+    change_health(|health| {
+        health.medicines.retain(|m| m.id != id);
+        health.prescriptions.retain(|p| p.id != id);
+        for medicine in health.medicines.iter_mut().filter(|m| m.prescription.as_deref() == Some(id)) {
+            medicine.prescription = None;
+        }
+        Ok(())
+    })
+    .err()
+    .unwrap_or_default()
 }
 
 /// Fetched at the pharmacy today: the next refill is counted from now.
 pub(crate) fn refilled(id: &str) -> String {
-    let mut health = load();
-    if let Some(p) = health.prescriptions.iter_mut().find(|p| p.id == id) {
-        p.last_refill = Some(Zoned::now().date());
-    }
-    save(&health).err().unwrap_or_default()
+    change_health(|health| {
+        if let Some(p) = health.prescriptions.iter_mut().find(|p| p.id == id) {
+            p.last_refill = Some(Zoned::now().date());
+        }
+        Ok(())
+    })
+    .err()
+    .unwrap_or_default()
 }
 
 /// How far back a dose due while Sioul was closed is asked about, and the
@@ -2300,10 +2305,7 @@ pub(crate) fn choose(key: &str, taken: bool) -> String {
         }
     });
     if let Some([before, after]) = moved.into_inner().ok().flatten() {
-        let mut health = load();
-        if health.taken_back(key, before, after) {
-            let _ = save(&health);
-        }
+        let _ = change_health(|health| Ok(health.taken_back(key, before, after)));
     }
     if !problem.is_empty() {
         return problem;
@@ -2334,13 +2336,11 @@ pub(crate) fn taken_late(key: &str, time: &str) -> String {
         at -= 86_400;
     }
     let _held = state_held();
-    let mut health = load();
-    let moved = health.taken_at(key, at);
-    if moved.is_some()
-        && let Err(e) = save(&health)
-    {
-        return e;
-    }
+    // The doses it moves, moved in the medicines as the file holds them now, under its lock.
+    let moved = match change_health(|health| Ok(health.taken_at(key, at))) {
+        Ok(moved) => moved,
+        Err(e) => return e,
+    };
     let problem = change(|state| {
         state.taken.insert(key.to_string(), at);
         state.not_taken.remove(key);
@@ -2352,12 +2352,11 @@ pub(crate) fn taken_late(key: &str, time: &str) -> String {
     if problem.is_empty() {
         let _ = record_answer(key, sioul_core::doses::TAKEN, at, false);
     }
-    // Not marked: the doses it moved go back.
+    // Not marked: the doses it moved go back, in the medicines as the file holds them then.
     if !problem.is_empty()
         && let Some((before, after)) = moved
-        && health.taken_back(key, before, after)
     {
-        let _ = save(&health);
+        let _ = change_health(|health| Ok(health.taken_back(key, before, after)));
     }
     problem
 }
@@ -2390,13 +2389,14 @@ pub(crate) fn dose_info(key: &str) -> String {
 pub(crate) fn set_taken(key: &str, taken: bool) -> String {
     let _held = state_held();
     let now = Timestamp::now().as_second();
-    let mut health = load();
-    let shift = if taken { health.taken_at(key, now) } else { None };
-    if shift.is_some()
-        && let Err(e) = save(&health)
-    {
-        return e;
-    }
+    let shift = if taken {
+        match change_health(|health| Ok(health.taken_at(key, now))) {
+            Ok(shift) => shift,
+            Err(e) => return e,
+        }
+    } else {
+        None
+    };
     let moved = std::sync::Mutex::new(None);
     let problem = change(|state| {
         if taken {
@@ -2412,10 +2412,7 @@ pub(crate) fn set_taken(key: &str, taken: bool) -> String {
         }
     });
     if let Some([before, after]) = moved.into_inner().ok().flatten() {
-        let mut health = load();
-        if health.taken_back(key, before, after) {
-            let _ = save(&health);
-        }
+        let _ = change_health(|health| Ok(health.taken_back(key, before, after)));
     }
     // Your answer, in the doses' records too: taken now; taken back, every
     // "taken" goes, on purpose (one click takes it back, wherever it was marked).
@@ -2428,18 +2425,23 @@ pub(crate) fn set_taken(key: &str, taken: bool) -> String {
 /// The pause to move and the chats' limit: "movement.enabled", "movement.minutes",
 /// "chats.enabled", "chats.minutes", "chats.locked_minutes".
 pub(crate) fn set_setting(key: &str, value: &str) -> String {
-    let mut health = load();
     let number = || value.trim().parse::<u32>().unwrap_or(0);
-    match key {
-        "movement.enabled" => health.movement.enabled = value == "true",
-        "movement.minutes" => health.movement.minutes = number().clamp(10, 240),
-        "chats.enabled" => health.chats.enabled = value == "true",
-        "chats.minutes" => health.chats.minutes = number(),
-        "chats.locked_minutes" => health.chats.locked_minutes = number(),
-        "errands_list" => health.errands_list = value.trim().to_string(),
-        _ => return say("setting-unknown-key", &[("key", key.to_string())]),
+    if !matches!(key, "movement.enabled" | "movement.minutes" | "chats.enabled" | "chats.minutes" | "chats.locked_minutes" | "errands_list") {
+        return say("setting-unknown-key", &[("key", key.to_string())]);
     }
-    save(&health).err().unwrap_or_default()
+    change_health(|health| {
+        match key {
+            "movement.enabled" => health.movement.enabled = value == "true",
+            "movement.minutes" => health.movement.minutes = number().clamp(10, 240),
+            "chats.enabled" => health.chats.enabled = value == "true",
+            "chats.minutes" => health.chats.minutes = number(),
+            "chats.locked_minutes" => health.chats.locked_minutes = number(),
+            _ => health.errands_list = value.trim().to_string(),
+        }
+        Ok(())
+    })
+    .err()
+    .unwrap_or_default()
 }
 
 /// Minutes of focus before the pause to move; 0 when off.
@@ -2497,33 +2499,36 @@ fn name_of(kept: &Kept) -> String {
 /// (`needs-today.toml`) are moved into them once, as times.
 pub(crate) fn days() -> Days {
     let path = Days::default_path();
-    let mut days = Days::load(&path);
     let now = Zoned::now();
     let today_path = sioul_core::needs::Today::default_path();
     let mut today = sioul_core::needs::Today::load(&today_path, now.date());
     if today.shifts.is_empty() && today.skipped.is_empty() {
-        return days;
+        return Days::load(&path);
     }
     let zone = now.time_zone().clone();
-    for k in load().needs.blocks_of(now.date(), &zone, &Days::default(), &|_| 0) {
-        let shift = today.shifts.get(&k.key).copied().unwrap_or(0) * 60;
-        let skipped = today.skipped.contains(&k.key);
-        days.change(now.date(), &k.key, |b| {
-            if shift != 0 && b.at.is_empty() {
-                b.at = clock(k.at + shift, &zone);
-                if k.kind == "sleep" {
-                    b.wake = clock(k.end + shift, &zone);
+    let blocks = load().needs.blocks_of(now.date(), &zone, &Days::default(), &|_| 0);
+    // Moved in once, over the days as the file holds them then, under its lock.
+    let moved = Days::change_file(&path, now.date(), |days| {
+        for k in &blocks {
+            let shift = today.shifts.get(&k.key).copied().unwrap_or(0) * 60;
+            let skipped = today.skipped.contains(&k.key);
+            days.change(now.date(), &k.key, |b| {
+                if shift != 0 && b.at.is_empty() {
+                    b.at = clock(k.at + shift, &zone);
+                    if k.kind == "sleep" {
+                        b.wake = clock(k.end + shift, &zone);
+                    }
                 }
-            }
-            b.quiet |= skipped;
-        });
-    }
-    today.shifts.clear();
-    today.skipped.clear();
-    if days.save(&path, now.date()).is_ok() {
+                b.quiet |= skipped;
+            });
+        }
+    });
+    if moved.is_ok() {
+        today.shifts.clear();
+        today.skipped.clear();
         let _ = today.save(&today_path);
     }
-    days
+    Days::load(&path)
 }
 
 /// Today's events' held times (their margins counted), read again five
@@ -2651,13 +2656,19 @@ fn change_day(date: &str, edit: &DayEdit) -> String {
     let now = Zoned::now();
     let date = if date.trim().is_empty() { Some(now.date()) } else { date.trim().parse::<Date>().ok() };
     let Some(date) = date else { return tr().text("need-times-wrong", None) };
-    let mut days = days();
-    match load().needs.change_day(&mut days, date, edit, &now, &held_on(date, &now)) {
+    // Changed over the days as the file holds them now, under its lock, which the sharing takes too.
+    let _ = days();
+    let needs = load().needs;
+    let held = held_on(date, &now);
+    let changed = match Days::change_file(&Days::default_path(), now.date(), |days| needs.change_day(days, date, edit, &now, &held)) {
+        Ok(changed) => changed,
+        Err(e) => return e,
+    };
+    match changed {
         Ok(()) => {
-            let problem = days.save(&Days::default_path(), now.date()).err().unwrap_or_default();
             // A night changed, or its alarm: a phone's alarm at waking follows (`wake`).
             crate::wake::schedule();
-            problem
+            String::new()
         }
         Err(DayProblem::Past) => tr().text("need-past", None),
         Err(DayProblem::Times) => tr().text("need-times-wrong", None),
@@ -2705,12 +2716,14 @@ pub(crate) fn drag_need(qt: &QtThread, shared: &Arc<Shared>, edit: &str) -> Stri
         .map(|k| say("drag-done", &[("what", name_of(k)), ("time", format!("{}–{}", clock(k.start, &zone), clock(k.end, &zone)))]))
         .unwrap_or_else(|| tr().text("drag-done-plain", None));
     crate::mail::offer_back(qt, shared, line, move |qt, shared| {
-        let mut days = days();
-        match &was {
+        // Put back over the days as the file holds them now, under its lock, which the sharing takes too.
+        let _ = days();
+        let problem = Days::change_file(&Days::default_path(), Zoned::now().date(), |days| match &was {
             Some(block) => days.change(date, &key, |b| *b = block.clone()),
             None => days.forget(date, &key),
-        }
-        let problem = days.save(&Days::default_path(), Zoned::now().date()).err().unwrap_or_default();
+        })
+        .err()
+        .unwrap_or_default();
         // A night put back: a phone's alarm at waking follows (`wake`).
         crate::wake::schedule();
         crate::work::show_work(qt, shared);
@@ -2783,30 +2796,37 @@ fn removed_at(old: &[sioul_core::needs::Block], new: &[sioul_core::needs::Block]
 /// The usual meals, naps and night saved as the settings give them; a meal
 /// or a nap taken out, the days' changes of those after it follow them to
 /// their new place. Returns what went wrong, else "".
-pub(crate) fn save_needs(edit: &str) -> String {
+pub(crate) fn save_needs(edit: &str, shown: &str) -> String {
     let needs: Needs = match serde_json::from_str(edit) {
         Ok(needs) => needs,
         Err(e) => return e.to_string(),
     };
-    let mut health = load();
-    let mut days = days();
-    let mut moved = false;
-    if let Some(at) = removed_at(&health.needs.meals, &needs.meals) {
-        days.removed_usual("meal", at);
-        moved = true;
+    // What the page showed: its change set over the settings as the file holds them now.
+    let shown: Option<Needs> = serde_json::from_str(shown).ok();
+    let removed = change_health(|health| {
+        let needs = shown.as_ref().map_or_else(|| needs.clone(), |shown| needs.rebased(shown, &health.needs));
+        let removed = (removed_at(&health.needs.meals, &needs.meals), removed_at(&health.needs.naps, &needs.naps));
+        health.needs = needs;
+        Ok(removed)
+    });
+    let (meal, nap) = match removed {
+        Ok(removed) => removed,
+        Err(e) => return e,
+    };
+    if meal.is_none() && nap.is_none() {
+        return String::new();
     }
-    if let Some(at) = removed_at(&health.needs.naps, &needs.naps) {
-        days.removed_usual("nap", at);
-        moved = true;
-    }
-    health.needs = needs;
-    if let Err(e) = save(&health) {
-        return e;
-    }
-    if moved {
-        return days.save(&Days::default_path(), Zoned::now().date()).err().unwrap_or_default();
-    }
-    String::new()
+    // A meal or a nap taken out: the days' changes of those after it move up a place.
+    Days::change_file(&Days::default_path(), Zoned::now().date(), |days| {
+        if let Some(at) = meal {
+            days.removed_usual("meal", at);
+        }
+        if let Some(at) = nap {
+            days.removed_usual("nap", at);
+        }
+    })
+    .err()
+    .unwrap_or_default()
 }
 
 /// Each minute: a dose due is reminded once, quietly, with "Taken"; a refill

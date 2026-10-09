@@ -506,8 +506,42 @@ pub struct SplitEdit {
     pub to: String,
 }
 
-/// Makes a rule (`place` None, at the end) or changes the one at `place` among the rules.
-pub fn save_split(path: &std::path::Path, place: Option<usize>, edit: &SplitEdit) -> Result<(), String> {
+/// A rule as the window showed it: its id (empty for one an older Sioul
+/// made), its place then, and what it held then.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct SplitShown {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub place: usize,
+    #[serde(default)]
+    pub words: Vec<String>,
+    /// "credit", "debit", "".
+    #[serde(default)]
+    pub direction: String,
+    /// `budget:<id>`, `reserve:<id>`, `transfer:<id>`, `preset:<id>`.
+    #[serde(default)]
+    pub to: String,
+}
+
+/// Where the rule the window showed is among the rules now: by its id; one
+/// without (an older Sioul's) at its place, only while it still holds what
+/// was shown (another device's change may have moved the rules since).
+fn split_at(all: &toml_edit::ArrayOfTables, shown: &SplitShown) -> Option<usize> {
+    let text = |t: &Table, key: &str| t.get(key).and_then(toml_edit::Item::as_str).unwrap_or_default().to_string();
+    if !shown.id.is_empty() {
+        return all.iter().position(|t| text(t, "id") == shown.id);
+    }
+    let table = all.get(shown.place)?;
+    let words: Vec<String> = table.get("words").and_then(toml_edit::Item::as_array).map(|a| a.iter().filter_map(|w| w.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    let to = ["budget", "reserve", "transfer", "preset"].iter().find_map(|key| table.get(key).and_then(toml_edit::Item::as_str).map(|v| format!("{key}:{v}"))).unwrap_or_default();
+    let holds = text(table, "id").is_empty() && words == shown.words && text(table, "direction") == shown.direction && to == shown.to;
+    holds.then_some(shown.place)
+}
+
+/// Makes a rule (`shown` None, at the end) or changes the one the window
+/// showed (`split_at`): read, changed and written under the file's lock.
+pub fn save_split(path: &std::path::Path, shown: Option<&SplitShown>, edit: &SplitEdit) -> Result<(), String> {
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(path, || {
         let words: Vec<String> = edit.words.iter().map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect();
@@ -530,6 +564,10 @@ pub fn save_split(path: &std::path::Path, place: Option<usize>, edit: &SplitEdit
         }
         let mut doc = open(path)?;
         let all = tables(&mut doc, "split")?;
+        let place = match shown {
+            Some(shown) => Some(split_at(all, shown).ok_or("no such rule")?),
+            None => None,
+        };
         // Its id (`ids`), by which your devices merge it: kept when the rule is
         // changed, given when it is made (or changed, made by an older Sioul).
         let id = place.and_then(|at| all.get(at)).and_then(|old| old.get("id").and_then(toml_edit::Item::as_str).map(str::to_string)).unwrap_or_else(crate::ids::new);
@@ -544,14 +582,13 @@ pub fn save_split(path: &std::path::Path, place: Option<usize>, edit: &SplitEdit
     })
 }
 
-pub fn remove_split(path: &std::path::Path, place: usize) -> Result<(), String> {
+/// Takes out the rule the window showed (`split_at`), under the file's lock.
+pub fn remove_split(path: &std::path::Path, shown: &SplitShown) -> Result<(), String> {
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(path, || {
         let mut doc = open(path)?;
         let all = tables(&mut doc, "split")?;
-        if place >= all.len() {
-            return Err("no such rule".into());
-        }
+        let place = split_at(all, shown).ok_or("no such rule")?;
         all.remove(place);
         write(path, &doc)
     })
@@ -721,7 +758,19 @@ mod tests {
         assert_eq!((ledger.splits[0].words.clone(), ledger.splits[0].direction, ledger.splits[0].budget.as_deref()), (vec!["cinema".to_string()], Some(Direction::Debit), Some("duties")));
         assert_eq!(ledger.assignments.iter().map(|a| a.movement.as_str()).collect::<Vec<_>>(), vec!["m2"]);
         assert_eq!((ledger.reserves[0].id.as_str(), ledger.reserves[0].balance, ledger.reserves[0].as_of), ("livret-a", Money(120050), day("2026-10-04")));
-        remove_split(&path, 0).unwrap();
+        // Named by its id: another rule put before it (another device's) moves nothing.
+        let first = ledger.splits[0].id.clone();
+        assert!(!first.is_empty());
+        let text = std::fs::read_to_string(&path).unwrap().replace("[[split]]", "[[split]]\nid = \"other\"\naccount = \"\"\nwords = [\"rent\"]\nbudget = \"duties\"\n\n[[split]]");
+        std::fs::write(&path, text).unwrap();
+        save_split(&path, Some(&SplitShown { id: first.clone(), place: 0, ..SplitShown::default() }), &SplitEdit { account: id.clone(), words: vec!["cinéma".into()], direction: "debit".into(), to: "budget:duties".into() }).unwrap();
+        let ledger: Ledger = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(ledger.splits.iter().map(|s| (s.id.as_str(), s.words.join(","))).collect::<Vec<_>>(), vec![("other", "rent".to_string()), (first.as_str(), "cinéma".to_string())]);
+        // A rule without an id (an older Sioul's), at its place only while it holds what was shown.
+        let gone = SplitShown { place: 0, words: vec!["rent".into()], to: "budget:duties".into(), ..SplitShown::default() };
+        assert!(remove_split(&path, &gone).is_err(), "the rule there has an id: not the one shown");
+        remove_split(&path, &SplitShown { id: "other".into(), ..SplitShown::default() }).unwrap();
+        remove_split(&path, &SplitShown { id: first, ..SplitShown::default() }).unwrap();
         remove_bank_account(&path, &id).unwrap();
         let ledger: Ledger = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert!(ledger.splits.is_empty() && ledger.bank_accounts.is_empty());

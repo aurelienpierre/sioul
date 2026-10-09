@@ -1216,14 +1216,17 @@ pub fn write_setting(config_path: &Path, key: &str, values: &[String]) -> Result
 /// and the country every list was written for until then, so that nothing
 /// changes until you change it. Returns whether it wrote.
 pub fn keep_first(config_path: &Path) -> Result<bool, String> {
-    let Ok(text) = std::fs::read_to_string(config_path) else { return Ok(false) };
-    let doc: toml_edit::DocumentMut = text.parse().map_err(|e| format!("{}: {e}", config_path.display()))?;
-    if doc.contains_key("words") {
-        return Ok(false);
-    }
-    write_setting(config_path, "languages", &FIRST_LANGUAGES.map(String::from))?;
-    write_setting(config_path, "countries", &FIRST_COUNTRIES.map(String::from))?;
-    Ok(true)
+    // Looked at and written under the file's lock, which the sharing takes too.
+    crate::filelock::with_lock(config_path, || {
+        let Ok(text) = std::fs::read_to_string(config_path) else { return Ok(false) };
+        let doc: toml_edit::DocumentMut = text.parse().map_err(|e| format!("{}: {e}", config_path.display()))?;
+        if doc.contains_key("words") {
+            return Ok(false);
+        }
+        write_setting(config_path, "languages", &FIRST_LANGUAGES.map(String::from))?;
+        write_setting(config_path, "countries", &FIRST_COUNTRIES.map(String::from))?;
+        Ok(true)
+    })
 }
 
 /// `keep_first`, once on each device: at the first start of a Sioul with these

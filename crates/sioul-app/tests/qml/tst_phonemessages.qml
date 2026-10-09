@@ -170,10 +170,10 @@ Item {
             const part = rows.filter(r => r.setting.key === "part")[0]
             const app = rows.filter(r => r.setting.key === "app.foundation.e.message")[0]
             verify(part && app)
-            part.save("part", true)
+            part.save("part", true, part.setting.value)
             verify(mock.partOn)
             compare(mock.asked[mock.asked.length - 1][0], "part")
-            app.save("app.foundation.e.message", "off")
+            app.save("app.foundation.e.message", "off", app.setting.value)
             compare(mock.pharmacy, "off")
             compare(mock.asked[mock.asked.length - 1][1].key, "app.foundation.e.message")
         }
