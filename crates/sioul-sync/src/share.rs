@@ -1049,21 +1049,19 @@ fn own_id(element: &toml::Value) -> Option<&str> {
     element.get("id").and_then(toml::Value::as_str).filter(|id| !id.is_empty())
 }
 
-/// An id derived from what an element without one holds (format 2): its
-/// list and `what` (the element as text), the `n`th of the elements that
-/// hold the same. The same on every device, whatever its order in each file;
-/// shaped as a UUID (version 8: made here, by name). Only a name: never
-/// written into the element, never sent out of a sealed record.
-pub(crate) fn derived(list: &str, what: &str, n: usize) -> String {
+/// The id format 2 gives an element without one: from its list and `what`,
+/// the stable key format 1 named it by (`identity`: a session's start, task
+/// and project; a money line itself), the same on every device. Written into
+/// the element once, when the device takes format 2 (`switch_format`); until
+/// then, and for an element made without one since (by hand), its name.
+/// Shaped as a UUID (version 8: made here, by name).
+pub(crate) fn derived(list: &str, what: &str) -> String {
     use sha2::Digest;
     let mut hasher = sha2::Sha256::new();
     hasher.update(b"sioul-id\x1f");
     hasher.update(list.as_bytes());
     hasher.update(b"\x1f");
     hasher.update(what.as_bytes());
-    if n > 0 {
-        hasher.update(format!("\x1f{n}").as_bytes());
-    }
     let digest = hasher.finalize();
     let mut bytes = [0u8; 16];
     bytes.copy_from_slice(&digest[..16]);
@@ -1074,13 +1072,12 @@ pub(crate) fn derived(list: &str, what: &str, n: usize) -> String {
 
 /// The names of a keyed list's elements (their local fields taken out), in
 /// their order. Format 1: as `by` says, or the element itself. Format 2
-/// (`Keyed::ids`): each element's own `id`; one without (made by an older
-/// Sioul, or by hand), or whose id another element of the list holds too
-/// (two devices changed it apart before format 2), by an id derived from
-/// what it holds, the first, second… of those that hold the same
-/// (`derived`'s `n`). A name never depends on the other elements but those
-/// holding the same: two devices holding one element name it alike, so that
-/// nothing they send each other is taken for something else.
+/// (`Keyed::ids`): each element's own `id`; one without (made by hand), or
+/// whose id another element of the list holds too, by the id derived from
+/// the key format 1 named it by (`derived`): a stable key, which changing
+/// what the element holds does not change for a session (its start, task
+/// and project), and the same on every device. Elements format 1 named
+/// alike are one entry, as they were in format 1.
 fn names(elements: &[toml::Value], keyed: &Keyed) -> Vec<String> {
     if !keyed.ids {
         return elements.iter().map(|e| identity(e, keyed.by)).collect();
@@ -1089,17 +1086,11 @@ fn names(elements: &[toml::Value], keyed: &Keyed) -> Vec<String> {
     for id in elements.iter().filter_map(own_id) {
         *ids.entry(id).or_default() += 1;
     }
-    let mut seen: BTreeMap<String, usize> = BTreeMap::new();
     elements
         .iter()
         .map(|element| match own_id(element) {
             Some(id) if ids.get(id) == Some(&1) => id.to_string(),
-            _ => {
-                let text = leaf_text(element);
-                let count = seen.entry(text.clone()).or_default();
-                *count += 1;
-                derived(keyed.list, &text, *count - 1)
-            }
+            _ => derived(keyed.list, &identity(element, keyed.by)),
         })
         .collect()
 }
@@ -1433,15 +1424,6 @@ fn names_read(elements: &[Option<toml::Value>], keyed: &Keyed) -> Vec<Option<Str
     elements.iter().map(|element| element.as_ref().and_then(|_| named.next())).collect()
 }
 
-/// Which of the elements holding the same an element added under `name` is
-/// (`derived`'s `n`), when its name was derived from what it holds: added in
-/// that order, the first before the second, they take the same names here.
-fn nth(keyed: &Keyed, name: &str, element: Option<toml::Value>) -> usize {
-    let Some(element) = element.filter(|_| keyed.ids) else { return 0 };
-    let text = leaf_text(&element);
-    (0..64).find(|&n| derived(keyed.list, &text, n) == name).unwrap_or(0)
-}
-
 fn set_path(table: &mut toml_edit::Table, path: &[&str], value: Option<&toml_edit::Item>) -> Result<(), String> {
     match path {
         [] => Ok(()),
@@ -1516,8 +1498,8 @@ fn placed(mut table: toml_edit::Table, at: Option<isize>) -> toml_edit::Table {
 
 /// The elements named so of a keyed list in `table` (`changes`: each name
 /// and its value, none to take it out), all named as the list holds them
-/// before any of them changes: replaced (their local fields kept), added (the
-/// first of those holding the same before the second), or taken out. `list`:
+/// before any of them changes: replaced (their local fields kept), added, or
+/// taken out. `list`:
 /// its name in the records; at the top, the list keeps the name it has in
 /// the file (`Keyed::also`).
 fn write_elements(table: &mut toml_edit::Table, keyed: &Keyed, list: &str, changes: &[(&str, Option<&str>)], renamed: bool) -> Result<(), String> {
@@ -1526,14 +1508,14 @@ fn write_elements(table: &mut toml_edit::Table, keyed: &Keyed, list: &str, chang
         strip_local(&mut element, keyed.local);
         Some(element)
     };
-    let news: Vec<(&str, Option<toml_edit::Item>, Option<toml::Value>)> = changes.iter().map(|(id, value)| Ok((*id, value.map(edit_item).transpose()?, value.and_then(|v| normal(v.to_string()))))).collect::<Result<_, String>>()?;
+    let news: Vec<(&str, Option<toml_edit::Item>)> = changes.iter().map(|(id, value)| Ok((*id, value.map(edit_item).transpose()?))).collect::<Result<_, String>>()?;
     let others: &[&str] = if keyed.list == list { keyed.also } else { &[] };
     let name = std::iter::once(list).chain(others.iter().copied()).find(|n| table.contains_key(n)).unwrap_or(match others.first() {
         Some(other) if renamed => other,
         _ => list,
     });
     if !table.contains_key(name) {
-        match news.iter().find_map(|(_, new, _)| new.as_ref()) {
+        match news.iter().find_map(|(_, new)| new.as_ref()) {
             Some(toml_edit::Item::Table(_)) => {
                 table.insert(name, toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new()));
             }
@@ -1547,8 +1529,8 @@ fn write_elements(table: &mut toml_edit::Table, keyed: &Keyed, list: &str, chang
     match table.get_mut(name) {
         Some(toml_edit::Item::ArrayOfTables(elements)) => {
             let named = names_read(&elements.iter().map(|t| normal(format!("[v]\n{t}"))).collect::<Vec<_>>(), keyed);
-            let mut added: Vec<(usize, toml_edit::Table)> = Vec::new();
-            for (id, new, value) in news {
+            let mut added: Vec<toml_edit::Table> = Vec::new();
+            for (id, new) in news {
                 let at = named.iter().position(|n| n.as_deref() == Some(id));
                 match (new, at) {
                     (Some(toml_edit::Item::Table(mut element)), Some(at)) => {
@@ -1564,13 +1546,12 @@ fn write_elements(table: &mut toml_edit::Table, keyed: &Keyed, list: &str, chang
                             *place = placed(element, position);
                         }
                     }
-                    (Some(toml_edit::Item::Table(element)), None) => added.push((nth(keyed, id, value), element)),
+                    (Some(toml_edit::Item::Table(element)), None) => added.push(element),
                     (None, Some(at)) => gone.push(at),
                     _ => {}
                 }
             }
-            added.sort_by_key(|(n, _)| *n);
-            for (_, element) in added {
+            for element in added {
                 elements.push(placed(element, None));
             }
             gone.sort_unstable();
@@ -1580,20 +1561,19 @@ fn write_elements(table: &mut toml_edit::Table, keyed: &Keyed, list: &str, chang
         }
         Some(toml_edit::Item::Value(toml_edit::Value::Array(elements))) => {
             let named = names_read(&elements.iter().map(|v| normal(format!("v = {v}"))).collect::<Vec<_>>(), keyed);
-            let mut added: Vec<(usize, toml_edit::Value)> = Vec::new();
-            for (id, new, value) in news {
+            let mut added: Vec<toml_edit::Value> = Vec::new();
+            for (id, new) in news {
                 let at = named.iter().position(|n| n.as_deref() == Some(id));
                 match (new, at) {
                     (Some(toml_edit::Item::Value(element)), Some(at)) => {
                         elements.replace(at, element);
                     }
-                    (Some(toml_edit::Item::Value(element)), None) => added.push((nth(keyed, id, value), element)),
+                    (Some(toml_edit::Item::Value(element)), None) => added.push(element),
                     (None, Some(at)) => gone.push(at),
                     _ => {}
                 }
             }
-            added.sort_by_key(|(n, _)| *n);
-            for (_, element) in added {
+            for element in added {
                 elements.push(element);
             }
             gone.sort_unstable();
@@ -1844,27 +1824,40 @@ struct Memory {
     /// another device writes it already; this one does from its next exchange.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     switch: bool,
-    /// Lists an older Sioul sends whole, divided element by element in format
-    /// 2: the clock and computer of the last whole list applied here, by its
-    /// entry; an older whole list is passed over (`translate`).
+    /// Each format-1 entry format 2 renamed: what format 1 last said under it
+    /// here, by a hash of its name (`Floor`, `floor_key`): read again, format
+    /// 1 at or below it is passed over (`translate`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    floors: BTreeMap<String, (u64, String)>,
-    /// Format 1's entries that named several elements here (an older Sioul
-    /// noting two sessions at one start, task and project): the element each
-    /// stands for in format 2, as last sent or written, so that an older
-    /// Sioul's change to it changes that one (`translate`).
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    aliases: BTreeMap<String, String>,
+    floors: BTreeMap<String, Floor>,
     /// Others' changes in a format this device does not write yet (format 2,
     /// before its switch) or does not know (a newer Sioul's): their value,
     /// clock, computer and format, written once it can.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     waiting: BTreeMap<String, (Option<String>, u64, String, u32)>,
-    /// Parts met in a format newer than this Sioul knows: that format, and the
-    /// build that wrote it. Nothing of them is sent from here, nor written
-    /// here, until this Sioul is updated (`share-newer`).
+    /// Parts met in a format newer than this Sioul knows (`Newer`). Nothing of
+    /// them is sent from here, nor written here, until this Sioul is updated,
+    /// or their writers no longer count (`release_newer`) (`share-newer`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    newer: BTreeMap<String, (u32, String)>,
+    newer: BTreeMap<String, Newer>,
+    /// Parts no longer held for writers that no longer count: their records
+    /// in that newer format up to this clock, read again, are passed over.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    released: BTreeMap<String, u64>,
+    /// Changes found here while their part was held (`newer`): when they were
+    /// found (a clock) and what they held (a hash; "" taken out). Once the part
+    /// is no longer held they go out at that time, not later: a newer
+    /// device's later change still wins over them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    held: BTreeMap<String, (u64, String)>,
+    /// When each other device was last heard of here, from its records read
+    /// (milliseconds, its clock): what tells a device still there from one
+    /// gone, with its sealed entry, never its plain notes (`present`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    heard_at: BTreeMap<String, i64>,
+    /// Devices you said are gone (`forget_device`): when they were last heard
+    /// of then (milliseconds). They count again once heard of later.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    forgotten: BTreeMap<String, i64>,
     /// What it remembers of files sealed apart, in `files.json` beside.
     #[serde(skip)]
     sealed: Sealed,
@@ -2172,61 +2165,143 @@ fn wait(waiting: &mut BTreeMap<String, (Option<String>, u64, String, u32)>, key:
     }
 }
 
+/// A part met in a format newer than this Sioul knows (`Memory::newer`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct Newer {
+    /// The newest format met.
+    format: u32,
+    /// The build that wrote it, as its batch says.
+    #[serde(default)]
+    build: String,
+    /// The devices that wrote it: while none of them is still in the
+    /// sharing (gone, forgotten, silent 180 days: a test build tried once),
+    /// the part is no longer held (`release_newer`).
+    #[serde(default)]
+    writers: BTreeSet<String>,
+}
+
+/// What a format-1 entry renamed by format 2 last said, kept once this device
+/// writes format 2 (`Memory::floors`): a record of format 1 under that entry
+/// read again (a store joining, a record rebuilt, an older copy of a round
+/// put back) at or below it is passed over, so that nothing format 1 already
+/// said comes back.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct Floor {
+    c: u64,
+    w: String,
+    /// For a list format 1 sends whole: the names, in format 2, of the
+    /// elements it held then. A later whole list takes out only those of
+    /// them it no longer holds, never an element added since in format 2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    held: Option<BTreeSet<String>>,
+}
+
+/// The name a floor is kept under: a hash of the format-1 entry (whose name may be a whole money line).
+fn floor_key(key: &str) -> String {
+    derived("floor", key)
+}
+
 /// Why a device holds back format 2 (`format_holders`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Holds {
-    /// Its Sioul does not read format 2, or does not say: an older one.
+    /// Its Sioul does not read format 2, or does not say: an older one, or a
+    /// device known by its records alone.
     Older,
-    /// Its entry does not read here yet (its seal not arrived, damaged).
+    /// Its entry does not read here (its seal not arrived, damaged, taken away).
     Unread,
     /// It reads format 2, but what it wrote before is not all read here yet.
     Unheard,
 }
 
-/// The devices that hold back format 2 (`FORMAT`), and why: each device of
-/// the sharing but this one, heard from in the last `SILENT_DAYS` (its notes'
-/// time, its entry's) and not gone (`left`), must say in its entry that it
-/// reads format 2 (`devices::Entry::format`), and all it wrote up to that
-/// entry (`wrote`) must be read here (`read_n`). A device known by its
-/// records alone, or whose entry does not read here, holds it back: an older
-/// Sioul cannot read format 2 and would double what it changes.
-fn format_holders(folder: &Path, key: &[u8; 32], computer: &str, read_n: &BTreeMap<String, (u32, u64)>, now_ms: i64) -> Vec<(String, Holds)> {
+/// When another device was last heard of, from sealed facts only: its entry's
+/// times (sealed, bound to it) and the clock of its last record read here
+/// (`Memory::heard_at`), in milliseconds; 0 when nothing is known. Never its
+/// notes in the folder, which are plain and could be forged.
+fn last_heard(entry: Option<&crate::devices::Entry>, memory: &Memory, id: &str) -> i64 {
+    let entry = entry.map_or(0, |e| e.started.max(e.imported).max(e.closed).max(e.exported) * 1000);
+    entry.max(memory.heard_at.get(id).copied().unwrap_or(0))
+}
+
+/// The other devices of the sharing that count, and what each says of
+/// itself: every device known here (by its records, its notes or its entry)
+/// but those that left (their sealed entry says so), those you forgot until
+/// they say anything newer (`forget_device`), and those not heard of, from
+/// sealed facts, for `SILENT_DAYS`. A device of which nothing sealed is known
+/// counts.
+fn present(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_ms: i64) -> Vec<(String, Option<crate::devices::Entry>, bool)> {
     let (entries, unread) = crate::devices::all(folder, key);
     let mut ids = computers(folder);
     ids.extend(entries.iter().map(|e| e.id.clone()));
     ids.extend(unread.iter().cloned());
-    let heard = Heard { read: read_n.clone(), broken: BTreeMap::new() };
-    let mut out = Vec::new();
-    for id in ids.iter().filter(|id| id.as_str() != computer) {
-        let entry = entries.iter().find(|e| &e.id == id);
-        if entry.is_some_and(|e| e.left) {
-            continue;
-        }
-        let last = read_seen(folder, id).map_or(0, |s| s.at).max(entry.map_or(0, |e| e.started.max(e.imported).max(e.closed)));
-        if last > 0 && now_ms / 1000 - last > SILENT_DAYS * 86_400 {
-            continue;
-        }
-        match entry {
-            None if unread.contains(id) => out.push((id.clone(), Holds::Unread)),
-            Some(entry) if entry.format >= 2 => {
-                if entry.wrote.is_some_and(|wrote| !heard.complete(id, wrote)) {
-                    out.push((id.clone(), Holds::Unheard));
-                }
+    ids.into_iter()
+        .filter(|id| id != computer)
+        .filter_map(|id| {
+            let entry = entries.iter().find(|e| e.id == id).cloned();
+            if entry.as_ref().is_some_and(|e| e.left) {
+                return None;
             }
-            _ => out.push((id.clone(), Holds::Older)),
-        }
-    }
-    out
+            let last = last_heard(entry.as_ref(), memory, &id);
+            if memory.forgotten.get(&id).is_some_and(|mark| last <= *mark) {
+                return None;
+            }
+            if last > 0 && now_ms - last > SILENT_DAYS * DAY {
+                return None;
+            }
+            let unread = unread.contains(&id);
+            Some((id, entry, unread))
+        })
+        .collect()
 }
 
-/// Whether this device may write format 2: another device at least shares
-/// the folder (alone, it writes format 1: a device joining later may run an
+/// The devices that hold back format 2 (`FORMAT`), and why: of the devices
+/// that count (`present`), each must say in its sealed entry that it reads
+/// format 2 (`devices::Entry::format`), and all it wrote up to that entry
+/// (`wrote`) must be read here (`read_n`). A device whose entry does not read
+/// here, or known by its records alone, holds it back: an older Sioul cannot
+/// read format 2 and would double what it changes. A hostile folder can
+/// only hold it back longer, never open it.
+fn format_holders(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_ms: i64) -> Vec<(String, Holds)> {
+    let heard = Heard { read: memory.read_n.clone(), broken: BTreeMap::new() };
+    present(folder, key, computer, memory, now_ms)
+        .into_iter()
+        .filter_map(|(id, entry, unread)| match entry {
+            None if unread => Some((id, Holds::Unread)),
+            Some(entry) if entry.format >= 2 => entry.wrote.is_some_and(|wrote| !heard.complete(&id, wrote)).then_some((id, Holds::Unheard)),
+            _ => Some((id, Holds::Older)),
+        })
+        .collect()
+}
+
+/// Whether this device may write format 2: another device at least counts
+/// (`present`; alone, it writes format 1: a device joining later may run an
 /// older Sioul), and none holds it back (`format_holders`). A device not
 /// joined yet holds nothing format 1 could lose: every other device saying
 /// it reads format 2 is enough, and it joins in format 2.
 fn format_open(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
-    let others = computers(sharing.folder).into_iter().any(|id| id != sharing.computer) || crate::devices::all(sharing.folder, sharing.key).0.iter().any(|e| e.id != sharing.computer && !e.left);
-    others && format_holders(sharing.folder, sharing.key, sharing.computer, &memory.read_n, now_ms).iter().all(|(_, holds)| !memory.joined && *holds == Holds::Unheard)
+    !present(sharing.folder, sharing.key, sharing.computer, memory, now_ms).is_empty() && format_holders(sharing.folder, sharing.key, sharing.computer, memory, now_ms).iter().all(|(_, holds)| !memory.joined && *holds == Holds::Unheard)
+}
+
+/// A device you said is gone (Settings ▸ Your folder and sharing ▸ Forget
+/// this device), as the sharing sees it: it no longer holds format 2 back,
+/// nor keeps a part held, until it says anything newer than now (an entry
+/// written since, a record read here: `present`). Waits for an exchange running.
+pub fn forget_device(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, device: &str) -> Result<(), String> {
+    let _running = exchange_lock(memory, true)?;
+    let mut state = Memory::load_all(memory, computer);
+    let (entries, _) = crate::devices::all(folder, key);
+    let mark = last_heard(entries.iter().find(|e| e.id == device), &state, device);
+    state.forgotten.insert(device.to_string(), mark.max(1));
+    state.save(memory)
+}
+
+/// A device counted again (Count it again), whatever it said since.
+pub fn count_device_again(memory: &Path, computer: &str, device: &str) -> Result<(), String> {
+    let _running = exchange_lock(memory, true)?;
+    let mut state = Memory::load_all(memory, computer);
+    if state.forgotten.remove(device).is_some() {
+        state.save(memory)?;
+    }
+    Ok(())
 }
 
 /// What this device knows of the sharing's formats, for the window
@@ -2239,12 +2314,16 @@ pub struct Formats {
     pub writes: u32,
     pub newer: Vec<(String, u32, String)>,
     pub holders: Vec<(String, Holds)>,
+    /// The devices that count (`present`) whose entry says they read an
+    /// older format than this one's: said once this device writes format 2.
+    pub older: Vec<String>,
 }
 
 pub fn formats(folder: &Path, key: &[u8; 32], memory: &Path, computer: &str, now_ms: i64) -> Formats {
     let state = Memory::load(memory, computer);
-    let holders = if state.format < 2 && state.joined { format_holders(folder, key, computer, &state.read_n, now_ms) } else { Vec::new() };
-    Formats { writes: state.format.max(1), newer: state.newer.into_iter().map(|(part, (f, build))| (part, f, build)).collect(), holders }
+    let holders = if state.format < 2 && state.joined { format_holders(folder, key, computer, &state, now_ms) } else { Vec::new() };
+    let older = if state.format >= 2 { present(folder, key, computer, &state, now_ms).into_iter().filter(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.format < FORMAT)).map(|(id, _, _)| id).collect() } else { Vec::new() };
+    Formats { writes: state.format.max(1), newer: state.newer.into_iter().map(|(part, newer)| (part, newer.format, newer.build)).collect(), holders, older }
 }
 
 /// The format this device writes (`FORMAT`): 1 until every device reads format 2 (`format_open`), then 2.
@@ -2257,13 +2336,40 @@ fn format_of(memory: &Path) -> u32 {
     std::fs::read_to_string(memory).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).and_then(|v| v.get("format").and_then(serde_json::Value::as_u64)).map_or(0, |f| f as u32)
 }
 
+/// Parts held for writers that no longer count (`present`: gone, forgotten,
+/// silent 180 days: a test build tried once, a device put back to an older
+/// Sioul): no longer held. Their changes in that newer format, kept waiting,
+/// are dropped; read again later, they are passed over (`Memory::released`).
+fn release_newer(sharing: &Sharing, memory: &mut Memory, now_ms: i64) {
+    if memory.newer.is_empty() {
+        return;
+    }
+    let counting: BTreeMap<String, Option<crate::devices::Entry>> = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms).into_iter().map(|(id, entry, _)| (id, entry)).collect();
+    let gone: Vec<String> = memory
+        .newer
+        .iter()
+        .filter(|(_, newer)| newer.writers.iter().all(|w| counting.get(w).is_none_or(|entry| entry.as_ref().is_some_and(|e| e.format <= FORMAT && e.format >= 1))))
+        .map(|(part, _)| part.clone())
+        .collect();
+    for part in gone {
+        memory.newer.remove(&part);
+        let dropped: Vec<String> = memory.waiting.iter().filter(|(key, (_, _, _, f))| known_part(file_of(key)) == Some(part.as_str()) && *f > part_format(&part)).map(|(key, _)| key.clone()).collect();
+        for key in dropped {
+            if let Some((_, c, _, _)) = memory.waiting.remove(&key) {
+                let released = memory.released.entry(part.clone()).or_default();
+                *released = (*released).max(c);
+            }
+        }
+    }
+}
+
 /// How format 2 names an entry format 1 named so (its path in its file).
 enum Renamed<'r> {
     /// As format 1 does.
     Same,
     /// An element of a list whose elements format 2 names otherwise (`Keyed::ids`).
     Element(&'r Keyed),
-    /// A list format 1 shares whole, divided element by element in format 2.
+    /// A list format 1 sends whole, divided element by element in format 2.
     Whole(&'r Keyed),
 }
 
@@ -2283,7 +2389,7 @@ fn renamed<'r>(rules: &Rules, next: &'r Rules, entry: &str) -> Renamed<'r> {
 }
 
 /// The elements of a file's keyed lists (format 2's), each with its entry
-/// in format 1 (its own, or its whole list's when format 1 shares the list
+/// in format 1 (its own, or its whole list's when format 1 sends the list
 /// whole), its entry in format 2, and its value.
 fn aligned(text: &str, rules: &Rules, next: &Rules) -> Vec<(String, String, String)> {
     let Ok(table) = text.parse::<toml::Table>() else { return Vec::new() };
@@ -2301,26 +2407,9 @@ fn align(path: Vec<String>, value: &toml::Value, rules: &Rules, next: &Rules, ou
     if let toml::Value::Array(elements) = value
         && let Some(keyed) = keyed_at(next, &path)
     {
-        let strip = |local: &[&str]| -> Vec<toml::Value> {
-            elements
-                .iter()
-                .map(|element| {
-                    let mut element = element.clone();
-                    strip_local(&mut element, local);
-                    element
-                })
-                .collect()
-        };
-        let after = strip(keyed.local);
+        let (before, after) = list_names(elements, &path, rules, keyed);
         let list = list_name(keyed, &path);
-        let before: Vec<String> = match keyed_at(rules, &path) {
-            Some(before) => {
-                let list = list_name(before, &path);
-                names(&strip(before.local), before).into_iter().map(|name| format!("{list}{SEP}{MARK}{name}")).collect()
-            }
-            None => vec![path.join(&SEP.to_string()); elements.len()],
-        };
-        for ((element, name), entry) in after.iter().zip(names(&after, keyed)).zip(before) {
+        for ((entry, name), element) in before.into_iter().zip(names(&after, keyed)).zip(&after) {
             out.push((entry, format!("{list}{SEP}{MARK}{name}"), leaf_text(element)));
         }
         return;
@@ -2336,12 +2425,35 @@ fn align(path: Vec<String>, value: &toml::Value, rules: &Rules, next: &Rules, ou
     }
 }
 
+/// A keyed list's elements at `path`: their entries in format 1 (their own,
+/// or the whole list's), and the elements as format 2 reads them (its local
+/// fields out).
+fn list_names(elements: &[toml::Value], path: &[String], rules: &Rules, keyed: &Keyed) -> (Vec<String>, Vec<toml::Value>) {
+    let strip = |local: &[&str]| -> Vec<toml::Value> {
+        elements
+            .iter()
+            .map(|element| {
+                let mut element = element.clone();
+                strip_local(&mut element, local);
+                element
+            })
+            .collect()
+    };
+    let before: Vec<String> = match keyed_at(rules, path) {
+        Some(before) => {
+            let list = list_name(before, path);
+            names(&strip(before.local), before).into_iter().map(|name| format!("{list}{SEP}{MARK}{name}")).collect()
+        }
+        None => vec![path.join(&SEP.to_string()); elements.len()],
+    };
+    (before, strip(keyed.local))
+}
+
 /// The name format 2 gives an element format 1 named `ident` when the file
-/// here does not hold it: format 1 named it by itself (`by` empty), and its
-/// own id, else what it holds, names it in format 2 as the first of those
-/// holding the same (`names`); format 1 named it by its id: that id. By
-/// other fields (a session by its start, task and project), it cannot be
-/// told: a name nothing holds.
+/// here does not say otherwise: format 1 named it by itself (`by` empty),
+/// and its own id, else the id derived from it, names it; by its id: that
+/// id; by other fields (a session by its start, task and project): the id
+/// derived from them, the one written into it when a device took format 2.
 fn stateless(keyed: &Keyed, ident: &str) -> String {
     if keyed.by.is_empty()
         && let Some(id) = leaf_value(ident).ok().as_ref().and_then(own_id).map(str::to_string)
@@ -2351,12 +2463,7 @@ fn stateless(keyed: &Keyed, ident: &str) -> String {
     if keyed.by == ["id"] && !ident.is_empty() {
         return ident.to_string();
     }
-    derived(keyed.list, ident, 0)
-}
-
-/// An element's own id, when there is an element and it has one.
-fn own_id_of(element: Option<&toml::Value>) -> Option<String> {
-    element.and_then(own_id).map(str::to_string)
+    derived(keyed.list, ident)
 }
 
 /// The element's name (after `␞`) in an entry.
@@ -2364,81 +2471,106 @@ fn element_name(entry: &str) -> &str {
     entry.rsplit_once(MARK).map_or("", |(_, name)| name)
 }
 
+/// An element as text, its id left out: what two versions of one element compare by.
+fn without_id(text: &str) -> String {
+    match leaf_value(text) {
+        Ok(toml::Value::Table(mut table)) => {
+            table.remove("id");
+            leaf_text(&toml::Value::Table(table))
+        }
+        Ok(other) => leaf_text(&other),
+        Err(_) => text.to_string(),
+    }
+}
+
 /// Format 1's changes (`older`: by entry, the later of each), for the files
-/// format 2 divides otherwise, in format 2's names, merged as format 1 would
-/// have merged them. An element's change takes the name format 2 gives that
-/// element: its own id (an older Sioul rewriting a month of sessions without
-/// their ids: the id it had here is kept, and put back in it), else the
-/// name format 2 gives the element format 1 named so in the file here, else
-/// one derived from it (`stateless`). Several of format 1's entries for one
-/// element (its versions: an older Sioul's change is a new version and the
-/// old one taken out) make one change: the latest version held, at the
-/// latest clock among them; none held, taken out. A list format 1 sent
-/// whole is applied element by element, at its clock: what it holds is set,
-/// what it no longer holds is taken out, the later word winning element by
-/// element; an older whole list than one applied here before is passed over
-/// (`Memory::floors`).
-fn translate(stores: &[Store], older: &BTreeMap<String, (Option<String>, u64, String)>, memory: &mut Memory, winners: &BTreeMap<String, (Option<String>, u64, String)>) -> Vec<(String, Option<String>, u64, String)> {
+/// format 2 divides otherwise, in format 2's names. Passed over: one at or
+/// below what format 1 already said under that entry here (`Floor`). An
+/// element's change takes the name format 2 gives it: its own id; for a
+/// session (named by its start, task and project) without one, the id of
+/// the session of that name here (an older Sioul writes a month back
+/// without the ids it does not know: the id is kept, and put back in it),
+/// else the id derived from that name; for a money line, its id, else the
+/// id derived from it. A line's removal named by a version this device does
+/// not hold any more (an older Sioul taking out a copy changed since) is
+/// passed over. Several entries for one element (an older Sioul changes a
+/// line by adding its new version and taking the old one out) make one
+/// change: the latest version held, at the latest clock; none held, taken
+/// out. A list sent whole sets what it holds and takes out, of what the
+/// previous whole list held, what it no longer holds, at its clock: never an
+/// element added since in format 2. Returns the changes, and the names that
+/// differ from what a device holding none of them would give (a session
+/// whose id was kept here): sent again from here in format 2, so that every
+/// device, one joining later too, holds it under one name.
+fn translate(stores: &[Store], older: &BTreeMap<String, (Option<String>, u64, String)>, memory: &mut Memory, winners: &BTreeMap<String, (Option<String>, u64, String)>) -> (Vec<(String, Option<String>, u64, String)>, Vec<(String, String)>) {
     let mut versions: BTreeMap<String, Vec<(Option<String>, u64, String)>> = BTreeMap::new();
     let mut out = Vec::new();
+    let mut again = Vec::new();
     let mut here: BTreeMap<String, Vec<(String, String, String)>> = BTreeMap::new();
     for (key, (value, c, w)) in older {
         let (file, entry) = (file_of(key), entry_of(key));
         let Some((store, path)) = locate(stores, file) else { continue };
         let Shape::Toml(rules) = store.shape else { continue };
         let next = rules.at(2);
-        match renamed(rules, next, entry) {
-            Renamed::Same => out.push((key.clone(), value.clone(), *c, w.clone())),
+        let renaming = renamed(rules, next, entry);
+        if matches!(renaming, Renamed::Same) {
+            out.push((key.clone(), value.clone(), *c, w.clone()));
+            continue;
+        }
+        let floor = floor_key(key);
+        let previous = memory.floors.get(&floor).cloned();
+        if previous.as_ref().is_some_and(|f| (*c, w.as_str()) <= (f.c, f.w.as_str())) {
+            continue;
+        }
+        let elements = here.entry(file.to_string()).or_insert_with(|| aligned(&std::fs::read_to_string(&path).unwrap_or_default(), rules, next));
+        match renaming {
+            Renamed::Same => {}
             Renamed::Element(keyed) => {
                 let (list, ident) = entry.rsplit_once(SEP).map_or(("", ""), |(list, element)| (list, element.trim_start_matches(MARK)));
-                let elements = here.entry(file.to_string()).or_insert_with(|| aligned(&std::fs::read_to_string(&path).unwrap_or_default(), rules, next));
-                // The element format 1 names so here: the one it stood for when
-                // several held that name (`Memory::aliases`), else the first, as
-                // format 1 writes it.
-                let alias = memory.aliases.get(key).cloned();
-                let mine = alias.as_ref().and_then(|alias| elements.iter().find(|(before, after, _)| before == entry && format!("{file}#{after}") == *alias)).or_else(|| elements.iter().find(|(before, _, _)| before == entry));
-                let kept = mine.and_then(|(_, _, text)| leaf_value(text).ok().as_ref().and_then(own_id).map(str::to_string));
-                let mut value = value.clone();
                 let given = value.as_deref().and_then(|v| leaf_value(v).ok()).map(|mut element| {
                     strip_local(&mut element, keyed.local);
                     element
                 });
-                let name = match (&given, own_id_of(given.as_ref()), kept) {
-                    (Some(_), Some(id), _) => id,
-                    // An older Sioul writing it without the id it has here (it
-                    // rewrites a month of sessions without them): the same
-                    // element, its id kept and put back in it.
-                    (Some(element), None, Some(id)) => {
-                        let mut element = element.clone();
-                        if let toml::Value::Table(table) = &mut element {
-                            table.insert("id".into(), toml::Value::String(id.clone()));
+                let fallback = stateless(keyed, ident);
+                // The element format 1 names so here (a session by its start,
+                // task and project), when none holds the id format 2 derives
+                // from that name: one whose id was kept (an older Sioul wrote it
+                // back without).
+                let derived_here = elements.iter().any(|(_, after, _)| element_name(after) == fallback);
+                let mine = (!keyed.by.is_empty() && !derived_here).then(|| elements.iter().find(|(before, _, _)| before == entry)).flatten();
+                let mut value = value.clone();
+                let name = match (&given, given.as_ref().and_then(own_id), mine) {
+                    (Some(_), Some(id), _) => id.to_string(),
+                    (Some(element), None, Some((_, after, text))) => {
+                        // Its id kept, and put back in it.
+                        if let Some(id) = leaf_value(text).ok().as_ref().and_then(own_id).map(str::to_string) {
+                            let mut element = element.clone();
+                            if let toml::Value::Table(table) = &mut element {
+                                table.insert("id".into(), toml::Value::String(id));
+                            }
+                            value = Some(leaf_text(&element));
                         }
-                        value = Some(leaf_text(&element));
-                        id
+                        element_name(after).to_string()
                     }
-                    (Some(element), None, None) => derived(keyed.list, &leaf_text(element), 0),
-                    (None, _, _) => mine.map_or_else(|| stateless(keyed, ident), |(_, after, _)| element_name(after).to_string()),
+                    (None, _, Some((_, after, _))) => element_name(after).to_string(),
+                    _ => fallback.clone(),
                 };
-                // Format 1 writes over the element it names so (a session by
-                // its start, task and project): the one here goes when format
-                // 2 names the new one otherwise.
-                if given.is_some()
-                    && !keyed.by.is_empty()
-                    && let Some((_, after, _)) = mine
-                    && element_name(after) != name
-                {
-                    versions.entry(format!("{file}#{after}")).or_default().push((None, *c, w.clone()));
+                // A line taken out as a version this device no longer holds under that name: passed over.
+                if given.is_none() && keyed.by.is_empty() {
+                    let key2 = format!("{file}#{list}{SEP}{MARK}{name}");
+                    let current = winners.get(&key2).map(|(v, _, _)| v.clone()).unwrap_or_else(|| elements.iter().find(|(_, after, _)| *after == format!("{list}{SEP}{MARK}{name}")).map(|(_, _, text)| text.clone()));
+                    if current.is_some_and(|text| without_id(&text) != without_id(ident)) {
+                        memory.floors.insert(floor, Floor { c: *c, w: w.clone(), held: None });
+                        continue;
+                    }
                 }
-                if alias.is_some() {
-                    memory.aliases.insert(key.clone(), format!("{file}#{list}{SEP}{MARK}{name}"));
+                memory.floors.insert(floor, Floor { c: *c, w: w.clone(), held: None });
+                if name != fallback {
+                    again.push((format!("{file}#{list}{SEP}{MARK}{name}"), format!("{file}#{list}{SEP}{MARK}{fallback}")));
                 }
                 versions.entry(format!("{file}#{list}{SEP}{MARK}{name}")).or_default().push((value, *c, w.clone()));
             }
             Renamed::Whole(keyed) => {
-                if memory.floors.get(key).is_some_and(|(fc, fw)| (*c, w.as_str()) <= (*fc, fw.as_str())) {
-                    continue;
-                }
-                memory.floors.insert(key.clone(), (*c, w.clone()));
                 let path: Vec<String> = entry.split(SEP).map(str::to_string).collect();
                 let prefix = format!("{file}#{}{SEP}{MARK}", list_name(keyed, &path));
                 let elements: Vec<toml::Value> = value
@@ -2452,14 +2584,15 @@ fn translate(stores: &[Store], older: &BTreeMap<String, (Option<String>, u64, St
                         element
                     })
                     .collect();
-                let listed: BTreeSet<String> = names(&elements, keyed).into_iter().map(|name| format!("{prefix}{name}")).collect();
+                let listed: BTreeSet<String> = names(&elements, keyed).into_iter().collect();
                 for (element, name) in elements.iter().zip(names(&elements, keyed)) {
                     versions.entry(format!("{prefix}{name}")).or_default().push((Some(leaf_text(element)), *c, w.clone()));
                 }
-                let known: BTreeSet<String> = memory.entries.iter().filter(|(k, known)| !known.h.is_empty() && k.starts_with(&prefix)).map(|(k, _)| k.clone()).chain(winners.iter().filter(|(k, (v, _, _))| v.is_some() && k.starts_with(&prefix)).map(|(k, _)| k.clone())).collect();
-                for gone in known.difference(&listed) {
-                    versions.entry(gone.clone()).or_default().push((None, *c, w.clone()));
+                // Of what the previous whole list held, what this one no longer holds.
+                for gone in previous.and_then(|f| f.held).unwrap_or_default().difference(&listed) {
+                    versions.entry(format!("{prefix}{gone}")).or_default().push((None, *c, w.clone()));
                 }
+                memory.floors.insert(floor, Floor { c: *c, w: w.clone(), held: Some(listed) });
             }
         }
     }
@@ -2468,83 +2601,382 @@ fn translate(stores: &[Store], older: &BTreeMap<String, (Option<String>, u64, St
         let held = list.iter().filter(|v| v.0.is_some()).max_by(|a, b| (a.1, &a.2).cmp(&(b.1, &b.2))).and_then(|v| v.0.clone());
         out.push((key, held, last.1, last.2.clone()));
     }
+    (out, again)
+}
+
+/// The files of the stores format 2 divides otherwise: their names in the
+/// records, where they are, their store.
+fn divided<'s>(stores: &'s [Store]) -> Vec<(String, PathBuf, &'s Store)> {
+    let mut out = Vec::new();
+    for store in stores.iter().filter(|s| matches!(s.shape, Shape::Toml(rules) if rules.next.is_some())) {
+        if store.folder {
+            let mut files = Vec::new();
+            list_files(&store.path, &store.path, store.skip, &mut files);
+            out.extend(files.into_iter().map(|(relative, path)| (format!("{}{relative}", store.name), path, store)));
+        } else if store.path.is_file() {
+            out.push((store.name.clone(), store.path.clone(), store));
+        }
+    }
     out
 }
 
-/// This device writes format 2 from now on (`FORMAT`), once and for all: its
-/// memory is said in format 2's names. Each entry of a file format 2 divides
-/// otherwise takes the name format 2 gives the element it named, as the
-/// file holds it now (`aligned`; the element it held last, when the file
-/// holds several of that name), else one derived from it (`stateless`);
-/// several entries for one element (its versions) make one, at the latest
-/// clock among them, holding the latest version held. A list sent whole
-/// takes one entry per element when the file still holds what was last sent
-/// (else they go out as changes made here), and its clock becomes that
-/// list's floor. These files' last looks are forgotten: read again, in
-/// format 2. Changes of theirs waiting to be written wait with the others'
-/// older records, translated at the next reading (`translate`).
-fn switch_format(memory: &mut Memory, stores: &[Store]) {
-    for store in stores {
-        let Shape::Toml(rules) = store.shape else { continue };
-        let Some(next) = rules.next else { continue };
-        let belongs = |file: &str| locate(stores, file).is_some_and(|(s, _)| s.name == store.name);
-        let files: BTreeSet<String> = memory.entries.keys().map(|key| file_of(key).to_string()).filter(|file| belongs(file)).collect();
-        for file in files {
-            let text = locate(stores, &file).and_then(|(_, path)| std::fs::read_to_string(path).ok()).unwrap_or_default();
-            let elements = aligned(&text, rules, next);
-            let before: BTreeMap<String, String> = toml_entries(&text, rules).unwrap_or_default().into_iter().collect();
-            let keys: Vec<String> = memory.entries.keys().filter(|key| file_of(key) == file).cloned().collect();
-            let mut grouped: BTreeMap<String, Vec<Known>> = BTreeMap::new();
-            for key in keys {
-                let entry = entry_of(&key).to_string();
-                let renaming = renamed(rules, next, &entry);
-                if matches!(renaming, Renamed::Same) {
-                    continue;
-                }
-                let Some(known) = memory.entries.remove(&key) else { continue };
-                match renaming {
-                    Renamed::Same => {}
-                    Renamed::Whole(_) => {
-                        memory.floors.insert(key.clone(), (known.c, known.w.clone()));
-                        if !known.h.is_empty() && before.get(&entry).is_some_and(|value| hash(value) == known.h) {
-                            for (_, after, text) in elements.iter().filter(|(before, _, _)| *before == entry) {
-                                grouped.entry(format!("{file}#{after}")).or_default().push(Known { c: known.c, w: known.w.clone(), h: hash(text), b: String::new() });
-                            }
-                        }
-                    }
-                    Renamed::Element(keyed) => {
-                        let mine: Vec<&(String, String, String)> = elements.iter().filter(|(before, _, _)| *before == entry).collect();
-                        let after = match mine.iter().find(|(_, _, text)| hash(text) == known.h).or(mine.first()) {
-                            Some((_, after, _)) => after.clone(),
-                            None => {
-                                let (list, ident) = entry.rsplit_once(SEP).map_or(("", ""), |(list, element)| (list, element.trim_start_matches(MARK)));
-                                format!("{list}{SEP}{MARK}{}", stateless(keyed, ident))
-                            }
-                        };
-                        // Several elements of that name here: the one it stood for, kept.
-                        if mine.len() > 1 {
-                            memory.aliases.insert(key.clone(), format!("{file}#{after}"));
-                        }
-                        grouped.entry(format!("{file}#{after}")).or_default().push(known);
-                    }
-                }
+/// This device takes format 2 (`FORMAT`), once and for all, before this
+/// exchange goes on:
+/// 1. every file format 2 divides otherwise must read whole: one that does
+///    not (half written, broken by hand), or of no bytes while it held
+///    entries, keeps this device on format 1 for now, said
+///    (`share-format-wait`), and the switch is tried at the next exchange;
+/// 2. what changed in them since the last look goes out first, in format 1
+///    and as format 1 names it (`flush`): a removal, a corrected session
+///    reach the devices that still read format 1;
+/// 3. each element of a list format 2 names by ids is given its id in the
+///    file, once, through the file's lock, the file as it was kept first
+///    among the earlier versions (`give_ids`); from then on every element
+///    carries an id of its own, which changing it never changes;
+/// 4. the memory is said in format 2's names, each renamed entry's last
+///    clock kept as its floor (`Floor`).
+///
+/// Returns whether it did. Stopped half way, the next exchange does it
+/// again from where the files and the memory are: the ids already written
+/// stay, what was sent is known.
+fn switch_format(sharing: &Sharing, memory: &mut Memory, stores: &[Store], now_ms: i64, problems: &mut Vec<String>) -> Result<bool, String> {
+    let files = divided(stores);
+    for (name, path, _) in &files {
+        let text = std::fs::read_to_string(path);
+        let held = memory.entries.iter().any(|(key, known)| file_of(key) == name && !known.h.is_empty());
+        let reads = match &text {
+            Ok(text) if text.trim().is_empty() => !held,
+            Ok(text) => text.parse::<toml::Table>().is_ok(),
+            Err(_) => false,
+        };
+        if !reads {
+            problems.push(format!("share-format-wait:{name}"));
+            return Ok(false);
+        }
+    }
+    if memory.joined {
+        flush(sharing, memory, stores, now_ms)?;
+    }
+    // Ids written first, file by file; the memory renamed only once all are:
+    // one that cannot be written (no room for the copy kept, a file being
+    // written) keeps this device on format 1 for now, said; tried again at the
+    // next exchange, the ids already written stay theirs.
+    let history = crate::history::root(sharing.memory);
+    let mut done = Vec::new();
+    for (name, path, store) in &files {
+        match give_ids(store, name, path, memory, &history, now_ms) {
+            Ok(mut placed) => {
+                placed.extend(whole_lists(store, name, path, memory));
+                done.push((name, *store, placed));
             }
-            for (key, versions) in grouped {
-                let Some(last) = versions.iter().max_by(|a, b| (a.c, &a.w).cmp(&(b.c, &b.w))).cloned() else { continue };
-                let held = versions.iter().filter(|v| !v.h.is_empty()).max_by(|a, b| (a.c, &a.w).cmp(&(b.c, &b.w))).map(|v| v.h.clone()).unwrap_or_default();
-                memory.entries.insert(key, Known { c: last.c, w: last.w, h: held, b: String::new() });
+            Err(e) => {
+                problems.push(e);
+                problems.push(format!("share-format-wait:{name}"));
+                return Ok(false);
             }
         }
-        memory.files.retain(|file, _| !belongs(file));
-        let pending: Vec<String> = memory.pending.keys().filter(|key| belongs(file_of(key))).cloned().collect();
-        for key in pending {
-            if let Some((value, c, w)) = memory.pending.remove(&key) {
-                wait(&mut memory.waiting, key, (value, c, w, 1));
-            }
+    }
+    for (name, store, placed) in done {
+        rename_memory(memory, store, name, &placed);
+    }
+    let belongs = |file: &str| locate(stores, file).is_some_and(|(store, _)| matches!(store.shape, Shape::Toml(rules) if rules.next.is_some()));
+    memory.files.retain(|file, _| !belongs(file));
+    // Changes of these files waiting to be written: with the others' format-1 records, translated.
+    let pending: Vec<String> = memory.pending.keys().filter(|key| belongs(file_of(key))).cloned().collect();
+    for key in pending {
+        if let Some((value, c, w)) = memory.pending.remove(&key) {
+            wait(&mut memory.waiting, key, (value, c, w, 1));
         }
     }
     memory.format = 2;
     memory.switch = false;
+    Ok(true)
+}
+
+/// What changed in the files format 2 divides otherwise since the last look,
+/// sent in format 1 (this device still writes it), as an exchange sends it.
+fn flush(sharing: &Sharing, memory: &mut Memory, stores: &[Store], now_ms: i64) -> Result<(), String> {
+    let subset: Vec<Store> = stores.iter().filter(|s| matches!(s.shape, Shape::Toml(rules) if rules.next.is_some())).cloned().collect();
+    let confirmed = BTreeSet::new();
+    let found = gather(&subset, &memory.files, &Look { reads: &|_| true, hurry: &|| false, confirmed: &confirmed, clock: clock_ms() });
+    let mut out: Vec<(String, Option<String>, u64, String)> = Vec::new();
+    for (key, h) in &found.hashes {
+        if memory.entries.get(key).is_some_and(|k| k.h == *h) {
+            continue;
+        }
+        let Some(value) = found.values.get(key).cloned().or_else(|| value_of(&subset, key)) else { continue };
+        let clock = memory.tick(found.changed.get(file_of(key)).copied().unwrap_or(now_ms).min(now_ms));
+        memory.entries.insert(key.clone(), Known { c: clock, w: sharing.computer.to_string(), h: h.clone(), b: String::new() });
+        out.push((key.clone(), Some(value), clock, String::new()));
+    }
+    let gone: Vec<String> = memory.entries.iter().filter(|(key, known)| !known.h.is_empty() && !found.hashes.contains_key(*key) && !found.is_unknown(key) && locate(&subset, file_of(key)).is_some()).map(|(key, _)| key.clone()).collect();
+    for key in gone {
+        let clock = memory.tick(now_ms);
+        memory.entries.insert(key.clone(), Known { c: clock, w: sharing.computer.to_string(), h: String::new(), b: String::new() });
+        out.push((key, None, clock, String::new()));
+    }
+    if memory.round == 0 {
+        memory.round = 1;
+    }
+    append(sharing, memory, &out)?;
+    for (file, stat) in found.files {
+        memory.files.insert(file, stat);
+    }
+    Ok(())
+}
+
+/// An element of a list format 2 names by ids, as `give_ids` left it: its
+/// entry in format 1 before, its entry in format 2, its value, and whether it
+/// stands for that format-1 entry (what format 1 last sent or received
+/// under it: the other devices hold it under that name, and give it the same id).
+struct Placed {
+    before: String,
+    after: String,
+    text: String,
+    stands: bool,
+    /// It holds exactly what was last sent or received: else (changed
+    /// meanwhile, or one of several named alike) it is sent again in format
+    /// 2, under its id, for every device to hold it as it is here.
+    exact: bool,
+}
+
+/// Each element of the lists of `path` that format 2 names by ids is given
+/// one in the file, once: the element that stands for a format-1 entry
+/// (what was last sent or received under it) the id derived from that entry
+/// (`derived`), as every device holding it derives it; another (a second
+/// session at one start, a second money line alike, a preset an older Sioul
+/// never carried) an id of its own, drawn at random, since it was never
+/// shared. Two elements holding one id (two devices changed one element
+/// apart while they wrote format 1): the one holding the greatest text keeps
+/// it, the other takes the id derived from its own format-1 entry. A
+/// preset's id is put where splits and lines named it by its place
+/// (`#3`). Written through the file's lock, the file as it was kept first
+/// (`history`). Returns every element of those lists.
+fn give_ids(store: &Store, file: &str, path: &Path, memory: &Memory, history: &Path, now_ms: i64) -> Result<Vec<Placed>, String> {
+    let Shape::Toml(rules) = store.shape else { return Ok(Vec::new()) };
+    let next = rules.at(2);
+    sioul_core::filelock::with_lock(path, || {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| format!("{}: {e}", path.display()))?;
+        let mut before: Vec<(Vec<String>, Vec<String>, Vec<(bool, bool)>)> = Vec::new();
+        let mut presets: BTreeMap<String, String> = BTreeMap::new();
+        let mut changed = false;
+        each_id_list(doc.as_table_mut(), Vec::new(), next, &mut |path, keyed, list| {
+            let normal = |t: &toml_edit::Table| leaf_value(&format!("[v]\n{t}")).ok();
+            let read: Vec<toml::Value> = list.iter().map(|t| normal(t).unwrap_or_else(|| toml::Value::Table(toml::Table::new()))).collect();
+            let (entries, _) = list_names(&read, path, rules, keyed);
+            let whole = keyed_at(rules, path).is_none();
+            // A whole list stands for its format-1 entry when the file holds what was last sent.
+            let whole_stands = whole && memory.entries.get(&format!("{file}#{}", entries.first().cloned().unwrap_or_default())).is_some_and(|k| !k.h.is_empty() && toml_entries(&text, rules).is_ok_and(|all| all.iter().any(|(e, v)| entries.first() == Some(e) && hash(v) == k.h)));
+            let texts: Vec<String> = read
+                .iter()
+                .map(|element| {
+                    let mut element = element.clone();
+                    strip_local(&mut element, keyed_at(rules, path).map_or(keyed.local, |b| b.local));
+                    leaf_text(&element)
+                })
+                .collect();
+            let mut ids: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+            for (i, element) in read.iter().enumerate() {
+                if let Some(id) = own_id(element) {
+                    ids.entry(id.to_string()).or_default().push(i);
+                }
+            }
+            // The element each format-1 entry stands for: its one element; of
+            // several format 1 named alike (two sessions an older Sioul noted
+            // at one start), the first when that entry's last word came from
+            // another device (format 1 wrote it there), the last when from
+            // this one (format 1 sent that one).
+            let mut alike: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+            for (i, entry) in entries.iter().enumerate() {
+                alike.entry(entry.as_str()).or_default().push(i);
+            }
+            let standing = |i: usize| -> (bool, bool) {
+                if whole {
+                    return (whole_stands, true);
+                }
+                let Some(known) = memory.entries.get(&format!("{file}#{}", entries[i])).filter(|k| !k.h.is_empty()) else { return (false, false) };
+                let at = &alike[entries[i].as_str()];
+                let chosen = if at.len() == 1 { at[0] } else if known.w == memory.computer { at[at.len() - 1] } else { at[0] };
+                (chosen == i, known.h == hash(&texts[i]))
+            };
+            let mut claimed: BTreeSet<String> = BTreeSet::new();
+            let mut stands = vec![(false, false); read.len()];
+            for (i, element) in read.iter().enumerate() {
+                let entry = &entries[i];
+                let (shared, exact) = standing(i);
+                let ident = element_name(entry).to_string();
+                let new_id = match own_id(element) {
+                    Some(id) if ids.get(id).is_some_and(|at| at.len() == 1) => {
+                        stands[i] = (shared, exact);
+                        None
+                    }
+                    Some(id) => {
+                        let at = &ids[id];
+                        let keeper = at.iter().copied().max_by(|a, b| texts[*a].cmp(&texts[*b]).then(b.cmp(a))).unwrap_or(i);
+                        stands[i] = (shared, exact);
+                        (keeper != i).then(|| derived(keyed.list, if whole { &texts[i] } else { &ident }))
+                    }
+                    None => {
+                        let what = if whole { texts[i].clone() } else { ident.clone() };
+                        if (shared || !memory.joined) && claimed.insert(what.clone()) {
+                            stands[i] = (shared, exact);
+                            Some(derived(keyed.list, &what))
+                        } else {
+                            Some(sioul_core::ids::new())
+                        }
+                    }
+                };
+                if let Some(id) = new_id {
+                    if keyed.list == "preset" && path.len() == 1 {
+                        presets.insert(format!("#{i}"), id.clone());
+                    }
+                    if let Some(table) = list.get_mut(i) {
+                        table.insert("id", toml_edit::value(id));
+                        changed = true;
+                    }
+                }
+            }
+            before.push((path.to_vec(), entries, stands));
+        });
+        // Splits and lines that named a preset by its place name it by its id.
+        if !presets.is_empty() {
+            for list in ["split", "line"] {
+                if let Some(tables) = doc.get_mut(list).and_then(toml_edit::Item::as_array_of_tables_mut) {
+                    for table in tables.iter_mut() {
+                        if let Some(id) = table.get("preset").and_then(toml_edit::Item::as_str).and_then(|place| presets.get(place)).cloned() {
+                            table.insert("preset", toml_edit::value(id));
+                        }
+                    }
+                }
+            }
+        }
+        let written = doc.to_string();
+        if changed {
+            crate::history::keep(history, store.part, file, path, now_ms)?;
+            write_atomically(path, written.as_bytes())?;
+        }
+        // Every element as format 2 now reads it, beside its entry in format 1 before.
+        let now: toml::Table = written.parse().map_err(|e: toml::de::Error| format!("{}: {e}", path.display()))?;
+        let mut placed = Vec::new();
+        for (list_path, entries, stands) in before {
+            let Some(keyed) = keyed_at(next, &list_path) else { continue };
+            let Some(elements) = array_at(&now, &list_path) else { continue };
+            let (_, after) = list_names(elements, &list_path, rules, keyed);
+            let list = list_name(keyed, &list_path);
+            for (((entry, (stands, exact)), name), element) in entries.into_iter().zip(stands).zip(names(&after, keyed)).zip(&after) {
+                placed.push(Placed { before: entry, after: format!("{list}{SEP}{MARK}{name}"), text: leaf_text(element), stands, exact });
+            }
+        }
+        Ok(placed)
+    })
+}
+
+/// The array at `path` in a table.
+fn array_at<'t>(table: &'t toml::Table, path: &[String]) -> Option<&'t Vec<toml::Value>> {
+    let (last, within) = path.split_last()?;
+    let mut at = table;
+    for part in within {
+        at = at.get(part)?.as_table()?;
+    }
+    at.get(last)?.as_array()
+}
+
+/// The elements of the lists of words and dates format 1 sends whole (format
+/// 2 names them by themselves, no id to give): each stands for its whole
+/// list's entry when the file holds what was last sent under it.
+fn whole_lists(store: &Store, file: &str, path: &Path, memory: &Memory) -> Vec<Placed> {
+    let Shape::Toml(rules) = store.shape else { return Vec::new() };
+    let next = rules.at(2);
+    let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
+    let sent: BTreeMap<String, String> = toml_entries(&text, rules).unwrap_or_default().into_iter().map(|(entry, value)| (entry, hash(&value))).collect();
+    aligned(&text, rules, next)
+        .into_iter()
+        .filter(|(before, after, _)| matches!(renamed(rules, next, before), Renamed::Whole(keyed) if !keyed.ids) && !after.is_empty())
+        .map(|(before, after, text)| {
+            let stands = memory.entries.get(&format!("{file}#{before}")).is_some_and(|known| !known.h.is_empty() && sent.get(&before) == Some(&known.h));
+            Placed { before, after, text, stands, exact: true }
+        })
+        .collect()
+}
+
+/// Each list of tables in `table` that format 2 names by ids (`Keyed::ids`), with its path.
+fn each_id_list(table: &mut toml_edit::Table, path: Vec<String>, next: &Rules, f: &mut dyn FnMut(&[String], &Keyed, &mut toml_edit::ArrayOfTables)) {
+    let keys: Vec<String> = table.iter().map(|(key, _)| key.to_string()).collect();
+    for key in keys {
+        let mut deeper = path.clone();
+        deeper.push(key.clone());
+        if next.local.iter().any(|rule| matches_rule(&deeper, rule)) {
+            continue;
+        }
+        let Some(item) = table.get_mut(&key) else { continue };
+        match item {
+            toml_edit::Item::ArrayOfTables(list) => {
+                if let Some(keyed) = keyed_at(next, &deeper).filter(|k| k.ids) {
+                    f(&deeper, keyed, list);
+                }
+            }
+            toml_edit::Item::Table(inner) if !next.whole.iter().any(|rule| matches_rule(&deeper, rule)) => each_id_list(inner, deeper, next, f),
+            _ => {}
+        }
+    }
+}
+
+/// The memory of one file said in format 2's names, once its elements carry
+/// their ids (`give_ids`): the entry each element stands for becomes its
+/// entry in format 2 (its value now holding the id: its hash too), at the
+/// same clock; a list format 1 sent whole becomes an entry per element, its
+/// clock and what it held kept as its floor; an entry for an element no
+/// longer here (taken out) is named as `stateless` names it. Several of
+/// format 1's entries for one element (its versions) make one: the latest
+/// clock, the version held. Each renamed entry keeps its clock as its floor.
+fn rename_memory(memory: &mut Memory, store: &Store, file: &str, placed: &[Placed]) {
+    let Shape::Toml(rules) = store.shape else { return };
+    let next = rules.at(2);
+    let mut grouped: BTreeMap<String, Vec<Known>> = BTreeMap::new();
+    let mut wholes: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for element in placed {
+        let before = format!("{file}#{}", element.before);
+        if let Renamed::Whole(_) = renamed(rules, next, &element.before) {
+            wholes.entry(before.clone()).or_default().insert(element_name(&element.after).to_string());
+        }
+        if !element.stands {
+            continue;
+        }
+        if let Some(known) = memory.entries.get(&before) {
+            // Not exactly what was shared: a hash nothing holds, so that the next look sends it.
+            let h = if element.exact { hash(&element.text) } else { "?".to_string() };
+            grouped.entry(format!("{file}#{}", element.after)).or_default().push(Known { c: known.c, w: known.w.clone(), h, b: String::new() });
+        }
+    }
+    let keys: Vec<String> = memory.entries.keys().filter(|key| file_of(key) == file).cloned().collect();
+    for key in keys {
+        let entry = entry_of(&key).to_string();
+        let renaming = renamed(rules, next, &entry);
+        if matches!(renaming, Renamed::Same) {
+            continue;
+        }
+        let Some(known) = memory.entries.remove(&key) else { continue };
+        match renaming {
+            Renamed::Same => {}
+            Renamed::Whole(_) => {
+                let held = wholes.get(&key).cloned().filter(|_| !known.h.is_empty());
+                memory.floors.insert(floor_key(&key), Floor { c: known.c, w: known.w.clone(), held: Some(held.unwrap_or_default()) });
+            }
+            Renamed::Element(keyed) => {
+                memory.floors.insert(floor_key(&key), Floor { c: known.c, w: known.w.clone(), held: None });
+                if !placed.iter().any(|p| p.stands && format!("{file}#{}", p.before) == key) {
+                    let (list, ident) = entry.rsplit_once(SEP).map_or(("", ""), |(list, element)| (list, element.trim_start_matches(MARK)));
+                    grouped.entry(format!("{file}#{list}{SEP}{MARK}{}", stateless(keyed, ident))).or_default().push(Known { h: String::new(), ..known });
+                }
+            }
+        }
+    }
+    for (key, versions) in grouped {
+        let Some(last) = versions.iter().max_by(|a, b| (a.c, &a.w).cmp(&(b.c, &b.w))).cloned() else { continue };
+        let held = versions.iter().filter(|v| !v.h.is_empty()).max_by(|a, b| (a.c, &a.w).cmp(&(b.c, &b.w))).map(|v| v.h.clone()).unwrap_or_default();
+        memory.entries.insert(key, Known { c: last.c, w: last.w, h: held, b: String::new() });
+    }
 }
 
 // ---------------------------------------------------------------- exchange
@@ -2661,8 +3093,12 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // names, once (`switch_format`). Its files are read and written as its
     // format divides them; an older format's records are translated
     // (`translate`).
+    // Parts met in a newer format that this Sioul now reads (it was updated),
+    // or whose writers no longer count: no longer held (`release_newer`).
+    memory.newer.retain(|part, newer| newer.format > part_format(part));
+    release_newer(sharing, &mut memory, now_ms);
     if memory.format < 2 && (memory.switch || format_open(sharing, &memory, now_ms)) {
-        switch_format(&mut memory, stores);
+        switch_format(sharing, &mut memory, stores, now_ms, &mut outcome.problems)?;
     }
     let originals = stores;
     let shaped_stores = shaped(stores, memory.format);
@@ -2762,7 +3198,17 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let mut older: Vec<String> = Vec::new();
     if memory.joined {
         for (key, h) in &found.hashes {
-            if memory.entries.get(key).is_some_and(|k| k.h == *h) || joins(key) || holds(key) {
+            if memory.entries.get(key).is_some_and(|k| k.h == *h) || joins(key) {
+                memory.held.remove(key);
+                continue;
+            }
+            // Found while its part is held: when it was found is kept; it goes
+            // once the part is no longer held, at that time (`Memory::held`).
+            if holds(key) {
+                if memory.held.get(key).is_none_or(|(_, held)| held != h) {
+                    let at = memory.tick(found.changed.get(file_of(key)).copied().unwrap_or(now_ms).min(now_ms));
+                    memory.held.insert(key.clone(), (at, h.clone()));
+                }
                 continue;
             }
             if key.starts_with(FILES) {
@@ -2784,7 +3230,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 continue;
             }
             let base = base_of(&memory, key);
-            let clock = memory.tick(found.changed.get(file_of(key)).copied().unwrap_or(now_ms).min(now_ms));
+            let clock = match memory.held.remove(key) {
+                Some((at, held)) if held == *h => at,
+                _ => memory.tick(found.changed.get(file_of(key)).copied().unwrap_or(now_ms).min(now_ms)),
+            };
             memory.entries.insert(key.clone(), Known { c: clock, w: sharing.computer.to_string(), h: h.clone(), b: base.clone() });
             out.push((key.clone(), Some(value), clock, base));
         }
@@ -2811,13 +3260,23 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         let gone: Vec<String> = memory
             .entries
             .iter()
-            .filter(|(key, known)| !known.h.is_empty() && !found.hashes.contains_key(*key) && !found.is_unknown(key) && !held_gone.contains(file_of(key)) && !holds(key))
+            .filter(|(key, known)| !known.h.is_empty() && !found.hashes.contains_key(*key) && !found.is_unknown(key) && !held_gone.contains(file_of(key)))
             .filter(|(key, _)| locate(stores, file_of(key)).is_some_and(|(store, _)| reads(store)) && !waiting.contains(file_of(key)))
             .map(|(key, _)| key.clone())
             .collect();
         for key in gone {
+            if holds(&key) {
+                if memory.held.get(&key).is_none_or(|(_, held)| !held.is_empty()) {
+                    let at = memory.tick(now_ms);
+                    memory.held.insert(key.clone(), (at, String::new()));
+                }
+                continue;
+            }
             let base = base_of(&memory, &key);
-            let clock = memory.tick(now_ms);
+            let clock = match memory.held.remove(&key) {
+                Some((at, held)) if held.is_empty() => at,
+                _ => memory.tick(now_ms),
+            };
             memory.entries.insert(key.clone(), Known { c: clock, w: sharing.computer.to_string(), h: String::new(), b: base.clone() });
             out.push((key, None, clock, base));
         }
@@ -2857,8 +3316,6 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             winners.insert(key, (value, c, w));
         }
     }
-    // A part no longer newer than this Sioul (it was updated): said no more.
-    memory.newer.retain(|part, (f, _)| *f > part_format(part));
     // The build each computer's lines were written by, as its batches say: for `share-newer`.
     let mut builds: BTreeMap<String, String> = BTreeMap::new();
     // For files sealed apart: the content each change replaces where it was
@@ -2950,7 +3407,14 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 }
                 if own {
                     // Only the entries of the files rebuilt; the rest is this computer's as it is.
-                    if rebuilt(file_of(&change.k)) && !off(&change.k) && memory.format >= 2 && change.f < 2 && divided_otherwise(&change.k) {
+                    if rebuilt(file_of(&change.k)) && !off(&change.k) && memory.format < 2 && change.f >= 2 {
+                        // Its own format 2, met while its memory says format 1 (a
+                        // memory put back from before its switch): never written
+                        // with format 1's rules; it takes format 2 again from its
+                        // next exchange, and the record waits until then.
+                        memory.switch = true;
+                        wait(&mut memory.waiting, change.k, (change.v, record.c, computer.clone(), change.f));
+                    } else if rebuilt(file_of(&change.k)) && !off(&change.k) && memory.format >= 2 && change.f < 2 && divided_otherwise(&change.k) {
                         later(&mut older_format, change.k, change.v, record.c, computer);
                     } else if rebuilt(file_of(&change.k)) && !off(&change.k) && newer(record.c, computer, winners.get(&change.k).map(|(_, c, w)| (*c, w.as_str()))) && memory.entries.get(&change.k).is_none_or(|k| (record.c, computer.as_str()) > (k.c, k.w.as_str())) {
                         bases.insert(change.k.clone(), change.b);
@@ -2977,6 +3441,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     }
                 }
                 memory.clock = memory.clock.max(record.c);
+                // Heard of now, by a sealed record (`present`).
+                let heard_at = (record.c >> 16) as i64;
+                if memory.heard_at.get(computer).is_none_or(|at| *at < heard_at) {
+                    memory.heard_at.insert(computer.clone(), heard_at);
+                }
                 if off(&change.k) {
                     continue;
                 }
@@ -2987,10 +3456,19 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 if let Some(part) = known_part(file_of(&change.k))
                     && format > part_format(part)
                 {
+                    // Of writers that no longer count, released: passed over.
+                    if memory.released.get(part).is_some_and(|c| record.c <= *c) {
+                        continue;
+                    }
                     if !memory.newer.contains_key(part) {
                         outcome.problems.push(format!("share-newer:{part}"));
                     }
-                    memory.newer.insert(part.to_string(), (format, builds.get(computer).cloned().unwrap_or_default()));
+                    let newer = memory.newer.entry(part.to_string()).or_default();
+                    newer.format = newer.format.max(format);
+                    if let Some(build) = builds.get(computer) {
+                        newer.build = build.clone();
+                    }
+                    newer.writers.insert(computer.clone());
                     wait(&mut memory.waiting, change.k, (change.v, record.c, computer.clone(), format));
                     continue;
                 }
@@ -3024,8 +3502,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     }
 
     // An older format's changes, in format 2's names (`translate`), then as any other.
+    let mut again: Vec<(String, String)> = Vec::new();
     if !older_format.is_empty() {
-        for (key, value, c, w) in translate(originals, &older_format, &mut memory, &winners) {
+        let (translated, named_here) = translate(originals, &older_format, &mut memory, &winners);
+        again = named_here;
+        for (key, value, c, w) in translated {
             if newer(c, &w, memory.entries.get(&key).map(|k| (k.c, k.w.as_str()))) && newer(c, &w, winners.get(&key).map(|(_, c, w)| (*c, w.as_str()))) {
                 bases.remove(&key);
                 winners.insert(key, (value, c, w));
@@ -3166,6 +3647,21 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 memory.sealed.named.insert(key.clone(), contents);
             }
             memory.pending.insert(key, (value, clock, computer));
+        }
+    }
+    // A session whose id was kept here as format 1 changed it (`translate`):
+    // sent again from here, under that id, and the name a device holding none
+    // of it would give taken out, so that every device, one joining later
+    // too, holds it once.
+    for (name, fallback) in again.into_iter().filter(|(name, _)| written_keys.contains(name)) {
+        let value = value_of(stores, &name);
+        let clock = memory.tick(now_ms);
+        memory.entries.insert(name.clone(), Known { c: clock, w: sharing.computer.to_string(), h: value.as_deref().map(hash).unwrap_or_default(), b: String::new() });
+        out.push((name.clone(), value, clock, String::new()));
+        if fallback != name {
+            let clock = memory.tick(now_ms);
+            memory.entries.insert(fallback.clone(), Known { c: clock, w: sharing.computer.to_string(), h: String::new(), b: String::new() });
+            out.push((fallback, None, clock, String::new()));
         }
     }
     // What the next look compares with: the files as found, those written
@@ -3312,7 +3808,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     memory.sealed.failing.retain(|key, _| memory.pending.contains_key(key));
     write_seen(sharing, &memory, &all, now_ms);
     // What the devices' registry says of this export (`devices`).
-    outcome.looked = clock;
+    // The doses' part held (a newer format met): this device's answers wait
+    // here, unsent, so its export claims nothing (`Entry::exported`): the
+    // others then doubt rather than know (docs/health.md, "Knowing").
+    outcome.looked = if memory.newer.contains_key("health") { 0 } else { clock };
     outcome.wrote = memory.joined.then_some((memory.round.max(1), memory.seq));
     remove_old_rounds(sharing, &memory, now_ms);
     memory.save(sharing.memory)?;
@@ -3977,7 +4476,15 @@ pub fn traffic(memory: &Path, computer: &str) -> BTreeMap<String, (i64, i64)> {
 
 pub fn heard(memory: &Path, computer: &str) -> Heard {
     let memory = Memory::load(memory, computer);
-    Heard { read: memory.read_n, broken: memory.broken }
+    let mut read = memory.read_n;
+    // A device whose doses' records wait here, in a format this Sioul does
+    // not read: not all it wrote is known here, whatever was read of its file.
+    for (key, (_, _, writer, f)) in &memory.waiting {
+        if known_part(file_of(key)) == Some("health") && *f > part_format("health") {
+            read.remove(writer);
+        }
+    }
+    Heard { read, broken: memory.broken }
 }
 
 /// The entries of `files` read again from every computer's records, this
@@ -7184,6 +7691,10 @@ mod tests {
 #[cfg(test)]
 #[path = "share_format_tests.rs"]
 mod format_tests;
+
+#[cfg(test)]
+#[path = "share_switch_tests.rs"]
+mod switch_tests;
 
 #[cfg(test)]
 mod probe {

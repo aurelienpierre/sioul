@@ -406,14 +406,17 @@ fn two_devices(name: &str) -> (PathBuf, PathBuf, [u8; 32], Computer, Computer, P
 /// after going through another device and back, and a third device joining
 /// reads two: each has its own id since it was made (`sioul_core::ids`). In
 /// format 1 too, the ids telling them apart. Before (ed7c3f1), lines had no
-/// id, were named by what they hold, and became one.
+/// id, were named by what they hold, and became one: two such lines made
+/// before the switch reach the other device once the device holding them
+/// takes format 2 and gives the second an id of its own.
 #[test]
 fn two_identical_lines_made_on_one_device_stay_two() {
     for format in [1, 2] {
         let (base, folder, key, desk, phone, desk_notes, phone_notes) = two_devices(&format!("identical-lines-{format}"));
-        std::fs::write(ledger_path(&desk_notes), "[[budget]]\nid = \"home\"\ntitle = \"Home\"\nperiod = \"month\"\ntarget = 0\n").unwrap();
+        std::fs::write(ledger_path(&desk_notes), "[[budget]]\nid = \"home\"\ntitle = \"Home\"\nperiod = \"month\"\ntarget = 0\n\n[[line]]\nbudget = \"home\"\ndate = 2026-09-06\namount = -3\nlabel = \"Journal\"\n\n[[line]]\nbudget = \"home\"\ndate = 2026-09-06\namount = -3\nlabel = \"Journal\"\n").unwrap();
         let both = [(&desk, desk_notes.as_path()), (&phone, phone_notes.as_path())];
         let mut now = rounds(&folder, &key, &both, NOW, 1);
+        assert_eq!(count(&lines(&phone_notes), "Journal"), 1, "format 1 named them by what they hold: one");
         if format == 2 {
             now = into_format_2(&folder, &key, &both, now);
         }
@@ -426,18 +429,15 @@ fn two_identical_lines_made_on_one_device_stay_two() {
         sioul_core::budget::record_line(&ledger_path(&phone_notes), &fuel, "by hand").unwrap();
         now = rounds(&folder, &key, &both, now, 2);
         for notes in [&desk_notes, &phone_notes] {
-            assert_eq!(lines(notes), [("Boulangerie".to_string(), -1200), ("Boulangerie".to_string(), -1200), ("Essence".to_string(), -6000)], "format {format}, {}", notes.display());
+            let held: Vec<(String, i64)> = lines(notes).into_iter().filter(|(label, _)| label != "Journal").collect();
+            assert_eq!(held, [("Boulangerie".to_string(), -1200), ("Boulangerie".to_string(), -1200), ("Essence".to_string(), -6000)], "format {format}, {}", notes.display());
         }
-        let ids: BTreeSet<String> = list_of(&std::fs::read_to_string(ledger_path(&phone_notes)).unwrap(), "line").iter().filter_map(|l| l.get("id").and_then(toml::Value::as_str).map(str::to_string)).collect();
+        let ids: BTreeSet<String> = list_of(&std::fs::read_to_string(ledger_path(&phone_notes)).unwrap(), "line").iter().filter(|l| l.get("label").and_then(toml::Value::as_str) != Some("Journal")).filter_map(|l| l.get("id").and_then(toml::Value::as_str).map(str::to_string)).collect();
         assert_eq!(ids.len(), 3, "each line its own id");
-        // Two lines the same without ids (written by hand, or by Sioul up to
-        // 0.0.4, which gave lines none): format 1 names them by what they
-        // hold, and the other device gets one, as before; format 2 names the
-        // second apart, and both travel.
-        let mut ledger = std::fs::read_to_string(ledger_path(&desk_notes)).unwrap();
-        ledger.push_str("\n[[line]]\nbudget = \"home\"\ndate = 2026-09-06\namount = -3\nlabel = \"Journal\"\n\n[[line]]\nbudget = \"home\"\ndate = 2026-09-06\namount = -3\nlabel = \"Journal\"\n");
-        std::fs::write(ledger_path(&desk_notes), ledger).unwrap();
-        now = rounds(&folder, &key, &both, now, 2);
+        // Two lines the same without ids, written by Sioul up to 0.0.4 (which
+        // gave lines none) before the devices switched: format 1 named them by
+        // what they hold, and the other device got one; switching, the desk
+        // gives the second an id of its own, and it travels.
         let without_ids = if format == 2 { 2 } else { 1 };
         assert_eq!(count(&lines(&phone_notes), "Journal"), without_ids, "format {format}: {:?}", lines(&phone_notes));
         assert_eq!(count(&lines(&desk_notes), "Journal"), 2);
@@ -539,7 +539,7 @@ fn sites_and_words_changed_on_two_devices_at_once_all_hold() {
 // ---------------------------------------------------------------- an older sharing
 
 /// A stage of the fixtures, copied into `base`, the memories saying where they are now.
-fn from_fixtures(stage: &str, base: &Path) {
+pub(super) fn from_fixtures(stage: &str, base: &Path) {
     let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("format-1").join(stage);
     copy_dir(&from, base);
     for device in ["desk", "phone"] {
@@ -614,12 +614,14 @@ fn the_desk_after_the_phone(desk: &Computer, notes: &Path) {
 /// Sioul on the desk while the phone still runs 0.0.3: the desk writes
 /// format 1 (the phone's entry says no format), its memory read as it is,
 /// nothing sent again; the phone's later changes come in as 0.0.3 would
-/// write them. The phone updated, both write format 2: the desk's memory is
-/// said in format 2's names once, and the only changes it then sends are
-/// those format 1 had lost (a second line the same, a second preset without
-/// an id, a session noted at the same start as another); a second switch
-/// changes nothing. The phone, updated too, reads them: nothing doubled,
-/// nothing lost. A device joining afterwards reads the same.
+/// write them. The phone updated, both write format 2: each element of the
+/// desk's lists is given its id in the file, its memory is said in format
+/// 2's names once, and the only changes it then sends are those format 1 had
+/// lost (a second line the same, a second preset without an id, a session
+/// noted at the same start as another) and one session format 1 left unsure;
+/// the next exchanges send nothing. The phone, updated too, reads them:
+/// nothing doubled, nothing lost, the same sessions as the desk. A device
+/// joining afterwards reads the same.
 #[test]
 fn an_older_sharing_is_read_then_upgraded_without_doubling_or_losing() {
     let base = scratch("upgrade-later");
@@ -642,8 +644,13 @@ fn an_older_sharing_is_read_then_upgraded_without_doubling_or_losing() {
     announce(&folder, &key, &phone, 2, NOW + 25 * MINUTE);
     let switched = desk.exchange_notes(&folder, &key, NOW + 30 * MINUTE, &desk_notes);
     assert_eq!(writes(&desk), 2);
-    // What format 1 lost goes out: the second Boulangerie, the second preset, the second garden session at one start.
-    assert_eq!(switched.sent, 3, "{switched:?}");
+    // What format 1 lost goes out, each with an id of its own: the second
+    // Boulangerie, the second preset, the second garden session at one
+    // start; and the garden session that stands for that start is sent again
+    // under its id (format 1 wrote the phone's version over the first of the
+    // two, and kept the last's hash: what the phone holds is not known
+    // exactly here).
+    assert_eq!(switched.sent, 4, "{switched:?}");
     the_desk_after_the_phone(&desk, &desk_notes);
     // Once only: the next exchanges send nothing, and the memory says format 2.
     for minute in [31, 32] {
@@ -659,8 +666,8 @@ fn an_older_sharing_is_read_then_upgraded_without_doubling_or_losing() {
     assert_eq!(list_of(&std::fs::read_to_string(ledger_path(&phone_notes)).unwrap(), "preset").len(), 2, "the preset 0.0.3 lost comes");
     assert_eq!(sites(&phone), ["caf", "impots", "poste"]);
     assert_eq!(words(&phone, "add"), ["Bestätigungscode", "Sicherheitscode"]);
-    let on_phone = sessions(&phone);
-    assert_eq!(on_phone.iter().filter(|(what, start, _)| what == "garden" && *start == 1_789_912_800).count(), 1, "{on_phone:?}");
+    // Both garden sessions noted at one start: the one format 1 lost reaches the phone.
+    assert_eq!(sessions(&phone), sessions(&desk));
     // A device joining now reads the same lines.
     let laptop = Computer::new(&base, "laptop");
     let laptop_notes = base.join("laptop-notes");
@@ -796,7 +803,7 @@ fn format_2_waits_for_every_device() {
     assert_eq!(writes(&desk), 2, "every device reads it, all it wrote read here");
     // One that left, or silent for 180 days, holds nothing back.
     let gone = uuid::Uuid::new_v4().to_string();
-    let holding = |at: i64| format_holders(&folder, &key, &desk.id, &Memory::load(&desk.memory, &desk.id).read_n, at).into_iter().filter(|(id, _)| *id == gone).count();
+    let holding = |at: i64| format_holders(&folder, &key, &desk.id, &Memory::load(&desk.memory, &desk.id), at).into_iter().filter(|(id, _)| *id == gone).count();
     let gone_entry = |left: bool| crate::devices::Entry { id: gone.clone(), version: "0.0.3".into(), working: !left, left, started: (NOW + 5 * MINUTE) / 1000, ..crate::devices::Entry::default() };
     crate::devices::publish(&folder, &key, &gone_entry(false)).unwrap();
     assert_eq!(holding(NOW + 5 * MINUTE), 1, "its Sioul says no format");

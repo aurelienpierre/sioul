@@ -1993,6 +1993,8 @@ pub(crate) fn device_off(id: &str, off: bool) -> String {
 
 /// A device silent for a week, forgotten: not listed until it says anything newer.
 pub(crate) fn device_forget(id: &str) -> String {
+    // Forgotten by the sharing too: it no longer holds its newer form back (docs/database.md).
+    crate::share::forget_device(id);
     mark_device(id, |seen, mark| seen.forgotten = Some(mark))
 }
 
