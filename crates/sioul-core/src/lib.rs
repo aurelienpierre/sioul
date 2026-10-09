@@ -107,6 +107,7 @@
 //! ## Time and money
 //!
 //! - [`timelog`]: time spent on tasks, and the focus session running now.
+//! - [`ids`]: the ids given to money lines, splits, presets and sessions when they are made, by which your devices merge them.
 //! - [`timereport`]: time spent, as the Time page and a project's page show it.
 //! - [`invoice`]: invoices for work done for someone, from a project's billable time.
 //! - [`budget`]: budgets, reserves, and the lines between them.
@@ -192,6 +193,7 @@ pub mod handed;
 pub mod headers;
 pub mod health;
 pub mod i18n;
+pub mod ids;
 pub mod invoice;
 pub mod lines;
 pub mod letters;

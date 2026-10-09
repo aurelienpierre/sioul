@@ -40,6 +40,11 @@ pub struct Entry {
     pub version: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub commit: String,
+    /// The format of what travels that its Sioul reads and writes
+    /// (`share::FORMAT`); 0 from an older Sioul, which reads format 1 only.
+    /// The sharing writes format 2 once every device says 2 (`share::format_holders`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub format: u32,
     /// Its last start: Sioul opened; on a phone, Sioul back on the screen, or
     /// one of its reminders handled while it was not.
     #[serde(default)]
@@ -75,6 +80,10 @@ pub struct Entry {
     /// Its size changed at each writing (`share::pad_for`): read by nobody.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub pad: String,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 pub const PHONE: &str = "phone";

@@ -1,0 +1,23 @@
+[[session]]
+done = true
+minutes = 30
+start = 1789900000
+task = "task-letters"
+
+[[session]]
+done = false
+minutes = 50
+project = "garden"
+start = 1789912800
+
+[[session]]
+done = true
+minutes = 35
+project = "admin"
+start = 1789920000
+
+[[session]]
+done = false
+minutes = 15
+project = "garden"
+start = 1789999200

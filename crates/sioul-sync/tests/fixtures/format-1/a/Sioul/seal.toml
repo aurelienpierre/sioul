@@ -1,0 +1,6 @@
+# Sioul: how your devices' shared records are sealed (docs/database.md).
+version = 1
+salt = "4mDIacsNTB3L++8C+Nydqw=="
+memory_kib = 64
+passes = 1
+check = "XnvaSIc9gXa6+qlD42rvvNONTdO59RN/knyy1MmPdhhb473xvgrLdCCfPf7K7q5CdCTj+NbZIlJuIaoUgvDFdeWAYnaI9w=="

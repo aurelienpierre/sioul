@@ -516,6 +516,11 @@ pub fn save_split(path: &std::path::Path, place: Option<usize>, edit: &SplitEdit
     }
     let mut doc = open(path)?;
     let all = tables(&mut doc, "split")?;
+    // Its id (`ids`), by which your devices merge it: kept when the rule is
+    // changed, given when it is made (or changed, made by an older Sioul).
+    let id = place.and_then(|at| all.get(at)).and_then(|old| old.get("id").and_then(toml_edit::Item::as_str).map(str::to_string)).unwrap_or_else(crate::ids::new);
+    let mut table = table;
+    table.insert("id", value(id));
     match place {
         Some(at) if at < all.len() => *all.get_mut(at).ok_or("no such rule")? = table,
         Some(_) => return Err("no such rule".into()),

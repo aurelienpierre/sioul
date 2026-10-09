@@ -994,6 +994,9 @@ pub fn record_line(path: &Path, line: &Line, origin: &str) -> Result<(), String>
     let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
     let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
     let mut table = Table::new();
+    // Its own id, given now (`ids`): your devices merge each line by it, so
+    // that two lines the same stay two (docs/database.md, "The format of what travels").
+    table["id"] = value(crate::ids::new());
     table["budget"] = value(line.budget.as_str());
     let date = toml_edit::Date { year: line.date.year() as u16, month: line.date.month() as u8, day: line.date.day() as u8 };
     table["date"] = value(toml_edit::Datetime { date: Some(date), time: None, offset: None });
@@ -1231,6 +1234,8 @@ pub fn record_preset(path: &Path, preset: &PresetEdit, origin: &str) -> Result<(
         Some(toml_edit::Datetime { date: Some(toml_edit::Date { year: d.year() as u16, month: d.month() as u8, day: d.day() as u8 }), time: None, offset: None })
     };
     let mut table = Table::new();
+    // Its own id (`ids`): lines and rules name it by it, and your devices merge it by it.
+    table["id"] = value(crate::ids::new());
     table["budget"] = value(preset.budget.as_str());
     table["label"] = value(preset.label.trim());
     table["amount"] = value((preset.amount * 100.0).round() / 100.0);

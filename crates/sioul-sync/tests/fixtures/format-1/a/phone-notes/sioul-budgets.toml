@@ -1,0 +1,61 @@
+[[budget]]
+id = "home"
+period = "month"
+target = 0
+title = "Home"
+
+[[cover]]
+budget = "home"
+reserve = "savings"
+
+[[line]]
+amount = -12
+budget = "home"
+date = 2026-09-05
+label = "Boulangerie"
+
+[[line]]
+amount = -42
+budget = "home"
+date = 2026-09-03
+label = "Pharmacie"
+
+[[line]]
+amount = -60
+budget = "home"
+date = 2026-09-10
+id = "aaaaaaaa-0000-4000-8000-000000000001"
+label = "Essence"
+
+[[line]]
+amount = -8
+budget = "home"
+date = 2026-09-12
+id = "bbbbbbbb-0000-4000-8000-000000000002"
+label = "Café"
+
+[[line]]
+amount = -8
+budget = "home"
+date = 2026-09-12
+id = "cccccccc-0000-4000-8000-000000000003"
+label = "Café"
+
+[[preset]]
+amount = -150
+budget = "home"
+day = 15
+every = "year"
+label = "Insurance"
+month = 3
+
+[[reserve]]
+as_of = 2026-09-01
+balance = 2000
+id = "savings"
+title = "Savings account"
+
+[[split]]
+account = "checking"
+budget = "home"
+words = ["supermarché"]

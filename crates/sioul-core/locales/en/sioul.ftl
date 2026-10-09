@@ -2920,6 +2920,11 @@ share-send-again-failed = Could not send to { $host } at { $when }: { $why }.
 share-build = This device: Sioul { $build }.
 share-device-build = Sioul { $build }.
 share-device-build-older = Sioul { $build }, older than this device's ({ $here }): updating it there, when you can, keeps both alike.
+share-newer = Your other devices share “{ $part }” in a newer form than this Sioul reads (Sioul { $build } wrote it). Update Sioul on this device to share it again: until then, what you change here in it stays on this device, and what changes on the others waits here.
+share-newer-plain = Your other devices share “{ $part }” in a newer form than this Sioul reads. Update Sioul on this device to share it again: until then, what you change here in it stays on this device, and what changes on the others waits here.
+share-newer-status = This device needs a newer Sioul to share “{ $part }”: Settings ▸ Your folder and sharing says more.
+share-format-held = One of your devices runs an older Sioul (its line below says which): until it is updated there, your devices keep sharing in the form it reads. Meanwhile, a time session, your pinned sites or a list of words changed on two devices at the same moment keep only the later change.
+share-format-older = One of your devices runs an older Sioul, which does not read what your devices now share (its line below says which): update it there before it shares again.
 
 ## Reminders before dates
 reminder-event = { $when } · { $what }
