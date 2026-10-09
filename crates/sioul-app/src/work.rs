@@ -884,7 +884,8 @@ pub(crate) fn trash_note(qt: &QtThread, shared: &Arc<Shared>, path: &str) -> Str
 pub(crate) fn rename_note(qt: &QtThread, shared: &Arc<Shared>, path: &str, name: &str) -> String {
     let loaded = loaded(shared);
     let Some(vault) = loaded.vault.as_ref() else { return answer(Err(tr().text("error-no-store", None))) };
-    let (new_path, _) = match notes::rename(vault, path, name) {
+    // The notes naming it are read again and changed with the notes' lock held (an agent writing one meanwhile).
+    let (new_path, _) = match notes::with_lock(|| notes::rename(vault, path, name)) {
         Ok(done) => done,
         Err(e) => return answer(Err(e)),
     };
@@ -905,21 +906,19 @@ fn retarget_note(qt: &QtThread, shared: &Arc<Shared>, loaded: &Loaded, path: &st
         }
         let _ = change(qt, shared, &task.uid, |text| tasks::apply(text, &edit, &TimeZone::system(), &Zoned::now()));
     }
-    // Ties Sioul keeps itself.
-    let ties_path = LocalLinks::default_path();
-    let mut ties = LocalLinks::load(&ties_path);
-    let mut moved = false;
-    for edge in ties.links.iter_mut() {
-        for end in [&mut edge.from, &mut edge.to] {
-            if *end == old_uri {
-                *end = new_uri.clone();
-                moved = true;
+    // Ties Sioul keeps itself, read again under their lock.
+    let _ = LocalLinks::change(&LocalLinks::default_path(), |ties| {
+        let mut moved = false;
+        for edge in ties.links.iter_mut() {
+            for end in [&mut edge.from, &mut edge.to] {
+                if *end == old_uri {
+                    *end = new_uri.clone();
+                    moved = true;
+                }
             }
         }
-    }
-    if moved {
-        let _ = ties.save(&ties_path);
-    }
+        moved
+    });
 }
 
 /// One task in full, with its lists and what it is tied to, as JSON.
@@ -1330,9 +1329,8 @@ pub(crate) fn create_note_in(qt: &QtThread, shared: &Arc<Shared>, folder: &str, 
     let Some(root) = load_config().notes_root_path() else { return String::new() };
     let title = if title.trim().is_empty() { tr().text("note-untitled", None) } else { title.to_string() };
     let folder = if folder.trim().is_empty() { notes_folder() } else { folder.to_string() };
-    let path = notes::free_path(&root, &folder, &title);
-    match notes::write(&root, &path, &notes::new_text(&title, &[], "")) {
-        Ok(_) => {
+    match notes::create(&root, &folder, &title, &notes::new_text(&title, &[], "")) {
+        Ok(path) => {
             show_work(qt, shared);
             path
         }
@@ -1360,7 +1358,7 @@ pub(crate) fn make_folder(qt: &QtThread, shared: &Arc<Shared>, parent: &str, nam
 pub(crate) fn rename_folder(qt: &QtThread, shared: &Arc<Shared>, path: &str, name: &str) -> String {
     let loaded = loaded(shared);
     let Some(vault) = loaded.vault.as_ref() else { return answer(Err(tr().text("error-no-store", None))) };
-    let (new_path, moved) = match notes::rename_folder(vault, path, name) {
+    let (new_path, moved) = match notes::with_lock(|| notes::rename_folder(vault, path, name)) {
         Ok(done) => done,
         Err(e) => return answer(Err(e)),
     };
@@ -1472,22 +1470,22 @@ pub(crate) fn note(shared: &Shared, path: &str) -> String {
 pub(crate) fn save_note(qt: &QtThread, shared: &Arc<Shared>, path: &str, text: &str, stamp: &str) -> String {
     let answer = |problem: String, path: &str, kept: String| serde_json::json!({ "problem": problem, "stamp": text_stamp(text), "path": path, "kept": kept }).to_string();
     let Some(root) = load_config().notes_root_path() else { return answer(tr().text("error-no-store", None), path, String::new()) };
-    // Changed since it was opened (another device through the sharing, a sync
-    // app, another editor): that version keeps the name, this one goes beside it.
-    let changed = notes::normalize(path)
-        .and_then(|relative| std::fs::read_to_string(root.join(relative)).ok())
-        .is_some_and(|current| !stamp.is_empty() && text_stamp(&current) != stamp && current != text);
-    if changed {
-        let beside = conflict_path(&root, path);
-        return match notes::write(&root, &beside, text) {
-            Ok(_) => {
-                show_work(qt, shared);
-                answer(String::new(), &beside, say("note-changed-elsewhere", &[("path", beside.clone())]))
-            }
-            Err(e) => answer(e, path, String::new()),
-        };
-    }
-    match notes::write(&root, path, text) {
+    // Looked at and written with the notes' lock held: an agent tying
+    // something into this note meanwhile is seen here, never written over.
+    let written = notes::with_lock(|| {
+        // Changed since it was opened (another device through the sharing, a sync
+        // app, another editor, an agent): that version keeps the name, this one goes beside it.
+        let changed = notes::normalize(path)
+            .and_then(|relative| std::fs::read_to_string(root.join(relative)).ok())
+            .is_some_and(|current| !stamp.is_empty() && text_stamp(&current) != stamp && current != text);
+        let target = if changed { conflict_path(&root, path) } else { path.to_string() };
+        notes::write(&root, &target, text).map(|_| (target, changed))
+    });
+    match written {
+        Ok((beside, true)) => {
+            show_work(qt, shared);
+            answer(String::new(), &beside, say("note-changed-elsewhere", &[("path", beside.clone())]))
+        }
         Ok(_) => {
             show_work(qt, shared);
             answer(String::new(), path, String::new())
@@ -1572,9 +1570,7 @@ pub(crate) fn note_path_of(url: &str) -> String {
 /// A new note in the notes folder, its front matter linking `links`; returns its path, or "".
 fn new_note(title: &str, front: &[(&str, Vec<String>)], body: &str) -> Result<String, String> {
     let root = load_config().notes_root_path().ok_or_else(|| tr().text("error-no-store", None))?;
-    let path = notes::free_path(&root, &notes_folder(), title);
-    notes::write(&root, &path, &notes::new_text(title, front, body))?;
-    Ok(path)
+    notes::create(&root, &notes_folder(), title, &notes::new_text(title, front, body))
 }
 
 pub(crate) fn create_note(qt: &QtThread, shared: &Arc<Shared>, title: &str, links_json: &str) -> String {
@@ -1644,15 +1640,12 @@ pub(crate) fn link(qt: &QtThread, shared: &Arc<Shared>, from: &str, to: &str) ->
     if from.is_empty() || to.is_empty() || from == to {
         return String::new();
     }
-    let result = match loaded.tie(&from, &to, &Zoned::now()) {
+    // Worked out and written with the notes' lock held: the note (or task, or
+    // event) is read again then, so a change an agent made meanwhile stays.
+    let result = notes::with_lock(|| match loaded.tie(&from, &to, &Zoned::now()) {
         Some(change) => rewrite(shared, &change),
-        None => {
-            let path = LocalLinks::default_path();
-            let mut local = LocalLinks::load(&path);
-            local.add(&from, &to, "link");
-            local.save(&path)
-        }
-    };
+        None => LocalLinks::add_all(&LocalLinks::default_path(), &[links::Edge { from: from.clone(), to: to.clone(), how: "link".into() }]).map(|_| ()),
+    });
     links_changed(qt, shared);
     match result {
         Ok(()) => say("link-made", &[("title", world.describe(&to).title)]),
@@ -1669,19 +1662,19 @@ pub(crate) fn unlink(qt: &QtThread, shared: &Arc<Shared>, a: &str, b: &str) -> S
     let (a, b) = (world.canonical(a), world.canonical(b));
     let mut undone = false;
     let mut problem = None;
-    for change in loaded.untie(&a, &b, &Zoned::now()) {
-        match rewrite(shared, &change) {
-            Ok(()) => undone = true,
-            Err(e) => problem = Some(e),
+    // Read again and written with the notes' lock held, as `link` does.
+    notes::with_lock(|| {
+        for change in loaded.untie(&a, &b, &Zoned::now()) {
+            match rewrite(shared, &change) {
+                Ok(()) => undone = true,
+                Err(e) => problem = Some(e),
+            }
         }
-    }
-    let path = LocalLinks::default_path();
-    let mut local = LocalLinks::load(&path);
-    if local.untie(&world, &a, &b) {
-        match local.save(&path) {
-            Ok(()) => undone = true,
-            Err(e) => problem = Some(e),
-        }
+    });
+    match LocalLinks::change(&LocalLinks::default_path(), |local| local.untie(&world, &a, &b)) {
+        Ok(true) => undone = true,
+        Ok(false) => {}
+        Err(e) => problem = Some(e),
     }
     links_changed(qt, shared);
     if let Some(problem) = problem {

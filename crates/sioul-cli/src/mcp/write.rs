@@ -334,8 +334,8 @@ pub fn add_note(s: &Session, args: &Args) -> Result<Answer, String> {
     if let Some(rest) = body.trim_start().strip_prefix(&format!("# {title}")).filter(|r| r.is_empty() || r.starts_with('\n')) {
         body = rest.trim_start().to_string();
     }
-    let path = notes::free_path(&root, &folder, &file_title(&title));
-    notes::write(&root, &path, &notes::new_text(&title, &[("links", links.clone())], &body))?;
+    // Its free name found and taken under the notes' lock: the window making a note of that title at once makes another.
+    let path = notes::create(&root, &folder, &file_title(&title), &notes::new_text(&title, &[("links", links.clone())], &body))?;
     let uri = notes::uri_of(&path);
     let text = format!("{}\n{title}  <{uri}>", s.say("ui-saved", &[("path", path.clone())]));
     Ok(Answer { text, data: json!({ "uri": uri, "path": path, "links": links }) })
@@ -473,20 +473,22 @@ pub fn link(s: &Session, args: &Args) -> Result<Answer, String> {
     if from == to {
         return Err("A thing is not tied to itself.".into());
     }
-    // In the task, the event or the note when one can hold it; else in Sioul's own file.
-    let written = match loaded.tie(&from, &to, &Zoned::now()) {
-        Some(change) => {
-            rewrite(s, &change)?;
-            change.path.display().to_string()
+    // In the task, the event or the note when one can hold it; else in Sioul's
+    // own file. Worked out and written with the notes' lock held, that file
+    // read again first: the window writing the same note meanwhile loses nothing.
+    let written = notes::with_lock(|| -> Result<String, String> {
+        match loaded.tie(&from, &to, &Zoned::now()) {
+            Some(change) => {
+                rewrite(s, &change)?;
+                Ok(change.path.display().to_string())
+            }
+            None => {
+                let path = LocalLinks::default_path();
+                LocalLinks::add_all(&path, &[links::Edge { from: from.clone(), to: to.clone(), how: "link".into() }])?;
+                Ok(path.display().to_string())
+            }
         }
-        None => {
-            let path = LocalLinks::default_path();
-            let mut local = LocalLinks::load(&path);
-            local.add(&from, &to, "link");
-            local.save(&path)?;
-            path.display().to_string()
-        }
-    };
+    })?;
     let tied = world.describe(&to);
     let title = if tied.kind == Kind::Mail { read::mail_shown(s, read::Shield::of(&s.config).as_ref(), Path::new(&tied.key), &tied.title, "").0 } else { tied.title };
     let text = s.say("link-made", &[("title", one_line(&title))]);

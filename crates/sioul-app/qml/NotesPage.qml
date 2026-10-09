@@ -48,6 +48,8 @@ Item {
     readonly property var source: page.note && page.path !== "" ? { uri: page.sioul.uriOf("note", page.path), kind: "note", key: page.path, title: page.note.title } : null
     property bool editing: false
     property bool dirty: false
+    // A newer version of the note open came through the sharing while you typed in it: said, never put over your text.
+    property bool newer: false
     // On a phone, the note open takes the page; Back keeps it (saved) and
     // closes it (main.qml).
     readonly property bool canGoBack: page.note !== null
@@ -163,6 +165,11 @@ Item {
         list.contentY = list.contentY + pixels
     }
 
+    // Words typed at the end of the note being edited, for the window's images.
+    function typeAtEnd(words) {
+        editor.insert(editor.length, words)
+    }
+
     // The note changed last, for the window's images.
     // A new note: its name asked first.
     function startNew() {
@@ -178,6 +185,7 @@ Item {
         const text = page.path === "" ? "" : page.sioul.note(page.path)
         page.note = text === "" ? null : JSON.parse(text)
         page.dirty = false
+        page.newer = false
     }
 
     function save() {
@@ -189,6 +197,7 @@ Item {
             return
         }
         page.dirty = false
+        page.newer = false
         page.note.stamp = saved.stamp
         // Changed elsewhere meanwhile: this version went beside it, and is the one open.
         if (saved.path !== page.path) {
@@ -268,6 +277,24 @@ Item {
                 page.pending = ""
             } else if (!page.dirty && page.path !== "")
                 page.reload()
+        }
+        // A note changed on another device, come through the sharing: the list
+        // and the note open read again, as Health, Papers and Time do; never
+        // over what you are typing: that note stays as you have it, and a
+        // line says a newer version came (saving then puts yours beside it).
+        function onSharedIn(stores) {
+            if (stores.indexOf("files/notes/") < 0)
+                return
+            page.takeShown()
+            if (page.path === "" || page.note === null)
+                return
+            if (!page.dirty) {
+                page.reload()
+                return
+            }
+            const text = page.sioul.note(page.path)
+            if (text === "" || JSON.parse(text).stamp !== page.note.stamp)
+                page.newer = true
         }
     }
 
@@ -597,6 +624,17 @@ Item {
                             theme: page.theme
                             reading: true
                         }
+                    }
+
+                    // A newer version came while you typed: said calmly, your text left as it is.
+                    Label {
+                        visible: page.newer && page.dirty
+                        Layout.fillWidth: true
+                        text: page.sioul.text("note-newer-came")
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 13
+                        color: page.theme.muted
                     }
 
                     // A picture, fitted to the page, at most its own size; read at

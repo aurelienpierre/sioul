@@ -68,8 +68,9 @@ Code: `crates/sioul-sync/src/dav.rs`, a small client on `ureq` and `roxmltree`; 
 | `calendar-color` | Apple's namespace, `http://apple.com/ns/ical/` | a calendar's colour | none |
 | `getctag` | CalendarServer's namespace | a collection unchanged since the last round is not compared | its items' tags are compared each round |
 | REPORT `sync-collection`, `sync-token` | RFC 6578 | only what changed | every item's `getetag` (PROPFIND Depth 1), compared with what is known: slower |
-| REPORT `calendar-multiget`, `addressbook-multiget` | RFC 4791 §7.9, RFC 6352 §8.7 | changed items in batches of 50 | one GET each (also when a multiget answers nothing) |
+| REPORT `calendar-multiget`, `addressbook-multiget` | RFC 4791 §7.9, RFC 6352 §8.7 | changed items in batches of 50 at most: a batch answered slowly (20 seconds) or cut makes the next one of that collection half as large, one answered quickly (5 seconds) twice as large again, up to 50 (`dav::pace`) | one GET each (also when a multiget answers nothing) |
 | PUT with `If-Match`; a new item with `If-None-Match: *`; 412 | RFC 9110 §13.1 | nobody's change overwritten. On 412 the server's version is kept and yours set aside in `$XDG_STATE_HOME/sioul/dav/conflicts`, said | Google takes `If-Match` only: new items go without `If-None-Match` |
+| A new item refused because another holds its UID: `no-uid-conflict` (403 or 409, naming that item), Nextcloud's 400, or a 412 | RFC 4791 §5.3.2.1, RFC 6352 §6.3.2.1 | an invitation answered on two devices: the item there (named, else found by a `calendar-query` or `addressbook-query` on the UID) takes the new one's place here, in one file, sent no more. The same answer: nothing said; another answer: the server's kept, and said; a contact or task that differs: yours set aside, as above (`dav::same_uid_there`, `adopt`) | the refusal said, as before |
 | An ETag in PUT's answer | RFC 9110 | knowing what the server stored | the item is read back at the pull |
 | DELETE with `If-Match` | RFC 9110, RFC 4918 | deletions | — |
 | MKCALENDAR with `supported-calendar-component-set` | RFC 4791 §5.3.1 | new task lists and calendars | not at Google (greyed, with why) |
@@ -77,7 +78,7 @@ Code: `crates/sioul-sync/src/dav.rs`, a small client on `ureq` and `roxmltree`; 
 | PROPPATCH `displayname`; DELETE of an empty collection | RFC 4918 §9.2 | renaming; deleting a list emptied | — |
 | POST to the address book | RFC 5995 | Google's new contacts, when its PUT is refused (403, 405, 409) | — |
 
-**Not used**: `calendar-query` and time ranges (everything is synced, and repeating events are expanded here, `calcard`); CalDAV scheduling (RFC 6638): invitations go by mail (below); free-busy; CalDAV sharing; WebDAV-Push.
+**Not used**: `calendar-query` and time ranges to sync (everything is synced, and repeating events are expanded here, `calcard`; a `calendar-query` on a UID only when a new item meets one, above); CalDAV scheduling (RFC 6638): invitations go by mail (below); free-busy; CalDAV sharing; WebDAV-Push.
 
 **Sync rounds**: what changed here first, then what changed there; every fifteen minutes and at once after a change in the window; one sync of an account at a time, across processes; a round cut short resumes where it stopped (`dav::tests`).
 
@@ -227,7 +228,7 @@ Open-Meteo (weather), OpenStreetMap's Nominatim and map tiles, keys.openpgp.org 
 | Reaching IMAP servers, up to their greeting | Gmail's, Murena's (`mail.ecloud.global`), Microsoft's; no login | `imap::reaches_real_servers_up_to_the_greeting` (ignored, run by hand) |
 | Finding an account | Murena's mail and calendars, without a password | `scout::murena_scouted` (ignored, run by hand) |
 | Daily use, mail, calendars, tasks (steps, waits, links) and contacts | Murena (Nextcloud): `mail.ecloud.global` and its CalDAV and CardDAV, on Linux and on an /e/OS phone, since 4 October 2026; Murena's DAVx⁵ fork on the phone reading tasks only | the owner, 6 October 2026 |
-| CalDAV and CardDAV both ways, an invitation answered | Radicale, on the computer; a stand-in in the tests (sync tokens, multigets, cut connections, 412) | [building.md](building.md); `dav::tests` |
+| CalDAV and CardDAV both ways, an invitation answered | Radicale, on the computer; a stand-in in the tests (sync tokens, multigets, cut connections, slow answers, 412, an invitation answered on two devices) | [building.md](building.md); `dav::tests` |
 | Google Tasks | `tools/google-tasks-stand-in.py` | [google.md](google.md), "What was tested" |
 | GitHub | `tools/github-stand-in.py` | [github.md](github.md), "What was tested" |
 | OpenPGP | GnuPG 2.4, both ways | [client.md](client.md), "As built" |

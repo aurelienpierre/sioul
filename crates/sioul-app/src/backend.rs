@@ -2755,9 +2755,9 @@ fn tie_to_projects(files: &[PathBuf]) {
             }
         }
     }
-    if ties.links.len() != before {
-        let _ = ties.save(&path);
-    }
+    // Only what this added, written under the file's lock over the ties there
+    // now: a tie made meanwhile (the window, an agent, the sharing) stays.
+    let _ = sioul_core::links::LocalLinks::add_all(&path, &ties.links[before..]);
 }
 
 /// A project's routes changed: the mail already here that only its text or an
@@ -2783,9 +2783,7 @@ fn retie_project(id: String) {
                 ties.add(&sioul_core::links::mail_uri(&mid), &sioul_core::links::project_uri(&project.id), "project");
             }
         }
-        if ties.links.len() != before {
-            let _ = ties.save(&path);
-        }
+        let _ = sioul_core::links::LocalLinks::add_all(&path, &ties.links[before..]);
     });
 }
 
@@ -5553,8 +5551,8 @@ impl qobject::Sioul {
         // (docs/attention.md), "line" the status line with all it
         // may hold, a new draft deleted and taken back (docs/design.md), "share-panel" the
         // sharing's tab before sharing, its two ways (docs/database.md), "share-send" sharing
-        // started in the profile, the build, the send's switch and "Send everything again"
-        // (docs/database.md), "spam" the spam
+        // started in the profile, the build, the send's switch and "Send everything again",
+        // then "Stop sharing" asking first, cancelled (docs/database.md), "spam" the spam
         // filter's settings and the words it puts beside mail (docs/spam-filter.md), "mail-search" the
         // search by conditions, its results, a selection held over a folder (docs/client.md), "mail-filters"
         // the mail filters in Mail's ⚙, their editor, a run's preview, a search made a filter, "security-key"
@@ -5577,8 +5575,9 @@ impl qobject::Sioul {
         // them, then the profile's sites, held at each moment measured (tools/measure-memory.py),
         // "bitwarden-wait" the unlock dialog waiting for Bitwarden, then its answer (no account
         // set: no server asked), "tray" the window hidden as to the tray and brought back,
-        // on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray"].contains(&steps.as_str()) && offline()) {
+        // "notes-shared" a note changed on another device while shown, read then typed in
+        // (docs/database.md, "Notes"), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "attention", "line", "share-panel", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

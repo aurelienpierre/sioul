@@ -186,7 +186,7 @@ fn seal_into(folder: &Path, key: &[u8; 32], source: &Path, hash: &str) -> Result
     let target = path(folder, key, hash);
     let name = name(key, hash);
     let dir = folder.join("blobs");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    crate::share::private_dirs(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     // A hidden name of its own: sync apps leave it alone until it is whole, and
     // two exchanges sealing one content never write into one file.
     let temporary = crate::share::temporary(&target);
@@ -194,7 +194,7 @@ fn seal_into(folder: &Path, key: &[u8; 32], source: &Path, hash: &str) -> Result
         let fail = |e: std::io::Error| format!("{}: {e}", temporary.display());
         let mut reading = Hashing { inner: std::fs::File::open(source).map_err(|e| format!("{}: {e}", source.display()))?, hasher: Sha256::new(), size: 0 };
         let mut packed = flate2::read::GzEncoder::new(&mut reading, flate2::Compression::default());
-        let mut out = BufWriter::new(std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary).map_err(fail)?);
+        let mut out = BufWriter::new(crate::share::new_private(&temporary).map_err(fail)?);
         out.write_all(MAGIC).map_err(fail)?;
         let cipher = XChaCha20Poly1305::new((&keys(key).0).into());
         let mut piece = vec![0u8; PIECE];
@@ -262,7 +262,8 @@ fn open_into(folder: &Path, key: &[u8; 32], hash: &str, target: &Path) -> Result
         return Err(Fault::Broken);
     }
     let local = |e: std::io::Error| Fault::Local(format!("{}: {e}", target.display()));
-    let out = BufWriter::new(std::fs::OpenOptions::new().write(true).create_new(true).open(target).map_err(local)?);
+    // Yours alone (0600 on Unix): it takes the place of the file here.
+    let out = BufWriter::new(crate::share::new_private(target).map_err(local)?);
     let mut unpacked = flate2::write::GzDecoder::new(Hashing { inner: out, hasher: Sha256::new(), size: 0 });
     let cipher = XChaCha20Poly1305::new((&keys(key).0).into());
     // A write that fails on bad compressed data, or on data past its end, is

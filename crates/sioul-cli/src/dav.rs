@@ -242,6 +242,9 @@ pub(crate) fn sync_one(s: &Session, account: &Account) -> Result<(), String> {
     for conflict in &report.conflicts {
         println!("{}", s.say("dav-conflict", &[("path", crate::one_line(&conflict.display().to_string()))]));
     }
+    for (summary, kept) in &report.answered {
+        println!("{}", s.say("dav-answered-elsewhere", &[("summary", crate::one_line(summary)), ("answer", kept.to_ascii_lowercase())]));
+    }
     Ok(())
 }
 
