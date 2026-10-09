@@ -1214,6 +1214,20 @@ def write_texts(p: Profile):
     ]
     for n, (day, hour, box, english, french) in enumerate(week):
         log.append(text(f"sms-{140 + n}", c.at(c.day(day), hour), box, priya, t(english, french), "9"))
+    # SIOUL_DEMO_TEXTS_MANY=N: N older texts with Priya, a picture every fortieth, as a
+    # phone's whole history brings them (the page with a long thread: tools/demo, "texts").
+    many = int(os.environ.get("SIOUL_DEMO_TEXTS_MANY", "0") or 0)
+    start = c.ago(hours=24 * 8)
+    for n in range(many):
+        moment = start - timedelta(minutes=37 * (many - n))
+        english, french = week[n % len(week)][3], week[n % len(week)][4]
+        if n % 40 == 0:
+            log.append(line({"id": f"mms-{9000 + n}", "at": unix(moment) * 1000, "thread": "9", "box": "in" if n % 2 else "out", "with": [priya],
+                             "body": t(english, french), "sub": 1, "picture": True,
+                             "parts": [{"seq": 0, "ct": "image/png", "name": "photo.png", "size": len(picture), "hash": digest, "state": "here"},
+                                       {"seq": 1, "ct": "text/plain", "text": t(english, french), "state": "text"}]}))
+        else:
+            log.append(text(f"sms-{10000 + n}", moment, "in" if n % 2 else "out", priya, t(english, french), "9"))
     p.write(p.data / "texts" / "log" / "demo-phone.jsonl", "".join(log))
     answered, expired, waiting = "a" * 32, "b" * 32, "c" * 32
     requests = [
