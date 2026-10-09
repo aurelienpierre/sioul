@@ -239,12 +239,14 @@ fn act(action: &str, window: Option<(&QtThread, &Arc<Shared>)>) -> bool {
 /// as the window's buttons change it; Stop keeps the line left at a pause of
 /// this session (`stopped`), as the window's Stop with no word does.
 fn act_in(dir: &Path, stopped: &Path, action: &str, now: i64) -> Result<bool, String> {
-    let Some(mut running) = timelog::running_in(dir) else { return Ok(false) };
+    let Some(running) = timelog::running_in(dir) else { return Ok(false) };
     match action {
-        "pause" | "resume" if running.paused_at.is_some() == (action == "resume") => {
-            running.toggle_pause(now);
-            timelog::keep_running_in(dir, Some(&running)).map(|()| true)
-        }
+        // Over the session as the file holds it now, under its lock: a pause pressed elsewhere meanwhile is not undone.
+        "pause" | "resume" if running.paused_at.is_some() == (action == "resume") => timelog::change_running_in(dir, |running| {
+            if running.paused_at.is_some() == (action == "resume") {
+                running.toggle_pause(now);
+            }
+        }),
         "stop" => {
             let left = Stopped::load(stopped).filter(|s| s.task == running.task && s.at >= running.start).map(|s| s.text).unwrap_or_default();
             timelog::finish_noted_in(dir, now, false, &left).map(|session| session.is_some())

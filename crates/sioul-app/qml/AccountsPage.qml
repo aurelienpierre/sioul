@@ -503,8 +503,8 @@ Item {
                             setting: modelData
                             sioul: page.sioul
                             theme: page.theme
-                            onSave: (key, value) => {
-                                const problem = page.sioul.setSetting(key, JSON.stringify(value))
+                            onSave: (key, value, shown) => {
+                                const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
                                 if (problem === "")
                                     shared.rows = JSON.parse(page.sioul.settings("accounts") || "[]")
                                 else
@@ -1609,8 +1609,8 @@ Item {
                         setting: modelData
                         sioul: page.sioul
                         theme: page.theme
-                        onSave: (key, value) => {
-                            const problem = page.sioul.setSetting(key, JSON.stringify(value))
+                        onSave: (key, value, shown) => {
+                            const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
                             if (problem === "")
                                 service.settings = JSON.parse(page.sioul.settings("account:" + service.modelData.id) || "[]")
                             else

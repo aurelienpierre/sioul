@@ -136,7 +136,7 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
         Ok(edit) => edit,
         Err(e) => return e.to_string(),
     };
-    let mut wallet = match wallet() {
+    let wallet = match wallet() {
         Ok(wallet) => wallet,
         Err(e) => return e,
     };
@@ -174,43 +174,42 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
     };
     // An end proposed from the issue when the kind's usual length is known and none was given.
     let until = until.or_else(|| issued.and_then(|d| sioul_core::papers::usual_end(kind, d)));
-    let paper = Paper {
-        id: old.id.clone(),
-        kind,
-        title,
-        file,
-        issued,
-        until,
-        holder: edit.holder.trim().to_string(),
-        notes: edit.notes.trim().to_string(),
-        // A new end: a new renewal to plan.
-        renewal: if old.until == until { old.renewal.clone() } else { String::new() },
-        added: old.added.or_else(|| Some(jiff::Zoned::now().date())),
-    };
-    wallet.put(paper);
-    wallet.save().err().unwrap_or_default()
+    // Set over the wallet as the file holds it now (the file copied first), under its lock, which the sharing takes too.
+    Wallet::change(&wallet.root, |wallet| {
+        let old = wallet.get(id).cloned().unwrap_or_default();
+        let paper = Paper {
+            id: old.id.clone(),
+            kind,
+            title,
+            file,
+            issued,
+            until,
+            holder: edit.holder.trim().to_string(),
+            notes: edit.notes.trim().to_string(),
+            // A new end: a new renewal to plan.
+            renewal: if old.until == until { old.renewal.clone() } else { String::new() },
+            added: old.added.or_else(|| Some(jiff::Zoned::now().date())),
+        };
+        wallet.put(paper);
+    })
+    .err()
+    .unwrap_or_default()
 }
 
 /// A paper taken out; its file stays where it is.
 pub(crate) fn remove(id: &str) -> String {
-    let mut wallet = match wallet() {
-        Ok(wallet) => wallet,
-        Err(e) => return e,
-    };
-    if !wallet.remove(id) {
-        return String::new();
-    }
-    wallet.save().err().unwrap_or_default()
+    let Some(root) = load_config().notes_root_path() else { return tr().text("papers-no-store", None) };
+    Wallet::change(&root, |wallet| wallet.remove(id)).err().unwrap_or_default()
 }
 
 /// Its renewal, as a task in your usual list (your phone has it): from when
 /// renewing starts to the day it ends, with the steps known for its kind.
 pub(crate) fn plan_renewal(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
-    let mut wallet = match wallet() {
+    let wallet = match wallet() {
         Ok(wallet) => wallet,
         Err(e) => return e,
     };
-    let Some(mut paper) = wallet.get(id).cloned() else { return tr().text("papers-gone", None) };
+    let Some(paper) = wallet.get(id).cloned() else { return tr().text("papers-gone", None) };
     let (Some(from), Some(until)) = (paper.renew_from(), paper.until) else { return String::new() };
     let today = jiff::Zoned::now().date();
     let steps = format!("paper-steps-{}", paper.kind.id());
@@ -230,11 +229,15 @@ pub(crate) fn plan_renewal(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> Str
         None => crate::work::local_task(qt, shared, &tr().text("papers-list", None), &edit),
     };
     match made {
-        Ok(uid) => {
-            paper.renewal = uid;
-            wallet.put(paper);
-            wallet.save().err().unwrap_or_default()
-        }
+        // The task made: its uid set on the paper as the wallet holds it now, under its lock.
+        Ok(uid) => Wallet::change(&wallet.root, |wallet| {
+            if let Some(mut paper) = wallet.get(id).cloned() {
+                paper.renewal = uid;
+                wallet.put(paper);
+            }
+        })
+        .err()
+        .unwrap_or_default(),
         Err(e) => e,
     }
 }

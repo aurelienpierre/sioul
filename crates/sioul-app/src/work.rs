@@ -1245,19 +1245,14 @@ pub(crate) fn focus_start(qt: &QtThread, shared: &Arc<Shared>, uid: &str, minute
 
 /// Pauses the session, or goes on.
 pub(crate) fn focus_pause(qt: &QtThread, shared: &Arc<Shared>) {
-    if let Some(mut running) = timelog::running() {
-        running.toggle_pause(Timestamp::now().as_second());
-        let _ = timelog::keep_running(Some(&running));
-    }
+    // Over the session as the file holds it now, under its lock, which the sharing takes too.
+    let _ = timelog::change_running(|running| running.toggle_pause(Timestamp::now().as_second()));
     show_work(qt, shared);
 }
 
 /// More minutes for the session.
 pub(crate) fn focus_extend(qt: &QtThread, shared: &Arc<Shared>, minutes: i32) {
-    if let Some(mut running) = timelog::running() {
-        running.planned = running.planned.saturating_add(u32::try_from(minutes.max(0)).unwrap_or(0));
-        let _ = timelog::keep_running(Some(&running));
-    }
+    let _ = timelog::change_running(|running| running.planned = running.planned.saturating_add(u32::try_from(minutes.max(0)).unwrap_or(0)));
     show_work(qt, shared);
 }
 

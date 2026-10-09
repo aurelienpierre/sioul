@@ -45,7 +45,20 @@ impl PorchState {
     /// the file's lock, which the sharing takes too: only what changed since it
     /// was read, over what the file holds now.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        crate::filelock::save_merged(path, &self.read, self)
+        // A mark never goes backwards: of one account at one validity, the newer message stays.
+        crate::filelock::save_merged_by(path, &self.read, self, |merged, before| {
+            let Some(before) = before.and_then(|b| b.get("done")).and_then(toml::Value::as_table) else { return };
+            let Some(done) = merged.get_mut("done").and_then(toml::Value::as_table_mut) else { return };
+            for (account, mark) in done.iter_mut() {
+                let field = |m: &toml::Value, name: &str| m.get(name).and_then(toml::Value::as_integer);
+                if let Some(there) = before.get(account.as_str())
+                    && field(there, "validity") == field(mark, "validity")
+                    && field(there, "uid") > field(mark, "uid")
+                {
+                    *mark = there.clone();
+                }
+            }
+        })
     }
 
     /// Whether a message was shown before the Porch was last closed.

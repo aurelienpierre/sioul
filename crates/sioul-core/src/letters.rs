@@ -353,6 +353,23 @@ impl Letters {
         root.join(FOLDER)
     }
 
+    /// Read, changed by `change` and written back, all under the file's lock
+    /// (the window's own; the sharing carries the file as a note): a change
+    /// is set over the file as it is then. Returns what `change` returns.
+    pub fn change<R>(root: &Path, change: impl FnOnce(&mut Letters) -> R) -> Result<R, String> {
+        Letters::try_change(root, |letters| Ok(change(letters)))
+    }
+
+    /// The same, written back only when `change` succeeds.
+    pub fn try_change<R>(root: &Path, change: impl FnOnce(&mut Letters) -> Result<R, String>) -> Result<R, String> {
+        crate::filelock::with_lock(&Letters::folder(root).join(MANIFEST), || {
+            let mut letters = Letters::load(root)?;
+            let out = change(&mut letters)?;
+            letters.save()?;
+            Ok(out)
+        })
+    }
+
     pub fn load(root: &Path) -> Result<Letters, String> {
         let path = Letters::folder(root).join(MANIFEST);
         let text = match std::fs::read_to_string(&path) {
@@ -442,7 +459,12 @@ impl Letters {
         Ok(())
     }
 
+    /// Written whole, under the file's lock.
     pub fn save(&self) -> Result<(), String> {
+        crate::filelock::with_lock(&Letters::folder(&self.root).join(MANIFEST), || self.write())
+    }
+
+    fn write(&self) -> Result<(), String> {
         let folder = Letters::folder(&self.root);
         std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
         let mut doc = toml_edit::DocumentMut::new();

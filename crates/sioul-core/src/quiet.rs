@@ -166,6 +166,14 @@ pub struct Overrides {
 }
 
 impl Overrides {
+    /// `previous` put back over these (the file as it is now, read: its
+    /// `read` kept, so that saving writes what differs): every field as it
+    /// was, but the lighter days, which stay as they are now (another
+    /// device's may be among them). For an undo.
+    pub fn put_back(&self, previous: &Overrides) -> Overrides {
+        Overrides { read: self.read.clone(), lighter: self.lighter.clone(), ..previous.clone() }
+    }
+
     /// The first step to show now: on the day it is for, in work time.
     pub fn first_step_on(&self, today: Date) -> Option<(&str, &str)> {
         let step = self.first_step.as_deref().filter(|s| !s.trim().is_empty())?;

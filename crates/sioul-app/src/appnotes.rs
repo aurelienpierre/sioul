@@ -485,8 +485,13 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
             {
                 words.push(format!("{}{}", sioul_core::attention::NAME, seen.label));
             }
-            let config = load_config();
-            if let Err(e) = sioul_core::attention::apply(&crate::backend::config_path(), &config, key, &sioul_core::config::SettingValue::Texts(words)) {
+            // What the row showed: only the cells changed from it are set, over the row as it is now.
+            let shown: Option<Vec<String>> = asked["shown"].as_array().map(|w| w.iter().filter_map(|w| w.as_str().map(str::to_string)).collect());
+            let shown = shown.map(|mut shown| {
+                shown.extend(words.iter().filter(|w| w.starts_with(sioul_core::attention::NAME)).cloned());
+                sioul_core::config::SettingValue::Texts(shown)
+            });
+            if let Err(e) = sioul_core::attention::apply_change(&crate::backend::config_path(), key, shown.as_ref(), &sioul_core::config::SettingValue::Texts(words)) {
                 eprintln!("Notes: {e}");
             }
         }

@@ -266,7 +266,7 @@ ColumnLayout {
         setting: ({ grid: setup.shown.grid })
         sioul: setup.sioul
         theme: setup.theme
-        onSave: (key, value) => setup.act("row", { key: key, words: value })
+        onSave: (key, value, shown) => setup.act("row", { key: key, words: value, shown: shown })
     }
     Label {
         visible: setup.listsPart && setup.shown.more === true

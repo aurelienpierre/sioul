@@ -90,9 +90,10 @@ ColumnLayout {
         filters.sioul.mailFiltersPreview()
     }
 
-    // The whole list written, in its order; read again when `again` (its sentences said anew).
+    // The list written, in its order, from the one shown: its change set over the
+    // filters as they are now; read again when `again` (its sentences said anew).
     function write(list, again) {
-        filters.problem = filters.sioul.setMailFilters(JSON.stringify(list))
+        filters.problem = filters.sioul.setMailFilters(JSON.stringify(list), JSON.stringify(filters.shown.filters))
         if (filters.problem === "" && again)
             filters.read()
     }

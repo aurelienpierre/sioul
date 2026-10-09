@@ -30,7 +30,7 @@ ColumnLayout {
     required property var rows
 
     // A switch changed (Settings saves it, then reads its rows again).
-    signal save(string key, var value)
+    signal save(string key, var value, var shown)
     // Another view, time or row shown: the page scrolled back to its top.
     signal toTop
 
@@ -72,15 +72,14 @@ ColumnLayout {
 
     // A row with one cell changed, saved whole.
     function choose(row, column, value) {
-        const words = row.cells.map(c => {
-            const v = c.column === column ? value : c.value
-            return v === "now" ? c.column : c.column + ":" + v
-        })
-        tab.saveRow(row.id, words)
+        const word = (c, v) => v === "now" ? c.column : c.column + ":" + v
+        const words = row.cells.map(c => word(c, c.column === column ? value : c.value))
+        tab.saveRow(row.id, words, row.cells.map(c => word(c, c.value)))
     }
 
-    function saveRow(id, words) {
-        tab.problem = tab.sioul.reachesSet(id, JSON.stringify(words))
+    // `shown`: the row's words as it showed them: only the cells changed are set.
+    function saveRow(id, words, shown) {
+        tab.problem = tab.sioul.reachesSet(id, JSON.stringify(words), JSON.stringify(shown))
         tab.reload()
     }
 
@@ -369,7 +368,7 @@ ColumnLayout {
                         setting: tab.setting("free_time.nothing") || { key: "", kind: "note", label: "", help: "", value: false, choices: [] }
                         sioul: tab.sioul
                         theme: tab.theme
-                        onSave: (key, value) => tab.save(key, value)
+                        onSave: (key, value, shown) => tab.save(key, value, shown)
                     }
                     Item {
                         Layout.fillHeight: true
@@ -656,7 +655,7 @@ ColumnLayout {
             setting: modelData
             sioul: tab.sioul
             theme: tab.theme
-            onSave: (key, value) => tab.save(key, value)
+            onSave: (key, value, shown) => tab.save(key, value, shown)
         }
     }
     Note {
@@ -681,7 +680,7 @@ ColumnLayout {
                 setting: { "grid": { columns: tab.shown.grid.columns, marks: tab.shown.grid.marks, rows: tab.channelRows } }
                 sioul: tab.sioul
                 theme: tab.theme
-                onSave: (key, value) => tab.saveRow(key.slice("attention.".length), value)
+                onSave: (key, value, shown) => tab.saveRow(key.slice("attention.".length), value, shown)
             }
         }
     }
@@ -744,8 +743,8 @@ ColumnLayout {
                 setting: listRow.modelData
                 sioul: tab.sioul
                 theme: tab.theme
-                onSave: (key, value) => {
-                    const problem = tab.sioul.setSetting(key, JSON.stringify(value))
+                onSave: (key, value, shown) => {
+                    const problem = tab.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
                     if (problem === "")
                         tab.readLists()
                     else
@@ -779,7 +778,7 @@ ColumnLayout {
         setting: tab.setting("reminders.gather") || { key: "", kind: "note", label: "", help: "", value: false, choices: [] }
         sioul: tab.sioul
         theme: tab.theme
-        onSave: (key, value) => tab.save(key, value)
+        onSave: (key, value, shown) => tab.save(key, value, shown)
     }
     Note {
         visible: tab.view === "own" && !tab.rowShown
@@ -795,7 +794,7 @@ ColumnLayout {
                 setting: { "grid": { columns: tab.shown.grid.columns, marks: tab.shown.grid.marks, rows: tab.ownRows } }
                 sioul: tab.sioul
                 theme: tab.theme
-                onSave: (key, value) => tab.saveRow(key.slice("attention.".length), value)
+                onSave: (key, value, shown) => tab.saveRow(key.slice("attention.".length), value, shown)
             }
         }
     }
@@ -940,7 +939,7 @@ ColumnLayout {
             setting: modelData
             sioul: tab.sioul
             theme: tab.theme
-            onSave: (key, value) => tab.save(key, value)
+            onSave: (key, value, shown) => tab.save(key, value, shown)
         }
     }
     Heading {

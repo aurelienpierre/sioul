@@ -1871,6 +1871,20 @@ struct Memory {
     /// older copy put back in the folder never lowers what is known of it.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     seen: BTreeMap<String, crate::devices::Entry>,
+    /// The devices known here by records read before (`read_n`) of which no
+    /// clock is known at all (their rounds gone from the folder, read by a
+    /// memory from before `heard_at` was kept, none of their changes the last
+    /// word here), with when this device first found them so (milliseconds,
+    /// its clock): what ages them (`present`), so that one gone for good
+    /// stops counting 180 days later.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    unclocked: BTreeMap<String, i64>,
+    /// While this device writes format 1: what each list format 1 sends whole
+    /// (and format 2 divides) holds, by format 2's names, and what a later
+    /// list took out of it, at that list's clock (`note_whole_lists`): kept
+    /// with the list's floor at the switch (`Floor::removed`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    lists: BTreeMap<String, WholeList>,
     /// What it remembers of files sealed apart, in `files.json` beside.
     #[serde(skip)]
     sealed: Sealed,
@@ -2207,11 +2221,78 @@ struct Floor {
     /// them it no longer holds, never an element added since in format 2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     held: Option<BTreeSet<String>>,
+    /// For a list format 1 sends whole: the elements a whole list took out
+    /// here, with the clock of the list that did (`Memory::lists`). A record
+    /// of one at or below that clock is passed over (`below_whole_floor`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    removed: BTreeMap<String, u64>,
+}
+
+/// A list format 1 sends whole, as this device last saw it (`Memory::lists`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct WholeList {
+    #[serde(default)]
+    held: BTreeSet<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    removed: BTreeMap<String, u64>,
+}
+
+/// What each list format 1 sends whole holds now in the files format 2
+/// divides otherwise, by format 2's names (`Memory::lists`): an element a
+/// list no longer holds is noted as taken out at the clock of the list's
+/// last word here (this device's or another's), until a list holds it again.
+/// While this device writes format 1, after each exchange and before the
+/// switch renames its memory.
+fn note_whole_lists(stores: &[Store], memory: &mut Memory) {
+    for (file, path, store) in divided(stores) {
+        let Shape::Toml(rules) = store.shape else { continue };
+        let next = rules.at(2);
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        if text.parse::<toml::Table>().is_err() {
+            continue;
+        }
+        let mut now: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (before, after, _) in aligned(&text, rules, next) {
+            if matches!(renamed(rules, next, &before), Renamed::Whole(_)) && !after.is_empty() {
+                now.entry(format!("{file}#{before}")).or_default().insert(element_name(&after).to_string());
+            }
+        }
+        let keys: BTreeSet<String> = memory.lists.keys().filter(|key| file_of(key) == file).cloned().chain(now.keys().cloned()).collect();
+        for key in keys {
+            let held = now.remove(&key).unwrap_or_default();
+            let clock = memory.entries.get(&key).map_or(memory.clock, |known| known.c);
+            let list = memory.lists.entry(key).or_default();
+            let gone: Vec<String> = list.held.difference(&held).cloned().collect();
+            for name in gone {
+                list.removed.insert(name, clock);
+            }
+            for name in &held {
+                list.removed.remove(name);
+            }
+            list.held = held;
+        }
+    }
 }
 
 /// The name a floor is kept under: a hash of the format-1 entry (whose name may be a whole money line).
 fn floor_key(key: &str) -> String {
     derived("floor", key)
+}
+
+/// Whether a record of an element of a list format 1 sent whole (pinned
+/// sites, words, days off, routines, task kinds, lighter days) comes at or
+/// below the clock of a whole list that took that element out here
+/// (`Floor::removed`), the list not holding it since. Passed over, so that
+/// an element taken out before the switch never comes back, as when a
+/// device restates its old entries in a new round (`share-own-cut`). An
+/// element no whole list here ever held (added in format 2 elsewhere, its
+/// record waiting here) is never passed over: a list that did not know it
+/// did not take it out.
+fn below_whole_floor(memory: &Memory, key: &str, c: u64) -> bool {
+    let (file, entry) = (file_of(key), entry_of(key));
+    let Some((list, element)) = entry.rsplit_once(SEP) else { return false };
+    let Some(name) = element.strip_prefix(MARK) else { return false };
+    memory.floors.get(&floor_key(&format!("{file}#{list}"))).is_some_and(|floor| floor.held.as_ref().is_some_and(|held| !held.contains(name)) && floor.removed.get(name).is_some_and(|at| c <= *at))
 }
 
 /// Why a device holds back format 2 (`format_holders`).
@@ -2247,7 +2328,12 @@ fn note_entries(folder: &Path, key: &[u8; 32], memory: &mut Memory) {
 /// bound to its device, round, number and clock), for the devices this
 /// memory has not heard of yet (`Memory::heard_at`): a memory from before it
 /// was kept learns when each device it read last wrote.
-fn fill_heard_at(folder: &Path, key: &[u8; 32], computer: &str, memory: &mut Memory) {
+///
+/// A device read here whose rounds are gone from the folder takes the latest
+/// clock of its changes this memory still holds (each the clock of a record
+/// read here, sealed); one with none at all is noted as found without a
+/// clock (`Memory::unclocked`), at `now_ms`, once.
+fn fill_heard_at(folder: &Path, key: &[u8; 32], computer: &str, memory: &mut Memory, now_ms: i64) {
     for (other, their_rounds) in rounds_with(folder) {
         if other == computer || memory.heard_at.contains_key(&other) {
             continue;
@@ -2256,6 +2342,23 @@ fn fill_heard_at(folder: &Path, key: &[u8; 32], computer: &str, memory: &mut Mem
         if let Some(clock) = last_record_clock(folder, key, &other, round) {
             memory.heard_at.insert(other, (clock >> 16) as i64);
         }
+    }
+    let read: Vec<String> = memory.read_n.keys().filter(|id| *id != computer && !memory.heard_at.contains_key(*id)).cloned().collect();
+    for other in read {
+        let held = memory.entries.values().filter(|k| k.w == other).map(|k| k.c).chain(memory.floors.values().filter(|f| f.w == other).map(|f| f.c)).max();
+        match held {
+            Some(clock) => {
+                memory.heard_at.insert(other.clone(), (clock >> 16) as i64);
+                memory.unclocked.remove(&other);
+            }
+            None => {
+                memory.unclocked.entry(other).or_insert(now_ms);
+            }
+        }
+    }
+    let heard: Vec<String> = memory.unclocked.keys().filter(|id| memory.heard_at.contains_key(*id)).cloned().collect();
+    for id in heard {
+        memory.unclocked.remove(&id);
     }
 }
 
@@ -2290,9 +2393,10 @@ fn last_heard(entry: Option<&crate::devices::Entry>, memory: &Memory, id: &str) 
 /// before, `read_n`, `heard_at`, whatever the folder shows now: a hostile
 /// folder hiding a device's files never makes it go), but those that left
 /// (their entry says so), those you forgot until they say anything newer
-/// (`forget_device`), and those not heard of for `SILENT_DAYS`. A file alone
-/// (plain notes, an entry that does not read) with no record is a stray file,
-/// not a device.
+/// (`forget_device`), and those not heard of for `SILENT_DAYS` (one of which
+/// no clock is known at all, from when this device first found it so,
+/// `Memory::unclocked`). A file alone (plain notes, an entry that does not
+/// read) with no record is a stray file, not a device.
 fn present(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_ms: i64) -> Vec<(String, Option<crate::devices::Entry>, bool)> {
     let (entries, unread) = crate::devices::all(folder, key);
     let recorded: BTreeSet<String> = rounds_with(folder).into_keys().chain(memory.read_n.keys().cloned()).chain(memory.heard_at.keys().cloned()).collect();
@@ -2319,7 +2423,9 @@ fn present(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_m
             if memory.forgotten.get(&id).is_some_and(|mark| last <= *mark) {
                 return None;
             }
-            if last > 0 && now_ms - last > SILENT_DAYS * DAY {
+            // No clock known at all: aged from when this device first found it so.
+            let aged = if last > 0 { last } else { memory.unclocked.get(&id).copied().unwrap_or(0) };
+            if aged > 0 && now_ms - aged > SILENT_DAYS * DAY {
                 return None;
             }
             let unread = unread.contains(&id) && entries.iter().all(|e| e.id != id);
@@ -2666,11 +2772,11 @@ fn translate(stores: &[Store], older: &BTreeMap<String, (Option<String>, u64, St
                     let key2 = format!("{file}#{list}{SEP}{MARK}{name}");
                     let current = winners.get(&key2).map(|(v, _, _)| v.clone()).unwrap_or_else(|| elements.iter().find(|(_, after, _)| *after == format!("{list}{SEP}{MARK}{name}")).map(|(_, _, text)| text.clone()));
                     if current.is_some_and(|text| without_id(&text) != without_id(ident)) {
-                        memory.floors.insert(floor, Floor { c: *c, w: w.clone(), held: None });
+                        memory.floors.insert(floor, Floor { c: *c, w: w.clone(), held: None, removed: BTreeMap::new() });
                         continue;
                     }
                 }
-                memory.floors.insert(floor, Floor { c: *c, w: w.clone(), held: None });
+                memory.floors.insert(floor, Floor { c: *c, w: w.clone(), held: None, removed: BTreeMap::new() });
                 if kept && name != fallback {
                     again.push((format!("{file}#{list}{SEP}{MARK}{name}"), format!("{file}#{list}{SEP}{MARK}{fallback}")));
                 }
@@ -2695,10 +2801,13 @@ fn translate(stores: &[Store], older: &BTreeMap<String, (Option<String>, u64, St
                     versions.entry(format!("{prefix}{name}")).or_default().push((Some(leaf_text(element)), *c, w.clone()));
                 }
                 // Of what the previous whole list held, what this one no longer holds.
+                let mut removed = previous.as_ref().map(|f| f.removed.clone()).unwrap_or_default();
                 for gone in previous.and_then(|f| f.held).unwrap_or_default().difference(&listed) {
                     versions.entry(format!("{prefix}{gone}")).or_default().push((None, *c, w.clone()));
+                    removed.insert(gone.clone(), *c);
                 }
-                memory.floors.insert(floor, Floor { c: *c, w: w.clone(), held: Some(listed) });
+                removed.retain(|name, _| !listed.contains(name));
+                memory.floors.insert(floor, Floor { c: *c, w: w.clone(), held: Some(listed), removed });
             }
         }
     }
@@ -2763,6 +2872,8 @@ fn switch_format(sharing: &Sharing, memory: &mut Memory, stores: &[Store], now_m
     if memory.joined {
         flush(sharing, memory, stores, now_ms)?;
     }
+    // What each whole list holds after that, and what one took out: kept with its floor.
+    note_whole_lists(stores, memory);
     // Ids written first, file by file; the memory renamed only once all are:
     // one that cannot be written (no room for the copy kept, a file being
     // written) keeps this device on format 1 for now, said; tried again at the
@@ -3078,10 +3189,11 @@ fn rename_memory(memory: &mut Memory, store: &Store, file: &str, placed: &[Place
             Renamed::Same => {}
             Renamed::Whole(_) => {
                 let held = wholes.get(&key).cloned().filter(|_| !known.h.is_empty());
-                memory.floors.insert(floor_key(&key), Floor { c: known.c, w: known.w.clone(), held: Some(held.unwrap_or_default()) });
+                let removed = memory.lists.remove(&key).map(|list| list.removed).unwrap_or_default();
+                memory.floors.insert(floor_key(&key), Floor { c: known.c, w: known.w.clone(), held: Some(held.unwrap_or_default()), removed });
             }
             Renamed::Element(keyed) => {
-                memory.floors.insert(floor_key(&key), Floor { c: known.c, w: known.w.clone(), held: None });
+                memory.floors.insert(floor_key(&key), Floor { c: known.c, w: known.w.clone(), held: None, removed: BTreeMap::new() });
                 if !placed.iter().any(|p| p.stands && format!("{file}#{}", p.before) == key) {
                     let (list, ident) = entry.rsplit_once(SEP).map_or(("", ""), |(list, element)| (list, element.trim_start_matches(MARK)));
                     grouped.entry(format!("{file}#{list}{SEP}{MARK}{}", stateless(keyed, ident))).or_default().push(Known { h: String::new(), ..known });
@@ -3215,7 +3327,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     memory.newer.retain(|part, newer| newer.format > part_format(part));
     // What is known of the others, from sealed facts (`present`).
     note_entries(sharing.folder, sharing.key, &mut memory);
-    fill_heard_at(sharing.folder, sharing.key, sharing.computer, &mut memory);
+    fill_heard_at(sharing.folder, sharing.key, sharing.computer, &mut memory, now_ms);
     release_newer(sharing, &mut memory, now_ms);
     if memory.format < 2 && (memory.switch || format_open(sharing, &memory, now_ms)) {
         switch_format(sharing, &mut memory, stores, now_ms, &mut outcome.problems)?;
@@ -3432,7 +3544,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         }
         if f < 2 && divided_otherwise(&key) {
             later(&mut older_format, key, value, c, &w);
-        } else if newer(c, &w, memory.entries.get(&key).map(|k| (k.c, k.w.as_str()))) && newer(c, &w, winners.get(&key).map(|(_, c, w)| (*c, w.as_str()))) {
+        } else if !below_whole_floor(&memory, &key, c) && newer(c, &w, memory.entries.get(&key).map(|k| (k.c, k.w.as_str()))) && newer(c, &w, winners.get(&key).map(|(_, c, w)| (*c, w.as_str()))) {
             winners.insert(key, (value, c, w));
         }
     }
@@ -3536,7 +3648,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                         wait(&mut memory.waiting, change.k, (change.v, record.c, computer.clone(), change.f));
                     } else if rebuilt(file_of(&change.k)) && !off(&change.k) && memory.format >= 2 && change.f < 2 && divided_otherwise(&change.k) {
                         later(&mut older_format, change.k, change.v, record.c, computer);
-                    } else if rebuilt(file_of(&change.k)) && !off(&change.k) && newer(record.c, computer, winners.get(&change.k).map(|(_, c, w)| (*c, w.as_str()))) && memory.entries.get(&change.k).is_none_or(|k| (record.c, computer.as_str()) > (k.c, k.w.as_str())) {
+                    } else if rebuilt(file_of(&change.k)) && !off(&change.k) && !below_whole_floor(&memory, &change.k, record.c) && newer(record.c, computer, winners.get(&change.k).map(|(_, c, w)| (*c, w.as_str()))) && memory.entries.get(&change.k).is_none_or(|k| (record.c, computer.as_str()) > (k.c, k.w.as_str())) {
                         bases.insert(change.k.clone(), change.b);
                         winners.insert(change.k, (change.v, record.c, computer.clone()));
                     }
@@ -3610,7 +3722,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 }
                 let known = memory.entries.get(&change.k).map(|k| (k.c, k.w.as_str()));
                 let pending = winners.get(&change.k).map(|(_, c, w)| (*c, w.as_str()));
-                if newer(record.c, computer, known) && newer(record.c, computer, pending) {
+                // An element a later whole list of format 1 took out, restated at its old clock: passed over.
+                if newer(record.c, computer, known) && newer(record.c, computer, pending) && !below_whole_floor(&memory, &change.k, record.c) {
                     bases.insert(change.k.clone(), change.b);
                     winners.insert(change.k, (change.v, record.c, computer.clone()));
                 }
@@ -3936,6 +4049,12 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     outcome.looked = if memory.newer.contains_key("health") { 0 } else { clock };
     outcome.wrote = memory.joined.then_some((memory.round.max(1), memory.seq));
     remove_old_rounds(sharing, &memory, now_ms);
+    // Still on format 1: what each whole list holds now, and what one took out (`Floor::removed` at the switch).
+    if memory.format < 2 {
+        note_whole_lists(originals, &mut memory);
+    } else {
+        memory.lists.clear();
+    }
     memory.save(sharing.memory)?;
     Ok(outcome)
 }
@@ -4407,7 +4526,8 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
         let _ = std::fs::File::options().write(true).open(&temporary).and_then(|f| f.set_modified(std::time::SystemTime::now()));
         std::fs::rename(&temporary, &path).map_err(fail)
     };
-    let done = if matches!(store.shape, Shape::Files) { put() } else { sioul_core::filelock::with_lock(&path, put) };
+    // A file sealed apart (a note) under its lock only when one of Sioul's own writers takes it (the letters' list).
+    let done = if matches!(store.shape, Shape::Files) && !sioul_core::filelock::has_lock(&path) { put() } else { sioul_core::filelock::with_lock(&path, put) };
     if done.is_err() {
         let _ = std::fs::remove_file(&temporary);
     }
@@ -7821,6 +7941,10 @@ mod switch_tests;
 #[cfg(test)]
 #[path = "share_switch_more_tests.rs"]
 mod switch_more_tests;
+
+#[cfg(test)]
+#[path = "share_switch_third_tests.rs"]
+mod switch_third_tests;
 
 #[cfg(test)]
 mod probe {

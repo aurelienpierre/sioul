@@ -48,8 +48,9 @@ Item {
         page.rows = JSON.parse(page.sioul.settings("parameters"))
     }
 
-    function save(key, value) {
-        page.problem = page.sioul.setSetting(key, JSON.stringify(value))
+    // `shown`: the value the row showed: a list's change is set over the files as they are now.
+    function save(key, value, shown) {
+        page.problem = shown === undefined ? page.sioul.setSetting(key, JSON.stringify(value)) : page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
         if (page.problem === "")
             page.reload()
     }
@@ -225,7 +226,7 @@ Item {
                         setting: row.modelData
                         sioul: page.sioul
                         theme: page.theme
-                        onSave: (key, value) => page.save(key, value)
+                        onSave: (key, value, shown) => page.save(key, value, shown)
                     }
                 }
             }
@@ -265,8 +266,8 @@ Item {
                         sioul: page.sioul
                         theme: page.theme
                         rows: page.rows.filter(r => r.section === "attention")
-                        onSave: (key, value) => {
-                            page.save(key, value)
+                        onSave: (key, value, shown) => {
+                            page.save(key, value, shown)
                             reachesTab.reload()
                         }
                         onToTop: scroll.ScrollBar.vertical.position = 0
@@ -291,7 +292,7 @@ Item {
                         sioul: page.sioul
                         theme: page.theme
                         rows: page.rows.filter(r => r.section === "words")
-                        onSave: (key, value) => page.save(key, value)
+                        onSave: (key, value, shown) => page.save(key, value, shown)
                         onToTop: scroll.ScrollBar.vertical.position = 0
                     }
                 }

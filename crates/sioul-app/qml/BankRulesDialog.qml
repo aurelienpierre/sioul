@@ -49,9 +49,10 @@ Dialog {
         return text.split(",").map(w => w.trim()).filter(w => w !== "")
     }
 
-    function save(place, wordsText, direction, to, everywhere) {
+    // `rule`: the rule as shown (named by its id, or its place while it holds the same); null for a new one.
+    function save(rule, wordsText, direction, to, everywhere) {
         const edit = { account: everywhere ? "" : dialog.account.id, words: dialog.words(wordsText), direction: direction, to: to }
-        dialog.problem = dialog.sioul.saveBankRule(place, JSON.stringify(edit))
+        dialog.problem = dialog.sioul.saveBankRule(rule === null ? "" : JSON.stringify(rule), JSON.stringify(edit))
         if (dialog.problem === "")
             dialog.changed()
     }
@@ -102,20 +103,20 @@ Dialog {
                             Accessible.name: dialog.sioul.text("bank-rule-words")
                             onEditingFinished: {
                                 if (text !== rule.modelData.words.join(", "))
-                                    dialog.save(rule.modelData.place, text, rule.modelData.direction, rule.modelData.to, rule.modelData.everywhere)
+                                    dialog.save(rule.modelData, text, rule.modelData.direction, rule.modelData.to, rule.modelData.everywhere)
                             }
                         }
                         ComboBox {
                             Layout.preferredWidth: 180
                             model: dialog.directions.map(d => dialog.sioul.text("bank-rule-direction-" + (d === "" ? "any" : d)))
                             currentIndex: Math.max(0, dialog.directions.indexOf(rule.modelData.direction))
-                            onActivated: index => dialog.save(rule.modelData.place, ruleWords.text, dialog.directions[index], rule.modelData.to, rule.modelData.everywhere)
+                            onActivated: index => dialog.save(rule.modelData, ruleWords.text, dialog.directions[index], rule.modelData.to, rule.modelData.everywhere)
                         }
                         ComboBox {
                             Layout.preferredWidth: 220
                             model: dialog.places.map(p => dialog.theme.plain(p.title))
                             currentIndex: Math.max(0, dialog.places.findIndex(p => p.id === rule.modelData.to))
-                            onActivated: index => dialog.save(rule.modelData.place, ruleWords.text, rule.modelData.direction, dialog.places[index].id, rule.modelData.everywhere)
+                            onActivated: index => dialog.save(rule.modelData, ruleWords.text, rule.modelData.direction, dialog.places[index].id, rule.modelData.everywhere)
                         }
                         Label {
                             Layout.preferredWidth: 110
@@ -129,7 +130,7 @@ Dialog {
                             text: "×"
                             Accessible.name: dialog.sioul.text("ui-delete")
                             onClicked: {
-                                dialog.problem = dialog.sioul.removeBankRule(rule.modelData.place)
+                                dialog.problem = dialog.sioul.removeBankRule(JSON.stringify(rule.modelData))
                                 if (dialog.problem === "")
                                     dialog.changed()
                             }
@@ -180,7 +181,7 @@ Dialog {
                 enabled: (dialog.words(newWords.text).length > 0 || newDirection.currentIndex > 0) && dialog.places.length > 0
                 text: dialog.sioul.text("ui-add")
                 onClicked: {
-                    dialog.save(-1, newWords.text, dialog.directions[newDirection.currentIndex], dialog.places[newPlace.currentIndex].id, false)
+                    dialog.save(null, newWords.text, dialog.directions[newDirection.currentIndex], dialog.places[newPlace.currentIndex].id, false)
                     if (dialog.problem === "")
                         newWords.clear()
                 }

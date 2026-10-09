@@ -275,6 +275,18 @@ struct File {
 }
 
 impl Wallet {
+    /// Read, changed by `change` and written back, all under the file's lock,
+    /// which the sharing takes too: a change is set over the file as it is
+    /// then, never over a copy read earlier. Returns what `change` returns.
+    pub fn change<R>(root: &Path, change: impl FnOnce(&mut Wallet) -> R) -> Result<R, String> {
+        crate::filelock::with_lock(&root.join(MANIFEST), || {
+            let mut wallet = Wallet::load(root)?;
+            let out = change(&mut wallet);
+            wallet.save()?;
+            Ok(out)
+        })
+    }
+
     /// The wallet at the root of a notes folder; empty when there is none yet.
     pub fn load(root: &Path) -> Result<Wallet, String> {
         let path = root.join(MANIFEST);
@@ -337,8 +349,12 @@ impl Wallet {
         Ok(format!("{FOLDER}/{}", target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()))
     }
 
-    /// Written whole, next to its place then moved: never half a file.
+    /// Written whole, next to its place then moved: never half a file. Under the file's lock.
     pub fn save(&self) -> Result<(), String> {
+        crate::filelock::with_lock(&self.root.join(MANIFEST), || self.write())
+    }
+
+    fn write(&self) -> Result<(), String> {
         let mut doc = toml_edit::DocumentMut::new();
         doc.decor_mut().set_prefix("# Your papers: what each is, its file, how long it holds (docs/papers.md).\n\n");
         let mut list = toml_edit::ArrayOfTables::new();

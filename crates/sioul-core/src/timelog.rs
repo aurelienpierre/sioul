@@ -313,6 +313,22 @@ pub fn keep_running(running: Option<&Running>) -> Result<(), String> {
     keep_running_in(&folder(), running)
 }
 
+/// The running session, as the file holds it now, changed by `change` and
+/// kept, all under the file's lock, which the sharing takes too: a press
+/// is set over the session as it is then. Whether one was running.
+pub fn change_running_in(dir: &Path, change: impl FnOnce(&mut Running)) -> Result<bool, String> {
+    let path = running_path(dir);
+    crate::filelock::with_lock(&path, || {
+        let Some(mut running) = running_in(dir) else { return Ok(false) };
+        change(&mut running);
+        keep_running_in(dir, Some(&running)).map(|()| true)
+    })
+}
+
+pub fn change_running(change: impl FnOnce(&mut Running)) -> Result<bool, String> {
+    change_running_in(&folder(), change)
+}
+
 /// Minutes an open-ended session counts at most: one left running all night is not a night's work.
 const OPEN_ENDED_CEILING: u32 = 180;
 

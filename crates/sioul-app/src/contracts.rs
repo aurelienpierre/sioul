@@ -184,10 +184,7 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
         Ok(e) => e,
         Err(e) => return e.to_string(),
     };
-    let mut contracts = match contracts() {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
+    let Some(root) = load_config().notes_root_path() else { return tr().text("papers-no-store", None) };
     if edit.title.trim().is_empty() {
         return tr().text("papers-no-title", None);
     }
@@ -199,34 +196,35 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
         (Ok(a), Ok(b), Ok(c)) => (a, b, c),
         (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => return e,
     };
-    let old = contracts.get(id).cloned().unwrap_or_default();
-    let contract = Contract {
-        id: old.id.clone(),
-        kind: Kind::of(&edit.kind),
-        title: edit.title.trim().to_string(),
-        party: edit.party.trim().to_string(),
-        reference: edit.reference.trim().to_string(),
-        preset: edit.preset.trim().to_string(),
-        started,
-        renews,
-        every: if matches!(edit.every.as_str(), "year" | "month") { edit.every.clone() } else { String::new() },
-        notice_days: edit.notice_days.min(365),
-        cancel: edit.cancel.trim().to_string(),
-        covers: edit.covers.trim().to_string(),
-        notes: edit.notes.trim().to_string(),
-        paper: old.paper.clone(),
-        ended,
-    };
-    contracts.put(contract);
-    contracts.save().err().unwrap_or_default()
+    // Set over the contracts as the file holds them now, under its lock, which the sharing takes too.
+    Contracts::change(&root, |contracts| {
+        let old = contracts.get(id).cloned().unwrap_or_default();
+        let contract = Contract {
+            id: old.id.clone(),
+            kind: Kind::of(&edit.kind),
+            title: edit.title.trim().to_string(),
+            party: edit.party.trim().to_string(),
+            reference: edit.reference.trim().to_string(),
+            preset: edit.preset.trim().to_string(),
+            started,
+            renews,
+            every: if matches!(edit.every.as_str(), "year" | "month") { edit.every.clone() } else { String::new() },
+            notice_days: edit.notice_days.min(365),
+            cancel: edit.cancel.trim().to_string(),
+            covers: edit.covers.trim().to_string(),
+            notes: edit.notes.trim().to_string(),
+            paper: old.paper.clone(),
+            ended,
+        };
+        contracts.put(contract);
+    })
+    .err()
+    .unwrap_or_default()
 }
 
 pub(crate) fn remove(id: &str) -> String {
-    let mut contracts = match contracts() {
-        Ok(c) => c,
-        Err(e) => return e,
-    };
-    if contracts.remove(id) { contracts.save().err().unwrap_or_default() } else { String::new() }
+    let Some(root) = load_config().notes_root_path() else { return tr().text("papers-no-store", None) };
+    Contracts::change(&root, |contracts| contracts.remove(id)).err().unwrap_or_default()
 }
 
 /// The letter that stops a contract, as a draft to read, sign and send: to its

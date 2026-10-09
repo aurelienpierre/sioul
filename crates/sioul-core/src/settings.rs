@@ -891,6 +891,102 @@ pub fn categories(tr: &Translator, names: Vec<String>) -> Setting {
     b.out.remove(0)
 }
 
+/// A list's change, from what an editor showed (`shown`) to what it sends
+/// (`value`), set over the list as the file holds it now (`current`): what
+/// it took out taken out, what it added added, the rest as `current` holds
+/// it; the editor's order for what it holds, then what it never showed.
+/// Nothing changed meanwhile: `value` itself.
+pub fn rebased<T: PartialEq + Clone>(shown: &[T], value: &[T], current: &[T]) -> Vec<T> {
+    if shown == current {
+        return value.to_vec();
+    }
+    let added: Vec<&T> = value.iter().filter(|v| !shown.contains(v)).collect();
+    let removed: Vec<&T> = shown.iter().filter(|s| !value.contains(s)).collect();
+    let mut out: Vec<T> = value.iter().filter(|v| added.contains(v) || current.contains(v)).cloned().collect();
+    for there in current {
+        if !out.contains(there) && !removed.contains(&there) {
+            out.push(there.clone());
+        }
+    }
+    out
+}
+
+/// The views whose rows `current_value` looks through for a key.
+const VIEWS: &[&str] = &["parameters", "porch", "mail", "senders", "accounts", "agenda", "tasks", "notes", "reading", "sites", "contacts", "lane:people"];
+
+/// A setting changed from the window: `value` as the window sends it, from
+/// `shown`, the value its row showed. A list (words, days off, hours, senders,
+/// routes…) is the window's change applied to the list as the files hold it
+/// now (`rebase`): what the window took out taken out, what it added added,
+/// the rest as it is, so that an element another device's change brought in
+/// meanwhile is never taken out. Read, rebased and written under the lock of
+/// the file the setting is kept in, which the sharing takes too. Without
+/// `shown` (a caller that just read the files), `value` as it is.
+pub fn change(config_path: &Path, key: &str, shown: Option<&SettingValue>, value: &SettingValue) -> Result<(), String> {
+    // A row of attention: only the cells the window changed (`attention::apply_change`).
+    if key.starts_with("attention.") || key.starts_with("notify.") {
+        return crate::attention::apply_change(config_path, key, shown, value);
+    }
+    let config = || if config_path.exists() { Config::load(config_path) } else { Ok(Config::default()) };
+    let kept_in = match key {
+        "known" | "safe" | "neutral" | "restricted" | "blocked" => {
+            let config = config()?;
+            match key {
+                "known" => config.known_senders_path(),
+                "safe" => config.safe_senders_path(),
+                "neutral" => config.neutral_senders_path(),
+                "restricted" => config.restricted_senders_path(),
+                _ => config.blocked_senders_path(),
+            }
+        }
+        _ if key.starts_with("project.") => config()?.notes_root_path().map_or_else(|| config_path.to_path_buf(), |root| crate::projects::file_in(&root)),
+        _ => config_path.to_path_buf(),
+    };
+    crate::filelock::with_lock(&kept_in, || {
+        let fresh = config()?;
+        let value = match shown {
+            Some(shown) => current_value(&fresh, key).map_or_else(|| value.clone(), |current| rebase(shown, value, &current)),
+            None => value.clone(),
+        };
+        apply(config_path, &fresh, key, &value)
+    })
+}
+
+/// A setting's value as the files hold it now: its row's, in whichever view shows it.
+fn current_value(config: &Config, key: &str) -> Option<SettingValue> {
+    let tr = crate::i18n::Translator::new("en");
+    let store = config.notes_root_path().and_then(|root| crate::projects::ProjectStore::load(&root).ok());
+    let own = key.strip_prefix("project.").and_then(|k| k.strip_suffix(".routes")).map(|id| format!("project:{id}")).or_else(|| key.strip_prefix("account.").and_then(|k| k.split('.').next()).map(|id| format!("account:{id}")));
+    let views: Vec<String> = own.into_iter().chain(VIEWS.iter().map(|v| (*v).to_string())).collect();
+    views.iter().find_map(|view| for_view(view, config, &tr, &[], store.as_ref()).into_iter().find(|row| row.key == key).map(|row| row.value))
+}
+
+/// The window's change of a list, from what it showed (`shown`) to what it
+/// sends (`value`), set over the list as it is now (`current`): what it took
+/// out taken out, what it added added, the rest as `current` holds it; the
+/// window's order for what it holds. Nothing changed meanwhile: `value`
+/// itself. A value that is no list: `value`.
+pub fn rebase(shown: &SettingValue, value: &SettingValue, current: &SettingValue) -> SettingValue {
+    use SettingValue as V;
+    // The window's JSON `[]` reads as numbers: an empty list of the kind the other values are.
+    let like = |v: &SettingValue, other: &SettingValue| match (v, other) {
+        (V::Ints(none), V::Texts(_)) if none.is_empty() => V::Texts(Vec::new()),
+        (V::Ints(none), V::Windows(_)) if none.is_empty() => V::Windows(Vec::new()),
+        (V::Ints(none), V::TimeOff(_)) if none.is_empty() => V::TimeOff(Vec::new()),
+        (V::Ints(none), V::Routes(_)) if none.is_empty() => V::Routes(Vec::new()),
+        _ => v.clone(),
+    };
+    let (shown, value) = (like(shown, current), like(value, current));
+    match (&shown, &value, current) {
+        (V::Texts(s), V::Texts(v), V::Texts(c)) => V::Texts(rebased(s, v, c)),
+        (V::Ints(s), V::Ints(v), V::Ints(c)) => V::Ints(rebased(s, v, c)),
+        (V::Windows(s), V::Windows(v), V::Windows(c)) => V::Windows(rebased(s, v, c)),
+        (V::TimeOff(s), V::TimeOff(v), V::TimeOff(c)) => V::TimeOff(rebased(s, v, c)),
+        (V::Routes(s), V::Routes(v), V::Routes(c)) => V::Routes(rebased(s, v, c)),
+        _ => value,
+    }
+}
+
 pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValue) -> Result<(), String> {
     // The window's JSON `[]` reads as the first kind of list it fits, numbers:
     // the last entry of a list taken away is an empty list of any kind.
@@ -942,7 +1038,7 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
         "ai_key" | "github_token" => Err(format!("{key}: kept in the system keyring, never in the configuration")),
         "tasks.kind" => {
             let SettingValue::Rename(change) = value else { return Err(format!("{key}: a change expected")) };
-            crate::config::change_kind(config_path, config, &change.from, &change.to)
+            crate::config::change_kind(config_path, &change.from, &change.to)
         }
         // "calendars/<account>/<id>" or "contacts/…": renamed, or deleted when empty.
         "collections" => {
@@ -1218,6 +1314,38 @@ mod tests {
         assert_eq!(crate::words::languages(&config), ["en"]);
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(!text.contains("senders") && !text.contains("brands"), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A list's change from the window is set over the list as the files hold
+    /// it now (`change`): an entry another device added since the row was
+    /// shown stays; the one taken out goes; working hours and senders alike;
+    /// nothing changed since: the window's list as it sent it, its order kept
+    /// (third review, T1, T2 and the sweep of the window's editors).
+    #[test]
+    fn a_list_changed_from_the_window_keeps_what_arrived_meanwhile() {
+        let dir = std::env::temp_dir().join(format!("sioul-change-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, format!("known_senders = \"{}\"\n", dir.join("known.txt").display().to_string().replace('\\', "/"))).unwrap();
+        let known = Config::load(&path).unwrap().known_senders_path();
+        std::fs::write(&known, "jane@example.org\nbob@example.org\n").unwrap();
+        let texts = |list: &[&str]| SettingValue::Texts(list.iter().map(|s| s.to_string()).collect());
+        let shown = texts(&["bob@example.org", "jane@example.org"]);
+        // Another device adds Ada meanwhile; the window takes Bob out and adds Zoé.
+        std::fs::write(&known, "jane@example.org\nbob@example.org\nada@example.org\n").unwrap();
+        change(&path, "known", Some(&shown), &texts(&["jane@example.org", "zoe@example.org"])).unwrap();
+        let mut now = SenderList::load(&known).entries();
+        now.sort();
+        assert_eq!(now, ["ada@example.org", "jane@example.org", "zoe@example.org"]);
+        // The lists of words: the pause's helps, reordered by the window with nothing new: its order.
+        set_value(&path, "pause.helps", &texts(&["Tea", "A walk"])).unwrap();
+        change(&path, "pause.helps", Some(&texts(&["Tea", "A walk"])), &texts(&["A walk", "Tea"])).unwrap();
+        assert_eq!(Config::load(&path).unwrap().pause.helps, ["A walk", "Tea"]);
+        // Rebased by hand: the window's order for what it holds, what it never showed after.
+        assert_eq!(rebased(&[1, 2, 3], &[3, 1, 4], &[1, 2, 3, 5]), [3, 1, 4, 5]);
+        assert_eq!(rebase(&SettingValue::Ints(Vec::new()), &texts(&["a"]), &texts(&["b"])), texts(&["a", "b"]));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -969,7 +969,10 @@ pub(crate) fn undo(qt: &QtThread, shared: &Arc<Shared>) -> Option<String> {
             (back.err().unwrap_or_else(|| tr().text("undo-done", None)), None)
         }
         Work::Rest { previous } => {
-            let _ = previous.save(&sioul_core::quiet::Overrides::default_path());
+            // Put back as it was, over the file as it is now (`Overrides::put_back`:
+            // `save_merged` then writes what differs from this read).
+            let path = sioul_core::quiet::Overrides::default_path();
+            let _ = sioul_core::quiet::Overrides::load(&path).put_back(previous).save(&path);
             let _ = qt.queue(|mut sioul| sioul.as_mut().set_mode(QString::from(&crate::backend::mode_json())));
             show(qt, shared);
             crate::work::show_work(qt, shared);

@@ -384,15 +384,30 @@ impl Health {
     }
 
     /// Written next to its place, then moved: never half a file. Yours alone.
+    /// Under the file's lock, which the sharing takes too.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
-        }
-        let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
-        keep_private(&temporary);
-        std::fs::rename(&temporary, path).map_err(fail)
+        crate::filelock::with_lock(path, || {
+            let fail = |e: std::io::Error| format!("{}: {e}", path.display());
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(fail)?;
+            }
+            let temporary = path.with_extension("toml.new");
+            std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
+            keep_private(&temporary);
+            std::fs::rename(&temporary, path).map_err(fail)
+        })
+    }
+
+    /// Read, changed by `change` and written back, all under the file's lock,
+    /// which the sharing takes too: a change is set over the file as it is
+    /// then, never over a copy read earlier. Returns what `change` returns.
+    pub fn change<R>(path: &Path, change: impl FnOnce(&mut Health) -> Result<R, String>) -> Result<R, String> {
+        crate::filelock::with_lock(path, || {
+            let mut health = Health::load(path);
+            let out = change(&mut health)?;
+            health.save(path)?;
+            Ok(out)
+        })
     }
 
     /// A new id among the others, from a name.
