@@ -5,7 +5,6 @@ package com.aurelienpierre.sioul;
 
 import android.app.AlarmManager;
 import android.app.Notification;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -301,8 +300,8 @@ final class EventAlarms
     static void channel(Context context)
     {
         NotificationManager notifications = context.getSystemService(NotificationManager.class);
-        notifications.createNotificationChannel(new NotificationChannel(CHANNEL, word(context, "channel"), NotificationManager.IMPORTANCE_LOW));
-        notifications.createNotificationChannel(new NotificationChannel(ALARMS, word(context, "alarms"), NotificationManager.IMPORTANCE_DEFAULT));
+        notifications.createNotificationChannel(Channels.quiet(CHANNEL, word(context, "channel"), NotificationManager.IMPORTANCE_LOW));
+        notifications.createNotificationChannel(Channels.quiet(ALARMS, word(context, "alarms"), NotificationManager.IMPORTANCE_DEFAULT));
     }
 
     /**

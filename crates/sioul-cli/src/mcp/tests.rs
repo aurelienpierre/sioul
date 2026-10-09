@@ -122,7 +122,7 @@ fn make(root: &Path) -> PathBuf {
     let card = sioul_core::maildir::read_one(&hostile).unwrap();
     assert_eq!(shield::assess(&card.subject, &card.excerpt).tone, shield::Tone::Calm, "only the AI finds it hostile");
     let answer = shield::Assessment { tone: shield::Tone::Hostile, by_ai: true, ..shield::Assessment::default() };
-    shield::AiCache { messages: [(shield::ai_key(&card).unwrap(), answer)].into() }.save("public").unwrap();
+    shield::AiCache { messages: [(shield::ai_key(&card).unwrap(), answer)].into(), ..shield::AiCache::default() }.save("public").unwrap();
     std::fs::create_dir_all(store.join("notes")).unwrap();
     // The housing aid, opened to agents; the taxes, written as before the
     // field existed, closed: every project is closed until opened.

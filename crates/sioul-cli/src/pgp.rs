@@ -16,6 +16,8 @@ pub(crate) enum PgpCommand {
     /// Your keys, then others'.
     List,
     /// Makes a key for one of your addresses; the keyring keeps its passphrase.
+    /// Says its fingerprint, then where its revocation certificate is kept
+    /// (beside it): copy that file somewhere safe, apart from this computer.
     Make { address: String },
     /// Imports the keys of a file; a secret key's passphrase is asked, then kept in the keyring.
     Import { file: PathBuf },
@@ -46,6 +48,7 @@ pub(crate) fn run(s: &Session, command: PgpCommand) -> Result<(), String> {
             let made = pgp::generate(&name, &address, &passphrase)?;
             secret::save_pgp_passphrase(&made.fingerprint, &passphrase).map_err(|e| e.sentence(&s.tr, &address))?;
             println!("{}", made.fingerprint);
+            println!("{}", pgp::revocation_path(&made.fingerprint).display());
             Ok(())
         }
         PgpCommand::Import { file } => {

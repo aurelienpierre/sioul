@@ -94,6 +94,7 @@ Your OpenPGP keys, to sign and encrypt your messages ([Mail](mail.md#signing-and
 - **Make a key for** an address: a new key, valid three years; its passphrase is made at random and kept in your keyring, so nothing is asked at each message.
 - **Import a key…**: a key exported from GnuPG, with its passphrase, asked once.
 - **Save the public key**: into your downloads, to give to others.
+- **Save the revocation certificate**, for a key made here: a copy into your downloads, to keep somewhere safe, apart from this device. It is what declares the key no longer to be used, should it ever be lost or stolen; anyone who has it can do so. Sioul keeps it beside the key, readable by you alone ([Mail, OpenPGP](mail.md)), and cannot revoke a key yet.
 - **Keys of others**: those that came with their messages, or from a file, or found by **Look for their keys** in the writing window.
 
 Your own keys stay on this device. They are not shared with your other devices: copy them by hand if you need them there.

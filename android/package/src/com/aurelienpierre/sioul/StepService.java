@@ -6,7 +6,6 @@ package com.aurelienpierre.sioul;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.Notification;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -364,9 +363,7 @@ public final class StepService extends Service
     private Notification note()
     {
         NotificationManager notifications = getSystemService(NotificationManager.class);
-        NotificationChannel channel = new NotificationChannel(CHANNEL, channelName.isEmpty() ? word(0) : channelName, NotificationManager.IMPORTANCE_MIN);
-        channel.setShowBadge(false);
-        notifications.createNotificationChannel(channel);
+        notifications.createNotificationChannel(Channels.quiet(CHANNEL, channelName.isEmpty() ? word(0) : channelName, NotificationManager.IMPORTANCE_MIN));
         Notification.Builder note = new Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.sioul_notification)
             .setColor(getColor(R.color.sioul_green))

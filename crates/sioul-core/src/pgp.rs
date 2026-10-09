@@ -3,7 +3,9 @@
 
 //! OpenPGP (RFC 9580) for mail, with Sequoia and its pure-Rust cryptography.
 //!
-//! - **Your keys** live in `~/.local/share/sioul/pgp/own/`. A key's private
+//! - **Your keys** live in `~/.local/share/sioul/pgp/own/`. A key made here
+//!   keeps its revocation certificate beside it, `<fingerprint>.rev`, yours
+//!   alone as the key is ([`revocation_path`]); revoking is not built. A key's private
 //!   part is in one of two places ([`Place`]): here, encrypted with a
 //!   passphrase the system keyring keeps (`sioul-sync` asks it), so nothing is
 //!   asked at each message; or on a security key, which signs and opens itself
@@ -174,6 +176,8 @@ pub struct KeySummary {
     pub can_encrypt: bool,
     /// The security key holding its private keys ("0006:12345678"); empty when they are here.
     pub card: String,
+    /// Yours, made here: its revocation certificate is kept beside it (`revocation_path`).
+    pub revocation: bool,
 }
 
 fn summary(cert: &Cert, own: bool) -> KeySummary {
@@ -188,6 +192,7 @@ fn summary(cert: &Cert, own: bool) -> KeySummary {
         expires: valid.as_ref().and_then(|v| v.primary_key().key_expiration_time()).map(date).unwrap_or_default(),
         can_encrypt: cert.keys().with_policy(&policy, None).alive().revoked(false).for_transport_encryption().next().is_some(),
         card: String::new(),
+        revocation: false,
     }
 }
 
@@ -199,6 +204,7 @@ pub fn summaries() -> Vec<KeySummary> {
         if let Some(card) = keys.cards.iter().find(|c| c.cert.eq_ignore_ascii_case(&key.fingerprint)) {
             key.card = card.ident.clone();
         }
+        key.revocation = revocation_path(&key.fingerprint).is_file();
     }
     all
 }
@@ -286,16 +292,85 @@ pub fn new_passphrase() -> Result<String, String> {
 }
 
 /// Makes a key for you: Curve25519, for signing and encrypting, valid three
-/// years; its secret parts encrypted with `passphrase`.
+/// years; its secret parts encrypted with `passphrase`. Its revocation
+/// certificate, which Sequoia makes with it, is kept beside it
+/// (`revocation_path`): the only way to revoke the key once it is lost.
 pub fn generate(name: &str, address: &str, passphrase: &str) -> Result<KeySummary, String> {
+    generate_at(&pgp_dir(), name, address, passphrase)
+}
+
+/// [`generate`] into the folder `root` (`pgp/`).
+fn generate_at(root: &std::path::Path, name: &str, address: &str, passphrase: &str) -> Result<KeySummary, String> {
     let userid = if name.trim().is_empty() { format!("<{}>", address.trim()) } else { format!("{} <{}>", name.trim(), address.trim()) };
-    let (cert, _revocation) = CertBuilder::general_purpose(Some(userid))
+    let (cert, revocation) = CertBuilder::general_purpose(Some(userid))
         .set_cipher_suite(CipherSuite::Cv25519)
         .set_validity_period(std::time::Duration::from_secs(3 * 365 * 24 * 3600))
         .set_password(Some(Password::from(passphrase)))
         .generate()
         .map_err(|e| e.to_string())?;
-    store(cert)
+    // The certificate first: a key is never kept without it.
+    let own = root.join("own");
+    std::fs::create_dir_all(&own).map_err(|e| e.to_string())?;
+    let kept = own.join(format!("{}.rev", cert.fingerprint().to_hex()));
+    write_key(&kept, revocation_text(&cert, revocation)?.as_bytes())?;
+    match store_at(root, cert) {
+        Ok(summary) => Ok(KeySummary { revocation: true, ..summary }),
+        Err(e) => {
+            let _ = std::fs::remove_file(&kept);
+            Err(e)
+        }
+    }
+}
+
+/// Where the revocation certificate of your key made here is kept: beside
+/// the key, `pgp/own/<fingerprint>.rev`, readable by you alone (`write_key`),
+/// as GnuPG keeps its own in `openpgp-revocs.d`.
+pub fn revocation_path(fingerprint: &str) -> PathBuf {
+    own_dir().join(format!("{fingerprint}.rev"))
+}
+
+/// A revocation certificate as a file to keep: what it is, in a few lines,
+/// then the signature armored, a colon before its first line so that it
+/// cannot be imported by mistake (as GnuPG writes its own).
+fn revocation_text(cert: &Cert, revocation: openpgp::packet::Signature) -> Result<String, String> {
+    let mut armored = Vec::new();
+    {
+        let mut writer = openpgp::armor::Writer::with_headers(&mut armored, openpgp::armor::Kind::PublicKey, [("Comment", "This is a revocation certificate")]).map_err(|e| e.to_string())?;
+        openpgp::Packet::from(revocation).serialize(&mut writer).map_err(|e| e.to_string())?;
+        writer.finalize().map_err(|e| e.to_string())?;
+    }
+    let names: Vec<String> = cert.userids().map(|u| String::from_utf8_lossy(u.userid().value()).to_string()).collect();
+    Ok(format!(
+        "This is the revocation certificate of the OpenPGP key\n{}\n{}\n\n\
+         Published, it tells everyone that this key must no longer be used, for\n\
+         good: it cannot be taken back. Keep a copy where only you can reach it,\n\
+         apart from the key, for the day the key is lost or stolen.\n\n\
+         A colon stands before the five dashes below, so that the certificate\n\
+         cannot be imported by mistake: take it away with a text editor before\n\
+         you import the certificate and publish it.\n\n:{}",
+        cert.fingerprint().to_hex(),
+        names.join("\n"),
+        String::from_utf8_lossy(&armored)
+    ))
+}
+
+/// Copies the revocation certificate of your key `fingerprint` into
+/// `folder`, as `<fingerprint>.rev` (a number added when that name is
+/// taken), yours alone; none kept for that key, an error.
+pub fn save_revocation(fingerprint: &str, folder: &std::path::Path) -> Result<PathBuf, String> {
+    save_revocation_at(&pgp_dir(), fingerprint, folder)
+}
+
+/// [`save_revocation`] from the folder `root` (`pgp/`).
+fn save_revocation_at(root: &std::path::Path, fingerprint: &str, folder: &std::path::Path) -> Result<PathBuf, String> {
+    let text = std::fs::read(root.join("own").join(format!("{fingerprint}.rev"))).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
+    let path = (1..)
+        .map(|n| folder.join(if n == 1 { format!("{fingerprint}.rev") } else { format!("{fingerprint}-{n}.rev") }))
+        .find(|p| !p.exists())
+        .unwrap_or_else(|| folder.join(format!("{fingerprint}.rev")));
+    write_key(&path, &text)?;
+    Ok(path)
 }
 
 /// A key's public part, armored, to give to others.
@@ -305,7 +380,8 @@ pub fn export_public(fingerprint: &str) -> Option<String> {
     cert.armored().to_vec().ok().map(|b| String::from_utf8_lossy(&b).to_string())
 }
 
-/// Removes a key; yours are kept aside in `pgp/removed`, never deleted.
+/// Removes a key; yours are kept aside in `pgp/removed`, never deleted, with
+/// their revocation certificate.
 pub fn remove(fingerprint: &str) -> Result<(), String> {
     for (dir, own) in [(own_dir(), true), (others_dir(), false)] {
         let path = dir.join(format!("{fingerprint}.asc"));
@@ -316,6 +392,10 @@ pub fn remove(fingerprint: &str) -> Result<(), String> {
             let aside = data_dir().join("pgp").join("removed");
             std::fs::create_dir_all(&aside).map_err(|e| e.to_string())?;
             std::fs::rename(&path, aside.join(format!("{fingerprint}.asc"))).map_err(|e| e.to_string())?;
+            let revocation = revocation_path(fingerprint);
+            if revocation.exists() {
+                std::fs::rename(&revocation, aside.join(format!("{fingerprint}.rev"))).map_err(|e| e.to_string())?;
+            }
         } else {
             std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         }
@@ -894,6 +974,41 @@ mod tests {
             assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
         }
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A key made here keeps its revocation certificate beside it, yours
+    /// alone; a copy can be saved; removed, the key takes it aside with it.
+    #[test]
+    fn a_key_made_here_keeps_its_revocation_certificate() {
+        let root = temporary().join("pgp-made");
+        let _ = std::fs::remove_dir_all(&root);
+        let made = generate_at(&root, "Jane Exemple", "jane@example.org", "secret words").unwrap();
+        assert!(made.own && made.revocation);
+        let kept = root.join("own").join(format!("{}.rev", made.fingerprint));
+        let text = std::fs::read_to_string(&kept).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&kept).unwrap().permissions().mode() & 0o777, 0o600, "protected as the key is");
+        }
+        assert!(text.contains(&made.fingerprint) && text.contains("Jane Exemple <jane@example.org>"), "{text}");
+        // Never imported by mistake: a colon before the armor; read as no key.
+        assert!(text.contains("\n:-----BEGIN PGP PUBLIC KEY BLOCK-----") && certificates_in(text.as_bytes()).is_empty());
+        // The colon taken away, it revokes this very key.
+        let armored = &text[text.find(":-----BEGIN").unwrap() + 1..];
+        let pile = openpgp::PacketPile::from_bytes(armored.as_bytes()).unwrap();
+        let revocation = pile.descendants().find_map(|p| if let openpgp::Packet::Signature(s) = p { Some(s.clone()) } else { None }).unwrap();
+        let key = Cert::from_bytes(&std::fs::read(root.join("own").join(format!("{}.asc", made.fingerprint))).unwrap()).unwrap();
+        assert!(matches!(key.revocation_status(&policy(), None), openpgp::types::RevocationStatus::NotAsFarAsWeKnow));
+        let (revoked, _) = key.insert_packets(revocation).unwrap();
+        assert!(matches!(revoked.revocation_status(&policy(), None), openpgp::types::RevocationStatus::Revoked(_)));
+        // A copy saved elsewhere, as kept, yours alone; a second one beside it.
+        let elsewhere = root.join("saved");
+        let copy = save_revocation_at(&root, &made.fingerprint, &elsewhere).unwrap();
+        assert_eq!((copy.file_name().unwrap().to_string_lossy().to_string(), std::fs::read_to_string(&copy).unwrap()), (format!("{}.rev", made.fingerprint), text));
+        assert!(save_revocation_at(&root, &made.fingerprint, &elsewhere).unwrap().ends_with(format!("{}-2.rev", made.fingerprint)));
+        assert!(save_revocation_at(&root, "0000", &elsewhere).is_err(), "none kept for a key not made here");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

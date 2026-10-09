@@ -46,6 +46,10 @@ archive = ["archive", "archives"]
 
 # Senders who borrow a name (lookalike.rs).
 [brands]
+# Brands whose name is also an everyday word or a place ("Orange County
+# Library", "Apple Pie Bakery"): borrowed only alone or beside the words of a
+# service ("Apple Support", "Amazon.com"). Any other brand counts anywhere in a name.
+everyday = ["Amazon", "Apple", "Outlook", "UPS"]
 # Mail providers whose domains millions share: an address there is nobody's own domain.
 shared = [
     "gmail.com", "googlemail.com", "outlook.com", "outlook.fr", "hotmail.com", "hotmail.fr", "live.com", "live.fr",

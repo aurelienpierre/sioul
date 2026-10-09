@@ -4,7 +4,6 @@
 package com.aurelienpierre.sioul;
 
 import android.app.Notification;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -55,7 +54,7 @@ final class MailNotes
         String passing = words == null ? "" : words.optString("mail-through");
         String openWord = words == null ? "" : words.optString("open");
         context.getSystemService(NotificationManager.class).createNotificationChannel(
-            new NotificationChannel(CHANNEL, usual.isEmpty() ? EventAlarms.word(context, "mail") : usual, NotificationManager.IMPORTANCE_LOW));
+            Channels.quiet(CHANNEL, usual.isEmpty() ? EventAlarms.word(context, "mail") : usual, NotificationManager.IMPORTANCE_LOW));
         String channel = PauseMode.mailChannelNow(context, said.optBoolean("through", false), passing.isEmpty() ? EventAlarms.word(context, "mail-through") : passing);
         String title = said.optString("title");
         String body = said.optString("body");

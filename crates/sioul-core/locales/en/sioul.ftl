@@ -963,7 +963,8 @@ pgp-signature-bad = The signature does not match the text
 pgp-no-own-key = No key of yours for { $address } to sign with: make one or import it in Accounts.
 pgp-missing-key = No key for { $address } yet: look for it, or send without encrypting.
 pgp-making = Making your key…
-pgp-made = Your key for { $address } is made; the keyring keeps its passphrase.
+pgp-made = Your key for { $address } is made; the keyring keeps its passphrase. Its revocation certificate is kept beside it: save a copy somewhere safe, apart from this device, with “Save the revocation certificate”.
+pgp-revocation-saved = The revocation certificate is saved: { $path }. Keep it where only you can reach it: anyone who has it can revoke your key.
 pgp-wrong-passphrase = This passphrase does not open the key: nothing was imported.
 pgp-imported = { $n ->
     [one] One key imported.
@@ -982,6 +983,7 @@ ui-look-for-keys = Look for their keys
 ui-encryption = Encryption (OpenPGP)
 ui-encryption-note = Sign and encrypt your messages. Your keys stay on this device, their passphrases in the system keyring; whom you write to gets your key with each message (Autocrypt).
 ui-export-key = Save the public key
+ui-save-revocation = Save the revocation certificate
 ui-make-key = Make a key for { $address }
 ui-import-key = Import a key…
 ui-key-passphrase = The key’s passphrase, if it has one
@@ -1726,10 +1728,6 @@ filter-failed-renumbered = The server of { $account } renumbered its inbox: { $n
         [one] one message was not filtered, and it is told
        *[other] { $count } messages were not filtered, and they are told
     } as new mail.
-filter-failed-claimed = { $n ->
-        [one] One message of { $account } was marked by another of your devices, which did not act on it: it is told as new mail.
-       *[other] { $Count } messages of { $account } were marked by another of your devices, which did not act on them: they are told as new mail.
-    }
 filter-cli-acted = { $account }: { $n ->
         [one] one message filtered.
        *[other] { $count } messages filtered.
@@ -1842,6 +1840,7 @@ time-nothing-year = Nothing noted this year.
 project-done = Done
 project-asked = Date asked
 project-from = From { $sender }
+project-from-unproven = From { $sender }, whose address could not be verified
 project-note-changed = Note changed
 project-time-noted = { $time } noted
 project-invoice = Invoice { $number }
@@ -2642,6 +2641,8 @@ scan-ask = No antivirus is installed on this device, so { $name } will not be ch
 scan-open-anyway = Open it unchecked
 scan-save-anyway = Save it unchecked
 scan-unavailable-short = No antivirus answered ({ $detail }).
+scan-too-big = { $name } was not scanned: it is larger than the antivirus scans.
+scan-ask-too-big = { $name } was not scanned: it is larger than the antivirus scans, or an archive holds more than it reads. Open it only if you trust it.
 sounds-nature = Nature, made here
 sounds-waves = Waves on a beach
 sounds-rain = Rain
@@ -5283,7 +5284,7 @@ words-line-replies-help = A subject that starts with one of these prefixes gets 
 words-line-folders = Mail folders
 words-line-folders-help = A folder with one of these names, when its server does not say what it is for, is your Sent, Drafts, Junk, Trash or Archive. Take a name away, and that folder is a folder like the others.
 words-line-brands = Borrowed names
-words-line-brands-help = A sender who shows one of these names from outside its domains is set aside as borrowing it. Take a name away, and its lookalikes reach you.
+words-line-brands-help = A sender who shows one of these names from outside its domains is set aside as borrowing it. A name that is also an everyday word or a place counts only alone or beside the words of a service (“Apple Support”), so that “Orange County Library” is someone's own. Take a name away, and its lookalikes reach you.
 words-line-payments = Bills and payments
 words-line-payments-help = Mail with these words proposes a line for your budgets: a bill to pay, a payment made, money received, an order, a refund. Take a word away, and such mail proposes nothing.
 words-line-bank = Your bank's files
@@ -5324,6 +5325,7 @@ words-list-folders-junk = Junk
 words-list-folders-trash = Trash
 words-list-folders-archive = Archive
 words-list-brands-brands = Brands and services, and their domains
+words-list-brands-everyday = Names that are also everyday words or places
 words-list-brands-shared = Mail providers millions share
 words-named-brands-brands = One to a chip: the name, a colon, then its domains, separated by commas (“My Bank: mybank.example”).
 words-list-payments-bill = A bill

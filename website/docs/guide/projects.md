@@ -15,8 +15,8 @@ A project is any matter you follow: work for a client, whose time is billed, or 
 
 ## Protected by default {#what-is-protected}
 
-- **Mail is checked before it is filed.** As it arrives, a forged message (its domain says it did not send it), or one that borrows a known name, is set aside first and never filed into a project, even when its address looks like your client's.
-- **A message that fails the sender checks** (both of the signatures that servers use to vouch for a sender failed) is never filed by a route on your client's address or domain. A route on words of the subject, the text or an attachment's name can still file it, since those do not rest on who sent it.
+- **Mail is checked before it is filed.** As it arrives, a forged message (its domain says it did not send it), or one that borrows a known name, is set aside first and never filed into a project, even when its address looks like your client's. The project's page checks its mail the same way each time it shows it, and so does what an AI agent reads of the project: such a message never appears on its line of time, and neither does a conversation that only such a message ties to it.
+- **A message that fails the sender checks** (both of the signatures that servers use to vouch for a sender failed) is never filed by a route on your client's address or domain. A route on words of the subject, the text or an attachment's name can still file it, since those do not rest on who sent it; on the project's page, it then says "whose address could not be verified".
 - **Every message filed says why it came**: "sender's domain: example.org".
 - **Your projects are one plain file** in your own notes folder, and mail is filed on your device. Between your devices that file travels with your notes folder, or sealed through Sioul's sharing once **Projects and money** is on: the folder and its server see that something changed, never what ([Sharing](sharing.md)).
 - There is no server of Sioul's, and nothing about your projects goes to one.
@@ -54,9 +54,9 @@ On the left, every project, with its open tasks and the time left to bill. On th
 
 Several words or domains on one line: any one of them. Words are matched whole, without case or accents.
 
-A reply in a conversation of the project goes with it, and so does a message you tie to it by hand (**Link to…**). Every routing keeps its reason, shown on request: "sender's domain: example.org".
+A reply in a conversation of the project goes with it, and so does a message you tie to it by hand (**Link to…**): what you tie stays as you tied it, even a message the checks would set aside. Every routing keeps its reason, shown on request: "sender's domain: example.org".
 
-As it arrives, mail is checked before a route files it ([above](#what-is-protected)): forged mail and mail that borrows a known name are set aside first, and a route on your client's address or domain does not file a message that failed the sender checks. The other way round, a project's route is stronger than a spam flag, so your client's real mail is not lost among spam, and Sioul's own spam filter leaves a project's conversations alone.
+As it arrives, and each time the project's page shows it, mail is checked before a route files it ([above](#what-is-protected)): forged mail and mail that borrows a known name are set aside first, and a route on your client's address or domain does not file a message that failed the sender checks. The other way round, a project's route is stronger than a spam flag, so your client's real mail is not lost among spam, and Sioul's own spam filter leaves a project's conversations alone.
 
 ## Where projects live {#where-projects-live}
 
@@ -135,11 +135,11 @@ Others do more for working together: every other app here shares a project with 
 
 - `from_domains`: the sender's domain or any subdomain ("example.org" takes "mail.example.org", never "notexample.org"); `from_addresses`: exact, case ignored; `subject_contains`, `text_contains`, `attachment_contains`: whole words, case and accents ignored. Every list filled must match; any item of a list will do.
 - The text is read in its first 6,000 characters (the HTML part, read as text, when the text part is only a stub).
-- Conversations follow `In-Reply-To` and `References`. A message filed as it arrives is tied to its project (`links.toml`: `mid:` ↔ `sioul:project/<id>`; `sioul:case/<id>`, as written before, reads the same), so it stays when routes change.
+- Conversations follow `In-Reply-To` and `References`, through the messages the checks let in only: a forged reply neither shows nor joins two conversations. A message filed as it arrives is tied to its project (`links.toml`: `mid:` ↔ `sioul:project/<id>`; `sioul:case/<id>`, as written before, reads the same), so it stays when routes change. Changing a project's routes ties the mail already here that its text or attachment routes take, after the same checks.
 
 ### Security, precisely {#security-precisely}
 
-- When mail arrives, and on the Porch, lanes are decided in the order of protection: a blocked sender stays blocked; forged mail (DMARC failing under a `quarantine` or `reject` policy) and mail whose display name borrows a known one are set aside; one-time codes keep their lane; then project routes. Authentication results come from your own provider's `Authentication-Results` (RFC 8601, only from an `authserv-id` you trust) and from Sioul's own check of each message as it is fetched ([Every message checked](privacy-security.md#every-message-checked)).
+- When mail arrives, on the Porch, on a project's page and in what an agent reads of a project, one function decides (`porch::admission`), in the order of protection: a blocked sender stays blocked; forged mail (DMARC failing under a `quarantine` or `reject` policy) and mail whose display name borrows a known one are set aside; one-time codes keep their lane; then project routes. Authentication results come from your own provider's `Authentication-Results` (RFC 8601, only from an `authserv-id` you trust) and from Sioul's own check of each message as it is fetched ([Every message checked](privacy-security.md#every-message-checked)).
 - Mail that is not authenticated (SPF and DKIM both failed, no DMARC pass, no ARC seal from a forwarder you trust) is routed with its sender removed, so `from_domains` and `from_addresses` cannot take it, while subject, text and attachment routes still can. A message with no results, or with only one of the two failing, keeps its sender: a sender route then trusts the address as written.
 - A matching route wins over a provider's spam flag, and Sioul's own spam filter leaves a project's conversations alone.
 - The sharing part **Projects and money** seals the projects' file (`sioul-projects.toml`, or `sioul-cases.toml`) with the budgets, bank and contracts files: each record with XChaCha20-Poly1305, under a key made from your passphrase with Argon2id (64 MiB, 3 passes) and kept in each device's keyring ([Sharing](sharing.md#what-it-protects-and-what-it-cannot-hide)).

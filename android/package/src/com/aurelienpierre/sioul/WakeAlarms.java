@@ -468,7 +468,7 @@ final class WakeAlarms
      */
     static void channel(Context context)
     {
-        NotificationChannel waking = new NotificationChannel(CHANNEL, word(context, "channel"), NotificationManager.IMPORTANCE_HIGH);
+        NotificationChannel waking = Channels.quiet(CHANNEL, word(context, "channel"), NotificationManager.IMPORTANCE_HIGH);
         waking.setSound(null, null);
         waking.enableVibration(false);
         waking.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);

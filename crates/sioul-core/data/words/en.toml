@@ -3,7 +3,7 @@
 # Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
 
 language = "en"
-checked = "2026-10-08"
+checked = "2026-10-09"
 
 
 # One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
@@ -288,12 +288,18 @@ bank = ["bank"]
 
 # Senders who borrow a name (lookalike.rs).
 [brands]
-# Words a fake "your provider" name wraps a domain in.
+# Words of a service, which a fake name wraps a brand or your domain in
+# ("PayPal Service", "janedoe.example Mail Admin"): the name of a brand that is also an
+# everyday word (brands.everyday) beside these words alone is borrowed; beside
+# any other word, it is someone's own name.
 service_words = [
     "admin", "administrator", "support", "mail", "email", "webmail", "service", "services", "team", "security", "account",
     "accounts", "notification", "notifications", "noreply", "no", "reply", "help", "helpdesk", "desk", "it", "server",
     "postmaster", "system", "info", "infos", "alert", "alerts", "update", "billing", "domain", "hosting", "on", "for",
-    "of", "the", "your", "via",
+    "of", "the", "your", "via", "customer", "customers", "care", "member", "members", "membership", "delivery",
+    "deliveries", "parcel", "parcels", "package", "packages", "shipping", "shipment", "tracking", "order", "orders",
+    "payment", "payments", "id", "verification", "online", "official", "center", "centre", "department", "contact",
+    "assistance", "and", "to", "from", "at", "in", "by", "a", "an", "refund", "refunds",
 ]
 
 # Voicemail an operator sends by mail (voicemail.rs).

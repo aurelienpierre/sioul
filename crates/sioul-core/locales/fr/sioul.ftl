@@ -984,7 +984,8 @@ pgp-signature-bad = La signature ne correspond pas au texte
 pgp-no-own-key = Aucune clé à vous pour { $address } pour signer : créez-en une ou importez-la dans Comptes.
 pgp-missing-key = Pas encore de clé pour { $address } : cherchez-la, ou envoyez sans chiffrer.
 pgp-making = Création de votre clé…
-pgp-made = Votre clé pour { $address } est créée ; le trousseau garde sa phrase secrète.
+pgp-made = Votre clé pour { $address } est créée ; le trousseau garde sa phrase secrète. Son certificat de révocation est gardé à côté d’elle : enregistrez-en une copie en lieu sûr, ailleurs que sur cet appareil, avec « Enregistrer le certificat de révocation ».
+pgp-revocation-saved = Le certificat de révocation est enregistré : { $path }. Gardez-le là où personne d’autre que vous n’y a accès : qui le détient peut révoquer votre clé.
 pgp-wrong-passphrase = Cette phrase secrète n’ouvre pas la clé : rien n’a été importé.
 pgp-imported = { $n ->
     [one] Une clé importée.
@@ -1003,6 +1004,7 @@ ui-look-for-keys = Chercher leurs clés
 ui-encryption = Chiffrement (OpenPGP)
 ui-encryption-note = Signez et chiffrez vos messages. Vos clés restent sur cet appareil, leurs phrases secrètes dans le trousseau du système ; les personnes à qui vous écrivez reçoivent votre clé avec chaque message (Autocrypt).
 ui-export-key = Enregistrer la clé publique
+ui-save-revocation = Enregistrer le certificat de révocation
 ui-make-key = Créer une clé pour { $address }
 ui-import-key = Importer une clé…
 ui-key-passphrase = La phrase secrète de la clé, s’il y en a une
@@ -1744,10 +1746,6 @@ filter-failed-renumbered = Le serveur de { $account } a renuméroté sa boîte d
         [one] un message n’a pas été filtré, et il est annoncé
        *[other] { $count } messages n’ont pas été filtrés, et ils sont annoncés
     } comme du nouveau courrier.
-filter-failed-claimed = { $n ->
-        [one] Un message de { $account } avait été marqué par un autre de vos appareils, qui ne l’a pas traité : il est annoncé comme du nouveau courrier.
-       *[other] { $Count } messages de { $account } avaient été marqués par un autre de vos appareils, qui ne les a pas traités : ils sont annoncés comme du nouveau courrier.
-    }
 filter-cli-acted = { $account } : { $n ->
         [one] un message filtré.
        *[other] { $count } messages filtrés.
@@ -1860,6 +1858,7 @@ time-nothing-year = Rien de noté cette année.
 project-done = Fait
 project-asked = Date demandée
 project-from = De { $sender }
+project-from-unproven = De { $sender }, dont l’adresse n’a pas pu être vérifiée
 project-note-changed = Note modifiée
 project-time-noted = { $time } noté
 project-invoice = Facture { $number }
@@ -2660,6 +2659,8 @@ scan-ask = Aucun antivirus n’est installé sur cet appareil : { $name } ne s
 scan-open-anyway = L’ouvrir sans vérification
 scan-save-anyway = L’enregistrer sans vérification
 scan-unavailable-short = Aucun antivirus n’a répondu ({ $detail }).
+scan-too-big = { $name } n’a pas été examiné : il est plus gros que ce que l’antivirus examine.
+scan-ask-too-big = { $name } n’a pas été examiné : il est plus gros que ce que l’antivirus examine, ou une archive en contient plus qu’il n’en lit. Ne l’ouvrez que si vous lui faites confiance.
 sounds-nature = La nature, faite ici
 sounds-waves = Les vagues sur une plage
 sounds-rain = La pluie
@@ -5301,7 +5302,7 @@ words-line-replies-help = Un objet qui commence par l’un de ces préfixes n’
 words-line-folders = Dossiers de courrier
 words-line-folders-help = Un dossier qui porte l’un de ces noms, quand son serveur ne dit pas à quoi il sert, est celui des envoyés, des brouillons, des indésirables, la corbeille ou les archives. Retirez un nom, et ce dossier est un dossier comme les autres.
 words-line-brands = Noms empruntés
-words-line-brands-help = Un expéditeur qui affiche l’un de ces noms hors de ses domaines est mis de côté comme l’empruntant. Retirez un nom, et ses imitations vous parviennent.
+words-line-brands-help = Un expéditeur qui affiche l’un de ces noms hors de ses domaines est mis de côté comme l’empruntant. Un nom qui est aussi un mot courant ou un lieu ne compte que seul ou à côté des mots d’un service (« Service client Orange »), si bien que « Café de la Poste » est le nom de quelqu’un. Retirez un nom, et ses imitations vous parviennent.
 words-line-payments = Factures et paiements
 words-line-payments-help = Un courriel qui porte ces mots propose une ligne pour vos budgets : une facture à payer, un paiement fait, de l’argent reçu, une commande, un remboursement. Retirez un mot, et ce courriel ne propose rien.
 words-line-bank = Les fichiers de votre banque
@@ -5342,6 +5343,7 @@ words-list-folders-junk = Indésirables
 words-list-folders-trash = Corbeille
 words-list-folders-archive = Archives
 words-list-brands-brands = Marques et services, et leurs domaines
+words-list-brands-everyday = Noms qui sont aussi des mots courants ou des lieux
 words-list-brands-shared = Fournisseurs de courriel partagés par des millions
 words-named-brands-brands = Un par pastille : le nom, deux-points, puis ses domaines séparés par des virgules (« Ma Banque : mabanque.example »).
 words-list-payments-bill = Une facture

@@ -150,26 +150,25 @@ impl MailIndex {
     /// The messages of the conversations `seeds` belong to: tied by the ids
     /// they answer or cite, through any number of others (RFC 5322 §3.6.4).
     pub fn conversations(&self, seeds: &std::collections::BTreeSet<String>) -> std::collections::BTreeSet<String> {
-        // Union-find over the ids, known messages and cited ones alike.
-        let mut parent: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-        fn root(parent: &mut std::collections::HashMap<String, String>, id: &str) -> String {
-            let mut at = id.to_string();
-            while let Some(up) = parent.get(&at).filter(|up| **up != at).cloned() {
-                at = up;
-            }
-            parent.insert(id.to_string(), at.clone());
-            at
-        }
+        self.conversations_through(seeds, |_, _| true)
+    }
+
+    /// The messages of the conversations `seeds` belong to, as
+    /// `conversations` finds them, through the messages `keep` lets in only
+    /// (`Threads::through`).
+    pub fn conversations_through(&self, seeds: &std::collections::BTreeSet<String>, keep: impl FnMut(&str, &MailRef) -> bool) -> std::collections::BTreeSet<String> {
+        self.threads().through(seeds, keep)
+    }
+
+    /// Who cites whom, read once, to follow several projects' conversations.
+    pub fn threads(&self) -> Threads<'_> {
+        let mut cited_by: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
         for (id, mail) in &self.by_id {
             for cited in &mail.refs {
-                let (a, b) = (root(&mut parent, id), root(&mut parent, cited));
-                if a != b {
-                    parent.insert(a, b);
-                }
+                cited_by.entry(cited.as_str()).or_default().push(id.as_str());
             }
         }
-        let wanted: std::collections::BTreeSet<String> = seeds.iter().map(|s| root(&mut parent, s)).collect();
-        self.by_id.keys().filter(|id| wanted.contains(&root(&mut parent, id))).cloned().collect()
+        Threads { index: self, cited_by }
     }
 
     pub fn len(&self) -> usize {
@@ -178,6 +177,52 @@ impl MailIndex {
 
     pub fn is_empty(&self) -> bool {
         self.by_id.is_empty()
+    }
+}
+
+/// The conversations of an index: who cites each id, known or only cited (`MailIndex::threads`).
+pub struct Threads<'a> {
+    index: &'a MailIndex,
+    cited_by: std::collections::HashMap<&'a str, Vec<&'a str>>,
+}
+
+impl<'a> Threads<'a> {
+    /// The messages of the conversations `seeds` belong to, through the
+    /// messages `keep` lets in only: one it leaves out is not among them and
+    /// ties nothing together (a forged message citing two conversations does
+    /// not join them). An id cited but not kept here still ties the messages
+    /// that cite it. The seeds are kept as given; `keep` is asked once at
+    /// most per message, of those reached.
+    pub fn through(&self, seeds: &std::collections::BTreeSet<String>, mut keep: impl FnMut(&str, &MailRef) -> bool) -> std::collections::BTreeSet<String> {
+        let index: &'a MailIndex = self.index;
+        let by_id = &index.by_id;
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        let mut walk: Vec<&str> = Vec::new();
+        for seed in seeds {
+            if let Some((id, _)) = by_id.get_key_value(seed)
+                && seen.insert(id.as_str())
+            {
+                walk.push(id.as_str());
+            }
+        }
+        let mut out = std::collections::BTreeSet::new();
+        while let Some(at) = walk.pop() {
+            let cites = by_id.get(at).map_or(&[][..], |mail| mail.refs.as_slice());
+            if by_id.contains_key(at) {
+                out.insert(at.to_string());
+            }
+            let next: Vec<&str> = cites.iter().map(String::as_str).chain(self.cited_by.get(at).into_iter().flatten().copied()).collect();
+            for id in next {
+                if !seen.insert(id) {
+                    continue;
+                }
+                match by_id.get(id) {
+                    Some(mail) if !keep(id, mail) => {}
+                    _ => walk.push(id),
+                }
+            }
+        }
+        out
     }
 }
 

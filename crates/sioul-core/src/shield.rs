@@ -210,9 +210,24 @@ pub fn read_ai_answer(answer: &str) -> Option<Assessment> {
 pub struct AiCache {
     #[serde(default)]
     pub messages: std::collections::BTreeMap<String, Assessment>,
+    /// The messages whose answer came back not in the form asked, under
+    /// `ai_key`, with how many times: asked once more at most (`wants`), so
+    /// that their subject and text are not sent again round after round.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub malformed: std::collections::BTreeMap<String, u32>,
 }
 
 impl AiCache {
+    /// How many times a message is sent at most: once, and once more when
+    /// the answer did not come in the form asked.
+    pub const TIMES: u32 = 2;
+
+    /// Whether the message under `id` (`ai_key`) is to be sent: no answer
+    /// kept for it, and not sent `TIMES` already for answers not in the form asked.
+    pub fn wants(&self, id: &str) -> bool {
+        !self.messages.contains_key(id) && self.malformed.get(id).copied().unwrap_or(0) < AiCache::TIMES
+    }
+
     pub fn folder() -> std::path::PathBuf {
         crate::config::state_dir().join("shield")
     }

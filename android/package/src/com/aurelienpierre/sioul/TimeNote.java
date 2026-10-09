@@ -4,7 +4,6 @@
 package com.aurelienpierre.sioul;
 
 import android.app.Notification;
-import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -62,7 +61,7 @@ final class TimeNote
             return;
         }
         // Low: in the shade and the status bar, without sound or banner.
-        notifications.createNotificationChannel(new NotificationChannel(CHANNEL, note.optString("channel", "Focus timer"), NotificationManager.IMPORTANCE_LOW));
+        notifications.createNotificationChannel(Channels.quiet(CHANNEL, note.optString("channel", "Focus timer"), NotificationManager.IMPORTANCE_LOW));
         boolean paused = note.optBoolean("paused");
         Notification.Builder built = new Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.sioul_notification)

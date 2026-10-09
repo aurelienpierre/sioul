@@ -45,11 +45,11 @@ When a message arrives, Sioul checks it itself, through your system's DNS:
 - **DMARC**, with the domain's own policy;
 - **ARC**, for forwarded mail, and the sending server's **reverse DNS**.
 
-The results are kept with the message, under a name only your copy of Sioul uses, so that no sender can write results that pass for Sioul's. A message is then **verified**, **not verified** (with the reason), or **forged**. Forged mail is set aside, with the reason; nothing is deleted. Your provider's spam verdicts count too, for strangers' mail only ([below](#your-own-spam-filter)).
+The results are kept with the message, under a name only your copy of Sioul uses, so that no sender can write results that pass for Sioul's. A message is then **verified**, **not verified** (with the reason), or **forged**. A signature vouches for the sender when it comes from the sender's own organisation: `mail.example.org` signs for `shop.example.org`, while two names under a suffix shared by many owners, such as `github.io`, stay strangers to each other (the Public Suffix List tells which). Forged mail is set aside, with the reason; nothing is deleted. Your provider's spam verdicts count too, for strangers' mail only ([below](#your-own-spam-filter)).
 
 **A copied address is not enough.** A message that nothing authenticates (it fails SPF and DKIM, and nothing vouches for it) is treated as a stranger's, whatever address it shows. Someone who writes from your bank's address, or a friend's, does not get their place on the Porch, their hours, or their protection from the spam filter.
 
-**Borrowed names** are caught: a sender calling itself after a bank, a public service, or your own domain, from an address that is not theirs, is set aside. Look-alike letters (a lowercase l for a capital I, a 0 for an O, Cyrillic letters) do not hide the name. Look-alike *domains*, such as a bank's name with one letter changed, are not caught yet.
+**Borrowed names** are caught: a sender calling itself after a bank, a public service, or your own domain, from an address that is not theirs, is set aside. A brand whose name is also an everyday word or a place (Apple, Amazon, Orange, La Poste…) counts only when it stands alone or beside the words of a service, such as "Apple Support", "Amazon.com" or "Service client Orange", so that "Orange County Library" or "Café de la Poste" borrow nothing; any other brand counts wherever it is in the name. Look-alike letters (a lowercase l for a capital I, a 0 for an O, Cyrillic letters) do not hide the name. Look-alike *domains*, such as a bank's name with one letter changed, are not caught yet.
 
 **The codes you ask for** come at once, whatever the time. If their sender is not verified, Sioul says to use them only if you just asked that site for one, since fake codes are a phishing trick; a forged one is set aside.
 
@@ -68,7 +68,7 @@ An attachment is checked before it opens or is saved, by your system's own antiv
 
 When a threat is found, nothing opens, and the copy is deleted. A program, a script, a shortcut or an installer is never started from a mail, even checked: save it if you trust it. On Windows and macOS, a file you open or save from a mail carries your system's mark that it came from the Internet, so that Office opens it in Protected View and macOS checks it before it runs. The attachments of mail set aside are not opened at all.
 
-Without an antivirus, Sioul does not refuse: it says the file will not be checked, asks before opening it (**Open it unchecked**), and says how to get one. A phone has no antivirus for Sioul to ask: attachments are not checked there, and Sioul says so rather than asking each time. The app you choose reads that one file and nothing else of Sioul's, and Android's installers never open.
+Without an antivirus, Sioul does not refuse: it says the file will not be checked, asks before opening it (**Open it unchecked**), and says how to get one. A file larger than the antivirus scans (ClamAV stops at its limits on a file's size and on what an archive holds) is never called clean: Sioul says it was not scanned because it is too big, and asks the same way. A phone has no antivirus for Sioul to ask: attachments are not checked there, and Sioul says so rather than asking each time. The app you choose reads that one file and nothing else of Sioul's, and Android's installers never open.
 
 ### Your own spam filter {#your-own-spam-filter}
 

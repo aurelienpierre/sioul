@@ -94,6 +94,7 @@ Vos clés OpenPGP, pour signer et chiffrer vos messages ([Le courrier](mail.md#s
 - **Créer une clé pour** une adresse : une nouvelle clé, valable trois ans ; sa phrase secrète est faite au hasard et gardée dans votre trousseau, si bien que rien n’est demandé à chaque message.
 - **Importer une clé…** : une clé exportée de GnuPG, avec sa phrase secrète, demandée une fois.
 - **Enregistrer la clé publique** : dans vos téléchargements, pour la donner aux autres.
+- **Enregistrer le certificat de révocation**, pour une clé créée ici : une copie dans vos téléchargements, à garder en lieu sûr, ailleurs que sur cet appareil. C’est lui qui déclare la clé hors d’usage, si elle est un jour perdue ou volée ; qui le détient peut le faire. Sioul le garde à côté de la clé, lisible par vous seulement ([Le courrier, OpenPGP](mail.md)), et ne sait pas encore révoquer une clé.
 - **Clés des autres** : celles venues avec leurs messages, ou d’un fichier, ou trouvées par **Chercher leurs clés** dans la fenêtre d’écriture.
 
 Vos propres clés restent sur cet appareil. Elles ne sont pas partagées avec vos autres appareils : copiez-les à la main si vous en avez besoin là-bas.

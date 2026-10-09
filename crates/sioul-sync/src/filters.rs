@@ -34,7 +34,10 @@
 //! here too and is looked at again at the next fetch (the other device's act
 //! wakes the inbox's watcher). Unmarked and still there, unread, it is this
 //! device's to do; still marked ten minutes on (`STUCK`: that device stopped
-//! half-way), it is told here.
+//! half-way), this device takes it over: it takes the mark off, only if
+//! nothing changed the message meanwhile (CONDSTORE), marks it again as its
+//! own and acts, so that no message stays marked and unfiltered for good. An
+//! act that fails then is told and tried again, as any.
 
 use crate::SyncError;
 use crate::imap::{self, COMMAND, Imap, Server};
@@ -72,8 +75,6 @@ pub enum Failure {
     Server(String),
     /// The server renumbered the inbox since it was fetched here: no longer that message.
     Renumbered,
-    /// Another device marked it and has not acted on it for ten minutes (`STUCK`).
-    Claimed,
 }
 
 /// What became of a run.
@@ -115,7 +116,6 @@ impl Done {
             Failure::NoKeywords => "filter-failed-keywords",
             Failure::Server(_) => "filter-failed-server",
             Failure::Renumbered => "filter-failed-renumbered",
-            Failure::Claimed => "filter-failed-claimed",
         };
         Some(tr.text(id, Some(&args)))
     }
@@ -293,8 +293,10 @@ async fn run_in(session: &mut Imap, account: &Account, placed: Vec<(ImapOrigin, 
 }
 
 /// The jobs this device may do: those still unread (or tried before), not
-/// marked by another device, still in the inbox; then marked, each only if
-/// nothing changed it since its flags were read (CONDSTORE), else all at once.
+/// marked by another device, still in the inbox, and those another device
+/// marked and left (`Found::Stuck`), their mark taken off first; then
+/// marked, each only if nothing changed it since its flags were read
+/// (CONDSTORE), else all at once.
 async fn claimed(session: &mut Imap, jobs: Vec<(u32, Job)>, marks: bool, condstore: bool, done: &mut Done) -> Result<Vec<(u32, Job)>, SyncError> {
     let uids: BTreeSet<u32> = jobs.iter().map(|(uid, _)| *uid).collect();
     // Each message's flags now: read, marked, and its mod-sequence where the server counts changes.
@@ -312,13 +314,32 @@ async fn claimed(session: &mut Imap, jobs: Vec<(u32, Job)>, marks: bool, condsto
     }
     let at = jiff::Timestamp::now().as_second();
     let mut free: Vec<(u32, Job, Option<u64>)> = Vec::new();
+    let mut left: Vec<(u32, Job, Option<u64>)> = Vec::new();
     for (uid, job) in jobs {
         let flags = now.get(&uid);
+        let modseq = flags.and_then(|(_, _, modseq)| *modseq);
         match found(flags.map(|(seen, marked, _)| (*seen, *marked)), &job, at) {
-            Found::Free => free.push((uid, job, flags.and_then(|(_, _, modseq)| *modseq))),
+            Found::Free => free.push((uid, job, modseq)),
             Found::Settled => done.left.push(job.file),
             Found::Elsewhere => done.elsewhere.push(job),
-            Found::Stuck => done.failed.push((job, Failure::Claimed)),
+            Found::Stuck => left.push((uid, job, modseq)),
+        }
+    }
+    // A mark another device left: taken off, only if nothing changed the
+    // message since its flags were read; then the message is free, its new
+    // mod-sequence the one the server gives back. Changed meanwhile (that
+    // device came back, or another took it over first): looked at again.
+    for (uid, job, modseq) in left {
+        let unmark = format!("-FLAGS.SILENT ({})", rules::FILTERED);
+        match modseq.filter(|_| condstore) {
+            Some(modseq) => match stored(session, &uid.to_string(), &format!("(UNCHANGEDSINCE {modseq}) {unmark}")).await?.get(&uid) {
+                Some(after) => free.push((uid, job, *after)),
+                None => done.elsewhere.push(job),
+            },
+            None => {
+                mailbox::store(session, &uid.to_string(), &unmark).await?;
+                free.push((uid, job, None));
+            }
         }
     }
     if !marks || free.is_empty() {
@@ -332,7 +353,7 @@ async fn claimed(session: &mut Imap, jobs: Vec<(u32, Job)>, marks: bool, condsto
                 // Only the messages it changed come back, with their new mod-sequence (RFC 7162 §3.1.3).
                 let echoed = stored(session, &uid.to_string(), &format!("(UNCHANGEDSINCE {modseq}) +FLAGS.SILENT ({})", rules::FILTERED)).await?;
                 // Changed meanwhile: another device's mark, most likely; looked at again.
-                if echoed.contains(&uid) { mine.push((uid, job)) } else { done.elsewhere.push(job) }
+                if echoed.contains_key(&uid) { mine.push((uid, job)) } else { done.elsewhere.push(job) }
             }
             None => plain.push((uid, job)),
         }
@@ -345,13 +366,15 @@ async fn claimed(session: &mut Imap, jobs: Vec<(u32, Job)>, marks: bool, condsto
     Ok(mine)
 }
 
-/// A STORE, and the UIDs of the messages the server says it changed.
-async fn stored(session: &mut Imap, uid: &str, query: &str) -> Result<BTreeSet<u32>, SyncError> {
+/// A STORE, and the messages the server says it changed, by UID, each with
+/// its new mod-sequence when the server counts changes (RFC 7162 §3.1.3).
+async fn stored(session: &mut Imap, uid: &str, query: &str) -> Result<BTreeMap<u32, Option<u64>>, SyncError> {
     let mut answers = imap::within(COMMAND, session.uid_store(uid, query)).await?.map_err(imap::server)?;
-    let mut echoed = BTreeSet::new();
+    let mut echoed = BTreeMap::new();
     while let Some(answer) = answers.next().await {
-        if let Some(uid) = answer.map_err(imap::server)?.uid {
-            echoed.insert(uid);
+        let answer = answer.map_err(imap::server)?;
+        if let Some(uid) = answer.uid {
+            echoed.insert(uid, answer.modseq);
         }
     }
     Ok(echoed)
@@ -366,7 +389,8 @@ enum Found {
     Settled,
     /// Marked by another device, which acts on it: looked at again later.
     Elsewhere,
-    /// Marked by another device that has not acted on it for `STUCK`: told here.
+    /// Marked by another device that has not acted on it for `STUCK`: this
+    /// device takes the mark off and does it.
     Stuck,
 }
 
@@ -518,8 +542,8 @@ impl Waiting {
         let path = Waiting::path();
         let at = |file: &PathBuf| maildir::origin_of(file).map(|o| (o.validity, o.uid));
         let now = jiff::Timestamp::now().as_second();
-        // Never tried again: a keyword its server cannot keep, a renumbered inbox, a mark another device left.
-        let (never, failed): (Vec<_>, Vec<_>) = done.failed.iter().partition(|(_, why)| matches!(why, Failure::NoKeywords | Failure::Renumbered | Failure::Claimed));
+        // Never tried again: a keyword its server cannot keep, a renumbered inbox.
+        let (never, failed): (Vec<_>, Vec<_>) = done.failed.iter().partition(|(_, why)| matches!(why, Failure::NoKeywords | Failure::Renumbered));
         let failed: BTreeSet<(u32, u32)> = failed.iter().filter_map(|(job, _)| at(&job.file)).collect();
         // Another device's to do: since when it was first found so.
         let elsewhere: BTreeMap<(u32, u32), i64> = done.elsewhere.iter().filter_map(|job| Some((at(&job.file)?, job.claimed_since.unwrap_or(now)))).collect();
@@ -613,7 +637,7 @@ mod tests {
         assert_eq!(found(Some((true, false)), &job("a", true, None), now), Found::Free, "a failure tried again goes on: its move may be missing still");
         assert_eq!(found(Some((false, true)), &job("a", false, None), now), Found::Elsewhere);
         assert_eq!(found(Some((false, true)), &job("a", false, Some(now - 60)), now), Found::Elsewhere);
-        assert_eq!(found(Some((false, true)), &job("a", false, Some(now - STUCK)), now), Found::Stuck);
+        assert_eq!(found(Some((false, true)), &job("a", false, Some(now - STUCK)), now), Found::Stuck, "that device stopped half-way: taken over here");
         assert_eq!(found(Some((true, true)), &job("a", false, Some(now - STUCK)), now), Found::Settled, "read meanwhile: nothing to tell");
         assert_eq!(found(Some((false, false)), &job("a", false, Some(now - 60)), now), Found::Free, "the other device's mark gone, the message still there and unread: ours to do");
         // Looked at again: another device's mark at each fetch; a failure ten minutes after its last try.
@@ -626,17 +650,17 @@ mod tests {
             acted: vec![job("moved", false, None)],
             left: vec![PathBuf::from("read")],
             elsewhere: vec![job("held", false, Some(now))],
-            failed: vec![(job("no-folder", false, None), Failure::NoFolder("Banque".into())), (job("stuck", false, Some(0)), Failure::Claimed), (job("renumbered", false, None), Failure::Renumbered)],
+            failed: vec![(job("no-folder", false, None), Failure::NoFolder("Banque".into())), (job("renumbered", false, None), Failure::Renumbered)],
             unmarked: false,
         };
-        assert_eq!(done.to_tell(), ["no-folder", "stuck", "renumbered"].map(PathBuf::from).to_vec());
+        assert_eq!(done.to_tell(), ["no-folder", "renumbered"].map(PathBuf::from).to_vec());
         assert!(Done::default().to_tell().is_empty());
         // Said: the first failure, with how many failed so.
         let tr = sioul_core::i18n::Translator::new("en");
         let said = done.said(&tr, "noa@example.org").unwrap();
         assert!(said.starts_with("One message of noa@example.org could not be moved") && said.contains("“Banque”"), "{said}");
-        let stuck = Done { failed: done.failed[1..].to_vec(), ..Done::default() };
-        assert!(stuck.said(&tr, "noa@example.org").unwrap().contains("another of your devices"));
+        let renumbered = Done { failed: done.failed[1..].to_vec(), ..Done::default() };
+        assert!(renumbered.said(&tr, "noa@example.org").unwrap().contains("renumbered"));
         assert!(Done::default().said(&tr, "x").is_none());
     }
 
@@ -776,17 +800,20 @@ mod tests {
         let (waits, gone) = Waiting::files_of(&account, jiff::Timestamp::now().as_second());
         assert_eq!((waits.iter().map(|(_, w)| w.elsewhere).collect::<Vec<_>>(), gone.len()), (vec![true], 0), "Paul's done; the newsletter looked at again");
         // That device stopped half-way: its mark stays ten minutes, the message
-        // neither read nor gone. Told here, and waiting no more.
+        // neither read nor gone. Taken over here: its mark off, marked again,
+        // filtered (flagged), not told, and waiting no more.
         let mut aged = Waiting::load(&path);
         for wait in &mut aged.messages {
             wait.since -= STUCK;
         }
         std::fs::write(&path, toml::to_string(&aged).unwrap()).unwrap();
         let stuck = after_fetch(&config, &account, "x", &[], false);
-        assert_eq!(stuck.failed.iter().map(|(_, why)| why.clone()).collect::<Vec<_>>(), vec![Failure::Claimed], "{stuck:?}");
-        assert_eq!(subjects(&stuck.to_tell()), vec!["La lettre".to_string()]);
+        assert!(stuck.failed.is_empty() && stuck.elsewhere.is_empty() && stuck.to_tell().is_empty(), "{stuck:?}");
+        assert_eq!(stuck.acted.iter().map(|j| j.plan.by.clone()).collect::<Vec<_>>(), vec![vec![1]], "{stuck:?}");
+        let inbox = on_server("inbox", "INBOX");
+        assert!(inbox.iter().any(|(s, f)| s.contains("lettre") && f.iter().any(|f| f.contains("Flagged")) && f.iter().any(|f| f.contains(rules::FILTERED))), "{inbox:?}");
         assert!(Waiting::files_of(&account, i64::MAX / 2).0.is_empty() && !due(&account));
-        // The run you ask for: read mail too, unmarked; the newsletter, read on the server, now flagged.
+        // The run you ask for: read mail too, unmarked; the newsletter, read on the server, flagged again.
         crate::fetch::block_on(async {
             let mut session = imap::open(&server, "x").await?;
             imap::within(COMMAND, session.select("INBOX")).await?.map_err(imap::server)?;

@@ -511,6 +511,10 @@ pub mod qobject {
         #[qinvokable]
         fn pgp_export(self: Pin<&mut Sioul>, fingerprint: &QString);
 
+        /// Saves a copy of the revocation certificate of a key made here into the downloads folder.
+        #[qinvokable]
+        fn pgp_save_revocation(self: Pin<&mut Sioul>, fingerprint: &QString);
+
         /// Removes a key; yours are kept aside, never deleted.
         #[qinvokable]
         fn pgp_remove(self: Pin<&mut Sioul>, fingerprint: &QString);
@@ -1698,9 +1702,10 @@ pub mod qobject {
         #[qsignal]
         fn open_url(self: Pin<&mut Sioul>, url: QString);
 
-        /// No antivirus answered: the window asks before opening or saving, with how to install one.
+        /// No antivirus answered, or the file is larger than it scans (`big`):
+        /// the window asks before opening or saving, with how to install one.
         #[qsignal]
-        fn scan_unavailable(self: Pin<&mut Sioul>, key: QString, index: i32, what: i32, name: QString, hint: QString);
+        fn scan_unavailable(self: Pin<&mut Sioul>, key: QString, index: i32, what: i32, name: QString, hint: QString, big: bool);
 
         /// An attachment was kept in the papers wallet: the form, to say what it is.
         #[qsignal]
@@ -2734,7 +2739,9 @@ fn tie_to_projects(files: &[PathBuf]) {
 
 /// A project's routes changed: the mail already here that only its text or an
 /// attachment ties to it, tied now, on a thread (routes on the sender and the
-/// subject are matched again each time the project shows).
+/// subject are matched again each time the project shows). Each message as
+/// the Porch takes it (`porch::Gate`): never one it sets aside (a blocked
+/// sender, forged, a borrowed name, spam a route does not protect).
 fn retie_project(id: String) {
     std::thread::spawn(move || {
         let config = load_config();
@@ -2746,14 +2753,11 @@ fn retie_project(id: String) {
         let path = sioul_core::links::LocalLinks::default_path();
         let mut ties = sioul_core::links::LocalLinks::load(&path);
         let before = ties.links.len();
+        let gate = porch::Gate::load(&config, Zoned::now().timestamp().as_second());
         for account in config.accounts.iter().filter(|a| a.syncs()) {
-            for file in sioul_core::mailindex::message_files(&account.maildir_path()) {
-                let Some(card) = maildir::read_one(&file) else { continue };
-                if let Some(mid) = card.message_id.as_deref()
-                    && routes.iter().any(|r| r.explain(&card).is_some())
-                {
-                    ties.add(&sioul_core::links::mail_uri(mid), &sioul_core::links::project_uri(&project.id), "project");
-                }
+            let files = sioul_core::mailindex::message_files(&account.maildir_path());
+            for mid in gate.routed(&routes, files.iter().map(PathBuf::as_path)) {
+                ties.add(&sioul_core::links::mail_uri(&mid), &sioul_core::links::project_uri(&project.id), "project");
             }
         }
         if ties.links.len() != before {
@@ -3009,17 +3013,22 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
                 let _ = std::fs::remove_file(&file);
                 say("scan-infected", &[("name", name), ("threat", threat)])
             }
-            // No antivirus here: asked before anything opens, with how to install one.
-            Verdict::Unavailable(problem) => {
+            // No antivirus here, or a file larger than it scans: asked before
+            // anything opens, with how to install one, or why it was not scanned.
+            Verdict::Unavailable(_) | Verdict::TooBig => {
                 let _ = std::fs::remove_file(&file);
                 let what = match afterwards {
                     Afterwards::Open => 0,
                     Afterwards::Save => 1,
                     Afterwards::Paper => 2,
                 };
+                let big = verdict == Verdict::TooBig;
                 let (key, hint, shown) = (key.clone(), antivirus::install_hint(), name.clone());
-                let _ = qt.queue(move |mut sioul| sioul.as_mut().scan_unavailable(QString::from(&key), index, what, QString::from(&shown), QString::from(&hint)));
-                say("scan-unavailable-short", &[("detail", problem)])
+                let _ = qt.queue(move |mut sioul| sioul.as_mut().scan_unavailable(QString::from(&key), index, what, QString::from(&shown), QString::from(&hint), big));
+                match verdict {
+                    Verdict::Unavailable(problem) => say("scan-unavailable-short", &[("detail", problem)]),
+                    _ => say("scan-too-big", &[("name", name)]),
+                }
             }
         };
         set_status(&qt, line);
@@ -3842,6 +3851,14 @@ impl qobject::Sioul {
     fn pgp_export(mut self: Pin<&mut Self>, fingerprint: &QString) {
         let line = match crypto::export(&fingerprint.to_string(), &downloads()) {
             Ok(path) => say("ui-saved", &[("path", path.display().to_string())]),
+            Err(e) => e,
+        };
+        self.as_mut().set_status(QString::from(&line));
+    }
+
+    fn pgp_save_revocation(mut self: Pin<&mut Self>, fingerprint: &QString) {
+        let line = match sioul_core::pgp::save_revocation(&fingerprint.to_string(), &downloads()) {
+            Ok(path) => say("pgp-revocation-saved", &[("path", path.display().to_string())]),
             Err(e) => e,
         };
         self.as_mut().set_status(QString::from(&line));

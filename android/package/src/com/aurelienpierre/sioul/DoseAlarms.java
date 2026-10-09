@@ -318,7 +318,7 @@ final class DoseAlarms
     static void channel(Context context)
     {
         context.getSystemService(NotificationManager.class).createNotificationChannel(
-            new NotificationChannel(CHANNEL, "Doses", NotificationManager.IMPORTANCE_DEFAULT));
+            Channels.quiet(CHANNEL, "Doses", NotificationManager.IMPORTANCE_DEFAULT));
     }
 
     /** Whether reminders can show: Sioul's notifications on (from Android 13, your yes), the "Doses" channel too. */
