@@ -50,7 +50,7 @@ Une note s’ouvre pour être lue. Ses liens se suivent d’un clic, où qu’il
 - **Aa** règle la police, sa taille et l’interligne, pour la lecture sur cet appareil.
 - **Ouvrir avec…** ouvre la note dans un autre programme.
 
-Si la note a changé ailleurs pendant que vous écriviez (sur un autre appareil, par une application de synchronisation, dans un autre programme), votre version n’est jamais enregistrée par-dessus : elle est gardée à côté, sous «  Plan (conflict 2026-10-05 21.50)  » (ce mot anglais, tel quel), et reste ouverte ; la ligne d’état le dit. L’autre version garde le nom. Sur un téléphone, la note ouverte prend toute la page, et **Retour** garde la note, enregistrée, et la ferme.
+Une note changée sur un autre appareil, venue par le partage, s’affiche aussitôt, comme sur les pages Santé, Papiers et Temps ; pendant que vous y tapez, ce que vous avez tapé reste tel quel, et une ligne sous son titre dit qu’une version plus récente est arrivée. Si la note a changé ailleurs pendant que vous écriviez (sur un autre appareil, par une application de synchronisation, dans un autre programme), votre version n’est jamais enregistrée par-dessus : elle est gardée à côté, sous «  Plan (conflict 2026-10-05 21.50)  » (ce mot anglais, tel quel), et reste ouverte ; la ligne d’état le dit. L’autre version garde le nom. Sur un téléphone, la note ouverte prend toute la page, et **Retour** garde la note, enregistrée, et la ferme.
 
 Une ligne comme `- [ ] Demander l’attestation`, non cochée, est à un clic de devenir une tâche : **En faire une tâche**. La tâche reste liée à sa note.
 

@@ -1608,11 +1608,11 @@ pub(crate) fn start_on_server(qt: &QtThread, shared: &Arc<Shared>, account: Stri
             let mirror = sioul_sync::remote::mirror_of(&memory);
             // A copy of its own, new: what an earlier sharing left there goes.
             let _ = std::fs::remove_dir_all(&mirror);
-            std::fs::create_dir_all(&mirror).map_err(|e| format!("{}: {e}", mirror.display()))?;
+            share::private_dirs(&mirror).map_err(|e| format!("{}: {e}", mirror.display()))?;
             let key = match &opened.seal {
                 // Joining: the folder's seal, the passphrase chosen there.
                 Some(seal) => {
-                    std::fs::write(mirror.join("seal.toml"), seal).map_err(|e| e.to_string())?;
+                    share::write_atomically(&mirror.join("seal.toml"), seal)?;
                     share::key_for(&mirror, &passphrase)
                 }
                 None if passphrase != again => return Err(tr().text("share-differ", None)),

@@ -14,7 +14,12 @@
 //!   one with `If-None-Match: *`; a deleted one is deleted there.
 //! - **Then what changed there**: with the sync token when the server keeps
 //!   one (RFC 6578), else by comparing ETags; changed items come in batches
-//!   (`calendar-multiget`, `addressbook-multiget`).
+//!   (`calendar-multiget`, `addressbook-multiget`) of 50 at most, half as
+//!   many after a slow or cut answer, twice as many again after quick ones
+//!   (`pace`).
+//! - **A new item whose UID the server holds already** (an invitation
+//!   answered on two devices): the item there takes its place here, said
+//!   when its answer differs (`same_uid_there`, `adopt`).
 //! - **When both changed the same item**, the server's version wins and yours
 //!   is kept aside in `$XDG_STATE_HOME/sioul/dav/conflicts`, said in the report.
 //! - **Cut short** (the network lost, the app killed), a sync resumes where it
@@ -32,9 +37,7 @@ use sioul_core::vdir::{self, ItemState, Kind, State};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
-use ureq::unversioned::resolver::DefaultResolver;
-use ureq::unversioned::transport::{Buffers, ConnectionDetails, Connector, DefaultConnector, NextTimeout, Transport};
+use std::time::{Duration, Instant};
 
 pub(crate) const DAV: &str = "DAV:";
 const CALDAV: &str = "urn:ietf:params:xml:ns:caldav";
@@ -42,8 +45,43 @@ const CARDDAV: &str = "urn:ietf:params:xml:ns:carddav";
 const CALSERVER: &str = "http://calendarserver.org/ns/";
 const APPLE: &str = "http://apple.com/ns/ical/";
 
-/// Items asked for in one multiget.
+/// Items asked for in one multiget, at most: the batch after quick answers.
 const BATCH: usize = 50;
+
+/// A multiget answered in this long or more is slow: the next batch of that
+/// collection is half as large (one item at least). A batch of 50 events with
+/// their attachments, or of 50 cards with their photos, on a weak signal, can
+/// take longer than a request may (`BUDGET`): asked again whole, it would fail
+/// again at every sync.
+const SLOW: Duration = if cfg!(test) { Duration::from_millis(600) } else { Duration::from_secs(20) };
+
+/// A multiget answered within this is quick: the next batch is twice as
+/// large, up to `BATCH`.
+const QUICK: Duration = if cfg!(test) { Duration::from_millis(300) } else { Duration::from_secs(5) };
+
+/// Each collection's batch now, by its address, in this process: halved after
+/// a slow answer or a cut one, doubled after a quick one (`pace`). Not kept
+/// on disk: a new start begins at `BATCH`, and a slow line slows it again at
+/// the first batch.
+static PACE: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
+
+/// The batch of the collection at `url` now.
+fn batch_of(url: &str) -> usize {
+    PACE.lock().ok().and_then(|pace| pace.get(&path_key(url)).copied()).unwrap_or(BATCH)
+}
+
+/// A multiget of that collection answered (`Some`: in that long) or cut by
+/// the network (`None`): its next batch follows.
+fn pace(url: &str, took: Option<Duration>) {
+    let Ok(mut pace) = PACE.lock() else { return };
+    let now = pace.get(&path_key(url)).copied().unwrap_or(BATCH);
+    let next = match took {
+        Some(took) if took <= QUICK => (now * 2).min(BATCH),
+        Some(took) if took < SLOW => now,
+        _ => (now / 2).max(1),
+    };
+    pace.insert(path_key(url), next);
+}
 
 /// A connection to one server, with its login.
 pub struct Client {
@@ -93,58 +131,9 @@ fn agent_with(budget: &Budget, patient: bool) -> ureq::Agent {
         .max_redirects(0)
         .allow_non_standard_methods(true)
         .build();
-    ureq::Agent::with_parts(config, DefaultConnector::new().chain(Stalls(budget.stall, patient)), DefaultResolver::default())
-}
-
-/// Each wait for the network, at most `.0`: ureq's own limits count a whole
-/// phase of a request (all of an answer's body), this one each read and
-/// write. Built on ureq's transport, which follows no semver yet
-/// (`ureq::unversioned`): a ureq update may ask this to change.
-/// `.1`: the waits for an answer are not capped (an upload's, `upload_agent`).
-#[derive(Debug)]
-struct Stalls(Duration, bool);
-
-impl Connector<Box<dyn Transport>> for Stalls {
-    type Out = Stalling;
-
-    fn connect(&self, _: &ConnectionDetails, chained: Option<Box<dyn Transport>>) -> Result<Option<Stalling>, ureq::Error> {
-        Ok(chained.map(|transport| Stalling(transport, self.0, self.1)))
-    }
-}
-
-#[derive(Debug)]
-struct Stalling(Box<dyn Transport>, Duration, bool);
-
-impl Stalling {
-    fn within(&self, timeout: NextTimeout) -> NextTimeout {
-        NextTimeout { after: timeout.after.min(self.1.into()), reason: timeout.reason }
-    }
-}
-
-impl Transport for Stalling {
-    fn buffers(&mut self) -> &mut dyn Buffers {
-        self.0.buffers()
-    }
-
-    fn transmit_output(&mut self, amount: usize, timeout: NextTimeout) -> Result<(), ureq::Error> {
-        let timeout = self.within(timeout);
-        self.0.transmit_output(amount, timeout)
-    }
-
-    fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
-        // An upload's answer, awaited while its last bytes drain from the
-        // system's buffers on a slow uplink: within the whole budget alone.
-        let timeout = if self.2 { timeout } else { self.within(timeout) };
-        self.0.await_input(timeout)
-    }
-
-    fn is_open(&mut self) -> bool {
-        self.0.is_open()
-    }
-
-    fn is_tls(&self) -> bool {
-        self.0.is_tls()
-    }
+    // Each read and write bounded by `stall`, as long as the answer moves:
+    // on ureq's transport, which follows no semver (`stalls`).
+    crate::stalls::agent(config, budget.stall, patient)
 }
 
 impl Client {
@@ -555,6 +544,10 @@ pub struct Report {
     /// Changed on both sides: the server's kept, yours set aside.
     pub conflicts: Vec<PathBuf>,
     pub collections: usize,
+    /// Invitations answered on another device first, and otherwise: each
+    /// one's title, and the answer the server holds and this device now keeps
+    /// ("ACCEPTED", "TENTATIVE", "DECLINED"), yours replaced by it (`adopt`).
+    pub answered: Vec<(String, String)>,
 }
 
 /// An account's client: Google's access token, or its login and the password in the keyring.
@@ -941,6 +934,14 @@ fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut St
             continue;
         }
         let answer = client.send("PUT", &href, &[("If-None-Match", "*"), ("Content-Type", kind.media_type())], Some(&text))?;
+        // Refused because another item there holds its UID: an invitation
+        // answered on another device first. That item takes this one's place.
+        if matches!(answer.status, 400 | 403 | 409 | 412)
+            && let Some(theirs) = same_uid_there(client, kind, listed, &href, &text, &answer.body)?
+        {
+            state.items.push(adopt(dir, listed, &file, &text, theirs, report)?);
+            continue;
+        }
         match answer.status {
             200..=299 => {
                 report.sent += 1;
@@ -963,6 +964,99 @@ fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut St
         }
     }
     Ok(refused)
+}
+
+/// The item the server holds under the UID of `text`, a new item it refused
+/// at `href` because another holds that UID (RFC 4791 §5.3.2.1 and RFC 6352
+/// §6.3.2.1, `no-uid-conflict`, said with 403 or 409; Nextcloud says 400, and
+/// a server may say 412): where the refusal names it, else found by a query
+/// on the UID (`calendar-query`, `addressbook-query`). Its address, ETag and
+/// text; None when no other item there holds that UID (a server that answers
+/// no query included), and the refusal is what it was.
+fn same_uid_there(client: &Client, kind: Kind, listed: &Listed, href: &str, text: &str, refusal: &str) -> Result<Option<(String, String, String)>, SyncError> {
+    let Some(uid) = uid_of(text) else { return Ok(None) };
+    let mut hrefs: Vec<String> = named_in_refusal(refusal).into_iter().collect();
+    if hrefs.is_empty() {
+        hrefs = holding_uid(client, kind, &listed.url, &uid, &component_of(text))?;
+    }
+    let mine = path_key(href);
+    hrefs.retain(|h| path_key(&absolute(&listed.url, h)) != mine);
+    if hrefs.is_empty() {
+        return Ok(None);
+    }
+    Ok(fetch(client, kind, &listed.url, &hrefs)?.into_iter().find(|(_, _, data)| uid_of(data).as_deref() == Some(uid.as_str())))
+}
+
+/// An item's UID, as its first `UID` line says.
+fn uid_of(text: &str) -> Option<String> {
+    sioul_core::lines::unfold(text).iter().find(|l| sioul_core::lines::name(l) == "UID").map(|l| sioul_core::lines::value(l).trim().to_string()).filter(|uid| !uid.is_empty())
+}
+
+/// The component a calendar item holds ("VEVENT", "VTODO"…), for a query.
+fn component_of(text: &str) -> String {
+    sioul_core::lines::unfold(text)
+        .iter()
+        .filter(|l| sioul_core::lines::name(l) == "BEGIN")
+        .map(|l| sioul_core::lines::value(l).trim().to_ascii_uppercase())
+        .find(|c| !matches!(c.as_str(), "VCALENDAR" | "VTIMEZONE" | "STANDARD" | "DAYLIGHT" | "VALARM"))
+        .unwrap_or_else(|| "VEVENT".into())
+}
+
+/// The item a `no-uid-conflict` refusal names, when it names one.
+fn named_in_refusal(body: &str) -> Option<String> {
+    let doc = roxmltree::Document::parse(body).ok()?;
+    let clash = doc.descendants().find(|n| n.tag_name().name() == "no-uid-conflict")?;
+    clash.descendants().find(|n| n.has_tag_name((DAV, "href"))).and_then(|n| n.text()).map(|h| h.trim().to_string()).filter(|h| !h.is_empty())
+}
+
+/// The items of a collection holding `uid`, by a query (RFC 4791 §7.8, RFC
+/// 6352 §8.6); none from a server that answers no query.
+fn holding_uid(client: &Client, kind: Kind, url: &str, uid: &str, component: &str) -> Result<Vec<String>, SyncError> {
+    let (uid, component) = (xml_escape(uid), xml_escape(component));
+    let body = match kind {
+        Kind::Calendars => format!(
+            r#"<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="{CALDAV}"><d:prop><d:getetag/></d:prop><c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="{component}"><c:prop-filter name="UID"><c:text-match>{uid}</c:text-match></c:prop-filter></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>"#
+        ),
+        Kind::Contacts => format!(
+            r#"<?xml version="1.0" encoding="utf-8"?><a:addressbook-query xmlns:d="DAV:" xmlns:a="{CARDDAV}"><d:prop><d:getetag/></d:prop><a:filter><a:prop-filter name="UID"><a:text-match match-type="equals">{uid}</a:text-match></a:prop-filter></a:filter></a:addressbook-query>"#
+        ),
+    };
+    let answer = client.send("REPORT", url, &[("Depth", "1"), ("Content-Type", "application/xml; charset=utf-8")], Some(&body))?;
+    if answer.status != 207 {
+        return Ok(Vec::new());
+    }
+    let Ok((responses, _)) = multistatus(&answer.body) else { return Ok(Vec::new()) };
+    let collection = path_key(url);
+    Ok(responses.into_iter().filter(|r| r.status.is_none_or(|s| s / 100 == 2) && path_key(&absolute(url, &r.href)) != collection).map(|r| r.href).collect())
+}
+
+/// A new item here (`file`, holding `mine`) whose UID the server holds
+/// already under another address, `theirs`: that item takes its place, under
+/// its file, never sent again. An invitation answered on two devices: the
+/// same answers (`agenda::answers`), taken as it is; others, the server's
+/// kept, and said (`Report::answered`): the organizer may have had both. An
+/// item without guests (a contact, a task) that differs: yours set aside
+/// first, as any item changed on both sides.
+fn adopt(dir: &Path, listed: &Listed, file: &str, mine: &str, (href, etag, data): (String, String, String), report: &mut Report) -> Result<ItemState, SyncError> {
+    let path = dir.join(file);
+    let (ours, theirs) = (sioul_core::agenda::answers(mine), sioul_core::agenda::answers(&data));
+    if ours != theirs {
+        // The guest whose answer differs: you, answering on each device.
+        let kept = theirs.iter().find(|(who, said)| ours.get(*who) != Some(*said)).map_or_else(String::new, |(_, said)| said.clone());
+        report.answered.push((summary_of(&data), kept));
+    } else if ours.is_empty() && !same_text(mine.as_bytes(), &data) {
+        report.conflicts.push(set_aside(&path, mine.as_bytes())?);
+    }
+    let text = crlf(&data);
+    vdir::write_item(&path, &text).map_err(SyncError::Disk)?;
+    report.received += 1;
+    // Written now, its time not trusted yet (`SETTLED`): read once at the next sync.
+    Ok(ItemState { href: path_key(&absolute(&listed.url, &href)), file: file.to_string(), etag, hash: vdir::content_hash(text.as_bytes()), ..ItemState::default() })
+}
+
+/// An event's title, as its first `SUMMARY` line says.
+fn summary_of(text: &str) -> String {
+    sioul_core::lines::unfold(text).iter().find(|l| sioul_core::lines::name(l) == "SUMMARY").map(|l| sioul_core::lines::unescape(sioul_core::lines::value(l).trim())).unwrap_or_default()
 }
 
 /// What became of an item known to the server, at a push.
@@ -1145,12 +1239,23 @@ fn pull(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_p
         }
     }
     let hrefs: Vec<String> = wanted.into_values().collect();
-    for batch in hrefs.chunks(BATCH) {
-        for (href, etag, data) in fetch(client, listed.kind, &listed.url, batch)? {
+    let mut at = 0;
+    while at < hrefs.len() {
+        // As many as the last answers allow (`pace`): fewer on a slow line, 50 again once it is quick.
+        let batch = &hrefs[at..(at + batch_of(&listed.url)).min(hrefs.len())];
+        let started = Instant::now();
+        let fetched = fetch(client, listed.kind, &listed.url, batch);
+        match &fetched {
+            Ok(_) => pace(&listed.url, Some(started.elapsed())),
+            Err(SyncError::Network(_)) => pace(&listed.url, None),
+            Err(_) => {}
+        }
+        for (href, etag, data) in fetched? {
             store(dir, listed.kind, state, &listed.url, (&href, &etag, &data), report)?;
         }
         // Kept as it goes: cut short, the next sync goes on from here.
         state.save(state_path).map_err(SyncError::Disk)?;
+        at += batch.len();
     }
     state.sync_token = token.or_else(|| listed.sync_token.clone());
     Ok(())
@@ -1476,6 +1581,9 @@ pub(crate) mod stand_in {
         changes: Vec<(u64, String, String)>,
         /// "PUT /cal/a/x.ics 201", in order.
         seen: Vec<String>,
+        /// A new item whose UID another item of its calendar holds is refused
+        /// with this status, the other named in a `no-uid-conflict` or not.
+        uid_clash: Option<(u16, bool)>,
     }
 
     impl Dav {
@@ -1517,6 +1625,18 @@ pub(crate) mod stand_in {
         pub(crate) fn fault(&self, fault: impl FnMut(&Request) -> Option<Fault> + Send + 'static) {
             self.faults.lock().unwrap().push(Box::new(fault));
         }
+
+        /// From now on, one UID per calendar: a new item holding another's
+        /// is refused with `status`, the other named when `named` (RFC 4791
+        /// §5.3.2.1), or not (Nextcloud's 400).
+        pub(crate) fn one_uid_each(&self, status: u16, named: bool) {
+            self.held().uid_clash = Some((status, named));
+        }
+    }
+
+    /// An item's UID line, as the tests write them.
+    fn uid_line(text: &str) -> Option<&str> {
+        text.lines().find_map(|l| l.trim_end_matches('\r').strip_prefix("UID:"))
     }
 
     impl Server for Dav {
@@ -1599,6 +1719,7 @@ pub(crate) mod stand_in {
                     multistatus(&out)
                 }
                 ("REPORT", ["cal", calendar]) if request.body.contains("sync-collection") => self.changes_since(calendar, &request.body),
+                ("REPORT", ["cal", calendar]) if request.body.contains("calendar-query") => self.query(calendar, &request.body),
                 ("REPORT", ["cal", calendar]) => self.multiget(calendar, &request.body),
                 ("PUT", ["cal", calendar, item]) => {
                     let current = self.calendars[*calendar].get(*item).map(|(etag, _)| etag.clone());
@@ -1609,6 +1730,17 @@ pub(crate) mod stand_in {
                     };
                     if refused {
                         return Reply::new(412, "");
+                    }
+                    let holder = uid_line(&request.body).and_then(|uid| self.calendars[*calendar].iter().find(|(name, (_, text))| name.as_str() != *item && uid_line(text) == Some(uid))).map(|(name, _)| name.clone());
+                    if current.is_none()
+                        && let (Some((status, named)), Some(holder)) = (self.uid_clash, holder)
+                    {
+                        let body = if named {
+                            format!(r#"<?xml version="1.0" encoding="utf-8"?><d:error xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><c:no-uid-conflict><d:href>/cal/{calendar}/{holder}</d:href></c:no-uid-conflict></d:error>"#)
+                        } else {
+                            "Calendar object with uid already exists in this calendar collection.".to_string()
+                        };
+                        return Reply::new(status, body);
                     }
                     let etag = self.store(calendar, item, &request.body);
                     Reply { status: if current.is_some() { 204 } else { 201 }, headers: vec![("ETag", etag)], body: String::new() }
@@ -1644,6 +1776,19 @@ pub(crate) mod stand_in {
                 };
             }
             out += &format!("<d:sync-token>token-{}</d:sync-token>", self.last(calendar));
+            multistatus(&out)
+        }
+
+        /// RFC 4791 §7.8: the items whose UID holds the text asked (a UID filter, as `holding_uid` asks).
+        fn query(&self, calendar: &str, body: &str) -> Reply {
+            let doc = roxmltree::Document::parse(body).unwrap();
+            let uid = doc.descendants().find(|n| n.tag_name().name() == "text-match").and_then(|n| n.text()).unwrap_or("").to_string();
+            let mut out = String::new();
+            for (item, (etag, text)) in &self.calendars[calendar] {
+                if !uid.is_empty() && uid_line(text).is_some_and(|u| u.contains(&uid)) {
+                    out += &found(&format!("/cal/{calendar}/{item}"), &etag_prop(etag));
+                }
+            }
             multistatus(&out)
         }
 
@@ -1853,6 +1998,82 @@ mod tests {
         let started = std::time::Instant::now();
         assert!(matches!(sync_one(&client, "slow", &home, "slow"), Err(SyncError::Network(_))));
         assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
+    }
+
+    /// Item 12 of 9 October: a slow multiget halves the next batch of its
+    /// collection, a cut one too (at the next sync), and quick answers grow
+    /// it back, twice as large each time, to 50.
+    #[test]
+    fn batches_follow_the_answers() {
+        home();
+        let (dav, home) = Dav::start(&["paced", "cut"]);
+        for n in 0..200 {
+            dav.put("paced", &format!("e{n}.ics"), &event(&format!("p{n}"), "Paced"));
+        }
+        for n in 0..120 {
+            dav.put("cut", &format!("e{n}.ics"), &event(&format!("c{n}"), "Cut"));
+        }
+        // How many items each multiget asks for, by calendar.
+        let asked = std::sync::Arc::new(Mutex::new(Vec::<(String, usize)>::new()));
+        let noted = std::sync::Arc::clone(&asked);
+        dav.fault(move |r| {
+            if r.body.contains("multiget") {
+                noted.lock().unwrap().push((r.path.clone(), r.body.matches("<d:href>").count()));
+            }
+            None
+        });
+        let of = |calendar: &str| asked.lock().unwrap().iter().filter(|(path, _)| *path == format!("/cal/{calendar}/")).map(|(_, n)| *n).collect::<Vec<_>>();
+        dav.fault(nth(1, |r| r.path == "/cal/paced/" && r.body.contains("multiget"), Fault::Late(SLOW + Duration::from_millis(300))));
+        let client = client();
+        assert_eq!(sync_one(&client, "paced", &home, "paced").unwrap().received, 200);
+        assert_eq!(of("paced"), [50, 25, 50, 50, 25]);
+        dav.fault(nth(1, |r| r.path == "/cal/cut/" && r.body.contains("multiget"), Fault::Drop));
+        assert!(matches!(sync_one(&client, "paced-cut", &home, "cut"), Err(SyncError::Network(_))));
+        assert_eq!(sync_one(&client, "paced-cut", &home, "cut").unwrap().received, 120);
+        assert_eq!(of("cut"), [50, 25, 50, 45]);
+    }
+
+    /// Item 5 of 9 October: an invitation answered on two devices. The phone
+    /// answered first: its copy is on the server. The computer's, sent as new
+    /// under another name before its sync brought the phone's, meets that
+    /// UID there (403 or 409 naming the other item, RFC 4791; Nextcloud's 400
+    /// or a 412 naming none: found by a query): the server's item takes its
+    /// place, in one file, sent no more. The same answer is said nowhere;
+    /// another answer, the server's is kept, and said.
+    #[test]
+    fn an_invitation_answered_on_two_devices() {
+        home();
+        let invitation = |uid: &str, answer: &str| {
+            format!(
+                "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//tests//EN\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261005T120000Z\r\nDTSTART:20261012T090000Z\r\nDTEND:20261012T100000Z\r\nSUMMARY:Review\r\nORGANIZER;CN=Jane:mailto:jane@example.org\r\nATTENDEE;CN=Me;PARTSTAT={answer}:mailto:me@example.net\r\nATTENDEE;CN=Paul:mailto:paul@example.org\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+            )
+        };
+        for (n, (status, named)) in [(403, true), (409, true), (400, false), (412, false)].into_iter().enumerate() {
+            let (dav, home) = Dav::start(&["invited"]);
+            dav.one_uid_each(status, named);
+            let (client, account) = (client(), format!("invited-{n}"));
+            sync_one(&client, &account, &home, "invited").unwrap();
+            let dir = folder(&account, "invited");
+            // Accepted on the phone, then on the computer.
+            dav.put("invited", "phone.ics", &invitation("review-1", "ACCEPTED"));
+            std::fs::write(dir.join("desk.ics"), invitation("review-1", "ACCEPTED")).unwrap();
+            let report = sync_one(&client, &account, &home, "invited").unwrap();
+            assert!(report.answered.is_empty() && report.conflicts.is_empty(), "{status}: {report:?}");
+            assert_eq!(local_files(&dir, Kind::Calendars), BTreeSet::from(["desk.ics".to_string()]), "{status}: one file, under its name here");
+            assert_eq!(dav.items("invited").len(), 1, "{status}");
+            let again = sync_one(&client, &account, &home, "invited").unwrap();
+            assert_eq!((again.sent, again.received), (0, 0), "{status}: settled: {again:?}");
+            // Maybe on the phone, accepted on the computer: the phone's answer is kept here, and said.
+            dav.put("invited", "phone-2.ics", &invitation("review-2", "TENTATIVE"));
+            std::fs::write(dir.join("desk-2.ics"), invitation("review-2", "ACCEPTED")).unwrap();
+            let report = sync_one(&client, &account, &home, "invited").unwrap();
+            assert_eq!(report.answered, [("Review".to_string(), "TENTATIVE".to_string())], "{status}: {report:?}");
+            assert!(report.conflicts.is_empty(), "{status}: {report:?}");
+            assert!(std::fs::read_to_string(dir.join("desk-2.ics")).unwrap().contains("PARTSTAT=TENTATIVE:mailto:me@example.net"), "{status}");
+            assert_eq!(local_files(&dir, Kind::Calendars).len(), 2, "{status}");
+            assert!(dav.items("invited")["phone-2.ics"].contains("PARTSTAT=TENTATIVE"), "{status}: the server's left as it was");
+            assert!(!puts(&dav).iter().any(|p| p.ends_with(" 201") || p.ends_with(" 204")), "{status}: nothing written there: {:?}", dav.seen());
+        }
     }
 
     /// A2: after a refused password the watcher waits, parked, instead of

@@ -175,6 +175,10 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             for conflict in report.conflicts {
                 tell(qt, shared, say("dav-conflict", &[("path", conflict.display().to_string())]));
             }
+            // An invitation you had answered otherwise on another device: its answer kept, said once.
+            for (summary, kept) in report.answered {
+                tell(qt, shared, say("dav-answered-elsewhere", &[("summary", summary), ("answer", kept.to_ascii_lowercase())]));
+            }
             changed
         }
         Err(_) => {
@@ -536,7 +540,12 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
         "accepted" | "tentative" | "add" => {
             let calendar = agenda::default_calendar().ok_or_else(|| tr().text("dav-no-calendar", None))?;
             let target = known.clone().unwrap_or_else(|| agenda::new_path(&calendar));
-            vdir::write_item(&target, &agenda::stored(&text))?;
+            // Answered, your calendar keeps your answer on your own line: a device
+            // answering it too can tell whether it said the same (`dav`, an item
+            // the server holds already under its UID).
+            let me = load_config().account_of(&path).and_then(|a| a.address.clone()).unwrap_or_default();
+            let kept = if answer == "add" { agenda::stored(&text) } else { agenda::stored_answered(&text, &me, &answer.to_ascii_uppercase()) };
+            vdir::write_item(&target, &kept)?;
             if let Some(account) = account_of(&target) {
                 nudge(shared, &account);
             }

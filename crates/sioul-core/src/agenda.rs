@@ -23,6 +23,7 @@ use jiff::civil::{Date, DateTime};
 use jiff::tz::TimeZone;
 use jiff::{Timestamp, ToSpan, Zoned};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// Occurrences of a repeating event looked at, at most, per file: a safety
@@ -1252,17 +1253,7 @@ pub fn reply(text: &str, me: &str, answer: &str) -> Option<String> {
     let master = master_range(&source)?;
     let mine = |line: &str| address(lines::value(line)).eq_ignore_ascii_case(me);
     let attendee = source[master.clone()].iter().find(|l| lines::name(l) == "ATTENDEE" && mine(l)).cloned().unwrap_or_else(|| format!("ATTENDEE:mailto:{me}"));
-    // PARTSTAT replaced, RSVP dropped: an answer asks for none. A line without
-    // its colon (a broken file) has no value: all of it is the head.
-    let at = attendee.len().checked_sub(lines::value(&attendee).len() + 1).filter(|&at| attendee.as_bytes().get(at) == Some(&b':')).unwrap_or(attendee.len());
-    let (head, value) = attendee.split_at(at);
-    let params: Vec<&str> = head.split(';').skip(1).filter(|p| !p.to_ascii_uppercase().starts_with("PARTSTAT=") && !p.to_ascii_uppercase().starts_with("RSVP=")).collect();
-    let mut attendee = String::from("ATTENDEE");
-    for param in params {
-        attendee.push(';');
-        attendee.push_str(param);
-    }
-    attendee.push_str(&format!(";PARTSTAT={answer}{value}"));
+    let attendee = with_answer(&attendee, answer);
     let kept = ["UID", "SEQUENCE", "DTSTART", "DTEND", "DURATION", "SUMMARY", "ORGANIZER", "RECURRENCE-ID"];
     let mut out = vec!["BEGIN:VCALENDAR".to_string(), "VERSION:2.0".to_string(), "PRODID:-//Sioul//Sioul//EN".to_string(), "METHOD:REPLY".to_string()];
     // The zones the event's times name.
@@ -1286,6 +1277,54 @@ pub fn reply(text: &str, me: &str, answer: &str) -> Option<String> {
     out.push(attendee);
     out.extend(["END:VEVENT".to_string(), "END:VCALENDAR".to_string()]);
     Some(lines::fold(&out))
+}
+
+/// A guest's line with `answer` in its PARTSTAT, RSVP dropped: an answer
+/// asks for none. A line without its colon (a broken file) has no value: all
+/// of it is the head.
+fn with_answer(attendee: &str, answer: &str) -> String {
+    let at = attendee.len().checked_sub(lines::value(attendee).len() + 1).filter(|&at| attendee.as_bytes().get(at) == Some(&b':')).unwrap_or(attendee.len());
+    let (head, value) = attendee.split_at(at);
+    let params: Vec<&str> = head.split(';').skip(1).filter(|p| !p.to_ascii_uppercase().starts_with("PARTSTAT=") && !p.to_ascii_uppercase().starts_with("RSVP=")).collect();
+    let mut out = String::from("ATTENDEE");
+    for param in params {
+        out.push(';');
+        out.push_str(param);
+    }
+    out.push_str(&format!(";PARTSTAT={answer}{value}"));
+    out
+}
+
+/// An invitation's event as your calendar keeps it once you answered: as the
+/// organizer sent it (`stored`), your own line among the guests (`me`, by
+/// address) saying your answer ("ACCEPTED", "TENTATIVE"), as an attendee's
+/// copy says it (RFC 5546 §3.2.3). Your other devices, and any calendar
+/// reading the server, then know what you answered; two devices answering
+/// the same invitation can tell whether they said the same (`answers`).
+/// Unchanged but for METHOD when you are not among the guests by that address.
+pub fn stored_answered(text: &str, me: &str, answer: &str) -> String {
+    let mut source = lines::unfold(&stored(text));
+    if let Some(master) = master_range(&source) {
+        for line in &mut source[master] {
+            if lines::name(line) == "ATTENDEE" && !me.is_empty() && address(lines::value(line)).eq_ignore_ascii_case(me) {
+                *line = with_answer(line, answer);
+            }
+        }
+    }
+    lines::fold(&source)
+}
+
+/// Each guest's answer in an event, by address (lower case): its PARTSTAT,
+/// "NEEDS-ACTION" when it says none; the event's own guests, not those of a
+/// changed occurrence. Empty for what has no guests (a contact, a task).
+pub fn answers(text: &str) -> BTreeMap<String, String> {
+    let source = lines::unfold(text);
+    let Some(master) = master_range(&source) else { return BTreeMap::new() };
+    source[master]
+        .iter()
+        .filter(|l| lines::name(l) == "ATTENDEE")
+        .map(|l| (address(lines::value(l)).to_ascii_lowercase(), lines::param(l, "PARTSTAT").map_or_else(|| "NEEDS-ACTION".to_string(), |p| p.to_ascii_uppercase())))
+        .collect()
 }
 
 /// Adds an invitation's event to a calendar file, as the organizer sent it,
@@ -1458,6 +1497,14 @@ mod tests {
         assert!(answer.contains("METHOD:REPLY") && answer.contains("ATTENDEE;CN=Me;PARTSTAT=ACCEPTED:mailto:me@example.net"), "{answer}");
         assert!(!answer.contains("paul@example.org") && answer.contains("ORGANIZER;CN=Jane:mailto:jane@example.org"), "{answer}");
         assert!(!stored(invite).contains("METHOD"));
+        // Kept answered: your line says it, Paul's as it was; the guests' answers read back.
+        let kept = stored_answered(invite, "Me@Example.net", "TENTATIVE");
+        assert!(!kept.contains("METHOD") && kept.contains("ATTENDEE;CN=Me;PARTSTAT=TENTATIVE:mailto:me@example.net"), "{kept}");
+        assert!(kept.contains("ATTENDEE;CN=Paul:mailto:paul@example.org"), "{kept}");
+        let said = answers(&kept);
+        assert_eq!((said["me@example.net"].as_str(), said["paul@example.org"].as_str()), ("TENTATIVE", "NEEDS-ACTION"));
+        assert_ne!(answers(&stored_answered(invite, "me@example.net", "ACCEPTED")), said);
+        assert_eq!(stored_answered(invite, "someone@example.com", "ACCEPTED"), stored(invite), "not among the guests: as sent");
     }
 
     #[test]

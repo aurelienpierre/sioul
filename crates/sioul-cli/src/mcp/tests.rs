@@ -934,6 +934,39 @@ fn notes_stay_in_the_notes() {
     assert!(written.starts_with("# Plain --- links: mid:x@forger.example\n"), "{written}");
 }
 
+/// Item 13 of 9 October: writers at once (the window and an agent; here six
+/// agents, each its own server): notes of one title each get a file of their
+/// own, and ties written into one note's front matter at the same moment are
+/// all kept, each written over the note read again under the notes' lock.
+#[test]
+fn writers_at_once_lose_nothing() {
+    let home = home();
+    let at_once = |arguments: fn(usize) -> (&'static str, Value)| {
+        std::thread::scope(|s| {
+            for writer in 0..6 {
+                s.spawn(move || {
+                    let mut server = server();
+                    ask(&mut server, "initialize", json!({ "clientInfo": { "name": "tests" } }));
+                    let (tool, arguments) = arguments(writer);
+                    let done = call(&mut server, tool, arguments);
+                    assert_eq!(done["isError"], false, "{done}");
+                });
+            }
+        });
+    };
+    at_once(|writer| ("add_note", json!({ "title": "Minutes", "folder": "admin/writers", "body": format!("Writer {writer}.") })));
+    let folder = home.root.join("store/admin/writers");
+    let bodies: std::collections::BTreeSet<String> = std::fs::read_dir(&folder).unwrap().map(|e| std::fs::read_to_string(e.unwrap().path()).unwrap()).collect();
+    assert_eq!(bodies.len(), 6, "six notes, none written over: {bodies:?}");
+    at_once(|writer| ("link", json!({ "from": "sioul:note/admin/writers/Minutes.md", "to": format!("https://example.org/minutes/{writer}") })));
+    let minutes = std::fs::read_to_string(folder.join("Minutes.md")).unwrap();
+    for writer in 0..6 {
+        assert!(minutes.contains(&format!("https://example.org/minutes/{writer}")), "{minutes}");
+    }
+    assert!(home.root.join("state/sioul/.notes.lock").exists(), "the lock in Sioul's state");
+    assert!(!folder.join(".notes.lock").exists() && !home.root.join("store/.notes.lock").exists(), "never in the notes");
+}
+
 #[test]
 fn drafts_hold_one_address_each() {
     home();

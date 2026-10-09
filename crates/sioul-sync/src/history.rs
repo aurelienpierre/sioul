@@ -95,11 +95,11 @@ pub fn keep(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Re
     if !crate::disk::fits(root, size) {
         return Err(format!("share-no-room:{file}"));
     }
-    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    crate::share::private_dirs(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let target = dir.join(new_stamp(&dir, now_ms));
-    // Copied under a hidden name, then renamed: never half a version.
+    // Copied under a hidden name, yours alone, then renamed: never half a version.
     let temporary = crate::share::temporary(&target);
-    std::fs::copy(path, &temporary).and_then(|_| std::fs::rename(&temporary, &target)).map_err(|e| {
+    crate::share::copy_private(path, &temporary).and_then(|()| std::fs::rename(&temporary, &target)).map_err(|e| {
         let _ = std::fs::remove_file(&temporary);
         format!("{}: {e}", target.display())
     })?;
@@ -111,7 +111,7 @@ pub fn keep(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Re
 /// the sharing folder already; nothing copied.
 pub fn keep_sealed(root: &Path, part: &str, file: &str, hash: &str, size: u64, now_ms: i64) -> Result<(), String> {
     let dir = below(root, part, file).ok_or_else(|| format!("{file}: not a file's name"))?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    crate::share::private_dirs(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let target = dir.join(format!("{}{SEALED}", new_stamp(&dir, now_ms)));
     crate::share::write_atomically(&target, format!("{hash} {size}\n").as_bytes())?;
     prune_file(&dir, now_ms, false);

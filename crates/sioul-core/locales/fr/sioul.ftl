@@ -785,6 +785,12 @@ dav-none = aucun
 dav-added = Compte « { $id } » ajouté : ses contacts et agendas arrivent.
 dav-report = { $account } : { $sent } envoyés, { $received } reçus, { $removed } retirés.
 dav-conflict = Modifié des deux côtés : la version du serveur est gardée, la vôtre est dans { $path }.
+dav-answered-elsewhere = { $answer ->
+        [accepted] Vous aviez déjà répondu à « { $summary } » sur un autre appareil : accepté. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
+        [tentative] Vous aviez déjà répondu à « { $summary } » sur un autre appareil : peut-être. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
+        [declined] Vous aviez déjà répondu à « { $summary } » sur un autre appareil : décliné. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
+       *[other] Vous aviez déjà répondu à « { $summary } » sur un autre appareil. Votre agenda garde cette réponse ; pour la changer, répondez de nouveau depuis l’invitation.
+    }
 dav-nothing = Pas encore de compte de contacts et agendas : sioul dav add vous@exemple.org.
 dav-no-book = Pas encore de carnet d’adresses où l’ajouter.
 dav-no-calendar = Pas encore d’agenda où l’ajouter.
@@ -2742,6 +2748,8 @@ share-passphrase-known = Un autre appareil partage par ce dossier : tapez la p
 share-start = Partager
 share-now = Échanger maintenant
 share-stop = Arrêter le partage
+share-stop-ask = Cet appareil arrête de partager : il n’envoie plus rien et ne reçoit plus rien de vos autres appareils, et il oublie la phrase de passe. Tout ce qui est sur cet appareil reste tel quel, et vos autres appareils gardent ce qu’ils ont et continuent de partager entre eux. Pour partager de nouveau plus tard, il vous faudra la phrase de passe.
+share-stop-confirm = Arrêter le partage sur cet appareil
 share-short = Au moins 12 caractères : quelques mots font une bonne phrase de passe.
 share-differ = Les deux phrases de passe diffèrent.
 share-wrong = Ce n’est pas la phrase de passe choisie sur votre autre appareil.
@@ -3746,6 +3754,7 @@ note-memo-failed = Le mémo n’a pas pu être enregistré ({ $why }).
 note-memo-no-microphone = Le système ferme le micro à Sioul : il s’ouvre dans les réglages de confidentialité du système.
 note-link-not-found = « { $path } » n’est pas dans votre dossier de notes.
 note-changed-elsewhere = Cette note a changé ailleurs pendant que vous écriviez : la vôtre est gardée à côté, sous « { $path } ».
+note-newer-came = Une version plus récente de cette note est arrivée d’un autre appareil. Ce que vous tapez reste tel quel : l’enregistrer le garde à côté de cette version.
 note-link-kept = Les liens de ce type ne s’ouvrent pas depuis une note : { $url }
 right-now-unverified = Son expéditeur n’est pas vérifié : ne vous en servez que si vous venez de le demander à ce site.
 link-program = Un programme, un script ou un installeur : c’est son dossier qui s’ouvre, pour le lancer de là si vous lui faites confiance.

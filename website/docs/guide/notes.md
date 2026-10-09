@@ -50,7 +50,7 @@ A note opens to be read. Its links are followed with a click, wherever they lead
 - **Aa** sets the font, its size and the space between lines, for reading on this device.
 - **Open with…** opens the note in another program.
 
-If the note changed elsewhere while you were writing (on another device, by a sync app, in another program), your version is never saved over it: it is kept beside it, as "Plan (conflict 2026-10-05 21.50)", and stays open; the status line says so. The other version keeps the name. On a phone, the open note takes the whole page, and **Back** keeps the note, saved, and closes it.
+A note changed on another device, come through the sharing, shows at once, as the Health, Papers and Time pages do; while you are typing in it, what you typed stays as it is, and a line under its title says that a newer version came. If the note changed elsewhere while you were writing (on another device, by a sync app, in another program), your version is never saved over it: it is kept beside it, as "Plan (conflict 2026-10-05 21.50)", and stays open; the status line says so. The other version keeps the name. On a phone, the open note takes the whole page, and **Back** keeps the note, saved, and closes it.
 
 A line such as `- [ ] Ask for the certificate`, not ticked, is one click from becoming a task: **Make it a task**. The task stays tied to its note.
 

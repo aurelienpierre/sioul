@@ -255,6 +255,37 @@ impl LocalLinks {
         std::fs::rename(&temporary, path).map_err(fail)
     }
 
+    /// The ties kept at `path` changed by `f`, under the file's lock
+    /// (`filelock`, the one the sharing takes to write this file), read again
+    /// once it is held: the window, an agent (`sioul mcp`) and the sharing
+    /// writing at once never write an older copy over another's tie. `f` says
+    /// whether it changed anything; the file is written only then. Returns
+    /// what `f` said. Every change to the file goes through here, never
+    /// `load` then `save` (which hold no lock: one held inside would wait for itself).
+    pub fn change(path: &Path, f: impl FnOnce(&mut LocalLinks) -> bool) -> Result<bool, String> {
+        crate::filelock::with_lock(path, || {
+            let mut links = LocalLinks::load(path);
+            if !f(&mut links) {
+                return Ok(false);
+            }
+            links.save(path).map(|()| true)
+        })
+    }
+
+    /// Ties added to those kept at `path`, each once (`change`); whether any was new.
+    pub fn add_all(path: &Path, edges: &[Edge]) -> Result<bool, String> {
+        if edges.is_empty() {
+            return Ok(false);
+        }
+        LocalLinks::change(path, |links| {
+            let before = links.links.len();
+            for edge in edges {
+                links.add(&edge.from, &edge.to, &edge.how);
+            }
+            links.links.len() != before
+        })
+    }
+
     /// Adds a link once.
     pub fn add(&mut self, from: &str, to: &str, how: &str) {
         let edge = Edge { from: from.to_string(), to: to.to_string(), how: how.to_string() };
@@ -943,6 +974,52 @@ mod tests {
         std::fs::remove_file(&kept).unwrap();
         local.save(&kept).unwrap();
         assert_eq!(LocalLinks::load(&kept), local);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Item 13 of 9 October: the window and an agent writing at once. Eight
+    /// writers tie things at the same moment, in the file of ties kept here,
+    /// into one note's front matter, and make a note of the same title: each
+    /// reads the file again under its lock, so no tie and no note is lost,
+    /// and no two notes take one name.
+    #[test]
+    fn two_writers_at_once_lose_nothing() {
+        let dir = std::env::temp_dir().join(format!("sioul-ties-writers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (vault_dir, state) = (dir.join("vault"), dir.join("state"));
+        std::fs::create_dir_all(&vault_dir).unwrap();
+        std::fs::write(vault_dir.join("plan.md"), "# Plan\n").unwrap();
+        let kept = dir.join("links.toml");
+        let loaded = Loaded { vault: Some(Vault::open(&vault_dir)), ..Loaded::default() };
+        let now = jiff::Zoned::now();
+        std::thread::scope(|s| {
+            for writer in 0..8 {
+                let (kept, loaded, now, vault_dir, state) = (&kept, &loaded, &now, &vault_dir, &state);
+                s.spawn(move || {
+                    for n in 0..25 {
+                        let edge = Edge { from: format!("mid:{writer}-{n}@example.org"), to: "sioul:project/x".into(), how: "project".into() };
+                        assert!(LocalLinks::add_all(kept, &[edge]).unwrap());
+                    }
+                    // The note read again under the notes' lock, then written.
+                    notes::with_lock_in(state, || {
+                        let change = loaded.tie(&format!("mid:note-{writer}@example.org"), "sioul:note/plan.md", now).unwrap();
+                        assert_eq!(change.kind, Kind::Note);
+                        notes::write(vault_dir, "plan.md", &change.text).unwrap();
+                    });
+                    notes::create_in(state, vault_dir, "", "Meeting", &format!("# Meeting\n\nWriter {writer}\n")).unwrap();
+                });
+            }
+        });
+        let local = LocalLinks::load(&kept);
+        assert_eq!(local.links.len(), 200, "every tie kept");
+        let plan = std::fs::read_to_string(vault_dir.join("plan.md")).unwrap();
+        for writer in 0..8 {
+            assert!(plan.contains(&format!("mid:note-{writer}@example.org")), "{plan}");
+        }
+        let made: Vec<String> = (0..8).map(|n| if n == 0 { "Meeting.md".to_string() } else { format!("Meeting {}.md", n + 1) }).collect();
+        let texts: BTreeSet<String> = made.iter().map(|name| std::fs::read_to_string(vault_dir.join(name)).unwrap()).collect();
+        assert_eq!(texts.len(), 8, "eight notes, none written over: {texts:?}");
+        assert!(state.join(".notes.lock").exists() && !vault_dir.join(".notes.lock").exists(), "the lock in Sioul's state, never in the notes");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

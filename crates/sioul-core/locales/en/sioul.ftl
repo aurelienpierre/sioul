@@ -764,6 +764,12 @@ dav-none = none
 dav-added = Account “{ $id }” added: its contacts and calendars come now.
 dav-report = { $account }: { $sent } sent, { $received } received, { $removed } removed.
 dav-conflict = Changed on both sides: the server’s version is kept, yours is in { $path }.
+dav-answered-elsewhere = { $answer ->
+        [accepted] You had already answered “{ $summary }” on another device: accepted. Your calendar keeps that answer; to change it, answer again from the invitation.
+        [tentative] You had already answered “{ $summary }” on another device: maybe. Your calendar keeps that answer; to change it, answer again from the invitation.
+        [declined] You had already answered “{ $summary }” on another device: declined. Your calendar keeps that answer; to change it, answer again from the invitation.
+       *[other] You had already answered “{ $summary }” on another device. Your calendar keeps that answer; to change it, answer again from the invitation.
+    }
 dav-nothing = No contacts-and-calendars account yet: sioul dav add you@example.org.
 dav-no-book = No address book to add it to yet.
 dav-no-calendar = No calendar to add it to yet.
@@ -2724,6 +2730,8 @@ share-passphrase-known = Another device shares through this folder: type the pas
 share-start = Share
 share-now = Exchange now
 share-stop = Stop sharing
+share-stop-ask = This device stops sharing: it sends nothing more and takes in nothing from your other devices, and it forgets the passphrase. Everything on this device stays as it is, and your other devices keep what they have and go on sharing among themselves. To share again later, you will need the passphrase.
+share-stop-confirm = Stop sharing from this device
 share-short = At least 12 characters: a few words make a good passphrase.
 share-differ = The two passphrases differ.
 share-wrong = This is not the passphrase chosen on your other device.
@@ -3728,6 +3736,7 @@ note-memo-failed = The memo could not be recorded ({ $why }).
 note-memo-no-microphone = The system keeps the microphone closed to Sioul: it is opened in the system's privacy settings.
 note-link-not-found = “{ $path }” is not in your notes folder.
 note-changed-elsewhere = This note changed elsewhere while you were writing: yours is kept beside it, as “{ $path }”.
+note-newer-came = A newer version of this note came from another device. What you are typing stays as it is: saving keeps it beside that version.
 note-link-kept = Links like this one are not opened from a note: { $url }
 right-now-unverified = Its sender is not verified: use it only if you just asked this site for it.
 link-program = A program, a script or an installer: its folder opens instead, to start it from there if you trust it.

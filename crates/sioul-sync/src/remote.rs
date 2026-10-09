@@ -696,9 +696,9 @@ impl Server {
         let disk = |e: std::io::Error| SyncError::Disk(format!("{}: {e}", path.display()));
         let written = (|| -> Result<u64, SyncError> {
             if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).map_err(disk)?;
+                crate::share::private_dirs(parent).map_err(disk)?;
             }
-            let mut out = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary).map_err(disk)?;
+            let mut out = crate::share::new_private(&temporary).map_err(disk)?;
             let mut reader = response.body_mut().with_config().limit(limit).reader();
             let copied = std::io::copy(&mut reader, &mut out).map_err(|e| SyncError::Network(e.to_string()))?;
             if length.is_some_and(|l| l != copied) {
@@ -1629,9 +1629,9 @@ impl Puller<'_> {
             let temporary = crate::share::temporary(&into);
             let written = (|| -> std::io::Result<()> {
                 if let Some(parent) = into.parent() {
-                    std::fs::create_dir_all(parent)?;
+                    crate::share::private_dirs(parent)?;
                 }
-                let mut out = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
+                let mut out = crate::share::new_private(&temporary)?;
                 if prefix > 0 {
                     std::io::copy(&mut std::fs::File::open(&base)?.take(prefix), &mut out)?;
                 }
@@ -2256,7 +2256,7 @@ pub fn place_texts(folder: &Path, own: &str, source: &Path) -> Result<bool, Stri
         return Ok(false);
     }
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        crate::share::private_dirs(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     crate::share::write_atomically(&target, &bytes).map(|()| true)
 }

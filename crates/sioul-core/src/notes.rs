@@ -838,6 +838,38 @@ pub fn write(root: &Path, path: &str, text: &str) -> Result<PathBuf, String> {
     Ok(target)
 }
 
+/// One writer at a time among Sioul's own writers of notes: the window and
+/// an agent (`sioul mcp`) each read a note again, change it and write it with
+/// this held, so that neither writes an older copy over the other's change,
+/// and two new notes never take one name. An advisory lock (`filelock`) on
+/// one hidden file of Sioul's state folder (`.notes.lock`), not one beside
+/// each note: the notes folder is yours, and a sync app or another editor
+/// would carry or show a lock file in each of its folders.
+pub fn with_lock<T>(f: impl FnOnce() -> T) -> T {
+    with_lock_in(&crate::config::state_dir(), f)
+}
+
+/// `with_lock`, its lock in `state` (the tests' own folder).
+pub fn with_lock_in<T>(state: &Path, f: impl FnOnce() -> T) -> T {
+    crate::filelock::with_lock(&state.join("notes"), f)
+}
+
+/// A new note in `folder`, its file named after `name` (`free_path`), holding
+/// `text`; the free name found and taken under the notes' lock (`with_lock`):
+/// two writers making "Plan" at once make "Plan.md" and "Plan 2.md", and
+/// neither is written over. Returns its path in the notes.
+pub fn create(root: &Path, folder: &str, name: &str, text: &str) -> Result<String, String> {
+    create_in(&crate::config::state_dir(), root, folder, name, text)
+}
+
+/// `create`, the lock in `state`.
+pub fn create_in(state: &Path, root: &Path, folder: &str, name: &str, text: &str) -> Result<String, String> {
+    with_lock_in(state, || {
+        let path = free_path(root, folder, name);
+        write(root, &path, text).map(|_| path)
+    })
+}
+
 /// A free path for a new note in `folder`: "Title.md", else "Title 2.md"…
 pub fn free_path(root: &Path, folder: &str, title: &str) -> String {
     let name = file_name(title);

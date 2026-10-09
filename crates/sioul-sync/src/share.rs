@@ -1016,7 +1016,10 @@ fn rewritten(store: &Store, path: &Path, changes: &[(&str, Option<&str>)]) -> Re
     }
 }
 
-pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), String> {
+/// A file written whole beside its place under a hidden name, yours alone
+/// (`new_private`), then renamed over it: never half a file, and its folders
+/// made yours alone (`private_dirs`).
+pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), String> {
     write_then_rename(path, bytes, false)
 }
 
@@ -1029,13 +1032,14 @@ pub(crate) fn write_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
 fn write_then_rename(path: &Path, bytes: &[u8], synced: bool) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        private_dirs(parent).map_err(fail)?;
     }
     // A name starting with a dot: sync apps leave it alone (eDrive skips them,
     // Nextcloud's client by default), so a half-written file never travels.
+    // Yours alone (`new_private`): the file it replaces takes its mode too.
     let temporary = temporary(path);
     let written = (|| {
-        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary)?;
+        let mut file = new_private(&temporary)?;
         file.write_all(bytes)?;
         if synced {
             file.sync_all()?;
@@ -1072,6 +1076,59 @@ pub(crate) fn temporary(path: &Path) -> PathBuf {
 /// How the names of files being written end: what is left of them after a
 /// crash is cleaned after an hour (`clean_leftovers`).
 pub(crate) const TEMPORARY: &str = ".sioul.tmp";
+
+// ---------------------------------------------------------------- yours alone
+
+/// What the sharing writes is yours alone on Unix, as the calls' logs are
+/// (`sioul_core::calls::append_private`): its files 0600, the folders it
+/// makes 0700, whatever the umask would let others read (the records, sealed
+/// files, the files it brings in from your other devices, the copies it
+/// keeps). A file there already with a wider mode is made yours alone the
+/// next time the sharing writes it: written beside then renamed, it takes the
+/// new file's mode; appended to or copied, its mode is set. Never by a sweep
+/// of your folders. Where modes mean nothing (a phone's shared storage,
+/// Windows), nothing is asked and nothing said. These folders made, with
+/// their parents, each 0700; folders there already keep their mode.
+pub fn private_dirs(dir: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(dir)
+}
+
+/// A new file to write, yours alone (0600 on Unix); an error when one is there (`create_new`).
+pub(crate) fn new_private(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)
+}
+
+/// A file the sharing copied (a copy takes its source's mode) or appends to,
+/// made yours alone (0600) when others could read it. Never through a link.
+pub(crate) fn make_private(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(metadata) = std::fs::symlink_metadata(path)
+            && metadata.is_file()
+            && metadata.permissions().mode() & 0o077 != 0
+        {
+            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+}
+
+/// `std::fs::copy`, the copy yours alone (`make_private`).
+pub(crate) fn copy_private(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::copy(from, to)?;
+    make_private(to);
+    Ok(())
+}
 
 /// How far a rewritten file's size climbs before it starts again from the smallest.
 const PAD_LIMIT: u64 = 4096;
@@ -1337,7 +1394,8 @@ fn key_with(folder: &Path, passphrase: &str, memory_kib: u32, passes: u32) -> Re
     let key = derive(passphrase, &salt, memory_kib, passes).map_err(Refused::Other)?;
     let seal = SealFile { version: 1, salt: B64.encode(salt), memory_kib, passes, check: seal(&key, "check", CHECK) };
     let text = format!("# Sioul: how your devices' shared records are sealed (docs/database.md).\n{}", toml::to_string(&seal).map_err(|e| Refused::Other(e.to_string()))?);
-    std::fs::create_dir_all(folder).and_then(|()| std::fs::write(&path, text)).map_err(|e| Refused::Other(format!("{}: {e}", path.display())))?;
+    private_dirs(folder).map_err(|e| Refused::Other(format!("{}: {e}", folder.display())))?;
+    write_atomically(&path, text.as_bytes()).map_err(Refused::Other)?;
     Ok(key)
 }
 
@@ -1565,6 +1623,40 @@ struct Sealed {
     checked: i64,
     #[serde(default, skip_serializing)]
     tidied: i64,
+    /// The spam filter's tables this computer sealed in the folder, by name,
+    /// oldest first: past the newest `KEPT_TABLES`, the older go from the
+    /// folder at once rather than 90 days on (`prune_tables`). This device's
+    /// own memory, never shared; empty in an older Sioul's, whose tables go
+    /// as before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tables: Vec<String>,
+}
+
+/// The spam filter's tables a computer keeps in the folder: the one in use
+/// and the one before it, for a device that has not read the newest record
+/// yet. Each training that does no worse seals a new one, about two
+/// megabytes, once a week at most (docs/spam-filter.md); kept 90 days each,
+/// they would be a dozen, and a phone whose sync app never deletes a file
+/// (eDrive) would keep every one it brought.
+const KEPT_TABLES: usize = 2;
+
+/// This computer's own spam filter's tables past the newest `KEPT_TABLES`
+/// taken out of the folder now, unless a record of this computer's names
+/// one again (`used`: a table put back): that one goes by the usual rule.
+/// Never another device's file: only those this computer sealed (`mine`).
+/// A device that reads only the newest record, as every Sioul does, never
+/// asks for them; an earlier version of the table kept by reference on
+/// another device can no longer be put back from the folder.
+fn prune_tables(folder: &Path, sealed: &mut Sealed, used: &BTreeSet<String>) {
+    sealed.tables.retain(|name| sealed.mine.contains_key(name));
+    while sealed.tables.len() > KEPT_TABLES {
+        let old = sealed.tables.remove(0);
+        if used.contains(&old) {
+            continue;
+        }
+        let _ = std::fs::remove_file(folder.join("blobs").join(&old));
+        sealed.mine.remove(&old);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1813,12 +1905,12 @@ fn keep_copies(stores: &[Store], memory: &Path, today: &str) {
             list_files(&store.path, &store.path, store.skip, &mut files);
             for (relative, path) in files {
                 let to = target.join(relative);
-                let _ = to.parent().map(std::fs::create_dir_all);
-                let _ = std::fs::copy(&path, to);
+                let _ = to.parent().map(private_dirs);
+                let _ = copy_private(&path, &to);
             }
         } else if store.path.is_file() {
-            let _ = target.parent().map(std::fs::create_dir_all);
-            let _ = std::fs::copy(&store.path, target);
+            let _ = target.parent().map(private_dirs);
+            let _ = copy_private(&store.path, &target);
         }
     }
 }
@@ -1827,7 +1919,7 @@ fn keep_copies(stores: &[Store], memory: &Path, today: &str) {
 /// time on this computer, whatever runs it (`exchange_lock`): another running,
 /// a quick one waits for it; a whole one does nothing, and says so (`share-busy`).
 pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outcome, String> {
-    std::fs::create_dir_all(sharing.folder).map_err(|e| format!("{}: {e}", sharing.folder.display()))?;
+    private_dirs(sharing.folder).map_err(|e| format!("{}: {e}", sharing.folder.display()))?;
     let Some(_running) = exchange_lock(sharing.memory, !sharing.files)? else { return Ok(Outcome { problems: vec!["share-busy".into()], ..Outcome::default() }) };
     // What was fetched from the server too, read beside the folder, the newer
     // copy of each other device's file (`remote`); none until a server's
@@ -1976,7 +2068,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             }
             let Some(value) = value(key) else { continue };
             // A file sealed apart goes into the folder before its record.
-            if !seal_apart(sharing, stores, key, &value, &mut memory.sealed.mine, &mut outcome.problems, now_ms) {
+            if !seal_apart(sharing, stores, key, &value, &mut memory.sealed, &mut outcome.problems, now_ms) {
                 continue;
             }
             let base = base_of(&memory, key);
@@ -2313,7 +2405,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 continue;
             }
             let Some(value) = value(key) else { continue };
-            if !seal_apart(sharing, stores, key, &value, &mut memory.sealed.mine, &mut outcome.problems, now_ms) {
+            if !seal_apart(sharing, stores, key, &value, &mut memory.sealed, &mut outcome.problems, now_ms) {
                 continue;
             }
             let clock = memory.tick(found.changed.get(file_of(key)).copied().unwrap_or(now_ms).min(now_ms));
@@ -2410,6 +2502,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             .map(|h| crate::blobs::name(sharing.key, &h))
             .chain(memory.sealed.named_at.keys().cloned())
             .collect();
+        prune_tables(sharing.folder, &mut memory.sealed, &used);
         let mut last: BTreeMap<String, i64> = memory.sealed.mine.iter().map(|(name, (at, _))| (name.clone(), *at)).collect();
         crate::blobs::sweep(sharing.folder, &mut last, &used, now_ms);
         memory.sealed.mine.retain(|name, (at, _)| last.get(name).map(|kept| *at = *kept).is_some());
@@ -2628,7 +2721,7 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
             return Err(Fault::Broken);
         }
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(local)?;
+            private_dirs(parent).map_err(local)?;
         }
         match crate::blobs::get(&source, sharing.key, &wanted.h, &temporary) {
             Err(Fault::Broken) => {
@@ -2747,7 +2840,7 @@ fn conflict_copy(path: &Path, here: &str, known: Option<&Known>, now_ms: i64) ->
         let copy = path.with_file_name(if n == 1 { format!("{named}{extension}") } else { format!("{named} {n}{extension}") });
         if !copy.exists() {
             let temporary = temporary(&copy);
-            return std::fs::copy(path, &temporary).and_then(|_| std::fs::rename(&temporary, &copy)).map(|()| copy.clone()).map_err(|e| {
+            return copy_private(path, &temporary).and_then(|()| std::fs::rename(&temporary, &copy)).map(|()| copy.clone()).map_err(|e| {
                 let _ = std::fs::remove_file(&temporary);
                 format!("{}: {e}", copy.display())
             });
@@ -2882,11 +2975,11 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
     }
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        private_dirs(parent).map_err(fail)?;
     }
     let temporary = temporary(&path);
     let brought = match kept {
-        crate::history::Kept::Copy(version) => std::fs::copy(&version, &temporary).map(|_| ()).map_err(fail),
+        crate::history::Kept::Copy(version) => copy_private(&version, &temporary).map_err(fail),
         crate::history::Kept::Sealed { hash, .. } => {
             let (folder, key) = vault.ok_or_else(|| format!("{file}: kept in the sharing folder, which is not set here"))?;
             crate::blobs::get(&blob_folder(folder, key, &hash), key, &hash, &temporary).map_err(|fault| match fault {
@@ -2921,15 +3014,21 @@ fn base_of(memory: &Memory, key: &str) -> String {
 /// A file sealed apart put in the folder before its record goes out (`blobs`);
 /// false when it could not be (it changed while read, a full disk): its record
 /// waits for the next look. Anything else needs nothing.
-fn seal_apart(sharing: &Sharing, stores: &[Store], key: &str, value: &str, mine: &mut BTreeMap<String, (i64, u64)>, problems: &mut Vec<String>, now_ms: i64) -> bool {
+fn seal_apart(sharing: &Sharing, stores: &[Store], key: &str, value: &str, sealed: &mut Sealed, problems: &mut Vec<String>, now_ms: i64) -> bool {
     if !key.starts_with(FILES) {
         return true;
     }
     let (Some((_, path)), Ok(reference)) = (locate(stores, file_of(key)), serde_json::from_str::<Reference>(value)) else { return false };
     match crate::blobs::put(sharing.folder, sharing.key, &path, &reference.h) {
         Ok(written) => {
+            let name = crate::blobs::name(sharing.key, &reference.h);
             if let Some(size) = written {
-                mine.insert(crate::blobs::name(sharing.key, &reference.h), (now_ms, size));
+                sealed.mine.insert(name.clone(), (now_ms, size));
+            }
+            // A table of the spam filter this computer sealed: the newest of its own (`prune_tables`).
+            if file_of(key) == SPAM_TABLE && sealed.mine.contains_key(&name) {
+                sealed.tables.retain(|t| *t != name);
+                sealed.tables.push(name);
             }
             true
         }
@@ -2961,7 +3060,13 @@ fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<Str
         let file = std::fs::OpenOptions::new().write(true).open(&path).map_err(fail)?;
         file.set_len(whole).map_err(fail)?;
     }
-    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&path).map_err(fail)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(&path).map_err(fail)?;
+    // A round begun before its files were yours alone: made so at this write.
+    make_private(&path);
     file.write_all(text.as_bytes()).map_err(fail)?;
     file.sync_all().map_err(fail)
 }
@@ -3034,7 +3139,7 @@ fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &F
     let mut problems = Vec::new();
     for (key, value, _, _) in ours.iter().filter(|_| sharing.files && !hurried()) {
         if let Some(value) = value {
-            seal_apart(sharing, stores, key, value, &mut memory.sealed.mine, &mut problems, now_ms);
+            seal_apart(sharing, stores, key, value, &mut memory.sealed, &mut problems, now_ms);
         }
     }
     memory.round += 1;
@@ -3122,7 +3227,7 @@ pub fn exchange_lock(memory: &Path, wait: bool) -> Result<Option<std::fs::File>,
     let path = memory.with_file_name("exchange.lock");
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        private_dirs(parent).map_err(fail)?;
     }
     let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path).map_err(fail)?;
     if wait {
@@ -4445,6 +4550,88 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// Item 8 of 9 October: on Unix, what the sharing writes is yours alone,
+    /// as the calls' logs are: its files 0600, the folders it makes 0700 (the
+    /// seal, the records, the sealed files, the notes and settings it brings
+    /// in, the copies and versions it keeps). A file here already readable by
+    /// others becomes yours alone the next time the sharing writes it; one it
+    /// never writes keeps its mode: nothing sweeps your folders.
+    #[cfg(unix)]
+    #[test]
+    fn what_the_sharing_writes_is_yours_alone() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| std::fs::symlink_metadata(path).unwrap().permissions().mode() & 0o777;
+        let set = |path: &Path, mode: u32| std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+        let base = scratch("yours-alone");
+        let folder = base.join("Sioul");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+        let (desk_notes, laptop_notes) = (base.join("desk-notes"), base.join("laptop-notes"));
+        put(&desk_notes, "admin/lease.md", b"Rent: 620\n");
+        desk.write("config/config.toml", "language = \"fr\"\n");
+        // The laptop's own files, as an editor leaves them (others may read
+        // them): one the desk's version will replace, a setting the desk's
+        // will join, and a note the sharing never writes here.
+        put(&laptop_notes, "admin/lease.md", b"Rent: 600\n");
+        put(&laptop_notes, "mine.md", b"Mine\n");
+        laptop.write("config/config.toml", "theme = \"dark\"\n");
+        for path in [laptop_notes.join("admin/lease.md"), laptop_notes.join("mine.md"), laptop.path("config/config.toml")] {
+            set(&path, 0o644);
+        }
+        set(&laptop_notes.join("admin"), 0o755);
+        // The laptop's lease from the day before: the desk's is the later word.
+        std::fs::File::options().write(true).open(laptop_notes.join("admin/lease.md")).unwrap().set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis((NOW - 24 * 60 * MINUTE) as u64)).unwrap();
+        let mut now = NOW;
+        for _ in 0..3 {
+            now += MINUTE;
+            desk.exchange_with(&folder, &key, now, &desk_notes, &["notes"]);
+            now += MINUTE;
+            laptop.exchange_with(&folder, &key, now, &laptop_notes, &["notes"]);
+        }
+        assert_eq!(std::fs::read(laptop_notes.join("admin/lease.md")).unwrap(), b"Rent: 620\n");
+        assert!(laptop.read("config/config.toml").contains("language = \"fr\""), "{}", laptop.read("config/config.toml"));
+        assert_eq!(copies_of(&laptop_notes.join("admin"), "lease").len(), 1, "the laptop's version kept beside");
+        // Written by the sharing: yours alone, whatever they were.
+        assert_eq!(mode(&laptop_notes.join("admin/lease.md")), 0o600);
+        assert_eq!(mode(&laptop.path("config/config.toml")), 0o600);
+        for (name, _) in files_in(&laptop_notes.join("admin")).into_iter().filter(|(n, _)| n.starts_with("lease (")) {
+            assert_eq!(mode(&laptop_notes.join("admin").join(&name)), 0o600, "{name}");
+        }
+        assert_eq!(mode(&desk_notes.join("mine.md")), 0o600, "brought to the desk");
+        // Never written here by the sharing: as they were.
+        assert_eq!(mode(&laptop_notes.join("mine.md")), 0o644);
+        assert_eq!(mode(&desk_notes.join("admin/lease.md")), 0o644);
+        assert_eq!(mode(&laptop_notes.join("admin")), 0o755, "a folder there already keeps its mode");
+        // Everything in the sharing folder, and the versions kept: files 0600, folders 0700.
+        let history = crate::history::root(&laptop.memory);
+        assert!(!crate::history::files(&history, "settings").is_empty(), "a version kept");
+        for root in [folder.clone(), history.clone()] {
+            let mut stack = vec![root];
+            while let Some(dir) = stack.pop() {
+                assert_eq!(mode(&dir), 0o700, "{}", dir.display());
+                for entry in std::fs::read_dir(&dir).unwrap().map(Result::unwrap) {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        stack.push(path);
+                    } else {
+                        assert_eq!(mode(&path), 0o600, "{}", path.display());
+                    }
+                }
+            }
+        }
+        // A record file from before this was so: yours alone at its next line.
+        let rounds: Vec<PathBuf> = std::fs::read_dir(&folder).unwrap().map(|e| e.unwrap().path()).filter(|p| p.extension().is_some_and(|e| e == "jsonl") && p.to_string_lossy().contains(&desk.id)).collect();
+        assert!(!rounds.is_empty(), "the desk's records");
+        for round in &rounds {
+            set(round, 0o644);
+        }
+        desk.write("config/config.toml", "language = \"en\"\n");
+        desk.exchange_with(&folder, &key, now + MINUTE, &desk_notes, &["notes"]);
+        let written: Vec<&PathBuf> = rounds.iter().filter(|r| mode(r) == 0o600).collect();
+        assert_eq!(written.len(), 1, "the round written to, and it alone: {rounds:?}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn earlier_versions_are_kept_and_put_back() {
         let base = scratch("history");
@@ -5378,6 +5565,58 @@ mod tests {
         }
         assert_eq!(locate(&every, SPAM_TABLE).map(|(s, p)| (s.part, p)), Some(("spam", desk.path("data/spam/table.bin"))));
         assert_eq!(shown(SPAM_TABLE), "spam/table.bin");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Item 11 of 9 October: the spam filter's tables a computer seals, about
+    /// one a week, are not kept 90 days each: past the newest two, its own
+    /// older ones leave the folder at once; another device's file stays. A
+    /// phone that read none of them for a while takes the newest and asks
+    /// for nothing older: a device reads the newest record of a file only,
+    /// so their absence is never missed, today's Sioul or an older one.
+    #[test]
+    fn only_the_two_newest_spam_tables_stay_in_the_folder() {
+        let base = scratch("spam-tables");
+        let folder = base.join("folder");
+        let key = quick_key(&folder, "four words make a passphrase").unwrap();
+        let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+        let quick = |c: &Computer, now: i64| exchange(&Sharing { folder: &folder, computer: &c.id, key: &key, memory: &c.memory, files: false, hurry: None }, &stores(&Config::default(), &c.roots), now).unwrap();
+        // Another device's sealed file: never this computer's to take out.
+        let stranger = folder.join("blobs").join("0f".repeat(32));
+        put(&folder, &format!("blobs/{}", "0f".repeat(32)), b"another device's");
+        let tables = || std::fs::read_dir(folder.join("blobs")).unwrap().filter_map(Result::ok).filter(|e| !e.file_name().to_string_lossy().starts_with('.') && e.path() != stranger).count();
+        // A training: a table of its own content, and its own time.
+        let trained = |n: u64| {
+            let path = desk.path("data/spam/table.bin");
+            put(path.parent().unwrap(), "table.bin", &noise(4096, n as u32));
+            std::fs::File::options().write(true).open(&path).unwrap().set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_789_990_000 + n * 600)).unwrap();
+        };
+        let mut now = NOW;
+        for n in 1..=4 {
+            trained(n);
+            now += MINUTE;
+            quick(&desk, now);
+            now += MINUTE;
+            let came = quick(&phone, now);
+            assert!(came.problems.is_empty(), "{came:?}");
+            assert_eq!(std::fs::read(phone.path("data/spam/table.bin")).unwrap(), noise(4096, n as u32));
+            assert_eq!(tables(), n.min(2) as usize, "after training {n}");
+        }
+        assert_eq!(Memory::load_all(&desk.memory, &desk.id).sealed.tables.len(), 2);
+        // The phone away for three trainings: back, it takes the newest, and nothing waits.
+        for n in 5..=7 {
+            trained(n);
+            now += MINUTE;
+            quick(&desk, now);
+        }
+        assert_eq!(tables(), 2);
+        now += MINUTE;
+        let came = quick(&phone, now);
+        assert!(came.problems.is_empty() && came.pending == 0, "{came:?}");
+        assert_eq!(std::fs::read(phone.path("data/spam/table.bin")).unwrap(), noise(4096, 7));
+        let came = quick(&phone, now + 2 * DAY);
+        assert!(came.problems.is_empty() && came.pending == 0, "nothing missing, a day on: {came:?}");
+        assert!(stranger.exists(), "another device's file stays");
         let _ = std::fs::remove_dir_all(&base);
     }
 

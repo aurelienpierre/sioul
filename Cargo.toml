@@ -73,7 +73,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 rustls-native-certs = "0.8"
 webpki-roots = "1"
 futures-util = "0.3"
-ureq = "3"
+ureq = "~3.4"  # stalls.rs uses ureq::unversioned, written for 3.4
 # Sioul's own sender checks: SPF, DKIM, DMARC, ARC and reverse DNS, with ring and the system's DNS.
 mail-auth = { version = "0.13", default-features = false, features = ["ring", "arc"] }
 # Sending: SMTP submission, TLS with ring, no DKIM signing (the provider signs).

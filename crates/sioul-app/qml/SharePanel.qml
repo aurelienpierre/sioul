@@ -40,6 +40,8 @@ ColumnLayout {
     // "Send everything again" pressed, its answer not read yet, and what it said before.
     property bool sending: false
     property string againBefore: ""
+    // "Stop sharing" pressed: what stops and what stays, said first.
+    property bool stopping: false
 
     // "Send everything again", off the window's thread: what it did is read a few seconds later.
     function sendAgain() {
@@ -356,13 +358,38 @@ ColumnLayout {
             }
         }
         Button {
-            visible: panel.status.on
+            visible: panel.status.on && !panel.stopping
             flat: true
             text: panel.sioul.text("share-stop")
+            onClicked: panel.stopping = true
+        }
+    }
+    // What stopping does, then a word: nothing goes until it is said.
+    Label {
+        visible: panel.status.on && panel.stopping
+        Layout.fillWidth: true
+        text: panel.sioul.text("share-stop-ask")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: panel.theme.text
+    }
+    Flow {
+        visible: panel.status.on && panel.stopping
+        Layout.fillWidth: true
+        spacing: 8
+
+        Button {
+            text: panel.sioul.text("share-stop-confirm")
             onClicked: {
+                panel.stopping = false
                 panel.problem = panel.sioul.stopSharing()
                 panel.reload()
             }
+        }
+        Button {
+            flat: true
+            text: panel.sioul.text("ui-cancel")
+            onClicked: panel.stopping = false
         }
     }
     // Your other devices, as this one knows them (docs/database.md, "Devices"):

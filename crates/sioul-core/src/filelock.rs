@@ -19,7 +19,12 @@ fn lock_path(path: &Path) -> PathBuf {
 /// Where no lock can be taken (a folder not writable), `f` runs all the same:
 /// writing it fails there anyway.
 pub fn with_lock<T>(path: &Path, f: impl FnOnce() -> T) -> T {
-    let file = path.parent().and_then(|parent| std::fs::create_dir_all(parent).ok()).and_then(|()| std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(lock_path(path)).ok());
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).truncate(false).write(true);
+    // Empty, it says nothing; yours alone all the same, as what it guards is (0600 on Unix).
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let file = path.parent().and_then(|parent| std::fs::create_dir_all(parent).ok()).and_then(|()| options.open(lock_path(path)).ok());
     let locked = file.as_ref().is_some_and(|f| f.lock().is_ok());
     let out = f();
     if locked && let Some(file) = &file {
