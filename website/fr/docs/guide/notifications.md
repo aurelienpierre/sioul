@@ -101,7 +101,7 @@ Le **temps libre** a un choix à lui, sur sa carte : **Rien du tout**, pas mê
   <figcaption>Par personne : chaque liste de personnes, à chaque moment.</figcaption>
 </figure>
 
-Le courrier, les appels et les messages des autres applications suivent qui a écrit, quels que soient l’adresse ou le numéro employés. **Courrier**, **Appels** et **Messages** (SMS et discussions des autres applications, sur un téléphone) ont chacun une grille : qui, de haut en bas ; les moments et les couches, en travers. Les appels et les messages passent par un de vos téléphones : tant qu’aucun ne filtre vos appels ni ne retient les notifications des autres applications, une phrase le dit au-dessus de leur grille.
+Le courrier, les appels et les messages des autres applications suivent qui a écrit, quels que soient l’adresse ou le numéro employés. **Courrier**, **Appels** et **Messages** (SMS et discussions des autres applications, sur un téléphone) ont chacun une grille : qui, de haut en bas ; les moments et les couches, en travers. Les appels et les messages passent par un de vos téléphones : tant qu’aucun ne filtre vos appels ni ne retient les notifications des autres applications (un téléphone avec cette version de Sioul dit à vos autres appareils si vous y avez donné à Sioul l’accès aux notifications), une phrase le dit au-dessus de leur grille.
 
 **Qui**, une ligne chacun :
 

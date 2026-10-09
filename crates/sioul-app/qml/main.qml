@@ -76,10 +76,14 @@ SioulWindow {
         }
     }
 
-    // Shown again as it was (from the tray), and brought forward.
+    // Shown again as it was (from the tray), and brought forward. `visible`
+    // first: declared above, it went false with hide(), and `visibility` set
+    // against it warned "Conflicting properties 'visible' and 'visibility'".
     function bringBack() {
-        if (!window.visible)
+        if (!window.visible) {
+            window.visible = true
             window.visibility = window.shownAs
+        }
         window.raise()
         window.requestActivate()
     }
@@ -936,7 +940,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -1932,10 +1936,13 @@ SioulWindow {
             readonly property var bitwardenKey: [
                 () => window.page = 3,
                 () => sitesPage.bitwardenUnlock.begin(),
-                () => {
-                    const begun = JSON.parse(sioul.bitwardenPasskeyBegin())
-                    sitesPage.bitwardenUnlock.answer({ factor: [1, 7], key: { page: begun.page, script: begun.script.replace('})("passkey", ', '})("factor", ') } })
-                },
+                () => sitesPage.bitwardenUnlock.ask(sioul.bitwardenPasskeyBegin(), said => {
+                    const begun = JSON.parse(said)
+                    if (begun.error)
+                        sitesPage.bitwardenUnlock.problem = begun.error
+                    else
+                        sitesPage.bitwardenUnlock.answer({ factor: [1, 7], key: { page: begun.page, script: begun.script.replace('})("passkey", ', '})("factor", ') } })
+                }),
                 () => {},
                 () => {},
                 () => {},
@@ -2015,6 +2022,36 @@ SioulWindow {
                 () => sitesPage.loginChooser.now().begin("https://www.example.org/login"),
                 () => {},
                 () => sitesPage.loginChooser.item.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/choose-last-first.png")),
+                () => window.close()
+            ]
+            // Bitwarden asked off the window's thread (sites.rs, `bitwarden_later`): the dialog
+            // waiting, Open greyed; then an unlock asked and its answer come with
+            // `bitwardenAnswered` (a demo profile sets no account: the answer says so, and
+            // no server is asked).
+            readonly property var bitwardenWait: [
+                () => window.page = 3,
+                () => sitesPage.bitwardenUnlock.begin(),
+                () => sitesPage.bitwardenUnlock.ask(-1, null),
+                () => {},
+                () => sitesPage.bitwardenUnlock.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/bitwarden-waiting.png")),
+                () => {
+                    sitesPage.bitwardenUnlock.waiting = 0
+                    sitesPage.bitwardenUnlock.tryIt()
+                    console.warn("sioul-bitwarden: asked, the dialog waits: " + sitesPage.bitwardenUnlock.busy)
+                },
+                () => {},
+                () => console.warn("sioul-bitwarden: answered, the dialog waits: " + sitesPage.bitwardenUnlock.busy + "; it says: " + sitesPage.bitwardenUnlock.problem),
+                () => sitesPage.bitwardenUnlock.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/bitwarden-answered.png")),
+                () => window.close()
+            ]
+            // The window hidden as to the tray, then brought back (`bringBack`): no
+            // "Conflicting properties" in the log.
+            readonly property var traySteps: [
+                () => window.hide(),
+                () => console.warn("sioul-tray: hidden: " + !window.visible),
+                () => window.bringBack(),
+                () => console.warn("sioul-tray: brought back: " + window.visible + ", visibility " + window.visibility),
+                () => grabber.save("tray-back"),
                 () => window.close()
             ]
             // Areas and hours (docs/areas.md), on a test week whose Sunday is leisure: the
@@ -3669,7 +3706,7 @@ SioulWindow {
             unchecked.active = true
             // The hint's command to copy; the file's name, from a message, never one.
             // Too big for the antivirus: why it was not scanned, no command.
-            unchecked.item.ask(name, sioul.textArgs(big ? "scan-ask-too-big" : "scan-ask", JSON.stringify({ name: name.replace(/`/g, "\u02cb"), hint: hint })), what === 0 ? sioul.text("scan-open-anyway") : sioul.text("scan-save-anyway"), true)
+            unchecked.item.ask(name, sioul.textArgs(big ? "scan-ask-too-big" : Qt.platform.os === "android" ? "scan-ask-phone" : "scan-ask", JSON.stringify({ name: name.replace(/`/g, "\u02cb"), hint: hint })), what === 0 ? sioul.text("scan-open-anyway") : sioul.text("scan-save-anyway"), true)
         }
         function onComposeRequested(id) {
             window.openDraft(id)

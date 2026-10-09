@@ -160,6 +160,7 @@ Dialog {
             id: day
 
             theme: dialog.theme
+            sioul: dialog.sioul
             locale: Qt.locale(dialog.sioul.text("qt-locale"))
             pickLabel: dialog.sioul.text("event-pick-day")
         }

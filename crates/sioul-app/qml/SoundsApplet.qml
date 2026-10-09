@@ -23,6 +23,9 @@ LineButton {
     property string playingTitle: ""
     property var calm: []
     property real loudness: 0.5
+    // The player once loaded (NoisePlayer.qml), as a plain value: naming its
+    // type here would load Qt Multimedia with the window.
+    readonly property var noise: player.item
 
     function play(url, title) {
         if (url === "")
@@ -32,15 +35,13 @@ LineButton {
         applet.playing = url
         applet.playingTitle = title
         player.active = true
-        player.item.volume = 0
-        player.item.play(url)
-        player.item.volume = applet.loudness
+        applet.noise.play(url, applet.loudness)
     }
 
     // Faded out, then stopped.
     function stop() {
-        if (player.item)
-            player.item.volume = 0
+        if (applet.noise)
+            applet.noise.fadeOut()
         stopping.start()
     }
 
@@ -90,8 +91,8 @@ LineButton {
 
         interval: 5200
         onTriggered: {
-            if (player.item)
-                player.item.stop()
+            if (applet.noise)
+                applet.noise.stop()
             applet.playing = ""
             applet.playingTitle = ""
         }
@@ -205,11 +206,11 @@ LineButton {
                         to: 1
                         value: applet.loudness
                         Accessible.name: applet.sioul.text("sounds-volume")
+                        // At once: the fade is for a sound's start and stop only.
                         onMoved: {
                             applet.loudness = value
-                            if (applet.playing !== "")
-                                if (player.item)
-                                    player.item.volume = value
+                            if (applet.playing !== "" && applet.noise)
+                                applet.noise.setVolume(value)
                         }
                     }
                 }

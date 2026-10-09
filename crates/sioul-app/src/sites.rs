@@ -462,6 +462,22 @@ pub(crate) fn bitwarden_state(shared: &Shared) -> String {
     if shared.bitwarden.lock().is_ok_and(|v| v.is_some()) { "unlocked".into() } else { "locked".into() }
 }
 
+/// Bitwarden's calls that wait for its server (an unlock, a passkey, the
+/// e-mail's code), made off the window's thread so that it never freezes
+/// meanwhile: a ticket at once, then `work`'s answer with
+/// `bitwarden_answered(ticket, answer)` on the window's thread. The dialog
+/// waits for its own ticket, saying so (VaultUnlock.qml).
+pub(crate) fn bitwarden_later(qt: &QtThread, work: impl FnOnce() -> String + Send + 'static) -> i32 {
+    static ASKED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+    let ticket = ASKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    let qt = qt.clone();
+    std::thread::spawn(move || {
+        let answer = work();
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().bitwarden_answered(ticket, cxx_qt_lib::QString::from(&answer)));
+    });
+    ticket
+}
+
 /// Opens the vault with your master password, and the second step's code
 /// when one was asked (`provider` as Bitwarden numbers them; -1 for none,
 /// 100 for the code of a new device). Returns `{"ok"}`, `{"factor": [providers]}`,

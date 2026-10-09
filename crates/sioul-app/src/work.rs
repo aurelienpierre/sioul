@@ -757,7 +757,21 @@ fn create(qt: &QtThread, shared: &Arc<Shared>, edit: &TaskEdit, list: &str) -> R
     let uid = vdir::new_name();
     let text = tasks::new_task(edit, &uid, &TimeZone::system(), &Zoned::now())?;
     write(qt, shared, &target.dir.join(format!("{uid}.ics")), &text)?;
+    write_gaps(qt, shared, &uid, edit);
     Ok(uid)
+}
+
+/// The waits the form gave a gap (`TaskEdit::wait_gaps`), written in the
+/// tasks waited for, as `sioul tasks import` writes them (`tasks::set_gap`):
+/// once the task that waits is written. What fails is said in the status line;
+/// the task itself is kept.
+fn write_gaps(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &TaskEdit) {
+    let now = Zoned::now();
+    for (other, gap) in edit.gapped_waits() {
+        if let Err(e) = change(qt, shared, &other, |text| tasks::set_gap(text, uid, gap, &now)) {
+            tell(qt, shared, e);
+        }
+    }
 }
 
 /// A task in a list kept on this computer only, made the first time with
@@ -952,6 +966,7 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: &str, l
             return create(qt, shared, &edit, list);
         }
         change(qt, shared, uid, |text| tasks::apply(text, &edit, &TimeZone::system(), &Zoned::now()))?;
+        write_gaps(qt, shared, uid, &edit);
         // Its blocks to come follow its title and, when it comes back, its turn (`blocks`).
         crate::blocks::follow(qt, shared, uid);
         Ok(uid.to_string())
@@ -1053,16 +1068,22 @@ pub(crate) fn set_felt(qt: &QtThread, shared: &Arc<Shared>, uid: &str, felt: &st
     change(qt, shared, uid, |text| tasks::set_felt(text, &felt, now.date(), &now)).err().unwrap_or_default()
 }
 
-/// Waits for `other`, or no longer: DEPENDS-ON in the task that waits; a
-/// FINISHTOSTART written by another application in `other` is removed there.
-pub(crate) fn set_waits(qt: &QtThread, shared: &Arc<Shared>, uid: &str, other: &str, wait: bool) -> String {
+/// Waits for `other`, or no longer. Without a gap, DEPENDS-ON in the task
+/// that waits. With one (`gap_minutes`: "the answer comes within two
+/// weeks"), FINISHTOSTART with its GAP in `other`, the one that comes first,
+/// as `sioul tasks import` writes it (`tasks::set_gap`, RFC 9253 §4), and no
+/// DEPENDS-ON beside it. No longer: both taken away, and a FINISHTOSTART or
+/// NEXT that another application wrote in `other` for the pair.
+pub(crate) fn set_waits(qt: &QtThread, shared: &Arc<Shared>, uid: &str, other: &str, wait: bool, gap_minutes: i64) -> String {
     let now = Zoned::now();
-    let result = if wait {
-        change(qt, shared, uid, |text| tasks::add_lines(text, &[tasks::relation_line("DEPENDS-ON", other, 0)], &now))
-    } else {
-        let mine = |l: &str| lines::name(l) == "RELATED-TO" && tasks::relation_of(l).kind == "DEPENDS-ON" && tasks::relation_of(l).uid == other;
-        let theirs = |l: &str| lines::name(l) == "RELATED-TO" && matches!(tasks::relation_of(l).kind.as_str(), "FINISHTOSTART" | "NEXT") && tasks::relation_of(l).uid == uid;
+    let mine = |l: &str| lines::name(l) == "RELATED-TO" && tasks::relation_of(l).kind == "DEPENDS-ON" && tasks::relation_of(l).uid == other;
+    let theirs = |l: &str| lines::name(l) == "RELATED-TO" && matches!(tasks::relation_of(l).kind.as_str(), "FINISHTOSTART" | "NEXT") && tasks::relation_of(l).uid == uid;
+    let result = if !wait {
         change(qt, shared, uid, |text| tasks::remove_lines(text, mine, &now)).and_then(|()| change(qt, shared, other, |text| tasks::remove_lines(text, theirs, &now)))
+    } else if gap_minutes > 0 {
+        change(qt, shared, other, |text| tasks::set_gap(text, uid, gap_minutes, &now)).and_then(|()| change(qt, shared, uid, |text| tasks::remove_lines(text, mine, &now)))
+    } else {
+        change(qt, shared, uid, |text| tasks::add_lines(text, &[tasks::relation_line("DEPENDS-ON", other, 0)], &now))
     };
     result.err().unwrap_or_default()
 }

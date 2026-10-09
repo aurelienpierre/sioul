@@ -103,6 +103,7 @@ Dialog {
 
             visible: rangeChoice.currentIndex === exporting.ranges.indexOf("custom")
             theme: exporting.theme
+            sioul: exporting.sioul
             locale: exporting.window.sioulLocale
             pickLabel: exporting.sioul.text("event-pick-day")
         }
@@ -116,6 +117,7 @@ Dialog {
 
             visible: rangeChoice.currentIndex === exporting.ranges.indexOf("custom")
             theme: exporting.theme
+            sioul: exporting.sioul
             locale: exporting.window.sioulLocale
             pickLabel: exporting.sioul.text("event-pick-day")
         }

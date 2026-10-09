@@ -84,7 +84,7 @@ pub fn may_be(operators: &[String], raw: &[u8]) -> bool {
     false
 }
 
-/// Accents and case aside, for the words looked for; spaces kept (" du ").
+/// Accents and case aside, for the words looked for.
 fn folded(text: &str) -> String {
     crate::text::fold(text).into_iter().collect::<String>().to_lowercase()
 }
@@ -92,6 +92,19 @@ fn folded(text: &str) -> String {
 /// Whether a folded text holds one of a list's words, folded.
 fn holds(list: &[String], text: &str) -> bool {
     list.iter().map(|w| folded(w)).any(|w| !w.trim().is_empty() && text.contains(&w))
+}
+
+/// Whether a folded text holds one of a list's words as a whole word: no
+/// letter or digit right before it, nor right after, where the word itself
+/// begins or ends with one ("du" in "part du 01…", never in "durée"; "de :"
+/// before anything). The callers' leads are read so, yours as the shipped
+/// ones: a word added in `[words]` is trimmed, and needs no spaces.
+fn holds_word(list: &[String], text: &str) -> bool {
+    let alnum = |c: Option<char>| c.is_some_and(char::is_alphanumeric);
+    list.iter().map(|w| folded(w.trim())).filter(|w| !w.is_empty()).any(|word| {
+        let (starts, ends) = (alnum(word.chars().next()), alnum(word.chars().next_back()));
+        text.match_indices(word.as_str()).any(|(at, _)| (!starts || !alnum(text[..at].chars().next_back())) && (!ends || !alnum(text[at + word.len()..].chars().next())))
+    })
 }
 
 /// The voicemail a mail is, if it is one, read with `words` (the operators'
@@ -187,8 +200,13 @@ fn caller(words: &VoicemailWords, text: &str, region: Option<&Region>) -> Option
         if !phones::is_whole(&key) || !(key.starts_with('+') || (region.is_none() && (9..=12).contains(&digits))) {
             continue;
         }
-        let before: String = folded(&chars[begin.saturating_sub(32)..begin].iter().collect::<String>());
-        let score = if holds(&words.caller_leads, &before) { 2 } else { 1 };
+        // The 32 characters before it, less a word cut at their start ("…ade " is no "de").
+        let mut start = begin.saturating_sub(32);
+        while start > 0 && start < begin && chars[start].is_alphanumeric() && chars[start - 1].is_alphanumeric() {
+            start += 1;
+        }
+        let before: String = folded(&chars[start..begin].iter().collect::<String>());
+        let score = if holds_word(&words.caller_leads, &before) { 2 } else { 1 };
         let score = if holds(&words.own_line, &before) { 0 } else { score };
         found.push((score, written, key));
     }
@@ -476,5 +494,28 @@ mod tests {
         assert_eq!(linked.get(&calls[3].id()), None, "four hours later is another call's");
         // A number that never called: nothing linked.
         assert!(link(&calls, &[voicemail(t, "+33199009999")]).is_empty());
+    }
+
+    /// The callers' leads are whole words: the shipped ones ("du", "de :")
+    /// and yours, added in `[words]` without the spaces a trimmed word loses.
+    #[test]
+    fn the_callers_leads_are_whole_words() {
+        let leads = |words: &[&str]| words.iter().map(|w| w.to_string()).collect::<Vec<String>>();
+        assert!(holds_word(&leads(&["du"]), "de la part du "));
+        assert!(!holds_word(&leads(&["du"]), "duree "), "inside a word");
+        assert!(holds_word(&leads(&["de :"]), "numero de : "));
+        assert!(!holds_word(&leads(&["de :"]), "monde : "), "its end is no letter, its start is");
+        assert!(holds_word(&leads(&[" von "]), "anruf von "), "trimmed as yours are");
+        assert!(!holds_word(&leads(&["von"]), "hinweis davon "));
+        // A lead of yours: the number after it is the caller's, not the one after a word that holds it.
+        let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n[words.voicemail.caller_leads]\nadd = [\" von \"]\n").unwrap();
+        let words = crate::words::Words::of(&config).voicemail.clone();
+        let found = caller(&words, "Hinweis davon 06 39 98 00 01. Anruf von 01 99 00 12 34.", phones::region_named("FR"));
+        assert_eq!(found.map(|(_, key)| key).as_deref(), Some("+33199001234"));
+        // A word cut at the window's start is no lead: the 32 characters before the
+        // first number begin with the "de" of "ade", which would rank it with the caller's.
+        let text = format!("Il ade {} 06 39 98 00 01, appelant 01 99 00 12 34.", "x".repeat(28));
+        let found = caller(&words, &text, phones::region_named("FR"));
+        assert_eq!(found.map(|(_, key)| key).as_deref(), Some("+33199001234"));
     }
 }

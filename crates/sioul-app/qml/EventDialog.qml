@@ -65,7 +65,7 @@ Dialog {
         dialog.links = []
         dialog.calendars = JSON.parse(dialog.sioul.calendars() || "[]")
         if (key) {
-            const found = JSON.parse(dialog.sioul.event(key) || "null")
+            const found = JSON.parse(dialog.sioul.eventForm(key) || "null")
             if (!found)
                 return
             const e = found.edit
@@ -217,6 +217,7 @@ Dialog {
                     id: startDay
 
                     theme: dialog.theme
+                    sioul: dialog.sioul
                     locale: Qt.locale(dialog.sioul.text("qt-locale"))
                     pickLabel: dialog.sioul.text("event-pick-day")
                     // The end follows the start when it would come before it.
@@ -237,6 +238,7 @@ Dialog {
                     id: endDay
 
                     theme: dialog.theme
+                    sioul: dialog.sioul
                     locale: Qt.locale(dialog.sioul.text("qt-locale"))
                     pickLabel: dialog.sioul.text("event-pick-day")
                 }

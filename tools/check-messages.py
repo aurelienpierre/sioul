@@ -5,7 +5,7 @@
 """Checks the window's and the core's words against the Fluent files.
 
 - Every message the code asks for by a literal key (QML `sioul.text("…")`,
-  `textWith`, `textArgs`; Rust `text("…")`, `say("…")`, `attribute("…")`)
+  `textWith`, `textArgs`, `textCounted`; Rust `text("…")`, `say("…")`, `attribute("…")`)
   exists in each language.
 - French follows its typography: a narrow no-break space (U+202F) before
   `:` `;` `?` `!` and inside « », the apostrophe ’.
@@ -27,7 +27,7 @@ SOURCES = list((ROOT / "crates" / "sioul-app" / "qml").glob("*.qml")) + [p for p
 
 KEY = r'"([a-z][a-z0-9]*(?:-[a-z0-9]+)+)"'
 CALLS = [
-    re.compile(r'\b(?:text|textWith|textArgs|say|attribute|text_with)\(\s*' + KEY),
+    re.compile(r'\b(?:text|textWith|textArgs|textCounted|say|attribute|text_with)\(\s*' + KEY),
 ]
 PREFIX = re.compile(r'\b(?:text|textWith|textArgs|say)\(\s*"([a-z][a-z0-9-]*-)"\s*\+')
 FORMAT_PREFIX = re.compile(r'format!\("([a-z][a-z0-9-]*-)\{')

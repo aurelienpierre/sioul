@@ -174,7 +174,7 @@ Code: `crates/sioul-app/qml/SitesPage.qml`, `SitePopup.qml`, `cpp/webengine.cpp`
 Code: `crates/sioul-sync/src/bitwarden.rs`; details: [sites.md](sites.md), "Bitwarden".
 - Servers: bitwarden.com, bitwarden.eu, a self-hosted Bitwarden, Vaultwarden, over HTTPS. Sioul declares itself Bitwarden's desktop client at the server's own version (read from its config once a session; 2026.9.0 when it says none), since Bitwarden refuses clients too far behind.
 - Keys: PBKDF2-SHA256 or Argon2id as the account says; HKDF; AES-256-CBC with HMAC-SHA256; RSA for organisations; COSE (XChaCha20-Poly1305, AES-256-GCM; XAES-256-GCM not yet). Unlocking with a security key's passkey through WebAuthn PRF.
-- Second steps: a FIDO2 key, YubiKey OTP, an authenticator app, e-mail, a recovery code. **Not supported**: Duo. Read only: nothing is written to the vault. On Android, no security key (no Qt WebEngine).
+- Second steps: a FIDO2 key, YubiKey OTP, an authenticator app, e-mail, a recovery code. **Not supported**: Duo. Read only: nothing is written to the vault. On Android, no security key (no Qt WebEngine); nor from Accounts on a computer, which uses the vault the Sites page opened.
 - **Tested**: Bitwarden's key-derivation test vectors, RFC 6238's codes, a changed byte refused, a COSE message; the live cloud with a made-up account, refused for its password and not for its version (`the_cloud_takes_the_version`, ignored). With the owner's own vault on Bitwarden's cloud: in daily use (6 October 2026).
 
 ## OpenPGP

@@ -393,7 +393,7 @@ pub struct VoicemailWords {
     pub operators: Vec<String>,
     pub words: Vec<String>,
     pub hidden: Vec<String>,
-    /// Words before the caller's number, matched inside the text, spaces included.
+    /// Words before the caller's number, matched as whole words.
     pub caller_leads: Vec<String>,
     pub own_line: Vec<String>,
     pub duration: Vec<String>,

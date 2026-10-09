@@ -1245,6 +1245,27 @@ pub fn migrate_sites(path: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
+/// The copy of `config.toml` kept before the sites moved: `config-before-sites.toml`, beside it.
+pub fn before_sites_path(path: &Path) -> PathBuf {
+    path.with_file_name("config-before-sites.toml")
+}
+
+/// The sites migration as the window runs it at each start (`migrate_sites`),
+/// while the file still holds a site among its accounts: the file copied
+/// aside first (`before_sites_path`), once only, so that a migration that
+/// fails at each start never writes over the first copy, the file as it was.
+/// Returns whether any site moved.
+pub fn migrate_sites_at_start(path: &Path) -> Result<bool, String> {
+    if !std::fs::read_to_string(path).is_ok_and(|text| text.contains("kind = \"portal\"")) {
+        return Ok(false);
+    }
+    let copy = before_sites_path(path);
+    if !copy.exists() {
+        std::fs::copy(path, &copy).map_err(|e| format!("{}: {e}", copy.display()))?;
+    }
+    migrate_sites(path)
+}
+
 fn append_site(path: &Path, mut table: Table) -> Result<(), String> {
     migrate_sites(path)?;
     let mut doc = read_document(path)?;
@@ -2170,6 +2191,36 @@ mod tests {
         assert!(config.site("bank").is_some_and(|s| s.muted && s.realtime));
         remove_site(&path, "bank").unwrap();
         assert!(Config::load(&path).unwrap().sites.is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// At each start, the file is copied aside before its sites move, once:
+    /// a migration that fails again and again keeps the first copy.
+    #[test]
+    fn the_copy_before_the_sites_move_is_made_once() {
+        let dir = std::env::temp_dir().join(format!("sioul-sites-start-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let copy = before_sites_path(&path);
+        // Nothing to move: no copy.
+        std::fs::write(&path, "[[account]]\nid = \"mail\"\nkind = \"imap\"\n").unwrap();
+        assert!(!migrate_sites_at_start(&path).unwrap());
+        assert!(!copy.exists());
+        // A "site" that is no list of tables: the move fails, the file as it was copied aside.
+        let first = "site = 1\n\n[[account]]\nid = \"bank\"\nkind = \"portal\"\nurl = \"https://bank.example.org\"\n";
+        std::fs::write(&path, first).unwrap();
+        assert!(migrate_sites_at_start(&path).is_err());
+        assert_eq!(std::fs::read_to_string(&copy).unwrap(), first);
+        // Started again, changed meanwhile, failing again: the first copy stays.
+        std::fs::write(&path, format!("{first}\n[[account]]\nid = \"post\"\nkind = \"portal\"\nurl = \"https://post.example.org\"\n")).unwrap();
+        assert!(migrate_sites_at_start(&path).is_err());
+        assert_eq!(std::fs::read_to_string(&copy).unwrap(), first, "never written over");
+        // Mended: the sites move, the copy as it was.
+        std::fs::write(&path, first.replace("site = 1\n\n", "")).unwrap();
+        assert!(migrate_sites_at_start(&path).unwrap());
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("portal"));
+        assert_eq!(std::fs::read_to_string(&copy).unwrap(), first);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

@@ -157,13 +157,13 @@ Trois choix en haut de la page, **Tous les projets**, **Tous les types** et **To
 Une tâche s’ouvre à droite avec ses détails, depuis n’importe quelle vue : un clic dessus, **Détails** dans son menu (clic droit, ou appui long sur un écran tactile), ou **Détails** sur la carte de Maintenant. Rien ne démarre sans vous.
 
 - **Commencer**, **Fait**, **Pas maintenant**, **Faire à…** ([fixée à une heure](#pinned-to-a-time)) et **Abandonner** (plus à faire finalement : gardée, barrée, hors du plan ; **Rouvrir** la ramène), puis ce qui compte, en mots : sa date, sa durée, ce qu’elle attend, où vous en étiez, le temps passé ; et, quand il y a quelque chose à dire, **Combien de temps ça prend, d’habitude**, comparé à vos premières estimations ;
-- ses étiquettes, **ses étapes** (chacune se coche ici ; leurs minutes s’additionnent), **ce qu’elle attend** et ce qu’elle libère ;
+- ses étiquettes, **ses étapes** (chacune se coche ici ; leurs minutes s’additionnent), **ce qu’elle attend**, chaque attente avec son délai quand elle en a un (« deux semaines après elle »), et ce qu’elle libère ;
 - ses champs en mots, ceux qui sont dits : **Peut commencer le**, **Avant** et **Après**, ce qu’elle demande et ce qu’elle apporte, **Ce que ça coûte**, **Projet**, **Facturé**, **Type**, **Pour**, **Demande un bureau ouvert**, **Revient**, **Liste** ; ses notes ;
 - **Lié à cela** : le courrier d’où elle vient, ses notes, les personnes, les brouillons, le projet. **Écrire un courriel** commence un message aux personnes qu’elle concerne ; **En faire une note** commence une note liée à elle ; **Lier à…** y lie tout le reste.
 
 **Modifier**, en haut, change les détails en son formulaire, et **Détails** revient aux détails. Chaque champ est gardé au fur et à mesure :
 
-- **ses étapes**, et une de plus en une ligne (« Une étape, en une ligne ») ; **ce qu’elle attend** (« Attend… » : une autre tâche, trouvée par son titre) ;
+- **ses étapes**, et une de plus en une ligne (« Une étape, en une ligne ») ; **ce qu’elle attend** (« Attend… » : une autre tâche, trouvée par son titre), et, pour la prochaine attente ajoutée, **Puis attendre** : un délai en jours ou en semaines une fois l’autre faite (« la réponse arrive sous deux semaines » ; 0, aucun) ;
 - sous **Plus** : **Peut commencer le**, **Date demandée**, **Prend environ**, **Projet**, **Étiquettes**, **Revient** (la répétition), **Avant** et **Après** (le temps de se préparer, d’y aller et d’en revenir : gardé libre autour d’elle dans votre plan, jamais compté comme une pause ; la journée ne coupe jamais une telle tâche en morceaux), ce qu’elle demande et ce qu’elle apporte, **Ce que ça coûte**, **Pour** (travail, vos démarches, loisirs : voir [Heures](hours.md)), **Facturé** ([Temps](time.md)), **Demande un bureau ouvert**, **Liste**, et **Notes, en Markdown**. Choisir une autre **Liste** y déplace la tâche ; quand cette liste ne garderait pas tout (Google Tasks garde moins), Sioul dit quoi, et demande d’abord.
 
 Tout peut devenir une tâche : un message, une ligne d’une note, un événement à préparer.
@@ -474,7 +474,7 @@ Chaque tâche est un `VTODO` (RFC 5545 §3.6.2) dans une liste de tâches CalDAV
 |---|---|
 | Une étape d’une tâche plus grande | `RELATED-TO;RELTYPE=PARENT:<UID>`, dans l’étape |
 | Attend une autre tâche | `RELATED-TO;RELTYPE=DEPENDS-ON:<UID>` (RFC 9253 §5), dans la tâche qui attend |
-| Attend, avec un délai (« la réponse vient sous deux semaines ») | `RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, dans la tâche qui vient d’abord (RFC 9253 §4). Écrit par `sioul tasks import` ; la fenêtre écrit les attentes sans délai. Lu de tout programme, `NEXT` aussi |
+| Attend, avec un délai (« la réponse vient sous deux semaines ») | `RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:<UID>`, dans la tâche qui vient d’abord (RFC 9253 §4). Écrit par `sioul tasks import`, et par **Puis attendre** dans le formulaire. Lu de tout programme, `NEXT` aussi |
 | Peut commencer le ; la date demandée | `DTSTART` ; `DUE` |
 | Le temps qu’elle prend | `ESTIMATED-DURATION` (draft-ietf-calext-ical-tasks) |
 | Son type ; « demande un bureau ouvert » | `CONCEPT` avec une URI tag (RFC 9253 §8.1, RFC 4151) |

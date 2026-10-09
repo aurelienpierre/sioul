@@ -723,6 +723,7 @@ ColumnLayout {
                             DateField {
                                 visible: condition.kind === "date" || condition.kind === "dates"
                                 theme: filters.theme
+                                sioul: filters.sioul
                                 locale: filters.locale
                                 date: condition.modelData.value || ""
                                 pickLabel: filters.sioul.text("event-pick-day")
@@ -741,6 +742,7 @@ ColumnLayout {
                             DateField {
                                 visible: condition.kind === "dates"
                                 theme: filters.theme
+                                sioul: filters.sioul
                                 locale: filters.locale
                                 date: condition.modelData.until || ""
                                 pickLabel: filters.sioul.text("event-pick-day")

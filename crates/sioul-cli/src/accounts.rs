@@ -200,11 +200,7 @@ fn list(s: &Session) -> Result<(), String> {
         let mut parts = vec![account.id.clone()];
         parts.extend(account.address.clone());
         if account.kind != AccountKind::Portal {
-            parts.push(match secret::password(account) {
-                Ok(_) => s.tr.text("account-has-password", None),
-                Err(SyncError::NoPassword) => s.say("account-no-password", &[("id", account.id.clone())]),
-                Err(e) => e.sentence(&s.tr, &account.id),
-            });
+            parts.push(secret_said(s, account, secret::password(account)));
         }
         if account.kind == AccountKind::Imap {
             parts.push(s.tr.text(&format!("priority-{}", shown.priority), None));
@@ -223,6 +219,18 @@ fn list(s: &Session) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// What `accounts list` says of an account's secret, from what the keyring
+/// gave (`secret::password`): its password there, Google's sign-in (whose
+/// access the keyring keeps, no password), none yet, or what went wrong.
+fn secret_said(s: &Session, account: &Account, found: Result<String, SyncError>) -> String {
+    match found {
+        Ok(_) if sioul_sync::sasl::OAuth::of(account).is_some() => s.tr.text("account-signed-in-google", None),
+        Ok(_) => s.tr.text("account-has-password", None),
+        Err(SyncError::NoPassword) => s.say("account-no-password", &[("id", account.id.clone())]),
+        Err(e) => e.sentence(&s.tr, &account.id),
+    }
 }
 
 fn mail_account<'a>(s: &'a Session, id: &str) -> Result<&'a Account, String> {
@@ -432,4 +440,21 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sioul_core::i18n::Translator;
+
+    /// `accounts list` says how each account signs in: a password, or Google's sign-in.
+    #[test]
+    fn a_google_account_has_no_password() {
+        let s = Session { config: Config::default(), config_path: PathBuf::new(), tr: Translator::new("en") };
+        let account = |auth: Option<&str>| Account { auth: auth.map(str::to_string), ..Account::imap("me", "me@example.org", "imap.example.org", 993, Security::Tls, None) };
+        // What the keyring gives a Google account is a mark of its sign-in, never a password.
+        assert_eq!(secret_said(&s, &account(Some("google")), Ok("google:2026-10-09".into())), "signed in with Google (the access in the keyring)");
+        assert_eq!(secret_said(&s, &account(None), Ok("hunter2".into())), "password in the keyring");
+        assert_eq!(secret_said(&s, &account(None), Err(SyncError::NoPassword)), "no password yet: `sioul account password me`");
+    }
 }

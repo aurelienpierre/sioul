@@ -308,7 +308,7 @@ service_words = [
 words = ["voicemail", "voice message"]
 # Says the caller hid their number.
 hidden = ["hidden number", "withheld", "private number", "unknown caller", "unknown number"]
-# Words before the caller's number (matched inside the text, spaces included).
+# Words before the caller's number (whole words).
 caller_leads = ["from", "caller"]
 # Words before your own line's number.
 own_line = ["your line", "your number"]

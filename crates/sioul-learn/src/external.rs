@@ -157,7 +157,8 @@ pub struct Imported {
 pub struct Counts {
     pub ham: u64,
     pub spam: u64,
-    /// Its oldest and newest message's dates (Unix seconds).
+    /// Its oldest and newest message's dates (Unix seconds), of those dated
+    /// after 1970: a date of 0 is an export's "no date"; 0 when none is.
     pub first: i64,
     pub last: i64,
     /// When it was imported (Unix seconds).
@@ -171,8 +172,11 @@ impl Counts {
             Label::Ham => self.ham += 1,
             Label::Spam => self.spam += 1,
         }
-        self.first = if self.ham + self.spam == 1 { message.date } else { self.first.min(message.date) };
-        self.last = self.last.max(message.date);
+        // A message without a real date (0, or before 1970) says nothing of the source's dates.
+        if message.date > 0 {
+            self.first = if self.first > 0 { self.first.min(message.date) } else { message.date };
+            self.last = self.last.max(message.date);
+        }
     }
 }
 
@@ -483,6 +487,30 @@ mod tests {
         assert!(remove(&dirs, "Old Filter").unwrap());
         assert!(sources(&dirs).is_empty() && !remove(&dirs, "old-filter").unwrap());
         assert!(std::fs::read_dir(dirs.external()).unwrap().next().is_none());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A source's dates are its dated messages' only: an export that writes 0
+    /// for "no date" leaves its first date as the oldest real one, never 1970.
+    #[test]
+    fn undated_messages_leave_the_dates_alone() {
+        let root = scratch("undated");
+        let dirs = Dirs::under(&root);
+        let file = root.join("export.jsonl");
+        let lines = [
+            r#"{"label":"ham","date":0,"subject":"No date","text":"Kept all the same"}"#,
+            r#"{"label":"spam","date":1687271000,"subject":"You won","text":"Claim it"}"#,
+            r#"{"label":"ham","date":"0","subject":"No date either","text":"Kept too"}"#,
+            r#"{"label":"ham","date":1687270000,"subject":"Lunch","text":"Tomorrow?"}"#,
+        ];
+        std::fs::write(&file, lines.join("\n")).unwrap();
+        let counts = import(&dirs, &file, None).unwrap().sources["export"];
+        assert_eq!((counts.ham, counts.spam, counts.first, counts.last), (3, 1, 1_687_270_000, 1_687_271_000));
+        assert_eq!(sources(&dirs)[0].counts.first, 1_687_270_000, "as `sioul spam status` reads it");
+        // None dated: no dates, said as unknown.
+        std::fs::write(&file, lines[0]).unwrap();
+        let counts = import(&dirs, &file, None).unwrap().sources["export"];
+        assert_eq!((counts.ham, counts.first, counts.last), (1, 0, 0));
         let _ = std::fs::remove_dir_all(root);
     }
 }

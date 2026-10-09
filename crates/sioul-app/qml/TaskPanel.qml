@@ -56,6 +56,8 @@ Panel {
     readonly property var costs: ["cognitive", "emotional", "anxiety", "body"]
     // What its list does not keep (Google Tasks): greyed, never hidden.
     readonly property var limited: panel.detail && panel.detail.limited ? panel.detail.limited : []
+    // The gap the next wait added takes, in minutes (the form's "Then wait"): 0, none.
+    readonly property int nextGap: gapCount.value * (gapUnit.currentIndex === 1 ? 7 : 1) * 1440
     // Its natural width, which the page gives it beside the list (TasksPage.qml):
     // its fields at about 70 characters of the body font, a readable line, or
     // its tiles side by side, whichever is wider; no cap of its own
@@ -206,12 +208,29 @@ Panel {
         panel.hold(Object.assign({}, panel.detail.edit), { list: blank.list, limited: blank.limited })
     }
 
-    // What it waits for, in the form of a task not read yet.
-    function waitFor(other, otherTitle, wait) {
+    // What it waits for, in the form of a task not read yet; with a gap in
+    // minutes, written in the task waited for once this one is (work.rs, `write_gaps`).
+    function waitFor(other, otherTitle, wait, gap) {
         const edit = Object.assign({}, panel.detail.edit)
         edit.waits_for = edit.waits_for.filter(u => u !== other).concat(wait ? [other] : [])
-        const shown = panel.detail.waits_for.filter(w => w[0] !== other).concat(wait ? [[other, otherTitle]] : [])
+        const gaps = Object.assign({}, edit.wait_gaps || {})
+        delete gaps[other]
+        if (wait && gap > 0)
+            gaps[other] = gap
+        edit.wait_gaps = gaps
+        const shown = panel.detail.waits_for.filter(w => w[0] !== other).concat(wait ? [[other, otherTitle, panel.gapWords(wait ? gap : 0)]] : [])
         panel.hold(edit, { waits_for: shown })
+    }
+
+    // A wait's gap in words, as the details say it (taskview.rs, `gap_words`): "two weeks after it".
+    function gapWords(minutes) {
+        if (!(minutes > 0))
+            return ""
+        if (minutes % (7 * 1440) === 0)
+            return panel.sioul.textCounted("task-waits-after-weeks", minutes / (7 * 1440))
+        if (minutes % 1440 === 0)
+            return panel.sioul.textCounted("task-waits-after-days", minutes / 1440)
+        return panel.sioul.textCounted("task-waits-after-hours", Math.ceil(minutes / 60))
     }
 
     // Into another list: asked first when it would not keep everything.
@@ -833,7 +852,8 @@ Panel {
 
                     Label {
                         Layout.fillWidth: true
-                        text: wait.modelData[1]
+                        // Its gap beside it: "Send the letter · two weeks after it".
+                        text: wait.modelData[2] ? wait.modelData[1] + " · " + wait.modelData[2] : wait.modelData[1]
                         textFormat: Text.PlainText
                         elide: Text.ElideRight
                         color: panel.theme.text
@@ -850,9 +870,9 @@ Panel {
                         ToolTip.text: panel.sioul.text("task-waits-remove")
                         onClicked: {
                             if (panel.fresh)
-                                panel.waitFor(wait.modelData[0], wait.modelData[1], false)
+                                panel.waitFor(wait.modelData[0], wait.modelData[1], false, 0)
                             else
-                                panel.sioul.setWaits(panel.uid, wait.modelData[0], false)
+                                panel.sioul.setWaits(panel.uid, wait.modelData[0], false, 0)
                         }
                     }
                 }
@@ -907,9 +927,11 @@ Panel {
                                     text: panel.theme.plain(option.modelData.title).replace(/&/g, "&&")
                                     onClicked: {
                                         if (panel.fresh)
-                                            panel.waitFor(option.modelData.uid, option.modelData.title, true)
+                                            panel.waitFor(option.modelData.uid, option.modelData.title, true, panel.nextGap)
                                         else
-                                            panel.sioul.setWaits(panel.uid, option.modelData.uid, true)
+                                            error.text = panel.sioul.setWaits(panel.uid, option.modelData.uid, true, panel.nextGap)
+                                        // A gap is for the wait it was given to.
+                                        gapCount.value = 0
                                         waitsFor.clear()
                                         foundPopupForm.close()
                                     }
@@ -918,6 +940,43 @@ Panel {
                         }
                     }
                 }
+            }
+            // The gap the next wait added takes ("the answer comes within two
+            // weeks"), as `sioul tasks import` writes it: in days or weeks; 0, none.
+            RowLayout {
+                visible: panel.form && panel.canEdit
+                enabled: panel.keeps("waits")
+                opacity: panel.keeps("waits") ? 1 : 0.45
+                Layout.fillWidth: true
+                spacing: 6
+
+                Label {
+                    text: panel.sioul.text("task-waits-gap")
+                    color: panel.theme.text
+                }
+                SpinBox {
+                    id: gapCount
+
+                    from: 0
+                    to: 99
+                    editable: true
+                    Accessible.name: panel.sioul.text("task-waits-gap")
+                }
+                ComboBox {
+                    id: gapUnit
+
+                    Layout.fillWidth: true
+                    model: [panel.sioul.textCounted("task-waits-gap-days", gapCount.value), panel.sioul.textCounted("task-waits-gap-weeks", gapCount.value)]
+                    Accessible.name: panel.sioul.text("task-waits-gap")
+                }
+            }
+            Label {
+                visible: panel.form && panel.canEdit && panel.keeps("waits")
+                Layout.fillWidth: true
+                text: panel.sioul.text("task-waits-gap-help")
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: panel.theme.muted
             }
             Repeater {
                 model: panel.detail ? panel.detail.frees : []
@@ -1054,6 +1113,7 @@ Panel {
                     id: startField
 
                     theme: panel.theme
+                    sioul: panel.sioul
                     locale: panel.window.sioulLocale
                     enabled: panel.canEdit && panel.keeps("start")
                     opacity: panel.keeps("start") ? 1 : 0.45
@@ -1074,6 +1134,7 @@ Panel {
                     id: dueField
 
                     theme: panel.theme
+                    sioul: panel.sioul
                     locale: panel.window.sioulLocale
                     enabled: panel.canEdit
                     date: panel.detail ? panel.detail.edit.due.slice(0, 10) : ""
@@ -1698,6 +1759,7 @@ Panel {
                             id: dayField
 
                             theme: panel.theme
+                            sioul: panel.sioul
                             locale: panel.window.sioulLocale
                             pickLabel: panel.sioul.text("event-pick-day")
                         }

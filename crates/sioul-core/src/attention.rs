@@ -2010,8 +2010,6 @@ pub struct Grid {
     pub presets: Vec<PresetView>,
     /// "Changes from As Sioul does now", said; "" when none.
     pub changed: String,
-    /// The moment now, in a sentence ("Now: …"); "" when not asked.
-    pub now: String,
 }
 
 /// A column's words.
@@ -2041,8 +2039,9 @@ pub fn level_label(tr: &Translator, row: Row, level: Level) -> String {
 }
 
 /// The grid, in `tr`'s words, of `rows` (all of them, or a part: a
-/// channel's, the kinds'), compared with `preset`; `now`, the moment said.
-pub fn grid(attention: &Attention, tr: &Translator, rows: &[Row], preset: Preset, now: Option<&Now>) -> Grid {
+/// channel's, the kinds'), compared with `preset`. The moment now is said by
+/// the window, which knows the devices and the hours (`reaches::now_sentences`).
+pub fn grid(attention: &Attention, tr: &Translator, rows: &[Row], preset: Preset) -> Grid {
     let compared = preset.matrix();
     let columns = Column::ALL.iter().map(|c| Named { id: c.id().to_string(), label: column_label(tr, *c) }).collect();
     let marks = Level::ALL.iter().map(|l| Mark { id: l.id().to_string(), mark: l.mark(false).to_string(), label: tr.text(&format!("attention-level-{}", l.id()), None) }).collect();
@@ -2112,7 +2111,6 @@ pub fn grid(attention: &Attention, tr: &Translator, rows: &[Row], preset: Preset
         rows,
         presets,
         changed,
-        now: now.map(|n| now_sentence(attention, tr, n)).unwrap_or_default(),
     }
 }
 
@@ -2187,7 +2185,6 @@ pub fn source_grid(attention: &Attention, tr: &Translator, lines: &[SourceLine])
         rows,
         presets: Vec::new(),
         changed: String::new(),
-        now: String::new(),
     }
 }
 
@@ -2220,47 +2217,6 @@ pub fn source_sentence(attention: &Attention, tr: &Translator, id: &str) -> Stri
     let said = tr.text("attention-source-said", Some(&args));
     let mut letters = said.chars();
     letters.next().map(|first| first.to_uppercase().chain(letters).collect()).unwrap_or_default()
-}
-
-/// The moment now in one sentence, from the matrix: what comes at once, what
-/// is shown without a word, what waits. "Now: at once: your safe senders'
-/// mail, calls and messages; doses. Waiting: everyone else's."
-pub fn now_sentence(attention: &Attention, tr: &Translator, now: &Now) -> String {
-    let mut at_once: Vec<String> = Vec::new();
-    let mut shown: Vec<String> = Vec::new();
-    let mut waiting: Vec<String> = Vec::new();
-    for channel in Channel::ALL {
-        for person in persons(channel).iter().filter(|p| p.state()) {
-            let label = format!("{} · {}", tr.text(&format!("attention-group-{}", channel.id()), None), tr.text(&format!("attention-person-{}", person.id()), None));
-            match attention.person(channel, *person, false, now) {
-                Level::Now => at_once.push(label),
-                Level::Quiet => shown.push(label),
-                _ => waiting.push(label),
-            }
-        }
-    }
-    for kind in [Kind::Codes, Kind::Doses, Kind::Alarms, Kind::Before, Kind::Dates, Kind::Needs] {
-        let label = tr.text(&format!("attention-row-{}", kind.id()), None);
-        match attention.level(Row::Own(kind), now) {
-            Level::Now | Level::Event => at_once.push(label),
-            _ => waiting.push(label),
-        }
-    }
-    let and = tr.text("word-and", None);
-    let listed = |items: &[String]| match items {
-        [] => String::new(),
-        [one] => one.clone(),
-        [rest @ .., last] => format!("{} {and} {last}", rest.join(", ")),
-    };
-    let mut parts = Vec::new();
-    for (key, items) in [("attention-now-at-once", &at_once), ("attention-now-shown", &shown), ("attention-now-waiting", &waiting)] {
-        if !items.is_empty() {
-            let mut args = crate::i18n::args();
-            args.set("what", listed(items));
-            parts.push(tr.text(key, Some(&args)));
-        }
-    }
-    parts.join(" ")
 }
 
 /// A state with the times its mail comes or shows, for a list's choice:
@@ -2926,17 +2882,17 @@ mod tests {
             let tr = Translator::new(language);
             let mut a = Attention::usual();
             a.set(row("mail.neutral"), Column::Leisure, Level::Now).unwrap();
-            let grid = grid(&a, &tr, &Row::ALL, Preset::Usual, Some(&Now::time(Column::Leisure)));
+            let grid = grid(&a, &tr, &Row::ALL, Preset::Usual);
             assert_eq!((grid.columns.len(), grid.rows.len(), grid.marks.len(), grid.presets.len()), (9, 36, 8, 3));
             assert!(grid.rows.iter().find(|r| r.id == "mail.neutral").unwrap().changed && !grid.presets[0].current && grid.presets[0].changes == 1);
-            assert!(!grid.changed.is_empty() && !grid.now.is_empty());
+            assert!(!grid.changed.is_empty());
             let words = grid
                 .columns
                 .iter()
                 .map(|c| c.label.clone())
                 .chain(grid.marks.iter().map(|m| m.label.clone()))
                 .chain(grid.presets.iter().map(|p| p.label.clone()))
-                .chain([grid.changed.clone(), grid.now.clone()])
+                .chain([grid.changed.clone()])
                 .chain(grid.rows.iter().flat_map(|r| [r.label.clone(), r.group.clone(), r.help.clone()].into_iter().chain(r.choices.iter().map(|c| c.label.clone())).chain(r.cells.iter().flat_map(|c| [c.locked.clone(), c.said.clone()]))));
             for said in words {
                 assert!(!said.starts_with("attention-") && !said.contains('{') && !said.contains("sorte"), "{language}: {said}");

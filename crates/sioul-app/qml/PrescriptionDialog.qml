@@ -130,6 +130,7 @@ Dialog {
                     id: validUntil
 
                     theme: form.theme
+                    sioul: form.sioul
                     locale: form.dateLocale
                 }
                 Label {
@@ -159,6 +160,7 @@ Dialog {
                     id: lastRefill
 
                     theme: form.theme
+                    sioul: form.sioul
                     locale: form.dateLocale
                 }
                 Label {

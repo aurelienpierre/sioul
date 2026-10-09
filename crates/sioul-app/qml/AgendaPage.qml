@@ -228,7 +228,7 @@ Item {
             page.wanted = ""
             return
         }
-        const found = JSON.parse(page.sioul.event(key) || "null")
+        const found = JSON.parse(page.sioul.eventForm(key) || "null")
         if (!found || !found.edit || !found.edit.start) {
             page.wanted = ""
             eventDialog.now().edit(key, "")

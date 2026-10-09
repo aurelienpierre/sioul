@@ -29,23 +29,53 @@ struct Reach {
     phone: bool,
     /// A phone of yours screens calls: the calls' rows apply.
     calls: bool,
-    /// A phone of yours may hold other apps' notifications: the messages' rows apply.
+    /// A phone of yours holds other apps' notifications: the messages' rows apply.
     messages: bool,
     /// This phone screens calls: what its own do-not-disturb lets ring follows.
     screens: bool,
+    /// Your phones, as the sharing knows them (on a computer).
+    phones: Phones,
+}
+
+/// Your phones in the sharing, as their entries say (`devices::Entry::notifications`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum Phones {
+    /// None known.
+    #[default]
+    None,
+    /// Known, each saying it does not give Sioul notification access: none holds a message.
+    WithoutAccess,
+    /// One says it gives it, or says nothing (an older Sioul, which does not
+    /// tell: counted as holding messages, as before phones said it).
+    Holding,
+}
+
+impl Phones {
+    /// What the devices' entries say: a phone that left the sharing counts no more.
+    fn of(entries: &[sioul_sync::devices::Entry]) -> Phones {
+        let phones: Vec<_> = entries.iter().filter(|d| d.kind == sioul_sync::devices::PHONE && !d.left).collect();
+        if phones.iter().any(|d| d.notifications != Some(false)) {
+            Phones::Holding
+        } else if phones.is_empty() {
+            Phones::None
+        } else {
+            Phones::WithoutAccess
+        }
+    }
 }
 
 fn reach() -> Reach {
     let phone = cfg!(target_os = "android");
     let screens = crate::calls::screens_here();
     let calls = screens || crate::calls::moment()["shown"] == true;
-    Reach { phone, calls, messages: phone || phone_known(), screens }
+    let phones = if phone { Phones::None } else { phones_known() };
+    Reach { phone, calls, messages: phone || phones == Phones::Holding, screens, phones }
 }
 
-/// Whether one of your devices in the sharing is a phone: its messages' rows apply there.
-fn phone_known() -> bool {
-    let Some((_, Some((folder, key)))) = crate::share::vault() else { return false };
-    sioul_sync::devices::all(&folder, &key).0.iter().any(|d| d.kind == sioul_sync::devices::PHONE)
+/// Your phones in the sharing: a phone's messages' rows apply where it holds them.
+fn phones_known() -> Phones {
+    let Some((_, Some((folder, key)))) = crate::share::vault() else { return Phones::None };
+    Phones::of(&sioul_sync::devices::all(&folder, &key).0)
 }
 
 /// The channels whose rows apply, mail first.
@@ -570,20 +600,9 @@ pub(crate) fn view(realtime: bool) -> String {
         switches.push(if through && !line.is_empty() { line } else { text("attention-switch-through-off") });
     }
     switches.push(text(if realtime { "attention-switch-realtime-on" } else { "attention-switch-realtime-off" }));
-    let channels: Vec<Value> = Channel::ALL
-        .iter()
-        .map(|c| {
-            let note = match c {
-                Channel::Calls if !reach.calls => text("attention-channel-calls-none"),
-                Channel::Messages if !reach.messages => text("attention-channel-messages-none"),
-                Channel::Messages if !reach.phone => text("attention-channel-messages-phone"),
-                _ => String::new(),
-            };
-            json!({ "id": c.id(), "label": text(&format!("attention-group-{}", c.id())), "note": note })
-        })
-        .collect();
+    let channels: Vec<Value> = Channel::ALL.iter().map(|c| json!({ "id": c.id(), "label": text(&format!("attention-group-{}", c.id())), "note": channel_note(*c, reach) })).collect();
     let rows = shown_rows(reach.phone);
-    let grid = attention::grid(&attention, tr(), &rows, Preset::Usual, None);
+    let grid = attention::grid(&attention, tr(), &rows, Preset::Usual);
     json!({
         "now": now_sentences(&attention, &now, reach),
         "column": current.id(),
@@ -671,6 +690,19 @@ fn now_sentences(attention: &Attention, now: &Now, reach: Reach) -> Vec<String> 
         }
     }
     out
+}
+
+/// What a channel's rows say of where they apply: calls once a phone screens
+/// them; messages on a phone that holds other apps' notifications, as far
+/// as the sharing knows (`Phones`); "" where they apply here.
+fn channel_note(channel: Channel, reach: Reach) -> String {
+    match channel {
+        Channel::Calls if !reach.calls => text("attention-channel-calls-none"),
+        Channel::Messages if !reach.messages && reach.phones == Phones::WithoutAccess => text("attention-channel-messages-no-access"),
+        Channel::Messages if !reach.messages => text("attention-channel-messages-none"),
+        Channel::Messages if !reach.phone => text("attention-channel-messages-phone"),
+        _ => String::new(),
+    }
 }
 
 /// The exceptions in words: what Always through does on each channel, your
@@ -1072,7 +1104,7 @@ mod tests {
             for attention in [Attention::usual(), Preset::Quieter.matrix(), Preset::Reachable.matrix(), changed_everywhere()] {
                 for phone in [false, true] {
                     for (calls, messages) in [(false, false), (true, true)] {
-                        let reach = Reach { phone, calls, messages, screens: phone && calls };
+                        let reach = Reach { phone, calls, messages, screens: phone && calls, ..Reach::default() };
                         for column in Column::ALL {
                             let mut lines = card_lines(&attention, &config, column, reach);
                             assert!(!lines.is_empty(), "{language} {column:?}: an empty card");
@@ -1095,10 +1127,38 @@ mod tests {
                 }
             }
             said_well(&text("attention-mail-areas"), language);
-            for key in ["attention-spam-held", "attention-spam-told", "attention-switch-through-off", "attention-switch-realtime-on", "attention-switch-realtime-off", "attention-channel-calls-none", "attention-channel-messages-none", "attention-channel-messages-phone"] {
+            for key in ["attention-spam-held", "attention-spam-told", "attention-switch-through-off", "attention-switch-realtime-on", "attention-switch-realtime-off", "attention-channel-calls-none", "attention-channel-messages-none", "attention-channel-messages-no-access", "attention-channel-messages-phone"] {
                 said_well(&text(key), language);
             }
         }
+    }
+
+    /// On a computer, a phone in the sharing holds messages unless its entry
+    /// says it does not give Sioul notification access (an older Sioul's,
+    /// which says nothing, holds them); when every phone says no, the
+    /// messages' rows say why they do not apply, and the moment leaves messages out.
+    #[test]
+    fn a_phone_holds_messages_as_far_as_the_sharing_knows() {
+        use sioul_sync::devices::{COMPUTER, Entry, PHONE};
+        let entry = |kind: &str, notifications: Option<bool>, left: bool| Entry { id: "x".into(), kind: kind.into(), notifications, left, working: true, ..Entry::default() };
+        assert_eq!(Phones::of(&[]), Phones::None);
+        assert_eq!(Phones::of(&[entry(COMPUTER, None, false)]), Phones::None);
+        assert_eq!(Phones::of(&[entry(PHONE, Some(true), false)]), Phones::Holding);
+        assert_eq!(Phones::of(&[entry(PHONE, None, false)]), Phones::Holding, "an older Sioul says nothing: holding, as before phones said it");
+        assert_eq!(Phones::of(&[entry(PHONE, Some(false), false)]), Phones::WithoutAccess, "it said no");
+        assert_eq!(Phones::of(&[entry(PHONE, Some(false), false), entry(PHONE, Some(true), false)]), Phones::Holding);
+        assert_eq!(Phones::of(&[entry(PHONE, Some(false), false), entry(PHONE, None, false)]), Phones::Holding);
+        assert_eq!(Phones::of(&[entry(PHONE, Some(false), false), entry(PHONE, None, true)]), Phones::WithoutAccess, "one that left counts no more");
+        assert_eq!(Phones::of(&[entry(PHONE, Some(true), true)]), Phones::None);
+        speak("en");
+        let computer = |phones: Phones| Reach { messages: phones == Phones::Holding, phones, ..Reach::default() };
+        assert_eq!(channel_note(Channel::Messages, computer(Phones::None)), text("attention-channel-messages-none"));
+        assert_eq!(channel_note(Channel::Messages, computer(Phones::WithoutAccess)), "None of your phones gives Sioul notification access, as each last said: these rows apply once one does (Settings ▸ This phone, on the phone).");
+        assert_eq!(channel_note(Channel::Messages, computer(Phones::Holding)), text("attention-channel-messages-phone"));
+        assert_eq!(channel_note(Channel::Mail, computer(Phones::WithoutAccess)), "");
+        // The moment and the channels said: messages only from a phone that holds them.
+        assert_eq!(channels(computer(Phones::WithoutAccess)), [Channel::Mail]);
+        assert_eq!(channels(computer(Phones::Holding)), [Channel::Mail, Channel::Messages]);
     }
 
     #[test]
@@ -1127,7 +1187,7 @@ mod tests {
         let dnd = card_lines(&usual, &config, Column::Dnd, computer);
         has(&dnd, "Mail from everyone is shown without a notification, when its time lets it come.");
         // A phone screening calls: the calls' rows, voicemail, and the system's line.
-        let phone = Reach { phone: true, calls: true, messages: true, screens: true };
+        let phone = Reach { phone: true, calls: true, messages: true, screens: true, ..Reach::default() };
         let leisure = card_lines(&usual, &config, Column::Leisure, phone);
         has(&leisure, "Mail, calls and messages from your safe senders come at once.");
         assert!(leisure.iter().any(|l| l.starts_with("Calls from") && l.contains("voicemail")), "{leisure:#?}");

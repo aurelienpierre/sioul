@@ -252,6 +252,7 @@ account-removed = “{ $id }” removed, with its password. Its mail stays in { 
 account-portal-added = “{ $id }” added: it opens { $url } in your browser.
 account-password-saved = Password kept in your system keyring.
 account-has-password = password in the keyring
+account-signed-in-google = signed in with Google (the access in the keyring)
 account-no-password = no password yet: `sioul account password { $id }`
 account-trust = Sender checks: trusts { $ids }.
 account-trust-learning = Sender checks: learned from your mail at the first sync.
@@ -482,7 +483,6 @@ scan-running-any = Checking the attachment with the antivirus…
 scan-running = Checking { $name } with the antivirus…
 scan-clean = { $name }: no threat found; it opens.
 scan-infected = { $name }: the antivirus found { $threat }. Nothing was opened, and the copy is deleted.
-scan-unavailable = No antivirus answered, so nothing was opened. Install ClamAV: sudo dnf install clamav clamav-update, then sudo freshclam. ({ $detail })
 scan-error = The attachment { $name } could not be checked ({ $detail }).
 
 ## Reading.
@@ -828,6 +828,8 @@ event-where = Where
 event-repeat = Repeats
 event-calendar = Calendar
 event-pick-day = Pick the day
+date-month-previous = Previous month: { $month }
+date-month-next = Next month: { $month }
 repeat-none = Does not repeat
 repeat-daily = Every day
 repeat-weekly = Every week
@@ -1283,7 +1285,7 @@ related-title = Tied to it
 task-mode-now = Now
 task-mode-list = List
 task-mode-board = Board
-task-mode-timeline = Timeline
+task-mode-timeline = Calendar
 task-capture-hint = A task in one line: “Call the tax office tomorrow ~15m #project {"{"}date asked{"}"}”
 chip-start = from
 chip-due = date asked
@@ -1342,6 +1344,28 @@ task-add-step = A step, in one line
 task-waits-title = Waits for
 task-waits-add = Waits for… (a task’s title)
 task-waits-remove = No longer waits for it
+task-waits-gap = Then wait
+task-waits-gap-help = For the next wait you add: this task waits that long after the other is done (“the answer comes within two weeks”). 0: as soon as it is done.
+task-waits-gap-days = { $n ->
+    [one] day
+   *[other] days
+}
+task-waits-gap-weeks = { $n ->
+    [one] week
+   *[other] weeks
+}
+task-waits-after-days = { $n ->
+    [one] a day after it
+   *[other] { $count } days after it
+}
+task-waits-after-weeks = { $n ->
+    [one] a week after it
+   *[other] { $count } weeks after it
+}
+task-waits-after-hours = { $n ->
+    [one] an hour after it
+   *[other] { $count } hours after it
+}
 task-frees-one = Frees: { $title }
 task-field-start = Can start from
 task-field-due = Date asked
@@ -1465,7 +1489,7 @@ set-projects-rename = Rename to sioul-projects.toml
 set-projects-rename-help = Your projects are in sioul-cases.toml, the file's first name, which Sioul still reads and writes as it is. Renamed, it becomes sioul-projects.toml and its entries [[project]], every field and comment kept, with a copy of the old file beside it (sioul-cases.toml.before-rename). Rename it once each of your devices has this version of Sioul or a later one: an older version reads only sioul-cases.toml.
 set-projects-both = Your notes folder holds both sioul-projects.toml and sioul-cases.toml: Sioul reads sioul-projects.toml and leaves sioul-cases.toml as it is. An older version of Sioul, on another device, may still write there.
 set-notes-folder = New notes go into
-set-notes-folder-help = A folder inside the notes folder, for notes made from mail and events.
+set-notes-folder-help = A folder inside the notes folder, where Sioul puts every new note (unless you make it in another folder), and your audio memos in its memos folder.
 set-reading-family = Font
 set-reading-family-help = For long text: notes, mail, a task's notes. Empty: the desktop's.
 set-reading-size = Size
@@ -2023,6 +2047,9 @@ bitwarden-factor-1 = E-mail
 bitwarden-factor-3 = YubiKey
 bitwarden-factor-8 = Recovery code
 bitwarden-factor-unsupported = Your account asks for Duo, which Sioul cannot take yet: add a security key or an authenticator app as a second step in Bitwarden.
+bitwarden-factor-key-sites = Your account's second step is your security key, which this dialog cannot ask for. Open Bitwarden once from the Sites page, where the key is asked: the vault then stays open here too until Sioul closes. Or add an authenticator app as a second step in Bitwarden.
+bitwarden-factor-key-phone = Your account's second step is your security key, which Sioul cannot ask for on a phone. Add an authenticator app or codes by e-mail as a second step in Bitwarden, or type the password yourself.
+bitwarden-waiting = Waiting for Bitwarden…
 bitwarden-new-device = A new device: Bitwarden sent a code to your e-mail.
 set-bitwarden-email = Bitwarden account
 set-bitwarden-email-help = Its e-mail. The vault is read here, by Sioul itself, only when you fill a site’s form, and only with your master password, never kept.
@@ -2638,6 +2665,7 @@ task-billable-no = Not billed
 health-errands-list = Errands go to
 health-list-here = on this device only
 scan-ask = No antivirus is installed on this device, so { $name } will not be checked. Open it only if you trust it. To have files checked: { $hint }
+scan-ask-phone = A phone has no antivirus that Sioul can call, so { $name } will not be checked. Open it only if you trust it. To have it checked: { $hint }
 scan-open-anyway = Open it unchecked
 scan-save-anyway = Save it unchecked
 scan-unavailable-short = No antivirus answered ({ $detail }).
@@ -2963,7 +2991,7 @@ paper-renew-warranty = Its guarantee ends: anything to report before?
 paper-renew-other = It ends soon.
 ui-papers = Papers
 new-paper = A paper
-papers-help = The papers asked again and again, each with its file and how long it holds. Kept in your projects' folder (papers/): they travel with it. A reminder comes when one should be renewed.
+papers-help = The papers asked again and again, each with its file and how long it holds. Kept in your notes folder (papers/): they travel with it. A reminder comes when one should be renewed.
 papers-add = Add a paper
 papers-none = No paper yet. Add one from a file (a scan, a photo), or keep an attachment of a mail with “Keep in papers”.
 papers-new = A new paper
@@ -2989,7 +3017,7 @@ papers-keep-help = Checked by the antivirus, then kept in the papers wallet: you
 papers-kept = { $name } is in your papers: say what it is.
 papers-attach = A paper
 papers-none-to-attach = No paper with a file yet
-papers-no-store = Papers live in your projects' folder: choose it first (Settings ▸ Your folder and sharing).
+papers-no-store = Papers live in your notes folder: choose it first (Settings ▸ Your folder and sharing).
 papers-no-title = A name, please: “Passport”, “Rent receipt September”.
 papers-bad-date = “{ $date }” does not read as a date.
 papers-no-file = { $path } cannot be found.
@@ -3230,7 +3258,7 @@ bank-balance = { $amount } on { $date }, from your bank's file.
 bank-coming = This week:
 bank-forecast = The month ahead, with what is expected:
 bank-accounts = Bank accounts
-bank-accounts-help = Where your money actually is: a current account, PayPal, Stripe. Each takes its own exports, fills the budgets you choose, and is topped up by your reserves in your order. Until one is declared, an export taken in only feeds the watch below. Kept in your projects' folder (sioul-budgets.toml, sioul-bank.toml); nothing is sent anywhere.
+bank-accounts-help = Where your money actually is: a current account, PayPal, Stripe. Each takes its own exports, fills the budgets you choose, and is topped up by your reserves in your order. Until one is declared, an export taken in only feeds the watch below. Kept in your notes folder (sioul-budgets.toml, sioul-bank.toml); nothing is sent anywhere.
 bank-account-new = New bank account
 bank-account-edit = Bank account
 bank-account-title = Name
@@ -4074,7 +4102,7 @@ dnd-setup-here = On this device
 dnd-setup-critical = During do-not-disturb, Sioul's notifications for your Always through people go out as critical, which this desktop shows.
 dnd-setup-plasma-mail = Plasma is set to hide even critical notifications in do-not-disturb: mail from your Always through people cannot show here meanwhile, unless Sioul may “Show in do not disturb mode” in Plasma's notification settings.
 dnd-setup-list = Always through
-dnd-setup-list-help = The same list on every device, kept sealed in your sharing folder. What reaches you from them is the Always through row of each channel, above; the blocked never, even on the list. On a phone, its own do-not-disturb lets their calls and messages ring once they are starred there.
+dnd-setup-list-help = The same list on every device, kept sealed in your sharing folder. What reaches you from them is the Always through row of each channel, above; the blocked never, even on the list. On a phone, Sioul's do-not-disturb modes let their messages ring once they are starred in its contacts. Their calls ring once they are starred too or, while Sioul screens the phone's calls, as soon as they are among its contacts.
 dnd-setup-empty = Nobody yet.
 dnd-setup-add-safe = Add your safe senders
 dnd-setup-add-contact = Add a contact…
@@ -4374,7 +4402,7 @@ calls-setup-dnd = Do-not-disturb's modes follow the same rows: while a pause, fr
 calls-setup-here = On this phone
 calls-setup-on = Sioul screens this phone's calls.
 calls-setup-off = Sioul does not screen this phone's calls yet.
-calls-setup-too-old = Android 9 does not let an app screen calls. Do-not-disturb keeps calls quiet at the times you set (Settings ▸ What reaches you ▸ Do not disturb).
+calls-setup-too-old = Android 9 lets no app screen calls, nor set a do-not-disturb mode of its own: Sioul needs Android 10 or later for both. Android's own do-not-disturb, set in the phone's settings, still keeps calls quiet.
 calls-setup-unavailable = This phone offers no “Caller ID & spam app” to choose: Sioul cannot screen its calls. Do-not-disturb keeps calls quiet at the times you set.
 calls-setup-no-table = Sioul has not written this phone's rules yet: calls ring until it does, a moment after Sioul opens.
 calls-setup-ask = Let Sioul screen calls
@@ -4726,9 +4754,6 @@ attention-changes = { $n ->
     [one] Yours: one change from As Sioul does now.
    *[other] Yours: { $count } changes from As Sioul does now.
 }
-attention-now-at-once = At once: { $what }.
-attention-now-shown = Shown, not told: { $what }.
-attention-now-waiting = Waiting: { $what }.
 attention-unblocked = Taken off your blocked list: blocked and Always through exclude each other.
 calls-context-free = during your free time
 calls-context-slot = during time for you
@@ -5239,6 +5264,7 @@ attention-switch-realtime-on = Real time is on: mail is fetched every minute, an
 attention-switch-realtime-off = Real time is off: in the Porch's menu, it fetches mail every minute and brings every site's notifications at once.
 attention-channel-calls-none = None of your phones screens calls yet: these rows apply once one does (Settings ▸ This phone, on the phone).
 attention-channel-messages-none = Sioul knows no phone of yours yet: these rows apply on a phone that holds other apps' notifications (Settings ▸ This phone, on the phone).
+attention-channel-messages-no-access = None of your phones gives Sioul notification access, as each last said: these rows apply once one does (Settings ▸ This phone, on the phone).
 attention-channel-messages-phone = These rows apply on your phone, where Sioul holds other apps' notifications (Settings ▸ This phone, on the phone).
 attention-gathered-at = Sioul gathers them at { $times }; the times are in Settings ▸ Reminders.
 attention-spam-held = Mail your own spam filter finds maybe or probably spam waits on the Porch, in “Caught by your own spam filter”, without a notification: Mail ⚙ ▸ Your own spam filter.

@@ -140,9 +140,8 @@ public final class ShareActivity extends Activity
     }
 
     /**
-     * "Sioul could not take what you shared: …", in the phone's language.
-     * Kept here, not among Android's strings: Qt's build keeps English ones
-     * only (its template's resConfig), and Rust's words are not loaded yet.
+     * "Sioul could not take what you shared: …", in the phone's language,
+     * as DoseAlarms.words picks it: Rust's words are not loaded yet.
      */
     private static String failed(Exception e)
     {
